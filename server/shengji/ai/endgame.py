@@ -179,6 +179,21 @@ class _ExactSolver:
         self.cache_hits = 0
         self.cache: dict[tuple, int] = {}
         self.bounds: dict[tuple, tuple[float, float]] = {}
+        self.follow_actions: dict[tuple, tuple[tuple[str, ...], ...]] = {}
+
+    def actions(self, rnd: Round, seat: int) -> list[list[str]]:
+        # Legality of a follow depends on its hand, lead and ordering, not
+        # accumulated points or other seats' remaining cards. This cache lives
+        # within one solver; include rule context for standalone solver users.
+        # Return copies so neither engine play nor a caller can poison it.
+        if not self.alpha_beta or not rnd.trick.plays:
+            return exhaustive_legal_actions(rnd, seat, max_hand_cards=self.max_hand_cards)
+        key = (_context_key(rnd), self.max_hand_cards, seat, tuple(sorted(rnd.hands[seat])),
+               tuple(sorted(rnd.trick.plays[0].cards)))
+        if key not in self.follow_actions:
+            actions = exhaustive_legal_actions(rnd, seat, max_hand_cards=self.max_hand_cards)
+            self.follow_actions[key] = tuple(tuple(a) for a in actions)
+        return [list(a) for a in self.follow_actions[key]]
 
     def value(self, rnd: Round, alpha=float('-inf'), beta=float('inf')) -> int:
         if self.check_budget is not None:
@@ -203,8 +218,7 @@ class _ExactSolver:
         self.nodes += 1
 
         seat = rnd.turn
-        actions = exhaustive_legal_actions(
-            rnd, seat, max_hand_cards=self.max_hand_cards)
+        actions = self.actions(rnd, seat)
         original_alpha, original_beta = alpha, beta
         maximize = rnd.is_attacker(seat)
         answer = float('-inf') if maximize else float('inf')
@@ -280,7 +294,7 @@ class ExactWorldSession:
     def cache_hits(self) -> int:
         return self.solver.cache_hits
 
-    def solve(self, rnd: Round) -> ExactEndgameResult:
+    def _validate_frontier(self, rnd: Round) -> None:
         if self.solver.check_budget is not None:
             self.solver.check_budget()
         if _context_key(rnd) != self.context:
@@ -293,6 +307,26 @@ class ExactWorldSession:
             raise ExactEndgameRefusal(
                 f"largest hand has {largest} cards; completeness cap is "
                 f"{self.solver.max_hand_cards}")
+
+    def value(self, rnd: Round) -> int:
+        """Exact full-window value, without scoring a root action for the caller.
+
+        Unlike solve(), this permits alpha-beta pruning across root actions.
+        The root itself counts as an expanded node and can be cached. Limits,
+        context isolation and cancellation are identical to solve().
+        """
+        self._validate_frontier(rnd)
+        before_nodes, before_hits = self.nodes, self.cache_hits
+        self.frontiers += 1
+        try:
+            return int(self.solver.value(rnd))
+        except ExactEndgameBudgetExceeded as exc:
+            exc.nodes = self.nodes - before_nodes
+            exc.cache_hits = self.cache_hits - before_hits
+            raise
+
+    def solve(self, rnd: Round) -> ExactEndgameResult:
+        self._validate_frontier(rnd)
         before_nodes = self.solver.nodes
         before_hits = self.solver.cache_hits
         self.frontiers += 1

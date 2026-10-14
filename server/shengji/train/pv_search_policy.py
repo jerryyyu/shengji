@@ -582,6 +582,7 @@ WIDE_LEAD_DEFAULTS = dict(wide_lead_admission=False)
 WIDE_LEAD_K = 32
 FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
+EXACT_LEAD_FIRST_TRICK_RULE = {"EXACT_LEAD_FIRST_TRICK": "exact_lead_first_trick"}
 EXACT_LEAD_LIMITS = dict(max_hand_cards=4, max_nodes=10000, max_seconds=2.25,
                          start_fraction=0.5, soft_fraction=0.8)
 FINISH_LEAD_MAX_CARDS = 8
@@ -704,11 +705,13 @@ RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_
               **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
-              **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE}
+              **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE,
+              **EXACT_LEAD_FIRST_TRICK_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("finish_lead_admission", "fla"),
-                                                   ("exact_lead_endgame", "ele"), ADAPTIVE_K_TOKEN,
+                                                   ("exact_lead_endgame", "ele"),
+                                                   ("exact_lead_first_trick", "elf"), ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
                                                    ("lead_anchor", "la"),
                                                    ("lead_tiebreak_prior", "lp"),
@@ -897,6 +900,7 @@ class PVSearchConfig:
     wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
     finish_lead_admission: bool = False
     exact_lead_endgame: bool = False
+    exact_lead_first_trick: bool = False
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     # the optional declaration rule and its two parameters; the same contract
@@ -970,6 +974,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                 or config.oracle_worlds or config.oracle_mix_k or config.oracle_pin_q):
             raise PVSearchPolicyError('exact_lead_endgame excludes tree, adaptive worlds and oracle worlds')
         payload['exact_lead_limits'] = EXACT_LEAD_LIMITS
+    if config.exact_lead_first_trick and not config.exact_lead_endgame:
+        raise PVSearchPolicyError('exact_lead_first_trick needs exact_lead_endgame')
     if config.finish_lead_admission:
         if config.tree is not None:
             raise PVSearchPolicyError('finish_lead_admission does not combine with the tree')
@@ -1278,6 +1284,11 @@ class PVSearchBot(PolicyValueBot):
                                         or config.oracle_mix_k or config.oracle_pin_q):
             raise PVSearchPolicyError('exact_lead_endgame excludes tree, adaptive worlds and oracle worlds')
         self.exact_lead_endgame = config.exact_lead_endgame
+        if type(config.exact_lead_first_trick) is not bool:
+            raise PVSearchPolicyError('exact_lead_first_trick must be a bool')
+        if config.exact_lead_first_trick and not config.exact_lead_endgame:
+            raise PVSearchPolicyError('exact_lead_first_trick needs exact_lead_endgame')
+        self.exact_lead_first_trick = config.exact_lead_first_trick
         self._exact_lead = None
         self._finish_lead_added = False
         self._wide_lead = None
@@ -2359,10 +2370,12 @@ class PVSearchBot(PolicyValueBot):
         Exact continuation is within sampled worlds, never the live hidden deal.
         OptionalStage also restores selection-rule records on an absorbed expiry.
         """
-        from .pv_exact_endgame import exact_lead_means
+        from .pv_exact_endgame import exact_first_trick_means, exact_lead_means
         state = dict(exact_lead_status='ineligible', exact_lead_worlds_completed=0,
                      exact_lead_nodes=None, exact_lead_cache_hits=None,
                      exact_lead_changed=False)
+        if self.exact_lead_first_trick:
+            state['exact_lead_mode'] = 'first_trick'
         self._exact_lead = state
         if not leading(rnd) or max(map(len, rnd.hands)) > EXACT_LEAD_LIMITS['max_hand_cards']:
             return base
@@ -2379,8 +2392,14 @@ class PVSearchBot(PolicyValueBot):
             clock=lambda: time.perf_counter(), soft_error=_AdaptiveWorldsExpired,
             final_check=check_budget, abandon_on=Exception)
         with stage:
-            means, stats = exact_lead_means(rnd, seat, admitted, worlds, self._leaf, stage.guard,
-                                           max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
+            if self.exact_lead_first_trick:
+                means, stats = exact_first_trick_means(
+                    rnd, seat, admitted, worlds, stage.guard,
+                    max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
+            else:
+                means, stats = exact_lead_means(
+                    rnd, seat, admitted, worlds, self._leaf, stage.guard,
+                    max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
             stage.guard()
             winner = self._select(rnd, seat, admitted, means, worlds=worlds,
                                   check_budget=stage.guard, priors=priors)
@@ -2399,18 +2418,25 @@ class PVSearchBot(PolicyValueBot):
         base_level = float(means[base[2]])
         delta = selected_level - base_level
         changed = sorted(played) != sorted(base[3])
-        aligned = (sorted(played) == sorted(admitted[winner])
-                   and sorted(base[3]) == sorted(admitted[base[2]]))
-        change_kind = ('unchanged' if not changed else 'post_selection_override' if not aligned
+        selected_played = list(admitted[winner])
+        base_selected_played = list(admitted[base[2]])
+        selected_override = sorted(played) != sorted(selected_played)
+        base_override = sorted(base[3]) != sorted(base_selected_played)
+        change_kind = ('unchanged' if not changed else
+                       'post_selection_override' if selected_override or base_override
                        else 'higher' if delta > 0 else 'lower' if delta < 0 else 'tie')
         state.update(exact_lead_status='complete', exact_lead_worlds_completed=stats['worlds_completed'],
+                     exact_lead_trace_version=2,
                      exact_lead_nodes=stats['nodes'], exact_lead_cache_hits=stats['cache_hits'],
                      exact_lead_changed=changed,
                      exact_lead_change_kind=change_kind,
                      exact_lead_selected_level_mean=selected_level,
                      exact_lead_base_level_mean=base_level,
                      exact_lead_selected_level_delta=delta,
+                     exact_lead_selected_index=int(winner),
+                     exact_lead_selected_played=selected_played,
                      exact_lead_base_selected_index=int(base[2]),
+                     exact_lead_base_selected_played=base_selected_played,
                      exact_lead_base_value_means=base[0].tolist(),
                      exact_lead_base_played=list(base[3]))
         return means, base[1], winner, played, base[4]
@@ -2800,6 +2826,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
                        finish_lead_admission: bool = False,
                        exact_lead_endgame: bool = False,
+                       exact_lead_first_trick: bool = False,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -2860,6 +2887,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             wide_lead_admission=wide_lead_admission,
                             finish_lead_admission=finish_lead_admission,
                             exact_lead_endgame=exact_lead_endgame,
+                            exact_lead_first_trick=exact_lead_first_trick,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -2953,6 +2981,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
                         finish_lead_admission: bool = False,
                         exact_lead_endgame: bool = False,
+                        exact_lead_first_trick: bool = False,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -2994,6 +3023,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             wide_lead_admission=wide_lead_admission,
                             finish_lead_admission=finish_lead_admission,
                             exact_lead_endgame=exact_lead_endgame,
+                            exact_lead_first_trick=exact_lead_first_trick,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -3083,6 +3113,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                wide_lead_admission=config.wide_lead_admission,
                                finish_lead_admission=config.finish_lead_admission,
                                exact_lead_endgame=config.exact_lead_endgame,
+                               exact_lead_first_trick=config.exact_lead_first_trick,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,

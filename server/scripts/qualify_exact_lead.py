@@ -2,6 +2,8 @@
 
 Run only on an admitted, otherwise idle host. From server/ with PYTHONPATH=.:
 python scripts/qualify_exact_lead.py --checkpoint PATH --out NEW.jsonl
+Use ``--first-trick`` only for the bounded mechanism screen; it does not assert
+that the new first-trick evaluator is a better action.
 No retries or overwrite; each completed call is flushed before the next.
 """
 import argparse
@@ -24,6 +26,14 @@ R45_NAMES = (
     'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8',
     'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-r2ac93e3d-bury-hybrid-bwv-02f0041fee6a',
 )
+# The first-trick arm has its own recipe digest and must not be conflated with
+# the whole-endgame arm.  These names are derived from ``pv_registry_entries``
+# using the pinned release-45 recipe (the factory is the source of identity).
+R45_FIRST_TRICK_NAMES = (
+    R45_NAMES[0],
+    'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-elf-la-dtr-vd-r128e803c-bury-hybrid-bwv-510d61d26e9d',
+)
+BASELINE45 = R45_NAMES[0]
 
 
 def qualification_env(checkpoint, release=44):
@@ -41,16 +51,26 @@ def qualification_env(checkpoint, release=44):
     return env
 
 
-async def qualify(checkpoint, dest, release=44):
+async def qualify(checkpoint, dest, release=44, *, first_trick=False, release45=False):
+    if release45:
+        if release != 44:
+            raise ValueError('release45 is incompatible with --release other than 44')
+        release = 45
+    if release not in (44, 45):
+        raise ValueError('unsupported qualification release')
     packet = json.loads((Path(__file__).resolve().parents[1] /
                          'tests/fixtures/r44_joker_lead.json').read_text())
     env = qualification_env(checkpoint, release)
     for enabled in (False, True):
         entries = pv_registry_entries(**pv_env_recipe({**env,
-            'SHENGJI_PV_EXACT_LEAD_ENDGAME': str(int(enabled))}))
+            'SHENGJI_PV_EXACT_LEAD_ENDGAME': str(int(enabled)),
+            'SHENGJI_PV_EXACT_LEAD_FIRST_TRICK': str(int(enabled and first_trick)),
+        }))
         name, = entries
-        if release == 45 and name != R45_NAMES[int(enabled)]:
-            raise ValueError('release45 qualification arm drift')
+        if release == 45:
+            expected_names = R45_FIRST_TRICK_NAMES if first_trick else R45_NAMES
+            if name != expected_names[int(enabled)]:
+                raise ValueError('release45 qualification arm drift')
         if release == 44 and not enabled and name != BASELINE:
             raise ValueError('release44 recipe drift')
         rnd, ledger = restore_with_ledger(packet)
@@ -74,13 +94,34 @@ async def qualify(checkpoint, dest, release=44):
         committed = srv._commit_bot_turn(room, prepared)
         if not committed or srv._commit_bot_turn(room, prepared):
             raise RuntimeError('decision did not commit exactly once')
-        expected = ['BJ'] if enabled else ['BJ', 'S5', 'S8', 'SQ']
-        passed = (rec.get('work_complete') is True and cards == expected and seconds < 3
-                  and (not enabled or (rec.get('exact_lead_status') == 'complete'
-                       and rec.get('exact_lead_worlds_completed') == 64)))
-        row = dict(release=release, enabled=enabled, policy=name, seconds=seconds, cards=cards,
+        if first_trick:
+            # This is a mechanism read, not a strength claim: action identity is
+            # deliberately recorded but never compared to a BJ expectation.
+            passed = (rec.get('work_complete') is True and seconds < 3
+                      and (not enabled or (rec.get('exact_lead_mode') == 'first_trick'
+                           and rec.get('exact_lead_status') == 'complete'
+                           and rec.get('exact_lead_worlds_completed') == 64)))
+        else:
+            expected = ['BJ'] if enabled else ['BJ', 'S5', 'S8', 'SQ']
+            passed = (rec.get('work_complete') is True and cards == expected and seconds < 3
+                      and (not enabled or (rec.get('exact_lead_status') == 'complete'
+                           and rec.get('exact_lead_worlds_completed') == 64)))
+        action_record = {'cards': cards, 'selected_index': rec.get('selected_index'),
+                         'played': rec.get('played')}
+        value_record = {key: rec.get(key) for key in (
+            'value_means', 'exact_lead_selected_level_mean',
+            'exact_lead_base_level_mean', 'exact_lead_selected_level_delta')}
+        cost_record = {key: rec.get(key) for key in (
+            'seconds', 'exact_lead_seconds', 'exact_lead_worlds_completed',
+            'exact_lead_nodes', 'exact_lead_cache_hits')}
+        row = dict(release=release, first_trick=first_trick, enabled=enabled,
+                   policy=name, seconds=seconds, cards=cards,
                    passed=passed, committed=committed, record=rec,
+                   action_record=action_record, value_record=value_record,
+                   cost_record=cost_record,
                    machine=platform.machine(), system=platform.system())
+        if release == 45:
+            row.update(recipe_release=45, root_provenance='historical release44 fixed root; not a release45 trajectory')
         dest.write(json.dumps(row)+'\n')
         dest.flush()
         print(json.dumps({k:v for k,v in row.items() if k != 'record'}), flush=True)
@@ -93,11 +134,22 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--release', type=int, choices=(44, 45), default=44,
+    parser.add_argument('--release', type=int, choices=(44, 45), default=None,
                         help='explicit recipe; default preserves the historical release44 qualifier')
+    parser.add_argument('--first-trick', action='store_true',
+                        help='screen exact first-trick mechanism; no action-strength claim')
+    parser.add_argument('--release45', action='store_true',
+                        help='use release45 serving recipe on the historical fixed root')
     args = parser.parse_args(argv)
+    if args.release45 and args.release is not None:
+        parser.error('--release45 cannot be combined with --release; use one spelling')
+    release = 44 if args.release is None else args.release
     with args.out.open('x') as dest:
-        return asyncio.run(qualify(args.checkpoint, dest, args.release))
+        if args.release45:
+            return asyncio.run(qualify(args.checkpoint, dest,
+                                      first_trick=args.first_trick, release45=True))
+        return asyncio.run(qualify(args.checkpoint, dest, release,
+                                   first_trick=args.first_trick))
 
 
 if __name__ == '__main__':

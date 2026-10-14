@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from functools import wraps
+import hashlib
 import os
 import platform
 import json
@@ -47,6 +48,39 @@ def _scalar_stats(stats: Any) -> dict[str, Any]:
             if key in stats and isinstance(stats[key], (int, float))
             and not isinstance(stats[key], bool)
             and (not isinstance(stats[key], float) or math.isfinite(stats[key]))}
+
+
+def _json_sha256(value: Any) -> str:
+    """Hash the closed JSON representation of a probe input.
+
+    The serving path supplies lists of card strings, so JSON is deliberately
+    the boundary here: no engine objects are copied or traversed beyond what
+    the serializer requires.  Sorting keys and removing insignificant
+    whitespace makes the fingerprint stable across hosts and runs.
+    """
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True, allow_nan=False).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _safe_json_sha256(value: Any) -> str | None:
+    """Return an input fingerprint when the serving snapshot is JSON-shaped."""
+    try:
+        return _json_sha256(value)
+    except (TypeError, ValueError, OverflowError):
+        # Synthetic callers may pass opaque sentinels.  The probe must remain
+        # observation-only for those calls; production worlds and actions are
+        # JSON-shaped and therefore always receive a digest.
+        return None
+
+
+def _session_counter(sessions, name: str) -> int:
+    total = 0
+    for session in sessions:
+        value = getattr(session, name, 0)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            total += value
+    return total
 
 
 def _thread_limits() -> dict[str, int | None]:
@@ -110,6 +144,7 @@ def exact_lead_cost_probe(sink, *, perf_clock=None, thread_clock=None):
 
     original_stage = policy.PVSearchBot._exact_lead_decision
     original_evaluator = pv_exact_endgame.exact_first_trick_means
+    original_session = pv_exact_endgame.ExactWorldSession
     metadata = _metadata()
     limits = policy.EXACT_LEAD_LIMITS
 
@@ -144,10 +179,22 @@ def exact_lead_cost_probe(sink, *, perf_clock=None, thread_clock=None):
             active["partial_worlds"] = _UNKNOWN
             raise
         finally:
+            sessions = active.pop("_sessions", ())
+            active["sessions_started"] = len(sessions)
+            active["partial_nodes"] = _session_counter(sessions, "nodes")
+            active["partial_cache_hits"] = _session_counter(sessions, "cache_hits")
             active["evaluator_seconds"] = max(0.0, clock() - started_wall)
             active["evaluator_cpu_seconds"] = max(0.0, cpu_clock() - started_cpu)
             if error is None:
                 active.setdefault("partial_worlds", None)
+
+    @wraps(original_session)
+    def session_factory(*args, **kwargs):
+        session = original_session(*args, **kwargs)
+        active = getattr(_ACTIVE, "row", None)
+        if active is not None:
+            active.setdefault("_sessions", []).append(session)
+        return session
 
     @wraps(original_stage)
     def stage_wrapper(self, rnd, seat, admitted, worlds, started, check_budget, priors, base):
@@ -177,7 +224,10 @@ def exact_lead_cost_probe(sink, *, perf_clock=None, thread_clock=None):
                        remaining_soft_seconds=remaining,
                        remaining_soft_basis="stage-entry estimate, not the internal deadline",
                        eligible_start=_eligible(rnd, budget, baseline_elapsed),
-                       evaluator_calls=0, partial_worlds=None)
+                       evaluator_calls=0, sessions_started=0,
+                       partial_nodes=0, partial_cache_hits=0, partial_worlds=None,
+                       partial_worlds_basis=None,
+                       worlds_sha256=None, admitted_sha256=None)
             _ACTIVE.row = row
             result = original_stage(self, rnd, seat, admitted, worlds, started,
                                     check_budget, priors, base)
@@ -205,6 +255,14 @@ def exact_lead_cost_probe(sink, *, perf_clock=None, thread_clock=None):
                                 "exact_lead_abandon_error", "exact_lead_worlds_completed"):
                         if key in state and isinstance(state[key], (bool, int, float, str)):
                             row[key.removeprefix("exact_lead_")] = state[key]
+            # A soft expiry is raised from inside the active world session.
+            # Only that typed abandonment supports this completed-world
+            # count; malformed inputs and unrelated errors stay UNKNOWN.
+            if (stage_error is None and row.get("status") == "abandoned"
+                    and row.get("evaluator_error") == "_AdaptiveWorldsExpired"
+                    and row.get("sessions_started", 0) > 0):
+                row["partial_worlds"] = row["sessions_started"] - 1
+                row["partial_worlds_basis"] = "sessions_started_minus_1_after_adaptive_expiry"
             row.setdefault("evaluator_stats", {})
             row.setdefault("evaluator_cpu_seconds", 0.0)
             row.setdefault("partial_worlds", None if normal else _UNKNOWN)
@@ -214,6 +272,11 @@ def exact_lead_cost_probe(sink, *, perf_clock=None, thread_clock=None):
                 row.pop("evaluator_error", None)
             sink_error = None
             try:
+                # Hash immutable serving snapshots after elapsed timing has
+                # been captured.  Serialization therefore cannot affect stage
+                # guards or the reported evaluator/stage clocks.
+                row["worlds_sha256"] = _safe_json_sha256(worlds)
+                row["admitted_sha256"] = _safe_json_sha256(admitted)
                 _write(sink, row)
             except BaseException as exc:
                 sink_error = exc
@@ -234,11 +297,13 @@ def exact_lead_cost_probe(sink, *, perf_clock=None, thread_clock=None):
 
     policy.PVSearchBot._exact_lead_decision = stage_wrapper
     pv_exact_endgame.exact_first_trick_means = evaluator_wrapper
+    pv_exact_endgame.ExactWorldSession = session_factory
     try:
         yield
     finally:
         policy.PVSearchBot._exact_lead_decision = original_stage
         pv_exact_endgame.exact_first_trick_means = original_evaluator
+        pv_exact_endgame.ExactWorldSession = original_session
         with _INSTALLED_LOCK:
             exact_lead_cost_probe._installed = False
 

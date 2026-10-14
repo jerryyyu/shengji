@@ -2,12 +2,16 @@
 
 import asyncio
 import copy
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import io
 import json
 import pytest
 from types import SimpleNamespace
 
 from scripts import qualify_exact_lead as q
+from scripts import exact_lead_cost_probe as cost_probe
+from shengji.train import pv_exact_endgame, pv_search_policy
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
 
 
@@ -122,6 +126,327 @@ def test_cli_accepts_first_trick_switch(monkeypatch, tmp_path):
     assert called[0][2:] == (44, True)
 
 
+def test_cli_cost_out_requires_first_trick_before_invocation(monkeypatch, tmp_path):
+    called = []
+
+    def forbidden(*args, **kwargs):
+        called.append((args, kwargs))
+        return 0
+
+    monkeypatch.setattr(q, "qualify", forbidden)
+    with pytest.raises(SystemExit):
+        q.main(["--checkpoint", "model.npz", "--out", str(tmp_path / "out"),
+                "--cost-out", str(tmp_path / "cost")])
+    assert called == []
+    assert not (tmp_path / "out").exists()
+    assert not (tmp_path / "cost").exists()
+
+
+def test_cli_cost_out_rejects_reused_path_before_invocation(monkeypatch, tmp_path):
+    called = []
+
+    async def forbidden(*args, **kwargs):
+        called.append((args, kwargs))
+        return 0
+
+    monkeypatch.setattr(q, "qualify", forbidden)
+    out = tmp_path / "out"
+    cost = tmp_path / "cost"
+    out.write_text("existing\n")
+    cost.write_text("existing\n")
+    with pytest.raises(SystemExit):
+        q.main(["--checkpoint", "model.npz", "--out", str(out), "--first-trick",
+                "--cost-out", str(cost)])
+    assert called == []
+
+
+def test_direct_qualify_cost_out_requires_first_trick(tmp_path):
+    with pytest.raises(ValueError, match="cost_out requires first_trick"):
+        asyncio.run(q.qualify("unused.npz", io.StringIO(), cost_out=io.StringIO()))
+
+
+def test_cli_cost_out_same_path_refuses_before_creating_output(tmp_path):
+    path = tmp_path / "same"
+    with pytest.raises(SystemExit):
+        q.main(["--checkpoint", "model.npz", "--out", str(path), "--first-trick",
+                "--cost-out", str(path)])
+    assert not path.exists()
+
+
+def test_cli_cost_out_forwards_one_invocation_and_preserves_partial(monkeypatch, tmp_path):
+    calls = []
+    async def qualify(checkpoint, dest, release=44, *, first_trick=False, cost_out=None):
+        calls.append((release, first_trick))
+        dest.write('{"passed":false}\n')
+        cost_out.write('{"status":"abandoned"}\n')
+        return 1
+    monkeypatch.setattr(q, "qualify", qualify)
+    out, cost = tmp_path / "out", tmp_path / "cost"
+    assert q.main(["--checkpoint", "model.npz", "--out", str(out),
+                   "--release", "45", "--first-trick", "--cost-out", str(cost)]) == 1
+    assert calls == [(45, True)]
+    assert json.loads(out.read_text()) == {"passed": False}
+    assert json.loads(cost.read_text()) == {"status": "abandoned"}
+
+
+def test_cost_probe_projects_scalars_and_restores_both_seams(monkeypatch):
+    original_stage = pv_search_policy.PVSearchBot._exact_lead_decision
+    original_evaluator = pv_exact_endgame.exact_first_trick_means
+    original_session = pv_exact_endgame.ExactWorldSession
+    seen = []
+    ticks = iter([10.0, 10.0, 10.25, 10.25, 10.75, 10.75,
+                  11.0, 11.0])
+
+    def clock():
+        return next(ticks)
+
+    def evaluator(*args, **kwargs):
+        seen.append((args, kwargs))
+        return object(), {"worlds_completed": 4, "nodes": 9,
+                          "cache_hits": 2, "values": [1, 2]}
+
+    def stage(bot, rnd, seat, admitted, worlds, started, check_budget, priors, base):
+        result = pv_exact_endgame.exact_first_trick_means(
+            rnd, seat, admitted, worlds, check_budget)
+        bot._exact_lead = {"exact_lead_status": "complete",
+                           "exact_lead_worlds_completed": result[1]["worlds_completed"]}
+        return base
+
+    monkeypatch.setattr(pv_search_policy.PVSearchBot, "_exact_lead_decision", stage)
+    monkeypatch.setattr(pv_exact_endgame, "exact_first_trick_means", evaluator)
+    sink = io.StringIO()
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]), hands=[["BJ"]] * 4)
+    bot = SimpleNamespace(serving_budget_seconds=3.0, _exact_lead={})
+    admitted = [["BJ"]]
+    worlds = [(None, None)]
+    base = object()
+    with cost_probe.exact_lead_cost_probe(sink, perf_clock=clock, thread_clock=clock):
+        assert pv_search_policy.PVSearchBot._exact_lead_decision(
+            bot, rnd, 0, admitted, worlds, 9.0, None, [], base) is base
+    assert len(seen) == 1 and seen[0][0][2] is admitted and seen[0][0][3] is worlds
+    row = json.loads(sink.getvalue())
+    assert row["world_count"] == row["admitted_count"] == 1
+    assert row["remaining_soft_seconds"] == pytest.approx(1.4)
+    assert row["total_stage_seconds"] == pytest.approx(1.0)
+    assert row["evaluator_seconds"] == pytest.approx(0.5)
+    assert row["non_evaluator_seconds"] == pytest.approx(0.5)
+    assert row["evaluator_cpu_seconds"] == pytest.approx(0.5)
+    assert row["evaluator_stats"] == {"worlds_completed": 4, "nodes": 9, "cache_hits": 2}
+    assert row["status"] == "complete" and row["partial_worlds"] is None
+    assert "values" not in row and pv_exact_endgame.exact_first_trick_means is evaluator
+    assert pv_exact_endgame.ExactWorldSession is original_session
+    assert pv_search_policy.PVSearchBot._exact_lead_decision is stage
+    assert original_stage is not stage and original_evaluator is not evaluator
+
+
+def test_cost_probe_records_session_progress_and_input_fingerprints(monkeypatch):
+    class Session:
+        def __init__(self, *_args, **_kwargs):
+            self.nodes = 13
+            self.cache_hits = 5
+
+    monkeypatch.setattr(pv_exact_endgame, "ExactWorldSession", Session)
+
+    def evaluator(*args, **kwargs):
+        session = pv_exact_endgame.ExactWorldSession(*args, **kwargs)
+        assert session.nodes == 13
+        return object(), {"worlds_completed": 1, "nodes": session.nodes,
+                          "cache_hits": session.cache_hits}
+
+    def stage(bot, rnd, seat, admitted, worlds, started, check_budget, priors, base):
+        result = pv_exact_endgame.exact_first_trick_means(
+            rnd, seat, admitted, worlds, check_budget)
+        bot._exact_lead = {"exact_lead_status": "complete",
+                           "exact_lead_worlds_completed": result[1]["worlds_completed"]}
+        return base
+
+    monkeypatch.setattr(pv_search_policy.PVSearchBot, "_exact_lead_decision", stage)
+    monkeypatch.setattr(pv_exact_endgame, "exact_first_trick_means", evaluator)
+    admitted = [["BJ"], ["S5"]]
+    worlds = [(["BJ"], ["S5"])]
+    sink = io.StringIO()
+    bot = SimpleNamespace(serving_budget_seconds=3.0, _exact_lead={})
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]), hands=[["BJ"]] * 4)
+    with cost_probe.exact_lead_cost_probe(sink):
+        pv_search_policy.PVSearchBot._exact_lead_decision(
+            bot, rnd, 0, admitted, worlds, 0.0, None, [], object())
+
+    row = json.loads(sink.getvalue())
+    assert row["sessions_started"] == 1
+    assert row["partial_nodes"] == 13
+    assert row["partial_cache_hits"] == 5
+    assert row["partial_worlds"] is None
+    assert row["worlds_sha256"] == hashlib.sha256(
+        json.dumps(worlds, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=True, allow_nan=False).encode("ascii")).hexdigest()
+    assert row["admitted_sha256"] == hashlib.sha256(
+        json.dumps(admitted, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=True, allow_nan=False).encode("ascii")).hexdigest()
+
+
+def test_cost_probe_does_not_retain_completed_world_caches(monkeypatch):
+    import weakref
+
+    live = weakref.WeakSet()
+
+    class Session:
+        nodes = 7
+        cache_hits = 2
+
+        def __init__(self):
+            live.add(self)
+
+    monkeypatch.setattr(pv_exact_endgame, 'ExactWorldSession', Session)
+
+    def evaluator(*args, **kwargs):
+        for _ in range(64):
+            session = pv_exact_endgame.ExactWorldSession()
+            assert len(live) == 1
+            del session
+        return object(), {'worlds_completed': 64, 'nodes': 448, 'cache_hits': 128}
+
+    def stage(bot, *args):
+        pv_exact_endgame.exact_first_trick_means()
+        # The final cache must be released inside the evaluator timing window,
+        # not reported later as non-evaluator stage work.
+        assert len(live) == 0
+        bot._exact_lead = {'exact_lead_status': 'complete'}
+        return object()
+
+    monkeypatch.setattr(pv_exact_endgame, 'exact_first_trick_means', evaluator)
+    monkeypatch.setattr(pv_search_policy.PVSearchBot, '_exact_lead_decision', stage)
+    sink = io.StringIO()
+    bot = SimpleNamespace(serving_budget_seconds=3.0, _exact_lead={})
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]), hands=[['BJ']] * 4)
+    with cost_probe.exact_lead_cost_probe(sink):
+        pv_search_policy.PVSearchBot._exact_lead_decision(
+            bot, rnd, 0, [['BJ']], [(None, None)] * 64, 0.0, None, [], object())
+    row = json.loads(sink.getvalue())
+    assert (row['sessions_started'], row['partial_nodes'], row['partial_cache_hits']) == (64, 448, 128)
+
+
+def test_cost_probe_reports_completed_worlds_on_abandon_and_restores_session(monkeypatch):
+    class Session:
+        created = 0
+
+        def __init__(self, *_args, **_kwargs):
+            type(self).created += 1
+            self.nodes = 7 if type(self).created == 1 else 11
+            self.cache_hits = 2 if self.nodes == 7 else 3
+
+    monkeypatch.setattr(pv_exact_endgame, "ExactWorldSession", Session)
+
+    def evaluator(*args, **kwargs):
+        pv_exact_endgame.ExactWorldSession(*args, **kwargs)
+        pv_exact_endgame.ExactWorldSession(*args, **kwargs)
+        raise pv_search_policy._AdaptiveWorldsExpired()
+
+    def stage(bot, rnd, seat, admitted, worlds, started, check_budget, priors, base):
+        try:
+            pv_exact_endgame.exact_first_trick_means(rnd, seat, admitted, worlds,
+                                                     check_budget)
+        except pv_search_policy._AdaptiveWorldsExpired:
+            bot._exact_lead = {"exact_lead_status": "abandoned",
+                               "exact_lead_worlds_completed": None}
+            return base
+        raise AssertionError("synthetic evaluator did not abandon")
+
+    monkeypatch.setattr(pv_search_policy.PVSearchBot, "_exact_lead_decision", stage)
+    monkeypatch.setattr(pv_exact_endgame, "exact_first_trick_means", evaluator)
+    original_session = pv_exact_endgame.ExactWorldSession
+    sink = io.StringIO()
+    bot = SimpleNamespace(serving_budget_seconds=3.0, _exact_lead={})
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]), hands=[["BJ"]] * 4)
+    with cost_probe.exact_lead_cost_probe(sink):
+        pv_search_policy.PVSearchBot._exact_lead_decision(
+            bot, rnd, 0, [["BJ"]], [(None, None)], 0.0, None, [], object())
+
+    row = json.loads(sink.getvalue())
+    assert row["status"] == "abandoned"
+    assert row["sessions_started"] == 2
+    assert row["partial_nodes"] == 18
+    assert row["partial_cache_hits"] == 5
+    assert row["partial_worlds"] == 1
+    assert row["partial_worlds_basis"] == "sessions_started_minus_1_after_adaptive_expiry"
+    assert pv_exact_endgame.ExactWorldSession is original_session
+
+
+def test_cost_probe_skipped_budget_never_calls_evaluator(monkeypatch):
+    monkeypatch.setattr(pv_search_policy.time, "perf_counter", lambda: 2.0)
+    def forbidden(*args, **kwargs):
+        pytest.fail("skipped stage called evaluator")
+    monkeypatch.setattr(pv_exact_endgame, "exact_first_trick_means", forbidden)
+    bot = SimpleNamespace(exact_lead_first_trick=True, serving_budget_seconds=3.0)
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]), hands=[["BJ"]] * 4)
+    base = object()
+    sink = io.StringIO()
+    with cost_probe.exact_lead_cost_probe(sink):
+        assert pv_search_policy.PVSearchBot._exact_lead_decision(
+            bot, rnd, 0, [["BJ"]], [object()], 0.0, None, [], base) is base
+    row = json.loads(sink.getvalue())
+    assert row["status"] == "skipped_budget"
+    assert row["eligible_start"] is False
+    assert row["evaluator_calls"] == row["evaluator_seconds"] == 0
+
+
+def test_cost_probe_rethrows_same_baseexception_and_marks_unknown(monkeypatch):
+    class Cancelled(BaseException):
+        pass
+
+    failure = Cancelled()
+    ticks = iter([1.0, 1.0, 1.1, 1.1, 1.2, 1.2, 1.3, 1.3])
+    monkeypatch.setattr(pv_exact_endgame, "exact_first_trick_means",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(failure))
+
+    def stage(bot, rnd, seat, admitted, worlds, started, check_budget, priors, base):
+        return pv_exact_endgame.exact_first_trick_means(rnd, seat, admitted, worlds)
+
+    monkeypatch.setattr(pv_search_policy.PVSearchBot, "_exact_lead_decision", stage)
+    sink = io.StringIO()
+    bot = SimpleNamespace(serving_budget_seconds=None)
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]), hands=[["BJ"]] * 4)
+    with cost_probe.exact_lead_cost_probe(sink, perf_clock=lambda: next(ticks),
+                                          thread_clock=lambda: 0.0):
+        with pytest.raises(Cancelled) as raised:
+            pv_search_policy.PVSearchBot._exact_lead_decision(
+                bot, rnd, 0, [["BJ"]], [(None, None)], 1.0, None, [], None)
+    assert raised.value is failure
+    row = json.loads(sink.getvalue())
+    assert row["partial_worlds"] == "UNKNOWN"
+    assert row["stage_error"] == row["evaluator_error"] == "Cancelled"
+
+
+def test_cost_probe_real_stage_worker_captures_absorbed_soft_expiry(monkeypatch):
+    ticks = iter([0.0, 0.0, 0.0, 3.0, 3.0, 3.0, 3.0, 3.0])
+    monkeypatch.setattr(pv_search_policy.time, "perf_counter", lambda: next(ticks))
+
+    def expire(*args, **kwargs):
+        # The real stage's guard converts its soft deadline into the
+        # OptionalStage transaction exception, which the stage absorbs.
+        args[4]()
+
+    monkeypatch.setattr(pv_exact_endgame, "exact_first_trick_means", expire)
+    sink = io.StringIO()
+    bot = SimpleNamespace(exact_lead_first_trick=True,
+                          serving_budget_seconds=None, _exact_lead={})
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]), hands=[["BJ"]] * 4)
+    base = (object(), 0, 0, ["BJ"], 0)
+
+    with cost_probe.exact_lead_cost_probe(sink):
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            result = pool.submit(
+                pv_search_policy.PVSearchBot._exact_lead_decision,
+                bot, rnd, 0, [["BJ"]], [(None, None)], 0.0, None, [], base,
+            ).result()
+
+    assert result is base
+    row = json.loads(sink.getvalue())
+    assert row["status"] == "abandoned"
+    assert row["abandon_reason"] == "soft_budget"
+    assert row["evaluator_error"] == "_AdaptiveWorldsExpired"
+    assert row["partial_worlds"] == "UNKNOWN"
+
+
 def test_first_trick_accepts_different_action_and_preserves_partial_on_failure(monkeypatch):
     _install_synthetic(monkeypatch, [])
     paced = q.srv._paced_bot_step
@@ -177,6 +502,47 @@ def test_release45_real_recipe_reaches_qualifier_consumer(monkeypatch, pinned_pr
     rows = [json.loads(line) for line in dest.getvalue().splitlines()]
     assert all(row['passed'] and row['committed'] and row['recipe_release'] == 45 for row in rows)
     assert all('not a release45 trajectory' in row['root_provenance'] for row in rows)
+
+
+def test_real_root_probe_on_off_preserves_identity(monkeypatch, pinned_production_package):
+    """The cost observer cannot change the fixed-root mechanism result."""
+    ticks = [0.0]
+
+    def perf_counter():
+        ticks[0] += 1e-6
+        return ticks[0]
+
+    # Keep this identity regression independent of host throughput.  The
+    # fixed root and real evaluator still run; only the serving budget clock
+    # is deterministic so a slow CI host cannot turn the test into a timeout.
+    clock = SimpleNamespace(perf_counter=perf_counter)
+    monkeypatch.setattr(q, 'time', clock)
+    monkeypatch.setattr(pv_search_policy, 'time', clock)
+    off_dest = io.StringIO()
+    on_dest, cost_dest = io.StringIO(), io.StringIO()
+    assert asyncio.run(q.qualify(pinned_production_package, off_dest,
+                                  first_trick=True, release45=True)) == 0
+    assert asyncio.run(q.qualify(pinned_production_package, on_dest,
+                                  first_trick=True, release45=True,
+                                  cost_out=cost_dest)) == 0
+
+    def identity(raw):
+        rows = [json.loads(line) for line in raw.getvalue().splitlines()]
+        for row in rows:
+            row.pop('seconds', None)
+            row.get('record', {}).pop('seconds', None)
+            row.get('record', {}).pop('exact_lead_seconds', None)
+            row.get('cost_record', {}).pop('seconds', None)
+            row.get('cost_record', {}).pop('exact_lead_seconds', None)
+        return rows
+
+    assert identity(off_dest) == identity(on_dest)
+    costs = [json.loads(line) for line in cost_dest.getvalue().splitlines()]
+    assert len(costs) == 1
+    assert len(costs[0]['worlds_sha256']) == len(costs[0]['admitted_sha256']) == 64
+    assert costs[0]['sessions_started'] == costs[0]['evaluator_stats']['worlds_completed'] == 64
+    assert costs[0]['partial_nodes'] == costs[0]['evaluator_stats']['nodes'] > 0
+    assert costs[0]['partial_cache_hits'] == costs[0]['evaluator_stats']['cache_hits']
 
 
 def test_release45_cli_forwards_both_flags(monkeypatch, tmp_path):

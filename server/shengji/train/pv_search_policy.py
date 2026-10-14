@@ -469,6 +469,19 @@ passes none), `api.server` refuses the environment flag at import, and the
 production package test (`SHENGJI_REQUIRE_PV_PACKAGE=1`) runs without it.
 Off, the key is absent from the payload and `_worlds` is exactly production's
 draw.  Rule token order with it: ..., vdef, asap, lpft, orc.
+
+Its two SOFT variants (#707 S17 step 3; `pv_soft_oracle`), DIAGNOSTIC ONLY
+under exactly the same hook, refusals and fail-closed contract, OFF BY
+DEFAULT, each exclusive with ``orc``, with each other and with the adaptive
+rules: ``SHENGJI_PV_ORACLE_MIX_K=<k>`` (``oracle_mix_k``, token ``orcm<k>``
+right after the rule tokens) makes ``k`` of the W play worlds the true deal
+and draws the other ``W - k`` through production's sampler;
+``SHENGJI_PV_ORACLE_PIN_Q=<q>`` (``oracle_pin_q``, token ``orcq<100 q>``)
+draws each of the W worlds through production's count search and dealer with
+a seeded fraction ``q`` of the hidden copies pinned to their true holders,
+checks it against every constraint, and falls back to production's draw (and
+counts it) when no valid fill is found.  Both enter the recipe digest and add
+scalar ``oracle_*`` fields to the decision record (`_soft_oracle_record`).
 """
 from __future__ import annotations
 
@@ -511,6 +524,7 @@ from .bury_wide_value import (WIDE_K_DEFAULT as BURY_WIDE_K_DEFAULT, CHOOSER as 
 from . import declare_served_bury
 from . import declare_pass_worlds
 from . import declare_wait
+from . import pv_soft_oracle as soft_oracle
 from .pv_tree_config import PVTreeConfig, tree_env, tree_token
 
 SCHEMA = "pv-search-recipe-v1"
@@ -645,6 +659,22 @@ _BURY_TWO_STAGE_REQUIRES = ("bury_two_stage needs bury_wide_value "
 #: never served
 ORACLE_WORLDS_RULE = {"ORACLE_WORLDS": "oracle_worlds"}
 ORACLE_WORLDS_DEFAULTS = dict(oracle_worlds=False)
+#: its SOFT variants (module docstring; #707 S17 step 3): env suffix -> recipe
+#: key, and the defaults (0 = off).  Parameters, not 0/1 flags, so they sit
+#: outside ``RULE_FLAGS``; their name token follows the rule tokens
+ORACLE_SOFT_PARAMS = {"ORACLE_MIX_K": "oracle_mix_k", "ORACLE_PIN_Q": "oracle_pin_q"}
+ORACLE_SOFT_DEFAULTS = dict(oracle_mix_k=0, oracle_pin_q=0.0)
+#: its cumulative construction-work counters (`PVSearchBot.soft_oracle_counts`;
+#: the screen reports them as ``soft_oracle_<name>``).  Production sampler calls
+#: keep their own counters; these never relabel them:
+#: ``constructions`` started and ``constructions_complete``; k-mix
+#: ``true_worlds`` placed and ``production_worlds`` requested from production's
+#: draw; q-pin ``pin_fills`` attempted, of which ``pin_fill_failed`` (no fill)
+#: and ``pin_rejections`` (a constraint broken), ``pin_worlds`` accepted,
+#: ``pinned_copies`` in them, and ``pin_fallback_worlds`` handed to production
+SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds",
+                        "production_worlds", "pin_fills", "pin_fill_failed", "pin_rejections",
+                        "pin_worlds", "pinned_copies", "pin_fallback_worlds")
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width -- the
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
@@ -688,11 +718,32 @@ ENV_PREFIX = "SHENGJI_PV_"
 _ORACLE_NOT_SERVED = ("oracle_worlds is a screen-harness diagnostic and is never served: "
                       "SHENGJI_PV_ORACLE_WORLDS=1 needs the harness's true-deal hook "
                       "(cwv_shortlist_screen passes oracle_deal=; the game server never does)")
+_SOFT_ORACLE_NOT_SERVED = ("oracle_mix_k / oracle_pin_q are screen-harness diagnostics and are "
+                           "never served: SHENGJI_PV_ORACLE_MIX_K / _ORACLE_PIN_Q need the "
+                           "harness's true-deal hook (cwv_shortlist_screen passes oracle_deal=; "
+                           "the game server never does)")
 _ORACLE_HOOK_WITHOUT_RULE = ("oracle_deal is the oracle_worlds hook; this recipe has the rule "
-                             "off (SHENGJI_PV_ORACLE_WORLDS unset)")
+                             "off (SHENGJI_PV_ORACLE_WORLDS, _ORACLE_MIX_K and _ORACLE_PIN_Q unset)")
 _ORACLE_ADAPTIVE_EXCLUSIVE = ("oracle_worlds and the adaptive-worlds rules are exclusive: one "
                               "true world can never trigger them (SHENGJI_PV_ORACLE_WORLDS=1 "
                               "with SHENGJI_PV_ADAPTIVE_WORLDS=1 or _ADAPTIVE_WORLDS_LEADS=1)")
+_SOFT_ORACLE_EXCLUSIVE = ("oracle_worlds, oracle_mix_k and oracle_pin_q are exclusive with each "
+                          "other and with the adaptive-worlds rules (whose extra draws would "
+                          "carry no truth)")
+
+
+def _check_soft_oracle(config) -> tuple[int, float]:
+    """``(oracle_mix_k, oracle_pin_q)`` of a config, validated: types, ranges
+    (``1 <= k < worlds``; ``q`` a whole percentage in (0, 1)) and exclusivity."""
+    try:
+        k = soft_oracle.check_mix_k(config.oracle_mix_k, config.worlds)
+        q = soft_oracle.check_pin_q(config.oracle_pin_q)
+    except soft_oracle.SoftOracleConfigError as exc:
+        raise PVSearchPolicyError(str(exc)) from None
+    if (k or q) and (sum((bool(config.oracle_worlds), bool(k), bool(q))) > 1
+                     or config.adaptive_worlds or config.adaptive_worlds_leads):
+        raise PVSearchPolicyError(_SOFT_ORACLE_EXCLUSIVE)
+    return k, q
 _LEAF_POLICY_NO_EFFECT = ("leaf_policy_first_trick needs a value leaf it changes: value_declare "
                           "or a hybrid/value bury arm (SHENGJI_PV_LEAF_POLICY_FIRST_TRICK=1 "
                           "without SHENGJI_PV_VALUE_DECLARE=1 or SHENGJI_PV_BURY_ARM=hybrid|value)")
@@ -857,6 +908,10 @@ class PVSearchConfig:
     # DIAGNOSTIC ONLY (module docstring, #707 S16): the play worlds are the one
     # true deal from the screen harness's hook; never served; the same contract
     oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"]
+    # DIAGNOSTIC ONLY (module docstring, #707 S17 step 3): the soft oracle's two
+    # parameters, 0 = off and ABSENT from the payload; never served
+    oracle_mix_k: int = ORACLE_SOFT_DEFAULTS["oracle_mix_k"]
+    oracle_pin_q: float = ORACLE_SOFT_DEFAULTS["oracle_pin_q"]
 
 
 def _check_value_declare_params(worlds, margin):
@@ -915,6 +970,16 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     if config.oracle_worlds:
         # the digest says what the one world is; a reader never has to infer it
         payload["oracle_worlds_information"] = "true-deal"
+    mix_k, pin_q = _check_soft_oracle(config)
+    for key in ORACLE_SOFT_PARAMS.values():
+        del payload[key]
+    if mix_k:
+        payload.update(oracle_mix_k=mix_k,
+                       oracle_worlds_information=soft_oracle.MIX_INFORMATION)
+    if pin_q:
+        payload.update(oracle_pin_q=pin_q, oracle_worlds_information=soft_oracle.PIN_INFORMATION,
+                       oracle_pin_fill=soft_oracle.PIN_FILL,
+                       oracle_pin_fill_attempts=soft_oracle.PIN_FILL_ATTEMPTS)
     if config.adaptive_worlds or config.adaptive_worlds_leads:
         if config.tree is not None:
             # the tree reads the PV pass's W x K matrix and re-selects on it; a
@@ -982,6 +1047,11 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     prior's id, so the two identities can never be mistaken for one package."""
     prior = f"-prior-{prior8}" if prior8 else ""
     rules = "".join(f"-{token}" for field, token in RULE_TOKENS if getattr(config, field))
+    # the soft oracle's token after the rule tokens; "" while off
+    if config.oracle_mix_k:
+        rules += f"-{soft_oracle.mix_token(config.oracle_mix_k)}"
+    if config.oracle_pin_q:
+        rules += f"-{soft_oracle.pin_token(config.oracle_pin_q)}"
     rules += tree_token(config.tree)   # "" while the tree is off
     return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
             f"-r{recipe_digest(config)}")
@@ -1111,6 +1181,17 @@ class PVSearchBot(PolicyValueBot):
     #: screen harness); None = unbound, and an oracle bot then refuses to play
     oracle_worlds = ORACLE_WORLDS_DEFAULTS["oracle_worlds"]
     _oracle_deal = None
+    #: its soft variants (module docstring, #707 S17 step 3): 0 = off; the
+    #: last decision's scalar telemetry (None while off)
+    oracle_mix_k = ORACLE_SOFT_DEFAULTS["oracle_mix_k"]
+    oracle_pin_q = ORACLE_SOFT_DEFAULTS["oracle_pin_q"]
+    _soft_oracle = None
+    _soft_oracle_drawn_at = None
+    #: the soft oracle's CUMULATIVE construction work (`SOFT_ORACLE_COUNTERS`),
+    #: incremented as the work happens so a decision aborted by the budget or
+    #: an error keeps what it spent; read by the screen's `work_counters`.
+    #: Instance state of an ON bot only (absent while off)
+    soft_oracle_counts = None
     #: the bury arm a subclass binds BEFORE `__init__` (`PVSearchBuryBot`), so the
     #: leaf rule's effect check knows whether a bury leaf exists; None = no bury arm
     _leaf_bury_arm = None
@@ -1226,6 +1307,14 @@ class PVSearchBot(PolicyValueBot):
             # instance state only when on; the hook stays unbound until the
             # screen harness binds it (`bind_oracle_deal`)
             self.oracle_worlds = True
+        mix_k, pin_q = _check_soft_oracle(config)
+        if mix_k:
+            # instance state only when on, as ``oracle_worlds``
+            self.oracle_mix_k = mix_k
+        if pin_q:
+            self.oracle_pin_q = pin_q
+        if mix_k or pin_q:
+            self.soft_oracle_counts = dict.fromkeys(SOFT_ORACLE_COUNTERS, 0)
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -1258,15 +1347,19 @@ class PVSearchBot(PolicyValueBot):
         included) and the kitty, for the round the harness owns.  The ONLY way
         the true hands reach this bot.  Refused on a bot whose rule is off (a
         hook with no rule would be a served bot carrying hidden information)."""
-        if not self.oracle_worlds:
+        if not self._oracle_on():
             raise PVSearchPolicyError(_ORACLE_HOOK_WITHOUT_RULE)
         if not callable(source):
             raise PVSearchPolicyError("the oracle_deal hook must be callable")
         self._oracle_deal = source
 
+    def _oracle_on(self) -> bool:
+        """Any oracle diagnostic: ``oracle_worlds`` or a soft variant."""
+        return bool(self.oracle_worlds or self.oracle_mix_k or self.oracle_pin_q)
+
     def _require_oracle_bound(self):
-        if self.oracle_worlds and self._oracle_deal is None:
-            raise OracleWorldsError("oracle_worlds is on but no harness hook is bound "
+        if self._oracle_on() and self._oracle_deal is None:
+            raise OracleWorldsError("an oracle diagnostic is on but no harness hook is bound "
                                     "(PVSearchBot.bind_oracle_deal); refusing to play",
                                     stage="oracle_worlds_unbound")
 
@@ -1298,6 +1391,136 @@ class PVSearchBot(PolicyValueBot):
             raise OracleWorldsError(f"the oracle deal violates the world contract: {exc}",
                                     stage="oracle_worlds_contract") from exc
         return [(complete, buried)], 1
+
+    def _production_draw(self, rnd, seat, n, refusals, mem, check_budget, stats):
+        """``n`` worlds by production's own path (refusal-aware when the round
+        has a refusal); its refusal counters are added into ``stats``."""
+        if refusals:
+            worlds, attempts, sampled = sample_worlds_refusal_aware(
+                self.sampler, rnd, seat, n, refusals, mem=mem, check_budget=check_budget)
+            for key in ("refusal_rejections", "refusal_fallback_worlds", "refusal_pinned_codes"):
+                stats[key] = stats.get(key, 0) + sampled[key]
+            stats["refusal_observations"] = sampled["refusal_observations"]
+            return worlds, attempts
+        return sample_worlds(self.sampler, rnd, seat, n, mem=mem, check_budget=check_budget)
+
+    def _soft_oracle_worlds(self, rnd, seat, mem, refusals, check_budget):
+        """The soft oracle (module docstring, `pv_soft_oracle`): W worlds, k of
+        them the true deal (``oracle_mix_k``) or each with a fraction q of the
+        hidden copies pinned to the truth (``oracle_pin_q``).  Sets
+        ``self._soft_oracle`` (the record's scalars) and, with refusals, the
+        refusal rule's own record fields."""
+        [(true_hands, true_buried)], _ = self._oracle_world(rnd, seat, mem)
+        if any(rnd.ordering.eff_suit(c) in mem.voids[s]
+               for s in range(4) if s != seat for c in true_hands[s]):
+            raise OracleWorldsError("the true deal violates an inferred public void",
+                                    stage="oracle_worlds_void_check")
+        stats = {}
+        if refusals:
+            from ..ai.refusal import pin_unplayed_attempt
+            # production's refusal pins, before the layout reads `mem.known`
+            stats = {"refusal_observations": len(refusals), "refusal_rejections": 0,
+                     "refusal_fallback_worlds": 0,
+                     "refusal_pinned_codes": sum(pin_unplayed_attempt(mem, rnd, r, seat)
+                                                 for r in refusals)}
+        try:
+            layout = soft_oracle.hidden_layout(self.sampler, rnd, seat, mem, true_hands,
+                                               true_buried)
+        except ValueError as exc:
+            raise OracleWorldsError(f"the oracle deal does not fit the sampler's pool: {exc}",
+                                    stage="oracle_worlds_contract") from exc
+        truth = (true_hands, list(true_buried))
+        pinned_total = fallback = fills = rejected = 0
+        counts = self.soft_oracle_counts
+        counts["constructions"] += 1
+        # the indices of production-drawn worlds (k-mix: the non-true ones;
+        # q-pin: the fallbacks); instance state of an ON bot only, not recorded
+        self._soft_oracle_drawn_at = []
+        if self.oracle_mix_k:
+            k = self.oracle_mix_k
+            counts["production_worlds"] += self.worlds - k
+            drawn, attempts = self._production_draw(rnd, seat, self.worlds - k, refusals, mem,
+                                                    check_budget, stats)
+            if len(drawn) != self.worlds - k:
+                raise PVSearchPolicyError(
+                    f"policy world sampling short: {len(drawn)}/{self.worlds - k}",
+                    stage="world_sampling_short")
+            positions = set(soft_oracle.mix_positions(k, self.worlds))
+            drawn = iter(drawn)
+            worlds = [([list(h) for h in truth[0]], list(truth[1])) if i in positions
+                      else next(drawn) for i in range(self.worlds)]
+            self._soft_oracle_drawn_at = [i for i in range(self.worlds) if i not in positions]
+            counts["true_worlds"] += k
+        else:
+            q = self.oracle_pin_q
+            worlds, attempts = [], 0
+            want = soft_oracle.pin_count(q, layout.hidden)
+            for _ in range(self.worlds):
+                if check_budget is not None:
+                    check_budget()
+                rng = soft_oracle.pin_rng(self.sampler)
+                pins = [layout.truth[i] for i in sorted(rng.sample(range(layout.hidden), want))]
+                world = None
+                for _attempt in range(soft_oracle.PIN_FILL_ATTEMPTS):
+                    attempts += 1
+                    fills += 1
+                    counts["pin_fills"] += 1
+                    got = soft_oracle.pinned_fill(self.sampler, rnd, mem, layout, pins)
+                    if got is None:
+                        counts["pin_fill_failed"] += 1
+                        continue
+                    hands, kitty = got
+                    complete = self.sampler._complete_determinized_hands(rnd, seat, hands,
+                                                                         buried=kitty)
+                    if soft_oracle.world_violations(rnd, seat, mem, layout, complete, kitty,
+                                                    refusals):
+                        rejected += 1
+                        counts["pin_rejections"] += 1
+                        continue
+                    world = (complete, sorted(kitty))
+                    break
+                if world is None:
+                    # production's draw for this world, counted (once, here:
+                    # the draw itself is production's sampler work)
+                    counts["pin_fallback_worlds"] += 1
+                    extra, more = self._production_draw(rnd, seat, 1, refusals, mem,
+                                                        check_budget, stats)
+                    attempts += more
+                    fallback += 1
+                    self._soft_oracle_drawn_at.extend(range(len(worlds), len(worlds) + len(extra)))
+                    worlds.extend(extra)
+                    continue
+                pinned_total += want
+                counts["pin_worlds"] += 1
+                counts["pinned_copies"] += want
+                worlds.append(world)
+        matched = exact = 0
+        for hands, buried in worlds:
+            m, e = soft_oracle.agreement(layout, hands, buried)
+            matched += m
+            exact += e
+        n = len(worlds)
+        hidden = layout.hidden
+        counts["constructions_complete"] += 1
+        self._soft_oracle = {
+            "oracle_mix_k": int(self.oracle_mix_k), "oracle_pin_q": float(self.oracle_pin_q),
+            "oracle_hidden_copies": hidden,
+            "oracle_true_worlds": int(exact),
+            "oracle_card_agreement": (matched / (hidden * n)) if hidden and n else 1.0,
+            "oracle_pinned_copies": int(pinned_total),
+            "oracle_pin_fraction": (pinned_total / (hidden * n)) if hidden and n else None,
+            "oracle_pin_fallback_worlds": int(fallback),
+            "oracle_pin_fills": int(fills),
+            "oracle_pin_rejections": int(rejected),
+        }
+        return worlds, attempts, stats
+
+    def _soft_oracle_record(self):
+        """The soft oracle's scalar record fields: present only while it is on
+        (scalars only, so the screen trace keeps every one: `trace_fields`)."""
+        if not (self.oracle_mix_k or self.oracle_pin_q) or self._soft_oracle is None:
+            return {}
+        return dict(self._soft_oracle)
 
     # -- the optional declaration rule (module docstring) -----------------------
 
@@ -1826,6 +2049,11 @@ class PVSearchBot(PolicyValueBot):
             # ledger observed above as always (its record stays zero: nothing to
             # constrain); the void check below applies to it as to any world
             worlds, attempts = self._oracle_world(rnd, seat, mem)
+        elif self.oracle_mix_k or self.oracle_pin_q:
+            # its soft variants (module docstring): W worlds, partly true
+            self._soft_oracle = None
+            worlds, attempts, self._last_sampling = self._soft_oracle_worlds(
+                rnd, seat, mem, refusals, check_budget)
         elif refusals:
             worlds, attempts, self._last_sampling = sample_worlds_refusal_aware(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
@@ -2088,6 +2316,7 @@ class PVSearchBot(PolicyValueBot):
             **self._lead_tiebreak_record(),
             **self._doomed_throw_record(),
             **self._adaptive_worlds_record(),
+            **self._soft_oracle_record(),
         }
         return list(played)
 
@@ -2428,16 +2657,20 @@ def _check_served_bury_effect(config: PVSearchConfig, bury_arm, bury_wide_value)
         raise PVSearchPolicyError(_VALUE_DECLARE_SERVED_BURY_NO_EFFECT)
 
 
-def _check_oracle_hook(oracle_worlds, oracle_deal) -> None:
-    """The diagnostic oracle is NEVER served (module docstring): with the rule
-    on, construction needs the screen harness's true-deal hook; with it off,
-    a hook is refused (a served bot must not carry one).  Checked before any
-    package is read, so a served process refuses without touching the model."""
+def _check_oracle_hook(oracle_worlds, oracle_deal, oracle_mix_k=0, oracle_pin_q=0.0) -> None:
+    """The diagnostic oracle and its soft variants are NEVER served (module
+    docstring): with any of them on, construction needs the screen harness's
+    true-deal hook; with all off, a hook is refused (a served bot must not
+    carry one).  Checked before any package is read, so a served process
+    refuses without touching the model."""
     if type(oracle_worlds) is not bool:
         raise PVSearchPolicyError("oracle_worlds must be a bool")
+    soft = bool(oracle_mix_k) or bool(oracle_pin_q)
     if oracle_worlds and oracle_deal is None:
         raise PVSearchPolicyError(_ORACLE_NOT_SERVED)
-    if oracle_deal is not None and not oracle_worlds:
+    if soft and oracle_deal is None:
+        raise PVSearchPolicyError(_SOFT_ORACLE_NOT_SERVED)
+    if oracle_deal is not None and not (oracle_worlds or soft):
         raise PVSearchPolicyError(_ORACLE_HOOK_WITHOUT_RULE)
 
 
@@ -2486,7 +2719,9 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
                        bury_two_stage: BuryTwoStageConfig | None = None,
                        oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"],
-                       oracle_deal=None
+                       oracle_deal=None,
+                       oracle_mix_k: int = ORACLE_SOFT_DEFAULTS["oracle_mix_k"],
+                       oracle_pin_q: float = ORACLE_SOFT_DEFAULTS["oracle_pin_q"]
                        ) -> PVSearchBot:
     """The served bot: one ``.npz`` package as value evaluator AND policy prior,
     hash-pinned, encoder version read from the package.
@@ -2504,7 +2739,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     reaches exactly the classes below; whatever a factory returns is checked to
     be the class serving would have built, so it can only ever be a subclass.
     """
-    _check_oracle_hook(oracle_worlds, oracle_deal)   # the diagnostic is never served: first
+    # the diagnostics are never served: first
+    _check_oracle_hook(oracle_worlds, oracle_deal, oracle_mix_k, oracle_pin_q)
     path = str(checkpoint)
     if not path.lower().endswith(".npz"):
         raise PVSearchPolicyError("pv-search serves a NumPy package (.npz); Torch checkpoints are not served")
@@ -2537,7 +2773,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             value_declare_wait=value_declare_wait,
                             declare_asap_first=declare_asap_first,
                             leaf_policy_first_trick=leaf_policy_first_trick,
-                            oracle_worlds=oracle_worlds)
+                            oracle_worlds=oracle_worlds,
+                            oracle_mix_k=oracle_mix_k, oracle_pin_q=oracle_pin_q)
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     _check_leaf_policy_effect(config, bury_arm)
     _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
@@ -2632,7 +2869,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
                         bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
                         bury_two_stage: BuryTwoStageConfig | None = None,
-                        oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"]
+                        oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"],
+                        oracle_mix_k: int = ORACLE_SOFT_DEFAULTS["oracle_mix_k"],
+                        oracle_pin_q: float = ORACLE_SOFT_DEFAULTS["oracle_pin_q"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
     With ``bury_arm`` the name carries the bury identity exactly as the shortlist's
@@ -2666,7 +2905,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             value_declare_wait=value_declare_wait,
                             declare_asap_first=declare_asap_first,
                             leaf_policy_first_trick=leaf_policy_first_trick,
-                            oracle_worlds=oracle_worlds)
+                            oracle_worlds=oracle_worlds,
+                            oracle_mix_k=oracle_mix_k, oracle_pin_q=oracle_pin_q)
     recipe_payload(config)   # refuses a non-bool rule flag
     _check_leaf_policy_effect(config, bury_arm)
     _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
@@ -2757,7 +2997,9 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                bury_wide_swaps=bury_wide_swaps,
                                bury_two_stage=bury_two_stage,
                                oracle_worlds=config.oracle_worlds,
-                               oracle_deal=oracle_deal),
+                               oracle_deal=oracle_deal,
+                               oracle_mix_k=config.oracle_mix_k,
+                               oracle_pin_q=config.oracle_pin_q),
             name)
         if bury_identity is not None:
             if not isinstance(bot, PVSearchBuryBot):
@@ -2795,7 +3037,9 @@ def pv_env_recipe(environ=None) -> dict:
     unless ``_BURY_TWO_STAGE=1``) its second stage.
     ``_ORACLE_WORLDS=1`` (the diagnostic) registers a name whose factory REFUSES to build
     without the screen harness's ``oracle_deal`` hook (`_check_oracle_hook`), so the game
-    server can never serve it; `api.server` refuses the flag at import besides."""
+    server can never serve it; `api.server` refuses the flag at import besides.  Its
+    soft variants ``_ORACLE_MIX_K`` (an int in [1, W-1]) and ``_ORACLE_PIN_Q`` (a whole
+    percentage in (0, 1)) take the same refusals; unset, empty or ``0`` is off."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(ENV_PREFIX + "CKPT")
     if not checkpoint:
@@ -2827,6 +3071,23 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 0 or 1, not {raw!r}")
         if raw == "1":
             recipe[key] = True
+    # the soft oracle's parameters (diagnostic; module docstring): unset, empty
+    # or 0 is off; refused by `api.server` at import and, without the
+    # harness's hook, by the registry factory
+    for suffix, key in ORACLE_SOFT_PARAMS.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, "", "0"):
+            continue
+        try:
+            value = int(raw) if key == "oracle_mix_k" else float(raw)
+            if key == "oracle_mix_k":
+                soft_oracle.check_mix_k(value)
+            else:
+                soft_oracle.check_pin_q(value)
+        except (ValueError, soft_oracle.SoftOracleConfigError) as exc:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix}={raw!r}: {exc}") from None
+        if value:
+            recipe[key] = value
     # the declaration rule's parameters: only with the rule on
     for suffix, key in VALUE_DECLARE_PARAMS.items():
         raw = env.get(ENV_PREFIX + suffix)

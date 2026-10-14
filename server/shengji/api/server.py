@@ -34,7 +34,9 @@ from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
 
 #: the pv-search DIAGNOSTIC flags the game server refuses outright (#707 S16:
 #: perfect-information worlds exist only inside the screen harness)
-_PV_DIAGNOSTIC_FLAGS = ("SHENGJI_PV_ORACLE_WORLDS",)
+_PV_DIAGNOSTIC_FLAGS = ("SHENGJI_PV_ORACLE_WORLDS",
+                        # its soft variants (#707 S17 step 3)
+                        "SHENGJI_PV_ORACLE_MIX_K", "SHENGJI_PV_ORACLE_PIN_Q")
 
 
 def _refuse_pv_diagnostics(environ=None) -> None:

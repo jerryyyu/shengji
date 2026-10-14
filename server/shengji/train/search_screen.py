@@ -399,6 +399,52 @@ def exact_lead_summary(shards):
             'valid': all(c['invalid'] == 0 for c in out.values())}
 
 
+def learned_selection_summary(shards):
+    """Selection evidence only; never independent report or final-action gain.
+
+    Do not pool points with level-scaled values, or weight a decision by its
+    adaptively allocated world count. Legacy traces remain evidence-missing.
+    """
+    import math
+
+    keys = ('ranking_basis', 'selection_units', 'selection_challenger_index',
+            'selection_paired_gap', 'selection_paired_n')
+    sides = {side: dict(missing=0, invalid=0, unevaluated=0, groups={})
+             for side in ('arm', 'baseline')}
+    for shard in shards:
+        for group in shard.get('decision_traces', []):
+            if group['side'] not in sides:
+                raise ValueError('unknown learned-selection trace side')
+            counts = sides[group['side']]
+            for row in group['decisions']:
+                if all(row.get(key) is None for key in keys[2:]):
+                    counts['missing'] += 1
+                    continue
+                basis, units, index, gap, n = (row.get(key) for key in keys)
+                valid = (basis in ('paired_advantage', 'absolute_value_mean')
+                         and units in ('acting-team points', 'acting-team signed levels x40')
+                         and type(n) is int and n >= 0
+                         and (index is None or type(index) is int and index > 0))
+                if not valid or (n == 0 and gap is not None) or (n > 0 and
+                        (index is None or type(gap) not in (int, float) or not math.isfinite(gap))):
+                    counts['invalid'] += 1
+                    continue
+                if n == 0:
+                    counts['unevaluated'] += 1
+                    continue
+                bucket = counts['groups'].setdefault(basis, {}).setdefault(units, dict(
+                    decisions=0, positive=0, zero=0, negative=0,
+                    paired_n_min=n, paired_n_max=n))
+                bucket['decisions'] += 1
+                bucket['positive' if gap > 0 else 'negative' if gap < 0 else 'zero'] += 1
+                bucket['paired_n_min'] = min(bucket['paired_n_min'], n)
+                bucket['paired_n_max'] = max(bucket['paired_n_max'], n)
+    return dict(schema='learned-selection-trace-summary-v1', sides=sides,
+                valid=all(side['invalid'] == 0 for side in sides.values()),
+                claim='descriptive challenger-minus-incumbent selection evidence by ranking basis and units; '
+                      'not independent report gain, final-action gain, calibration or playing strength')
+
+
 def summary_for(shards, config):
     records = [r for shard in shards for r in shard["records"]]
     base = duel.build_config(arm="none", select_worlds=config["select_worlds"],
@@ -422,6 +468,7 @@ def summary_for(shards, config):
         "no_more_measured_decision_cpu": cpu_ratio is not None and cpu_ratio <= 1.0,
         "equal_work_strength_claim": False,
         "exact_lead": exact_lead_summary(shards),
+        "learned_selection": learned_selection_summary(shards),
         "work_caveat": ("N is matched against the production ballot per searched state, not full cost. "
                         "An explicit candidate N override can reduce learned selection cost. "
                         "Different trajectories/extra unlocked decisions change aggregate work. "

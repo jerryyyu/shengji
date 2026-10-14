@@ -19,6 +19,38 @@ def config(arm="none"):
             "report_worlds": 30, "seed0": 431, "clusters": 1}
 
 
+@pytest.mark.parametrize('patch', [
+    {'selection_paired_gap': float('nan')}, {'selection_paired_n': True},
+    {'selection_paired_n': -1}, {'selection_paired_n': 0},
+    {'selection_challenger_index': None}, {'selection_challenger_index': True},
+    {'selection_units': 'unknown'}, {'ranking_basis': 'unknown'},
+])
+def test_learned_summary_rejects_invalid_evidence(patch):
+    row = dict(ranking_basis='paired_advantage', selection_units='acting-team points',
+               selection_challenger_index=1, selection_paired_gap=2., selection_paired_n=3)
+    row.update(patch)
+    result = S.learned_selection_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['invalid'] == 1
+    assert result['sides']['arm']['groups'] == {}
+
+
+def test_learned_summary_separates_units_missing_and_unevaluated():
+    base = dict(ranking_basis='paired_advantage', selection_units='acting-team points',
+                selection_challenger_index=1, selection_paired_gap=0., selection_paired_n=3)
+    rows = [dict(ranking_basis='paired_advantage', selection_units='acting-team points'),
+            dict(base, selection_paired_gap=None, selection_paired_n=0), base,
+            dict(base, selection_units='acting-team signed levels x40', selection_paired_gap=-2.)]
+    result = S.learned_selection_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': rows}]}])
+    counts = result['sides']['arm']
+    assert result['valid'] and counts['missing'] == counts['unevaluated'] == 1
+    groups = counts['groups']['paired_advantage']
+    assert groups['acting-team points']['zero'] == 1
+    assert groups['acting-team signed levels x40']['negative'] == 1
+
+
 def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():
     rows = [{}, *({'exact_lead_status': s} for s in
                    ('ineligible', 'skipped_budget', 'abandoned'))]
@@ -261,6 +293,11 @@ def test_learned_heads_finish_real_mirrored_game_and_count_actual_cost(monkeypat
         S.reopen_shard(path, dict(cfg, seed0=cfg["seed0"] + 1), 0)
     summary = S.summary_for([shard], cfg)
     assert summary["complete"]
+    evidence = summary['learned_selection']
+    assert evidence['valid']
+    assert evidence['sides']['baseline']['missing'] > 0
+    groups = evidence['sides']['arm']['groups']
+    assert set(groups) == {'paired_advantage' if paired else 'absolute_value_mean'}
     assert summary['exact_lead']['valid']
     assert summary['exact_lead']['sides']['arm']['missing'] > 0
     assert not summary["equal_work_strength_claim"]

@@ -136,6 +136,40 @@ def test_shared_session_state_key_separates_accumulated_attacker_points():
         "a zero-node second solve indicates an attacker-points cache collision"
 
 
+@pytest.mark.parametrize('leader', range(4))
+@pytest.mark.parametrize('direction', ['lower', 'upper'])
+def test_stored_bounds_narrow_later_full_window_without_changing_value(leader, direction):
+    from shengji.ai.endgame import _state_key
+    rnd = _round([['C3', 'C3', 'C5'], ['C4', 'C4', 'C10'],
+                  ['C6', 'C6', 'CK'], ['CA', 'CA', 'C9']],
+                 leader=leader, buried=['H5'])
+    expected = ExactWorldSession(rnd).value(rnd)
+    session = ExactWorldSession(rnd, alpha_beta=True)
+    # Produce a real one-sided bound using an aspiration window, rather than
+    # injecting an unproved table entry. A later full window must remain exact.
+    alpha, beta = ((expected - 1, expected) if direction == 'lower'
+                   else (expected, expected + 1))
+    session.solver.value(rnd, alpha, beta)
+    assert _state_key(rnd) in session.solver.bounds
+    assert session.value(rnd) == expected
+    assert session.solver.cache[_state_key(rnd)] == expected
+    assert session.solve(rnd).attacker_points == expected
+
+
+def test_complementary_bounds_avoid_reexpansion_at_node_cap():
+    from shengji.ai.endgame import _state_key
+    rnd = _round([['C3'], ['C4'], ['C5'], ['CA']], buried=['H5'])
+    expected = ExactWorldSession(rnd).value(rnd)
+    session = ExactWorldSession(rnd, alpha_beta=True)
+    session.solver.value(rnd, expected - 1, expected)
+    session.solver.value(rnd, expected, expected + 1)
+    assert session.solver.bounds[_state_key(rnd)] == (expected, expected)
+    before = session.nodes
+    session.solver.max_nodes = before
+    assert session.value(rnd) == expected
+    assert session.nodes == before
+
+
 def test_real_three_card_endgame_completes_and_returns_a_legal_action():
     game = Game(random.Random(19))
     bots = [HeuristicBot() for _ in range(4)]

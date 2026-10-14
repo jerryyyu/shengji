@@ -196,6 +196,16 @@ class _ExactSolver:
         if lower >= beta or upper <= alpha:
             self.cache_hits += 1
             return lower if lower >= beta else upper
+        original_alpha, original_beta = alpha, beta
+        if self.alpha_beta:
+            # Reuse both inequalities even when neither alone cuts off the
+            # caller's window. Keep the caller's original window below: a
+            # fail-low at a stored lower bound (or the symmetric upper case)
+            # proves equality using the previously established inequality.
+            alpha, beta = max(alpha, lower), min(beta, upper)
+            if alpha >= beta:
+                self.cache_hits += 1
+                return lower  # complementary bounds have proved equality
         if self.nodes >= self.max_nodes:
             raise ExactEndgameBudgetExceeded(
                 f"exact endgame exceeded max_nodes={self.max_nodes}",
@@ -205,7 +215,6 @@ class _ExactSolver:
         seat = rnd.turn
         actions = exhaustive_legal_actions(
             rnd, seat, max_hand_cards=self.max_hand_cards)
-        original_alpha, original_beta = alpha, beta
         maximize = rnd.is_attacker(seat)
         answer = float('-inf') if maximize else float('inf')
         for action in actions:

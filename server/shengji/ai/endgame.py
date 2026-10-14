@@ -280,7 +280,7 @@ class ExactWorldSession:
     def cache_hits(self) -> int:
         return self.solver.cache_hits
 
-    def solve(self, rnd: Round) -> ExactEndgameResult:
+    def _validate_frontier(self, rnd: Round) -> None:
         if self.solver.check_budget is not None:
             self.solver.check_budget()
         if _context_key(rnd) != self.context:
@@ -293,6 +293,26 @@ class ExactWorldSession:
             raise ExactEndgameRefusal(
                 f"largest hand has {largest} cards; completeness cap is "
                 f"{self.solver.max_hand_cards}")
+
+    def value(self, rnd: Round) -> int:
+        """Exact full-window value, without scoring a root action for the caller.
+
+        Unlike solve(), this permits alpha-beta pruning across root actions.
+        The root itself counts as an expanded node and can be cached. Limits,
+        context isolation and cancellation are identical to solve().
+        """
+        self._validate_frontier(rnd)
+        before_nodes, before_hits = self.nodes, self.cache_hits
+        self.frontiers += 1
+        try:
+            return int(self.solver.value(rnd))
+        except ExactEndgameBudgetExceeded as exc:
+            exc.nodes = self.nodes - before_nodes
+            exc.cache_hits = self.cache_hits - before_hits
+            raise
+
+    def solve(self, rnd: Round) -> ExactEndgameResult:
+        self._validate_frontier(rnd)
         before_nodes = self.solver.nodes
         before_hits = self.solver.cache_hits
         self.frontiers += 1

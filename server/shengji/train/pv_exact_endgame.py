@@ -105,7 +105,7 @@ def exact_lead_means(
             if check_budget is not None:
                 check_budget()
             points = (leaf.attacker_points if leaf.phase == 'round_end'
-                      else session.solve(leaf).attacker_points)
+                      else session.value(leaf))
             means[action_index] += category_signed_level(
                 signed_level_category(points,
                                       leaf.is_attacker(seat)))

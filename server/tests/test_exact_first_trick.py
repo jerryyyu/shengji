@@ -10,6 +10,7 @@ import pytest
 from shengji.ai.endgame import (ExactEndgameBudgetExceeded,
                                 ExactEndgameRefusal, _clone_for_play)
 from shengji.ai.endgame import solve_exact_endgame
+from shengji.ai.endgame import ExactWorldSession
 from shengji.engine.cards import Ordering
 from shengji.engine.round import Round, Trick, TrickPlay
 from shengji.rl.value_afterstate import category_signed_level, signed_level_category
@@ -27,6 +28,43 @@ def _round(hands, *, leader=0, banker=0, buried=()):
     rnd.turn = leader
     rnd.deck = [card for hand in hands for card in hand] + list(buried)
     return rnd
+
+
+@pytest.mark.parametrize('leader', range(4))
+@pytest.mark.parametrize('alpha_beta', [False, True])
+def test_value_only_matches_action_solver_and_reuses_root(leader, alpha_beta):
+    rnd = _round([['C3', 'C4'], ['C5', 'C6'], ['C8', 'C9'], ['CA', 'C10']],
+                 leader=leader, buried=['D5'])
+    before = copy.deepcopy(rnd)
+    expected = solve_exact_endgame(rnd, max_nodes=10000).attacker_points
+    session = ExactWorldSession(rnd, max_nodes=10000, alpha_beta=alpha_beta)
+    assert session.value(rnd) == expected
+    nodes = session.nodes
+    assert session.value(rnd) == expected
+    assert session.nodes == nodes and session.cache_hits > 0
+    assert rnd.hands == before.hands and rnd.trick == before.trick
+    changed = copy.deepcopy(rnd)
+    changed.buried = ['D10']
+    with pytest.raises(ExactEndgameRefusal, match='context'):
+        session.value(changed)
+
+
+def test_value_only_retains_budget_and_cancellation():
+    rnd = _round([['C3'], ['C4'], ['C5'], ['CA']])
+    with pytest.raises(ExactEndgameBudgetExceeded):
+        ExactWorldSession(rnd, max_nodes=1).value(rnd)
+    def cancel():
+        raise RuntimeError('cancelled')
+    with pytest.raises(RuntimeError, match='cancelled'):
+        ExactWorldSession(rnd, check_budget=cancel).value(rnd)
+
+
+def test_value_only_avoids_unneeded_full_window_root_action_scores():
+    rnd = _round([['C3', 'C4'], ['C5', 'C6'], ['C8', 'C9'], ['CA', 'C10']])
+    action_session = ExactWorldSession(rnd, alpha_beta=True)
+    scalar_session = ExactWorldSession(rnd, alpha_beta=True)
+    assert scalar_session.value(rnd) == action_session.solve(rnd).attacker_points
+    assert scalar_session.nodes < action_session.nodes
 
 
 def test_first_trick_means_applies_real_engine_lead_and_preserves_root():

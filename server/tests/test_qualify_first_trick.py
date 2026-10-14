@@ -284,6 +284,47 @@ def test_cost_probe_records_session_progress_and_input_fingerprints(monkeypatch)
                    ensure_ascii=True, allow_nan=False).encode("ascii")).hexdigest()
 
 
+def test_cost_probe_does_not_retain_completed_world_caches(monkeypatch):
+    import weakref
+
+    live = weakref.WeakSet()
+
+    class Session:
+        nodes = 7
+        cache_hits = 2
+
+        def __init__(self):
+            live.add(self)
+
+    monkeypatch.setattr(pv_exact_endgame, 'ExactWorldSession', Session)
+
+    def evaluator(*args, **kwargs):
+        for _ in range(64):
+            session = pv_exact_endgame.ExactWorldSession()
+            assert len(live) == 1
+            del session
+        return object(), {'worlds_completed': 64, 'nodes': 448, 'cache_hits': 128}
+
+    def stage(bot, *args):
+        pv_exact_endgame.exact_first_trick_means()
+        # The final cache must be released inside the evaluator timing window,
+        # not reported later as non-evaluator stage work.
+        assert len(live) == 0
+        bot._exact_lead = {'exact_lead_status': 'complete'}
+        return object()
+
+    monkeypatch.setattr(pv_exact_endgame, 'exact_first_trick_means', evaluator)
+    monkeypatch.setattr(pv_search_policy.PVSearchBot, '_exact_lead_decision', stage)
+    sink = io.StringIO()
+    bot = SimpleNamespace(serving_budget_seconds=3.0, _exact_lead={})
+    rnd = SimpleNamespace(trick=SimpleNamespace(plays=[]), hands=[['BJ']] * 4)
+    with cost_probe.exact_lead_cost_probe(sink):
+        pv_search_policy.PVSearchBot._exact_lead_decision(
+            bot, rnd, 0, [['BJ']], [(None, None)] * 64, 0.0, None, [], object())
+    row = json.loads(sink.getvalue())
+    assert (row['sessions_started'], row['partial_nodes'], row['partial_cache_hits']) == (64, 448, 128)
+
+
 def test_cost_probe_reports_completed_worlds_on_abandon_and_restores_session(monkeypatch):
     class Session:
         created = 0

@@ -179,10 +179,14 @@ def exact_lead_cost_probe(sink, *, perf_clock=None, thread_clock=None):
             active["partial_worlds"] = _UNKNOWN
             raise
         finally:
-            sessions = active.pop("_sessions", ())
-            active["sessions_started"] = len(sessions)
-            active["partial_nodes"] = _session_counter(sessions, "nodes")
-            active["partial_cache_hits"] = _session_counter(sessions, "cache_hits")
+            live = active.pop("_live", None)
+            done = active.pop("_done", [0, 0, 0])
+            tail = () if live is None else (live,)
+            active["sessions_started"] = done[0]
+            active["partial_nodes"] = done[1] + _session_counter(tail, "nodes")
+            active["partial_cache_hits"] = done[2] + _session_counter(tail, "cache_hits")
+            # Release the last cache before reading the evaluator clocks.
+            del live, tail
             active["evaluator_seconds"] = max(0.0, clock() - started_wall)
             active["evaluator_cpu_seconds"] = max(0.0, cpu_clock() - started_cpu)
             if error is None:
@@ -193,7 +197,14 @@ def exact_lead_cost_probe(sink, *, perf_clock=None, thread_clock=None):
         session = original_session(*args, **kwargs)
         active = getattr(_ACTIVE, "row", None)
         if active is not None:
-            active.setdefault("_sessions", []).append(session)
+            # Fold completed work without extending every world's cache life.
+            done = active.setdefault("_done", [0, 0, 0])
+            previous = active.get("_live")
+            if previous is not None:
+                done[1] += _session_counter((previous,), "nodes")
+                done[2] += _session_counter((previous,), "cache_hits")
+            done[0] += 1
+            active["_live"] = session
         return session
 
     @wraps(original_stage)

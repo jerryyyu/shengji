@@ -241,6 +241,66 @@ def test_a_partly_pinned_duplicate_keeps_its_other_copy():
 def test_a_pin_outside_its_holders_hand_is_refused():
     X = np.zeros((1, bl.FEATURE_DIM), np.float16)
     X[0, _block("pinned_rel1")][3] = 1
-    part = {"X": X, "Y": np.zeros((1, 54, 4), np.uint8), "M": np.zeros((1, 54, 4), bool)}
+    part = {"X": X, "Y": np.zeros((1, 54, 4), np.uint8), "M": np.zeros((1, 54, 4), bool),
+            "sizes": np.array([[5, 5, 5, 8]])}
     with pytest.raises(be.BeliefEvalError):
         be.residualize(part)
+
+
+def test_more_pins_than_cards_is_refused():
+    X = np.zeros((1, bl.FEATURE_DIM), np.float16)
+    X[0, _block("pinned_rel1")][3] = 2
+    Y = np.zeros((1, 54, 4), np.uint8)
+    Y[0, 3, 0] = 2
+    part = {"X": X, "Y": Y, "M": np.ones((1, 54, 4), bool), "sizes": np.array([[1, 5, 5, 8]])}
+    with pytest.raises(be.BeliefEvalError):
+        be.residualize(part)
+
+
+def test_a_receiver_whose_whole_hand_is_pinned_leaves_the_mask(tmp_path):
+    """Codex's delta witness through the real producer: synthetic_cluster(1000),
+    actor seat 1 at history length 17 (decision 70), card 1, receiver 2 -- that
+    receiver's one remaining card is publicly pinned.  It must take no unknown
+    copy from smoothing or from any model, and it is not scored."""
+    got = _pinned_codes(synthetic_cluster(1000), tmp_path)
+    i = int(np.flatnonzero((got["decision"] == 70) & (got["round_index"] == 0))[0])
+    assert got["trick"][i] == 18
+    part = {k: got[k][i:i + 1].copy() for k in ("X", "Y", "M", "S", "S_n", "sizes")}
+    assert part["sizes"][0].tolist() == [2, 1, 1, 8]
+    # the r2 evaluator: residual card count only -> smoothing put 1/11 on the empty receiver
+    K = be.known_counts(part["X"])
+    r2_mask = part["M"] & ((part["Y"].sum(-1) - K.sum(-1)) > 0)[..., None]
+    S_r2 = part["S"].astype(np.int64) - K * part["S_n"][:, None, None]
+    r2 = be.sampler_probs(S_r2, part["S_n"], r2_mask, 1.0)
+    assert r2[0, 1, 2] == pytest.approx(1 / 11)
+    be.residualize(part)
+    assert part["sizes"][0].tolist() == [2, 1, 0, 8]
+    assert not part["M"][0, :, 2].any()
+    assert part["M"][0, 1].tolist() == [False, True, False, True]
+    P = be.sampler_probs(part["S"], part["S_n"], part["M"], 1.0)
+    assert not P[0, :, 2].any()
+    assert P[0, 1].sum() == pytest.approx(1.0)
+    # any probability a model puts there is masked away before it is scored
+    logits = np.zeros((1, 54, 4), np.float32)
+    logits[0, :, 2] = 50.0
+    Q = be.masked_softmax(logits, part["M"])
+    assert not Q[0, :, 2].any()
+    t = be.copy_terms(Q, part["Y"])
+    assert np.isfinite(t["all_ll"]).all()
+
+
+def test_a_partly_pinned_receiver_keeps_its_free_slots():
+    X = np.zeros((1, bl.FEATURE_DIM), np.float16)
+    X[0, _block("pinned_rel1")][3] = 1          # one of next's two cards is pinned
+    Y = np.zeros((1, 54, 4), np.uint8)
+    Y[0, 3, 0] = 1
+    Y[0, 9, 0] = 1                               # its other, unknown card
+    Y[0, 10, 1] = 1
+    M = np.zeros((1, 54, 4), bool)
+    M[0, [3, 9, 10]] = True
+    part = {"X": X, "Y": Y, "M": M, "sizes": np.array([[2, 1, 0, 8]])}
+    be.residualize(part)
+    assert part["sizes"][0].tolist() == [1, 1, 0, 8]
+    assert part["M"][0, 9].tolist() == [True, True, False, True]
+    assert part["M"][0, 10].tolist() == [True, True, False, True]
+    assert not part["M"][0, 3].any()

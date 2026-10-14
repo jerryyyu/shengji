@@ -61,7 +61,7 @@ from .belief_labels import (FEATURE_BLOCKS, KITTY, N_RECV, PHASES, ROLES, FEATUR
 
 N_CARDS = 54
 EVAL_KEYS = ("X", "Y", "M", "sizes", "trick", "role", "deal", "S", "S_n", "n_refusals")
-TRAIN_KEYS = ("X", "Y", "M", "trick", "role", "deal")
+TRAIN_KEYS = ("X", "Y", "M", "sizes", "trick", "role", "deal")
 EPS = 1e-12
 STOP_GAIN = 0.03
 
@@ -133,7 +133,8 @@ def residualize(part: dict[str, np.ndarray]) -> dict[str, int]:
     """Restrict a split IN PLACE to the genuinely unknown copies (Codex HOLD on
     #1002): subtract the public known-holder counts from the labels, from the
     sampler's counts (``S_n`` copies per pin, one per world) and from the
-    receivers' sizes; a code with no unknown copy left leaves the mask.  A
+    receivers' sizes; a code with no unknown copy left leaves the mask, and so
+    does a receiver with no unknown slot left (all its cards are pinned).  A
     partly pinned duplicate code keeps its other copy, with every receiver it
     could be with.  Nothing is smoothed onto, or scored on, a known copy."""
     K = known_counts(part["X"])
@@ -142,14 +143,19 @@ def residualize(part: dict[str, np.ndarray]) -> dict[str, int]:
         raise BeliefEvalError("a public pin is not in its holder's true hand")
     part["Y"] = Y.astype(np.uint8)
     residual = Y.sum(axis=-1)
-    part["M"] = part["M"] & (residual > 0)[..., None]
+    # residual capacity: the unknown slots each receiver has left once its pinned
+    # copies are placed (Codex delta HOLD on #1002); a receiver with no unknown slot
+    # cannot hold an unknown copy, so it leaves the mask for every card
+    sizes = part["sizes"].astype(np.int64) - K.sum(axis=1)
+    if np.any(sizes < 0):
+        raise BeliefEvalError("a receiver holds more pinned copies than cards")
+    part["sizes"] = sizes.astype(np.int16)
+    part["M"] = part["M"] & (residual > 0)[..., None] & (sizes > 0)[:, None, :]
     if "S" in part:
         S = part["S"].astype(np.int64) - K * part["S_n"].astype(np.int64)[:, None, None]
         if np.any(S[part["S_n"] > 0] < 0):
             raise BeliefEvalError("the sampler did not place a pinned copy with its holder")
         part["S"] = np.maximum(S, 0).astype(np.uint16)
-    if "sizes" in part:
-        part["sizes"] = (part["sizes"].astype(np.int64) - K.sum(axis=1)).astype(np.int16)
     return {"known_copies": int(K.sum()), "residual_copies": int(Y.sum())}
 
 

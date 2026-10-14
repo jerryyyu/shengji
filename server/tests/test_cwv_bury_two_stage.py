@@ -335,6 +335,101 @@ def test_a_stage_one_expiry_still_falls_back_to_the_heuristic_and_never_runs_sta
     assert bts.RECORD_KEY not in bot.last_bury_record
 
 
+def test_expiry_during_the_final_choice_keeps_stage_one(monkeypatch):
+    """Review 996 (Codex HOLD): the clock passes the stage deadline inside
+    `stage_two_choice`, after every batch; the publication check discards the
+    stage-2 winner (Codex's repro, stubbed dependencies, real choice)."""
+    from types import SimpleNamespace
+    clock = [0.0]
+    monkeypatch.setattr(bts.time, "perf_counter", lambda: clock[0])
+    monkeypatch.setattr(bts, "make_bot", lambda *a, **k: SimpleNamespace(rollout_policy=None))
+    monkeypatch.setattr(bts, "_worlds", lambda *a, **k: ([object()], 1))
+    monkeypatch.setattr(bts, "PolicyFirstTrick",
+                        lambda *a, **k: SimpleNamespace(policy_plays=0, fallbacks=0))
+    monkeypatch.setattr(bts, "score_common_worlds", lambda *a, **k: np.array([[0.0, 1.0]]))
+    choose = bts.stage_two_choice
+
+    def late_choice(*args):
+        result = choose(*args)
+        assert result[:2] == (1, True)                       # stage 2 WOULD switch
+        clock[0] = 2.0                                       # past the 1 s stage deadline
+        return result
+    monkeypatch.setattr(bts, "stage_two_choice", late_choice)
+    bot = SimpleNamespace(seed=1, predict=None, version=2, evaluator=None,
+                          bury_serving_budget_seconds=2.0)
+    picked, ts = bts.run_stage_two(bot, None, 0, [["C3"], ["C4"]], [1.0, 0.0],
+                                   bts.TwoStageConfig(), started=0.0)
+    assert picked == 0 == ts["chosen_index"] == ts["stage1_index"]
+    assert ts["fallback"] == "budget" and ts["completed"] is False
+    assert ts["error_class"] == "StageTwoExpired"
+    assert ts["switched"] is False and ts["means"] is None and ts["paired_se"] is None
+
+
+def test_expiry_after_the_last_score_batch_keeps_stage_one(jumping_clock, monkeypatch):
+    """The clock passes every deadline as `score_common_worlds` returns (after
+    its own post-batch check): on a real root whose stage 2 would switch, the
+    bury keeps the stage-1 argmax."""
+    index = 65
+    candidates, order, _ = stage1_of(index)
+    first, second = candidates[order[0]], candidates[order[1]]
+    real = bts.score_common_worlds
+
+    def score_then_expire(*a, **k):
+        out = real(*a, **k)
+        jumping_clock["expired"] = True
+        return out
+    monkeypatch.setattr(bts, "score_common_worlds", score_then_expire)
+    evaluator = StageEvaluator(first, second, SMALL_STAGE.tricks)
+    bot = two_stage(evaluator=evaluator, bury_budget=60.0)
+    chosen, record = assert_stage_one_kept(bot, index, bot.sampler.rng.getstate(), "budget")
+    assert chosen == first and evaluator.stage2_calls == 1   # stage 2 WAS scored, then discarded
+    # unexpired, the same stage switches (the witness is not vacuous)
+    monkeypatch.setattr(bts, "score_common_worlds", real)
+    jumping_clock["expired"] = False
+    assert decide(two_stage(evaluator=StageEvaluator(first, second, 2), bury_budget=60.0),
+                  index)[0] == second
+
+
+def test_an_all_terminal_batch_checks_the_deadline_without_a_value_batch(jumping_clock,
+                                                                        monkeypatch):
+    """``tricks`` = 25 ends every position, so no value batch runs; the batch
+    still checks the deadline after the terminal valuation, and an expiry there
+    keeps the stage-1 argmax."""
+    index = 65
+    rnd = bury_state(index)
+    helper = make_bot("mc-s0-report-lcb", seed=1)
+    worlds, _ = bury_policy._worlds(helper, rnd, rnd.banker, 2, "t")
+    candidates = stage1_of(index)[0][:2]
+    state = {"expired": False}
+    real_terminal = bts.terminal_value
+
+    def terminal_then_expire(position):
+        state["expired"] = True
+        return real_terminal(position)
+    monkeypatch.setattr(bts, "terminal_value", terminal_then_expire)
+    checks = []
+
+    def check():
+        checks.append(state["expired"])
+        if state["expired"]:
+            raise bts.StageTwoExpired("expired")
+    evaluator = DeepEvaluator()
+    player = bts.PolicyFirstTrick(CountingPredict(), 2, helper.rollout_policy)   # no check of its own
+    with pytest.raises(bts.StageTwoExpired):
+        bts.score_common_worlds(rnd, candidates, worlds, evaluator, player, 25, check)
+    assert evaluator.calls == 0 and checks[-1] is True
+    # through the stage: the clock passes every deadline in the terminal
+    # valuation; the bury keeps the stage-1 argmax, the value head never ran in stage 2
+
+    def terminal_then_jump(position):
+        jumping_clock["expired"] = True
+        return real_terminal(position)
+    monkeypatch.setattr(bts, "terminal_value", terminal_then_jump)
+    bot = two_stage(config=bts.TwoStageConfig(top=2, worlds=2, tricks=25), bury_budget=60.0)
+    chosen, record = assert_stage_one_kept(bot, index, bot.sampler.rng.getstate(), "budget")
+    assert all(len(p.history) == 1 for p in bot.evaluator.positions)
+
+
 # ------------------------------------------------------------ (e) an ended round
 
 def test_an_ended_round_is_valued_by_its_outcome():

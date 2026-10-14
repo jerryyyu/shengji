@@ -55,7 +55,9 @@ Budget.  Stage 2 is optional work with its own deadline and a HARD fallback to
 the stage-1 argmax (never to the heuristic incumbent: stage 1 is complete by
 then).  It begins only after stage 1's last ``check_budget`` passed, and it
 never calls the bury's ``check_budget``: its own check (before every world
-draw, before and after every policy batch, before and after every value batch)
+draw, before and after every policy batch, before and after every value batch,
+after a batch whose positions all ended, and once more after the choice,
+immediately before the stage publishes it)
 raises at ``min(stage-2 start + seconds, bury start + bury budget - reserve)``
 (``seconds``: `SECONDS_DEFAULT`; ``reserve``: `RESERVE_SECONDS`).  An expiry,
 or any error in stage 2, keeps the stage-1 argmax and records why; a partial
@@ -218,6 +220,8 @@ def score_common_worlds(rnd, candidates, worlds, evaluator, player, tricks: int,
                 raise BuryPolicyError(f"evaluator returned {scored.shape}, expected ({len(live)},)")
             for k, value in zip(live, scored):
                 values[slots[k]] = value
+        elif check is not None:
+            check()           # an all-terminal batch ran no value batch: check anyway
         positions.clear()
         slots.clear()
 
@@ -295,6 +299,10 @@ def run_stage_two(bot, rnd, seat, candidates, means, config: TwoStageConfig, *,
         values = score_common_worlds(rnd, [candidates[i] for i in top], worlds, bot.evaluator,
                                      player, config.tricks, check, counts)
         best, switched, stage2, paired_se = stage_two_choice(values, config.margin, config.z)
+        # the publication check: a deadline that passed during the last batch,
+        # the terminal valuation or the choice itself discards the stage (all
+        # or nothing), whichever path produced ``values``
+        check()
         telemetry.update(means=stage2.tolist(), paired_se=paired_se.tolist(), completed=True,
                          positions=len(top) * len(worlds),
                          chosen_index=int(top[best] if switched else stage1), switched=switched)

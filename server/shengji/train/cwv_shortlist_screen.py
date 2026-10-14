@@ -302,10 +302,35 @@ def oracle_worlds_requested(environ=None) -> bool:
     return True
 
 
+#: its soft variants (#707 S17 step 3; `train.pv_soft_oracle`): k of the W
+#: worlds true (``-orcm<k>``), or a fraction q of the hidden copies pinned to
+#: their true holders in every world (``-orcq<100 q>``); the same hook
+ORACLE_SOFT_FLAGS = {"SHENGJI_PV_ORACLE_MIX_K": "oracle_mix_k",
+                     "SHENGJI_PV_ORACLE_PIN_Q": "oracle_pin_q"}
+
+
+def oracle_soft_requested(environ=None) -> dict:
+    """The soft-oracle parameters the environment asked for, as config
+    entries (``{}``: none); parsed and refused exactly as the registry does
+    (`pv_search_policy.pv_env_recipe`)."""
+    from .pv_search_policy import ORACLE_SOFT_PARAMS, PVSearchPolicyError, pv_env_recipe
+    env = os.environ if environ is None else environ
+    probe = {"SHENGJI_PV_CKPT": "-", "SHENGJI_PV_SHA256": "0" * 64,
+             **{flag: env[flag] for flag in ORACLE_SOFT_FLAGS if flag in env}}
+    try:
+        recipe = pv_env_recipe(probe)
+    except PVSearchPolicyError as exc:
+        raise ValueError(str(exc)) from None
+    return {key: recipe[key] for key in ORACLE_SOFT_PARAMS.values() if key in recipe}
+
+
 def _arm_policy_kwargs(config: dict) -> dict:
     """The registry build arguments beyond ``seed`` for ``--arm policy``: the
-    oracle hook when the config recorded the diagnostic, nothing otherwise."""
-    return {"oracle_deal": oracle_true_deal} if config.get("oracle_worlds") else {}
+    oracle hook when the config recorded the diagnostic (or a soft variant),
+    nothing otherwise."""
+    on = (config.get("oracle_worlds") or config.get("oracle_mix_k")
+          or config.get("oracle_pin_q"))
+    return {"oracle_deal": oracle_true_deal} if on else {}
 
 
 def make_side(config: dict, side: str, seed: int):
@@ -489,7 +514,8 @@ def _recipe(config):
         recipe["trump_ranks"] = config["trump_ranks"]
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
                 "hybrid_bury", "corrected_rollout", "wide_tail", "prior",
-                "arm_policy", "arm_policy_identity", "round_kind", "oracle_worlds"):
+                "arm_policy", "arm_policy_identity", "round_kind", "oracle_worlds",
+                "oracle_mix_k", "oracle_pin_q"):
         if key in config:
             recipe[key] = config[key]
     return recipe
@@ -611,6 +637,14 @@ def _arm_description(config):
         if config.get("oracle_worlds"):
             return (f"DIAGNOSTIC registry policy {config['arm_policy']} ({identity['bot_class']}; "
                     "oracle worlds: the true deal, never served)")
+        if config.get("oracle_mix_k"):
+            return (f"DIAGNOSTIC registry policy {config['arm_policy']} ({identity['bot_class']}; "
+                    f"soft oracle: {config['oracle_mix_k']} of the worlds the true deal, "
+                    "never served)")
+        if config.get("oracle_pin_q"):
+            return (f"DIAGNOSTIC registry policy {config['arm_policy']} ({identity['bot_class']}; "
+                    f"soft oracle: {config['oracle_pin_q']:g} of the hidden copies pinned to "
+                    "their true holders per world, never served)")
         return f"served registry policy {config['arm_policy']} ({identity['bot_class']})"
     raise ValueError(f"unsupported CWV shortlist arm: {arm!r}")
 
@@ -956,6 +990,8 @@ def _run_screen(args, trump_ranks):
             # the diagnostic (#707 S16): recorded in the receipt, and every
             # worker builds the arm with the harness hook (`make_side`)
             config["oracle_worlds"] = True
+        # its soft variants (#707 S17 step 3), recorded the same way
+        config.update(oracle_soft_requested())
         probe = make_bot(args.arm_policy, seed=0, **_arm_policy_kwargs(config))
         config["arm_policy"] = args.arm_policy
         config["arm_policy_identity"] = _policy_identity(probe)

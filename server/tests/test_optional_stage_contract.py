@@ -21,6 +21,7 @@ from test_pv_adaptive_worlds import (RELEASE42_RULES, NoisyEvaluator, _comparabl
 from test_pv_doomed_throw_reselect import (DECISIONS, draw, served as dtr_served, tail,
                                            yjqj)
 from test_pv_value_declare import NT_CASE, NTEvaluator, served as vd_served, state_at
+from test_pv_declare_wait import WAIT_CASE, OtherDeclarerEvaluator, bot as vdw_bot
 
 
 # ------------------------------------------------------- the stages under the contract
@@ -91,6 +92,28 @@ def _vd_abandon(bot):
     return record["fallback_reason"], record["fallback_error"]
 
 
+def _vdw_run(deadline, on=True):
+    """Seat 0 at the 49th card of deal 11: the value declaration declares DK; a
+    head that prefers another seat's declaration makes waiting win (a
+    replacement: PASS now)."""
+    rnd, seat = state_at(*WAIT_CASE)
+    now = HeuristicBot().decide_declare(rnd, seat)
+    bot = vdw_bot(OtherDeclarerEvaluator())
+    bot.wait_record = None
+    if not on:
+        return bot, now
+    played, bot.wait_record = bot._declare_wait_decision(rnd, seat, now, deadline)
+    return bot, played
+
+
+def _vdw_abandon(bot):
+    record = bot.wait_record
+    if record is None or record["fallback_reason"] is None:
+        return None
+    assert record["evaluated"] is False and record["waited"] is False
+    return record["fallback_reason"], record["fallback_error"]
+
+
 CASES = [
     StageCase("adaptive_worlds", run=_aw_run,
               base=lambda: _aw_run(Deadline(), adaptive=False)[1],
@@ -102,6 +125,10 @@ CASES = [
               base=lambda: _vd_run(Deadline(), on=False)[1],
               abandon=_vd_abandon, abandons_errors=True,
               nested=(PVSearchBot, "_value_declare_means")),
+    StageCase("value_declare_wait", run=_vdw_run,
+              base=lambda: _vdw_run(Deadline(), on=False)[1],
+              abandon=_vdw_abandon, abandons_errors=True,
+              nested=(PVSearchBot, "_declare_wait_values")),
 ]
 
 

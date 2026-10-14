@@ -241,24 +241,28 @@ def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expi
     asyncio.run(scenario())
 
 
-def test_portable_qualification_preserves_partial_and_refuses_overwrite(tmp_path):
+@pytest.mark.parametrize('release', [44, 45])
+def test_portable_qualification_preserves_partial_and_refuses_overwrite(tmp_path, release):
     import runpy
     module = runpy.run_path(str(Path(__file__).parents[1] / 'scripts/qualify_exact_lead.py'))
     main = module['main']
     calls = []
-    async def incomplete(checkpoint, dest):
-        calls.append(checkpoint)
+    async def incomplete(checkpoint, dest, selected_release):
+        calls.append((checkpoint, selected_release))
         dest.write('{"passed":false}\n')
         dest.flush()
         return 1
     main.__globals__['qualify'] = incomplete
     out = tmp_path / 'qualification.jsonl'
     argv = ['--checkpoint', 'not-opened.npz', '--out', str(out)]
+    if release == 45:
+        argv += ['--release', '45']
     assert main(argv) == 1
     assert json.loads(out.read_text()) == {'passed': False}
     with pytest.raises(FileExistsError):
         main(argv)
     assert len(calls) == 1
+    assert calls[0][1] == release
 
 
 def test_exact_stage_expiry_preserves_base_through_server_commit(pinned_production_package, tmp_path, monkeypatch):
@@ -504,18 +508,10 @@ def test_exact_corrects_captured_joker_lead_through_api(pinned_production_packag
     # Replace this module's clock reference, not global time used by asyncio.
     monkeypatch.setattr(pv, 'time', SimpleNamespace(perf_counter=lambda: 0.0))
     packet = json.loads((Path(__file__).parent / 'fixtures/r44_joker_lead.json').read_text())
-    # Pin the captured release, not tomorrow's fly.toml.
-    env = dict(SHENGJI_PV_WORLDS='64', SHENGJI_PV_CANDIDATES='8',
-        SHENGJI_PV_CAP='4000', SHENGJI_PV_BATCH_SIZE='128',
-        SHENGJI_PV_ADMISSION_DIVERSITY='1', SHENGJI_PV_REFUSAL_CONSTRAINTS='1',
-        SHENGJI_PV_TIEBREAK_POINTS='1', SHENGJI_PV_LEAD_ANCHOR='1',
-        SHENGJI_PV_DOOMED_THROW_RESELECT='1', SHENGJI_PV_VALUE_DECLARE='1',
-        SHENGJI_PV_SERVING_BUDGET_SECONDS='3', SHENGJI_PV_BURY_ARM='hybrid',
-        SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS='2')
-    if wide_bury:
-        # Proposed next comparator: change BOTH arms' bury, never only the
-        # candidate. This replay begins after bury and makes no bury-strength claim.
-        env.update(SHENGJI_PV_BURY_WIDE_VALUE='1', SHENGJI_PV_BURY_WIDE_K='64')
+    # Exercise the qualifier's actual recipe producer through the server
+    # consumer, rather than maintaining a second hand-written test recipe.
+    from scripts.qualify_exact_lead import qualification_env, R45_NAMES
+    env = qualification_env(pinned_production_package, 45 if wide_bury else 44)
 
     async def scenario():
         records = []
@@ -526,6 +522,8 @@ def test_exact_corrects_captured_joker_lead_through_api(pinned_production_packag
                 'SHENGJI_PV_SHA256': PACKAGE_SHA, 'SHENGJI_PV_EXACT_LEAD_ENDGAME': str(int(enabled))})
             entries = pv.pv_registry_entries(**recipe)
             name, = entries
+            if wide_bury:
+                assert name == R45_NAMES[int(enabled)]
             if not enabled:
                 assert name == ('pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-'
                                 'radd86676-bury-hybrid-' +

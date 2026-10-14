@@ -601,3 +601,165 @@ def test_make_side_builds_the_soft_arms_with_the_hook(soft_registered):
         assert rec[key] == value
         with pytest.raises(PVSearchPolicyError, match="never served"):
             screen.make_side({**config, key: 0}, "arm", 3)
+
+
+# ------------------------------------------------------------ (i) work accounting
+# The soft oracle's construction work is cumulative bot state
+# (`PVSearchBot.soft_oracle_counts`), read by the real screen consumer
+# (`cwv_shortlist_screen.work_counters` -> the round record's ``work`` ->
+# `oracle.screen.summarize`'s ``work_totals``), aborted decisions included.
+
+from shengji.oracle import screen as duel  # noqa: E402
+from shengji.train.pv_search_policy import PVSearchBudgetExceeded  # noqa: E402
+
+SOFT_KEYS = tuple("soft_oracle_" + key for key in pv.SOFT_ORACLE_COUNTERS)
+
+
+def _screen_round(kw, seed=SELF_PLAY_SEEDS[2], budget=None):
+    """One real `play_screen_round`: the soft arm (wrapped as the screen wraps
+    it) against the heuristic; returns the record, the arm wrappers and the
+    summary's work totals."""
+    arms = []
+
+    def factory(config, side, s):
+        if side == "baseline":
+            return HeuristicBot()
+        bot = screen.CwvTimedPolicy(hooked(worlds=8, seed=s, budget=budget, **kw, **PLAY_RULES))
+        arms.append(bot)
+        return bot
+    # the duel summary's own minimal config (its descriptive arm label only)
+    config = duel.build_config(arm="none", base_policy="heuristic")
+    record, _timing = duel.play_screen_round(config, 0, seed, 0, bot_factory=factory,
+                                             counter_fn=screen.work_counters)
+    summary = duel.summarize([record], config, seed0=seed, replicates=10)
+    return record, arms, summary
+
+
+def _trace_sum(arms, key):
+    return sum(d.get(key, 0) for a in arms for d in a.decisions)
+
+
+def test_off_bot_reports_no_soft_oracle_work():
+    bot = screen.CwvTimedPolicy(served(**PLAY_RULES))
+    rnd = _fresh_round(SELF_PLAY_SEEDS[0])
+    bot.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert bot.soft_oracle_counts is None and "soft_oracle_counts" not in vars(bot.bot)
+    assert not any(k.startswith("soft_oracle") for k in screen.work_counters([bot]))
+
+
+def test_q_pin_fills_reach_the_round_record_and_the_summary():
+    record, arms, summary = _screen_round(dict(oracle_pin_q=0.5))
+    work = record["work"]["arm"]
+    assert set(SOFT_KEYS) <= set(work)
+    assert not any(k.startswith("soft_oracle") for k in record["work"]["baseline"])
+    decisions = sum(len(a.decisions) for a in arms)
+    assert decisions >= 25
+    assert work["soft_oracle_constructions"] == work["soft_oracle_constructions_complete"] \
+        == _trace_sum(arms, "worlds") // 8
+    assert work["soft_oracle_pin_fills"] == _trace_sum(arms, "oracle_pin_fills") > 0
+    assert work["soft_oracle_pin_worlds"] + work["soft_oracle_pin_fallback_worlds"] \
+        == 8 * work["soft_oracle_constructions_complete"]
+    assert work["soft_oracle_pinned_copies"] == _trace_sum(arms, "oracle_pinned_copies")
+    assert work["soft_oracle_pin_fills"] == (work["soft_oracle_pin_fill_failed"]
+                                             + work["soft_oracle_pin_rejections"]
+                                             + work["soft_oracle_pin_worlds"])
+    assert work["soft_oracle_true_worlds"] == work["soft_oracle_production_worlds"] == 0
+    totals = summary["work_totals"]["arm"]
+    assert {k: totals[k] for k in SOFT_KEYS} == {k: work[k] for k in SOFT_KEYS}
+    assert not any("soft-oracle" in p for p in summary["problems"])
+
+
+def test_k_mix_work_reaches_the_round_record():
+    record, arms, summary = _screen_round(dict(oracle_mix_k=2))
+    work = record["work"]["arm"]
+    n = work["soft_oracle_constructions_complete"]
+    assert n == work["soft_oracle_constructions"] >= 25
+    assert work["soft_oracle_true_worlds"] == 2 * n
+    assert work["soft_oracle_production_worlds"] == 6 * n
+    assert work["soft_oracle_pin_fills"] == 0
+    assert summary["work_totals"]["arm"]["soft_oracle_true_worlds"] == 2 * n
+
+
+def test_failed_and_rejected_fills_then_production_fallback_are_counted(monkeypatch):
+    calls = Counter()
+    real_fill, real_check = so.pinned_fill, so.world_violations
+
+    def fill(*a, **k):
+        calls["fill"] += 1
+        return None if calls["fill"] % 3 == 0 else real_fill(*a, **k)
+
+    def check(*a, **k):
+        calls["check"] += 1
+        return [("void", 0, "X")] if calls["check"] % 4 == 0 else real_check(*a, **k)
+    monkeypatch.setattr(so, "pinned_fill", fill)
+    monkeypatch.setattr(so, "world_violations", check)
+    # every 7th world's fills all fail: production's draw replaces it
+    real_rng = so.pin_rng
+
+    def rng(sampler):
+        calls["world"] += 1
+        if calls["world"] % 7 == 0:
+            calls["dead"] = calls["fill"] + so.PIN_FILL_ATTEMPTS
+        return real_rng(sampler)
+
+    def fill_dead(*a, **k):
+        if calls["fill"] < calls.get("dead", 0):
+            calls["fill"] += 1
+            return None
+        return fill(*a, **k)
+    monkeypatch.setattr(so, "pin_rng", rng)
+    monkeypatch.setattr(so, "pinned_fill", fill_dead)
+    record, arms, summary = _screen_round(dict(oracle_pin_q=0.5))
+    work = record["work"]["arm"]
+    assert work["soft_oracle_pin_fill_failed"] > 0 and work["soft_oracle_pin_rejections"] > 0
+    assert work["soft_oracle_pin_fallback_worlds"] == _trace_sum(arms, "oracle_pin_fallback_worlds") > 0
+    assert work["soft_oracle_pin_rejections"] == _trace_sum(arms, "oracle_pin_rejections")
+    assert work["soft_oracle_pin_fills"] == _trace_sum(arms, "oracle_pin_fills")
+    assert work["soft_oracle_pin_fills"] == (work["soft_oracle_pin_fill_failed"]
+                                             + work["soft_oracle_pin_rejections"]
+                                             + work["soft_oracle_pin_worlds"])
+    assert work["soft_oracle_pin_worlds"] + work["soft_oracle_pin_fallback_worlds"] \
+        == 8 * work["soft_oracle_constructions_complete"]
+    totals = summary["work_totals"]["arm"]
+    assert {k: totals[k] for k in SOFT_KEYS} == {k: work[k] for k in SOFT_KEYS}
+    assert not any("soft-oracle" in p for p in summary["problems"])
+
+
+def test_expiry_after_some_fills_keeps_the_spent_work():
+    rnd = _fresh_round(SELF_PLAY_SEEDS[2])
+    seat = rnd.turn
+    inner = hooked(worlds=8, budget=3.0, oracle_pin_q=0.5, **PLAY_RULES)
+    bot = screen.CwvTimedPolicy(inner)
+    real_fill = so.pinned_fill
+    seen = Counter()
+
+    def fill(*a, **k):
+        seen["n"] += 1
+        if seen["n"] == 3:
+            inner.serving_budget_seconds = 1e-12     # the next budget check expires
+        return real_fill(*a, **k)
+    so_fill, so.pinned_fill = so.pinned_fill, fill
+    try:
+        bot.decide_play(copy.deepcopy(rnd), seat)
+    finally:
+        so.pinned_fill = so_fill
+    rec = inner.last_decision_record
+    assert rec["schema"] == pv.FALLBACK_SCHEMA and rec["reason"] == "budget"
+    assert "oracle_pin_fills" not in rec
+    work = screen.work_counters([bot])
+    assert work["soft_oracle_constructions"] == 1 and work["soft_oracle_constructions_complete"] == 0
+    assert work["soft_oracle_pin_fills"] == 3 and work["soft_oracle_pin_worlds"] == 3
+    assert work["soft_oracle_pinned_copies"] == 3 * rec_hidden_want(rnd, seat)
+    # the next decision adds to it (cumulative), and the round's record carries both
+    inner.serving_budget_seconds = 3.0
+    bot.decide_play(copy.deepcopy(rnd), seat)
+    after = screen.work_counters([bot])
+    assert after["soft_oracle_constructions"] == 2 and after["soft_oracle_constructions_complete"] == 1
+    assert after["soft_oracle_pin_fills"] == 3 + inner.last_decision_record["oracle_pin_fills"]
+
+
+def rec_hidden_want(rnd, seat):
+    hands, buried = true_deal(rnd)
+    mem = Memory(rnd, seat, own_kitty=True)
+    layout = so.hidden_layout(SAMPLER, rnd, seat, mem, hands, buried)
+    return so.pin_count(0.5, layout.hidden)

@@ -1510,6 +1510,15 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
         if unreconciled:
             problems.append(f"{side}: sampler accounting unreconciled by "
                             f"{unreconciled}")
+        # the pv-search soft oracle's pinned fills (#707 S17; present only for
+        # a soft-oracle arm): every fill attempt ends failed, rejected or kept
+        pin_unreconciled = abs(t.get("soft_oracle_pin_fills", 0)
+                               - t.get("soft_oracle_pin_fill_failed", 0)
+                               - t.get("soft_oracle_pin_rejections", 0)
+                               - t.get("soft_oracle_pin_worlds", 0))
+        if pin_unreconciled:
+            problems.append(f"{side}: soft-oracle fill accounting unreconciled by "
+                            f"{pin_unreconciled}")
         if t.get("exact_endgame_refusals") or t.get("oracle_exact_budget_fallbacks"):
             problems.append(
                 f"{side}: exact solver refusals={t.get('exact_endgame_refusals', 0)} "

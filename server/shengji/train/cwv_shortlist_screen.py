@@ -470,6 +470,12 @@ def work_counters(bots):
         for key, value in getattr(bot, "corrected_rollout_counts", {}).items():
             name = "correction_" + key
             out[name] = out.get(name, 0) + int(value)
+        # the pv-search soft oracle's cumulative construction work (#707 S17;
+        # `PVSearchBot.soft_oracle_counts`, absent while off), aborted
+        # decisions included; production sampler counters are untouched
+        for key, value in (getattr(bot, "soft_oracle_counts", None) or {}).items():
+            name = "soft_oracle_" + key
+            out[name] = out.get(name, 0) + int(value)
     for key in ("decision_cpu_seconds", "decision_wall_seconds",
                 "shortlist_wall_seconds"):
         out[key] = float(sum(getattr(bot, key, 0.0) for bot in bots))

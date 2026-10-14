@@ -664,6 +664,17 @@ ORACLE_WORLDS_DEFAULTS = dict(oracle_worlds=False)
 #: outside ``RULE_FLAGS``; their name token follows the rule tokens
 ORACLE_SOFT_PARAMS = {"ORACLE_MIX_K": "oracle_mix_k", "ORACLE_PIN_Q": "oracle_pin_q"}
 ORACLE_SOFT_DEFAULTS = dict(oracle_mix_k=0, oracle_pin_q=0.0)
+#: its cumulative construction-work counters (`PVSearchBot.soft_oracle_counts`;
+#: the screen reports them as ``soft_oracle_<name>``).  Production sampler calls
+#: keep their own counters; these never relabel them:
+#: ``constructions`` started and ``constructions_complete``; k-mix
+#: ``true_worlds`` placed and ``production_worlds`` requested from production's
+#: draw; q-pin ``pin_fills`` attempted, of which ``pin_fill_failed`` (no fill)
+#: and ``pin_rejections`` (a constraint broken), ``pin_worlds`` accepted,
+#: ``pinned_copies`` in them, and ``pin_fallback_worlds`` handed to production
+SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds",
+                        "production_worlds", "pin_fills", "pin_fill_failed", "pin_rejections",
+                        "pin_worlds", "pinned_copies", "pin_fallback_worlds")
 #: every optional 0/1 rule flag, env suffix -> recipe key, and every name token in
 #: name order (admission rules, the sampler rules, selection, width -- the
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
@@ -1176,6 +1187,11 @@ class PVSearchBot(PolicyValueBot):
     oracle_pin_q = ORACLE_SOFT_DEFAULTS["oracle_pin_q"]
     _soft_oracle = None
     _soft_oracle_drawn_at = None
+    #: the soft oracle's CUMULATIVE construction work (`SOFT_ORACLE_COUNTERS`),
+    #: incremented as the work happens so a decision aborted by the budget or
+    #: an error keeps what it spent; read by the screen's `work_counters`.
+    #: Instance state of an ON bot only (absent while off)
+    soft_oracle_counts = None
     #: the bury arm a subclass binds BEFORE `__init__` (`PVSearchBuryBot`), so the
     #: leaf rule's effect check knows whether a bury leaf exists; None = no bury arm
     _leaf_bury_arm = None
@@ -1297,6 +1313,8 @@ class PVSearchBot(PolicyValueBot):
             self.oracle_mix_k = mix_k
         if pin_q:
             self.oracle_pin_q = pin_q
+        if mix_k or pin_q:
+            self.soft_oracle_counts = dict.fromkeys(SOFT_ORACLE_COUNTERS, 0)
         # The screen's duel reads the production search-time counter off every side
         # (`oracle.screen.play_screen_round`: ``arm_search_secs``); accumulated wall
         # seconds of `decide_play`, as `MCBot.search_secs`.
@@ -1413,11 +1431,14 @@ class PVSearchBot(PolicyValueBot):
                                     stage="oracle_worlds_contract") from exc
         truth = (true_hands, list(true_buried))
         pinned_total = fallback = fills = rejected = 0
+        counts = self.soft_oracle_counts
+        counts["constructions"] += 1
         # the indices of production-drawn worlds (k-mix: the non-true ones;
         # q-pin: the fallbacks); instance state of an ON bot only, not recorded
         self._soft_oracle_drawn_at = []
         if self.oracle_mix_k:
             k = self.oracle_mix_k
+            counts["production_worlds"] += self.worlds - k
             drawn, attempts = self._production_draw(rnd, seat, self.worlds - k, refusals, mem,
                                                     check_budget, stats)
             if len(drawn) != self.worlds - k:
@@ -1429,6 +1450,7 @@ class PVSearchBot(PolicyValueBot):
             worlds = [([list(h) for h in truth[0]], list(truth[1])) if i in positions
                       else next(drawn) for i in range(self.worlds)]
             self._soft_oracle_drawn_at = [i for i in range(self.worlds) if i not in positions]
+            counts["true_worlds"] += k
         else:
             q = self.oracle_pin_q
             worlds, attempts = [], 0
@@ -1442,8 +1464,10 @@ class PVSearchBot(PolicyValueBot):
                 for _attempt in range(soft_oracle.PIN_FILL_ATTEMPTS):
                     attempts += 1
                     fills += 1
+                    counts["pin_fills"] += 1
                     got = soft_oracle.pinned_fill(self.sampler, rnd, mem, layout, pins)
                     if got is None:
+                        counts["pin_fill_failed"] += 1
                         continue
                     hands, kitty = got
                     complete = self.sampler._complete_determinized_hands(rnd, seat, hands,
@@ -1451,11 +1475,14 @@ class PVSearchBot(PolicyValueBot):
                     if soft_oracle.world_violations(rnd, seat, mem, layout, complete, kitty,
                                                     refusals):
                         rejected += 1
+                        counts["pin_rejections"] += 1
                         continue
                     world = (complete, sorted(kitty))
                     break
                 if world is None:
-                    # production's draw for this world, counted
+                    # production's draw for this world, counted (once, here:
+                    # the draw itself is production's sampler work)
+                    counts["pin_fallback_worlds"] += 1
                     extra, more = self._production_draw(rnd, seat, 1, refusals, mem,
                                                         check_budget, stats)
                     attempts += more
@@ -1464,6 +1491,8 @@ class PVSearchBot(PolicyValueBot):
                     worlds.extend(extra)
                     continue
                 pinned_total += want
+                counts["pin_worlds"] += 1
+                counts["pinned_copies"] += want
                 worlds.append(world)
         matched = exact = 0
         for hands, buried in worlds:
@@ -1472,6 +1501,7 @@ class PVSearchBot(PolicyValueBot):
             exact += e
         n = len(worlds)
         hidden = layout.hidden
+        counts["constructions_complete"] += 1
         self._soft_oracle = {
             "oracle_mix_k": int(self.oracle_mix_k), "oracle_pin_q": float(self.oracle_pin_q),
             "oracle_hidden_copies": hidden,

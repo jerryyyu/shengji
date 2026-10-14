@@ -115,10 +115,10 @@ def _vdw_abandon(bot):
     return record["fallback_reason"], record["fallback_error"]
 
 
-def _exact_run(deadline, on=True):
+def _exact_run(deadline, on=True, **variants):
     from test_pv_finish_lead import root, bot as lead_bot
     rnd = root(2)
-    bot = lead_bot(False, exact_lead_endgame=True)
+    bot = lead_bot(False, exact_lead_endgame=True, **variants)
     actions = [[rnd.hands[rnd.turn][0]]]
     worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
     base = (np.array([-100.0]), 1, 0, actions[0], 1)
@@ -136,6 +136,15 @@ def _exact_abandon(bot):
 
 CASES = [
     StageCase("exact_lead_endgame", run=_exact_run,
+              base=lambda: _exact_run(Deadline(), on=False)[1],
+              abandon=_exact_abandon, abandons_errors=True),
+    # its two opt-in variants run inside the same stage (`test_pv_exact_lead_variants`)
+    StageCase("exact_lead_tie_baseline",
+              run=lambda deadline, on=True: _exact_run(deadline, on, exact_lead_tie_baseline=True),
+              base=lambda: _exact_run(Deadline(), on=False)[1],
+              abandon=_exact_abandon, abandons_errors=True),
+    StageCase("exact_lead_policy_first",
+              run=lambda deadline, on=True: _exact_run(deadline, on, exact_lead_policy_first=True),
               base=lambda: _exact_run(Deadline(), on=False)[1],
               abandon=_exact_abandon, abandons_errors=True),
     StageCase("adaptive_worlds", run=_aw_run,

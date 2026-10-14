@@ -313,9 +313,10 @@ Its wait option (#707 S15), OFF BY DEFAULT: ``SHENGJI_PV_VALUE_DECLARE_WAIT=1``
 -- when the value declaration has decided to DECLARE at a chance during the
 deal (``final=False``; never in the grace window, never when it passes), a
 second `OptionalStage` compares declaring now with staying silent now
-(`declare_wait`): on the first 32 draws of the ordinary pass's stream that
-agree with the other seats' silence (none of them would declare now by the
-heuristic; at most 256 draws), both branches play out the rest of the deal with every other seat declaring by the
+(`declare_wait`): on the first 32 draws of the ordinary pass's stream that pass
+a current-standing heuristic consistency filter (no other seat would declare
+now against the standing declaration; not a likelihood of their past silence;
+uniform draws even under ``vdpw``; at most 256 draws), both branches play out the rest of the deal with every other seat declaring by the
 heuristic, the bot silent; at the deal's end the bot makes one choice among
 its legal options and PASS by the value head's mean over 8 worlds sampled from
 its own end-of-deal view, and that outcome is scored in the outer world.  The

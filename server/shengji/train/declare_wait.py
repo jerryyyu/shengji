@@ -18,12 +18,15 @@ on the same sampled worlds:
 
 The worlds are the ordinary pass's own per-decision stream
 (`value_declare.decision_rng`, `value_declare.sample_declare_world`: complete
-deals consistent with the seat's view), FILTERED: a draw is kept only when no
-other seat would declare now by the heuristic (`silence_consistent`) -- the
-opponent model below must agree with the silence already observed, or the
-simulation makes those seats declare at their very next card, a burst of
-pre-emptions that biases against waiting (on 40 seeded deals ~41% of uniform
-draws failed the filter).  The first `WORLDS_DEFAULT` kept draws are used, at
+deals consistent with the seat's view), FILTERED by a current-standing
+heuristic consistency check: a draw is kept only when no other seat would
+declare against the CURRENT standing declaration by the heuristic
+(`silence_consistent`).  Without it the opponent model below contradicts the
+silence already observed in the most blatant way -- the simulation makes those
+seats declare at their very next card, a burst of pre-emptions that biases
+against waiting (on 40 seeded deals ~41% of uniform draws failed the filter).
+It is a consistency filter, not a likelihood of the observed history: it may
+keep worlds inconsistent with earlier standing states (approximation 3).  The first `WORLDS_DEFAULT` kept draws are used, at
 most `DRAWS_CAP` draws; none kept abandons the pass.  In each kept world both
 branches play out the REST OF THE DEAL in deal order (`continuation_round`, `play_out_deal`): after every card a
 seat other than the decider receives, that seat declares by the heuristic
@@ -61,10 +64,18 @@ Approximations (declared):
    later cards, and can declare earlier than the end), and nobody responds in
    the grace window, before or after the decider's end choice (the ordinary
    pass's own "no counter-declaration" simplification);
-3. the silence filter conditions on each other seat's LAST chance only, and
-   only under the heuristic model (a seat's earlier silences, overridden
+3. the silence filter checks each other seat against the CURRENT standing
+   declaration only, under the heuristic model.  It is not an exact likelihood
+   of any seat's past silence, not even its last one: a stronger declaration
+   made since that chance shrinks the seat's legal options, so "cannot declare
+   now" does not show "would not have declared then" (a seat holding C7 C7
+   that the heuristic would have declared with nothing standing is accepted
+   once another seat's D7 D7 stands).  Worlds inconsistent with earlier
+   standing states can therefore be kept; a seat's earlier silences, overridden
    declarations, and a human's or a value-declaring bot's reasons to wait are
-   not modelled);
+   not modelled.  Under the ``vdpw`` rule the wait pass still draws uniform
+   worlds (`value_declare.sample_declare_world`), not the pass-conditioned
+   ones;
 4. the world banker buries with the heuristic bury (the ordinary pass's model;
    the ``vdsb`` second pass is not repeated here).
 
@@ -149,13 +160,13 @@ def play_out_deal(sim, seat: int) -> int:
 
 
 def silence_consistent(sim, seat: int) -> bool:
-    """Whether the world ``sim`` (from `continuation_round`, before any card
-    is dealt) agrees with every other seat's silence at its most recent
-    declare chance under the heuristic opponent model: none of them would
-    declare now.  A seat's hand has not changed since its last chance and the
-    standing declaration can only have grown stronger (fewer options, and the
-    heuristic's scores do not depend on it), so this is exactly the heuristic
-    likelihood of that seat's last silence (1 or 0)."""
+    """The current-standing heuristic consistency check on the world ``sim``
+    (from `continuation_round`, before any card is dealt): no other seat would
+    declare now, against the CURRENT standing declaration, by the heuristic
+    opponent model.  Not a likelihood of the seats' past silence: when the
+    standing declaration was strengthened after a seat's last chance, that
+    seat's options shrank, so a world in which it would have declared then can
+    still pass (module docstring, approximation 3)."""
     return all(_HEURISTIC.decide_declare(sim, other, final=False) is None
                for other in range(4) if other != seat)
 

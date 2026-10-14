@@ -292,12 +292,16 @@ def test_paired_advantage_changes_allocation_and_final_challenger():
     configs = [SearchConfig(arm="both", puct_scale=1.0, paired_advantage=flag)
                for flag in (False, True)]
     bots = [ControlledBot(config) for config in configs]
+    from shengji.train.search_screen import TimedPolicy
+    traces = []
     for bot in bots:
         bot.REPORT_RULE = "none"
         bot.REPORT_FOLD_WORLDS = 0
         bot.MARGIN = 0.0
         bot.POINT_SHY_EPS = 0.0
-        bot.decide_play(rnd, seat)
+        timed = TimedPolicy(bot)
+        timed.decide_play(rnd, seat)
+        traces.append(timed.decisions[-1])
 
     raw, paired = [bot.last_decision_record for bot in bots]
     assert raw["learned_search"]["ranking_basis"] == "absolute_value_mean"
@@ -307,6 +311,17 @@ def test_paired_advantage_changes_allocation_and_final_challenger():
     assert paired["report_candidate_index"] == 1
     assert paired["means"][0] == 0.0
     assert paired["means"][1] != raw["means"][1]
+    for bot, trace in zip(bots, traces):
+        rec = bot.last_decision_record
+        learned = rec['learned_search']
+        index = rec['report_candidate_index']
+        assert learned['selection_challenger_index'] == index
+        assert learned['selection_paired_n'] == bot.last_alloc['n_by_candidate'][index] > 0
+        for key in ('selection_challenger_index', 'selection_paired_gap',
+                    'selection_paired_n', 'selection_units'):
+            assert trace[key] == learned[key]
+    assert paired['learned_search']['selection_paired_gap'] == paired['means'][1]
+    assert raw['learned_search']['selection_paired_gap'] > raw['means'][2]
 
 
 @pytest.mark.parametrize("value", [0, 1, 1.0, "true", None])

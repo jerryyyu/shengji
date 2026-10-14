@@ -92,6 +92,16 @@ def test_a_hundred_entry_list_keeps_only_its_length():
     assert out["trace_dropped_fields"] == 2
 
 
+def test_legacy_mc_trace_does_not_invent_paired_selection_evidence():
+    rec = dict(candidates=[['C3'], ['C4']], played=['C3'], reason='incumbent',
+               report_candidate_index=1, n_determinizations=4,
+               report_worlds_requested=8)
+    out = _trace(rec)
+    for key in ('selection_challenger_index', 'selection_paired_gap',
+                'selection_paired_n', 'selection_units'):
+        assert out[key] is None
+
+
 def test_boundary_and_no_lists():
     out = _trace({"played": ["S2"], "a": list(range(16)), "b": list(range(17)), "c": []})
     assert out["a"] == list(range(16)) and "b" not in out and out["b__len"] == 17

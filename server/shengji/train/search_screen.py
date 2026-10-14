@@ -154,6 +154,10 @@ class TimedPolicy:
                     "legal_size": learned.get("legal_size"),
                     "production_size": learned.get("production_size"),
                     "ranking_basis": learned.get("ranking_basis"),
+                    "selection_challenger_index": learned.get("selection_challenger_index"),
+                    "selection_paired_gap": learned.get("selection_paired_gap"),
+                    "selection_paired_n": learned.get("selection_paired_n"),
+                    "selection_units": learned.get("selection_units"),
                     "leaf_tricks": learned.get("config", {}).get("leaf_tricks"),
                     "counts": learned.get("counts"),
                 })

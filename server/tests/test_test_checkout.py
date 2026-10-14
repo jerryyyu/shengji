@@ -178,3 +178,34 @@ def test_suffix_is_forwarded_exactly_after_first_separator(tmp_path):
     result = _run(tmp_path, "--engine", "pure", "--", "-q", "--", "tests/x.py")
     assert result.returncode == 0, result.stderr
     assert "fake pytest args: ['-q', '--', 'tests/x.py']" in result.stdout
+
+
+def test_no_tests_collected_is_loud_and_nonzero(tmp_path):
+    result = _run(tmp_path, "--engine", "pure", pytest_exit=5)
+
+    assert result.returncode == 5
+    assert "test_checkout: NO TESTS COLLECTED" in result.stderr
+    assert "${=VAR}" in result.stderr
+
+
+def test_other_exit_statuses_do_not_claim_no_tests(tmp_path):
+    for status in (0, 1):
+        scratch = tmp_path / f"status-{status}"
+        scratch.mkdir()
+        result = _run(scratch, "--engine", "pure", pytest_exit=status)
+        assert result.returncode == status
+        assert "NO TESTS COLLECTED" not in result.stderr
+
+
+def test_real_pytest_collecting_nothing_fails_loudly(tmp_path):
+    empty = tmp_path / "test_empty.py"
+    empty.write_text("# no tests here\n")
+    env = os.environ.copy()
+    env.pop("SHENGJI_FAST", None)
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--engine", "pure", "--",
+         "-q", "-p", "no:cacheprovider", str(empty)],
+        cwd=tmp_path, env=env, text=True, capture_output=True, check=False,
+    )
+    assert result.returncode == 5, result.stdout + result.stderr
+    assert "test_checkout: NO TESTS COLLECTED" in result.stderr

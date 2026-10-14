@@ -162,7 +162,7 @@ def test_the_token_the_digest_and_the_payload_when_on(production_package):
     assert on == RELEASE45_VDPW
     assert on.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-vdpw-r")
     tokens = [token for _, token in pv.RULE_TOKENS]
-    assert tokens.index("vdpw") == tokens.index("vdsb") + 1 == tokens.index("asap") - 1
+    assert tokens.index("vdpw") == tokens.index("vdsb") + 1 == tokens.index("vdw") - 1
     assert pv.RULE_FLAGS["VALUE_DECLARE_PASS_WORLDS"] == "value_declare_pass_worlds"
     every, = names({**env, FLAG: "1", "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST": "1"})
     assert "-vd-vdef-vdpw-r" in every

@@ -41,6 +41,10 @@ arm samples its own 32 worlds, ranks up to 32 candidates with the value head
 and rolls out the finalists -- about a second per bury -- and the declare
 evaluation needs one bury per (world, outcome), 64 x up to 5.  The heuristic
 bury is the hybrid arm's incumbent (its slot 0) and its budget fallback.
+Under the bot's ``vdsb`` rule (`pv_search_policy`, OFF BY DEFAULT) a second
+pass on two outcomes buries with the served wide value-only chooser at a
+reduced width instead (`declare_served_bury`; the ``bury`` argument of
+`declare_outcome_position`).
 
 Candidates that lead to the same (banker, trump) are the same outcome in this
 model (a single and a pair of the same suit; two joker pairs), so each outcome
@@ -65,6 +69,9 @@ MODEL = "uniform-unseen|no-counter-declare|heuristic-bury|heuristic-first-trick|
 #: the same model with the first trick played by the policy head
 #: (`leaf_first_trick`; the ``lpft`` rule of `pv_search_policy`)
 MODEL_POLICY_FIRST_TRICK = MODEL.replace("heuristic-first-trick", "policy-first-trick")
+#: the bury segment of both, which the ``vdsb`` rule of `pv_search_policy`
+#: replaces with `declare_served_bury.MODEL_BURY`
+MODEL_HEURISTIC_BURY = "heuristic-bury"
 PASS = "PASS"
 #: the bury every world's banker makes (stateless)
 _HEURISTIC = HeuristicBot()
@@ -152,13 +159,16 @@ def sample_declare_world(rnd, seat: int, rng: random.Random):
 
 
 def declare_outcome_position(rnd, seat: int, hands, kitty, option, policy=None, *,
-                             first_trick=True):
+                             first_trick=True, bury=None):
     """The engine position the value head scores for ``option`` in one world
     (module docstring, step 2): declare window closed, buried, first trick
     played by ``policy`` (the heuristic).  ``first_trick=False`` returns the
     position with the trick still to play (the banker to lead), for a caller
     that plays it on a batch (`leaf_first_trick.PolicyFirstTrick`, the
-    ``lpft`` rule of `pv_search_policy`).  ``rnd`` is never mutated."""
+    ``lpft`` rule of `pv_search_policy`).  ``bury`` (``callable(world,
+    banker) -> cards``) replaces the heuristic bury (the ``vdsb`` rule of
+    `pv_search_policy`, `declare_served_bury`); None is the heuristic's.
+    ``rnd`` is never mutated."""
     policy = default_finisher() if policy is None else policy
     world = copy.copy(rnd)
     world.hands = [list(h) for h in hands]
@@ -189,7 +199,8 @@ def declare_outcome_position(rnd, seat: int, hands, kitty, option, policy=None, 
     world.turn = None
     world.finalize_declare()
     banker = world.banker
-    world.bury(banker, _HEURISTIC.decide_bury(world, banker))
+    world.bury(banker, _HEURISTIC.decide_bury(world, banker) if bury is None
+               else bury(world, banker))
     if first_trick:
         for _ in range(4):
             actor = world.turn
@@ -198,6 +209,6 @@ def declare_outcome_position(rnd, seat: int, hands, kitty, option, policy=None, 
     return world
 
 
-__all__ = ["SCHEMA", "MODEL", "MODEL_POLICY_FIRST_TRICK", "PASS", "ValueDeclareError",
+__all__ = ["SCHEMA", "MODEL", "MODEL_POLICY_FIRST_TRICK", "MODEL_HEURISTIC_BURY", "PASS", "ValueDeclareError",
            "outcome_key", "candidate_outcomes",
            "decision_rng", "sample_declare_world", "declare_outcome_position"]

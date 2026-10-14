@@ -27,7 +27,7 @@ clients hold WebSockets to it. That drives every deployment rule below.
 ## Release checklist
 
 Preconditions, every release (the gate `AI_POLICIES.md` called "serving qualification"; it has held
-for releases 29–38 and 42–44):
+for releases 29–38 and 42–45):
 
 1. A non-author PASS on the PR at its exact head, and all CI checks green. CI fetches the pinned
    production package and loads it on the tree (`.github/workflows/pr-checks.yml`);
@@ -61,6 +61,7 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 
 | release | deployed (ET) | what changed | package/bot change? | PR(s) | image / rollback |
 |---:|---|---|---|---|---|
+| 45 | 2026-10-13 05:27 | The wide value-only bury on, as two `fly.toml` lines: `SHENGJI_PV_BURY_WIDE_VALUE = '1'` and `SHENGJI_PV_BURY_WIDE_K = '64'` (#974, token `bwv`): the bury candidates widen to 64 and the value head alone picks the bury, no MC stage; same 2 s bury budget and heuristic fallback. Play, declaration, package and other budgets are release 44's (the play digest is unchanged; only the bury digest moves). Built from main, so it also ships main since `8ac9543e`: #972 policy-head first trick, #973 whole-hand lead admission, #975 oracle-worlds diagnostic (all flag-gated off; #975 screen harness only), #955 lead-admission diagnostic, #977 harvest, #984 two-card bury swaps (flag-gated off), the round-end "Buried by <banker> · N pts" row #982, tests and Atlas. Evidence v76bwv44 +0.0488 [+0.0286, +0.0690] vs release 44 as served, first-round deals, POSITIVE, 10/10 windows positive. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8`; same package `491ee4bf…`, same prior `0d17fd03…` | #983 (evidence #707 issuecomment-6136852119; authority 6137203703; rule #974) | `deployment-01M4T9AVEVK51WP2GG8J34NRC9` (Fly v45), digest `sha256:6194eb27e62efab5f0e9218f453e730e7733fcacdeaf4996eef249718389dbcb`, from main `1ca97051`. Merged-tree smoke: bury p50/p90/max 0.218/0.226/0.234 s, 64 candidates, 0 fallbacks, 160 plays max 0.093 s. Rollback: delete the two `SHENGJI_PV_BURY_WIDE_*` lines, restore the release-44 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-44 image. |
 | 44 | 2026-10-11 17:05 | The value-guided trump declaration on, as one `fly.toml` flag: `SHENGJI_PV_VALUE_DECLARE` (#952, token `vd`): at each gated declare chance every option plus PASS is scored by the value head over 64 sampled completions and the heuristic's choice is replaced only when beaten; served off the event loop with stale guards and the heuristic as fallback (#959, #958, #965's gate fix). Package, width, other rules, bury and budgets are release 43's. Evidence v70vd43 +0.0497 [+0.0379, +0.0615] (first-round deals) and v71vd43lr +0.0352 [+0.0233, +0.0471] (later-round deals), both POSITIVE vs release 43 as served, 20/20 windows positive. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6`; same package `491ee4bf…`, same prior `0d17fd03…` | #963 (evidence #707 issuecomment-6103734355 and 6110908081; rule #952; serving #959/#958/#965) | `deployment-01M4PC7724HSXC27PCEEREZWY4` (Fly v44), digest `sha256:d618f2371cd75fe31aad44a1e711cc5a8f13c517ad45ad93bc700d4bacc0abff`, from main `8ac9543e`. Rollback: delete the `SHENGJI_PV_VALUE_DECLARE` line, restore the release-43 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-43 image. |
 | 43 | 2026-10-09 15:46 | The doomed-throw re-select replaces the swap, as one `fly.toml` flag: `SHENGJI_PV_DOOMED_THROW_RESELECT` (#946, token `dtr`) instead of `SHENGJI_PV_DOOMED_THROW_SWAP`. When re-selection completes with an eligible alternative, a doomed throw and its forced component are excluded and the bot re-selects among its remaining admitted leads (reviewed fallbacks: budget abandonment keeps the first selection; all-excluded plays the forced component). A functional correctness fix (YJQJ round 1), no strength claim. Package, width, other rules, bury and budgets are release 42's. Built from main, so it also ships main since `e3aa1724`: the experimental rules adaptive worlds #936, its leads-only scope #944, wide lead admission #945 and value declare #952, all flag-gated off; #949's behaviour-preserving OptionalStage guard refactor, which is active through the re-select; tests/CI; Atlas. Evidence v67dtrg −0.0004 [−0.0122, +0.0114] vs release 42, INCONCLUSIVE, DEPLOY-ELIGIBLE (not noninferiority). | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b`; same package `491ee4bf…`, same prior `0d17fd03…` | #953 (evidence v67dtrg, #707 issuecomment-6080113005; rule #946) | `deployment-01M4H37RYNM42YHH6ZPEC6GKCK` (Fly v43), digest `sha256:2c0d94e2c263e94cf0cdc8b9cf3fce9c5c14d81d646a400b4db813ff0577eb7a`, from main `6b385b55`. Rollback: replace the `SHENGJI_PV_DOOMED_THROW_RESELECT` line with `SHENGJI_PV_DOOMED_THROW_SWAP = '1'`, restore the release-42 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-42 image. |
 | 42 | 2026-10-06 19:08 | The doomed-throw swap on, as one `fly.toml` flag: `SHENGJI_PV_DOOMED_THROW_SWAP` (#830, token `dts`): on a lead whose throw the engine refuses in every sampled world with the same forced component, play that component instead. Package, width, rules, bury and budgets are release 38's. A backend release from main (normal Dockerfile; supersedes the release 39–41 overlay recipe), so it also ships the decision-preserving engine/heuristic perf PRs since release 38's image `c8d487a6` (#736, #772, #773, #798, #825, #836, #896, #897, #898), flag-gated-off #777 and #716, the error-report fix #800, and main's web (release 41 UI #845 + #854). Evidence v57dts −0.000150 [−0.010232, +0.009931] vs release 38, INCONCLUSIVE, DEPLOY-ELIGIBLE (not noninferiority); failed throws −64%. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-273fed4cd40d`; same package `491ee4bf…`, same prior `0d17fd03…` | #918 (evidence v57dts, #707 issuecomment-6026001554; swap #830) | `deployment-01M49QGK2ZP18P143S8BXVW28X` (Fly v42), digest `sha256:05d8b84fdbff096a1622e9913cedf9a3b7652d8aebe97829dea1f29d50a6c8af`, from main `e3aa1724`. Rollback: delete the `SHENGJI_PV_DOOMED_THROW_SWAP` line, restore the release-38 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-41 image. |
@@ -80,50 +81,58 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 | 28 | 2026-09-16 00:5x | JS-M1, the from-scratch joint net, as ONE package (value and prior) inside the MC shortlist. | new package `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747`; served name `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff` | #425 / #435 (#455, #457) | `deployment-01M2M90VYR34R7CWKTTEA4C57V` from main `bf7fde5e`. Rollback: release 27 (`deployment-01M2M1B48P44H5HJXEP6ETYQXE`) or release 24 (`deployment-01M2BGBXE7JXWYBEVWNMG2YM5A`); prior-only rollback removes the four `SHENGJI_CWV_PRIOR_*` settings. |
 | 22–27 | — | The release-28 plan as approved, release 27, the release-26 image rollback, release 25 and its plan, and the release-22 boundary (hybrid bury on W32, the September-8 W32 rollout, the release-19/18 boundaries). | see the archive | — | [docs_archive/w32-fly-serving-through-2026-09-22.md](docs_archive/w32-fly-serving-through-2026-09-22.md), heading "Moved from DEPLOY.md on 2026-10-01". |
 
-## Current production (release 44; release 43 plus the value-guided trump declaration)
+## Current production (release 45; release 44 plus the wide value-only bury)
 
-- Release 44 is a normal backend release built from main `8ac9543e` (#963, squash at the reviewed head
-  `b58de867`) with main's Dockerfile; Fly version v44, image `deployment-01M4PC7724HSXC27PCEEREZWY4`,
-  digest `sha256:d618f2371cd75fe31aad44a1e711cc5a8f13c517ad45ad93bc700d4bacc0abff`, machine
-  `48e7e35a9597e8`, deployed 2026-10-11 17:05 ET (21:05Z) on Jerry's in-session word ("I'm ok to ship" after the
-  first-round screen, "Screen later rounds first" before shipping, then "OK let's deploy" after the later-round
-  screen), 0 rooms at deploy. Built from main, it also ships main's changes since release 43's `6b385b55`: the
-  off-loop declaration serving path (#959) and its per-call deadline hook (#958), the two first-round declare
-  rules (#965, flag-gated off), the fixed-banker screen option (#964, screens only), tests and Atlas.
-- Served bot: `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6`, derived by
-  the registry from the `fly.toml` env and pinned by `tests/test_bury_fly_config.py`.
+- Release 45 is a normal backend release built from main `1ca97051` (#983, squash at the reviewed head
+  `2a2d7844`) with main's Dockerfile; Fly version v45, image `deployment-01M4T9AVEVK51WP2GG8J34NRC9`,
+  digest `sha256:6194eb27e62efab5f0e9218f453e730e7733fcacdeaf4996eef249718389dbcb`, machine
+  `48e7e35a9597e8`, deployed 2026-10-13 05:27 ET (09:27Z) on Jerry's in-session word ("Wide bury", "Smoke test,
+  then ship"; #707 issuecomment-6137203703), 0 rooms at deploy
+  ([deploy record](https://github.com/jerryyyu/shengji/issues/707#issuecomment-6142519054)). Built from main, it
+  also ships main's changes since release 44's `8ac9543e`: the round-end "Buried by <banker> · N pts" row (#982,
+  live); policy-head first trick #972, whole-hand lead admission #973, the oracle-worlds diagnostic #975 (screen
+  harness only) and two-card bury swaps #984, all flag-gated off; the lead-admission diagnostic #955, the #977
+  harvest fix, tests and Atlas.
+- Served bot: `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8`, exactly the
+  name v76bwv44 screened, derived by the registry from the `fly.toml` env and pinned by
+  `tests/test_bury_fly_config.py`.
 - Package: `smv3out-491ee4bf.npz`, sha256
   `491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670` (`/healthz` `pv_search.sha256`);
   prior `0d17fd03…` under `prior` (the retained release-28 keys; threshold 1000, top 256). 64 worlds,
-  8 admitted candidates, 3 s play budget, hybrid bury at 2 s. All unchanged from release 38.
+  8 admitted candidates, 3 s play budget, hybrid bury at 2 s. Package, prior, widths and budgets unchanged from
+  release 38.
 - Search-rule flags, each `'1'`: `SHENGJI_PV_ADMISSION_DIVERSITY`, `SHENGJI_PV_REFUSAL_CONSTRAINTS`,
   `SHENGJI_PV_TIEBREAK_POINTS`, `SHENGJI_PV_LEAD_ANCHOR` (release 38), `SHENGJI_PV_DOOMED_THROW_RESELECT`
-  (release 43) and `SHENGJI_PV_VALUE_DECLARE` (release 44, #952): at each declare chance where the heuristic
-  would declare, or in the grace window, every legal declaration plus PASS is scored by the value head over 64
-  sampled completions of the deal (heuristic bury and first trick inside each world) from the seat's team, and
-  the heuristic's choice is replaced only when beaten. Served through #959: the cheap gate runs inline under the
-  room lock; a gated call copies the round and bot, evaluates in a worker thread through the shared model-search
-  admission, re-takes the lock and applies the declaration only if the round is unchanged; a human who declared
-  meanwhile wins; expiry or error falls back to the heuristic and logs `pv-declare-serving-fallback-v1`.
-- Evidence (ladder row 13 in `AI_POLICIES.md`): v70vd43, ten fresh first-round windows vs release 43 as served,
-  +0.049732 [+0.037941, +0.061522] POSITIVE; v71vd43lr, ten fresh fixed-banker (later-round) windows,
-  +0.035189 [+0.023297, +0.047081] POSITIVE; 20/20 windows positive, clean health, never pooled. Gates as met:
-  Codex PASS at the exact head `b58de867` and CI 8/8; serving smoke on the merged tree `8ac9543e` with the flag
-  on (40 server turns, bury 0.117 s, plays ≤ 0.08 s, every turn committed); `/healthz` after deploy reports the
-  name above, `fast: true`, and the unchanged package and prior.
-- Rollback: in `fly.toml` delete the `SHENGJI_PV_VALUE_DECLARE` line and restore the release-43 `SHENGJI_BOT`
-  kept as the comment directly above it
-  (`pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b`), then
-  `fly deploy --ha=false`; or redeploy the release-43 image:
-  `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:deployment-01M4H37RYNM42YHH6ZPEC6GKCK`
-  (Fly v43). No package moves either way. Deeper: release 42 by swapping the re-select line for the swap line;
+  (release 43), `SHENGJI_PV_VALUE_DECLARE` (release 44, #952; served off the event loop through #959, heuristic
+  on expiry or error, `pv-declare-serving-fallback-v1`), and since release 45 the wide value-only bury
+  `SHENGJI_PV_BURY_WIDE_VALUE = '1'` with `SHENGJI_PV_BURY_WIDE_K = '64'` (#974, token `bwv`): the bury
+  candidate set widens to 64 (the hybrid ballot plus the heuristic incumbent's single-card swaps) and the value
+  head's mean over 32 model worlds picks the bury, with no MC stage; the 2 s bury budget and heuristic fallback
+  are unchanged. Play and declaration are release 44's (the play digest is unchanged; only the bury digest moves).
+- Evidence (ladder row 14 in `AI_POLICIES.md`): v76bwv44, ten fresh first-round windows vs release 44 as served,
+  +0.048824 [+0.028614, +0.069034] POSITIVE, 10/10 windows positive; points +1.309 [+0.877, +1.741]. Not
+  confirmed on fresh seeds, and the arm changes width and chooser together, so the gain is not attributed to
+  either. Gates as met: Codex PASS at the exact head `2a2d7844` and CI 8/8; validated server-path smoke on the
+  merged tree `1ca97051` (`scripts/smoke_release45_bury.py` with its receipt validator, compiled engine, single-thread BLAS, the production packages; receipt sha256
+  `d6d8685be812474376dd23f9707f9aa6c4beef09cd1315ecdfd4081e4c7c77ac`): 40 rounds, 40 buries through `_paced_bot_step` / `_commit_bot_turn`, p50 0.218 / p90 0.226 / max 0.234 s, 64 candidates each (legal pool ≥ 155), 0 fallbacks, 40/40 committed exactly once; 160 play turns, p50 0.061 / max 0.093 s; 129 value-declare decisions, search max 0.059 s; validator PASS; `/healthz` after deploy
+  reports the name above, `fast: true`, bury arm hybrid at 2 s, 64 worlds, 8 candidates, and the unchanged
+  package and prior. The smoke ran on the Mini; Fly's shared CPU is slower, and the first live rooms' `bury`
+  timings are the check.
+- Rollback: in `fly.toml` delete the two `SHENGJI_PV_BURY_WIDE_*` lines and restore the release-44
+  `SHENGJI_BOT` kept as the comment directly above it
+  (`pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6`), then
+  `fly deploy --ha=false`; or redeploy the release-44 image:
+  `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:deployment-01M4PC7724HSXC27PCEEREZWY4`
+  (Fly v44). No package moves either way. Deeper: release 43 by deleting the `SHENGJI_PV_VALUE_DECLARE` line too
+  (image `deployment-01M4H37RYNM42YHH6ZPEC6GKCK`); release 42 by swapping the re-select line for the swap line;
   release 38 by deleting both; release 36 by deleting the four release-38 rule lines as well.
-- Comparator: new screens still compare against release 42 as served (Jerry 2026-10-07); v70/v71 read against
-  release 43 by a one-off ruling for this deploy decision. Moving the comparator to 44 is Jerry's call.
-- Watch list: `/healthz` bot is the name above; `declare_decision` and `pv-declare-serving-fallback-v1` records,
-  `model_search` events with `phase=declare`, `bot_declare_timing`; decision wall p50/p95; the first live room's
-  log. A declare budget-fallback rate above a few percent or any `server-error` fallback is the rollback trigger.
-  Live acceptance pending: the first live room completing a game without fallback records.
+- Comparator: new screens compare against release 45 as served (Jerry, in-session 2026-10-13: "Yes change to
+  45", recorded on #988 issuecomment-6142666693). Confirmations keep their parent's comparator; screens already read
+  against earlier releases (v75lpft44, v76bwv44 vs release 44) keep their declared comparator.
+- Watch list: `/healthz` bot is the name above; `bury` and `model_search` `phase=bury` timings and any
+  `cwv-bury-fallback-v1` record (a budget fallback rate above a few percent is the rollback trigger); the
+  release-44 declare records (`declare_decision`, `pv-declare-serving-fallback-v1`); decision wall p50/p95; the
+  first live room's log. Live acceptance pending: the first live room completing a game without fallback records.
 - Earlier records: releases 28–38 in
   [docs_archive/deploy-releases-28-38.md](docs_archive/deploy-releases-28-38.md); the release 39–41
   overlay recipe in the [#778 release record](https://github.com/jerryyyu/shengji/pull/778#issuecomment-5988860620)
@@ -141,8 +150,11 @@ and bot name are in `fly.toml` and "Current production" above.
 What it does per card-play decision: heuristic anchor first; W sampled worlds through production's
 sampler (void-checked); the policy head ranks the capped legal listing (cap 4,000, the anchor forced in) and admits K with the anchor
 pinned; the value head scores each admitted action's afterstate (current trick finished
-heuristically) in every world; the highest mean plays. Declare is the heuristic; bury is the release-27/28 value-guided hybrid arm on the same package
-(`SHENGJI_PV_BURY_ARM`, `SHENGJI_PV_BURY_*`, `SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS`; `PVSearchBuryBot`). On budget expiry or any search error the sampler RNG is restored and the anchor
+heuristically) in every world; the highest mean plays. Declare is the heuristic through release 43 and, since release
+44, the value-guided declaration (`SHENGJI_PV_VALUE_DECLARE`; fallback record `pv-declare-serving-fallback-v1`). Bury
+is the release-27/28 value-guided hybrid arm on the same package (`SHENGJI_PV_BURY_ARM`, `SHENGJI_PV_BURY_*`,
+`SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS`; `PVSearchBuryBot`), since release 45 with the wide value-only chooser
+(`SHENGJI_PV_BURY_WIDE_VALUE`, `SHENGJI_PV_BURY_WIDE_K`; fallback record `cwv-bury-fallback-v1`). On budget expiry or any search error the sampler RNG is restored and the anchor
 plays with a `pv-search-fallback-v1` record; otherwise the record is `pv-search-decision-v1`
 (carries `played`, the admitted indices, value means, work counts).
 
@@ -203,7 +215,7 @@ SmartBot is p50 0.05ms / p95 0.13ms, direct v11pair is 0.25ms / 0.52ms on the
 numpy path, base N=10 MC is 77ms / 150ms, and an earlier matched benchmark put
 the production report-LCB decision at 0.390s versus 0.127s for `mc-strong`.
 Live Fly time is workload-dependent; the served policy's measured play and
-bury latency is in the release-38 record in `docs_archive/deploy-releases-28-38.md`. Off-loop execution hides event-loop blocking and overlaps
+bury latency is in the merged-tree smoke under "Current production" above (earlier releases: `docs_archive/deploy-releases-28-38.md`). Off-loop execution hides event-loop blocking and overlaps
 the 0.7s pacing floor; it does **not** make search free or let a worker react
 before the latest play. Each turn snapshots only after that play, computes,
 then revalidates before commit. Load-test the chosen policy and concurrent room

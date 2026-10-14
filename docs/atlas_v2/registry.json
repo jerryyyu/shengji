@@ -316,8 +316,8 @@
   },
   {
      "release": 44,
-     "status": "production",
-     "since": "2026-10-11 17:05 ET",
+     "status": "superseded",
+     "since": "2026-10-11 17:05 ET → 2026-10-13 05:27 ET",
      "bot": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6",
      "head": "3e89e86f",
      "package": "smv3out-491ee4bf.npz (sha256 491ee4bf…), release 36's gen-5 SMV3 OUTCOME head, unchanged; prior js-m1-0d17fd03.npz unchanged",
@@ -358,6 +358,53 @@
         "first-round positive results accompany a higher banker share, which the policy itself affects; the arms' role-conditional scores cannot establish that bank capture explains the benefit. The model-free declare-ASAP rule (v73asap43 +0.0507 [+0.0320, +0.0695]) also improves over release 43 in its own screen, as does value declare at every chance (v72vdev43 +0.0660 [+0.0426, +0.0894]); similar point estimates with overlapping intervals establish neither equal gains nor a bound on the model's contribution; no ordering or equivalence among vd / vdef / asap is established and none is established over release 44 (separate screens, not paired contrasts)",
         "comparator for NEW screens stays release 42 as served (Jerry 2026-10-07) except where Jerry rules otherwise; v70/v71/v72/v73 compare against release 43 by his one-off rulings for the value-declare decision (2026-10-11)",
         "rollback: delete the SHENGJI_PV_VALUE_DECLARE line, restore the release-43 SHENGJI_BOT kept as a comment in fly.toml, redeploy; or the release-43 image deployment-01M4H37RYNM42YHH6ZPEC6GKCK"
+     ]
+  },
+  {
+     "release": 45,
+     "status": "production",
+     "since": "2026-10-13 05:27 ET",
+     "bot": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8",
+     "head": "3e89e86f",
+     "package": "smv3out-491ee4bf.npz (sha256 491ee4bf…), release 36's gen-5 SMV3 OUTCOME head, unchanged; prior js-m1-0d17fd03.npz unchanged",
+     "oneline": "Release 44 with the wide value-only bury (bwv, K=64) on. Vs release 44, ten first-round windows: +0.0488 [+0.029, +0.069], POSITIVE, 10/10 positive.",
+     "recipe": "release 44's package, search, rules, declaration and budgets exactly (W64/K8, div + rc + tb + la, dtr, vd, 3 s play / 2 s bury, JS-M1 prior keys) with SHENGJI_PV_BURY_WIDE_VALUE=1 and SHENGJI_PV_BURY_WIDE_K=64 (bwv, #974): the hybrid bury's ballot is widened with the heuristic incumbent's single-card swaps up to 64 candidates and the value head's mean over 32 model worlds picks the bury, with no MC stage; the 2 s bury budget and heuristic fallback are unchanged, and the play digest (radd86676) is unchanged. Built from main 1ca97051 (#983), which also ships the round-end 'Buried by <banker> · N pts' row (#982) and the flag-gated-off #972, #973, #975 and #984. Jerry 2026-10-13: 'Wide bury', 'Smoke test, then ship' (#707 issuecomment-6137203703).",
+     "evidence": [
+        {
+           "what": "v76bwv44: release 44 + bwv K=64 as served vs release 44 as served, each vs the common MC-LCB control, ten fresh 520-cluster windows on FIRST-ROUND deals (cloud, seeds 84060910..84960910 step 100000), POSITIVE, 10/10 windows positive (#707 issuecomment-6136852119)",
+           "point": 0.048824,
+           "lo": 0.028614,
+           "hi": 0.069034,
+           "ref": "v76bwv44"
+        },
+        {
+           "what": "mechanism (descriptive, v76bwv44): banker share 52.3% vs 52.3% (the bury follows the declaration); points margin +1.309 [+0.877, +1.741] per round, the gain in defending the bank; the wide chooser keeps the heuristic incumbent on 3.6% of buries",
+           "point": null,
+           "lo": null,
+           "hi": null,
+           "ref": "v76bwv44"
+        },
+        {
+           "what": "validated server-path smoke on the MERGED tree 1ca97051 (Mini, compiled engine, single-thread BLAS, the production packages; receipt sha256 d6d8685be812474376dd23f9707f9aa6c4beef09cd1315ecdfd4081e4c7c77ac): 40 buries through _paced_bot_step/_commit_bot_turn, p50/p90/max 0.218/0.226/0.234 s, 64 candidates each, 0 fallbacks, 40/40 committed exactly once; 160 plays, max 0.093 s",
+           "point": null,
+           "lo": null,
+           "hi": null,
+           "ref": "#983"
+        },
+        {
+           "what": "/healthz after deploy: bot = the name above, pv_search.sha256 491ee4bf…, prior 0d17fd03…, fast true, bury arm hybrid at 2 s, worlds 64, candidates 8, 0 rooms",
+           "point": null,
+           "lo": null,
+           "hi": null,
+           "ref": "09:27Z"
+        }
+     ],
+     "caveats": [
+        "image deployment-01M4T9AVEVK51WP2GG8J34NRC9 (Fly version 45, digest sha256:6194eb27e62e…), main 1ca97051 (#983, squash at the reviewed head 2a2d7844); Codex PASS at the exact head; CI 8/8; machine 48e7e35a9597e8, 0 rooms at deploy; deployed 2026-10-13 09:27Z (#707 issuecomment-6142519054)",
+        "two changes in one arm: the candidate set widens to 64 AND the value head alone chooses with no MC stage; which of the two carries the gain is not claimed; one screen on first-round deals, not confirmed on fresh seeds, later-round deals not screened",
+        "the bury timings are the Mini's; Fly's shared CPU is slower and was unmeasured at deploy; the first live rooms' bury timings and any cwv-bury-fallback-v1 record are the check (a budget fallback rate above a few percent is the rollback trigger)",
+        "comparator for NEW screens: release 45 as served (Jerry, in-session 2026-10-13: 'Yes change to 45', recorded on #988 issuecomment-6142666693); confirmations keep their parent's comparator; v75lpft44 and v76bwv44 keep release 44",
+        "rollback: delete the two SHENGJI_PV_BURY_WIDE_* lines, restore the release-44 SHENGJI_BOT kept as a comment in fly.toml, redeploy; or the release-44 image deployment-01M4PC7724HSXC27PCEEREZWY4"
      ]
   }
  ],
@@ -1654,6 +1701,69 @@
    "takeaway": "Estimated +0.0507; 95% CI [+0.0320, +0.0695], POSITIVE (10/10 windows); banker share 73%; improves over release 43; no equivalence to v70 shown.",
    "note": "SEALED 10-12 (LANE DONE 04:30:28Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707 issuecomment-6117892131; digests posted on #707 before the read; Codex packet PASS #707. Jerry 2026-10-11: 'It does seem like declare ASAP when it gives chance to be banker in first round seems reasonable as a baseline as well'. Paired +0.050740 [+0.032007,+0.069472], SE 0.009557, MDE80 0.0268, tau 0.0000, Q 7.70 (9 df), I2 0.0%; POSITIVE (v70's CI-bound rule; judged alone). Window deltas +0.0827, +0.0144, +0.0279, +0.0279, +0.0356, +0.0510, +0.0327, +0.0596, +0.0827, +0.0952. Banker share rises from 43.4% to 73.0% (v70vd43 first-round reference 52.6% / 43.7%). Declarations (descriptive): Declare-asap declarations (descriptive): 1.41 per round on the candidate; cards dealt at declaration mean 35.0 (p50 27, p90 81, min 1, max 100); overcalls 33.5% (self 20.3%) of declarations; the comparator carries none. Role-conditional secondaries (descriptive, per arm, not paired): attacker points per attacking round, candidate 75.98 (SE 0.70) vs comparator 77.72 (SE 0.46); points conceded per banking round (lower is better), candidate 70.17 (SE 0.34) vs comparator 65.27 (SE 0.50). These condition on different policy-selected round subsets and do not identify a within-role play-quality effect. The signed points margin (-46.283) is role-confounded. Three separate screens against release 43 (v70vd43 gated vd +0.049732 [+0.037941,+0.061522]; v72vdev43 every chance +0.066012 [+0.042600,+0.089424]; this lane) do not estimate the paired contrasts among vd / vdef / asap; none is established over the others, and superiority over release 44 is not established. Health: all 20 windows 520/520 shards, zero coverage failures. Reader sha256 6114a9ae211d338a8f5e32b5c1ef01f53058d2e478246eb64ae1b3409eded3a0; result sha256 762c262dc8dab281b5a2f1137c4d48e5471774a83921dc9004ce4d9edb6cbfc2; launcher sha256 e30189eaa91e012466e6c42b3b1483e114253b8a2777f3007ce097e5e1065c21; predeclaration sha256 28dff475836479abec1f7488585eca2eb78b02c8ba64d856bb7d9a48522061ac; SHA256SUMS 4b3f906d44d6bbcad0299722fb8e3e1152df6c7b7b79d9eeab9f28b22031f442. Archive ~/shengji-archive/2026-09-13/readouts/v73asap43-asap-vs-r43/."
   },
+  {
+   "id": "v75lpft44",
+   "date": "2026-10-12",
+   "status": "sealed",
+   "box": "perf",
+   "title": "Policy-head first trick in the value leaf vs release 44",
+   "candidate": "Release 44 with SHENGJI_PV_LEAF_POLICY_FIRST_TRICK=1 (#972 lpft: in both value leaves of the served bot, the hybrid bury scoring and the value declaration's outcome position, the first trick is played by the policy head's argmax instead of the heuristic), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-lpft-r157694cf-bury-hybrid-e5d85f7dcf5a; same package smv3out-491ee4bf; dtr and vd on both arms; flag-only contrast. First-round deals. Perf tree claude-main-35 (7b6aec83).",
+   "comparator": "release 44 as served",
+   "vs": 44,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; verdict by CI bounds, judged alone, never pooled",
+   "seeds": "83060910 83160910 83260910 83360910 83460910 83560910 83660910 83760910 83860910 83960910 (perf)",
+   "confidence": 0.95,
+   "point": -0.006132,
+   "lo": -0.01448,
+   "hi": 0.002216,
+   "takeaway": "Estimated -0.0061; 95% CI [-0.0145, +0.0022], INCONCLUSIVE (1/10 windows positive); no gain shown, no noninferiority; not pursued.",
+   "note": "SEALED 10-12 (LANE DONE 20:08:26Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707 issuecomment-6132448617; digests posted on #707 issuecomment-6127093197 before the read. Integrity PASS (the reader's metadata/raw gates). The saved result's machine-readable strength_verdict is WITHHELD_PENDING_HEALTH_AND_PROVENANCE_REVIEW; the statistical result below is the CI-bound label, and integrity PASS is not that health/provenance signoff. Paired -0.006132 [-0.014480,+0.002216], SE 0.004259, MDE80 0.0119, tau 0.0000, Q 2.27 (9 df), I2 0.0%; INCONCLUSIVE (interval spans zero; not a negative result). Window deltas -0.0173, -0.0048, -0.0135, -0.0077, -0.0029, +0.0067, -0.0038, -0.0029, -0.0115, -0.0038 (1/10 positive). Points margin -0.158 [-0.418, +0.101] (descriptive); banker share 52.1% vs 52.1% (equal rounded shares only; declaration frequency, timing and overcalls are not compared, and value-declare evaluation counts differ, 11888 vs 11918); role-split (predeclared, descriptive, per arm, not paired): attacker points per attacking round, candidate 77.04 (SE 0.43) vs comparator 77.10 (SE 0.43); points conceded per banking round (lower is better), candidate 64.11 (SE 0.42) vs comparator 63.75 (SE 0.45). Descriptive own-arm levels vs MC-LCB: lpft 0.2873 [0.2695,0.3052], release 44 0.2932 [0.2754,0.3111]. Leaf telemetry (descriptive): candidate value-declare 11,888 records all policy-leaf, bury 5,416 records (5,234 completed policy-leaf, 182 budget/search-error fallbacks: in-leaf 163, post-leaf 19); comparator value-declare 11,918 and bury 5,418 records all heuristic-leaf, 0 bury fallbacks. Cost (screen-host wall seconds under 14 workers, not serving latency, not Fly): value-declare evaluation p50/p90/max 0.226/0.399/0.855 vs 0.052/0.090/0.252; bury p50/p90/max 1.343/1.670/5.533 vs 0.262/0.314/0.486; play decision p50/p90 0.107/0.162 vs 0.106/0.160. Health: all 20 windows 520/520 shards, zero coverage failures; 1,441,660 expected play calls all recorded, zero known outer timeouts, zero play budget or search-error fallbacks. NOT CLAIMED: noninferiority (inconclusive is not equivalence); any separation of the declare-leaf from the bury-leaf effect (lpft changes both value leaves at once); a deploy. Not pursued: S15's lpft item closes; the flag stays merged, off by default; the next S15 screen was v76bwv44. Reader sha256 008f72aadae088d732e956821005dcc124465dfe377768e45f41952f4ab6f5bb; result sha256 cf7b539625dbefa18c10e2354883f287ce476899a3192467f55ddff73274c4ab; launcher sha256 5a09fec4f3c4d3df3d8210b3024feb8ab4a6ad48a5c8af6e607eb7a339f0b812; predeclaration sha256 4543277e14fb6fb9c1e4c9fb2fb1b0ec0606314c3df00cdb945f6ab063eb4ffe; SHA256SUMS f7487e9e3f825b288efc0b9b4b351502f8aad3f64dc3180da1ef5eaef82f8598. Archive ~/shengji-archive/2026-09-13/readouts/v75lpft44-lpft-vs-r44/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6132448617"
+  },
+  {
+   "id": "v76bwv44",
+   "date": "2026-10-13",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Wide value-only bury (K=64) vs release 44",
+   "candidate": "Release 44 with SHENGJI_PV_BURY_WIDE_VALUE=1 and SHENGJI_PV_BURY_WIDE_K=64 (#974 bwv: the hybrid bury's ballot widened with the heuristic incumbent's single-card swaps up to 64 candidates, the value head's mean over the arm's model worlds picks the argmax, no MC rollout stage; budget expiry or error falls back to the incumbent), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8; same package smv3out-491ee4bf; dtr and vd on both arms; flag-only contrast with two changes in one arm. First-round deals. Cloud tree claude-main-36 (7aad4192).",
+   "comparator": "release 44 as served",
+   "vs": 44,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; verdict by CI bounds, judged alone, never pooled",
+   "seeds": "84060910 84160910 84260910 84360910 84460910 84560910 84660910 84760910 84860910 84960910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.048824,
+   "lo": 0.028614,
+   "hi": 0.069034,
+   "takeaway": "Estimated +0.0488; 95% CI [+0.0286, +0.0690], POSITIVE (10/10 windows); deployed as release 45 (2026-10-13).",
+   "note": "SEALED 10-13 (LANE DONE 02:11:56Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707 issuecomment-6136852119; digests posted on #707 issuecomment-6133397388 before the read. Integrity PASS (the reader's metadata/raw gates). The saved result's machine-readable strength_verdict is WITHHELD_PENDING_HEALTH_AND_PROVENANCE_REVIEW; the statistical result below is the CI-bound label, and integrity PASS is not that health/provenance signoff. Paired +0.048824 [+0.028614,+0.069034], SE 0.010311, MDE80 0.0289, tau 0.0211, Q 15.51 (9 df), I2 42.0%; POSITIVE (CI lower bound > 0; judged alone, never pooled). Window deltas +0.0038, +0.0837, +0.0106, +0.0221, +0.0462, +0.0481, +0.0577, +0.0288, +0.0962, +0.0837 (10/10 positive). Banker share 52.3% vs 52.3%; the points margin +1.309 [+0.877, +1.741] (descriptive) is not role-confounded because the arms differ only in the bury: same deal seeds, the same declare code and play digest (radd86676), and the bury comes after the declaration, so the pre-bury declaration path and banker assignment are matched by construction (the equal shares are consistent with that, not the proof of it); role-split (predeclared, descriptive, per arm, not paired): attacker points per attacking round, candidate 76.22 (SE 0.43) vs comparator 76.22 (SE 0.43); points conceded per banking round (lower is better), candidate 62.56 (SE 0.43) vs comparator 65.01 (SE 0.49). Descriptive own-arm levels vs MC-LCB: bwv 0.3009 [0.2821,0.3198], release 44 0.2520 [0.2333,0.2707]. Bury (descriptive): the wide value-only chooser kept the heuristic incumbent in 195 of 5,437 (3.6%) completed buries (candidate sets min 64 / median 64 / max 64); the hybrid chooser kept it in 3,552 of 5,437 (65.3%) (sets min 9 / median 27 / max 32); zero bury fallbacks on either arm. Cost (screen-host wall seconds under 14 workers, not serving latency, not Fly): bury p50/p90/max 0.369/0.412/0.647 vs 0.216/0.244/0.391; value-declare evaluation p50/p90 0.042/0.077 vs 0.040/0.074; play decision p50/p90 0.090/0.134 vs 0.085/0.128. Health: all 20 windows 520/520 shards, zero coverage failures; 1,447,712 expected play calls all recorded, zero known outer timeouts, zero play budget or search-error fallbacks. NOT CLAIMED: which of the arm's two changes carries the gain (a wider candidate set AND value-only choice with no MC stage; not attributed); serving latency on Fly (screen-host timings only); a deploy. Basis for the release-45 proposal (#983, in review; release 44 remains production; no deploy claim). Reader sha256 9946028efff7971f78e4ee752bbf3e95402aa045ec640794c19fd634550c2a98; result sha256 27237a1e444b88d5c3355219045b6c31e0cea4cbd67fb532b05605344d2b7e7d; launcher sha256 99db64a4e20bc8cdd5140f53387041aee5c2a8594b66c0bcc6ba92996e44381e; predeclaration sha256 5cca3c28fb5f1e497052a3905440d24984ac568506479b0c13f3117e63fc1795; SHA256SUMS 5e8a3d34093a664efef914f33555d1896ce8ba722a9f26e8d2df89e9fdb2a3f8. Archive ~/shengji-archive/2026-09-13/readouts/v76bwv44-bwv-vs-r44/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6136852119"
+  },
+  {
+   "id": "v77bwv2r45",
+   "date": "2026-10-13",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Two-card swaps at K=128 in the wide bury vs release 45",
+   "candidate": "Release 45 with SHENGJI_PV_BURY_WIDE_K=128 and SHENGJI_PV_BURY_WIDE_SWAPS=2 (#984 bwv2: after the structured ballot the wide value-only bury's free slots are filled from one merged stream of the heuristic incumbent's single- and two-card swaps, ordered by the sum of their discard-preference ranks, capped at 128; the value head's mean over the arm's model worlds picks the argmax, no MC stage; budget expiry or error falls back to the incumbent), served as pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv2-7021847bece9; same package smv3out-491ee4bf; bwv, dtr and vd on both arms (the comparator's bury is K=64 with single swaps); flag-only contrast with two changes in one arm. First-round deals. Cloud tree claude-main-37 (1ca97051).",
+   "comparator": "release 45 as served",
+   "vs": 45,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; first-round deals; verdict by CI bounds, judged alone, never pooled",
+   "seeds": "86060910 86160910 86260910 86360910 86460910 86560910 86660910 86760910 86860910 86960910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.003607,
+   "lo": -0.008825,
+   "hi": 0.001611,
+   "takeaway": "Estimated -0.0036; 95% CI [-0.0088, +0.0016], INCONCLUSIVE (3/10 windows positive); no gain over K=64 shown; bury cost doubled; no deploy.",
+   "note": "SEALED 10-13 (LANE DONE 15:01:26Z); readout (Claude, one pass, canonical_lines pasted verbatim) #707 issuecomment-6148806715; digests posted on #707 issuecomment-6148790962 before the read. Integrity PASS (the reader's metadata/raw gates). The saved result's machine-readable strength_verdict is WITHHELD_PENDING_HEALTH_AND_PROVENANCE_REVIEW; the statistical result below is the CI-bound label, and integrity PASS is not that health/provenance signoff. Paired -0.003607 [-0.008825,+0.001611], SE 0.002662, MDE80 0.0075, tau 0.0000, Q 8.22 (9 df), I2 0.0%; INCONCLUSIVE (interval spans zero; neither arm shown ahead; not a negative result and not noninferiority). Window deltas -0.0048, +0.0019, -0.0135, -0.0087, -0.0058, -0.0067, -0.0144, -0.0048, +0.0058, +0.0096 (3/10 positive). Banker share 52.4% vs 52.4%; the points margin +0.002 [-0.117, +0.121] (descriptive) is not role-confounded because the arms differ only in the bury: same deal seeds, the same declare code and play digest (radd86676), and the bury comes after the declaration, so the pre-bury declaration path and banker assignment are matched by construction (the equal shares are consistent with that, not the proof of it); role-split (predeclared, descriptive, per arm, not paired): attacker points per attacking round, candidate 76.54 (SE 0.44) vs comparator 76.54 (SE 0.44); points conceded per banking round (lower is better), candidate 62.59 (SE 0.43) vs comparator 62.59 (SE 0.43). Descriptive own-arm levels vs MC-LCB: bwv2 K=128 0.3070 [0.2880,0.3260], release 45 0.3110 [0.2912,0.3308]. Bury (descriptive): the candidate's wide value-only chooser with two-card swaps kept the heuristic incumbent in 183 of 5,448 (3.4%) completed buries (candidate sets min 128 / median 128 / max 128, cap K=128, 5,448 at the cap); release 45's chooser (single swaps) kept it in 208 of 5,448 (3.8%) (sets min 64 / median 64 / max 64, cap K=64, 5,448 at the cap); keeping the incumbent means the heuristic's own bury, not a quality judgement; zero bury fallbacks at any stage on either arm. Cost (screen-host wall seconds under 14 workers, not serving latency, not Fly): bury p50/p90/max 0.713/0.764/1.132 vs 0.358/0.392/0.611; value-declare evaluation p50/p90 0.041/0.076 vs 0.041/0.075; play decision p50/p90 0.088/0.130 vs 0.088/0.129. Health: all 20 windows 520/520 shards, zero coverage failures; 1,451,064 expected play calls all recorded, zero known outer timeouts, zero play budget or search-error fallbacks. NOT CLAIMED: that the candidate is worse, or noninferior (the interval spans zero); which of the arm's two changes (the cap doubled AND two-card swaps) matters (not attributed); serving latency on Fly (screen-host timings only); a deploy. Disposition: no measurable gain over release 45's K=64 bury at roughly twice its bury cost; no release change; SHENGJI_PV_BURY_WIDE_SWAPS stays merged, off by default; S15's width/swap axis closes for now. Reader sha256 04365eca47e7853194789945fd0bd48c4510f37cf45f5e3fa5544e2f2eaac2bf; result sha256 7152460b92216b9c803db9c79f73ab1e27f98ee18d41d1fe01f11bde8e3a841d; launcher sha256 b1c29bd3b2ecc4ff2a86aa28bd110b31cdee6897eb1305be83d50d8c9d7be3e1; predeclaration sha256 231d3d509d95b95f31cf69034916f7feb70dbd7978b1885ef329f38703c0a4e2; SHA256SUMS 435807c921c9198840a0b14d533e891dec86452accc475058fdd6bb3434b325e. Archive ~/shengji-archive/2026-09-13/readouts/v77bwv2r45-bwv2k128-vs-r45/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6148806715"
+  },
 {
    "id": "v63c12r",
    "date": "2026-10-12",
@@ -2193,8 +2303,8 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 42,
+  "release": 45,
   "status": "confirmed",
-  "note": "Jerry 2026-10-07 (#707 issuecomment-6039234721): new screens compare against release 42 as served (release 38 + the doomed-throw swap). Confirmations keep their parent's comparator (v59d8bestc stays vs release 38)."
+  "note": "New screens compare against release 45 as served (Jerry, in-session 2026-10-13: 'Yes change to 45', recorded on #988 issuecomment-6142666693). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  }
 }

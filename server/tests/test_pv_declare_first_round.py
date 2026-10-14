@@ -89,14 +89,16 @@ def sequence(rnd, bot):
 
 
 def fly_env():
-    """The RELEASE-43 env: production's fly.toml minus the value-declare line.
+    """The RELEASE-43 env: production's fly.toml minus the value-declare and wide-bury lines.
 
-    Production is release 44 (release 43 + SHENGJI_PV_VALUE_DECLARE), so the flag-off
-    identities below are derived from the documented release-43 rollback, exactly as
-    test_bury_arms / test_fixed_tape_policy derive release 38."""
+    Production is release 45 (release 43 + SHENGJI_PV_VALUE_DECLARE + the wide value-only
+    bury SHENGJI_PV_BURY_WIDE_VALUE/_K), so the flag-off identities below are derived from
+    the documented release-43 rollback, exactly as test_bury_arms / test_fixed_tape_policy
+    derive release 38."""
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
     assert env.get(VD) == "1"
-    return {k: v for k, v in env.items() if k != VD}
+    return {k: v for k, v in env.items()
+            if k not in (VD, "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
 
 
 # ------------------------------------------------------------ (a) off: identity
@@ -171,7 +173,9 @@ def test_vdef_token_follows_vd_and_asap_takes_the_declare_slot(production_packag
     assert asap.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-asap-r")
     awl, = names({**RELEASE42_ENV, "SHENGJI_PV_ADAPTIVE_WORLDS_LEADS": "1", ASAP: "1"})
     assert awl.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-awl-asap-r")
-    assert pv.RULE_TOKENS[-5:-2] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
+    assert pv.RULE_TOKENS[-7:-2] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
+                                     ("value_declare_served_bury", "vdsb"),
+                                     ("value_declare_pass_worlds", "vdpw"),
                                      ("declare_asap_first", "asap"))   # then lpft, then the diagnostic orc
     assert pv.RULE_FLAGS["VALUE_DECLARE_EVERY_FIRST"] == "value_declare_every_first"
     assert pv.RULE_FLAGS["DECLARE_ASAP_FIRST"] == "declare_asap_first"

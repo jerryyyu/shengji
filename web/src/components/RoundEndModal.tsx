@@ -21,6 +21,14 @@ function teamName(team: 0 | 1, state?: GameState): string {
   return members.length ? `${colour} team — ${members.join(" & ")}` : `${colour} team`;
 }
 
+/** Card points: 5s are worth 5, 10s and kings 10, everything else 0. */
+function cardPoints(code: string): number {
+  const rank = code.slice(1);
+  if (rank === "5") return 5;
+  if (rank === "10" || rank === "K") return 10;
+  return 0;
+}
+
 export default function RoundEndModal({ state, result }: RoundEndModalProps) {
   const titleId = useId();
   const nextBankerName =
@@ -29,6 +37,14 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
   // kitty_points is the kitty portion of that total.
   const total = result.attacker_points;
   const trickPoints = result.attacker_points - result.kitty_points;
+  // kitty_cards are the 8 cards the banker buried (the server sends rnd.buried).
+  const buriedPoints = result.kitty_cards.reduce((sum, code) => sum + cardPoints(code), 0);
+  const bankerName =
+    state.banker === null
+      ? null
+      : state.banker === state.you
+      ? "you"
+      : state.players.find((p) => p.seat === state.banker)?.name ?? `Seat ${state.banker}`;
 
   if (result.game_over) {
     return (
@@ -56,6 +72,19 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
     <ResultDialog titleId={titleId}>
       <div className="panel modal">
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${result.winner_team}`}>{teamName(result.winner_team, state)} wins the round</h2>
+
+        {result.kitty_cards.length > 0 && (
+          <div className="kitty-reveal">
+            <div className="kitty-reveal-label">
+              {bankerName ? `Buried by ${bankerName}` : "Buried"} · {buriedPoints} pts
+            </div>
+            <div className="kitty-cards">
+              {result.kitty_cards.map((code, i) => (
+                <Card key={i} code={code} />
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="result-grid">
           <span className="result-label">Trick points</span>
@@ -112,15 +141,6 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
             ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
             : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
         </p>
-
-        <div className="kitty-reveal">
-          <div className="kitty-reveal-label">Kitty</div>
-          <div className="kitty-cards">
-            {result.kitty_cards.map((code, i) => (
-              <Card key={i} code={code} />
-            ))}
-          </div>
-        </div>
 
         {(() => {
           // Everyone reviews the round at their own pace: the server only

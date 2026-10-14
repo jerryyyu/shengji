@@ -168,9 +168,16 @@ def bury_state(index):
 
 
 def fly_env():
+    """The RELEASE-44 env: production's fly.toml minus the two wide-bury lines.
+
+    Production is release 45 (release 44 + SHENGJI_PV_BURY_WIDE_VALUE/_K, #974), so the
+    release-44 identities here and in the modules that import this helper are derived from
+    the documented release-44 rollback."""
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
     assert env.get(VD) == "1"
-    return env
+    assert (env.get("SHENGJI_PV_BURY_WIDE_VALUE"), env.get("SHENGJI_PV_BURY_WIDE_K")) == ("1", "64")
+    return {k: v for k, v in env.items()
+            if k not in ("SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
 
 
 def best_single(cards, log_odds=NEGATIVE):
@@ -348,7 +355,9 @@ def test_token_is_last_digest_moves_and_payload_names_the_policy_leaf(production
     assert asap.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-asap-lpft-r")
     vd, = names({**RELEASE42_ENV, VD: "1", "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST": "1", FLAG: "1"})
     assert vd.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-vd-vdef-lpft-r")
-    assert pv.RULE_TOKENS[-5:-1] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
+    assert pv.RULE_TOKENS[-7:-1] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
+                                     ("value_declare_served_bury", "vdsb"),
+                                     ("value_declare_pass_worlds", "vdpw"),
                                      ("declare_asap_first", "asap"),
                                      ("leaf_policy_first_trick", "lpft"))   # then the diagnostic orc
     assert pv.RULE_FLAGS["LEAF_POLICY_FIRST_TRICK"] == "leaf_policy_first_trick"

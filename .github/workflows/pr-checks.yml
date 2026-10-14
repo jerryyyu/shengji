@@ -238,6 +238,9 @@ jobs:
             tests/test_pv_doomed_throw_reselect.py \
             tests/test_pv_value_declare.py \
             tests/test_pv_declare_first_round.py \
+            tests/test_pv_declare_served_bury.py \
+            tests/test_pv_declare_pass_worlds.py \
+            tests/test_declare_pass_evidence.py \
             tests/test_lead_root_capture.py \
             tests/test_lead_capture_collector.py \
             tests/test_xmtj_throw_regressions.py \
@@ -253,7 +256,9 @@ jobs:
             tests/test_pv_serving_smoke.py \
             tests/test_pv_refusal_event_complete.py \
             tests/test_pv_sampler_telemetry.py \
-            tests/test_tactical_public_observations.py
+            tests/test_tactical_public_observations.py \
+            tests/test_exact_first_trick.py \
+            tests/test_qualify_first_trick.py
 
   luna-profiles:
     runs-on: ubuntu-latest

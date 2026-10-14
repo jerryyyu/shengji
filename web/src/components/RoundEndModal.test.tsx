@@ -96,3 +96,24 @@ describe("round end modal", () => {
     expect(renderModal(makeResult())).not.toContain("Games won");
   });
 });
+
+describe("buried kitty reveal", () => {
+  it("names the banker and the points in the bury, above the score", () => {
+    const text = renderModal(makeResult({ kitty_cards: ["S5", "HK", "D10", "C3", "C4", "C6", "C7", "C8"] }));
+    expect(text).toContain("Buried by you · 25 pts");
+    expect(text.indexOf("Buried by")).toBeLessThan(text.indexOf("Trick points"));
+  });
+
+  it("uses the banker's name for another seat and counts a pointless bury as 0", () => {
+    const other = { ...state, banker: 1 };
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    act(() => { root.render(<RoundEndModal state={other} result={makeResult({ kitty_cards: ["S2", "S3", "S4", "S6", "S7", "S8", "S9", "SJ"] })} />); });
+    expect(host.textContent).toContain("Buried by Robin · 0 pts");
+  });
+
+  it("shows nothing when there are no buried cards", () => {
+    expect(renderModal(makeResult())).not.toContain("Buried");
+  });
+});

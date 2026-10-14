@@ -394,6 +394,24 @@ the bury token becomes ``-bwv2`` and the record's ``wide_value`` gains ``swaps``
 and ``two_swap_count``.  ``swaps=1`` leaves every name, identity, record and
 decision of the chooser exactly as without the setting.
 
+Its optional second stage (#707 S15), OFF BY DEFAULT: ``SHENGJI_PV_BURY_TWO_STAGE=1``
+(`bury_two_stage`; ``0`` or ``1``, refused without ``SHENGJI_PV_BURY_WIDE_VALUE=1``)
+keeps the chooser's value argmax as stage 1 and re-scores the value top
+``_BURY_TWO_STAGE_TOP`` (default 4) on ``_BURY_TWO_STAGE_WORLDS`` (32) fresh worlds
+common to every candidate, each position played ``_BURY_TWO_STAGE_TRICKS`` (2) whole
+tricks by the policy head before the value head scores it (an ended round: its
+outcome); the stage-1 argmax stays unless the best stage-2 mean beats its own
+stage-2 mean by more than ``_BURY_TWO_STAGE_MARGIN`` (0.0) and by more than
+``_BURY_TWO_STAGE_Z`` (1.0) paired standard errors.  The stage has its own deadline,
+``min(_BURY_TWO_STAGE_SECONDS (1.0) after it starts, the bury budget less 0.25 s)``, and
+on an expiry or an error keeps the stage-1 argmax (never the heuristic fallback).
+On, the identity's ``wide_value`` gains ``two_stage`` (the stage and its six
+parameters), the bury token gains ``-bts`` after ``-bwv``/``-bwv2``
+(``...-bury-hybrid-bwv-bts-<12 hex>``) and the record ``two_stage``.  Off, it is
+absent from the identity, the bot's instance state and every record.  The value
+declaration's served-bury world model (``vdsb``) keeps its own reduced stage-1
+chooser either way.
+
 DIAGNOSTIC ONLY, never served (#707 S16, the perfect-information ceiling), OFF
 BY DEFAULT: ``SHENGJI_PV_ORACLE_WORLDS=1`` (token ``orc``, the last rule token
 after ``lpft``; enters the recipe digest) replaces the W sampled completions of
@@ -455,6 +473,7 @@ from .cwv_bury_policy import (_ARMS as BURY_ARMS, _MODEL_ARMS as BURY_MODEL_ARMS
                               BuryPolicyError, CWVBuryConfig,
                               CWVBuryMixin, _serving_budget as _bury_budget)
 from .leaf_first_trick import PolicyFirstTrick
+from .bury_two_stage import (TOKEN as BURY_TWO_STAGE_TOKEN, TwoStageConfig as BuryTwoStageConfig)
 from .bury_wide_value import (WIDE_K_DEFAULT as BURY_WIDE_K_DEFAULT, CHOOSER as BURY_WIDE_CHOOSER,
                               WIDE_K_MAX as BURY_WIDE_K_MAX,
                               WIDE_SWAPS_DEFAULT as BURY_WIDE_SWAPS_DEFAULT,
@@ -577,6 +596,16 @@ _BURY_WIDE_K_REQUIRES = ("bury_wide_k needs bury_wide_value "
 BURY_WIDE_SWAPS_PARAM = {"BURY_WIDE_SWAPS": "bury_wide_swaps"}
 _BURY_WIDE_SWAPS_REQUIRES = ("bury_wide_swaps needs bury_wide_value "
                              "(SHENGJI_PV_BURY_WIDE_SWAPS needs SHENGJI_PV_BURY_WIDE_VALUE=1)")
+#: the optional second stage of the wide chooser (module docstring;
+#: `bury_two_stage`): the flag, and its parameters (env suffix ->
+#: `bury_two_stage.TwoStageConfig` field), each refused without the flag; kept
+#: out of every flag-off construction (the bot's keyword is a config or None)
+BURY_TWO_STAGE_FLAG = {"BURY_TWO_STAGE": "bury_two_stage"}
+BURY_TWO_STAGE_PARAMS = {"BURY_TWO_STAGE_TOP": "top", "BURY_TWO_STAGE_WORLDS": "worlds",
+                         "BURY_TWO_STAGE_TRICKS": "tricks", "BURY_TWO_STAGE_MARGIN": "margin",
+                         "BURY_TWO_STAGE_Z": "z", "BURY_TWO_STAGE_SECONDS": "seconds"}
+_BURY_TWO_STAGE_REQUIRES = ("bury_two_stage needs bury_wide_value "
+                            "(SHENGJI_PV_BURY_TWO_STAGE=1 needs SHENGJI_PV_BURY_WIDE_VALUE=1)")
 #: the DIAGNOSTIC perfect-information rule (module docstring; #707 S16): the
 #: play worlds are the one true deal, supplied by the screen harness's hook;
 #: never served
@@ -2046,16 +2075,20 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
     bury_wide_value = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"]
     bury_wide_k = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"]
     bury_wide_swaps = BURY_WIDE_SWAPS_DEFAULT
+    #: its optional second stage (`bury_two_stage`): None (off) or a config
+    bury_two_stage = None
 
     def __init__(self, predict, *, evaluator, version: int, config: PVSearchConfig,
                  checkpoint: str, seed: int = 0, bury_arm: str = "hybrid",
                  bury_config: CWVBuryConfig | None = None, bury_serving_budget_seconds=None,
                  bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
                  bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
-                 bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT):
+                 bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
+                 bury_two_stage: BuryTwoStageConfig | None = None):
         if bury_arm not in BURY_ARMS:
             raise BuryPolicyError(f"unknown bury arm {bury_arm!r}")
         _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
+        _check_bury_two_stage(bury_wide_value, bury_two_stage)
         # bound before the base constructor: its ``leaf_policy_first_trick`` effect
         # check asks whether a model bury arm (a value leaf) exists
         self._leaf_bury_arm = bury_arm
@@ -2075,6 +2108,9 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
             if bury_wide_swaps != BURY_WIDE_SWAPS_DEFAULT:
                 # likewise: a swaps=1 bot is exactly today's flag-on bot
                 self.bury_wide_swaps = bury_wide_swaps
+            if bury_two_stage is not None:
+                # likewise: a bot without the second stage is exactly release 45's
+                self.bury_two_stage = bury_two_stage
         if self.value_declare_served_bury and not self.bury_wide_value:
             raise PVSearchPolicyError(_VALUE_DECLARE_SERVED_BURY_NO_EFFECT)
 
@@ -2143,6 +2179,17 @@ def _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k,
             raise PVSearchPolicyError(_BURY_WIDE_K_REQUIRES)
         if type(bury_wide_swaps) is not int or bury_wide_swaps != BURY_WIDE_SWAPS_DEFAULT:
             raise PVSearchPolicyError(_BURY_WIDE_SWAPS_REQUIRES)
+
+
+def _check_bury_two_stage(bury_wide_value, bury_two_stage) -> None:
+    """``bury_two_stage`` is None (off) or a `bury_two_stage.TwoStageConfig`,
+    and it needs the wide chooser it extends."""
+    if bury_two_stage is None:
+        return
+    if type(bury_two_stage) is not BuryTwoStageConfig:
+        raise PVSearchPolicyError("bury_two_stage must be a TwoStageConfig or None")
+    if not bury_wide_value:
+        raise PVSearchPolicyError(_BURY_TWO_STAGE_REQUIRES)
 
 
 def _check_leaf_policy_effect(config: PVSearchConfig, bury_arm) -> None:
@@ -2216,6 +2263,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
                        bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
                        bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
+                       bury_two_stage: BuryTwoStageConfig | None = None,
                        oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"],
                        oracle_deal=None
                        ) -> PVSearchBot:
@@ -2271,6 +2319,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     recipe_payload(config)   # refuses a non-bool rule flag before anything loads
     _check_leaf_policy_effect(config, bury_arm)
     _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
+    _check_bury_two_stage(bury_wide_value, bury_two_stage)
     _check_served_bury_effect(config, bury_arm, bury_wide_value)
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -2306,6 +2355,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                 if bury_wide_value else {})
         if bury_wide_value and bury_wide_swaps != BURY_WIDE_SWAPS_DEFAULT:
             wide["bury_wide_swaps"] = bury_wide_swaps
+        if bury_two_stage is not None:
+            wide["bury_two_stage"] = bury_two_stage
         bot = build(predict, evaluator=evaluator, version=predict.version, config=config,
                     checkpoint=path, seed=int(seed), bury_arm=bury_arm,
                     bury_config=bury_config,
@@ -2357,6 +2408,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         bury_wide_value: bool = BURY_WIDE_VALUE_DEFAULTS["bury_wide_value"],
                         bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
                         bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
+                        bury_two_stage: BuryTwoStageConfig | None = None,
                         oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"]
                         ) -> dict:
     """``{name: factory}`` for one recipe; the factory takes ``seed=`` from `make_bot`.
@@ -2394,6 +2446,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
     recipe_payload(config)   # refuses a non-bool rule flag
     _check_leaf_policy_effect(config, bury_arm)
     _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
+    _check_bury_two_stage(bury_wide_value, bury_two_stage)
     _check_served_bury_effect(config, bury_arm, bury_wide_value)
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -2429,6 +2482,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                 # two-card swaps: only then does the identity (and the token) change
                 bury_identity["wide_value"]["swaps"] = int(bury_wide_swaps)
                 token = f"-{BURY_WIDE_TOKEN_TWO_SWAPS}"
+            if bury_two_stage is not None:
+                # the second stage: only then does the identity gain it (and the name its token)
+                bury_identity["wide_value"]["two_stage"] = bury_two_stage.identity()
+                token += f"-{BURY_TWO_STAGE_TOKEN}"
         encoded = json.dumps(bury_identity, sort_keys=True, separators=(",", ":")).encode()
         name = f"{name}-bury-{bury_arm}{token}-{hashlib.sha256(encoded).hexdigest()[:12]}"
         bury_config, bury_serving_budget_seconds = bconfig, bbudget
@@ -2473,6 +2530,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                leaf_policy_first_trick=config.leaf_policy_first_trick,
                                bury_wide_value=bury_wide_value, bury_wide_k=bury_wide_k,
                                bury_wide_swaps=bury_wide_swaps,
+                               bury_two_stage=bury_two_stage,
                                oracle_worlds=config.oracle_worlds,
                                oracle_deal=oracle_deal),
             name)
@@ -2506,7 +2564,10 @@ def pv_env_recipe(environ=None) -> dict:
     ``_VALUE_DECLARE=1`` or the wide chooser (`_check_served_bury_effect`).  ``_BURY_WIDE_VALUE`` (``0`` or ``1``; needs ``_BURY_ARM``,
     a hybrid/value one) and its ``_BURY_WIDE_K`` cap (an int in [2, 128]) and
     ``_BURY_WIDE_SWAPS`` depth (``1`` or ``2``; both refused unless ``_BURY_WIDE_VALUE=1``)
-    select the wide value-only bury chooser (module docstring).
+    select the wide value-only bury chooser (module docstring), and ``_BURY_TWO_STAGE``
+    (``0`` or ``1``; needs ``_BURY_WIDE_VALUE=1``) with its ``_BURY_TWO_STAGE_TOP`` /
+    ``_WORLDS`` / ``_TRICKS`` / ``_MARGIN`` / ``_Z`` / ``_SECONDS`` parameters (each refused
+    unless ``_BURY_TWO_STAGE=1``) its second stage.
     ``_ORACLE_WORLDS=1`` (the diagnostic) registers a name whose factory REFUSES to build
     without the screen harness's ``oracle_deal`` hook (`_check_oracle_hook`), so the game
     server can never serve it; `api.server` refuses the flag at import besides."""
@@ -2606,4 +2667,32 @@ def pv_env_recipe(environ=None) -> dict:
         if raw not in ("1", "2"):
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 1 or 2, not {raw!r}")
         recipe[key] = int(raw)
+    # the wide chooser's second stage: 0/1, and its parameters only with it on
+    two_stage = False
+    for suffix in BURY_TWO_STAGE_FLAG:
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, ""):
+            continue
+        if raw not in ("0", "1"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 0 or 1, not {raw!r}")
+        if raw == "1":
+            if not recipe.get("bury_wide_value"):
+                raise PVSearchPolicyError(_BURY_TWO_STAGE_REQUIRES)
+            two_stage = True
+    params = {}
+    for suffix, field in BURY_TWO_STAGE_PARAMS.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, ""):
+            continue
+        if not two_stage:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} needs {ENV_PREFIX}BURY_TWO_STAGE=1")
+        try:
+            params[field] = float(raw) if field in ("margin", "z", "seconds") else int(raw)
+        except ValueError:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not a number: {raw!r}") from None
+    if two_stage:
+        try:
+            recipe["bury_two_stage"] = BuryTwoStageConfig(**params)
+        except BuryPolicyError as exc:
+            raise PVSearchPolicyError(str(exc)) from None
     return recipe

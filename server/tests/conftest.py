@@ -18,6 +18,12 @@ import pytest
 TESTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(TESTS))
 from review_ledger_guard import enforce_pr_head_extends_base
+# Hooks: a production_package test that skips FAILS under SHENGJI_REQUIRE_PV_PACKAGE=1.
+from production_package_gate import (  # noqa: F401
+    pytest_collection_modifyitems,
+    pytest_configure,
+    pytest_runtest_makereport,
+)
 
 sys.path.insert(0, ".")
 

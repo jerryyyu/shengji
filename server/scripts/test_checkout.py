@@ -18,6 +18,7 @@ from types import ModuleType
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = SERVER_DIR / "shengji"
+NO_TESTS_COLLECTED = 5  # pytest.ExitCode.NO_TESTS_COLLECTED; always nonzero, never a pass
 
 
 class CheckoutError(RuntimeError):
@@ -159,7 +160,17 @@ def main(argv: list[str] | None = None) -> int:
 
     import pytest
 
-    return int(pytest.main(pytest_args))
+    code = int(pytest.main(pytest_args))
+    if code == NO_TESTS_COLLECTED:
+        # A run that executed nothing is never a pass; usually the test paths were
+        # passed as one word (zsh does not split "$VAR" unquoted).
+        print(
+            "test_checkout: NO TESTS COLLECTED "
+            "(check argument splitting; in zsh use ${=VAR})",
+            file=sys.stderr,
+            flush=True,
+        )
+    return code
 
 
 if __name__ == "__main__":

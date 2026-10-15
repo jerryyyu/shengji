@@ -3,8 +3,12 @@
     train_cwv.py train --data DIR [--data DIR ...] [--eval-luna PATH] --out DIR
         --arch mlp|seq [--device mps|cpu] [--limit-clusters N] [--aux-points]
         [--seed N] [--public-head CKPT] [--epochs 20] [--batch-size 1024]
-        [--select-metric val_ce|val_rank_regret|val_rank_regret_at_K|val_points_mae]
-        [--val-rank-records N]
+        [--select-metric val_ce|val_rank_regret|val_rank_regret_at_K|val_points_mae|
+                         val_served_rank_regret[_points]]
+        [--val-rank-records N] [--served-rank-deals N [--served-rank-per-bucket K]]
+        [--lr-schedule constant|cosine|linear [--lr-final-scale F]]
+        [--weight-average none|ema|swa [--ema-decay D | --swa-start-epoch E]
+         [--select-averaged]] [--window SHARDS]
         [--init CKPT [--init-lr-scale F] [--init-exclude-exposed]] ...
     train_cwv.py evaluate --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR
         [--split test|novel|val|train|all] [--public-head CKPT]
@@ -74,6 +78,28 @@ which search designs consume which head on which positions, and which of
 them read the top-1 shape and which the top-k shape.  ``rank_regret`` and
 ``rank_regret_at_k`` alike are the level-bracket transform of the search's
 MEAN points, U(E[points]), an MC-ranking proxy -- not E[U].
+
+``rank_regret`` is not the quantity the served search consumes.  At one
+record per deal it reads almost only trick-0 decisions.  It scores
+immediate afterstates where the search scores trick-finished leaves.  On
+pv-search records its truth is the producer's own sampled-world means.
+``--served-rank-deals N`` adds ``train.served_rank``'s served-leaf ranking
+on N val deals: records spread over early/mid/late tricks by a seeded hash,
+candidates scored at the trick-finished leaf on the true world, truth from
+the true-world heuristic continuation.  Its keys are ``served_rank_regret``
+(bucket-balanced), ``served_rank_regret_points``, ``served_by_trick`` and
+``served_search_regret``, and ``--select-metric val_served_rank_regret``
+selects on it.  ``scripts/served_rank_regret.py`` scores saved checkpoints
+and packages the same way.
+
+Optimiser noise (all off by default, so an unchanged command line trains
+what it trained before): ``--lr-schedule cosine|linear`` decays the AdamW
+rate per step to ``--lr-final-scale`` over the planned epochs;
+``--weight-average ema|swa`` keeps an average of the weights, validates it
+beside the raw weights every epoch (``val.averaged``) and saves it as
+``checkpoints/epoch-NN.avg.pt``; ``--select-averaged`` selects on it.
+``--window`` widens the shuffle window (the default 64 shards puts about 51
+deals in a 1,024-row batch).
 
 Labelled harvest holdouts (``--eval-holdout NAME=PATH``, repeatable)
 --------------------------------------------------------------------
@@ -273,6 +299,24 @@ for _k in RANK_KS:
         f"legal enumeration; levels are U(E[points]), the bracket transform of the search's "
         f"MEAN points -- an MC-ranking proxy, not E[U])")
 del _k
+#: The served-leaf ranking (``train.served_rank``), opt-in with
+#: ``--served-rank-deals``: records spread over the round by a seeded hash,
+#: candidates scored at the trick-finished leaf on the true world, truth from
+#: the true-world heuristic continuation (never a model's own search means).
+SELECT_METRICS["val_served_rank_regret"] = (
+    "served_rank_regret",
+    "validation served-leaf rank regret of the level head (train.served_rank): candidates "
+    "scored at the leaf the served search scores (trick finished by the heuristic) on the "
+    "true world; truth = the true-world heuristic continuation's signed level; records "
+    "chosen per deal and trick bucket by sha256(seed|source_ref); bucket-balanced over "
+    "early/mid/late tricks")
+SELECT_METRICS["val_served_rank_regret_points"] = (
+    "served_rank_regret_points",
+    "validation served-leaf rank regret in the acting team's rollout points (train.served_rank; "
+    "the same records, leaves and continuation as val_served_rank_regret on a finer scale)")
+#: ``--lr-schedule`` kinds and ``--weight-average`` kinds (both off by default).
+LR_SCHEDULES = ("constant", "cosine", "linear")
+WEIGHT_AVERAGES = ("none", "ema", "swa")
 #: New trainings default to encoder v2. Jerry, 2026-09-08, with cost explicitly
 #: set aside. This is a DECISION UNDER UNCERTAINTY, not a demonstrated win: the
 #: v2 encoder's own effect crosses zero at both data sizes (+0.0510 [-0.006,
@@ -291,6 +335,9 @@ DEFAULTS = {
     "seq_width": 64, "seq_layers": 2, "seq_heads": 4, "seq_feedforward": 128,
     "bench_batch": 1024, "select_metric": "val_ce", "val_rank_records": 20_000,
     "init_lr_scale": 1.0,
+    "served_rank_deals": 0, "served_rank_per_bucket": 1,
+    "lr_schedule": "constant", "lr_final_scale": 0.0,
+    "weight_average": "none", "ema_decay": 0.9999, "swa_start_epoch": 1,
     # A fresh run has no checkpoint to read a version from, so this is where the
     # version is chosen.  It became 2 on 2026-09-08, so an unchanged command line
     # now produces v2 (560 + 1) checkpoints; pass --encoder-version 1 for the
@@ -973,6 +1020,116 @@ def search_facing(model: ValueNetwork, ev: Mapping[str, np.ndarray],
     return block
 
 
+def served_set_for(store: CwvBlockStore, keys: set[str], cache: Path | None, *, deals: int,
+                   per_bucket: int, seed: int, workers: int, label: str,
+                   progress: Callable[[str], None] | None, version: int = ENC_VERSION):
+    """The split's memoised ``served_rank.ServedCandidateSet`` over ``deals``
+    of its deals (chosen by ``served_rank.served_deals``); None when off."""
+    if deals <= 0:
+        return None
+    from .served_rank import ensure_served_set, served_deals
+    chosen = set(served_deals(keys, int(deals), int(seed)))
+    with rng_guard():
+        return ensure_served_set(shard_keys_of(store, chosen), cache,
+                                 per_bucket=int(per_bucket), seed=int(seed), workers=workers,
+                                 label=label, progress=progress, version=version)
+
+
+def served_facing(model: ValueNetwork, sset, device: torch.device, *, batch_size: int) -> dict:
+    """``served_rank.served_rank_metrics`` for ``model`` on ``sset``, plus
+    the seconds the candidate forward took."""
+    from .served_rank import served_rank_metrics
+    t0 = time.perf_counter()
+    levels = (None if sset is None or sset.records == 0
+              else rank_levels(model, sset.cands, device, batch_size=batch_size))
+    block = served_rank_metrics(levels, sset) if levels is not None \
+        else served_rank_metrics(np.zeros(0), None)
+    block["served_secs"] = round(time.perf_counter() - t0, 3)
+    return block
+
+
+def lr_factor(kind: str, step: int, planned: int, final_scale: float) -> float:
+    """The ``--lr-schedule`` multiplier after ``step`` optimiser steps of
+    ``planned``: 1 throughout for ``constant``; ``cosine`` and ``linear`` fall
+    from 1 to ``final_scale`` and stay there past ``planned``."""
+    if kind == "constant":
+        return 1.0
+    progress = min(1.0, max(0.0, step / max(1, int(planned))))
+    if kind == "cosine":
+        shape = 0.5 * (1.0 + math.cos(math.pi * progress))
+    elif kind == "linear":
+        shape = 1.0 - progress
+    else:
+        raise TrainError(f"--lr-schedule must be one of {LR_SCHEDULES}")
+    return float(final_scale) + (1.0 - float(final_scale)) * shape
+
+
+class WeightAverage:
+    """An average of the trained parameters, evaluated beside the raw ones.
+
+    ``ema``: ``avg <- decay * avg + (1 - decay) * w`` after every optimiser
+    step, starting from the weights at step 0 (the init when warm-starting).
+    ``swa``: the equal-weight mean of the weights after every step from the
+    first step of ``start_epoch`` on.  ``swapped()`` puts the average into the
+    live parameters (the model and the aux head) and restores the raw ones.
+    """
+
+    def __init__(self, params: Sequence[torch.nn.Parameter], kind: str, *, decay: float,
+                 start_epoch: int):
+        if kind not in ("ema", "swa"):
+            raise TrainError(f"--weight-average must be one of {WEIGHT_AVERAGES}")
+        self.params = list(params)
+        self.kind = kind
+        self.decay = float(decay)
+        self.start_epoch = int(start_epoch)
+        self.updates = 0
+        self.shadow = ([p.detach().clone() for p in self.params] if kind == "ema" else None)
+
+    @torch.no_grad()
+    def update(self, epoch: int) -> None:
+        if self.kind == "ema":
+            for avg, p in zip(self.shadow, self.params):
+                avg.lerp_(p.detach(), 1.0 - self.decay)
+            self.updates += 1
+            return
+        if epoch < self.start_epoch:
+            return
+        if self.shadow is None:
+            self.shadow = [p.detach().clone() for p in self.params]
+            self.updates = 1
+            return
+        self.updates += 1
+        for avg, p in zip(self.shadow, self.params):
+            avg.lerp_(p.detach(), 1.0 / self.updates)
+
+    @property
+    def ready(self) -> bool:
+        return self.shadow is not None and self.updates > 0
+
+    @contextlib.contextmanager
+    def swapped(self):
+        if not self.ready:
+            raise TrainError("the weight average has no update yet")
+        raw = [p.detach().clone() for p in self.params]
+        with torch.no_grad():
+            for p, avg in zip(self.params, self.shadow):
+                p.copy_(avg)
+        try:
+            yield
+        finally:
+            with torch.no_grad():
+                for p, r in zip(self.params, raw):
+                    p.copy_(r)
+
+    def payload(self) -> dict:
+        out: dict[str, Any] = {"kind": self.kind, "updates": int(self.updates)}
+        if self.kind == "ema":
+            out["decay"] = self.decay
+        else:
+            out["start_epoch"] = self.start_epoch
+        return out
+
+
 def parse_holdouts(specs: Sequence[str] | None) -> dict[str, str]:
     """``--eval-holdout NAME=PATH`` (repeatable) -> ``{name: path}``; names
     are unique identifiers, paths must exist."""
@@ -1513,6 +1670,14 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  init_lr_scale: float = DEFAULTS["init_lr_scale"],
                  init_exclude_exposed: bool = False,
                  encoder_version: int = DEFAULTS["encoder_version"],
+                 served_rank_deals: int = DEFAULTS["served_rank_deals"],
+                 served_rank_per_bucket: int = DEFAULTS["served_rank_per_bucket"],
+                 lr_schedule: str = DEFAULTS["lr_schedule"],
+                 lr_final_scale: float = DEFAULTS["lr_final_scale"],
+                 weight_average: str = DEFAULTS["weight_average"],
+                 ema_decay: float = DEFAULTS["ema_decay"],
+                 swa_start_epoch: int = DEFAULTS["swa_start_epoch"],
+                 select_averaged: bool = False,
                  val_rows: int | None = None, compile_trunk: bool = False) -> dict:
     """Everything that determines the trained model and its metrics."""
     try:
@@ -1527,6 +1692,29 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--compile compiles the mlp trunk; the seq architecture has none")
     if select_metric not in SELECT_METRICS:
         raise TrainError(f"--select-metric must be one of {tuple(SELECT_METRICS)}")
+    if int(served_rank_deals) < 0:
+        raise TrainError("--served-rank-deals must be >= 0 (0 disables the served pass)")
+    if int(served_rank_per_bucket) < 1:
+        raise TrainError("--served-rank-per-bucket must be >= 1")
+    if select_metric.startswith("val_served") and int(served_rank_deals) == 0:
+        raise TrainError(f"--select-metric {select_metric} needs --served-rank-deals > 0")
+    if int(served_rank_deals) and arch != "mlp":
+        raise TrainError("--served-rank-deals scores static (mlp) encodings; the seq "
+                         "architecture reads the history")
+    if lr_schedule not in LR_SCHEDULES:
+        raise TrainError(f"--lr-schedule must be one of {LR_SCHEDULES}")
+    if not (math.isfinite(float(lr_final_scale)) and 0.0 <= float(lr_final_scale) <= 1.0):
+        raise TrainError("--lr-final-scale must be in [0, 1]")
+    if lr_schedule == "constant" and float(lr_final_scale) != DEFAULTS["lr_final_scale"]:
+        raise TrainError("--lr-final-scale needs --lr-schedule cosine|linear")
+    if weight_average not in WEIGHT_AVERAGES:
+        raise TrainError(f"--weight-average must be one of {WEIGHT_AVERAGES}")
+    if not (math.isfinite(float(ema_decay)) and 0.0 < float(ema_decay) < 1.0):
+        raise TrainError("--ema-decay must be in (0, 1)")
+    if not 1 <= int(swa_start_epoch) <= int(epochs):
+        raise TrainError("--swa-start-epoch must be in [1, --epochs]")
+    if select_averaged and weight_average == "none":
+        raise TrainError("--select-averaged needs --weight-average ema|swa")
     if select_metric == "val_points_mae" and not aux_points:
         raise TrainError("--select-metric val_points_mae needs --aux-points")
     if int(val_rank_records) < 0:
@@ -1607,6 +1795,20 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                             policy_tower_width=int(config.policy_tower_width))
     if policy_head and float(policy_trunk_grad_scale) != 1.0:
         tower_fields["policy_trunk_grad_scale"] = float(policy_trunk_grad_scale)
+    # The same omit-at-default rule for the served pass, the LR schedule and the
+    # weight average: a run that sets none of them has the historical config.
+    if int(served_rank_deals):
+        tower_fields["served_rank"] = {"deals": int(served_rank_deals),
+                                       "per_bucket": int(served_rank_per_bucket),
+                                       "seed": int(seed)}
+    if lr_schedule != "constant":
+        tower_fields["lr_schedule"] = {"kind": lr_schedule,
+                                       "final_scale": float(lr_final_scale)}
+    if weight_average != "none":
+        tower_fields["weight_average"] = {
+            "kind": weight_average, "select": bool(select_averaged),
+            **({"decay": float(ema_decay)} if weight_average == "ema"
+               else {"start_epoch": int(swa_start_epoch)})}
     # the same omit-at-default rule for the per-epoch validation subset and the
     # compiled trunk (the latter changes the numerics, so a run records it)
     if val_rows is not None:
@@ -1776,6 +1978,14 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           eval_holdout: Sequence[str] | None = None,
           frozen_population: str | None = None, frozen_population_sha256: str | None = None,
           trick_end_rows: bool = False, init_widen_encoder: bool = False,
+          served_rank_deals: int = DEFAULTS["served_rank_deals"],
+          served_rank_per_bucket: int = DEFAULTS["served_rank_per_bucket"],
+          lr_schedule: str = DEFAULTS["lr_schedule"],
+          lr_final_scale: float = DEFAULTS["lr_final_scale"],
+          weight_average: str = DEFAULTS["weight_average"],
+          ema_decay: float = DEFAULTS["ema_decay"],
+          swa_start_epoch: int = DEFAULTS["swa_start_epoch"],
+          select_averaged: bool = False,
           val_rows: int | None = None, compile_trunk: bool = False,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
@@ -1815,7 +2025,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         seq_feedforward=seq_feedforward, public_head=public_head, rank_limit=rank_limit,
         select_metric=select_metric, val_rank_records=val_rank_records, init=init,
         init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
-        encoder_version=encoder_version, val_rows=val_rows, compile_trunk=compile_trunk)
+        encoder_version=encoder_version, val_rows=val_rows, compile_trunk=compile_trunk,
+        served_rank_deals=served_rank_deals,
+        served_rank_per_bucket=served_rank_per_bucket, lr_schedule=lr_schedule,
+        lr_final_scale=lr_final_scale, weight_average=weight_average, ema_decay=ema_decay,
+        swa_start_epoch=swa_start_epoch, select_averaged=select_averaged)
     config["eval_holdouts"] = dict(holdouts)
     # Recorded only when set, so every other run's config (and config_sha256) is unchanged.
     if trick_end_rows:
@@ -1885,6 +2099,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say(f"pack: blocks come from {Path(pack_dir).resolve()} (#531); the cache validated every shard")
     say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
+    sizes = list(getattr(store, "sizes", None) or [])
+    if int(window) != DEFAULTS["window"] and sizes:
+        # A window is also closed when its decoded bytes would pass the residency
+        # budget, so an over-wide --window silently becomes a shorter one.
+        per_shard = float(np.median(sizes))
+        want = per_shard * int(window)
+        say(f"shuffle window: {int(window)} shards x ~{per_shard / 1e6:.2f} MB decoded = "
+            f"~{want / 1e9:.2f} GB per window against the {budget} byte residency budget"
+            + ("" if budget is None or want <= budget else
+               f"; the budget caps a window at ~{int(budget // max(per_shard, 1.0))} shards"))
     if frozen is None:
         assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
                                  test_fraction=test_fraction)
@@ -2045,6 +2269,19 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                         or val_cands.records == 0):
         raise TrainError(f"--select-metric {select_metric}: the validation split has no "
                          "search record (no action_values means)")
+    val_served = served_set_for(store, set(population["val"]), cache,
+                                deals=int(served_rank_deals),
+                                per_bucket=int(served_rank_per_bucket), seed=int(seed),
+                                workers=eval_workers, label="val", progress=say,
+                                version=enc_version)
+    if val_served is not None:
+        say(f"served set (val): {val_served.records} records / {val_served.candidates} "
+            f"candidates over {min(int(served_rank_deals), len(population['val']))} deals "
+            f"(per bucket {int(served_rank_per_bucket)}, {val_served.meta.get('secs', 0)}s)")
+    if select_metric.startswith("val_served") and (val_served is None
+                                                   or val_served.records == 0):
+        raise TrainError(f"--select-metric {select_metric}: the validation split has no "
+                         "served record (no search record that rebuilds)")
     if frozen is not None:
         from .cwv_eval import candidate_set_digest
         for part in ("val", "test"):
@@ -2117,6 +2354,20 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     lr_effective = float(lr) * (float(init_lr_scale) if init is not None else 1.0)
     params = list(model.parameters()) + (list(aux_head.parameters()) if aux_head else [])
     optim = torch.optim.AdamW(params, lr=lr_effective, weight_decay=weight_decay)
+    # --lr-schedule: the planned horizon is epochs x ceil(train rows / batch).
+    # Each window ends on a partial batch, so the real step count is slightly
+    # larger; the factor reaches its floor just before the end and holds there.
+    planned_steps = int(epochs) * max(1, math.ceil(n_rows["train"] / int(batch_size)))
+    step_count = 0
+    averager = (None if weight_average == "none" else
+                WeightAverage(params, weight_average, decay=float(ema_decay),
+                              start_epoch=int(swa_start_epoch)))
+    if lr_schedule != "constant" or averager is not None:
+        say(f"optimiser: lr {lr_effective} schedule {lr_schedule}"
+            f"{f' -> x{float(lr_final_scale)} over ~{planned_steps} steps' if lr_schedule != 'constant' else ''}"
+            f"; weight average {weight_average}"
+            f"{'' if averager is None else ' ' + str(averager.payload())}"
+            f"{' (selected)' if select_averaged else ''}")
     rng = np.random.default_rng(seed)
     epoch_rows: list[dict] = []
     best = {"epoch": None, "loss": math.inf}
@@ -2126,15 +2377,26 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     selection = {"split": SELECTION_SPLIT, "criterion": selector.criterion,
                  "metric": select_metric, "metric_key": selector.key, "patience": int(patience),
                  "val_rank_records": int(val_rank_records), "lr_effective": lr_effective}
+    if select_averaged:
+        selection["weights"] = "averaged"
     if val_subset is not None:
         selection["val_subset"] = val_subset
     consumer = consumer_block(select_metric, aux_points, search_head, policy_head)
+    if val_served is not None:
+        from .served_rank import SERVED_DEFINITION
+        consumer["heads"]["level_head"]["served_leaf_metric"] = {
+            "keys": ["served_rank_regret", "served_rank_regret_points", "served_search_regret",
+                     "served_by_trick"],
+            "definition": SERVED_DEFINITION,
+            "selectable": ["val_served_rank_regret", "val_served_rank_regret_points"]}
     policy_rng = np.random.default_rng(int(seed) + 1_000_003)
 
     def validate() -> dict:
         ev = run_eval(model, store, epoch_val_mask, dev, batch_size=batch_size, aux_head=aux_head)
         metrics = quick_metrics(ev)
         metrics.update(search_facing(model, ev, val_cands, dev, batch_size=batch_size))
+        if val_served is not None:
+            metrics.update(served_facing(model, val_served, dev, batch_size=batch_size))
         if search_head:
             # #373: the same ranking pass through the search-mean head.  Never
             # the selection metric (the Selector reads top-level keys only).
@@ -2162,6 +2424,24 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     shown[f"val_rank_regret_at_{k}"] = f"val_rank_regret_at_{k}={value:.4f}"
                     shown[f"val_rank_recall_at_{k}"] = (
                         f"val_rank_recall_at_{k}={metrics[f'rank_recall_at_{k}']:.3f}")
+        if metrics.get("served_rank_regret") is not None:
+            shown["val_served_rank_regret"] = (
+                f"val_served_rank_regret={metrics['served_rank_regret']:.4f}")
+            shown["val_served_rank_regret_points"] = (
+                f"val_served_rank_regret_points={metrics['served_rank_regret_points']:.3f}")
+            shown["val_served_by_trick"] = "val_served_by_trick=" + "/".join(
+                "-" if (metrics.get(f"served_rank_regret_{b}") is None)
+                else f"{metrics[f'served_rank_regret_{b}']:.4f}" for b in ("early", "mid", "late"))
+            shown["val_served_search_regret"] = (
+                f"val_served_search_regret={metrics['served_search_regret']:.4f}")
+        avg = metrics.get("averaged") or {}
+        if avg.get("loss") is not None:
+            shown["val_avg_ce"] = f"val_avg_ce={avg['loss']:.4f}"
+            if avg.get("rank_regret") is not None:
+                shown["val_avg_rank_regret"] = f"val_avg_rank_regret={avg['rank_regret']:.4f}"
+            if avg.get("served_rank_regret") is not None:
+                shown["val_avg_served_rank_regret"] = (
+                    f"val_avg_served_rank_regret={avg['served_rank_regret']:.4f}")
         sh = metrics.get("search_head") or {}
         if sh.get("rank_regret") is not None:
             shown["val_search_head_rank_regret"] = (
@@ -2498,7 +2778,15 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     raise TrainError("training loss is non-finite")
                 optim.zero_grad(set_to_none=True)
                 total.backward()
+                if lr_schedule != "constant":
+                    lr_now = lr_effective * lr_factor(lr_schedule, step_count, planned_steps,
+                                                      float(lr_final_scale))
+                    for group in optim.param_groups:
+                        group["lr"] = lr_now
                 optim.step()
+                step_count += 1
+                if averager is not None:
+                    averager.update(epoch)
                 zero = torch.zeros((), device=total.device)
                 contrib = torch.stack((total.detach() * b, ce.detach() * b,
                                        (a_loss.detach() * b) if a_loss is not None else zero,
@@ -2526,6 +2814,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         train_metrics = {"loss": sums["total"] / max(rows, 1),
                          "cross_entropy": sums["ce"] / max(rows, 1), "rows": rows,
                          "batches": batches}
+        if lr_schedule != "constant":
+            train_metrics["lr_end"] = float(optim.param_groups[0]["lr"])
+            train_metrics["steps"] = int(step_count)
         if target == "search-mean":
             train_metrics["search_mean_rows"] = int(sums.get("search_rows", 0))
         if search_head:
@@ -2557,6 +2848,19 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             "%s %.1fs (%.0f%%)" % (k, v, 100.0 * v / train_secs if train_secs else 0.0)
             for k, v in stage.items() if k != "total"))
         val_metrics = validate()
+        avg_metrics = None
+        if averager is not None and averager.ready:
+            # The averaged weights through the SAME validation, saved beside the
+            # raw epoch checkpoint so either can be re-scored later.
+            with averager.swapped():
+                avg_metrics = validate()
+                save_cwv_checkpoint(
+                    ckpt_dir / f"epoch-{epoch:02d}.avg.pt", model,
+                    metadata={**base_metadata, "epoch": epoch, "weights": "averaged",
+                              "weight_average": averager.payload(),
+                              "selection": {**selection, "val": avg_metrics},
+                              "aux_points_head": None if aux_head is None else aux_head.payload()})
+            val_metrics["averaged"] = {**avg_metrics, "weight_average": averager.payload()}
         secs = round(time.perf_counter() - t0, 3)
         epoch_rows.append({"epoch": epoch, "train": train_metrics, "val": val_metrics,
                            "val_role": SPLIT_ROLES["val"]["role"], "secs": secs,
@@ -2564,11 +2868,19 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         metadata = {**base_metadata, "epoch": epoch, "selection": {**selection, "val": val_metrics},
                     "aux_points_head": None if aux_head is None else aux_head.payload()}
         save_cwv_checkpoint(ckpt_dir / f"epoch-{epoch:02d}.pt", model, metadata=metadata)
-        improved, stop = selector.observe(epoch, val_metrics)
+        selected = avg_metrics if select_averaged else val_metrics
+        if selected is None:
+            # --select-averaged before the SWA window opens: nothing to select yet
+            improved, stop = False, False
+        else:
+            improved, stop = selector.observe(epoch, selected)
         if improved:
-            best = {"epoch": epoch, "loss": float(val_metrics["loss"]),
+            best = {"epoch": epoch, "loss": float(selected["loss"]),
                     "value": selector.best_value}
-            shutil.copyfile(ckpt_dir / f"epoch-{epoch:02d}.pt", out_dir / "best.pt")
+            if select_averaged:
+                best["weight_average"] = averager.payload()
+            shutil.copyfile(ckpt_dir / (f"epoch-{epoch:02d}.avg.pt" if select_averaged
+                                        else f"epoch-{epoch:02d}.pt"), out_dir / "best.pt")
         say(epoch_line(f"epoch {epoch:02d}/{epochs}", val_metrics,
                        f" train_ce={train_metrics['cross_entropy']:.4f}"
                        f"{' *' if improved else ''} ({secs}s, rank {val_metrics['rank_secs']}s)"
@@ -2624,6 +2936,15 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     for name, cands in (("val", val_cands), ("test", test_cands)):
         final[name]["search_facing"]["candidate_set"] = (
             None if cands is None else {k: v for k, v in cands.meta.items() if k != "encoder"})
+    if val_served is not None:
+        test_served = served_set_for(store, test_keys, cache, deals=int(served_rank_deals),
+                                     per_bucket=int(served_rank_per_bucket), seed=int(seed),
+                                     workers=eval_workers, label="test", progress=say,
+                                     version=enc_version)
+        for name, sset in (("val", val_served), ("test", test_served)):
+            final[name]["served_facing"] = served_facing(model, sset, dev, batch_size=batch_size)
+            final[name]["served_facing"]["served_set"] = {
+                k: v for k, v in sset.meta.items() if k != "encoder"}
     holdout_report = holdout_blocks(
         holdouts, model=model, aux_head=aux_head, dev=dev, batch_size=batch_size,
         history=history, seed=seed, cache=cache, workers=workers, residency=residency,
@@ -2680,10 +3001,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "val_rank_regret_at_k": final["val"]["search_facing"].get("rank_regret_at_k"),
         "forward_positions_per_second_cpu_1024": bench.get("forward_positions_per_second"),
     }
+    if val_served is not None:
+        headline["val_served_rank_regret"] = final["val"]["served_facing"].get(
+            "served_rank_regret")
+        headline["test_served_rank_regret"] = final["test"]["served_facing"].get(
+            "served_rank_regret")
     save_cwv_checkpoint(out_dir / "best.pt", model, metadata={
         **base_metadata, "epoch": best["epoch"], "selection": selection,
         "aux_points_head": None if aux_head is None else aux_head.payload(),
-        "headline": headline, "inference_benchmark": bench})
+        "headline": headline, "inference_benchmark": bench,
+        **({"weights": "averaged", "weight_average": best.get("weight_average")}
+           if select_averaged else {})})
     wall = round(time.perf_counter() - started, 3)
     receipt = {
         "schema": RECEIPT_SCHEMA,
@@ -3114,7 +3442,12 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--aux-weight", type=float, default=DEFAULTS["aux_weight"])
     t.add_argument("--n-boot", type=int, default=DEFAULTS["n_boot"])
     t.add_argument("--window", type=int, default=DEFAULTS["window"],
-                   help="shards per shuffle window (also bounded by --resident-bytes)")
+                   help="shards per shuffle window; rows are shuffled only inside a window. "
+                        "Default 64: a 1,024-row batch then holds ~51 deals. Memory: a shard "
+                        "decodes to ~0.45 MB on the PV corpora, so --window 2048 holds ~0.9 GB "
+                        "of decoded rows (plus the decode pool's staging). A window also closes "
+                        "when its decoded bytes would pass --resident-bytes, which silently "
+                        "shortens it, so raise --resident-bytes with it")
     t.add_argument("--decode-workers", type=int, default=DEFAULTS["decode_workers"],
                    help="decode a window's shards in this many worker processes "
                         "(default 6, measured 2026-09-07 on the A+C+D store: epoch "
@@ -3204,10 +3537,43 @@ def build_parser() -> argparse.ArgumentParser:
                    help="early stopping + best.pt on this validation metric (default val_ce; "
                         "val_rank_regret is the recommendation for the top-1 ranking "
                         "consumers (one-ply, PUCT prior), val_rank_regret_at_4 for the "
-                        "shortlist, val_points_mae for the vleaf leaf)")
+                        "shortlist, val_points_mae for the vleaf leaf; "
+                        "val_served_rank_regret[_points] reads the served-leaf ranking "
+                        "of --served-rank-deals)")
     t.add_argument("--val-rank-records", type=int, default=DEFAULTS["val_rank_records"],
                    help="search records of the val (and test) split in the candidate set "
                         "(per shard: ceil(N / shards)); 0 disables the rank pass")
+    t.add_argument("--served-rank-deals", type=int, default=DEFAULTS["served_rank_deals"],
+                   help="score the served-leaf ranking (train.served_rank) every epoch on this "
+                        "many val deals (and as many test deals at the end), chosen by "
+                        "sha256(seed|deal); 0 (default) = off and the run is unchanged. Needed "
+                        "by --select-metric val_served_rank_regret[_points]. Memory: about "
+                        "90 KB of candidate tensors per deal at --served-rank-per-bucket 2 "
+                        "(8,000 deals: ~0.7 GB, built once and memoised in the cache dir)")
+    t.add_argument("--served-rank-per-bucket", type=int,
+                   default=DEFAULTS["served_rank_per_bucket"],
+                   help="served records per deal and trick bucket (early 0-4, mid 5-9, late 10+)")
+    t.add_argument("--lr-schedule", choices=LR_SCHEDULES, default=DEFAULTS["lr_schedule"],
+                   help="per-step LR decay over the planned epochs x batches (default constant "
+                        "= the historical fixed AdamW rate)")
+    t.add_argument("--lr-final-scale", type=float, default=DEFAULTS["lr_final_scale"],
+                   help="with --lr-schedule cosine|linear: the LR at the end of the planned "
+                        "horizon as a fraction of --lr (default 0)")
+    t.add_argument("--weight-average", choices=WEIGHT_AVERAGES,
+                   default=DEFAULTS["weight_average"],
+                   help="keep an average of the weights and validate it beside the raw ones "
+                        "every epoch, saving checkpoints/epoch-NN.avg.pt: ema (exponential, "
+                        "--ema-decay per step) or swa (equal-weight mean of every step from "
+                        "--swa-start-epoch). Default none")
+    t.add_argument("--ema-decay", type=float, default=DEFAULTS["ema_decay"],
+                   help="per-step decay of --weight-average ema (default 0.9999: an average "
+                        "over the last ~10,000 steps, about a tenth of an 880k-deal epoch at "
+                        "batch 1,024; a short run needs a smaller decay)")
+    t.add_argument("--swa-start-epoch", type=int, default=DEFAULTS["swa_start_epoch"],
+                   help="first epoch averaged by --weight-average swa (default 1)")
+    t.add_argument("--select-averaged", action="store_true",
+                   help="select epochs (early stopping and best.pt) on the averaged weights' "
+                        "validation instead of the raw weights'")
     t.add_argument("--val-rows", type=int, default=None,
                    help="score each epoch's validation rows on a seeded subset of the val deals "
                         "covering at least N rows (whole deals, the same subset every epoch); "
@@ -3299,6 +3665,11 @@ def main(argv: list[str] | None = None) -> int:
                   val_rows=args.val_rows, compile_trunk=args.compile_trunk,
                   frozen_population=args.frozen_population,
                   frozen_population_sha256=args.frozen_population_sha256,
+                  served_rank_deals=args.served_rank_deals,
+                  served_rank_per_bucket=args.served_rank_per_bucket,
+                  lr_schedule=args.lr_schedule, lr_final_scale=args.lr_final_scale,
+                  weight_average=args.weight_average, ema_decay=args.ema_decay,
+                  swa_start_epoch=args.swa_start_epoch, select_averaged=args.select_averaged,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,
                   init_widen_encoder=args.init_widen_encoder,

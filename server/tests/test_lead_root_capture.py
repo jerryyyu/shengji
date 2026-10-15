@@ -122,7 +122,7 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     roots = []
     for event in PLAYS:
         ledger.observe(rnd)
-        if max(map(len, rnd.hands)) <= 6 and len(roots) < 4:
+        if max(map(len, rnd.hands)) <= 7 and len(roots) < 4:
             roots.append(dict(root_index=len(roots), deal_seed=0, trick=len(rnd.history),
                               seat=rnd.turn, hand_size=len(rnd.hands[rnd.turn]),
                               lead=not bool(rnd.trick.plays), max_hand=max(map(len, rnd.hands)),
@@ -137,6 +137,7 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     rows = [json.loads(line) for line in (tmp_path / 'measure_test.jsonl').read_text().splitlines()]
     assert result == {'roots_measured': 4}
     assert [r['lead'] for r in rows] == [r['lead'] for r in roots]
+    assert {r['max_hand'] for r in roots} == {7}, 'fixture must exercise the D7/X7 boundary'
     assert all(r['committed_once'] and r['wall_total_seconds'] >= r['wall_step_seconds'] >= 0 for r in rows)
     rec = dict(exact_follow_attempted=True, exact_follow_applied=False,
                exact_follow_abandoned='soft_budget', exact_follow_error='TimeoutError')
@@ -146,6 +147,10 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     assert summary['roots'] == 4
     assert summary['by_turn']['lead']['count'] == sum(r['lead'] for r in roots)
     assert summary['by_turn']['follow']['count'] == sum(not r['lead'] for r in roots)
+    too_deep = copy.deepcopy(roots)
+    too_deep[0]['max_hand'] = too_deep[0]['hand_size'] = 8
+    with pytest.raises(ValueError, match='invalid root size'):
+        summarize(rows, too_deep, arm='r45', pass_label='test')
     # Exercise the entrypoint's real measure -> terminal -> report path.
     # Only the model factory is replaced with the fixture model; server
     # preparation, off-loop computation, commit and serialization are real.
@@ -234,19 +239,37 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     assert not (tmp_path / 'measure_refused.jsonl').read_text()
 
 
+def test_latency_harvest_captures_seven_card_leads_and_follows(tmp_path):
+    """The producer, not a hand-authored packet, must reach the D7/X7 boundary."""
+    import asyncio
+    from types import SimpleNamespace
+    from shengji.api import server as srv
+    from scripts import exact_endgame_latency as worker
+    from test_pv_admission_rules import served
+
+    result = asyncio.run(worker.harvest(
+        SimpleNamespace(rounds=1, seed0=4600000, arm='r45'), srv,
+        served(refusal_constraints=True), tmp_path))
+    roots = [json.loads(line) for line in (tmp_path / 'roots.jsonl').read_text().splitlines()]
+    assert result == {'rounds': 1, 'roots': len(roots)}
+    assert any(root['max_hand'] == 7 for root in roots)
+    assert {root['lead'] for root in roots} == {True, False}
+    assert all(1 <= root['max_hand'] <= 7 for root in roots)
+
+
 def test_latency_worker_seals_factory_refusal_without_retry(tmp_path, monkeypatch):
     from scripts import exact_endgame_latency as worker
 
     calls = []
     def refuse(*args):
         calls.append(args)
-        raise ValueError('D6+X6 source required')
+        raise ValueError('D7+X7 source required')
     monkeypatch.setattr(worker, 'build', refuse)
     assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
                         '--roots', 'unused', '--pass-label', 'test', '--arm', 'dx']) == 1
     row = json.loads((tmp_path / 'terminal_measure_test.json').read_text())
     assert len(calls) == 1 and row['result'] is None and row['policy'] is None
-    assert row['error'] == dict(type='ValueError', message='D6+X6 source required')
+    assert row['error'] == dict(type='ValueError', message='D7+X7 source required')
     assert not (tmp_path / 'measure_test.jsonl').exists()
 
 

@@ -51,7 +51,7 @@ def summarize(rows, roots, *, arm, pass_label):
         index = root.get('root_index')
         need(type(index) is int and index >= 0 and index not in expected, 'invalid/duplicate root')
         need(type(root.get('lead')) is bool, 'invalid root lead')
-        need(type(root.get('max_hand')) is int and 1 <= root['max_hand'] <= 6, 'invalid root size')
+        need(type(root.get('max_hand')) is int and 1 <= root['max_hand'] <= 7, 'invalid root size')
         need(type(root.get('hand_size')) is int and 1 <= root['hand_size'] <= root['max_hand'], 'invalid acting hand')
         expected[index] = root
     need(bool(expected), 'empty root population')

@@ -212,7 +212,8 @@ def _bot(package: str, sha256: str):
 
 
 def extract_cluster(path: Path, bot, *, store_index: int, cluster_index: int, calib: float,
-                    test: float, windows, package_sha: str) -> dict | None:
+                    test: float, windows, package_sha: str, decision_stride: int = 1
+                    ) -> dict | None:
     records = _read_records(path)
     plays = [r for r in records if r.get("decision_kind") == "play"]
     if not plays:
@@ -232,6 +233,9 @@ def extract_cluster(path: Path, bot, *, store_index: int, cluster_index: int, ca
             raise InfosetQError(f"{path}: record policy {rec.get('policy')!r} is not package "
                                 f"{package_sha[:8]}")
         stats["decisions"] += 1
+        if (d.decision_index + cluster_index) % decision_stride:
+            continue
+        stats["sampled"] += 1
         cands, idx = production_ballot(rec)
         if len(cands) < 2:
             stats["single_candidate"] += 1
@@ -297,7 +301,7 @@ ARRAY_KEYS = ("X", "A", "AF", "M", "T", "W", "P", "played", "trick", "role", "le
 
 def _extract_task(args: tuple) -> dict:
     (paths, store_index, cluster_indices, out_dir, chunk, calib, test, windows, package,
-     package_sha) = args
+     package_sha, decision_stride) = args
     done = Path(out_dir) / f"{chunk}.json"
     if done.exists():                         # resumable: a finished chunk is kept
         return json.loads(done.read_text())
@@ -311,7 +315,7 @@ def _extract_task(args: tuple) -> dict:
         try:
             got = extract_cluster(Path(path), bot, store_index=store_index, cluster_index=ci,
                                   calib=calib, test=test, windows=windows,
-                                  package_sha=package_sha)
+                                  package_sha=package_sha, decision_stride=decision_stride)
         except (BeliefLabelError, InfosetQError) as exc:
             failed.append({"path": str(path), "error": str(exc)[:300]})
             continue
@@ -342,7 +346,8 @@ def _extract_task(args: tuple) -> dict:
 
 def extract(stores: Sequence[str], out: str, *, package: str, package_sha: str,
             cluster_stride: int, cluster_offset: int, max_clusters_per_store: int | None,
-            calib: float, test: float, workers: int, task_clusters: int, log=print) -> dict:
+            calib: float, test: float, workers: int, task_clusters: int,
+            decision_stride: int = 1, log=print) -> dict:
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     actual = hashlib.sha256(Path(package).read_bytes()).hexdigest()
@@ -359,7 +364,7 @@ def extract(stores: Sequence[str], out: str, *, package: str, package_sha: str,
             group = chosen[start:start + task_clusters]
             tasks.append(([str(p) for _, p in group], si, [ci for ci, _ in group], str(out_dir),
                           f"s{si:02d}-{start // task_clusters:05d}", calib, test, windows,
-                          package, package_sha))
+                          package, package_sha, decision_stride))
     stats = Counter()
     chunks = []
     t0 = time.time()
@@ -375,6 +380,7 @@ def extract(stores: Sequence[str], out: str, *, package: str, package_sha: str,
                 "stores": list(stores), "package": package, "package_sha256": package_sha,
                 "cluster_stride": cluster_stride, "cluster_offset": cluster_offset,
                 "max_clusters_per_store": max_clusters_per_store,
+                "decision_stride": decision_stride,
                 "split": {"salt": "belief_labels.SPLIT_SALT", "calib": calib, "test": test},
                 "excluded_windows": windows, "chunks": chunks, "stats": dict(stats),
                 "failed": sum(len(c["failed"]) for c in chunks), "seconds": time.time() - t0}
@@ -487,27 +493,36 @@ def _torch():
     return torch
 
 
-def build_model(in_dim: int, rerank: bool, hidden: int = 512):
+def build_model(in_dim: int, rerank: bool, hidden: int = 512, dropout: float = 0.0):
+    """Per-candidate value head.  With ``rerank`` the candidate input carries the
+    W64 mean and the policy log-odds, and the output is the W64 mean plus a
+    learned correction whose last layer starts at zero (so training starts from
+    the served ranking)."""
     torch = _torch()
     nn = torch.nn
     extra = 3 if rerank else 0
+    w_col = N_CARDS + CAND_DIM
 
     class InfosetQ(nn.Module):
         def __init__(self):
             super().__init__()
-            self.state = nn.Sequential(nn.Linear(in_dim, hidden), nn.ReLU(),
-                                       nn.Linear(hidden, 256), nn.ReLU())
+            self.state = nn.Sequential(nn.Linear(in_dim, hidden), nn.ReLU(), nn.Dropout(dropout),
+                                       nn.Linear(hidden, 256), nn.ReLU(), nn.Dropout(dropout))
             self.act = nn.Sequential(nn.Linear(N_CARDS + CAND_DIM + extra, 128), nn.ReLU())
             self.head = nn.Sequential(nn.Linear(256 + 128 + 256, 256), nn.ReLU(),
                                       nn.Linear(256, 128), nn.ReLU(), nn.Linear(128, 1))
             self.mix = nn.Linear(128, 256, bias=False)
+            if rerank:
+                nn.init.zeros_(self.head[-1].weight)
+                nn.init.zeros_(self.head[-1].bias)
 
         def forward(self, x, a):
             s = self.state(x)                               # (B, 256)
             e = self.act(a)                                 # (B, K, 128)
             sk = s[:, None, :].expand(-1, a.shape[1], -1)
             h = torch.cat([sk, e, sk * self.mix(e)], dim=-1)
-            return self.head(h).squeeze(-1)                 # (B, K)
+            out = self.head(h).squeeze(-1)                  # (B, K)
+            return out + a[..., w_col] if rerank else out
 
     return InfosetQ()
 
@@ -528,7 +543,8 @@ def _cand_tensor(data, sel, rerank: bool):
 
 
 def train(dirs: Sequence[str], out: str, *, rerank: bool, epochs: int, batch: int, lr: float,
-          threads: int, max_train: int | None, seed: int, log=print) -> dict:
+          threads: int, max_train: int | None, seed: int, dropout: float = 0.0,
+          weight_decay: float = 1e-5, log=print) -> dict:
     torch = _torch()
     torch.set_num_threads(threads)
     torch.manual_seed(seed)
@@ -545,8 +561,8 @@ def train(dirs: Sequence[str], out: str, *, rerank: bool, epochs: int, batch: in
     sd = X32.std(0) + 1e-3
     del X32
     np.savez(out_dir / "norm.npz", mu=mu, sd=sd)
-    model = build_model(IN_DIM, rerank)
-    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
+    model = build_model(IN_DIM, rerank, dropout=dropout)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     steps = epochs * math.ceil(n / batch)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=steps,
                                                 pct_start=0.05)
@@ -602,7 +618,8 @@ def train(dirs: Sequence[str], out: str, *, rerank: bool, epochs: int, batch: in
             best = rec
             torch.save(model.state_dict(), out_dir / "model.pt")
     model.load_state_dict(torch.load(out_dir / "model.pt"))
-    summary = {"schema": SCHEMA + "-train", "rerank": rerank, "rows_train": int(n),
+    summary = {"schema": SCHEMA + "-train", "rerank": rerank, "dropout": dropout,
+               "weight_decay": weight_decay, "rows_train": int(n),
                "rows_calib": int(len(ca["X"])), "epochs": epochs, "batch": batch, "lr": lr,
                "history": history, "best": best, "dirs": list(dirs)}
     (out_dir / "train.json").write_text(json.dumps(summary, indent=1))
@@ -720,6 +737,7 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--test", type=float, default=0.12)
     ex.add_argument("--workers", type=int, default=4)
     ex.add_argument("--task-clusters", type=int, default=20)
+    ex.add_argument("--decision-stride", type=int, default=1)
     tr = sub.add_parser("train")
     tr.add_argument("--data", nargs="+", required=True)
     tr.add_argument("--out", required=True)
@@ -730,6 +748,8 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--threads", type=int, default=4)
     tr.add_argument("--max-train", type=int, default=None)
     tr.add_argument("--seed", type=int, default=0)
+    tr.add_argument("--dropout", type=float, default=0.0)
+    tr.add_argument("--weight-decay", type=float, default=1e-5)
     ev = sub.add_parser("eval")
     ev.add_argument("--data", nargs="+", required=True)
     ev.add_argument("--head", action="append", required=True,
@@ -750,12 +770,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         m = extract(args.store, args.out, package=args.package, package_sha=args.package_sha256,
                     cluster_stride=args.cluster_stride, cluster_offset=args.cluster_offset,
                     max_clusters_per_store=args.max_clusters_per_store, calib=args.calib,
-                    test=args.test, workers=args.workers, task_clusters=args.task_clusters)
+                    test=args.test, workers=args.workers, task_clusters=args.task_clusters,
+                    decision_stride=args.decision_stride)
         print(json.dumps({"stats": m["stats"], "failed": m["failed"], "seconds": m["seconds"]}))
         return 0
     if args.command == "train":
         train(args.data, args.out, rerank=args.rerank, epochs=args.epochs, batch=args.batch,
-              lr=args.lr, threads=args.threads, max_train=args.max_train, seed=args.seed)
+              lr=args.lr, threads=args.threads, max_train=args.max_train, seed=args.seed,
+              dropout=args.dropout, weight_decay=args.weight_decay)
         return 0
     if args.command == "eval":
         heads = {}

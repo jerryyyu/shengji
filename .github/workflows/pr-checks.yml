@@ -103,6 +103,7 @@ jobs:
           tests/test_receipt_summary.py
           tests/test_paired_window_metadata.py
           tests/test_paired_window_stats.py
+          tests/test_comparator_bank.py
           tests/test_doomed_throw_readout.py
           tests/test_v53dts_reader_build.py
           tests/test_refusal_readout_summary.py

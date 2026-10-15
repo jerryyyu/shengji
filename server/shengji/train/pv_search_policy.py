@@ -65,6 +65,17 @@ argmax, each responder encoded on worlds sampled from its own view
 (`exact_lead_policy_first`), instead of the heuristic; the exact solve after
 that trick is unchanged.  Both run inside the same exact-lead stage, deadline
 and fallback.
+Two further rules, each OFF BY DEFAULT and refused without it:
+``SHENGJI_PV_EXACT_DEEP_CARDS=<n>`` (``exact_deep_cards``, n in 4..8, token
+``ed<n>``) admits roots whose every hand holds at most n cards and scores them
+with level-mode sessions (`pv_exact_deep.exact_root_means`): the minimax value
+resolved only up to the signed-level steps the means use, so the means are a
+full minimax's, at a per-world node cap of ``EXACT_DEEP_LIMITS['max_nodes']``
+instead of 10000; the start gate, deadline and fallback are the exact lead's.
+``SHENGJI_PV_EXACT_FOLLOWS=1`` (token ``elf``) runs the same stage on FOLLOW
+decisions in the same windows: each admitted follow is played in each world,
+the rest of its trick is completed as for a lead, and the remaining tricks
+are solved exactly.
 
 Optional admission rules (#676 A/C, #677 strategy 1), BOTH OFF BY DEFAULT:
 ``SHENGJI_PV_ADMISSION_DIVERSITY=1`` caps near-duplicate throws in the K-1
@@ -599,14 +610,22 @@ FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
 #: its two optional variants (module docstring); each requires ``exact_lead_endgame``
 EXACT_LEAD_VARIANT_RULES = {"EXACT_LEAD_TIE_BASELINE": "exact_lead_tie_baseline",
-                            "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first"}
+                            "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first",
+                            "EXACT_FOLLOWS": "exact_follows"}
 #: the tie rule's recipe identity: the exact pass replaces the baseline lead
 #: only on a strictly higher exact mean (exact float comparison)
 EXACT_LEAD_TIE_RULE = "replace-only-if-selected-exact-mean-gt-baseline-exact-mean"
-_EXACT_LEAD_VARIANT_REQUIRES = ("exact_lead_tie_baseline / exact_lead_policy_first require "
-                                "exact_lead_endgame (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1 or "
-                                "SHENGJI_PV_EXACT_LEAD_POLICY_FIRST=1 needs "
+_EXACT_LEAD_VARIANT_REQUIRES = ("exact_lead_tie_baseline / exact_lead_policy_first / "
+                                "exact_follows / exact_deep_cards require exact_lead_endgame "
+                                "(SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, "
+                                "SHENGJI_PV_EXACT_LEAD_POLICY_FIRST=1, SHENGJI_PV_EXACT_FOLLOWS=1 "
+                                "or SHENGJI_PV_EXACT_DEEP_CARDS needs "
                                 "SHENGJI_PV_EXACT_LEAD_ENDGAME=1)")
+#: the deeper exact rule's parameter (module docstring): env suffix -> keyword;
+#: 0 is off and kept out of the payload
+EXACT_DEEP_PARAM = {"EXACT_DEEP_CARDS": "exact_deep_cards"}
+EXACT_DEEP_CARDS_RANGE = (4, 8)
+EXACT_DEEP_LIMITS = dict(max_nodes=50_000_000, solver="level-cuts-relative-tt-ordered")
 EXACT_LEAD_LIMITS = dict(max_hand_cards=4, max_nodes=10000, max_seconds=2.25,
                          start_fraction=0.5, soft_fraction=0.8)
 FINISH_LEAD_MAX_CARDS = 8
@@ -737,6 +756,7 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("exact_lead_endgame", "ele"),
                                                    ("exact_lead_tie_baseline", "elt"),
                                                    ("exact_lead_policy_first", "elp"),
+                                                   ("exact_follows", "elf"),
                                                    ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
                                                    ("lead_anchor", "la"),
@@ -929,6 +949,9 @@ class PVSearchConfig:
     # its two optional variants (module docstring); each requires it
     exact_lead_tie_baseline: bool = False
     exact_lead_policy_first: bool = False
+    exact_follows: bool = False
+    # the deeper exact rule (module docstring): 0 is off
+    exact_deep_cards: int = 0
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     # the optional declaration rule and its two parameters; the same contract
@@ -967,6 +990,12 @@ def _check_value_declare_params(worlds, margin):
         raise PVSearchPolicyError("value_declare_margin must be a finite number >= 0")
 
 
+def _check_exact_deep_cards(cards) -> None:
+    lo, hi = EXACT_DEEP_CARDS_RANGE
+    if isinstance(cards, bool) or type(cards) is not int or not (cards == 0 or lo <= cards <= hi):
+        raise PVSearchPolicyError(f"exact_deep_cards must be 0 (off) or an int in [{lo}, {hi}]")
+
+
 def recipe_payload(config: PVSearchConfig) -> dict:
     """The digested recipe: every field, except that an optional rule that is
     OFF is omitted (the payload of the pre-rule recipe, byte for byte) and a
@@ -1002,9 +1031,15 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                 or config.oracle_worlds or config.oracle_mix_k or config.oracle_pin_q):
             raise PVSearchPolicyError('exact_lead_endgame excludes tree, adaptive worlds and oracle worlds')
         payload['exact_lead_limits'] = EXACT_LEAD_LIMITS
-    if (config.exact_lead_tie_baseline or config.exact_lead_policy_first) \
+    if (config.exact_lead_tie_baseline or config.exact_lead_policy_first
+            or config.exact_follows or config.exact_deep_cards) \
             and not config.exact_lead_endgame:
         raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
+    _check_exact_deep_cards(config.exact_deep_cards)
+    if config.exact_deep_cards:
+        payload['exact_deep_limits'] = EXACT_DEEP_LIMITS
+    else:
+        del payload['exact_deep_cards']
     if config.exact_lead_tie_baseline:
         payload['exact_lead_tie_rule'] = EXACT_LEAD_TIE_RULE
     if config.exact_lead_policy_first:
@@ -1106,6 +1141,8 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     prior = f"-prior-{prior8}" if prior8 else ""
     rules = "".join(f"-{token}" for field, token in RULE_TOKENS if getattr(config, field))
     # the soft oracle's token after the rule tokens; "" while off
+    if config.exact_deep_cards:
+        rules += f"-ed{config.exact_deep_cards}"
     if config.oracle_mix_k:
         rules += f"-{soft_oracle.mix_token(config.oracle_mix_k)}"
     if config.oracle_pin_q:
@@ -1237,6 +1274,8 @@ class PVSearchBot(PolicyValueBot):
     #: the exact lead's two optional variants (module docstring): class-level OFF
     exact_lead_tie_baseline = False
     exact_lead_policy_first = False
+    exact_follows = False
+    exact_deep_cards = 0
     #: the diagnostic oracle (module docstring) and its harness hook: a callable
     #: ``(rnd, seat) -> (hands, buried)`` bound ONLY by `bind_oracle_deal` (the
     #: screen harness); None = unbound, and an oracle bot then refuses to play
@@ -1329,6 +1368,11 @@ class PVSearchBot(PolicyValueBot):
                     raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
                 # instance state only when on: a flag-off bot is exactly S18's
                 setattr(self, key, True)
+        _check_exact_deep_cards(config.exact_deep_cards)
+        if config.exact_deep_cards:
+            if not config.exact_lead_endgame:
+                raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
+            self.exact_deep_cards = config.exact_deep_cards
         self._finish_lead_added = False
         self._wide_lead = None
         if config.doomed_throw_reselect and config.tree is not None:
@@ -2414,7 +2458,18 @@ class PVSearchBot(PolicyValueBot):
                      exact_lead_nodes=None, exact_lead_cache_hits=None,
                      exact_lead_changed=False)
         self._exact_lead = state
-        if not leading(rnd) or max(map(len, rnd.hands)) > EXACT_LEAD_LIMITS['max_hand_cards']:
+        deep = self.exact_deep_cards
+        max_cards = deep or EXACT_LEAD_LIMITS['max_hand_cards']
+        lead = leading(rnd)
+        if self.exact_follows:
+            state['exact_lead_root'] = 'lead' if lead else 'follow'
+        if deep:
+            state['exact_deep_cards'] = deep
+        if not (lead or self.exact_follows) or max(map(len, rnd.hands)) > max_cards:
+            return base
+        if (deep or not lead) and len(admitted) == 1:
+            # one admitted candidate: an exact pass cannot change the decision
+            state['exact_lead_status'] = 'single_candidate'
             return base
         now = time.perf_counter()
         budget = self.serving_budget_seconds
@@ -2440,8 +2495,17 @@ class PVSearchBot(PolicyValueBot):
         with stage:
             leaf_fn = (self._leaf if policy_first is None
                        else policy_first.leaf_fn(rnd, seat, admitted, worlds))
-            means, stats = exact_lead_means(rnd, seat, admitted, worlds, leaf_fn, stage.guard,
-                                           max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
+            if deep or not lead:
+                # the deeper / follow rules (module docstring)
+                from .pv_exact_deep import exact_root_means
+                means, stats = exact_root_means(
+                    rnd, seat, admitted, worlds, leaf_fn, stage.guard, max_hand_cards=max_cards,
+                    max_nodes=(EXACT_DEEP_LIMITS['max_nodes'] if deep
+                               else EXACT_LEAD_LIMITS['max_nodes']),
+                    level=bool(deep))
+            else:
+                means, stats = exact_lead_means(rnd, seat, admitted, worlds, leaf_fn, stage.guard,
+                                               max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
             stage.guard()
             winner = self._select(rnd, seat, admitted, means, worlds=worlds,
                                   check_budget=stage.guard, priors=priors)
@@ -2873,6 +2937,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_lead_endgame: bool = False,
                        exact_lead_tie_baseline: bool = False,
                        exact_lead_policy_first: bool = False,
+                       exact_follows: bool = False,
+                       exact_deep_cards: int = 0,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -2935,6 +3001,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_lead_endgame=exact_lead_endgame,
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
+                            exact_follows=exact_follows,
+                            exact_deep_cards=exact_deep_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -3030,6 +3098,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_lead_endgame: bool = False,
                         exact_lead_tie_baseline: bool = False,
                         exact_lead_policy_first: bool = False,
+                        exact_follows: bool = False,
+                        exact_deep_cards: int = 0,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -3073,6 +3143,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_lead_endgame=exact_lead_endgame,
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
+                            exact_follows=exact_follows,
+                            exact_deep_cards=exact_deep_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -3164,6 +3236,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_lead_endgame=config.exact_lead_endgame,
                                exact_lead_tie_baseline=config.exact_lead_tie_baseline,
                                exact_lead_policy_first=config.exact_lead_policy_first,
+                               exact_follows=config.exact_follows,
+                               exact_deep_cards=config.exact_deep_cards,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
@@ -3270,6 +3344,17 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix}={raw!r}: {exc}") from None
         if value:
             recipe[key] = value
+    # the deeper exact rule's parameter: unset, empty or 0 is off
+    for suffix, key in EXACT_DEEP_PARAM.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, "", "0"):
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not an int: {raw!r}") from None
+        _check_exact_deep_cards(value)
+        recipe[key] = value
     # the declaration rule's parameters: only with the rule on
     for suffix, key in VALUE_DECLARE_PARAMS.items():
         raw = env.get(ENV_PREFIX + suffix)

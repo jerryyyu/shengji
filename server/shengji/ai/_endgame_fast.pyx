@@ -388,6 +388,7 @@ cdef struct Entry:
     int32_t lower
     int32_t upper
     uint8_t flags        # 1 exact stored, 2 bounds stored, 4 slot used
+    uint8_t best         # level mode: the played mask that last raised the answer
 
 
 cdef class FastWorld:
@@ -397,6 +398,9 @@ cdef class FastWorld:
     cdef public long cache_hits
     cdef long max_nodes
     cdef bint alpha_beta
+    cdef readonly bint level          # level mode (``solve_level``); see below
+    cdef public long probes           # level mode: null-window tests run
+    cdef int32_t hist[4][NMASK]       # level mode: history scores per (seat, play)
     cdef object check_budget
     cdef long budget_every
     cdef long calls
@@ -423,9 +427,11 @@ cdef class FastWorld:
 
     def __init__(self, ordering, banker, buried, *, max_nodes,
                  check_budget=None, alpha_beta=False, budget_every=256,
-                 exc_type, budget_exc_type):
+                 exc_type, budget_exc_type, level=False):
         cdef int s, m
         self.T = tables_for(ordering)
+        self.level = bool(level)
+        memset(self.hist, 0, sizeof(self.hist))
         self.nodes = 0
         self.cache_hits = 0
         self.max_nodes = max_nodes
@@ -752,12 +758,16 @@ cdef class FastWorld:
 
     cdef int _resolve(self, int leader, uint8_t* plays, int* trick_pts) except -1:
         """``Round._resolve_trick``: the winning seat; sets the trick points."""
+        return self._resolve_k(leader, plays, 4, trick_pts)
+
+    cdef int _resolve_k(self, int leader, uint8_t* plays, int k, int* trick_pts) except -1:
+        """``_resolve`` over the first ``k`` plays (the current trick winner)."""
         cdef MS* lead = self._ms(leader, plays[0])
         cdef MS* p
         cdef int inc_suit = lead.eff, inc_top = lead.top_level
         cdef int winner = leader, i, seat, top, won
         cdef int pts = lead.pts
-        for i in range(1, 4):
+        for i in range(1, k):
             seat = (leader + i) % 4
             p = self._ms(seat, plays[i])
             pts += p.pts
@@ -938,6 +948,8 @@ cdef class FastWorld:
 
     def solve(self, rnd):
         """``endgame._solve_root`` for a root ``Round`` -> (value, action)."""
+        if self.level:
+            raise ValueError("a level-mode session answers solve_level only")
         cdef uint8_t hands[4]
         cdef uint8_t plays[4]
         cdef uint8_t actions[MAXMOVES]
@@ -954,3 +966,240 @@ cdef class FastWorld:
         best = max(values) if attacker else min(values)
         i = values.index(best)
         return best, self._codes_of(turn, actions[i])
+
+    # -- level mode ---------------------------------------------------------------
+    #
+    # ``solve_level`` answers a coarser question than ``solve``: which interval
+    # between consecutive ``cuts`` (attacker-point thresholds) holds the root's
+    # minimax value.  The S18 objective is a step function of attacker points
+    # (`rl.value_afterstate.signed_level_category`), so the interval is all it
+    # uses.  Three changes make that cheaper, none of which can change the
+    # interval:
+    #
+    # * the table stores values relative to the points already scored, so a
+    #   position reached with different scores shares one entry (every payoff
+    #   is additive, so value(state, points) = points + value(state, 0));
+    # * null-window tests ``value >= cut`` in a binary search over the cuts,
+    #   with a fail-soft bound from the points still in play (hands, current
+    #   trick, the largest possible kitty bonus);
+    # * move ordering: the table's best move, then (last seat of a trick) the
+    #   tricks our side wins, most points first, then history scores.
+    #
+    # Node counts therefore differ from ``solve``; values do not, up to the
+    # interval (``tests/test_endgame_compact.py`` checks this against the
+    # reference minimax).
+
+    cdef int _rem_max(self, uint8_t* hands, int leader, uint8_t* plays,
+                      int nplays) except? RAISED:
+        """An upper bound on the attacker points still to be scored."""
+        cdef int s, i, pts = 0, size, most = 0
+        for s in range(4):
+            if hands[s]:
+                pts += self._ms(s, hands[s]).pts
+                size = self._ms(s, hands[s]).size
+                if size > most:
+                    most = size
+        for i in range(nplays):
+            pts += self._ms((leader + i) % 4, plays[i]).pts
+        return pts + self.kitty_points * KITTY_MULTIPLIER * most
+
+    cdef int _lorder(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
+                     int nplays, uint8_t* played, int n, int hint) except -1:
+        cdef int32_t score[MAXMOVES]
+        cdef uint8_t cp[4]
+        cdef int i, j, tpts, winner
+        cdef int32_t sc
+        cdef uint8_t m
+        for i in range(n):
+            if hint and played[i] == hint:
+                score[i] = 1 << 30
+                continue
+            sc = self.hist[turn][played[i]]
+            if nplays == 3:
+                cp[0] = plays[0]; cp[1] = plays[1]; cp[2] = plays[2]; cp[3] = played[i]
+                winner = self._resolve(leader, cp, &tpts)
+                if (winner % 2) == (turn % 2):
+                    sc = (1 << 28) + (tpts << 16) + (sc >> 8)
+                else:
+                    sc = (1 << 26) - (tpts << 16) + (sc >> 8)
+            elif nplays:
+                cp[0] = plays[0]; cp[1] = plays[1]; cp[2] = plays[2]; cp[3] = 0
+                cp[nplays] = played[i]
+                winner = self._resolve_k(leader, cp, nplays + 1, &tpts)
+                if (winner % 2) == (turn % 2):
+                    sc = (1 << 28) + (self._ms(turn, played[i]).pts << 16) + (sc >> 8)
+                else:
+                    sc = (1 << 26) - (self._ms(turn, played[i]).pts << 16) + (sc >> 8)
+            else:
+                sc = (self._ms(turn, played[i]).top_level << 20) + (sc >> 8)
+            score[i] = sc
+        for i in range(1, n):
+            m = played[i]
+            sc = score[i]
+            j = i - 1
+            while j >= 0 and score[j] < sc:
+                played[j + 1] = played[j]
+                score[j + 1] = score[j]
+                j -= 1
+            played[j + 1] = m
+            score[j + 1] = sc
+        return 0
+
+    cdef int _lchild(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
+                     int nplays, int played, int alpha, int beta) except? RAISED:
+        """Attacker points from playing ``played`` on, relative to now."""
+        cdef uint8_t ch[4]
+        cdef uint8_t cp[4]
+        cdef int winner, tpts, gain = 0
+        ch[0] = hands[0]; ch[1] = hands[1]; ch[2] = hands[2]; ch[3] = hands[3]
+        cp[0] = plays[0]; cp[1] = plays[1]; cp[2] = plays[2]; cp[3] = 0
+        ch[turn] = hands[turn] & ~played
+        cp[nplays] = played
+        if nplays < 3:
+            return self.lval(ch, (turn + 1) % 4, leader, cp, nplays + 1, alpha, beta)
+        winner = self._resolve(leader, cp, &tpts)
+        if winner % 2 != self.banker_parity:
+            gain = tpts
+        if (ch[0] | ch[1] | ch[2] | ch[3]) == 0:
+            if winner % 2 != self.banker_parity:
+                gain += (self.kitty_points * KITTY_MULTIPLIER
+                         * self._ms(leader, cp[0]).size)
+            return gain
+        return gain + self.lval(ch, winner, winner, cp, 0, alpha - gain, beta - gain)
+
+    cdef int lval(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
+                  int nplays, int alpha, int beta) except? RAISED:
+        """Fail-soft alpha-beta on attacker points still to come."""
+        cdef uint64_t k1, k2
+        cdef Entry* e
+        cdef int lower = 0, upper, original_alpha = alpha
+        cdef int original_beta = beta, answer, v, i, n, rem, left
+        cdef int hint = 0
+        cdef uint8_t best = 0
+        cdef bint maximize
+        cdef uint8_t actions[MAXMOVES]
+        cdef uint8_t played[MAXMOVES]
+        if self.check_budget is not None:
+            if self.calls % self.budget_every == 0:
+                self.check_budget()
+            self.calls += 1
+        if beta <= 0:
+            return 0
+        rem = self._rem_max(hands, leader, plays, nplays)
+        if rem <= alpha:
+            return rem
+        upper = rem
+        k1 = (<uint64_t>hands[0] | (<uint64_t>hands[1] << 8)
+              | (<uint64_t>hands[2] << 16) | (<uint64_t>hands[3] << 24)
+              | (<uint64_t>turn << 32) | (<uint64_t>leader << 34)
+              | (<uint64_t>nplays << 36))
+        k2 = 0
+        if nplays > 0:
+            k2 |= <uint64_t>plays[0] << 32
+        if nplays > 1:
+            k2 |= <uint64_t>plays[1] << 40
+        if nplays > 2:
+            k2 |= <uint64_t>plays[2] << 48
+        e = self._lookup(k1, k2)
+        if e != NULL:
+            hint = e.best
+            if e.flags & 1:
+                self.cache_hits += 1
+                return e.exact
+            if e.flags & 2:
+                if e.lower > lower:
+                    lower = e.lower
+                if e.upper < upper:
+                    upper = e.upper
+        if lower >= beta or upper <= alpha:
+            self.cache_hits += 1
+            return lower if lower >= beta else upper
+        if self.nodes >= self.max_nodes:
+            raise self.budget_exc(
+                f"exact endgame exceeded max_nodes={self.max_nodes}",
+                nodes=self.nodes, cache_hits=self.cache_hits)
+        self.nodes += 1
+        if alpha < lower:
+            alpha = lower
+        if beta > upper:
+            beta = upper
+
+        n = self._moves(hands, turn, leader, plays, nplays, actions, played)
+        if n > 1:
+            self._lorder(hands, turn, leader, plays, nplays, played, n, hint)
+        maximize = (turn % 2) != self.banker_parity
+        answer = NEG if maximize else POS
+        for i in range(n):
+            v = self._lchild(hands, turn, leader, plays, nplays, played[i], alpha, beta)
+            if maximize:
+                if v > answer:
+                    answer = v
+                    best = played[i]
+                if answer > alpha:
+                    alpha = answer
+            else:
+                if v < answer:
+                    answer = v
+                    best = played[i]
+                if answer < beta:
+                    beta = answer
+            if alpha >= beta:
+                left = (self._ms(turn, hands[turn]).size if hands[turn] else 0) + 1
+                if self.hist[turn][played[i]] < (1 << 30):
+                    self.hist[turn][played[i]] += left * left
+                break
+        e = self._slot(k1, k2)
+        e.best = best
+        if original_alpha < answer < original_beta:
+            e.exact = answer
+            e.flags |= 1
+        elif answer <= original_alpha:
+            e.lower = lower
+            e.upper = upper if upper < answer else answer
+            e.flags |= 2
+        else:
+            e.lower = lower if lower > answer else answer
+            e.upper = upper
+            e.flags |= 2
+        return answer
+
+    def solve_level(self, rnd, cuts):
+        """The root's minimax attacker points, exact up to ``cuts``: returns
+        the root's points plus nothing, or the highest cut reached (module
+        level-mode notes).  ``cuts``: ascending attacker-point thresholds."""
+        cdef uint8_t hands[4]
+        cdef uint8_t plays[4]
+        cdef int turn, points, leader, nplays, rem, lo, hi, mid, c, v
+        if not self.level:
+            raise ValueError("solve_level needs a level-mode session")
+        nplays = self._import(rnd, hands, plays, &turn, &points, &leader)
+        if (hands[0] | hands[1] | hands[2] | hands[3]) == 0 and nplays == 0:
+            return points
+        rem = self._rem_max(hands, leader, plays, nplays)
+        rel = [c - points for c in cuts if points < c <= points + rem]
+        lo = 0
+        hi = len(rel)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            c = rel[mid - 1]
+            v = self.lval(hands, turn, leader, plays, nplays, c - 1, c)
+            self.probes += 1
+            if v >= c:
+                lo = mid
+            else:
+                hi = mid - 1
+        return points + (rel[lo - 1] if lo else 0)
+
+    def solve_points(self, rnd):
+        """The root's exact minimax attacker points, by the level-mode search
+        with a full window (same table and ordering as ``solve_level``)."""
+        cdef uint8_t hands[4]
+        cdef uint8_t plays[4]
+        cdef int turn, points, leader, nplays, rem
+        if not self.level:
+            raise ValueError("solve_points needs a level-mode session")
+        nplays = self._import(rnd, hands, plays, &turn, &points, &leader)
+        if (hands[0] | hands[1] | hands[2] | hands[3]) == 0 and nplays == 0:
+            return points
+        rem = self._rem_max(hands, leader, plays, nplays)
+        return points + self.lval(hands, turn, leader, plays, nplays, -1, rem + 1)

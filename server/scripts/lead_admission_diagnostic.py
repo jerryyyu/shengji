@@ -4,6 +4,12 @@ With --served-env SNAPSHOT.json, use the explicit serving environment mapping
 (including SHENGJI_BOT and SHENGJI_PV_* pins/rules/budgets) through the production
 registry factory. The positional package is a local copy at the same SHA. Capture
 EVERY lead, including incomplete/fallback decisions; do not run extra analysis.
+Exception: explicit --paired-horizon-seconds enables post-decision DEV analysis
+on captured selection worlds/ballot (no resampling). Both value matrices and
+actual depth metadata are written in paired_horizon; incomplete pairs are
+labelled abandoned, never partially published. Capture overhead can affect a
+wall-clock-limited decision; this is not a serving-latency benchmark. No run is
+authorized by selecting this flag. Default capture-only behavior is unchanged.
 The headless declare/bury lifecycle is not websocket scheduling or host parity.
 Selecting a recipe does not establish that it is currently deployed: the caller
 must verify the snapshot against the canonical deployment before a collection.
@@ -261,12 +267,21 @@ def main(argv=None):
     parser.add_argument('--served-env', help='JSON environment snapshot: capture only, including fallback leads')
     parser.add_argument('--max-rounds', type=int, help='Stop after this many complete rounds (served capture only)')
     parser.add_argument('--cost-out', help='New score-free JSONL journal of all decision costs, flushed per turn')
+    parser.add_argument('--paired-horizon-seconds', type=float,
+                        help='Opt-in DEV paired trick/extra-trick measurement per captured lead; no launch authority')
     parser.add_argument('args', nargs=8, metavar='ARG')
     options = parser.parse_args(sys.argv[1:] if argv is None else argv)
     if (options.max_rounds is not None or options.cost_out) and not options.served_env:
         parser.error('--max-rounds/--cost-out require --served-env')
     if options.max_rounds is not None and options.max_rounds <= 0:
         parser.error('--max-rounds must be positive')
+    if options.paired_horizon_seconds is not None:
+        if (not options.served_env or not np.isfinite(options.paired_horizon_seconds)
+                or options.paired_horizon_seconds <= 0):
+            parser.error('--paired-horizon-seconds requires --served-env and a finite positive limit')
+    from shengji.train.paired_horizon import capture_horizon_inputs, measure_captured_horizon
+    from shengji.train.pv_search_policy import PVSearchBudgetExceeded
+    from shengji.train.pv_tree_search import PVTreeContinuationRefused
     args = options.args
     PKG, SHA, SEED, MAXPOS, DEADLINE, OUT, LOCK, STOP = (
         args[0], args[1], int(args[2]), int(args[3]), float(args[4]), args[5], args[6], args[7])
@@ -319,7 +334,8 @@ def main(argv=None):
                     trick += 1
                     check()
                 started = time.perf_counter()
-                with (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
+                with (capture_horizon_inputs(bot) if options.paired_horizon_seconds is not None and is_lead
+                      else nullcontext(None)) as horizon_inputs, (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
                       else nullcontext(None)) as finish_pool:
                     cards = bot.decide_play(rnd, seat)
                 decision_seconds = time.perf_counter() - started
@@ -339,6 +355,17 @@ def main(argv=None):
                     if identity is not None:
                         row.update(collection=identity, attempted=list(cards), decision_seconds=decision_seconds,
                                    finish_pool=finish_pool)
+                        if options.paired_horizon_seconds is not None:
+                            deadline = time.perf_counter() + options.paired_horizon_seconds
+                            def horizon_gate():
+                                check()
+                                if time.perf_counter() >= deadline:
+                                    raise PVSearchBudgetExceeded('paired horizon deadline')
+                            try:
+                                row['paired_horizon'] = measure_captured_horizon(
+                                    bot, horizon_inputs, rec, gate=horizon_gate)
+                            except (PVSearchBudgetExceeded, PVTreeContinuationRefused, Yield) as exc:
+                                row['paired_horizon'] = {'status': 'abandoned', 'reason': type(exc).__name__}
                     else:
                         row.update(analyze(bot, rnd, seat, copy.deepcopy(rec), dict(bot._t), samplers[seat]))
                     out.write(json.dumps(row) + "\n")

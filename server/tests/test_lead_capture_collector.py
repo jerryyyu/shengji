@@ -16,7 +16,7 @@ from test_pv_search_serving import package  # noqa: F401
 
 
 @pytest.mark.parametrize('mode', ['historical', 'served', 'fallback', 'served_round',
-                                  'served_stop', 'served_error'])
+                                  'served_stop', 'served_error', 'horizon', 'horizon_timeout'])
 def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     plays = [e for e in events if e['e'] == 'play']
@@ -32,6 +32,9 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             self.sampler = Sampler()
             self._refusals = RefusalLedger()
 
+        def _select(self, root, seat, admitted, means, worlds=None):
+            return 0
+
         def decide_play(self, root, seat):
             nonlocal cursor
             if mode == 'served_error' and cursor == 4:
@@ -45,6 +48,9 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             self._cap = ([event['attempted'], ['fixture-only']],)
             self._probe = True
             self.last_decision_record = dict(work_complete=mode != 'fallback', played=list(event['attempted']))
+            if mode.startswith('horizon'):
+                self._select(root, seat, [list(event['attempted'])], [0.0],
+                             worlds=[([list(h) for h in root.hands], list(root.buried))])
             return list(event['attempted'])
 
     class Game:
@@ -85,6 +91,17 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         args = ['--max-rounds', '1', '--cost-out', str(costs), *args]
         # A round cap, not the lead cap, must stop the next deal.
         args[args.index('16')] = '128'
+    if mode.startswith('horizon'):
+        from shengji.train import paired_horizon
+        def measured(bot, captured, record, *, gate):
+            gate()
+            assert captured['actions'] == [record['played']]
+            assert len(captured['worlds']) == 1
+            if mode == 'horizon_timeout':
+                raise pv.PVSearchBudgetExceeded('test deadline')
+            return {'status': 'complete', 'consumer_witness': True}
+        monkeypatch.setattr(paired_horizon, 'measure_captured_horizon', measured)
+        args = ['--paired-horizon-seconds', '1', *args]
     if mode == 'served_error':
         with pytest.raises(RuntimeError, match='injected later'):
             collector.main(args)
@@ -111,6 +128,12 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         assert journal[-1]['rounds'] == 1
     assert cursor == len(plays) == 64
     assert len(rows) == 16
+    assert all(('paired_horizon' in row) == mode.startswith('horizon') for row in rows)
+    if mode == 'horizon':
+        assert all(row['paired_horizon']['consumer_witness'] for row in rows)
+    if mode == 'horizon_timeout':
+        assert all(row['paired_horizon'] == {'status': 'abandoned', 'reason': 'PVSearchBudgetExceeded'}
+                   for row in rows)
     if mode != 'historical':
         from scripts.lead_finish_classify import main as classify
         classified = tmp_path / 'classified.json'
@@ -180,10 +203,25 @@ def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budg
             assert bury['schema'] == 'cwv-bury-policy-v1'
         assert any(bot.last_declare_record is not None for bot in group)
     root = roots[0]
-    cards = bots[root.turn].decide_play(root, root.turn)
+    from shengji.train.paired_horizon import capture_horizon_inputs, measure_captured_horizon
+    with capture_horizon_inputs(bots[root.turn]) as horizon_inputs:
+        cards = bots[root.turn].decide_play(root, root.turn)
     assert cards == direct[root.turn].decide_play(roots[1], root.turn)
     record = bots[root.turn].last_decision_record
     assert record['work_complete'] == (float(budget) > 1)
+    rng = bots[root.turn].sampler.rng.getstate()
+    saved_record = copy.deepcopy(record)
+    horizon = measure_captured_horizon(bots[root.turn], horizon_inputs, record, gate=lambda: None)
+    assert horizon['status'] == ('complete' if float(budget) > 1 else 'skipped')
+    assert bots[root.turn].sampler.rng.getstate() == rng
+    assert bots[root.turn].last_decision_record == saved_record
+    if horizon['status'] == 'complete':
+        assert horizon['actions'] == record['admitted']
+        assert horizon['worlds'] == 2
+        serialized = json.loads(json.dumps(horizon))
+        for name, depth in [('trick', 1), ('policy', 2)]:
+            assert len(serialized['arms'][name]['values']) == 2
+            assert all(r['completed_tricks'] == depth for r in serialized['arms'][name]['leaves'])
     packet = collector.LeadCapture(root).capture(root, ledger=bots[root.turn]._refusals, decision=record)
     restored, _ = restore_with_ledger(packet)
     restored.play(root.turn, cards)

@@ -8,10 +8,62 @@ served information-set policy. Values are evaluator-relative, not strength.
 from __future__ import annotations
 
 import copy
+from contextlib import contextmanager
 from dataclasses import replace
 import time
 
 import numpy as np
+
+
+@contextmanager
+def capture_horizon_inputs(bot):
+    """Observe the final selection call without redrawing worlds or candidates."""
+    captured = {}
+    original = bot._select
+    had_own = "_select" in vars(bot)
+    own = vars(bot).get("_select")
+
+    def observe(rnd, seat, admitted, means, *args, **kwargs):
+        selected = original(rnd, seat, admitted, means, *args, **kwargs)
+        worlds = kwargs.get("worlds", args[0] if args else None)
+        captured.clear()
+        if worlds is not None:
+            captured.update(root=copy.deepcopy(rnd), seat=seat,
+                            actions=copy.deepcopy(admitted), worlds=copy.deepcopy(worlds))
+        return selected
+
+    bot._select = observe
+    try:
+        yield captured
+    finally:
+        if had_own:
+            bot._select = own
+        else:
+            del bot._select
+
+
+def measure_captured_horizon(bot, captured, record, *, gate):
+    """Collector consumer; skips fallback/stale ballots rather than mispairing.
+
+    Only invoke after preserving the actual served decision. Uses borrowed
+    lookahead methods on a diagnostic copy, never on the playing bot.
+    """
+    from .pv_tree_config import PVTreeConfig
+    from .pv_tree_search import PVTreeMixin
+    if not record or record.get("work_complete") is not True or not captured:
+        return {"status": "skipped", "reason": "incomplete_served_capture"}
+    if record.get("admitted") != captured["actions"]:
+        return {"status": "skipped", "reason": "final_ballot_mismatch"}
+    diagnostic = copy.copy(bot)
+    if not isinstance(bot, PVTreeMixin):
+        diagnostic.__class__ = type("HorizonDiagnostic", (PVTreeMixin, type(bot)), {})
+    diagnostic.config = replace(bot.config, tree=PVTreeConfig(sims=64))
+    pair = paired_horizon(diagnostic, captured["root"], captured["seat"],
+                          captured["actions"], captured["worlds"], gate=gate)
+    return {"status": "complete", "actions": captured["actions"],
+            "worlds": len(captured["worlds"]),
+            "arms": {name: {**arm, "values": arm["values"].tolist()}
+                     for name, arm in pair.items()}}
 
 
 def _plays(rnd):

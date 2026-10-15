@@ -199,6 +199,8 @@ class Room:
     # different root plus an immutable server-only identity; no websocket path
     # can construct one yet.
     log_dir: Path | None = None
+    # Bound warnings during a persistent disk failure without stopping retries.
+    _log_error_reported: bool = field(default=False, init=False, repr=False)
     evaluation: HumanEvaluationContext | None = None
     # Any missing evaluation event destroys the assigned session's evidence
     # chain.  Keep the room terminally unusable rather than allowing a retry or
@@ -270,10 +272,16 @@ class Room:
                 rec["training_excluded"] = True
             with open(self.log_dir / f"{self.code}.jsonl", "a") as f:
                 f.write(json.dumps(rec) + "\n")
-        except OSError:
+        except OSError as exc:
             if self.evaluation is not None:
                 self.evaluation_invalidated = True
                 raise  # evidence rooms fail closed instead of silently playing
+            if not self._log_error_reported:
+                self._log_error_reported = True
+                # Do not send event payloads, chat, or exception paths to stderr.
+                logging.warning("room %s event logging failed (%s); gameplay "
+                                "continues, records may be missing",
+                                self.code, type(exc).__name__)
 
     # ------------------------------------------------------------- id mapping
     def index_round(self) -> None:

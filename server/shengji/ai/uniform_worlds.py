@@ -132,6 +132,51 @@ def heuristic_bury_kitty(hand33, available, ordering, slots):
     return sorted(available, key=lambda c: (keep[c], c))[:slots]
 
 
+def kitty_rule_split(rnd, mem, union, played, forbidden=(), slots=None):
+    """Split the banker's unplayed cards ``union`` (its hand now plus the
+    kitty) by the served bury's incumbent rule: ``(hand, kitty)``, or None when
+    the world contradicts the rule (the kitty would need a trump) or the
+    banker's hand breaks its public constraints (voids, ``forbidden`` codes,
+    pair and run caps).  ``played`` is every card the banker has played.  Any
+    proposal that deals ``union`` as one receiver can call this (module
+    docstring)."""
+    o = rnd.ordering
+    banker = rnd.banker
+    slots = len(rnd.buried) if slots is None else slots
+    kitty = heuristic_bury_kitty(list(union) + list(played), union, o, slots)
+    # the rule buries a trump only from a hand short of eight other cards; a
+    # kitty that needs one here means the rule's own choice included a card
+    # the banker has played since, so the world contradicts the rule
+    if any(o.eff_suit(c) == TRUMP for c in kitty):
+        return None
+    hand = list((Counter(union) - Counter(kitty)).elements())
+    voids = mem.voids[banker]
+    if any(o.eff_suit(c) in voids or c in forbidden for c in hand):
+        return None
+    if not _caps_hold(banker, hand, mem, o):
+        return None
+    return hand, kitty
+
+
+def _caps_hold(seat, hand, mem, o):
+    """Does ``hand`` keep ``seat``'s pair and run caps (`Memory`)?"""
+    caps = mem.pair_cap[seat]
+    runs = mem.run_cap[seat]
+    if not caps and not runs:
+        return True
+    for suit in set(caps) | set(runs):
+        cards = [c for c in hand if o.eff_suit(c) == suit]
+        if len(cards) < 2:
+            continue
+        cap = caps.get(suit)
+        if cap is not None and sum(v // 2 for v in Counter(cards).values()) > cap:
+            return False
+        run = runs.get(suit)
+        if run is not None and decompose(cards, o).max_pair_run() > run:
+            return False
+    return True
+
+
 def _compositions(n, allowed, caps):
     """Every split of ``n`` cards over the receivers ``allowed`` (indices), each
     at most its cap, as rows of a ``len(caps)``-wide int array."""
@@ -205,6 +250,7 @@ class UniformProposal:
 
     # ------------------------------------------------------------ the state
     def _prepare(self, rnd, seat, mem):
+        self.rnd = rnd
         o = rnd.ordering
         banker = rnd.banker
         pool = Counter(mem.unseen)
@@ -372,23 +418,6 @@ class UniformProposal:
             i += int(k)
         return dealt
 
-    def _caps_hold(self, seat_, hand, mem, o):
-        caps = mem.pair_cap[seat_]
-        runs = mem.run_cap[seat_]
-        if not caps and not runs:
-            return True
-        for suit in set(caps) | set(runs):
-            cards = [c for c in hand if o.eff_suit(c) == suit]
-            if len(cards) < 2:
-                continue
-            cap = caps.get(suit)
-            if cap is not None and sum(v // 2 for v in Counter(cards).values()) > cap:
-                return False
-            run = runs.get(suit)
-            if run is not None and decompose(cards, o).max_pair_run() > run:
-                return False
-        return True
-
     def _try(self, mem):
         st = self.state
         o = st["o"]
@@ -396,26 +425,19 @@ class UniformProposal:
         union = st["union"]
         hands = {s: st["pre"][s] + dealt[s] for s in st["others"] if s != union}
         for s in hands:
-            if not self._caps_hold(s, hands[s], mem, o):
+            if not _caps_hold(s, hands[s], mem, o):
                 self.stats["uniform_cap_rejections"] += 1
                 return None
         if union is None:
             kitty = st["buried"] if st["buried"] is not None else dealt.get(KITTY, [])
             return hands, list(kitty)
         available = st["pre"][union] + dealt.get(UNION_OUT, []) + dealt[UNION_IN]
-        kitty = heuristic_bury_kitty(available + st["played_banker"], available, o,
-                                     st["kitty_slots"])
-        hand = list((Counter(available) - Counter(kitty)).elements())
-        voids = mem.voids[union]
-        forbidden = st["forbidden"][union]
-        # the rule buries a trump only from a hand short of eight other cards; a
-        # kitty that needs one here means the rule's own choice included a card
-        # the banker has played since, so the world contradicts the rule
-        if (any(o.eff_suit(c) == TRUMP for c in kitty)
-                or any(o.eff_suit(c) in voids or c in forbidden for c in hand)
-                or not self._caps_hold(union, hand, mem, o)):
+        split = kitty_rule_split(self.rnd, mem, available, st["played_banker"],
+                                 st["forbidden"][union], st["kitty_slots"])
+        if split is None:
             self.stats["kitty_rule_rejections"] += 1
             return None
+        hand, kitty = split
         hands[union] = hand
         self.stats["kitty_rule_worlds"] += 1
         return hands, list(kitty)
@@ -464,4 +486,4 @@ def sample_worlds_uniform(bot, rnd, seat, n, *, mem=None, check_budget=None, kit
 
 
 __all__ = ["TRY_FACTOR", "TRIES_PER_CALL", "FIELDS", "KITTY_FIELDS", "UniformProposal",
-           "heuristic_bury_kitty", "sample_worlds_uniform"]
+           "heuristic_bury_kitty", "kitty_rule_split", "sample_worlds_uniform"]

@@ -300,6 +300,8 @@ def test_kitty_rule_worlds_keep_the_banker_constraints_and_bury_like_the_banker(
                 union = hands[b] + list(buried)
                 assert buried == UW.heuristic_bury_kitty(union + played, union, rnd.ordering, 8)
                 assert hand_ok(rnd, mem, forbidden, b, hands[b])
+                hand, kitty = UW.kitty_rule_split(rnd, mem, union, played, forbidden[b])
+                assert kitty == buried and Counter(hand) == Counter(hands[b])
             if kitty_rule:
                 rule_worlds += propose.stats["kitty_rule_worlds"]
     assert rule_worlds > 100

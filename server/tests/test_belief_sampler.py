@@ -216,3 +216,16 @@ def test_the_follow_check_flags_a_world_that_breaks_an_earlier_follow(chunk):
             assert bsm.follow_illegal(view, [(hands, list(d.rnd.buried))]).all()
             return
     pytest.skip("no short follow with a donor in this game")
+
+
+def test_history_legal_draws_match_the_served_paths(small_package):
+    from shengji.ai import history_legality as HL
+    from test_world_history_legal import fixture
+    _, now, seat = fixture()
+    model = bn.load_belief_numpy(small_package["path"], small_package["sha256"])
+    for m in (None, model):
+        keep: dict = {}
+        _, _, worlds, stats = bsm.history_legal_draw(keep=keep, model=m)(now, seat, (), 16, 3)
+        assert len(worlds) == 16 and keep["worlds"] is worlds
+        if not stats["history_fallback_worlds"]:
+            assert all(HL.history_legal(now, seat, hands) for hands, _ in worlds)

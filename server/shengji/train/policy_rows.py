@@ -400,9 +400,12 @@ def explore_row_weights(explore_flag: torch.Tensor, explore_weight: float) -> to
     if float(explore_weight) == 1.0:
         return None
     from .policy_prior import EXPLORE_FLAG_BEAT
-    w = torch.ones(explore_flag.shape, dtype=torch.float32, device=explore_flag.device)
-    w[explore_flag == EXPLORE_FLAG_BEAT] = float(explore_weight)
-    return w
+    # ``torch.where`` writes the same float32 values as filling ones and then
+    # assigning through the boolean mask, but the mask assignment makes the
+    # host wait for the device (it goes through ``nonzero`` on MPS).
+    ones = torch.ones(explore_flag.shape, dtype=torch.float32, device=explore_flag.device)
+    return torch.where(explore_flag == EXPLORE_FLAG_BEAT,
+                       torch.full_like(ones, float(explore_weight)), ones)
 
 
 def scale_trunk_gradient(features: torch.Tensor, scale: float) -> torch.Tensor:
@@ -426,7 +429,7 @@ def scale_trunk_gradient(features: torch.Tensor, scale: float) -> torch.Tensor:
 
 def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False,
                   soft_targets: bool = False, soft_temperature: float = 1.0, row_weight=None,
-                  trunk_grad_scale: float = 1.0):
+                  trunk_grad_scale: float = 1.0, rows=None):
     """``(bce, listwise, logits)`` of the policy head on one root batch.  With
     ``detach`` the head reads the trunk features through a stop-gradient: the
     policy loss trains the head only and never moves the shared trunk (the head's
@@ -438,7 +441,10 @@ def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: floa
     (a different summation order), which is why the trainer passes None at W=1.0.
     ``trunk_grad_scale`` (``--policy-trunk-grad-scale``) multiplies the policy
     gradient where it enters the trunk (``scale_trunk_gradient``); the policy
-    tower and head keep the full gradient.  1.0 is the unscaled code path."""
+    tower and head keep the full gradient.  1.0 is the unscaled code path.
+    ``rows`` (optional) is ``policy_prior.ballot_rows`` of the batch's ``tgt``
+    as an int64 tensor on the device; the listwise term then selects its rows
+    without waiting for the device (same rows, same values)."""
     features = model.features_flat(t["x"])
     if detach:
         features = features.detach()
@@ -456,9 +462,11 @@ def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: floa
     elif soft_targets:
         from .policy_prior import listwise_loss_soft
         lw = listwise_loss_soft(logits, t["ball"], t["mask"], t["tgt"], t["vals"],
-                                temperature=float(soft_temperature), row_weight=row_weight)
+                                temperature=float(soft_temperature), row_weight=row_weight,
+                                rows=rows)
     else:
-        lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"], row_weight=row_weight)
+        lw = listwise_loss(logits, t["ball"], t["mask"], t["tgt"], row_weight=row_weight,
+                           rows=rows)
     return bce, lw, logits
 
 

@@ -274,10 +274,21 @@ def check_sidecar_coverage(out_dir: str | os.PathLike,
     return per
 
 
-def manifest_sha256(out_dir: str | os.PathLike) -> str:
+def manifest_sha256(out_dir: str | os.PathLike, *, workers: int = 8) -> str:
     """Identity of a sidecar directory: the schema and the sha256 of every
-    sidecar file's bytes, so a same-sized label change is a different manifest."""
+    sidecar file's bytes, so a same-sized label change is a different manifest.
+
+    The files are hashed ``workers`` at a time on threads (a corpus directory
+    holds one small file per shard, 880,000 for C14, so one at a time takes
+    ten minutes of file opens) and folded into the digest in sorted order, so
+    the value does not depend on ``workers``."""
+    from concurrent.futures import ThreadPoolExecutor
     digest = hashlib.sha256(SIDECAR_SCHEMA.encode("ascii"))
-    for p in sorted(Path(out_dir).glob("*.npz")):
-        digest.update(f"{p.name}:{shard_sha256(p)}\n".encode("ascii"))
+    paths = sorted(Path(out_dir).glob("*.npz"))
+    block = 4096
+    with ThreadPoolExecutor(max_workers=max(1, int(workers))) as pool:
+        for start in range(0, len(paths), block):
+            part = paths[start:start + block]
+            for p, sha in zip(part, pool.map(shard_sha256, part)):
+                digest.update(f"{p.name}:{sha}\n".encode("ascii"))
     return digest.hexdigest()

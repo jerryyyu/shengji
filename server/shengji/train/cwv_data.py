@@ -1019,6 +1019,89 @@ def decode_arrays(task: tuple[str, str | None, bool | None]
     return arrays, meta
 
 
+def read_columns(task: tuple[str, str | None, bool | None, tuple[str, ...], np.ndarray | None]
+                 ) -> dict[str, np.ndarray]:
+    """The members ``names`` of one cached shard, plus its ``trick_end`` flags
+    when the cache is that flavour, restricted to the kept rows ``keep_idx``
+    (``None`` = all), after the hash and flavour check ``decode_arrays`` runs.
+    Module level and argument-picklable so a process pool can call it."""
+    path, shard_sha256, history, names, keep_idx = task
+    meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256, history=history)
+    names = tuple(names)
+    if meta.get("trick_end") and CwvBlock.TRICK_END not in names:
+        names += (CwvBlock.TRICK_END,)
+    with zipfile.ZipFile(path) as zf:
+        arrays = {name: _read_member(zf, name) for name in names}
+    if keep_idx is not None:
+        idx = np.asarray(keep_idx, dtype=np.int64)
+        arrays = {name: column[idx] for name, column in arrays.items()}
+    return arrays
+
+
+def read_columns_many(tasks: Sequence[tuple]) -> list[dict[str, np.ndarray]]:
+    """``read_columns`` over several shards in one pool task."""
+    return [read_columns(task) for task in tasks]
+
+
+def selector_rows(columns: Mapping[str, np.ndarray]) -> Any:
+    """What a ``data.SplitSelector`` reads of a block (its deal keys and, in the
+    trick-end flavour, the derived-row flags), from ``read_columns`` output."""
+    from types import SimpleNamespace
+    return SimpleNamespace(deal_key=columns["deal_key"],
+                           trick_end=columns.get(CwvBlock.TRICK_END))
+
+
+def part_row_counts(store: Any, selectors: Mapping[str, Callable[[Any], np.ndarray]]
+                    ) -> Iterator[tuple[int, dict[str, int]]]:
+    """``(i, {part: rows})`` for every shard: the sum of ``selector(block(i))``.
+
+    A ``data.SplitSelector`` reads a block's deal keys, and outside ``train``
+    also its ``trick_end`` flags.  So for a shard whose recorded deal keys all
+    answer the same way, the count is all of its kept rows or none of them,
+    known without decoding, unless the shard carries trick-end rows and the
+    part is not ``train``.  Only those shards, and shards whose keys straddle
+    a part boundary, are read: the deal-key and flag columns from the cache
+    (``read_columns``), or the whole block from a store without column reads.
+    Any other selector type gets the full decode of every block."""
+    from types import SimpleNamespace
+    if not all(type(selector) is SplitSelector for selector in selectors.values()):
+        for i in range(len(store)):
+            block = store.block(i)
+            yield i, {part: int(np.asarray(selector(block), dtype=bool).sum())
+                      for part, selector in selectors.items()}
+        return
+    rows = store.rows()
+    metas = getattr(store, "metas", None)
+    for i in range(len(store)):
+        keys = SimpleNamespace(deal_key=np.asarray(store.keys_of(i), dtype=str), trick_end=None)
+        derived = True if metas is None else bool(metas[i].get("trick_end"))
+        block = None
+        counts = {}
+        for part, selector in selectors.items():
+            hit = np.asarray(selector(keys), dtype=bool)
+            if not bool(hit.any()):
+                counts[part] = 0
+            elif bool(hit.all()) and (selector.part == "train" or not derived):
+                counts[part] = int(rows[i])
+            else:
+                if block is None:
+                    block = (selector_rows(read_columns(store.column_task(i, ("deal_key",))))
+                             if hasattr(store, "column_task") else store.block(i))
+                counts[part] = int(np.asarray(selector(block), dtype=bool).sum())
+        yield i, counts
+
+
+def split_row_counts(store: Any, selectors: Mapping[str, Callable[[Any], np.ndarray]]
+                     ) -> dict[str, int]:
+    """Rows per part, equal to summing ``selector(block)`` over every block
+    (``part_row_counts``; most shards are counted without being decoded)."""
+    total = {part: 0 for part in selectors}
+    for _i, counts in part_row_counts(store, selectors):
+        for part, n in counts.items():
+            total[part] += n
+    return total
+
+
 def _valid_meta(path: Path, shard_sha256: str, history: bool,
                 trick_end: bool = False) -> dict | None:
     if not Path(path).is_file():
@@ -1215,6 +1298,52 @@ class CwvBlockStore:
                 continue
             yield self.block(i)
 
+    def column_task(self, i: int, names: Sequence[str]) -> tuple:
+        """The picklable argument ``read_columns`` needs for shard ``i``."""
+        shard, path = self.entries[i]
+        return (str(path), shard.sha256, self.history, tuple(names), self.keep_idx[i])
+
+    def iter_columns(self, names: Sequence[str], *, workers: int = 0,
+                     skip: Callable[[list[str]], bool] | None = None,
+                     chunk: int = 32) -> Iterator[tuple[int, dict[str, np.ndarray]]]:
+        """``(i, {name: column})`` for every shard ``skip`` does not reject,
+        in shard order, each column restricted to the kept rows as
+        ``block(i)`` would hold them.
+
+        Only the named members are read (``read_columns``), so a pass that
+        needs a few per-row columns skips the wide ``public`` / ``world``
+        members a full decode spends its time on.  ``workers`` > 0 reads in
+        that many processes, ``chunk`` shards per task and a bounded number
+        of tasks in flight.  The order and the values do not depend on
+        ``workers``.  Nothing is admitted to the residency, and sidecar
+        columns are not attached."""
+        todo = [i for i in range(len(self.entries))
+                if skip is None or not skip(self.keys_of(i))]
+        if int(workers) <= 0 or len(todo) <= 1:
+            for i in todo:
+                yield i, read_columns(self.column_task(i, names))
+            return
+        from collections import deque
+        groups = [todo[k:k + int(chunk)] for k in range(0, len(todo), int(chunk))]
+        with ProcessPoolExecutor(max_workers=int(workers),
+                                 mp_context=multiprocessing.get_context("spawn")) as pool:
+            pending: deque = deque()
+            upcoming = iter(groups)
+
+            def submit_next() -> None:
+                group = next(upcoming, None)
+                if group is not None:
+                    tasks = [self.column_task(i, names) for i in group]
+                    pending.append((group, pool.submit(read_columns_many, tasks)))
+
+            for _ in range(4 * int(workers)):
+                submit_next()
+            while pending:
+                group, future = pending.popleft()
+                results = future.result()
+                submit_next()
+                yield from zip(group, results)
+
     def windows(self, order: Sequence[int], window: int) -> list[list[int]]:
         return _window_groups(order, self.sizes, self.residency.budget, window,
                               lambda i: self.entries[i][0].label)
@@ -1286,7 +1415,11 @@ class CwvBlockStore:
                 rng.shuffle(order)
             batch_size = max(1, int(batch_size))
             groups = self.windows(order, window)
-            pool = (ProcessPoolExecutor(max_workers=int(decode_workers))
+            # spawn, not fork: the trainer iterates this on its prefetch thread,
+            # and forking a process whose other threads hold locks can hang the
+            # child (spawn is already the default on macOS)
+            pool = (ProcessPoolExecutor(max_workers=int(decode_workers),
+                                        mp_context=multiprocessing.get_context("spawn"))
                     if int(decode_workers) > 0 and len(groups) > 1 else None)
         finally:
             finish_stage("setup", started)
@@ -1542,6 +1675,93 @@ def tensors_rows(batch: Mapping[str, np.ndarray]) -> list[ValueAfterstateTensors
         tensors.validate()
         rows.append(tensors)
     return rows
+
+
+class Prefetch:
+    """Run an iterator on a background thread, at most ``depth`` items ahead
+    of the consumer, so the next batch is gathered while the device trains
+    on this one.
+
+    ``produce`` is a zero-argument callable returning the iterator.  It is
+    called, advanced and closed on the background thread, so a generator's
+    ``finally`` (a decode pool's shutdown) runs there.  Items arrive in the
+    producer's order, and an exception the producer raises is re-raised at
+    the consumer's next read.  ``close`` (also on ``with`` exit) stops the
+    producer after its current item, closes the iterator and joins.
+
+    The producer owns whatever it advances (random generators, the store's
+    residency) until the iteration ends or ``close`` returns; nothing else
+    may touch that state meanwhile.  Under that rule the items, and the
+    order of every random draw, are exactly those of iterating ``produce()``
+    inline."""
+
+    _END = object()
+
+    def __init__(self, produce: Callable[[], Iterator], depth: int = 2):
+        import queue
+        import threading
+        if int(depth) < 1:
+            raise ValueError("prefetch depth must be >= 1")
+        self._queue: Any = queue.Queue(maxsize=int(depth))
+        self._stop = threading.Event()
+        self._finished = False
+        self._thread = threading.Thread(target=self._run, args=(produce,),
+                                        name="cwv-prefetch", daemon=True)
+        self._thread.start()
+
+    def _put(self, item: tuple[bool, Any]) -> bool:
+        import queue
+        while not self._stop.is_set():
+            try:
+                self._queue.put(item, timeout=0.05)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _run(self, produce: Callable[[], Iterator]) -> None:
+        iterator = None
+        try:
+            iterator = iter(produce())
+            for item in iterator:
+                if not self._put((True, item)):
+                    return
+            self._put((True, self._END))
+        except BaseException as exc:          # re-raised by the consumer
+            self._put((False, exc))
+        finally:
+            close = getattr(iterator, "close", None)
+            if close is not None:
+                try:
+                    close()
+                except BaseException as exc:
+                    self._put((False, exc))
+
+    def __iter__(self) -> "Prefetch":
+        return self
+
+    def __next__(self) -> Any:
+        if self._finished:
+            raise StopIteration
+        ok, item = self._queue.get()
+        if ok and item is not self._END:
+            return item
+        self._finished = True
+        self._thread.join()
+        if ok:
+            raise StopIteration
+        raise item
+
+    def close(self) -> None:
+        self._stop.set()
+        self._finished = True
+        self._thread.join()
+
+    def __enter__(self) -> "Prefetch":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
 
 
 # ------------------------------------------------------------------ splits

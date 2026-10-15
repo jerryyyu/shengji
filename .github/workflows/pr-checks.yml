@@ -277,7 +277,8 @@ jobs:
             tests/test_belief_labels.py \
             tests/test_belief_eval.py \
             tests/test_belief_history.py \
-            tests/test_world_weighting.py
+            tests/test_world_weighting.py \
+            tests/test_belief_sampler.py
 
   luna-profiles:
     runs-on: ubuntu-latest

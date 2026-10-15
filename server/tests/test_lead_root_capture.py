@@ -206,6 +206,10 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     terminals = {label: {**terminal, 'arm': label.rsplit('-', 1)[0], 'pass_label': label,
                          'policy': worker.NAMES[label.rsplit('-', 1)[0]]} for label in passes}
     assert paired_completed_summary(passes, roots, terminals) == paired
+    stale_policy = copy.deepcopy(terminals)
+    stale_policy['dx-a']['policy'] = 'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed6-xf6-xfcompactlevel-rd774ea98-bury-hybrid-bwv-ba1c68b8fa9a'
+    with pytest.raises(ValueError, match='worker terminal drift: policy'):
+        paired_completed_summary(passes, roots, stale_policy)
     bad_terminals = copy.deepcopy(terminals)
     bad_terminals['dx-b']['error'] = {'type': 'RuntimeError', 'message': 'late failure'}
     with pytest.raises(ValueError, match='not successful'):
@@ -252,8 +256,7 @@ def test_latency_harvest_captures_seven_card_leads_and_follows(tmp_path):
         served(refusal_constraints=True), tmp_path))
     roots = [json.loads(line) for line in (tmp_path / 'roots.jsonl').read_text().splitlines()]
     assert result == {'rounds': 1, 'roots': len(roots)}
-    assert any(root['max_hand'] == 7 for root in roots)
-    assert {root['lead'] for root in roots} == {True, False}
+    assert {root['lead'] for root in roots if root['max_hand'] == 7} == {True, False}
     assert all(1 <= root['max_hand'] <= 7 for root in roots)
 
 

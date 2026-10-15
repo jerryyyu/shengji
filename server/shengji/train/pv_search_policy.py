@@ -2493,7 +2493,9 @@ class PVSearchBot(PolicyValueBot):
                 if changed:
                     winner = exact.winner
                     played = list(admitted[winner])
-                stage.publish(changed=changed)
+                # Even an unchanged action publishes new exact scores/world
+                # counts.  Only retain that evidence after a final budget check.
+                stage.publish()
             if stage.abandoned:
                 winner, played = baseline_winner, baseline_played
                 exact_follow_record = {

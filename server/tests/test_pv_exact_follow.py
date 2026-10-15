@@ -218,8 +218,8 @@ def disagreement():
                   plays=[(0, ["C5"])], attacker_points=35)
 
 
-def search_case(deadline=None, on=True, max_nodes=10000):
-    """Real enumeration/admission/search/engine, with a deliberately wrong head.
+def search_case(deadline=None, on=True, max_nodes=10000, preferred='D3'):
+    """Real enumeration/admission/search/engine, with a controlled value head.
 
     This isolates the mechanism; it is not a measured production-model mistake.
     """
@@ -232,7 +232,7 @@ def search_case(deadline=None, on=True, max_nodes=10000):
     policy._worlds = lambda *args: (worlds, 2)
     policy.scores = lambda r, s, actions, w: np.zeros((len(w), len(actions)))
     policy._value_means = lambda r, s, actions, w, check: (
-        np.asarray([1.0 if a == ['D3'] else 0.0 for a in actions]), 1)
+        np.asarray([1.0 if a == [preferred] else 0.0 for a in actions]), 1)
     before = copy.deepcopy(rnd.__dict__, {id(rnd.ordering): rnd.ordering})
     played = policy._search(rnd, 1, ['D3'], time.perf_counter(), deadline)
     assert rnd.__dict__ == before
@@ -262,6 +262,38 @@ def test_incomplete_exact_search_preserves_finalized_baseline():
     policy, failed = search_case(max_nodes=1)
     assert failed == base
     assert policy.last_decision_record['exact_follow_abandoned'] == 'error'
+
+
+@pytest.mark.parametrize('preferred', ['D3', 'HJ'])
+def test_exact_follow_publication_checks_deadline_even_if_action_unchanged(monkeypatch, preferred):
+    from shengji.train import pv_exact_follow
+    _, baseline = search_case(on=False, preferred=preferred)
+    original = pv_exact_follow.rerank_follow
+    expired = False
+    results = []
+
+    def finish_then_expire(*args, **kwargs):
+        nonlocal expired
+        result = original(*args, **kwargs)
+        results.append((result.winner, kwargs['baseline_index']))
+        expired = True
+        return result
+
+    def check():
+        if expired:
+            raise pv.PVSearchBudgetExceeded('expired before exact publication')
+
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', finish_then_expire)
+    bot, actual = search_case(deadline=check, preferred=preferred)
+    assert len(results) == 1
+    assert (results[0][0] == results[0][1]) == (preferred == 'HJ')
+    assert actual == baseline
+    record = bot.last_decision_record
+    assert record['exact_follow_abandoned'] == 'hard_budget'
+    assert record['exact_follow_error'] == 'PVSearchBudgetExceeded'
+    assert not record['exact_follow_applied']
+    assert 'exact_follow_scores' not in record
+    assert 'exact_follow_worlds' not in record
 
 
 def test_recipe_identity_and_own_hand_multiset():

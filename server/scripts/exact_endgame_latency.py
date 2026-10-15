@@ -116,6 +116,8 @@ async def harvest(args, srv, bot, out):
     from shengji.engine.game import Game
     from shengji.train.lead_root_capture import LeadCapture
     from shengji.train.policy_value_search import leading
+    if not callable(getattr(LeadCapture, 'capture_turn', None)):
+        raise RuntimeError('integrated follow-root capture source required before harvest')
     turns, roots = Sink(out / 'harvest_turns.jsonl'), Sink(out / 'roots.jsonl')
     n_roots = 0
     for i in range(args.rounds):

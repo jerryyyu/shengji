@@ -544,13 +544,21 @@ def train(args) -> int:
     stream = Stream(entries, verified=verified, threads=args.loader_threads,
                     buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch,
                     row_frac=args.row_frac, no_history=args.no_history, permute=args.permute)
-    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed)
+    calib = load_eval(args.eval_data or args.data, "calib", verified, max_rows=args.calib_rows,
+                      seed=args.seed)
     if args.permute:
         perm = permute_within_strata(strata_of(calib["trick"], calib["role"]), args.seed + 2)
         calib["Y"], calib["M"] = calib["Y"][perm], calib["M"][perm]
     model = build_model(d=args.d, heads=args.heads, enc_layers=args.enc_layers,
                         xattn_layers=args.xattn_layers, x_hidden=args.x_hidden,
                         card_self_attn=not args.no_card_self_attn)
+    if args.init_from and not (out / "checkpoint.pt").exists():
+        init = torch.load(args.init_from, weights_only=False)
+        if init["config"] != model.config:
+            raise BeliefSeqError(f"--init-from config {init['config']} != {model.config}")
+        model.load_state_dict(init["model"])
+        _status(status, f"INIT from {args.init_from} (epoch {init.get('epoch')}, "
+                        f"calib {init.get('calib_ll')})")
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
     total_steps = args.epochs * n_buffers
@@ -567,7 +575,7 @@ def train(args) -> int:
                         f"chunks={len(stream.entries)} config={json.dumps(vars(args), default=str)}")
 
     def lr_at(step):
-        warm = max(1, int(0.02 * total_steps))
+        warm = max(1, int(args.warmup_frac * total_steps))
         if step < warm:
             return args.lr * (step + 1) / warm
         return args.lr * 0.5 * (1 + math.cos(math.pi * min(1.0, step / total_steps)))
@@ -613,6 +621,8 @@ def train(args) -> int:
                                  "seconds": time.time() - t0})
         _status(status, f"EPOCH {epoch + 1} train {tot / max(cnt, 1):.4f} calib {cll:.4f} "
                         f"({time.time() - t0:.0f}s)")
+        torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
+                    "epoch": epoch + 1, "calib_ll": cll}, out / f"epoch_{epoch + 1}.pt")
         if cll < state["best"] - 1e-5:
             state["best"], state["bad"] = cll, 0
             torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
@@ -967,6 +977,10 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--patience", type=int, default=2)
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--no-history", action="store_true")
+    t.add_argument("--init-from", default=None, help="warm start: a best.pt/epoch_k.pt of the same config")
+    t.add_argument("--eval-data", nargs="+", default=None,
+                   help="extract dirs for the per-epoch calib loss (default --data)")
+    t.add_argument("--warmup-frac", type=float, default=0.02)
     t.add_argument("--permute", action="store_true")
     t.add_argument("--d", type=int, default=64)
     t.add_argument("--heads", type=int, default=4)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the decoded pack (#531) for a set of data stores from their existing caches.
+"""Build the decoded pack for a set of data stores from their existing caches.
 
     python -P -B scripts/build_cwv_pack.py --data DIR [--data DIR ...] --cache-dir DIR \
         --out PACKDIR [--encoder-version 5] [--search-mean-sidecar DIR] [--force-float32 508 ...]

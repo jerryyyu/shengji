@@ -1,4 +1,4 @@
-"""Export a policy_prior checkpoint (#419) to a Torch-free NumPy package (#435)."""
+"""Export a policy_prior checkpoint to a Torch-free NumPy package."""
 from __future__ import annotations
 
 import hashlib

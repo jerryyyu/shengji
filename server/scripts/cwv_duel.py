@@ -1,7 +1,7 @@
 """Budget-ladder calibration and paired duel for the complete-world bots.
 
 Two subcommands, both bound to one checkpoint.  ``--plies 0`` (default) drives
-the one-ply bot of #229 (``mc-cwv-<ckpt8>-w<W>``, heuristic trick finish);
+the one-ply bot (``mc-cwv-<ckpt8>-w<W>``, heuristic trick finish);
 ``--plies 1`` / ``--plies 2`` drive the TWO-PLY bot (``mc-cwv2-<ckpt8>-w<W>``
 / ``-p2``): the net itself chooses every reply for the rest of the current
 trick (1) or one more trick (2), one batched forward per ply step, then one
@@ -1402,7 +1402,7 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--trump-ranks", default="canonical")
     cal.add_argument("--lcb", type=float, default=0.0)
     cal.add_argument("--plies", type=int, default=0, choices=(0, 1, 2),
-                     help="0: the one-ply bot (#229); 1: two-ply, net finishes the "
+                     help="0: the one-ply bot; 1: two-ply, net finishes the "
                           "current trick; 2: two-ply, one more full trick")
     finish = cal.add_mutually_exclusive_group()
     finish.add_argument("--finish-trick", dest="finish_trick", action="store_true", default=True)

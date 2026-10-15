@@ -1,4 +1,4 @@
-"""Decision-identity gate for the served packages (#435 item 4).
+"""Decision-identity gate for the served packages.
 
 The server plays from NumPy packages (`shengji.ai.cwv_numpy`,
 `shengji.ai.cwv_prior_numpy`); every screen that produced the evidence played
@@ -181,7 +181,7 @@ def run_gate(value_torch, value_numpy, prior_torch=None, prior_numpy=None, *, ro
     receipt["kinds"] = {"served_prior": getattr(served, "_prior_kind", None),
                         "reference_prior": getattr(reference, "_prior_kind", None)}
     # The served prior is either the NumPy prior package or the joint value package's own
-    # head (#425: one file serves both stages); anything else means the served side loaded Torch.
+    # head (one file serves both stages); anything else means the served side loaded Torch.
     if prior_numpy is not None and receipt["kinds"]["served_prior"] not in ("separate-numpy", "joint-numpy"):
         raise ValueError("the served prior did not load as the NumPy package")
     t0 = time.perf_counter()

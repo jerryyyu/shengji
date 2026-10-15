@@ -1,4 +1,4 @@
-"""Server-path smoke for a deploy configuration (#435; the release 25 incident).
+"""Server-path smoke for a deploy configuration.
 
 The decision-identity gate proves the served packages compute what the Torch
 checkpoints compute. It does NOT prove the server can take a turn with the bot:
@@ -66,7 +66,7 @@ def build_production_bot(env: dict[str, str]):
     if play is not None:
         registry.register_cwv_shortlist_policies(play[0], play[1], **play[2])
     if env.get("SHENGJI_PV_CKPT"):
-        # the policy/value search mode (#585): one package as value net and prior
+        # the policy/value search mode: one package as value net and prior
         from shengji.train.pv_search_policy import pv_env_recipe
         recipe = pv_env_recipe(env)
         registry.register_pv_search_policies(recipe.pop("checkpoint"), **recipe)

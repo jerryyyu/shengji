@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Policy-head training and search tests, both real engine modes (as ci_cwv_modes.sh).
-# These modules were grandfathered out of CI on f8301e95; they cover the #650 units,
-# #684 exploration tags and composer, soft/listwise targets, policy selection metrics,
-# admit-then-select, exact resume and split binding.
+# Covers value units, exploration tags and composer, soft/listwise targets, policy
+# selection metrics, admit-then-select, exact resume and split binding.
 set -euo pipefail
 export SHENGJI_REQUIRE_VOIDS=1
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1

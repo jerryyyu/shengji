@@ -1,4 +1,4 @@
-"""Offline prototype: action-aware reranker over the policy head's ballot (#676 cat. 2, #677 s3, board C7).
+"""Offline prototype: action-aware reranker over the policy head's ballot.
 
 Baseline = the served factorised score: a candidate's score is the SUM of its cards' log-odds from a
 frozen joint-package policy head (``policy_prior.score_candidates``).  Reranker = a small MLP over
@@ -178,7 +178,7 @@ def soft_targets_np(vals, mask, T=1.0):
 
 def row_metrics(scores: np.ndarray, d: dict) -> dict[str, np.ndarray]:
     """Per-row: top1 hit (argmax of scores is one of the search's tied argmaxes), listwise CE vs the
-    soft targets, regret in half-levels (values are half-level*40, #668 units)."""
+    soft targets, regret in half-levels (values are half-level*40)."""
     vals = d["vals"]; mask = d["mask"]
     finite = np.isfinite(vals) & mask
     v = np.where(finite, vals, -np.inf)

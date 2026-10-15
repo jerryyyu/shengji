@@ -1,4 +1,4 @@
-"""Counterfactual value diagnostic on a fixed audit set (#663 step 3, #677).
+"""Counterfactual value diagnostic on a fixed audit set.
 
 Two subcommands, both read-only on their inputs:
 
@@ -20,9 +20,9 @@ Examples (nice 19, single process):
       --previous soft-8ecd4fea.npz --previous-sha256 ccade130... \\
       --worlds 64 --extras 8 --seed 1 --out-json out.json --out-md out.md
 
-This does NOT duplicate #663 step 1 (Codex): step 1 measures the actual K=8
-admission under production, own world draws; this fixes the worlds and asks
-the counterfactual value question with the admitted set swapped.
+It fixes the worlds and asks the counterfactual value question with the
+admitted set swapped, rather than measuring the K=8 admission under
+production's own world draws.
 """
 from __future__ import annotations
 

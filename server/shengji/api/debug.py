@@ -28,6 +28,68 @@ _SAMPLER_DELTA_FIELDS = (
     "rejected_worlds",
     "impossible_worlds",
 )
+#: the declaration record fields the overlay shows (``pv-value-declare-decision-v1``
+#: and ``pv-declare-asap-decision-v1``): cards as text, means, counts and the
+#: gate; never a sampled deal
+_DECLARE_RECORD_FIELDS = (
+    "schema", "final", "cards_dealt", "gate", "evaluated", "heuristic", "value_choice",
+    "played", "changed", "worlds", "worlds_completed", "fallback_reason", "outcomes",
+    "outcome_means", "heuristic_mean", "best_mean", "margin", "seconds",
+    "leaf_first_trick", "leaf_first_trick_fallbacks",
+    "options", "chosen", "strength", "overcall", "overcall_self",
+)
+
+
+def _declare_xray(rnd, seat: int, isolated_bot) -> dict:
+    """One declaration decision from the cards dealt so far: the heuristic's,
+    or the value rule's where its gate admits the chance (`PVSearchBot.decide_declare`).
+    ``final`` is the grace window after the deal, as the server calls it."""
+    from .debug_play import _scalar, _OMIT
+
+    final = rnd.phase == "declare"
+    options = rnd.declare_options(seat)
+    started = time.perf_counter()
+    chosen = isolated_bot.decide_declare(rnd, seat, final=final)
+    elapsed = time.perf_counter() - started
+    record = getattr(isolated_bot, "last_declare_record", None)
+    safe = None
+    if isinstance(record, dict):
+        safe = {}
+        for name in _DECLARE_RECORD_FIELDS:
+            if name in record:
+                value = _scalar(record[name])
+                if value is not _OMIT:
+                    safe[name] = value
+    current = rnd.declaration
+    return {
+        "policy": str(getattr(isolated_bot, "policy_name", type(isolated_bot).__name__))[:160],
+        "phase": rnd.phase, "final": final,
+        "cards_dealt": sum(len(h) for h in rnd.hands),
+        "options": [list(o) for o in options],
+        "chosen": None if chosen is None else list(chosen),
+        "current": None if current is None else {
+            "seat": current["seat"], "cards": list(current["cards"]),
+            "strength": current["strength"]},
+        # a bot without the value rule, or a chance its gate did not admit,
+        # leaves no record: the heuristic's choice stands
+        "record": safe,
+        "evaluation_seconds": elapsed,
+    }
+
+
+def _declare_view(rnd, seat: int, isolated_bot) -> dict:
+    """The overlay before trump exists: the hand and the declaration decision.
+    The memory blocks need an ordering, so they are empty here."""
+    return {
+        "seat": seat,
+        "phase": rnd.phase,
+        "hand": sorted(rnd.hands[seat]),
+        "is_attacker": None,
+        "voids": {}, "unseen_trumps": None, "unseen_by_suit": {},
+        "boss_cards": [], "ruff_risky_suits": [],
+        "candidates": None, "bury": None, "analysis": None, "ml": None,
+        "declare": _declare_xray(rnd, seat, isolated_bot),
+    }
 
 
 def _snapshot_xray(rnd, source_bot):
@@ -182,6 +244,7 @@ def _xray(rnd, seat: int, isolated_bot) -> dict:
     hand = rnd.sorted_hand(seat)
     out: dict = {
         "seat": seat,
+        "phase": rnd.phase,
         "hand": hand,
         "is_attacker": rnd.is_attacker(seat) if rnd.banker is not None else None,
         "voids": {s: sorted(mem.voids[s]) for s in range(4) if s != seat},
@@ -228,15 +291,16 @@ def _xray(rnd, seat: int, isolated_bot) -> dict:
     return out
 
 
-async def _xray_off_loop(rnd, seat: int, isolated_bot) -> dict:
+async def _xray_off_loop(rnd, seat: int, isolated_bot, view=None) -> dict:
     """Run CPU-heavy X-ray search without blocking WebSockets.
 
     Both inputs are detached before this call.  Cancellation is delayed until
     the worker exits so cancelled debug requests cannot accumulate orphaned
-    report-LCB searches.
+    report-LCB searches.  ``view`` is the builder (`_xray`, or `_declare_view`
+    before trump exists); resolved at call time so a patched `_xray` is used.
     """
     worker = asyncio.create_task(
-        asyncio.to_thread(_xray, rnd, seat, isolated_bot),
+        asyncio.to_thread(view or _xray, rnd, seat, isolated_bot),
         name=f"xray-{seat}",
     )
     cancelled: asyncio.CancelledError | None = None
@@ -257,13 +321,19 @@ async def _xray_room(room, seat: int, fallback_bot) -> dict:
 
     async def compute():
         async with room.lock:
-            if room.round is None or room.round.ordering is None:
+            rnd = room.round
+            if rnd is None:
                 return {"error": "no active round"}
             if type(seat) is not int or not 0 <= seat < 4:
                 return {"error": "invalid seat"}
+            # before trump exists the overlay is the declaration decision alone
+            declaring = rnd.phase in ("deal", "declare")
+            if not declaring and rnd.ordering is None:
+                return {"error": "no active round"}
             source_bot = getattr(room, "bot", None) or fallback_bot
-            rnd_copy, bot_copy = _snapshot_xray(room.round, source_bot)
-        return await _xray_off_loop(rnd_copy, seat, bot_copy)
+            rnd_copy, bot_copy = _snapshot_xray(rnd, source_bot)
+        return await _xray_off_loop(rnd_copy, seat, bot_copy,
+                                    _declare_view if declaring else _xray)
 
     return await run_debug_search(compute)
 

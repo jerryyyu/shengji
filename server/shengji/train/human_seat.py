@@ -384,7 +384,8 @@ def fit(path: str, out: str, *, folds: int, epochs: int, seed: int, log=print) -
         rec = {"fold": f, "test_rows": int(len(test)), "train_rows": int(len(tr)),
                "val_rows": int(len(va)), "temperature": t}
         for kind in ("lin", "mlp"):
-            predict, ep = train_head(data, tr, va, kind=kind, t0=t, epochs=epochs,
+            predict, ep = train_head(data, tr, va, kind=kind, t0=t,
+                                     epochs=epochs * (4 if kind == "lin" else 1),
                                      lr=3e-3 if kind == "lin" else 1e-3,
                                      wd=1e-3 if kind == "lin" else 1e-2, seed=seed + f)
             nll[f"human_{kind}"][test] = predict(test)
@@ -395,15 +396,16 @@ def fit(path: str, out: str, *, folds: int, epochs: int, seed: int, log=print) -
             f"lin={nll['human_lin'][test].mean():.4f} mlp={nll['human_mlp'][test].mean():.4f}",
             flush=True)
 
-    def room_boot(a, b, n_boot=2000):
-        """Relative NLL gain of ``b`` over ``a`` (1 - b/a), 95% interval by room."""
-        idx_by_room = {r: np.where(rooms == r)[0] for r in uniq}
-        sa = np.asarray([a[idx_by_room[r]].sum() for r in uniq])
-        sb = np.asarray([b[idx_by_room[r]].sum() for r in uniq])
+    def room_boot(a, b, r, n_boot=2000):
+        """Relative NLL gain of ``b`` over ``a`` (1 - b/a), 95% interval by room
+        (``r``: each row's room)."""
+        names = sorted(set(r))
+        sa = np.asarray([a[r == name].sum() for name in names])
+        sb = np.asarray([b[r == name].sum() for name in names])
         g = np.random.default_rng(seed)
         vals = []
         for _ in range(n_boot):
-            p = g.integers(0, len(uniq), len(uniq))
+            p = g.integers(0, len(names), len(names))
             vals.append(1 - sb[p].sum() / sa[p].sum())
         lo, hi = np.percentile(vals, [2.5, 97.5])
         return float(1 - b.sum() / a.sum()), float(lo), float(hi)
@@ -423,7 +425,7 @@ def fit(path: str, out: str, *, folds: int, epochs: int, seed: int, log=print) -
             row[f"nll_{k}"] = float(v[sel].mean())
         for base in ("served", "served_t"):
             for k in ("human_lin", "human_mlp"):
-                row[f"gain_{k}_vs_{base}"] = room_boot(nll[base][sel], nll[k][sel]) \
+                row[f"gain_{k}_vs_{base}"] = room_boot(nll[base][sel], nll[k][sel], rooms[sel]) \
                     if len(set(rooms[sel])) > 2 else None
         table[name] = row
     top1 = {}

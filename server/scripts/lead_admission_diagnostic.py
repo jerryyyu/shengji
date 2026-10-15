@@ -289,6 +289,14 @@ def main(argv=None):
     if options.served_env:
         with open(options.served_env) as source:
             bots, identity = served_capture_bots(PKG, SHA, SEED, json.load(source))
+        if options.paired_horizon_seconds is not None:
+            identity = {**identity, 'mode': 'served-recipe-paired-horizon-dev',
+                        'paired_horizon_seconds': options.paired_horizon_seconds,
+                        'limits': [limit for limit in identity.get('limits', [])
+                                   if limit != 'No counterfactual analysis or bot RNG restoration.'] + [
+                            'Post-decision paired counterfactual analysis; no bot RNG restoration.',
+                            'Determinized policy replies and evaluator-relative values, not strength.',
+                            'Capture overhead can affect wall-clock-limited decisions.']}
         samplers = None
     else:
         bots = [make_pv_search_bot(PKG, sha256=SHA, seed=SEED * 10 + s, bot_factory=Probe, **R42) for s in range(4)]

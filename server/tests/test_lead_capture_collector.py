@@ -137,6 +137,11 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         # rest of its trick/round after max_positions or a global stop signal.
         assert rnd.phase == 'play' and not rnd.trick.plays
     assert all(('paired_horizon' in row) == mode.startswith('horizon') for row in rows)
+    if mode.startswith('horizon'):
+        assert all(row['collection']['mode'] == 'served-recipe-paired-horizon-dev' for row in rows)
+        assert all(row['collection']['paired_horizon_seconds'] == 1 for row in rows)
+        assert all('No counterfactual analysis or bot RNG restoration.' not in row['collection']['limits']
+                   for row in rows)
     if mode == 'horizon':
         assert all(row['paired_horizon']['consumer_witness'] for row in rows)
     if mode == 'horizon_timeout':

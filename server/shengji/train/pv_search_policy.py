@@ -2091,7 +2091,9 @@ class PVSearchBot(PolicyValueBot):
             self._soft_oracle = None
             worlds, attempts, self._last_sampling = self._soft_oracle_worlds(
                 rnd, seat, mem, refusals, check_budget)
-        elif self.world_history_legal:
+        elif getattr(self, "world_history_legal", False):
+            # getattr: a bot built without __init__ (a bare test double or an
+            # older snapshot) has the rule off
             worlds, attempts, self._last_sampling = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
                 check_budget=check_budget)
@@ -2492,7 +2494,7 @@ class PVSearchBot(PolicyValueBot):
         if self.refusal_constraints:
             out.update(refusal_observations=0, refusal_rejections=0,
                        refusal_fallback_worlds=0, refusal_pinned_codes=0)
-        if self.world_history_legal:
+        if getattr(self, "world_history_legal", False):
             out.update(history_follow_events=0, history_rejections=0,
                        history_fallback_worlds=0, history_rejections_by_age={})
         if not out:

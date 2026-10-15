@@ -241,3 +241,27 @@ def test_rerank_follow_compact_level_matches_reference(monkeypatch, backend):
     assert checked >= 6
     with pytest.raises(pv_exact_follow.ExactFollowRefusal):
         pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds, solver="other")
+
+
+def test_six_card_follow_candidate_scores_match_reference(monkeypatch):
+    """The enabled six-card boundary retains the full minimax level means."""
+    from shengji.train import pv_exact_follow
+    monkeypatch.setattr(pv_exact_follow, 'ExactWorldSession',
+                        lambda *a, **kw: ExactWorldSession(*a, alpha_beta=True, **kw))
+    rng = random.Random(11)
+    checked = 0
+    for seed in (4600100, 4600101, 4600102):
+        rnd = _follow_at(seed, 6)
+        assert rnd is not None and max(map(len, rnd.hands)) == 6
+        seat = rnd.turn
+        admitted = exhaustive_legal_actions(rnd, seat, max_hand_cards=6)[:3]
+        worlds = _worlds(rnd, seat, rng, 2)
+        want = pv_exact_follow.rerank_follow(
+            rnd, seat, admitted, worlds, max_hand_cards=6,
+            max_nodes=50_000_000, solver="reference")
+        got = pv_exact_follow.rerank_follow(
+            rnd, seat, admitted, worlds, max_hand_cards=6,
+            max_nodes=50_000_000, solver="compact-level")
+        assert (got.winner, got.scores, got.worlds) == (want.winner, want.scores, want.worlds)
+        checked += len(admitted) * len(worlds)
+    assert checked >= 6

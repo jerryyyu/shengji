@@ -39,6 +39,7 @@ target; both live in the same signed-level space.
 """
 from __future__ import annotations
 
+import numpy as np
 import torch
 
 from ..rl.value_afterstate import (MAX_SIGNED_LEVEL_UTILITY, MIN_SIGNED_LEVEL_UTILITY,
@@ -74,8 +75,49 @@ def _category(signed: torch.Tensor) -> torch.Tensor:
     return torch.where(signed < 0, neg, pos).round().to(torch.int64)
 
 
+#: how far inside the support (in levels) every row with a search value must sit
+#: before the host may vouch for the device's ``used`` mask (``host_used_rows``)
+HOST_SUPPORT_MARGIN = 1.0
+
+
+def host_used_rows(mean: np.ndarray, role_attacker: np.ndarray,
+                   level: np.ndarray | None = None) -> np.ndarray | None:
+    """The rows ``soft_targets`` marks ``used``, computed on the host from the
+    numpy batch, or ``None`` when the host cannot vouch for the device's answer.
+
+    The device decides ``used`` in float32; the host recomputes ``signed`` in
+    float64.  The two differ by a few float32 ulps, so they can disagree only
+    for a row within that distance of the support's edge.  When every row
+    with a value sits at least ``HOST_SUPPORT_MARGIN`` levels inside the
+    support, ``used`` is exactly the rows with a finite value, and the
+    returned indices equal ``nonzero(used)`` on the device.  Otherwise the
+    caller takes the device path.  Knowing the rows on the host lets the
+    trainer select them with an index tensor sent along with the batch,
+    instead of a boolean mask whose ``nonzero`` waits for the device."""
+    mean = np.asarray(mean, dtype=np.float32)
+    have = np.isfinite(mean)
+    direct = None
+    if level is not None:
+        direct = np.isfinite(np.asarray(level, dtype=np.float32))
+        have = have | direct
+    rows = np.flatnonzero(have)
+    if not rows.size:
+        return rows
+    sign = np.where(np.asarray(role_attacker, dtype=bool)[rows], 1.0, -1.0)
+    p = sign * mean[rows].astype(np.float64)
+    ramp = np.where(p >= 80.0, p / 40.0 - 1.5, p / 40.0 - 2.5)
+    signed = sign * np.where(p <= 0.0, -3.5, ramp)
+    if direct is not None:
+        signed = np.where(direct[rows], np.asarray(level, dtype=np.float32)[rows].astype(np.float64),
+                          signed)
+    inside = ((signed >= MIN_SIGNED_LEVEL_UTILITY + HOST_SUPPORT_MARGIN)
+              & (signed <= MAX_SIGNED_LEVEL_UTILITY - HOST_SUPPORT_MARGIN))
+    return rows if bool(inside.all()) else None
+
+
 def soft_targets(mean: torch.Tensor, role_attacker: torch.Tensor, realised: torch.Tensor,
-                 level: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+                 level: torch.Tensor | None = None, *, rows: torch.Tensor | None = None
+                 ) -> tuple[torch.Tensor, torch.Tensor]:
     """``(probs [b, 204], used [b])``: two-point targets where a search value
     exists and maps inside the support, the one-hot realised target elsewhere.
 
@@ -87,7 +129,12 @@ def soft_targets(mean: torch.Tensor, role_attacker: torch.Tensor, realised: torc
     the target directly, no ramp, and it takes precedence over ``mean`` on a
     row that carries both.  Both estimands share the head's support; they are
     not the same quantity (``ramp(E[p])`` vs ``E[level]`` under the served
-    head's bootstrap), and the receipt names both."""
+    head's bootstrap), and the receipt names both.
+
+    ``rows`` (optional) is ``host_used_rows`` as an int64 tensor on the
+    device: the indices of ``used``, already known.  The targets are then
+    built from it rather than from ``nonzero(used)``.  The values are the
+    same; the only difference is that nothing waits for the device."""
     b = realised.shape[0]
     probs = torch.zeros((b, OUTCOME_CLASSES), dtype=torch.float32, device=realised.device)
     probs[torch.arange(b, device=realised.device), realised] = 1.0
@@ -104,8 +151,13 @@ def soft_targets(mean: torch.Tensor, role_attacker: torch.Tensor, realised: torc
     frac = (signed - lo).clamp(0.0, 1.0)
     used = (have & (lo >= MIN_SIGNED_LEVEL_UTILITY)
             & (hi <= MAX_SIGNED_LEVEL_UTILITY))
-    if bool(used.any()):
+    if rows is not None:
+        idx = rows if rows.numel() else None
+    elif bool(used.any()):
         idx = torch.nonzero(used, as_tuple=False).squeeze(1)
+    else:
+        idx = None
+    if idx is not None:
         lo_c = _category(lo[idx]).clamp(0, OUTCOME_CLASSES - 1)
         hi_c = _category(hi[idx]).clamp(0, OUTCOME_CLASSES - 1)
         probs[idx] = 0.0

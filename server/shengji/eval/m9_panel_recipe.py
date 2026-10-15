@@ -1,7 +1,7 @@
 """Pure input binding for the fixed M9 follow-up panel, not admission.
 
-Unlike the original tactical comparison, this recipe names an already-read
-analysis file and an exclusive output DIRECTORY. No filesystem, model, worker,
+The recipe names an already-read analysis file and an exclusive output
+DIRECTORY. No filesystem, model, worker,
 or process is accessed here. A separately reviewed packet must authenticate
 these bytes/paths and bind source, runtime, deadlines, ownership and RELEASE.
 """

@@ -46,7 +46,7 @@ def collect_fixed_tape_panel(bot_factory, root, seat, actions, control_ballot,
         bot = bot_factory()
         from ..train.policy_value_search import PolicyValueBot
         # Final equality misses mutate-then-restore overrides. Require the
-        # reviewed production leaf, which clones the supplied world state.
+        # production leaf, which clones the supplied world state.
         if getattr(getattr(bot, "_leaf", None), "__func__", None) is not PolicyValueBot._leaf:
             raise ValueError("canonical production leaf implementation is required")
         if any(bot is previous for previous in bots):

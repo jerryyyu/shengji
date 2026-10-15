@@ -36,15 +36,10 @@ def bind_panel_rank_root(panel, fixture, bot):
     if type(panel.get('seed')) is not int or panel['seed'] not in (0, 1, 2):
         raise ValueError('strict panel seed required')
     snapshot = _snapshot_bot(bot, seed=panel.get('seed'), label='rank bot')
-    # Pre-#830 panels serialized the full PVSearchConfig before this optional
-    # field existed. Its absence means the old, disabled played-action rule.
-    # Compare a detached current snapshot in that one historical spelling only;
+    # Saved panels predating a _LATER_OPTIONAL_RULES field omit it, which
+    # means that rule was disabled. Drop the field from a detached current
+    # snapshot only when it is strict False on BOTH config and effective bot;
     # never rewrite authenticated panel bytes or discard other/new config keys.
-    # Require strict False on BOTH config and effective bot, not falsy values.
-    # The same holds for #707 S4's later optional ``small_joker_guard`` field
-    # and the later optional ``adaptive_worlds`` evidence rule and its
-    # leads-only scope ``adaptive_worlds_leads``, the lead admission width
-    # ``wide_lead_admission``, and ``doomed_throw_reselect``.
     saved_config = panel.get('config')
     for field in _LATER_OPTIONAL_RULES:
         if (type(saved_config) is dict and field not in saved_config

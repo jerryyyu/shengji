@@ -51,8 +51,6 @@ READOUT_PRELOAD_IMPORTS = PANEL_PRELOAD_IMPORTS + (
     "shengji.eval.m9_panel_publication",
     "shengji.luna.atomic_io",
 )
-# Source preparation only: a new rank invocation must capture/review its own
-# manifest. Never relabel a historical collection/readout manifest as this.
 RANK_PRELOAD_IMPORTS = READOUT_PRELOAD_IMPORTS + (
     "shengji.eval.selected_panel_reader",
     "shengji.eval.fixed_tape_policy",

@@ -1,4 +1,4 @@
-"""Tactical regression fixtures for the served search (#677 strategy 4, #676).
+"""Tactical regression fixtures for the served search.
 
 A fixture is one position where a concrete bad decision was observed, stored
 with ONLY the information the acting seat had at the time: the public setup
@@ -320,7 +320,6 @@ def public_fixture(rnd_before: Round, seat: int, plays: Sequence[Mapping[str, An
                  observed=dict(observed), predicate=predicate, args=dict(args or {}), why=why,
                  notes=notes)
     validate_fixture(fx)
-    # the stored view must rebuild to the same public state the full round has
     twin = public_round(fx)
     if [p.cards for p in twin.trick.plays] != [p.cards for p in rnd_before.trick.plays] \
             or len(twin.history) != len(rnd_before.history):
@@ -410,12 +409,12 @@ def not_a_throw_refuted_by_public_refusal(ctx: Context, suit: str, pair_len: int
     if len(dec.components) == 1:
         return True, f"{'+'.join(ctx.action)} is a single component"
     level = o.level(top)
-    # beating cards played by other seats since the refusal weaken the inference
-    since = Counter(c for p in ctx.fixture.plays[refusal_index + 1:]
-                    if p["seat"] != ctx.seat for c in p["cards"]
-                    if o.eff_suit(c) == suit and o.level(c) > level)
-    if (pair_len == 0 and sum(since.values()) > 0) or \
-            (pair_len >= 1 and any(n >= 2 for n in since.values())):
+    beating_since_refusal = Counter(
+        c for p in ctx.fixture.plays[refusal_index + 1:]
+        if p["seat"] != ctx.seat for c in p["cards"]
+        if o.eff_suit(c) == suit and o.level(c) > level)
+    if (pair_len == 0 and sum(beating_since_refusal.values()) > 0) or \
+            (pair_len >= 1 and any(n >= 2 for n in beating_since_refusal.values())):
         return True, "a beating structure was played after the refusal; inference void"
     for comp in dec.components:
         if o.eff_suit(comp.cards[0]) == suit and comp.pair_len == pair_len and comp.top <= level:
@@ -481,7 +480,7 @@ def structured_lead_admitted(ctx: Context, actions: Sequence[Sequence[str]]) -> 
 def admitted_ballot_not_crowded(ctx: Context, max_same_suit_throws: int = 4) -> Verdict:
     """At most ``max_same_suit_throws`` of the admitted candidates are
     multi-component leads (throws) in one effective suit: a ballot of
-    near-duplicate throw variants has spent its slots on one plan (#677)."""
+    near-duplicate throw variants has spent its slots on one plan."""
     if not ctx.record or ctx.record.get("work_complete") is not True:
         return False, "no complete search record (fallback decision?)"
     rnd = ctx.rnd

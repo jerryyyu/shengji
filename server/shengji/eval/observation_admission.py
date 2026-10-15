@@ -28,7 +28,7 @@ from .m9_panel_recipe import validate_panel_recipe, build_panel_worker_command
 SCHEMA = "m9-admission-v1"
 PANEL_SCHEMA = "m9-panel-admission-v1"
 HOST_LOCK = Path("/root/.claude-host.lock")
-REQUIRED_ANCESTOR = "94350c39b56ff845fcb37e61d27ab72a0fe6abe5"  # merged #729, includes #723–726
+REQUIRED_ANCESTOR = "94350c39b56ff845fcb37e61d27ab72a0fe6abe5"  # first main commit with the cross-process observation CI tests
 READ_RECEIPT_SHA = "431b731d7cd88b5da6126874bad82007d873c12bd70c462ec36e44262d69bf20"
 _SYSTEM_SERVICES = {
     ("/usr/bin/python3", "/usr/bin/networkd-dispatcher", "--run-startup-triggers"),

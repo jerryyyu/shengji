@@ -1,10 +1,9 @@
 """Metadata-only preflight for the existing paired-screen raw reader.
 
 The caller must pin/review expected_configs before observing outcomes and
-provide the pinned validator. No defaults are learned from run artifacts.
-Unlike older lane adapters this does not require pins/admission files that
-the v52 producer does not write. Reservation/terminal ownership is a separate
-caller gate, not implied by this function succeeding.
+provide the pinned validator. No defaults are learned from run artifacts,
+and no pins/admission files are required. Reservation/terminal ownership is
+a separate caller gate, not implied by this function succeeding.
 """
 from __future__ import annotations
 

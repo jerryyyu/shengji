@@ -72,3 +72,37 @@ def summarize(rows, roots, *, arm, pass_label):
     return dict(arm=arm, pass_label=pass_label, roots=len(expected), by_turn=result,
                 scope='Whole-turn wall on this host; includes optional-stage abandonments. '
                       'Not a Fly qualification, stage-success rate, or strength result.')
+
+
+def paired_summary(passes, roots):
+    """ABBA per-root dx-minus-r45 wall differences; retain negative speedups.
+
+    The sealed caller must establish actual dispatch order and equal host
+    conditions. Pass labels alone cannot prove either of those facts.
+    """
+    labels = ('r45-a', 'dx-a', 'dx-b', 'r45-b')
+    if set(passes) != set(labels):
+        raise ValueError('requires exactly the four ABBA passes')
+    roots = list(roots)
+    validated, indexed = {}, {}
+    for label in labels:
+        rows = list(passes[label])
+        validated[label] = summarize(rows, roots, arm=label.rsplit('-', 1)[0], pass_label=label)
+        indexed[label] = {row['root_index']: row for row in rows}
+    deltas = {'lead': [], 'follow': []}
+    for root in roots:
+        index = root['root_index']
+        t = {label: indexed[label][index]['wall_total_seconds'] for label in labels}
+        delta = (t['dx-a'] + t['dx-b'] - t['r45-a'] - t['r45-b']) / 2
+        deltas['lead' if root['lead'] else 'follow'].append(delta)
+    by_turn = {}
+    for kind, values in deltas.items():
+        values.sort()
+        by_turn[kind] = dict(count=len(values), mean_seconds=sum(values) / len(values) if values else None,
+                             p50_seconds=values[math.ceil(.5 * len(values)) - 1] if values else None,
+                             p90_seconds=values[math.ceil(.9 * len(values)) - 1] if values else None,
+                             min_seconds=min(values) if values else None,
+                             max_seconds=max(values) if values else None)
+    return dict(passes=validated, paired_dx_minus_r45=by_turn,
+                scope='Signed per-root ABBA whole-turn differences on the measured host. '
+                      'Not a Fly qualification or gameplay strength estimate.')

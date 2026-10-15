@@ -40,7 +40,7 @@ def test_kb_prior_places_the_banker_bury_hand_and_honours_pins():
     rnd, log = _round(11)
     for seat in range(4):
         row, card = bd.declare_features(rnd.ordering, rnd.trump_rank, rnd.banker, seat, log,
-                                        list(rnd.hands[seat]), rnd.deck, draws=8)
+                                        list(rnd.hands[seat]), draws=8)
         assert row.shape == (bd.DECL_ROW,) and card.shape == (54, bd.DECL_CARD)
         if seat == rnd.banker:
             assert row[16] == 0 and not card[:, 3:].any()      # the banker knows its kitty
@@ -66,7 +66,7 @@ def test_superseded_declarations_are_shown_planes():
            {"seat": b, "cards": ["BJ", "BJ"]}]
     for seat in range(4):
         row, card = bd.declare_features(rnd.ordering, rnd.trump_rank, b, seat, log,
-                                        list(rnd.hands[seat]), rnd.deck, draws=4)
+                                        list(rnd.hands[seat]), draws=4)
         rel = (other - seat) % 4
         assert row[4 + rel] == 1.0                            # first declarer
         assert row[8 + 3] == 1.0                              # big-joker pair
@@ -78,7 +78,7 @@ def test_superseded_declarations_are_shown_planes():
 
 def test_live_inputs_equal_the_play_start_frame_mid_round():
     rnd, log = _round(29)
-    start = bd.round_declare_features(rnd, rnd.deck, log, draws=6)
+    start = bd.round_declare_features(rnd, log, draws=6)
     h = HeuristicBot()
     for _ in range(9):
         rnd.play(rnd.turn, h.decide_play(rnd, rnd.turn))

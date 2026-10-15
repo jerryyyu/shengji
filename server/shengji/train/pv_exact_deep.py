@@ -1,11 +1,9 @@
-"""Exact candidate values for deeper endgames and for follows (OFF BY DEFAULT).
+"""Exact lead values for deeper endgames (OFF BY DEFAULT).
 
 The served exact lead (`pv_exact_endgame.exact_lead_means`) scores lead
-candidates only, with every hand at most four cards.  This module is its
-generalisation for two opt-in rules of `pv_search_policy` (module docstring:
-``exact_deep_cards`` and ``exact_follows``):
+candidates with every hand at most four cards.  This module serves the
+opt-in ``exact_deep_cards`` rule of `pv_search_policy` (module docstring):
 
-* the root may be a lead OR a follow (an open trick the root seat joins);
 * hands may hold up to ``max_hand_cards`` cards (at most eight, the compiled
   solver's slot capacity);
 * with ``level=True`` each world runs a level-mode session
@@ -73,8 +71,8 @@ def exact_root_means(
     """
     if type(rnd) is not Round or rnd.phase != "play" or rnd.turn != seat:
         _refuse("exact values require an active root play decision")
-    if rnd.trick is None:
-        _refuse("exact values require an active trick")
+    if rnd.trick is None or rnd.trick.plays:
+        _refuse("exact lead values require a lead root")
     if isinstance(seat, bool) or type(seat) is not int or not 0 <= seat < 4:
         _refuse("seat must be an engine seat")
     if (isinstance(max_hand_cards, bool) or type(max_hand_cards) is not int

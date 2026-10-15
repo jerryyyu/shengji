@@ -12,8 +12,15 @@ from dataclasses import dataclass
 from collections import Counter
 
 from ..ai.endgame import ExactEndgameRefusal, ExactWorldSession
+from ..ai.endgame_compact import CompactWorldSession
 from ..rl.value_afterstate import category_signed_level, signed_level_category
 from .cwv_prior_admission import root_clone
+
+
+#: ``reference``: ``ExactWorldSession`` (full minimax); ``compact-level``: the
+#: compiled level-mode ``CompactWorldSession`` (alpha-beta, values resolved to
+#: the signed-level steps, which is all the scores use, so the scores are equal)
+SOLVERS = ("reference", "compact-level")
 
 
 class ExactFollowRefusal(RuntimeError):
@@ -30,7 +37,7 @@ class ExactFollowResult:
 
 def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
                   max_hand_cards: int = 4, max_nodes: int = 250_000,
-                  check_budget=None) -> ExactFollowResult:
+                  check_budget=None, solver: str = "reference") -> ExactFollowResult:
     """Return a complete exact reranking, or raise without a partial result.
 
     Scores are the value head's signed-level category utility from the acting
@@ -45,6 +52,8 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
         raise ExactFollowRefusal("exact follow requires a non-empty ballot")
     if any(len(hand) > max_hand_cards for hand in rnd.hands):
         raise ExactFollowRefusal("a world exceeds the exact hand-card boundary")
+    if solver not in SOLVERS:
+        raise ExactFollowRefusal(f"unknown exact follow solver {solver!r}")
     if not 0 <= baseline_index < len(admitted):
         raise ExactFollowRefusal("baseline index is outside the ballot")
     scores = [0.0] * len(admitted)
@@ -62,8 +71,13 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
         if any(len(hand) > max_hand_cards for hand in hands):
             raise ExactFollowRefusal("a sampled world exceeds the exact hand-card boundary")
         world_root = root_clone(rnd, hands, buried)
-        session = ExactWorldSession(world_root, max_hand_cards=max_hand_cards,
-                                    max_nodes=max_nodes, check_budget=check_budget)
+        if solver == "reference":
+            session = ExactWorldSession(world_root, max_hand_cards=max_hand_cards,
+                                        max_nodes=max_nodes, check_budget=check_budget)
+        else:
+            session = CompactWorldSession(world_root, max_hand_cards=max_hand_cards,
+                                          max_nodes=max_nodes, check_budget=check_budget,
+                                          alpha_beta=True, level=True)
         for index, action in enumerate(admitted):
             if check_budget is not None:
                 check_budget()
@@ -76,15 +90,21 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
                         signed_level_category(points, root_attacker))
                     scores[index] += float(signed)
                     continue
-                result = session.solve(child)
+                if solver == "reference":
+                    result = session.solve(child)
+                    points, solved = result.attacker_points, result.nodes
+                else:
+                    before = session.nodes
+                    points = session.solve_level(child)
+                    solved = session.nodes - before
             except ExactEndgameRefusal as exc:
                 raise ExactFollowRefusal(str(exc)) from exc
             # Convert the terminal attacker score into the value head's closed
             # category support; points are not linear signed-level utility.
             signed = category_signed_level(
-                signed_level_category(result.attacker_points, root_attacker))
+                signed_level_category(points, root_attacker))
             scores[index] += float(signed)
-            nodes += result.nodes
+            nodes += solved
         if check_budget is not None:
             check_budget()
     means = tuple(score / len(worlds) for score in scores)

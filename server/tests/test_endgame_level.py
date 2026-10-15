@@ -4,8 +4,8 @@
 minimax value in the same interval between ``LEVEL_CUTS`` as the reference
 ``ExactWorldSession`` (full minimax), and ``solve_points`` must equal its
 value; ``pv_exact_deep.exact_root_means`` must return the reference means on
-leads and follows.  The rules ``exact_deep_cards`` / ``exact_follows`` must
-leave every existing registry name, and a flag-off bot, exactly as they were.
+leads.  The rule ``exact_deep_cards`` must leave every existing registry name,
+and a flag-off bot, exactly as they were.
 """
 
 from __future__ import annotations
@@ -105,8 +105,7 @@ def _reference_means(rnd, seat, actions, worlds):
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-@pytest.mark.parametrize("root_kind", ["lead", "follow"])
-def test_exact_root_means_match_reference(monkeypatch, backend, root_kind):
+def test_exact_root_means_match_reference(monkeypatch, backend):
     real = CompactWorldSession
     monkeypatch.setattr(pv_exact_deep, "CompactWorldSession",
                         lambda *a, **kw: real(*a, backend=backend, **kw))
@@ -116,10 +115,6 @@ def test_exact_root_means_match_reference(monkeypatch, backend, root_kind):
         rnd, bots = _lead_at(seed, 5)
         if rnd is None:
             continue
-        if root_kind == "follow":
-            rnd.play(rnd.turn, bots[rnd.turn].decide_play(rnd, rnd.turn))
-            if rnd.phase != "play":
-                continue
         seat = rnd.turn
         actions = exhaustive_legal_actions(rnd, seat, max_hand_cards=5)[:4]
         worlds = _worlds(rnd, seat, rng, 3)
@@ -145,6 +140,11 @@ def test_exact_root_means_refusals():
     with pytest.raises(ExactEndgameRefusal):
         pv_exact_deep.exact_root_means(rnd, seat, actions, worlds, _heuristic_leaf, None,
                                        max_hand_cards=9, max_nodes=100)
+    follow = _clone_for_play(rnd)
+    follow.play(seat, list(actions[0]))
+    with pytest.raises(ExactEndgameRefusal):
+        pv_exact_deep.exact_root_means(follow, follow.turn, [], worlds, _heuristic_leaf, None,
+                                       max_hand_cards=5, max_nodes=100)
     with pytest.raises(ExactEndgameBudgetExceeded):
         pv_exact_deep.exact_root_means(rnd, seat, actions, worlds, _heuristic_leaf, None,
                                        max_hand_cards=5, max_nodes=3)
@@ -173,17 +173,15 @@ def test_names_off_and_s18_are_unchanged_and_new_rules_name_themselves(pinned_pr
     s18 = pv.pv_registry_entries(**pv.pv_env_recipe(_env(pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1")))
     assert list(off) == [R45_NAMES[0]] and list(s18) == [R45_NAMES[1]]
     deep = pv.pv_registry_entries(**pv.pv_env_recipe(_env(
-        pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1", SHENGJI_PV_EXACT_DEEP_CARDS="6",
-        SHENGJI_PV_EXACT_FOLLOWS="1")))
+        pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1", SHENGJI_PV_EXACT_DEEP_CARDS="6")))
     name, = deep
-    assert "-ele-elf-" in name and "-ed6-r" in name
+    assert "-ele-" in name and "-ed6-r" in name
     zero = pv.pv_registry_entries(**pv.pv_env_recipe(_env(
         pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1", SHENGJI_PV_EXACT_DEEP_CARDS="0")))
     assert list(zero) == [R45_NAMES[1]]
 
 
-@pytest.mark.parametrize("extra", [dict(SHENGJI_PV_EXACT_DEEP_CARDS="6"),
-                                   dict(SHENGJI_PV_EXACT_FOLLOWS="1")])
+@pytest.mark.parametrize("extra", [dict(SHENGJI_PV_EXACT_DEEP_CARDS="6")])
 def test_new_rules_require_the_exact_lead(extra, pinned_production_package):
     with pytest.raises(pv.PVSearchPolicyError, match="require exact_lead_endgame"):
         pv.pv_registry_entries(**pv.pv_env_recipe(_env(pinned_production_package, **extra)))
@@ -202,11 +200,44 @@ def test_flag_off_bots_carry_no_new_instance_state(pinned_production_package):
         entries = pv.pv_registry_entries(**pv.pv_env_recipe(_env(
             pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME=endgame)))
         bot = next(iter(entries.values()))(seed=1)
-        for key in ("exact_deep_cards", "exact_follows"):
-            assert key not in vars(bot)
-        assert bot.exact_deep_cards == 0 and bot.exact_follows is False
+        assert "exact_deep_cards" not in vars(bot) and bot.exact_deep_cards == 0
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(_env(
-        pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1", SHENGJI_PV_EXACT_DEEP_CARDS="5",
-        SHENGJI_PV_EXACT_FOLLOWS="1")))
+        pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1", SHENGJI_PV_EXACT_DEEP_CARDS="5")))
     bot = next(iter(entries.values()))(seed=1)
-    assert vars(bot)["exact_deep_cards"] == 5 and vars(bot)["exact_follows"] is True
+    assert vars(bot)["exact_deep_cards"] == 5
+
+
+# -- exact follow (`pv_exact_follow`) on the compiled level session -------------
+
+def _follow_at(seed, cards):
+    rnd, bots = _lead_at(seed, cards)
+    if rnd is None:
+        return None
+    rnd.play(rnd.turn, bots[rnd.turn].decide_play(rnd, rnd.turn))
+    return rnd if rnd.phase == "play" else None
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_rerank_follow_compact_level_matches_reference(monkeypatch, backend):
+    from shengji.train import pv_exact_follow
+    real = CompactWorldSession
+    monkeypatch.setattr(pv_exact_follow, "CompactWorldSession",
+                        lambda *a, **kw: real(*a, backend=backend, **kw))
+    rng = random.Random(11)
+    checked = 0
+    for seed in range(4600100, 4600112):
+        rnd = _follow_at(seed, 4)
+        if rnd is None:
+            continue
+        seat = rnd.turn
+        admitted = exhaustive_legal_actions(rnd, seat, max_hand_cards=4)[:4]
+        worlds = _worlds(rnd, seat, rng, 3)
+        want = pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds,
+                                             max_nodes=10**9, solver="reference")
+        got = pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds,
+                                            max_nodes=10**9, solver="compact-level")
+        assert (got.winner, got.scores, got.worlds) == (want.winner, want.scores, want.worlds)
+        checked += 1
+    assert checked >= 6
+    with pytest.raises(pv_exact_follow.ExactFollowRefusal):
+        pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds, solver="other")

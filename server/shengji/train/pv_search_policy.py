@@ -65,17 +65,14 @@ argmax, each responder encoded on worlds sampled from its own view
 (`exact_lead_policy_first`), instead of the heuristic; the exact solve after
 that trick is unchanged.  Both run inside the same exact-lead stage, deadline
 and fallback.
-Two further rules, each OFF BY DEFAULT and refused without it:
+A further rule, OFF BY DEFAULT and refused without it:
 ``SHENGJI_PV_EXACT_DEEP_CARDS=<n>`` (``exact_deep_cards``, n in 4..8, token
-``ed<n>``) admits roots whose every hand holds at most n cards and scores them
+``ed<n>``) admits leads where every hand holds at most n cards and scores them
 with level-mode sessions (`pv_exact_deep.exact_root_means`): the minimax value
 resolved only up to the signed-level steps the means use, so the means are a
 full minimax's, at a per-world node cap of ``EXACT_DEEP_LIMITS['max_nodes']``
 instead of 10000; the start gate, deadline and fallback are the exact lead's.
-``SHENGJI_PV_EXACT_FOLLOWS=1`` (token ``elf``) runs the same stage on FOLLOW
-decisions in the same windows: each admitted follow is played in each world,
-the rest of its trick is completed as for a lead, and the remaining tricks
-are solved exactly.
+Follow decisions take the separate ``exact_follow`` stage (`pv_exact_follow`).
 
 Optional admission rules (#676 A/C, #677 strategy 1), BOTH OFF BY DEFAULT:
 ``SHENGJI_PV_ADMISSION_DIVERSITY=1`` caps near-duplicate throws in the K-1
@@ -610,16 +607,15 @@ FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
 #: its two optional variants (module docstring); each requires ``exact_lead_endgame``
 EXACT_LEAD_VARIANT_RULES = {"EXACT_LEAD_TIE_BASELINE": "exact_lead_tie_baseline",
-                            "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first",
-                            "EXACT_FOLLOWS": "exact_follows"}
+                            "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first"}
 #: the tie rule's recipe identity: the exact pass replaces the baseline lead
 #: only on a strictly higher exact mean (exact float comparison)
 EXACT_LEAD_TIE_RULE = "replace-only-if-selected-exact-mean-gt-baseline-exact-mean"
 _EXACT_LEAD_VARIANT_REQUIRES = ("exact_lead_tie_baseline / exact_lead_policy_first / "
-                                "exact_follows / exact_deep_cards require exact_lead_endgame "
+                                "exact_deep_cards require exact_lead_endgame "
                                 "(SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, "
-                                "SHENGJI_PV_EXACT_LEAD_POLICY_FIRST=1, SHENGJI_PV_EXACT_FOLLOWS=1 "
-                                "or SHENGJI_PV_EXACT_DEEP_CARDS needs "
+                                "SHENGJI_PV_EXACT_LEAD_POLICY_FIRST=1 or "
+                                "SHENGJI_PV_EXACT_DEEP_CARDS needs "
                                 "SHENGJI_PV_EXACT_LEAD_ENDGAME=1)")
 #: the deeper exact rule's parameter (module docstring): env suffix -> keyword;
 #: 0 is off and kept out of the payload
@@ -756,7 +752,6 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("exact_lead_endgame", "ele"),
                                                    ("exact_lead_tie_baseline", "elt"),
                                                    ("exact_lead_policy_first", "elp"),
-                                                   ("exact_follows", "elf"),
                                                    ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
                                                    ("lead_anchor", "la"),
@@ -949,12 +944,15 @@ class PVSearchConfig:
     # its two optional variants (module docstring); each requires it
     exact_lead_tie_baseline: bool = False
     exact_lead_policy_first: bool = False
-    exact_follows: bool = False
     # the deeper exact rule (module docstring): 0 is off
     exact_deep_cards: int = 0
     # DEV-only exact follow reranking; intentionally not exposed by factories.
     exact_follow: bool = False
     exact_follow_max_nodes: int = 250_000
+    # its solver ("reference" or the compiled "compact-level" session,
+    # `pv_exact_follow.SOLVERS`) and hand-card bound
+    exact_follow_solver: str = "reference"
+    exact_follow_max_cards: int = 4
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     # the optional declaration rule and its two parameters; the same contract
@@ -1009,6 +1007,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     if not config.exact_follow:
         payload.pop("exact_follow", None)
         payload.pop("exact_follow_max_nodes", None)
+        payload.pop("exact_follow_solver", None)
+        payload.pop("exact_follow_max_cards", None)
     if config.tree is None:
         del payload["tree"]
     elif not isinstance(config.tree, PVTreeConfig):
@@ -1040,7 +1040,7 @@ def recipe_payload(config: PVSearchConfig) -> dict:
             raise PVSearchPolicyError('exact_lead_endgame excludes tree, adaptive worlds and oracle worlds')
         payload['exact_lead_limits'] = EXACT_LEAD_LIMITS
     if (config.exact_lead_tie_baseline or config.exact_lead_policy_first
-            or config.exact_follows or config.exact_deep_cards) \
+            or config.exact_deep_cards) \
             and not config.exact_lead_endgame:
         raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
     _check_exact_deep_cards(config.exact_deep_cards)
@@ -1282,7 +1282,6 @@ class PVSearchBot(PolicyValueBot):
     #: the exact lead's two optional variants (module docstring): class-level OFF
     exact_lead_tie_baseline = False
     exact_lead_policy_first = False
-    exact_follows = False
     exact_deep_cards = 0
     #: the diagnostic oracle (module docstring) and its harness hook: a callable
     #: ``(rnd, seat) -> (hands, buried)`` bound ONLY by `bind_oracle_deal` (the
@@ -1387,6 +1386,14 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("exact_follow_max_nodes must be a positive int")
         self.exact_follow = config.exact_follow
         self.exact_follow_max_nodes = config.exact_follow_max_nodes
+        from .pv_exact_follow import SOLVERS as _FOLLOW_SOLVERS
+        if config.exact_follow_solver not in _FOLLOW_SOLVERS:
+            raise PVSearchPolicyError(f"exact_follow_solver must be one of {_FOLLOW_SOLVERS}")
+        if (type(config.exact_follow_max_cards) is not int
+                or not 1 <= config.exact_follow_max_cards <= 8):
+            raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")
+        self.exact_follow_solver = config.exact_follow_solver
+        self.exact_follow_max_cards = config.exact_follow_max_cards
         if self.exact_follow and (config.tree is not None or config.adaptive_worlds
                                   or config.adaptive_worlds_leads):
             raise PVSearchPolicyError(
@@ -2457,6 +2464,8 @@ class PVSearchBot(PolicyValueBot):
                 exact = rerank_follow(
                     rnd, seat, admitted, worlds, baseline_index=winner,
                     max_nodes=self.exact_follow_max_nodes,
+                    max_hand_cards=self.exact_follow_max_cards,
+                    solver=self.exact_follow_solver,
                     check_budget=stage.guard)
                 stage.raise_if_tripped()
                 changed = exact.winner != baseline_winner
@@ -2525,14 +2534,11 @@ class PVSearchBot(PolicyValueBot):
         self._exact_lead = state
         deep = self.exact_deep_cards
         max_cards = deep or EXACT_LEAD_LIMITS['max_hand_cards']
-        lead = leading(rnd)
-        if self.exact_follows:
-            state['exact_lead_root'] = 'lead' if lead else 'follow'
         if deep:
             state['exact_deep_cards'] = deep
-        if not (lead or self.exact_follows) or max(map(len, rnd.hands)) > max_cards:
+        if not leading(rnd) or max(map(len, rnd.hands)) > max_cards:
             return base
-        if (deep or not lead) and len(admitted) == 1:
+        if deep and len(admitted) == 1:
             # one admitted candidate: an exact pass cannot change the decision
             state['exact_lead_status'] = 'single_candidate'
             return base
@@ -2560,14 +2566,12 @@ class PVSearchBot(PolicyValueBot):
         with stage:
             leaf_fn = (self._leaf if policy_first is None
                        else policy_first.leaf_fn(rnd, seat, admitted, worlds))
-            if deep or not lead:
-                # the deeper / follow rules (module docstring)
+            if deep:
+                # the deeper rule (module docstring)
                 from .pv_exact_deep import exact_root_means
                 means, stats = exact_root_means(
                     rnd, seat, admitted, worlds, leaf_fn, stage.guard, max_hand_cards=max_cards,
-                    max_nodes=(EXACT_DEEP_LIMITS['max_nodes'] if deep
-                               else EXACT_LEAD_LIMITS['max_nodes']),
-                    level=bool(deep))
+                    max_nodes=EXACT_DEEP_LIMITS['max_nodes'])
             else:
                 means, stats = exact_lead_means(rnd, seat, admitted, worlds, leaf_fn, stage.guard,
                                                max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
@@ -3002,7 +3006,6 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_lead_endgame: bool = False,
                        exact_lead_tie_baseline: bool = False,
                        exact_lead_policy_first: bool = False,
-                       exact_follows: bool = False,
                        exact_deep_cards: int = 0,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
@@ -3066,7 +3069,6 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_lead_endgame=exact_lead_endgame,
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
-                            exact_follows=exact_follows,
                             exact_deep_cards=exact_deep_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
@@ -3163,7 +3165,6 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_lead_endgame: bool = False,
                         exact_lead_tie_baseline: bool = False,
                         exact_lead_policy_first: bool = False,
-                        exact_follows: bool = False,
                         exact_deep_cards: int = 0,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
@@ -3208,7 +3209,6 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_lead_endgame=exact_lead_endgame,
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
-                            exact_follows=exact_follows,
                             exact_deep_cards=exact_deep_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
@@ -3301,7 +3301,6 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_lead_endgame=config.exact_lead_endgame,
                                exact_lead_tie_baseline=config.exact_lead_tie_baseline,
                                exact_lead_policy_first=config.exact_lead_policy_first,
-                               exact_follows=config.exact_follows,
                                exact_deep_cards=config.exact_deep_cards,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                value_declare=config.value_declare,

@@ -6,6 +6,7 @@ Synthetic games from ``test_belief_labels`` stand in for trajectory shards.
 from __future__ import annotations
 
 import json
+import copy
 from collections import Counter
 
 import numpy as np
@@ -86,6 +87,35 @@ def test_card_features_follow_the_round_trump(chunk):
     assert np.allclose(cf[:, :, 1:6].sum(-1), 1.0)
 
 
+@pytest.mark.parametrize('field', ['seat', 'cards'])
+def test_history_replay_refuses_corrupted_prefix_contents(chunk, field):
+    records = copy.deepcopy(chunk['records'][0])
+    rec = next(r for r in records if r.get('plays_prefix'))
+    tail = rec['plays_prefix'][-1]
+    if field == 'seat':
+        tail['seat'] = (int(tail['seat']) + 1) % 4
+    else:
+        tail['cards'][0] = 'C2' if tail['cards'][0] != 'C2' else 'D2'
+    with pytest.raises(bl.BeliefLabelError, match="differs from the record's prefix"):
+        list(bh.replay_round_tokens(records))
+
+
+def test_history_replay_accepts_prefix_card_permutations(chunk):
+    records = copy.deepcopy(chunk['records'][0])
+    for rec in records:
+        for play in rec.get('plays_prefix', []):
+            play['cards'].reverse()
+    expected = list(bh.replay_round_tokens(chunk['records'][0]))
+    actual = list(bh.replay_round_tokens(records))
+    assert len(actual) == len(expected)
+    for left, right in zip(actual, expected):
+        assert left[0] == right[0] and left[3:] == right[3:]
+        np.testing.assert_array_equal(left[2], right[2])
+        for a, b in zip(left[1], right[1]):
+            for key in a:
+                np.testing.assert_array_equal(a[key], b[key])
+
+
 def test_a_misaligned_chunk_is_refused(chunk, tmp_path):
     rows = dict(chunk["rows"])
     rows["trick"] = rows["trick"].copy()
@@ -128,6 +158,39 @@ def test_sampled_worlds_are_legal():
         a = bs.world_agreement(W, true)
         assert ((a >= 0) & (a <= 1)).all()
         assert bs.world_agreement(true[None].astype(np.int16), true)[0] == 1.0
+
+
+@pytest.mark.parametrize('mass', [1.0, 1e-20, np.nextafter(0.0, 1.0), 0.0])
+@pytest.mark.parametrize('receiver', range(4))
+@pytest.mark.parametrize('uniform', [0.0, 0.5, np.nextafter(1.0, 0.0)])
+def test_sampler_numerical_boundaries_preserve_feasibility(mass, receiver, uniform):
+    from shengji.train import belief_seq as bs
+    class FixedRng:
+        def permutation(self, n):
+            return np.arange(n)
+        def random(self, n):
+            return np.full(n, uniform)
+    copies = np.zeros(54, dtype=int)
+    copies[0] = 1
+    mask = np.zeros((54, 4), dtype=bool)
+    mask[0, receiver] = True
+    probabilities = np.ones((54, 4))  # excluded receivers may carry large mass
+    probabilities[0, receiver] = mass
+    sizes = np.eye(4, dtype=int)[receiver]
+    worlds = bs.sample_worlds(probabilities, copies, mask, sizes, 2, FixedRng())
+    np.testing.assert_array_equal(worlds[:, 0], np.tile(sizes, (2, 1)))
+    assert not worlds[:, ~mask].any()
+
+
+@pytest.mark.parametrize('bad', [np.nan, np.inf, -1.0])
+def test_sampler_refuses_invalid_probabilities(bad):
+    from shengji.train import belief_seq as bs
+    probabilities = np.ones((54, 4))
+    probabilities[0, 0] = bad
+    with pytest.raises(bs.BeliefSeqError, match='finite and nonnegative'):
+        bs.sample_worlds(probabilities, np.ones(54, dtype=int),
+                        np.ones((54, 4), dtype=bool), np.array([14,14,13,13]),
+                        2, np.random.default_rng(0))
 
 
 def test_the_model_reads_only_plays_before_the_row():

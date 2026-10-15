@@ -63,6 +63,32 @@ def test_mc_target_mapping_excludes_unsearched_pool_and_model_scores(monkeypatch
         policy.trajectory_bury_record(bad)
 
 
+def test_value_only_bury_preserves_action_without_mc_targets():
+    from test_cwv_bury_wide_value import wide, bury_state
+    rnd = bury_state(65)
+    bot = wide(64)
+    action = bot.decide_bury(rnd, rnd.banker)
+    raw = bot.last_bury_record
+    fields = trajectory._bury_fields({}, "wide", 0, 0, rnd.banker,
+                                     rnd.hands[rnd.banker], action, raw)
+    assert fields['ballot'] == [action]
+    assert fields['action_values']['means'] == [None]
+    assert fields['allocation']['total_worlds'] == 0
+    assert fields['allocation']['selection_worlds'] == [0]
+    assert fields['allocation']['reason'] == 'value-only-no-MC'
+    assert not fields['allocation']['searched']
+    search = fields['action_values']['bury_search']
+    assert search['model_means'] == raw['model_means']
+    assert search['wide_value'] == raw['wide_value']
+    assert search['model_values_are_mc_targets'] is False
+    for key, value in [('mc_rollouts', 1), ('selection_worlds', 1),
+                       ('picked_index', -1), ('fallback_reason', 'budget')]:
+        bad = copy.deepcopy(raw)
+        bad[key] = value
+        with pytest.raises(policy.BuryPolicyError, match='value-only bury evidence'):
+            policy.trajectory_bury_record(bad)
+
+
 @pytest.mark.parametrize("arm", ["heuristic", "mc", "hybrid"])
 def test_actual_trajectory_round_and_shard_preserve_bury_evidence(tmp_path, monkeypatch, arm):
     # Only the unregistered factory/evaluator is supplied by the test. Keep

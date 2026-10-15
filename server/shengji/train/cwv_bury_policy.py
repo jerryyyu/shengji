@@ -412,9 +412,9 @@ class CWVBuryBot(CWVBuryMixin, CWVShortlistBot):
 def trajectory_bury_record(raw: dict) -> dict:
     """Map new DEV evidence to the existing MC-bury data-writer contract.
 
-    The training ballot is only the MC-scored subset (or the single heuristic
-    action). The full proposal pool and its model rankings remain separate
-    metadata. Old screen records without MC evidence cannot be relabeled from
+    The training ballot is only the MC-scored subset (or a single unlabeled
+    heuristic/value-only action). The full proposal pool and its model rankings
+    remain separate metadata. Old screen records without MC evidence cannot be relabeled from
     the final pick: they remain valid gameplay evidence, not value targets.
     """
     if raw.get("schema") != "cwv-bury-policy-v1" or "mc_evidence" not in raw:
@@ -422,7 +422,21 @@ def trajectory_bury_record(raw: dict) -> dict:
     pool = raw["candidates"]
     picked = raw["picked_index"]
     evidence = raw["mc_evidence"]
-    if raw["arm"] == "heuristic":
+    wide = raw.get("wide_value")
+    if wide is not None:
+        if (not isinstance(wide, dict) or evidence is not None
+                or type(picked) is not int or not 0 <= picked < len(pool)
+                or wide.get("chosen_index") != picked
+                or wide.get("candidates") != len(pool)
+                or raw.get("candidate_count") != len(pool)
+                or raw.get("selection_worlds") != 0 or raw.get("mc_rollouts") != 0
+                or raw.get("fallback_reason") is not None
+                or len(raw["model_means"]) != len(pool)
+                or not np.isfinite(raw["model_means"]).all()):
+            raise BuryPolicyError("value-only bury evidence is inconsistent")
+        # Preserve the action without inventing MC targets from model scores.
+        indices, means, n, winner = [picked], [None], 0, None
+    elif raw["arm"] == "heuristic":
         if evidence is not None or picked != 0 or len(pool) != 1:
             raise BuryPolicyError("heuristic bury evidence is inconsistent")
         indices, means, n = [0], [None], 0
@@ -449,7 +463,8 @@ def trajectory_bury_record(raw: dict) -> dict:
         "n_by_candidate": [n] * len(indices),
         "played_index": indices.index(picked),
         "raw_winner_index": winner,
-        "reason": "heuristic" if evidence is None else "MC-with-incumbent-margin",
+        "reason": ("value-only-no-MC" if wide is not None else
+                   "heuristic" if evidence is None else "MC-with-incumbent-margin"),
         "candidate_count": len(indices),
         "bury_search": {
             "schema": "cwv-bury-search-evidence-v1",
@@ -461,6 +476,7 @@ def trajectory_bury_record(raw: dict) -> dict:
             "level_objective": None if evidence is None else evidence["level_objective"],
             "incumbent_margin": None if evidence is None else evidence["incumbent_margin"],
             "model_values_are_mc_targets": False,
+            **({"wide_value": dict(wide)} if wide is not None else {}),
         },
     }
 

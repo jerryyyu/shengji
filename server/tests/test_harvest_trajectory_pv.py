@@ -46,6 +46,34 @@ def data_policy(package, monkeypatch):
 
 
 @pytest.fixture
+def wide_bury_policy(package, monkeypatch):
+    yield from _register_data_policy(package, monkeypatch, BURY_WIDE_VALUE=1, BURY_WIDE_K=64)
+
+
+@pytest.mark.parametrize('round_mix', ['first', 'sampled'])
+def test_wide_value_bury_harvest_reaches_play_value_consumer(wide_bury_policy, tmp_path, round_mix):
+    from shengji.train.cwv_data import bridge_record, TrainDataError
+    run = _gen(tmp_path / round_mix, wide_bury_policy, explore_rate=0.0,
+               explore_k=0, round_mix=round_mix)
+    buries = [r for r in run['records'] if r['decision_kind'] == 'bury']
+    plays = [r for r in run['records'] if r['decision_kind'] == 'play']
+    assert len(buries) == 2 and plays
+    for record in buries:
+        assert record['action_values']['means'] == [None]
+        assert record['allocation']['total_worlds'] == 0
+        assert record['allocation']['reason'] == 'value-only-no-MC'
+        search = record['action_values']['bury_search']
+        assert action_key(record['action']) == action_key(
+            search['candidate_pool'][search['wide_value']['chosen_index']])
+        with pytest.raises(TrainDataError, match='not_play'):
+            bridge_record(record)
+    assert run['manifest']['counts']['bury_records'] == 2
+    for record in plays:
+        row = bridge_record(record)
+        assert row is not None
+
+
+@pytest.fixture
 def dtr_policy(package, monkeypatch):
     """The data teacher with ``doomed_throw_reselect`` (the VD1 teacher's ``-dtr`` token)."""
     yield from _register_data_policy(package, monkeypatch, DOOMED_THROW_RESELECT=1)
@@ -139,7 +167,9 @@ def test_explore_zero_is_the_served_bot_and_a_rerun_is_byte_identical(data_polic
 
 
 @pytest.mark.parametrize("policy_fixture", ["data_policy", "dtr_policy"])
-def test_the_exploration_draw_is_scored_priced_and_recorded(policy_fixture, request, tmp_path):
+def test_the_exploration_draw_is_scored_priced_and_recorded(policy_fixture, request, tmp_path,
+                                                          package):
+    # Dynamic fixture lookup cannot collect the parametrized package dependency.
     policy = request.getfixturevalue(policy_fixture)
     run = _gen(tmp_path / "x", policy, explore_rate=1.0, explore_k=2)
     plays = [r for r in run["records"] if r["decision_kind"] == "play" and r["allocation"]["searched"]]

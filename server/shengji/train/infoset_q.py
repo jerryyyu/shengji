@@ -524,7 +524,7 @@ def _cand_tensor(data, sel, rerank: bool):
         wc = W - (W * M).sum(1, keepdims=True) / k
         pc = P - (P * M).sum(1, keepdims=True) / k
         parts += [W[..., None], wc[..., None] * 5.0, pc[..., None] / 5.0]
-    return np.concatenate(parts, axis=-1)
+    return np.concatenate(parts, axis=-1).astype(np.float32)
 
 
 def train(dirs: Sequence[str], out: str, *, rerank: bool, epochs: int, batch: int, lr: float,
@@ -589,7 +589,7 @@ def train(dirs: Sequence[str], out: str, *, rerank: bool, epochs: int, batch: in
             loss.backward()
             opt.step()
             sched.step()
-            tot += float(loss) * len(sel)
+            tot += float(loss.detach()) * len(sel)
         pc = predict(ca)
         agree, regret = outcome(choose(pc, ca["M"]), ca["T"], ca["M"])
         w_agree, w_regret = outcome(choose(ca["W"], ca["M"]), ca["T"], ca["M"])

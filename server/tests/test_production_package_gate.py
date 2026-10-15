@@ -135,7 +135,11 @@ def test_the_real_production_package_tests_are_marked():
         "test_production_package_value_declare_server_smoke[3.0]",
         "test_production_package_value_declare_server_smoke[1e-12]",
         "test_value_declare_full_deal_admits_only_gated_decisions",
-        "test_current_recipe_candidate_survives_server_snapshot_and_commit[False]",
-        "test_current_recipe_candidate_survives_server_snapshot_and_commit[True]",
+        "test_current_recipe_candidate_survives_server_snapshot_and_commit[finish-False]",
+        "test_current_recipe_candidate_survives_server_snapshot_and_commit[finish-True]",
+        "test_current_recipe_candidate_survives_server_snapshot_and_commit[exact-False]",
+        "test_current_recipe_candidate_survives_server_snapshot_and_commit[exact-True]",
+        "test_exact_stage_expiry_preserves_base_through_server_commit",
     } <= selected
     assert not any(name.startswith("test_tiny_recipe") for name in selected)
+    assert "test_tiny_exact_stage_expiry_preserves_base_through_server_commit" not in selected

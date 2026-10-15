@@ -25,13 +25,35 @@ interface XrayCandidate {
   heuristic_pick?: boolean;
   report_finalist?: boolean;
   bot_plays?: boolean;
+  // The pv-search record: the value head's level per admitted candidate, its
+  // policy log-odds, and which row the selection and the played cards are.
+  acting_team_levels?: number | null;
+  policy_log_odds?: number | null;
+  anchor?: boolean;
+  selected?: boolean;
+  forced_component?: boolean;
 }
+
+type Scalar = number | string | boolean | null;
 
 interface XrayAnalysis {
   source?: string;
   historical_decision?: boolean;
+  schema?: string;
   policy?: string;
   reason?: string;
+  applied_rules?: string[];
+  anchor_selected?: boolean | null;
+  selected_index?: number | null;
+  work_complete?: boolean | null;
+  sampling?: Record<string, number | null> | null;
+  admission?: Record<string, Scalar> | null;
+  stages?: Record<string, Record<string, Scalar | Scalar[]>> | null;
+  fallback?: {
+    error_class?: string;
+    error_stage?: string;
+    budget_seconds?: number | null;
+  } | null;
   snapshot?: {
     trick_number?: number | null;
     plays_in_trick?: number | null;
@@ -67,6 +89,9 @@ interface XrayAnalysis {
     batch_size?: number | null;
     report_worlds_requested?: number | null;
     report_min_gain?: number | null;
+    cap?: number | null;
+    serving_budget_seconds?: number | null;
+    encoder_version?: number | null;
   } | null;
   shortlist?: {
     legal_count?: number | null;
@@ -79,11 +104,49 @@ interface XrayAnalysis {
     selection_rollouts?: number | null;
     report_rollouts?: number | null;
     total_rollouts?: number | null;
+    value_evaluations?: number | null;
+    value_batches?: number | null;
+    worlds?: number | null;
   } | null;
   search_seconds?: number | null;
   evaluation_seconds?: number | null;
   candidate_count?: number | null;
   candidates_truncated?: boolean;
+}
+
+interface XrayDeclareRecord {
+  schema?: string;
+  gate?: string;
+  evaluated?: boolean;
+  heuristic?: string;
+  value_choice?: string | null;
+  played?: string;
+  changed?: boolean;
+  worlds?: number | null;
+  worlds_completed?: number | null;
+  fallback_reason?: string | null;
+  outcomes?: string;
+  outcome_means?: (number | null)[] | null;
+  heuristic_mean?: number | null;
+  best_mean?: number | null;
+  margin?: number | null;
+  seconds?: number | null;
+  // the model-free first-round variant
+  chosen?: string;
+  strength?: number | null;
+  options?: number | null;
+}
+
+interface XrayDeclare {
+  policy: string;
+  phase: string;
+  final: boolean;
+  cards_dealt: number;
+  options: string[][];
+  chosen: string[] | null;
+  current: { seat: number; cards: string[]; strength: number } | null;
+  record: XrayDeclareRecord | null;
+  evaluation_seconds: number;
 }
 
 interface XrayBuryCandidate {
@@ -122,16 +185,42 @@ interface XrayBuryAnalysis {
 
 interface XrayData {
   seat: number;
+  phase?: string;
   hand: string[];
   is_attacker: boolean | null;
   voids: Record<string, string[]>;
-  unseen_trumps: number;
+  unseen_trumps: number | null;
   unseen_by_suit: Record<string, string[]>;
   boss_cards: string[];
   ruff_risky_suits: string[];
   candidates: XrayCandidate[] | null;
   bury: XrayBuryAnalysis | null;
   analysis?: XrayAnalysis | null;
+  // before trump exists the overlay is the declaration decision alone
+  declare?: XrayDeclare | null;
+}
+
+function scalarText(value: Scalar | Scalar[] | undefined): string {
+  if (Array.isArray(value)) return value.map((v) => scalarText(v)).join(", ");
+  if (value === null || value === undefined) return "unavailable";
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(3);
+  return String(value);
+}
+
+/** One optional rule's record block: its fields with the rule prefix dropped. */
+function StageBlock({ name, block }: { name: string; block: Record<string, Scalar | Scalar[]> }) {
+  const prefix = `${name}_`;
+  return (
+    <div className="xr-dim">
+      <span className="xr-label">{name}</span>
+      {Object.entries(block).map(([key, value]) => (
+        <span key={key}>
+          {" · "}
+          {key.startsWith(prefix) ? key.slice(prefix.length) : key} {scalarText(value)}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 type XrayResp = XrayData | { error: string };
@@ -212,6 +301,8 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
     body = <div className="xr-error">{data.error}</div>;
   } else {
     const boss = new Set(data.boss_cards);
+    const declaring = data.declare !== null && data.declare !== undefined;
+    const pv = (data.analysis?.schema ?? "").startsWith("pv-search");
     body = (
       <>
         <div className="xr-section">
@@ -228,6 +319,83 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
           </div>
         </div>
 
+        {declaring ? (
+          <div className="xr-section">
+            <div className="xr-head">
+              declaration — {data.declare!.policy}
+              <span className="xr-dim">
+                {" "}· {data.declare!.final ? "grace window" : "during the deal"} · {data.declare!.cards_dealt} cards dealt
+              </span>
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">bot declares</span>
+              <span className="xr-cards">
+                {data.declare!.chosen === null ? (
+                  <span className="xr-dim">pass</span>
+                ) : (
+                  data.declare!.chosen.map((c, i) => <CodeSpan key={i} c={c} />)
+                )}
+              </span>
+              {data.declare!.record?.changed === true ? <Flag>value changed it</Flag> : null}
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">options</span>
+              <span className="xr-cards">
+                {data.declare!.options.length > 0 ? (
+                  data.declare!.options.map((option, i) => (
+                    <span key={i} className="xr-cards">
+                      {option.map((c, j) => <CodeSpan key={j} c={c} />)}
+                      {i < data.declare!.options.length - 1 ? <span className="xr-dim"> / </span> : null}
+                    </span>
+                  ))
+                ) : (
+                  <span className="xr-dim">none</span>
+                )}
+              </span>
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">on the table</span>
+              {data.declare!.current === null ? (
+                <span className="xr-dim">no declaration yet</span>
+              ) : (
+                <span className="xr-cards">
+                  {nameOf(data.declare!.current.seat)}:{" "}
+                  {data.declare!.current.cards.map((c, i) => <CodeSpan key={i} c={c} />)}
+                  <span className="xr-dim"> strength {data.declare!.current.strength}</span>
+                </span>
+              )}
+            </div>
+            {data.declare!.record === null ? (
+              <div className="xr-dim">heuristic declaration · no value evaluation on this chance</div>
+            ) : (
+              <>
+                <div className="xr-dim">
+                  {data.declare!.record.schema ?? "record"}
+                  {" · "}gate {data.declare!.record.gate ?? "unavailable"}
+                  {" · "}evaluated {String(data.declare!.record.evaluated ?? "unavailable")}
+                  {data.declare!.record.fallback_reason ? ` · fallback ${data.declare!.record.fallback_reason}` : ""}
+                  {" · "}worlds {integerMetric(data.declare!.record.worlds_completed)}/{integerMetric(data.declare!.record.worlds)}
+                  {" · "}{seconds(data.declare!.record.seconds)}
+                </div>
+                <div className="xr-dim">
+                  heuristic {data.declare!.record.heuristic ?? "unavailable"}
+                  {" · "}value choice {data.declare!.record.value_choice ?? "unavailable"}
+                  {" · "}played {data.declare!.record.played ?? "unavailable"}
+                  {" · "}margin {metric(data.declare!.record.margin, 3)}
+                </div>
+                {data.declare!.record.outcomes !== undefined ? (
+                  <div className="xr-dim">
+                    outcomes {data.declare!.record.outcomes}
+                    {" · "}means {scalarText(data.declare!.record.outcome_means ?? null)} (expected signed levels, this seat's team)
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
+
+        {declaring ? null : (
+        <>
         <div className="xr-section">
           <div className="xr-head">boss cards</div>
           <div className="xr-cards">
@@ -281,8 +449,113 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
             )}
           </div>
         </div>
+        </>
+        )}
 
-        {data.analysis !== null && data.analysis !== undefined ? (
+        {data.analysis !== null && data.analysis !== undefined && pv ? (
+          <div className="xr-section">
+            <div className="xr-head">play analysis</div>
+            <div className="xr-dim">isolated current-state replay · not historical decision</div>
+            {data.analysis.snapshot !== null && data.analysis.snapshot !== undefined ? (
+              <div className="xr-dim">
+                state trick {integerMetric(data.analysis.snapshot.trick_number)}
+                {" · "}plays {integerMetric(data.analysis.snapshot.plays_in_trick)}
+                {" · "}acting seat {integerMetric(data.analysis.snapshot.acting_seat)}
+              </div>
+            ) : null}
+            <div className="xr-row">
+              <span className="xr-label">policy</span>
+              <span style={{ overflowWrap: "anywhere" }}>{data.analysis.policy ?? "unavailable"}</span>
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">model backend</span>
+              <span>{data.analysis.model?.backend ?? "unavailable"}</span>
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">package checkpoint</span>
+              <span style={{ overflowWrap: "anywhere" }}>
+                {data.analysis.model?.checkpoint_sha256 ?? "unavailable"}
+              </span>
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">source checkpoint</span>
+              <span style={{ overflowWrap: "anywhere" }}>
+                {data.analysis.model?.source_checkpoint_sha256 ?? "unavailable"}
+              </span>
+            </div>
+            <div className="xr-dim">
+              recipe W={integerMetric(data.analysis.recipe?.worlds)}
+              {" · "}K={integerMetric(data.analysis.recipe?.alternatives)}
+              {" · "}cap={integerMetric(data.analysis.recipe?.cap)}
+              {" · "}budget {seconds(data.analysis.recipe?.serving_budget_seconds)}
+              {" · "}encoder v{integerMetric(data.analysis.recipe?.encoder_version)}
+            </div>
+            <div className="xr-dim">
+              W sampled worlds · K admitted candidates (the anchor first) · value is the head's expected signed level for the acting team
+            </div>
+            <div className="xr-row">
+              <span className="xr-label">decision</span>
+              <span>
+                {data.analysis.reason ?? "unavailable"}
+                {data.analysis.schema === "pv-search-fallback-v1"
+                  ? ` · fallback to the heuristic (${data.analysis.fallback?.error_class || "unavailable"}${data.analysis.fallback?.error_stage ? ` at ${data.analysis.fallback.error_stage}` : ""})`
+                  : data.analysis.anchor_selected === true
+                    ? " · anchor kept"
+                    : data.analysis.anchor_selected === false
+                      ? ` · candidate ${integerMetric(data.analysis.selected_index)} selected`
+                      : ""}
+                {data.analysis.work_complete === false ? " · work incomplete" : ""}
+              </span>
+            </div>
+            <div className="xr-dim">
+              applied rules:{" "}
+              {data.analysis.applied_rules && data.analysis.applied_rules.length > 0
+                ? data.analysis.applied_rules.join(", ")
+                : "none"}
+            </div>
+            <div className="xr-dim">
+              search {seconds(data.analysis.search_seconds)}
+              {" · "}evaluation {seconds(data.analysis.evaluation_seconds)}
+              {" · "}value evaluations {integerMetric(data.analysis.work?.value_evaluations)}
+              {" · "}batches {integerMetric(data.analysis.work?.value_batches)}
+            </div>
+            <div className="xr-dim">
+              sampling: worlds {integerMetric(data.analysis.sampling?.worlds)}
+              {" · "}attempts {integerMetric(data.analysis.sampling?.sample_attempts)}
+              {Object.entries(data.analysis.sampling ?? {})
+                .filter(([key]) => key.endsWith("_delta"))
+                .map(([key, value]) => (
+                  <span key={key}>
+                    {" · "}{key.slice(0, -"_delta".length)} {integerMetric(value)}
+                  </span>
+                ))}
+            </div>
+            <div className="xr-dim">
+              admission:
+              {Object.entries(data.analysis.admission ?? {}).map(([key, value]) => (
+                <span key={key}>
+                  {" · "}{key} {scalarText(value)}
+                </span>
+              ))}
+            </div>
+            <div className="xr-dim">
+              candidates {integerMetric(data.analysis.candidate_count)}
+              {data.analysis.candidates_truncated ? (
+                <>
+                  {" · "}
+                  {data.analysis.candidate_count !== null && data.analysis.candidate_count !== undefined && data.candidates !== null
+                    ? `${Math.max(0, data.analysis.candidate_count - data.candidates.length)} truncated`
+                    : "unavailable truncated"}
+                </>
+              ) : null}
+            </div>
+            {Object.entries(data.analysis.stages ?? {}).map(([name, block]) => (
+              <StageBlock key={name} name={name} block={block} />
+            ))}
+          </div>
+        ) : null}
+
+        {data.analysis !== null && data.analysis !== undefined && !pv ? (
           <div className="xr-section">
             <div className="xr-head">play analysis</div>
             <div className="xr-dim">isolated current-state replay · not historical decision</div>
@@ -439,7 +712,7 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
               </tbody>
             </table>
           </div>
-        ) : (
+        ) : declaring ? null : (
           <div className="xr-section">
             <div className="xr-head">play candidates</div>
             {data.candidates === null ? (
@@ -461,21 +734,32 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
                           <CodeSpan key={j} c={c} />
                         ))}
                       </td>
-                      <td>
-                        <div>MC avg · final attacker points: {metric(cand.attackers_avg)}</div>
-                        <div>model · expected signed levels (acting team): {metric(cand.model_score)}</div>
-                        <div>paired SE vs incumbent: {metric(cand.paired_se_vs_incumbent)}</div>
-                        <div>selection worlds: {integerMetric(cand.selection_worlds)}</div>
-                        <div>individual SE: {metric(cand.se)}</div>
-                      </td>
+                      {pv ? (
+                        <td>
+                          <div>value · expected signed levels (acting team): {metric(cand.acting_team_levels, 3)}</div>
+                          <div>policy log-odds: {metric(cand.policy_log_odds, 2)}</div>
+                          <div>worlds: {integerMetric(cand.selection_worlds)}</div>
+                        </td>
+                      ) : (
+                        <td>
+                          <div>MC avg · final attacker points: {metric(cand.attackers_avg)}</div>
+                          <div>model · expected signed levels (acting team): {metric(cand.model_score)}</div>
+                          <div>paired SE vs incumbent: {metric(cand.paired_se_vs_incumbent)}</div>
+                          <div>selection worlds: {integerMetric(cand.selection_worlds)}</div>
+                          <div>individual SE: {metric(cand.se)}</div>
+                        </td>
+                      )}
                       <td>
                         {cand.old_ballot === true ? <Flag>old ballot</Flag> : null}
                         {cand.incumbent === true || (i === 0 && cand.heuristic_pick === true) ? (
                           <Flag>incumbent</Flag>
                         ) : null}
+                        {cand.anchor === true && cand.heuristic_pick !== true ? <Flag>anchor</Flag> : null}
                         {cand.model_nominated === true ? <Flag>model nominated</Flag> : null}
                         {cand.heuristic_pick === true ? <Flag>heuristic</Flag> : null}
                         {cand.report_finalist === true ? <Flag>report finalist</Flag> : null}
+                        {cand.selected === true ? <Flag>selected</Flag> : null}
+                        {cand.forced_component === true ? <Flag>forced component</Flag> : null}
                         {cand.bot_plays === true ? <span className="xr-tag bot">chosen</span> : null}
                       </td>
                     </tr>

@@ -323,3 +323,28 @@ def test_production_overlay_explains_a_served_declaration(pinned_production_pack
     played = None if record["played"] == "PASS" else record["played"].split(" ")
     assert view["chosen"] == played
     assert rnd.declaration is None
+
+
+def test_production_overlay_keeps_the_panel_fixtures_shape(pinned_production_package):
+    """The panel's captured responses (`web/src/components/xray-*.fixture.json`)
+    name the fields the served producer writes today; a renamed or dropped
+    field fails here before the browser shows 'unavailable'."""
+    components = Path(__file__).resolve().parents[2] / "web" / "src" / "components"
+    play = json.loads((components / "xray-pv-search.fixture.json").read_text())
+    declare = json.loads((components / "xray-declare.fixture.json").read_text())
+    _, factory = _served_entries(pinned_production_package)
+    bot = factory(seed=17)
+    rnd = _play_state()
+    out = debug._xray(rnd, rnd.turn, bot)
+    assert set(out) == set(play)
+    assert set(out["analysis"]) == set(play["analysis"])
+    assert set(out["analysis"]["recipe"]) == set(play["analysis"]["recipe"])
+    assert set(out["analysis"]["work"]) == set(play["analysis"]["work"])
+    assert set(out["candidates"][0]) == set(play["candidates"][0])
+    assert set(play["analysis"]["stages"]) <= set(out["analysis"]["stages"]) | {"tiebreak"}
+    rnd = _dealt_round()
+    view = debug._declare_view(rnd, _seat_with_options(rnd), bot)
+    assert set(view) == set(declare)
+    assert set(view["declare"]) == set(declare["declare"])
+    assert set(view["declare"]["record"]) == set(declare["declare"]["record"])
+

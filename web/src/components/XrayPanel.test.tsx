@@ -5,6 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import XrayPanel from "./XrayPanel";
 import shortlistFixture from "./xray-shortlist.fixture.json";
+import pvSearchFixture from "./xray-pv-search.fixture.json";
+import declareFixture from "./xray-declare.fixture.json";
 
 const previousActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT;
@@ -104,6 +106,113 @@ describe("XrayPanel play analysis", () => {
     expect(rows[1]?.textContent).toContain("model nominated");
     const chosenRow = rows.find((row) => row.textContent?.includes("chosen"));
     expect(chosenRow?.textContent).toContain("♠9");
+  });
+
+  it("renders the served pv-search decision: values, log-odds, rules and the chosen row", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: async () => pvSearchFixture,
+    }));
+    const { host } = mount();
+    await settle();
+    const text = host.textContent ?? "";
+
+    expect(text).toContain("isolated current-state replay");
+    expect(text).toContain(pvSearchFixture.analysis.policy);
+    expect(text).toContain(pvSearchFixture.analysis.model.checkpoint_sha256);
+    expect(text).toContain("recipe W=64 · K=8 · cap=4000 · budget 3.000s · encoder v2");
+    expect(text).toContain("decisionpv_search · anchor kept");
+    expect(text).toContain("applied rules: tiebreak_applied");
+    expect(text).toContain("value evaluations 512 · batches 4");
+    expect(text).toContain("sampling: worlds 64 · attempts 64");
+    expect(text).toContain("admission: · legal_count 1646");
+    expect(text).toContain("candidates 8");
+    expect(text).toContain("tiebreak · applied true · near_set 0, 2, 3, 4");
+    expect(text).toContain("doomed_throw_reselect · applied false");
+    expect(text).toContain("refusal · observations");
+    expect(text).not.toContain("MC avg");
+    expect(text).not.toContain("report unavailable");
+
+    const rows = Array.from(host.querySelectorAll("tbody tr"));
+    expect(rows).toHaveLength(pvSearchFixture.candidates.length);
+    const first = pvSearchFixture.candidates[0];
+    expect(rows[0]?.textContent).toContain(
+      `value · expected signed levels (acting team): ${first.acting_team_levels.toFixed(3)}`);
+    expect(rows[0]?.textContent).toContain(`policy log-odds: ${first.policy_log_odds.toFixed(2)}`);
+    expect(rows[0]?.textContent).toContain("heuristic");
+    expect(rows[0]?.textContent).toContain("selected");
+    expect(rows[0]?.textContent).toContain("chosen");
+    expect(rows[1]?.textContent).toContain("model nominated");
+    expect(rows[1]?.textContent).not.toContain("chosen");
+    expect(rows.filter((row) => row.textContent?.includes("chosen"))).toHaveLength(1);
+  });
+
+  it("marks a forced-component play and a fallback decision", async () => {
+    const fallback = {
+      ...pvSearchFixture,
+      candidates: [
+        { ...pvSearchFixture.candidates[0], selected: true, bot_plays: false },
+        { index: null, play: ["SA"], acting_team_levels: null, policy_log_odds: null,
+          selection_worlds: 64, anchor: false, heuristic_pick: false, model_nominated: false,
+          selected: false, bot_plays: true, forced_component: true },
+      ],
+      analysis: {
+        ...pvSearchFixture.analysis, schema: "pv-search-fallback-v1", reason: "budget",
+        applied_rules: [], work_complete: false, stages: {},
+        fallback: { error_class: "PVSearchBudgetExceeded", error_stage: "", budget_seconds: 3.0 },
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => fallback }));
+    const { host } = mount();
+    await settle();
+    const text = host.textContent ?? "";
+
+    expect(text).toContain("decisionbudget · fallback to the heuristic (PVSearchBudgetExceeded) · work incomplete");
+    expect(text).toContain("applied rules: none");
+    const rows = Array.from(host.querySelectorAll("tbody tr"));
+    expect(rows[1]?.textContent).toContain("forced component");
+    expect(rows[1]?.textContent).toContain("chosen");
+    expect(rows[1]?.textContent).toContain("value · expected signed levels (acting team): unavailable");
+  });
+
+  it("renders the declaration decision before trump exists", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: async () => declareFixture,
+    }));
+    const { host } = mount();
+    await settle();
+    const text = host.textContent ?? "";
+
+    expect(text).toContain("declaration — " + declareFixture.declare.policy);
+    expect(text).toContain("grace window · 100 cards dealt");
+    expect(text).toContain("bot declares");
+    expect(text).toContain("options");
+    expect(text).toContain("on the tableno declaration yet");
+    expect(text).toContain("pv-value-declare-decision-v1 · gate final · evaluated true · worlds 64/64");
+    expect(text).toContain("heuristic H2 · value choice H2 · played H2 · margin 0.000");
+    expect(text).toContain("outcomes " + declareFixture.declare.record.outcomes);
+    expect(text).toContain("means 0.986, 0.562, 0.621, 0.520");
+    expect(text).not.toContain("boss cards");
+    expect(text).not.toContain("play candidates");
+    expect(text).not.toContain("play analysis");
+  });
+
+  it("explains a heuristic declaration without a record", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: async () => ({
+        ...declareFixture,
+        declare: { ...declareFixture.declare, final: false, chosen: null, record: null,
+          current: { seat: 0, cards: ["S2"], strength: 1 } },
+      }),
+    }));
+    const { host } = mount();
+    await settle();
+    const text = host.textContent ?? "";
+
+    expect(text).toContain("during the deal");
+    expect(text).toContain("bot declarespass");
+    expect(text).toContain("on the tableyou:");
+    expect(text).toContain("strength 1");
+    expect(text).toContain("heuristic declaration · no value evaluation on this chance");
   });
 
   it("labels the report mean rule with the neutral decision-statistic name", async () => {

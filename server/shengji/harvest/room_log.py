@@ -106,7 +106,7 @@ def _allocation_from_decision(decision: dict) -> dict[str, Any]:
         out["report_fold"] = {k: fold.get(k) for k in (
             "gap", "se", "worlds", "attempts", "rejected", "complete", "rule",
             "critical", "statistic", "min_gain", "bound",
-            # #339 L2 measurement (absent on older records and non-throw ballots)
+            # throw-failure measurement (absent on older records and non-throw ballots)
             "throw_fail_worlds", "p_fail_sampled")}
     else:
         out["report_fold"] = None

@@ -109,7 +109,6 @@ def multiset_subsets(cards: Sequence[str], size: int) -> Iterator[tuple[str, ...
             return
         if i == len(codes):
             return
-        # remaining capacity check for early exit
         for k in range(min(cnt[codes[i]], left), -1, -1):
             if k:
                 out.extend([codes[i]] * k)
@@ -279,7 +278,7 @@ def resolve_lead(rnd: Round, seat: int, cards: Sequence[str],
 
     Lives here rather than in ``engine/round.py`` because that file is part of
     the hashed encoder-identity closure (``cwv_policy.AFTERSTATE_SOURCE_PATHS``):
-    editing it would make the production package refuse to load (#634).
+    editing it would make the production package refuse to load.
     """
     hands = rnd.hands if hands is None else hands
     others = [list(hands[s]) for s in range(4) if s != seat]

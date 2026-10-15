@@ -35,7 +35,7 @@ more expensive stand-in for each buys inside the unchanged search:
     Both mixins on one bot.
 
 ``wide``
-    Wide-ballot coverage arm (issue #205 step 2).  The production BALLOT is
+    Wide-ballot coverage arm.  The production BALLOT is
     replaced by the best candidates of a CAPPED deterministic prefix of the
     legal set unioned with the production ballot; everything else is
     production.  Per contested decision
@@ -114,7 +114,7 @@ more expensive stand-in for each buys inside the unchanged search:
     arm's N/R differ from the registered values: that difference IS the
     arm, and ``arm_over_baseline_total_rollouts`` records what it cost.
 
-INTERPRETATION (Codex review of PR #203, 2026-09-04).  Neither arm is an
+INTERPRETATION.  Neither arm is an
 upper bound on what a learned component could buy.  The value arm is a
 bounded greedy one-ply rollout-policy modification scored by the same
 heuristic continuation: it is not exact and is not guaranteed to rank root
@@ -873,7 +873,7 @@ def base_policy_class(base_policy: str, *, require_mc: bool = True) -> type:
     baseline (``arm="none"``) or a registry-policy arm never subclasses it, so
     for those any registered policy is a legal opponent -- SmartBot, the
     heuristic, a served pv-search name. That is what lets the exploitability
-    probe exploit something other than the MC family (#625, Jerry 09-26).
+    probe exploit something other than the MC family.
     """
     factory = REGISTRY.get(base_policy)
     if factory is None:
@@ -1267,8 +1267,8 @@ def _history_rows(history) -> list:
 
 
 def _history_sha256(history) -> str:
-    """The full SHA-256 over the exact serialization ``_history_digest`` hashes
-    (#707 S9); its first 16 hex digits ARE ``history_sha256_16``."""
+    """The full SHA-256 over the exact serialization ``_history_digest`` hashes;
+    its first 16 hex digits ARE ``history_sha256_16``."""
     payload = json.dumps(_history_rows(history))
     return hashlib.sha256(payload.encode()).hexdigest()
 
@@ -1325,7 +1325,7 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int, *,
         "baseline_utility": -arm_utility,
         "plays": len(log.history),
         "history_sha256_16": _history_digest(log.history),
-        # #707 S9, telemetry only: the full digest of the same serialization,
+        # Telemetry only: the full digest of the same serialization,
         # and the COMMITTED transcript itself (`RoundLog.history`: engine
         # truth, so a failed throw shows what was played, not what was
         # attempted -- the attempt stays in the decision traces)
@@ -1337,7 +1337,7 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int, *,
     timing = {
         "cluster": cluster, "seed": seed, "mirror": mirror,
         "wall_secs": round(wall, 4),
-        # A non-MC side (SmartBot, the heuristic; legal since #647) has no
+        # A non-MC side (SmartBot, the heuristic) has no
         # search clock at all: 0.0 is the literal truth, not a default.
         "arm_search_secs": round(sum(getattr(b, "search_secs", 0.0) for b in (a1, a2)), 4),
         "arm_prior_secs": round(
@@ -1454,7 +1454,7 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
         The attacking team wants ``attacker_points`` high and the banker's team
         wants it low, so the arm's gain is the raw figure when it attacks and the
         negation when it banks.  Summed over a cluster's two mirrors this is the
-        same construction as the level scale, one resolution finer (#487).
+        same construction as the level scale, one resolution finer.
         """
         points = float(r["attacker_points"])
         return points if r["arm_role"] == "attacker" else -points
@@ -1510,7 +1510,7 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
         if unreconciled:
             problems.append(f"{side}: sampler accounting unreconciled by "
                             f"{unreconciled}")
-        # the pv-search soft oracle's pinned fills (#707 S17; present only for
+        # the pv-search soft oracle's pinned fills (present only for
         # a soft-oracle arm): every fill attempt ends failed, rejected or kept
         pin_unreconciled = abs(t.get("soft_oracle_pin_fills", 0)
                                - t.get("soft_oracle_pin_fill_failed", 0)

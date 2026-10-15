@@ -1,7 +1,7 @@
 """PT0's actor-visible public-state hash, carried verbatim.
 
 ``shengji/rl/privileged_teacher_pt0.py`` left main with the PT keep-set
-pruning (#197).  The PT1 evidence groups were hashed with its
+pruning.  The PT1 evidence groups were hashed with its
 ``pt0_public_state_sha256`` and the PT1 extractor verifies every replayed
 state against that hash, so the function (and only the helpers it needs)
 is kept here byte-for-byte from commit 5fc57570's copy of that module.

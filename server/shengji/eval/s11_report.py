@@ -194,8 +194,8 @@ def _adapter_baseline(report) -> tuple[set, list[tuple[str, ...]], set[int], dic
 
 
 def _percentile(sorted_values: list[float], fraction: float) -> float:
-    # Match the project's established nearest-rank indexing convention while
-    # keeping the result wholly local and deterministic.
+    # Floor-linear index (floor(fraction * (n - 1))), not nearest-rank; S11
+    # output is frozen on this rule.
     index = int(fraction * (len(sorted_values) - 1))
     return _finite_result(sorted_values[index], "bootstrap percentile")
 

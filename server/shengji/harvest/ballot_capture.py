@@ -1,4 +1,4 @@
-"""Ballot-capture report (issue #205 step 1): which candidate-generator
+"""Ballot-capture report: which candidate-generator
 VARIANTS would have offered the moves humans and the Luna teacher actually
 played, and at what ballot size.
 

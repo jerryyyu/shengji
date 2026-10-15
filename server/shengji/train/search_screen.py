@@ -42,6 +42,8 @@ def trace_fields(rec, skip=()):
     * every list/tuple field gets ``<field>__len``; a numeric list of at most
       ``TRACE_LIST_MAX`` entries is also kept whole under its own name (e.g.
       ``diversity_skipped``, ``tiebreak_near_set``, ``admitted_indices``);
+      the bounded ``exact_lead_base_played`` string list is also retained so
+      the reader can verify the final-action change instead of trusting a flag;
     * ``trace_dropped_fields`` counts the fields whose full value is NOT in the
       trace (long or non-numeric lists, kept as their length only; dicts and
       other objects).  It is always present, so 0 means "nothing lost", and a
@@ -58,7 +60,9 @@ def trace_fields(rec, skip=()):
             if f"{k}__len" not in rec:
                 out[f"{k}__len"] = len(v)
             if (len(v) <= TRACE_LIST_MAX and k not in out
-                    and all(isinstance(x, (int, float)) for x in v)):
+                    and (all(isinstance(x, (int, float)) for x in v)
+                         or (k == 'exact_lead_base_played'
+                             and all(isinstance(x, str) for x in v)))):
                 out[k] = list(v)
                 whole = True
         dropped += not whole
@@ -223,6 +227,98 @@ def run_cluster(config, cluster):
                                 for i, (side, bot) in enumerate(created)]}
 
 
+def exact_lead_summary(shards):
+    """Descriptive coverage of persisted traces, never a gameplay gain estimate.
+
+    Missing telemetry includes flag-off policies and early fallbacks; it cannot
+    be counted as ineligible. Override values price ballot entries, not the
+    final played actions, so no value-delta average is reported here.
+    """
+    import math
+
+    statuses = ('ineligible', 'skipped_budget', 'abandoned', 'complete')
+    kinds = ('unchanged', 'higher', 'tie', 'lower', 'post_selection_override')
+    out = {side: dict(total_traces=0, missing=0, invalid=0,
+                     statuses=dict.fromkeys(statuses, 0),
+                     change_kinds=dict.fromkeys(kinds, 0), changed=0)
+           for side in ('arm', 'baseline')}
+    # Keep abandoned work: successful calls alone understate optional-stage cost.
+    costs = {side: {status: dict(samples=[], missing=0, invalid=0)
+                    for status in ('complete', 'abandoned')}
+             for side in out}
+    for shard in shards:
+        for group in shard.get('decision_traces', []):
+            side = group['side']
+            if side not in out:
+                raise ValueError('unknown exact-lead trace side')
+            counts = out[side]
+            for row in group['decisions']:
+                counts['total_traces'] += 1
+                status = row.get('exact_lead_status')
+                if status is None:
+                    counts['missing'] += 1
+                    continue
+                if status not in statuses:
+                    counts['invalid'] += 1
+                    continue
+                if status in costs[side]:
+                    cost = costs[side][status]
+                    seconds = row.get('exact_lead_seconds')
+                    if seconds is None:
+                        cost['missing'] += 1
+                    elif type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
+                        cost['invalid'] += 1
+                    else:
+                        cost['samples'].append(seconds)
+                if status == 'complete':
+                    kind = row.get('exact_lead_change_kind')
+                    changed = row.get('exact_lead_changed')
+                    delta = row.get('exact_lead_selected_level_delta')
+                    worlds = row.get('exact_lead_worlds_completed')
+                    played = row.get('played')
+                    base_played = row.get('exact_lead_base_played')
+                    selected = row.get('exact_lead_selected_level_mean')
+                    base_value = row.get('exact_lead_base_level_mean')
+                    cards_valid = all(isinstance(cards, list) and bool(cards)
+                                      and all(isinstance(c, str) for c in cards)
+                                      for cards in (played, base_played))
+                    valid = (kind in kinds and type(changed) is bool
+                             and changed == (kind != 'unchanged')
+                             and type(worlds) is int and worlds > 0
+                             and all(type(v) in (int, float) and math.isfinite(v)
+                                     for v in (delta, selected, base_value))
+                             and cards_valid)
+                    if valid:
+                        valid = (changed == (sorted(played) != sorted(base_played))
+                                 and math.isclose(delta, selected - base_value,
+                                                  rel_tol=1e-12, abs_tol=1e-12))
+                    if valid and kind in ('higher', 'tie', 'lower'):
+                        valid = ((delta > 0) if kind == 'higher' else
+                                 (delta < 0) if kind == 'lower' else delta == 0)
+                    if not valid:
+                        counts['invalid'] += 1
+                        continue
+                    counts['change_kinds'][kind] += 1
+                    counts['changed'] += int(changed)
+                counts['statuses'][status] += 1
+    for side, groups in costs.items():
+        for status, cost in groups.items():
+            samples = sorted(cost.pop('samples'))
+            n = len(samples)
+            cost.update(count=n, total_seconds=sum(samples),
+                        p50_seconds=samples[math.ceil(.5 * n) - 1] if n else None,
+                        p90_seconds=samples[math.ceil(.9 * n) - 1] if n else None,
+                        max_seconds=samples[-1] if n else None)
+        out[side]['stage_cost'] = groups
+    return {'schema': 'exact-lead-trace-summary-v1', 'sides': out,
+            'claim': 'descriptive sampled-world mechanism counts, not playing strength',
+            'cost_claim': 'optional-stage wall time, nearest-rank quantiles; not whole-decision latency',
+            'cost_valid': all(c['invalid'] == 0 for groups in costs.values() for c in groups.values()),
+            'cost_complete': all(c['missing'] == 0 and c['invalid'] == 0
+                                 for groups in costs.values() for c in groups.values()),
+            'valid': all(c['invalid'] == 0 for c in out.values())}
+
+
 def summary_for(shards, config):
     records = [r for shard in shards for r in shard["records"]]
     base = duel.build_config(arm="none", select_worlds=config["select_worlds"],
@@ -245,6 +341,7 @@ def summary_for(shards, config):
         "candidate_evaluation_ratio": ratio("rollouts"),
         "no_more_measured_decision_cpu": cpu_ratio is not None and cpu_ratio <= 1.0,
         "equal_work_strength_claim": False,
+        "exact_lead": exact_lead_summary(shards),
         "work_caveat": ("N is matched against the production ballot per searched state, not full cost. "
                         "An explicit candidate N override can reduce learned selection cost. "
                         "Different trajectories/extra unlocked decisions change aggregate work. "

@@ -109,6 +109,7 @@ jobs:
           tests/test_v52ec_recovery_reader.py
           tests/test_v52ec_recovery_integration.py
           tests/test_fast_parity.py
+          tests/test_pv_exact_follow.py
       # New modules in these families are selected without editing this list.
       - name: Test Sol benchmark contracts in pure mode
         run: >-
@@ -146,6 +147,7 @@ jobs:
           tests/test_heuristic_suit_groups.py
           tests/test_memory.py
           tests/test_harvest_ballot_capture.py
+          tests/test_pv_exact_follow.py
       # #636: the served bot must still CONSTRUCT from the real production package on this
       # tree. The package is not in the repo (Jerry 2026-09-28: do not commit it); CI fetches
       # it from the repo's `serving-packages` release by tag and verifies the sha256 pinned
@@ -165,7 +167,7 @@ jobs:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
           SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py
 
   import-walk:
     runs-on: ubuntu-latest
@@ -267,6 +269,10 @@ jobs:
             tests/test_optional_stage_contract.py \
             tests/test_pv_wide_lead_admission.py \
             tests/test_pv_finish_lead.py \
+            tests/test_endgame.py \
+            tests/test_endgame_compact.py \
+            tests/test_endgame_level.py \
+            tests/test_pv_exact_lead_variants.py \
             tests/test_doomed_throw_readout.py \
             tests/test_pv_search_bury.py \
             tests/test_pv_search_prior_package.py \

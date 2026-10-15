@@ -430,7 +430,7 @@ def outcome(choice: np.ndarray, T: np.ndarray, mask: np.ndarray) -> tuple[np.nda
 
 def trick_bucket(trick: np.ndarray) -> np.ndarray:
     edges = np.asarray([5, 10, 15, 20])
-    return np.searchsorted(edges, trick, side="right")
+    return np.searchsorted(edges, trick, side="left")      # 1-5 -> 0, 6-10 -> 1, ...
 
 
 TRICK_BUCKETS = ("t01-05", "t06-10", "t11-15", "t16-20", "t21+")

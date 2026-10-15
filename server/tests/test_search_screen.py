@@ -19,6 +19,187 @@ def config(arm="none"):
             "report_worlds": 30, "seed0": 431, "clusters": 1}
 
 
+def test_trace_helpers_do_not_require_torch():
+    import subprocess
+    import sys
+
+    result = subprocess.run([sys.executable, "-c", """
+import sys
+sys.modules['torch'] = None
+from shengji.train.search_screen import trace_fields, TimedPolicy
+assert trace_fields({'exact_follow_scores': [1.0, 2.0]}) == {
+    'exact_follow_scores__len': 2, 'exact_follow_scores': [1.0, 2.0],
+    'trace_dropped_fields': 0}
+assert 'shengji.train.search_inference' not in sys.modules
+assert 'shengji.train.search_policy' not in sys.modules
+"""], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():
+    rows = [{}, *({'exact_lead_status': s} for s in
+                   ('ineligible', 'skipped_budget', 'abandoned'))]
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': rows},
+        {'side': 'baseline', 'decisions': [{}]}]}])
+    assert result['valid']
+    arm = result['sides']['arm']
+    assert arm['total_traces'] == 4 and arm['missing'] == 1
+    assert arm['statuses'] == dict(ineligible=1, skipped_budget=1, abandoned=1, complete=0)
+    assert arm['changed'] == 0
+    assert result['sides']['baseline']['missing'] == 1
+
+
+def test_exact_baseline_cards_are_retained_but_other_string_lists_stay_bounded():
+    trace = S.trace_fields({'exact_lead_base_played': ['BJ', 'S5'],
+                            'other_cards': ['BJ', 'S5']})
+    assert trace['exact_lead_base_played'] == ['BJ', 'S5']
+    assert 'other_cards' not in trace and trace['other_cards__len'] == 2
+    assert trace['trace_dropped_fields'] == 1
+    oversized = S.trace_fields({'exact_lead_base_played': ['S5'] * 17})
+    assert 'exact_lead_base_played' not in oversized
+    assert oversized['exact_lead_base_played__len'] == 17
+
+
+def test_exact_stage_cost_keeps_abandonment_and_missing_separate():
+    rows = [dict(exact_lead_status='abandoned', exact_lead_seconds=v)
+            for v in (0, .1, .2, .3, .4, .5, .6, .7, .8, 2.25)]
+    rows += [dict(exact_lead_status='abandoned'), {}]
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': rows}]}])
+    cost = result['sides']['arm']['stage_cost']['abandoned']
+    assert cost == dict(count=10, missing=1, invalid=0, total_seconds=5.85,
+                        p50_seconds=.4, p90_seconds=.8, max_seconds=2.25)
+    assert result['cost_valid'] and not result['cost_complete']
+    assert result['sides']['baseline']['stage_cost']['abandoned']['max_seconds'] is None
+
+
+@pytest.mark.parametrize('seconds', [-1, float('nan'), float('inf'), True, '0.2'])
+def test_exact_stage_cost_rejects_invalid_measurements(seconds):
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [dict(exact_lead_status='abandoned',
+                                          exact_lead_seconds=seconds)]}]}])
+    assert not result['cost_valid'] and not result['cost_complete']
+    cost = result['sides']['arm']['stage_cost']['abandoned']
+    assert cost['invalid'] == 1 and cost['count'] == 0
+    assert cost['max_seconds'] is None
+
+
+def test_exact_follow_summary_counts_both_sides_and_rejects_malformed_receipts():
+    complete = dict(exact_follow_attempted=True, exact_follow_applied=True,
+                    exact_follow_abandoned=None, exact_follow_worlds=2,
+                    exact_follow_nodes=0, exact_follow_scores=[1.0, 2.0])
+    truncated = dict(exact_follow_attempted=True, exact_follow_applied=False,
+                     exact_follow_abandoned=None, exact_follow_worlds=3,
+                     exact_follow_nodes=4, exact_follow_scores__len=17)
+    rows = [
+        {},
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='soft_budget', exact_follow_error='Soft'),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='hard_budget', exact_follow_error='Hard'),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='error',
+             exact_follow_error='ExactFollowRefusal'),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='error', exact_follow_error='RuntimeError'),
+        complete,
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='unknown', exact_follow_error='Unknown'),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='soft_budget', exact_follow_error='Soft',
+             exact_follow_scores=[1.0, 2.0]),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned=None, exact_follow_worlds=0,
+             exact_follow_nodes=1, exact_follow_scores=[1.0, 2.0]),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned=[], exact_follow_error='Bad',
+             exact_follow_worlds=1, exact_follow_nodes=0,
+             exact_follow_scores=[1.0, 2.0]),
+    ]
+    result = S.exact_follow_summary([{
+        'decision_traces': [
+            {'side': 'arm', 'decisions': rows},
+            {'side': 'baseline', 'decisions': [truncated]},
+        ]
+    }])
+    assert not result['valid']
+    assert result['claim'].endswith('no latency or playing-strength inference')
+    assert result['sides']['arm'] == {
+        'total_traces': 10, 'missing': 1, 'invalid': 4, 'attempted': 9,
+        'complete': 1, 'soft_budget': 1, 'hard_budget': 1, 'refusal': 1,
+        'other_error': 1, 'applied': 1, 'score_unavailable': 0,
+    }
+    assert result['sides']['baseline']['complete'] == 1
+    assert result['sides']['baseline']['score_unavailable'] == 1
+    assert result['sides']['baseline']['applied'] == 0
+
+
+def test_exact_follow_summary_missing_attempt_is_not_ineligible():
+    result = S.exact_follow_summary([
+        {'decision_traces': [
+            {'side': 'arm', 'decisions': [{}, {'exact_follow_scores__len': 17}]}
+        ]}
+    ])
+    assert result['sides']['arm']['missing'] == 1
+    assert result['sides']['arm']['invalid'] == 1
+    assert result['sides']['arm']['attempted'] == 0
+
+
+def test_search_summary_includes_exact_follow_receipt_summary(monkeypatch):
+    monkeypatch.setattr(S.duel, 'summarize', lambda *args, **kwargs: {
+        'work_totals': {'arm': {}, 'baseline': {}},
+    })
+    shards = [{'records': [], 'decision_traces': [
+        {'side': 'arm', 'decisions': [dict(exact_follow_attempted=True,
+            exact_follow_applied=False, exact_follow_abandoned='hard_budget',
+            exact_follow_error='PVSearchBudgetExceeded')]}]}]
+    result = S.summary_for(shards, config())['exact_follow']
+    assert result['valid'] and result['sides']['arm']['hard_budget'] == 1
+
+
+@pytest.mark.parametrize('patch', [
+    {'exact_follow_attempted': 1}, {'exact_follow_applied': 0},
+    {'exact_follow_scores': [float('nan'), 0]},
+    {'exact_follow_scores': [True, 0]}, {'exact_follow_scores': [1]},
+    {'exact_follow_scores': None}, {'exact_follow_scores__len': 3},
+    {'exact_follow_worlds': True}, {'exact_follow_nodes': -1},
+    {'exact_follow_error': 'stale'}, {'exact_follow_abandoned': {}},
+])
+def test_exact_follow_summary_rejects_contradictory_complete_row(patch):
+    row = dict(exact_follow_attempted=True, exact_follow_applied=False,
+               exact_follow_abandoned=None, exact_follow_worlds=2,
+               exact_follow_nodes=0, exact_follow_scores=[0.0, 1.0])
+    row.update(patch)
+    result = S.exact_follow_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['invalid'] == 1
+    assert result['sides']['arm']['complete'] == 0
+
+
+@pytest.mark.parametrize('patch', [
+    {'exact_lead_status': 'future'}, {'exact_lead_change_kind': None},
+    {'exact_lead_changed': False}, {'exact_lead_selected_level_delta': -1},
+    {'exact_lead_selected_level_delta': float('nan')},
+    {'exact_lead_worlds_completed': 0},
+    {'played': ['C3']}, {'exact_lead_base_played': None},
+    {'exact_lead_selected_level_mean': 99},
+])
+def test_exact_lead_summary_flags_bad_complete_evidence(patch):
+    row = dict(exact_lead_status='complete', exact_lead_change_kind='higher',
+               exact_lead_changed=True, exact_lead_selected_level_delta=1.0,
+               exact_lead_worlds_completed=64, played=['C4'],
+               exact_lead_base_played=['C3'], exact_lead_selected_level_mean=2.0,
+               exact_lead_base_level_mean=1.0)
+    row.update(patch)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['invalid'] == 1
+    assert result['sides']['arm']['statuses']['complete'] == 0
+
+
 class Heads:
     metadata = {"checkpoint_sha256": "test-checkpoint"}
 
@@ -80,6 +261,8 @@ def test_learned_heads_finish_real_mirrored_game_and_count_actual_cost(monkeypat
         S.reopen_shard(path, dict(cfg, seed0=cfg["seed0"] + 1), 0)
     summary = S.summary_for([shard], cfg)
     assert summary["complete"]
+    assert summary['exact_lead']['valid']
+    assert summary['exact_lead']['sides']['arm']['missing'] > 0
     assert not summary["equal_work_strength_claim"]
     assert summary["arm_over_baseline_decision_cpu"] > 0
     costly = copy.deepcopy(shard)

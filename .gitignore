@@ -14,6 +14,7 @@ rl_data/
 server/build/
 server/shengji/engine/_fast.c
 server/shengji/ai/_cwv_math.c
+server/shengji/ai/_endgame_fast.c
 *.so
 logs/local/
 

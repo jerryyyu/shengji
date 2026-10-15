@@ -7,6 +7,13 @@ EVERY lead, including incomplete/fallback decisions; do not run extra analysis.
 The headless declare/bury lifecycle is not websocket scheduling or host parity.
 Selecting a recipe does not establish that it is currently deployed: the caller
 must verify the snapshot against the canonical deployment before a collection.
+For a candidate runtime diagnostic, explicitly name the candidate snapshot instead
+of claiming it is deployed. --max-rounds 1 bounds completed rounds; --cost-out
+NEW.jsonl preserves preparation and every play's timing plus a terminal reason,
+without recording round outcomes. Deadline/stop checks are cooperative between
+calls (declare/bury preparation is not interrupted); an external hard watchdog
+may leave a partial journal without a terminal row. Never interpret that as a
+completed round. Neither option authorizes host admission or a comparison.
 
 Without --served-env, retain the historical diagnostic below:
 
@@ -252,8 +259,14 @@ def main(argv=None):
     global PKG, SHA, SEED, MAXPOS, DEADLINE, OUT, LOCK, STOP
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--served-env', help='JSON environment snapshot: capture only, including fallback leads')
+    parser.add_argument('--max-rounds', type=int, help='Stop after this many complete rounds (served capture only)')
+    parser.add_argument('--cost-out', help='New score-free JSONL journal of all decision costs, flushed per turn')
     parser.add_argument('args', nargs=8, metavar='ARG')
     options = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    if (options.max_rounds is not None or options.cost_out) and not options.served_env:
+        parser.error('--max-rounds/--cost-out require --served-env')
+    if options.max_rounds is not None and options.max_rounds <= 0:
+        parser.error('--max-rounds must be positive')
     args = options.args
     PKG, SHA, SEED, MAXPOS, DEADLINE, OUT, LOCK, STOP = (
         args[0], args[1], int(args[2]), int(args[3]), float(args[4]), args[5], args[6], args[7])
@@ -268,17 +281,35 @@ def main(argv=None):
         samplers = [[sampler_cls(seed=SEED * 10 + s + 7_000_000), sampler_cls(seed=SEED * 10 + s + 9_000_000)]
                     for s in range(4)]
     out = open(OUT, "x")  # a fresh DEV collection; never append a duplicate prefix
+    try:
+        costs = open(options.cost_out, 'x') if options.cost_out else None
+    except Exception:
+        out.close()
+        raise
+
+    def cost_row(kind, **fields):
+        if costs is not None:
+            costs.write(json.dumps(dict(kind=kind, **fields), allow_nan=False) + '\n')
+            costs.flush()
+
     game, gid = Game(random.Random(SEED)), 0
     t0, n, r, reason = time.time(), 0, 0, "max_positions"
     try:
+        cost_row('start', seed=SEED, identity=identity, max_positions=MAXPOS,
+                 max_rounds=options.max_rounds, deadline_unix=DEADLINE,
+                 claim='Headless runtime diagnostic; no outcome or strength comparison')
         while n < MAXPOS:
             check()
             if game.game_over:
                 game, gid = Game(random.Random(SEED * 1000 + r)), gid + 1
+            prepared_at = time.perf_counter()
             rnd = env.prepare_round(game, bots)
+            cost_row('prepared', round=r, seconds=time.perf_counter() - prepared_at)
             capture = LeadCapture(rnd)
             trick = 0
             while rnd.phase == "play":
+                if identity is not None:
+                    check()  # also stop before follows, not just before leads
                 seat = rnd.turn
                 bot = bots[seat]
                 if identity is None:
@@ -293,6 +324,11 @@ def main(argv=None):
                     cards = bot.decide_play(rnd, seat)
                 decision_seconds = time.perf_counter() - started
                 rec = bot.last_decision_record
+                if costs is not None:
+                    from shengji.train.search_screen import trace_fields
+                    cost_row('decision', round=r, seat=seat, lead=is_lead,
+                             seconds=decision_seconds, played=list(cards),
+                             trace=trace_fields(rec or {}, skip=('played',)))
                 eligible = identity is not None or (rec and rec.get("work_complete") and bot._cap is not None
                                                     and bot._probe is not None and len(bot._cap[0]) >= 2)
                 if is_lead and n < MAXPOS and eligible:
@@ -313,11 +349,24 @@ def main(argv=None):
                 env.observe_committed_play(rnd, bots)
             game.finish_round()
             r += 1
+            cost_row('round_complete', round=r - 1)
             print(f"round {r} positions {n} {time.time() - t0:.0f}s", flush=True)
+            if options.max_rounds is not None and r >= options.max_rounds:
+                reason = 'max_rounds'
+                break
     except Yield as exc:
         reason = str(exc)
+    except Exception as exc:
+        reason = 'error:' + type(exc).__name__
+        raise
     finally:
         out.close()
+        if costs is not None:
+            try:
+                cost_row('terminal', reason=reason, positions=n, rounds=r,
+                         seconds=time.time() - t0)
+            finally:
+                costs.close()
     print(f"EXIT reason={reason} positions={n} rounds={r} seconds={time.time() - t0:.0f}", flush=True)
 
 

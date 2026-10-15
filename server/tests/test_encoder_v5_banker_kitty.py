@@ -27,7 +27,7 @@ UNSEEN_SLICE = slice(N_CARDS * 8, N_CARDS * 9)
 def test_layout_is_v2_plus_fifty_six():
     assert N_BANKER_KITTY_COLUMNS == len(BANKER_KITTY_COLUMNS) == 1 + N_CARDS + 1 == 56
     assert ev.OBS_DIM_BY_VERSION[5] == ev.OBS_DIM_BY_VERSION[2] + 56 == 616
-    assert ev.ENC_VERSION_MAX == 6   # v6 is the corrected-unseen-plane arm (#477)
+    assert ev.ENC_VERSION_MAX == 7   # v6 is the corrected-unseen-plane arm, v7 the next actor
     assert ev.OBS_SCHEMA_BY_VERSION[5] == "rl-observation-v5-banker-kitty"
     with pytest.raises(ValueError):
         ev.check_version(3)
@@ -88,10 +88,15 @@ def test_the_block_is_exactly_the_correction_the_world_sampler_already_makes():
 def test_published_identities_do_not_move_when_a_version_is_added():
     """v4's source closure contains the DISPATCHER, so publishing v5 would have
     changed v4's identity and orphaned its cache (176,002 shard files on the
-    trainer) and its archived checkpoints.  Both published keys are pinned."""
-    assert cache_path("/c", "SHA", version=2).name == "SHA.cwv-v2-a56679bbd170.npz"
-    assert cache_path("/c", "SHA", version=4).name == "SHA.cwv-v4-d99e7836cc4c.npz"
+    trainer) and its archived checkpoints.  Both published keys are pinned, at the identities
+    this tree computes (the round.py migration in ``cwv_encoder_compat`` moved them once, and
+    tests/test_encoder_bytes_golden.py pins that it rebuilds the archived ones)."""
+    from tests.test_encoder_bytes_golden import CURRENT_CWV
+    assert cache_path("/c", "SHA", version=2).name == f"SHA.cwv-v2-{CURRENT_CWV[2][:12]}.npz"
+    assert cache_path("/c", "SHA", version=4).name == f"SHA.cwv-v4-{CURRENT_CWV[4][:12]}.npz"
+    assert CURRENT_CWV[2].startswith("9dd202bddaf1") and CURRENT_CWV[4].startswith("fdfbb381bab4")
     assert cache_path("/c", "SHA", version=5).name.startswith("SHA.cwv-v5-")
+    assert cache_path("/c", "SHA", version=7).name.startswith("SHA.cwv-v7-")
     assert set(PUBLISHED_DISPATCHER_SHA256) == {4}, \
         "pin v5 too once a checkpoint or cache is published against it"
     # each version's closure names its own block and not another version's

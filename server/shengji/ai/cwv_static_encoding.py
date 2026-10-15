@@ -20,12 +20,14 @@ from ..engine.round import Round, Trick, TrickPlay
 from ..rl.encode import (
     CARD_INDEX, N_CARDS, OBS_DIM, RANKS, SUITS, TRUMP, _counts,
 )
+from ..rl.encode_next_actor import next_actor_columns
 from ..rl.encode_versions import (ENC_VERSION, call_encode, check_version,
                                   encode_obs, _v2_columns_from_unseen)
 from ..rl.value_afterstate_v2 import (
     _widen_columns,
     tensors_from_round as tensors_from_round_v2,
     widen as widen_v2,
+    widen_to,
 )
 from ..rl.public_history import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
 from ..rl.value_afterstate import (
@@ -369,8 +371,9 @@ def _fused_static_tensors(rnd, seat: int,
         return None
 
 
-def _widen_v2_static(base, rnd, root_seat):
-    """Reuse the fused v1 public unseen plane, including the banker's kitty.
+def _v2_static_columns(base, rnd, root_seat):
+    """The 29 v2 columns from the fused v1 public unseen plane, including the
+    banker's kitty.
 
     This is called only after the fused builder validates the complete state.
     Its half-copy plane is exactly Memory(own_kitty=False).unseen: no new
@@ -384,7 +387,22 @@ def _widen_v2_static(base, rnd, root_seat):
     unseen = Counter({card: int(2 * counts[index])
                       for card, index in CARD_INDEX.items()
                       if counts[index] > 0})
-    return _widen_columns(base, _v2_columns_from_unseen(rnd, root_seat, unseen))
+    return _v2_columns_from_unseen(rnd, root_seat, unseen)
+
+
+def _widen_v2_static(base, rnd, root_seat):
+    """The fused v1 base widened to v2 (see ``_v2_static_columns``)."""
+    return _widen_columns(base, _v2_static_columns(base, rnd, root_seat))
+
+
+def _widen_v7_static(base, rnd, root_seat):
+    """The fused v1 base widened to v7: v2's columns, then who acts next.
+
+    The next-actor block reads only ``rnd.phase`` and ``rnd.turn``, so there is
+    no cheaper or second implementation of it; the reference's own function runs.
+    """
+    return _widen_columns(base, [*_v2_static_columns(base, rnd, root_seat),
+                                 *next_actor_columns(rnd, root_seat)])
 
 
 def tensors_from_round_static(rnd, root_seat: int, *,
@@ -411,6 +429,14 @@ def tensors_from_round_static(rnd, root_seat: int, *,
         # and its Memory construction/refusal behavior.
         base = tensors_from_round_static(rnd, root_seat, version=1)
         return widen_v2(base, rnd, root_seat)
+    if version == 7:
+        # The v2 composition plus the next-actor block; unsupported shapes keep
+        # the reference widening and its refusals, exactly as v2 does.
+        base = _fused_static_tensors(rnd, root_seat)
+        if base is not None:
+            return _widen_v7_static(base, rnd, root_seat)
+        base = tensors_from_round_static(rnd, root_seat, version=1)
+        return widen_to(base, rnd, root_seat, 7)
     if version != ENC_VERSION:
         # Any future version retains its reference route until explicitly
         # supported here. The fused builder itself remains v1-only.

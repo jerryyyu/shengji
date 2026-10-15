@@ -127,8 +127,10 @@ import torch
 from torch import nn
 
 from ..rl.douzero_micro import HISTORY_MAX_EVENTS
-from ..rl.encode_versions import ENC_VERSION, OBS_DIM_BY_VERSION, check_version
-from ..rl.value_afterstate import OUTCOME_CLASSES, ValueAfterstateTensors
+from ..rl.encode_versions import APPENDS_TO, ENC_VERSION, OBS_DIM_BY_VERSION, check_version
+from ..rl.encode import N_CARDS
+from ..rl.value_afterstate import (OUTCOME_CLASSES, PERSPECTIVE_DIM, WORLD_RECEIVERS,
+                                  ValueAfterstateTensors)
 from ..rl.value_afterstate_v2 import public_dim
 from ..rl.value_checkpoint import (
     ValueCheckpointError,
@@ -1167,14 +1169,51 @@ def exposure_report(keys: Collection[str], exposure: Mapping[str, Any]) -> dict:
 
 # ------------------------------------------------------------- warm start
 
+def _widen_first_layer(state: dict, ours: Mapping[str, torch.Tensor], cfg: ValueModelConfig,
+                       source_version: int) -> tuple[dict, dict]:
+    """``state`` with zero input columns inserted for the columns ``cfg``'s encoder appends
+    to ``source_version``'s, so the widened net computes the source's function at step 0.
+
+    Exactly one parameter reads the public tensor directly: the mlp trunk's first Linear
+    (plain or residual) or the grid trunk's stem, whose input carries the public scalars
+    after the grid features.  In both, the appended columns sit immediately before the
+    public tensor's last column, the terminal flag, which is followed by the world planes
+    (plain/residual) or the two perspective columns (grid)."""
+    added = OBS_DIM_BY_VERSION[cfg.enc_version] - OBS_DIM_BY_VERSION[source_version]
+    changed = [k for k in ours if k in state and state[k].shape != ours[k].shape]
+    if len(changed) != 1 or state[changed[0]].dim() != 2:
+        raise TrainError(f"encoder widening expects one input layer to differ, found {changed}")
+    key = changed[0]
+    weight = state[key]
+    rows, cols = weight.shape
+    if tuple(ours[key].shape) != (rows, cols + added):
+        raise TrainError(f"encoder widening: {key} is {tuple(ours[key].shape)}, expected "
+                         f"{(rows, cols + added)}")
+    after_flag = PERSPECTIVE_DIM if cfg.trunk_block == "grid" else WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+    at = cols - after_flag - 1
+    if cfg.trunk_block != "grid" and at != OBS_DIM_BY_VERSION[source_version]:
+        raise TrainError("encoder widening: the input layout is not public | world | perspective")
+    zeros = weight.new_zeros((rows, added))
+    widened = dict(state)
+    widened[key] = torch.cat((weight[:, :at], zeros, weight[:, at:]), dim=1)
+    return widened, {"from": int(source_version), "to": int(cfg.enc_version), "parameter": key,
+                     "zero_columns": int(added), "inserted_at": int(at)}
+
+
 def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
                config: Mapping[str, Any], device: torch.device, *,
-               loaded: tuple[ValueNetwork, dict, AuxPointsHead | None] | None = None) -> dict:
+               loaded: tuple[ValueNetwork, dict, AuxPointsHead | None] | None = None,
+               widen_encoder: bool = False) -> dict:
     """Load ``init``'s trunk + heads into ``model`` (and the aux head when
     both sides have one); refused unless the architecture, the model
     configuration (hidden widths) and the feature layout (encoder identity,
     ``load_cwv_checkpoint``'s check) all match.  The exposure check
-    (``exposure_conflict``) runs on the split, before this."""
+    (``exposure_conflict``) runs on the split, before this.
+
+    ``widen_encoder`` admits ONE feature-layout difference: an mlp source trained at
+    the encoder version this run's version appends to (``encode_versions.APPENDS_TO``,
+    e.g. v2 -> v7).  The appended inputs get zero weights (``_widen_first_layer``), so the
+    run starts from the source's exact function and learns the new columns."""
     source, metadata, source_aux = (load_cwv_checkpoint(init, device) if loaded is None
                                     else loaded)
     if metadata.get("arch") != config["arch"]:
@@ -1199,7 +1238,15 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
     # policy logits at step 0 are the source's (or, with a fresh policy head,
     # that head on the bare trunk features).  Tower -> same tower loads strictly;
     # tower -> towerless, or two different towers, is refused.
-    _skip = ("policy_head", "trunk_layers", "policy_tower_layers", "policy_tower_width")
+    ours_version = int(ours_cfg.get("enc_version", ENC_VERSION))
+    theirs_version = int(theirs_cfg.get("enc_version", ENC_VERSION))
+    widened = widen_encoder and ours_version != theirs_version
+    if widened and (config["arch"] != "mlp" or APPENDS_TO.get(ours_version) != theirs_version):
+        raise TrainError(f"--init {init}: encoder v{theirs_version} cannot be widened to "
+                         f"v{ours_version}; only an mlp at the version v{ours_version} appends "
+                         f"to (v{APPENDS_TO.get(ours_version)}) can")
+    _skip = ("policy_head", "trunk_layers", "policy_tower_layers", "policy_tower_width") \
+        + (("public_dim", "enc_version") if widened else ())
     core = lambda cfg: {k: v for k, v in cfg.items() if k not in _skip}
     tower_of = lambda cfg: (int(cfg.get("policy_tower_layers", 0)), int(cfg.get("policy_tower_width", 0)))
     tower_fresh = tower_of(ours_cfg)[0] > 0 and tower_of(theirs_cfg)[0] == 0
@@ -1220,6 +1267,9 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
                          "tower may only warm-start from a towerless net or the same tower)")
     theirs = source.state_dict()
     ours = model.state_dict()
+    widening = None
+    if widened:
+        theirs, widening = _widen_first_layer(theirs, ours, model.config, theirs_version)
     blocks_added = 0
     if deeper:
         # trunk = Sequential(stem=0, blocks 1..L, LayerNorm L+1, ReLU); remap the
@@ -1277,6 +1327,8 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
         # present only when a tower was added, so a towerless warm start's
         # init block (and the metadata it is saved in) is unchanged
         **({"policy_tower_fresh": True, "policy_tower_identity_init": True} if tower_fresh else {}),
+        # present only on a widened warm start, so every other init block is unchanged
+        **({"encoder_widened": widening} if widening is not None else {}),
         "selection": {k: (metadata.get("selection") or {}).get(k)
                       for k in ("metric", "best_epoch", "best_loss", "best_value")},
         "exposure": {k: v for k, v in exposure_of_checkpoint(metadata, path=init).items()
@@ -1628,11 +1680,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_trunk_grad_scale: float = 1.0,
           eval_holdout: Sequence[str] | None = None,
           frozen_population: str | None = None, frozen_population_sha256: str | None = None,
+          trick_end_rows: bool = False, init_widen_encoder: bool = False,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
     if loader_stage_timing and pack_dir is not None:
         raise TrainError("--loader-stage-timing is not supported with --pack-dir")
+    if trick_end_rows and arch != "mlp":
+        raise TrainError("--trick-end-rows builds the history-free cache the mlp reads")
+    if init_widen_encoder and init is None:
+        raise TrainError("--init-widen-encoder needs --init")
     from .frozen_population import load_contract, bind_store, require_policy_identity
     try:
         frozen = load_contract(frozen_population, frozen_population_sha256)
@@ -1664,6 +1721,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
         encoder_version=encoder_version)
     config["eval_holdouts"] = dict(holdouts)
+    # Recorded only when set, so every other run's config (and config_sha256) is unchanged.
+    if trick_end_rows:
+        config["trick_end_rows"] = True
+    if init_widen_encoder:
+        config["init_widen_encoder"] = True
     if frozen is not None:
         config["frozen_population"] = {"path": str(Path(frozen_population).resolve()),
                                         "sha256": frozen_population_sha256}
@@ -1712,7 +1774,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters, history=history,
                               witness_seed=seed, progress=say, cache_workers=workers,
                               residency=residency, version=enc_version, sidecar_dir=sidecar_dir,
-                              pack_dir=pack_dir)
+                              pack_dir=pack_dir, trick_end=trick_end_rows)
     store = prepared.block_store
     sidecar_coverage = None
     if sidecar_dir is not None:
@@ -1936,7 +1998,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     aux_head = AuxPointsHead(model_cfg.width).to(dev) if aux_points else None
     init_info = None
     if init is not None:
-        init_info = apply_init(model, aux_head, init, config, dev, loaded=init_loaded)
+        init_info = apply_init(model, aux_head, init, config, dev, loaded=init_loaded,
+                               widen_encoder=init_widen_encoder)
         init_info["excluded"] = init_excluded
         init_info["exclude_exposed"] = bool(init_exclude_exposed)
         say(f"init: {init_info['path']} sha={init_info['sha256'][:12]} "
@@ -2835,8 +2898,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--encoder-version", type=int, choices=sorted(OBS_DIM_BY_VERSION),
                    default=DEFAULTS["encoder_version"],
                    help="observation encoder layout to TRAIN on (1 = 531 columns, "
-                        "2 = 531 + 29 trick/points/hand columns); recorded in the run "
-                        "config and in the checkpoint's encoder identity")
+                        "2 = 531 + 29 trick/points/hand columns, 7 = v2 + 4 next-actor "
+                        "columns); recorded in the run config and in the checkpoint's "
+                        "encoder identity")
     t.add_argument("--trunk-layers", type=int, default=2,
                    help="hidden layers in the mlp trunk (2 = every model trained "
                         "before 2026-09-11; >2 needs --trunk-block residual to train)")
@@ -2960,6 +3024,14 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--init-exclude-exposed", action="store_true",
                    help="with --init: drop the source's (and its ancestors') fit/selection "
                         "deals from this run's val/test instead of refusing (never into train)")
+    t.add_argument("--init-widen-encoder", action="store_true",
+                   help="with --init: accept an mlp source trained at the encoder version this "
+                        "run's --encoder-version appends to (v2 for v7); the appended inputs "
+                        "start at zero weight, so step 0 computes the source's function")
+    t.add_argument("--trick-end-rows", action="store_true",
+                   help="also train on each record's realised trick-end state (the state type "
+                        "the served search scores) with the record's label; the added rows are "
+                        "train-only, so validation and test stay one row per record")
 
     e = sub.add_parser("evaluate", help="score a checkpoint")
     common(e)
@@ -3017,6 +3089,8 @@ def main(argv: list[str] | None = None) -> int:
                   frozen_population_sha256=args.frozen_population_sha256,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,
+                  init_widen_encoder=args.init_widen_encoder,
+                  trick_end_rows=args.trick_end_rows,
                   encoder_version=args.encoder_version,
                   trunk_layers=args.trunk_layers, trunk_block=args.trunk_block,
                   grid_channels=args.grid_channels, **exec_kw)

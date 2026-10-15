@@ -12,6 +12,13 @@ therefore for changes ARGUED to be semantics-preserving (a refactor) and checked
 NOT a licence to extend PUBLISHED_SOURCE_SHA256 over a semantic change.  If you change those
 files and this fails, you changed the bytes -- then the identity MUST move and this golden
 MUST NOT simply be regenerated.
+
+The original sample is first-round rank-2 states only, so a byte change confined to other trump
+ranks, fixed bankers or no-trump would pass it.  tests/data/encoder_bytes_golden_sampled.json
+adds states dealt by ``harvest.trajectory.start_round_at`` at every rank, with the banker still
+to be declared or fixed at each seat, including no-trump and kitty-flip trumps, at depths on and
+off trick boundaries, for every published version and v7.  It is a separate file so the original
+golden stays byte-identical; its own sha256 is pinned below.
 """
 import json
 from pathlib import Path
@@ -19,6 +26,23 @@ from pathlib import Path
 import pytest
 
 GOLDEN = Path(__file__).parent / "data" / "encoder_bytes_golden.json"
+SAMPLED = Path(__file__).parent / "data" / "encoder_bytes_golden_sampled.json"
+#: the original golden exactly as the pre-change tree wrote it; extending coverage adds files
+#: and never rewrites this one
+GOLDEN_SHA256 = "8e7abf0462b2db51613996db1a65d69f79af0a731434cacf851078e7f8e9d060"
+
+
+def _memory_surface(m, codes):
+    o = m.o; suits = sorted({o.eff_suit(c) for c in codes})
+    return {"seat": m.seat, "own": m.own_kitty_known, "played": sorted(m.played.items()),
+            "played_by": {s: sorted(m.played_by[s].items()) for s in range(4)},
+            "voids": {s: sorted(m.voids[s]) for s in range(4)},
+            "pair_cap": {s: sorted(m.pair_cap[s].items()) for s in range(4)},
+            "run_cap": {s: sorted(m.run_cap[s].items()) for s in range(4)},
+            "known": sorted(m.known.items()), "unseen_ordered": list(m.unseen.items()),
+            "is_boss": [m.is_boss(c) for c in codes], "pair_is_boss": [m.pair_is_boss(c) for c in codes],
+            "points_left": [m.points_left(None)] + [m.points_left(s) for s in suits],
+            "ruff_risk": [[m.ruff_risk(su, [s]) for su in suits] for s in range(4)]}
 
 
 def _regenerate():
@@ -33,16 +57,7 @@ def _regenerate():
     codes = sorted(set(make_deck()))
 
     def surface(m):
-        o = m.o; suits = sorted({o.eff_suit(c) for c in codes})
-        return {"seat": m.seat, "own": m.own_kitty_known, "played": sorted(m.played.items()),
-                "played_by": {s: sorted(m.played_by[s].items()) for s in range(4)},
-                "voids": {s: sorted(m.voids[s]) for s in range(4)},
-                "pair_cap": {s: sorted(m.pair_cap[s].items()) for s in range(4)},
-                "run_cap": {s: sorted(m.run_cap[s].items()) for s in range(4)},
-                "known": sorted(m.known.items()), "unseen_ordered": list(m.unseen.items()),
-                "is_boss": [m.is_boss(c) for c in codes], "pair_is_boss": [m.pair_is_boss(c) for c in codes],
-                "points_left": [m.points_left(None)] + [m.points_left(s) for s in suits],
-                "ruff_risk": [[m.ruff_risk(su, [s]) for su in suits] for s in range(4)]}
+        return _memory_surface(m, codes)
     rows = []
     bot = SmartBot(); n = g["digest_hex_chars"]
     for sd in g["seeds"]:
@@ -171,3 +186,107 @@ def test_an_archived_public_head_checkpoint_still_passes_both_public_head_gates(
     torch.save(payload, path)
     train_v0.load_checkpoint(path, torch.device("cpu"))
     load_public_head(str(path), "cpu")
+
+
+def _sampled_round(state):
+    """The play-phase round one entry of the sampled golden names.
+
+    ``start`` "first" is ``Game.start_round`` on a fresh game (rank 2, banker to be declared);
+    "at" is ``start_round_at(rank, banker)``, a later round's deal.  ``declare`` "smart" lets
+    SmartBot declare, "nt" declares the first joker pair at the table (seat order, big jokers
+    first), "none" declares nothing so the trump is flipped from the kitty."""
+    import random
+    from shengji.ai.smart import SmartBot
+    from shengji.engine.game import Game
+    from shengji.harvest.trajectory import start_round_at
+    game = Game(random.Random(state["seed"]))
+    rnd = (game.start_round() if state["start"] == "first"
+           else start_round_at(game, state["rank"], state["banker"]))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    bot = SmartBot()
+    if state["declare"] == "smart":
+        for s in range(4):
+            cards = bot.decide_declare(rnd, s, final=True)
+            if cards:
+                rnd.declare(s, cards)
+    elif state["declare"] == "nt":
+        pairs = [(s, [j, j]) for j in ("BJ", "LJ") for s in range(4) if rnd.hands[s].count(j) >= 2]
+        assert pairs, f"seed {state['seed']} deals no joker pair"
+        rnd.declare(*pairs[0])
+    else:
+        assert state["declare"] == "none"
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+    assert rnd.trump_rank == (state["rank"] if state["start"] == "at" else "2")
+    if state["start"] == "at" and state["banker"] is not None:
+        assert rnd.banker == state["banker"]
+    if state["declare"] == "nt":
+        assert rnd.trump_is_nt
+    return rnd, bot
+
+
+def _regenerate_sampled(spec):
+    """Rows of the sampled golden: per state and depth, every seat's encoder digest at every
+    listed version and its Memory surface digest (the same digests the original golden takes)."""
+    import copy, hashlib
+    import numpy as np
+    from shengji.ai.memory import Memory
+    from shengji.engine.cards import make_deck
+    from shengji.rl.encode_versions import encode_obs
+    codes = sorted(set(make_deck()))
+    n = spec["digest_hex_chars"]
+    rows = []
+    for index, state in enumerate(spec["states"]):
+        rnd, bot = _sampled_round(state)
+        plays = 0
+        for depth in spec["depths"]:
+            while plays < depth and rnd.phase == "play":
+                rnd.play(rnd.turn, bot.decide_play(rnd, rnd.turn)); plays += 1
+            snap = copy.deepcopy(rnd)
+            rec = {"state": index, "depth": depth, "plays": plays, "banker": snap.banker,
+                   "turn": snap.turn, "rank": snap.trump_rank,
+                   "trump": "NT" if snap.trump_is_nt else snap.trump_suit,
+                   "boundary": bool(snap.phase == "play" and not snap.trick.plays)}
+            for seat in range(4):
+                for v in spec["versions"]:
+                    x = np.asarray(encode_obs(snap, seat, version=v), dtype=np.float32)
+                    rec[f"v{v}_s{seat}"] = hashlib.sha256(x.tobytes()).hexdigest()[:n]
+                for own in (0, 1):
+                    j = json.dumps(_memory_surface(Memory(snap, seat, own_kitty=bool(own)), codes),
+                                   sort_keys=True, separators=(",", ":"))
+                    rec[f"mem_s{seat}_own{own}"] = hashlib.sha256(j.encode()).hexdigest()[:n]
+            rows.append(rec)
+    return rows
+
+
+def test_the_original_golden_is_byte_identical():
+    """Coverage grows by adding golden files; the pre-change tree's file is never rewritten."""
+    import hashlib
+    assert hashlib.sha256(GOLDEN.read_bytes()).hexdigest() == GOLDEN_SHA256
+
+
+def test_the_sampled_states_cover_what_the_original_sample_cannot():
+    from shengji.engine.cards import RANKS, SUITS
+    spec = json.loads(SAMPLED.read_text())
+    assert spec["schema"] == "shengji-encoder-bytes-golden-sampled-v1"
+    rows = spec["rows"]
+    assert len(rows) == len(spec["states"]) * len(spec["depths"])
+    later = [s for s in spec["states"] if s["start"] == "at"]
+    assert {s["rank"] for s in later} == set(RANKS), "every trump rank"
+    assert {s["banker"] for s in later} == {None, 0, 1, 2, 3}, "declared and every fixed banker"
+    assert {s["declare"] for s in spec["states"]} == {"smart", "nt", "none"}
+    assert any(s["start"] == "first" for s in spec["states"])
+    assert {r["trump"] for r in rows} >= {"NT", *SUITS}, "no-trump and every suit as trump"
+    assert {r["rank"] for r in rows} == set(RANKS)
+    assert any(r["boundary"] for r in rows) and any(not r["boundary"] for r in rows)
+    assert set(spec["versions"]) == {2, 4, 5, 6, 7}
+
+
+def test_encoder_bytes_and_memory_surface_match_the_sampled_golden():
+    spec = json.loads(SAMPLED.read_text())
+    rows = _regenerate_sampled(spec)
+    assert len(rows) == len(spec["rows"])
+    bad = [(a["state"], a["depth"], k) for a, b in zip(spec["rows"], rows)
+           for k in a if a[k] != b[k]]
+    assert not bad, f"{len(bad)} value(s) differ from the sampled golden, first: {bad[:5]}"

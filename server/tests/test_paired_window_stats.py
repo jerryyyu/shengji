@@ -1,6 +1,7 @@
 import json
 import math
 import random
+import re
 from pathlib import Path
 
 import pytest
@@ -165,9 +166,17 @@ def test_pooling_line_reports_q_tau2_and_the_estimator_that_fired():
     v72 = by_lane[('v72vdev43', 'primary')]
     line = S.pooling_line(S.pool_windows(v72['deltas'], v72['ses'], estimator='fe-q-gated'))
     assert 'Q 14.53 on 9 df (Q/df 1.61, p 0.105;' in line and 'the fixed-effect estimator fired' in line
-    tampered = dict(g, fired='fixed-effect')
+    assert 'The 95% interval is nominal' in line and '95.4% with no between-window variance' in line
+    assert '93.5% at a between-window SD of half the window SE' in line and 'not evidence of homogeneity' in line
+    assert S.pooling_line(json.loads(json.dumps(g))) == S.pooling_line(g)
+    for bad in (dict(g, fired='fixed-effect'), dict(g, Q_p=0.5), dict(g, mean=0.05), dict(g, ci95=[0.0, 0.05]),
+                dict(g, deltas=g['deltas'][:-1] + [0.1]), dict(g, calibration=dict(g['calibration'], coverage=[]))):
+        with pytest.raises(ValueError):
+            S.pooling_line(bad)
+    missing = dict(g)
+    del missing['deltas']
     with pytest.raises(ValueError):
-        S.pooling_line(tampered)
+        S.pooling_line(missing)
     with pytest.raises(ValueError):
         S.pooling_line(S.pool_windows(v85['deltas'], v85['ses']))
 
@@ -194,25 +203,52 @@ def test_unknown_estimator_is_refused():
 
 # ---- the two-look design ----
 
-def test_operating_characteristics():
-    null = S.two_look_operating_characteristics(0.0)
+def test_ideal_operating_characteristics():
+    null = S.two_look_ideal_operating_characteristics(0.0)
     assert null['any_rejection'] == pytest.approx(0.0276, abs=2e-4)
     assert null['positive'] == pytest.approx(0.0247, abs=2e-4)
     assert null['positive'] < 0.03 and null['any_rejection'] < 0.03
     assert null['expected_windows'] == pytest.approx(7.49, abs=0.01)
-    at_fixed = S.two_look_operating_characteristics(S.Z_POWER)
+    at_fixed = S.two_look_ideal_operating_characteristics(S.Z_POWER)
     assert at_fixed['positive'] == pytest.approx(0.794, abs=1e-3)
     for o in (null, at_fixed):
         parts = ('positive_at_5', 'negative_at_5', 'not_ahead_at_5', 'positive_at_10', 'negative_at_10', 'inconclusive_at_10')
         assert sum(o[p] for p in parts) == pytest.approx(1.0, abs=1e-12)
+    ref = S.TWO_LOOK_IDEAL_REFERENCE
+    assert ref['model'] == S.IDEAL_MODEL
+    assert ref['two_sided_error'] == pytest.approx(null['any_rejection'], abs=5e-5)
+    assert ref['false_positive'] == pytest.approx(null['positive'], abs=5e-5)
+    assert ref['power_at_fixed_design_mde80'] == pytest.approx(at_fixed['positive'], abs=5e-5)
+    assert ref['expected_windows_null'] == pytest.approx(null['expected_windows'], abs=5e-3)
 
 
-def test_design_mde80_solves_power_080():
+def test_saved_calibration_is_carried_and_is_worse_than_the_ideal_reference():
+    for est in S.ESTIMATORS:
+        cal = S.TWO_LOOK_CALIBRATION[est]
+        null = {row['between_window_sd']: row for row in cal['null']}
+        assert set(null) == {0.0, 0.5, 1.0}
+        assert cal['power_at_fixed_design_mde80'] < S.TWO_LOOK_IDEAL_REFERENCE['power_at_fixed_design_mde80']
+        assert cal['mde80_drift'] > S.TWO_LOOK_NOMINAL_MDE80_Z
+        assert null[0.0]['positive'] < null[0.5]['positive'] < null[1.0]['positive']
+        assert len(S.POOL_CALIBRATION[est]['coverage']) == 4
+        r = S.two_look_final(*ten(1.0, 2.5), estimator=est)
+        assert r['reference_model'] == S.IDEAL_MODEL and r['ideal_reference'] == S.TWO_LOOK_IDEAL_REFERENCE
+        assert r['calibration'] == dict(assumptions=S.CALIBRATION_ASSUMPTIONS, envelope=S.CALIBRATION_ENVELOPE, **cal)
+        line = S.two_look_lines(r)[2]
+        assert f"false POSITIVE {null[0.0]['positive']:.4f}" in line and f"(0.80 at {cal['mde80_drift']:.2f} x SE)" in line
+        assert 'not evidence of homogeneity' in line and 'predeclared envelope' in line
+    g = S.pool_windows(*ten(1.0, 2.5), estimator='fe-q-gated')
+    assert g['calibration'] == dict(assumptions=S.CALIBRATION_ASSUMPTIONS, envelope=S.CALIBRATION_ENVELOPE,
+                                    **S.POOL_CALIBRATION['fe-q-gated'])
+    assert g['interval'].startswith('nominal 95%')
+
+
+def test_nominal_mde80_solves_ideal_power_080():
     lo, hi = 2.0, 4.0
     for _ in range(60):
         mid = (lo + hi) / 2
-        lo, hi = (mid, hi) if S.two_look_operating_characteristics(mid)['positive'] < 0.8 else (lo, mid)
-    assert S.TWO_LOOK_MDE80_Z == pytest.approx((lo + hi) / 2, abs=1e-4)
+        lo, hi = (mid, hi) if S.two_look_ideal_operating_characteristics(mid)['positive'] < 0.8 else (lo, mid)
+    assert S.TWO_LOOK_NOMINAL_MDE80_Z == pytest.approx((lo + hi) / 2, abs=1e-4)
 
 
 def five(z, se=0.01):
@@ -264,9 +300,11 @@ def test_final_labels_use_the_adjusted_critical_value(z5, z10, lbl):
     assert r['pooled']['fired'] == 'fixed-effect'
     assert r['z'] == pytest.approx(z10) and r['label'] == lbl
     assert r['interim_decision'] == 'CONTINUE' and r['critical_z'] == S.TWO_LOOK_Z_FINAL
-    assert r['mde80'] == pytest.approx(S.TWO_LOOK_MDE80_Z * r['pooled']['se'])
-    assert label(r['rci95']) == lbl
-    assert lbl in S.two_look_lines(r)[1]
+    assert r['nominal_mde80'] == pytest.approx(S.TWO_LOOK_NOMINAL_MDE80_Z * r['pooled']['se'])
+    assert label(r['nominal_rci95']) == lbl
+    lines = S.two_look_lines(r)
+    assert lbl in lines[1] and 'nominal 95% repeated-confidence interval' in lines[0] and 'nominal MDE80' in lines[0]
+    assert not re.search(r'(?<!fixed-)design MDE80', ' '.join(lines))
 
 
 def test_final_falls_back_to_dersimonian_laird_when_the_halves_disagree():
@@ -285,7 +323,7 @@ def test_final_refuses_a_lane_the_interim_stopped():
 
 def test_lines_refuse_a_result_that_does_not_follow_from_its_numbers():
     interim = S.two_look_interim(*five(-1.0), estimator='fe-q-gated')
-    for bad in (dict(interim, decision='CONTINUE'), dict(interim, rci95=[-0.01, 0.01]), dict(interim, critical_z=1.96),
+    for bad in (dict(interim, decision='CONTINUE'), dict(interim, nominal_rci95=[-0.01, 0.01]), dict(interim, critical_z=1.96),
                 dict(interim, design='other')):
         with pytest.raises(ValueError):
             S.two_look_lines(bad)
@@ -293,6 +331,63 @@ def test_lines_refuse_a_result_that_does_not_follow_from_its_numbers():
     for bad in (dict(final, label='POSITIVE'), dict(final, interim_decision='STOP_NOT_AHEAD'), dict(final, windows=5)):
         with pytest.raises(ValueError):
             S.two_look_lines(bad)
+
+
+def reproducer_final():
+    """The reviewer's reproducer: ten deltas of .005 with SEs of .01, fe-q-gated (interim continues)."""
+    r = S.two_look_final([0.005] * 10, [0.01] * 10, estimator='fe-q-gated')
+    assert r['label'] == 'INCONCLUSIVE'
+    return r
+
+
+def test_a_corrupted_final_z_is_refused():
+    with pytest.raises(ValueError, match='does not follow from its inputs'):
+        S.two_look_lines(dict(reproducer_final(), z=999))
+
+
+def test_a_corrupted_final_mde80_is_refused():
+    with pytest.raises(ValueError, match='does not follow from its inputs'):
+        S.two_look_lines(dict(reproducer_final(), nominal_mde80=-1))
+
+
+def test_a_corrupted_interim_label_is_refused():
+    interim = S.two_look_interim(*five(3.0), estimator='fe-q-gated')
+    assert (interim['decision'], interim['label']) == ('STOP_POSITIVE', 'POSITIVE')
+    for lbl in ('NEGATIVE', 'NOT AHEAD', None):
+        with pytest.raises(ValueError, match='does not follow from its inputs'):
+            S.two_look_lines(dict(interim, label=lbl))
+
+
+@pytest.mark.parametrize('field, value', [
+    ('pooled', 'mean'), ('deltas', None), ('estimator', 'dl'), ('calibration', None), ('ideal_reference', None),
+    ('reference_model', 'known'), ('critical_z', 2.797), ('look', 'interim'),
+])
+def test_any_other_corruption_of_a_saved_look_is_refused(field, value):
+    good = reproducer_final()
+    bad = json.loads(json.dumps(good))
+    if field == 'pooled':
+        bad['pooled']['mean'] = 0.05
+    elif field == 'deltas':
+        bad['deltas'][3] = 0.006
+    elif field == 'calibration':
+        bad['calibration']['power_at_fixed_design_mde80'] = 0.8
+    elif field == 'ideal_reference':
+        bad['ideal_reference']['false_positive'] = 0.01
+    else:
+        bad[field] = value
+    with pytest.raises(ValueError):
+        S.two_look_lines(bad)
+
+
+def test_a_saved_look_round_trips_through_json():
+    for r in (reproducer_final(), S.two_look_interim(*five(-1.0), estimator='dl'), S.two_look_interim(*five(3.0), estimator='fe-q-gated')):
+        saved = json.loads(json.dumps(r))
+        assert S.verify_look(saved) == saved
+        assert S.two_look_lines(saved) == S.two_look_lines(r)
+    missing = json.loads(json.dumps(reproducer_final()))
+    del missing['ses']
+    with pytest.raises(ValueError, match='cannot be recomputed'):
+        S.verify_look(missing)
 
 
 # The rule applied to every sealed primary with at least ten windows: the first ten in ascending seed

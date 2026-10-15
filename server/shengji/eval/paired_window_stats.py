@@ -35,14 +35,26 @@ plus a binding futility stop at the interim:
 * final, 10 windows (only after an interim CONTINUE): POSITIVE if z > 1.977,
   NEGATIVE if z < -1.977, otherwise INCONCLUSIVE.
 
-The interval a look reports is its 95% repeated-confidence interval,
-mean +/- (critical z) * SE, so the label always follows from the interval.
-A futility stop reads "not ahead": it is not a null result, not equivalence
-and not a harm finding.  ``two_look_operating_characteristics`` integrates
-the design's exact error rates under equal per-window information.
+A look reports its nominal 95% repeated-confidence interval, mean +/- (critical
+z) * SE, and the label always follows from that interval.  A futility stop
+reads "not ahead": it is not a null result, not equivalence and not a harm
+finding.
+
+Calibration contract.  The bounds, ``two_look_ideal_operating_characteristics``
+and ``TWO_LOOK_IDEAL_REFERENCE`` describe an ideal reference model (``IDEAL_MODEL``:
+known window SEs, equal information per window, no between-window variance,
+fixed-effect pooling).  The implemented procedures pool with estimated SEs and,
+for ``fe-q-gated``, an adaptive estimator, so their error rates and power are
+the simulated ones in ``POOL_CALIBRATION`` and ``TWO_LOOK_CALIBRATION``, under
+``CALIBRATION_ASSUMPTIONS`` and only inside ``CALIBRATION_ENVELOPE``.  Every
+interval, MDE80 and error rate this module reports is labelled nominal (the ideal
+model) or carries that calibration.  A lane may adopt an option only by
+predeclaring that its screen lies inside the envelope and which calibrated
+target applies; a Q below the gate is not evidence of homogeneity.
 """
 from __future__ import annotations
 
+import json
 import math
 from numbers import Real
 
@@ -57,10 +69,49 @@ TWO_LOOK_INTERIM_WINDOWS = 5
 TWO_LOOK_FINAL_WINDOWS = 10
 TWO_LOOK_Z_INTERIM = 2.797
 TWO_LOOK_Z_FINAL = 1.977
-# Drift (final z, in units of the 10-window SE) at which the design declares POSITIVE with
-# probability 0.80; test_paired_window_stats re-solves it from two_look_operating_characteristics.
-TWO_LOOK_MDE80_Z = 2.8230
+# Drift (final z, in units of the 10-window SE) at which the IDEAL model declares POSITIVE with
+# probability 0.80; test_paired_window_stats re-solves it from two_look_ideal_operating_characteristics.
+TWO_LOOK_NOMINAL_MDE80_Z = 2.8230
 TWO_LOOK_LABELS = ('POSITIVE', 'NEGATIVE', 'NOT AHEAD', 'INCONCLUSIVE')
+
+IDEAL_MODEL = ('ideal reference model: Gaussian window contrasts with known SEs, equal information per window, '
+               'no between-window variance, fixed-effect pooling')
+# The ideal model's exact error rates (two_look_ideal_operating_characteristics; the test recomputes them).
+TWO_LOOK_IDEAL_REFERENCE = dict(model=IDEAL_MODEL, two_sided_error=0.0276, false_positive=0.0247,
+                                power_at_fixed_design_mde80=0.7940, nominal_mde80_z=TWO_LOOK_NOMINAL_MDE80_Z,
+                                expected_windows_null=7.49)
+CALIBRATION_ASSUMPTIONS = (
+    "Monte Carlo through this module's own functions: per-window contrast SE 0.037 (a package-arm screen), each "
+    "window's SE estimated from 520 roughly Gaussian cluster deltas, the same true effect in every window unless a "
+    "between-window SD is given (in units of the window SE); drifts in units of the ideal ten-window SE")
+CALIBRATION_ENVELOPE = (
+    "ten-window screens whose window SEs rest on hundreds of divergent clusters (package and fully divergent arms), "
+    "with between-window SD at most 1.0x the window SE; windows whose SE rests on a handful of divergent deals "
+    "(flag arms where most rounds are identical) are outside it")
+# One read at ten windows: simulated coverage of the nominal 95% interval, 60,000 lanes per row.
+POOL_CALIBRATION = {
+    'dl': dict(design='one read at ten windows', lanes_per_row=60000, coverage=[
+        dict(between_window_sd=0.0, coverage=0.9611), dict(between_window_sd=0.25, coverage=0.9553),
+        dict(between_window_sd=0.5, coverage=0.9462), dict(between_window_sd=1.0, coverage=0.9247)]),
+    'fe-q-gated': dict(design='one read at ten windows', lanes_per_row=60000, coverage=[
+        dict(between_window_sd=0.0, coverage=0.9538), dict(between_window_sd=0.25, coverage=0.9469),
+        dict(between_window_sd=0.5, coverage=0.9346), dict(between_window_sd=1.0, coverage=0.9107)]),
+}
+# The two-look procedure with each pool: 40,000 lanes per row.  null rows give P(POSITIVE) and P(NEGATIVE) when the
+# true effect is zero; power_at_fixed_design_mde80 is P(POSITIVE) at drift Z_POWER; mde80_drift is the drift where
+# P(POSITIVE) reaches 0.80 (interpolated between simulated drifts 0.1 apart).
+TWO_LOOK_CALIBRATION = {
+    'dl': dict(lanes_per_row=40000, null=[
+        dict(between_window_sd=0.0, positive=0.0197, negative=0.0019, expected_windows=7.49),
+        dict(between_window_sd=0.5, positive=0.0276, negative=0.0031, expected_windows=7.48),
+        dict(between_window_sd=1.0, positive=0.0437, negative=0.0107, expected_windows=7.47)],
+        power_at_fixed_design_mde80=0.7433, mde80_drift=2.99),
+    'fe-q-gated': dict(lanes_per_row=40000, null=[
+        dict(between_window_sd=0.0, positive=0.0231, negative=0.0028, expected_windows=7.50),
+        dict(between_window_sd=0.5, positive=0.0338, negative=0.0059, expected_windows=7.48),
+        dict(between_window_sd=1.0, positive=0.0528, negative=0.0134, expected_windows=7.42)],
+        power_at_fixed_design_mde80=0.7691, mde80_drift=2.92),
+}
 
 
 def _windows(deltas, ses):
@@ -148,9 +199,18 @@ def chi2_isf(p, df):
     return (lo + hi) / 2.0
 
 
+def _canonical(obj):
+    return json.dumps(obj, sort_keys=True, separators=(',', ':'), allow_nan=False)
+
+
+def _calibration(table, estimator):
+    return dict(assumptions=CALIBRATION_ASSUMPTIONS, envelope=CALIBRATION_ENVELOPE, **table[estimator])
+
+
 def pool_windows(deltas, ses, *, estimator=DEFAULT_ESTIMATOR):
     """Pool paired windows.  ``dl`` returns exactly the lane readers' pool() dict; ``fe-q-gated``
-    returns the same keys plus the gate's evidence and which estimator fired."""
+    returns the same keys plus its inputs, the gate's evidence, which estimator fired, and the
+    calibration of its nominal 95% interval."""
     if estimator not in ESTIMATORS:
         raise ValueError(f'unknown estimator {estimator!r}; one of {ESTIMATORS}')
     if estimator == 'dl':
@@ -165,23 +225,37 @@ def pool_windows(deltas, ses, *, estimator=DEFAULT_ESTIMATOR):
                 estimator=estimator, fired=fired, windows=c['k'], df=df, Q_over_df=c['Q'] / df, Q_p=p,
                 Q_gate_alpha=Q_GATE_ALPHA, Q_gate_critical=chi2_isf(Q_GATE_ALPHA, df), tau2=c['tau2'],
                 mean_fixed_effect=c['fixed-effect'][0], se_fixed_effect=c['fixed-effect'][1],
-                mean_dersimonian_laird=c['dersimonian-laird'][0], se_dersimonian_laird=c['dersimonian-laird'][1])
+                mean_dersimonian_laird=c['dersimonian-laird'][0], se_dersimonian_laird=c['dersimonian-laird'][1],
+                deltas=list(deltas), ses=list(ses), interval='nominal 95%: mean +/- 1.96 SE of the fired estimator',
+                calibration=_calibration(POOL_CALIBRATION, estimator))
+
+
+def _coverage(cal, sd):
+    return next(row['coverage'] for row in cal['coverage'] if row['between_window_sd'] == sd)
 
 
 def pooling_line(pooled):
-    """The canonical sentence for a ``fe-q-gated`` pool: Q, Q/df, its p-value, tau^2 and which estimator fired."""
-    if pooled.get('estimator') != 'fe-q-gated':
+    """The canonical sentence for a ``fe-q-gated`` pool: Q, Q/df, its p-value, tau^2, which estimator
+    fired, and the simulated coverage of the nominal interval.  Refuses a pool that does not follow
+    from its own inputs."""
+    if not isinstance(pooled, dict) or pooled.get('estimator') != 'fe-q-gated':
         raise ValueError('pooling_line reports a fe-q-gated pool only')
-    if pooled['fired'] not in ('fixed-effect', 'dersimonian-laird'):
-        raise ValueError('unknown estimator fired')
-    if pooled['fired'] != ('dersimonian-laird' if pooled['Q_p'] < pooled['Q_gate_alpha'] else 'fixed-effect'):
-        raise ValueError('pooling_line: the fired estimator does not match the gate')
+    try:
+        again = pool_windows(pooled['deltas'], pooled['ses'], estimator='fe-q-gated')
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f'the pool cannot be recomputed from its inputs ({type(exc).__name__})') from None
+    if _canonical(again) != _canonical(pooled):
+        raise ValueError('pooling_line: the pool does not follow from its inputs')
     name = {'fixed-effect': 'fixed-effect', 'dersimonian-laird': 'DerSimonian-Laird'}[pooled['fired']]
+    cal = pooled['calibration']
     return (f"Pooling (predeclared fixed-effect, gated on Cochran's Q at p < {pooled['Q_gate_alpha']:.2f}): "
             f"Q {pooled['Q']:.2f} on {pooled['df']} df (Q/df {pooled['Q_over_df']:.2f}, p {pooled['Q_p']:.3f}; "
             f"DerSimonian-Laird fires above Q {pooled['Q_gate_critical']:.2f}); DerSimonian-Laird tau^2 "
             f"{pooled['tau2']:.3g}; the {name} estimator fired (SE {pooled['se']:.5f}; fixed-effect "
-            f"{pooled['se_fixed_effect']:.5f}, DerSimonian-Laird {pooled['se_dersimonian_laird']:.5f}).")
+            f"{pooled['se_fixed_effect']:.5f}, DerSimonian-Laird {pooled['se_dersimonian_laird']:.5f}). "
+            f"The 95% interval is nominal: simulated coverage of this pool at ten windows is "
+            f"{100 * _coverage(cal, 0.0):.1f}% with no between-window variance and {100 * _coverage(cal, 0.5):.1f}% at a "
+            "between-window SD of half the window SE; a Q below the gate is not evidence of homogeneity.")
 
 
 def _phi_cdf(x):
@@ -192,13 +266,13 @@ def _phi_pdf(x):
     return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
 
 
-def two_look_operating_characteristics(drift, *, z_interim=TWO_LOOK_Z_INTERIM, z_final=TWO_LOOK_Z_FINAL,
-                                       steps=2000):
-    """Exact outcome probabilities of the two-look design when the final z has mean ``drift``.
+def two_look_ideal_operating_characteristics(drift, *, z_interim=TWO_LOOK_Z_INTERIM, z_final=TWO_LOOK_Z_FINAL,
+                                             steps=2000):
+    """Exact outcome probabilities of the two-look design under IDEAL_MODEL when the final z has mean
+    ``drift``.  These are nominal references; the implemented procedures' rates are TWO_LOOK_CALIBRATION.
 
-    Equal information per window: Z5 ~ N(drift/sqrt2, 1); the last five windows' own z, W, is an
-    independent N(drift/sqrt2, 1); Z10 = (Z5 + W)/sqrt2.  The continuation integrals over
-    0 < Z5 <= z_interim use Simpson's rule."""
+    Z5 ~ N(drift/sqrt2, 1); the last five windows' own z, W, is an independent N(drift/sqrt2, 1);
+    Z10 = (Z5 + W)/sqrt2.  The continuation integrals over 0 < Z5 <= z_interim use Simpson's rule."""
     if not math.isfinite(drift) or steps < 2 or steps % 2:
         raise ValueError('finite drift and an even number of steps')
     m = drift / math.sqrt(2.0)
@@ -223,6 +297,11 @@ def two_look_operating_characteristics(drift, *, z_interim=TWO_LOOK_Z_INTERIM, z
                 expected_windows=TWO_LOOK_INTERIM_WINDOWS + (TWO_LOOK_FINAL_WINDOWS - TWO_LOOK_INTERIM_WINDOWS) * cont)
 
 
+def _look_metadata(estimator):
+    return dict(reference_model=IDEAL_MODEL, ideal_reference=dict(TWO_LOOK_IDEAL_REFERENCE),
+                calibration=_calibration(TWO_LOOK_CALIBRATION, estimator))
+
+
 def two_look_interim(deltas, ses, *, estimator):
     """The interim look over the first five windows in the predeclared seed order."""
     deltas, ses = list(deltas), list(ses)
@@ -240,9 +319,9 @@ def two_look_interim(deltas, ses, *, estimator):
     else:
         decision, label = 'CONTINUE', None
     return dict(design=TWO_LOOK_DESIGN, look='interim', windows=TWO_LOOK_INTERIM_WINDOWS, estimator=estimator,
-                pooled=pooled, z=z, critical_z=TWO_LOOK_Z_INTERIM,
-                rci95=[mean - TWO_LOOK_Z_INTERIM * se, mean + TWO_LOOK_Z_INTERIM * se],
-                decision=decision, label=label)
+                deltas=deltas, ses=ses, pooled=pooled, z=z, critical_z=TWO_LOOK_Z_INTERIM,
+                nominal_rci95=[mean - TWO_LOOK_Z_INTERIM * se, mean + TWO_LOOK_Z_INTERIM * se],
+                decision=decision, label=label, **_look_metadata(estimator))
 
 
 def two_look_final(deltas, ses, *, estimator):
@@ -259,41 +338,47 @@ def two_look_final(deltas, ses, *, estimator):
     lo, hi = mean - TWO_LOOK_Z_FINAL * se, mean + TWO_LOOK_Z_FINAL * se
     label = 'POSITIVE' if lo > 0 else 'NEGATIVE' if hi < 0 else 'INCONCLUSIVE'
     return dict(design=TWO_LOOK_DESIGN, look='final', windows=TWO_LOOK_FINAL_WINDOWS, estimator=estimator,
-                interim_decision=interim['decision'], pooled=pooled, z=mean / se, critical_z=TWO_LOOK_Z_FINAL,
-                rci95=[lo, hi], mde80=TWO_LOOK_MDE80_Z * se, label=label)
+                deltas=deltas, ses=ses, interim_decision=interim['decision'], pooled=pooled, z=mean / se,
+                critical_z=TWO_LOOK_Z_FINAL, nominal_rci95=[lo, hi], nominal_mde80=TWO_LOOK_NOMINAL_MDE80_Z * se,
+                label=label, **_look_metadata(estimator))
 
 
-def _check_look(result):
-    """Refuse a look whose decision or label does not follow from its own numbers."""
-    pooled = result['pooled']
-    mean, se = pooled['mean'], pooled['se']
-    look = result.get('look')
-    expected = {'interim': (TWO_LOOK_INTERIM_WINDOWS, TWO_LOOK_Z_INTERIM), 'final': (TWO_LOOK_FINAL_WINDOWS, TWO_LOOK_Z_FINAL)}
-    if look not in expected or result.get('design') != TWO_LOOK_DESIGN:
+def verify_look(result):
+    """Recompute a look from its own inputs and refuse unless every field (pool, z, interval, MDE80,
+    decision, label, reference and calibration) is identical, so a saved or edited look object can
+    never render a claim its windows do not support."""
+    if not isinstance(result, dict) or result.get('design') != TWO_LOOK_DESIGN:
         raise ValueError('not a two-look result')
-    if (result.get('windows'), result.get('critical_z')) != expected[look]:
-        raise ValueError('window count or critical value is not the design\'s')
-    c = result['critical_z']
-    lo, hi = result['rci95']
-    if (lo, hi) != (mean - c * se, mean + c * se):
-        raise ValueError('the interval does not follow from the pool')
-    if look == 'interim':
-        z = mean / se
-        expect = ('STOP_POSITIVE' if z > c else 'STOP_NEGATIVE' if z < -c
-                  else 'STOP_NOT_AHEAD' if mean <= 0 else 'CONTINUE')
-        if result['decision'] != expect:
-            raise ValueError('the interim decision does not follow from the pool')
-    else:
-        expect = 'POSITIVE' if lo > 0 else 'NEGATIVE' if hi < 0 else 'INCONCLUSIVE'
-        if result['label'] != expect or result.get('interim_decision') != 'CONTINUE':
-            raise ValueError('the final label does not follow from the interval')
+    look = {'interim': two_look_interim, 'final': two_look_final}.get(result.get('look'))
+    if look is None:
+        raise ValueError('not a two-look result')
+    try:
+        again = look(result['deltas'], result['ses'], estimator=result['estimator'])
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f'the look cannot be recomputed from its inputs ({type(exc).__name__})') from None
+    if _canonical(again) != _canonical(result):
+        raise ValueError('the look does not follow from its inputs')
+    return result
+
+
+def _calibration_line(result):
+    cal = result['calibration']
+    null = {row['between_window_sd']: row for row in cal['null']}
+    return (f"Calibration of this procedure with the {result['estimator']} pool (simulated, {cal['lanes_per_row']:,} "
+            "lanes per row, window SE 0.037 estimated from 520 clusters): with no between-window variance, false "
+            f"POSITIVE {null[0.0]['positive']:.4f} and power {cal['power_at_fixed_design_mde80']:.3f} at the "
+            f"fixed-design MDE80 (0.80 at {cal['mde80_drift']:.2f} x SE); false POSITIVE {null[0.5]['positive']:.4f} "
+            f"at a between-window SD of half the window SE and {null[1.0]['positive']:.4f} at one window SE. "
+            "Nominal figures are the ideal reference model (known window SEs, equal information, no between-window "
+            "variance); this read is calibrated only inside the lane's predeclared envelope, and a Q below the gate is "
+            "not evidence of homogeneity.")
 
 
 def two_look_lines(result):
-    """Canonical sentences for one look.  A CONTINUE quotes no estimate: the interim number is not
-    a result, and only the final look's is."""
-    _check_look(result)
-    mean, lo, hi, z, c = result['pooled']['mean'], *result['rci95'], result['z'], result['critical_z']
+    """Canonical sentences for one look, after verify_look.  A CONTINUE quotes no estimate: the interim
+    number is not a result, and only the final look's is."""
+    verify_look(result)
+    mean, (lo, hi), z, c = result['pooled']['mean'], result['nominal_rci95'], result['z'], result['critical_z']
     if result['look'] == 'interim':
         head = (f"Two-look design, interim look (windows 1-{TWO_LOOK_INTERIM_WINDOWS} of {TWO_LOOK_FINAL_WINDOWS} in "
                 f"the predeclared seed order)")
@@ -302,24 +387,27 @@ def two_look_lines(result):
             return [f"{head}: CONTINUE. The point estimate is above zero and z is inside the efficacy bound "
                     f"+/-{c}; the lane runs windows {TWO_LOOK_INTERIM_WINDOWS + 1}-{TWO_LOOK_FINAL_WINDOWS}. "
                     "No estimate is quoted at this look; only the final look gives a result."]
-        first = (f"{head}: estimated {mean:+.4f}, z {z:+.2f}; 95% repeated-confidence interval "
+        first = (f"{head}: estimated {mean:+.4f}, z {z:+.2f}; nominal 95% repeated-confidence interval "
                  f"[{lo:+.4f}, {hi:+.4f}] (critical z {c}).")
         if decision == 'STOP_POSITIVE':
-            return [first, f"POSITIVE at the interim: z {z:+.2f} > {c}, lower bound {lo:+.4f} > 0; the lane stops "
-                           "early for efficacy."]
-        if decision == 'STOP_NEGATIVE':
-            return [first, f"NEGATIVE at the interim: z {z:+.2f} < -{c}, upper bound {hi:+.4f} < 0; the lane stops "
-                           "early."]
-        return [first, f"NOT AHEAD: the five-window point estimate {mean:+.4f} is at or below zero, so the lane "
-                       "stops for futility. This is not a null result, not equivalence and not a harm finding; "
-                       f"an effect between {lo:+.4f} and {hi:+.4f} remains compatible."]
+            second = (f"POSITIVE at the interim: z {z:+.2f} > {c}, lower bound {lo:+.4f} > 0; the lane stops "
+                      "early for efficacy.")
+        elif decision == 'STOP_NEGATIVE':
+            second = f"NEGATIVE at the interim: z {z:+.2f} < -{c}, upper bound {hi:+.4f} < 0; the lane stops early."
+        else:
+            second = (f"NOT AHEAD: the five-window point estimate {mean:+.4f} is at or below zero, so the lane "
+                      "stops for futility. This is not a null result, not equivalence and not a harm finding; "
+                      f"an effect between {lo:+.4f} and {hi:+.4f} remains compatible.")
+        return [first, second, _calibration_line(result)]
     first = (f"Two-look design, final look ({TWO_LOOK_FINAL_WINDOWS} windows; the interim look continued): "
-             f"estimated {mean:+.4f}, z {z:+.2f}; 95% repeated-confidence interval [{lo:+.4f}, {hi:+.4f}] "
-             f"(critical z {c}, O'Brien-Fleming); design MDE80 {result['mde80']:.4f}.")
+             f"estimated {mean:+.4f}, z {z:+.2f}; nominal 95% repeated-confidence interval [{lo:+.4f}, {hi:+.4f}] "
+             f"(critical z {c}, O'Brien-Fleming); nominal MDE80 {result['nominal_mde80']:.4f}.")
     label = result['label']
     if label == 'POSITIVE':
-        return [first, f"POSITIVE: the interval excludes zero (lower bound {lo:+.4f})."]
-    if label == 'NEGATIVE':
-        return [first, f"NEGATIVE: the interval lies below zero (upper bound {hi:+.4f})."]
-    return [first, "INCONCLUSIVE: the interval includes zero; this establishes neither benefit nor "
-                   f"noninferiority; an effect as low as {lo:+.4f} or as high as {hi:+.4f} remains compatible."]
+        second = f"POSITIVE: the interval excludes zero (lower bound {lo:+.4f})."
+    elif label == 'NEGATIVE':
+        second = f"NEGATIVE: the interval lies below zero (upper bound {hi:+.4f})."
+    else:
+        second = ("INCONCLUSIVE: the interval includes zero; this establishes neither benefit nor "
+                  f"noninferiority; an effect as low as {lo:+.4f} or as high as {hi:+.4f} remains compatible.")
+    return [first, second, _calibration_line(result)]

@@ -24,8 +24,6 @@ from ..engine.cards import RANKS
 from ..engine.game import Game
 from ..engine.round import Round
 from ..oracle import screen as duel
-from .search_inference import SearchHeads
-from .search_policy import LearnedSearchBot, SearchConfig
 
 
 _SCALARS = (str, int, float, bool, type(None))
@@ -155,6 +153,7 @@ class TimedPolicy:
 @lru_cache(maxsize=1)
 def loaded_heads(path, allow_legacy, batch_size):
     import torch
+    from .search_inference import SearchHeads
     torch.set_num_threads(1)
     return SearchHeads.from_checkpoint(path, allow_legacy=allow_legacy, batch_size=batch_size)
 
@@ -181,6 +180,7 @@ def run_cluster(config, cluster):
         if side == "baseline" or config["arm"] == "none":
             bot = make_bot("mc-s0-report-lcb", seed=seed)
         else:
+            from .search_policy import LearnedSearchBot, SearchConfig
             heads = loaded_heads(config["checkpoint"], config["allow_legacy"], config["batch_size"])
             expected = config.get("checkpoint_sha256")
             if expected and heads.metadata["checkpoint_sha256"] != expected:

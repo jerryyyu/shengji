@@ -19,6 +19,23 @@ def config(arm="none"):
             "report_worlds": 30, "seed0": 431, "clusters": 1}
 
 
+def test_trace_helpers_do_not_require_torch():
+    import subprocess
+    import sys
+
+    result = subprocess.run([sys.executable, "-c", """
+import sys
+sys.modules['torch'] = None
+from shengji.train.search_screen import trace_fields, TimedPolicy
+assert trace_fields({'exact_follow_scores': [1.0, 2.0]}) == {
+    'exact_follow_scores__len': 2, 'exact_follow_scores': [1.0, 2.0],
+    'trace_dropped_fields': 0}
+assert 'shengji.train.search_inference' not in sys.modules
+assert 'shengji.train.search_policy' not in sys.modules
+"""], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():
     rows = [{}, *({'exact_lead_status': s} for s in
                    ('ineligible', 'skipped_budget', 'abandoned'))]

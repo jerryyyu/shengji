@@ -4,6 +4,10 @@ import random
 import copy
 import time
 import asyncio
+import json
+import os
+import subprocess
+import sys
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -180,6 +184,41 @@ def test_follow_parameters_require_enabled_rule(key, value):
     env['SHENGJI_PV_' + key] = value
     with pytest.raises(pv.PVSearchPolicyError):
         pv.pv_env_recipe(env)
+
+
+def test_follow_solver_contract_matches_lazy_implementation():
+    from shengji.train import pv_exact_follow
+
+    assert pv._EXACT_FOLLOW_SOLVERS == pv_exact_follow.SOLVERS
+
+
+def test_follow_off_recipe_does_not_import_optional_solver(pinned_production_package):
+    fly_env = tomllib.loads(
+        (Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    source = """
+import json
+import sys
+from shengji.train import pv_search_policy as pv
+env = json.loads(sys.argv[1])
+env['SHENGJI_PV_CKPT'] = sys.argv[2]
+env['SHENGJI_PV_SHA256'] = sys.argv[3]
+recipe = pv.pv_env_recipe(env)
+assert not recipe.get('exact_follow', False)
+name, factory = next(iter(pv.pv_registry_entries(**recipe).items()))
+bot = factory(seed=7)
+assert bot.policy_name == name
+assert 'shengji.train.pv_exact_follow' not in sys.modules
+assert 'shengji.ai._endgame_fast' not in sys.modules
+"""
+    env = dict(os.environ)
+    env['PYTHONPATH'] = str(Path(__file__).resolve().parents[1])
+    result = subprocess.run(
+        [sys.executable, '-P', '-B', '-c', source, json.dumps(fly_env),
+         str(pinned_production_package),
+         '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'],
+        cwd=Path(__file__).resolve().parents[1], env=env,
+        capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[-2000:]
 
 
 def test_follow_identity_off_preserved_and_parameters_distinct():

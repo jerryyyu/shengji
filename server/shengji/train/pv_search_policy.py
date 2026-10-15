@@ -985,6 +985,12 @@ class PVSearchConfig:
     oracle_pin_q: float = ORACLE_SOFT_DEFAULTS["oracle_pin_q"]
 
 
+# Keep configuration validation independent of the optional exact-follow
+# implementation.  The latter imports the native endgame solver, which is
+# needed only when the DEV stage is actually enabled.
+_EXACT_FOLLOW_SOLVERS = ("reference", "compact-level")
+
+
 def _check_value_declare_params(worlds, margin):
     if type(worlds) is not int or worlds < 1:
         raise PVSearchPolicyError("value_declare_worlds must be a positive int")
@@ -1004,9 +1010,9 @@ def _check_exact_follow_params(config: PVSearchConfig) -> None:
         raise PVSearchPolicyError("exact_follow must be a bool")
     if type(config.exact_follow_max_nodes) is not int or config.exact_follow_max_nodes < 1:
         raise PVSearchPolicyError("exact_follow_max_nodes must be a positive int")
-    from .pv_exact_follow import SOLVERS
-    if config.exact_follow_solver not in SOLVERS:
-        raise PVSearchPolicyError(f"exact_follow_solver must be one of {SOLVERS}")
+    if config.exact_follow_solver not in _EXACT_FOLLOW_SOLVERS:
+        raise PVSearchPolicyError(
+            f"exact_follow_solver must be one of {_EXACT_FOLLOW_SOLVERS}")
     if (isinstance(config.exact_follow_max_cards, bool)
             or type(config.exact_follow_max_cards) is not int
             or not 1 <= config.exact_follow_max_cards <= 8):
@@ -1406,9 +1412,9 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("exact_follow_max_nodes must be a positive int")
         self.exact_follow = config.exact_follow
         self.exact_follow_max_nodes = config.exact_follow_max_nodes
-        from .pv_exact_follow import SOLVERS as _FOLLOW_SOLVERS
-        if config.exact_follow_solver not in _FOLLOW_SOLVERS:
-            raise PVSearchPolicyError(f"exact_follow_solver must be one of {_FOLLOW_SOLVERS}")
+        if config.exact_follow_solver not in _EXACT_FOLLOW_SOLVERS:
+            raise PVSearchPolicyError(
+                f"exact_follow_solver must be one of {_EXACT_FOLLOW_SOLVERS}")
         if (type(config.exact_follow_max_cards) is not int
                 or not 1 <= config.exact_follow_max_cards <= 8):
             raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")

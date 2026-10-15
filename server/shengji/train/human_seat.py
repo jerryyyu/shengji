@@ -1,4 +1,4 @@
-"""Human-seat model, offline (#707 S25, tier-i DEV).
+"""Human-seat model, offline: self-play policy vs a human-imitation head on human plays.
 
 Question: how much better does a small human-imitation head predict held-out
 human plays than the self-play policy head as served?  If production world

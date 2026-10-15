@@ -1,4 +1,4 @@
-"""Infoset-Q distillation (#707 M11, tier-i DEV): an actor-view head trained on
+"""Infoset-Q distillation: an actor-view head trained on
 true-world candidate values.
 
 Stored self-play decisions come from the same policy that dealt them, so the true

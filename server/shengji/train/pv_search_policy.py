@@ -952,6 +952,9 @@ class PVSearchConfig:
     exact_follows: bool = False
     # the deeper exact rule (module docstring): 0 is off
     exact_deep_cards: int = 0
+    # DEV-only exact follow reranking; intentionally not exposed by factories.
+    exact_follow: bool = False
+    exact_follow_max_nodes: int = 250_000
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     # the optional declaration rule and its two parameters; the same contract
@@ -1001,6 +1004,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     OFF is omitted (the payload of the pre-rule recipe, byte for byte) and a
     rule that is on carries its parameters."""
     payload = asdict(config)
+    # This experiment is constructed directly by DEV callers.  It has no
+    # serving recipe/name identity until a separately reviewed screen path exists.
+    if not config.exact_follow:
+        payload.pop("exact_follow", None)
+        payload.pop("exact_follow_max_nodes", None)
     if config.tree is None:
         del payload["tree"]
     elif not isinstance(config.tree, PVTreeConfig):
@@ -1373,6 +1381,17 @@ class PVSearchBot(PolicyValueBot):
             if not config.exact_lead_endgame:
                 raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
             self.exact_deep_cards = config.exact_deep_cards
+        if type(config.exact_follow) is not bool:
+            raise PVSearchPolicyError("exact_follow must be a bool")
+        if type(config.exact_follow_max_nodes) is not int or config.exact_follow_max_nodes < 1:
+            raise PVSearchPolicyError("exact_follow_max_nodes must be a positive int")
+        self.exact_follow = config.exact_follow
+        self.exact_follow_max_nodes = config.exact_follow_max_nodes
+        if self.exact_follow and (config.tree is not None or config.adaptive_worlds
+                                  or config.adaptive_worlds_leads):
+            raise PVSearchPolicyError(
+                "exact_follow does not combine with tree or adaptive_worlds")
+        self._exact_follow_state = None
         self._finish_lead_added = False
         self._wide_lead = None
         if config.doomed_throw_reselect and config.tree is not None:
@@ -2417,6 +2436,51 @@ class PVSearchBot(PolicyValueBot):
                 rnd, seat, admitted, worlds, started, check_budget,
                 [float(preferences[i]) for i in chosen],
                 (means, batches, winner, played, evaluations))
+        exact_follow_record = None
+        if self.exact_follow and rnd.trick is not None and rnd.trick.plays:
+            # The normal PV result is complete before this optional stage starts.
+            # Any refusal, budget expiry, or malformed world leaves it untouched.
+            from .optional_stage import OptionalStage
+            from .pv_exact_follow import rerank_follow
+            baseline_winner, baseline_played = winner, list(played)
+            soft_deadline = None
+            if self.serving_budget_seconds is not None:
+                soft_deadline = started + self.serving_budget_seconds * 0.8
+            stage = OptionalStage(
+                self, ("_exact_follow_state",), hard_check=check_budget,
+                budget_errors=PVSearchBudgetExceeded, soft_deadline=soft_deadline,
+                clock=time.perf_counter, soft_error=PVSearchBudgetExceeded,
+                final_check=check_budget)
+            exact = None
+            with stage:
+                stage.guard and stage.guard()
+                exact = rerank_follow(
+                    rnd, seat, admitted, worlds, baseline_index=winner,
+                    max_nodes=self.exact_follow_max_nodes,
+                    check_budget=stage.guard)
+                stage.raise_if_tripped()
+                changed = exact.winner != baseline_winner
+                if changed:
+                    winner = exact.winner
+                    played = list(admitted[winner])
+                stage.publish(changed=changed)
+            if stage.abandoned:
+                winner, played = baseline_winner, baseline_played
+                exact_follow_record = {
+                    "exact_follow_attempted": True,
+                    "exact_follow_applied": False,
+                    "exact_follow_abandoned": stage.reason,
+                    "exact_follow_error": stage.error,
+                }
+            else:
+                exact_follow_record = {
+                    "exact_follow_attempted": True,
+                    "exact_follow_applied": exact.winner != baseline_winner,
+                    "exact_follow_abandoned": None,
+                    "exact_follow_worlds": exact.worlds,
+                    "exact_follow_nodes": exact.nodes,
+                    "exact_follow_scores": list(exact.scores),
+                }
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),
@@ -2444,6 +2508,7 @@ class PVSearchBot(PolicyValueBot):
             **self._adaptive_worlds_record(),
             **self._soft_oracle_record(),
             **(self._exact_lead if self.exact_lead_endgame else {}),
+            **({} if exact_follow_record is None else exact_follow_record),
         }
         return list(played)
 

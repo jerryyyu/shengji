@@ -94,6 +94,7 @@ jobs:
           tests/test_v52ec_recovery_reader.py
           tests/test_v52ec_recovery_integration.py
           tests/test_fast_parity.py
+          tests/test_pv_exact_follow.py
       # New modules in these families are selected without editing this list.
       - name: Test Sol benchmark contracts in pure mode
         run: >-
@@ -131,6 +132,7 @@ jobs:
           tests/test_heuristic_suit_groups.py
           tests/test_memory.py
           tests/test_harvest_ballot_capture.py
+          tests/test_pv_exact_follow.py
       # #636: the served bot must still CONSTRUCT from the real production package on this
       # tree. The package is not in the repo (Jerry 2026-09-28: do not commit it); CI fetches
       # it from the repo's `serving-packages` release by tag and verifies the sha256 pinned

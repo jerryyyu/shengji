@@ -1,15 +1,23 @@
-// Chinese voice announcements. Clips live at /sounds/<name>.mp3 — one per card
-// code (H2..SA, H10-style tens, BJ/LJ) plus pair.mp3 (一对), nt.mp3 (无主),
-// throw.mp3 (甩牌). Clips are fetched+decoded lazily and cached; sequences are
-// queued and played back-to-back without overlap.
+// Chinese voice announcements. Clips live at /sounds/<name>.mp3: one per card
+// code (H2..SA, H10-style tens, BJ/LJ) plus the VOICE_CLIPS below. Clips are
+// fetched+decoded lazily and cached; sequences are queued and played
+// back-to-back without overlap.
 
 import type { GameState, Trump } from "./protocol";
 
 const MUTE_KEY = "shengji.muted";
 const GAP_MS = 50; // pause between clips in a sequence
-const PLAYBACK_RATE = 1.0; // 1.25 was too chipmunk; regen with sag --speed
-//                            for pitch-neutral speedup if wanted later
 const MAX_QUEUE = 4; // pending sequences beyond this drop the oldest
+
+/** Non-card clips in public/sounds. */
+const VOICE_CLIPS = {
+  pair: "pair",         // 一对
+  nt: "nt",             // 无主
+  throw: "throw",       // 甩牌
+  tractor: "tractor",   // 拖拉机
+  ruff: "bi",           // 毙
+  drawTrump: "diaozhu", // 调主
+} as const;
 
 let ctx: AudioContext | null = null;
 const clipCache = new Map<string, Promise<AudioBuffer | null>>();
@@ -33,8 +41,8 @@ function ensureCtx(): AudioContext {
 async function ensureRunning(): Promise<AudioContext> {
   const c = ensureCtx();
   if (c.state !== "running") {
-    // resume() is async: the old code checked state synchronously right after
-    // firing it, so the first clip after unlock was always dropped.
+    // Await resume(): checking state synchronously right after firing it
+    // would drop the first clip after unlock.
     try {
       await c.resume();
     } catch {
@@ -48,11 +56,9 @@ async function ensureRunning(): Promise<AudioContext> {
 //
 // iOS (all browsers there are WebKit, including iPhone Chrome) does not
 // reliably unlock audio on `pointerdown`; `touchend`/`click` are the gestures
-// that count. The previous single `{ once: true }` pointerdown listener spent
-// its only attempt on a gesture that never unlocked anything, and because it
-// removed itself there was no second chance for the life of the page — total
-// silence, no console errors. So: listen on several gesture types and keep
-// listening until the context actually reaches "running".
+// that count. Listen on several gesture types and keep listening until the
+// context actually reaches "running": a listener that removes itself after a
+// failed attempt leaves the page silent for good.
 const UNLOCK_EVENTS = ["pointerdown", "touchend", "click", "keydown"] as const;
 let unlockArmed = false;
 
@@ -108,10 +114,8 @@ export function setMuted(m: boolean): void {
 }
 
 // Every mute control on screen (the HUD chip, the phone's `…` menu, the Room
-// screen's toggle) reads ONE source of truth. Each used to hold its own
-// useState(isMuted()) snapshot, so two mounted controls drifted apart the
-// moment one was tapped: rotate a phone after muting and the other control
-// showed the old state, and its first tap was a no-op (Codex, #653 review).
+// screen's toggle) reads this one store via useMuted, so mounted controls
+// cannot drift apart.
 const muteListeners = new Set<(m: boolean) => void>();
 
 export function subscribeMuted(cb: (m: boolean) => void): () => void {
@@ -141,11 +145,10 @@ async function playBuffer(buffer: AudioBuffer): Promise<void> {
   return new Promise((resolve) => {
     const src = c.createBufferSource();
     src.buffer = buffer;
-    src.playbackRate.value = PLAYBACK_RATE;
     src.connect(c.destination);
     // Guard timer so a wedged onended can never stall the pump.
     const guard = window.setTimeout(
-      resolve, (buffer.duration / PLAYBACK_RATE) * 1000 + 500);
+      resolve, buffer.duration * 1000 + 500);
     src.onended = () => {
       window.clearTimeout(guard);
       resolve();
@@ -210,8 +213,6 @@ async function pump(): Promise<void> {
   }
 }
 
-// ---------- state-diff triggers ----------
-
 let lastDecl: string | null = null;
 let seenPlays = new Set<string>();
 
@@ -248,16 +249,15 @@ export function announceState(state: GameState, seedOnly = false): void {
       lastDecl = key;
       if (!seedOnly) {
         const first = d.cards[0] ?? "";
-        if (first === "BJ" || first === "LJ") play(["nt"]);
-        else if (d.cards.length >= 2) play(["pair", first]);
+        if (first === "BJ" || first === "LJ") play([VOICE_CLIPS.nt]);
+        else if (d.cards.length >= 2) play([VOICE_CLIPS.pair, first]);
         else if (first) play([first]);
       }
     }
   }
 
-  // Every newly appeared play gets a sound. Ruffs ("bi") take priority;
-  // singles say the card, pairs say 一对+card, 4+ all-pairs say 拖拉机,
-  // other multi-card plays say 甩牌; forced junk dumps get a click.
+  // Every newly appeared play gets a sound. Ruffs take priority; a lead is
+  // announced by the shape the server sent; followers get a click.
   const trump = state.trump;
   const plays = state.trick?.plays ?? [];
   const lead = plays[0];
@@ -272,24 +272,20 @@ export function announceState(state: GameState, seedOnly = false): void {
     const isRuff =
       i > 0 && trump !== null && !leadHasTrump && n > 0 &&
       p.cards.every((c) => isTrump(c, trump));
-    const counts = new Map<string, number>();
-    for (const c of p.cards) counts.set(c, (counts.get(c) ?? 0) + 1);
-    const allPairs = n >= 2 && [...counts.values()].every((k) => k % 2 === 0);
-    if (isRuff) play(["bi"]);
+    if (isRuff) play([VOICE_CLIPS.ruff]);
     else if (i === 0) {
       // card names only on the LEAD of each trick
       const allTrump =
         trump !== null && n > 0 && p.cards.every((c) => isTrump(c, trump));
       // The SERVER decides the shape: whether pairs form a tractor depends on
       // consecutiveness under the trump ordering, which this side cannot see.
-      // Guessing "4+ cards, all even counts => tractor" announced a two-pair
-      // 甩牌 as 拖拉机 (Jerry, 2026-08-04).
-      const shape = p.shape ?? (n === 1 ? "single" : allPairs && n === 2 ? "pair" : "throw");
-      if (allTrump) play(["diaozhu"]); // 调主: drawing trump
+      const isPair = n === 2 && p.cards[0] === p.cards[1];
+      const shape = p.shape ?? (n === 1 ? "single" : isPair ? "pair" : "throw");
+      if (allTrump) play([VOICE_CLIPS.drawTrump]);
       else if (shape === "single") play([p.cards[0]]);
-      else if (shape === "pair") play(["pair", p.cards[0]]);
-      else if (shape === "tractor") play(["tractor"]);
-      else play(["throw"]);
+      else if (shape === "pair") play([VOICE_CLIPS.pair, p.cards[0]]);
+      else if (shape === "tractor") play([VOICE_CLIPS.tractor]);
+      else play([VOICE_CLIPS.throw]);
     } else playTick(); // followers: just a click (ruffs handled above)
   });
   seenPlays = nextSeen;

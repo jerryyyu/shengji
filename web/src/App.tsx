@@ -46,9 +46,6 @@ export default function App() {
       resetAnnouncer();
     };
 
-    // Single owner of connection intent, in precedence order:
-    //   invite link > explicit action already in flight > saved session.
-    // An invite must never be overridden by whatever room we were last in.
     const unsubStatus = conn.subscribeStatus((s) => {
       setStatus(s);
       if (s !== "open") return;

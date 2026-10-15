@@ -1,6 +1,6 @@
 // Small WebSocket connection manager: connect, auto-reconnect with backoff,
-// send(msg), subscribers for messages + status. On (re)connect, re-sends
-// join_room with the room/name persisted in localStorage so refresh survives.
+// send(msg), subscribers for messages + status. On (re)connect it only reports
+// "open"; whether and where to rejoin is decided by App via intent.ts.
 
 import type { ChatMsg, ClientMsg, ServerMsg } from "./protocol";
 
@@ -72,7 +72,7 @@ class Connection {
   /** Bumped on every socket open. A membership transaction (peek -> pick ->
    *  join) belongs to ONE generation; a response that arrives after a
    *  reconnect refers to a socket the server no longer has, so acting on it
-   *  would join the wrong room (Codex ship gate P0-6). */
+   *  would join the wrong room. */
   generation = 0;
 
   private ws: WebSocket | null = null;
@@ -114,9 +114,8 @@ class Connection {
   }
 
   /** Leave the current room and go straight back to the lobby, keeping this
-   *  socket. Replaces the old full-page reload after a finished game: the
-   *  saved room is forgotten, the server is told (leave_room frees the seat
-   *  exactly like a disconnect did), and listeners get the same {type:"left"}
+   *  socket. The saved room is forgotten, the server is told (leave_room
+   *  frees the seat exactly like a disconnect), and listeners get the same {type:"left"}
    *  the server will send, so the UI resets now instead of a round trip later.
    *  If the socket is not open there is nothing to tell the server: the seat
    *  was already dropped, and with the saved room gone a reconnect will not
@@ -183,8 +182,8 @@ class Connection {
       this.generation += 1;
       // Report "open" and stop there. Deciding WHETHER to rejoin, and which
       // room wins between an invite link, an explicit action, and a saved
-      // session, is App's call — the connection reading localStorage on its
-      // own raced the invite flow (Codex, 2026-08-03).
+      // session, is App's call (intent.ts); reading localStorage here would
+      // race the invite flow.
       this.setStatus("open");
     };
 
@@ -214,7 +213,7 @@ class Connection {
       // subscribes — so it is buffered here. The server sends one
       // authoritative chat_history snapshot per attach, then live events with
       // room-scoped monotonic ids, which is what makes reconnect
-      // deduplication possible (Codex ship gate P0-5).
+      // deduplication possible.
       const room = "room" in msg ? msg.room : undefined;
       if (typeof room === "string" && room !== this.chatRoom) {
         this.chatRoom = room;      // room changed: the old log is not ours

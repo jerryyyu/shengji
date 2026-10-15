@@ -119,7 +119,7 @@ export default function Table({ state }: { state: GameState }) {
   const [xrayOpen, setXrayOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   // Seed from the connection's buffer: scrollback for a joiner arrives before
-  // this component exists, so subscribing alone loses it (Codex case 7).
+  // this component exists, so subscribing alone loses it.
   const [chat, setChat] = useState<ChatMsg[]>(() => conn.chatHistory() as ChatMsg[]);
   const [unread, setUnread] = useState(0);
   useEffect(() => conn.subscribe((msg: ServerMsg) => {

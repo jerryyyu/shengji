@@ -1,11 +1,8 @@
 /**
  * Connection intent: WHICH room this socket should be in, and why.
  *
- * Ownership used to be split — ws.ts read localStorage and rejoined on its
- * own, Lobby owned invites and manual actions, App rendered whatever arrived —
- * and the recent membership bugs all lived on those seams (Codex). This module
- * is the single decision, expressed as a pure function so it can be tested
- * without a socket, a DOM, or a server.
+ * This module is the single decision, expressed as a pure function so it can
+ * be tested without a socket, a DOM, or a server.
  *
  * Precedence, highest first:
  *   1. invite URL          — an explicit link the user just followed

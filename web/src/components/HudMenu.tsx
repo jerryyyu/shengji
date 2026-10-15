@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMuted } from "../useMuted";
 import { conn } from "../ws";
 
-/** The phone's `…` overflow (#651): kitty count, sound, invite link and leave —
+/** The phone's `…` overflow: kitty count, sound, invite link and leave —
  * none of them a mid-trick decision, so on a small screen they share one
  * button instead of four chips. Desktop keeps its chips (this is hidden by CSS
  * there). Leave keeps the table's two-tap confirm; a menu that closes on the

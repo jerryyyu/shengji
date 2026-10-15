@@ -53,13 +53,9 @@ def digest(path: str | None) -> str | None:
 def arm_ballots(names) -> dict:
     """Which ballot each arm enumerates, recorded so a mismatch is visible.
 
-    Every failure here is fatal. An earlier version swallowed a construction
-    error with `continue` (silently dropping an arm from the manifest) and fell
-    back to "unknown" otherwise. Codex showed the result was worse than
-    useless: `smart`, `heuristic`, `mc` and the narrow historical
-    `mc-20260802am` all reported the same ballot, so the manifest looked
-    authoritative while being false. A manifest that cannot establish what was
-    on the ballot has not recorded the experiment.
+    Every failure here is fatal: never drop an arm or fall back to "unknown".
+    A manifest that cannot establish what was on the ballot has not recorded
+    the experiment.
     """
     from .engine.ballot import ballot_for_policy
     out = {}
@@ -85,11 +81,9 @@ def counters(bots) -> dict:
                                      for b in bots), 4),
             "void_fallbacks": sum(getattr(b, "impossible_worlds", 0)
                                   for b in bots),
-            # A world the constraint-correct sampler REFUSED to build. Absent
-            # until 2026-08-05, which made the N=60 lane a policy-as-run
-            # comparison rather than proof of an exact accepted dose: an arm
-            # whose worlds were silently rejected searched fewer than N of
-            # them and nothing recorded it (Codex).
+            # A world the constraint-correct sampler REFUSED to build: an arm
+            # whose worlds were rejected searched fewer than N of them, so
+            # without this count the run proves no exact accepted dose.
             "rejected_worlds": sum(getattr(b, "rejected_worlds", 0)
                                    for b in bots),
             "sample_attempts": sum(getattr(b, "sample_attempts", 0)
@@ -209,7 +203,7 @@ def parse_bar(bar: str):
         raise ProtocolFailure(
             "--bar must be enforceable, e.g. 'paired_utility > 0' or "
             "'win_rate > 0.5'. Free text cannot gate anything, and a bar that "
-            "is recorded but not applied is theatre (Codex).")
+            "is recorded but not applied is theatre.")
     return mt.group(1), float(mt.group(2))
 
 
@@ -241,7 +235,7 @@ def evaluate(arm, opponent, *, clusters=250, seed0=None, control=None, bar,
     plan_names = [arm, opponent] + ([control] if control else [])
     # Second-resolution ids COLLIDE when parallel shards start in the same
     # second, and the manifest is opened with "x" — so a six-shard launch would
-    # fail or overwrite (Codex). Include the pid.
+    # fail or overwrite. Include the pid.
     run_id = f"eval_{int(time.time())}_{os.getpid()}_{sha}"
     manifest = {
         "run": run_id, "arm": arm, "opponent": opponent, "control": control,
@@ -333,9 +327,7 @@ def evaluate(arm, opponent, *, clusters=250, seed0=None, control=None, bar,
         cm, cci = stats["control"]
         # The DIRECT contrast, paired on the same seeds. Reporting each arm
         # against the reference leaves the actual question — is the arm better
-        # than the control? — uncomputed. Codex had to work it out by hand for
-        # the v13 duel (v13 minus v7 = -0.028 +/- 0.185), which is exactly the
-        # number that should have been printed here.
+        # than the control? — uncomputed.
         dm, dci, _ = paired_by_seed(results["arm"], results["control"])
         print(f"ARM MINUS CONTROL (paired, same seeds): {dm:+.3f} +/- {dci:.3f}"
               + ("  <-- excludes 0: the arm genuinely differs from its control"

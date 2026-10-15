@@ -1,4 +1,4 @@
-"""Soft level-head targets from the search's own mean (issue #340).
+"""Soft level-head targets from the search's own mean.
 
 What the sidecar mean IS
 ------------------------

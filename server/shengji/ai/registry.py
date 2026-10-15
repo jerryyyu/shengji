@@ -326,12 +326,9 @@ REGISTRY["mc-v5roll"] = _make_mc_v5roll
 def make_bot(name: str, **kw):
     """Build a policy by name, FORWARDING kwargs (notably seed=).
 
-    make_bot used to take no kwargs, so every duel script wrapped it as
-    `lambda **k: make_bot("mc")` — which accepts a seed and silently drops it.
-    `_seeded()` then never hit its TypeError fallback, and every MC opponent
-    ran on OS entropy while the logs claimed a seeded, reproducible protocol
-    (Codex, 2026-08-04). This is the SAME defect as the unseeded-anchor
-    incident, reintroduced one layer up at the call site.
+    A wrapper that accepts a seed and drops it (`lambda **k: make_bot("mc")`)
+    makes every MC opponent run on OS entropy while the logs claim a seeded,
+    reproducible protocol, so callers pass kwargs straight through.
     """
     try:
         factory = REGISTRY[name]
@@ -340,8 +337,7 @@ def make_bot(name: str, **kw):
             f"Unknown bot policy {name!r}. Available: {', '.join(sorted(REGISTRY))}")
     # Decide by SIGNATURE, never by catching TypeError: a genuine TypeError
     # raised inside a bot's constructor would be swallowed and retried, turning
-    # a real bug into another plausible-looking fallback — the exact pattern
-    # that has cost us three days this week (Codex, 2026-08-04).
+    # a real bug into another plausible-looking fallback.
     import inspect
     try:
         params = inspect.signature(factory).parameters
@@ -372,9 +368,8 @@ def _make_vleaf(ckpt: str):
 
     The hybrid's strength depends entirely on which net evaluates the
     truncated-rollout leaves, so the checkpoint is part of the policy's
-    identity — never register or report a bare "mc-vleaf" (2026-08-03:
-    the pool headline was un-reproducible because the value head wasn't
-    named in the result).
+    identity — never register or report a bare "mc-vleaf": a result that
+    does not name its value head cannot be reproduced.
     """
     def f():
         from ..rl.torch_policy import MCValueLeaf
@@ -382,8 +377,7 @@ def _make_vleaf(ckpt: str):
     return f
 
 
-# Value-leaf hybrids, one entry per value head. Elo pool 2026-08-03:
-# mc-vleaf-v7w-ep02 = 1163 (mc 1110, smart 1089, rl-v7w 1060, heuristic 1000)
+# Value-leaf hybrids, one entry per value head.
 REGISTRY["mc-vleaf-v7w-ep02"] = _make_vleaf("snapshots_v7w/ep02.pt")
 # Absolute action-Q head trained on 240-world `Q^H(s,a)` labels. The v7w arm is
 # the same architecture/wrapper, but the comparison does NOT isolate label
@@ -391,16 +385,9 @@ REGISTRY["mc-vleaf-v7w-ep02"] = _make_vleaf("snapshots_v7w/ep02.pt")
 # the pinned-v1/post-four-trick distribution used by MCValueLeaf.
 REGISTRY["mc-vleaf-v13abs"] = _make_vleaf("ckpt_v13abs.pt")
 REGISTRY["mc-vleaf-v8a-ep03"] = _make_vleaf("snapshots_v8a/ep03.pt")
-# CAVEAT (Jerry's question, 2026-08-04): v11pair was trained with a PAIRWISE
-# objective — only differences within a decision are constrained, so the value
-# head's absolute level is free to drift per state. vleaf compares leaves
-# ACROSS states, so this head may be uncalibrated for exactly the use the
-# hybrid puts it to. Worth measuring; the prediction is that it underperforms.
-# QUARANTINED (Codex, 2026-08-04): a pairwise head has no identified
-# cross-state scale, so using it as a leaf evaluator is implementation-invalid.
-# The measured 32.5% is a consequence of that, not evidence about learned
-# leaves. Left unregistered so it cannot be duelled again by accident.
-# REGISTRY["mc-vleaf-v11pair"] = _make_vleaf("snapshots_v11pair/ep07.pt")
+# v11pair is deliberately NOT a value-leaf arm: it was trained with a pairwise
+# objective, so its head has no cross-state scale and is invalid as a leaf
+# evaluator, which compares leaves ACROSS states.
 
 
 def _make_override(ckpt: str):
@@ -410,16 +397,17 @@ def _make_override(ckpt: str):
     return f
 
 
-# Residual-distillation override policies (learned override of SmartBot)
-# ep09 is the checkpoint the battery actually evaluated; the alias pointed at
-# ep05, so anyone playing this bot got a DIFFERENT net than the one measured
-# (Codex 2026-08-03). Kept registered only for the offline residual
-# post-mortem — this arm is a near no-op, not a candidate for play.
 _V11PAIR_NPZ_SHA256 = (
     "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
 )
 
 
+# threshold 0.02 was fitted on half A of the holdout and reported on half B
+# (regret 1.943 vs 2.103 for always-candidate-0), so it is not post-hoc.
+# MARGIN 0 = trust the net's argmax over the MC ballot. The 0.02 bar was
+# fitted on the teacher's own biased estimates; refitted against the N=240
+# reference the best bar is ZERO, and held-out regret drops 2.870 -> 2.152,
+# below deployed mc's 2.803.
 def _make_override_thr(path: str, margin: float):
     def make(**kw):
         from pathlib import Path
@@ -442,12 +430,7 @@ def _make_override_thr(path: str, margin: float):
     return make
 
 
-# threshold 0.02 was fitted on half A of the holdout and reported on half B
-# (regret 1.943 vs 2.103 for always-candidate-0), so it is not post-hoc.
-# MARGIN 0 = trust the net's argmax over the MC ballot. The 0.02 bar was
-# fitted on the teacher's own biased estimates; refitted against the N=240
-# reference the best bar is ZERO, and held-out regret drops 2.870 -> 2.152,
-# below deployed mc's 2.803 (2026-08-04).
+# Net as a root prior; same rollout budget, concentrated on fewer candidates.
 def _make_race(ckpt: str, keep: int):
     def f(**kw):
         from ..rl.torch_policy import MCPriorRace
@@ -457,7 +440,7 @@ def _make_race(ckpt: str, keep: int):
     return f
 
 
-# Net as a root prior; same rollout budget, concentrated on fewer candidates.
+# THE CONTROL for the racing result: same pruning size and budget, no net.
 def _make_randrace(keep: int):
     def f(**kw):
         from ..rl.torch_policy import MCRandomRace
@@ -467,7 +450,6 @@ def _make_randrace(keep: int):
     return f
 
 
-# THE CONTROL for the racing result: same pruning size and budget, no net.
 def _make_v3(random_fill: bool):
     def f(**kw):
         from ..ai.mcbot import MCBot as _MC
@@ -485,7 +467,7 @@ REGISTRY["mc-v3lead-rand"] = _make_v3(True)   # the control
 REGISTRY["mc-randrace4"] = _make_randrace(4)
 REGISTRY["mc-race3-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 3)
 REGISTRY["mc-race4-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 4)
-# Codex's bounded hypothesis from the full-corpus threshold diagnostic: fit on
+# Bounded hypothesis from the full-corpus threshold diagnostic: fit on
 # even deal seeds, reported on odd, margin 0.005 cut stored all-state regret
 # from 1.261 (at the deployed 0.02) to 1.142 raw points/decision. That is
 # offline, early-state, fixed-ballot evidence — it justifies an ONLINE test,
@@ -547,6 +529,8 @@ def _make_gate(path: str, gate: float):
 # Cheap net as a stakes DETECTOR: SmartBot on low-stakes decisions, full MC
 # search on the ~12% the net flags. Gate fitted on a disjoint holdout half.
 REGISTRY["mc-gate-v11pair"] = _make_gate("snapshots_v11pair/ep07.pt", 0.02)
+# Residual-distillation override of SmartBot: a near no-op, registered only
+# for the offline residual post-mortem, not a candidate for play.
 REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")
 
 
@@ -562,9 +546,9 @@ REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")
 VLEAF_BASE_POLICY = "mc-s0-report-lcb"
 VLEAF_LEAF_TRICKS = (0, 1, 2, 4)
 #: which net evaluates the truncated leaf: ``public`` = the search head's
-#: auxiliary points column on the PUBLIC observation (#226); ``cwv`` = the
+#: auxiliary points column on the PUBLIC observation; ``cwv`` = the
 #: complete-world value net's auxiliary points head on the determinized
-#: clone itself (#229's afterstate tensors: the sampled world IS the input).
+#: clone itself (its afterstate tensors: the sampled world IS the input).
 VLEAF_LEAF_MODELS = ("public", "cwv")
 #: where the leaf is consulted: ``all`` (every rollout) or ``report`` (only
 #: the report fold's paired worlds; selection rollouts are production's).
@@ -780,7 +764,7 @@ def _make_scaled_policy(base_policy: str, multiplier: float):
 
     Production's own compute curve is the bar for any learned bot: on fresh
     deals `mc-s0-report-lcb` given 29.7x its rollouts (N=889/R=8890) scored
-    +0.215 [+0.125, +0.309] against itself at 1x (2026-09-05), more than the
+    +0.215 [+0.125, +0.309] against itself at 1x, more than the
     value32 leaf probe.  ``N_DETERMINIZATIONS`` and ``REPORT_FOLD_WORLDS``
     scale together, rounded; the ballot, allocation and report rule are the
     base policy's, so the only treatment is the dose.
@@ -838,7 +822,7 @@ def register_cwv_puct_policies(checkpoint: str, simulations, **search) -> list[s
 
     Same identity rule as ``register_cwv_policies``: the VALUE checkpoint,
     the simulation budget, the prior (``prior="package"`` -- the joint NumPy
-    package's policy head, #436 -- adds ``-pprior``/``-pprior-T<T>`` and, when
+    package's policy head -- adds ``-pprior``/``-pprior-T<T>`` and, when
     that package is not the value package, ``-prior-<prior8>``;
     ``prior="value"`` adds ``-vprior[<T>]``) and the leaf (``leaf="playout"``
     with ``leaf_playouts=N`` -> ``-pleaf``/``-pleaf<N>``; the net leaf scored
@@ -863,7 +847,7 @@ def _register_cwv_puct_from_env() -> None:
     ``_PRIOR`` / ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` / ``_PRIOR_TEMPERATURE`` /
     ``_LEAF_FINISH_TRICK`` / ``_WORLD_POOL`` / ``_BATCH`` / ``_C_PUCT`` knobs) register
     the PUCT arms at import, so a spawned screen worker resolves the same name the
-    parent did (`ai.cwv_puct.puct_env_recipe`; #436 step 1b).  Screen-only: nothing
+    parent did (`ai.cwv_puct.puct_env_recipe`).  Screen-only: nothing
     served reads these variables."""
     import os
     if not os.environ.get("SHENGJI_CWV_PUCT_CKPT"):
@@ -945,7 +929,7 @@ def register_exploit_policies(checkpoint: str, *, sha256: str, **recipe) -> list
     """The exploitability probe's attacker (`train.exploit_policy`) as a registry
     policy: ``<pv-search name>-exploit-<recipe12>``.  It is a DIAGNOSTIC, never a
     served arm; it is here so the existing screen harness can run it with no new
-    instrument (#625)."""
+    instrument."""
     from ..train.exploit_policy import exploit_registry_entries
 
     entries = exploit_registry_entries(checkpoint, sha256=sha256, **recipe)

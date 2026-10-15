@@ -152,10 +152,9 @@ def check_ballot(trained, played, who: str) -> None:
 
     A warning rather than an exception because existing registry entries are
     already in this state — MCValueLeaf evaluates leaves over the pinned v1
-    enumeration while every head since v7w was trained on MC candidates. That
-    is one of the two misalignments that made v13abs uninformative, and it was
-    invisible until Codex traced it by hand. New policies should pass the same
-    spec for both and the warning should never fire.
+    enumeration while every head since v7w was trained on MC candidates. That is
+    one of the two misalignments that made v13abs uninformative. New policies
+    should pass the same spec for both and the warning should never fire.
     """
     if trained.digest != played.digest:
         import sys as _s
@@ -195,10 +194,10 @@ class MCValueLeaf(MCBotBase):
                 raise RuntimeError(
                     f"{path}: no value head (needs PolicyValueNet)")
 
-        # A net may only score the ballot it was trained on. This used to be a
-        # printed warning, which is indistinguishable from no check at all once
-        # a run is a few thousand lines of log: v13abs maximised over one
-        # action set while its labels covered another, and nothing stopped it.
+        # A net may only score the ballot it was trained on. A printed warning
+        # is indistinguishable from no check at all once a run is a few
+        # thousand lines of log: v13abs maximised over one action set while
+        # its labels covered another, and nothing stopped it.
         #
         # This policy is MULTI-STAGE and the two stages use different ballots:
         # the root ballot is MCBot._candidates, but the NET is only ever asked
@@ -371,8 +370,8 @@ class MCGatedOverride(RLOverrideBot):
         < 0.01         78.5%             keeping a0 costs 1.52
 
     So the net's delta is a ~2ms DETECTOR of states where the choice matters.
-    Codex proposed gating the other way (act when confident, search when
-    unsure), but that trades strength for speed: even at high confidence the
+    Gating the other way (act when confident, search when unsure) trades
+    strength for speed: even at high confidence the
     net's pick still carries ~2.6 regret against the search's best. Inverting
     the trigger keeps search exactly where it pays and skips it on the ~88%
     of decisions that are nearly free.
@@ -636,7 +635,7 @@ class MCV11RandomAnchor(MCV11ProtectedAnchor):
 
 class MCPriorRace(MCBotBase):
     """Net as a ROOT PRIOR: prune the ballot, then race the survivors with the
-    SAME total rollout budget (Codex's queued arm).
+    SAME total rollout budget.
 
     Deployed mc spends N=10 worlds on every candidate, so with a 6-candidate
     ballot it resolves each one with 10 samples. If the net can say which 3 are

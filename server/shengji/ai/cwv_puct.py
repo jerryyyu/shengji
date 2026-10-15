@@ -3,8 +3,7 @@
 The one-ply bot (``cwv_policy.CWVOnePlyBot``) prices every ballot action by
 the complete-world net one ply deep.  This bot spends the same evaluator on
 MORE positions per decision: deeper continuations of the promising actions,
-fewer of the hopeless ones (Jerry: "we need to be able to try more
-positions"; compute is a budget, not a gate).  Design: cwv_puct_design.md.
+fewer of the hopeless ones (compute is a budget, not a gate).  Design: cwv_puct_design.md.
 
 Tree.  An information-set tree keyed by the PUBLIC action sequence from the
 root: a node is the sequence of engine-accepted plays since the root
@@ -51,7 +50,7 @@ maximises its own team, as ``net_rollout._net_perspective``) and the prior
 is ``softmax(values / prior_temperature)`` (``value_prior``; the
 temperature is on the level scale, default 1).  With ``leaf="playout"``
 this is the arm in which the net's ranking guides a tree whose values are
-production's playouts.  ``prior="package"`` (#436 step 1) prices the ballot
+production's playouts.  ``prior="package"`` prices the ballot
 by the joint NumPy serving package's POLICY head (``JointPackagePriorHead``):
 the card log-odds sum per action over the ``policy_prior`` root rows of the
 sampled worlds -- ``train.cwv_prior_admission.prior_scores``, the served
@@ -167,7 +166,7 @@ class Node:
     by the ACCEPTED public transition -- the play the engine resolved after
     ``clone.play`` -- because a throw the engine refuses in one world becomes
     a forced play with another public outcome, and the two must not share a
-    state node (Codex, PR #233).
+    state node.
     """
 
     __slots__ = ("N", "W", "pending", "seat", "actions", "prior", "edges", "children",
@@ -264,7 +263,7 @@ def backup(path: Sequence[Node], value: float, edges: Sequence[Edge] = ()) -> No
 # ------------------------------------------------------------ prior head
 
 class PublicPriorHead:
-    """The #213 public policy head (``shengji-train-v0`` checkpoint) as a
+    """The public policy head (``shengji-train-v0`` checkpoint) as a
     prior over a ballot: ``probabilities(rnd, seat, ballot)`` is the softmax
     of the head's logits over exactly that ballot (zero elsewhere).  The
     observation is ``rl.encode.encode_obs`` -- public information plus the
@@ -383,7 +382,7 @@ def shared_prior_head(checkpoint: str | os.PathLike[str]) -> PublicPriorHead:
 
 
 class JointPackagePriorHead:
-    """The joint NumPy serving package's POLICY head as a PUCT prior (#436 step 1).
+    """The joint NumPy serving package's POLICY head as a PUCT prior.
 
     One ``.npz`` package serves production's value head and, through
     ``train.cwv_prior_admission.load_prior_checked`` (kind ``joint-numpy``),
@@ -1120,7 +1119,7 @@ class CWVPuctBot(MCBot):
             # REPORT_FOLD_WORLDS=0 publishes. A literal 0, not the inherited
             # REPORT_FOLD_WORLDS, because this decide_play never reads that knob.
             # The screen's TimedPolicy indexes these for every record carrying
-            # candidates; their absence aborted lane PUCT P1 (#436, 2026-10-02).
+            # candidates, so they must be present.
             "report_worlds_requested": 0,
             "report_candidate_index": None,
             "margin": 0.0,
@@ -1198,7 +1197,7 @@ def puct_policy_name(ckpt8: str, simulations: int, *, leaf: str = "net",
                      prior_temperature: float = DEFAULT_PRIOR_TEMPERATURE,
                      leaf_finish_trick: bool = False, prior8: str | None = None) -> str:
     """``mc-cwvpuct-<ckpt8>[-prior-<prior8>]-s<S>[-pprior[-T<T>]|-vprior[<T>]][-ftl|-pleaf[<n>]]``.
-    ``prior8`` names a package prior that is NOT the value package (the #436
+    ``prior8`` names a package prior that is NOT the value package (the joint-package
     arm binds one package to both roles and carries no ``-prior-``)."""
     prior_part = f"-prior-{prior8}" if prior8 else ""
     return (f"mc-cwvpuct-{ckpt8}{prior_part}-s{int(simulations)}"
@@ -1322,7 +1321,7 @@ def puct_env_recipe(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
     ``_C_PUCT`` (float) -- as keyword arguments for `cwv_puct_registry_entries`
     plus ``checkpoint`` and ``simulations``.  Screen-only: the registry's
     import hook reads this so a spawned worker resolves the same name the
-    parent did (#436 step 1b)."""
+    parent did."""
     env = os.environ if environ is None else environ
     checkpoint = env.get(PUCT_ENV_PREFIX + "CKPT")
     if not checkpoint:

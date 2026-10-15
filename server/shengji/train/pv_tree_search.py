@@ -1,6 +1,6 @@
 """The OPTIONAL paired lookahead tree on the served pv-search bot ("PUCT v2").
 
-Why (#436, the diagnosis of the first PUCT bot `ai.cwv_puct`): that tree valued
+Why (the diagnosis of the first PUCT bot `ai.cwv_puct`): that tree valued
 each root candidate from about six single-world visits in DIFFERENT worlds, on
 the old MC ballot, and played the most-visited action.  This one is built on
 the served search instead and never decides on unpaired noise:
@@ -89,7 +89,7 @@ Stage B -- the tree.
     worlds, ``z = mean(y) / (sd(y) / sqrt(|V|))`` -- and happens only when
     ``|V| >= 2``, ``mean(y) > 0`` and ``z >= zmin`` (`depth_override`).  The v0
     gap between the two is never counted (the first gate counted it, and so
-    reversed serving's tie-breaks: #704).  If ``a'`` is not a contender there
+    reversed serving's tie-breaks).  If ``a'`` is not a contender there
     is no depth evidence for it and ``b`` stands.  A tree whose lookahead says
     nothing (d = 0) therefore never changes the move.  The gate is still
     POST-SELECTION -- ``a'`` is chosen after looking at Q -- so it is a noise

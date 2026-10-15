@@ -1,6 +1,6 @@
 """Evaluation helpers for the complete-world value net.
 
-* ``load_public_head`` -- the #213 value/prior checkpoint (``train_v0``
+* ``load_public_head`` -- the public value/prior checkpoint (``train_v0``
   schemas v2 and v3) whose decision-state value is the PUBLIC baseline: it
   sees the acting seat's hand and the public state only.
 * ``candidate_agreement`` -- the bar that matters for search: for a record
@@ -70,7 +70,7 @@ from .cwv_data import (
 )
 from .model import ValuePriorNet
 
-#: Per-record code of the units ``action_values.means`` are recorded in (#667): the points
+#: Per-record code of the units ``action_values.means`` are recorded in: the points
 #: producers (shortlist, MC-LCB, the labelled holdouts) write final attacker POINTS, the
 #: pv-search producers write the EXPECTED SIGNED LEVEL (half-integer support), which is
 #: already ``RANK_SCALE``.  Bracketing a level mean as points (``round(0.3) -> 0`` points ->
@@ -89,7 +89,7 @@ class EvalError(RuntimeError):
 # ------------------------------------------------------------ public head
 
 def load_public_head(path: str, device: torch.device | str = "cpu") -> tuple[ValuePriorNet, dict]:
-    """A #213 checkpoint (v2 without persisted populations, or v3) whose
+    """A ``train_v0`` value/prior checkpoint (v2 without persisted populations, or v3) whose
     encoder is this build's; returns ``(model, info)``."""
     try:
         payload = torch.load(Path(path), map_location="cpu", weights_only=False)
@@ -447,14 +447,14 @@ def _candidate_task(task: tuple) -> ShardResult:
                        decision_obs=decision, search=search)
 
 
-CANDIDATE_PASS_SCHEMA = "shengji-cwv-candidate-pass-shard-v2"   # v2: per-record units_code (#667)
+CANDIDATE_PASS_SCHEMA = "shengji-cwv-candidate-pass-shard-v2"
 _SEARCH_ARRAYS = ("public", "world", "perspective", "terminal", "terminal_level",
                   "successor_points", "successor_ply", "means")
 _SEARCH_HISTORY = ("history_cards", "history_meta")
 
 
 def candidate_task_digest(task: tuple) -> str:
-    """Identity of one worker task's output (issue #542 lever 4b): the
+    """Identity of one worker task's output: the
     encoder implementation and version, the flavour, whether search records
     are wanted and how many per shard, the shard's bytes and the selected
     deals.  Anything ``_candidate_task`` reads that could change its output
@@ -591,7 +591,7 @@ def iter_shard_results(tasks: Sequence[tuple], *, workers: int,
                        ) -> Iterator[ShardResult]:
     """``ShardResult`` per task, in TASK order, ``workers`` processes.
 
-    With ``cache_dir`` (issue #542 lever 4b) a task whose result is on disk
+    With ``cache_dir`` a task whose result is on disk
     under its ``candidate_task_digest`` is loaded in this process AS IT IS
     YIELDED and reported through ``on_cached``; only the misses go to the
     workers, and each miss is saved as it arrives.  Planning reads only the
@@ -673,8 +673,8 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
     net (None skips it); the public head scores the afterstate's public
     slice; the prior reads the afterstate's ply, role and points.  When
     ``score_many_fn`` is given it scores every search record of one shard in
-    one call (one batched forward instead of one forward per record; issue
-    #342 finding 1) and ``score_fn`` is not called; the per-record results
+    one call (one batched forward instead of one forward per record) and
+    ``score_fn`` is not called; the per-record results
     are consumed in the same order, so every downstream row is unchanged.
     Returns
     the public head's decision-state value per ``source_ref`` and the
@@ -720,11 +720,11 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
             if len(batched_scores) != len(result.search):
                 raise ValueError("score_many_fn must return one score array per record")
         # The public head scored one MPS forward PER SEARCH RECORD (~1 ms each of
-        # device round-trip for a handful of rows): 24,468 forwards = 25.5 s of a
-        # 37 s / 200-shard pass, ~1.5 h of a full test pass (issue #542 lever 4,
-        # measured 2026-09-20).  One forward per shard hands every record exactly
-        # the values it received alone up to float batch-shape effects; the head
-        # is row-wise (Linear/GELU, eval mode), so rows do not interact.
+        # device round-trip for a handful of rows): 24,468 forwards = 25.5 s of
+        # a 37 s / 200-shard pass, ~1.5 h of a full test pass. One forward per
+        # shard hands every record exactly the values it received alone up to
+        # float batch-shape effects; the head is row-wise (Linear/GELU, eval
+        # mode), so rows do not interact.
         # SHENGJI_CWV_BATCHED_PUBLIC=0 restores the per-record path (parity control).
         batched_public = None
         if (public_head is not None and result.search
@@ -793,7 +793,7 @@ def candidate_pass(shard_keys: Sequence[tuple[Any, Sequence[str] | None]], *,
 
 
 def candidate_tensors(entry: Mapping[str, np.ndarray], device: torch.device | str) -> dict:
-    """The #214 batch tensors of one search record's candidate afterstates
+    """The afterstate batch tensors of one search record's candidate afterstates
     (terminal rows carry zeros; the caller substitutes their exact value)."""
     k = int(entry["public"].shape[0])
     perspective = np.zeros((k, PERSPECTIVE_DIM), dtype=np.float32)
@@ -827,12 +827,12 @@ def candidate_tensors(entry: Mapping[str, np.ndarray], device: torch.device | st
 
 # ------------------------------------------------- search-facing metrics
 #
-# Jerry's rule: the training validation metric, the held-out model eval and
+# Rule: the training validation metric, the held-out model eval and
 # what the search consumes are the SAME quantity computed by the SAME code.
 # ``search_facing_metrics`` is that code; ``train_cwv`` calls it from the
 # per-epoch validation, from the final val/test pass and from ``evaluate``.
 
-CANDIDATE_SET_SCHEMA = "shengji-cwv-candidate-set-v2"   # v2: per-record units_code (#667)
+CANDIDATE_SET_SCHEMA = "shengji-cwv-candidate-set-v2"
 SEARCH_MEANS_SCALE = ("acting-team-signed final attacker points averaged over the search's "
                       "worlds (MCBot mc-s0-report-lcb; sign flipped for a defender)")
 RANK_SCALE = ("#214 half-integer signed level (category_signed_level) for the acting seat's "
@@ -933,8 +933,8 @@ def level_of_search_mean(mean: float, root_is_attacker: bool, units_code: int = 
     rounded to the integer bracket ``signed_level_category`` maps, from the
     acting team's perspective.  A SIGNED-LEVEL mean (``units_code`` 1, the
     pv-search producers' ``expected-signed-level-half-integer``) is already the
-    acting team's expected signed level and passes through unchanged (#667:
-    bracketing it as points collapsed every candidate to one level)."""
+    acting team's expected signed level and passes through unchanged
+    (bracketing it as points would collapse every candidate to one level)."""
     code = int(units_code)
     if code == 1:
         return float(mean)
@@ -962,7 +962,7 @@ class CandidateSet:
     deal_key: np.ndarray          # [records] str
     role_attacker: np.ndarray     # [records] bool
     source_ref: np.ndarray        # [records] str
-    units_code: np.ndarray        # [records] uint8 (UNITS_CODE of the record's means, #667)
+    units_code: np.ndarray        # [records] uint8 (UNITS_CODE of the record's means)
     meta: dict
     history_cards: np.ndarray | None = None
     history_meta: np.ndarray | None = None
@@ -986,7 +986,7 @@ class CandidateSet:
 
     def means_level(self) -> np.ndarray:
         """Every candidate's search mean on the level scale (``RANK_SCALE``),
-        bracketed by each RECORD's own units (#667)."""
+        bracketed by each RECORD's own units."""
         widths = np.diff(self.offsets)
         attacker = np.repeat(self.role_attacker.astype(bool), widths)
         codes = np.repeat(self.units_code.astype(int), widths)
@@ -1393,7 +1393,7 @@ def rank_metrics(levels: np.ndarray, cands: CandidateSet, *,
         "rank_records": int(n), "rank_candidates": int(cands.candidates),
         "rank_records_by_units": cands.units_counts(),
         "rank_regret": float(regret.mean()),
-        # points regret is a points quantity: averaged over the POINTS-unit records only (#667)
+        # points regret is a points quantity: averaged over the POINTS-unit records only
         "rank_regret_points": float(regret_pts[is_points].mean()) if is_points.any() else None,
         "rank_regret_points_records": int(is_points.sum()),
         "rank_top1": float(top1.mean()), "rank_regret_max": float(spread.mean()),

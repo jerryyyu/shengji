@@ -791,8 +791,8 @@ OBS_SEGMENTS_V2_EXTRA = [["winner_rel", 4, "bits2"], ["partner_winning", 1, "bit
                          ["points_to_threshold", 1, "f32"], ["points_band", 4, "bits2"],
                          ["suit_lengths", 5, "f32"], ["unseen_trump", 1, "f32"],
                          ["pairs_held", 1, "f32"], ["hand_size", 1, "f32"]]
-#: encoder v4 (#341) APPENDS the opponent-pair block to v2 (3 is reserved for
-#: Codex's own-hand block and is not a layout here). Indicator caps pack as
+#: encoder v4 APPENDS the opponent-pair block to v2 (3 is reserved by
+#: ``rl.encode_versions`` and is not a layout here). Indicator caps pack as
 #: bits2; the /27 and /13 fractions stay f32.
 OBS_SEGMENTS_V4_EXTRA = [["unseen_by_suit", 5, "f32"], ["pairs_played", 5, "f32"],
                          ["pairs_possible", 5, "f32"], ["pair_caps", 45, "bits2"],

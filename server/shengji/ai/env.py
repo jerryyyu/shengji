@@ -88,7 +88,7 @@ def prepare_round(game: Game, policies: list) -> Round:
 
 def observe_committed_play(rnd: Round, policies: list) -> None:
     """After one committed play, let EVERY seat's policy read the public
-    failed-throw notice (#707 S8: the PV search bot's `observe_public`; its
+    failed-throw notice (the PV search bot's `observe_public`; its
     event-complete arm feeds its refusal ledger from it, the flag-off bot and
     every other policy are no-ops).  Called from the one place a screen commits
     a play, so per-seat bots see each notice before the next failed throw
@@ -187,7 +187,7 @@ def evaluate(policy_a, policy_b, n_games: int = 100, seed: int = 0,
             wins[0 if a_won else 1] += 1
             rounds += len(logs)
             done = wins[0] + wins[1]
-            if done % 20 == 0:  # status heartbeat (Jerry, 2026-08-03)
+            if done % 20 == 0:  # status heartbeat
                 print(f"PROGRESS {done}/{total if False else n_seeds*len(flips)}"
                       f" a={wins[0]} b={wins[1]}"
                       f" ({100*wins[0]/done:.0f}%)", flush=True)

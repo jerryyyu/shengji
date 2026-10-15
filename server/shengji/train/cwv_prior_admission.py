@@ -1,7 +1,7 @@
-"""DEV-only learned-prior admission for the exhaustive CWV shortlist (#425 step 4).
+"""DEV-only learned-prior admission for the exhaustive CWV shortlist.
 
 At a decision whose legal population exceeds ``threshold`` actions, the
-root-state policy prior (``policy_prior``, #419) is run ONCE PER SAMPLED
+root-state policy prior (``policy_prior``) is run ONCE PER SAMPLED
 WORLD on a root clone carrying that world's hands and kitty, exactly the
 shape of the prior's training roots.  Each world admits its top-``top``
 candidates by the factorised card score; the admission pool is the UNION of
@@ -60,7 +60,7 @@ _PRIORS: dict[tuple[str, str], tuple] = {}
 def load_prior_checked(path: str, sha256: str):
     """The prior, verified against the bound SHA256 (cached per process): either a
     standalone ``policy_prior`` checkpoint (``("separate", net, payload)``) or a
-    value checkpoint carrying a policy head (#425 joint net; ``("joint", model,
+    value checkpoint carrying a policy head (joint net; ``("joint", model,
     None)``), whose head reads the trunk features of the flat root row."""
     key = (path, sha256)
     if key not in _PRIORS:
@@ -69,8 +69,8 @@ def load_prior_checked(path: str, sha256: str):
         if actual != sha256:
             raise ValueError("prior checkpoint SHA256 mismatch")
         if str(path).lower().endswith(".npz"):
-            # The served forms (#435): a NumPy prior package, or a NumPy VALUE
-            # package that carries the joint net's policy head (#425: one file
+            # The served forms: a NumPy prior package, or a NumPy VALUE
+            # package that carries the joint net's policy head (one file
             # serves both stages). No Torch on either path.
             from ..ai.cwv_numpy import CWVNumpyError, load_cwv_numpy
             from ..ai.cwv_prior_numpy import load_numpy_prior
@@ -108,7 +108,7 @@ def load_prior_checked(path: str, sha256: str):
 
 def prior_encoder_version(kind: str, net, payload) -> int:
     """The encoder version the prior's rows must be built at, read from the prior itself
-    (#506 rows carry it; a joint value net declares it in ``config.enc_version``).  The
+    (policy rows carry it; a joint value net declares it in ``config.enc_version``).  The
     admission builds ``policy_prior.root_tensors``/``flat_input`` at THIS version: a v5
     joint package (public 617 → 889-column rows) fed v2 rows (833) would fail at its first
     wide decision, and a silent default to v2 is exactly the mismatch the bound width
@@ -343,7 +343,7 @@ class CWVPriorAdmissionBot(CWVShortlistBot):
 
 
 class CWVPriorBuryBot(CWVBuryBot, CWVPriorAdmissionBot):
-    """The served composition (#435): prior-admission play plus a DEV bury arm.
+    """The served composition: prior-admission play plus a DEV bury arm.
 
     Cooperative construction: `CWVBuryBot.__init__` forwards ``prior=`` to
     `CWVPriorAdmissionBot.__init__`, so both stages are set up by their own

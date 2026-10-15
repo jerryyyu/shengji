@@ -1,11 +1,11 @@
 """The value declaration's WAIT option (OFF BY DEFAULT;
-``SHENGJI_PV_VALUE_DECLARE_WAIT=1``, name token ``vdw``; #707 S15).
+``SHENGJI_PV_VALUE_DECLARE_WAIT=1``, name token ``vdw``).
 
 The value declaration (`value_declare`, release 44's ``vd``) decides at a
 declare chance during the deal whether to declare NOW, and what; its PASS is
 "never declare" (the window closes with whatever stands).  It never weighs
 declaring LATER -- with the rest of the hand seen -- against declaring now.
-Humans do: in the #995 evidence (`scripts/declare_pass_evidence.py`) 14 of 25
+Humans do: in the declare-pass evidence (`scripts/declare_pass_evidence.py`) 14 of 25
 human pair declarations came in the post-deal grace window, and 39 of 64
 humans holding an over-declaring pair stayed silent.
 

@@ -1,4 +1,4 @@
-"""Refusal-aware world sampling (#676 strategy B, the SAMPLER side only).
+"""Refusal-aware world sampling (the SAMPLER side only).
 
 A multi-component lead (a throw) is checked by the engine against the other
 three hands (`engine.legal.validate_lead`): a component is BEATABLE when some
@@ -8,7 +8,7 @@ any component is beatable the throw is refused and the leader is forced down
 to the LOWEST beatable component -- lowest by ``(pair_len, top)`` -- and the
 engine posts ``Round.notice = {"kind": "failed_throw", "seat", "attempted",
 "forced"}`` for everyone at the table (``api.server.state_json`` sends it to
-all four seats; the bots never read it, #676 category 1).
+all four seats; the bots never read it).
 
 THE INFERENCE.  Let the throw ``A`` by seat ``s`` at the start of trick ``T``
 be forced to component ``F``.  Then at that moment, with the true hands:
@@ -50,7 +50,7 @@ failed throw. `RefusalLedger` retains only the notices that its bot instance
 observes. Screen bots are per-seat; the server shares a room bot across its
 bot-controlled seats and deep-copies that bot with each turn snapshot.
 
-The event-complete arm (#707 S8, ``SHENGJI_PV_REFUSAL_EVENT_COMPLETE``) closes
+The event-complete arm (``SHENGJI_PV_REFUSAL_EVENT_COMPLETE``) closes
 that gap outside this module: the table's round driver calls the bot's
 `observe_public` after EVERY committed play (`api.server._observe_committed_play`
 on the committed room bot; `ai.env.observe_committed_play` on every seat's

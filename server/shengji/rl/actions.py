@@ -20,9 +20,8 @@ from ..ai.mcbot import MCBot
 
 class _V1Ballot(MCBot):
     # PINNED narrow config: v1-ballot nets (bc..v7w) trained on these
-    # follow candidates. MCBot class defaults went wide on 2026-08-02,
-    # which silently widened play-time ballots for every deployed net
-    # (Elo-798 mismatch class — caught by Jerry's question same day).
+    # follow candidates. MCBot's class defaults are wide, so inheriting them
+    # would silently widen play-time ballots for every such net.
     WIDE_LEAD_BALLOT = False
     WIDE_FOLLOW_BALLOT = False
 

@@ -1,8 +1,8 @@
 """The value net's INPUT features for one seat, named, for the debug X-ray.
 
-Jerry (2026-09-12): the X-ray should show every ML-derived feature explicitly
-marked as a feature, so learned inputs are never confused with the memory
-heuristics (voids, boss cards, ruff risk) that the same page also shows.
+The X-ray shows every ML-derived feature explicitly marked as a feature, so
+learned inputs are never confused with the memory heuristics (voids, boss
+cards, ruff risk) that the same page also shows.
 
 What this exposes and what it refuses, deliberately:
 
@@ -130,8 +130,8 @@ def ml_input_features(rnd, seat: int, evaluator) -> dict:
                                "value": value}
     return {
         "kind": "model-input",
-        # SCOPE, stated in the response because it is easy to misread (Codex,
-        # PR #344 review): this is the ROOT/CURRENT board encoded once.  The
+        # SCOPE, stated in the response because it is easy to misread: this
+        # is the ROOT/CURRENT board encoded once.  The
         # inputs behind the displayed candidate scores are NOT this vector:
         # `cwv_shortlist._means` applies each candidate, completes the trick,
         # and encodes that leaf in each sampled world, so ten of these groups

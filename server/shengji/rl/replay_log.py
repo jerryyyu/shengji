@@ -2,7 +2,7 @@
 
 Single home for the rebuild-a-Round-from-a-log block that analysis
 tooling (replay, xray, harvest/room_log, ballot_gap,
-human_shards) previously each carried a copy of.
+human_shards) share.
 """
 
 from __future__ import annotations

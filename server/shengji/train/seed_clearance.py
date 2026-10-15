@@ -22,7 +22,7 @@ Clearance therefore compares DEAL KEYS, not seed ranges and not corpus names:
    explicit control seed.  An intersection of zero only means something when the same code finds the
    overlap it should find.
 
-Every seed range check that skipped this step has been wrong in some way (#707): a text scan that
+Every seed range check that skipped this step has been wrong in some way: a text scan that
 skipped separated numbers, a range read as its two endpoints, corpus matching by name only.
 
 ``torch`` is imported only when a checkpoint is actually loaded.

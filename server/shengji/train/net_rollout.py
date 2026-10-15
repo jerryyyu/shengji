@@ -42,7 +42,7 @@ Where the lockstep replaces production's loop:
 ``K = 0`` runs the lockstep with no net ply and is byte-identical to
 production (tested).  The NO-LEARNING control keeps the lockstep structure
 and chooses each play by the stratified prior table (``pt0`` units, as
-#229/#234's controls), so a learned-minus-control contrast isolates the
+the one-ply controls), so a learned-minus-control contrast isolates the
 net from the structure.  A checkpoint without the afterstate-encoder
 identity or another architecture than ``mlp`` is refused through
 ``cwv_policy``'s loaders.  Nothing here registers a production default.

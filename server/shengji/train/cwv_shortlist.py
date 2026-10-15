@@ -115,7 +115,7 @@ class CWVShortlistBot(REGISTRY["mc-s0-report-lcb"]):
             successor_cache = (WorldSuccessorCache(rnd, seat, hands, buried)
                                if self.reuse_successors else None)
             for index, action in enumerate(actions):
-                # Exactly the #229 convention: engine root action, heuristic
+                # The afterstate convention: engine root action, heuristic
                 # finishes this trick, then complete-world value (terminal exact).
                 leaf = (afterstate(rnd, seat, hands, buried, action, finish_trick=True)
                         if successor_cache is None else successor_cache.leaf(action))
@@ -277,7 +277,7 @@ SHORTLIST_REUSE_SUCCESSORS = True
 #: env registration, in the style of `SHENGJI_CWV_*` / `SHENGJI_NETROLL_*`
 SHORTLIST_ENV_CKPT = "SHENGJI_CWV_SHORTLIST_CKPT"
 
-#: The served policy prior (#435 item 5; `cwv_prior_admission`): opt-in, and
+#: The served policy prior (`cwv_prior_admission`): opt-in, and
 #: absent from the identity unless bound, so every prior-less name on file
 #: (the deployed ``...-r55d379a3``) is untouched.
 PRIOR_ENV_CKPT = "SHENGJI_CWV_PRIOR_CKPT"
@@ -427,7 +427,7 @@ def make_shortlist_bot(checkpoint, *, seed=None,
                        prior_top: int = SHORTLIST_PRIOR_TOP) -> "CWVShortlistBot":
     """`cwv_shortlist_screen.make_side`'s learned arm, built by checkpoint.
 
-    ``prior_checkpoint`` opts into prior admission (#435): the file is hashed,
+    ``prior_checkpoint`` opts into prior admission: the file is hashed,
     checked against ``prior_sha256`` when one is pinned, and bound into the
     name with ``prior_threshold`` / ``prior_top``.
 
@@ -535,7 +535,7 @@ def shortlist_registry_entries(checkpoint, worlds=(SHORTLIST_WORLDS,), *,
             # Compare the FULL sha256, not the eight-char ckpt8 in the name.
             # ckpt8 is 32 bits: fine as a human-readable label, too weak to be
             # the only thing standing between a swapped file and a corpus that
-            # claims the wrong teacher. Codex's hardening note on PR299.
+            # claims the wrong teacher.
             if bot.cwv_checkpoint_sha256 != full_sha:
                 raise ShortlistPolicyError(
                     f"policy {name!r} was registered against checkpoint "
@@ -571,7 +571,7 @@ def shortlist_env_recipe(environ=None) -> tuple[str, list[int], dict] | None:
     SHENGJI_CWV_SHORTLIST_ENCODING          default mlp-static
     SHENGJI_CWV_SHORTLIST_REUSE_SUCCESSORS  1/0, default 1
 
-    The served prior (#435) is a separate, opt-in group; nothing is added to
+    The served prior is a separate, opt-in group; nothing is added to
     the recipe unless the checkpoint is set:
 
     SHENGJI_CWV_PRIOR_CKPT       prior checkpoint path (torch ``policy_prior``

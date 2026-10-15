@@ -11,8 +11,7 @@ trick is the HEURISTIC's (`HeuristicBot.decide_play` at every seat).  With the
 rule on it is the POLICY HEAD's: at each of the four seats, the argmax of the
 same package's policy prior (`pv_search_policy.NumpyPriorPredict`, the
 admission's scorer) over the seat's COMPLETE legal set in that determinized
-world (Jerry 2026-10-11: "where we use heuristics, it may be better to use the
-model").  One cheap policy call per seat and world: no value call, no world
+world.  One cheap policy call per seat and world: no value call, no world
 sampling, no search.
 
 The score of an action is the admission's (`cwv_prior_admission.action_scores`:

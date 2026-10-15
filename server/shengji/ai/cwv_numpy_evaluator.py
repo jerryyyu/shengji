@@ -48,7 +48,7 @@ class NumpyCompleteWorldEvaluator(CompleteWorldEvaluator):
         stat = resolved.stat()
         self.model = _weights(str(resolved), stat.st_mtime_ns, stat.st_size)
         self.metadata = copy.deepcopy(dict(self.model.metadata))
-        # #373: a package carries ONE head, named at export
+        # a package carries ONE head, named at export
         # (export_cwv_numpy -> metadata.exported_value_head).  A package written
         # before the field existed is the outcome head.  Bound here so
         # identity() names it (legacy outcome packages keep their omission) and

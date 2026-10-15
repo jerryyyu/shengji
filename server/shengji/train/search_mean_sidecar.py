@@ -1,4 +1,4 @@
-"""Per-shard sidecar: the search's own value for the PLAYED action (issue #340).
+"""Per-shard sidecar: the search's own value for the PLAYED action.
 
 The cwv cache stores only whether a row has search means, not the means, and
 rebuilding 96k-corpus caches for one extra column costs hours.  This sidecar is
@@ -14,7 +14,7 @@ Rows without a usable mean are absent; the trainer falls back to the realised
 outcome for them.  Attachment aligns by ``record_sha256`` within the shard, so
 row order and skip rules of the cache never matter.
 
-Units (schema v3, 2026-09-28).  The pv-search producer (#592) writes
+Units (schema v3).  The pv-search producer writes
 ``action_values.units = "expected-signed-level-half-integer"``: its mean is
 the acting team's EXPECTED SIGNED LEVEL, a bootstrap of the served value head
 over the sampled worlds, already on the outcome head's support -- not points,
@@ -111,8 +111,8 @@ def record_units_code(record: Mapping[str, Any], producer_units: str | None = No
     tag when it has one (refusing a tag it cannot place); without a tag, POINTS -- but
     ONLY when the producer does not declare otherwise.  ``producer_units`` is the run's
     ``policy_flags.value_units``: a producer that declares signed-level units and writes
-    an untagged row is refused, because "no tag means points" is exactly how the level
-    means of #649 would be bracketed as points on the value side (#667 finding 5)."""
+    an untagged row is refused, because "no tag means points" would bracket the pv-search
+    level means as points on the value side."""
     values = record.get("action_values")
     units = values.get("units") if isinstance(values, dict) else None
     if units is None:
@@ -206,7 +206,7 @@ def attach_search_means(arrays: dict, shard_sha: str, out_dir: str | os.PathLike
     Returns whether the shard's sidecar file existed: a missing file attaches
     all-NaN columns (the block still trains its other heads), so the CALLER
     must decide whether a missing sidecar is acceptable; ``check_sidecar_coverage``
-    refuses a training set with any missing file before the first epoch (#667).
+    refuses a training set with any missing file before the first epoch.
 
     Refuses a v2 sidecar from a producer whose score is not an expected-points
     mean, or one written before the producer flag existed.  A v3 sidecar
@@ -252,11 +252,11 @@ def check_sidecar_coverage(out_dir: str | os.PathLike,
 
     ``shards`` are ``(store identity, shard sha256)`` -- the STORE ROOT (``ShardRef.store``),
     never the shard's own label, so the counts are per store and cannot fragment or
-    cross-combine (Codex HOLD on #669).  Returns per-store counts
-    ``{label: {"shards": n, "missing": m}}`` for the receipt.  #658 found the
-    search-mean head silently training on 24.2M of 55.1M rows because 16 stores
-    had no sidecar files and ``attach_search_means`` returned NaN for them; a
-    missing file is now a refusal with the store named, never a quiet mask."""
+    cross-combine.  Returns per-store counts
+    ``{label: {"shards": n, "missing": m}}`` for the receipt.  ``attach_search_means``
+    returns NaN for a shard with no sidecar file, so a store without sidecars
+    would silently mask its rows out of the search-mean head; a missing file is
+    a refusal with the store named, never a quiet mask."""
     per: dict[str, dict] = {}
     first_missing: dict[str, str] = {}
     for label, sha in shards:

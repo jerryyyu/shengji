@@ -157,6 +157,49 @@ def test_budget_expiry_is_not_swallowed(package):
         bot._worlds(copy.deepcopy(now), seat, check_budget=expired)
 
 
+@pytest.mark.parametrize('stage', ['entry', 'features', 'model'])
+@pytest.mark.parametrize('error', [pv.PVSearchBudgetExceeded, pv._AdaptiveWorldsExpired])
+def test_expired_belief_preparation_stops_before_next_stage(package, monkeypatch, stage, error):
+    _, now, seat = fixture()
+    bot = belief_bot(package)
+    expired = stage == 'entry'
+    calls = []
+    rng_before = bot.sampler.rng.getstate()
+    original_inputs, original_model = bn.decision_inputs, bn.BeliefNumpy.marginals
+
+    def check():
+        if expired:
+            raise error('expired')
+
+    def inputs(*args, **kwargs):
+        nonlocal expired
+        calls.append('features')
+        result = original_inputs(*args, **kwargs)
+        expired = stage == 'features'
+        return result
+
+    def model(self, inp):
+        nonlocal expired
+        calls.append('model')
+        result = original_model(self, inp)
+        expired = stage == 'model'
+        return result
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('expired preparation must not project or start either sampler')
+
+    from shengji.train import belief_seq
+    monkeypatch.setattr(bn, 'decision_inputs', inputs)
+    monkeypatch.setattr(bn.BeliefNumpy, 'marginals', model)
+    monkeypatch.setattr(belief_seq, 'project_sizes', forbidden)
+    monkeypatch.setattr(pv, 'sample_worlds_history_legal', forbidden)
+    with pytest.raises(error):
+        bot._worlds(copy.deepcopy(now), seat, check_budget=check)
+    assert calls == {'entry': [], 'features': ['features'], 'model': ['features', 'model']}[stage]
+    if stage == 'entry':
+        assert bot.sampler.rng.getstate() == rng_before
+
+
 def test_record_and_snapshot(package):
     _, now, seat = fixture()
     bot = belief_bot(package)

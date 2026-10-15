@@ -2183,10 +2183,13 @@ class PVSearchBot(PolicyValueBot):
         from ..ai.belief_numpy import BeliefNumpyError, BeliefProposal
         t0 = time.perf_counter()
         try:
+            if check_budget is not None:
+                check_budget()
             if self.belief_model is None:
                 raise BeliefNumpyError("no belief package bound")
             propose = BeliefProposal(self.belief_model, rnd, seat, refusals,
-                                     seed=self.sampler.rng.getrandbits(63), batch=self.worlds)
+                                     seed=self.sampler.rng.getrandbits(63), batch=self.worlds,
+                                     check_budget=check_budget)
             worlds, attempts, stats = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
                 check_budget=check_budget, propose=propose)

@@ -93,9 +93,35 @@ def follow_env(path):
     return env
 
 
-@pytest.mark.parametrize('hand_cap,node_cap', [(3, 50_000_000), (6, 50_000_000), (6, 1)])
+@pytest.mark.parametrize('hand_cap,node_cap,cancel_partial', [
+    (3, 50_000_000, False), (6, 50_000_000, False), (6, 1, False),
+    (3, 50_000_000, True),
+])
 def test_registry_follow_reaches_server_snapshot_and_commit(
-        pinned_production_package, tmp_path, hand_cap, node_cap):
+        pinned_production_package, tmp_path, monkeypatch, hand_cap, node_cap, cancel_partial):
+    sessions = []
+    if cancel_partial:
+        from shengji.train import pv_exact_follow
+        from shengji.ai.endgame_compact import CompactWorldSession, default_backend
+        clock = [0.0]
+        monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+
+        class ExpireAfterOneCandidate(CompactWorldSession):
+            def __init__(self, *args, check_budget, **kwargs):
+                self.completed = 0
+                def guard():
+                    if self.completed:
+                        clock[0] = 4.0  # real 3-second serving deadline, not a solver refusal
+                    check_budget()
+                super().__init__(*args, check_budget=guard, **kwargs)
+                sessions.append(self)
+
+            def solve_level(self, *args, **kwargs):
+                result = super().solve_level(*args, **kwargs)
+                self.completed += 1
+                return result
+
+        monkeypatch.setattr(pv_exact_follow, 'CompactWorldSession', ExpireAfterOneCandidate)
     env = follow_env(pinned_production_package)
     env['SHENGJI_PV_EXACT_FOLLOW_MAX_NODES'] = str(node_cap)
     recipe = pv.pv_env_recipe(env)
@@ -131,10 +157,17 @@ def test_registry_follow_reaches_server_snapshot_and_commit(
         assert copied.policy_name == name and copied.exact_follow_solver == 'compact-level'
         record = copied.last_decision_record
         assert record['work_complete'] and record['exact_follow_attempted']
-        if node_cap == 1 or record['exact_follow_abandoned'] is not None:
+        if cancel_partial or node_cap == 1 or record['exact_follow_abandoned'] is not None:
             if node_cap == 1:
                 assert record['exact_follow_abandoned'] == 'error'
                 assert record['exact_follow_error'] == 'ExactFollowRefusal'
+            elif cancel_partial:
+                assert len(sessions) == 1 and sessions[0].completed == 1
+                assert sessions[0].nodes > 0
+                assert sessions[0].backend == default_backend()
+                assert record['exact_follow_abandoned'] == 'hard_budget'
+                assert record['exact_follow_error'] == 'PVSearchBudgetExceeded'
+                assert 'exact_follow_worlds' not in record
             else:
                 # Slower hosts may exhaust the real serving deadline.  That
                 # must preserve the baseline, never publish partial means.

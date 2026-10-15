@@ -7,6 +7,34 @@ import math
 from collections import Counter
 
 
+def summarize_completed(rows, roots, terminal, *, arm, pass_label):
+    """Bind a worker's successful terminal result to its complete row population.
+
+    The caller must still verify file seals, source identity and process exit.
+    A complete-looking row file alone cannot override a failed worker terminal.
+    """
+    from scripts.exact_endgame_latency import NAMES
+
+    roots = list(roots)
+    if not isinstance(terminal, dict) or arm not in NAMES:
+        raise ValueError('invalid worker terminal')
+    for key, expected in (('mode', 'measure'), ('arm', arm),
+                          ('pass_label', pass_label), ('policy', NAMES[arm])):
+        if terminal.get(key) != expected:
+            raise ValueError('worker terminal drift: ' + key)
+    if 'error' not in terminal or terminal['error'] is not None:
+        raise ValueError('worker terminal is not successful')
+    result = terminal.get('result')
+    if (not isinstance(result, dict) or set(result) != {'roots_measured'}
+            or type(result['roots_measured']) is not int
+            or result['roots_measured'] != len(roots)):
+        raise ValueError('worker terminal population mismatch')
+    seconds = terminal.get('seconds')
+    if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
+        raise ValueError('invalid worker elapsed time')
+    return summarize(rows, roots, arm=arm, pass_label=pass_label)
+
+
 def summarize(rows, roots, *, arm, pass_label):
     """Require one successful transaction per captured root, without filtering.
 
@@ -72,6 +100,19 @@ def summarize(rows, roots, *, arm, pass_label):
     return dict(arm=arm, pass_label=pass_label, roots=len(expected), by_turn=result,
                 scope='Whole-turn wall on this host; includes optional-stage abandonments. '
                       'Not a Fly qualification, stage-success rate, or strength result.')
+
+
+def paired_completed_summary(passes, roots, terminals):
+    """Terminal-checked entrypoint for the sealed four-pass reader."""
+    labels = ('r45-a', 'dx-a', 'dx-b', 'r45-b')
+    if set(passes) != set(labels) or set(terminals) != set(labels):
+        raise ValueError('requires exactly four ABBA passes and terminals')
+    roots = list(roots)
+    passes = {label: list(passes[label]) for label in labels}
+    for label in labels:
+        summarize_completed(passes[label], roots, terminals[label],
+                            arm=label.rsplit('-', 1)[0], pass_label=label)
+    return paired_summary(passes, roots)
 
 
 def paired_summary(passes, roots):

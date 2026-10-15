@@ -252,6 +252,11 @@ def _segments(offsets: np.ndarray, idx: np.ndarray):
     return flat, seg, starts
 
 
+def _local(seg: np.ndarray, chosen: np.ndarray) -> np.ndarray:
+    """Positions of the chosen actions inside a flat segment layout."""
+    return np.searchsorted(seg, np.arange(len(chosen))) + chosen
+
+
 def nll_from_logits(logits: np.ndarray, seg: np.ndarray, n: int, chosen_flat: np.ndarray
                     ) -> np.ndarray:
     m = np.full(n, -np.inf)
@@ -372,10 +377,10 @@ def fit(path: str, out: str, *, folds: int, epochs: int, seed: int, log=print) -
         va = all_idx[(fold != f) & np.isin(rooms, list(val_rooms))]
         trf, trs, trst = _segments(offsets, all_idx[fold != f])
         t = fit_temperature(pref[trf], trs, int((fold != f).sum()),
-                            trst + data["chosen"][fold != f])
+                            _local(trs, data["chosen"][fold != f]))
         tf, ts, tst = _segments(offsets, test)
         nll["served_t"][test] = nll_from_logits(pref[tf] * t, ts, len(test),
-                                                tst + data["chosen"][test])
+                                                _local(ts, data["chosen"][test]))
         rec = {"fold": f, "test_rows": int(len(test)), "train_rows": int(len(tr)),
                "val_rows": int(len(va)), "temperature": t}
         for kind in ("lin", "mlp"):

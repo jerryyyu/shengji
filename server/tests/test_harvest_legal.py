@@ -2,6 +2,7 @@
 ``Round.play`` on >= 200 sampled natural states, agreement with the engine's
 bounded ``exhaustive_legal_actions``, exact counting, caps."""
 import random
+from types import SimpleNamespace
 from collections import Counter
 from itertools import combinations
 
@@ -15,6 +16,44 @@ from shengji.harvest.common import InputRegistry
 from shengji.rl.replay_log import rebuild_round
 
 N_STATES = 240
+
+
+@pytest.mark.parametrize('ceiling', [0, 2_000_000])
+@pytest.mark.parametrize('cap', [None, 0, 1, 3, 100])
+@pytest.mark.parametrize('lead', [['C8', 'C8'], ['C8', 'C8', 'C9', 'C9']])
+def test_follow_single_pass_count_and_prefix(monkeypatch, ceiling, cap, lead):
+    from shengji.engine.cards import Ordering
+    hand = ['C3', 'C3', 'C4', 'C4', 'C6', 'C7', 'H5']
+    ordering = Ordering('H', '2')
+    rnd = SimpleNamespace(phase='play', turn=1, ordering=ordering,
+                          hands=[[], hand, [], []],
+                          trick=SimpleNamespace(plays=[SimpleNamespace(cards=lead)]))
+    expected = list(legal.iter_follow_actions(hand, lead, ordering))
+    assert expected
+    monkeypatch.setattr(legal, 'COUNT_CEILING', ceiling)
+    calls = []
+    original = legal.validate_follow
+    def observed(cards, *args):
+        calls.append(tuple(cards))
+        return original(cards, *args)
+    monkeypatch.setattr(legal, 'validate_follow', observed)
+    got = legal.enumerate_legal(rnd, 1, cap=cap)
+    prefix = expected if cap is None else expected[:cap]
+    assert got.actions == [list(a) for a in prefix]
+    assert got.count == (len(expected) if ceiling else None)
+    assert got.complete == (bool(ceiling) and len(prefix) == len(expected))
+    assert len(calls) == len(set(calls)), 'raw candidates must not be validated twice'
+    if ceiling:
+        raw = list(legal.multiset_subsets(hand[:-1], len(lead)))
+        assert calls == raw
+    extra = legal.enumerate_legal(rnd, 1, cap=cap, must_include=[expected[-1]])
+    wanted = list(prefix)
+    if expected[-1] not in wanted:
+        wanted.append(expected[-1])
+    assert extra.actions == [list(a) for a in wanted]
+    assert extra.count == got.count and extra.complete == got.complete
+    with pytest.raises(ValueError, match='illegal'):
+        legal.enumerate_legal(rnd, 1, cap=cap, must_include=[['BJ'] * len(lead)])
 
 
 def _sampled_states(n=N_STATES, seed=11):

@@ -228,6 +228,7 @@ def enumerate_legal(rnd: Round, seat: int, cap: int | None = DEFAULT_CAP,
         raise ValueError("enumerate_legal requires the acting seat in play phase")
     o = rnd.ordering
     hand = list(rnd.hands[seat])
+    count_in_pass = False
     if not rnd.trick.plays:
         kind = "lead"
         it = iter_lead_actions(hand, o)
@@ -236,11 +237,23 @@ def enumerate_legal(rnd: Round, seat: int, cap: int | None = DEFAULT_CAP,
         kind = "follow"
         lead = rnd.trick.plays[0].cards
         it = iter_follow_actions(hand, lead, o)
-        count = count_follow_actions(hand, lead, o)
+        case, h_suit, off, n = _follow_case(hand, lead, o)
+        if case == "in-suit":
+            raw = count_multiset_subsets(list(Counter(h_suit).values()), n)
+            count_in_pass = raw <= COUNT_CEILING
+            count = 0 if count_in_pass else None
+        else:
+            count = count_multiset_subsets(list(Counter(off).values()), n - len(h_suit))
     actions: list[tuple[str, ...]] = []
     seen: set[tuple[str, ...]] = set()
     for key in it:
+        if count_in_pass:
+            # The exact count and capped prefix share one engine-validated
+            # traversal; reaching the cap must not truncate the count.
+            count += 1
         if cap is not None and len(actions) >= cap:
+            if count_in_pass:
+                continue
             break
         actions.append(key)
         seen.add(tuple(sorted(key)))

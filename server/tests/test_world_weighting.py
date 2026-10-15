@@ -36,6 +36,26 @@ def test_production_head_complete_state_matches_enumerated_consumer(pinned_produ
     def reference_enumerate(*args, **kwargs):
         with monkeypatch.context() as reference:
             reference.setattr(legal, 'is_legal', original_legal)
+            rnd, seat = args
+            if rnd.trick.plays:
+                # Previous two-pass follow consumer, independent of the
+                # optimized enumerate_legal implementation.
+                hand, lead, ordering = rnd.hands[seat], rnd.trick.plays[0].cards, rnd.ordering
+                count = legal.count_follow_actions(hand, lead, ordering)
+                actions = []
+                for action in legal.iter_follow_actions(hand, lead, ordering):
+                    if kwargs['cap'] is not None and len(actions) >= kwargs['cap']:
+                        break
+                    actions.append(list(action))
+                complete = count is not None and len(actions) == count
+                for extra in kwargs['must_include']:
+                    if not original_legal(rnd, seat, extra):
+                        raise ValueError('must_include action is illegal')
+                    key = sorted(extra)
+                    if key not in actions:
+                        assert not complete
+                        actions.append(key)
+                return legal.LegalSet('follow', actions, count, complete)
             return original_enumerate(*args, **kwargs)
     monkeypatch.setattr(legal, 'enumerate_legal', reference_enumerate)
     monkeypatch.setattr(legal, 'is_legal', lambda *args: True)

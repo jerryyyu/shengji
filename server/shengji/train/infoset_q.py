@@ -537,8 +537,10 @@ def train(dirs: Sequence[str], out: str, *, rerank: bool, epochs: int, batch: in
     tr = load_split(dirs, "train")
     ca = load_split(dirs, "calib")
     n = len(tr["X"]) if max_train is None else min(len(tr["X"]), max_train)
+    rng_np = np.random.default_rng(seed)
     log(f"[train] rows train={len(tr['X'])} (using {n}) calib={len(ca['X'])}", flush=True)
-    X32 = tr["X"][:n].astype(np.float32)
+    sample = np.sort(rng_np.choice(n, min(n, 200_000), replace=False))
+    X32 = tr["X"][sample].astype(np.float32)
     mu = X32.mean(0)
     sd = X32.std(0) + 1e-3
     del X32

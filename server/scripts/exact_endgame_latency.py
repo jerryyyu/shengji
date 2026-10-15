@@ -1,14 +1,14 @@
-"""D6+X6 whole-decision latency worker; no launch authorization.
+"""D7+X7 whole-decision latency worker; no launch authorization.
 
 Derived from the qualified S18 server-path worker. Harvest uses the release-45
 recipe on the selected source and captures BOTH leads and follows when all
-hands hold at most six cards. Measure restores the engine and refusal ledger,
+hands hold at most seven cards. Measure restores the engine and refusal ledger,
 then uses the real server snapshot/admission/off-loop compute/commit path.
 This is not exact bot-RNG replay. Files are exclusive-create and flushed;
 round outcomes are not exported. Host admission, source/package pins, a bounded
 supervisor, sealing and review belong to the external launch packet.
 
-The dx arm requires the integrated D6+X6 source; an older tree must refuse.
+The dx arm requires the integrated D7+X7 source; an older tree must refuse.
 Screen-host timings are not Fly qualification without an explicit host model.
 """
 import argparse, asyncio, json, os, platform, random, resource, sys, time
@@ -16,7 +16,7 @@ from pathlib import Path
 
 PACKAGE_SHA = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
 NAMES = {'r45': 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8',
-         'dx': 'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed6-xf6-xfcompactlevel-rd774ea98-bury-hybrid-bwv-ba1c68b8fa9a'}
+         'dx': 'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed7-xf7-xfcompactlevel-r8250a8cc-bury-hybrid-bwv-1cca424ae14c'}
 MAPS = {'/data/models/smv3out-491ee4bf.npz': '/root/models/smv3out-491ee4bf.npz',
         '/data/models/js-m1-0d17fd03.npz': '/root/models/js-m1-0d17fd03.npz'}
 EXACT_FIELDS = ('exact_lead_status', 'exact_lead_seconds', 'exact_lead_worlds_completed', 'exact_lead_nodes',
@@ -46,17 +46,17 @@ def build(arm, fly_toml, maps):
     assert not [k for k in os.environ if k.startswith('SHENGJI_') and k not in ('SHENGJI_FAST', 'SHENGJI_REQUIRE_VOIDS')], \
         'deploy SHENGJI_* keys in the process environment'
     if arm == 'dx':
-        env.update(SHENGJI_PV_EXACT_LEAD_ENDGAME='1', SHENGJI_PV_EXACT_DEEP_CARDS='6',
+        env.update(SHENGJI_PV_EXACT_LEAD_ENDGAME='1', SHENGJI_PV_EXACT_DEEP_CARDS='7',
                    SHENGJI_PV_EXACT_FOLLOW='1', SHENGJI_PV_EXACT_FOLLOW_SOLVER='compact-level',
-                   SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS='6', SHENGJI_PV_EXACT_FOLLOW_MAX_NODES='50000000')
+                   SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS='7', SHENGJI_PV_EXACT_FOLLOW_MAX_NODES='50000000')
         env['SHENGJI_BOT'] = NAMES['dx']
     name, bot = build_production_bot(env)
     assert name == NAMES[arm] and type(bot).__name__ == 'PVSearchBuryBot'
     assert bot.exact_lead_endgame is (arm == 'dx') and bot.config.exact_lead_endgame is (arm == 'dx')
     if arm == 'dx':
-        assert bot.exact_deep_cards == bot.config.exact_deep_cards == 6
+        assert bot.exact_deep_cards == bot.config.exact_deep_cards == 7
         assert bot.exact_follow is True and bot.config.exact_follow is True
-        assert (bot.exact_follow_solver, bot.exact_follow_max_cards, bot.exact_follow_max_nodes) == ('compact-level', 6, 50000000)
+        assert (bot.exact_follow_solver, bot.exact_follow_max_cards, bot.exact_follow_max_nodes) == ('compact-level', 7, 50000000)
         from shengji.ai.endgame_compact import default_backend
         assert default_backend() == 'compiled', 'compiled exact solver required'
     assert bot.serving_budget_seconds == 3.0 and bot.worlds == 64 and bot.candidates == 8
@@ -147,7 +147,7 @@ async def harvest(args, srv, bot, out):
             seat = rnd.turn
             lead = leading(rnd)
             max_hand = max(map(len, rnd.hands))
-            eligible = max_hand <= 6
+            eligible = max_hand <= 7
             if eligible:
                 packet = capture.capture_turn(rnd, ledger=room.bot._refusals, decision={})
                 roots.write(dict(root_index=n_roots, deal_seed=deal_seed, trick=trick_no, seat=seat,
@@ -190,7 +190,7 @@ async def measure(args, srv, bot, out):
         room.ids = [dict(enumerate(h)) for h in rnd.hands]
         room._kitty_given = True
         leading_before = not bool(rnd.trick.plays)
-        assert leading_before == item['lead'] and max(map(len, rnd.hands)) == item['max_hand'] <= 6
+        assert leading_before == item['lead'] and max(map(len, rnd.hands)) == item['max_hand'] <= 7
         prepared, step, commit, once = await timed_turn(srv, room, seat)
         if not once:
             raise RuntimeError(f'root {item["root_index"]}: play not committed exactly once')

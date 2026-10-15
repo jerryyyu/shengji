@@ -66,6 +66,7 @@ from dataclasses import dataclass
 
 from ..engine.legal import IllegalPlay, validate_lead
 from ..engine.round import Round
+from .memory import iter_known
 
 #: how far back a posted notice's throw can lie (``NOTICE_PLAYS`` = 8 plays:
 #: the rest of trick T, all of T+1 and the first play of T+2)
@@ -172,9 +173,26 @@ def pin_unplayed_attempt(mem, rnd: Round, refusal: Refusal, seat: int) -> int:
     pinned = 0
     for code, held in Counter(refusal.attempted).items():
         left = min(held - since[code], mem.unseen.get(code, 0))
-        if left > 0 and code not in mem.known:
+        if left <= 0:
+            continue
+        existing = {(c, holder): count for c, (holder, count) in iter_known(mem)}
+        current = existing.get((code, refusal.seat), 0)
+        if left <= current:
+            continue
+        total = sum(count for (c, _), count in existing.items() if c == code)
+        if total - current + left > mem.unseen.get(code, 0):
+            raise ValueError(
+                f"public pin overclaims {code}: {total - current + left} > "
+                f"{mem.unseen.get(code, 0)}")
+        # Keep the old one-holder map useful for its original first fact.  A
+        # second holder is a distinct physical copy, not a reason to discard
+        # either public observation.
+        legacy = mem.known.get(code)
+        if legacy is None or legacy[0] == refusal.seat:
             mem.known[code] = (refusal.seat, left)
-            pinned += 1
+        else:
+            mem.known_by_holder[(code, refusal.seat)] = left
+        pinned += 1
     return pinned
 
 

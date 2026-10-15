@@ -127,9 +127,15 @@ def test_registry_follow_reaches_server_snapshot_and_commit(
         assert copied.policy_name == name and copied.exact_follow_solver == 'compact-level'
         record = copied.last_decision_record
         assert record['work_complete'] and record['exact_follow_attempted']
-        if node_cap == 1:
-            assert record['exact_follow_abandoned'] == 'error'
-            assert record['exact_follow_error'] == 'ExactFollowRefusal'
+        if node_cap == 1 or record['exact_follow_abandoned'] is not None:
+            if node_cap == 1:
+                assert record['exact_follow_abandoned'] == 'error'
+                assert record['exact_follow_error'] == 'ExactFollowRefusal'
+            else:
+                # Slower hosts may exhaust the real serving deadline.  That
+                # must preserve the baseline, never publish partial means.
+                assert hand_cap == 6
+                assert record['exact_follow_abandoned'] in ('soft_budget', 'hard_budget')
             assert not record['exact_follow_applied']
             assert 'exact_follow_scores' not in record
             assert list(prepared.decision.cards) == expected

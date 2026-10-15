@@ -100,25 +100,55 @@ def row_card_planes(X: np.ndarray) -> np.ndarray:
 
 # ------------------------------------------------------------------ data
 
-def extract_entries(dirs: Sequence[str], split: str) -> list[dict[str, Any]]:
-    """Every chunk of ``split`` with its history file (and both sha256s)."""
+def extract_entries(dirs: Sequence[str], split: str, declare: bool = False) -> list[dict[str, Any]]:
+    """Every chunk of ``split`` with its history file (and both sha256s); with
+    ``declare``, also its ``belief_declare`` side file (a chunk without one is
+    an error)."""
     out = []
     for d in dirs:
         man = json.loads((Path(d) / "manifest.json").read_text())
-        hman = json.loads((Path(d) / "hist" / "manifest.json").read_text())
+        hman_raw = (Path(d) / "hist" / "manifest.json").read_bytes()
+        hman = json.loads(hman_raw)
         if hman.get("schema") != HIST_SCHEMA:
             raise BeliefSeqError(f"{d}: no history extract")
         if hman["source_extract_manifest_sha256"] != hashlib.sha256(
                 (Path(d) / "manifest.json").read_bytes()).hexdigest():
             raise BeliefSeqError(f"{d}: history was built from another extract")
+        dman = None
+        if declare:
+            from .belief_declare import SCHEMA as DECL_SCHEMA
+            dman = json.loads((Path(d) / "decl" / "manifest.json").read_text())
+            if dman.get("schema") != DECL_SCHEMA:
+                raise BeliefSeqError(f"{d}: no declaration extract")
+            if dman["source_hist_manifest_sha256"] != hashlib.sha256(hman_raw).hexdigest():
+                raise BeliefSeqError(f"{d}: declaration inputs were built from another history")
         for c in man["chunks"]:
             e = c["files"].get(split)
             if e is None:
                 continue
-            out.append({"path": str(Path(d) / e["file"]), "sha256": e["sha256"],
-                        "rows": int(e["rows"]), "hist": str(Path(d) / "hist" / e["file"]),
-                        "hist_sha256": hman["files"][e["file"]], "dir": d})
+            entry = {"path": str(Path(d) / e["file"]), "sha256": e["sha256"],
+                     "rows": int(e["rows"]), "hist": str(Path(d) / "hist" / e["file"]),
+                     "hist_sha256": hman["files"][e["file"]], "dir": d}
+            if dman is not None:
+                entry["decl"] = str(Path(d) / "decl" / e["file"])
+                entry["decl_sha256"] = dman["files"].get(e["file"])
+            out.append(entry)
     return out
+
+
+def pick_train_entries(entries: Sequence[Mapping[str, Any]], max_rows: int | None, seed: int
+                       ) -> list[Mapping[str, Any]]:
+    """``train --max-train-rows``'s seeded subset of the train chunks."""
+    if not max_rows:
+        return list(entries)
+    rng = np.random.default_rng(seed)
+    picked, n = [], 0
+    for i in rng.permutation(len(entries)):
+        if n >= max_rows:
+            break
+        picked.append(entries[i])
+        n += entries[i]["rows"]
+    return picked
 
 
 class _Verified:
@@ -166,6 +196,14 @@ def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified
             raise BeliefSeqError("history token seat differs from the row's actor")
     part["_rounds"] = {k: hist[k] for k in ("tok_int", "tok_f", "tok_cards", "tok_att", "round_n",
                                            "card_feat", "banker")}
+    if entry.get("decl"):
+        if not entry.get("decl_sha256"):
+            raise BeliefSeqError(f"{entry['path']}: no declaration side file")
+        with np.load(io.BytesIO(verified.read(entry["decl"], entry["decl_sha256"]))) as z:
+            if len(z["round_row"]) != len(hist["round_n"]):
+                raise BeliefSeqError(f"{entry['path']}: declaration rounds differ from the history")
+            part["_rounds"]["decl_row"] = z["round_row"]
+            part["_rounds"]["decl_card"] = z["round_card"]
     return part
 
 
@@ -215,7 +253,12 @@ def make_batch(part: Mapping[str, Any], round_ids: np.ndarray, rows: np.ndarray,
     T = int(max(1, R["round_n"][round_ids].max()))
     X = np.asarray(part["X"][rows], np.float32)
     sizes = part["sizes"][rows].astype(np.float32)
-    return {
+    decl = {}
+    if "decl_row" in R:
+        rr, st = part["row_round"][rows], part["row_seat"][rows].astype(np.int64)
+        decl = {"decl_row": R["decl_row"][rr, st].astype(np.float32),
+                "decl_card": R["decl_card"][rr, st].astype(np.float32)}
+    return decl | {
         "tok_int": R["tok_int"][round_ids, :T].astype(np.int64),
         "tok_f": R["tok_f"][round_ids, :T].astype(np.float32),
         "tok_cards": R["tok_cards"][round_ids, :T].astype(np.float32),
@@ -236,7 +279,12 @@ def make_batch(part: Mapping[str, Any], round_ids: np.ndarray, rows: np.ndarray,
 # ------------------------------------------------------------------ model
 
 def build_model(*, d: int = 64, heads: int = 4, enc_layers: int = 1, xattn_layers: int = 2,
-                x_hidden: int = 256, card_self_attn: bool = True):
+                x_hidden: int = 256, card_self_attn: bool = True, decl_row: int = 0,
+                decl_card: int = 0):
+    """``decl_row`` / ``decl_card`` > 0 add the ``belief_declare`` inputs: row
+    features after the summary row (into the row MLP) and per-card planes after
+    the feasible mask (into each card query).  A config without them is the S17
+    model unchanged."""
     import torch
     from torch import nn
 
@@ -260,6 +308,9 @@ def build_model(*, d: int = 64, heads: int = 4, enc_layers: int = 1, xattn_layer
             super().__init__()
             self.config = dict(d=d, heads=heads, enc_layers=enc_layers, xattn_layers=xattn_layers,
                                x_hidden=x_hidden, card_self_attn=card_self_attn)
+            if decl_row or decl_card:
+                self.config.update(decl_row=decl_row, decl_card=decl_card)
+            self.decl_row, self.decl_card = decl_row, decl_card
             self.card_id = nn.Parameter(torch.randn(N_CARDS, d) * 0.1)
             self.card_feat = nn.Linear(N_CARD_FEATURES, d)
             self.att_proj = nn.Linear(d, d, bias=False)
@@ -272,11 +323,11 @@ def build_model(*, d: int = 64, heads: int = 4, enc_layers: int = 1, xattn_layer
             self.encoder = nn.TransformerEncoder(layer, enc_layers, enable_nested_tensor=False)
             self.enc_norm = nn.LayerNorm(d)
             self.null_kv = nn.Parameter(torch.zeros(1, 1, d))
-            self.x_mlp = nn.Sequential(nn.Linear(FEATURE_DIM + 4, x_hidden), nn.ReLU(),
+            self.x_mlp = nn.Sequential(nn.Linear(FEATURE_DIM + 4 + decl_row, x_hidden), nn.ReLU(),
                                        nn.Linear(x_hidden, x_hidden), nn.ReLU())
             self.x_logits = nn.Linear(x_hidden, N_CARDS * N_RECV)
             self.x_to_q = nn.Linear(x_hidden, d)
-            self.row_card = nn.Linear(N_ROW_CARD + N_RECV, d)
+            self.row_card = nn.Linear(N_ROW_CARD + N_RECV + decl_card, d)
             self.kv = nn.ModuleList(nn.Linear(d, 2 * d) for _ in range(xattn_layers))
             self.xattn = nn.ModuleList(Attn() for _ in range(xattn_layers))
             self.ln_q = nn.ModuleList(nn.LayerNorm(d) for _ in range(xattn_layers))
@@ -307,10 +358,11 @@ def build_model(*, d: int = 64, heads: int = 4, enc_layers: int = 1, xattn_layer
             causal = torch.triu(torch.ones(T, T, dtype=torch.bool, device=base.device), 1)
             enc = self.enc_norm(self.encoder(tok, mask=causal, is_causal=True))  # R*4,T,d
             # rows
-            g = self.x_mlp(b["X"])
+            g = self.x_mlp(torch.cat([b["X"], b["decl_row"]], -1) if self.decl_row else b["X"])
             B = g.shape[0]
             logits = self.x_logits(g).view(B, N_CARDS, N_RECV)
-            q = (ce[b["rr"]] + self.row_card(torch.cat([b["row_card"], b["M"].float()], -1))
+            rc = [b["row_card"], b["M"].float()] + ([b["decl_card"]] if self.decl_card else [])
+            q = (ce[b["rr"]] + self.row_card(torch.cat(rc, -1))
                  + self.x_to_q(g)[:, None])                                   # B,54,d
             frame = b["rr"] * 4 + b["seat"]
             # key t is visible to a row iff t < ply; slot 0 is the always-visible null
@@ -334,6 +386,32 @@ def build_model(*, d: int = 64, heads: int = 4, enc_layers: int = 1, xattn_layer
             return logits + self.out(q)
 
     return HistoryBelief()
+
+
+def expand_state_dict(init: Mapping[str, Any], model) -> dict[str, Any]:
+    """``init`` (a checkpoint's state dict) for ``model``: equal shapes copy; the
+    two input layers that ``belief_declare`` widens (``x_mlp.0.weight``,
+    ``row_card.weight``) copy their old columns and start the new ones at zero,
+    so the widened model computes exactly the old one until trained."""
+    import torch
+    out = {}
+    target = model.state_dict()
+    for k, v in target.items():
+        old = init.get(k)
+        if old is None:
+            raise BeliefSeqError(f"--init-from lacks {k}")
+        if old.shape == v.shape:
+            out[k] = old
+        elif (k in ("x_mlp.0.weight", "row_card.weight") and old.dim() == 2
+              and old.shape[0] == v.shape[0] and old.shape[1] < v.shape[1]):
+            w = torch.zeros_like(v)
+            w[:, :old.shape[1]] = old
+            out[k] = w
+        else:
+            raise BeliefSeqError(f"--init-from {k}: shape {tuple(old.shape)} cannot seed {tuple(v.shape)}")
+    if set(init) - set(target):
+        raise BeliefSeqError(f"--init-from has extra weights {sorted(set(init) - set(target))[:3]}")
+    return out
 
 
 def to_torch(b: Mapping[str, np.ndarray]):
@@ -422,10 +500,10 @@ class Stream:
 
 
 def load_eval(dirs, split, verified, *, max_rows: int | None = None, seed: int = 0,
-              threads: int = 4, log=print) -> dict[str, Any]:
+              threads: int = 4, declare: bool = False, log=print) -> dict[str, Any]:
     """Calib/test rows where the sampler was drawn (as ``belief_eval``), with history.
     ``max_rows`` subsamples whole chunks (deals), seeded."""
-    entries = extract_entries(dirs, split)
+    entries = extract_entries(dirs, split, declare)
     if max_rows is not None:
         rng = np.random.default_rng(seed)
         picked, n = [], 0
@@ -531,32 +609,29 @@ def train(args) -> int:
     out.mkdir(parents=True, exist_ok=True)
     status = str(out / "status.log")
     verified = _Verified()
-    entries = extract_entries(args.data, "train")
-    if args.max_train_rows:
-        rng = np.random.default_rng(args.seed)
-        picked, n = [], 0
-        for i in rng.permutation(len(entries)):
-            if n >= args.max_train_rows:
-                break
-            picked.append(entries[i])
-            n += entries[i]["rows"]
-        entries = picked
+    entries = pick_train_entries(extract_entries(args.data, "train", args.declare),
+                                 args.max_train_rows, args.seed)
     stream = Stream(entries, verified=verified, threads=args.loader_threads,
                     buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch,
                     row_frac=args.row_frac, no_history=args.no_history, permute=args.permute)
     calib = load_eval(args.eval_data or args.data, "calib", verified, max_rows=args.calib_rows,
-                      seed=args.seed)
+                      seed=args.seed, declare=args.declare)
     if args.permute:
         perm = permute_within_strata(strata_of(calib["trick"], calib["role"]), args.seed + 2)
         calib["Y"], calib["M"] = calib["Y"][perm], calib["M"][perm]
+    if args.declare:
+        from .belief_declare import DECL_CARD, DECL_ROW
     model = build_model(d=args.d, heads=args.heads, enc_layers=args.enc_layers,
                         xattn_layers=args.xattn_layers, x_hidden=args.x_hidden,
-                        card_self_attn=not args.no_card_self_attn)
+                        card_self_attn=not args.no_card_self_attn,
+                        decl_row=DECL_ROW if args.declare else 0,
+                        decl_card=DECL_CARD if args.declare else 0)
     if args.init_from and not (out / "checkpoint.pt").exists():
         init = torch.load(args.init_from, weights_only=False)
-        if init["config"] != model.config:
+        base = {k: v for k, v in model.config.items() if k not in ("decl_row", "decl_card")}
+        if {k: v for k, v in init["config"].items() if k not in ("decl_row", "decl_card")} != base:
             raise BeliefSeqError(f"--init-from config {init['config']} != {model.config}")
-        model.load_state_dict(init["model"])
+        model.load_state_dict(expand_state_dict(init["model"], model))
         _status(status, f"INIT from {args.init_from} (epoch {init.get('epoch')}, "
                         f"calib {init.get('calib_ll')})")
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -655,8 +730,10 @@ def evaluate(args) -> int:
     torch.set_num_threads(args.threads)
     verified = _Verified()
     t_start = time.time()
-    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed)
-    test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1)
+    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed,
+                      declare=args.declare)
+    test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1,
+                     declare=args.declare)
     train_deals = set()
     for e in extract_entries(args.data, "train")[: args.deal_check_chunks]:
         with np.load(io.BytesIO(verified.read(e["path"], e["sha256"]))) as z:
@@ -988,7 +1065,12 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--xattn-layers", type=int, default=2)
     t.add_argument("--x-hidden", type=int, default=256)
     t.add_argument("--no-card-self-attn", action="store_true")
+    t.add_argument("--declare", action="store_true",
+                   help="add the belief_declare inputs (each data dir needs its decl/ side extract); "
+                        "with --init-from, the S17 weights seed the widened model exactly")
     e = sub.add_parser("evaluate")
+    e.add_argument("--declare", action="store_true",
+                   help="load the decl/ side extracts (needed by any model trained with --declare)")
     e.add_argument("--data", nargs="+", required=True)
     e.add_argument("--model", action="append", required=True, help="name=path/best.pt")
     e.add_argument("--threads", type=int, default=12)

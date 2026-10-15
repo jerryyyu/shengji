@@ -61,6 +61,13 @@ fresh common worlds with deeper policy-played positions and may replace the
 argmax; its record key is ``two_stage``.  Off (``bury_two_stage`` None, the
 class default) the chooser is the code above, byte for byte.
 
+With the play rule ``world_uniform`` on (`pv_search_policy`, board row S30)
+the chooser's model worlds come from `ai.uniform_worlds.sample_worlds_uniform`
+on the same helper's stream (every deal of the 75 unseen cards that keeps the
+declarer's pins equally likely) instead of `MCBot._sample_hands`; the record's
+``wide_value`` gains ``uniform`` (the proposal's counts).  The rule enters the
+play digest, which the bury identity carries as ``play_policy``.
+
 Off (the default) nothing here is called by a decision: the bot's
 `_decide_bury` is the mixin's, every name, digest and record are unchanged.
 """
@@ -75,6 +82,7 @@ from typing import Any
 import numpy as np
 
 from ..ai.registry import make_bot
+from ..ai.uniform_worlds import sample_worlds_uniform
 from ..engine.cards import TRUMP, points
 from .bury_two_stage import RECORD_KEY as TWO_STAGE_RECORD_KEY, run_stage_two
 from .cwv_bury import score_bury_candidates
@@ -270,7 +278,16 @@ def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
     model_bot = make_bot("mc-s0-report-lcb", seed=_seed("model", bot.seed))
     model_counter_before = bot._counter(model_bot)
     progress["model_positions"] = None
-    model_worlds, model_attempts = _worlds(model_bot, rnd, seat, worlds, "model", **options)
+    uniform = None
+    if getattr(bot, "world_uniform", False):
+        # the play sampler's uniform proposal (`ai.uniform_worlds`), on the
+        # helper's own stream: the banker's view of the other three hands
+        model_worlds, model_attempts, uniform = sample_worlds_uniform(
+            model_bot, rnd, seat, worlds, **options)
+        if len(model_worlds) != worlds:
+            raise BuryPolicyError(f"model world sample underfilled: {len(model_worlds)} of {worlds}")
+    else:
+        model_worlds, model_attempts = _worlds(model_bot, rnd, seat, worlds, "model", **options)
     leaf = bot._leaf_first_trick(model_bot.rollout_policy, check_budget)
     if leaf is None:
         first_trick = {"first_trick_policy": model_bot.rollout_policy}
@@ -343,6 +360,8 @@ def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
             **counts,
         },
     }
+    if uniform is not None:
+        bot.last_bury_record[RECORD_KEY]["uniform"] = uniform
     if two_stage is not None:
         # ``model_seconds`` stays stage 1's; ``wide_value.seconds`` and
         # ``elapsed_seconds`` include stage 2

@@ -22,6 +22,20 @@ dashboard row or file's presence is never evidence that a capability works.
 - Preserve valid completed shards, datasets and checkpoints across downstream
   repairs. Never use a stale artifact with a semantically changed producer.
 
+## Choosing what to work on
+
+- Rank every lane against the standing outcome goal on board #707 (Jerry 2026-10-15: +0.05 levels/round
+  over the served release) by expected gain toward it per unit cost. Measured headroom (true-world and
+  partial-truth probes) sets each lane's ceiling; a lane whose best case is below screen resolution waits.
+- Give each new idea a cheap DEV test with a pass bar written on its board row before it runs (offline
+  agreement, double-dummy regret, paired duels). Build and screen only what clears its bar. Record a
+  failed bar on the row with its numbers and park the row.
+- Look outside the code: a red team that plays against the served bot (head-to-head, seat-swapped)
+  finds gaps a common-control screen averages away, and a periodic literature scan adds rows with a
+  first test each. Both feed the board, not a parallel document.
+- Run independent tests in parallel, each with a named host and a process cap; screens and the
+  top-ranked lane get priority on a contended host.
+
 ## Long-running work
 
 Before committing hours to a run, follow `RL_PLAN.md` "Compute, review, and recovery rules": review the

@@ -2465,7 +2465,8 @@ class PVSearchBot(PolicyValueBot):
                 (means, batches, winner, played, evaluations))
         exact_follow_record = None
         if (self.exact_follow and len(admitted) > 1
-                and rnd.trick is not None and rnd.trick.plays):
+                and rnd.trick is not None and rnd.trick.plays
+                and max(map(len, rnd.hands)) <= self.exact_follow_max_cards):
             # The normal PV result is complete before this optional stage starts.
             # Any refusal, budget expiry, or malformed world leaves it untouched.
             from .pv_exact_follow import rerank_follow

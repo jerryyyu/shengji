@@ -212,6 +212,32 @@ def test_pinned_model_singleton_follow_does_not_solve(pinned_production_package,
     assert bot.last_decision_record['admitted'] == [['D5']]
 
 
+def test_registry_ineligible_follow_does_not_enter_exact_stage(
+        pinned_production_package, monkeypatch):
+    from shengji.train import pv_exact_follow
+    recipe = pv.pv_env_recipe(follow_env(pinned_production_package))
+    _, factory = next(iter(pv.pv_registry_entries(**recipe).items()))
+    bot = factory(seed=7)
+    rnd, heuristic = _play_state(), HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= 7):
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    assert max(map(len, rnd.hands)) > bot.exact_follow_max_cards
+    baseline = pv.make_pv_search_bot(**dict(recipe, exact_follow=False), seed=7)
+    expected = baseline.decide_play(copy.deepcopy(rnd), rnd.turn)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('ineligible follow must not enter the exact solver')
+
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', forbidden)
+    assert bot.decide_play(copy.deepcopy(rnd), rnd.turn) == expected
+    record = bot.last_decision_record
+    assert record['work_complete'] and len(record['admitted']) > 1
+    assert not any(k.startswith('exact_follow_') for k in record)
+    for key in ('admitted', 'selected_index', 'value_means', 'played',
+                'value_evaluations', 'value_batches'):
+        assert record[key] == baseline.last_decision_record[key]
+
+
 def disagreement():
     return _round([["C5", "C10"], ["S8", "D3", "HJ"],
                    ["HA", "H4", "CK"], ["D2", "SJ", "SK"]],

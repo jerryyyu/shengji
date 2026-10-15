@@ -376,6 +376,42 @@ oracle or infer true-person disjointness from mutable display names.
   triage has an MDE80 of about 0.033 on the shortlist-era capped screens and about 0.05 on the
   served policy/value-search screens; each readout reports its own MDE80. Ten shared-control
   windows are a nominal read, and only fresh held-out deals confirm.
+- **Predeclared statistics options** (board D9, 2026-10-15). A lane may predeclare either option or both, before any
+  outcome; the code is `server/shengji/eval/paired_window_stats.py`. A lane that predeclares neither keeps the frozen
+  DerSimonian-Laird pool and one ten-window read. Sealed rows keep their original pooling and labels.
+  - **Adoption gate.** An option's numbers come in two kinds, and every result and canonical line says which:
+    - *nominal*: the ideal reference model (known window SEs, equal information per window, no between-window
+      variance, fixed-effect pooling);
+    - *calibrated*: simulated through the module itself, with SEs estimated from 520 clusters.
+
+    The calibration holds only inside its envelope: package or fully divergent arms, whose window SEs rest on hundreds
+    of divergent clusters, with between-window SD at most one window SE. Flag arms with mostly identical rounds are
+    outside it. A lane adopts an option only by predeclaring that it lies inside the envelope and which calibrated
+    target applies. A Q below the gate is not evidence of homogeneity.
+  - *Q-gated fixed-effect pooling* (`fe-q-gated`): use the inverse-variance estimate unless Cochran's Q rejects
+    homogeneity at p < 0.10 (Q > 14.68 on 9 df), in which case use DerSimonian-Laird. The canonical lines state Q, Q/df,
+    p, tau², the estimator that fired, and the interval's calibrated coverage. A Q/df ≤ 1 gate would change nothing,
+    because DL's tau² is already zero there.
+    - On the 48 sealed primaries no label changes, and 16 intervals are narrower (mean 0.90×).
+    - Calibrated, at ten windows: the nominal 95% interval covers 95.4% with no between-window variance and 93.5% at
+      SD 0.5× the window SE (DL: 96.1% and 94.6%). The SE is 3.7% below DL's.
+  - *Two-look design* (`two-look-obf-futility-v1`). The launcher interleaves arms by seed and pauses after five seeds.
+    At five windows: POSITIVE or NEGATIVE if |z| > 2.797; otherwise NOT AHEAD (a binding futility stop) if the point
+    estimate is ≤ 0; otherwise continue. At ten windows: judge at |z| > 1.977. Intervals are nominal 95%
+    repeated-confidence intervals (point ± critical z × SE).
+    - Nominal (ideal model): two-sided error 0.028; false POSITIVE 0.025; power 0.794 at the fixed-design MDE80;
+      MDE80 2.823 × SE; 7.5 expected windows under the null.
+    - Calibrated with `fe-q-gated`: false POSITIVE 0.023; power 0.769 at the fixed-design MDE80; MDE80 2.92 × SE.
+      False POSITIVE rises to 0.034 at between-window SD 0.5× the window SE and 0.053 at 1.0×.
+    - Calibrated with DL: false POSITIVE 0.020; power 0.743; MDE80 2.99 × SE.
+    - For comparison, today's single ten-window DL read is calibrated at false POSITIVE 0.020 and power 0.741.
+    - The D9 target (power ≥ 0.79 and error ≤ 0.03 at the fixed-design MDE80) holds only in the ideal model. The
+      implemented procedure keeps the error bound when windows are homogeneous but reaches power 0.80 only at about
+      2.92 × SE.
+    - On the 18 audited ten-window contrasts it stops 15 at five windows and keeps all 9 positives.
+    - NOT AHEAD is never "null", "equal" or "harm". Harm detection below the interim bound is given up: v79's sealed
+      NEGATIVE reads NOT AHEAD.
+    - For a lane that predeclares it, it replaces the five-window triage rule above, whose two-sided error is 0.062.
 - First-round deals (the banker is decided by the declaration) and later-round deals (the banker
   is fixed) are separate populations, screened and read separately, never pooled.
 - The points margin is a predeclared descriptive secondary since v66 (Jerry, 2026-10-09; #707

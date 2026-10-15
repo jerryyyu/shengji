@@ -141,6 +141,31 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     rec = dict(exact_follow_attempted=True, exact_follow_applied=False,
                exact_follow_abandoned='soft_budget', exact_follow_error='TimeoutError')
     assert all(worker.record_fields(rec)[k] == v for k, v in rec.items())
+    from scripts.exact_endgame_latency_summary import summarize
+    summary = summarize(rows, roots, arm='r45', pass_label='test')
+    assert summary['roots'] == 4
+    assert summary['by_turn']['lead']['count'] == sum(r['lead'] for r in roots)
+    assert summary['by_turn']['follow']['count'] == sum(not r['lead'] for r in roots)
+    for changed in (rows[:-1], rows + rows[:1]):
+        with pytest.raises(ValueError):
+            summarize(changed, roots, arm='r45', pass_label='test')
+    for field, value in [('committed_once', False), ('wall_total_seconds', float('nan')),
+                         ('wall_step_seconds', -1), ('wall_total_seconds', 999),
+                         ('hand_size', 99), ('lead', 1), ('arm', 'dx')]:
+        changed = copy.deepcopy(rows)
+        changed[0][field] = value
+        with pytest.raises(ValueError):
+            summarize(changed, roots, arm='r45', pass_label='test')
+    # Abandonment remains in the wall-time denominator; no success-only filter.
+    changed = copy.deepcopy(rows)
+    for row in changed:
+        row['arm'] = 'dx'
+    follow = next(r for r in changed if not r['lead'])
+    follow.update(exact_follow_attempted=True, exact_follow_abandoned='soft_budget',
+                  wall_step_seconds=4., wall_commit_seconds=0., wall_total_seconds=4.)
+    summary = summarize(changed, roots, arm='dx', pass_label='test')
+    assert summary['by_turn']['follow']['stage_statuses']['soft_budget'] == 1
+    assert summary['by_turn']['follow']['max_seconds'] >= 4.
     original = path.read_text()
     for field in ('hand_size', 'trick'):
         bad = copy.deepcopy(roots)

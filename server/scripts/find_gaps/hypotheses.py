@@ -386,3 +386,46 @@ class DeclareScaled(Base):
             self.notes["declare_early"] += 1
             return best
         return base
+
+
+@register("falsecard-late")
+class FalsecardLate(Base):
+    """In the last 5 tricks, when release 45 follows with a non-winning,
+    non-point single while an opponent is winning, play the HIGHEST non-point
+    card of the same effective suit that still does not win instead (classic
+    false-card).  Release 45 / S18 sample worlds uniformly under hard
+    constraints only, so this should not move their beliefs; the arm measures
+    whether it does anything at all."""
+
+    def play(self, ex, rnd, seat):
+        from shengji.ai.heuristic import HeuristicBot
+        from shengji.engine.legal import IllegalPlay, beats, validate_follow
+        trick = rnd.trick
+        if not trick.plays or len(rnd.hands[seat]) > 5:
+            return None
+        base = ex.base.decide_play(rnd, seat)
+        if len(base) != 1 or points(base[0]):
+            return base, False
+        o = rnd.ordering
+        hb = HeuristicBot()
+        win_seat, inc_suit, inc_top = hb._current_winner(rnd)
+        if win_seat % 2 == seat % 2:
+            return base, False
+        lead = trick.plays[0].cards
+        suit = o.eff_suit(base[0])
+
+        def wins(card):
+            return beats([card], lead, inc_suit, inc_top, o)[0]
+        if wins(base[0]):
+            return base, False
+        alts = [c for c in rnd.hands[seat]
+                if o.eff_suit(c) == suit and not points(c) and not wins(c)
+                and o.level(c) > o.level(base[0])]
+        for c in sorted(alts, key=o.level, reverse=True):
+            try:
+                validate_follow([c], rnd.hands[seat], lead, o)
+            except IllegalPlay:
+                continue
+            self.notes["falsecard"] += 1
+            return [c], True
+        return base, False

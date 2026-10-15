@@ -351,16 +351,20 @@ def test_a_proposal_source_plugs_in_at_the_draw():
     assert all(HL.history_legal(now, seat, hands) for hands, _ in worlds)
 
 
-def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, tmp_path):
+@pytest.mark.parametrize('draw_constraints', [False, True])
+def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, tmp_path, draw_constraints):
     """No stub model/sampler: the enabled env recipe reaches the live consumer."""
     from shengji.api import server as srv
     env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
     env.update(SHENGJI_PV_CKPT=str(pinned_production_package),
-               SHENGJI_PV_WORLD_HISTORY_LEGAL='1')
+               SHENGJI_PV_WORLD_HISTORY_LEGAL='1',
+               SHENGJI_PV_WORLD_HISTORY_DRAW=str(int(draw_constraints)))
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
     name, = entries
     bot = entries[name](seed=SEED)
     assert bot.world_history_legal and '-whl-' in name
+    assert bot.world_history_draw == draw_constraints
+    assert ('-whl-whd-' in name) == draw_constraints
     assert bot.evaluator.backend == 'numpy'
     _, rnd, seat = fixture()
 
@@ -382,7 +386,14 @@ def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, t
         record = prepared.decision.snapshot.bot_copy.last_decision_record
         assert record['schema'] == pv.RECORD_SCHEMA and record['work_complete']
         assert record['worlds'] == 64 and RULE_KEYS <= record.keys()
-        assert record['history_rejections'] > 0
+        if draw_constraints:
+            assert record['history_draw_constraints'] > 0
+            assert record['history_draw_forbidden'] > 0
+            assert record['history_fallback_worlds'] == 0
+            assert '_deal_suit' not in vars(prepared.decision.snapshot.bot_copy.sampler)
+        else:
+            assert record['history_rejections'] > 0
+            assert 'history_draw_constraints' not in record
         assert record['history_follow_events'] == len(HL.follow_events(rnd, seat))
         played = list(prepared.decision.cards)
         assert record['played'] == played

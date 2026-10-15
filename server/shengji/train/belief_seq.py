@@ -516,6 +516,54 @@ def sample_worlds(P: np.ndarray, n_c: np.ndarray, M: np.ndarray, sizes: np.ndarr
     return out
 
 
+def sample_worlds_capacity(P: np.ndarray, n_c: np.ndarray, M: np.ndarray, sizes: np.ndarray,
+                           W: int, rng: np.random.Generator) -> np.ndarray:
+    """`sample_worlds` with capacity-aware weights: each copy's receiver
+    weights are ``P[c, r] * cap_r / rem_r``, where ``cap_r`` is the receiver's
+    open slots in that world and ``rem_r`` the copies ``P`` still expects it to
+    take from the copies not yet placed (this one included).
+
+    The plain draw places copies by ``P`` alone, so a receiver that its likely
+    copies under-fill is filled at the end by whatever is left: a hidden kitty
+    takes trumps the marginals give almost no kitty mass.  The ratio corrects
+    that drift as it happens, raising a receiver's weight while it runs behind
+    its expected fill, so the leftover-filling tail is rare instead of
+    routine; it is a reweighting, not a hard exclusion, and a near-zero mass
+    can still be forced in once the other receivers are full.  Sizes, the
+    feasible mask and Hall's condition hold exactly as in `sample_worlds`, and
+    the same seed draws the same copy order."""
+    if not np.isfinite(P).all() or (P < 0).any():
+        raise BeliefSeqError("world probabilities must be finite and nonnegative")
+    copies = np.repeat(np.arange(N_CARDS), n_c.astype(np.int64))
+    copies = copies[rng.permutation(len(copies))]
+    types = (M[copies] * (1 << np.arange(N_RECV))).sum(-1)
+    tc = np.bincount(types, minlength=16).astype(np.int64)
+    cap = np.broadcast_to(sizes.astype(np.int64), (W, N_RECV)).copy()
+    out = np.zeros((W, N_CARDS, N_RECV), np.int16)
+    eye = np.eye(N_RECV, dtype=np.int64)
+    Pm = np.where(M, P, 0.0)
+    rem = Pm[copies].sum(0)
+    for c, t in zip(copies, types):
+        tc[t] -= 1
+        need = _SUB_OF.astype(np.int64) @ tc
+        capS = (cap[:, None, :] - eye[None]) @ _SUBSETS.T.astype(np.int64)
+        ok = (capS >= need[None, None]).all(-1) & M[c][None] & (cap > 0)
+        if not ok.any(-1).all():
+            raise BeliefSeqError("no completable receiver (infeasible state)")
+        w = np.where(ok, Pm[c][None] * (cap / np.maximum(rem, 1e-9)[None]), 0.0)
+        peak = w.max(-1, keepdims=True)
+        w = np.where(peak > 0, w / np.where(peak > 0, peak, 1), ok)
+        cdf = np.cumsum(w, -1)
+        cdf /= cdf[:, -1:]
+        r = (cdf <= rng.random(W)[:, None]).sum(-1)
+        if (r >= N_RECV).any() or not ok[np.arange(W), r].all():
+            raise BeliefSeqError("categorical draw selected an infeasible receiver")
+        out[np.arange(W), c, r] += 1
+        cap[np.arange(W), r] -= 1
+        rem = np.maximum(rem - Pm[c], 0.0)
+    return out
+
+
 def world_agreement(worlds: np.ndarray, Y: np.ndarray) -> np.ndarray:
     """v83's ``oracle_card_agreement`` per world: unknown copies with their true
     receiver (multiset intersection per receiver) over all unknown copies."""

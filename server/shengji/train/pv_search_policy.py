@@ -106,6 +106,13 @@ name right after the refusal tokens, and the decision record gains
 ``history_rejections_by_age`` (tricks back from the current one, of the first
 violated follow) and ``history_fallback_worlds``; off, every existing name,
 digest, sampled world and decision record is unchanged.
+Its draw-time form, ``SHENGJI_PV_WORLD_HISTORY_DRAW=1`` (requires the test; name
+token ``-whd`` after ``-whl``), deals no seat the twin of a card it played at or
+after a follow that showed fewer pairs than were led
+(`ai.history_legality.draw_constraints`), so the pair obligation needs no
+rejection; the test still checks every world (the tractor obligation stays
+with it).  The record gains ``history_draw_constraints`` and
+``history_draw_forbidden``.
 
 Optional admission width rule (#676 C), OFF BY DEFAULT: ``SHENGJI_PV_ADAPTIVE_K=1``
 admits ``candidates_lead_multi`` (16) instead of ``candidates`` (8) when the seat
@@ -412,7 +419,7 @@ gain ``leaf_first_trick`` (``"heuristic"`` / ``"policy"``) and
 leaves are untouched, so every existing name (release 44:
 ``pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6``)
 and every decision are unchanged.  Rule token order:
-div, fs, rc, rcec, whl, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef, vdsb, vdpw,
+div, fs, rc, rcec, whl, whd, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef, vdsb, vdpw,
 vdw, asap, lpft.
 
 Optional wide value-only bury chooser (#707 S15), OFF BY DEFAULT:
@@ -564,12 +571,13 @@ ADMISSION_TOKENS = (("admission_diversity", "div"), ("admit_forced_single", "fs"
 #: and the history-legal world test (`ai.history_legality`, board row S27)
 SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints",
                  "REFUSAL_EVENT_COMPLETE": "refusal_event_complete",
-                 "WORLD_HISTORY_LEGAL": "world_history_legal"}
+                 "WORLD_HISTORY_LEGAL": "world_history_legal",
+                 "WORLD_HISTORY_DRAW": "world_history_draw"}
 SAMPLER_DEFAULTS = dict(refusal_constraints=False, refusal_event_complete=False,
-                        world_history_legal=False)
+                        world_history_legal=False, world_history_draw=False)
 #: name tokens, in name order, for the rules that are on
 SAMPLER_TOKENS = (("refusal_constraints", "rc"), ("refusal_event_complete", "rcec"),
-                  ("world_history_legal", "whl"))
+                  ("world_history_legal", "whl"), ("world_history_draw", "whd"))
 #: the optional selection rule (`policy_value_search`): env flag -> recipe key
 TIEBREAK_RULE = {"TIEBREAK_POINTS": "tiebreak_points"}
 #: the optional admission width rule (`policy_value_search`): env flag -> recipe key
@@ -708,7 +716,7 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 #: gate, the served bury in its worlds, its pass-conditioned worlds, its wait
 #: option, the model-free first-round declaration, the policy-played value leaf, the
 #: diagnostic oracle worlds):
-#: div, fs, rc, rcec, whl, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
+#: div, fs, rc, rcec, whl, whd, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
 #: vdsb, vdpw, vdw, asap, lpft, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
@@ -895,6 +903,8 @@ class PVSearchConfig:
     refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"]
     # the history-legal world test (`ai.history_legality`); the same contract
     world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"]
+    # its draw-time form (`ai.history_legality.draw_constraints`; requires it)
+    world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"]
     # the optional selection rule (#676 E); the same contract
     tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
     # the optional admission width rule (#676 C); the same contract
@@ -998,6 +1008,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
     if config.oracle_worlds and (config.adaptive_worlds or config.adaptive_worlds_leads):
         raise PVSearchPolicyError(_ORACLE_ADAPTIVE_EXCLUSIVE)
+    if config.world_history_draw and not config.world_history_legal:
+        raise PVSearchPolicyError("world_history_draw requires world_history_legal "
+                                  "(SHENGJI_PV_WORLD_HISTORY_DRAW=1 needs "
+                                  "SHENGJI_PV_WORLD_HISTORY_LEGAL=1)")
     if config.world_history_legal and (config.oracle_worlds or config.oracle_mix_k
                                        or config.oracle_pin_q):
         raise PVSearchPolicyError(_HISTORY_LEGAL_ORACLE_EXCLUSIVE)
@@ -1268,6 +1282,10 @@ class PVSearchBot(PolicyValueBot):
         # the history-legal world test (`ai.history_legality`): a sampled world
         # must make every earlier follow by another seat legal
         self.world_history_legal = bool(config.world_history_legal)
+        # its draw-time form: the pair obligation's twins are never dealt
+        self.world_history_draw = bool(config.world_history_draw)
+        if self.world_history_draw and not self.world_history_legal:
+            raise PVSearchPolicyError("world_history_draw requires world_history_legal")
         for key in ("adaptive_worlds", "adaptive_worlds_leads"):
             if type(getattr(config, key)) is not bool:
                 raise PVSearchPolicyError(f"{key} must be a bool")
@@ -2096,7 +2114,8 @@ class PVSearchBot(PolicyValueBot):
             # older snapshot) has the rule off
             worlds, attempts, self._last_sampling = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
-                check_budget=check_budget)
+                check_budget=check_budget,
+                constrain=getattr(self, "world_history_draw", False))
         elif refusals:
             worlds, attempts, self._last_sampling = sample_worlds_refusal_aware(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
@@ -2497,6 +2516,8 @@ class PVSearchBot(PolicyValueBot):
         if getattr(self, "world_history_legal", False):
             out.update(history_follow_events=0, history_rejections=0,
                        history_fallback_worlds=0, history_rejections_by_age={})
+            if getattr(self, "world_history_draw", False):
+                out.update(history_draw_constraints=0, history_draw_forbidden=0)
         if not out:
             return {}
         return {**out, **self._last_sampling}
@@ -2742,6 +2763,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
                        refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                        world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"],
+                       world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"],
                        admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                        admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
                        tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
@@ -2803,6 +2825,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             refusal_constraints=refusal_constraints,
                             refusal_event_complete=refusal_event_complete,
                             world_history_legal=world_history_legal,
+                            world_history_draw=world_history_draw,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -2895,6 +2918,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         refusal_constraints: bool = SAMPLER_DEFAULTS["refusal_constraints"],
                         refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                         world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"],
+                        world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"],
                         admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                         admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
                         tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
@@ -2937,6 +2961,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             refusal_constraints=refusal_constraints,
                             refusal_event_complete=refusal_event_complete,
                             world_history_legal=world_history_legal,
+                            world_history_draw=world_history_draw,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -3025,6 +3050,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                refusal_constraints=config.refusal_constraints,
                                refusal_event_complete=config.refusal_event_complete,
                                world_history_legal=config.world_history_legal,
+                               world_history_draw=config.world_history_draw,
                                admission_diversity=config.admission_diversity,
                                admit_forced_single=config.admit_forced_single,
                                tiebreak_points=config.tiebreak_points,

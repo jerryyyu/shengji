@@ -44,6 +44,71 @@ def test_actual_producer_json_to_engine_consumer_with_expired_refusals():
     assert any(e['attempted'] != e['accepted'] for row in rows for e in row['plays'])
 
 
+def test_follow_capture_json_replays_actual_continuation_and_keeps_lead_api_strict():
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    ledgers = [RefusalLedger() for _ in range(4)]
+    follows = 0
+    for event in PLAYS:
+        seat = rnd.turn
+        ledgers[seat].observe(rnd)
+        if rnd.trick.plays:
+            before = fingerprint(rnd)
+            with pytest.raises(ValueError, match='not a lead root'):
+                capture.capture(rnd, ledger=ledgers[seat], decision={})
+            packet = capture.capture_turn(rnd, ledger=ledgers[seat], decision={})
+            restored, ledger = restore_with_ledger(json.loads(json.dumps(packet)))
+            assert fingerprint(rnd) == fingerprint(restored) == before
+            assert normalized(vars(ledger)) == normalized(vars(ledgers[seat]))
+            restored.play(seat, event['attempted'])
+            follows += 1
+        else:
+            restored = None
+        rnd.play(seat, event['attempted'])
+        capture.committed(rnd, seat, event['attempted'])
+        if restored is not None:
+            assert fingerprint(restored) == fingerprint(rnd)
+    assert follows == 48
+    with pytest.raises(ValueError, match='not a play root'):
+        capture.capture_turn(rnd, ledger=ledgers[seat], decision={})
+
+
+def test_follow_capture_reaches_server_snapshot_compute_commit():
+    import asyncio
+    import random
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from test_pv_admission_rules import served
+
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    first = PLAYS[0]
+    rnd.play(rnd.turn, first['attempted'])
+    capture.committed(rnd, first['seat'], first['attempted'])
+    ledger = RefusalLedger()
+    ledger.observe(rnd)
+    packet = capture.capture_turn(rnd, ledger=ledger, decision={})
+    restored, restored_ledger = restore_with_ledger(json.loads(json.dumps(packet)))
+
+    async def decide(root, observed):
+        bot = served(refusal_constraints=True)
+        bot._refusals = observed
+        room = srv.Room(code='FOLLOWCAPTURE', bot=bot)
+        room.game = Game(random.Random(7))
+        room.game.round = root
+        room.seats = [srv.Seat(name=str(s), is_bot=True) for s in range(4)]
+        room.ids = [dict(enumerate(h)) for h in root.hands]
+        room._kitty_given = True
+        prepared = await srv._paced_bot_step(room, root.turn, minimum_turn_seconds=0)
+        assert prepared is not None
+        async with room.lock:
+            assert srv._commit_bot_turn(room, prepared)
+        return list(prepared.decision.cards), fingerprint(root)
+
+    # Real server transaction with stub network, not model latency evidence.
+    assert asyncio.run(decide(restored, restored_ledger)) == asyncio.run(decide(rnd, ledger))
+
+
 def test_every_captured_lead_replays_to_round_end_with_observed_ledger():
     # Snapshot equality alone does not exercise the continuation consumer.
     # Build an independent uninterrupted trajectory, preserving each seat's

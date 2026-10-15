@@ -316,6 +316,47 @@ def test_prefetch_stops_when_the_consumer_raises():
     assert seen["closed"]
 
 
+class _Items:
+    """An iterator whose ``close`` does real work after exhaustion (a pool
+    shutdown) and fails there."""
+
+    def __init__(self, n):
+        self.n, self.at, self.closed = n, 0, False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.at >= self.n:
+            raise StopIteration
+        self.at += 1
+        return self.at - 1
+
+    def close(self):
+        self.closed = True
+        raise RuntimeError("pool shutdown failed")
+
+
+@pytest.mark.parametrize("n", [0, 3])
+def test_prefetch_reraises_an_error_from_the_iterator_close_after_its_items(n):
+    items = _Items(n)
+    got = []
+    with pytest.raises(RuntimeError, match="pool shutdown failed"):
+        for item in cwv_data.Prefetch(lambda: items, depth=1):
+            got.append(item)
+    assert got == list(range(n)) and items.closed
+
+
+def test_prefetch_reports_the_producer_error_over_a_later_close_error():
+    class Failing(_Items):
+        def __next__(self):
+            raise ValueError("loader failed")
+    items = Failing(0)
+    with pytest.raises(ValueError, match="loader failed"):
+        list(cwv_data.Prefetch(lambda: items, depth=1))
+    assert items.closed
+
+
 # ------------------------------------------------------------------ startup
 
 def _stores(store_dir, tmp_path):  # noqa: F811
@@ -488,6 +529,77 @@ def test_val_row_subset_takes_whole_seeded_deals_until_the_rows_are_covered():
     assert train_cwv.val_row_subset(store, assignment, 1000, seed=8)[1]["digest"] != block["digest"]
     _sel, everything = train_cwv.val_row_subset(store, assignment, 10 ** 9, seed=7)
     assert everything["rows"] == val_total and everything["deals"] == 20
+
+
+class _UnevenStore:
+    """One shard holding two val deals that share its 100 rows as 1 and 99,
+    so a per-shard average over its deals is not any deal's row count."""
+
+    def __init__(self):
+        self.metas = [{}]
+
+    def __len__(self):
+        return 1
+
+    def rows(self):
+        return [100]
+
+    def keys_of(self, i):
+        return ["a", "b"]
+
+    def block(self, i, **kw):
+        return SimpleNamespace(deal_key=np.array(["a"] + ["b"] * 99), trick_end=None)
+
+
+def test_val_row_subset_counts_each_deal_of_a_shared_shard_exactly():
+    store = _UnevenStore()
+    assignment = {"a": "val", "b": "val"}
+    for seed in (0, 1, 2):
+        selector, block = train_cwv.val_row_subset(store, assignment, 50, seed=seed)
+        assert block["rows_requested"] == 50 and block["rows"] >= 50
+        assert block["rows"] == cwv_data.split_row_counts(store, {"val": selector})["val"]
+        assert train_cwv.val_row_subset(store, assignment, 50, seed=seed)[1] == block
+        # the seeded prefix: b alone covers the request, a alone extends to b
+        order = np.random.default_rng([seed, train_cwv.VAL_SUBSET_STREAM]).permutation(2)
+        first = ["a", "b"][int(order[0])]
+        assert (block["deals"], block["rows"]) == ((1, 99) if first == "b" else (2, 100))
+        rows = selector(store.block(0))
+        assert int(rows.sum()) == block["rows"]
+    _sel, one = train_cwv.val_row_subset(store, assignment, 1, seed=0)
+    assert one["deals"] == 1 and one["rows"] >= 1
+    _sel, everything = train_cwv.val_row_subset(store, assignment, 10 ** 9, seed=0)
+    assert everything["rows"] == 100 and everything["deals"] == 2
+    with_train = train_cwv.val_row_subset(store, {"a": "val", "b": "train"}, 50, seed=0)[1]
+    assert with_train["rows"] == 1 and with_train["deals"] == with_train["val_deals"] == 1
+
+
+def test_val_row_subset_rows_are_what_run_eval_scores_on_multi_deal_shards(
+        store_dir, tmp_path):  # noqa: F811
+    """The subset's selector, handed to ``run_eval`` over shards that hold
+    several deals (and, in the trick-end flavour, derived rows the val part
+    excludes), scores exactly the rows the receipt counts."""
+    cfg = train_cwv.model_config("mlp", hidden=32, encoder_version=2)
+    model = train_cwv.ValueNetwork(cfg)
+    stores = _stores(store_dir, tmp_path)
+    multi = [stores[1], stores[2], stores[4]]
+    assert all(len(store.keys_of(0)) > 1 for store in multi)
+    assert stores[4].block(0).trick_end.any()
+    for store in multi:
+        assignment = split_deals(store.keys(), seed=7, **THIRDS)
+        val = SplitSelector(assignment, "val")
+        val_total = cwv_data.split_row_counts(store, {"val": val})["val"]
+        assert val_total > 1
+        n = max(1, val_total // 2)
+        selector, block = train_cwv.val_row_subset(store, assignment, n, seed=7)
+        assert n <= block["rows"] <= val_total and block["rows_requested"] == n
+        ev = train_cwv.run_eval(model, store, selector, torch.device("cpu"), batch_size=64)
+        assert int(ev["ce"].size) == block["rows"]
+        chosen = sorted(set(ev["deal_key"].tolist()))
+        assert len(chosen) == block["deals"]
+        assert all(assignment[k] == "val" for k in chosen)
+        whole = train_cwv.run_eval(model, store, val, torch.device("cpu"), batch_size=64)
+        in_chosen = np.isin(whole["deal_key"], np.asarray(chosen, dtype=str))
+        assert int(in_chosen.sum()) == block["rows"]            # whole deals, nothing partial
 
 
 def test_sidecar_manifest_digest_does_not_depend_on_the_hash_threads(c14_kw):

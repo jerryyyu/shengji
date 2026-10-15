@@ -1051,6 +1051,15 @@ def selector_rows(columns: Mapping[str, np.ndarray]) -> Any:
                            trick_end=columns.get(CwvBlock.TRICK_END))
 
 
+def selector_block(store: Any, i: int) -> Any:
+    """What a ``data.SplitSelector`` reads of shard ``i`` (``selector_rows``):
+    the deal-key and flag columns from the cache when the store can read
+    columns, else the whole decoded block."""
+    if hasattr(store, "column_task"):
+        return selector_rows(read_columns(store.column_task(i, ("deal_key",))))
+    return store.block(i)
+
+
 def part_row_counts(store: Any, selectors: Mapping[str, Callable[[Any], np.ndarray]]
                     ) -> Iterator[tuple[int, dict[str, int]]]:
     """``(i, {part: rows})`` for every shard: the sum of ``selector(block(i))``.
@@ -1060,9 +1069,8 @@ def part_row_counts(store: Any, selectors: Mapping[str, Callable[[Any], np.ndarr
     answer the same way, the count is all of its kept rows or none of them,
     known without decoding, unless the shard carries trick-end rows and the
     part is not ``train``.  Only those shards, and shards whose keys straddle
-    a part boundary, are read: the deal-key and flag columns from the cache
-    (``read_columns``), or the whole block from a store without column reads.
-    Any other selector type gets the full decode of every block."""
+    a part boundary, are read (``selector_block``).  Any other selector type
+    gets the full decode of every block."""
     from types import SimpleNamespace
     if not all(type(selector) is SplitSelector for selector in selectors.values()):
         for i in range(len(store)):
@@ -1085,8 +1093,7 @@ def part_row_counts(store: Any, selectors: Mapping[str, Callable[[Any], np.ndarr
                 counts[part] = int(rows[i])
             else:
                 if block is None:
-                    block = (selector_rows(read_columns(store.column_task(i, ("deal_key",))))
-                             if hasattr(store, "column_task") else store.block(i))
+                    block = selector_block(store, i)
                 counts[part] = int(np.asarray(selector(block), dtype=bool).sum())
         yield i, counts
 
@@ -1722,21 +1729,27 @@ class Prefetch:
 
     def _run(self, produce: Callable[[], Iterator]) -> None:
         iterator = None
+        outcome: tuple[bool, Any] = (True, self._END)
         try:
             iterator = iter(produce())
             for item in iterator:
                 if not self._put((True, item)):
                     return
-            self._put((True, self._END))
         except BaseException as exc:          # re-raised by the consumer
-            self._put((False, exc))
+            outcome = (False, exc)
         finally:
+            # The iterator is closed before the terminal item is published:
+            # the consumer reads nothing past the end marker, so an error the
+            # close raises must be the terminal item itself.  A producer
+            # error already in hand is the one reported.
             close = getattr(iterator, "close", None)
             if close is not None:
                 try:
                     close()
                 except BaseException as exc:
-                    self._put((False, exc))
+                    if outcome[0]:
+                        outcome = (False, exc)
+            self._put(outcome)
 
     def __iter__(self) -> "Prefetch":
         return self

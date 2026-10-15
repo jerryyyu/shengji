@@ -158,6 +158,7 @@ from .cwv_data import (
     median_pt0,
     part_row_counts,
     prepare_stores,
+    selector_block,
     selector_rows,
     split_row_counts,
     tensors_of,
@@ -843,23 +844,35 @@ def val_row_subset(store: CwvBlockStore, assignment: Mapping[str, str], n_rows: 
     Whole val deals in a seeded order (``seed``, ``VAL_SUBSET_STREAM``) until
     their rows reach ``n_rows`` or the split runs out.  Whole deals, because
     a shard holds one deal and evaluation pays per shard it decodes; one
-    fixed subset, so every epoch is scored on the same rows.  A deal's rows
-    are its shard's val rows (split evenly when a shard holds several val
-    deals, for the stopping rule only); the receipt counts them exactly."""
+    fixed subset, so every epoch is scored on the same rows.  The stopping
+    rule adds each deal's exact val rows, so the subset reaches ``n_rows``
+    whenever the split holds that many: a shard with one val deal is counted
+    without a read (``part_row_counts``); a shard holding several val deals
+    has its deal-key column read and counted per deal, because the deals
+    need not share its rows evenly.  The receipt counts the chosen rows
+    again through the selector the epochs will use."""
+    val = SplitSelector(assignment, "val")
     val_keys = sorted(k for k, v in assignment.items() if v == "val")
-    share: dict[str, float] = {}
-    for i, counts in part_row_counts(store, {"val": SplitSelector(assignment, "val")}):
+    deal_rows: dict[str, int] = {}
+    for i, counts in part_row_counts(store, {"val": val}):
         keys = [k for k in store.keys_of(i) if assignment.get(k) == "val"]
-        for key in keys:
-            share[key] = share.get(key, 0.0) + counts["val"] / len(keys)
+        if len(keys) == 1:
+            deal_rows[keys[0]] = deal_rows.get(keys[0], 0) + int(counts["val"])
+        elif keys:
+            block = selector_block(store, i)
+            hit = np.asarray(val(block), dtype=bool)
+            uniq, per_deal = np.unique(np.asarray(block.deal_key, dtype=str)[hit],
+                                       return_counts=True)
+            for key, n in zip(uniq.tolist(), per_deal.tolist()):
+                deal_rows[key] = deal_rows.get(key, 0) + int(n)
     order = np.random.default_rng([int(seed), VAL_SUBSET_STREAM]).permutation(len(val_keys))
     chosen: list[str] = []
-    covered = 0.0
+    covered = 0
     for j in order:
         if covered >= int(n_rows):
             break
         chosen.append(val_keys[int(j)])
-        covered += share.get(val_keys[int(j)], 0.0)
+        covered += deal_rows.get(val_keys[int(j)], 0)
     keys = sorted(chosen)
     selector = SplitSelector({k: "val" for k in keys}, "val")
     counted = split_row_counts(store, {"val": selector})["val"]

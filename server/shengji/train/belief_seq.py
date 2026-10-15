@@ -481,7 +481,9 @@ def sample_worlds(P: np.ndarray, n_c: np.ndarray, M: np.ndarray, sizes: np.ndarr
     a feasible receiver, every receiver gets exactly its size.  Copies are drawn
     one at a time (a random order per call) from ``P`` restricted to the
     receivers that keep the rest completable (Hall's condition over the 16
-    receiver subsets)."""
+    receiver subsets). If no model mass remains, use uniform completable mass."""
+    if not np.isfinite(P).all() or (P < 0).any():
+        raise BeliefSeqError("world probabilities must be finite and nonnegative")
     copies = np.repeat(np.arange(N_CARDS), n_c.astype(np.int64))
     copies = copies[rng.permutation(len(copies))]
     types = (M[copies] * (1 << np.arange(N_RECV))).sum(-1)                      # per copy
@@ -495,13 +497,20 @@ def sample_worlds(P: np.ndarray, n_c: np.ndarray, M: np.ndarray, sizes: np.ndarr
         capS = (cap[:, None, :] - eye[None]) @ _SUBSETS.T.astype(np.int64)       # W,4,16
         ok = (capS >= need[None, None]).all(-1) & M[c][None] & (cap > 0)          # W,4
         w = np.where(ok, P[c][None], 0.0)
-        s = w.sum(-1)
-        fallback = ok / np.maximum(ok.sum(-1, keepdims=True), 1)
-        w = np.where(s[:, None] > 0, w / np.maximum(s[:, None], EPS), fallback)
         if not ok.any(-1).all():
             raise BeliefSeqError("no completable receiver (infeasible state)")
+        # Normalize relative to the largest remaining mass, not an absolute
+        # epsilon: tiny but positive feasible mass must still sum to one.
+        peak = w.max(-1, keepdims=True)
+        w = np.where(peak > 0, w / np.where(peak > 0, peak, 1), ok)
+        cdf = np.cumsum(w, -1)
+        cdf /= cdf[:, -1:]
         u = rng.random(W)[:, None]
-        r = (np.cumsum(w, -1) < u).sum(-1).clip(0, N_RECV - 1)
+        # Right-open bins skip leading zero mass even when u is exactly zero.
+        # The normalized terminal CDF is one; never clip an invalid index.
+        r = (cdf <= u).sum(-1)
+        if (r >= N_RECV).any() or not ok[np.arange(W), r].all():
+            raise BeliefSeqError("categorical draw selected an infeasible receiver")
         out[np.arange(W), c, r] += 1
         cap[np.arange(W), r] -= 1
     return out

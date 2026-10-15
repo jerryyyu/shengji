@@ -55,6 +55,9 @@ def measure_captured_horizon(bot, captured, record, *, gate):
     if record.get("admitted") != captured["actions"]:
         return {"status": "skipped", "reason": "final_ballot_mismatch"}
     diagnostic = copy.copy(bot)
+    # The real evaluator keeps scalar work/timing counters on the instance.
+    # Share its immutable model weights, not the playing bot's accounting.
+    diagnostic.evaluator = copy.copy(bot.evaluator)
     if not isinstance(bot, PVTreeMixin):
         diagnostic.__class__ = type("HorizonDiagnostic", (PVTreeMixin, type(bot)), {})
     diagnostic.config = replace(bot.config, tree=PVTreeConfig(sims=64))

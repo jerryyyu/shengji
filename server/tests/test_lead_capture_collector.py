@@ -222,10 +222,14 @@ def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budg
     assert record['work_complete'] == (float(budget) > 1)
     rng = bots[root.turn].sampler.rng.getstate()
     saved_record = copy.deepcopy(record)
+    counter_keys = ('calls', 'positions', 'model_rows', 'terminal_rows',
+                    'forward_calls', 'wall_secs', 'cpu_secs')
+    evaluator_before = {k: getattr(bots[root.turn].evaluator, k) for k in counter_keys}
     horizon = measure_captured_horizon(bots[root.turn], horizon_inputs, record, gate=lambda: None)
     assert horizon['status'] == ('complete' if float(budget) > 1 else 'skipped')
     assert bots[root.turn].sampler.rng.getstate() == rng
     assert bots[root.turn].last_decision_record == saved_record
+    assert {k: getattr(bots[root.turn].evaluator, k) for k in counter_keys} == evaluator_before
     if horizon['status'] == 'complete':
         assert horizon['actions'] == record['admitted']
         assert horizon['worlds'] == 2

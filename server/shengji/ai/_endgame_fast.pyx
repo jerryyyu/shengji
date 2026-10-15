@@ -37,7 +37,7 @@ import threading
 import weakref
 
 from shengji.engine import combos as _combos
-from shengji.engine.cards import TRUMP, make_deck, points as _card_points
+from shengji.engine.cards import TRUMP, Ordering, make_deck, points as _card_points
 from shengji.engine.round import KITTY_MULTIPLIER
 
 cdef enum:
@@ -110,8 +110,15 @@ cdef inline uint64_t _mix(uint64_t a, uint64_t b) noexcept nogil:
 
 
 cdef class Tables:
-    """Rule facts for one trump context, shared by every world on it."""
-    cdef object ordering
+    """Rule facts for one trump context, shared by every world on it.
+
+    Rule calls use a PRIVATE ``Ordering`` built from the round's trump suit and
+    rank (an ``Ordering`` is a pure function of those two).  The table must
+    never reference the round's own ``Ordering``: ``_TABLES`` holds tables
+    weakly keyed by it, and a value that owned its key would keep both alive
+    for the life of the process.
+    """
+    cdef object ordering         # private: Ordering(trump_suit, trump_rank)
     cdef object binding
     cdef int level[NCODE]
     cdef int eff[NCODE]
@@ -124,17 +131,18 @@ cdef class Tables:
     cdef list shape_list         # id -> shape tuple
     cdef dict match_overflow     # (record, shape id >= MAXSHAPE) -> top
     cdef object lock             # serialises inserts (see ``_insert``)
+    cdef object __weakref__      # lets tests watch a table being freed
 
     def __cinit__(self, ordering):
         cdef int i
         self.chunks = NULL
         self.keys = NULL
-        self.ordering = ordering
         self.binding = (ordering.trump_suit, ordering.trump_rank)
+        self.ordering = Ordering(ordering.trump_suit, ordering.trump_rank)
         for i in range(NCODE):
             code = ID2CODE[i]
-            self.level[i] = ordering.level(code)
-            self.eff[i] = _EFF_ID[ordering.eff_suit(code)]
+            self.level[i] = self.ordering.level(code)
+            self.eff[i] = _EFF_ID[self.ordering.eff_suit(code)]
             self.pts[i] = _card_points(code)
         self.n_ms = 0
         self.n_chunks = 0
@@ -161,6 +169,11 @@ cdef class Tables:
 
     cdef inline MS* at(self, int i) noexcept:
         return &self.chunks[i >> 8][i & 255]
+
+    @property
+    def records(self):
+        """Card multisets with computed rule facts (tests: sharing)."""
+        return self.n_ms
 
     cdef int shape_id(self, shape) except -1:
         got = self.shapes.get(shape)
@@ -353,10 +366,14 @@ cdef class Tables:
         return out
 
 
+#: round ``Ordering`` -> its Tables, for exactly as long as that Ordering lives
+#: (every world of one decision shares the root's Ordering object)
 _TABLES = weakref.WeakKeyDictionary()
 
 
 cdef Tables tables_for(ordering):
+    if type(ordering) is not Ordering:
+        raise TypeError("compact exact solver needs an engine Ordering")
     got = _TABLES.get(ordering)
     if got is None or (<Tables>got).binding != (ordering.trump_suit, ordering.trump_rank):
         got = Tables(ordering)

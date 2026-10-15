@@ -320,3 +320,61 @@ def test_mid_trick_root_plays_are_kept_in_engine_order():
         assert (CompactWorldSession(rnd, backend=backend).solve(rnd)
                 == ExactWorldSession(rnd).solve(rnd))
     assert isinstance(rnd.trick.plays[0], TrickPlay)
+
+
+@pytest.mark.skipif(not HAVE_FAST, reason="compiled exact solver not built")
+@pytest.mark.parametrize("ending", ["complete", "cancelled", "node_cap"])
+def test_compiled_tables_live_exactly_as_long_as_the_decision(ending):
+    """The compiled rule tables are shared by every world of one decision (one
+    ``Ordering``) and are freed with it -- on success, on cancellation and on a
+    node-cap refusal.  A table that owned its weak key leaked every decision."""
+    import gc
+    import weakref
+
+    from shengji.ai import _endgame_fast
+
+    class Cancelled(Exception):
+        pass
+
+    gc.collect()
+    baseline = len(_endgame_fast._TABLES)
+    orderings, tables = [], []
+    hands = [["C3", "C4", "D5", "D5"], ["C6", "C8", "D9", "DK"],
+             ["C9", "CA", "D3", "D10"], ["C10", "CK", "DA", "D7"]]
+    for decision in range(4):
+        rnd = _play_round("H", "7", decision % 4, hands, ["H5", "D10"],
+                          leader=decision % 4, attacker_points=0)
+        roots = _session_roots(rnd)
+        calls = [0]
+
+        def check():
+            calls[0] += 1
+            if ending == "cancelled" and calls[0] > 3:
+                raise Cancelled
+
+        records = []
+        for _world in range(2):     # two worlds of one decision share the root Ordering
+            world = root_clone(rnd, rnd.hands, rnd.buried)
+            assert world.ordering is rnd.ordering
+            session = CompactWorldSession(
+                world, alpha_beta=True, backend="compiled", check_budget=check,
+                max_nodes=1 if ending == "node_cap" else 250_000)
+            try:
+                for root in roots:
+                    session.solve(root)
+            except (Cancelled, ExactEndgameBudgetExceeded):
+                assert ending != "complete"
+            else:
+                assert ending == "complete"
+            records.append(_endgame_fast._TABLES[rnd.ordering].records)
+            del session, world
+        table = _endgame_fast._TABLES[rnd.ordering]
+        if ending == "complete":
+            assert records[1] == records[0] > 0   # the second world rebuilt nothing
+        orderings.append(weakref.ref(rnd.ordering))
+        tables.append(weakref.ref(table))
+        del rnd, roots, root, table, check
+    gc.collect()
+    assert [r() for r in orderings] == [None] * 4
+    assert [t() for t in tables] == [None] * 4
+    assert len(_endgame_fast._TABLES) == baseline

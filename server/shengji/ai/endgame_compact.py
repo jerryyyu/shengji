@@ -45,6 +45,7 @@ from __future__ import annotations
 
 from ..engine import round as _round
 from ..engine.legal import IllegalPlay
+from ..engine.cards import Ordering
 from ..engine.round import KITTY_MULTIPLIER, Round
 from . import endgame as _endgame
 from .endgame import (ExactEndgameBudgetExceeded, ExactEndgameRefusal,
@@ -382,6 +383,8 @@ class CompactWorldSession:
             raise ExactEndgameRefusal(
                 "exact endgame requires an active play phase")
         self._root = rnd
+        if self.backend == "compiled" and type(rnd.ordering) is not Ordering:
+            self.backend = "python"     # the compiled tables rebuild an Ordering
         if self.backend == "python":
             self.solver = self._python_solver()
         else:

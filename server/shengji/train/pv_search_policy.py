@@ -605,6 +605,7 @@ WIDE_LEAD_DEFAULTS = dict(wide_lead_admission=False)
 WIDE_LEAD_K = 32
 FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
+EXACT_FOLLOW_RULE = {"EXACT_FOLLOW": "exact_follow"}
 #: its two optional variants (module docstring); each requires ``exact_lead_endgame``
 EXACT_LEAD_VARIANT_RULES = {"EXACT_LEAD_TIE_BASELINE": "exact_lead_tie_baseline",
                             "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first"}
@@ -745,7 +746,7 @@ RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
               **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE,
-              **EXACT_LEAD_VARIANT_RULES}
+              **EXACT_LEAD_VARIANT_RULES, **EXACT_FOLLOW_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("finish_lead_admission", "fla"),
@@ -997,15 +998,30 @@ def _check_exact_deep_cards(cards) -> None:
         raise PVSearchPolicyError(f"exact_deep_cards must be 0 (off) or an int in [{lo}, {hi}]")
 
 
+def _check_exact_follow_params(config: PVSearchConfig) -> None:
+    """Validate DEV exact-follow knobs before package/factory work."""
+    if type(config.exact_follow) is not bool:
+        raise PVSearchPolicyError("exact_follow must be a bool")
+    if type(config.exact_follow_max_nodes) is not int or config.exact_follow_max_nodes < 1:
+        raise PVSearchPolicyError("exact_follow_max_nodes must be a positive int")
+    from .pv_exact_follow import SOLVERS
+    if config.exact_follow_solver not in SOLVERS:
+        raise PVSearchPolicyError(f"exact_follow_solver must be one of {SOLVERS}")
+    if (isinstance(config.exact_follow_max_cards, bool)
+            or type(config.exact_follow_max_cards) is not int
+            or not 1 <= config.exact_follow_max_cards <= 8):
+        raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")
+
+
 def recipe_payload(config: PVSearchConfig) -> dict:
     """The digested recipe: every field, except that an optional rule that is
     OFF is omitted (the payload of the pre-rule recipe, byte for byte) and a
     rule that is on carries its parameters."""
     payload = asdict(config)
-    # This experiment is constructed directly by DEV callers.  It has no
-    # serving recipe/name identity until a separately reviewed screen path exists.
+    _check_exact_follow_params(config)
+    # Disabled follow-stage knobs do not change existing serving identities.
+    # Enabled recipes retain all parameters in their digest.
     if not config.exact_follow:
-        payload.pop("exact_follow", None)
         payload.pop("exact_follow_max_nodes", None)
         payload.pop("exact_follow_solver", None)
         payload.pop("exact_follow_max_cards", None)
@@ -1155,6 +1171,10 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
         rules += f"-{soft_oracle.mix_token(config.oracle_mix_k)}"
     if config.oracle_pin_q:
         rules += f"-{soft_oracle.pin_token(config.oracle_pin_q)}"
+    if config.exact_follow:
+        rules += f"-xf{config.exact_follow_max_cards}"
+        if config.exact_follow_solver != "reference":
+            rules += f"-xf{config.exact_follow_solver.replace('-', '')}"
     rules += tree_token(config.tree)   # "" while the tree is off
     return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
             f"-r{recipe_digest(config)}")
@@ -2444,7 +2464,8 @@ class PVSearchBot(PolicyValueBot):
                 [float(preferences[i]) for i in chosen],
                 (means, batches, winner, played, evaluations))
         exact_follow_record = None
-        if self.exact_follow and rnd.trick is not None and rnd.trick.plays:
+        if (self.exact_follow and len(admitted) > 1
+                and rnd.trick is not None and rnd.trick.plays):
             # The normal PV result is complete before this optional stage starts.
             # Any refusal, budget expiry, or malformed world leaves it untouched.
             from .pv_exact_follow import rerank_follow
@@ -3007,6 +3028,10 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_lead_tie_baseline: bool = False,
                        exact_lead_policy_first: bool = False,
                        exact_deep_cards: int = 0,
+                       exact_follow: bool = False,
+                       exact_follow_max_nodes: int = 250_000,
+                       exact_follow_solver: str = "reference",
+                       exact_follow_max_cards: int = 4,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -3070,6 +3095,10 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
                             exact_deep_cards=exact_deep_cards,
+                            exact_follow=exact_follow,
+                            exact_follow_max_nodes=exact_follow_max_nodes,
+                            exact_follow_solver=exact_follow_solver,
+                            exact_follow_max_cards=exact_follow_max_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -3166,6 +3195,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_lead_tie_baseline: bool = False,
                         exact_lead_policy_first: bool = False,
                         exact_deep_cards: int = 0,
+                        exact_follow: bool = False,
+                        exact_follow_max_nodes: int = 250_000,
+                        exact_follow_solver: str = "reference",
+                        exact_follow_max_cards: int = 4,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
@@ -3210,6 +3243,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
                             exact_deep_cards=exact_deep_cards,
+                            exact_follow=exact_follow,
+                            exact_follow_max_nodes=exact_follow_max_nodes,
+                            exact_follow_solver=exact_follow_solver,
+                            exact_follow_max_cards=exact_follow_max_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
@@ -3302,6 +3339,10 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_lead_tie_baseline=config.exact_lead_tie_baseline,
                                exact_lead_policy_first=config.exact_lead_policy_first,
                                exact_deep_cards=config.exact_deep_cards,
+                               exact_follow=config.exact_follow,
+                               exact_follow_max_nodes=config.exact_follow_max_nodes,
+                               exact_follow_solver=config.exact_follow_solver,
+                               exact_follow_max_cards=config.exact_follow_max_cards,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
@@ -3341,6 +3382,8 @@ def pv_env_recipe(environ=None) -> dict:
     ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``
     / ``_VALUE_DECLARE_WAIT`` / ``_DECLARE_ASAP_FIRST`` /
     ``_LEAF_POLICY_FIRST_TRICK``
+    / ``_EXACT_FOLLOW`` and its ``_EXACT_FOLLOW_MAX_NODES`` /
+    ``_EXACT_FOLLOW_SOLVER`` / ``_EXACT_FOLLOW_MAX_CARDS`` DEV knobs
     / ``_ORACLE_WORLDS`` rule flags (``0`` or ``1`` only; unset or empty is off) and the
     ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless
     ``_VALUE_DECLARE=1``), as keyword arguments for `pv_registry_entries`.
@@ -3391,6 +3434,36 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 0 or 1, not {raw!r}")
         if raw == "1":
             recipe[key] = True
+    # Exact-follow is DEV-only but still travels through the real factory.  Its
+    # parameters are explicit: silently accepting one while the rule is off
+    # would make the requested identity meaningless.
+    follow_params = {
+        "EXACT_FOLLOW_MAX_NODES": "exact_follow_max_nodes",
+        "EXACT_FOLLOW_SOLVER": "exact_follow_solver",
+        "EXACT_FOLLOW_MAX_CARDS": "exact_follow_max_cards",
+    }
+    for suffix, key in follow_params.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, ""):
+            continue
+        if not recipe.get("exact_follow"):
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{suffix} needs {ENV_PREFIX}EXACT_FOLLOW=1")
+        if key == "exact_follow_solver":
+            recipe[key] = raw
+        else:
+            try:
+                recipe[key] = int(raw)
+            except ValueError:
+                raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not an int: {raw!r}") from None
+    follow_config = PVSearchConfig(
+        checkpoint_sha256=recipe["sha256"],
+        exact_follow=bool(recipe.get("exact_follow", False)),
+        exact_follow_max_nodes=recipe.get("exact_follow_max_nodes", 250_000),
+        exact_follow_solver=recipe.get("exact_follow_solver", "reference"),
+        exact_follow_max_cards=recipe.get("exact_follow_max_cards", 4),
+    )
+    _check_exact_follow_params(follow_config)
     # the soft oracle's parameters (diagnostic; module docstring): unset, empty
     # or 0 is off; refused by `api.server` at import and, without the
     # harness's hook, by the registry factory

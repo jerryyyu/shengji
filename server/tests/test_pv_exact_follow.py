@@ -26,7 +26,7 @@ from shengji.engine.game import Game
 
 
 class FollowDevBot(pv.PVSearchBuryBot):
-    """Use the existing diagnostic factory seam; no serving flag is exposed."""
+    """Keep the reference-solver diagnostic fixture's small node limit."""
     def __init__(self, *args, config, **kwargs):
         super().__init__(*args, config=replace(config, exact_follow=True,
                                                exact_follow_max_nodes=10000), **kwargs)
@@ -77,6 +77,113 @@ def test_pinned_model_follow_snapshot_and_commit(pinned_production_package, tmp_
         assert len(rnd.hands[seat]) == len(before) - len(expected)
 
     asyncio.run(scenario())
+
+
+def follow_env(path):
+    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env.update(SHENGJI_PV_CKPT=str(path), SHENGJI_PV_EXACT_LEAD_ENDGAME='1',
+               SHENGJI_PV_EXACT_DEEP_CARDS='6', SHENGJI_PV_EXACT_FOLLOW='1',
+               SHENGJI_PV_EXACT_FOLLOW_SOLVER='compact-level',
+               SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS='6',
+               SHENGJI_PV_EXACT_FOLLOW_MAX_NODES='50000000')
+    return env
+
+
+def test_registry_follow_reaches_server_snapshot_and_commit(pinned_production_package, tmp_path):
+    recipe = pv.pv_env_recipe(follow_env(pinned_production_package))
+    entries = pv.pv_registry_entries(**recipe)
+    name, factory = next(iter(entries.items()))
+    bot = factory(seed=7)
+    assert bot.policy_name == name and bot.config.exact_follow
+    assert bot.exact_follow_solver == 'compact-level'
+    assert bot.exact_follow_max_cards == bot.exact_deep_cards == 6
+    assert bot.exact_follow_max_nodes == 50_000_000
+    assert bot.worlds == 64 and bot.candidates == 8 and bot.serving_budget_seconds == 3
+    rnd, heuristic = _play_state(), HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= 3):
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+
+    async def scenario():
+        game = Game(random.Random(7))
+        game.round = rnd
+        room = srv.Room(code='EFFACTORY', game=game, bot=bot,
+            seats=[srv.Seat(str(i), is_bot=True) for i in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        room.log_event = lambda *args, **kwargs: None
+        seat, hands, rng = rnd.turn, copy.deepcopy(rnd.hands), bot.sampler.rng.getstate()
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        assert prepared is not None
+        assert rnd.hands == hands and bot.sampler.rng.getstate() == rng
+        copied = prepared.decision.snapshot.bot_copy
+        assert copied.policy_name == name and copied.exact_follow_solver == 'compact-level'
+        record = copied.last_decision_record
+        assert record['work_complete'] and record['exact_follow_attempted']
+        assert record['exact_follow_abandoned'] is None
+        assert record['exact_follow_worlds'] == 64
+        from shengji.train.search_screen import trace_fields
+        persisted = trace_fields(record)
+        for key in ('exact_follow_attempted', 'exact_follow_abandoned',
+                    'exact_follow_applied', 'exact_follow_worlds', 'exact_follow_scores'):
+            assert persisted[key] == record[key]
+        assert srv._commit_bot_turn(room, prepared)
+        assert not srv._commit_bot_turn(room, prepared)
+        assert len(rnd.hands[seat]) == len(hands[seat]) - len(prepared.decision.cards)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('key,value', [('EXACT_FOLLOW', 'yes'),
+    ('EXACT_FOLLOW_MAX_CARDS', '9'), ('EXACT_FOLLOW_MAX_CARDS', '2.5'),
+    ('EXACT_FOLLOW_MAX_NODES', '0'), ('EXACT_FOLLOW_SOLVER', 'other')])
+def test_follow_env_rejects_invalid_parameters(key, value):
+    env = follow_env('/unused')
+    env['SHENGJI_PV_' + key] = value
+    with pytest.raises(pv.PVSearchPolicyError):
+        recipe = pv.pv_env_recipe(env)
+        pv.pv_registry_entries(**recipe)
+
+
+@pytest.mark.parametrize('key,value', [('EXACT_FOLLOW_MAX_CARDS', '6'),
+    ('EXACT_FOLLOW_MAX_NODES', '100'), ('EXACT_FOLLOW_SOLVER', 'compact-level')])
+def test_follow_parameters_require_enabled_rule(key, value):
+    env = follow_env('/unused')
+    for name in list(env):
+        if name.startswith('SHENGJI_PV_EXACT_FOLLOW'):
+            del env[name]
+    env['SHENGJI_PV_' + key] = value
+    with pytest.raises(pv.PVSearchPolicyError):
+        pv.pv_env_recipe(env)
+
+
+def test_follow_identity_off_preserved_and_parameters_distinct():
+    config = pv.PVSearchConfig(checkpoint_sha256='f' * 64)
+    base = pv.pv_policy_name('ffffffff', config)
+    assert pv.pv_policy_name('ffffffff', replace(config, exact_follow=False)) == base
+    on = replace(config, exact_follow=True)
+    variants = [on, replace(on, exact_follow_max_cards=6),
+                replace(on, exact_follow_solver='compact-level'),
+                replace(on, exact_follow_max_nodes=50_000_000)]
+    names = {pv.pv_policy_name('ffffffff', c) for c in variants}
+    assert len(names) == len(variants) and base not in names
+
+
+def test_pinned_model_singleton_follow_does_not_solve(pinned_production_package, monkeypatch):
+    from shengji.train import pv_exact_follow
+    env = follow_env(pinned_production_package)
+    recipe = pv.pv_env_recipe(env)
+    rnd, heuristic = _play_state(), HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= 3):
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    def forbidden(*args, **kwargs):
+        pytest.fail('a singleton ballot cannot benefit from exact reranking')
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', forbidden)
+    bot = pv.make_pv_search_bot(**recipe, seed=7)
+    assert bot.decide_play(copy.deepcopy(rnd), rnd.turn) == ['D5']
+    assert bot.last_decision_record['work_complete']
+    assert not bot.last_decision_record.get('exact_follow_attempted', False)
+    assert bot.last_decision_record['admitted'] == [['D5']]
 
 
 def disagreement():

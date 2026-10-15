@@ -2314,20 +2314,20 @@ class PVSearchBot(PolicyValueBot):
         if self.exact_follow and rnd.trick is not None and rnd.trick.plays:
             # The normal PV result is complete before this optional stage starts.
             # Any refusal, budget expiry, or malformed world leaves it untouched.
-            from .optional_stage import OptionalStage
             from .pv_exact_follow import rerank_follow
             baseline_winner, baseline_played = winner, list(played)
             soft_deadline = None
             if self.serving_budget_seconds is not None:
                 soft_deadline = started + self.serving_budget_seconds * 0.8
             stage = OptionalStage(
-                self, ("_exact_follow_state",), hard_check=check_budget,
+                self, (), hard_check=check_budget,
                 budget_errors=PVSearchBudgetExceeded, soft_deadline=soft_deadline,
                 clock=time.perf_counter, soft_error=PVSearchBudgetExceeded,
                 final_check=check_budget)
             exact = None
             with stage:
-                stage.guard and stage.guard()
+                if stage.guard is not None:
+                    stage.guard()
                 exact = rerank_follow(
                     rnd, seat, admitted, worlds, baseline_index=winner,
                     max_nodes=self.exact_follow_max_nodes,

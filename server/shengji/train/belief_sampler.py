@@ -216,12 +216,12 @@ def production_draw(*, keep: dict):
 
 
 def history_legal_draw(*, keep: dict, model: BeliefNumpy | None = None):
-    """The served history-legal draw (`ai.history_legality`, S27) at the same W,
-    with the S17 proposal as its source when ``model`` is given (the served
-    ``belief_worlds`` path, `ai.belief_numpy.BeliefProposal`), else release
-    45's own hands."""
+    """The served history-legal draw with its draw-time constraints
+    (`ai.history_legality`, S27 ``-whl -whd``) at the same W, with the S17
+    proposal as its source when ``model`` is given (the served ``-bw`` path,
+    `ai.belief_numpy.BeliefProposal`), else release 45's own hands."""
     from ..ai.belief_numpy import BeliefProposal
-    from ..ai.history_legality import sample_worlds_history_legal
+    from ..ai.history_legality import draw_constraints, sample_worlds_history_legal
     from ..ai.mcbot import MCBot
     from ..ai.memory import Memory
 
@@ -229,10 +229,14 @@ def history_legal_draw(*, keep: dict, model: BeliefNumpy | None = None):
         t0 = time.perf_counter()
         sampler = MCBot(seed=seed)
         mem = Memory(rnd, seat, own_kitty=getattr(sampler, "BANKER_KITTY", True))
+        # the served -whl -whd draw; with the model, the -bw proposal honouring
+        # the same draw-time constraints
         propose = (None if model is None else
-                   BeliefProposal(model, rnd, seat, refusals, seed=seed, batch=n))
+                   BeliefProposal(model, rnd, seat, refusals, seed=seed, batch=n,
+                                  forbidden=draw_constraints(rnd, seat)))
         worlds, attempts, stats = sample_worlds_history_legal(sampler, rnd, seat, n, refusals,
-                                                              mem=mem, propose=propose)
+                                                              mem=mem, propose=propose,
+                                                              constrain=True)
         Q = (np.zeros((N_CARDS, 4)) if propose is None else propose.Q).astype(np.float32)
         keep.update({"P": Q, "Q": Q, "ms_model": 0.0 if propose is None else 1e3 * propose.prep_seconds,
                      "ms_draw": 1e3 * (time.perf_counter() - t0), "worlds": worlds,

@@ -562,7 +562,7 @@ def test_ordinary_logging_warns_once_and_recovers(tmp_path, caplog):
     assert not room.evaluation_invalidated
     assert len(caplog.records) == 1
     warning = caplog.records[0].getMessage()
-    assert "room ORD event logging failed (FileExistsError)" in warning
+    assert "room ORD event logging failed (FileExistsError errno=EEXIST)" in warning
     assert "private" not in warning
     assert caplog.records[0].exc_info is None
 
@@ -587,7 +587,7 @@ def test_ordinary_logging_reports_append_failure(tmp_path, caplog, monkeypatch):
     monkeypatch.setattr(server, "open", fail_open, raising=False)
     room.log_event("probe")
     assert len(caplog.records) == 1
-    assert "(OSError)" in caplog.text
+    assert "(OSError errno=None)" in caplog.text
     assert "private" not in caplog.text
     assert not room.evaluation_invalidated
 

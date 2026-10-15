@@ -296,6 +296,7 @@ class Collected:
     kitty_x: list = field(default_factory=list)
     ev_state: list = field(default_factory=list)
     ev_meta: list = field(default_factory=list)
+    ev_seconds: list = field(default_factory=list)
     ev_logp: dict = field(default_factory=lambda: {r: [] for r in READINGS})
 
 
@@ -326,7 +327,9 @@ def collect_state(view: StateView, predict, version: int, *, worlds: int, cap: i
             if ev.seat == seat:
                 continue
             since = played_since(view.events, i)
+            te = time.perf_counter()
             got = event_log_probs(predict, version, ev, since, seat, ws, cap=cap)
+            out.ev_seconds.append(time.perf_counter() - te)
             for r in READINGS:
                 v = np.where(np.isneginf(got[r]), ILLEGAL, np.maximum(got[r], LOGP_FLOOR))
                 out.ev_logp[r].append(v.astype(np.float16))
@@ -363,6 +366,7 @@ def _save(out_path: Path, c: Collected, timings: list) -> dict:
         "kitty_x": np.stack(c.kitty_x) if c.kitty_x else np.zeros((0, 0), np.float32),
         "ev_state": np.asarray(c.ev_state, np.int64),
         "ev_meta": np.asarray(c.ev_meta, np.int64).reshape(-1, len(EV_COLS)),
+        "ev_seconds": np.asarray(c.ev_seconds, np.float64),
         "timings": np.asarray(timings, np.float64).reshape(-1, 3),
     }
     for r in READINGS:
@@ -396,9 +400,9 @@ def _collect_task(args: tuple) -> dict:
         if split_of(key, CALIB, TEST) != "test":
             continue
         try:
+            # a deal is always finished once started, so the cap never cuts off its
+            # later tricks and the states stay spread over the whole round
             for view in iter_states(plays, want=lambda d: _choose(key, d, rate)):
-                if len(c.meta) >= max_states:
-                    break
                 t = collect_state(view, predict, version, worlds=worlds, cap=cap, key=key, out=c,
                                   state_id=state_id, store_index=si, cluster_index=ci,
                                   events=events)
@@ -470,6 +474,8 @@ def load(outs: str | os.PathLike | Sequence[str | os.PathLike]) -> dict:
             part["meta"] = part["meta"].copy()
             part["meta"][:, 0] += n * 10 ** 12
             part["ev_state"] = part["ev_state"] + n * 10 ** 12
+            if "ev_seconds" not in part:
+                part["ev_seconds"] = np.full(len(part["ev_state"]), np.nan)
             parts.append(part)
     if not parts:
         raise WorldWeightingError("no states collected")
@@ -630,6 +636,24 @@ def analyze(out, *, variants: Sequence[Variant] = DEFAULT_VARIANTS,
         "ms_per_world_event": float(1000 * t[:, 1].sum() / max(1.0, (ev * W).sum())),
         "worlds": int(W),
     }
+    secs = data["ev_seconds"]
+    timed = np.isfinite(secs)
+    if timed.any():
+        em = data["ev_meta"]
+        rows = data["ev_row"]
+        per_state = np.zeros(S)
+        recent = np.zeros(S)
+        has = np.zeros(S, bool)
+        np.add.at(per_state, rows[timed], secs[timed])
+        np.add.at(recent, rows[timed & (em[:, 0] <= 1)], secs[timed & (em[:, 0] <= 1)])
+        has[rows[timed]] = True
+        report["cost"].update({
+            "timed_states": int(has.sum()),
+            "recent_ms_per_state_with_events": float(1000 * recent[has].mean()),
+            "recent_ms_per_state_with_events_p95": float(1000 * np.percentile(recent[has], 95)),
+            "lead_ms_per_event": float(1000 * secs[timed & (em[:, 2] == 1)].mean()),
+            "follow_ms_per_event": float(1000 * secs[timed & (em[:, 2] == 0)].mean()),
+        })
     return report
 
 
@@ -646,7 +670,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--sha256", required=True)
     c.add_argument("--worlds", type=int, default=512)
     c.add_argument("--cap", type=int, default=SERVED_CAP)
-    c.add_argument("--rate", type=float, default=0.05, help="fraction of a test deal's decisions taken")
+    c.add_argument("--rate", type=float, default=0.03, help="fraction of a test deal's decisions taken")
     c.add_argument("--states-per-task", type=int, default=40)
     c.add_argument("--tasks-per-store", type=int, default=3)
     c.add_argument("--clusters-per-task", type=int, default=400)

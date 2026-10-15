@@ -164,17 +164,100 @@ def with_declare_inputs():
     belief_numpy.decision_inputs = wrapped
 
 
+class NoTrumpKitty:
+    """A belief model's marginals with no mass on a trump in the hidden kitty
+    (S31's necessary condition: the served bury never buries a trump while
+    eight non-trumps remain).  The proposal's Hall draw still places a trump
+    there when no other receiver can take it, so the condition stays soft."""
+
+    def __init__(self, model):
+        self.model = model
+        self.temperature = getattr(model, "temperature", 1.0)
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def marginals(self, inp):
+        P = np.array(self.model.marginals(inp), np.float64)
+        trump = np.asarray(inp["card_feat"])[:, 0] > 0.5
+        P[trump, 3] = 0.0
+        s = P.sum(-1, keepdims=True)
+        return np.where(s > 0, P / np.where(s > 0, s, 1.0), 0.0)
+
+
+class CapacityDraw:
+    """A belief model whose proposal draws with ``belief_seq.sample_worlds_capacity``
+    (``with_capacity_draw`` routes it); the marginals are the wrapped model's."""
+
+    capacity_draw = True
+
+    def __init__(self, model):
+        self.model = model
+        self.temperature = getattr(model, "temperature", 1.0)
+        self.decl = getattr(model, "decl", False)
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def marginals(self, inp):
+        return self.model.marginals(inp)
+
+
+def with_capacity_draw():
+    """Make ``ai.belief_numpy.BeliefProposal`` draw with the capacity-aware
+    sampler for a model that asks for it; every other model draws as served."""
+    from shengji.ai import belief_numpy
+    base = belief_numpy.BeliefProposal
+    if getattr(base, "_s23_capacity", False):
+        return
+
+    class Proposal(base):
+        _s23_capacity = True
+
+        def __init__(self, model, *a, **kw):
+            self.capacity = bool(getattr(model, "capacity_draw", False))
+            super().__init__(model, *a, **kw)
+
+        def _refill(self):
+            if not self.capacity:
+                return super()._refill()
+            from shengji.train import belief_seq
+            plain = belief_seq.sample_worlds
+            belief_seq.sample_worlds = belief_seq.sample_worlds_capacity
+            try:
+                return super()._refill()
+            finally:
+                belief_seq.sample_worlds = plain
+    belief_numpy.BeliefProposal = Proposal
+
+
 def build_arms(names, torch_arms, seed):
+    """``names``: ``ARMS`` keys, plus ``S17nt`` (kitty trumps zeroed in the
+    marginals) and ``S17cap`` (the capacity-aware draw).  ``torch_arms``:
+    ``NAME=CKPT[:T][:cap]``."""
     bots = {}
     for k in names:
+        if k in ("S17nt", "S17cap"):          # the served S17 package, altered
+            bot = served_bot(seed, **ARMS["S17"])[1]
+            if k == "S17nt":
+                bot.belief_model = NoTrumpKitty(bot.belief_model)
+            else:
+                with_capacity_draw()
+                bot.belief_model = CapacityDraw(bot.belief_model)
+            bots[k] = bot
+            continue
         bots[k] = served_bot(seed, **ARMS[k])[1]
     for spec in torch_arms:
         name, rest = spec.split("=", 1)
-        path, _, temp = rest.partition(":")
+        path, *opts = rest.split(":")
+        temp = next((float(o) for o in opts if o and o != "cap"), 1.0)
         bot = served_bot(seed, **ARMS["S17"])[1]
-        bot.belief_model = TorchBelief(path, float(temp) if temp else 1.0)
+        bot.belief_model = TorchBelief(path, temp)
         if bot.belief_model.decl:
             with_declare_inputs()
+        if "cap" in opts:
+            with_capacity_draw()
+            bot.belief_model = CapacityDraw(bot.belief_model)
         bots[name] = bot
     return bots
 

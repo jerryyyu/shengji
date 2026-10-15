@@ -11,6 +11,7 @@ from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from functools import lru_cache
 import hashlib
 import json
+import math
 import multiprocessing
 import os
 from pathlib import Path
@@ -319,6 +320,112 @@ def exact_lead_summary(shards):
             'valid': all(c['invalid'] == 0 for c in out.values())}
 
 
+def exact_follow_summary(shards):
+    """Count and validate persisted exact-follow stage receipts.
+
+    A decision without exact-follow telemetry is an ordinary missing receipt,
+    not an ineligible attempt.  A complete receipt may retain only the length
+    of a long score list; that is counted explicitly rather than treated as a
+    successful score publication.
+    """
+    sides = {
+        side: dict(total_traces=0, missing=0, invalid=0, attempted=0,
+                   complete=0, soft_budget=0, hard_budget=0, refusal=0,
+                   other_error=0, applied=0, score_unavailable=0)
+        for side in ('arm', 'baseline')
+    }
+    reasons = {None, 'soft_budget', 'hard_budget', 'error'}
+
+    def finite_score_list(value):
+        return (isinstance(value, list) and bool(value)
+                and all(type(score) in (int, float) and math.isfinite(score)
+                        for score in value))
+
+    for shard in shards:
+        for group in shard.get('decision_traces', []):
+            side = group.get('side')
+            if side not in sides:
+                raise ValueError('unknown exact-follow trace side')
+            counts = sides[side]
+            for row in group.get('decisions', []):
+                counts['total_traces'] += 1
+                if not isinstance(row, dict):
+                    counts['invalid'] += 1
+                    continue
+                present = {key for key in row if key.startswith('exact_follow_')}
+                if not present:
+                    counts['missing'] += 1
+                    continue
+
+                attempted = row.get('exact_follow_attempted')
+                if attempted is True:
+                    counts['attempted'] += 1
+                valid = type(attempted) is bool and attempted is True
+                applied = row.get('exact_follow_applied')
+                abandoned = row.get('exact_follow_abandoned')
+                valid = valid and type(applied) is bool
+                valid = valid and 'exact_follow_abandoned' in row
+                valid = valid and (
+                    abandoned is None
+                    or (type(abandoned) is str and abandoned in reasons)
+                )
+                if not valid:
+                    counts['invalid'] += 1
+                    continue
+
+                if abandoned is not None:
+                    # An abandoned optional stage never publishes partial result
+                    # data, including a bounded score-list marker.
+                    valid = (applied is False
+                             and type(row.get('exact_follow_error')) is str
+                             and bool(row.get('exact_follow_error'))
+                             and 'exact_follow_worlds' not in row
+                             and 'exact_follow_nodes' not in row
+                             and 'exact_follow_scores' not in row
+                             and 'exact_follow_scores__len' not in row)
+                    if not valid:
+                        counts['invalid'] += 1
+                        continue
+                    if abandoned in ('soft_budget', 'hard_budget'):
+                        counts[abandoned] += 1
+                    else:
+                        if row.get('exact_follow_error') == 'ExactFollowRefusal':
+                            counts['refusal'] += 1
+                        else:
+                            counts['other_error'] += 1
+                    continue
+
+                worlds = row.get('exact_follow_worlds')
+                nodes = row.get('exact_follow_nodes')
+                scores_present = 'exact_follow_scores' in row
+                scores = row.get('exact_follow_scores')
+                score_len_present = 'exact_follow_scores__len' in row
+                score_len = row.get('exact_follow_scores__len')
+                valid = (type(worlds) is int and worlds > 0
+                         and type(nodes) is int and nodes >= 0
+                         and row.get('exact_follow_error') is None)
+                if scores_present:
+                    valid = valid and finite_score_list(scores) and len(scores) > 1
+                    if score_len_present:
+                        valid = valid and type(score_len) is int and score_len == len(scores)
+                else:
+                    # A missing list is valid only when trace_fields recorded
+                    # the source list's bounded length.
+                    valid = (valid and score_len_present and type(score_len) is int
+                             and score_len > TRACE_LIST_MAX)
+                if not valid:
+                    counts['invalid'] += 1
+                    continue
+                counts['complete'] += 1
+                counts['applied'] += int(applied)
+                if not scores_present:
+                    counts['score_unavailable'] += 1
+
+    return {'schema': 'exact-follow-trace-summary-v1', 'sides': sides,
+            'claim': 'descriptive exact-follow receipt counts; no latency or playing-strength inference',
+            'valid': all(counts['invalid'] == 0 for counts in sides.values())}
+
+
 def summary_for(shards, config):
     records = [r for shard in shards for r in shard["records"]]
     base = duel.build_config(arm="none", select_worlds=config["select_worlds"],
@@ -342,6 +449,7 @@ def summary_for(shards, config):
         "no_more_measured_decision_cpu": cpu_ratio is not None and cpu_ratio <= 1.0,
         "equal_work_strength_claim": False,
         "exact_lead": exact_lead_summary(shards),
+        "exact_follow": exact_follow_summary(shards),
         "work_caveat": ("N is matched against the production ballot per searched state, not full cost. "
                         "An explicit candidate N override can reduce learned selection cost. "
                         "Different trajectories/extra unlocked decisions change aggregate work. "

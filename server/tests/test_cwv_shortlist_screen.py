@@ -135,6 +135,16 @@ def test_summary_flags_wall_target_without_censoring_completion(monkeypatch):
     assert result["outcome_sentinel"] == {"utility": 7}
 
 
+def test_cwv_summary_includes_exact_follow_receipt_summary(monkeypatch):
+    monkeypatch.setattr(S.duel, "summarize", identity_summary)
+    shards = [{'records': [], 'decision_traces': [
+        {'side': 'arm', 'decisions': [dict(exact_follow_attempted=True,
+            exact_follow_applied=False, exact_follow_abandoned='error',
+            exact_follow_error='ExactFollowRefusal')]}]}]
+    result = S.summary_for(shards, cfg())['exact_follow']
+    assert result['valid'] and result['sides']['arm']['refusal'] == 1
+
+
 @pytest.mark.parametrize(
     ("arm", "expected"),
     [

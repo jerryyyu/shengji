@@ -182,13 +182,27 @@ def test_registry_follow_reaches_server_snapshot_and_commit(
         else:
             assert record['exact_follow_abandoned'] is None
             assert record['exact_follow_worlds'] == 64
-        from shengji.train.search_screen import trace_fields
+        from shengji.train.search_screen import trace_fields, exact_follow_summary
         persisted = trace_fields(record)
         for key in ('exact_follow_attempted', 'exact_follow_abandoned',
                     'exact_follow_applied', 'exact_follow_worlds', 'exact_follow_scores',
                     'exact_follow_error'):
             if key in record:
                 assert persisted[key] == record[key]
+        summary = exact_follow_summary([{'decision_traces': [
+            {'side': 'arm', 'decisions': [persisted]},
+            {'side': 'baseline', 'decisions': [trace_fields(baseline.last_decision_record)]}]}])
+        assert summary['valid']
+        counts = summary['sides']['arm']
+        assert counts['attempted'] == 1 and counts['missing'] == 0
+        reason = record['exact_follow_abandoned']
+        outcome = ('complete' if reason is None else
+                   'refusal' if record.get('exact_follow_error') == 'ExactFollowRefusal'
+                   else reason)
+        assert counts[outcome] == 1
+        assert counts['applied'] == int(record['exact_follow_applied'])
+        assert summary['sides']['baseline']['missing'] == 1
+        assert summary['sides']['baseline']['attempted'] == 0
         assert srv._commit_bot_turn(room, prepared)
         assert not srv._commit_bot_turn(room, prepared)
         assert len(rnd.hands[seat]) == len(hands[seat]) - len(prepared.decision.cards)

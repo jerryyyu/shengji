@@ -85,6 +85,99 @@ def test_exact_stage_cost_rejects_invalid_measurements(seconds):
     assert cost['max_seconds'] is None
 
 
+def test_exact_follow_summary_counts_both_sides_and_rejects_malformed_receipts():
+    complete = dict(exact_follow_attempted=True, exact_follow_applied=True,
+                    exact_follow_abandoned=None, exact_follow_worlds=2,
+                    exact_follow_nodes=0, exact_follow_scores=[1.0, 2.0])
+    truncated = dict(exact_follow_attempted=True, exact_follow_applied=False,
+                     exact_follow_abandoned=None, exact_follow_worlds=3,
+                     exact_follow_nodes=4, exact_follow_scores__len=17)
+    rows = [
+        {},
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='soft_budget', exact_follow_error='Soft'),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='hard_budget', exact_follow_error='Hard'),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='error',
+             exact_follow_error='ExactFollowRefusal'),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='error', exact_follow_error='RuntimeError'),
+        complete,
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='unknown', exact_follow_error='Unknown'),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned='soft_budget', exact_follow_error='Soft',
+             exact_follow_scores=[1.0, 2.0]),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned=None, exact_follow_worlds=0,
+             exact_follow_nodes=1, exact_follow_scores=[1.0, 2.0]),
+        dict(exact_follow_attempted=True, exact_follow_applied=False,
+             exact_follow_abandoned=[], exact_follow_error='Bad',
+             exact_follow_worlds=1, exact_follow_nodes=0,
+             exact_follow_scores=[1.0, 2.0]),
+    ]
+    result = S.exact_follow_summary([{
+        'decision_traces': [
+            {'side': 'arm', 'decisions': rows},
+            {'side': 'baseline', 'decisions': [truncated]},
+        ]
+    }])
+    assert not result['valid']
+    assert result['claim'].endswith('no latency or playing-strength inference')
+    assert result['sides']['arm'] == {
+        'total_traces': 10, 'missing': 1, 'invalid': 4, 'attempted': 9,
+        'complete': 1, 'soft_budget': 1, 'hard_budget': 1, 'refusal': 1,
+        'other_error': 1, 'applied': 1, 'score_unavailable': 0,
+    }
+    assert result['sides']['baseline']['complete'] == 1
+    assert result['sides']['baseline']['score_unavailable'] == 1
+    assert result['sides']['baseline']['applied'] == 0
+
+
+def test_exact_follow_summary_missing_attempt_is_not_ineligible():
+    result = S.exact_follow_summary([
+        {'decision_traces': [
+            {'side': 'arm', 'decisions': [{}, {'exact_follow_scores__len': 17}]}
+        ]}
+    ])
+    assert result['sides']['arm']['missing'] == 1
+    assert result['sides']['arm']['invalid'] == 1
+    assert result['sides']['arm']['attempted'] == 0
+
+
+def test_search_summary_includes_exact_follow_receipt_summary(monkeypatch):
+    monkeypatch.setattr(S.duel, 'summarize', lambda *args, **kwargs: {
+        'work_totals': {'arm': {}, 'baseline': {}},
+    })
+    shards = [{'records': [], 'decision_traces': [
+        {'side': 'arm', 'decisions': [dict(exact_follow_attempted=True,
+            exact_follow_applied=False, exact_follow_abandoned='hard_budget',
+            exact_follow_error='PVSearchBudgetExceeded')]}]}]
+    result = S.summary_for(shards, config())['exact_follow']
+    assert result['valid'] and result['sides']['arm']['hard_budget'] == 1
+
+
+@pytest.mark.parametrize('patch', [
+    {'exact_follow_attempted': 1}, {'exact_follow_applied': 0},
+    {'exact_follow_scores': [float('nan'), 0]},
+    {'exact_follow_scores': [True, 0]}, {'exact_follow_scores': [1]},
+    {'exact_follow_scores': None}, {'exact_follow_scores__len': 3},
+    {'exact_follow_worlds': True}, {'exact_follow_nodes': -1},
+    {'exact_follow_error': 'stale'}, {'exact_follow_abandoned': {}},
+])
+def test_exact_follow_summary_rejects_contradictory_complete_row(patch):
+    row = dict(exact_follow_attempted=True, exact_follow_applied=False,
+               exact_follow_abandoned=None, exact_follow_worlds=2,
+               exact_follow_nodes=0, exact_follow_scores=[0.0, 1.0])
+    row.update(patch)
+    result = S.exact_follow_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['invalid'] == 1
+    assert result['sides']['arm']['complete'] == 0
+
+
 @pytest.mark.parametrize('patch', [
     {'exact_lead_status': 'future'}, {'exact_lead_change_kind': None},
     {'exact_lead_changed': False}, {'exact_lead_selected_level_delta': -1},

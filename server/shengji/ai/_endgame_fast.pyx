@@ -33,6 +33,7 @@ from libc.stdint cimport int32_t, uint8_t, uint32_t, uint64_t
 from libc.stdlib cimport calloc, free, malloc
 from libc.string cimport memset
 
+import threading
 import weakref
 
 from shengji.engine import combos as _combos
@@ -122,6 +123,7 @@ cdef class Tables:
     cdef dict shapes             # shape tuple -> id
     cdef list shape_list         # id -> shape tuple
     cdef dict match_overflow     # (record, shape id >= MAXSHAPE) -> top
+    cdef object lock             # serialises inserts (see ``_insert``)
 
     def __cinit__(self, ordering):
         cdef int i
@@ -147,6 +149,7 @@ cdef class Tables:
         self.shapes = {}
         self.shape_list = []
         self.match_overflow = {}
+        self.lock = threading.Lock()
 
     def __dealloc__(self):
         cdef int i
@@ -167,19 +170,39 @@ cdef class Tables:
             self.shape_list.append(shape)
         return got
 
-    cdef inline int find(self, uint64_t lo, uint64_t hi) except -2:
-        """Record index of the multiset with 2-bit code counts (lo, hi)."""
+    cdef inline int _probe(self, uint64_t lo, uint64_t hi, uint64_t* slot) noexcept:
         cdef uint64_t mask = self.key_cap - 1
         cdef uint64_t i = _mix(lo, hi) & mask
         while True:
             if self.keys[i].idx < 0:
-                return self._insert(lo, hi, i)
+                slot[0] = i
+                return -1
             if self.keys[i].lo == lo and self.keys[i].hi == hi:
                 return self.keys[i].idx
             i = (i + 1) & mask
 
-    cdef int _insert(self, uint64_t lo, uint64_t hi, uint64_t at) except -2:
+    cdef inline int find(self, uint64_t lo, uint64_t hi) except -2:
+        """Record index of the multiset with 2-bit code counts (lo, hi)."""
+        cdef uint64_t slot
+        cdef int idx = self._probe(lo, hi, &slot)
+        if idx >= 0:
+            return idx
+        return self._insert(lo, hi)
+
+    cdef int _insert(self, uint64_t lo, uint64_t hi) except -2:
+        """Build and file one record.  Lock-free readers are safe: the key
+        table only changes here, in C, with the GIL held; ``_build`` runs
+        engine Python code, so a second thread could get here meanwhile --
+        the lock serialises inserts and the probe is redone under it."""
+        with self.lock:
+            return self._insert_locked(lo, hi)
+
+    cdef int _insert_locked(self, uint64_t lo, uint64_t hi) except -2:
         cdef int c, k, idx
+        cdef uint64_t at
+        idx = self._probe(lo, hi, &at)
+        if idx >= 0:
+            return idx
         ids = []
         for c in range(NCODE):
             if c < 32:
@@ -191,6 +214,7 @@ cdef class Tables:
         idx = self._build(ids)
         self.at(idx).lo = lo
         self.at(idx).hi = hi
+        self._probe(lo, hi, &at)   # unchanged under the lock; kept explicit
         self.keys[at].lo = lo
         self.keys[at].hi = hi
         self.keys[at].idx = idx

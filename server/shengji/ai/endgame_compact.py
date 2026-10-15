@@ -2,39 +2,46 @@
 
 Same search, cheaper state.  ``ExactWorldSession`` copies a whole ``Round``
 for every child and rebuilds its legal actions, trick resolution and
-transposition key from scratch.  This session runs the identical
-alpha-beta partnership minimax over a tuple state ``(hands, turn,
-attacker_points, leader, plays)`` and memoizes, per world, every rule
-question it asks the engine.  It is a drop-in for ``ExactWorldSession`` in
-``train.pv_exact_endgame``; the reference class stays the oracle (and the
-solver behind every other caller).
+transposition key from scratch.  :class:`CompactWorldSession` runs the
+identical alpha-beta partnership minimax on a compact state, with two
+backends:
+
+* ``"compiled"`` -- ``ai/_endgame_fast.pyx``: per-world card-slot bitmasks, a
+  C transposition table, and rule facts (decomposition, shape, tractor runs,
+  ``decompose_matching``) computed once per card multiset by the engine's own
+  functions and shared by every world of a decision.  Selected when the
+  engine runs compiled (``SHENGJI_FAST=1``) and the extension is built.
+* ``"python"`` -- :class:`_CompactSolver` below, the fallback: tuple states
+  and memoized engine calls.
+
+It is a drop-in for ``ExactWorldSession`` in ``train.pv_exact_endgame``; the
+reference class stays the oracle (and the solver behind every other caller).
 
 What is preserved exactly, and why
 ----------------------------------
-* **Values, node and cache-hit counts.**  The child order, the alpha-beta
-  window updates, the exact/bound transposition tables and the node-cap test
-  are line-for-line the reference ``_ExactSolver.value``.  The table key is
-  the reference ``_state_key`` minus its components that are constant within
-  a session (context, which the session checks on every root, and phase,
-  always ``"play"`` at a keyed state), so two states share an entry here iff
-  they share one there.  Hence a capped search raises at the same node.
-* **Engine inputs.**  Hands are kept as tuples in exactly the order the
-  reference's lists have (``list.remove`` drops the first equal card, as does
-  :func:`_remove`), plays keep the engine's card order, and every rule
-  function receives a fresh ``list`` with the same contents the reference
-  passes.  Memo keys are those exact inputs, so a memoized answer is the
-  answer the engine gives the reference at that point.
-* **``check_budget``** is called at the same points (every ``value`` call and
-  every root solve), so a deadline fires at the same place in the search.
+* **Values, chosen actions, node and cache-hit counts, node-cap refusals.**
+  The child order, the alpha-beta window updates, the exact/bound
+  transposition tables and the node-cap test are the reference
+  ``_ExactSolver.value`` line for line.  The table key is the reference
+  ``_state_key`` minus its components that are constant within a session
+  (context, which every root is checked against, and phase, always ``"play"``
+  at a keyed state), so two states share an entry here iff they share one
+  there; a capped search therefore raises at the same node.
+* **Engine inputs (python backend).**  Hands are tuples in exactly the order
+  the reference's lists have (``list.remove`` drops the first equal card, as
+  does :func:`_remove`), plays keep the engine's card order, and every rule
+  function receives a fresh ``list`` with the reference's contents.  Memo keys
+  are those exact inputs.  The compiled backend keys rule facts by multiset;
+  every engine rule it replays is a function of the multiset (``decompose``
+  canonicalises its input; the rest count cards or compare levels).
+* **``check_budget``**: the python backend calls it at the reference's points
+  (every ``value`` call and every root); the compiled backend on every root
+  and every 256th search call (``CompactWorldSession`` docstring).
 
-The rule functions are looked up through the engine modules at call time,
-so the compiled engine (``SHENGJI_FAST=1``) is used exactly when the
-reference would use it.
+``tests/test_endgame_compact.py`` holds both backends to the reference.
 """
 
 from __future__ import annotations
-
-from itertools import combinations
 
 from ..engine import round as _round
 from ..engine.legal import IllegalPlay

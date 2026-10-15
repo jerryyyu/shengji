@@ -18,7 +18,6 @@ import random
 import numpy as np
 import pytest
 
-from shengji.ai import endgame_compact
 from shengji.ai.endgame import (ExactEndgameBudgetExceeded, ExactEndgameRefusal,
                                 ExactWorldSession, _clone_for_play,
                                 exhaustive_legal_actions)

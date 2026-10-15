@@ -178,6 +178,15 @@ def test_latency_worker_seals_factory_refusal_without_retry(tmp_path, monkeypatc
     assert not (tmp_path / 'measure_test.jsonl').exists()
 
 
+def test_latency_harvest_refuses_old_capture_source_before_creating_output(tmp_path, monkeypatch):
+    import asyncio
+    from scripts import exact_endgame_latency as worker
+    monkeypatch.delattr(LeadCapture, 'capture_turn')
+    with pytest.raises(RuntimeError, match='integrated follow-root capture source'):
+        asyncio.run(worker.harvest(None, None, None, tmp_path))
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_every_captured_lead_replays_to_round_end_with_observed_ledger():
     # Snapshot equality alone does not exercise the continuation consumer.
     # Build an independent uninterrupted trajectory, preserving each seat's

@@ -276,7 +276,8 @@ jobs:
             tests/test_tactical_public_observations.py \
             tests/test_belief_labels.py \
             tests/test_belief_eval.py \
-            tests/test_belief_history.py
+            tests/test_belief_history.py \
+            tests/test_world_weighting.py
 
   luna-profiles:
     runs-on: ubuntu-latest

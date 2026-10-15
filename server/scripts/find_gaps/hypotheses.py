@@ -53,7 +53,6 @@ class Identity(Base):
     """Exploiter wrapper with no override: must read exactly 0 on every deal."""
 
 
-# --------------------------------------------------------------------------
 # CHEAT bounds (hidden information; calibration only, not exploits)
 
 def _patch_sampler(bot, fn):
@@ -109,7 +108,6 @@ class CheatPartner(Base):
         return got
 
 
-# --------------------------------------------------------------------------
 # Legal exploits
 
 @register("bury-declared")

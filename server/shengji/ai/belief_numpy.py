@@ -428,19 +428,28 @@ class BeliefProposal:
     burial when it is known.  Errors propagate: the caller falls back."""
 
     def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
-                 seed: int, batch: int, forbidden: Mapping | None = None):
+                 seed: int, batch: int, forbidden: Mapping | None = None,
+                 check_budget=None):
         from ..train.belief_seq import project_sizes
         import time
         t0 = time.perf_counter()
+        if check_budget is not None:
+            check_budget()
         self.rnd, self.seat = rnd, int(seat)
         self.inp = decision_inputs(rnd, seat, refusals)
+        if check_budget is not None:
+            check_budget()
         P = model.marginals(self.inp)
         # the model reads the public mask; the draw also honours the forbidden
         # cards (``ai.history_legality.draw_constraints``: {(seat, effective
         # suit): codes}) by masking those receivers after the model
+        if check_budget is not None:
+            check_budget()
         self.M = draw_mask(self.inp, rnd, seat, forbidden)
         P = np.where(self.M, P, 0.0)
         self.Q = project_sizes(P, self.inp["n_c"], self.inp["sizes"], self.M)
+        if check_budget is not None:
+            check_budget()
         self.kitty_hidden = bool(self.inp["M"][:, 3].any()) or int(self.inp["sizes"][3]) > 0
         self.rng = np.random.default_rng(int(seed))
         self.batch = int(batch)

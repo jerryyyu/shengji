@@ -215,6 +215,32 @@ def production_draw(*, keep: dict):
     return draw
 
 
+def history_legal_draw(*, keep: dict, model: BeliefNumpy | None = None):
+    """The served history-legal draw (`ai.history_legality`, S27) at the same W,
+    with the S17 proposal as its source when ``model`` is given (the served
+    ``belief_worlds`` path, `ai.belief_numpy.BeliefProposal`), else release
+    45's own hands."""
+    from ..ai.belief_numpy import BeliefProposal
+    from ..ai.history_legality import sample_worlds_history_legal
+    from ..ai.mcbot import MCBot
+    from ..ai.memory import Memory
+
+    def draw(rnd, seat, refusals, n, seed):
+        t0 = time.perf_counter()
+        sampler = MCBot(seed=seed)
+        mem = Memory(rnd, seat, own_kitty=getattr(sampler, "BANKER_KITTY", True))
+        propose = (None if model is None else
+                   BeliefProposal(model, rnd, seat, refusals, seed=seed, batch=n))
+        worlds, attempts, stats = sample_worlds_history_legal(sampler, rnd, seat, n, refusals,
+                                                              mem=mem, propose=propose)
+        Q = (np.zeros((N_CARDS, 4)) if propose is None else propose.Q).astype(np.float32)
+        keep.update({"P": Q, "Q": Q, "ms_model": 0.0 if propose is None else 1e3 * propose.prep_seconds,
+                     "ms_draw": 1e3 * (time.perf_counter() - t0), "worlds": worlds,
+                     "history_fallback": int(stats.get("history_fallback_worlds", 0))})
+        return sampler, mem, worlds, dict(stats, attempts=int(attempts))
+    return draw
+
+
 def distinct_worlds(worlds) -> int:
     return len({tuple(tuple(sorted(h)) for h in hands) + (tuple(sorted(b)),)
                 for hands, b in worlds})
@@ -263,11 +289,15 @@ def _collect_task(args: tuple) -> dict:
     c = ww.Collected()
     timings, failed = [], []
     extras: dict[str, list] = {k: [] for k in ("state", "P", "Q", "illegal", "ms_model",
-                                                "ms_draw", "ms_legal", "distinct")}
+                                                "ms_draw", "ms_legal", "distinct",
+                                                "history_fallback")}
     t0 = time.time()
     keep: dict = {}
-    draw = (s17_draw(model, project=project, keep=keep) if proposal == "s17"
-            else production_draw(keep=keep))
+    draw = {"s17": lambda: s17_draw(model, project=project, keep=keep),
+            "production": lambda: production_draw(keep=keep),
+            "s27": lambda: history_legal_draw(keep=keep),
+            "s27_s17": lambda: history_legal_draw(keep=keep, model=load_belief_numpy(
+                package, sha256))}[proposal]()
     for sid, view in ww.iter_collected_states(stores, meta):
         row = row_of[sid]
         n_before = len(c.meta)
@@ -293,6 +323,7 @@ def _collect_task(args: tuple) -> dict:
         extras["ms_model"].append(keep["ms_model"])
         extras["ms_draw"].append(keep["ms_draw"])
         extras["distinct"].append(distinct_worlds(keep["worlds"]))
+        extras["history_fallback"].append(int(keep.get("history_fallback", 0)))
     out = Path(out_dir)
     res = ww._save(out / f"{name}.npz", c, timings) if c.meta else {"file": None, "states": 0}
     if extras["state"]:
@@ -630,8 +661,10 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--states-per-task", type=int, default=25)
     c.add_argument("--max-states", type=int, default=None)
     c.add_argument("--seed", type=int, default=0)
-    c.add_argument("--proposal", choices=("s17", "production"), default="s17",
-                   help="production: release 45's own draw at the same W (the comparator)")
+    c.add_argument("--proposal", choices=("s17", "production", "s27", "s27_s17"), default="s17",
+                   help="production: release 45's own draw at the same W (the comparator); "
+                        "s27: the history-legal draw; s27_s17: it with the S17 proposal "
+                        "(the served belief_worlds path, float32 runtime)")
     cmp_ = sub.add_parser("compare", help="same-W arms on the same states")
     cmp_.add_argument("--arm", action="append", required=True,
                       help="name=dir[,dir...] (one collect per collection, same order per arm)")

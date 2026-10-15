@@ -23,6 +23,8 @@ from test_pv_doomed_throw_reselect import (DECISIONS, draw, served as dtr_served
                                            yjqj)
 from test_pv_value_declare import NT_CASE, NTEvaluator, served as vd_served, state_at
 from test_pv_declare_wait import WAIT_CASE, OtherDeclarerEvaluator, bot as vdw_bot
+from test_pv_exact_follow import search_case as ef_search
+from shengji.train import pv_exact_follow
 
 
 # ------------------------------------------------------- the stages under the contract
@@ -147,6 +149,12 @@ CASES = [
               run=lambda deadline, on=True: _exact_run(deadline, on, exact_lead_policy_first=True),
               base=lambda: _exact_run(Deadline(), on=False)[1],
               abandon=_exact_abandon, abandons_errors=True),
+    StageCase("exact_follow", run=ef_search,
+              base=lambda: ef_search(on=False)[1],
+              abandon=lambda bot: (
+                  bot.last_decision_record.get('exact_follow_abandoned'),
+                  bot.last_decision_record.get('exact_follow_error')),
+              abandons_errors=True, nested=(pv_exact_follow, 'rerank_follow')),
     StageCase("adaptive_worlds", run=_aw_run,
               base=lambda: _aw_run(Deadline(), adaptive=False)[1],
               abandon=_aw_abandon, abandons_errors=True),

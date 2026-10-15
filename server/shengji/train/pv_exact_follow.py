@@ -9,6 +9,7 @@ published only after every candidate in every world completed.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import Counter
 
 from ..ai.endgame import ExactEndgameRefusal, ExactWorldSession
 from ..rl.value_afterstate import category_signed_level, signed_level_category
@@ -56,7 +57,7 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
         if len(hands) != 4 or len(buried) != len(rnd.buried) \
                 or [len(hand) for hand in hands] != [len(hand) for hand in rnd.hands]:
             raise ExactFollowRefusal("sampled world changes public hand or kitty sizes")
-        if list(hands[seat]) != list(rnd.hands[seat]):
+        if Counter(hands[seat]) != Counter(rnd.hands[seat]):
             raise ExactFollowRefusal("sampled world changes the acting hand")
         if any(len(hand) > max_hand_cards for hand in hands):
             raise ExactFollowRefusal("a sampled world exceeds the exact hand-card boundary")

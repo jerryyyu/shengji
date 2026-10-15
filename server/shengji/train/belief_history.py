@@ -317,6 +317,56 @@ def extract(dirs: Sequence[str], stores_root: str, *, workers: int, log=print) -
     return out
 
 
+def audit(dirs: Sequence[str], out_json: str, log=print) -> dict:
+    """Receipt for a set of extract dirs: per dir the store, cluster stride/offset,
+    rows and deals per split, and the history manifest; plus the leakage check --
+    no deal key (hash) is in two splits across ALL dirs (the split is the salted
+    deal-key hash, so the same deal is in the same split in every extract)."""
+    import numpy as np
+    by_split: dict[str, set] = {"train": set(), "calib": set(), "test": set()}
+    per_dir = []
+    for d in dirs:
+        man = json.loads((Path(d) / "manifest.json").read_text())
+        hman = json.loads((Path(d) / "hist" / "manifest.json").read_text())
+        rows = Counter()
+        sampler_rows = Counter()
+        deals: dict[str, set] = {k: set() for k in by_split}
+        for c in man["chunks"]:
+            for split, e in c["files"].items():
+                with np.load(Path(d) / e["file"]) as z:
+                    deal = z["deal"]
+                    s_n = z["S_n"]
+                rows[split] += len(deal)
+                sampler_rows[split] += int((s_n > 0).sum())
+                deals[split].update(np.unique(deal).tolist())
+        for k in by_split:
+            by_split[k] |= deals[k]
+        per_dir.append({"dir": d, "store": man["stores"][0], "cluster_stride": man["cluster_stride"],
+                        "cluster_offset": man.get("cluster_offset"), "split": man["split"],
+                        "sampler": man["sampler"], "rows": dict(rows),
+                        "sampler_rows": dict(sampler_rows),
+                        "deals": {k: len(v) for k, v in deals.items()},
+                        "failed_clusters": len(man.get("failed_clusters", [])),
+                        "excluded_clusters": len(man.get("excluded_clusters", [])),
+                        "manifest_sha256": hashlib.sha256((Path(d) / "manifest.json").read_bytes()
+                                                          ).hexdigest(),
+                        "hist_manifest_sha256": hashlib.sha256(
+                            (Path(d) / "hist" / "manifest.json").read_bytes()).hexdigest(),
+                        "hist_rows": hman["rows"]})
+        log(json.dumps({Path(d).name: per_dir[-1]["rows"]}), flush=True)
+    salts = {json.dumps(p["split"], sort_keys=True) for p in per_dir}
+    overlap = {f"{a}&{b}": len(by_split[a] & by_split[b])
+               for a, b in (("train", "calib"), ("train", "test"), ("calib", "test"))}
+    out = {"schema": "s17-belief-corpus-receipt-v1", "dirs": per_dir, "split_configs": sorted(salts),
+           "deals": {k: len(v) for k, v in by_split.items()}, "deal_overlap": overlap,
+           "rows": {k: sum(p["rows"].get(k, 0) for p in per_dir) for k in by_split},
+           "leakage_free": len(salts) == 1 and not any(overlap.values())}
+    Path(out_json).write_text(json.dumps(out, indent=1, default=list))
+    if not out["leakage_free"]:
+        raise BeliefLabelError(f"split leakage or mixed split configs: {overlap} {salts}")
+    return out
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="belief_history", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -325,6 +375,9 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--data", nargs="+", required=True)
     ex.add_argument("--stores-root", required=True)
     ex.add_argument("--workers", type=int, default=12)
+    au = sub.add_parser("audit", help="corpus receipt + cross-split deal leakage check")
+    au.add_argument("--data", nargs="+", required=True)
+    au.add_argument("--out-json", required=True)
     return ap
 
 
@@ -332,6 +385,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "extract":
         extract(args.data, args.stores_root, workers=args.workers)
+        return 0
+    if args.command == "audit":
+        r = audit(args.data, args.out_json)
+        print(json.dumps({k: r[k] for k in ("rows", "deals", "deal_overlap", "leakage_free")}))
         return 0
     return 2
 

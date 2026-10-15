@@ -325,6 +325,7 @@ def main(argv=None):
             while rnd.phase == "play":
                 if identity is not None:
                     check()  # also stop before follows, not just before leads
+                horizon_stop = None
                 seat = rnd.turn
                 bot = bots[seat]
                 if identity is None:
@@ -366,14 +367,22 @@ def main(argv=None):
                                     bot, horizon_inputs, rec, gate=horizon_gate)
                             except (PVSearchBudgetExceeded, PVTreeContinuationRefused, Yield) as exc:
                                 row['paired_horizon'] = {'status': 'abandoned', 'reason': type(exc).__name__}
+                                if isinstance(exc, Yield):
+                                    horizon_stop = exc
                     else:
                         row.update(analyze(bot, rnd, seat, copy.deepcopy(rec), dict(bot._t), samplers[seat]))
                     out.write(json.dumps(row) + "\n")
                     out.flush()
                     n += 1
+                    if horizon_stop is not None:
+                        raise horizon_stop
+                    if options.paired_horizon_seconds is not None and n >= MAXPOS:
+                        break
                 rnd.play(seat, cards)
                 capture.committed(rnd, seat, cards)
                 env.observe_committed_play(rnd, bots)
+            if options.paired_horizon_seconds is not None and rnd.phase != "round_end":
+                break
             game.finish_round()
             r += 1
             cost_row('round_complete', round=r - 1)

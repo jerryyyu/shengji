@@ -16,7 +16,8 @@ from test_pv_search_serving import package  # noqa: F401
 
 
 @pytest.mark.parametrize('mode', ['historical', 'served', 'fallback', 'served_round',
-                                  'served_stop', 'served_error', 'horizon', 'horizon_timeout'])
+                                  'served_stop', 'served_error', 'horizon', 'horizon_timeout',
+                                  'horizon_yield'])
 def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     plays = [e for e in events if e['e'] == 'play']
@@ -99,6 +100,8 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             assert len(captured['worlds']) == 1
             if mode == 'horizon_timeout':
                 raise pv.PVSearchBudgetExceeded('test deadline')
+            if mode == 'horizon_yield':
+                raise collector.Yield('stop_file')
             return {'status': 'complete', 'consumer_witness': True}
         monkeypatch.setattr(paired_horizon, 'measure_captured_horizon', measured)
         args = ['--paired-horizon-seconds', '1', *args]
@@ -126,15 +129,22 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             return  # partial roots and every completed decision survived
         assert journal[-1]['reason'] == 'max_rounds'
         assert journal[-1]['rounds'] == 1
-    assert cursor == len(plays) == 64
-    assert len(rows) == 16
+    assert len(plays) == 64
+    assert cursor == (1 if mode == 'horizon_yield' else 61 if mode.startswith('horizon') else 64)
+    assert len(rows) == (1 if mode == 'horizon_yield' else 16)
+    if mode.startswith('horizon'):
+        # Stop before committing the final captured action, never finish the
+        # rest of its trick/round after max_positions or a global stop signal.
+        assert rnd.phase == 'play' and not rnd.trick.plays
     assert all(('paired_horizon' in row) == mode.startswith('horizon') for row in rows)
     if mode == 'horizon':
         assert all(row['paired_horizon']['consumer_witness'] for row in rows)
     if mode == 'horizon_timeout':
         assert all(row['paired_horizon'] == {'status': 'abandoned', 'reason': 'PVSearchBudgetExceeded'}
                    for row in rows)
-    if mode != 'historical':
+    if mode == 'horizon_yield':
+        assert rows[0]['paired_horizon'] == {'status': 'abandoned', 'reason': 'Yield'}
+    if mode not in ('historical', 'horizon_yield'):
         from scripts.lead_finish_classify import main as classify
         classified = tmp_path / 'classified.json'
         classify([str(out), str(classified)])
@@ -156,8 +166,9 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             assert row['attempted'] == row['replay']['decision']['played']
             assert 'variants' not in row
         assert ledger.observe(root) == ledger.refusals
-    assert any(e['attempted'] != e['accepted'] for row in rows for e in row['replay']['plays'])
-    assert any(row['replay']['ledger']['refusals'] and row['replay']['root']['notice'] is None for row in rows)
+    if mode != 'horizon_yield':
+        assert any(e['attempted'] != e['accepted'] for row in rows for e in row['replay']['plays'])
+        assert any(row['replay']['ledger']['refusals'] and row['replay']['root']['notice'] is None for row in rows)
     saved = out.read_bytes()
     with pytest.raises(FileExistsError):
         collector.main(args)

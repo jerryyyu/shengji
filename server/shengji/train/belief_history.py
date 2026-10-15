@@ -121,6 +121,7 @@ def replay_round_tokens(records: Sequence[Mapping[str, Any]]):
     round_index = -1
     decision_index = 0
     cur = None
+    last_play = None
 
     def finish():
         if cur is not None:
@@ -135,10 +136,16 @@ def replay_round_tokens(records: Sequence[Mapping[str, Any]]):
                 yield done
             rnd = round_from_setup(rec["deck"], rec["setup"])
             round_index += 1
+            last_play = None
             cur = {"round_index": round_index, "tok": [], "dec": [],
                    "card_feat": card_features(rnd.ordering), "banker": int(rnd.banker)}
         elif rnd is None or len(prefix) != len(cur["tok"]):
             raise BeliefLabelError("records are not one ordered game")
+        if prefix:
+            tail = prefix[-1]
+            if (last_play is None or int(tail["seat"]) != last_play["seat"]
+                    or Counter(tail["cards"]) != Counter(last_play["cards"])):
+                raise BeliefLabelError("the replayed play differs from the record's prefix")
         seat = int(rec["seat"])
         if rnd.phase != "play" or rnd.turn != seat:
             raise BeliefLabelError("the record's seat is not the replay's turn")
@@ -160,6 +167,7 @@ def replay_round_tokens(records: Sequence[Mapping[str, Any]]):
         expected = rec.get("engine_play") or rec["action"]
         if Counter(played) != Counter(expected):
             raise BeliefLabelError("the engine's play differs from the record's engine_play")
+        last_play = {"seat": seat, "cards": played}
         trick = rnd.history[-1] if len(rnd.history) > before else rnd.trick
         if lead_eff is None:
             lead_eff = o.eff_suit(played[0])

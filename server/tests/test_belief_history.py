@@ -6,6 +6,7 @@ Synthetic games from ``test_belief_labels`` stand in for trajectory shards.
 from __future__ import annotations
 
 import json
+import copy
 from collections import Counter
 
 import numpy as np
@@ -84,6 +85,35 @@ def test_card_features_follow_the_round_trump(chunk):
     for j in ("LJ", "BJ"):
         assert (cf[:, CARD_INDEX[j], 0] == 1).all()
     assert np.allclose(cf[:, :, 1:6].sum(-1), 1.0)
+
+
+@pytest.mark.parametrize('field', ['seat', 'cards'])
+def test_history_replay_refuses_corrupted_prefix_contents(chunk, field):
+    records = copy.deepcopy(chunk['records'][0])
+    rec = next(r for r in records if r.get('plays_prefix'))
+    tail = rec['plays_prefix'][-1]
+    if field == 'seat':
+        tail['seat'] = (int(tail['seat']) + 1) % 4
+    else:
+        tail['cards'][0] = 'C2' if tail['cards'][0] != 'C2' else 'D2'
+    with pytest.raises(bl.BeliefLabelError, match="differs from the record's prefix"):
+        list(bh.replay_round_tokens(records))
+
+
+def test_history_replay_accepts_prefix_card_permutations(chunk):
+    records = copy.deepcopy(chunk['records'][0])
+    for rec in records:
+        for play in rec.get('plays_prefix', []):
+            play['cards'].reverse()
+    expected = list(bh.replay_round_tokens(chunk['records'][0]))
+    actual = list(bh.replay_round_tokens(records))
+    assert len(actual) == len(expected)
+    for left, right in zip(actual, expected):
+        assert left[0] == right[0] and left[3:] == right[3:]
+        np.testing.assert_array_equal(left[2], right[2])
+        for a, b in zip(left[1], right[1]):
+            for key in a:
+                np.testing.assert_array_equal(a[key], b[key])
 
 
 def test_a_misaligned_chunk_is_refused(chunk, tmp_path):

@@ -15,6 +15,52 @@ from shengji.rl.encode import N_CARDS
 from shengji.train import kitty_inference as ki
 from shengji.train import world_weighting as ww
 from test_belief_labels import synthetic_cluster
+from shengji.engine.cards import Ordering
+from shengji.harvest.legal import iter_lead_actions
+from shengji.rl.encode import CARD_INDEX
+
+
+@pytest.mark.parametrize('trump', ['H', None])
+@pytest.mark.parametrize('scale', [0, 1, 1000, -1000])
+def test_complete_lead_partition_matches_enumeration(trump, scale):
+    hand = ['C3', 'C3', 'C4', 'D7', 'H7', 'S7', 'HJ', 'SJ', 'HA']
+    ordering = Ordering(trump, '7')
+    logits = np.random.default_rng(7).normal(size=N_CARDS) if scale == 1 else np.full(N_CARDS, scale)
+    actions = list(iter_lead_actions(hand, ordering))
+    scores = [sum(logits[CARD_INDEX[c]] for c in action) for action in actions]
+    expected = np.logaddexp.reduce(scores)
+    assert ww._lead_log_partition(hand, ordering, logits) == pytest.approx(expected, abs=1e-10)
+
+
+def test_lead_likelihood_consumer_matches_old_path_and_skips_listing(cluster, monkeypatch):
+    import shengji.harvest.legal as legal
+    view = _views(cluster, picks=(30,))[0]
+    events = [(i, ev) for i, ev in enumerate(view.events) if not ev.snap.trick.plays]
+    assert events
+    i, event = events[0]
+    rnd, actor = view.decision.rnd, view.decision.seat
+    worlds = [([list(h) for h in rnd.hands], sorted(rnd.buried))]
+    since = ww.played_since(view.events, i)
+    logits = np.random.default_rng(11).normal(size=N_CARDS)
+    predict = lambda X: np.tile(logits, (len(X), 1))
+    original = legal.enumerate_legal
+    original_count = legal.count_lead_actions
+    calls = []
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(legal, 'enumerate_legal', counted)
+    fast = ww.event_log_probs(predict, 2, event, since, actor, worlds, cap=None)
+    assert not calls
+    monkeypatch.setattr(legal, 'count_lead_actions', lambda *args: None)
+    slow = ww.event_log_probs(predict, 2, event, since, actor, worlds, cap=None)
+    assert calls
+    for key in fast:
+        np.testing.assert_allclose(fast[key], slow[key], atol=1e-12)
+    calls.clear()
+    monkeypatch.setattr(legal, 'count_lead_actions', original_count)
+    capped = ww.event_log_probs(predict, 2, event, since, actor, worlds, cap=1)
+    assert calls and capped['legal'][0] <= 2
 
 
 @pytest.fixture(scope="module")

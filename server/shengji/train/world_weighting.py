@@ -214,12 +214,30 @@ def marginal_log_weights(counts: np.ndarray, marginals: np.ndarray, base: np.nda
 
 # ------------------------------------------------------------------ the likelihood pass
 
+def _lead_log_partition(hand, ordering, logits):
+    """Exact mass of all nonempty same-effective-suit submultisets.
+
+    Copies of one code are indistinguishable (no binomial multiplicity).
+    Track nonempty mass directly in log space: subtracting the empty term
+    from a product loses all precision when every logit is very negative.
+    """
+    groups = {}
+    for card, copies in Counter(hand).items():
+        suit = ordering.eff_suit(card)
+        nonempty = float(np.logaddexp.reduce(
+            np.arange(1, copies + 1, dtype=np.float64) * logits[CARD_INDEX[card]]))
+        previous = groups.get(suit, -np.inf)
+        groups[suit] = float(np.logaddexp(
+            previous + np.logaddexp(0.0, nonempty), nonempty))
+    return float(np.logaddexp.reduce(list(groups.values())))
+
+
 def event_log_probs(predict, version: int, event: PlayEvent, since: Sequence[Counter],
                     actor: int, worlds, cap: int = SERVED_CAP) -> dict:
     """Log-probabilities of ``event``'s attempted cards in every world.
 
     Returns ``{"listwise": (W,), "bernoulli": (W,), "legal": (W,) int}``."""
-    from ..harvest.legal import enumerate_legal
+    from ..harvest.legal import enumerate_legal, count_lead_actions, is_legal
     from .cwv_prior_admission import root_clone
     from .policy_prior import flat_input, root_tensors
     rows, legal_sets, hand_counts = [], [], []
@@ -231,8 +249,19 @@ def event_log_probs(predict, version: int, event: PlayEvent, since: Sequence[Cou
         clone = root_clone(event.snap, h, buried)
         rows.append(flat_input(root_tensors(clone, event.seat, version), version))
         try:
-            legal = enumerate_legal(clone, event.seat, cap=cap, must_include=[event.attempted])
-            legal_sets.append(legal.actions)
+            count = (count_lead_actions(h[event.seat], clone.ordering)
+                     if clone.phase == 'play' and clone.turn == event.seat
+                     and clone.ordering is not None and clone.trick is not None
+                     and not clone.trick.plays else None)
+            if count and (cap is None or count <= cap):
+                # Same complete support as the enumerator, without building
+                # its action listing or the actions-by-54 score matrix.
+                legal_sets.append((h[event.seat], clone.ordering, count)
+                                  if is_legal(clone, event.seat, event.attempted) else None)
+            else:
+                # Capped support and follow obligations are unchanged.
+                legal = enumerate_legal(clone, event.seat, cap=cap, must_include=[event.attempted])
+                legal_sets.append(legal.actions)
         except ValueError as exc:
             # the world contradicts the play itself (a follow-suit or pair rule the
             # sampler's constraints do not carry): probability zero
@@ -253,6 +282,11 @@ def event_log_probs(predict, version: int, event: PlayEvent, since: Sequence[Cou
         if actions is None:
             listwise[w] = -np.inf
             n_legal[w] = 0
+            continue
+        if isinstance(actions, tuple):
+            hand, ordering, count = actions
+            listwise[w] = target @ lo[w] - _lead_log_partition(hand, ordering, lo[w])
+            n_legal[w] = count
             continue
         mult = np.zeros((len(actions), N_CARDS))
         at = -1

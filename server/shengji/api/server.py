@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import errno
 import json
 import logging
 import random
@@ -122,6 +123,23 @@ LOG_DIR = Path(os.environ.get(
 app = FastAPI(title="shengji")
 
 rooms: dict[str, "Room"] = {}
+# These counters deliberately live only for this process lifetime; health
+# consumers receive a copy so they cannot mutate the producer state.
+_activity = {
+    "rooms_created": 0,
+    "games_started": 0,
+    "records_written": 0,
+    "last_write": None,
+}
+
+
+def _register_room(room: "Room") -> None:
+    rooms[room.code] = room
+    _activity["rooms_created"] += 1
+
+
+def _activity_snapshot() -> dict[str, int | float | None]:
+    return dict(_activity)
 
 
 @dataclass
@@ -272,6 +290,8 @@ class Room:
                 rec["training_excluded"] = True
             with open(self.log_dir / f"{self.code}.jsonl", "a") as f:
                 f.write(json.dumps(rec) + "\n")
+            _activity["records_written"] += 1
+            _activity["last_write"] = time.time()
         except OSError as exc:
             if self.evaluation is not None:
                 self.evaluation_invalidated = True
@@ -279,9 +299,13 @@ class Room:
             if not self._log_error_reported:
                 self._log_error_reported = True
                 # Do not send event payloads, chat, or exception paths to stderr.
-                logging.warning("room %s event logging failed (%s); gameplay "
-                                "continues, records may be missing",
-                                self.code, type(exc).__name__)
+                errno_number = exc.errno
+                errno_name = (errno.errorcode.get(errno_number, "UNKNOWN")
+                              if isinstance(errno_number, int) else "UNKNOWN")
+                logging.warning("room %s event logging failed (%s); errno=%s "
+                                "(%s); gameplay continues, records may be "
+                                "missing", self.code, type(exc).__name__,
+                                errno_number, errno_name)
 
     # ------------------------------------------------------------- id mapping
     def index_round(self) -> None:
@@ -1518,6 +1542,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         # games_to_win=None: a table keeps playing. Holding A scores a
         # point and the levels restart, rather than ending the session.
         room.game = Game(start_level=room.start_level, games_to_win=None)
+        _activity["games_started"] += 1
         room.game.start_round()
         room.index_round()
         _log_round_start(room)
@@ -1621,7 +1646,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                         "message": "Unknown starting level."})
                         continue
                     room = Room(code=new_code(), start_level=start_level, **options)
-                    rooms[room.code] = room
+                    _register_room(room)
                     # Through _attach like every other path: hand-rolling the
                     # queue/writer here skipped the generation bump AND the
                     # resume token, so a creator had no identity and an
@@ -1965,6 +1990,7 @@ def _detach(seat: Seat, room: Room | None = None,
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"ok": True, "rooms": len(rooms),
+            "activity": _activity_snapshot(),
             "bot": os.environ.get("SHENGJI_BOT", "mc"),
             # Whether the compiled hot-path engine actually ACTIVATED, not
             # merely whether the .so shipped. `fast.py` falls back silently, so

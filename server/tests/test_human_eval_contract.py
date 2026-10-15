@@ -513,6 +513,80 @@ def test_room_writes_evaluation_only_to_separate_root(tmp_path, monkeypatch):
     assert record["experiment"]["active_policy"] == "candidate-policy"
 
 
+def test_healthz_activity_reports_room_and_record_producers(tmp_path, monkeypatch):
+    from shengji.api import server
+    from starlette.websockets import WebSocketDisconnect
+
+    class ActivitySocket:
+        def __init__(self):
+            self.messages = [{"type": "create_room", "name": "activity"}]
+            self.sent = []
+
+        async def accept(self):
+            return None
+
+        async def receive_json(self):
+            if self.messages:
+                return self.messages.pop(0)
+            raise WebSocketDisconnect()
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+        async def close(self, code=1000):
+            return None
+
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path / "logs")
+    before = asyncio.run(server.healthz())["activity"]
+    existing = set(server.rooms)
+    asyncio.run(server.ws_endpoint(ActivitySocket()))
+    created = set(server.rooms) - existing
+    assert len(created) == 1
+    room = server.rooms[next(iter(created))]
+    with pytest.raises(server.IllegalPlay, match="Need exactly 4 players"):
+        asyncio.run(server.handle_action(room, 0, {"type": "start_game"}))
+    rejected = asyncio.run(server.healthz())["activity"]
+    assert rejected["games_started"] == before["games_started"]
+
+    room.seats.extend([
+        server.Seat(name="bot-1", is_bot=True),
+        server.Seat(name="bot-2", is_bot=True),
+        server.Seat(name="bot-3", is_bot=True),
+    ])
+
+    def discard_task(_room, _attr, coroutine):
+        coroutine.close()
+
+    monkeypatch.setattr(server, "_spawn_room_task", discard_task)
+    asyncio.run(server.handle_action(room, 0, {"type": "start_game"}))
+    started = asyncio.run(server.healthz())["activity"]
+    assert started["games_started"] == before["games_started"] + 1
+    room.log_event("probe")
+    after = asyncio.run(server.healthz())["activity"]
+    server.rooms.pop(room.code)
+
+    assert after["rooms_created"] == before["rooms_created"] + 1
+    assert after["records_written"] == before["records_written"] + 2
+    if before["last_write"] is not None:
+        assert after["last_write"] >= before["last_write"]
+    else:
+        assert isinstance(after["last_write"], float)
+
+
+def test_failed_logging_does_not_update_healthz_activity(tmp_path):
+    from shengji.api import server
+
+    before = asyncio.run(server.healthz())["activity"]
+    log_dir = tmp_path / "private-log-path"
+    log_dir.write_text("not a directory")
+    room = server.Room(code="FAIL", log_dir=log_dir, bot=SimpleNamespace())
+    room.log_event("probe", text="private payload")
+    after = asyncio.run(server.healthz())["activity"]
+
+    assert after["records_written"] == before["records_written"]
+    assert after["last_write"] == before["last_write"]
+
+
 def test_evaluation_room_refuses_ordinary_training_root(tmp_path, monkeypatch):
     from shengji.api import server
 
@@ -563,6 +637,7 @@ def test_ordinary_logging_warns_once_and_recovers(tmp_path, caplog):
     assert len(caplog.records) == 1
     warning = caplog.records[0].getMessage()
     assert "room ORD event logging failed (FileExistsError)" in warning
+    assert "errno=17 (EEXIST)" in warning
     assert "private" not in warning
     assert caplog.records[0].exc_info is None
 

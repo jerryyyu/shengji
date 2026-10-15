@@ -160,6 +160,10 @@ class BeliefNumpy:
         self.heads = int(self.config["heads"])
         self.package_sha256: str | None = None
 
+    def __deepcopy__(self, memo):
+        # immutable (read-only weights): a bot snapshot shares it
+        return self
+
     # ---------------------------------------------------------------- forward
     def _mha(self, prefix: str, x: np.ndarray, mask: np.ndarray | None) -> np.ndarray:
         w = self.w
@@ -375,3 +379,100 @@ def decision_inputs(rnd, seat: int, refusals: Sequence[Any] = (), mem=None) -> d
         "n_c": n_c, "sizes": sizes, "K": K,
     })
     return inp
+
+
+# ------------------------------------------------------------------ served proposal
+
+#: the proposal's identity in a recipe: the marginals, projected to the receiver
+#: sizes, drawn copy by copy under Hall's condition (sizes, voids, pins exact)
+PROPOSAL = "s17-marginals-sinkhorn-hall-v1"
+#: the per-decision preparation (featurize + forward + projection) must finish
+#: within this many seconds, else the caller falls back to its own draw
+PREP_SECONDS = 0.25
+
+_CODES: list[str] | None = None
+
+
+def _codes() -> list[str]:
+    global _CODES
+    if _CODES is None:
+        from ..rl.encode import CARD_INDEX
+        _CODES = sorted(CARD_INDEX, key=CARD_INDEX.get)
+    return _CODES
+
+
+def draw_mask(inp: Mapping[str, Any], rnd, seat: int, forbidden: Mapping | None) -> np.ndarray:
+    """``inp["M"]`` with every forbidden (card, seat) receiver removed."""
+    M = np.array(inp["M"], bool)
+    if not forbidden:
+        return M
+    from ..rl.encode import CARD_INDEX
+    for (other, _suit), codes in forbidden.items():
+        rel = (int(other) - int(seat)) % 4
+        if rel == 0:
+            raise BeliefNumpyError("a draw constraint names the acting seat")
+        for code in codes:
+            M[CARD_INDEX[code], rel - 1] = False
+    return M
+
+
+class BeliefProposal:
+    """One decision's world proposal for ``ai.history_legality``'s ``propose``
+    hook: ``(rnd, seat, mem) -> (hands, buried)`` with ``hands`` a dict over the
+    three other seats (the shape of ``MCBot._sample_hands``).
+
+    The marginals are computed once (at construction); worlds are drawn
+    ``batch`` at a time and handed out one per call.  Every world places each
+    unknown copy on a receiver the public facts allow, fills every receiver to
+    its size, keeps the public pins with their holders and the actor's own
+    burial when it is known.  Errors propagate: the caller falls back."""
+
+    def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
+                 seed: int, batch: int, forbidden: Mapping | None = None):
+        from ..train.belief_seq import project_sizes
+        import time
+        t0 = time.perf_counter()
+        self.rnd, self.seat = rnd, int(seat)
+        self.inp = decision_inputs(rnd, seat, refusals)
+        P = model.marginals(self.inp)
+        # the model reads the public mask; the draw also honours the forbidden
+        # cards (``ai.history_legality.draw_constraints``: {(seat, effective
+        # suit): codes}) by masking those receivers after the model
+        self.M = draw_mask(self.inp, rnd, seat, forbidden)
+        P = np.where(self.M, P, 0.0)
+        self.Q = project_sizes(P, self.inp["n_c"], self.inp["sizes"], self.M)
+        self.kitty_hidden = bool(self.inp["M"][:, 3].any()) or int(self.inp["sizes"][3]) > 0
+        self.rng = np.random.default_rng(int(seed))
+        self.batch = int(batch)
+        self.queue: list = []
+        self.drawn = 0
+        self.prep_seconds = time.perf_counter() - t0
+        if self.prep_seconds > PREP_SECONDS:
+            raise BeliefNumpyError(f"belief preparation took {self.prep_seconds:.3f}s")
+
+    def _refill(self) -> None:
+        from ..train.belief_seq import sample_worlds
+        inp, rnd, seat = self.inp, self.rnd, self.seat
+        W = sample_worlds(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
+        codes = _codes()
+        idx = np.arange(N_CARDS)
+        K = inp["K"]
+        for w in W:
+            hands = {}
+            for rel in (1, 2, 3):
+                cnt = w[:, rel - 1].astype(np.int64) + K[:, rel - 1]
+                hands[(seat + rel) % 4] = [codes[c] for c in np.repeat(idx, cnt)]
+            if self.kitty_hidden:
+                buried = [codes[c] for c in np.repeat(idx, w[:, 3].astype(np.int64))]
+            else:
+                buried = list(rnd.buried)
+            self.queue.append((hands, buried))
+        self.queue.reverse()
+
+    def __call__(self, rnd, seat, mem):
+        if rnd is not self.rnd or int(seat) != self.seat:
+            raise BeliefNumpyError("a proposal serves the decision it was built for")
+        if not self.queue:
+            self._refill()
+        self.drawn += 1
+        return self.queue.pop()

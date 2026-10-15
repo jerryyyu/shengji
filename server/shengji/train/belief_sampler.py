@@ -201,6 +201,25 @@ def s17_draw(model: BeliefNumpy, *, project: bool = True, keep: dict | None = No
     return draw
 
 
+def production_draw(*, keep: dict):
+    """Release 45's own draw (``world_weighting.served_worlds``), keeping the
+    worlds for the follow check: the comparator arm at the same W."""
+    from .world_weighting import served_worlds
+
+    def draw(rnd, seat, refusals, n, seed):
+        t0 = time.perf_counter()
+        sampler, mem, worlds, stats = served_worlds(rnd, seat, refusals, n, seed)
+        keep.update({"P": np.zeros((N_CARDS, 4), np.float32), "Q": np.zeros((N_CARDS, 4), np.float32),
+                     "ms_model": 0.0, "ms_draw": 1e3 * (time.perf_counter() - t0), "worlds": worlds})
+        return sampler, mem, worlds, stats
+    return draw
+
+
+def distinct_worlds(worlds) -> int:
+    return len({tuple(tuple(sorted(h)) for h in hands) + (tuple(sorted(b)),)
+                for hands, b in worlds})
+
+
 def follow_illegal(view, worlds) -> np.ndarray:
     """``(W,)`` bool: an earlier FOLLOW by another seat is illegal for the hand
     the world gives that player at that play (that hand = the world's current
@@ -229,7 +248,7 @@ def follow_illegal(view, worlds) -> np.ndarray:
 
 def _collect_task(args: tuple) -> dict:
     (collection, stores, state_ids, out_dir, name, package, sha256, worlds, project, events,
-     prior_package, prior_sha256) = args
+     prior_package, prior_sha256, proposal) = args
     from . import world_weighting as ww
     # offline: float64 (the served default is float32; marginals agree to ~1e-6)
     model = load_belief_numpy(package, sha256, dtype=np.float64)
@@ -244,10 +263,11 @@ def _collect_task(args: tuple) -> dict:
     c = ww.Collected()
     timings, failed = [], []
     extras: dict[str, list] = {k: [] for k in ("state", "P", "Q", "illegal", "ms_model",
-                                                "ms_draw", "ms_legal")}
+                                                "ms_draw", "ms_legal", "distinct")}
     t0 = time.time()
     keep: dict = {}
-    draw = s17_draw(model, project=project, keep=keep)
+    draw = (s17_draw(model, project=project, keep=keep) if proposal == "s17"
+            else production_draw(keep=keep))
     for sid, view in ww.iter_collected_states(stores, meta):
         row = row_of[sid]
         n_before = len(c.meta)
@@ -272,6 +292,7 @@ def _collect_task(args: tuple) -> dict:
         extras["illegal"].append(illegal)
         extras["ms_model"].append(keep["ms_model"])
         extras["ms_draw"].append(keep["ms_draw"])
+        extras["distinct"].append(distinct_worlds(keep["worlds"]))
     out = Path(out_dir)
     res = ww._save(out / f"{name}.npz", c, timings) if c.meta else {"file": None, "states": 0}
     if extras["state"]:
@@ -285,7 +306,7 @@ def _collect_task(args: tuple) -> dict:
 def collect(collection: str, out: str, *, package: str, sha256: str, worlds: int, project: bool,
             events: bool, workers: int, states_per_task: int, prior_package: str | None,
             prior_sha256: str | None, max_states: int | None = None, seed: int = 0,
-            log=print) -> dict:
+            proposal: str = "s17", log=print) -> dict:
     """The S17 proposal on every state of one production collection."""
     from concurrent.futures import ProcessPoolExecutor
     from . import world_weighting as ww
@@ -306,10 +327,11 @@ def collect(collection: str, out: str, *, package: str, sha256: str, worlds: int
         if (out_dir / f"{name}.npz").exists():
             continue
         tasks.append((collection, src["stores"], ordered[t:t + states_per_task], str(out_dir), name,
-                      package, sha256, worlds, project, events, prior_package, prior_sha256))
+                      package, sha256, worlds, project, events, prior_package, prior_sha256,
+                      proposal))
     manifest_path = out_dir / "manifest.json"
     manifest = (json.loads(manifest_path.read_text()) if manifest_path.exists() else
-                {"schema": ww.SCHEMA, "proposal": "s17", "source_collection": str(collection),
+                {"schema": ww.SCHEMA, "proposal": proposal, "source_collection": str(collection),
                  "source_manifest_sha256": hashlib.sha256(
                      (Path(collection) / "manifest.json").read_bytes()).hexdigest(),
                  "stores": src["stores"], "package": package, "sha256": sha256, "worlds": worlds,
@@ -449,6 +471,61 @@ def analyze(prod_outs: Sequence[str], s17_outs: Sequence[str], *, kitty_head: st
     return rep
 
 
+def compare_arms(arms: Mapping[str, Sequence[str]], *, ref: str) -> dict:
+    """Same-W arms on the same states (each arm: the dirs of one ``collect``,
+    in the same collection order): per arm, card agreement (all worlds and with
+    the follow-illegal worlds dropped), distinct worlds per state, the share of
+    illegal worlds, by trick bucket and role, and the paired per-state gain over
+    ``ref``."""
+    from . import world_weighting as ww
+    loaded = {}
+    for name, outs in arms.items():
+        d = ww.load(outs)
+        ex = load_extras(outs)
+        xrow = {int(s): i for i, s in enumerate(ex["state"])}
+        loaded[name] = (d, ex, xrow)
+    common = set.intersection(*[set(int(s) for s in d["meta"][:, 0]) for d, _, _ in loaded.values()])
+    ids = np.asarray(sorted(common), np.int64)
+    out: dict[str, Any] = {"states": int(len(ids)), "ref": ref, "arms": {}}
+    per_state: dict[str, dict[str, np.ndarray]] = {}
+    meta = None
+    for name, (d, ex, xrow) in loaded.items():
+        row = {int(s): i for i, s in enumerate(d["meta"][:, 0])}
+        r = np.asarray([row[int(s)] for s in ids])
+        x = np.asarray([xrow[int(s)] for s in ids])
+        a = d["agreement"][r].astype(np.float64)
+        ill = ex["illegal"][x].astype(bool)
+        keep = ~ill
+        keep[~keep.any(1)] = True              # all illegal: keep them all
+        per_state[name] = {"agree": a.mean(1), "legal": (a * keep).sum(1) / keep.sum(1),
+                           "illegal": ill.mean(1), "distinct": ex["distinct"][x].astype(np.float64)}
+        if meta is None:
+            meta = d["meta"][r]
+        elif not np.array_equal(meta[:, 3:6], d["meta"][r][:, 3:6]):
+            raise ValueError("arms disagree on a state's round/decision/trick")
+        out["arms"][name] = {"worlds": int(a.shape[1]),
+                             "ms_draw_p50": float(np.median(ex["ms_draw"][x])),
+                             "ms_draw_p95": float(np.percentile(ex["ms_draw"][x], 95))}
+    trick = meta[:, ww.META_COLS.index("trick")]
+    role = meta[:, ww.META_COLS.index("role")]
+    groups = {"overall": np.ones(len(ids), bool)}
+    groups.update({f"trick {lo}-{hi}": (trick >= lo) & (trick <= hi) for lo, hi in ww.TRICK_BUCKETS})
+    groups.update({n: role == i for i, n in enumerate(("banker", "banker_partner", "defender"))})
+    for name, ps in per_state.items():
+        tab = {}
+        for g, m in groups.items():
+            gain = ps["agree"][m] - per_state[ref]["agree"][m]
+            tab[g] = {"states": int(m.sum()), "agree": float(ps["agree"][m].mean()),
+                      "agree_legal": float(ps["legal"][m].mean()),
+                      "illegal_share": float(ps["illegal"][m].mean()),
+                      "distinct": float(ps["distinct"][m].mean()),
+                      "gain_vs_ref": float(gain.mean()),
+                      "gain_se": (float(gain.std(ddof=1) / math.sqrt(len(gain)))
+                                  if len(gain) > 1 else None)}
+        out["arms"][name]["table"] = tab
+    return out
+
+
 # ------------------------------------------------------------------ latency
 
 def latency(stores: Sequence[str], package: str, *, n: int, worlds: int, seed: int,
@@ -553,6 +630,13 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--states-per-task", type=int, default=25)
     c.add_argument("--max-states", type=int, default=None)
     c.add_argument("--seed", type=int, default=0)
+    c.add_argument("--proposal", choices=("s17", "production"), default="s17",
+                   help="production: release 45's own draw at the same W (the comparator)")
+    cmp_ = sub.add_parser("compare", help="same-W arms on the same states")
+    cmp_.add_argument("--arm", action="append", required=True,
+                      help="name=dir[,dir...] (one collect per collection, same order per arm)")
+    cmp_.add_argument("--ref", required=True)
+    cmp_.add_argument("--report", required=True)
     a = sub.add_parser("analyze")
     a.add_argument("--prod", action="append", required=True)
     a.add_argument("--s17", action="append", required=True)
@@ -580,8 +664,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     worlds=args.worlds, project=not args.no_project, events=args.events,
                     workers=args.workers, states_per_task=args.states_per_task,
                     prior_package=args.prior_package, prior_sha256=args.prior_sha256,
-                    max_states=args.max_states, seed=args.seed)
+                    max_states=args.max_states, seed=args.seed, proposal=args.proposal)
         res = {"chunks": len(m["chunks"]), "states": sum(c.get("states", 0) for c in m["chunks"])}
+    elif args.command == "compare":
+        arms = {a.split("=", 1)[0]: a.split("=", 1)[1].split(",") for a in args.arm}
+        res = compare_arms(arms, ref=args.ref)
+        Path(args.report).write_text(json.dumps(res, indent=1))
     else:
         res = analyze(args.prod, args.s17, kitty_head=args.kitty_head, s17_events=args.events)
         Path(args.report).write_text(json.dumps(res, indent=1))

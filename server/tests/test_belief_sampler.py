@@ -178,6 +178,8 @@ def test_s17_worlds_honour_sizes_pins_and_the_actor(chunk, small_package):
                     for c in np.flatnonzero(inp["K"][:, rel - 1]):
                         assert have[bsm._CODES[c]] >= inp["K"][c, rel - 1]
             assert keep["P"].shape == (54, 4)
+            assert 1 <= bsm.distinct_worlds(worlds) <= len(worlds)
+            assert bsm.distinct_worlds(worlds + worlds) == bsm.distinct_worlds(worlds)
     assert seen_pins > 0
 
 

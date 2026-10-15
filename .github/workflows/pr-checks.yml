@@ -275,7 +275,8 @@ jobs:
             tests/test_pv_sampler_telemetry.py \
             tests/test_tactical_public_observations.py \
             tests/test_belief_labels.py \
-            tests/test_belief_eval.py
+            tests/test_belief_eval.py \
+            tests/test_infoset_q.py
 
   luna-profiles:
     runs-on: ubuntu-latest

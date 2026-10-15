@@ -109,6 +109,75 @@ def test_follow_capture_reaches_server_snapshot_compute_commit():
     assert asyncio.run(decide(restored, restored_ledger)) == asyncio.run(decide(rnd, ledger))
 
 
+def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from shengji.api import server as srv
+    from scripts import exact_endgame_latency as worker
+    from test_pv_admission_rules import served
+
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    ledger = RefusalLedger()
+    roots = []
+    for event in PLAYS:
+        ledger.observe(rnd)
+        if max(map(len, rnd.hands)) <= 6 and len(roots) < 4:
+            roots.append(dict(root_index=len(roots), deal_seed=0, trick=len(rnd.history),
+                              seat=rnd.turn, hand_size=len(rnd.hands[rnd.turn]),
+                              lead=not bool(rnd.trick.plays), max_hand=max(map(len, rnd.hands)),
+                              packet=capture.capture_turn(rnd, ledger=ledger, decision={})))
+        rnd.play(rnd.turn, event['attempted'])
+        capture.committed(rnd, event['seat'], event['attempted'])
+    assert {r['lead'] for r in roots} == {True, False}
+    path = tmp_path / 'roots.jsonl'
+    path.write_text(''.join(json.dumps(r) + '\n' for r in roots))
+    args = SimpleNamespace(roots=path, pass_label='test', arm='r45')
+    result = asyncio.run(worker.measure(args, srv, served(refusal_constraints=True), tmp_path))
+    rows = [json.loads(line) for line in (tmp_path / 'measure_test.jsonl').read_text().splitlines()]
+    assert result == {'roots_measured': 4}
+    assert [r['lead'] for r in rows] == [r['lead'] for r in roots]
+    assert all(r['committed_once'] and r['wall_total_seconds'] >= r['wall_step_seconds'] >= 0 for r in rows)
+    rec = dict(exact_follow_attempted=True, exact_follow_applied=False,
+               exact_follow_abandoned='soft_budget', exact_follow_error='TimeoutError')
+    assert all(worker.record_fields(rec)[k] == v for k, v in rec.items())
+    original = path.read_text()
+    for field in ('hand_size', 'trick'):
+        bad = copy.deepcopy(roots)
+        bad[0][field] += 1
+        path.write_text(''.join(json.dumps(r) + '\n' for r in bad))
+        args.pass_label = 'bad_' + field
+        with pytest.raises(AssertionError):
+            asyncio.run(worker.measure(args, srv, served(), tmp_path))
+        assert not (tmp_path / f'measure_{args.pass_label}.jsonl').read_text()
+    path.write_text(original)
+    timed = worker.timed_turn
+    async def failed_commit(*a):
+        prepared, step, commit, _ = await timed(*a)
+        return prepared, step, commit, False
+    monkeypatch.setattr(worker, 'timed_turn', failed_commit)
+    args.pass_label = 'refused'
+    with pytest.raises(RuntimeError, match='not committed'):
+        asyncio.run(worker.measure(args, srv, served(), tmp_path))
+    assert not (tmp_path / 'measure_refused.jsonl').read_text()
+
+
+def test_latency_worker_seals_factory_refusal_without_retry(tmp_path, monkeypatch):
+    from scripts import exact_endgame_latency as worker
+
+    calls = []
+    def refuse(*args):
+        calls.append(args)
+        raise ValueError('D6+X6 source required')
+    monkeypatch.setattr(worker, 'build', refuse)
+    assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--roots', 'unused', '--pass-label', 'test', '--arm', 'dx']) == 1
+    row = json.loads((tmp_path / 'terminal_measure_test.json').read_text())
+    assert len(calls) == 1 and row['result'] is None and row['policy'] is None
+    assert row['error'] == dict(type='ValueError', message='D6+X6 source required')
+    assert not (tmp_path / 'measure_test.jsonl').exists()
+
+
 def test_every_captured_lead_replays_to_round_end_with_observed_ledger():
     # Snapshot equality alone does not exercise the continuation consumer.
     # Build an independent uninterrupted trajectory, preserving each seat's

@@ -103,32 +103,56 @@ def pins(rnd, seat, mem):
     return pre
 
 
-def exact_law(rnd, seat):
+def exact_law(rnd, seat, kitty_rule=False):
     """Every physical deal of the unseen cards honouring the constraints, as
-    ``{(receiver, code): probability}`` (the kitty is receiver 'k')."""
+    ``{(receiver, code): expected copies}`` over whole hands (pins included;
+    the kitty is receiver 'k').  With ``kitty_rule`` the banker's hand and the
+    kitty are dealt as one receiver and split by the incumbent rule, and a deal
+    whose rule kitty holds a trump or leaves the banker's hand breaking its
+    constraints is not one."""
+    o = rnd.ordering
     mem = Memory(rnd, seat, own_kitty=True)
     forbidden = forbidden_of(rnd, seat)
     pre = pins(rnd, seat, mem)
+    b = rnd.banker
     others = [s for s in range(4) if s != seat]
     free = sorted((Counter(mem.unseen) - sum(pre.values(), Counter())).elements())
     sizes = [len(rnd.hands[s]) - sum(pre[s].values()) for s in others]
-    if seat != rnd.banker:
+    if seat != b:
         others, sizes = others + ["k"], sizes + [len(rnd.buried)]
+    if kitty_rule:
+        union_size = sizes[others.index(b)] + sizes[-1]
+        keep = [(r, z) for r, z in zip(others, sizes) if r not in (b, "k")]
+        others = [r for r, _ in keep] + ["U"]
+        sizes = [z for _, z in keep] + [union_size]
+    played = sorted(mem.played_by[b].elements())
     counts = Counter()
     total = 0
 
     def rec(i, left, hands):
         nonlocal total
         if i == len(others):
-            for r, hand in zip(others, hands):
-                for c in hand:
+            dealt = dict(zip(others, hands))
+            if kitty_rule:
+                union = list(pre[b].elements()) + dealt.pop("U")
+                kitty = UW.heuristic_bury_kitty(union + played, union, o, len(rnd.buried))
+                hand = list((Counter(union) - Counter(kitty)).elements())
+                if any(o.eff_suit(c) == TRUMP for c in kitty) or not hand_ok(
+                        rnd, mem, forbidden, b, hand):
+                    return
+                dealt[b], dealt["k"] = hand, kitty
+            for r, hand in dealt.items():
+                whole = hand if r == "k" or (kitty_rule and r == b) else \
+                    hand + list(pre[r].elements())
+                for c in whole:
                     counts[(r, c)] += 1
             total += 1
             return
         r = others[i]
         for idx in itertools.combinations(range(len(left)), sizes[i]):
             hand = [left[j] for j in idx]
-            if r != "k" and not hand_ok(rnd, mem, forbidden, r, hand + list(pre[r].elements())):
+            if r not in ("k", "U") and not hand_ok(rnd, mem, forbidden, r,
+                                                   hand + list(pre[r].elements())):
                 continue
             rest = [c for j, c in enumerate(left) if j not in idx]
             rec(i + 1, rest, hands + [hand])
@@ -136,8 +160,9 @@ def exact_law(rnd, seat):
     return {key: v / total for key, v in counts.items()}, total
 
 
-def enumerable(banker_root, cards_each):
-    """A heuristic state small enough to enumerate, with a constrained type."""
+def enumerable(banker_root, cards_each, kitty_rule=False):
+    """A heuristic state small enough to enumerate, with a constrained type
+    (with ``kitty_rule``: a banker with a public void)."""
     h = HeuristicBot()
     for game_seed in range(80):
         rnd, _ = started(game_seed)
@@ -145,9 +170,11 @@ def enumerable(banker_root, cards_each):
             seat = rnd.turn
             if ((seat == rnd.banker) == banker_root and not rnd.trick.plays
                     and all(len(rnd.hands[s]) == cards_each for s in range(4))):
+                mem = Memory(rnd, seat, own_kitty=True)
                 p = UW.UniformProposal(MCBot(seed=1), n=8)
-                p(rnd, seat, Memory(rnd, seat, own_kitty=True))
-                if p.stats["uniform_constrained_types"] and not p.stats["uniform_infeasible"]:
+                p(rnd, seat, mem)
+                if (p.stats["uniform_constrained_types"] and not p.stats["uniform_infeasible"]
+                        and (not kitty_rule or mem.voids[rnd.banker])):
                     return copy.deepcopy(rnd), seat
             rnd.play(seat, h.decide_play(rnd, seat))
     raise AssertionError("no enumerable state found")
@@ -155,25 +182,27 @@ def enumerable(banker_root, cards_each):
 
 # ------------------------------------------------------------ exactness
 
-@pytest.mark.parametrize("banker_root, cards_each", [(True, 4), (False, 1)])
-def test_frequencies_match_the_exact_uniform_law(banker_root, cards_each):
-    rnd, seat = enumerable(banker_root, cards_each)
-    law, deals = exact_law(rnd, seat)
+@pytest.mark.parametrize("banker_root, cards_each, kitty_rule",
+                         [(True, 4, False), (False, 1, False), (False, 2, True)])
+def test_frequencies_match_the_exact_uniform_law(banker_root, cards_each, kitty_rule):
+    rnd, seat = enumerable(banker_root, cards_each, kitty_rule)
+    law, deals = exact_law(rnd, seat, kitty_rule)
     assert deals >= 10 and any(p < 1 for p in law.values())
-    pre = pins(rnd, seat, Memory(rnd, seat, own_kitty=True))
     draws = 4000
-    sampler = MCBot(seed=3)
-    propose = UW.UniformProposal(sampler, n=draws)
+    propose = UW.UniformProposal(MCBot(seed=3), n=draws, kitty_rule=kitty_rule)
     seen = Counter()
     for _ in range(draws):
         hands, buried = propose(rnd, seat, Memory(rnd, seat, own_kitty=True))
         for s, hand in hands.items():
-            for c in (Counter(hand) - pre[s]).elements():
+            for c in hand:
                 seen[(s, c)] += 1
         if seat != rnd.banker:
             for c in buried:
                 seen[("k", c)] += 1
-    assert propose.stats["uniform_fallback_worlds"] == 0
+    record = propose.record()
+    assert record["uniform_fallback_worlds"] == 0
+    if kitty_rule:
+        assert record["kitty_rule_fallback_worlds"] == 0 and record["kitty_rule_worlds"] == draws
     for key, p in law.items():
         assert abs(seen[key] / draws - p) < 0.035, (key, seen[key] / draws, p)
     assert not set(seen) - set(law)

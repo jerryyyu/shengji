@@ -21,8 +21,9 @@ Each unseen physical card has a set of receivers it may go to: the kitty always,
 a seat unless the card's effective suit is void there or its code is one of that
 seat's draw constraints.  Cards with the same allowed set form a TYPE; the type
 allowed everywhere is the free block.  The number of deals with type-count
-matrix ``x`` is ``prod_t n_t! / prod_r x[t, r]!``, and the free block admits
-``m! / prod_r c_r!`` deals into the capacities ``c`` it is left (a closed form).
+matrix ``x`` is ``prod_t n_t! / prod_r x[t, r]!``, and the largest type (the free
+block) admits ``m! / prod_r c_r!`` deals into the capacities ``c`` it is left on
+its own receivers (a closed form).
 `UniformProposal` builds, once per draw call, the suffix count arrays
 ``Z_t(c)`` (the number of deals of types ``t..`` and the free block into
 capacities ``c``) by repeated multiplication with ``sum_{r in A_t} z_r``; a
@@ -45,7 +46,10 @@ this proposal.
 THE BURY-RULE KITTY (``kitty_rule=True``; a seat that is not the banker).  The
 real kitty is the banker's discard, not eight random cards.  The proposal then
 deals the banker's current hand and the kitty as ONE receiver, ``U``, allowed
-every card (the banker's voids bind its hand, not its discard), rebuilds the
+every card (the banker's voids bind its hand, not its discard; ``U`` is split by
+card into the cards the banker's hand may not hold, at most the kitty's size
+since all of them must be buried, and the rest, and the count array is read at
+every split, so ``U`` stays uniform under that necessary condition), rebuilds the
 banker's 33-card bury hand as ``U`` plus every card the banker has played, and
 chooses the kitty with the served bury's incumbent rule (`HeuristicBot.
 decide_bury`, `heuristic_bury_kitty`), restricted to ``U`` since a played card
@@ -59,7 +63,10 @@ played one low card, and the real banker is not exactly this rule.  The
 declarer's shown cards, when the declarer is the banker, are pinned to ``U``:
 they were in the 33-card hand at the bury.  The served bury chooser itself (the
 value head over 64 candidates and 32 worlds) costs about 0.2 s a bury, too much
-inside every play world; its incumbent is the rule it starts from.
+inside every play world; its incumbent is the rule it starts from.  A world
+the rule cannot produce within its budget (a banker void in a long suit early,
+where the consistent ``U`` is rare) comes from the plain uniform proposal, and
+is counted in ``kitty_rule_fallback_worlds``.
 """
 from __future__ import annotations
 
@@ -80,13 +87,17 @@ TRY_FACTOR = 16
 TRIES_PER_CALL = 64
 #: the largest count array (the product of receiver capacities + 1) built
 MAX_CELLS = 2_000_000
-#: the kitty receiver's key
+#: the receivers' keys besides the seats: the hidden kitty, and with the
+#: bury-rule kitty the banker's hand-plus-kitty split by card into the cards its
+#: hand may not hold (OUT) and the rest (IN)
 KITTY = "kitty"
+UNION_OUT = "union-out"
+UNION_IN = "union-in"
 #: record fields, in order (the bury-rule kitty adds ``KITTY_FIELDS``)
 FIELDS = ("uniform_tries", "uniform_cap_rejections", "uniform_fallback_worlds",
           "uniform_constrained_types", "uniform_constrained_cards", "uniform_infeasible",
           "uniform_draw_constraints", "uniform_draw_forbidden")
-KITTY_FIELDS = ("kitty_rule_worlds", "kitty_rule_rejections")
+KITTY_FIELDS = ("kitty_rule_worlds", "kitty_rule_rejections", "kitty_rule_fallback_worlds")
 
 _INCUMBENT = HeuristicBot()
 
@@ -158,7 +169,12 @@ class UniformProposal:
     restores this stream too) and whose ``_sample_hands`` is the default
     fallback; ``fallback`` overrides it (the history rule's constrained draw).
     ``constraints`` is `draw_constraints` for this state when the caller has it
-    (else derived on the first call).  ``stats`` holds the record fields."""
+    (else derived on the first call).  ``record()`` returns the record fields.
+
+    With ``kitty_rule`` a world the rule cannot produce within the budget comes
+    from a plain uniform proposal (no rule; its own budget), and only a world
+    that one cannot produce from ``fallback``; ``kitty_rule_fallback_worlds``
+    counts the first kind, ``uniform_fallback_worlds`` the second."""
 
     def __init__(self, sampler, *, n, kitty_rule=False, fallback=None, constraints=None):
         self.sampler = sampler
@@ -169,8 +185,23 @@ class UniformProposal:
         self.budget = int(n) * TRY_FACTOR
         self.state = None
         self.stats = {key: 0 for key in FIELDS}
+        self.plain = None
         if self.kitty_rule:
             self.stats.update({key: 0 for key in KITTY_FIELDS})
+            self.plain = UniformProposal(sampler, n=n, fallback=fallback, constraints=constraints)
+            self.fallback = self.plain
+
+    def record(self):
+        """The record fields: this proposal's counts, with the plain proposal's
+        tries and rejections added under the bury-rule kitty."""
+        out = dict(self.stats)
+        if self.plain is not None:
+            plain = self.plain.stats
+            out["kitty_rule_fallback_worlds"] = self.stats["uniform_fallback_worlds"]
+            out["uniform_fallback_worlds"] = plain["uniform_fallback_worlds"]
+            out["uniform_tries"] += plain["uniform_tries"]
+            out["uniform_cap_rejections"] += plain["uniform_cap_rejections"]
+        return out
 
     # ------------------------------------------------------------ the state
     def _prepare(self, rnd, seat, mem):
@@ -200,8 +231,6 @@ class UniformProposal:
                     pre[dseat].extend([code] * take)
                     pinned[code] += take
         free = sorted((pool - pinned).elements())
-        receivers = list(others) + ([KITTY] if kitty_slots and union is None else [])
-        caps = [room[r] - len(pre[r]) if r != KITTY else kitty_slots for r in receivers]
         forbidden = {s: set() for s in range(4)}
         constraints = (draw_constraints(rnd, seat) if self.constraints is None
                        else self.constraints)
@@ -212,38 +241,80 @@ class UniformProposal:
         self.stats["uniform_draw_constraints"] = len(constraints)
         self.stats["uniform_draw_forbidden"] = sum(sum(c.values()) for c in constraints.values())
 
+        def barred(s, code):
+            return o.eff_suit(code) in mem.voids[s] or code in forbidden[s]
+        receivers = [s for s in others if s != union]
+        caps = [room[s] - len(pre[s]) for s in receivers]
+        targets = None
+        if union is None:
+            if kitty_slots:
+                receivers.append(KITTY)
+                caps.append(kitty_slots)
+        else:
+            # the banker's hand and the kitty as two receivers by card, not by
+            # slot: OUT takes the cards its hand may not hold (all of them must
+            # end in the kitty, so at most ``kitty_slots``), IN the rest; the
+            # count array is read at every split of U between them
+            total = room[union] - len(pre[union])
+            out_cap = min(kitty_slots, total, sum(barred(union, c) for c in free))
+            if out_cap:
+                receivers.append(UNION_OUT)
+                caps.append(out_cap)
+            receivers.append(UNION_IN)
+            caps.append(total)
+            targets = [caps[:-2] + [v, total - v] if out_cap else caps[:-1] + [total]
+                       for v in range(out_cap + 1)]
+
         def allowed(code):
-            suit = o.eff_suit(code)
-            return tuple(r == KITTY or r == union
-                         or (suit not in mem.voids[r] and code not in forbidden[r])
+            return tuple(r == KITTY
+                         or (r == UNION_OUT and barred(union, code))
+                         or (r == UNION_IN and not barred(union, code))
+                         or (isinstance(r, int) and not barred(r, code))
                          for r in receivers)
         groups: dict[tuple, list[str]] = {}
         for code in free:
             groups.setdefault(allowed(code), []).append(code)
-        everywhere = tuple(True for _ in receivers)
-        free_block = groups.pop(everywhere, [])
-        types = sorted(groups.items(), key=lambda kv: (sum(kv[0]), -len(kv[1]), kv[0]))
+        types = sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+        free_mask, free_block = types.pop(0) if types else (tuple(True for _ in receivers), [])
         state = dict(o=o, banker=banker, buried=buried, kitty_slots=kitty_slots,
-                     others=others, union=union, pre=pre, receivers=receivers, caps=caps,
+                     others=others, union=union, pre=pre, receivers=receivers,
                      forbidden=forbidden, free_block=free_block, types=types,
                      feasible=True, played_banker=None)
-        self.stats["uniform_constrained_types"] = len(types)
-        self.stats["uniform_constrained_cards"] = sum(len(cards) for _, cards in types)
+        everywhere = all(free_mask)
+        self.stats["uniform_constrained_types"] = len(types) + (not everywhere)
+        self.stats["uniform_constrained_cards"] = (sum(len(cards) for _, cards in types)
+                                                   + (0 if everywhere else len(free_block)))
         if union is not None:
             state["played_banker"] = sorted(mem.played_by[banker].elements())
-        if types:
-            state.update(self._count_arrays(types, len(free_block), caps))
+        state.update(self._count_arrays(types, free_mask, len(free_block), caps,
+                                        targets or [caps]))
         self.state = state
 
-    def _count_arrays(self, types, n_free, caps):
-        """The suffix count arrays and each type's splits (module docstring)."""
+    def _count_arrays(self, types, free_mask, n_free, caps, targets):
+        """The suffix count arrays, each type's splits and the targets' weights
+        (module docstring).  The largest type is the closed-form block: it
+        admits ``n! / prod_r c_r!`` deals into capacities ``c`` on its own
+        receivers."""
         dims = tuple(c + 1 for c in caps)
-        if any(not any(mask) for mask, _ in types) or math.prod(dims) > MAX_CELLS:
+        if (any(not any(mask) for mask, _ in types) or (n_free and not any(free_mask))
+                or math.prod(dims) > MAX_CELLS):
             return {"feasible": False}
-        lf = _log_factorials(max(max(dims), n_free, max(len(c) for _, c in types)) + 1)
+        lf = _log_factorials(max([max(dims), n_free] + [len(c) for _, c in types]) + 1)
+        if not types and all(free_mask):
+            # no constrained card: the targets' weights in closed form, no array
+            weights = np.array([math.exp(lf[n_free] - sum(lf[k] for k in t))
+                                if sum(t) == n_free else 0.0 for t in targets])
+            if not weights.sum() > 0:
+                return {"feasible": False}
+            return {"suffix": [], "splits": [], "targets": np.array(targets, dtype=np.int64),
+                    "target_cum": np.cumsum(weights)}
         grid = np.indices(dims)
         log_free = lf[n_free] - sum(lf[grid[r]] for r in range(len(dims)))
-        z = np.where(grid.sum(axis=0) == n_free, np.exp(log_free), 0.0)
+        support = grid.sum(axis=0) == n_free
+        for r, ok in enumerate(free_mask):
+            if not ok:
+                support &= grid[r] == 0
+        z = np.where(support, np.exp(log_free), 0.0)
         suffix = [None] * len(types)
         splits = [None] * len(types)
         for t in range(len(types) - 1, -1, -1):
@@ -262,10 +333,11 @@ class UniformProposal:
                     src[r] = slice(None, -1)
                     nz[tuple(dst)] += z[tuple(src)]
                 z = nz
-        total = float(z[tuple(caps)])
-        if not total > 0:
+        weights = np.array([z[tuple(t)] for t in targets])
+        if not weights.sum() > 0:
             return {"feasible": False}
-        return {"suffix": suffix, "splits": splits}
+        return {"suffix": suffix, "splits": splits, "targets": np.array(targets, dtype=np.int64),
+                "target_cum": np.cumsum(weights)}
 
     # ------------------------------------------------------------- one draw
     def _deal(self):
@@ -273,7 +345,9 @@ class UniformProposal:
         rng = self.rng
         receivers = st["receivers"]
         dealt = {r: [] for r in receivers}
-        c = np.array(st["caps"], dtype=np.int64)
+        cum = st["target_cum"]
+        pick = int(np.searchsorted(cum, rng.random() * cum[-1], side="right"))
+        c = st["targets"][min(pick, len(cum) - 1)].copy()
         for t, (_mask, cards) in enumerate(st["types"]):
             rows, coef = st["splits"][t]
             ok = (rows <= c).all(axis=1)
@@ -319,16 +393,16 @@ class UniformProposal:
         st = self.state
         o = st["o"]
         dealt = self._deal()
-        hands = {s: st["pre"][s] + dealt[s] for s in st["others"]}
         union = st["union"]
-        for s in st["others"]:
-            if s != union and not self._caps_hold(s, hands[s], mem, o):
+        hands = {s: st["pre"][s] + dealt[s] for s in st["others"] if s != union}
+        for s in hands:
+            if not self._caps_hold(s, hands[s], mem, o):
                 self.stats["uniform_cap_rejections"] += 1
                 return None
         if union is None:
             kitty = st["buried"] if st["buried"] is not None else dealt.get(KITTY, [])
             return hands, list(kitty)
-        available = hands[union]
+        available = st["pre"][union] + dealt.get(UNION_OUT, []) + dealt[UNION_IN]
         kitty = heuristic_bury_kitty(available + st["played_banker"], available, o,
                                      st["kitty_slots"])
         hand = list((Counter(available) - Counter(kitty)).elements())
@@ -386,7 +460,7 @@ def sample_worlds_uniform(bot, rnd, seat, n, *, mem=None, check_budget=None, kit
                        sorted(buried)))
     if check_budget is not None:
         check_budget()
-    return worlds, attempts, dict(propose.stats)
+    return worlds, attempts, propose.record()
 
 
 __all__ = ["TRY_FACTOR", "TRIES_PER_CALL", "FIELDS", "KITTY_FIELDS", "UniformProposal",

@@ -130,7 +130,9 @@ feasible split, worlds come from the constrained draw and count in
 makes a seat that is not the banker choose the hidden kitty in every world with
 the served bury's incumbent rule on the banker's rebuilt 33-card hand
 (`uniform_worlds.heuristic_bury_kitty`) instead of dealing it eight random
-cards; the record gains ``kitty_rule_worlds`` and ``kitty_rule_rejections``.
+cards; the record gains ``kitty_rule_worlds``, ``kitty_rule_rejections`` and
+``kitty_rule_fallback_worlds`` (worlds the rule could not produce, drawn by the
+plain uniform proposal).
 Off, every name, digest, sampled world and record is unchanged.
 
 Optional admission width rule (#676 C), OFF BY DEFAULT: ``SHENGJI_PV_ADAPTIVE_K=1``
@@ -2173,7 +2175,7 @@ class PVSearchBot(PolicyValueBot):
             worlds, attempts, self._last_sampling = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
                 check_budget=check_budget, propose=propose, constrain=True)
-            self._last_sampling.update(propose.stats)
+            self._last_sampling.update(propose.record())
         elif getattr(self, "world_history_legal", False):
             # getattr: a bot built without __init__ (a bare test double or an
             # older snapshot) has the rule off

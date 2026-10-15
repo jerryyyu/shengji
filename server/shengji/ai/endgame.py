@@ -162,7 +162,7 @@ def _state_key(rnd: Round):
 
 
 class _ExactSolver:
-    def __init__(self, *, max_hand_cards: int, max_nodes: int):
+    def __init__(self, *, max_hand_cards: int, max_nodes: int, check_budget=None):
         if (isinstance(max_hand_cards, bool)
                 or not isinstance(max_hand_cards, int)
                 or max_hand_cards < 1):
@@ -172,11 +172,14 @@ class _ExactSolver:
             raise ValueError("max_nodes must be a positive integer")
         self.max_hand_cards = max_hand_cards
         self.max_nodes = max_nodes
+        self.check_budget = check_budget
         self.nodes = 0
         self.cache_hits = 0
         self.cache: dict[tuple, int] = {}
 
     def value(self, rnd: Round) -> int:
+        if self.check_budget is not None:
+            self.check_budget()
         if rnd.phase == "round_end":
             return int(rnd.attacker_points)
         if rnd.phase != "play" or rnd.turn is None:
@@ -239,10 +242,11 @@ class ExactWorldSession:
     """
 
     def __init__(self, rnd: Round, *, max_hand_cards: int = 4,
-                 max_nodes: int = 250_000):
+                 max_nodes: int = 250_000, check_budget=None):
         self.context = _context_key(rnd)
         self.solver = _ExactSolver(
-            max_hand_cards=max_hand_cards, max_nodes=max_nodes)
+            max_hand_cards=max_hand_cards, max_nodes=max_nodes,
+            check_budget=check_budget)
         self.frontiers = 0
 
     @property

@@ -196,7 +196,7 @@ describe("XrayPanel play analysis", () => {
     expect(text).not.toContain("play analysis");
   });
 
-  it("explains a heuristic declaration without a record", async () => {
+  it("explains a heuristic declaration without a record: mid-deal null is not a pass", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       json: async () => ({
         ...declareFixture,
@@ -209,10 +209,27 @@ describe("XrayPanel play analysis", () => {
     const text = host.textContent ?? "";
 
     expect(text).toContain("during the deal");
-    expect(text).toContain("bot declarespass");
+    expect(text).toContain("bot declaresno declaration at this chance");
+    expect(text).not.toContain("bot declarespass");
     expect(text).toContain("on the tableyou:");
     expect(text).toContain("strength 1");
     expect(text).toContain("heuristic declaration · no value evaluation on this chance");
+  });
+
+  it("labels a null choice in the grace window as a pass", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: async () => ({
+        ...declareFixture,
+        declare: { ...declareFixture.declare, final: true, chosen: null, record: null },
+      }),
+    }));
+    const { host } = mount();
+    await settle();
+    const text = host.textContent ?? "";
+
+    expect(text).toContain("grace window");
+    expect(text).toContain("bot declarespass");
+    expect(text).not.toContain("no declaration at this chance");
   });
 
   it("labels the report mean rule with the neutral decision-statistic name", async () => {

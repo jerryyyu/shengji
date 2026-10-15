@@ -331,7 +331,9 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
               <span className="xr-label">bot declares</span>
               <span className="xr-cards">
                 {data.declare!.chosen === null ? (
-                  <span className="xr-dim">pass</span>
+                  // Mid-deal, a null means no declaration at this chance; the bot
+                  // can still declare on a later card. Only the grace window is a pass.
+                  <span className="xr-dim">{data.declare!.final ? "pass" : "no declaration at this chance"}</span>
                 ) : (
                   data.declare!.chosen.map((c, i) => <CodeSpan key={i} c={c} />)
                 )}

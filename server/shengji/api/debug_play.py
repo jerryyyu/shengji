@@ -3,7 +3,8 @@
 Two decision records reach the overlay: the CWV shortlist bot's
 (``last_eval`` + ``cwv_shortlist`` / ``report_fold``) and the pv-search bot's
 (``pv-search-decision-v1``: the admitted candidates with their value means and
-policy log-odds, plus one bounded block per optional rule that ran).  The
+policy log-odds, plus one block per optional rule that ran, holding only that
+rule's listed fields).  The
 served bot writes the second; a record of neither shape is a forced play or a
 bot without search.
 """
@@ -14,23 +15,60 @@ import math
 MAX_CANDIDATES = 32
 PV_SCHEMA = "pv-search-decision-v1"
 PV_FALLBACK_SCHEMA = "pv-search-fallback-v1"
-#: the optional rules of a pv-search record, each by the prefix of its fields.
-#: A block carries bounded scalars and short scalar lists only, so a rule can
-#: add a counter without an edit here while worlds, hands and the legal
-#: listing can never reach the browser.
+#: the optional rules of a pv-search record: for each rule, the exact fields the
+#: overlay may show.  Only a name on this list reaches the browser, and only as
+#: a bounded scalar or a short scalar list (``_scalar``); an unlisted field --
+#: a sampled world, a hand, an RNG state, an exception text -- is dropped even
+#: when its shape would fit.  The exact-lead / exact-follow names cover the
+#: endgame stages so their decisions show once those rules are served.
 PV_STAGES = {
-    "tiebreak": ("tiebreak_",),
-    "lead_tiebreak": ("lead_tiebreak_",),
-    "lead_anchor": ("lead_anchor_",),
-    "doomed_throw_swap": ("doomed_throw_swap_",),
-    "doomed_throw_reselect": ("doomed_throw_reselect_",),
-    "adaptive_worlds": ("adaptive_worlds_",),
-    "exact_lead": ("exact_lead_", "exact_deep_"),
-    "exact_follow": ("exact_follow_",),
-    "refusal": ("refusal_",),
-    "small_joker": ("small_joker_",),
-    "wide_lead": ("wide_lead_admission_",),
+    "tiebreak": (
+        "tiebreak_applied", "tiebreak_abandoned", "tiebreak_near_set", "tiebreak_points"),
+    "lead_tiebreak": (
+        "lead_tiebreak_leading", "lead_tiebreak_applied", "lead_tiebreak_superseded",
+        "lead_tiebreak_near_count", "lead_tiebreak_from_index", "lead_tiebreak_to_index",
+        "lead_tiebreak_from", "lead_tiebreak_to", "lead_tiebreak_value_gap"),
+    "lead_anchor": (
+        "lead_anchor_applied", "lead_anchor_from", "lead_anchor_to", "lead_anchor_source"),
+    "doomed_throw_swap": (
+        "doomed_throw_swap_applied", "doomed_throw_swap_abandoned", "doomed_throw_swap_from",
+        "doomed_throw_swap_to", "doomed_throw_swap_worlds", "doomed_throw_swap_refused_worlds",
+        "doomed_throw_swap_forced_variants"),
+    "doomed_throw_reselect": (
+        "doomed_throw_reselect_applied", "doomed_throw_reselect_abandoned",
+        "doomed_throw_reselect_from", "doomed_throw_reselect_to",
+        "doomed_throw_reselect_doomed_candidates", "doomed_throw_reselect_forced_excluded",
+        "doomed_throw_reselect_fallback_forced"),
+    "adaptive_worlds": (
+        "adaptive_worlds_triggered", "adaptive_worlds_changed", "adaptive_worlds_played_changed",
+        "adaptive_worlds_abandoned", "adaptive_worlds_skipped_budget",
+        "adaptive_worlds_sampler_advanced", "adaptive_worlds_total", "adaptive_worlds_margin",
+        "adaptive_worlds_se", "adaptive_worlds_base_seconds"),
+    "exact_lead": (
+        "exact_lead_status", "exact_lead_changed", "exact_lead_change_kind",
+        "exact_lead_worlds_completed", "exact_lead_nodes", "exact_lead_cache_hits",
+        "exact_lead_seconds", "exact_lead_means", "exact_lead_selected_level_mean",
+        "exact_lead_selected_level_delta", "exact_lead_base_level_mean",
+        "exact_lead_base_selected_index", "exact_lead_base_played", "exact_lead_base_value_means",
+        "exact_lead_abandon_reason", "exact_lead_first_trick", "exact_lead_policy_plays",
+        "exact_lead_policy_forced", "exact_lead_policy_fallbacks", "exact_lead_policy_batches",
+        "exact_lead_policy_views", "exact_lead_policy_view_worlds",
+        "exact_lead_tie_baseline_kept", "exact_lead_tie_baseline_exact_index",
+        "exact_deep_cards"),
+    "exact_follow": (
+        "exact_follow_attempted", "exact_follow_applied", "exact_follow_abandoned",
+        "exact_follow_worlds", "exact_follow_nodes", "exact_follow_scores"),
+    "refusal": (
+        "refusal_observations", "refusal_rejections", "refusal_fallback_worlds",
+        "refusal_pinned_codes"),
+    "small_joker": (
+        "small_joker_guard_active", "small_joker_guard_anchor_replaced",
+        "small_joker_guard_anchor_to", "small_joker_guard_big_jokers_out",
+        "small_joker_guard_other_trumps"),
+    "wide_lead": ("wide_lead_admission_applied", "wide_lead_admission_k"),
 }
+#: the sampler's per-decision counter deltas (`PVSearchBot.decide_play`)
+PV_SAMPLING_DELTAS = ("impossible_worlds_delta", "rejected_worlds_delta")
 #: the record flags that say a rule changed or extended this decision
 PV_APPLIED_FLAGS = (
     "tiebreak_applied", "lead_tiebreak_applied", "lead_anchor_applied",
@@ -66,15 +104,14 @@ def _scalar(value):
     return _OMIT
 
 
-def _prefixed(rec, prefixes):
+def _listed(rec, names):
+    """The named record fields that are present and browser-safe."""
     block = {}
-    for key, value in rec.items():
-        for prefix in prefixes:
-            if key.startswith(prefix):
-                safe = _scalar(value)
-                if safe is not _OMIT:
-                    block[key] = safe
-                break
+    for key in names:
+        if key in rec:
+            safe = _scalar(rec[key])
+            if safe is not _OMIT:
+                block[key] = safe
     return block
 
 
@@ -132,12 +169,11 @@ def _pv_play_analysis(bot, pick, rec, *, elapsed):
             "forced_component": True,
         })
     stages = {}
-    for name, prefixes in PV_STAGES.items():
-        block = _prefixed(rec, prefixes)
+    for name, fields in PV_STAGES.items():
+        block = _listed(rec, fields)
         if block:
             stages[name] = block
-    sampling = _fields(rec, ("worlds", "sample_attempts"))
-    sampling.update({k: _number(v) for k, v in rec.items() if k.endswith("_delta")})
+    sampling = _fields(rec, ("worlds", "sample_attempts") + PV_SAMPLING_DELTAS)
     admission = {
         **_fields(rec, ("legal_count", "actions", "k_used")),
         "legal_complete": rec.get("legal_complete"),

@@ -51,7 +51,13 @@ def _pv_record(**extra):
         "exact_lead_sampled_worlds": [[["SA"], ["SK"]]],
         "exact_follow_attempted": True, "exact_follow_applied": False,
         "exact_follow_scores": [1.0, 2.0, 3.0],
-        "accepted_worlds_delta": 8, "impossible_worlds_delta": 1,
+        "rejected_worlds_delta": 8, "impossible_worlds_delta": 1,
+        "accepted_worlds_delta": 7,
+        # unlisted fields whose shapes would pass the scalar bound: never shown
+        "exact_follow_hidden_hand": ["SA", "SK"],
+        "refusal_rng_state": [1, 2, 3],
+        "exact_lead_error_message": "/private/sensitive/location",
+        "exact_lead_abandon_error": "Traceback: /private/sensitive/trace",
         **extra,
     }
 
@@ -81,7 +87,7 @@ def test_pv_record_rows_carry_values_log_odds_and_the_selected_candidate():
     assert info["candidate_count"] == 3 and info["candidates_truncated"] is False
     assert info["work"] == {"value_evaluations": 24, "value_batches": 1, "worlds": 8}
     assert info["sampling"] == {"worlds": 8, "sample_attempts": 9,
-                                "accepted_worlds_delta": 8, "impossible_worlds_delta": 1}
+                                "rejected_worlds_delta": 8, "impossible_worlds_delta": 1}
     assert info["admission"]["legal_count"] == 11 and info["admission"]["admitted"] == 3
 
 
@@ -96,6 +102,14 @@ def test_pv_record_stages_are_bounded_blocks_and_applied_rules_are_named():
     assert "exact_lead_sampled_worlds" not in stages["exact_lead"]
     text = json.dumps({"rows": rows, "info": info})
     assert "policy_log_odds_listing" not in text and "sampled_worlds" not in text
+    # an unlisted field is dropped even when it is a flat list or a short string:
+    # a hidden hand, an RNG state, an exception text, an unknown sampler counter
+    for decoy in ("exact_follow_hidden_hand", "refusal_rng_state", "exact_lead_error_message",
+                  "exact_lead_abandon_error", "accepted_worlds_delta", "SA\", \"SK",
+                  "/private/sensitive", "[1, 2, 3]"):
+        assert decoy not in text, decoy
+    assert set(stages["exact_follow"]) == {"exact_follow_attempted", "exact_follow_applied",
+                                           "exact_follow_scores"}
     assert stages["refusal"] == {"refusal_observations": 2, "refusal_rejections": 1,
                                  "refusal_fallback_worlds": 0, "refusal_pinned_codes": 3}
     assert info["applied_rules"] == ["exact_lead_changed"]

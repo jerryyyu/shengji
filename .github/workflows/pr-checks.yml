@@ -243,6 +243,7 @@ jobs:
             tests/test_pair_resource_pipeline.py \
             tests/test_refusal_constraints.py \
             tests/test_world_history_legal.py \
+            tests/test_pv_belief_worlds.py \
             tests/test_pv_tiebreak_points.py \
             tests/test_pv_lead_anchor.py \
             tests/test_pv_tree_search.py \

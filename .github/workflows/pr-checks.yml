@@ -25,6 +25,20 @@ jobs:
       - name: Check every test module is selected by a CI job
         run: python3 server/scripts/check_ci_test_selection.py
 
+  comment-provenance:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # Added comment, docstring and help-string lines under server/shengji,
+      # server/scripts and web/src carry no attribution, issue labels, history or banners.
+      - name: Check added comments for provenance
+        run: python3 server/scripts/check_comment_provenance.py --base ${{ github.event.pull_request.base.sha }}
+
   server:
     runs-on: ubuntu-latest
     # The pure suite alone reached 14m22s on a shared runner; leave room for
@@ -83,6 +97,7 @@ jobs:
           tests/test_mc_benchmark_normalization.py
           tests/test_bury_fly_config.py
           tests/test_check_ci_test_selection.py
+          tests/test_check_comment_provenance.py
           tests/test_receipt_summary.py
           tests/test_paired_window_metadata.py
           tests/test_doomed_throw_readout.py

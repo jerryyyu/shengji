@@ -17,7 +17,10 @@ diagnostics refuse it; the record fields.
 """
 import copy
 import random
+import asyncio
+import tomllib
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -34,6 +37,7 @@ from shengji.harvest.legal import enumerate_legal
 from shengji.train import pv_search_policy as pv
 from test_refusal_constraints import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION_SHA,
                                       ZeroEvaluator, predict, thrown)
+from test_encoder_round_compat import pinned_production_package  # noqa: F401
 
 RULE_KEYS = {"history_follow_events", "history_rejections", "history_fallback_worlds",
              "history_rejections_by_age"}
@@ -345,3 +349,46 @@ def test_a_proposal_source_plugs_in_at_the_draw():
     assert len(calls) == attempts and set(calls) == {seat}
     assert worlds == served(world_history_legal=True)._worlds(now, seat)[0]
     assert all(HL.history_legal(now, seat, hands) for hands, _ in worlds)
+
+
+def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, tmp_path):
+    """No stub model/sampler: the enabled env recipe reaches the live consumer."""
+    from shengji.api import server as srv
+    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env.update(SHENGJI_PV_CKPT=str(pinned_production_package),
+               SHENGJI_PV_WORLD_HISTORY_LEGAL='1')
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+    name, = entries
+    bot = entries[name](seed=SEED)
+    assert bot.world_history_legal and '-whl-' in name
+    assert bot.evaluator.backend == 'numpy'
+    _, rnd, seat = fixture()
+
+    async def scenario():
+        game = Game(random.Random(0))
+        game.round = rnd
+        room = srv.Room(code='WHL', game=game, bot=bot,
+            seats=[srv.Seat(str(s), is_bot=True) for s in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        events = []
+        room.log_event = lambda kind, **data: events.append((kind, data))
+        before = list(rnd.hands[seat])
+        rng_before = bot.sampler.rng.getstate()
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        assert prepared is not None
+        assert room.bot is bot and bot.sampler.rng.getstate() == rng_before
+        assert rnd.hands[seat] == before
+        record = prepared.decision.snapshot.bot_copy.last_decision_record
+        assert record['schema'] == pv.RECORD_SCHEMA and record['work_complete']
+        assert record['worlds'] == 64 and RULE_KEYS <= record.keys()
+        assert record['history_rejections'] > 0
+        assert record['history_follow_events'] == len(HL.follow_events(rnd, seat))
+        played = list(prepared.decision.cards)
+        assert record['played'] == played
+        assert srv._commit_bot_turn(room, prepared)
+        assert len(rnd.hands[seat]) == len(before) - len(played)
+        assert not srv._commit_bot_turn(room, prepared), 'stale decision must not commit twice'
+        assert any(kind == 'model_search' for kind, _ in events)
+
+    asyncio.run(scenario())

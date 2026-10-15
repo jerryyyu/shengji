@@ -3,6 +3,10 @@
 import random
 import copy
 import time
+import asyncio
+import tomllib
+from dataclasses import replace
+from pathlib import Path
 import numpy as np
 
 import pytest
@@ -14,6 +18,65 @@ from shengji.train.pv_exact_follow import ExactFollowRefusal, rerank_follow
 from shengji.train import pv_search_policy as pv
 from test_pv_admission_rules import predict, ZeroEvaluator
 from test_endgame import _round
+from test_encoder_round_compat import pinned_production_package  # noqa: F401
+from test_pv_search_serving import _play_state
+from shengji.ai.heuristic import HeuristicBot
+from shengji.api import server as srv
+from shengji.engine.game import Game
+
+
+class FollowDevBot(pv.PVSearchBuryBot):
+    """Use the existing diagnostic factory seam; no serving flag is exposed."""
+    def __init__(self, *args, config, **kwargs):
+        super().__init__(*args, config=replace(config, exact_follow=True,
+                                               exact_follow_max_nodes=10000), **kwargs)
+
+
+@pytest.mark.parametrize('hand_cap', [3, 4])
+def test_pinned_model_follow_snapshot_and_commit(pinned_production_package, tmp_path, hand_cap):
+    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env['SHENGJI_PV_CKPT'] = str(pinned_production_package)
+    recipe = pv.pv_env_recipe(env)
+    rnd = _play_state()
+    heuristic = HeuristicBot()
+    while rnd.phase == 'play':
+        if rnd.trick.plays and max(map(len, rnd.hands)) <= hand_cap:
+            break
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    assert rnd.phase == 'play'
+    baseline = pv.make_pv_search_bot(**recipe, seed=7)
+    expected = baseline.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert baseline.last_decision_record['work_complete']
+    bot = pv.make_pv_search_bot(**recipe, seed=7, bot_factory=FollowDevBot)
+    bot.policy_name = 'pv-search-exact-follow-dev'
+
+    async def scenario():
+        game = Game(random.Random(7))
+        game.round = rnd
+        room = srv.Room(code='EFDEV', game=game, bot=bot,
+            seats=[srv.Seat(str(i), is_bot=True) for i in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        room.log_event = lambda *args, **kwargs: None
+        seat = rnd.turn
+        before = list(rnd.hands[seat])
+        rng = bot.sampler.rng.getstate()
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        assert prepared is not None
+        assert rnd.hands[seat] == before and bot.sampler.rng.getstate() == rng
+        record = prepared.decision.snapshot.bot_copy.last_decision_record
+        assert record['work_complete'] and record['exact_follow_attempted']
+        assert list(prepared.decision.cards) == expected
+        if hand_cap == 3:
+            assert record['exact_follow_worlds'] == 64
+            assert len(set(record['exact_follow_scores'])) == 1
+            assert not record['exact_follow_applied']
+        else:
+            assert record['exact_follow_abandoned'] is not None
+        assert srv._commit_bot_turn(room, prepared)
+        assert len(rnd.hands[seat]) == len(before) - len(expected)
+
+    asyncio.run(scenario())
 
 
 def disagreement():

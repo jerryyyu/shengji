@@ -2170,7 +2170,7 @@ class PVSearchBot(PolicyValueBot):
             constraints = draw_constraints(rnd, seat)
             propose = uniform_worlds.UniformProposal(
                 self.sampler, n=self.worlds, kitty_rule=self.kitty_bury_rule,
-                constraints=constraints,
+                constraints=constraints, check_budget=check_budget,
                 fallback=constrained_draw(self.sampler, constraints) if constraints else None)
             worlds, attempts, self._last_sampling = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,

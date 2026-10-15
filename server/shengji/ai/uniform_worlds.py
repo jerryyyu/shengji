@@ -215,14 +215,20 @@ class UniformProposal:
     fallback; ``fallback`` overrides it (the history rule's constrained draw).
     ``constraints`` is `draw_constraints` for this state when the caller has it
     (else derived on the first call).  ``record()`` returns the record fields.
+    ``check_budget`` is the caller's cooperative deadline: it runs at entry,
+    inside the count arrays' construction, after preparation, before every try
+    and before the fallback, and whatever it raises propagates (an expired
+    decision draws nothing more, from this proposal or its fallback).
 
     With ``kitty_rule`` a world the rule cannot produce within the budget comes
     from a plain uniform proposal (no rule; its own budget), and only a world
     that one cannot produce from ``fallback``; ``kitty_rule_fallback_worlds``
     counts the first kind, ``uniform_fallback_worlds`` the second."""
 
-    def __init__(self, sampler, *, n, kitty_rule=False, fallback=None, constraints=None):
+    def __init__(self, sampler, *, n, kitty_rule=False, fallback=None, constraints=None,
+                 check_budget=None):
         self.sampler = sampler
+        self.check_budget = check_budget
         self.rng = sampler.rng
         self.kitty_rule = bool(kitty_rule)
         self.fallback = sampler._sample_hands if fallback is None else fallback
@@ -233,7 +239,8 @@ class UniformProposal:
         self.plain = None
         if self.kitty_rule:
             self.stats.update({key: 0 for key in KITTY_FIELDS})
-            self.plain = UniformProposal(sampler, n=n, fallback=fallback, constraints=constraints)
+            self.plain = UniformProposal(sampler, n=n, fallback=fallback, constraints=constraints,
+                                         check_budget=check_budget)
             self.fallback = self.plain
 
     def record(self):
@@ -354,6 +361,7 @@ class UniformProposal:
                 return {"feasible": False}
             return {"suffix": [], "splits": [], "targets": np.array(targets, dtype=np.int64),
                     "target_cum": np.cumsum(weights)}
+        check = self.check_budget
         grid = np.indices(dims)
         log_free = lf[n_free] - sum(lf[grid[r]] for r in range(len(dims)))
         support = grid.sum(axis=0) == n_free
@@ -371,6 +379,8 @@ class UniformProposal:
             coef = np.exp(lf[len(cards)] - lf[rows].sum(axis=1)) if len(rows) else np.zeros(0)
             splits[t] = (rows, coef)
             for _ in range(len(cards)):
+                if check is not None:
+                    check()
                 nz = np.zeros_like(z)
                 for r in axes:
                     dst = [slice(None)] * len(dims)
@@ -443,18 +453,27 @@ class UniformProposal:
         return hands, list(kitty)
 
     def __call__(self, rnd, seat, mem):
+        check = self.check_budget
+        if check is not None:
+            check()
         if self.state is None:
             self._prepare(rnd, seat, mem)
             if not self.state["feasible"]:
                 self.stats["uniform_infeasible"] = 1
+            if check is not None:
+                check()
         if self.state["feasible"]:
             for _ in range(TRIES_PER_CALL):
                 if self.stats["uniform_tries"] >= self.budget:
                     break
+                if check is not None:
+                    check()
                 self.stats["uniform_tries"] += 1
                 got = self._try(mem)
                 if got is not None:
                     return got
+        if check is not None:
+            check()
         self.stats["uniform_fallback_worlds"] += 1
         return self.fallback(rnd, seat, mem)
 
@@ -466,7 +485,7 @@ def sample_worlds_uniform(bot, rnd, seat, n, *, mem=None, check_budget=None, kit
     from .memory import Memory
     if mem is None:
         mem = Memory(rnd, seat, own_kitty=getattr(bot, "BANKER_KITTY", True))
-    propose = UniformProposal(bot, n=n, kitty_rule=kitty_rule)
+    propose = UniformProposal(bot, n=n, kitty_rule=kitty_rule, check_budget=check_budget)
     worlds = []
     attempts = 0
     cap = n * bot.SAMPLE_ATTEMPT_FACTOR

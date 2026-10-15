@@ -33,9 +33,10 @@ from shengji.engine.game import Game
 from shengji.train import bury_wide_value as bwv
 from shengji.train import pv_search_policy as pv
 from test_cwv_bury_wide_value import served_bury
-from test_cwv_leaf_policy_first_trick import bury_state
+from test_cwv_leaf_policy_first_trick import bury_state, jumping_clock  # noqa: F401
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
-from test_refusal_constraints import PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION_SHA
+from test_refusal_constraints import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION_SHA,
+                                      ZeroEvaluator, predict)
 from test_world_history_legal import RELEASE45_ENV, RELEASE45_NAME, served, started
 
 HISTORY = dict(world_history_legal=True, world_history_draw=True)
@@ -428,6 +429,130 @@ def test_decision_record_carries_the_proposal_fields(kitty_rule):
     assert record["uniform_draw_forbidden"] == sum(sum(c.values()) for c in constraints.values())
     if kitty_rule:
         assert record["kitty_rule_worlds"] >= W - record["uniform_fallback_worlds"]
+
+
+# ------------------------------------------------------- serving deadline
+
+def constrained_attacker_state():
+    """A state whose proposal builds count arrays, at a seat that is not the banker."""
+    for rnd, seat in states():
+        if seat == rnd.banker:
+            continue
+        p = UW.UniformProposal(MCBot(seed=1), n=4, kitty_rule=True)
+        p(rnd, seat, Memory(rnd, seat, own_kitty=True))
+        if p.stats["uniform_constrained_types"] and p.state.get("suffix"):
+            return rnd, seat
+    raise AssertionError("no state with count arrays")
+
+
+def test_an_expired_deadline_at_entry_prepares_and_draws_nothing(monkeypatch):
+    rnd, seat = constrained_attacker_state()
+
+    def expired():
+        raise pv.PVSearchBudgetExceeded("expired")
+
+    def forbidden(*a, **k):
+        pytest.fail("an expired proposal must not prepare, try or fall back")
+    monkeypatch.setattr(UW.UniformProposal, "_prepare", forbidden)
+    for kitty_rule in (False, True):
+        sampler = MCBot(seed=2)
+        before = sampler.rng.getstate()
+        propose = UW.UniformProposal(sampler, n=4, kitty_rule=kitty_rule, fallback=forbidden,
+                                     check_budget=expired)
+        with pytest.raises(pv.PVSearchBudgetExceeded):
+            propose(rnd, seat, Memory(rnd, seat, own_kitty=True))
+        assert sampler.rng.getstate() == before
+
+
+@pytest.mark.parametrize("stage", ["arrays", "prepared", "tries"])
+@pytest.mark.parametrize("error", [pv.PVSearchBudgetExceeded, pv._AdaptiveWorldsExpired])
+@pytest.mark.parametrize("kitty_rule", [False, True])
+def test_an_expired_deadline_stops_the_served_play_draw(monkeypatch, stage, error, kitty_rule):
+    """Through the served consumer (`PVSearchBot._worlds`): the deadline expires
+    inside the count arrays, right after preparation, or after the first try;
+    nothing further is tried, no fallback draws, and the expiry propagates."""
+    rnd, seat = constrained_attacker_state()
+    state = {"expired": False, "arrays": False}
+    calls = Counter()
+    real_prepare, real_arrays = UW.UniformProposal._prepare, UW.UniformProposal._count_arrays
+
+    def check():
+        if state["expired"] or (stage == "arrays" and state["arrays"]):
+            raise error("expired")
+
+    def prepare(self, *a, **k):
+        calls["prepare"] += 1
+        real_prepare(self, *a, **k)
+        if stage == "prepared":
+            state["expired"] = True
+
+    def arrays(self, *a, **k):
+        calls["arrays"] += 1
+        state["arrays"] = True
+        return real_arrays(self, *a, **k)
+
+    def one_try(self, mem):
+        calls["try"] += 1
+        state["expired"] = stage == "tries"
+        return None
+
+    def forbidden(*a, **k):
+        pytest.fail("no draw may follow an expired deadline")
+    monkeypatch.setattr(UW.UniformProposal, "_prepare", prepare)
+    monkeypatch.setattr(UW.UniformProposal, "_count_arrays", arrays)
+    monkeypatch.setattr(UW.UniformProposal, "_try", one_try)
+    bot = served(**HISTORY, world_uniform=True, kitty_bury_rule=kitty_rule)
+    monkeypatch.setattr(bot.sampler, "_sample_hands", forbidden)
+    with pytest.raises(error):
+        bot._worlds(copy.deepcopy(rnd), seat, check)
+    assert calls["prepare"] == 1 and calls["arrays"] == 1
+    assert calls["try"] == {"arrays": 0, "prepared": 0, "tries": 1}[stage]
+
+
+def test_an_expiry_mid_proposal_commits_the_play_anchor(monkeypatch, jumping_clock):
+    rnd, seat = constrained_attacker_state()
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=W, candidates=4, cap=400,
+                               batch_size=16, serving_budget_seconds=1.0, **HISTORY,
+                               world_uniform=True, kitty_bury_rule=True)
+    bot = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2, config=config,
+                         checkpoint="/dev/null", seed=7)
+    tries = []
+    real_try = UW.UniformProposal._try
+
+    def one_try(self, mem):
+        tries.append(1)
+        if len(tries) == 3:
+            jumping_clock["expired"] = True
+            return None          # rejected: only the deadline may end this call
+        return real_try(self, mem)
+    monkeypatch.setattr(UW.UniformProposal, "_try", one_try)
+    before = bot.sampler.rng.getstate()
+    anchor = HeuristicBot.decide_play(bot, copy.deepcopy(rnd), seat)
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    assert played == list(anchor)
+    assert record["schema"] == pv.FALLBACK_SCHEMA and record["reason"] == "budget"
+    assert len(tries) == 3 and bot.sampler.rng.getstate() == before
+
+
+def test_an_expiry_mid_proposal_commits_the_bury_incumbent(monkeypatch, jumping_clock):
+    rnd = bury_state(65)
+    incumbent = HeuristicBot().decide_bury(copy.deepcopy(rnd), rnd.banker)
+    bot = served_bury(bury_wide_value=True, bury_budget=1.0, **HISTORY, world_uniform=True)
+    tries = []
+    real_try = UW.UniformProposal._try
+
+    def one_try(self, mem):
+        tries.append(1)
+        if len(tries) == 2:
+            jumping_clock["expired"] = True
+            return None          # rejected: only the deadline may end this call
+        return real_try(self, mem)
+    monkeypatch.setattr(UW.UniformProposal, "_try", one_try)
+    assert bot.decide_bury(copy.deepcopy(rnd), rnd.banker) == list(incumbent)
+    record = bot.last_bury_record
+    assert record["schema"] == "cwv-bury-fallback-v1" and record["reason"] == "budget"
+    assert len(tries) == 2 and bot.evaluator.calls == 0
 
 
 # ------------------------------------------------------------ served bury

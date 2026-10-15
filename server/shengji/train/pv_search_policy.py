@@ -113,6 +113,25 @@ after a follow that showed fewer pairs than were led
 rejection; the test still checks every world (the tractor obligation stays
 with it).  The record gains ``history_draw_constraints`` and
 ``history_draw_forbidden``.
+Its uniform proposal, ``SHENGJI_PV_WORLD_UNIFORM=1`` (board row S30; requires
+``_WORLD_HISTORY_LEGAL=1`` and ``_WORLD_HISTORY_DRAW=1``; name token ``-wu``
+after ``-whd``), draws the hands through `ai.uniform_worlds.UniformProposal`
+on the history rule's ``propose=`` seam: every physical deal that honours the
+public constraints (sizes, the declarer's pins, voids, the draw constraints,
+pair and run caps) is equally likely, so a seat's suit counts follow the number
+of deals instead of `MCBot._splits`' uniform count per receiver.  The history
+test still checks every world.  A decision spends at most
+``uniform_worlds.TRY_FACTOR`` tries per world; past that, or in a state with no
+feasible split, worlds come from the constrained draw and count in
+``uniform_fallback_worlds``.  The served bury's model worlds
+(`bury_wide_value`) come from the same proposal.  The record gains
+``uniform_worlds.FIELDS``.  Its bury-rule kitty, ``SHENGJI_PV_KITTY_BURY_RULE=1``
+(board row S31; requires ``_WORLD_UNIFORM=1``; token ``-kb`` after ``-wu``),
+makes a seat that is not the banker choose the hidden kitty in every world with
+the served bury's incumbent rule on the banker's rebuilt 33-card hand
+(`uniform_worlds.heuristic_bury_kitty`) instead of dealing it eight random
+cards; the record gains ``kitty_rule_worlds`` and ``kitty_rule_rejections``.
+Off, every name, digest, sampled world and record is unchanged.
 
 Optional admission width rule (#676 C), OFF BY DEFAULT: ``SHENGJI_PV_ADAPTIVE_K=1``
 admits ``candidates_lead_multi`` (16) instead of ``candidates`` (8) when the seat
@@ -419,8 +438,8 @@ gain ``leaf_first_trick`` (``"heuristic"`` / ``"policy"``) and
 leaves are untouched, so every existing name (release 44:
 ``pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6``)
 and every decision are unchanged.  Rule token order:
-div, fs, rc, rcec, whl, whd, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef, vdsb, vdpw,
-vdw, asap, lpft.
+div, fs, rc, rcec, whl, whd, wu, kb, tb, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
+vdsb, vdpw, vdw, asap, lpft.
 
 Optional wide value-only bury chooser (#707 S15), OFF BY DEFAULT:
 ``SHENGJI_PV_BURY_WIDE_VALUE=1`` (`bury_wide_value`; a BURY setting of
@@ -527,7 +546,9 @@ from ..engine.cards import card_suit, is_joker
 from ..ai.heuristic import HeuristicBot
 from ..ai.memory import Memory
 from ..ai.refusal import RefusalLedger, sample_worlds_refusal_aware
-from ..ai.history_legality import sample_worlds_history_legal
+from ..ai.history_legality import (constrained_draw, draw_constraints,
+                                   sample_worlds_history_legal)
+from ..ai import uniform_worlds
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
@@ -568,16 +589,23 @@ ADMISSION_RULES = {"ADMISSION_DIVERSITY": "admission_diversity",
 ADMISSION_TOKENS = (("admission_diversity", "div"), ("admit_forced_single", "fs"))
 #: the optional sampler rule (`ai.refusal`) and its event-complete observation
 #: (#707 S8; requires the sampler rule): env flag -> recipe key, and the defaults
-#: and the history-legal world test (`ai.history_legality`, board row S27)
+#: and the history-legal world test (`ai.history_legality`, board row S27), its
+#: uniform proposal and the bury-rule kitty (`ai.uniform_worlds`, rows S30, S31)
 SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints",
                  "REFUSAL_EVENT_COMPLETE": "refusal_event_complete",
                  "WORLD_HISTORY_LEGAL": "world_history_legal",
-                 "WORLD_HISTORY_DRAW": "world_history_draw"}
+                 "WORLD_HISTORY_DRAW": "world_history_draw",
+                 "WORLD_UNIFORM": "world_uniform",
+                 "KITTY_BURY_RULE": "kitty_bury_rule"}
 SAMPLER_DEFAULTS = dict(refusal_constraints=False, refusal_event_complete=False,
-                        world_history_legal=False, world_history_draw=False)
+                        world_history_legal=False, world_history_draw=False,
+                        world_uniform=False, kitty_bury_rule=False)
 #: name tokens, in name order, for the rules that are on
 SAMPLER_TOKENS = (("refusal_constraints", "rc"), ("refusal_event_complete", "rcec"),
-                  ("world_history_legal", "whl"), ("world_history_draw", "whd"))
+                  ("world_history_legal", "whl"), ("world_history_draw", "whd"),
+                  ("world_uniform", "wu"), ("kitty_bury_rule", "kb"))
+#: the bury-rule kitty's world model, named in the digest
+KITTY_BURY_RULE_MODEL = "heuristic-incumbent-bury-on-rebuilt-hand-unplayed-only-v1"
 #: the optional selection rule (`policy_value_search`): env flag -> recipe key
 TIEBREAK_RULE = {"TIEBREAK_POINTS": "tiebreak_points"}
 #: the optional admission width rule (`policy_value_search`): env flag -> recipe key
@@ -716,8 +744,8 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 #: gate, the served bury in its worlds, its pass-conditioned worlds, its wait
 #: option, the model-free first-round declaration, the policy-played value leaf, the
 #: diagnostic oracle worlds):
-#: div, fs, rc, rcec, whl, whd, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
-#: vdsb, vdpw, vdw, asap, lpft, orc
+#: div, fs, rc, rcec, whl, whd, wu, kb, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd,
+#: vdef, vdsb, vdpw, vdw, asap, lpft, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
@@ -806,6 +834,11 @@ _HISTORY_LEGAL_ORACLE_EXCLUSIVE = ("world_history_legal and the oracle diagnosti
                                    "the oracle worlds bypass the sampler the test applies to "
                                    "(SHENGJI_PV_WORLD_HISTORY_LEGAL=1 with SHENGJI_PV_ORACLE_WORLDS, "
                                    "_ORACLE_MIX_K or _ORACLE_PIN_Q)")
+_WORLD_UNIFORM_REQUIRES = ("world_uniform requires world_history_legal and world_history_draw "
+                           "(SHENGJI_PV_WORLD_UNIFORM=1 needs SHENGJI_PV_WORLD_HISTORY_LEGAL=1 "
+                           "and SHENGJI_PV_WORLD_HISTORY_DRAW=1)")
+_KITTY_BURY_RULE_REQUIRES = ("kitty_bury_rule requires world_uniform "
+                             "(SHENGJI_PV_KITTY_BURY_RULE=1 needs SHENGJI_PV_WORLD_UNIFORM=1)")
 _DOOMED_THROW_EXCLUSIVE = ("doomed_throw_swap and doomed_throw_reselect are exclusive "
                            "(SHENGJI_PV_DOOMED_THROW_SWAP=1 with SHENGJI_PV_DOOMED_THROW_RESELECT=1)")
 #: the fallback record's ``error_message`` is the exception text cut to this
@@ -905,6 +938,10 @@ class PVSearchConfig:
     world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"]
     # its draw-time form (`ai.history_legality.draw_constraints`; requires it)
     world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"]
+    # the uniform proposal on its seam (`ai.uniform_worlds`; requires both above)
+    world_uniform: bool = SAMPLER_DEFAULTS["world_uniform"]
+    # the bury-rule kitty for a seat that is not the banker (requires world_uniform)
+    kitty_bury_rule: bool = SAMPLER_DEFAULTS["kitty_bury_rule"]
     # the optional selection rule (#676 E); the same contract
     tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
     # the optional admission width rule (#676 C); the same contract
@@ -1015,6 +1052,15 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     if config.world_history_legal and (config.oracle_worlds or config.oracle_mix_k
                                        or config.oracle_pin_q):
         raise PVSearchPolicyError(_HISTORY_LEGAL_ORACLE_EXCLUSIVE)
+    if config.world_uniform and not (config.world_history_legal and config.world_history_draw):
+        raise PVSearchPolicyError(_WORLD_UNIFORM_REQUIRES)
+    if config.kitty_bury_rule and not config.world_uniform:
+        raise PVSearchPolicyError(_KITTY_BURY_RULE_REQUIRES)
+    if config.world_uniform:
+        payload.update(world_uniform_try_factor=uniform_worlds.TRY_FACTOR,
+                       world_uniform_tries_per_call=uniform_worlds.TRIES_PER_CALL)
+    if config.kitty_bury_rule:
+        payload["kitty_bury_rule_model"] = KITTY_BURY_RULE_MODEL
     if config.oracle_worlds:
         # the digest says what the one world is; a reader never has to infer it
         payload["oracle_worlds_information"] = "true-deal"
@@ -1286,6 +1332,14 @@ class PVSearchBot(PolicyValueBot):
         self.world_history_draw = bool(config.world_history_draw)
         if self.world_history_draw and not self.world_history_legal:
             raise PVSearchPolicyError("world_history_draw requires world_history_legal")
+        # the uniform proposal on the history rule's seam (`ai.uniform_worlds`),
+        # and its bury-rule kitty; also the served bury's model worlds
+        self.world_uniform = bool(config.world_uniform)
+        self.kitty_bury_rule = bool(config.kitty_bury_rule)
+        if self.world_uniform and not self.world_history_draw:
+            raise PVSearchPolicyError(_WORLD_UNIFORM_REQUIRES)
+        if self.kitty_bury_rule and not self.world_uniform:
+            raise PVSearchPolicyError(_KITTY_BURY_RULE_REQUIRES)
         for key in ("adaptive_worlds", "adaptive_worlds_leads"):
             if type(getattr(config, key)) is not bool:
                 raise PVSearchPolicyError(f"{key} must be a bool")
@@ -2109,6 +2163,17 @@ class PVSearchBot(PolicyValueBot):
             self._soft_oracle = None
             worlds, attempts, self._last_sampling = self._soft_oracle_worlds(
                 rnd, seat, mem, refusals, check_budget)
+        elif getattr(self, "world_history_legal", False) and getattr(self, "world_uniform", False):
+            # the uniform proposal on the seam; its fallback is the constrained draw
+            constraints = draw_constraints(rnd, seat)
+            propose = uniform_worlds.UniformProposal(
+                self.sampler, n=self.worlds, kitty_rule=self.kitty_bury_rule,
+                constraints=constraints,
+                fallback=constrained_draw(self.sampler, constraints) if constraints else None)
+            worlds, attempts, self._last_sampling = sample_worlds_history_legal(
+                self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
+                check_budget=check_budget, propose=propose, constrain=True)
+            self._last_sampling.update(propose.stats)
         elif getattr(self, "world_history_legal", False):
             # getattr: a bot built without __init__ (a bare test double or an
             # older snapshot) has the rule off
@@ -2518,6 +2583,10 @@ class PVSearchBot(PolicyValueBot):
                        history_fallback_worlds=0, history_rejections_by_age={})
             if getattr(self, "world_history_draw", False):
                 out.update(history_draw_constraints=0, history_draw_forbidden=0)
+            if getattr(self, "world_uniform", False):
+                out.update({key: 0 for key in uniform_worlds.FIELDS})
+                if getattr(self, "kitty_bury_rule", False):
+                    out.update({key: 0 for key in uniform_worlds.KITTY_FIELDS})
         if not out:
             return {}
         return {**out, **self._last_sampling}
@@ -2764,6 +2833,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                        world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"],
                        world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"],
+                       world_uniform: bool = SAMPLER_DEFAULTS["world_uniform"],
+                       kitty_bury_rule: bool = SAMPLER_DEFAULTS["kitty_bury_rule"],
                        admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                        admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
                        tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
@@ -2826,6 +2897,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             refusal_event_complete=refusal_event_complete,
                             world_history_legal=world_history_legal,
                             world_history_draw=world_history_draw,
+                            world_uniform=world_uniform,
+                            kitty_bury_rule=kitty_bury_rule,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -2919,6 +2992,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                         world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"],
                         world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"],
+                        world_uniform: bool = SAMPLER_DEFAULTS["world_uniform"],
+                        kitty_bury_rule: bool = SAMPLER_DEFAULTS["kitty_bury_rule"],
                         admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
                         admit_forced_single: bool = ADMISSION_DEFAULTS["admit_forced_single"],
                         tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"],
@@ -2962,6 +3037,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             refusal_event_complete=refusal_event_complete,
                             world_history_legal=world_history_legal,
                             world_history_draw=world_history_draw,
+                            world_uniform=world_uniform,
+                            kitty_bury_rule=kitty_bury_rule,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -3051,6 +3128,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                refusal_event_complete=config.refusal_event_complete,
                                world_history_legal=config.world_history_legal,
                                world_history_draw=config.world_history_draw,
+                               world_uniform=config.world_uniform,
+                               kitty_bury_rule=config.kitty_bury_rule,
                                admission_diversity=config.admission_diversity,
                                admit_forced_single=config.admit_forced_single,
                                tiebreak_points=config.tiebreak_points,
@@ -3095,7 +3174,8 @@ def pv_env_recipe(environ=None) -> dict:
     prior; the value evaluator stays ``_CKPT``) and the optional ``_WORLDS`` / ``_CANDIDATES``
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
-    ``_REFUSAL_EVENT_COMPLETE`` / ``_WORLD_HISTORY_LEGAL`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
+    ``_REFUSAL_EVENT_COMPLETE`` / ``_WORLD_HISTORY_LEGAL`` / ``_WORLD_HISTORY_DRAW`` /
+    ``_WORLD_UNIFORM`` / ``_KITTY_BURY_RULE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
     ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``

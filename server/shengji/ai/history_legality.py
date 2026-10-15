@@ -36,6 +36,25 @@ round has refusals on record.  The history test runs for at most
 drawn exactly as today (refusal test only, then the plain fill), so the search
 never stalls or runs short because of this rule, and the shortfall is
 recorded.  The engine, `Memory` and the encoder closure are untouched.
+
+THE DRAW-TIME FORM (``constrain=True``).  For the pair obligation the test has
+a closed form.  Let seat ``t`` follow a lead carrying ``n`` pairs in effective
+suit ``S`` and show ``shown < n`` pairs in ``S`` (exactly `Memory`'s
+``pair_cap = 0`` condition).  The rule then says ``t`` held no more than
+``shown`` pairs in ``S`` at that moment, and the ``shown`` pairs are among the
+cards it played from then on, so its hand now may add NO pair in ``S`` to
+those cards.  The current hand alone holding a pair is `Memory`'s cap; the
+remaining way is a card whose single twin ``t`` played at or after the
+earliest such follow.  `draw_constraints` lists those twins per ``(t, S)``,
+and the constrained draw seeds them into the sampler's own per-seat pair
+count (``MCBot._deal_suit``'s ``already``), so the existing ``pair_cap = 0``
+check never deals the second copy.  The constraint is exact for the pair
+obligation, so no rejection is needed for it; the tractor obligation (no
+``k``-run held then) has no such closed form and stays with the oracle, which
+still tests every drawn world.  The constrained draw is a different proposal
+from rejection: the sampler chooses suit counts without seeing the twins, so
+its distribution differs from the rejection-accepted set in how counts are
+weighted (measured, not assumed equal).
 """
 from __future__ import annotations
 
@@ -101,8 +120,61 @@ def history_legal(rnd, seat: int, hands) -> bool:
     return first_violation(follow_events(rnd, seat), hands, rnd.ordering) is None
 
 
+def draw_constraints(rnd, seat: int, events=None) -> dict[tuple[int, str], Counter]:
+    """``{(other seat, effective suit): Counter of codes}``: the cards whose
+    single twin that seat played at or after its earliest follow that showed
+    fewer pairs than were led in that suit (the draw-time form above).  Codes
+    the seat played twice are absent (both copies are seen)."""
+    if events is None:
+        events = follow_events(rnd, seat)
+    ordering = rnd.ordering
+    out: dict[tuple[int, str], Counter] = {}
+    for ev in events:
+        if len(ev.lead) < 2:
+            continue
+        led = _legal.pair_count(list(ev.lead))
+        if not led:
+            continue
+        suit = ordering.eff_suit(ev.lead[0])
+        key = (ev.seat, suit)
+        if key in out:
+            continue
+        shown = _legal.pair_count([c for c in ev.cards if ordering.eff_suit(c) == suit])
+        if shown >= led:
+            continue
+        later = Counter(c for c in ev.later if ordering.eff_suit(c) == suit)
+        out[key] = Counter({c: 1 for c, k in later.items() if k == 1})
+    return {k: v for k, v in out.items() if v}
+
+
+def constrained_draw(bot, constraints):
+    """``propose(rnd, seat, mem)``: ``bot._sample_hands`` with each
+    constrained seat's twins counted as already held in that suit, so its
+    ``pair_cap = 0`` check never deals the second copy.  The bot's own rng and
+    counters are used; the override lives only for the duration of one draw."""
+    base = type(bot)._deal_suit
+
+    def deal_suit(remaining, n, r, suit, mem, already=None):
+        extra = constraints.get((r, suit)) if isinstance(r, int) else None
+        if extra:
+            if mem.max_pairs(r, suit) != 0:
+                raise AssertionError(f"draw constraint on seat {r} suit {suit} without pair_cap 0")
+            already = Counter(already or ()) + extra
+        return base(bot, remaining, n, r, suit, mem, already)
+
+    def propose(rnd, seat, mem):
+        if not constraints:
+            return bot._sample_hands(rnd, seat, mem)
+        bot._deal_suit = deal_suit
+        try:
+            return bot._sample_hands(rnd, seat, mem)
+        finally:
+            del bot._deal_suit
+    return propose
+
+
 def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem,
-                                check_budget=None, propose=None):
+                                check_budget=None, propose=None, constrain=False):
     """``n`` worlds by production's draw, each history-legal while the history
     test's attempt budget lasts and consistent with every refusal in
     ``refusals`` (`ai.refusal`, the same test and pinning as
@@ -118,7 +190,12 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     ``bot._sample_hands`` as the source of drawn hands (a belief proposal plugs
     in here; served play passes None).  Its hands go through the same
     completion, refusal test and history test; the plain fill after the
-    attempt cap stays production's draw."""
+    attempt cap stays production's draw.
+
+    ``constrain=True`` (and no ``propose``) draws through `constrained_draw`
+    with `draw_constraints`; the history test still runs on every world.  A
+    proposal passed as ``propose`` is responsible for its own constraints
+    (`draw_constraints` is the list to honour)."""
     from .cwv_policy import sample_worlds
     events = follow_events(rnd, seat)
     ordering = rnd.ordering
@@ -130,7 +207,13 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     rejected = 0
     unchecked = 0
     by_age: Counter[int] = Counter()
-    draw = bot._sample_hands if propose is None else propose
+    constraints = draw_constraints(rnd, seat, events) if constrain and propose is None else {}
+    if propose is not None:
+        draw = propose
+    elif constraints:
+        draw = constrained_draw(bot, constraints)
+    else:
+        draw = bot._sample_hands
     cap = n * bot.SAMPLE_ATTEMPT_FACTOR
     history_cap = n * HISTORY_ATTEMPT_FACTOR if events else 0
     while len(worlds) < n and attempts < cap:
@@ -166,6 +249,9 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     stats = {"history_follow_events": len(events), "history_rejections": rejected,
              "history_fallback_worlds": unchecked + fill,
              "history_rejections_by_age": {str(k): v for k, v in sorted(by_age.items())}}
+    if constrain:
+        stats["history_draw_constraints"] = len(constraints)
+        stats["history_draw_forbidden"] = sum(sum(c.values()) for c in constraints.values())
     if refusals:
         stats.update(refusal_observations=len(refusals), refusal_rejections=refusal_rejected,
                      refusal_fallback_worlds=fill, refusal_pinned_codes=pinned)

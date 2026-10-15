@@ -94,7 +94,61 @@ def measure(rnd, seat, refusals, seed):
                              for h, _ in whl)
     out["events"] = len(events)
     out["hidden"] = layout.hidden
+
+    # the draw-time form, same seed; and a second rejection draw on another
+    # seed as the noise floor for the marginal comparison
+    t0 = time.perf_counter()
+    cons = HL.draw_constraints(rnd, seat, events)
+    out["derive_secs"] = time.perf_counter() - t0
+    bot = MCBot(seed=seed)
+    mem = Memory(rnd, seat, own_kitty=getattr(bot, "BANKER_KITTY", True))
+    t0 = time.perf_counter()
+    whd, attempts, stats = HL.sample_worlds_history_legal(bot, rnd, seat, W, tuple(refusals),
+                                                          mem=mem, constrain=True)
+    out["whd_secs"] = time.perf_counter() - t0
+    out["whd_attempts"] = attempts
+    out["whd_stats"] = stats
+    out["whd_agreement"] = agree(whd)
+    out["whd_illegal"] = sum(HL.first_violation(events, h, rnd.ordering) is not None
+                             for h, _ in whd)
+    bot = MCBot(seed=seed ^ 0x5A5A5A)
+    mem = Memory(rnd, seat, own_kitty=getattr(bot, "BANKER_KITTY", True))
+    whl2, _, _ = HL.sample_worlds_history_legal(bot, rnd, seat, W, tuple(refusals), mem=mem)
+    out["whl2_agreement"] = agree(whl2)
+    m = [_marginal(ws, seat) for ws in (whl, whl2, whd)]
+    out["tv_whl_whl2"] = _tv(m[0], m[1])
+    out["tv_whl_whd"] = _tv(m[0], m[2])
+    out["tv_whl2_whd"] = _tv(m[1], m[2])
     return out
+
+
+def _marginal(worlds, seat):
+    """Per hidden card code, the share of its copies with each other seat or
+    the kitty, over the worlds."""
+    counts: dict = {}
+    for hands, buried in worlds:
+        for s in range(4):
+            if s == seat:
+                continue
+            for c in hands[s]:
+                counts.setdefault(c, Counter())[s] += 1
+        for c in buried:
+            counts.setdefault(c, Counter())["k"] += 1
+    return counts
+
+
+def _tv(a, b):
+    """Mean over codes of the total-variation distance between receiver shares."""
+    import numpy as np
+    out = []
+    for c in set(a) | set(b):
+        ca, cb = a.get(c, Counter()), b.get(c, Counter())
+        na, nb = sum(ca.values()), sum(cb.values())
+        if not na or not nb:
+            continue
+        keys = set(ca) | set(cb)
+        out.append(0.5 * sum(abs(ca[k] / na - cb[k] / nb) for k in keys))
+    return float(np.mean(out)) if out else 0.0
 
 
 def _task(args):
@@ -193,6 +247,29 @@ def summarize(paths):
     sub = [r for r in rows if r["base_legal_subset_agreement"] is not None]
     print(f"  base legal-subset agreement (the zeroing reading) gain "
           f"{np.mean([r['base_legal_subset_agreement'] - r['base_agreement'] for r in sub]) * 100:+.3f} pp")
+    if "whd_secs" in rows[0]:
+        print("  draw-time form (whd):")
+        for name, key in (("whl", "whl_secs"), ("whd", "whd_secs"), ("derive", "derive_secs")):
+            xs = [r[key] for r in rows]
+            print(f"    {name:6s} secs p50 {_q(xs, 50):.4f} p90 {_q(xs, 90):.4f} p99 {_q(xs, 99):.4f} "
+                  f"max {max(xs):.4f}")
+        for name in ("whl", "whd"):
+            att = [r[f"{name}_attempts"] for r in rows]
+            rej = sum(r[f"{name}_stats"]["history_rejections"] for r in rows)
+            hits = sum(r[f"{name}_stats"]["history_fallback_worlds"] > 0 for r in rows)
+            print(f"    {name} attempts p50 {_q(att, 50):.0f} p90 {_q(att, 90):.0f} p99 {_q(att, 99):.0f} "
+                  f"max {max(att)}; rejections/attempt {rej / sum(att):.4f}; budget hits {hits}/{S} "
+                  f"({hits / S:.3f}); illegal worlds left {sum(r[f'{name}_illegal'] for r in rows)}")
+        d = np.array([r["whd_agreement"] - r["whl_agreement"] for r in rows])
+        boots = [d[rng.integers(0, S, S)].mean() for _ in range(4000)]
+        print(f"    agreement whd {np.mean([r['whd_agreement'] for r in rows]):.4f} vs whl "
+              f"{np.mean([r['whl_agreement'] for r in rows]):.4f}: {d.mean() * 100:+.3f} pp "
+              f"[{np.percentile(boots, 2.5) * 100:+.3f}, {np.percentile(boots, 97.5) * 100:+.3f}]; "
+              f"whl second seed {np.mean([r['whl2_agreement'] for r in rows]):.4f}")
+        print(f"    marginal TV (mean over states): whl vs whl(seed 2) "
+              f"{np.mean([r['tv_whl_whl2'] for r in rows]):.4f}; whl vs whd "
+              f"{np.mean([r['tv_whl_whd'] for r in rows]):.4f}; whl(seed 2) vs whd "
+              f"{np.mean([r['tv_whl2_whd'] for r in rows]):.4f}")
     for role in (0, 1, 2):
         sub = [r for r in rows if r["role"] == role]
         if sub:

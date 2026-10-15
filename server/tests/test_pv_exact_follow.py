@@ -85,6 +85,28 @@ def disagreement():
                   plays=[(0, ["C5"])], attacker_points=35)
 
 
+def test_pinned_model_singleton_follow_does_not_solve(pinned_production_package, monkeypatch):
+    from shengji.train import pv_exact_follow
+    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env['SHENGJI_PV_CKPT'] = str(pinned_production_package)
+    recipe = pv.pv_env_recipe(env)
+    rnd, heuristic = _play_state(), HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= 3):
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    baseline = pv.make_pv_search_bot(**recipe, seed=7)
+    expected = baseline.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert baseline.last_decision_record['admitted'] == [['D5']]
+    def forbidden(*args, **kwargs):
+        pytest.fail('a singleton ballot cannot benefit from exact reranking')
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', forbidden)
+    bot = pv.make_pv_search_bot(**recipe, seed=7, bot_factory=FollowDevBot)
+    assert bot.decide_play(copy.deepcopy(rnd), rnd.turn) == expected
+    assert bot.last_decision_record['work_complete']
+    assert not bot.last_decision_record.get('exact_follow_attempted', False)
+    assert bot.last_decision_record['admitted'] == baseline.last_decision_record['admitted']
+
+
 def search_case(deadline=None, on=True, max_nodes=10000):
     """Real enumeration/admission/search/engine, with a deliberately wrong head.
 

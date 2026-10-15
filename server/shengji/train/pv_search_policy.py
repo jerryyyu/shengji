@@ -2311,7 +2311,8 @@ class PVSearchBot(PolicyValueBot):
             # selection (``selected_index`` and ``value_means`` still describe the search)
             played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds, check_budget)
         exact_follow_record = None
-        if self.exact_follow and rnd.trick is not None and rnd.trick.plays:
+        if (self.exact_follow and len(admitted) > 1
+                and rnd.trick is not None and rnd.trick.plays):
             # The normal PV result is complete before this optional stage starts.
             # Any refusal, budget expiry, or malformed world leaves it untouched.
             from .pv_exact_follow import rerank_follow

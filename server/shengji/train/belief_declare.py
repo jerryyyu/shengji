@@ -57,7 +57,7 @@ import numpy as np
 from ..engine.cards import BJ, LJ, TRUMP, make_deck, points
 from ..rl.encode import CARD_INDEX, N_CARDS
 
-SCHEMA = "shengji-belief-declare-v1"
+SCHEMA = "shengji-belief-declare-v2"
 #: row features (per round and actor)
 DECL_ROW_FEATURES = (
     "decls_rel0", "decls_rel1", "decls_rel2", "decls_rel3",
@@ -95,9 +95,14 @@ def _strength(cards: Sequence[str], trump_rank: str) -> int:
     return 2
 
 
-def _rng_for(deck: Sequence[str], seat: int) -> np.random.Generator:
-    h = hashlib.sha256((",".join(deck) + f"|{int(seat)}|s23-kb-v1").encode()).hexdigest()
-    return np.random.default_rng(int(h[:16], 16))
+def _rng_for(seat: int, own_start: Sequence[str], declarations, trump_rank: str,
+            banker: int) -> np.random.Generator:
+    """The bury-rule draws' stream, seeded only by what the actor knows (its
+    seat and play-start hand, the declaration sequence, trump rank, banker), so
+    the extract and the live featurizer agree and no hidden card enters."""
+    decl = ";".join(f"{int(d['seat'])}:{','.join(sorted(d['cards']))}" for d in declarations or [])
+    key = f"{int(seat)}|{','.join(sorted(own_start))}|{decl}|{trump_rank}|{int(banker)}|s23-kb-v2"
+    return np.random.default_rng(int(hashlib.sha256(key.encode()).hexdigest()[:16], 16))
 
 
 class _BuryStub:
@@ -140,8 +145,8 @@ def kb_prior(ordering, banker: int, own_start: Sequence[str], pins_u: Counter,
 
 
 def declare_features(ordering, trump_rank: str, banker: int, seat: int,
-                     declarations: Sequence[Mapping[str, Any]], own_start: Sequence[str],
-                     deck: Sequence[str], *, draws: int = KB_DRAWS) -> tuple[np.ndarray, np.ndarray]:
+                     declarations: Sequence[Mapping[str, Any]], own_start: Sequence[str], *,
+                     draws: int = KB_DRAWS) -> tuple[np.ndarray, np.ndarray]:
     """``(row (DECL_ROW,), card (54, DECL_CARD))`` float32 for one actor of one
     round.  ``declarations`` is the round's declaration sequence (``setup``'s
     ``[{"seat", "cards"}]``, oldest first); ``own_start`` the actor's hand at
@@ -189,7 +194,7 @@ def declare_features(ordering, trump_rank: str, banker: int, seat: int,
             if s not in (banker, seat):
                 pins_other += c
         kit, kept = kb_prior(ordering, banker, own_start, pins_u, pins_other,
-                             _rng_for(deck, seat), draws)
+                             _rng_for(seat, own_start, declarations, trump_rank, banker), draws)
         card[:, 3] = 0.5 * kit
         card[:, 4] = 0.5 * kept
         is_trump = np.asarray([ordering.eff_suit(c) == TRUMP for c in _CODES], np.float64)
@@ -201,7 +206,7 @@ def declare_features(ordering, trump_rank: str, banker: int, seat: int,
     return row, card
 
 
-def round_declare_features(rnd, deck: Sequence[str], declarations, *, draws: int = KB_DRAWS
+def round_declare_features(rnd, declarations, *, draws: int = KB_DRAWS
                            ) -> tuple[np.ndarray, np.ndarray]:
     """``(4, DECL_ROW)`` and ``(4, 54, DECL_CARD)`` for the four actors of a round
     at play start (``rnd`` before any play)."""
@@ -210,7 +215,7 @@ def round_declare_features(rnd, deck: Sequence[str], declarations, *, draws: int
     for seat in range(4):
         rows[seat], cards[seat] = declare_features(
             rnd.ordering, rnd.trump_rank, int(rnd.banker), seat, declarations,
-            list(rnd.hands[seat]), deck, draws=draws)
+            list(rnd.hands[seat]), draws=draws)
     return rows, cards
 
 
@@ -233,7 +238,7 @@ def decision_declare_inputs(rnd, seat: int, declarations=None, *, draws: int = K
         d = rnd.declaration
         declarations = [] if d is None else [{"seat": d["seat"], "cards": d["cards"]}]
     row, card = declare_features(rnd.ordering, rnd.trump_rank, int(rnd.banker), int(seat),
-                                 declarations, start_hand(rnd, seat), rnd.deck, draws=draws)
+                                 declarations, start_hand(rnd, seat), draws=draws)
     return (row.astype(np.float16).astype(np.float32),
             card.astype(np.float16).astype(np.float32))
 
@@ -292,7 +297,7 @@ def chunk_declare(chunk_path: str, hist_path: str, shard_paths: Sequence[str], *
         if int(rnd.banker) != int(banker[r]):
             raise BeliefDeclareError(f"{chunk_path}: round {r} banker differs from the history")
         decls = rec["setup"].get("declarations") or []
-        a, b = round_declare_features(rnd, rec["deck"], decls, draws=draws)
+        a, b = round_declare_features(rnd, decls, draws=draws)
         rows[r], cards[r] = a, b
         n_decl[r] = len(decls)
     return {"round_row": rows, "round_card": cards, "round_key": key.astype(np.int32),
@@ -397,8 +402,7 @@ def bench(stores_root: str, store: str, *, rounds: int, draws: int) -> dict:
         for rec in _first_records(str(p)).values():
             rnd = round_from_setup(rec["deck"], rec["setup"])
             t0 = time.perf_counter()
-            round_declare_features(rnd, rec["deck"], rec["setup"].get("declarations") or [],
-                                   draws=draws)
+            round_declare_features(rnd, rec["setup"].get("declarations") or [], draws=draws)
             t.append(time.perf_counter() - t0)
     t = np.asarray(t)
     return {"rounds": len(t), "ms_p50": float(np.median(t) * 1e3), "ms_p90": float(np.quantile(t, 0.9) * 1e3)}

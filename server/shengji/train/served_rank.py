@@ -463,8 +463,9 @@ def served_rank_metrics(levels: np.ndarray, sset: ServedCandidateSet | None) -> 
     headline keys ``served_rank_regret`` / ``served_rank_top1`` (rollout
     truth, signed level), ``served_rank_regret_points`` (rollout truth in the
     acting team's points: one rollout is one outcome, and the level brackets
-    leave most records without a spread, so points resolve more) and ``served_search_regret`` / ``served_search_top1`` (recorded
-    search means), per bucket under ``served_by_trick`` and flat as
+    leave most records without a spread, so points resolve more) and
+    ``served_search_regret`` / ``served_search_top1`` (recorded search
+    means), per bucket under ``served_by_trick`` and flat as
     ``served_rank_regret_<bucket>``, and per units family under
     ``served_by_units``."""
     if sset is None or sset.records == 0:

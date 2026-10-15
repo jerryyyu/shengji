@@ -36,6 +36,7 @@ from shengji.ai.cwv_static_encoding import tensors_from_round_static  # noqa: E4
 from shengji.harvest import rebuild  # noqa: E402
 from shengji.rl.value_afterstate import (  # noqa: E402
     N_CARDS, PUBLIC_DIM, WORLD_RECEIVERS, category_signed_level, signed_level_category)
+from shengji.rl.value_afterstate_v2 import public_dim  # noqa: E402
 from shengji.train import cwv_data, cwv_eval, served_rank, served_rescore, train_cwv  # noqa: E402
 from shengji.train.data import discover_store  # noqa: E402
 
@@ -141,17 +142,19 @@ def _fingerprint(rnd):
             rnd.phase)
 
 
-def test_candidates_are_scored_at_the_served_leaf_and_rolled_out(records):
+@pytest.mark.parametrize("version", [2, 7])
+def test_candidates_are_scored_at_the_served_leaf_and_rolled_out(records, version):
     record, rnd = _mid_trick_record(records)
     seat = int(record["seat"])
     indices, _means = cwv_data.search_means(record)
     cands = [record["ballot"][i] for i in indices]
     before = _fingerprint(rnd)
-    scored = served_rank.score_served_candidates(rnd, seat, cands, version=2)
+    scored = served_rank.score_served_candidates(rnd, seat, cands, version=version)
     assert _fingerprint(rnd) == before                       # the root is never mutated
+    assert scored["public"].shape[1] == public_dim(version)
     hands, buried = served_rank.true_world(rnd)
     assert hands == [sorted(h) for h in rnd.hands] and buried == sorted(rnd.buried)
-    old = cwv_eval.score_candidates(rnd, seat, cands, version=2)
+    old = cwv_eval.score_candidates(rnd, seat, cands, version=version)
     differs = False
     for i, cand in enumerate(cands):
         leaf = afterstate(rnd, seat, hands, buried, cand, finish_trick=True)
@@ -159,7 +162,7 @@ def test_candidates_are_scored_at_the_served_leaf_and_rolled_out(records):
         if leaf.phase == "round_end":
             assert scored["terminal"][i]
         else:
-            want = tensors_from_round_static(leaf, seat, version=2)
+            want = tensors_from_round_static(leaf, seat, version=version)
             assert np.array_equal(scored["public"][i], want.public)
             assert np.array_equal(scored["world"][i], np.rint(want.world * 2).astype(np.uint8))
             differs |= not np.array_equal(scored["public"][i], old["public"][i])

@@ -15,6 +15,108 @@ from shengji.train import pv_search_policy as pv
 from test_pv_search_serving import package  # noqa: F401
 
 
+def _horizon_record(*, worlds=2, trick=None, policy=None, leaves=True,
+                    actions=None, admitted=None):
+    actions = [['A'], ['K']] if actions is None else actions
+    admitted = actions if admitted is None else admitted
+    arms = {
+        'trick': {'values': trick if trick is not None else [[1.0, 0.0], [1.0, 0.0]]},
+        'policy': {'values': policy if policy is not None else [[2.0, 0.0], [2.0, 0.0]]},
+    }
+    if leaves:
+        arms['trick']['leaves'] = [
+            {'action_plies': 2, 'completed_tricks': 1, 'terminal': False},
+            {'action_plies': 3, 'completed_tricks': 1, 'terminal': True},
+            {'action_plies': 2, 'completed_tricks': 1, 'terminal': False},
+            {'action_plies': 3, 'completed_tricks': 1, 'terminal': True},
+        ]
+        arms['policy']['leaves'] = [
+            {'action_plies': 4, 'completed_tricks': 2, 'terminal': False},
+            {'action_plies': 5, 'completed_tricks': 2, 'terminal': True},
+            {'action_plies': 4, 'completed_tricks': 2, 'terminal': False},
+            {'action_plies': 5, 'completed_tricks': 2, 'terminal': True},
+        ]
+    return {'status': 'complete', 'actions': actions, 'worlds': worlds,
+            'arms': arms}, {'admitted': admitted}
+
+
+def test_summarize_captured_horizon_describes_winners_and_actual_depths():
+    from shengji.train.paired_horizon import summarize_captured_horizon
+    horizon, decision = _horizon_record(
+        # Large shared world offsets leave a constant paired candidate gap.
+        trick=[[1004.0, 1002.0], [4.0, 2.0]],
+        policy=[[1005.0, 1003.0], [5.0, 3.0]])
+    summary = summarize_captured_horizon(horizon, decision)
+    assert summary['trick_mean_argmax_index'] == 0
+    assert summary['policy_mean_argmax_index'] == 0
+    assert summary['winner_flip'] is False
+    assert summary['policy_winner_minus_trick_winner_mean'] == 0.0
+    assert summary['policy_winner_minus_trick_winner_se'] == 0.0
+    assert summary['actual']['trick'] == {
+        'action_plies_min': 2, 'action_plies_max': 3,
+        'completed_tricks_min': 1, 'completed_tricks_max': 1,
+        'terminal_count': 2}
+    assert summary['actual']['policy']['terminal_count'] == 2
+    assert summarize_captured_horizon(
+        {'paired_horizon': horizon, 'replay': {'decision': decision}}) == summary
+
+    horizon, decision = _horizon_record(
+        # Shared offsets are large, but the selected deep-arm gap is stable.
+        trick=[[104.0, 102.0], [4.0, 2.0]],
+        policy=[[100.0, 103.0], [0.0, 3.0]], leaves=False)
+    summary = summarize_captured_horizon(horizon, decision)
+    assert summary['trick_mean_argmax_index'] == 0
+    assert summary['policy_mean_argmax_index'] == 1
+    assert summary['winner_flip'] is True
+    assert summary['policy_winner_minus_trick_winner_mean'] == 3.0
+    assert summary['policy_winner_minus_trick_winner_se'] == 0.0
+
+    horizon, decision = _horizon_record(
+        trick=[[2.0, 2.0], [1.0, 1.0]],
+        policy=[[0.0, 3.0], [0.0, 1.0]], leaves=False)
+    summary = summarize_captured_horizon(horizon, decision)
+    assert summary['winner_flip'] is True
+    assert summary['policy_winner_minus_trick_winner_mean'] == 2.0
+    assert summary['policy_winner_minus_trick_winner_se'] == 1.0
+
+
+def test_summarize_captured_horizon_single_world_and_skip_states():
+    from shengji.train.paired_horizon import summarize_captured_horizon
+    horizon, decision = _horizon_record(
+        worlds=1, trick=[[4.0, 4.0]], policy=[[9.0, 1.0]], leaves=False)
+    summary = summarize_captured_horizon(horizon, decision)
+    assert summary['policy_winner_minus_trick_winner_se'] is None
+    assert summarize_captured_horizon({'status': 'abandoned', 'reason': 'Yield'}) == {
+        'status': 'abandoned', 'reason': 'Yield'}
+    assert summarize_captured_horizon({'status': 'skipped',
+                                       'reason': 'incomplete_served_capture'}) == {
+        'status': 'skipped', 'reason': 'incomplete_served_capture'}
+
+
+@pytest.mark.parametrize('mutate, message', [
+    (lambda h, d: h['arms']['trick']['values'][0].__setitem__(0, float('nan')), 'finite'),
+    (lambda h, d: d.__setitem__('admitted', [['Q'], ['K']]), 'match'),
+])
+def test_summarize_captured_horizon_rejects_malformed_complete(mutate, message):
+    from shengji.train.paired_horizon import summarize_captured_horizon
+    horizon, decision = _horizon_record()
+    mutate(horizon, decision)
+    with pytest.raises(ValueError, match=message):
+        summarize_captured_horizon(horizon, decision)
+
+
+def test_summarize_captured_horizon_rejects_wrong_matrix_and_leaf_count():
+    from shengji.train.paired_horizon import summarize_captured_horizon
+    horizon, decision = _horizon_record()
+    horizon['arms']['trick']['values'] = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]
+    with pytest.raises(ValueError, match='shape'):
+        summarize_captured_horizon(horizon, decision)
+    horizon, decision = _horizon_record()
+    horizon['arms']['policy']['leaves'].pop()
+    with pytest.raises(ValueError, match='contain 4 rows'):
+        summarize_captured_horizon(horizon, decision)
+
+
 @pytest.mark.parametrize('mode', ['historical', 'served', 'fallback', 'served_round',
                                   'served_stop', 'served_error', 'horizon', 'horizon_timeout',
                                   'horizon_yield'])
@@ -190,7 +292,7 @@ def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, mo
 
 
 @pytest.mark.parametrize('budget', ['0.000000001', '60'])
-def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budget):
+def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budget, monkeypatch):
     """Real tiny package, registry factory, lifecycle and lead replay; no screen."""
     path, sha = package
     env = dict(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
@@ -238,10 +340,33 @@ def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budg
     if horizon['status'] == 'complete':
         assert horizon['actions'] == record['admitted']
         assert horizon['worlds'] == 2
+        assert horizon['summary']['status'] == 'complete'
+        assert horizon['summary']['trick_mean_argmax_index'] in (0, 1)
+        assert horizon['summary']['policy_mean_argmax_index'] in (0, 1)
         serialized = json.loads(json.dumps(horizon))
+        assert serialized['summary']['policy_winner_minus_trick_winner_se'] is not None
         for name, depth in [('trick', 1), ('policy', 2)]:
             assert len(serialized['arms'][name]['values']) == 2
             assert all(r['completed_tricks'] == depth for r in serialized['arms'][name]['leaves'])
+        # Expiry during summary construction must discard the whole pair,
+        # including a fully computed matrix, before collector publication.
+        from shengji.train import paired_horizon as ph
+        original_summary = ph.summarize_captured_horizon
+        expired = False
+        def summarize_then_expire(*args):
+            nonlocal expired
+            result = original_summary(*args)
+            expired = True
+            return result
+        def gate():
+            if expired:
+                raise pv.PVSearchBudgetExceeded('summary deadline')
+        with monkeypatch.context() as patch:
+            patch.setattr(ph, 'summarize_captured_horizon', summarize_then_expire)
+            with pytest.raises(pv.PVSearchBudgetExceeded, match='summary deadline'):
+                ph.measure_captured_horizon(bots[root.turn], horizon_inputs, record, gate=gate)
+        assert bots[root.turn].last_decision_record == saved_record
+        assert bots[root.turn].sampler.rng.getstate() == rng
     packet = collector.LeadCapture(root).capture(root, ledger=bots[root.turn]._refusals, decision=record)
     restored, _ = restore_with_ledger(packet)
     restored.play(root.turn, cards)

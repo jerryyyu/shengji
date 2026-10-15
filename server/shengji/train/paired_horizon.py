@@ -15,6 +15,130 @@ import time
 import numpy as np
 
 
+def _horizon_record_parts(record, decision):
+    if not isinstance(record, dict):
+        raise ValueError("horizon record must be an object")
+    if decision is None:
+        if "paired_horizon" in record:
+            horizon = record["paired_horizon"]
+            replay = record.get("replay")
+            decision = (record.get("decision") if isinstance(record.get("decision"), dict)
+                        else replay.get("decision") if isinstance(replay, dict) else record)
+        else:
+            horizon, decision = record, record
+    else:
+        horizon = record
+    if not isinstance(horizon, dict):
+        raise ValueError("paired_horizon must be an object")
+    return horizon, decision
+
+
+def _leaf_summary(arm, name, expected_count):
+    leaves = arm.get("leaves")
+    if leaves is None:
+        return None
+    if not isinstance(leaves, list) or len(leaves) != expected_count:
+        raise ValueError(f"{name}.leaves must contain {expected_count} rows")
+    plies, tricks, terminals = [], [], 0
+    for index, leaf in enumerate(leaves):
+        if not isinstance(leaf, dict):
+            raise ValueError(f"{name}.leaves[{index}] must be an object")
+        action_plies = leaf.get("action_plies")
+        completed_tricks = leaf.get("completed_tricks")
+        terminal = leaf.get("terminal")
+        if (type(action_plies) is not int or action_plies < 0
+                or type(completed_tricks) is not int or completed_tricks < 0
+                or type(terminal) is not bool):
+            raise ValueError(f"{name}.leaves[{index}] has invalid depth metadata")
+        plies.append(action_plies)
+        tricks.append(completed_tricks)
+        terminals += int(terminal)
+    return {
+        "action_plies_min": min(plies), "action_plies_max": max(plies),
+        "completed_tricks_min": min(tricks), "completed_tricks_max": max(tricks),
+        "terminal_count": terminals,
+    }
+
+
+def summarize_captured_horizon(record, decision=None):
+    """Summarize one completed paired horizon without claiming true strength.
+
+    ``record`` may be a collector row containing ``paired_horizon`` and a
+    replay decision, or a serialized paired-horizon object when ``decision``
+    is supplied explicitly.  The two winners are deterministic first-argmax
+    value-head means with the policy replies held fixed under the same worlds
+    and ballot.  The deep-arm gap is conditional on those selected winners;
+    its SE describes paired world variation, and does not quantify selection
+    bias or an unbiased benefit estimate.
+    """
+    horizon, decision = _horizon_record_parts(record, decision)
+    status = horizon.get("status")
+    if status in ("skipped", "abandoned"):
+        result = {"status": status}
+        if "reason" in horizon:
+            result["reason"] = horizon["reason"]
+        return result
+    if status != "complete":
+        raise ValueError("paired_horizon status must be complete, skipped, or abandoned")
+    if not isinstance(decision, dict):
+        raise ValueError("complete horizon requires a decision object")
+    actions = horizon.get("actions")
+    admitted = decision.get("admitted")
+    if not isinstance(actions, list) or not actions:
+        raise ValueError("complete horizon actions must be a nonempty list")
+    if not isinstance(admitted, list) or actions != admitted:
+        raise ValueError("complete horizon actions do not match admitted ballot")
+    worlds = horizon.get("worlds")
+    if type(worlds) is not int or worlds <= 0:
+        raise ValueError("complete horizon worlds must be a positive integer")
+    arms = horizon.get("arms")
+    if not isinstance(arms, dict):
+        raise ValueError("complete horizon arms must be an object")
+    matrices = {}
+    for name in ("trick", "policy"):
+        arm = arms.get(name)
+        if not isinstance(arm, dict):
+            raise ValueError(f"complete horizon missing {name} arm")
+        try:
+            matrix = np.asarray(arm.get("values"), dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} values must be a numeric matrix") from exc
+        expected = (worlds, len(actions))
+        if matrix.shape != expected or not np.isfinite(matrix).all():
+            raise ValueError(f"{name} values must be finite with shape {expected}")
+        matrices[name] = matrix
+
+    shallow_means = matrices["trick"].mean(axis=0)
+    deep_means = matrices["policy"].mean(axis=0)
+    shallow_index = int(np.argmax(shallow_means))
+    deep_index = int(np.argmax(deep_means))
+    paired_gap = matrices["policy"][:, deep_index] - matrices["policy"][:, shallow_index]
+    result = {
+        "status": "complete",
+        "claim": ("Evaluator-relative, in-sample selected-winner contrast; conditional SE "
+                   "excludes selection bias and is not gameplay strength."),
+        "trick_mean_argmax_index": shallow_index,
+        "trick_mean_argmax_action": copy.deepcopy(actions[shallow_index]),
+        "trick_mean_argmax_value": float(shallow_means[shallow_index]),
+        "policy_mean_argmax_index": deep_index,
+        "policy_mean_argmax_action": copy.deepcopy(actions[deep_index]),
+        "policy_mean_argmax_value": float(deep_means[deep_index]),
+        "winner_flip": shallow_index != deep_index,
+        "policy_winner_minus_trick_winner_mean": float(paired_gap.mean()),
+        "policy_winner_minus_trick_winner_se": (
+            float(np.std(paired_gap, ddof=1) / np.sqrt(worlds)) if worlds > 1 else None
+        ),
+    }
+    actual = {}
+    for name in ("trick", "policy"):
+        leaf_summary = _leaf_summary(arms[name], name, worlds * len(actions))
+        if leaf_summary is not None:
+            actual[name] = leaf_summary
+    if actual:
+        result["actual"] = actual
+    return result
+
+
 @contextmanager
 def capture_horizon_inputs(bot):
     """Observe the final selection call without redrawing worlds or candidates."""
@@ -63,10 +187,14 @@ def measure_captured_horizon(bot, captured, record, *, gate):
     diagnostic.config = replace(bot.config, tree=PVTreeConfig(sims=64))
     pair = paired_horizon(diagnostic, captured["root"], captured["seat"],
                           captured["actions"], captured["worlds"], gate=gate)
-    return {"status": "complete", "actions": captured["actions"],
-            "worlds": len(captured["worlds"]),
-            "arms": {name: {**arm, "values": arm["values"].tolist()}
-                     for name, arm in pair.items()}}
+    result = {"status": "complete", "actions": captured["actions"],
+              "worlds": len(captured["worlds"]),
+              "arms": {name: {**arm, "values": arm["values"].tolist()}
+                       for name, arm in pair.items()}}
+    result["summary"] = summarize_captured_horizon(result, record)
+    if gate is not None:
+        gate()
+    return result
 
 
 def _plays(rnd):

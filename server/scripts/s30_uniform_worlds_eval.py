@@ -161,8 +161,11 @@ def cmd_values(args):
                     row[f"secs_{key}"] = secs
                     row[f"fallback_{key}"] = stats.get("uniform_fallback_worlds")
                     row[f"tries_{key}"] = stats.get("uniform_tries")
+                    row[f"kbfb_{key}"] = stats.get("kitty_rule_fallback_worlds")
                 from shengji.engine.cards import TRUMP
                 row["kit_true"] = sum(rnd.ordering.eff_suit(c) == TRUMP for c in rnd.buried)
+                row["sd_true"] = trump_stats(rnd, seat, [([list(x) for x in rnd.hands],
+                                                          list(rnd.buried))])[0]
                 rows.append(row)
             rnd.play(seat, action)
             ply += 1
@@ -173,7 +176,8 @@ def cmd_values(args):
         if not sel:
             continue
         g = lambda k: np.array([r[k] for r in sel])
-        entry = {"n": len(sel), "v_true": float(g("v_true").mean())}
+        entry = {"n": len(sel), "v_true": float(g("v_true").mean()),
+                 "sd_true": float(g("sd_true").mean())}
         for key in MODELS:
             d = g(f"v_{key}") - g("v_true")
             entry[f"{key}-true"] = [float(d.mean()), float(d.std(ddof=1) / np.sqrt(len(d)))]
@@ -193,6 +197,9 @@ def cmd_values(args):
                                     "decisions_with_fallback": float(np.mean(np.array(fb) > 0)),
                                     "tries_p50": float(np.percentile([r[f"tries_{key}"] for r in rows], 50)),
                                     "tries_p99": float(np.percentile([r[f"tries_{key}"] for r in rows], 99))}
+        kb = [r[f"kbfb_{key}"] for r in rows if r[f"kbfb_{key}"] is not None]
+        if kb:
+            out["fallback"][key]["kitty_rule_fallback_share"] = float(np.sum(kb) / (64 * len(kb)))
     return out, rows
 
 

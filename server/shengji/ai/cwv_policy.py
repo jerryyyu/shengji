@@ -160,6 +160,8 @@ def afterstate_source_paths(version: int = 1) -> dict[str, Path]:
         if version == 6:
             paths["encode_banker_kitty_corrected"] = (
                 _SHENGJI / "rl" / "encode_banker_kitty_corrected.py")
+        if version == 7:
+            paths["encode_next_actor"] = _SHENGJI / "rl" / "encode_next_actor.py"
     return paths
 
 

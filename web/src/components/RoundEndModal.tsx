@@ -10,7 +10,7 @@ interface RoundEndModalProps {
 }
 
 /** Name the actual players, not the seat numbers: "Blue team (seats 0 & 2)"
- *  makes you work out who that was, and "you" should be obvious (Jerry). */
+ *  makes you work out who that was, and "you" should be obvious. */
 function teamName(team: 0 | 1, state?: GameState): string {
   const colour = team === 0 ? "Blue" : "Orange";
   if (!state) return `${colour} team`;

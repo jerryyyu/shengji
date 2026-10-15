@@ -110,7 +110,7 @@ function NoticeBanner({ notice, state }: { notice: Notice; state: GameState }) {
 export default function Hud({ state }: { state: GameState }) {
   // Tapping the room chip mid-game copies a full invite link, so you can
   // pull someone into a game already in progress — they land on a bot's
-  // seat (Jerry, 2026-08-03).
+  // seat.
   const [copied, setCopied] = useState(false);
   const copyInvite = () => {
     const url = `${window.location.origin}/?room=${state.room}`;
@@ -167,10 +167,10 @@ export default function Hud({ state }: { state: GameState }) {
 
         <div className="hud-group">
           <span className="chip points-chip" title="Points captured by the attacking team">
-            {/* keyed so a new score is a new box: WebKit kept the old width (Jerry, 2026-10-05) */}
+            {/* keyed so a new score is a new box: WebKit would keep the old width */}
             <span className="points-big" key={state.attacker_points}>{state.attacker_points}</span>
             <span className="points-target">/ 80</span>
-            {/* the phone draws progress to 80 as a bar under the number (#651); hidden on desktop */}
+            {/* the phone draws progress to 80 as a bar under the number; hidden on desktop */}
             <span
               className="points-bar"
               role="meter"

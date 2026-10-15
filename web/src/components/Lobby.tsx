@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
 import { createRoomPayload } from "../testPolicy";
+import { needsSeatPicker } from "../seatPicker";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -29,8 +30,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [roomCode, setRoomCode] = useState(
     () => new URLSearchParams(window.location.search).get("room")?.toUpperCase() ?? ""
   );
-  // Invite links: /?room=HPMK auto-joins once a name is known, so a shared
-  // link drops you straight into the table (Jerry, 2026-08-03).
   const autoJoined = useRef(false);
   const lastPeek = useRef<string | null>(null);
   const peekGen = useRef<number | null>(null);
@@ -60,16 +59,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       return;
     }
     if (m?.type === "room_seats") {
-      const seats = m.seats;
-      const open = seats.filter((sd) => sd.claimable);
-      const bots = seats.filter((sd) => sd.is_bot);
-      // Offer the picker whenever more than one seat is open, or when the
-      // only open seat belongs to a dropped human — taking someone's seat
-      // should always be deliberate.
-      // NOT conditioned on in_game: a FULL PRE-GAME lobby with one dropped
-      // player also needs the picker, or the server answers choose_seat and
-      // the client has nothing to show — a deadlock (Codex ship gate P0-4).
-      if (open.length > 1 || (open.length === 1 && !bots.length)) {
+      if (needsSeatPicker(m.seats)) {
         setSeatChoice(m);
       } else {
         joinSeat(undefined, m.room);       // nothing to choose
@@ -123,8 +113,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const join = () => {
     const code = roomCode.trim().toUpperCase();
     if (!ready || code.length !== 4) return;
-    // Ask who's sitting where first; the subscriber either shows a picker
-    // (game in progress, >1 bot) or joins straight through.
+    // Ask who's sitting where first; the subscriber shows a picker when
+    // needsSeatPicker() says so, otherwise joins straight through.
     lastPeek.current = code;
     peekGen.current = conn.generation;   // this transaction belongs to this socket
     conn.send({ type: "peek_room", room: code });
@@ -132,8 +122,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
   // Invite links prefill the room code and focus the NAME field — they do
   // not auto-submit, because a returning player has a saved name and would
-  // otherwise be thrown into the room before they could change it (Jerry,
-  // 2026-08-03). Auto-join only when the link carries a name too, which is
+  // otherwise be thrown into the room before they could change it. Auto-join
+  // only when the link carries a name too, which is
   // an explicit choice by whoever built the link.
   const invited = new URLSearchParams(window.location.search).get("room");
   const invitedName = new URLSearchParams(window.location.search).get("name");

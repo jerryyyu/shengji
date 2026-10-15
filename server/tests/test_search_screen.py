@@ -71,6 +71,25 @@ def test_exact_lead_summary_accepts_single_candidate_from_real_producer():
     assert result['sides']['arm']['changed'] == 0
 
 
+def test_single_candidate_deep_lead_survives_decision_trace_summary():
+    from test_pv_finish_lead import bot, root
+
+    rnd = root(1)
+    policy = bot(False, exact_lead_endgame=True, exact_deep_cards=6)
+    played = policy.decide_play(rnd, rnd.turn)
+    record = policy.last_decision_record
+    assert played == rnd.hands[rnd.turn]
+    assert record['exact_lead_status'] == 'single_candidate'
+    trace = S.trace_fields(record)
+    result = S.exact_lead_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [trace]}]}])
+    assert result['valid'] and result['cost_valid']
+    arm = result['sides']['arm']
+    assert arm['statuses']['single_candidate'] == 1
+    assert arm['statuses']['complete'] == arm['invalid'] == arm['changed'] == 0
+    assert all(cost['count'] == 0 for cost in arm['stage_cost'].values())
+
+
 def test_exact_baseline_cards_are_retained_but_other_string_lists_stay_bounded():
     trace = S.trace_fields({'exact_lead_base_played': ['BJ', 'S5'],
                             'other_cards': ['BJ', 'S5']})

@@ -254,6 +254,7 @@ jobs:
             tests/test_pv_finish_lead.py \
             tests/test_endgame.py \
             tests/test_endgame_compact.py \
+            tests/test_endgame_level.py \
             tests/test_pv_exact_lead_variants.py \
             tests/test_doomed_throw_readout.py \
             tests/test_pv_search_bury.py \

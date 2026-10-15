@@ -967,7 +967,7 @@ cdef class FastWorld:
         i = values.index(best)
         return best, self._codes_of(turn, actions[i])
 
-    # -- level mode ---------------------------------------------------------------
+    # Level mode.
     #
     # ``solve_level`` answers a coarser question than ``solve``: which interval
     # between consecutive ``cuts`` (attacker-point thresholds) holds the root's

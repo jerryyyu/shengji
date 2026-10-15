@@ -25,8 +25,8 @@ copies (v83 definition, public pins excluded) and its distinct worlds per 64
 
 Populations:
 
-``heldout``  the #1023 S22 collections' states (S17 held-out test deals of the
-             17 PV stores), the record's played action;
+``heldout``  the states of the S22 world-weighting collections (S17 held-out
+             test deals of the 17 PV stores), the record's played action;
 ``w2b``      the serving audit's W2b heuristic self-play roots exactly as
              ``s30_uniform_worlds_eval.py values`` draws them (deals from
              1010000, three stops per deal), so P / WU / KB reproduce its table.

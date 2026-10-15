@@ -629,7 +629,10 @@ def train(dirs: Sequence[str], out: str, *, rerank: bool, epochs: int, batch: in
 def load_model(out: str, rerank: bool):
     torch = _torch()
     model = build_model(IN_DIM, rerank)
-    model.load_state_dict(torch.load(Path(out) / "model.pt"))
+    state = torch.load(Path(out) / "model.pt")
+    if "state.2.weight" in state:          # saved before the dropout layers existed
+        state = {k.replace("state.2.", "state.3."): v for k, v in state.items()}
+    model.load_state_dict(state)
     model.eval()
     z = np.load(Path(out) / "norm.npz")
     return model, z["mu"], z["sd"]

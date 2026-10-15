@@ -416,6 +416,8 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--train-rows", type=int, default=None,
                     help="decl only for the train chunks `belief_seq train --max-train-rows N "
                          "--seed S` reads (all calib/test chunks)")
+    ex.add_argument("--calib-rows", type=int, default=30000)
+    ex.add_argument("--test-rows", type=int, default=None)
     ex.add_argument("--seed", type=int, default=0)
     ex.add_argument("--draws", type=int, default=KB_DRAWS)
     pa = sub.add_parser("parity")
@@ -437,12 +439,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         only = None
         splits = [s for s in args.splits.split(",") if s]
         if args.train_rows is not None:
-            from .belief_seq import extract_entries, pick_train_entries
-            picked = pick_train_entries(extract_entries(args.data, "train"), args.train_rows, args.seed)
-            only = {e["path"] for e in picked}
-            for split in splits:
-                if split != "train":
-                    only |= {e["path"] for e in extract_entries(args.data, split)}
+            # exactly the chunks a `belief_seq train --max-train-rows N --calib-rows C --seed S`
+            # and an `evaluate --calib-rows C --test-rows T --seed S` read
+            from .belief_seq import extract_entries, pick_eval_entries, pick_train_entries
+            only = {e["path"] for e in pick_train_entries(extract_entries(args.data, "train"),
+                                                          args.train_rows, args.seed)}
+            only |= {e["path"] for e in pick_eval_entries(extract_entries(args.data, "calib"),
+                                                          args.calib_rows, args.seed)}
+            only |= {e["path"] for e in pick_eval_entries(extract_entries(args.data, "test"),
+                                                          args.test_rows, args.seed + 1)}
         extract(args.data, args.stores_root, workers=args.workers, splits=splits, only_files=only,
                 draws=args.draws)
         return 0

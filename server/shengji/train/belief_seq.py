@@ -136,6 +136,22 @@ def extract_entries(dirs: Sequence[str], split: str, declare: bool = False) -> l
     return out
 
 
+def pick_eval_entries(entries: Sequence[Mapping[str, Any]], max_rows: int | None, seed: int
+                      ) -> list[Mapping[str, Any]]:
+    """``load_eval``'s seeded subset: whole chunks until ``4 * max_rows`` rows
+    (sampler rows are about a quarter of a chunk's rows)."""
+    if max_rows is None:
+        return list(entries)
+    rng = np.random.default_rng(seed)
+    picked, n = [], 0
+    for i in rng.permutation(len(entries)):
+        if n >= max_rows * 4:
+            break
+        picked.append(entries[i])
+        n += entries[i]["rows"]
+    return picked
+
+
 def pick_train_entries(entries: Sequence[Mapping[str, Any]], max_rows: int | None, seed: int
                        ) -> list[Mapping[str, Any]]:
     """``train --max-train-rows``'s seeded subset of the train chunks."""
@@ -503,16 +519,7 @@ def load_eval(dirs, split, verified, *, max_rows: int | None = None, seed: int =
               threads: int = 4, declare: bool = False, log=print) -> dict[str, Any]:
     """Calib/test rows where the sampler was drawn (as ``belief_eval``), with history.
     ``max_rows`` subsamples whole chunks (deals), seeded."""
-    entries = extract_entries(dirs, split, declare)
-    if max_rows is not None:
-        rng = np.random.default_rng(seed)
-        picked, n = [], 0
-        for i in rng.permutation(len(entries)):
-            if n >= max_rows * 4:          # sampler rows are ~1/4 of a chunk's rows
-                break
-            picked.append(entries[i])
-            n += entries[i]["rows"]
-        entries = picked
+    entries = pick_eval_entries(extract_entries(dirs, split, declare), max_rows, seed)
     with ThreadPoolExecutor(threads) as ex:
         parts = list(ex.map(lambda e: load_part(e, EVAL_KEYS, verified, sampler_rows_only=True),
                             entries))

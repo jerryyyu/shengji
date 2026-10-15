@@ -1621,14 +1621,18 @@ def collate(block: CwvBlock, idx: np.ndarray) -> dict[str, np.ndarray]:
     return gather([block], np.zeros(len(idx), dtype=np.int64), idx)
 
 
-def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
+def tensors_of(batch: Mapping[str, np.ndarray], device,
+               copy: Callable[[np.ndarray], Any] | None = None) -> dict:
     """The afterstate batch tensors of a gathered batch: ``public`` float32,
     ``world`` float32 (counts / 2), ``perspective`` one-hot, ``history`` /
     ``history_mask`` (a single all-zero event per row when the batch carries
     none: the mlp ignores it, the batch contract still holds), plus the
-    targets."""
+    targets.  ``copy`` moves one host array to the device (``DeviceCopies``);
+    the default is a plain ``.to(device)``."""
     import torch
 
+    if copy is None:
+        copy = lambda array: torch.from_numpy(array).to(device)  # noqa: E731
     b = int(batch["public"].shape[0])
     perspective = np.zeros((b, PERSPECTIVE_DIM), dtype=np.float32)
     attacker = batch["perspective"].astype(bool)
@@ -1641,21 +1645,18 @@ def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
         history = np.zeros((b, 1, HISTORY_EVENT_DIM), dtype=np.float32)
         mask = np.ones((b, 1), dtype=bool)
     out = {
-        "public": torch.from_numpy(np.ascontiguousarray(batch["public"])).to(device),
-        "world": (torch.from_numpy(np.ascontiguousarray(batch["world"])).to(device)
-                  .to(torch.float32) * 0.5),
-        "perspective": torch.from_numpy(perspective).to(device),
-        "history": torch.from_numpy(history).to(device),
-        "history_mask": torch.from_numpy(mask).to(device),
-        "target": torch.from_numpy(np.ascontiguousarray(batch["target"])).to(device),
-        "attacker_points": torch.from_numpy(
-            np.ascontiguousarray(batch["attacker_points"])).to(device),
-        "role_attacker": torch.from_numpy(
-            np.ascontiguousarray(batch["role_attacker"]).astype(bool)).to(device),
+        "public": copy(np.ascontiguousarray(batch["public"])),
+        "world": copy(np.ascontiguousarray(batch["world"])).to(torch.float32) * 0.5,
+        "perspective": copy(perspective),
+        "history": copy(history),
+        "history_mask": copy(mask),
+        "target": copy(np.ascontiguousarray(batch["target"])),
+        "attacker_points": copy(np.ascontiguousarray(batch["attacker_points"])),
+        "role_attacker": copy(np.ascontiguousarray(batch["role_attacker"]).astype(bool)),
     }
     for name in ("search_mean_played", "search_level_played"):
         if name in batch:
-            out[name] = torch.from_numpy(np.ascontiguousarray(batch[name])).to(device)
+            out[name] = copy(np.ascontiguousarray(batch[name]))
     return out
 
 
@@ -1762,6 +1763,71 @@ class Prefetch:
 
     def __exit__(self, *exc: Any) -> None:
         self.close()
+
+
+class DeviceCopies:
+    """Host-to-device copies that do not make the host wait for the device.
+
+    On MPS a plain ``.to(device)`` waits until everything already queued has
+    run, so the next step cannot even be queued until the previous one has
+    finished.  A ``non_blocking`` copy returns at once, but the device reads
+    the host memory later, when the copy reaches the front of its queue: the
+    host array must stay alive and unchanged until then.  So this keeps every
+    step's host arrays and, before a new step's copies, waits on an event
+    recorded after the step ``depth`` back, then lets that step's arrays go.
+    At most ``depth`` steps are queued ahead of the device.  The bytes copied
+    are the same either way.
+
+    ``depth`` 0, or a device without events (CPU), is a plain blocking copy.
+    ``event`` makes the event factory injectable for tests."""
+
+    def __init__(self, device: Any, depth: int = 2, *, event: Callable[[], Any] | None = None):
+        import torch
+        self.device = torch.device(device)
+        if event is None and self.device.type == "mps":
+            event = torch.mps.Event
+        elif event is None and self.device.type == "cuda":
+            event = torch.cuda.Event
+        self._event = event
+        self.depth = int(depth) if event is not None else 0
+        self._held: list = []
+        self._ring: list[tuple[Any, list]] = []
+
+    def __call__(self, value: Any) -> Any:
+        """``value`` (a numpy array or a host tensor) on the device."""
+        import torch
+        host = torch.from_numpy(value) if isinstance(value, np.ndarray) else value
+        if not self.depth:
+            return host.to(self.device)
+        self._held.append(host)
+        return host.to(self.device, non_blocking=True)
+
+    def begin_step(self) -> None:
+        """Before a step's copies: wait until at most ``depth - 1`` earlier steps
+        are unfinished on the device, and release their host arrays."""
+        while self.depth and len(self._ring) >= self.depth:
+            event, _held = self._ring.pop(0)
+            event.synchronize()
+
+    def end_step(self) -> None:
+        """After a step's work is queued: close it with an event."""
+        if not self.depth:
+            return
+        event = self._event()
+        event.record()
+        self._ring.append((event, self._held))
+        self._held = []
+
+    def drain(self) -> None:
+        """Wait for every queued step and release every host array."""
+        for event, _held in self._ring:
+            event.synchronize()
+        self._ring = []
+        if self._held:
+            event = self._event()
+            event.record()
+            event.synchronize()
+            self._held = []
 
 
 # ------------------------------------------------------------------ splits

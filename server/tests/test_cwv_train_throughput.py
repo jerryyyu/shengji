@@ -16,6 +16,7 @@ bit for bit, every logged number equal.
 from __future__ import annotations
 
 import glob
+import json
 import threading
 from types import SimpleNamespace
 
@@ -94,7 +95,14 @@ def _run(tmp, kw, name, monkeypatch, *, prefetch: str, host_rows: str):
 def test_prefetch_and_host_rows_train_bit_identical(c14_kw, monkeypatch):
     tmp, kw = c14_kw
     ref, ref_dir = _run(tmp, kw, "inline-device-rows", monkeypatch, prefetch="0", host_rows="0")
+    trace = tmp / "loss-trace.jsonl"
+    monkeypatch.setenv("SHENGJI_CWV_LOSS_TRACE", str(trace))
     new, new_dir = _run(tmp, kw, "prefetch-host-rows", monkeypatch, prefetch="2", host_rows="1")
+    monkeypatch.delenv("SHENGJI_CWV_LOSS_TRACE")
+    windows = [json.loads(line) for line in open(trace)]
+    for epoch in (1, 2):
+        mine = [w for w in windows if w["epoch"] == epoch]
+        assert sum(w["rows"] for w in mine) == new["epochs"][epoch - 1]["train"]["rows"]
     # the run exercised every changed site
     ep = new["epochs"][0]["train"]
     assert ep["search_head_rows"] > 0 and ep["policy_rows"] > 0 and ep["batches"] >= 2
@@ -466,3 +474,40 @@ def test_sidecar_manifest_digest_does_not_depend_on_the_hash_threads(c14_kw):
     assert len(list(side.glob("*.npz"))) > 1
     for workers in (1, 3, 8):
         assert sc.manifest_sha256(side, workers=workers) == serial.hexdigest()
+
+
+def test_device_copies_keep_host_arrays_until_the_device_passes_their_step():
+    log = []
+
+    class Event:
+        count = 0
+
+        def __init__(self):
+            Event.count += 1
+            self.n = Event.count
+
+        def record(self):
+            log.append(("record", self.n))
+
+        def synchronize(self):
+            log.append(("sync", self.n))
+
+    copies = cwv_data.DeviceCopies("cpu", 2, event=Event)
+    held = []
+    for step in range(4):
+        copies.begin_step()
+        array = np.full(3, step, dtype=np.float32)
+        out = copies(array)
+        assert torch.equal(out, torch.from_numpy(array))
+        held.append([h for h in copies._held])
+        copies.end_step()
+        # never more than ``depth`` steps unfinished, and the oldest is waited for first
+        assert len(copies._ring) <= 2
+    assert log == [("record", 1), ("record", 2), ("sync", 1), ("record", 3), ("sync", 2),
+                   ("record", 4)]
+    assert [len(h) for _e, h in copies._ring] == [1, 1]
+    copies.drain()
+    assert copies._ring == [] and log[-2:] == [("sync", 3), ("sync", 4)]
+    plain = cwv_data.DeviceCopies("cpu", 2)       # no event on the CPU: a plain copy
+    assert plain.depth == 0 and torch.equal(plain(np.arange(3)), torch.arange(3))
+    plain.begin_step(); plain.end_step(); plain.drain()

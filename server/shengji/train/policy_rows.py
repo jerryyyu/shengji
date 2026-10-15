@@ -126,14 +126,19 @@ class PolicyRows:
             yield out
 
     @staticmethod
-    def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
-        return _to_device(batch, device)
+    def tensors(batch: Mapping[str, Any], device, copy=None) -> dict[str, torch.Tensor]:
+        return _to_device(batch, device, copy)
 
 
-def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
+def _to_device(batch: Mapping[str, Any], device, copy=None) -> dict[str, torch.Tensor]:
+    """The root batch on ``device``; each array is converted on the host, then
+    moved by ``copy`` (``cwv_data.DeviceCopies``; default a plain ``.to``)."""
+    if copy is None:
+        copy = lambda host: host.to(device)  # noqa: E731
+
     def t(v, dtype=None):
         v = torch.as_tensor(v) if not isinstance(v, torch.Tensor) else v
-        return (v.to(dtype) if dtype is not None else v).to(device)
+        return copy(v.to(dtype) if dtype is not None else v)
     out = {"x": t(np.asarray(batch["x"], dtype=np.float32)), "y": t(np.asarray(batch["y"], dtype=np.float32)),
            "ball": t(batch["ball"]), "mask": t(batch["mask"], torch.bool), "tgt": t(batch["tgt"], torch.long)}
     if batch.get("vals") is not None:
@@ -341,8 +346,8 @@ class PolicyRowsStream:
             del X, Y, ball, mask, tgt, vals, eflag, emargin, perm, out
 
     @staticmethod
-    def tensors(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
-        return _to_device(batch, device)
+    def tensors(batch: Mapping[str, Any], device, copy=None) -> dict[str, torch.Tensor]:
+        return _to_device(batch, device, copy)
 
 
 def _pad2_concat(arrays, width: int, fill, *, float32_when_narrow: bool = False) -> np.ndarray:

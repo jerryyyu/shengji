@@ -148,6 +148,7 @@ from .cwv_data import (
     VIEW,
     CwvBlock,
     CwvBlockStore,
+    DeviceCopies,
     Prefetch,
     Prepared,
     bridge_record,
@@ -2249,7 +2250,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     from .policy_prior import ballot_rows
     from .policy_rows import explore_row_weights, policy_losses
     from .search_mean_target import host_used_rows, soft_targets
-    # Two loop settings that change the wall time and nothing else (the parity
+    # Loop settings that change the wall time and nothing else (the parity
     # tests run both ways and compare weights and metrics bit for bit):
     # SHENGJI_CWV_PREFETCH = batches the loader thread may gather ahead of the
     # step (0 = gather inline, the single-threaded loop); SHENGJI_CWV_HOST_ROWS=0
@@ -2257,6 +2258,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     # masks, which makes the host wait for the device several times a batch.
     prefetch_depth = max(0, int(os.environ.get("SHENGJI_CWV_PREFETCH", "2")))
     host_rows = os.environ.get("SHENGJI_CWV_HOST_ROWS", "1") != "0"
+    # SHENGJI_CWV_ASYNC_COPY = steps the host may queue ahead of the device with
+    # non-blocking copies (DeviceCopies; 0 = blocking copies, MPS/CUDA only)
+    async_copy_depth = max(0, int(os.environ.get("SHENGJI_CWV_ASYNC_COPY", "2")))
+    # SHENGJI_CWV_LOSS_TRACE=PATH appends each flushed window's mean losses to PATH
+    loss_trace = os.environ.get("SHENGJI_CWV_LOSS_TRACE") or None
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
         model.train()
@@ -2301,6 +2307,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             rows += int(vals[3])
             sums["policy_bce"] += vals[4]; sums["policy_listwise"] += vals[5]
             sums["policy_rows"] += int(vals[6])
+            if loss_trace:
+                # diagnostic only: one line per flushed window (a loss curve finer
+                # than the epoch means, for comparing two runs step by step)
+                import json
+                with open(loss_trace, "a") as fh:
+                    fh.write(json.dumps({
+                        "epoch": epoch, "batches": batches, "rows": int(vals[3]),
+                        "loss": vals[0] / max(vals[3], 1.0), "ce": vals[1] / max(vals[3], 1.0),
+                        "policy_bce": vals[4] / max(vals[6], 1.0),
+                        "policy_listwise": vals[5] / max(vals[6], 1.0)}) + "\n")
             pending = None
             finite_all = None
         # Where an epoch's wall goes (2026-09-20, Jerry: measure before optimising).  Host
@@ -2443,19 +2459,22 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 yield raw, p_batch, search_rows, ballot
 
         stream = Prefetch(host_batches, prefetch_depth) if prefetch_depth else host_batches()
+        copies = DeviceCopies(dev, async_copy_depth)
         try:
             for raw, p_batch, search_rows, ballot in timed_batches(iter(stream)):
                 t_iter = time.perf_counter()
                 # Every copy to the device happens here, before this step's work is
-                # queued: on MPS a copy waits for everything already queued.
-                t = tensors_of(raw, dev)
-                rows_dev = None if search_rows is None else torch.from_numpy(search_rows).to(dev)
+                # queued.  A blocking copy waits for everything already queued; the
+                # non-blocking ones wait only for the step async_copy_depth back.
+                copies.begin_step()
+                t = tensors_of(raw, dev, copy=copies)
+                rows_dev = None if search_rows is None else copies(search_rows)
                 t_dev = time.perf_counter()
                 stage["to_device"] += t_dev - t_iter
                 p_tensors = ballot_dev = None
                 if p_batch is not None:
-                    p_tensors = policy_data.tensors(p_batch, dev)
-                    ballot_dev = None if ballot is None else torch.from_numpy(ballot).to(dev)
+                    p_tensors = policy_data.tensors(p_batch, dev, copy=copies)
+                    ballot_dev = None if ballot is None else copies(ballot)
                     t_now = time.perf_counter()
                     stage["policy_wait"] += t_now - t_dev
                     t_dev = t_now
@@ -2477,6 +2496,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                       ).to(torch.float32)
                 finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
                 pending = contrib if pending is None else pending + contrib
+                copies.end_step()
                 batches += 1
                 stage["step"] += time.perf_counter() - t_dev
                 if batches % sync_every == 0:
@@ -2484,6 +2504,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     flush()
                     stage["sync"] += time.perf_counter() - t_s
         finally:
+            copies.drain()          # the device has read every host array before it goes
             if prefetch_depth:
                 stream.close()
         t_s = time.perf_counter()

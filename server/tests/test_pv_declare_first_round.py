@@ -173,7 +173,8 @@ def test_vdef_token_follows_vd_and_asap_takes_the_declare_slot(production_packag
     assert asap.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-asap-r")
     awl, = names({**RELEASE42_ENV, "SHENGJI_PV_ADAPTIVE_WORLDS_LEADS": "1", ASAP: "1"})
     assert awl.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-awl-asap-r")
-    assert pv.RULE_TOKENS[-8:-2] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
+    assert pv.RULE_TOKENS[-9:-2] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
+                                     ("value_declare_every_round", "vdea"),
                                      ("value_declare_served_bury", "vdsb"),
                                      ("value_declare_pass_worlds", "vdpw"),
                                      ("value_declare_wait", "vdw"),

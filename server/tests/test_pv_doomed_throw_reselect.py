@@ -648,7 +648,7 @@ def test_dtr_token_last_and_digest_when_on(production_package):
     assert every.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-sjg-awl-dtr-r")
     wide, = names({**env, "SHENGJI_PV_WIDE_LEAD_ADMISSION": "1"})    # #945's width slot
     assert wide.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-wla-la-dtr-r")
-    assert pv.RULE_TOKENS[-9] == ("doomed_throw_reselect", "dtr")   # then vd, vdef, vdsb, vdpw, vdw, asap, lpft, orc
+    assert pv.RULE_TOKENS[-10] == ("doomed_throw_reselect", "dtr")   # then vd, vdef, vdea, vdsb, vdpw, vdw, asap, lpft, orc
     assert pv.RULE_FLAGS["DOOMED_THROW_RESELECT"] == "doomed_throw_reselect"
     base = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, serving_budget_seconds=3.0)
     swap = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, serving_budget_seconds=3.0,

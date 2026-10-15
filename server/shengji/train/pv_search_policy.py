@@ -265,6 +265,22 @@ gate for a rule that is off admits nothing); on, it enters the recipe digest
 and adds ``-vdef`` to the name immediately after ``-vd``.  Off, it is absent
 from the payload, so every existing name and every decision are unchanged.
 
+Its every-round gate widening, OFF BY DEFAULT:
+``SHENGJI_PV_VALUE_DECLARE_EVERY_ROUND=1`` -- the value-declare gate admits
+EVERY declare chance at which the seat has an option in EVERY round: in a round
+with no fixed banker exactly as ``value_declare_every_first`` (gate
+``"every_first"``), and in a round with a fixed banker too (``rnd.banker`` a
+seat: a later round, where the banker is already decided and a declaration only
+names the trump suit; gate ``"every_round"``).  Only the gate changes, as under
+``value_declare_every_first``: the candidate set, the world model (which already
+keeps a fixed banker: `value_declare.outcome_of`), the worlds, the margin, the
+argmax and every fallback are ``value_declare``'s.  ``0`` or ``1`` only; it
+REQUIRES ``SHENGJI_PV_VALUE_DECLARE=1`` and EXCLUDES
+``SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST=1`` (it already contains that gate; one
+spelling per behaviour); on, it enters the recipe digest and adds ``-vdea`` to
+the name after ``-vdef``'s slot.  Off, it is absent from the payload, so every
+existing name and every decision are unchanged.
+
 Its served-bury world model (#707 S15(2)), OFF BY DEFAULT:
 ``SHENGJI_PV_VALUE_DECLARE_SERVED_BURY=1`` -- the declaration's world banker
 buries with the bot's served chooser (the wide value-only bury, ``bwv``) instead
@@ -358,8 +374,8 @@ screen like the value-declare records): ``cards_dealt``, ``options`` (count),
 ``0`` or ``1`` only; on, it enters the recipe digest and adds ``-asap`` to the
 name in the declare slot (after ``-vdef``; the two policies never both
 appear).  Off, it is absent from the payload, so every existing name and every
-decision are unchanged.  Declare-rule token order: ``vd``, ``vdef``, ``vdsb``, ``vdpw``,
-``vdw``, ``asap``.
+decision are unchanged.  Declare-rule token order: ``vd``, ``vdef``, ``vdea``, ``vdsb``,
+``vdpw``, ``vdw``, ``asap``.
 
 Optional value-leaf rule (Jerry 2026-10-11: "where we use heuristics, it may be
 better to use the model"), OFF BY DEFAULT: ``SHENGJI_PV_LEAF_POLICY_FIRST_TRICK=1``
@@ -600,8 +616,12 @@ VALUE_DECLARE_RECORD_SCHEMA = "pv-value-declare-decision-v1"
 #: its first-round gate widening (requires ``value_declare``; module docstring)
 VALUE_DECLARE_EVERY_FIRST_RULE = {"VALUE_DECLARE_EVERY_FIRST": "value_declare_every_first"}
 VALUE_DECLARE_EVERY_FIRST_DEFAULTS = dict(value_declare_every_first=False)
+#: its every-round gate widening (requires ``value_declare``, excludes
+#: ``value_declare_every_first``; module docstring)
+VALUE_DECLARE_EVERY_ROUND_RULE = {"VALUE_DECLARE_EVERY_ROUND": "value_declare_every_round"}
+VALUE_DECLARE_EVERY_ROUND_DEFAULTS = dict(value_declare_every_round=False)
 #: the gate names the value-declare record carries (why a chance was admitted)
-VALUE_DECLARE_GATES = ("heuristic", "final", "every_first")
+VALUE_DECLARE_GATES = ("heuristic", "final", "every_first", "every_round")
 #: the served bury inside the value declaration's worlds (requires ``value_declare``
 #: and the wide value-only bury chooser; module docstring, `declare_served_bury`)
 VALUE_DECLARE_SERVED_BURY_RULE = {"VALUE_DECLARE_SERVED_BURY": "value_declare_served_bury"}
@@ -684,12 +704,13 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 #: option, the model-free first-round declaration, the policy-played value leaf, the
 #: diagnostic oracle worlds):
 #: div, fs, rc, rcec, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
-#: vdsb, vdpw, vdw, asap, lpft, orc
+#: vdea, vdsb, vdpw, vdw, asap, lpft, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
               **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE,
-              **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
+              **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_EVERY_ROUND_RULE,
+              **VALUE_DECLARE_SERVED_BURY_RULE,
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
               **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE}
@@ -706,6 +727,7 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("doomed_throw_reselect", "dtr"),
                                                    ("value_declare", "vd"),
                                                    ("value_declare_every_first", "vdef"),
+                                                   ("value_declare_every_round", "vdea"),
                                                    ("value_declare_served_bury",
                                                     declare_served_bury.TOKEN),
                                                    ("value_declare_pass_worlds",
@@ -750,6 +772,12 @@ _LEAF_POLICY_NO_EFFECT = ("leaf_policy_first_trick needs a value leaf it changes
 _VALUE_DECLARE_EVERY_FIRST_REQUIRES = ("value_declare_every_first requires value_declare "
                                        "(SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST=1 needs "
                                        "SHENGJI_PV_VALUE_DECLARE=1)")
+_VALUE_DECLARE_EVERY_ROUND_REQUIRES = ("value_declare_every_round requires value_declare "
+                                       "(SHENGJI_PV_VALUE_DECLARE_EVERY_ROUND=1 needs "
+                                       "SHENGJI_PV_VALUE_DECLARE=1)")
+_VALUE_DECLARE_EVERY_ROUND_EXCLUSIVE = ("value_declare_every_round already contains the "
+                                        "first-round gate (SHENGJI_PV_VALUE_DECLARE_EVERY_ROUND=1 "
+                                        "with SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST=1)")
 _VALUE_DECLARE_SERVED_BURY_REQUIRES = ("value_declare_served_bury requires value_declare "
                                        "(SHENGJI_PV_VALUE_DECLARE_SERVED_BURY=1 needs "
                                        "SHENGJI_PV_VALUE_DECLARE=1)")
@@ -892,6 +920,8 @@ class PVSearchConfig:
     value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
     # its first-round gate widening (requires ``value_declare``); the same contract
     value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
+    # its every-round gate widening (requires ``value_declare``); the same contract
+    value_declare_every_round: bool = VALUE_DECLARE_EVERY_ROUND_DEFAULTS["value_declare_every_round"]
     # the served bury in its worlds (requires ``value_declare`` and, checked where
     # the bury is known, the wide value-only chooser); the same contract
     value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"]
@@ -1023,6 +1053,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         del payload["value_declare_worlds"], payload["value_declare_margin"]
     if config.value_declare_every_first and not config.value_declare:
         raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_FIRST_REQUIRES)
+    if config.value_declare_every_round and not config.value_declare:
+        raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_ROUND_REQUIRES)
+    if config.value_declare_every_round and config.value_declare_every_first:
+        raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_ROUND_EXCLUSIVE)
     if config.value_declare_served_bury and not config.value_declare:
         raise PVSearchPolicyError(_VALUE_DECLARE_SERVED_BURY_REQUIRES)
     if config.value_declare_pass_worlds and not config.value_declare:
@@ -1171,6 +1205,7 @@ class PVSearchBot(PolicyValueBot):
     value_declare_worlds = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
     value_declare_margin = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
     value_declare_every_first = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
+    value_declare_every_round = VALUE_DECLARE_EVERY_ROUND_DEFAULTS["value_declare_every_round"]
     value_declare_served_bury = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"]
     value_declare_pass_worlds = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"]
     value_declare_wait = VALUE_DECLARE_WAIT_DEFAULTS["value_declare_wait"]
@@ -1265,7 +1300,8 @@ class PVSearchBot(PolicyValueBot):
             self.value_declare = True
             self.value_declare_worlds = config.value_declare_worlds
             self.value_declare_margin = float(config.value_declare_margin)
-        for key in ("value_declare_every_first", "value_declare_served_bury",
+        for key in ("value_declare_every_first", "value_declare_every_round",
+                    "value_declare_served_bury",
                     "value_declare_pass_worlds", "value_declare_wait",
                     "declare_asap_first"):
             if type(getattr(config, key)) is not bool:
@@ -1291,6 +1327,12 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError(_DECLARE_ASAP_EXCLUSIVE)
         if config.value_declare_every_first:
             self.value_declare_every_first = True
+        if config.value_declare_every_round:
+            if not config.value_declare:
+                raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_ROUND_REQUIRES)
+            if config.value_declare_every_first:
+                raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_ROUND_EXCLUSIVE)
+            self.value_declare_every_round = True
         if config.declare_asap_first:
             self.declare_asap_first = True
         if type(config.leaf_policy_first_trick) is not bool:
@@ -1529,15 +1571,19 @@ class PVSearchBot(PolicyValueBot):
         or None: the single definition of the gate.  ``final`` and a heuristic
         declaration keep their names under ``value_declare_every_first``, which
         adds only ``"every_first"``: a first-round chance with an option the
-        plain gate would have skipped."""
+        plain gate would have skipped; ``value_declare_every_round`` adds that
+        and ``"every_round"``, the same in a round with a fixed banker."""
         if not self.value_declare or not rnd.declare_options(seat):
             return None
         if final:
             return "final"
         if heuristic is not None:
             return "heuristic"
-        if self.value_declare_every_first and rnd.banker is None:
+        if (self.value_declare_every_first or self.value_declare_every_round) \
+                and rnd.banker is None:
             return "every_first"
+        if self.value_declare_every_round:
+            return "every_round"
         return None
 
     def declare_gate(self, rnd, seat, final=False):
@@ -2709,6 +2755,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
                        value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
+                       value_declare_every_round: bool = VALUE_DECLARE_EVERY_ROUND_DEFAULTS["value_declare_every_round"],
                        value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"],
                        value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"],
                        value_declare_wait: bool = VALUE_DECLARE_WAIT_DEFAULTS["value_declare_wait"],
@@ -2768,6 +2815,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
                             value_declare_every_first=value_declare_every_first,
+                            value_declare_every_round=value_declare_every_round,
                             value_declare_served_bury=value_declare_served_bury,
                             value_declare_pass_worlds=value_declare_pass_worlds,
                             value_declare_wait=value_declare_wait,
@@ -2860,6 +2908,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
                         value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
+                       value_declare_every_round: bool = VALUE_DECLARE_EVERY_ROUND_DEFAULTS["value_declare_every_round"],
                         value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"],
                         value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"],
                         value_declare_wait: bool = VALUE_DECLARE_WAIT_DEFAULTS["value_declare_wait"],
@@ -2900,6 +2949,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
                             value_declare_every_first=value_declare_every_first,
+                            value_declare_every_round=value_declare_every_round,
                             value_declare_served_bury=value_declare_served_bury,
                             value_declare_pass_worlds=value_declare_pass_worlds,
                             value_declare_wait=value_declare_wait,
@@ -2988,6 +3038,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
                                value_declare_every_first=config.value_declare_every_first,
+                               value_declare_every_round=config.value_declare_every_round,
                                value_declare_served_bury=config.value_declare_served_bury,
                                value_declare_pass_worlds=config.value_declare_pass_worlds,
                                value_declare_wait=config.value_declare_wait,
@@ -3018,13 +3069,14 @@ def pv_env_recipe(environ=None) -> dict:
     ``_REFUSAL_EVENT_COMPLETE`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
-    ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``
+    ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_EVERY_ROUND`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``
     / ``_VALUE_DECLARE_WAIT`` / ``_DECLARE_ASAP_FIRST`` /
     ``_LEAF_POLICY_FIRST_TRICK``
     / ``_ORACLE_WORLDS`` rule flags (``0`` or ``1`` only; unset or empty is off) and the
     ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless
     ``_VALUE_DECLARE=1``), as keyword arguments for `pv_registry_entries`.
-    ``_VALUE_DECLARE_EVERY_FIRST=1``, ``_VALUE_DECLARE_PASS_WORLDS=1`` or ``_VALUE_DECLARE_WAIT=1`` without
+    ``_VALUE_DECLARE_EVERY_FIRST=1``, ``_VALUE_DECLARE_EVERY_ROUND=1`` (also refused with
+    ``_VALUE_DECLARE_EVERY_FIRST=1``), ``_VALUE_DECLARE_PASS_WORLDS=1`` or ``_VALUE_DECLARE_WAIT=1`` without
     ``_VALUE_DECLARE=1`` and ``_DECLARE_ASAP_FIRST=1`` with it are refused there (`recipe_payload`); ``_LEAF_POLICY_FIRST_TRICK=1`` without
     ``_VALUE_DECLARE=1`` or a hybrid/value ``_BURY_ARM`` is refused there too
     (`_check_leaf_policy_effect`), and ``_VALUE_DECLARE_SERVED_BURY=1`` without

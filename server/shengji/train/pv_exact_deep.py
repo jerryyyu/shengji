@@ -15,6 +15,18 @@ opt-in ``exact_deep_cards`` rule of `pv_search_policy` (module docstring):
 The contract is ``exact_lead_means``'s: already-determinized worlds only, one
 session per world shared by its candidates, no partial matrix (any invalid
 world, failed leaf, cancellation or node-cap refusal raises).
+
+Completed-worlds mode (OFF unless ``min_worlds`` is given)
+---------------------------------------------------------
+With ``min_worlds=m`` and ``stop_at`` (a time on ``clock``), the pass stops
+starting worlds once ``clock() >= stop_at`` and abandons a world still being
+solved at that time; the means are taken over the worlds completed before it,
+provided at least ``m`` completed (otherwise it raises, as a refused pass
+does).  The worlds are the sampler's draws in their drawn order, so the
+completed ones are a prefix of an i.i.d. sample -- an unbiased but noisier
+estimate, except that the last world's inclusion depends on its own cost.
+This is a different estimator from the all-worlds pass; callers name it
+separately (``pv_search_policy``: ``exact_deep_min_worlds``).
 """
 
 from __future__ import annotations
@@ -59,10 +71,38 @@ def _validate_world(rnd: Round, world, world_index: int, max_hand_cards: int):
     return copied, list(buried)
 
 
+class WorldsTimeout(Exception):
+    """A completed-worlds pass reached its ``stop_at`` inside a world."""
+
+
+def world_guard(check_budget, stop_at, clock):
+    """``check_budget`` plus the completed-worlds stop (module docstring)."""
+    def guard():
+        if clock() >= stop_at:
+            raise WorldsTimeout()
+        if check_budget is not None:
+            check_budget()
+    return guard
+
+
+def check_min_worlds(min_worlds, stop_at, clock, total):
+    if min_worlds is None:
+        if stop_at is not None:
+            _refuse("stop_at needs min_worlds")
+        return
+    if isinstance(min_worlds, bool) or type(min_worlds) is not int \
+            or not 1 <= min_worlds <= total:
+        _refuse("min_worlds must be an int in [1, number of worlds]")
+    if stop_at is None or not callable(clock):
+        _refuse("min_worlds needs stop_at and a clock")
+
+
 def exact_root_means(
         rnd: Round, seat: int, actions: Sequence[Sequence[str]], worlds,
         leaf_fn: Callable, check_budget: Callable | None, *,
-        max_hand_cards: int, max_nodes: int, level: bool = True) -> tuple[np.ndarray, dict]:
+        max_hand_cards: int, max_nodes: int, level: bool = True,
+        min_worlds: int | None = None, stop_at: float | None = None,
+        clock: Callable | None = None) -> tuple[np.ndarray, dict]:
     """Exact root-team level means for every candidate over the worlds.
 
     ``leaf_fn(world_root, seat, hands, buried, action, world_index)`` returns
@@ -98,33 +138,59 @@ def exact_root_means(
         _refuse("worlds must be a non-empty sequence")
     validated = [_validate_world(rnd, world, index, max_hand_cards)
                  for index, world in enumerate(worlds)]
+    check_min_worlds(min_worlds, stop_at, clock, len(validated))
+    partial = min_worlds is not None
+    guard = world_guard(check_budget, stop_at, clock) if partial else check_budget
     means = np.zeros(len(candidate_actions), dtype=np.float64)
     node_total = cache_total = completed = 0
     for world_index, (hands, buried) in enumerate(validated):
-        world_root = root_clone(rnd, hands, buried)
-        session = CompactWorldSession(
-            world_root, max_hand_cards=max_hand_cards, max_nodes=max_nodes,
-            check_budget=check_budget, alpha_beta=True, level=level)
-        for action_index, action in enumerate(candidate_actions):
-            leaf = leaf_fn(world_root, seat, hands, buried, action, world_index)
-            if type(leaf) is not Round:
-                _refuse("leaf_fn must return a Round")
-            if check_budget is not None:
-                check_budget()
-            if leaf.phase == 'round_end':
-                points = leaf.attacker_points
-            elif level:
-                points = session.solve_level(leaf)
-            else:
-                points = session.solve(leaf).attacker_points
-            means[action_index] += category_signed_level(
-                signed_level_category(points, leaf.is_attacker(seat)))
+        if partial and clock() >= stop_at:
+            break
+        try:
+            row, nodes, hits = _world_row(rnd, seat, candidate_actions, hands, buried,
+                                          world_index, leaf_fn, guard, max_hand_cards,
+                                          max_nodes, level)
+        except WorldsTimeout:
+            if not partial:
+                raise
+            break
+        means += row
         completed += 1
-        node_total += session.nodes
-        cache_total += session.cache_hits
-    means /= len(validated)
+        node_total += nodes
+        cache_total += hits
+    if completed < len(validated):
+        if completed < (min_worlds or len(validated)):
+            raise ExactEndgameRefusal(
+                f"completed-worlds pass finished {completed} worlds; needs {min_worlds}")
+    means /= completed
     return means, {"worlds_completed": completed, "nodes": node_total,
                    "cache_hits": cache_total}
 
 
-__all__ = ["MAX_DEEP_CARDS", "exact_root_means"]
+def _world_row(rnd, seat, candidate_actions, hands, buried, world_index, leaf_fn,
+               check_budget, max_hand_cards, max_nodes, level):
+    """One world's candidate levels, its session's nodes and cache hits."""
+    row = np.zeros(len(candidate_actions), dtype=np.float64)
+    world_root = root_clone(rnd, hands, buried)
+    session = CompactWorldSession(
+        world_root, max_hand_cards=max_hand_cards, max_nodes=max_nodes,
+        check_budget=check_budget, alpha_beta=True, level=level)
+    for action_index, action in enumerate(candidate_actions):
+        leaf = leaf_fn(world_root, seat, hands, buried, action, world_index)
+        if type(leaf) is not Round:
+            _refuse("leaf_fn must return a Round")
+        if check_budget is not None:
+            check_budget()
+        if leaf.phase == 'round_end':
+            points = leaf.attacker_points
+        elif level:
+            points = session.solve_level(leaf)
+        else:
+            points = session.solve(leaf).attacker_points
+        row[action_index] = category_signed_level(
+            signed_level_category(points, leaf.is_attacker(seat)))
+    return row, session.nodes, session.cache_hits
+
+
+__all__ = ["MAX_DEEP_CARDS", "WorldsTimeout", "check_min_worlds", "exact_root_means",
+           "world_guard"]

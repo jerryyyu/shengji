@@ -241,3 +241,209 @@ def test_rerank_follow_compact_level_matches_reference(monkeypatch, backend):
     assert checked >= 6
     with pytest.raises(pv_exact_follow.ExactFollowRefusal):
         pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds, solver="other")
+
+
+# -- completed-worlds estimator (OFF unless min_worlds is given) -----------------
+
+class _Counter:
+    """A clock that reads how many candidate positions were built so far,
+    whatever the engine's budget-check cadence."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def counting(self, fn):
+        def wrapped(*args, **kwargs):
+            self.now += 1.0
+            return fn(*args, **kwargs)
+        return wrapped
+
+
+def _deep_case():
+    rnd, _ = _lead_at(4600001, 5)
+    seat = rnd.turn
+    actions = exhaustive_legal_actions(rnd, seat, max_hand_cards=5)[:3]
+    worlds = _worlds(rnd, seat, random.Random(5), 6)
+    return rnd, seat, actions, worlds
+
+
+def test_completed_worlds_means_are_the_prefix_means():
+    rnd, seat, actions, worlds = _deep_case()
+    per_world = [pv_exact_deep.exact_root_means(rnd, seat, actions, [w], _heuristic_leaf, None,
+                                                max_hand_cards=5, max_nodes=10**9)[0]
+                 for w in worlds]
+    full, stats = pv_exact_deep.exact_root_means(rnd, seat, actions, worlds, _heuristic_leaf,
+                                                 None, max_hand_cards=5, max_nodes=10**9)
+    assert stats["worlds_completed"] == 6
+    assert np.allclose(full, np.mean(per_world, axis=0))
+    # a stop time no world reaches: the full pass
+    got, stats = pv_exact_deep.exact_root_means(
+        rnd, seat, actions, worlds, _heuristic_leaf, None, max_hand_cards=5,
+        max_nodes=10**9, min_worlds=2, stop_at=float("inf"), clock=lambda: 0.0)
+    assert got.tolist() == full.tolist() and stats["worlds_completed"] == 6
+    # a stop time that cuts the pass inside world 2: the completed prefix
+    clock = _Counter()
+    got, stats = pv_exact_deep.exact_root_means(
+        rnd, seat, actions, worlds, clock.counting(_heuristic_leaf), None, max_hand_cards=5,
+        max_nodes=10**9, min_worlds=1, stop_at=7.0, clock=clock)
+    done = stats["worlds_completed"]
+    assert done == 2
+    assert np.allclose(got, np.mean(per_world[:done], axis=0))
+
+
+def test_completed_worlds_refuses_below_min_worlds_and_without_a_clock():
+    rnd, seat, actions, worlds = _deep_case()
+    with pytest.raises(ExactEndgameRefusal):
+        clock = _Counter()
+        pv_exact_deep.exact_root_means(rnd, seat, actions, worlds,
+                                       clock.counting(_heuristic_leaf), None,
+                                       max_hand_cards=5, max_nodes=10**9, min_worlds=6,
+                                       stop_at=7.0, clock=clock)
+    with pytest.raises(ExactEndgameRefusal):
+        pv_exact_deep.exact_root_means(rnd, seat, actions, worlds, _heuristic_leaf, None,
+                                       max_hand_cards=5, max_nodes=10**9, min_worlds=2)
+    with pytest.raises(ExactEndgameRefusal):
+        pv_exact_deep.exact_root_means(rnd, seat, actions, worlds, _heuristic_leaf, None,
+                                       max_hand_cards=5, max_nodes=10**9, stop_at=1.0,
+                                       clock=_Counter())
+
+
+def test_rerank_follow_completed_worlds_prefix(monkeypatch):
+    from shengji.train import pv_exact_follow
+    rnd = _follow_at(4600101, 4)
+    seat = rnd.turn
+    admitted = exhaustive_legal_actions(rnd, seat, max_hand_cards=4)[:3]
+    worlds = _worlds(rnd, seat, random.Random(2), 5)
+    full = pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds, max_nodes=10**9,
+                                         solver="compact-level")
+    same = pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds, max_nodes=10**9,
+                                         solver="compact-level", min_worlds=1,
+                                         stop_at=float("inf"), clock=lambda: 0.0)
+    assert same == full
+    clock = _Counter()
+    monkeypatch.setattr(pv_exact_follow, "root_clone", clock.counting(root_clone))
+    # root_clone runs once per world and once per candidate: 4 per world here
+    cut = pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds, max_nodes=10**9,
+                                        solver="compact-level", min_worlds=1, stop_at=10.0,
+                                        clock=clock)
+    assert cut.worlds == 2
+    monkeypatch.setattr(pv_exact_follow, "root_clone", root_clone)
+    prefix = pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds[:cut.worlds],
+                                           max_nodes=10**9, solver="compact-level")
+    assert cut.scores == prefix.scores
+    clock = _Counter()
+    monkeypatch.setattr(pv_exact_follow, "root_clone", clock.counting(root_clone))
+    with pytest.raises(pv_exact_follow.ExactFollowRefusal):
+        pv_exact_follow.rerank_follow(rnd, seat, admitted, worlds, max_nodes=10**9,
+                                      solver="compact-level", min_worlds=5, stop_at=10.0,
+                                      clock=clock)
+
+
+def test_min_worlds_names_and_refusals(pinned_production_package):
+    pkg = pinned_production_package
+    name, = pv.pv_registry_entries(**pv.pv_env_recipe(_env(
+        pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1", SHENGJI_PV_EXACT_DEEP_CARDS="7",
+        SHENGJI_PV_EXACT_DEEP_MIN_WORLDS="32")))
+    assert "-ed7-edw32-r" in name
+    with pytest.raises(pv.PVSearchPolicyError, match="needs exact_deep_cards"):
+        pv.pv_registry_entries(**pv.pv_env_recipe(_env(
+            pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1", SHENGJI_PV_EXACT_DEEP_MIN_WORLDS="32")))
+    with pytest.raises(pv.PVSearchPolicyError):
+        pv.pv_registry_entries(**pv.pv_env_recipe(_env(
+            pkg, SHENGJI_PV_EXACT_LEAD_ENDGAME="1", SHENGJI_PV_EXACT_DEEP_CARDS="7",
+            SHENGJI_PV_EXACT_DEEP_MIN_WORLDS="65")))
+
+
+# -- level-mode search options (compiled): none may change a value ----------------
+
+def _option_sets():
+    if not HAVE_FAST:
+        return []
+    from shengji.ai import _endgame_fast as fast
+    each = [fast.LEVEL_EQV, fast.LEVEL_FGEN, fast.LEVEL_ETC, fast.LEVEL_KIT, fast.LEVEL_CANON,
+            fast.LEVEL_GUESS, fast.LEVEL_FSN, fast.LEVEL_ORDER, fast.LEVEL_NOLASTTT]
+    every = 0
+    for opt in each:
+        every |= opt
+    return [fast.LEVEL_LEGACY, *each, fast.LEVEL_DEFAULT, every]
+
+
+def _option_roots():
+    """Session root groups: dense random positions (4 cards) and heuristic
+    self-play leads and follows at 5 cards, each with its acting seat's
+    children, so later roots reuse a table holding dead slots."""
+    rng = random.Random(20261016)
+    groups = []
+    for _ in range(40):
+        rnd = _random_position(rng)
+        if rnd.phase == "play":
+            groups.append(_session_roots(rnd))
+    for seed in range(4600200, 4600210):
+        rnd, _ = _lead_at(seed, 5)
+        follow = _follow_at(seed, 5)
+        for root in (rnd, follow):
+            if root is None:
+                continue
+            group = [root]
+            for action in exhaustive_legal_actions(root, root.turn, max_hand_cards=5)[:5]:
+                child = _clone_for_play(root)
+                child.play(root.turn, list(action))
+                if child.phase == "play":
+                    group.append(child)
+            groups.append(group)
+    return groups
+
+
+_OPTION_CASES = {}
+
+
+def _option_cases():
+    if not _OPTION_CASES:
+        groups = _option_roots()
+        _OPTION_CASES["cases"] = [[(root, _reference_points(root)) for root in roots]
+                                  for roots in groups]
+    return _OPTION_CASES["cases"]
+
+
+@pytest.mark.skipif(not HAVE_FAST, reason="compiled engine only")
+@pytest.mark.parametrize("opts", _option_sets())
+def test_level_options_match_reference_minimax(opts):
+    compared = 0
+    for group in _option_cases():
+        points_session = CompactWorldSession(group[0][0], max_hand_cards=5, max_nodes=10**9,
+                                             alpha_beta=True, backend="compiled", level=True,
+                                             level_opts=opts)
+        level_session = CompactWorldSession(group[0][0], max_hand_cards=5, max_nodes=10**9,
+                                            alpha_beta=True, backend="compiled", level=True,
+                                            level_opts=opts)
+        for root, want in group:
+            assert level_session.solve_level(root) == _expected_level_points(root, want)
+            assert points_session.solve_points(root) == want
+            compared += 1
+    assert compared >= 250
+
+
+@pytest.mark.skipif(not HAVE_FAST, reason="compiled engine only")
+def test_play_key_classes_have_equal_values():
+    """Plays with one ``play_key`` lead to children of equal value."""
+    merged = 0
+    for group in _option_cases():
+        root = group[0][0]
+        session = CompactWorldSession(root, max_hand_cards=5, max_nodes=10**9,
+                                      alpha_beta=True, backend="compiled", level=True)
+        seen = {}
+        for action in exhaustive_legal_actions(root, root.turn, max_hand_cards=5):
+            child = _clone_for_play(root)
+            child.play(root.turn, list(action))
+            value = (child.attacker_points if child.phase == "round_end"
+                     else session.solve_points(child))
+            key = session.play_key(root, action)
+            if key in seen:
+                assert seen[key] == value
+                merged += 1
+            else:
+                seen[key] = value
+    assert merged >= 10

@@ -174,8 +174,14 @@ def s17_draw(model: BeliefNumpy, *, project: bool = True, keep: dict | None = No
     from .belief_seq import project_sizes, sample_worlds
 
     def draw(rnd, seat, refusals, n, seed):
+        from ..ai.refusal import pin_unplayed_attempt
         sampler = MCBot(seed=seed)
         mem = Memory(rnd, seat, own_kitty=getattr(sampler, "BANKER_KITTY", True))
+        # the refused throws' pins, as release 45's refusal-aware draw writes
+        # them into its memory: the agreement layout then excludes those
+        # copies for every arm alike (they are public, never a sampling gain)
+        for refusal in refusals:
+            pin_unplayed_attempt(mem, rnd, refusal, seat)
         t0 = time.perf_counter()
         inp = decision_inputs(rnd, seat, refusals)
         P = model.marginals(inp)

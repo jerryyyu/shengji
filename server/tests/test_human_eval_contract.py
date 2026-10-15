@@ -550,6 +550,48 @@ def test_evaluation_room_refuses_nested_training_root(tmp_path, monkeypatch):
             bot=SimpleNamespace(policy_name="candidate-policy"))
 
 
+def test_ordinary_logging_warns_once_and_recovers(tmp_path, caplog):
+    from shengji.api import server
+
+    log_dir = tmp_path / "private-log-path"
+    log_dir.write_text("not a directory")
+    room = server.Room(code="ORD", log_dir=log_dir, bot=SimpleNamespace())
+    room.log_event("chat", text="private message")
+    room.log_event("probe", cards=["private cards"])
+
+    assert not room.evaluation_invalidated
+    assert len(caplog.records) == 1
+    warning = caplog.records[0].getMessage()
+    assert "room ORD event logging failed (FileExistsError)" in warning
+    assert "private" not in warning
+    assert caplog.records[0].exc_info is None
+
+    # Suppression is only for warnings: later events must still retry writing.
+    log_dir.unlink()
+    room.log_event("probe", value=7)
+    record = json.loads((log_dir / "ORD.jsonl").read_text())
+    assert record["e"] == "probe"
+    assert record["value"] == 7
+    assert "experiment" not in record
+    assert len(caplog.records) == 1
+
+
+def test_ordinary_logging_reports_append_failure(tmp_path, caplog, monkeypatch):
+    from shengji.api import server
+
+    room = server.Room(code="ORD", log_dir=tmp_path, bot=SimpleNamespace())
+
+    def fail_open(*args, **kwargs):
+        raise OSError("private filesystem details")
+
+    monkeypatch.setattr(server, "open", fail_open, raising=False)
+    room.log_event("probe")
+    assert len(caplog.records) == 1
+    assert "(OSError)" in caplog.text
+    assert "private" not in caplog.text
+    assert not room.evaluation_invalidated
+
+
 def test_evaluation_logging_failure_is_not_silenced(tmp_path, monkeypatch):
     from shengji.api import server
 

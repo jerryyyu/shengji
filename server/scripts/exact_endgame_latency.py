@@ -86,10 +86,11 @@ def room_for(srv, code, bot, events):
 async def timed_turn(srv, room, seat):
     """One bot turn through the server path; returns (prepared, wall_step, wall_commit, committed_once).
 
-    A bury is re-committed once to prove the refusal (the phase moves on).  A play is NOT: when a trick's winner is the seat
-    that just played, the live turn is again that seat's and a second commit of the same prepared turn would be accepted and
-    corrupt the round (smoke 2026-10-14), so a play is checked by its commit result and the seat's hand shrinking."""
-    phase = room.round.phase
+    Recommit once to prove stale-result refusal, including a fourth-seat winner
+    becoming the next leader. The witness is outside the timed commit interval:
+    production commits once, so the check must not inflate its measured cost.
+    Requires the immutable snapshot play-cursor guard integrated from #1050.
+    """
     before = len(room.round.hands[seat])
     t0 = time.perf_counter()
     prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
@@ -98,8 +99,8 @@ async def timed_turn(srv, room, seat):
         raise RuntimeError('server produced no turn')
     async with room.lock:
         ok = srv._commit_bot_turn(room, prepared)
-        again = srv._commit_bot_turn(room, prepared) if phase == 'bury' else False
-    t2 = time.perf_counter()
+        t2 = time.perf_counter()
+        again = srv._commit_bot_turn(room, prepared)
     shrank = len(room.round.hands[seat]) < before
     return prepared, t1 - t0, t2 - t1, bool(ok) and not again and shrank
 

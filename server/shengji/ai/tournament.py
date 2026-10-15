@@ -20,10 +20,8 @@ from .registry import REGISTRY
 
 def _seeded(make, s: int):
     """Construct a bot with a DETERMINISTIC per-pairing seed when it takes
-    one. Unseeded opponents (MCBot(seed=None) -> OS entropy) made anchors
-    irreproducible: the same v7w anchor gave 41% and then 31% vs mc on
-    2026-08-03 (~2.2 sigma). The RL side is deterministic, so all the
-    wobble came from the opponent."""
+    one. An unseeded opponent (MCBot(seed=None) -> OS entropy) makes an
+    anchor irreproducible even when the other side is deterministic."""
     import inspect
     try:
         params = inspect.signature(make).parameters
@@ -34,8 +32,7 @@ def _seeded(make, s: int):
         return make(seed=s)
     # Dispatch by SIGNATURE, never by catching TypeError: a genuine TypeError
     # from inside a constructor would be swallowed and retried, turning a real
-    # bug into a plausible-looking fallback. make_bot was fixed this way on
-    # 2026-08-04; this call site was missed (Codex).
+    # bug into a plausible-looking fallback (same rule as registry.make_bot).
     b = make()
     if hasattr(b, "rng"):
         import random as _r

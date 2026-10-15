@@ -1,6 +1,6 @@
-"""Dependency-light NumPy runtime for an exported policy prior (#435).
+"""Dependency-light NumPy runtime for an exported policy prior.
 
-The prior is the #419 net: ``Linear(833, h0) -> GELU -> Linear(h0, h1) ->
+The prior is the ``train.policy_prior`` net: ``Linear(833, h0) -> GELU -> Linear(h0, h1) ->
 GELU -> Linear(h1, 54)`` applied to ``(X - mu) / sd``; its outputs are the
 54 card log-odds the shortlist admission sums per candidate.  This module
 imports only NumPy and the standard library; the exporter lives in

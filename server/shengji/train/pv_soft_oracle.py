@@ -1,7 +1,7 @@
-"""The SOFT oracle worlds of the pv-search play search (#707 S17 step 3).
+"""The SOFT oracle worlds of the pv-search play search.
 
 DIAGNOSTIC ONLY, never served, OFF BY DEFAULT.  Two partial-information
-variants of #975's perfect-information diagnostic (``oracle_worlds``, token
+variants of the perfect-information diagnostic (``oracle_worlds``, token
 ``orc``), built to measure how much a partially correct belief over the hidden
 hands buys, so S17's belief model has an accuracy target:
 

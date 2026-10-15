@@ -1,6 +1,6 @@
 """Complete-world value evaluator, the one-ply bot and its two-ply variant.
 
-The bridge from model to policy (Jerry, 2026-09-04): a value net that sees
+The bridge from model to policy: a value net that sees
 the SAMPLED hidden hands is the ENTIRE evaluator -- no playouts.  For every
 play decision the bot enumerates production's ballot, samples W complete
 worlds with production's sampler, applies every candidate in every world
@@ -20,7 +20,7 @@ scored from the root seat with one final forward.  The one-ply evidence
 worlds did not help) says its per-position error is systematic and it lacks
 depth; this is the depth.
 
-Everything a checkpoint needs is consumed through the merged #214 API only:
+Everything a checkpoint needs is consumed through the value-checkpoint API only:
 ``value_checkpoint.load_checkpoint``, ``value_afterstate.tensors_from_round``
 and ``terminal_distribution``, ``value_metrics.category_signed_level``.  This
 module owns batching (stack tensors, one forward per call), the encoder
@@ -52,10 +52,9 @@ Checkpoint metadata contract (the training build, claude/cwv-train, writes
 the checkpoint must declare the afterstate encoder it was trained against.
 :func:`afterstate_encoder_identity` is that recipe -- schema
 ``shengji-cwv-encoder-identity-v1`` over the executable closure of
-``tensors_from_round`` (nine source files) -- and imports the training
-module's function once the branches are merged so there is one source of
-truth.  Accepted declarations, any one of which must equal the live
-``implementation_sha256`` (or, for hand-made checkpoints, the sha256 of
+``tensors_from_round`` -- and uses the training module's function when it
+imports, so there is one source of truth.  Accepted declarations, any one of
+which must equal the live ``implementation_sha256`` (or, for hand-made checkpoints, the sha256 of
 ``value_afterstate.py`` itself):
 
     metadata["encoder"]            = {"implementation_sha256": <sha>, ...} | <sha>
@@ -128,7 +127,7 @@ PRIOR_STRATA = tuple(f"{phase}|{role}" for phase in ("early", "middle", "late")
 
 _SHENGJI = Path(__file__).resolve().parents[1]
 #: The executable closure of ``tensors_from_round`` and the training bridge
-#: (the same nine files as ``cwv_data.CWV_SOURCE_PATHS``): the afterstate
+#: (the same files as ``cwv_data.CWV_SOURCE_PATHS``): the afterstate
 #: module, the public observation encoder and its Memory, the public-history
 #: encoder, the card/combo/round engine and the record rebuild/utility
 #: helpers.  Editing any of these changes what a checkpoint is scored on, so
@@ -196,7 +195,7 @@ def local_encoder_identity(version: int = 1) -> dict[str, Any]:
 
     v1 is the historical payload, byte for byte; a later encoder version
     appends ``enc_version:<n>`` to the payload before the source digests
-    (``train.cwv_data.cwv_encoder_identity``), so the same nine frozen
+    (``train.cwv_data.cwv_encoder_identity``), so the same frozen
     files hash to a DIFFERENT identity per version."""
     version = check_version(version)
     sources = {name: file_sha256(path)
@@ -206,7 +205,7 @@ def local_encoder_identity(version: int = 1) -> dict[str, Any]:
     # not orphan its caches or refuse its checkpoints.  Kept as a literal rather
     # than imported: this module is the INDEPENDENT check on the training build,
     # and a shared constant would let one edit move both sides at once.
-    # Replica of ``cwv_data.PUBLISHED_SOURCE_SHA256`` (2026-09-19): memory.py,
+    # Replica of ``cwv_data.PUBLISHED_SOURCE_SHA256``: memory.py,
     # encode.py and encode_versions.py were edited for speed with output proven
     # byte-identical (tests/test_encoder_bytes_golden.py is the guard), so they
     # are hashed at their pre-change digests and archived checkpoints keep
@@ -273,9 +272,9 @@ def bind_encoder_version(metadata: Mapping[str, Any], model: Any, *,
 def afterstate_encoder_identity(version: int = 1) -> dict[str, Any]:
     """Rehash the afterstate encoder's executable closure on every call.
 
-    Once the training build is merged its ``cwv_encoder_identity`` is the
-    single source of truth and is used directly; until then the local
-    replica (same schema, same nine files, same payload) stands in.
+    The training build's ``cwv_encoder_identity`` is the single source of
+    truth when it imports; otherwise the local replica (same schema, same
+    files, same payload) stands in.
     """
     try:
         from ..train.cwv_data import cwv_encoder_identity
@@ -356,8 +355,7 @@ def verify_checkpoint_identity(metadata: Mapping[str, Any], *,
     if legacy is not None and legacy in declared:
         return legacy
     # A second named migration: engine/round.py gained UI-only state the encoder
-    # never reads (#621), which moved this identity and made a tree at main refuse
-    # the package production serves (#634).  Accepted for ONE named source pair,
+    # never reads, which moved this identity.  Accepted for ONE named source pair,
     # proven tensor-identical by a differential test; every other drift still
     # refuses here, including a further change to round.py itself.
     legacy = round_notice_identity(current)
@@ -391,7 +389,7 @@ def _cached_checkpoint(path: str, mtime_ns: int, size: int):
 
 
 def load_cwv_checkpoint(path: str | os.PathLike[str]):
-    """``(model, metadata, file_sha256)`` through #214's loader, gated."""
+    """``(model, metadata, file_sha256)`` through ``value_checkpoint.load_checkpoint``, gated."""
     resolved = Path(path).resolve()
     if not resolved.is_file():
         raise CWVError(f"checkpoint not found: {resolved}")
@@ -486,7 +484,7 @@ class CompleteWorldEvaluator:
         if hasattr(self.model, "eval"):
             self.model.eval()
         self.encoding = encoding
-        # #373: which head this evaluator reads.  None = the checkpoint's own
+        # which head this evaluator reads.  None = the checkpoint's own
         # value_head; an override must name a head the net has (a refusal
         # here, never a silent fall-through to the other head).
         cfg = getattr(self.model, "config", None)
@@ -556,7 +554,7 @@ class CompleteWorldEvaluator:
                 "encoding": self.encoding,
                 "effective_encoding": self.effective_encoding,
                 "adapter": adapter,
-                # #373: the head this evaluator reads (a numpy package binds the
+                # the head this evaluator reads (a numpy package binds the
                 # head it was exported with in its own __init__); the outcome
                 # head keeps the legacy omission
                 **({"value_head": self.value_head} if self.value_head != "outcome" else {})}
@@ -664,17 +662,17 @@ def _expected_level(probability: Sequence[float]) -> float:
 #: The producer's role labels (``train.baselines.ROLES``) and this module's.
 PRIOR_ROLE_ALIASES = {"attacker-team": "attacker", "banker-team": "defender",
                       "attacker": "attacker", "defender": "defender"}
-#: Utility scales a prior can be expressed in.  ``level``: #214's half-integer
+#: Utility scales a prior can be expressed in.  ``level``: the half-integer
 #: signed level (the support of ``category_signed_level``; what the learned
 #: net and ``terminal_distribution`` produce).  ``pt0``: the trajectory
 #: records' integer ``signed_level_utility`` (a takeover counts one level),
-#: which is what #213's ``StratifiedPrior`` cells average.  A control mixes
+#: which is what ``baselines.StratifiedPrior`` cells average.  A control mixes
 #: the two never: its terminals are converted to the prior's own scale.
 PRIOR_SCALES = ("level", "pt0")
 
 
 def pt0_level(signed_level: float) -> float:
-    """The PT0 integer utility of a #214 signed level: ``sign * max(1,
+    """The PT0 integer utility of a ``category_signed_level`` value: ``sign * max(1,
     floor(|u|))`` -- the training build's ``cwv_data.pt0_level`` recipe."""
     value = float(signed_level)
     if not math.isfinite(value) or value == 0.0:
@@ -699,7 +697,7 @@ def prior_table_from(value: Mapping[str, Any]) -> tuple[dict[str, float], float,
     (``global_probability`` + ``strata_probability``; scale ``level``); a
     plain map ``{"strata": {stratum: level | {"expected_signed_level":
     level}}, "global": level}`` (scale ``level``, or ``value["scale"]``); and
-    #213's ``baselines.StratifiedPrior.to_dict()`` (``cells`` of
+    ``baselines.StratifiedPrior.to_dict()`` (``cells`` of
     ``phase|role|points`` PT0 means with the producer's ``banker-team`` /
     ``attacker-team`` roles, collapsed over the points bin by count; scale
     ``pt0``).
@@ -817,7 +815,7 @@ def prior_table_from_metadata(metadata: Mapping[str, Any], *,
                               ) -> tuple[dict[str, float], float, str]:
     """The stratified prior a checkpoint carries: ``metadata["stratified_prior"]``
     (this module's dev checkpoints) or the training build's
-    ``metadata["baselines"]["stratified_prior"]`` (#213 ``cells`` form)."""
+    ``metadata["baselines"]["stratified_prior"]`` (``StratifiedPrior`` ``cells`` form)."""
     prior = metadata.get("stratified_prior")
     if not isinstance(prior, Mapping):
         baselines = metadata.get("baselines")

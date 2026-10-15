@@ -1,5 +1,5 @@
 """The OPTIONAL second stage of the wide value-only bury (``SHENGJI_PV_BURY_TWO_STAGE``,
-bury-name token ``bts`` after ``bwv``/``bwv2``; #707 S15).  OFF BY DEFAULT.
+bury-name token ``bts`` after ``bwv``/``bwv2``).  OFF BY DEFAULT.
 
 Release 45's chooser (`bury_wide_value`, ``bwv`` at K=64) ranks up to 64
 candidate buries by the value head's mean over the arm's 32 model worlds, on a

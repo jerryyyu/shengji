@@ -1,4 +1,4 @@
-"""S17 step 1: per-decision belief labels over hidden card copies (#663, #707 S17).
+"""Per-decision belief labels over hidden card copies.
 
 For every play decision of a trajectory store, the acting seat's view becomes one
 example:

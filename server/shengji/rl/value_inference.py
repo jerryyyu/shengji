@@ -88,9 +88,8 @@ def tensors_for_model(model, rnd: Round, root_seat: int):
 
     Both public inference entry points go through here. Calling the frozen v1
     builder unconditionally fed 532-wide rows to a 561-wide net as soon as v2
-    checkpoints existed; fixing only one entry point left its sibling broken,
-    which is exactly what happened once (Codex, bus 795/796), so the dispatch
-    lives in one place used by both.
+    checkpoints existed, and fixing only one entry point leaves its sibling
+    broken, so the dispatch lives in one place used by both.
     """
     version = model_enc_version(model)
     if version == 1:

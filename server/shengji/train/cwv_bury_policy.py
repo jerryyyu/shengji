@@ -138,7 +138,7 @@ class CWVBuryMixin:
         # bury_candidates() builds its ballot around the SOURCE bot's own incumbent.
         # When that differs from this wrapper's incumbent (the play bot's heuristic),
         # the wrapper's action may already sit in the ballot -- 6% of diagnostic deals
-        # (#606) -- and refusing the decision made every data-gen cluster on such a
+        # -- and refusing the decision made every data-gen cluster on such a
         # deal fail and every served bury on it fall back to the heuristic.  The
         # candidate SET is the same either way: keep the literal incumbent at slot 0
         # and drop the generator's copy, preserving the order of the rest.
@@ -502,7 +502,7 @@ def bury_registry_entries(checkpoint, worlds=(32,), *, arm,
                 raise BuryPolicyError("bury checkpoint changed after registration")
             prior = getattr(base, "prior_config", None)
             if prior is not None:
-                # The play policy is the prior-admission shortlist (#435): keep
+                # The play policy is the prior-admission shortlist: keep
                 # its admission stage and add the bury arm, rather than
                 # rebuilding the prior-less bot under a name that binds a prior.
                 from .cwv_prior_admission import CWVPriorBuryBot

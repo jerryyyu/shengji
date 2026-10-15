@@ -26,7 +26,7 @@ except ImportError:
 
 
 PACKAGE_SCHEMA = "shengji-cwv-numpy-mlp-v1"
-#: v2 adds the trunk shape (#435): the residual trunk of M1 (Linear stem ->
+#: v2 adds the trunk shape: the residual trunk (Linear stem ->
 #: N tabular-ResNet blocks -> LayerNorm -> ReLU) next to the plain two-layer
 #: MLP.  v1 packages are unchanged and keep loading byte for byte.
 PACKAGE_SCHEMA_V2 = "shengji-cwv-numpy-mlp-v2"
@@ -43,7 +43,7 @@ OUTCOME_CLASSES = 204
 WORLD_RECEIVERS = 5
 N_CARDS = 54
 PERSPECTIVE_DIM = 2
-#: #411 grid trunk (G1's suit x level table) as a v2 package feature: the card
+#: grid trunk (a suit x level table) as a v2 package feature: the card
 #: planes are gathered through a per-trump index table that the package carries
 #: (``grid_table``), two width-3 window reads, row/global summaries, then the
 #: same stem + residual blocks as ``trunk_block=residual``.
@@ -70,10 +70,10 @@ class CWVNumpyConfig:
     enc_version: int
     trunk_block: str = "plain"
     trunk_layers: int = 2
-    #: #425 joint net served as ONE package: a 54-card policy head on the trunk
+    #: joint net served as ONE package: a 54-card policy head on the trunk
     #: features (``policy_weight`` / ``policy_bias``), read by the prior admission.
     policy_head: bool = False
-    #: #411 grid trunk: the window-read channel count (``value_model.GridTrunk``);
+    #: grid trunk: the window-read channel count (``value_model.GridTrunk``);
     #: zero for every other trunk, required positive for ``trunk_block="grid"``.
     grid_channels: int = 0
     #: policy tower (v3): ``policy_tower_layers`` residual blocks of inner width

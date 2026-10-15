@@ -213,7 +213,7 @@ def run_cluster(config, cluster):
             attempted = bots[seat].decide_play(rnd, seat)
             rnd.play(seat, attempted)
             transcript.append({"seat": seat, "attempted": list(attempted)})
-            # #707 S8: every seat's bot reads the public notice after the
+            # every seat's bot reads the public notice after the
             # committed play (a no-op for every bot but the event-complete arm)
             observe_committed_play(rnd, bots)
         points = rnd.attacker_points

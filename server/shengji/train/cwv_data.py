@@ -1,4 +1,4 @@
-"""Complete-world value (CWV) data bridge: decision records -> #214 afterstate
+"""Complete-world value (CWV) data bridge: decision records -> afterstate
 tensors (``rl.value_afterstate``), cached per shard, split by deal.
 
 View
@@ -11,13 +11,13 @@ state encoded from the ACTING seat's perspective by ``tensors_from_round`` --
 exactly the binding of ``example_from_trajectory_record`` (the build
 re-derives every ``reference_every``-th row through that function and
 refuses on any difference).  The decision state itself is not encodable for
-the first play of a round (#214's tensors require at least one public
+the first play of a round (the afterstate tensors require at least one public
 history event), and the afterstate is what ``value_inference.score_actions``
 feeds the net at play time, so the training distribution is the consumer's.
 
 Target
 ------
-``signed_level_category(outcome.attacker_points, root_is_attacker)``: #214's
+``signed_level_category(outcome.attacker_points, root_is_attacker)``: the
 204-class signed level, whose support is the half-integer
 ``teacher_v1.attacker_level_utility`` (an 80-119 takeover is +0.5 for the
 attackers, 120-159 is +1.5, a 40-79 defense is +1.5 for the banker team,
@@ -49,7 +49,7 @@ and outcome points, the decision-state features the stratified prior reads
 source_ref, record and input hashes) and whether the record carries
 per-candidate search means.  The ``cwvh`` flavour (``--arch seq``) adds the
 public history as compact events (card counts, relative seat, trick
-position, card count, points) that rebuild #214's float32 history
+position, card count, points) that rebuild the afterstate's float32 history
 byte-for-byte (verified for every event at build time).  The encoder
 identity hashes ``value_afterstate.py`` and its executable closure (encode,
 douzero_micro, memory, cards, combos, round, rebuild, teacher_v1).  The file
@@ -181,7 +181,7 @@ def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
     return paths
 
 
-#: SOURCE digests pinned for PUBLISHED identities (2026-09-19).  memory.py, encode.py and
+#: SOURCE digests pinned for PUBLISHED identities.  memory.py, encode.py and
 #: encode_versions.py were edited for speed -- one Memory per encode instead of two or three --
 #: with output PROVEN byte-identical (tests/data/encoder_bytes_golden.json, generated from the
 #: pre-change tree, is regenerated and compared by tests/test_encoder_bytes_golden.py).  Hashing
@@ -190,7 +190,6 @@ def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
 #: hashes these three files at their pre-change digests, and the guard against a future edit
 #: that DOES change bytes is the golden test, which is the stronger guarantee: it checks the
 #: bytes, not the source.  Same mechanism and same reasoning as PUBLISHED_DISPATCHER_SHA256.
-#: Decision: Jerry 2026-09-19 ("B sounds good").
 PUBLISHED_SOURCE_SHA256 = {
     "memory": "905873b332fd54471070b25ce24f100b813c9a9f234c1b50254d00895140cf51",
     "encode": "819fe2b2fc3cb9f0dd18cfd1c916b2387e92d97345f6dda212b2f149c7e7408b",
@@ -266,7 +265,7 @@ def cache_path(cache_dir: str | os.PathLike, shard_sha256: str, *, history: bool
 
 def pt0_level(signed_level: float) -> float:
     """The PT0 integer utility (``harvest.rebuild.signed_level_utility``) of
-    a #214 signed level: ``sign * max(1, floor(|u|))`` -- a +0.5 takeover is
+    a ``category_signed_level`` value: ``sign * max(1, floor(|u|))`` -- a +0.5 takeover is
     one level, +1.5 (120-159) is one level, +2.5 two, -1.5 (a 40-79
     defense) is minus one, -3.5 (zero points) minus three."""
     value = float(signed_level)
@@ -281,12 +280,12 @@ PT0_SUPPORT = np.asarray([pt0_level(u) for u in LEVEL_SUPPORT], dtype=np.float64
 
 
 def target_category(attacker_points: int, root_is_attacker: bool) -> int:
-    """#214's target for one outcome (``signed_level_category``)."""
+    """The afterstate target for one outcome (``signed_level_category``)."""
     return signed_level_category(int(attacker_points), bool(root_is_attacker))
 
 
 def expected_levels(probability: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """``(expected #214 signed level, expected PT0 level)`` per row (the
+    """``(expected signed level, expected PT0 level)`` per row (the
     expectation is the MSE-optimal point estimate)."""
     prob = np.asarray(probability, dtype=np.float64)
     return prob @ LEVEL_SUPPORT, prob @ PT0_SUPPORT
@@ -326,7 +325,7 @@ class Row:
 
 #: ``action_values.units`` of the pv-search producer (``harvest.trajectory.PV_VALUE_UNITS``,
 #: kept as a literal here because that module is heavy and imports this one's callers):
-#: the acting team's EXPECTED SIGNED LEVEL on the half-integer #214 scale.  The mcbot
+#: the acting team's EXPECTED SIGNED LEVEL on the half-integer signed-level scale.  The mcbot
 #: producers (shortlist, MC-LCB, runs A..L) write no ``units`` and mean expected attacker
 #: POINTS (``mcbot._score`` with ``LEVEL_OBJECTIVE = False``).
 PV_VALUE_UNITS = "expected-signed-level-half-integer"
@@ -337,7 +336,7 @@ POINTS_VALUE_UNITS = "expected-attacker-points"
 #: exactly.  40 is the bracket width ``mcbot._score`` uses under LEVEL_OBJECTIVE
 #: (``40.0 * (bracket + deal) + 0.2 * p``), i.e. the points scale's own "one level", and it is
 #: what makes the two producers' targets comparably peaked at T=1: median top-1 0.55 on points
-#: rows and 0.53 on PV rows scaled this way (12 real shards), against 0.17 unscaled (#649).
+#: rows and 0.53 on PV rows scaled this way (12 real shards), against 0.17 unscaled.
 POINTS_PER_LEVEL = 40.0
 VALUE_UNITS_SCALE = {POINTS_VALUE_UNITS: 1.0, PV_VALUE_UNITS: POINTS_PER_LEVEL}
 
@@ -345,9 +344,8 @@ VALUE_UNITS_SCALE = {POINTS_VALUE_UNITS: 1.0, PV_VALUE_UNITS: POINTS_PER_LEVEL}
 def value_units(record: Mapping[str, Any]) -> str:
     """The units of ``record["action_values"].means``: ``POINTS_VALUE_UNITS`` when the
     producer wrote none, otherwise the recorded tag.  Refuses a tag it cannot scale, so a
-    new producer cannot slip half-level (or any other) values under a points temperature
-    again -- that is exactly how the 16 PV corpora came to teach a uniform policy target
-    (#649)."""
+    new producer cannot slip half-level (or any other) values under a points temperature,
+    which teaches a uniform policy target."""
     values = record.get("action_values")
     units = values.get("units") if isinstance(values, dict) else None
     if units is None:
@@ -452,14 +450,14 @@ def bridge_record(record: Mapping[str, Any], *, version: int = ENC_VERSION) -> R
 
 def reference_check(record: Mapping[str, Any], row: Row, *,
                     version: int = ENC_VERSION) -> None:
-    """Refuse a bridged row that differs from #214's own binding."""
+    """Refuse a bridged row that differs from ``value_afterstate``'s own binding."""
     version = check_version(version)
     try:
         example = example_from_trajectory_record(record)     # the frozen v1 binding
     except ValueAfterstateError as exc:
         raise TrainDataError(f"reference: example_from_trajectory_record refused the "
                              f"record: {exc}") from exc
-    # #214's binding is v1 and frozen; at v2 the reference is that binding
+    # ``value_afterstate``'s binding is v1 and frozen; at v2 the reference is that binding
     # WIDENED (``value_afterstate_v2.widen``): the v1 slice must still be the
     # independent rebuild's, and the v2 columns the successor's.
     expected_sha = (example.input_sha256 if version == 1
@@ -540,7 +538,7 @@ def check_witness(result: Mapping[str, int], *, label: str = "") -> None:
 # ----------------------------------------------------------------- history
 
 def compact_history(history: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """#214's float32 history events as ``(card counts uint8 [m, 54], meta
+    """The afterstate's float32 history events as ``(card counts uint8 [m, 54], meta
     uint8 [m, 4])`` -- relative seat, trick position, card count, points --
     verified to rebuild the input byte-for-byte."""
     events = np.asarray(history, dtype=np.float32)
@@ -588,7 +586,7 @@ class CwvBlock:
               "points_so_far", "ply", "role_attacker", "seat", "deal_key", "cluster",
               "source_ref", "record_sha256", "input_sha256", "has_search_means", "n_search")
     HISTORY_ARRAYS = ("history_cards", "history_meta", "history_offsets")
-    #: per-row arrays that a sidecar may attach (issue #340); absent unless
+    #: per-row arrays that a sidecar may attach; absent unless
     #: the store was given a sidecar directory
     OPTIONAL_ARRAYS = ("search_mean_played", "search_level_played")
     #: per-row arrays (the history members are ragged)
@@ -1133,7 +1131,7 @@ class CwvBlockStore:
             bytes never exceed the residency budget. A pool receives its
             payloads before anything is admitted, so room must be made for
             the WHOLE dispatched set up front or the budget is exceeded by
-            the amount in flight (Codex, review of #279).
+            the amount in flight.
 
             The staging bound is therefore explicit: the non-resident bytes
             of one window. When those do not fit the budget at all there is
@@ -1320,7 +1318,7 @@ def collate(block: CwvBlock, idx: np.ndarray) -> dict[str, np.ndarray]:
 
 
 def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
-    """The #214 batch tensors of a gathered batch: ``public`` float32,
+    """The afterstate batch tensors of a gathered batch: ``public`` float32,
     ``world`` float32 (counts / 2), ``perspective`` one-hot, ``history`` /
     ``history_mask`` (a single all-zero event per row when the batch carries
     none: the mlp ignores it, the batch contract still holds), plus the
@@ -1358,7 +1356,7 @@ def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
 
 
 def tensors_rows(batch: Mapping[str, np.ndarray]) -> list[ValueAfterstateTensors]:
-    """The rows of a gathered HISTORY batch as #214 tensor objects (validated)."""
+    """The rows of a gathered HISTORY batch as afterstate tensor objects (validated)."""
     if "history" not in batch:
         raise TrainDataError("tensor rows need a history batch (the cwvh cache flavour)")
     rows = []
@@ -1413,12 +1411,12 @@ class Prepared:
     cache_files: list[dict] = field(default_factory=list)
 
 
-LEGACY_COUNT_KEYS = {"search_means": "action_values_means_2plus"}   # #667: renamed at the write site
+LEGACY_COUNT_KEYS = {"search_means": "action_values_means_2plus"}   # renamed at the write site
 
 
 def canonical_counts(counts: Mapping) -> dict:
     """Cached shard metadata written before the rename still says ``search_means``; a
-    warm or mixed cache must aggregate under ONE key (Codex HOLD on #669).  Folds each
+    warm or mixed cache must aggregate under ONE key.  Folds each
     legacy key into its canonical name, summing when both are present; never rebuilds."""
     out: dict = {}
     for key, value in counts.items():
@@ -1487,7 +1485,7 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
             for i in range(first, len(entries)):
                 keep[i] = set(kept)
     if pack_dir is not None:
-        # #531: the same blocks from the decoded pack -- no inflate, no pool; the cache
+        # the same blocks from the decoded pack -- no inflate, no pool; the cache
         # metas above still validate every shard and the pack refuses any mismatch
         from .cwv_pack import CwvPackStore
         block_store: Any = CwvPackStore(entries, pack_dir, residency=residency,

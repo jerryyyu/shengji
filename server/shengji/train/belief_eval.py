@@ -16,13 +16,13 @@ Reads a ``belief_labels`` extract and reports, on held-out deals:
   across rows within (trick, role) strata, in the training AND calibration
   splits, so it never sees a real (input, label) pair; evaluated on real labels.
 
-The target is the genuinely UNKNOWN copies (``residualize``, Codex HOLD on
-#1002): a copy whose holder is public -- a declared card still with the
-declarer, a failed-throw pin, i.e. ``Memory.known``, which production's sampler
-already places exactly -- is subtracted from the labels, the sampler counts and
-the receiver sizes before any fit, smoothing or score, so no method can gain
-on a fact the sampler already honours.  A partly pinned duplicate code keeps
-its other copy.  This matches the step-2 / q-pin hidden layout.
+The target is the genuinely UNKNOWN copies (``residualize``): a copy whose
+holder is public -- a declared card still with the declarer, a failed-throw
+pin, i.e. ``Memory.known``, which production's sampler already places exactly
+-- is subtracted from the labels, the sampler counts and the receiver sizes
+before any fit, smoothing or score, so no method can gain on a fact the sampler
+already honours. A partly pinned duplicate code keeps its other copy. This
+matches the step-2 / q-pin hidden layout.
 
 Metrics per hidden copy: log-loss, true-holder mass (mean probability on the
 true holder) and ECE over reliability bins of the per-(card, receiver)
@@ -130,13 +130,13 @@ def known_counts(X: np.ndarray) -> np.ndarray:
 
 
 def residualize(part: dict[str, np.ndarray]) -> dict[str, int]:
-    """Restrict a split IN PLACE to the genuinely unknown copies (Codex HOLD on
-    #1002): subtract the public known-holder counts from the labels, from the
-    sampler's counts (``S_n`` copies per pin, one per world) and from the
-    receivers' sizes; a code with no unknown copy left leaves the mask, and so
-    does a receiver with no unknown slot left (all its cards are pinned).  A
-    partly pinned duplicate code keeps its other copy, with every receiver it
-    could be with.  Nothing is smoothed onto, or scored on, a known copy."""
+    """Restrict a split IN PLACE to the genuinely unknown copies: subtract the
+    public known-holder counts from the labels, from the sampler's counts
+    (``S_n`` copies per pin, one per world) and from the receivers' sizes; a
+    code with no unknown copy left leaves the mask, and so does a receiver with
+    no unknown slot left (all its cards are pinned). A partly pinned duplicate
+    code keeps its other copy, with every receiver it could be with. Nothing is
+    smoothed onto, or scored on, a known copy."""
     K = known_counts(part["X"])
     Y = part["Y"].astype(np.int64) - K
     if np.any(Y < 0):
@@ -144,7 +144,7 @@ def residualize(part: dict[str, np.ndarray]) -> dict[str, int]:
     part["Y"] = Y.astype(np.uint8)
     residual = Y.sum(axis=-1)
     # residual capacity: the unknown slots each receiver has left once its pinned
-    # copies are placed (Codex delta HOLD on #1002); a receiver with no unknown slot
+    # copies are placed; a receiver with no unknown slot
     # cannot hold an unknown copy, so it leaves the mask for every card
     sizes = part["sizes"].astype(np.int64) - K.sum(axis=1)
     if np.any(sizes < 0):
@@ -400,7 +400,7 @@ def run(data: str, *, hidden: int, epochs: int, lr: float, batch: int, seed: int
     ca = {k: v[ca["S_n"] > 0] for k, v in ca.items()}
     te = {k: v[te["S_n"] > 0] for k, v in te.items()}
     # the target is the genuinely unknown copies: public pins come out of labels,
-    # sampler counts and sizes alike, before any fit (Codex HOLD on #1002)
+    # sampler counts and sizes alike, before any fit
     pins = {name: residualize(part) for name, part in (("train", tr), ("calib", ca), ("test", te))}
     for part in (tr, ca, te):
         if np.any((part["Y"] > 0) & ~part["M"]):

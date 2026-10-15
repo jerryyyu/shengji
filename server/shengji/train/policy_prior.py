@@ -1,4 +1,4 @@
-"""Root-state factorised policy prior (issue #419, plan #421).
+"""Root-state factorised policy prior.
 
 A small net reads the ROOT state (the position before the acting seat plays; the
 same v2 tensors the value net reads, built here for the root rather than the
@@ -6,7 +6,7 @@ afterstate) and emits one logit per card: the log-odds that the card is part of
 the action the search played.  Any candidate action's prior score is the sum of
 its cards' log-odds, so scoring every legal action costs arithmetic over the
 action list, not a net call per afterstate -- which is what lets a shortlist
-prune the wide tail (#396) BEFORE enumerating afterstates.
+prune the wide tail BEFORE enumerating afterstates.
 
 Targets, from trajectory records:
   * multi-hot of the played action's cards (binary cross-entropy per card);
@@ -19,7 +19,7 @@ whole ballot survives a top-N cut.  Rows with more than ``MAX_LEGAL`` stored
 legal actions are ranked within a sample that always contains the played action
 and the ballot (optimistic for the prior; the count is reported).
 
-Exploration tags (#676 strategy D).  A trajectory record whose search ballot
+Exploration tags.  A trajectory record whose search ballot
 was widened by a root exploration draw (``exploration.added``: uniform over the
 legal set, ``explore_rate``/``explore_k``) is tagged per row with an int8
 ``explore_flag`` and a float32 ``explore_margin`` (``explore_tags_of``):
@@ -36,10 +36,10 @@ legal set, ``explore_rate``/``explore_k``) is tagged per row with an int8
     a draw the search did not value, a shortlist with no values, plain losses);
   * 2 -- an exploration-only slot holds the strictly highest search value in the
     ballot, i.e. the draw BEAT THE SHORTLIST: the shortlist missed the search's
-    preferred action and the prior that produced it is wrong there (#676 cat. 2).
+    preferred action and the prior that produced it is wrong there.
 ``explore_margin`` is, for flag 2 only, the winning draw's value minus the best
 shortlist value on the SAME scale the row's ``vals`` carry (the points
-temperature scale, #650: half-levels x 40 for the pv stores); NaN otherwise.  Both are ADDITIVE: new chunk arrays
+temperature scale: half-levels x 40 for the pv stores); NaN otherwise.  Both are ADDITIVE: new chunk arrays
 and a manifest ``explore_flag_counts`` / ``explore_tags: true``, the schema
 string unchanged, so extracts written before them load with the flags read as
 zero and ``explore_tags: false``.  The trainer's ``--policy-explore-weight``
@@ -74,7 +74,7 @@ from ..rl.value_afterstate import (WORLD_RECEIVERS, ValueAfterstateError,
                                    ValueAfterstateTensors)
 from ..rl.value_afterstate_v2 import public_dim, widen_to
 # torch-free sources: cwv_data imports rl.douzero_micro (torch) at module level, and the
-# served admission reaches this module through _prior_scores (Codex HOLD on #442).
+# served admission reaches this module through _prior_scores, so it must stay torch-free.
 from ..rl.value_afterstate_v2 import tensors_from_round as tensors_at
 from .data import deal_key
 from .data import ShardRef, discover_store, iter_records
@@ -136,8 +136,8 @@ def cards_to_idx(cards: Sequence[str]) -> list[int]:
 
 def deal_id(rnd) -> str:
     """A stable 16-hex id of the deal (the deck), written into every row's
-    metadata so evaluation can resample whole deals (Codex on #425: decisions of
-    one game are correlated; a row bootstrap understates the uncertainty)."""
+    metadata so evaluation can resample whole deals (decisions of one game are
+    correlated; a row bootstrap understates the uncertainty)."""
     return hashlib.sha256(deal_key(list(rnd.deck)).encode()).hexdigest()[:16]
 
 
@@ -176,7 +176,7 @@ def _shard_rows(args: tuple) -> list[tuple]:
             continue
         if first:
             deal = deal_id(root)
-            key = deal_key(list(root.deck))       # the exposure system's identity (#428)
+            key = deal_key(list(root.deck))       # the exposure system's identity
         first = False
         seat = int(rec["seat"])
         if root.phase != "play" or root.turn != seat:
@@ -201,7 +201,7 @@ def _shard_rows(args: tuple) -> list[tuple]:
         # ON THE POINTS SCALE, whatever the producer wrote: the soft target's temperature
         # is calibrated on points, and the pv-search stores record half-integer LEVELS,
         # whose within-decision gaps (~0.02) softmax to a uniform target at T=1 -- the 16
-        # PV corpora taught the policy head "all candidates are equal" (#649).  An unknown
+        # PV corpora would teach the policy head "all candidates are equal".  An unknown
         # units tag refuses the whole extract rather than being scaled by guess.
         from .cwv_data import search_means_points, value_units   # local: cwv_data is a
         units = value_units(rec)             # heavier module, and a top-level import here
@@ -229,7 +229,7 @@ EXPLORE_FLAG_NAMES = {EXPLORE_FLAG_NONE: "no_draw", EXPLORE_FLAG_IN_BALLOT: "dra
 def explore_tags_of(raw_ballot: Sequence[Sequence[str]], means_raw: Sequence[float],
                     added: Sequence[Sequence[str]],
                     production: Sequence[Sequence[str]] | None = None) -> tuple[int, float]:
-    """``(explore_flag, explore_margin)`` of one decision (#676 D; see the module
+    """``(explore_flag, explore_margin)`` of one decision (see the module
     docstring).  ``raw_ballot`` and ``means_raw`` are slot-aligned (NaN = the
     search reported no value for that slot); ``added`` is the record's
     ``exploration.added``; ``production`` its ``production_ballot`` (the
@@ -238,7 +238,7 @@ def explore_tags_of(raw_ballot: Sequence[Sequence[str]], means_raw: Sequence[flo
     an ``added`` action the shortlist does not carry, a shortlist slot is one
     on ``production``, and any OTHER ballot action (a widened candidate, a
     ``widening.added`` entry) is neither -- it is not production's choice and
-    does not count on either side (Codex HOLD on #684).  Without a
+    does not count on either side.  Without a
     ``production`` list (a record from before ``production_ballot``) the
     shortlist is the ballot minus the draws.  Flag 2 needs a FINITE draw value
     STRICTLY above the best finite shortlist value; a shortlist with no finite
@@ -296,10 +296,10 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
     vals, has_vals = ballot_value_tensor(meta, b_max=int(ball.shape[1]))
     explore_flag, explore_margin = explore_tag_arrays(meta)
     path = out_dir / f"chunk-{index:05d}.npz"
-    # `vals`/`has_vals` are ADDITIVE and the schema string is deliberately unchanged: a live
-    # training run is reading policy_rows_v7, which has neither, and must keep loading.
-    # `explore_flag`/`explore_margin` (#676 D) follow the same rule: older chunks lack them
-    # and the stream reads them as 0 / NaN.
+    # Chunk fields are ADDITIVE and the schema string is deliberately unchanged, so an
+    # extract written before a field existed keeps loading: readers treat absent
+    # `vals`/`has_vals` as no search values and absent `explore_flag`/`explore_margin`
+    # as 0 / NaN.
     np.savez_compressed(path, X=np.stack(X).astype(np.float16), Y=np.stack(Y).astype(np.uint8),
                         ball=ball.numpy(), mask=mask.numpy(), tgt=tgt.numpy(),
                         deal_key=np.asarray([m["deal_key"] for m in meta]),
@@ -308,7 +308,7 @@ def _write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
     with open(path, "rb") as fh:
         sha = hashlib.file_digest(fh, "sha256").hexdigest()
     # units are counted HERE, over the rows this chunk persists: a count taken as rows
-    # are read includes the tail the max_rows cap discards (Codex P2 on #650)
+    # are read includes the tail the max_rows cap discards
     units = Counter(m.get("units", NO_SEARCH_VALUES) for m in meta)
     return {"file": path.name, "rows": len(X), "deals": len({m["deal_key"] for m in meta}),
             "rows_with_ballot_target": int((tgt >= 0).sum()),
@@ -356,7 +356,7 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
     with ``chunk_rows`` write a DIRECTORY ``<out>/`` of training chunks
     (``chunk-NNNNN.npz`` with X float16, Y, padded ballots, deal keys) plus
     ``manifest.json`` so a trainer can stream every root row instead of holding
-    them in memory (#425: the policy head on all ~20M root decisions).
+    them in memory (the policy head trains on ~20M root decisions).
 
     ``version`` is the encoder the rows are built at (v2 = the published layout; a
     later encoder such as v5 widens the public block, so its rows train only a
@@ -418,10 +418,10 @@ def extract(out: str | Path, corpora: Sequence[str], *, lo: float, hi: float, th
                     "corpora": [str(Path(c).resolve()) for c in corpora],
                     "deal_key_schema": "shengji-value-deal-key-v1",
                     # the producers' value units, by row, and the scale each was brought to
-                    # the points scale with -- so a composed set can show what it mixed (#649)
+                    # the points scale with -- so a composed set can show what it mixed
                     "value_units": dict(sum((Counter(c["value_units"]) for c in chunks), Counter())),
                     "value_units_scale": dict(_value_units_scale()), "values_scale": "points",
-                    # #676 D: per-row exploration tags (see the module docstring); a manifest
+                    # per-row exploration tags (see the module docstring); a manifest
                     # without these keys is an extract from before the tags
                     "explore_tags": True, "explore_flag_names": {str(k): v for k, v in EXPLORE_FLAG_NAMES.items()},
                     "explore_flag_counts": {k: sum(c["explore_flag_counts"][k] for c in chunks)
@@ -555,8 +555,7 @@ def _weighted_row_mean(per_row, w):
 
 def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0, row_weight=None):
     """Listwise CE against the SEARCH'S DISTRIBUTION where it exists, the played action
-    elsewhere (#496 H3).  ``row_weight`` (b,) weights rows (#676 D); ``None`` is the
-    unweighted mean, the code path every run before the weight used.
+    elsewhere.  ``row_weight`` (b,) weights rows; ``None`` is the unweighted mean.
 
     ``listwise_loss`` teaches "the search played this one"; this teaches "the search
     preferred these, in this proportion" -- the information the search actually produced
@@ -586,8 +585,7 @@ def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0, 
 def listwise_loss(logits, ball, mask, tgt, row_weight=None):
     """Cross-entropy over the ballot's factorised scores, rows whose played action is
     in the ballot only.  ``logits`` (b, 54); ``ball`` (b, B, C) card indices or -1.
-    ``row_weight`` (b,) weights rows (#676 D); ``None`` is the unweighted cross-entropy
-    exactly as before the weight existed."""
+    ``row_weight`` (b,) weights rows; ``None`` is the unweighted cross-entropy."""
     import torch
     ok = tgt >= 0
     if not bool(ok.any()):

@@ -34,7 +34,7 @@ Three leaf evaluators share the truncation:
   100``) on the determinized clone ITSELF: the clone is a complete world, so
   ``value_afterstate.tensors_from_round(clone, seat_to_act)`` encodes the
   sampled hands and burial into the world tensor.  Same numpy export, same
-  units.  The one-ply play test of that net (#229) lost to production at
+  units.  The one-ply play test of that net lost to production at
   every budget while beating a no-learning control; this leaf puts the same
   net under production's own rollouts, the cheapest depth test.  Its
   prediction is FLOORED at the attacker points the clone has already banked
@@ -65,7 +65,7 @@ There is deliberately no "control-variate" mode: a correction centred on
 each candidate's SAME report sample sums to zero, so the corrected paired
 mean is the raw paired mean while the residual per-world SE drops the
 uncertainty of the fitted control mean; substituting that residual for
-``_paired_se`` makes the LCB falsely confident (Codex HOLD, PR #232).  The
+``_paired_se`` makes the LCB falsely confident.  The
 report fold's decision SE is production's raw ``_paired_se``, always.
 
 A checkpoint without a points head is refused; identity checks (encoder

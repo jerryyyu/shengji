@@ -1,13 +1,12 @@
 """One OPTIONAL serving stage after a FINALIZED base decision.
 
 Every optional pv-search stage that runs after the base decision is complete
-(the 4W re-selection of ``adaptive_worlds``, #936; the masked re-selection of
-``doomed_throw_reselect``, #946) has the same contract, and both shipped with
-the same defect in it, caught only in review: an expiry that a NESTED rule
-absorbed (`_select_by_points` catches the deadline and returns its argmax) let
-the stage publish a degraded result after the deadline, or an extra-stage
-overshoot destroyed the completed base decision.  This module is the one
-implementation of that contract:
+(the 4W re-selection of ``adaptive_worlds``; the masked re-selection of
+``doomed_throw_reselect``) has the same contract, and both are exposed to the
+same defect: an expiry that a NESTED rule absorbs (`_select_by_points` catches
+the deadline and returns its argmax) lets the stage publish a degraded result
+after the deadline, or an extra-stage overshoot destroys the completed base
+decision. This module is the one implementation of that contract:
 
 1. the caller has FINALIZED and cached its base result before entering;
 2. on entry the named rule-record attributes of ``owner`` are snapshotted

@@ -1,5 +1,5 @@
 """The recipe of the OPTIONAL paired lookahead tree on the pv-search bot
-("PUCT v2", #436); the search itself is `pv_tree_search`.
+("PUCT v2"); the search itself is `pv_tree_search`.
 
 This module is dependency-free on purpose: `pv_search_policy` imports it for
 the recipe field, the name token and the env parsing, while `pv_tree_search`

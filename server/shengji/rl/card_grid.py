@@ -1,4 +1,4 @@
-"""The card GRID behind the ``grid`` trunk block (issue #411).
+"""The card GRID behind the ``grid`` trunk block.
 
 The value net's inputs are fourteen 54-wide planes per state (nine public
 card-count planes and the five world receivers), so a fact such as "how many

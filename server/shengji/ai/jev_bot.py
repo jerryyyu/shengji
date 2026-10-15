@@ -1,8 +1,5 @@
 """JevBot: card play chosen by TypeSafe's Jev model (a System One "Choice").
 
-Jerry 2026-09-21: "I just made a TypeSafe account for jev — build a harness to
-play shengji for it. Actions need to be encoded."
-
 Every play decision becomes ONE Choice question: the state is the encoded
 public game state from this seat (own hand, trump, the trick on the table and
 who is winning it, previous tricks, points), the criteria are the legal plays

@@ -1,4 +1,4 @@
-"""Counterfactual candidate-value diagnostic on a FIXED audit set (#663 step 3, #677).
+"""Counterfactual candidate-value diagnostic on a FIXED audit set.
 
 Separates, on the same positions and the same sampled worlds, three things the
 served pv-search bundles into one decision:
@@ -14,7 +14,7 @@ served pv-search bundles into one decision:
   when the two heads choose differently, whether admission or ranking is the
   proximate cause.
 
-What this is NOT: #663 step 1 (Codex) measures the ACTUAL K=8 admission under
+What this is NOT: a measurement of the ACTUAL K=8 admission under
 production, world draws and all.  This tool fixes the worlds and asks the
 counterfactual value question -- with the admitted set swapped and the value
 head held fixed, does the argmax move?  The two are complements, not
@@ -327,7 +327,7 @@ def position_metrics(table: Mapping[str, Any], *, tie_eps: float = DEFAULT_TIE_E
     for head, other in ((a, b), (b, a)):
         vo = values[other]
         out[f"ranking.regret_{head}_under_{other}"] = vo[top[other]] - vo[top[head]]
-    # -- swap: admitted set swapped, value head fixed (#663 step 3)
+    # -- swap: admitted set swapped, value head fixed
     for v_head in (a, b):
         v = values[v_head]
         under_a = _argmax(v, adm[a])

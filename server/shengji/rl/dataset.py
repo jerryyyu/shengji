@@ -31,7 +31,7 @@ class TrajectoryWriter:
     out_dir: str
     shard_size: int = 10_000  # smaller shards (was 50k): buffered
     # decisions live in RAM until flush — 50k meant ~8.5h of work at
-    # risk per gen worker (Jerry, 2026-08-03: durability > file count).
+    # risk per gen worker (durability > file count).
     # ~10k = ~100min flush cadence; loaders glob shards, count is free.
     #: the encoder version whose vectors this writer stores (stamped in
     #: every shard); the default stays v1, matching ``encode_obs``.

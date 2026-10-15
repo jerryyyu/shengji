@@ -1,6 +1,6 @@
-"""The decoded pack: a run's cache written ONCE as contiguous memory-mapped arrays (#531).
+"""The decoded pack: a run's cache written ONCE as contiguous memory-mapped arrays.
 
-Measured 2026-09-20 on the Mini (M1's recipe on the v5 corpus, 176k shards): 56% of every
+Measured on the Mini (M1's recipe on the v5 corpus, 176k shards): 56% of every
 training epoch was ``batch_wait`` -- inflating and reconstructing ``.npz`` shards that the
 residency budget cannot keep (``176000 shards decode to 87.4 GB; budget 6.87 GB``).  The pack
 holds the same arrays, already decoded, in a few large files that the OS pages in
@@ -134,7 +134,7 @@ def _ordered_pool(fn, tasks: Sequence[tuple], *, workers: int, window: int | Non
     """``fn`` over ``tasks`` in ``workers`` spawned processes, results in task order, with
     CONSUMER BACKPRESSURE: at most ``window`` (default ``4 * workers``) tasks are submitted
     ahead of the one being yielded, so decoded shards in flight stay bounded however slowly
-    the writer drains them (Codex on #549: ``Pool.imap`` keeps every finished result).  A
+    the writer drains them (``Pool.imap`` would keep every finished result).  A
     task's exception propagates from the yield of its position; the pool is torn down by the
     context manager on the way out."""
     import multiprocessing
@@ -201,8 +201,7 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
     assert half_ok is not None and public_dim is not None
     # The per-row string widths come from EVERY shard, not the classification sample:
     # ``source_ref`` ends in the record's line index, so a later shard can be one
-    # character wider than anything in the first ``classify_shards`` (the 176k v5
-    # build failed at shard 1,001 on <U39 vs <U38, 2026-09-20).  Only the three
+    # character wider than anything in the first ``classify_shards``.  Only the three
     # string members are read here, so this pass is cheap.
     widths = string_widths([path for _shard, path in entries])
     for c in force_float32:
@@ -319,7 +318,7 @@ class CwvPackStore:
                 raise PackError(f"{path}: rows/nbytes differ from the pack's record; rebuild the pack")
             if sidecar_dir is not None:
                 # the baked search_mean_played column is only valid for the sidecar file it was
-                # built from: bind by digest, per shard (Codex, #532)
+                # built from: bind by digest, per shard
                 have = _sidecar_digest(sidecar_dir, shard.sha256)
                 if have != rec.get("sidecar_sha256"):
                     raise PackError(f"{path}: sidecar file for {shard.label} differs from the one the pack "

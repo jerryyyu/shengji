@@ -11,7 +11,7 @@ the determinized clone floored at the clone's banked attacker points
 prior at the leaf (the no-learning control).  The
 baseline is always ``mc-s0-report-lcb`` at its registered N=30 / R=300.
 
-CPU parity (Codex's method, ``README.md``): the arm's decision CPU is
+CPU parity (``README.md``): the arm's decision CPU is
 measured with ``TimedPolicy`` on outcome-blind calibration deals at several
 selection doses N (R unchanged), the ratio to production's decision CPU is
 fitted as a line in N (selection work is proportional to N, the report fold
@@ -74,7 +74,7 @@ DEFAULT_SEED0 = 50_260_904
 #: ... and the calibration deals, apart from the screen's 1,024-cluster range.
 DEFAULT_CALIBRATION_SEED0 = 50_360_904
 DEFAULT_BOOTSTRAP_REPLICATES = 10_000
-#: cluster c deals trump rank trump_ranks[c % len]; the default is #222's
+#: cluster c deals trump rank trump_ranks[c % len]; the default is the
 #: 13-rank cycle.  Every checkpoint so far (Run A/B/C) was trained on rank-2
 #: first rounds and the encoder carries an explicit rank one-hot, so a
 #: learned leaf on another rank is out of distribution: `--trump-ranks 2`
@@ -123,7 +123,7 @@ CALIBRATION_IDENTITY = ("checkpoint_sha256", "leaf_tricks", "leaf_model", "point
 
 
 #: the only ``leaf_mode`` a legacy calibration / config may carry: the
-#: closed control-variate mode (PR #232) was never a valid parity matchup
+#: removed control-variate mode was never a valid parity matchup
 LEGACY_PLAIN_LEAF_MODE = "replace"
 LEGACY_DEFAULT_CV_BETA = 1.0
 

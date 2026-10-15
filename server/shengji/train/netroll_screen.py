@@ -10,7 +10,7 @@ production's own compute curve.  The baseline is always
 ``mc-s0-report-lcb`` at its registered N=30 / R=300, and every arm keeps
 that N/R: the treatment is the rollout policy, never the dose.
 
-Compute is a budget, not a gate (Jerry, 2026-09-05): ``calibrate`` measures
+Compute is a budget, not a gate: ``calibrate`` measures
 the arm's decision CPU/wall against production per ``K`` on outcome-blind
 deals and reports the ratios; ``run`` reports the measured ratios of the
 screen itself next to the utility interval.  Nothing refuses on cost.  A

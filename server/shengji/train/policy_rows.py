@@ -1,4 +1,4 @@
-"""Root-state rows for the joint net's policy head (#425).
+"""Root-state rows for the joint net's policy head.
 
 A root row is what ``policy_prior.extract`` writes: the flat encoder-v2
 tensors of a decision root from the MOVER's seat (``public | world |
@@ -57,7 +57,7 @@ class PolicyRows:
     """The training root rows: ``X`` kept as float16, ballots padded once.
     Rows whose deal is in ``exclude`` (the value run's val/test, the policy
     eval deals, ...) are DROPPED before anything is kept: the policy loss
-    updates the shared trunk, so a root deal is a fit exposure (#428)."""
+    updates the shared trunk, so a root deal is a fit exposure."""
 
     def __init__(self, prefix: str | Path, *, limit: int | None = None,
                  exclude: set[str] | frozenset[str] = frozenset(), version: int = ENC_VERSION):
@@ -84,17 +84,17 @@ class PolicyRows:
         meta = [meta[i] for i in idx]
         ball, mask, tgt = ballot_tensors(meta)
         self.ball, self.mask, self.tgt = ball, mask, tgt
-        # The search's per-candidate values (#496): carried only when EVERY kept row wrote a
-        # ``means`` list -- a pre-#496 extract has the key on no row and yields no ``vals``,
+        # The search's per-candidate values: carried only when EVERY kept row wrote a
+        # ``means`` list -- an extract without them yields no ``vals``,
         # which is a different claim from "the search had no preference" (NaN).  Same slot
         # alignment as the chunked loader: ``ballot_value_tensor`` filters exactly as
-        # ``ballot_tensors`` does.  (Codex on the rebase PR: the monolithic loader dropped them.)
+        # ``ballot_tensors`` does.
         self.vals = None
         if meta and all(isinstance(m.get("means"), list) for m in meta):
             from .policy_prior import ballot_value_tensor
             vals, _has = ballot_value_tensor(meta, b_max=int(ball.shape[1]))
             self.vals = np.asarray(vals, dtype=np.float32)
-        # Exploration tags (#676 D): present only when EVERY kept row wrote ``explore_flag``;
+        # Exploration tags: present only when EVERY kept row wrote ``explore_flag``;
         # an older extract reads as all zeros and says so (``explore_tags: False``), so a
         # weighted run can refuse it rather than upweight nothing.
         from .policy_prior import explore_flag_counts, explore_tag_arrays
@@ -145,16 +145,16 @@ def _to_device(batch: Mapping[str, Any], device) -> dict[str, torch.Tensor]:
 
 def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
     """The scale the soft targets were built on, refused when it is not declared
-    and the rows are not all points (#667 finding 5).  An extract before #650
+    and the rows are not all points.  An extract that
     carries no ``value_units`` and no ``values_scale``: a points-producer extract,
     taken as ``assumed-points``.  Any PRESENT ``values_scale`` other than
     ``"points"`` is refused outright (an explicit declaration is never downgraded
-    to a default; Codex HOLD on #669).  One whose ``value_units`` names a
-    non-points family must say ``values_scale: "points"`` (the #650 temperature
-    calibration), otherwise it is exactly the uniform-target extract of #649.
+    to a default).  One whose ``value_units`` names a
+    non-points family must say ``values_scale: "points"`` (the points temperature
+    calibration); otherwise its soft targets are uniform.
     A COMPOSED directory (``composed_from``) is validated down to its leaves,
     recursively; a cycle is a repeat on the ACTIVE recursion path (a leaf shared
-    by two parts, a diamond, is validated once and accepted; Codex HOLD on #669);
+    by two parts, a diamond, is validated once and accepted);
     a part that cannot be read is a refusal."""
     from .policy_prior import NO_SEARCH_VALUES
     declared = False
@@ -212,7 +212,7 @@ class PolicyRowsStream:
         from .policy_prior import CHUNK_SCHEMA
         self.dir = Path(directory)
         man = json.load(open(self.dir / "manifest.json"))
-        # Extractions before 2026-09-19 carry no enc_version: they are all v2.
+        # A manifest with no enc_version predates the field and is ENC_VERSION (v2).
         if (man.get("schema") != CHUNK_SCHEMA or int(man.get("enc_version", ENC_VERSION)) != int(version)
                 or man.get("input_dim") != input_dim(version)):
             raise ValueError(f"policy rows stream: manifest schema drift (expected encoder v{version}, "
@@ -231,7 +231,7 @@ class PolicyRowsStream:
         # row-aligned with the recorded count.  A replaced or truncated chunk
         # refuses here; passes never re-hash.
         keys: set[str] = set(); excluded: set[str] = set(); rows_used = 0; in_ballot = 0; verified: list[str] = []
-        # Exploration tags (#676 D): an extract carries them only when the manifest says so AND
+        # Exploration tags: an extract carries them only when the manifest says so AND
         # every chunk has the arrays; otherwise the stream reads the flag as 0 on every row.
         self.explore_tags = bool(man.get("explore_tags", False))
         flag_counts = np.zeros(3, dtype=np.int64)
@@ -293,9 +293,9 @@ class PolicyRowsStream:
                 return array if all_kept else array[keep]
 
             out = {k: selected(k) for k in ("X", "Y", "ball", "mask", "tgt")}
-            if "vals" in d.files:          # present only in post-#496 extracts
+            if "vals" in d.files:          # optional: older extracts have none
                 out["vals"] = selected("vals")
-            if "explore_flag" in d.files:  # #676 D tags; an older chunk reads as flag 0 / margin NaN
+            if "explore_flag" in d.files:  # optional; an older chunk reads as flag 0 / margin NaN
                 out["explore_flag"] = selected("explore_flag").astype(np.int8, copy=False)
                 out["explore_margin"] = selected("explore_margin").astype(np.float32, copy=False)
             else:
@@ -312,7 +312,7 @@ class PolicyRowsStream:
             ball = _pad_concat([p["ball"] for p in parts], -1)
             mask = _pad2_concat([p["mask"] for p in parts], ball.shape[1], False)
             tgt = np.concatenate([p["tgt"] for p in parts])
-            # `vals` is OPTIONAL: pre-#496 extracts (policy_rows_v7 and earlier) have none.
+            # `vals` is OPTIONAL: older extracts (policy_rows_v7 and earlier) have none.
             # Carry it only when EVERY chunk in the window has it -- fabricating NaNs for the
             # chunks that do not would look like "the search had no preference here", which is
             # a different claim from "this extract predates the field".
@@ -348,9 +348,9 @@ class PolicyRowsStream:
 def _pad2_concat(arrays, width: int, fill, *, float32_when_narrow: bool = False) -> np.ndarray:
     """Concatenate row arrays into one padded allocation.
 
-    ``float32_when_narrow`` mirrors ``_pad2f``: a narrower input was previously
-    materialized as float32 before concatenation, which can promote the whole
-    result even when the other inputs already have the target width.
+    ``float32_when_narrow`` keeps the dtype a pad-then-concatenate would give: a
+    narrower input is padded as float32, which can promote the whole result even
+    when the other inputs already have the target width.
     """
     dtypes = [np.float32 if float32_when_narrow and a.shape[1] < width else a.dtype
               for a in arrays]
@@ -393,10 +393,10 @@ def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=froz
 
 
 def explore_row_weights(explore_flag: torch.Tensor, explore_weight: float) -> torch.Tensor | None:
-    """Per-row loss weights for ``--policy-explore-weight`` (#676 D): ``explore_weight``
+    """Per-row loss weights for ``--policy-explore-weight``: ``explore_weight``
     on rows whose flag is 2 (an exploration draw beat the shortlist), 1.0 elsewhere.
     ``None`` at weight 1.0 -- the trainer then takes the unweighted code path, so a
-    run at the default is the pre-#676 run to the bit, not a weighted mean of ones."""
+    run at the default is the unweighted run to the bit, not a weighted mean of ones."""
     if float(explore_weight) == 1.0:
         return None
     from .policy_prior import EXPLORE_FLAG_BEAT
@@ -429,9 +429,9 @@ def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: floa
                   trunk_grad_scale: float = 1.0):
     """``(bce, listwise, logits)`` of the policy head on one root batch.  With
     ``detach`` the head reads the trunk features through a stop-gradient: the
-    policy loss trains the head only and never moves the shared trunk (#425
-    step after J1: the head's recall on frozen value features at zero value cost).
-    ``row_weight`` (b,) float weights BOTH terms per row (#676 D: the BCE as a
+    policy loss trains the head only and never moves the shared trunk (the head's
+    recall on frozen value features at zero value cost).
+    ``row_weight`` (b,) float weights BOTH terms per row (the BCE as a
     weighted mean of per-row card means, the listwise term as a weighted mean over
     the rows with a ballot target); ``None`` is the unweighted reduction.  An
     all-ones vector gives the same listwise tensor and the BCE to one float32 ulp
@@ -473,7 +473,7 @@ def policy_log_odds(model, X: np.ndarray, device, batch_size: int = 2048) -> np.
 
 
 class PolicyEval:
-    """Held-out root rows (the #419 probe set, with deal keys) read once.
+    """Held-out root rows (the policy-prior probe set, with deal keys) read once.
     Rows whose deal is in ``exclude`` (the value run's fit deals) are dropped
     so the reported recall is on deals the trunk never trained on."""
 

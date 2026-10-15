@@ -41,17 +41,17 @@ _WIDTH_FIELDS = ("public_dim", "enc_version")
 #: every checkpoint archived before the depth arms existed still loads.
 _TRUNK_FIELDS = ("trunk_layers", "trunk_block")
 _LEGACY_TRUNK = {"trunk_layers": 2, "trunk_block": "plain"}
-#: #373: an optional second 204-class head on the same mlp trunk, trained on
+#: an optional second 204-class head on the same mlp trunk, trained on
 #: the search-mean soft target, and the name of the head every consumer reads
 #: (``value_head``).  Omitted from the payload at the legacy values so every
 #: checkpoint trained before the option existed keeps its stored config.
 _HEAD_FIELDS = ("search_head", "value_head")
 _LEGACY_HEAD = {"search_head": False, "value_head": "outcome"}
-#: #411: the ``grid`` trunk block's convolution width; omitted from every
+#: the ``grid`` trunk block's convolution width; omitted from every
 #: payload whose trunk is not a grid, so archived configs compare unchanged.
 _GRID_FIELDS = ("grid_channels",)
 _LEGACY_GRID = {"grid_channels": 0}
-#: #425: an optional 54-card policy head on the same mlp trunk (root-state
+#: an optional 54-card policy head on the same mlp trunk (root-state
 #: action prior); omitted from every payload without it, so archived configs
 #: compare unchanged and a headless net never grows the module.
 _POLICY_FIELDS = ("policy_head",)
@@ -90,13 +90,13 @@ class ValueModelConfig:
     #: defaults so a v1 checkpoint's stored config is what it always was.
     public_dim: int = PUBLIC_DIM
     enc_version: int = ENC_VERSION
-    #: #373 two-head net: ``search_head`` adds ``ValueNetwork.search_head``
+    #: two-head net: ``search_head`` adds ``ValueNetwork.search_head``
     #: (mlp only); ``value_head`` names the head ``forward`` returns by
     #: default ("outcome" = the realised-outcome head every model has).
     search_head: bool = False
     value_head: str = "outcome"
-    #: #425 joint net: ``policy_head`` adds ``ValueNetwork.policy_head`` (54
-    #: card logits over the mlp trunk; the factorised action prior of #419).
+    #: joint net: ``policy_head`` adds ``ValueNetwork.policy_head`` (54
+    #: card logits over the mlp trunk; a factorised action prior).
     policy_head: bool = False
     #: policy tower: ``policy_tower_layers`` residual blocks (the trunk's block
     #: style, ``ResidualTrunkBlock``) applied to the trunk features on the POLICY
@@ -251,7 +251,7 @@ class ResidualTrunkBlock(nn.Module):
 
 
 class GridTrunk(nn.Module):
-    """#411: the ``grid`` trunk block.  Lays the fourteen card planes out as
+    """The ``grid`` trunk block.  Lays the fourteen card planes out as
     ``GRID_ROWS x GRID_COLS`` cells (``card_grid``), reads each cell with its
     two neighbours along the row (a width-3 window, weights shared across rows
     and levels), summarises every row by mean and max and ADDS a projection of
@@ -406,16 +406,16 @@ class ValueNetwork(nn.Module):
                 self.trunk = nn.Sequential(nn.Linear(din, width), *blocks,
                                            nn.LayerNorm(width), nn.ReLU())
             elif config.trunk_block == "grid":
-                # #411: the card planes read as a suit x level table.
+                # the card planes read as a suit x level table.
                 self.trunk = GridTrunk(config)
             else:
                 raise ValueModelError("trunk_block must be plain, residual or grid")
             self.head = nn.Linear(width, OUTCOME_CLASSES)
             if config.search_head:
-                # #373: the second head, same trunk, search-mean soft target.
+                # the second head, same trunk, search-mean soft target.
                 self.search_head = nn.Linear(width, OUTCOME_CLASSES)
             if config.policy_head:
-                # #425: the action prior, same trunk, 54 card log-odds.
+                # the action prior, same trunk, 54 card log-odds.
                 self.policy_head = nn.Linear(width, N_CARDS)
             if config.policy_tower_layers:
                 # Policy-only layers.  Built AFTER every other module, so the
@@ -486,7 +486,7 @@ class ValueNetwork(nn.Module):
         raise ValueModelError(f"unknown value head {head!r}")
 
     def policy_logits(self, features: torch.Tensor) -> torch.Tensor:
-        """#425: the 54 card log-odds of the policy head over mlp trunk features.
+        """The 54 card log-odds of the policy head over mlp trunk features.
         With a policy tower the features pass through its blocks first; the
         tower is on this path ONLY (``head_logits`` and the aux head read the
         trunk features directly and never see it)."""

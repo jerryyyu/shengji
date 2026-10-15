@@ -27,7 +27,6 @@ server/tests/test_encoder_default_version.py
 server/tests/test_encoder_identity.py
 server/tests/test_encoder_v4_opponent_pairs.py
 server/tests/test_encoder_v5_banker_kitty.py
-server/tests/test_endgame.py
 server/tests/test_eval_block_skip.py
 server/tests/test_evaluation_lib.py
 server/tests/test_exploit_belief.py

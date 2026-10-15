@@ -2,9 +2,11 @@
 
 This is an opt-in diagnostic seam.  It accepts only already-determinized
 worlds; it never completes a missing hand from the live round and never calls
-an evaluator.  One :class:`ExactWorldSession` is shared by all candidates in
-one world, while the transposition table is deliberately not shared between
-worlds.
+an evaluator.  One exact session is shared by all candidates in one world,
+while the transposition table is deliberately not shared between worlds.  The
+session is :class:`~shengji.ai.endgame_compact.CompactWorldSession`, the
+compact-state twin of :class:`~shengji.ai.endgame.ExactWorldSession` (same
+values, node and cache-hit counts; compiled when the engine is).
 """
 
 from __future__ import annotations
@@ -14,7 +16,8 @@ from collections.abc import Callable, Sequence
 
 import numpy as np
 
-from ..ai.endgame import ExactEndgameRefusal, ExactWorldSession
+from ..ai.endgame import ExactEndgameRefusal
+from ..ai.endgame_compact import CompactWorldSession
 from ..engine.round import Round
 from ..rl.value_afterstate import category_signed_level, signed_level_category
 from .cwv_prior_admission import root_clone
@@ -94,7 +97,7 @@ def exact_lead_means(
 
     for world_index, (hands, buried) in enumerate(validated_worlds):
         world_root = root_clone(rnd, hands, buried)
-        session = ExactWorldSession(
+        session = CompactWorldSession(
             world_root, max_hand_cards=4, max_nodes=max_nodes,
             check_budget=check_budget, alpha_beta=True)
         for action_index, action in enumerate(candidate_actions):

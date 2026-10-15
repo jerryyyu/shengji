@@ -18,6 +18,27 @@ from test_belief_labels import synthetic_cluster
 from shengji.engine.cards import Ordering
 from shengji.harvest.legal import iter_lead_actions
 from shengji.rl.encode import CARD_INDEX
+from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA
+
+
+@pytest.mark.production_package
+def test_production_head_complete_state_matches_enumerated_consumer(pinned_production_package, monkeypatch):
+    """Real sampler, trained head, mixed history and stored consumer outputs."""
+    import shengji.harvest.legal as legal
+    from shengji.train.pv_search_policy import NumpyPriorPredict
+    predict = NumpyPriorPredict(str(pinned_production_package), PACKAGE_SHA)
+    view = _views(synthetic_cluster(1000), picks=(30,))[0]
+    fast, slow = ww.Collected(), ww.Collected()
+    kwargs = dict(worlds=8, cap=4000, key='s22-local-fixture',
+                  state_id=0, store_index=0, cluster_index=0)
+    ww.collect_state(view, predict, int(predict.version), out=fast, **kwargs)
+    monkeypatch.setattr(legal, 'count_lead_actions', lambda *args: None)
+    ww.collect_state(view, predict, int(predict.version), out=slow, **kwargs)
+    assert any(m[2] for m in fast.ev_meta) and any(not m[2] for m in fast.ev_meta)
+    for field in ('counts', 'agreement', 'truth', 'meta', 'ev_meta', 'kitty_x', 'ev_state'):
+        np.testing.assert_array_equal(getattr(fast, field), getattr(slow, field))
+    for reading in ww.READINGS:
+        np.testing.assert_array_equal(fast.ev_logp[reading], slow.ev_logp[reading])
 
 
 @pytest.mark.parametrize('trump', ['H', None])

@@ -79,7 +79,9 @@ def test_value_only_bury_preserves_action_without_mc_targets():
     assert not fields['allocation']['searched']
     search = fields['action_values']['bury_search']
     assert search['model_means'] == raw['model_means']
-    assert search['wide_value'] == raw['wide_value']
+    assert 'seconds' in raw['wide_value']  # runtime producer remains unchanged
+    assert search['wide_value'] == {
+        k: v for k, v in raw['wide_value'].items() if k != 'seconds'}
     assert search['model_values_are_mc_targets'] is False
     for key, value in [('mc_rollouts', 1), ('selection_worlds', 1),
                        ('picked_index', -1), ('fallback_reason', 'budget')]:

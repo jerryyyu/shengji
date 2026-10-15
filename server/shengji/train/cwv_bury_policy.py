@@ -476,7 +476,9 @@ def trajectory_bury_record(raw: dict) -> dict:
             "level_objective": None if evidence is None else evidence["level_objective"],
             "incumbent_margin": None if evidence is None else evidence["incumbent_margin"],
             "model_values_are_mc_targets": False,
-            **({"wide_value": dict(wide)} if wide is not None else {}),
+            **({"wide_value": {key: value for key, value in wide.items()
+                               if key != "seconds"}}
+               if wide is not None else {}),
         },
     }
 

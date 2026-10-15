@@ -138,7 +138,10 @@ def test_pv_records_carry_the_admitted_ballot_and_priced_values(data_policy, tmp
     assert buries and all(r["allocation"]["searched"] for r in buries)
 
 
-def test_explore_zero_is_the_served_bot_and_a_rerun_is_byte_identical(data_policy, tmp_path):
+@pytest.mark.parametrize("policy_fixture", ["data_policy", "wide_bury_policy"])
+def test_explore_zero_is_the_served_bot_and_a_rerun_is_byte_identical(
+        policy_fixture, request, tmp_path, package):
+    data_policy = request.getfixturevalue(policy_fixture)
     a = _gen(tmp_path / "a", data_policy, explore_rate=0.0, explore_k=0)
     b = _gen(tmp_path / "b", data_policy, explore_rate=0.0, explore_k=0)
     assert a["bytes"] == b["bytes"]

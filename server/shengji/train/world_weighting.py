@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import dataclasses
 import hashlib
 import json
 import math
@@ -75,8 +76,10 @@ SERVED_CAP = 4000
 CALIB, TEST = 0.06, 0.12
 LISTWISE, BERNOULLI = "listwise", "bernoulli"
 READINGS = (LISTWISE, BERNOULLI)
-#: log-probabilities are stored at float16, floored here (far below any floor used)
+#: log-probabilities are stored at float16, floored here (far below any floor used);
+#: a world in which the play is illegal is stored at ``ILLEGAL``
 LOGP_FLOOR = -30.0
+ILLEGAL = -60.0
 
 
 class WorldWeightingError(ValueError):
@@ -108,8 +111,10 @@ def iter_states(records: Iterable[Mapping[str, Any]], *, ordered: bool = False,
                 want: Callable[[Decision], bool] | None = None) -> Iterator[StateView]:
     """`belief_labels.iter_decisions` with each round's earlier plays attached.
 
-    ``want`` picks the decisions to yield; every play is still snapshotted, since
-    a later chosen decision needs all of them."""
+    Each yielded decision carries a private copy of its state, so a view stays
+    valid after the replay moves on.  ``want`` picks the decisions to yield;
+    every play is still snapshotted, since a later chosen decision needs all of
+    them."""
     events: list[PlayEvent] = []
     start = None
     current = None
@@ -120,7 +125,8 @@ def iter_states(records: Iterable[Mapping[str, Any]], *, ordered: bool = False,
             start = copy.deepcopy(d.rnd)
         snap = copy.deepcopy(d.rnd)
         if want is None or want(d):
-            yield StateView(d, list(events), start, d.record["setup"])
+            yield StateView(dataclasses.replace(d, rnd=snap), list(events), start,
+                            d.record["setup"])
         attempted = list(d.record["action"])
         played = list(d.record.get("engine_play") or attempted)
         events.append(PlayEvent(d.seat, attempted, played, snap, len(snap.history) + 1))
@@ -224,8 +230,15 @@ def event_log_probs(predict, version: int, event: PlayEvent, since: Sequence[Cou
         h = hands_at(event, since, actor, hands)
         clone = root_clone(event.snap, h, buried)
         rows.append(flat_input(root_tensors(clone, event.seat, version), version))
-        legal = enumerate_legal(clone, event.seat, cap=cap, must_include=[event.attempted])
-        legal_sets.append(legal.actions)
+        try:
+            legal = enumerate_legal(clone, event.seat, cap=cap, must_include=[event.attempted])
+            legal_sets.append(legal.actions)
+        except ValueError as exc:
+            # the world contradicts the play itself (a follow-suit or pair rule the
+            # sampler's constraints do not carry): probability zero
+            if "must_include action is illegal" not in str(exc):
+                raise
+            legal_sets.append(None)
         hc = np.zeros(N_CARDS, np.float64)
         for card in h[event.seat]:
             hc[CARD_INDEX[card]] += 1
@@ -237,6 +250,10 @@ def event_log_probs(predict, version: int, event: PlayEvent, since: Sequence[Cou
     listwise = np.empty(len(worlds))
     n_legal = np.empty(len(worlds), np.int32)
     for w, actions in enumerate(legal_sets):
+        if actions is None:
+            listwise[w] = -np.inf
+            n_legal[w] = 0
+            continue
         mult = np.zeros((len(actions), N_CARDS))
         at = -1
         for i, action in enumerate(actions):
@@ -254,6 +271,7 @@ def event_log_probs(predict, version: int, event: PlayEvent, since: Sequence[Cou
     log_p = -np.logaddexp(0.0, -lo)                  # log sigmoid
     log_q = -np.logaddexp(0.0, lo)                   # log (1 - sigmoid)
     bernoulli = (target * log_p + (hc - target) * log_q).sum(axis=1)
+    bernoulli[n_legal == 0] = -np.inf
     return {LISTWISE: listwise, BERNOULLI: bernoulli, "legal": n_legal}
 
 
@@ -310,7 +328,8 @@ def collect_state(view: StateView, predict, version: int, *, worlds: int, cap: i
             since = played_since(view.events, i)
             got = event_log_probs(predict, version, ev, since, seat, ws, cap=cap)
             for r in READINGS:
-                out.ev_logp[r].append(np.maximum(got[r], LOGP_FLOOR).astype(np.float16))
+                v = np.where(np.isneginf(got[r]), ILLEGAL, np.maximum(got[r], LOGP_FLOOR))
+                out.ev_logp[r].append(v.astype(np.float16))
             current = len(rnd.history) + 1
             out.ev_state.append(state_id)
             out.ev_meta.append((current - ev.trick, int(ev.seat == partner),
@@ -428,19 +447,30 @@ def collect(stores: Sequence[str], out: str, *, package: str, sha256: str, world
 
 # ------------------------------------------------------------------ analysis
 
-def load(out: str | os.PathLike) -> dict:
-    """Every chunk of a collection, concatenated; event rows re-pointed to state rows."""
-    out_dir = Path(out)
-    manifest = json.loads((out_dir / "manifest.json").read_text())
+def load(outs: str | os.PathLike | Sequence[str | os.PathLike]) -> dict:
+    """Every chunk of one or more collections, concatenated; event rows re-pointed
+    to state rows.  State ids are unique within a collection, so each collection
+    is offset by its position."""
+    if isinstance(outs, (str, os.PathLike)):
+        outs = [outs]
     parts = []
-    for chunk in manifest["chunks"]:
-        if not chunk.get("file"):
-            continue
-        path = out_dir / chunk["file"]
-        if hashlib.sha256(path.read_bytes()).hexdigest() != chunk["sha256"]:
-            raise WorldWeightingError(f"{path}: sha256 mismatch")
-        with np.load(path) as z:
-            parts.append({k: z[k] for k in z.files})
+    manifests = []
+    for n, out in enumerate(outs):
+        out_dir = Path(out)
+        manifest = json.loads((out_dir / "manifest.json").read_text())
+        manifests.append(manifest)
+        for chunk in manifest["chunks"]:
+            if not chunk.get("file"):
+                continue
+            path = out_dir / chunk["file"]
+            if hashlib.sha256(path.read_bytes()).hexdigest() != chunk["sha256"]:
+                raise WorldWeightingError(f"{path}: sha256 mismatch")
+            with np.load(path) as z:
+                part = {k: z[k] for k in z.files}
+            part["meta"] = part["meta"].copy()
+            part["meta"][:, 0] += n * 10 ** 12
+            part["ev_state"] = part["ev_state"] + n * 10 ** 12
+            parts.append(part)
     if not parts:
         raise WorldWeightingError("no states collected")
     widths = {p["agreement"].shape[1] for p in parts if p["agreement"].size}
@@ -449,7 +479,7 @@ def load(out: str | os.PathLike) -> dict:
     data = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
     row_of = {int(s): i for i, s in enumerate(data["meta"][:, 0])}
     data["ev_row"] = np.asarray([row_of[int(s)] for s in data["ev_state"]], np.int64)
-    data["manifest"] = manifest
+    data["manifest"] = manifests
     return data
 
 
@@ -464,6 +494,8 @@ class Variant:
     max_offset: int | None = None        # None: the whole round; 1: current + previous trick
     filter: bool = False                 # hard keep/drop at eps (thresholds), not a floor
     min_keep: int = 20
+    zero_illegal: bool = False           # a world in which a play is illegal gets weight 0
+    legality_only: bool = False          # no likelihood: only the illegal-world zeroing
 
 
 def variant_log_weights(data: Mapping[str, np.ndarray], v: Variant) -> np.ndarray:
@@ -476,6 +508,14 @@ def variant_log_weights(data: Mapping[str, np.ndarray], v: Variant) -> np.ndarra
         keep &= em[:, 0] <= v.max_offset
     eps = np.where(em[:, 1] == 1, v.eps_partner, v.eps_opponent)
     rows = data["ev_row"]
+    illegal = np.zeros((S, W), bool)
+    if v.zero_illegal or v.legality_only:
+        for e in np.nonzero(keep)[0]:
+            illegal[rows[e]] |= logp[e] <= ILLEGAL / 2
+        # a state whose every world is contradicted keeps them all (uniform)
+        illegal &= ~illegal.all(axis=1, keepdims=True)
+    if v.legality_only:
+        return np.where(illegal, -np.inf, 0.0)
     if v.filter:
         ok = np.ones((S, W), bool)
         margin = np.zeros((S, W))
@@ -492,7 +532,7 @@ def variant_log_weights(data: Mapping[str, np.ndarray], v: Variant) -> np.ndarra
     out = np.zeros((S, W))
     for e in np.nonzero(keep)[0]:
         out[rows[e]] += v.beta * np.maximum(logp[e], math.log(eps[e]))
-    return out
+    return np.where(illegal, -np.inf, out)
 
 
 def normalise(logw: np.ndarray) -> np.ndarray:
@@ -555,16 +595,20 @@ DEFAULT_VARIANTS = (
     Variant("lw_b05_e02_recent", LISTWISE, 0.5, 0.02, 0.02, max_offset=1),
     Variant("lw_filter_ben", LISTWISE, 1.0, 0.10, 0.03, filter=True),
     Variant("lw_filter_ben_recent", LISTWISE, 1.0, 0.10, 0.03, max_offset=1, filter=True),
+    Variant("legal_only", legality_only=True),
+    Variant("lw_b1_e02_zi", LISTWISE, 1.0, 0.02, 0.02, zero_illegal=True),
+    Variant("lw_b05_e02_zi", LISTWISE, 0.5, 0.02, 0.02, zero_illegal=True),
+    Variant("lw_b1_split_zi", LISTWISE, 1.0, 0.10, 0.03, zero_illegal=True),
     Variant("bn_b1_e02", BERNOULLI, 1.0, 0.02, 0.02),
     Variant("bn_b05_e02", BERNOULLI, 0.5, 0.02, 0.02),
 )
 
 
-def analyze(out: str, *, variants: Sequence[Variant] = DEFAULT_VARIANTS,
+def analyze(out, *, variants: Sequence[Variant] = DEFAULT_VARIANTS,
             extra: Mapping[str, np.ndarray] | None = None, resample: int = 64) -> dict:
     """Score every variant; ``extra`` adds named ``(S, W)`` log-weight arrays
     (a kitty head, a belief model) alone and on top of each likelihood variant."""
-    data = load(out)
+    data = out if isinstance(out, dict) else load(out)
     S, W = data["agreement"].shape
     report: dict[str, Any] = {"states": int(S), "worlds": int(W), "events": int(len(data["ev_state"]))}
     report["uniform"] = score(data, np.zeros((S, W)), resample=resample)
@@ -572,7 +616,7 @@ def analyze(out: str, *, variants: Sequence[Variant] = DEFAULT_VARIANTS,
         report[v.name] = score(data, variant_log_weights(data, v), resample=resample)
     for name, lw in (extra or {}).items():
         report[name] = score(data, lw, resample=resample)
-        for v in variants[:2]:
+        for v in variants:
             report[f"{v.name}+{name}"] = score(data, variant_log_weights(data, v) + lw,
                                                resample=resample)
     t = data["timings"]
@@ -610,7 +654,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--workers", type=int, default=4)
     c.add_argument("--no-events", action="store_true", help="worlds and agreement only")
     a = sub.add_parser("analyze", help="score the weighting variants")
-    a.add_argument("--out", required=True)
+    a.add_argument("--out", action="append", required=True)
     a.add_argument("--kitty-head", default=None, help="a kitty_inference checkpoint to add as weights")
     a.add_argument("--report", default=None)
     return ap
@@ -629,11 +673,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "analyze":
         extra = None
+        data = load(args.out)
         if args.kitty_head:
             from . import kitty_inference
-            data = load(args.out)
             extra = {"kitty": kitty_inference.world_log_weights(args.kitty_head, data)}
-        rep = analyze(args.out, extra=extra)
+        rep = analyze(data, extra=extra)
         text = json.dumps(rep, indent=1)
         if args.report:
             Path(args.report).write_text(text)

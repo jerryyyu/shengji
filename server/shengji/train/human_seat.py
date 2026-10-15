@@ -12,8 +12,10 @@ replays to its logged end; rounds tagged as evaluation-only
 
 Per decision (``extract``):
 
-* the legal set: ``harvest.legal.enumerate_legal`` (serving's cap) with the
-  human action and the heuristic anchor forced in;
+* the action SUPPORT (``action_support``): ``harvest.legal.enumerate_legal`` at
+  serving's cap with only the heuristic anchor forced in -- a function of the
+  actor's view, never of the observed action -- and the REMAINDER, the number of
+  legal actions the cap left out (``LegalSet.count`` minus the support);
 * the SERVED policy preference of every legal action: the package's policy
   log-odds summed over the action's cards, mean over the served sampler's 64
   worlds (``PVSearchBot._worlds`` and ``PVSearchBot.scores``, the admission's
@@ -22,8 +24,15 @@ Per decision (``extract``):
   (card counts, ``infoset_q.candidate_features``, heuristic-anchor flag, the
   served preference's rank and mean card level).
 
-Models (``fit``), compared by NLL of the human action under a softmax over the
-legal set, cross-validated by ROOM (every round of a room in one fold):
+Likelihood (``normalized_nll``): every model scores the support; each of the
+``remainder`` unscored legal actions takes the support's lowest logit.  That is
+a distribution over the WHOLE legal set whose normaliser does not depend on the
+observed action (it sums to one over every possible observation), and on a
+complete enumeration it is the plain softmax.  An observed action outside the
+support gets the remainder's per-action probability.
+
+Models (``fit``), compared by that NLL, cross-validated by ROOM (every round of
+a room in one fold):
 
 * ``served`` -- softmax of the served preference (temperature 1);
 * ``served_t`` -- the same with one temperature fitted on the training folds;
@@ -54,7 +63,7 @@ import numpy as np
 from ..rl.encode import N_CARDS
 from .infoset_q import CAND_DIM, IN_DIM, actor_inputs, candidate_features, card_counts
 
-SCHEMA = "shengji-human-seat-v1"
+SCHEMA = "shengji-human-seat-v2"
 EXTRA_FEATURES = ("is_anchor", "pref_rank", "mean_level", "pref_centered")
 ACT_DIM = N_CARDS + CAND_DIM + len(EXTRA_FEATURES)
 
@@ -149,12 +158,28 @@ def extract_room(path: str, package: str, sha256: str) -> dict:
     return {"room": room, "rows": rows, "stats": dict(stats)}
 
 
+def action_support(rnd, seat, anchor, cap, enumerate_legal=None):
+    """``(actions, remainder)``: the scored support and the count of legal actions
+    outside it.  Takes no observed action, so the support and the normaliser are
+    the same whatever the human played."""
+    if enumerate_legal is None:
+        from ..harvest.legal import enumerate_legal
+    legal = enumerate_legal(rnd, seat, cap=cap, must_include=[list(anchor)])
+    actions = [list(a) for a in legal.actions]
+    if legal.count is None:
+        raise HumanSeatError("uncountable legal set: no normaliser")
+    remainder = int(legal.count) - len(actions)
+    if remainder < 0 or (legal.complete and remainder):
+        raise HumanSeatError(f"support {len(actions)} exceeds the legal count {legal.count}")
+    return actions, remainder
+
+
 def _decision(bot, rnd, seat, cards, is_bot, room, round_no, HeuristicBot, enumerate_legal):
     anchor = HeuristicBot.decide_play(bot, rnd, seat)
-    legal = enumerate_legal(rnd, seat, cap=bot.cap, must_include=[list(cards), list(anchor)])
-    actions = [list(a) for a in legal.actions]
+    actions, remainder = action_support(rnd, seat, anchor, bot.cap, enumerate_legal)
     keys = [tuple(sorted(a)) for a in actions]
-    chosen = keys.index(tuple(sorted(cards)))
+    key = tuple(sorted(cards))
+    chosen = keys.index(key) if key in keys else -1      # -1: a remainder action
     anchor_i = keys.index(tuple(sorted(anchor)))
     worlds, _ = bot._worlds(rnd, seat)
     pref = np.asarray(bot.scores(rnd, seat, actions, worlds).mean(axis=0), np.float32)
@@ -173,11 +198,11 @@ def _decision(bot, rnd, seat, cards, is_bot, room, round_no, HeuristicBot, enume
     return {
         "room": room, "round": int(round_no), "seat": int(seat),
         "x": actor_inputs(rnd, seat).astype(np.float16), "act": feats, "pref": pref,
-        "chosen": int(chosen), "anchor": int(anchor_i),
+        "chosen": int(chosen), "anchor": int(anchor_i), "remainder": int(remainder),
         "partner_of_bot": bool(is_bot[(seat + 2) % 4]),
         "opponent_of_bot": bool(is_bot[(seat + 1) % 4] or is_bot[(seat + 3) % 4]),
         "leading": bool(not rnd.trick.plays), "trick": len(rnd.history) + 1,
-        "legal_count": len(actions), "legal_complete": bool(legal.complete),
+        "legal_count": len(actions) + remainder, "legal_complete": remainder == 0,
     }
 
 
@@ -223,6 +248,8 @@ def extract(logs: Sequence[str], manifest: str | None, out: str, *, package: str
         "offsets": offsets.astype(np.int64),
         "chosen": np.asarray([r["chosen"] for r in rows], np.int32),
         "anchor": np.asarray([r["anchor"] for r in rows], np.int32),
+        "remainder": np.asarray([r["remainder"] for r in rows], np.int64),
+        "legal_count": np.asarray([r["legal_count"] for r in rows], np.int64),
         "room": np.asarray([r["room"] for r in rows]),
         "round": np.asarray([r["round"] for r in rows], np.int32),
         "seat": np.asarray([r["seat"] for r in rows], np.int8),
@@ -252,24 +279,35 @@ def _segments(offsets: np.ndarray, idx: np.ndarray):
     return flat, seg, starts
 
 
-def _local(seg: np.ndarray, chosen: np.ndarray) -> np.ndarray:
-    """Positions of the chosen actions inside a flat segment layout."""
-    return np.searchsorted(seg, np.arange(len(chosen))) + chosen
+def _first(seg: np.ndarray, n: int) -> np.ndarray:
+    """Position of each segment's first action inside a flat layout."""
+    return np.searchsorted(seg, np.arange(n))
 
 
-def nll_from_logits(logits: np.ndarray, seg: np.ndarray, n: int, chosen_flat: np.ndarray
-                    ) -> np.ndarray:
+def normalized_nll(logits: np.ndarray, seg: np.ndarray, n: int, chosen: np.ndarray,
+                   remainder: np.ndarray) -> np.ndarray:
+    """NLL of the observed action under the support softmax extended to the whole
+    legal set: each of a decision's ``remainder`` unscored legal actions takes the
+    support's lowest logit.  ``chosen`` is the index inside the support, -1 for a
+    remainder action.  The normaliser never reads ``chosen``."""
+    logits = np.asarray(logits, np.float64)
     m = np.full(n, -np.inf)
     np.maximum.at(m, seg, logits)
+    floor = np.full(n, np.inf)
+    np.minimum.at(floor, seg, logits)
     z = np.zeros(n)
     np.add.at(z, seg, np.exp(logits - m[seg]))
-    return -(logits[chosen_flat] - m - np.log(z))
+    z += np.asarray(remainder, np.float64) * np.exp(floor - m)
+    inside = chosen >= 0
+    got = floor.copy()
+    got[inside] = logits[_first(seg, n)[inside] + chosen[inside]]
+    return -(got - m - np.log(z))
 
 
-def fit_temperature(pref, seg, n, chosen_flat) -> float:
+def fit_temperature(pref, seg, n, chosen, remainder) -> float:
     best = (None, 1.0)
     for t in np.exp(np.linspace(np.log(0.05), np.log(5.0), 121)):
-        v = nll_from_logits(pref * t, seg, n, chosen_flat).mean()
+        v = normalized_nll(pref * t, seg, n, chosen, remainder).mean()
         if best[0] is None or v < best[0]:
             best = (v, float(t))
     return best[1]
@@ -286,6 +324,7 @@ def train_head(data, train_idx, val_idx, *, kind: str, t0: float, epochs: int, l
     pref = data["pref"].astype(np.float32)
     offsets = data["offsets"]
     chosen = data["chosen"]
+    remainder = data["remainder"].astype(np.float32)
     nn = torch.nn
 
     class Head(nn.Module):
@@ -312,15 +351,19 @@ def train_head(data, train_idx, val_idx, *, kind: str, t0: float, epochs: int, l
         xs = torch.from_numpy((X[idx] - mu) / sd)
         return (xs, torch.from_numpy(act[flat]), torch.from_numpy(pref[flat]),
                 torch.from_numpy(seg),
-                torch.from_numpy(np.searchsorted(seg, np.arange(len(idx))) + chosen[idx]),
+                torch.from_numpy(_first(seg, len(idx)) + np.maximum(chosen[idx], 0)),
+                torch.from_numpy(chosen[idx] >= 0), torch.from_numpy(remainder[idx]),
                 len(idx))
 
     def loss_of(model, b):
-        xs, a, p, seg, ch, n = b
+        xs, a, p, seg, ch, inside, rem, n = b
         logits = model(xs, a, p, seg)
         m = torch.full((n,), -1e30).scatter_reduce(0, seg, logits, reduce="amax")
+        floor = torch.full((n,), 1e30).scatter_reduce(0, seg, logits, reduce="amin")
         z = torch.zeros(n).index_add(0, seg, torch.exp(logits - m[seg]))
-        return -(logits[ch] - m - torch.log(z)), logits
+        z = z + rem * torch.exp(floor - m)
+        got = torch.where(inside, logits[ch], floor)
+        return -(got - m - torch.log(z)), logits
 
     model = Head()
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
@@ -362,10 +405,11 @@ def fit(path: str, out: str, *, folds: int, epochs: int, seed: int, log=print) -
     offsets = data["offsets"]
     all_idx = np.arange(n)
     flat, seg, starts = _segments(offsets, all_idx)
-    chosen_flat = starts + data["chosen"]
+    chosen = data["chosen"]
+    rem = data["remainder"]
     pref = data["pref"].astype(np.float64)
-    nll = {"served": nll_from_logits(pref[flat], seg, n, chosen_flat),
-           "uniform": np.log(np.diff(offsets).astype(np.float64)),
+    nll = {"served": normalized_nll(pref[flat], seg, n, chosen, rem),
+           "uniform": np.log((np.diff(offsets) + rem).astype(np.float64)),
            "served_t": np.zeros(n), "human_lin": np.zeros(n), "human_mlp": np.zeros(n)}
     details = []
     for f in range(folds):
@@ -375,12 +419,12 @@ def fit(path: str, out: str, *, folds: int, epochs: int, seed: int, log=print) -
         val_rooms = set(rng.choice(train_rooms, max(1, len(train_rooms) // 6), replace=False))
         tr = all_idx[(fold != f) & ~np.isin(rooms, list(val_rooms))]
         va = all_idx[(fold != f) & np.isin(rooms, list(val_rooms))]
-        trf, trs, trst = _segments(offsets, all_idx[fold != f])
-        t = fit_temperature(pref[trf], trs, int((fold != f).sum()),
-                            _local(trs, data["chosen"][fold != f]))
-        tf, ts, tst = _segments(offsets, test)
-        nll["served_t"][test] = nll_from_logits(pref[tf] * t, ts, len(test),
-                                                _local(ts, data["chosen"][test]))
+        trf, trs, _ = _segments(offsets, all_idx[fold != f])
+        t = fit_temperature(pref[trf], trs, int((fold != f).sum()), chosen[fold != f],
+                            rem[fold != f])
+        tf, ts, _ = _segments(offsets, test)
+        nll["served_t"][test] = normalized_nll(pref[tf] * t, ts, len(test), chosen[test],
+                                               rem[test])
         rec = {"fold": f, "test_rows": int(len(test)), "train_rows": int(len(tr)),
                "val_rows": int(len(va)), "temperature": t}
         for kind in ("lin", "mlp"):
@@ -415,7 +459,8 @@ def fit(path: str, out: str, *, folds: int, epochs: int, seed: int, log=print) -
               "partner_bot_only": data["partner_of_bot"] & ~data["opponent_of_bot"],
               "opponent_bot_only": data["opponent_of_bot"] & ~data["partner_of_bot"],
               "lead": data["leading"], "follow": ~data["leading"],
-              "nontrivial": np.diff(offsets) > 1}
+              "nontrivial": (np.diff(offsets) + rem) > 1,
+              "complete_legal": rem == 0, "truncated_legal": rem > 0}
     table = {}
     for name, sel in slices.items():
         if not sel.any():
@@ -432,10 +477,15 @@ def fit(path: str, out: str, *, folds: int, epochs: int, seed: int, log=print) -
     flat_pref = pref[flat]
     m = np.full(n, -np.inf)
     np.maximum.at(m, seg, flat_pref)
-    top1["served_argmax_hit"] = float(np.mean(flat_pref[chosen_flat] >= m))
-    top1["anchor_hit"] = float(np.mean(data["anchor"] == data["chosen"]))
+    inside = chosen >= 0
+    hit = np.zeros(n, bool)
+    hit[inside] = flat_pref[_first(seg, n)[inside] + chosen[inside]] >= m[inside]
+    top1["served_argmax_hit"] = float(hit.mean())
+    top1["anchor_hit"] = float(np.mean(data["anchor"] == chosen))
+    top1["observed_outside_support"] = int((~inside).sum())
+    top1["truncated_decisions"] = int((rem > 0).sum())
     res = {"schema": SCHEMA + "-fit", "rows": int(n), "rooms": len(uniq), "folds": folds,
-           "mean_legal": float(np.diff(offsets).mean()), "details": details, "table": table,
+           "mean_support": float(np.diff(offsets).mean()), "details": details, "table": table,
            "top1": top1, "data": path}
     Path(out).write_text(json.dumps(res, indent=1))
     log(json.dumps(table["all"], indent=1))

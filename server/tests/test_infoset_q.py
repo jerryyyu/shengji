@@ -1,7 +1,7 @@
 """M11 infoset-Q and S25 human-seat helpers (`shengji.train.infoset_q`,
 `shengji.train.human_seat`): ballot filtering, the tie-aware agreement metric,
 trick buckets, actor-view privacy of the history and candidate features, and the
-segment NLL arithmetic.  No package is loaded."""
+label-free action support with its normalised NLL.  No package is loaded."""
 from __future__ import annotations
 
 import copy
@@ -77,20 +77,76 @@ def test_history_and_candidate_features_read_no_hidden_cards():
     assert seen > 5
 
 
-def test_segment_nll_matches_a_direct_softmax():
+def test_normalized_nll_is_the_softmax_on_a_complete_support():
     logits = np.asarray([1.0, 2.0, 0.5, -1.0, 3.0])
     offsets = np.asarray([0, 3, 5])
-    chosen = np.asarray([1, 0])
     flat, seg, _ = hs._segments(offsets, np.arange(2))
-    nll = hs.nll_from_logits(logits[flat], seg, 2, hs._local(seg, chosen))
-    a = logits[:3]
-    b = logits[3:]
+    nll = hs.normalized_nll(logits[flat], seg, 2, np.asarray([1, 0]), np.asarray([0, 0]))
+    a, b = logits[:3], logits[3:]
     want = [-(a[1] - np.log(np.exp(a).sum())), -(b[0] - np.log(np.exp(b).sum()))]
     assert np.allclose(nll, want)
-    # a subset keeps its chosen positions local to its own layout
-    flat1, seg1, _ = hs._segments(offsets, np.asarray([1]))
-    one = hs.nll_from_logits(logits[flat1], seg1, 1, hs._local(seg1, chosen[1:]))
-    assert np.allclose(one, want[1:])
+
+
+def test_normalized_nll_prices_the_remainder_at_the_support_floor():
+    logits = np.asarray([2.0, 0.0, 1.0])
+    seg = np.zeros(3, int)
+    rem = np.asarray([4])
+    total = 0.0
+    for chosen in (0, 1, 2):
+        total += float(np.exp(-hs.normalized_nll(logits, seg, 1, np.asarray([chosen]), rem)[0]))
+    outside = float(np.exp(-hs.normalized_nll(logits, seg, 1, np.asarray([-1]), rem)[0]))
+    assert np.isclose(outside, np.exp(0.0) / (np.exp(logits).sum() + 4 * np.exp(0.0)))
+    assert np.isclose(total + 4 * outside, 1.0)
+
+
+def _lead_state(cards_wanted=3):
+    """A live lead decision whose actor holds three plain cards of one non-trump
+    suit and no trump-rank card: seven legal leads (three singles, three
+    two-card throws, one three-card throw)."""
+    for d in iter_decisions(synthetic_cluster(5)):
+        if d.rnd.trick.plays:
+            continue
+        rnd = copy.deepcopy(d.rnd)
+        o = rnd.ordering
+        for suit in "SHCD":
+            ranks = [r for r in ("3", "4", "5", "6", "7", "8", "9")
+                     if r != rnd.trump_rank]
+            cards = [suit + r for r in ranks[:cards_wanted]]
+            if all(o.eff_suit(c) == suit for c in cards):
+                rnd.hands[d.seat] = cards
+                return rnd, d.seat, cards
+    raise AssertionError("no lead state")
+
+
+@pytest.mark.parametrize("cap", [None, 2])
+def test_producer_support_is_label_free_and_the_likelihood_sums_to_one(cap):
+    from itertools import combinations
+    from shengji.harvest.legal import enumerate_legal
+    rnd, seat, cards = _lead_state()
+    full = enumerate_legal(rnd, seat, cap=None)
+    assert full.complete and full.count == 7
+    legal = [sorted(c) for k in (1, 2, 3) for c in combinations(cards, k)]
+    assert sorted(map(tuple, full.actions)) == sorted(map(tuple, legal))
+    anchor = [cards[0]]
+    support, remainder = hs.action_support(rnd, seat, anchor, cap)
+    assert len(support) + remainder == 7
+    if cap is not None:
+        assert remainder > 0
+    keys = [tuple(sorted(a)) for a in support]
+    logits = np.zeros(len(support))            # the witness: all-equal scores
+    seg = np.zeros(len(support), int)
+    total = 0.0
+    for observed in legal:
+        # the producer takes no observed action: the support is the same object
+        again, again_rem = hs.action_support(rnd, seat, anchor, cap)
+        assert [tuple(sorted(a)) for a in again] == keys and again_rem == remainder
+        k = tuple(sorted(observed))
+        chosen = keys.index(k) if k in keys else -1
+        p = float(np.exp(-hs.normalized_nll(logits, seg, 1, np.asarray([chosen]),
+                                            np.asarray([remainder]))[0]))
+        assert np.isclose(p, 1 / 7)
+        total += p
+    assert np.isclose(total, 1.0)
 
 
 def test_fitted_temperature_recovers_a_sharpened_softmax():
@@ -104,5 +160,5 @@ def test_fitted_temperature_recovers_a_sharpened_softmax():
         chosen.append(rng.choice(n, p=p / p.sum()))
     chosen = np.asarray(chosen)
     flat, seg, _ = hs._segments(offsets, np.arange(len(lens)))
-    t = hs.fit_temperature(pref[flat], seg, len(lens), hs._local(seg, chosen))
+    t = hs.fit_temperature(pref[flat], seg, len(lens), chosen, np.zeros(len(lens), int))
     assert 1.7 < t < 2.3

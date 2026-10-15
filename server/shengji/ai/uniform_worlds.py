@@ -84,7 +84,8 @@ MAX_CELLS = 2_000_000
 KITTY = "kitty"
 #: record fields, in order (the bury-rule kitty adds ``KITTY_FIELDS``)
 FIELDS = ("uniform_tries", "uniform_cap_rejections", "uniform_fallback_worlds",
-          "uniform_constrained_types", "uniform_constrained_cards", "uniform_infeasible")
+          "uniform_constrained_types", "uniform_constrained_cards", "uniform_infeasible",
+          "uniform_draw_constraints", "uniform_draw_forbidden")
 KITTY_FIELDS = ("kitty_rule_worlds", "kitty_rule_rejections")
 
 _INCUMBENT = HeuristicBot()
@@ -206,6 +207,10 @@ class UniformProposal:
                        else self.constraints)
         for (s, _suit), codes in constraints.items():
             forbidden[s].update(codes)
+        # the history rule's ``history_draw_*`` count only its own draw's use
+        # of these; a proposal records the ones it honours here
+        self.stats["uniform_draw_constraints"] = len(constraints)
+        self.stats["uniform_draw_forbidden"] = sum(sum(c.values()) for c in constraints.values())
 
         def allowed(code):
             suit = o.eff_suit(code)

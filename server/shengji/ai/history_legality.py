@@ -195,8 +195,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     ``constrain=True`` (and no ``propose``) draws through `constrained_draw`
     with `draw_constraints`; the history test still runs on every world.  A
     proposal passed as ``propose`` is responsible for its own constraints
-    (`draw_constraints` is the list to honour); with ``constrain=True`` the
-    record still counts them."""
+    (`draw_constraints` is the list to honour)."""
     from .cwv_policy import sample_worlds
     events = follow_events(rnd, seat)
     ordering = rnd.ordering
@@ -208,7 +207,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     rejected = 0
     unchecked = 0
     by_age: Counter[int] = Counter()
-    constraints = draw_constraints(rnd, seat, events) if constrain else {}
+    constraints = draw_constraints(rnd, seat, events) if constrain and propose is None else {}
     if propose is not None:
         draw = propose
     elif constraints:

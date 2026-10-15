@@ -391,8 +391,10 @@ def test_decision_record_carries_the_proposal_fields(kitty_rule):
     record = bot.last_decision_record
     assert set(UW.FIELDS) <= set(record)
     assert (set(UW.KITTY_FIELDS) <= set(record)) == kitty_rule
-    assert record["uniform_tries"] >= W and record["history_draw_constraints"] == len(
-        HL.draw_constraints(rnd, seat))
+    constraints = HL.draw_constraints(rnd, seat)
+    assert record["uniform_tries"] >= W
+    assert record["uniform_draw_constraints"] == len(constraints)
+    assert record["uniform_draw_forbidden"] == sum(sum(c.values()) for c in constraints.values())
     if kitty_rule:
         assert record["kitty_rule_worlds"] >= W - record["uniform_fallback_worlds"]
 

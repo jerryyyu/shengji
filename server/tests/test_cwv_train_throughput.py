@@ -321,17 +321,21 @@ def test_prefetch_stops_when_the_consumer_raises():
 def _stores(store_dir, tmp_path):  # noqa: F811
     """The fixture's shard store (one deal per shard) and the same records as
     one jsonl file, whole and limited to its first deals (one shard holding
-    several deals, so a split straddles it; the limit gives it kept rows)."""
+    several deals, so a split straddles it; the limit gives it kept rows),
+    then two of them in the trick-end flavour, whose derived rows only the
+    train part selects."""
     merged = tmp_path / "merged" / "all.jsonl"
     merged.parent.mkdir()
     with open(merged, "wb") as out:
         for path in sorted(glob.glob(str(store_dir) + "/**/*.jsonl", recursive=True)):
             out.write(open(path, "rb").read())
     out = []
-    for data, limit in ((store_dir, None), (merged, None), (merged, 4)):
+    for data, limit, trick_end in ((store_dir, None, False), (merged, None, False),
+                                   (merged, 4, False), (store_dir, None, True),
+                                   (merged, 4, True)):
         prepared = cwv_data.prepare_stores([str(data)], tmp_path / "cache", limit_clusters=limit,
                                            history=False, witness_seed=7, cache_workers=1,
-                                           version=2)
+                                           version=2, trick_end=trick_end)
         out.append(prepared.block_store)
     return out
 
@@ -348,6 +352,8 @@ def test_split_row_counts_and_parallel_baselines_match_full_decodes(store_dir, t
     stores = _stores(store_dir, tmp_path)
     assert len(stores[1]) == 1 and len(stores[1].keys_of(0)) > 1
     assert stores[2].keep_idx[0] is not None
+    assert all(meta.get("trick_end") for meta in stores[3].metas)
+    assert stores[3].block(0).trick_end.any()
     for store in stores:
         assignment = split_deals(store.keys(), seed=7, **THIRDS)
         masks = {part: SplitSelector(assignment, part) for part in ("train", "val", "test")}
@@ -368,6 +374,10 @@ def test_read_columns_equal_the_decoded_block(store_dir, tmp_path):  # noqa: F81
             for name in train_cwv.BASELINE_COLUMNS:
                 assert np.array_equal(cols[name], getattr(block, name)), name
             assert cols["ply"].dtype == block.ply.dtype
+            if block.trick_end is None:
+                assert "trick_end" not in cols
+            else:
+                assert np.array_equal(cols["trick_end"], block.trick_end)
 
 
 def test_split_row_counts_decodes_only_straddling_shards(store_dir, tmp_path, monkeypatch):  # noqa: F811

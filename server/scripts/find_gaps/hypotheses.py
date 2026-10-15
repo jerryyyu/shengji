@@ -319,3 +319,70 @@ class SafeThrowsOnly(Base):
             return base, False
         self.notes["throw_replaced"] += 1
         return best[0], True
+
+
+@register("no-zero-ruff")
+class NoZeroRuff(Base):
+    """Opposite of always-ruff: never ruff a zero-point plain trick when not the
+    last to play; take release 45's best-valued admitted non-trump follow.
+    Release 45 ruffs ~60% of those spots in self-play."""
+
+    def play(self, ex, rnd, seat):
+        from shengji.engine.cards import TRUMP
+        from shengji.engine.legal import uniform_suit
+        trick = rnd.trick
+        if not trick.plays or len(trick.plays) == 3:
+            return None
+        o = rnd.ordering
+        lead_suit = uniform_suit(trick.plays[0].cards, o)
+        if lead_suit is None or lead_suit == TRUMP:
+            return None
+        if any(o.eff_suit(c) == lead_suit for c in rnd.hands[seat]):
+            return None
+        if sum(points(c) for tp in trick.plays for c in tp.cards):
+            return None
+        base = ex.base.decide_play(rnd, seat)
+        if not any(o.eff_suit(c) == TRUMP for c in base):
+            return base, False
+        rec = ex.base.last_decision_record or {}
+        admitted, means = rec.get("admitted"), rec.get("value_means")
+        if not admitted or not means:
+            return base, False
+        alt = [(m, list(a)) for a, m in zip(admitted, means)
+               if not any(o.eff_suit(c) == TRUMP for c in a)]
+        if not alt:
+            self.notes["no_alternative"] += 1
+            return base, False
+        self.notes["ruff_withheld"] += 1
+        return max(alt)[1], True
+
+
+@register("declare-scaled")
+class DeclareScaled(Base):
+    """Declare as soon as the heuristic's trump score clears its full-hand bar
+    (9 of 25) SCALED to the cards dealt so far (at least 2): an early but
+    suit-aware bank grab, to separate the race from the early-suit cost."""
+
+    def declare(self, ex, rnd, seat, final, base):
+        if base:
+            return base
+        opts = rnd.declare_options(seat)
+        if not opts:
+            return base
+        from shengji.engine.cards import card_rank, is_joker
+        hand = rnd.hands[seat]
+        best, best_score = None, -1
+        for opt in opts:
+            if is_joker(opt[0]):
+                n_rank = sum(1 for c in hand if card_rank(c) == rnd.trump_rank)
+                score = 14 + n_rank if n_rank >= 3 else 0
+            else:
+                score = sum(1 for c in hand if is_joker(c) or card_rank(c) == rnd.trump_rank
+                            or c[0] == opt[0][0]) + (2 if len(opt) == 2 else 0)
+            if score > best_score:
+                best, best_score = opt, score
+        bar = max(2.0, 9 * len(hand) / 25)
+        if best_score >= bar:
+            self.notes["declare_early"] += 1
+            return best
+        return base

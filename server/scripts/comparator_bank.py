@@ -48,6 +48,8 @@ VOLATILE = ("seed0", "runtime", "source_sha256", "execution_order")
 FROZEN = ("arm_policy", "clusters", "arm_policy_identity", "decision_deadline")
 OUTCOME_FIELDS = ("cluster", "mirror", "arm_utility", "history_sha256", "banker",
                   "winner_team", "attacker_points", "level_change", "plays")
+#: environment keys that name a package's location on the host (``SHENGJI_*_CKPT``)
+LOCATION_SUFFIX = "_CKPT"
 
 
 class Refusal(Exception):
@@ -91,13 +93,20 @@ def identity_of(config: dict) -> dict:
     if frozen["arm_policy"] is None or not isinstance(frozen["arm_policy_identity"], dict):
         raise Refusal("config.json is not a served-policy window (no arm_policy identity)")
     harness = {k: v for k, v in config.items() if k not in VOLATILE and k not in FROZEN}
+    # a package's location is the host's; its sha256 (a *_SHA256 key and the
+    # policy identity's checkpoint_sha256) is what the identity pins
     return {
         **frozen,
-        "environment": dict(sorted(environment.items())),
-        "package": {"path": environment.get("SHENGJI_PV_CKPT"),
-                    "sha256": environment.get("SHENGJI_PV_SHA256")},
+        "environment": {k: v for k, v in sorted(environment.items()) if not k.endswith(LOCATION_SUFFIX)},
+        "package": {"sha256": environment.get("SHENGJI_PV_SHA256")},
         "harness": harness,
     }
+
+
+def locations_of(config: dict) -> dict:
+    """Where a window found its packages: recorded per window, never compared."""
+    environment = (config.get("runtime") or {}).get("environment") or {}
+    return {k: v for k, v in sorted(environment.items()) if k.endswith(LOCATION_SUFFIX)}
 
 
 def outcome_rows(shard: dict) -> list:
@@ -151,6 +160,7 @@ def window_entry(directory: Path, *, hash_shards: bool = True) -> dict:
         "tree_sha256": digest(source), "tree_files": len(source),
         "runtime": {"python": (config.get("runtime") or {}).get("python"),
                     "platform": (config.get("runtime") or {}).get("platform")},
+        "locations": locations_of(config),
         "config_sha256": file_sha256(config_path), "summary_sha256": file_sha256(summary_path),
         "shards_sha256": hashlib.sha256("".join(shard_lines).encode()).hexdigest() if hash_shards else None,
         "outcome_sha256": digest(rows),
@@ -251,12 +261,12 @@ def lane_identity_from(expected: dict, config: dict | None) -> dict:
             raise Refusal("the frozen config and the expected identity disagree on the frozen keys")
         own = identity_of(config)
         recorded = {k: v for k, v in own["environment"].items() if k.startswith("SHENGJI_")}
-        if recorded != environment:
+        if recorded != {k: v for k, v in environment.items() if not k.endswith(LOCATION_SUFFIX)}:
             raise Refusal("the frozen config's SHENGJI_* environment differs from the expected identity's")
         return own
     return {**{key: expected.get(key) for key in FROZEN},
-            "environment": dict(sorted(environment.items())),
-            "package": {"path": environment.get("SHENGJI_PV_CKPT"), "sha256": environment.get("SHENGJI_PV_SHA256")},
+            "environment": {k: v for k, v in sorted(environment.items()) if not k.endswith(LOCATION_SUFFIX)},
+            "package": {"sha256": environment.get("SHENGJI_PV_SHA256")},
             "harness": None}
 
 

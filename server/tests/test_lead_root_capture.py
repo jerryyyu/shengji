@@ -166,6 +166,23 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     summary = summarize(changed, roots, arm='dx', pass_label='test')
     assert summary['by_turn']['follow']['stage_statuses']['soft_budget'] == 1
     assert summary['by_turn']['follow']['max_seconds'] >= 4.
+    from scripts.exact_endgame_latency_summary import paired_summary
+    passes = {}
+    for label in ('r45-a', 'dx-a', 'dx-b', 'r45-b'):
+        passes[label] = copy.deepcopy(rows)
+        for row in passes[label]:
+            elapsed = 1. if label.startswith('dx') else 2.
+            row.update(arm=label.rsplit('-', 1)[0], pass_label=label,
+                       wall_step_seconds=elapsed, wall_commit_seconds=0., wall_total_seconds=elapsed)
+    paired = paired_summary(passes, roots)
+    for kind in ('lead', 'follow'):
+        assert paired['paired_dx_minus_r45'][kind]['mean_seconds'] == -1.
+        assert paired['paired_dx_minus_r45'][kind]['p90_seconds'] == -1.
+    with pytest.raises(ValueError, match='four ABBA'):
+        paired_summary({k: v for k, v in passes.items() if k != 'dx-b'}, roots)
+    passes['dx-b'].pop()
+    with pytest.raises(ValueError, match='incomplete'):
+        paired_summary(passes, roots)
     original = path.read_text()
     for field in ('hand_size', 'trick'):
         bad = copy.deepcopy(roots)

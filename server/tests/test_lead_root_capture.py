@@ -146,6 +146,28 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     assert summary['roots'] == 4
     assert summary['by_turn']['lead']['count'] == sum(r['lead'] for r in roots)
     assert summary['by_turn']['follow']['count'] == sum(not r['lead'] for r in roots)
+    # Exercise the entrypoint's real measure -> terminal -> report path.
+    # Only the model factory is replaced with the fixture model; server
+    # preparation, off-loop computation, commit and serialization are real.
+    from scripts.exact_endgame_latency_summary import summarize_completed
+    monkeypatch.setattr(worker, 'build', lambda *a: (
+        worker.NAMES['r45'], served(refusal_constraints=True), {}))
+    assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--roots', str(path), '--pass-label', 'entry', '--arm', 'r45']) == 0
+    terminal = json.loads((tmp_path / 'terminal_measure_entry.json').read_text())
+    entry_rows = [json.loads(line) for line in (tmp_path / 'measure_entry.jsonl').read_text().splitlines()]
+    assert summarize_completed(entry_rows, roots, terminal, arm='r45', pass_label='entry')['roots'] == 4
+    for key, value in [('error', {'type': 'RuntimeError', 'message': 'late failure'}),
+                       ('result', {'roots_measured': 3}), ('result', {'roots_measured': True}),
+                       ('policy', worker.NAMES['dx']), ('mode', 'harvest'),
+                       ('arm', 'dx'), ('pass_label', 'other'), ('seconds', float('nan'))]:
+        bad_terminal = {**terminal, key: value}
+        with pytest.raises(ValueError):
+            summarize_completed(entry_rows, roots, bad_terminal, arm='r45', pass_label='entry')
+    missing_error = dict(terminal)
+    del missing_error['error']
+    with pytest.raises(ValueError):
+        summarize_completed(entry_rows, roots, missing_error, arm='r45', pass_label='entry')
     for changed in (rows[:-1], rows + rows[:1]):
         with pytest.raises(ValueError):
             summarize(changed, roots, arm='r45', pass_label='test')
@@ -175,6 +197,14 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
             row.update(arm=label.rsplit('-', 1)[0], pass_label=label,
                        wall_step_seconds=elapsed, wall_commit_seconds=0., wall_total_seconds=elapsed)
     paired = paired_summary(passes, roots)
+    from scripts.exact_endgame_latency_summary import paired_completed_summary
+    terminals = {label: {**terminal, 'arm': label.rsplit('-', 1)[0], 'pass_label': label,
+                         'policy': worker.NAMES[label.rsplit('-', 1)[0]]} for label in passes}
+    assert paired_completed_summary(passes, roots, terminals) == paired
+    bad_terminals = copy.deepcopy(terminals)
+    bad_terminals['dx-b']['error'] = {'type': 'RuntimeError', 'message': 'late failure'}
+    with pytest.raises(ValueError, match='not successful'):
+        paired_completed_summary(passes, roots, bad_terminals)
     for kind in ('lead', 'follow'):
         assert paired['paired_dx_minus_r45'][kind]['mean_seconds'] == -1.
         assert paired['paired_dx_minus_r45'][kind]['p90_seconds'] == -1.

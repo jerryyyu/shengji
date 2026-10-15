@@ -129,3 +129,19 @@ def test_kitty_rows_hold_the_declared_width_and_consistent_labels(cluster):
         assert (h[None] * uni).sum() == pytest.approx(8.0)
         # the head's loss at the uniform marginal is the uniform baseline
         assert ki.copy_log_loss(uni, lab["kitty"][None], lab["hidden"][None])[0] > 0
+
+
+def test_collected_states_replay_to_the_same_decisions(cluster, tmp_path):
+    import json
+    shards = tmp_path / "store" / "shards"
+    shards.mkdir(parents=True)
+    with open(shards / "cluster-000000.jsonl", "w") as fh:
+        for rec in cluster:
+            fh.write(json.dumps(rec) + "\n")
+    meta = np.zeros((2, len(ww.META_COLS)), np.int64)
+    for i, (sid, dec) in enumerate(((7, 12), (9, 33))):
+        meta[i, ww.META_COLS.index("state")] = sid
+        meta[i, ww.META_COLS.index("decision")] = dec
+    got = {sid: view.decision.decision_index
+           for sid, view in ww.iter_collected_states([str(tmp_path / "store")], meta)}
+    assert got == {7: 12, 9: 33}

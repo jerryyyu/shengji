@@ -302,14 +302,18 @@ class Collected:
 
 def collect_state(view: StateView, predict, version: int, *, worlds: int, cap: int,
                   key: str, out: Collected, state_id: int, store_index: int,
-                  cluster_index: int, events: bool = True) -> dict:
+                  cluster_index: int, events: bool = True, draw=None) -> dict:
+    """Draw, score and store one state's worlds.  ``draw`` replaces the served
+    sampler as the world proposal (same signature and return as
+    ``served_worlds``); a proposal that is not the sampler supplies its own
+    importance weights to ``analyze`` as an extra log-weight array."""
     from . import kitty_inference
     from . import pv_soft_oracle as soft_oracle
     d = view.decision
     rnd, seat = d.rnd, d.seat
     t0 = time.perf_counter()
-    sampler, mem, ws, stats = served_worlds(rnd, seat, d.refusals, worlds,
-                                            _state_seed(key, d.round_index, d.decision_index))
+    sampler, mem, ws, stats = (draw or served_worlds)(
+        rnd, seat, d.refusals, worlds, _state_seed(key, d.round_index, d.decision_index))
     layout = soft_oracle.hidden_layout(sampler, rnd, seat, mem, rnd.hands, rnd.buried)
     agree = np.empty(len(ws), np.float32)
     for w, (hands, buried) in enumerate(ws):
@@ -657,6 +661,44 @@ def analyze(out, *, variants: Sequence[Variant] = DEFAULT_VARIANTS,
     return report
 
 
+# ------------------------------------------------------------------ other models' weights
+
+def iter_collected_states(stores: Sequence[str], meta: np.ndarray) -> Iterator[tuple[int, StateView]]:
+    """Replay the stores and yield ``(state id, view)`` for every collected state,
+    so another model (a history belief model) computes its inputs at exactly
+    these states.  ``stores`` in the collection's order (its manifest)."""
+    cols = {c: META_COLS.index(c) for c in ("state", "store", "cluster", "round_index", "decision")}
+    wanted: dict[tuple[int, int], dict[tuple[int, int], int]] = {}
+    for row in meta:
+        wanted.setdefault((int(row[cols["store"]]), int(row[cols["cluster"]])), {})[
+            (int(row[cols["round_index"]]), int(row[cols["decision"]]))] = int(row[cols["state"]])
+    paths = {si: cluster_paths(store) for si, store in enumerate(stores)}
+    for (si, ci), picks in sorted(wanted.items()):
+        with open(paths[si][ci]) as fh:
+            plays = [r for r in (json.loads(line) for line in fh if line.strip())
+                     if r.get("decision_kind") == "play"]
+        for view in iter_states(plays, want=lambda d: (d.round_index, d.decision_index) in picks):
+            d = view.decision
+            yield picks[(d.round_index, d.decision_index)], view
+
+
+def marginals_log_weights(path: str, data: Mapping[str, np.ndarray]) -> np.ndarray:
+    """``(S, W)`` log weights from a per-state marginal file: ``state`` (ids as in
+    the collection's ``meta``) and ``P`` ``(n, 54, 4)`` per-copy receiver
+    probabilities (next, partner, previous, kitty).  States the file lacks get
+    zero (uniform)."""
+    with np.load(path) as z:
+        ids, P = z["state"], z["P"]
+    row_of = {int(s): i for i, s in enumerate(data["meta"][:, 0])}
+    S, W = data["agreement"].shape
+    out = np.zeros((S, W))
+    for sid, p in zip(ids, P):
+        i = row_of.get(int(sid))
+        if i is not None:
+            out[i] = marginal_log_weights(data["counts"][i], p)
+    return out
+
+
 # ------------------------------------------------------------------ CLI
 
 def build_parser() -> argparse.ArgumentParser:
@@ -680,6 +722,8 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("analyze", help="score the weighting variants")
     a.add_argument("--out", action="append", required=True)
     a.add_argument("--kitty-head", default=None, help="a kitty_inference checkpoint to add as weights")
+    a.add_argument("--marginals", default=None,
+                   help="per-state (54, 4) receiver marginals (npz: state, P) to add as weights")
     a.add_argument("--report", default=None)
     return ap
 
@@ -701,6 +745,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.kitty_head:
             from . import kitty_inference
             extra = {"kitty": kitty_inference.world_log_weights(args.kitty_head, data)}
+        if args.marginals:
+            extra = dict(extra or {}, marginals=marginals_log_weights(args.marginals, data))
         rep = analyze(data, extra=extra)
         text = json.dumps(rep, indent=1)
         if args.report:

@@ -180,13 +180,10 @@ def select_states(by_deal: dict, salt: str, side: str, *, band_quota=None,
             ident = (r["source"], r["seed"], r["ply"], r["seat"])
             prev = seen.get(ident)
             if prev is not None and _canon(prev) != _canon(r):
-                # Compare the FULL canonical row, not a named subset. Checking
-                # only band/role/tricks/size still let a duplicate identity
-                # differing in, say, `n_candidates` or `is_banker_seat` fall
-                # through to the last-row assignment and select opposite
-                # payloads under row reversal with no violation raised
-                # (Codex). The contract is "byte/field-identical copies only",
-                # so anything not identical must refuse.
+                # Compare the FULL canonical row, not a named subset: the
+                # contract is "byte/field-identical copies only", so a duplicate
+                # identity differing in any field must refuse rather than let
+                # the last row win.
                 diff = sorted(k for k in set(prev) | set(r)
                               if prev.get(k) != r.get(k))
                 conflicts.append(
@@ -421,12 +418,9 @@ def main() -> None:
                 row = json.loads(line)
                 if split.get(row["seed"]) != args.side:
                     continue
-                # NOT skipped here. Marking a deal seen at its FIRST eligible
-                # row meant later lead states from that deal never competed for
-                # selection, which is why v2 held 229 early / 281 mid / 2 LATE
-                # states under the trick-index unit while its raw-play summary
-                # called it late-heavy (Codex). Gather every eligible row per
-                # deal, then choose one.
+                # Gather every eligible row per deal, then choose one: marking
+                # a deal seen at its first eligible row would keep its later
+                # lead states out of selection and skew the bands early.
                 try:
                     rnd = replay(row)
                 except Exception:
@@ -445,15 +439,10 @@ def main() -> None:
                 by_deal[row["seed"]].append({
                     "source": source, "seed": row["seed"], "ply": row["ply"],
                     "seat": seat, "n_candidates": n_cands,
-                    # recorded ON the row: the previous artifact reported strata
-                    # computed AFTER selection popped rows, so the figure
-                    # described the residual pool, not the selected set (Codex)
+                    # recorded ON the row so reported strata describe the
+                    # selected set, not the residual pool
                     "stratum": st, "is_banker_seat": seat == rnd.banker,
-                    # Carried onto the row. Without it the role-balancing loop
-                    # below found no matching options, fell through to its
-                    # "take any remaining deal" fallback every iteration, and
-                    # reported `?` in the manifest — a mechanism that looked
-                    # implemented and was not.
+                    # the role-balancing loop below matches on this field
                     "role": "attacker" if rnd.is_attacker(seat) else "defender",
                     "tricks": len(rnd.history),
                     "band": ("early" if len(rnd.history) < 5 else
@@ -461,18 +450,14 @@ def main() -> None:
                 })
 
     # One state per DEAL, chosen to fill explicitly named trick-index bands.
-    rng = random.Random(int(hashlib.sha256(args.salt.encode()).hexdigest()[:8], 16))
     # Which deals can supply which band
     deals_for: dict[str, list] = {b: [] for b in BANDS}
     for seed, rows in by_deal.items():
         for b in {r["band"] for r in rows}:
             deals_for[b].append(seed)
     available = {b: len(v) for b, v in deals_for.items()}
-    # NOT shuffled. `deals_for` is only an availability count now; selection is
-    # `select_states`, whose order comes from per-row SHA-256 priority. The
-    # previous code shuffled this list and then never read it, which read as
-    # randomisation while the artifact was actually a function of corpus
-    # insertion order (Codex).
+    # `deals_for` is only an availability count; selection order comes from
+    # the per-row SHA-256 priority in `select_states`.
 
     picked = []
     if getattr(args, "census", False):

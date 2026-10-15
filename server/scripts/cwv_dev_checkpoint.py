@@ -1,10 +1,9 @@
 """Train a TINY complete-world value checkpoint for development only.
 
-The real checkpoint is produced by the training build (claude/cwv-train) and
-loads through the same #214 API.  Until it exists, this script fits a small
-``ValueNetwork`` on a handful of reduced-work self-play rounds so the
-evaluator, the one-ply bot, the calibration and the duel driver can be
-exercised end to end.  Its metadata carries everything the play-time side
+Real checkpoints come from ``train_cwv.py`` and load through the same API.
+This script fits a small ``ValueNetwork`` on a handful of reduced-work
+self-play rounds so the evaluator, the one-ply bot, the calibration and the
+duel driver can be exercised end to end.  Its metadata carries everything the play-time side
 binds to: the afterstate encoder identity, ``sees_hidden_hands`` and the
 train-only stratified prior the no-learning control reads.
 

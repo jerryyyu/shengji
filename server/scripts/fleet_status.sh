@@ -10,13 +10,11 @@
 #
 # Convention for NEW long jobs: run as a named script/module logging to
 # server/runs/logs/<name>.log, and note current intent on the owning GitHub
-# issue (#707 is the active investigation board; #679 is closed history).
+# issue.
 # HANDOFF_REVIEW.md is frozen to its authority markers; prose lives on issues.
 
-# Run from anywhere. This used to require cwd=server/, and when the caller's
-# cwd had drifted the script simply failed — printing an EMPTY Codex mailbox
-# section that read exactly like "no new entries" (2026-08-04). A monitor that
-# can fail silently is worse than no monitor.
+# Independent of the caller's cwd: a monitor that can fail silently is worse
+# than no monitor.
 cd "$(dirname "$0")/.." || { echo "FATAL: cannot reach server/"; exit 1; }
 
 hdr() { printf "\n\033[1m== %s ==\033[0m\n" "$1"; }
@@ -72,7 +70,7 @@ for pid in $(pgrep -f "server/.venv/bin/python"); do
   echo "  pid=$pid up/cpu:$line  job: ${script:-(wrapper/interactive)}  touches: ${label:-(none)}"
 done
 echo "  --- allowlisted score-free supervisor heartbeats (30m)"
-find /private/tmp -maxdepth 7 -type f \
+find /private/tmp "$HOME/Projects/shengji-wt" -maxdepth 7 -type f \
   -path "*/server/runs/logs/*" -mmin -30 \
   -name "*supervisor-console.log" -print 2>/dev/null |
   while IFS= read -r f; do
@@ -91,11 +89,10 @@ find /private/tmp -maxdepth 7 -type f \
   done
 
 hdr "AIR — broad process identity + live progress"
-# INC-12: never infer IDLE from a remembered job-name substring. The prior
-# probe also changed directory to one legacy checkout before inspecting the
-# host, which could hide isolated /private/tmp evidence worktrees. Inventory
-# every Python process first, retain its full command and cwd, and make a zero
-# count explicitly UNKNOWN until expected run manifests are reconciled.
+# Never infer IDLE from a remembered job-name substring, and never inspect the
+# host from one checkout: evidence worktrees live elsewhere. Inventory every
+# Python process first, retain its full command and cwd, and make a zero count
+# explicitly UNKNOWN until expected run manifests are reconciled.
 if ! ssh -o BatchMode=yes -o ConnectTimeout=8 air '
   score_free_progress_file() {
     case "$1" in
@@ -135,7 +132,7 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 air '
     fi
   done
   echo "  --- allowlisted score-free progress content (30m)"
-  find /private/tmp -maxdepth 7 -type f \
+  find /private/tmp "$HOME/Projects/shengji-wt" -maxdepth 7 -type f \
     -path "*/server/runs/logs/*" -mmin -30 \
     \( -name "*.log" -o -name "*.jsonl" \) -print 2>/dev/null |
     while IFS= read -r f; do
@@ -145,7 +142,7 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 air '
         "$(tail -1 "$f" 2>/dev/null | cut -c1-120)"
     done
   echo "  --- other recent evidence files: metadata only (30m)"
-  find /private/tmp -maxdepth 7 -type f \
+  find /private/tmp "$HOME/Projects/shengji-wt" -maxdepth 7 -type f \
     -path "*/server/runs/logs/*" -mmin -30 \
     \( -name "*.log" -o -name "*.jsonl" \) -print 2>/dev/null |
     while IFS= read -r f; do
@@ -302,10 +299,10 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-perf '
 fi
 
 hdr "INTEGRITY — process identity + dataset provenance"
-# Aggregates (hot count / total CPU) hide orphans: on 2026-08-03 two
-# workers killed by pkill survived 10h on buggy code and wrote into the
-# live dataset. Identify EVERY long-running python by its open files,
-# and flag shards from worker ids that no live process owns.
+# Aggregates (hot count / total CPU) hide orphans: a worker that survives
+# pkill keeps writing into the live dataset. Identify EVERY long-running
+# python by its open files, and flag shards from worker ids that no live
+# process owns.
 for pid in $(pgrep -f "server/.venv/bin/python"); do
   et=$(ps -o etime= -p "$pid" | tr -d ' ')
   # etime is [[DD-]HH:]MM:SS — only 2+ colons (or a day part) means hours
@@ -324,19 +321,12 @@ for pid in $(pgrep -f "server/.venv/bin/python"); do
     echo "  !! pid=$pid age=$et  $tag   <-- long-running, confirm intentional"
   fi
 done
-for d in rl_data/gen_v3_mini rl_data/gen_v3; do
+for d in rl_data/gen_v3_mini; do
   [ -d "$d" ] || continue
   ids=$(ls "$d" 2>/dev/null | sed -n 's/shard_\([0-9]\{3\}\).*/\1/p' | sort -u | tr '\n' ' ')
   echo "  $d shard-writing worker ids: ${ids:-none}"
 done
 echo "  (any id here with no matching live process = orphan; quarantine its shards)"
-
-hdr "CODEX MAILBOX — GitHub issues"
-# HANDOFF_REVIEW.md is frozen to its authority markers (#674); the discussion
-# thread that used to be counted here now lives on GitHub issues.
-echo "  HANDOFF_REVIEW.md is frozen to its authority markers (#674); prose lives on GitHub issues."
-echo "  active investigation board: https://github.com/jerryyyu/shengji/issues/707"
-echo "  read it with: gh issue view 707 -R jerryyyu/shengji --comments"
 
 hdr "JOB LOGS — metadata only (content requires an explicit safe boundary)"
 # Generic logs may contain sealed outcomes.  File age and size are operational
@@ -349,8 +339,7 @@ for f in runs/logs/*.log; do
   sz=$(stat -f %z "$f")
   flag=""
   # A log with no meaningful output after 10 minutes is almost certainly a
-  # launch failure (bad PATH, missing script). This exact pattern hid two
-  # dead Air jobs for hours on 2026-08-03.
+  # launch failure (bad PATH, missing script).
   [ "$sz" -lt 40 ] && [ "$age" -gt 10 ] && flag="   <<< NO OUTPUT — LIKELY DEAD"
   printf "  %-34s %4dm %7dB%s\n" "$(basename "$f")" "$age" "$sz" "$flag"
 done | sort -k2 -n

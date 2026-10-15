@@ -29,6 +29,11 @@ ARCHIVED_HEAD = "2394140bcdaebf72d81912a55ac18f5051848fe5"
 REPORT_SHA256 = "fea40a5622efe2ce832483aebffbae8be25ca99bba11b60c8bfd0df666c27926"
 THRESHOLDS = (0, 6, 12, 18)
 ROLES = ("banker-team", "attacker-team")
+#: Only tracked changes under these paths count as archived-source drift, so an
+#: unrelated experiment elsewhere in the checkout does not block the replay.
+RELEVANT_SOURCE = ("server/shengji/engine", "server/shengji/ai", "server/shengji/rl")
+
+
 class HistoricalPanelError(ValueError):
     """Input, source, replay, or artifact identity drift."""
 
@@ -72,11 +77,9 @@ def verify_source(repo: Path, *, expected_head: str = ARCHIVED_HEAD) -> dict[str
     head = _git_output(repo, "rev-parse", "HEAD")
     if head != expected_head:
         raise HistoricalPanelError("archived source gitHEAD drift")
-    # `git diff HEAD` includes staged and unstaged tracked changes, while the
-    # explicit pathspec excludes the known unrelated prompt experiment.
+    # `git diff HEAD` includes staged and unstaged tracked changes.
     changed = _git_output(
-        repo, "diff", "--name-only", "HEAD", "--",
-        "server/shengji/engine", "server/shengji/ai", "server/shengji/rl")
+        repo, "diff", "--name-only", "HEAD", "--", *RELEVANT_SOURCE)
     if changed:
         raise HistoricalPanelError("archived relevant tracked source changed")
     return {"repo": str(repo), "git_head": head}

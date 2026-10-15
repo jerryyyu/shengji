@@ -152,3 +152,12 @@ def test_both_migrations_together_preserve_replayed_tensors(monkeypatch, seed):
         assert seat_a == seat_b
         for version in PROVEN_VERSIONS:
             assert tensors_a[version].tobytes() == tensors_b[version].tobytes()
+
+
+def test_afterstate_closure_matches_training_closure():
+    from shengji.rl.encode_versions import OBS_DIM_BY_VERSION
+    from shengji.train.cwv_data import CWV_SOURCE_PATHS, cwv_source_paths
+
+    assert cwv_policy.AFTERSTATE_SOURCE_PATHS == CWV_SOURCE_PATHS
+    for version in sorted(OBS_DIM_BY_VERSION):
+        assert cwv_policy.afterstate_source_paths(version) == cwv_source_paths(version)

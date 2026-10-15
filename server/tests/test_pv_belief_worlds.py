@@ -25,6 +25,38 @@ from test_encoder_round_compat import pinned_production_package  # noqa: F401
 BELIEF_KEYS = {"belief_fallback", "belief_proposed", "belief_ms"}
 
 
+@pytest.mark.parametrize('receiver', range(4))
+@pytest.mark.parametrize('mass,draw', [(1.0, 0.0), (1e-20, 0.5)])
+def test_proposal_refill_preserves_receiver_at_numeric_boundaries(receiver, mass, draw):
+    """Hall counts must stay feasible after conversion to runtime hands/kitty."""
+    from types import SimpleNamespace
+    from shengji.rl.encode import CARD_INDEX, N_CARDS
+    class FixedRng:
+        def permutation(self, n):
+            return np.arange(n)
+        def random(self, n):
+            return np.full(n, draw)
+    c = CARD_INDEX['C3']
+    prop = bn.BeliefProposal.__new__(bn.BeliefProposal)
+    prop.rnd = SimpleNamespace(buried=[])
+    prop.seat, prop.batch, prop.drawn = 0, 2, 0
+    prop.rng, prop.queue, prop.kitty_hidden = FixedRng(), [], True
+    prop.Q = np.zeros((N_CARDS, 4))
+    prop.Q[c, receiver] = mass
+    n = np.zeros(N_CARDS, dtype=np.int64)
+    n[c] = 1
+    sizes = np.zeros(4, dtype=np.int64)
+    sizes[receiver] = 1
+    prop.inp = {'n_c': n, 'sizes': sizes, 'M': prop.Q > 0,
+                'K': np.zeros((N_CARDS, 4), dtype=np.int64)}
+    for _ in range(2):
+        hands, buried = prop(prop.rnd, 0, None)
+        for rel in (1, 2, 3):
+            assert hands[rel] == (['C3'] if receiver == rel - 1 else [])
+        assert buried == (['C3'] if receiver == 3 else [])
+    assert prop.drawn == 2 and not prop.queue
+
+
 @pytest.fixture(scope="module")
 def package(tmp_path_factory):
     torch = pytest.importorskip("torch")

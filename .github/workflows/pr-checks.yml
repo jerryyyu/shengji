@@ -89,6 +89,7 @@ jobs:
           tests/test_banker_sampler.py
           tests/test_bot_scheduler.py
           tests/test_server_ws.py
+          tests/test_room_bot_seed.py
           tests/test_structured_bury.py
           tests/test_harvest_trajectory.py
           tests/test_oracle_screen.py

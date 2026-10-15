@@ -177,8 +177,12 @@ class Room:
     chat: list[dict] = field(default_factory=list)  # last CHAT_KEEP messages
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    bot: HeuristicBot = field(
-        default_factory=lambda: make_bot(os.environ.get("SHENGJI_BOT", "mc")))
+    # None builds the served policy (SHENGJI_BOT) in `__post_init__` with this
+    # room's own seed, so rooms do not share one sampler stream
+    bot: HeuristicBot | None = None
+    # the seed that bot was built with (None for a bot passed in); every
+    # round_start record carries it, so a room's decisions can be replayed
+    bot_seed: int | None = None
     bot_task: asyncio.Task | None = None
     deal_task: asyncio.Task | None = None
     watchdog_task: asyncio.Task | None = None
@@ -205,6 +209,10 @@ class Room:
     experimental_policy: str | None = None
 
     def __post_init__(self) -> None:
+        if self.bot is None:
+            if self.bot_seed is None:
+                self.bot_seed = secrets.randbits(31)
+            self.bot = make_bot(os.environ.get("SHENGJI_BOT", "mc"), seed=self.bot_seed)
         if self.log_dir is None:
             self.log_dir = LOG_DIR
         else:
@@ -815,7 +823,7 @@ def _log_round_start(room: Room) -> None:
         ]
     room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
-                   players=players)
+                   players=players, bot_seed=room.bot_seed)
 
 
 def _log_round_end(room: Room) -> None:

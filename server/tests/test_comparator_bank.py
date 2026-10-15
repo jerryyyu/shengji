@@ -74,7 +74,9 @@ def test_build_pins_identity_seeds_trees_and_outcomes(built, capsys):
                                       bank.digest(config_for(300, tree="t2")["source_sha256"])}
     identity = manifest["identity"]
     assert identity["arm_policy"] == "pv-x" and identity["package"]["sha256"] == "a" * 64
-    assert identity["environment"] == dict(sorted(ENV.items())) and "seed0" not in identity["harness"]
+    assert identity["environment"] == {k: v for k, v in sorted(ENV.items()) if k != "SHENGJI_PV_CKPT"}
+    assert "seed0" not in identity["harness"] and "path" not in identity["package"]
+    assert manifest["windows"][0]["locations"] == {"SHENGJI_PV_CKPT": "/root/models/x.npz"}
     assert identity["harness"]["trump_ranks"] == ["2", "3"] and "source_sha256" not in identity["harness"]
     w = manifest["windows"][0]
     assert w["seed0"] == 100 and w["outcome"]["rounds"] == 2 * CLUSTERS and w["outcome"]["mean_arm_utility"] == 0
@@ -160,6 +162,7 @@ def test_check_passes_only_the_same_identity_tree_and_seeds(built, tmp_path, cap
     (lambda c: c["runtime"]["environment"].update(SHENGJI_PV_WORLDS="32"), "changed"),
     (lambda c: c["runtime"]["environment"].update(SHENGJI_PV_SHA256="b" * 64), "changed"),
     (lambda c: c["runtime"]["environment"].update(SHENGJI_PV_NEW_FLAG="1"), "added"),
+    (lambda c: c["runtime"]["environment"].update(SHENGJI_PV_WORLDS="64", SHENGJI_PV_SEED="3"), "added"),
     (lambda c: c["decision_deadline"].update(seconds=299.0), "changed"),
     (lambda c: c.update(trump_ranks=["2"]), "changed"),
     (lambda c: c.update(base_policy="mc-lite"), "changed"),

@@ -148,13 +148,19 @@ from .cwv_data import (
     VIEW,
     CwvBlock,
     CwvBlockStore,
+    DeviceCopies,
+    Prefetch,
     Prepared,
     bridge_record,
     collate,
     cwv_encoder_identity,
     expected_levels,
     median_pt0,
+    part_row_counts,
     prepare_stores,
+    selector_block,
+    selector_rows,
+    split_row_counts,
     tensors_of,
 )
 from .cwv_eval import (
@@ -694,10 +700,32 @@ def full_metrics(ev: Mapping[str, np.ndarray], baselines: Mapping[str, Any], *, 
     return metrics
 
 
-def fit_baselines(store: CwvBlockStore, mask_fn: Callable[[CwvBlock], np.ndarray]) -> dict:
+#: the per-row columns ``fit_baselines`` reads (``deal_key`` for the split mask)
+BASELINE_COLUMNS = ("deal_key", "ply", "role_attacker", "points_so_far", "utility")
+
+
+def fit_baselines(store: CwvBlockStore, mask_fn: Callable[[CwvBlock], np.ndarray], *,
+                  workers: int = 0) -> dict:
     """The stratified prior (phase x role x points so far -> mean PT0
-    utility) from the TRAINING rows: ``train.baselines.StratifiedPrior``."""
+    utility) from the TRAINING rows: ``train.baselines.StratifiedPrior``.
+
+    With ``workers`` > 0 and a deal-key split mask, the shards are read in
+    that many processes, only the ``BASELINE_COLUMNS`` of each, and shards
+    with no row in the part are not read at all.  The prior's sums depend on
+    the order rows are added, so the shards are still added one at a time in
+    store order, with the same arrays: the result is identical to the serial
+    pass over fully decoded blocks."""
     prior = StratifiedPrior()
+    if (int(workers) > 0 and type(mask_fn) is SplitSelector
+            and hasattr(store, "iter_columns")):
+        for _i, cols in store.iter_columns(
+                BASELINE_COLUMNS, workers=int(workers),
+                skip=lambda keys: not mask_fn.selects_any(keys)):
+            sel = np.flatnonzero(mask_fn(selector_rows(cols)))
+            if sel.size:
+                prior.add(cols["ply"][sel], cols["role_attacker"][sel],
+                          cols["points_so_far"][sel], cols["utility"][sel])
+        return {"stratified_prior": prior.to_dict(), "fitted_on": "train"}
     for block in store.iter_blocks():
         sel = np.flatnonzero(mask_fn(block))
         if sel.size:
@@ -804,6 +832,62 @@ def ranking_block(pass_result: Mapping[str, Any], *, n_boot: int, seed: int) -> 
 
 
 # ------------------------------------------------- search-facing validation
+
+#: the stream of the ``--val-rows`` subset's generator, next to the run seed
+VAL_SUBSET_STREAM = 0x76616C
+
+
+def val_row_subset(store: CwvBlockStore, assignment: Mapping[str, str], n_rows: int, *,
+                   seed: int) -> tuple[SplitSelector, dict]:
+    """``--val-rows``: the per-epoch validation subset and its receipt block.
+
+    Whole val deals in a seeded order (``seed``, ``VAL_SUBSET_STREAM``) until
+    their rows reach ``n_rows`` or the split runs out.  Whole deals, because
+    a shard holds one deal and evaluation pays per shard it decodes; one
+    fixed subset, so every epoch is scored on the same rows.  The stopping
+    rule adds each deal's exact val rows, so the subset reaches ``n_rows``
+    whenever the split holds that many: a shard with one val deal is counted
+    without a read (``part_row_counts``); a shard holding several val deals
+    has its deal-key column read and counted per deal, because the deals
+    need not share its rows evenly.  The receipt counts the chosen rows
+    again through the selector the epochs will use."""
+    val = SplitSelector(assignment, "val")
+    val_keys = sorted(k for k, v in assignment.items() if v == "val")
+    deal_rows: dict[str, int] = {}
+    for i, counts in part_row_counts(store, {"val": val}):
+        keys = [k for k in store.keys_of(i) if assignment.get(k) == "val"]
+        if len(keys) == 1:
+            deal_rows[keys[0]] = deal_rows.get(keys[0], 0) + int(counts["val"])
+        elif keys:
+            block = selector_block(store, i)
+            hit = np.asarray(val(block), dtype=bool)
+            uniq, per_deal = np.unique(np.asarray(block.deal_key, dtype=str)[hit],
+                                       return_counts=True)
+            for key, n in zip(uniq.tolist(), per_deal.tolist()):
+                deal_rows[key] = deal_rows.get(key, 0) + int(n)
+    order = np.random.default_rng([int(seed), VAL_SUBSET_STREAM]).permutation(len(val_keys))
+    chosen: list[str] = []
+    covered = 0
+    for j in order:
+        if covered >= int(n_rows):
+            break
+        chosen.append(val_keys[int(j)])
+        covered += deal_rows.get(val_keys[int(j)], 0)
+    keys = sorted(chosen)
+    selector = SplitSelector({k: "val" for k in keys}, "val")
+    counted = split_row_counts(store, {"val": selector})["val"]
+    block = {
+        "rows_requested": int(n_rows), "rows": int(counted), "deals": len(keys),
+        "val_deals": len(val_keys), "seed": int(seed), "stream": VAL_SUBSET_STREAM,
+        "digest": hashlib.sha256("\n".join(keys).encode()).hexdigest(),
+        "rule": "whole val deals in a seeded permutation until their rows reach "
+                "rows_requested; the same subset every epoch",
+        "scope": "per-epoch validation rows only (val_ce, val_mae, val_rps, points); the "
+                 "rank metrics read the candidate set and the final val/test pass reads "
+                 "every row",
+    }
+    return selector, block
+
 
 def per_shard_cap(n_records: int, n_shards: int) -> int:
     """``--val-rank-records N`` as a per-shard cap: ceil(N / shards)."""
@@ -1428,7 +1512,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  init: str | None = None,
                  init_lr_scale: float = DEFAULTS["init_lr_scale"],
                  init_exclude_exposed: bool = False,
-                 encoder_version: int = DEFAULTS["encoder_version"]) -> dict:
+                 encoder_version: int = DEFAULTS["encoder_version"],
+                 val_rows: int | None = None, compile_trunk: bool = False) -> dict:
     """Everything that determines the trained model and its metrics."""
     try:
         encoder_version = check_version(encoder_version)
@@ -1436,6 +1521,10 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError(f"--encoder-version: {exc}") from None
     if arch not in ARCHES:
         raise TrainError(f"--arch must be one of {ARCHES}")
+    if val_rows is not None and int(val_rows) < 1:
+        raise TrainError("--val-rows must be >= 1 (omit it to validate on every val row)")
+    if compile_trunk and arch != "mlp":
+        raise TrainError("--compile compiles the mlp trunk; the seq architecture has none")
     if select_metric not in SELECT_METRICS:
         raise TrainError(f"--select-metric must be one of {tuple(SELECT_METRICS)}")
     if select_metric == "val_points_mae" and not aux_points:
@@ -1518,6 +1607,12 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                             policy_tower_width=int(config.policy_tower_width))
     if policy_head and float(policy_trunk_grad_scale) != 1.0:
         tower_fields["policy_trunk_grad_scale"] = float(policy_trunk_grad_scale)
+    # the same omit-at-default rule for the per-epoch validation subset and the
+    # compiled trunk (the latter changes the numerics, so a run records it)
+    if val_rows is not None:
+        tower_fields["val_rows"] = int(val_rows)
+    if compile_trunk:
+        tower_fields["compile"] = "trunk"
     return {
         **tower_fields,
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
@@ -1681,6 +1776,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           eval_holdout: Sequence[str] | None = None,
           frozen_population: str | None = None, frozen_population_sha256: str | None = None,
           trick_end_rows: bool = False, init_widen_encoder: bool = False,
+          val_rows: int | None = None, compile_trunk: bool = False,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
@@ -1719,7 +1815,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         seq_feedforward=seq_feedforward, public_head=public_head, rank_limit=rank_limit,
         select_metric=select_metric, val_rank_records=val_rank_records, init=init,
         init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
-        encoder_version=encoder_version)
+        encoder_version=encoder_version, val_rows=val_rows, compile_trunk=compile_trunk)
     config["eval_holdouts"] = dict(holdouts)
     # Recorded only when set, so every other run's config (and config_sha256) is unchanged.
     if trick_end_rows:
@@ -1827,10 +1923,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             f"(--init-exclude-exposed={init_exclude_exposed})")
     masks = {part: SplitSelector(assignment, part)
              for part in ("train", "val", "test")}
-    n_rows = {part: 0 for part in masks}
-    for block in store.iter_blocks():
-        for part, fn in masks.items():
-            n_rows[part] += int(fn(block).sum())
+    # from the deal keys the store recorded, decoding only a shard whose keys
+    # straddle two parts (this was a full serial decode of every shard)
+    n_rows = split_row_counts(store, masks)
     deals = split_counts(assignment)
     split = {
         "method": config["split_method"], "seed": int(seed),
@@ -1849,6 +1944,13 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                          "need all three (at least three deals)")
     say(f"split: deals train={deals['train']} val={deals['val']} test={deals['test']} "
         f"records train={n_rows['train']} val={n_rows['val']} test={n_rows['test']}")
+    epoch_val_mask, val_subset = masks["val"], None
+    if val_rows is not None:
+        epoch_val_mask, val_subset = val_row_subset(store, assignment, int(val_rows), seed=seed)
+        say(f"val subset (--val-rows {int(val_rows)}): {val_subset['deals']} of "
+            f"{val_subset['val_deals']} val deals, {val_subset['rows']} of {n_rows['val']} rows "
+            f"(digest {val_subset['digest'][:12]}); per-epoch validation only, the final "
+            "pass reads every val row")
     population = fit_population(assignment, stores=prepared.stores)
     # #425/#428: root rows are FIT exposure (their loss updates the shared trunk).
     # They are read here, against this run's split: rows in val/test or in the
@@ -1928,7 +2030,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         assert not set(population["test"]) & (src["fit"] | src["selection"])
     say(f"exposure: fit={exposure['counts']['fit']} selection={exposure['counts']['selection']} "
         f"deals (ancestors {len(exposure['ancestors'])}; root-only fit {len(root_fit - set(population['train']))})")
-    baselines = fit_baselines(store, masks["train"])
+    baselines = fit_baselines(store, masks["train"], workers=decode_workers)
     say(f"baselines: stratified prior n={baselines['stratified_prior']['n']} "
         f"empty_cells={baselines['stratified_prior']['empty_cells']}")
     val_cands = candidate_set_for(store, set(population["val"]), cache,
@@ -2005,6 +2107,13 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say(f"init: {init_info['path']} sha={init_info['sha256'][:12]} "
             f"epoch={init_info['epoch']} aux_head_loaded={init_info['aux_points_head_loaded']} "
             f"lr={lr} x {init_lr_scale}")
+    if compile_trunk:
+        # In place: the parameters, the state dict and every checkpoint are the
+        # eager module's.  Each forward through the trunk (value batch, root
+        # batch, per-epoch validation) runs the compiled graph; best.pt is
+        # reloaded eager before the final evaluation.
+        model.trunk.compile()
+        say("compile: the mlp trunk runs through torch.compile (not bit-identical to eager)")
     lr_effective = float(lr) * (float(init_lr_scale) if init is not None else 1.0)
     params = list(model.parameters()) + (list(aux_head.parameters()) if aux_head else [])
     optim = torch.optim.AdamW(params, lr=lr_effective, weight_decay=weight_decay)
@@ -2017,11 +2126,13 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     selection = {"split": SELECTION_SPLIT, "criterion": selector.criterion,
                  "metric": select_metric, "metric_key": selector.key, "patience": int(patience),
                  "val_rank_records": int(val_rank_records), "lr_effective": lr_effective}
+    if val_subset is not None:
+        selection["val_subset"] = val_subset
     consumer = consumer_block(select_metric, aux_points, search_head, policy_head)
     policy_rng = np.random.default_rng(int(seed) + 1_000_003)
 
     def validate() -> dict:
-        ev = run_eval(model, store, masks["val"], dev, batch_size=batch_size, aux_head=aux_head)
+        ev = run_eval(model, store, epoch_val_mask, dev, batch_size=batch_size, aux_head=aux_head)
         metrics = quick_metrics(ev)
         metrics.update(search_facing(model, ev, val_cands, dev, batch_size=batch_size))
         if search_head:
@@ -2149,6 +2260,22 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     }
     n_params = int(sum(p.numel() for p in model.parameters()))
     say(f"model: {model_cfg.architecture} params={n_params}")
+    from .policy_prior import ballot_rows
+    from .policy_rows import explore_row_weights, policy_losses
+    from .search_mean_target import host_used_rows, soft_targets
+    # Loop settings that change the wall time and nothing else (the parity
+    # tests run both ways and compare weights and metrics bit for bit):
+    # SHENGJI_CWV_PREFETCH = batches the loader thread may gather ahead of the
+    # step (0 = gather inline, the single-threaded loop); SHENGJI_CWV_HOST_ROWS=0
+    # = let the device pick the search-head and ballot rows through boolean
+    # masks, which makes the host wait for the device several times a batch.
+    prefetch_depth = max(0, int(os.environ.get("SHENGJI_CWV_PREFETCH", "2")))
+    host_rows = os.environ.get("SHENGJI_CWV_HOST_ROWS", "1") != "0"
+    # SHENGJI_CWV_ASYNC_COPY = steps the host may queue ahead of the device with
+    # non-blocking copies (DeviceCopies; 0 = blocking copies, MPS/CUDA only)
+    async_copy_depth = max(0, int(os.environ.get("SHENGJI_CWV_ASYNC_COPY", "2")))
+    # SHENGJI_CWV_LOSS_TRACE=PATH appends each flushed window's mean losses to PATH
+    loss_trace = os.environ.get("SHENGJI_CWV_LOSS_TRACE") or None
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
         model.train()
@@ -2158,8 +2285,6 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 "policy_rows": 0}
         rows = 0
         batches = 0
-        policy_iter = (policy_data.batches(policy_batch, policy_rng) if policy_data is not None
-                       else None)
         # Issue #342 finding 2, measured on MPS (batch 1024, h512-class net,
         # best of 3): a step costs 3.4 ms without host syncs and 7.3 ms with
         # the four this loop used to force per batch (isfinite + three
@@ -2173,8 +2298,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         sync_every = max(1, int(os.environ.get("SHENGJI_CWV_LOSS_SYNC_EVERY", "32")))
         pending = None          # device-side [total*b, ce*b, aux*b, rows]
         finite_all = None       # device-side logical AND over the window, kept SEPARATE
+        # the search head's per-batch CE, pulled to the host at the flush and summed
+        # there in batch order (the same float64 sum the per-batch .item() built)
+        search_ce_pending: list[tuple[torch.Tensor, int]] = []
         def flush():
             nonlocal pending, finite_all, rows
+            if search_ce_pending:
+                values = torch.stack([v for v, _n in search_ce_pending]).tolist()
+                for value, (_v, n_used) in zip(values, search_ce_pending):
+                    sums["search_head_ce"] = sums.get("search_head_ce", 0.0) + value * n_used
+                search_ce_pending.clear()
             if pending is None:
                 return
             vals = pending.tolist()
@@ -2187,15 +2320,27 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             rows += int(vals[3])
             sums["policy_bce"] += vals[4]; sums["policy_listwise"] += vals[5]
             sums["policy_rows"] += int(vals[6])
+            if loss_trace:
+                # diagnostic only: one line per flushed window (a loss curve finer
+                # than the epoch means, for comparing two runs step by step)
+                import json
+                with open(loss_trace, "a") as fh:
+                    fh.write(json.dumps({
+                        "epoch": epoch, "batches": batches, "rows": int(vals[3]),
+                        "loss": vals[0] / max(vals[3], 1.0), "ce": vals[1] / max(vals[3], 1.0),
+                        "policy_bce": vals[4] / max(vals[6], 1.0),
+                        "policy_listwise": vals[5] / max(vals[6], 1.0)}) + "\n")
             pending = None
             finite_all = None
         # Where an epoch's wall goes (2026-09-20, Jerry: measure before optimising).  Host
-        # wall per stage: batch_wait = time blocked inside iter_batches (decode + gather +
-        # worker wait), to_device = tensors_of, policy_wait = the root batch fetch + its
-        # tensors, sync = the loss flushes (the .item()/.tolist() that wait for the device),
-        # step = everything else in the iteration (forward, losses, backward, optimiser
-        # step -- host time; device work not yet awaited lands in the next sync).  The
-        # key ends in "secs" so the exact-reproducibility comparison strips it.
+        # wall per stage: batch_wait = time the loop waits for its next batch (with the
+        # prefetch thread, only what the loader did not finish while the previous step
+        # ran; inline, all of decode + gather + the root batch fetch), to_device = the
+        # value batch's tensors, policy_wait = the root batch's tensors, sync = the loss
+        # flushes (the .tolist() that waits for the device), step = everything else in
+        # the iteration (forward, losses, backward, optimiser step -- host time; device
+        # work not yet awaited lands in the next copy or sync).  The key ends in "secs"
+        # so the exact-reproducibility comparison strips it.
         stage = {"batch_wait": 0.0, "to_device": 0.0, "policy_wait": 0.0, "step": 0.0, "sync": 0.0}
         loader_stage = {} if loader_stage_timing else None
         loader_stage_counts = {} if loader_stage_timing else None
@@ -2219,23 +2364,25 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             loader_iter_kw["stage_secs"] = loader_stage
             loader_iter_kw["stage_counts"] = loader_stage_counts
             loader_iter_kw["decode_stage_secs"] = loader_decode_stage
-        for raw in timed_batches(iter(store.iter_batches(masks["train"], batch_size,
-                                                        **loader_iter_kw))):
-            t_iter = time.perf_counter()
-            t = tensors_of(raw, dev)
-            t_dev = time.perf_counter()
-            stage["to_device"] += t_dev - t_iter
+        soft_rows = target == "search-mean" or search_head
+
+        def train_step(t, rows_dev, search_rows, raw, p_tensors, ballot_dev, p_batch):
+            """One batch's forward and losses: ``(total, b, ce, aux loss, policy
+            BCE, policy listwise, root rows)``.  ``rows_dev`` / ``ballot_dev`` are
+            the host's row plans on the device (None: the device chooses the rows
+            through boolean masks, as before the plans existed)."""
             s_logits = None
             if search_head:
                 logits, aux, s_logits = forward_batch_heads(model, t, aux_head)
             else:
                 logits, aux = forward_batch(model, t, aux_head)
             if target == "search-mean" and "search_mean_played" in t:
-                from .search_mean_target import soft_targets
                 probs, used = soft_targets(t["search_mean_played"], t["role_attacker"],
-                                           t["target"], level=t.get("search_level_played"))
+                                           t["target"], level=t.get("search_level_played"),
+                                           rows=rows_dev)
                 ce = nn.functional.cross_entropy(logits, probs)
-                sums["search_rows"] = sums.get("search_rows", 0) + int(used.sum().item())
+                n_soft = int(search_rows.size) if rows_dev is not None else int(used.sum().item())
+                sums["search_rows"] = sums.get("search_rows", 0) + n_soft
             else:
                 ce = nn.functional.cross_entropy(logits, t["target"])
             total = ce
@@ -2246,37 +2393,33 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 total = total + float(aux_weight) * a_loss
             s_loss = None
             if s_logits is not None and "search_mean_played" in t:
-                # #373: the search-mean head learns ONLY the rows that carry a
-                # sidecar mean inside the support; the others contribute nothing
-                # to it (no realised one-hot leaks into this head).
-                from .search_mean_target import soft_targets
+                # The search-mean head learns ONLY the rows that carry a sidecar
+                # mean inside the support; the others contribute nothing to it
+                # (no realised one-hot leaks into this head).
                 s_probs, s_used = soft_targets(t["search_mean_played"], t["role_attacker"],
-                                               t["target"], level=t.get("search_level_played"))
-                n_used = int(s_used.sum().item())
+                                               t["target"], level=t.get("search_level_played"),
+                                               rows=rows_dev)
+                if rows_dev is not None:
+                    # the same rows, known on the host: nothing waits for the device
+                    s_sel, n_used = rows_dev, int(search_rows.size)
+                    if "search_level_played" in t:
+                        n_level = int(np.isfinite(raw["search_level_played"][search_rows]).sum())
+                else:
+                    s_sel, n_used = s_used, int(s_used.sum().item())
+                    if "search_level_played" in t:
+                        n_level = int((s_used & torch.isfinite(t["search_level_played"]))
+                                      .sum().item())
                 if "search_level_played" in t:
-                    n_level = int((s_used & torch.isfinite(t["search_level_played"])).sum().item())
                     sums["search_head_level_rows"] = sums.get("search_head_level_rows", 0) + n_level
                 if n_used:
-                    s_loss = nn.functional.cross_entropy(s_logits[s_used], s_probs[s_used])
+                    s_loss = nn.functional.cross_entropy(s_logits[s_sel], s_probs[s_sel])
                     total = total + float(search_head_weight) * s_loss
                 sums["search_head_rows"] = sums.get("search_head_rows", 0) + n_used
                 if s_loss is not None:
-                    sums["search_head_ce"] = sums.get("search_head_ce", 0.0) \
-                        + float(s_loss.detach().item()) * n_used
+                    search_ce_pending.append((s_loss.detach(), n_used))
             p_bce = p_lw = None
             b_r = 0
-            if policy_iter is not None:
-                # #425: one root batch per value batch, ALWAYS forwarded (the twin
-                # runs the same batches with the loss weighted 0).
-                t_p = time.perf_counter()
-                try:
-                    p_batch = next(policy_iter)
-                except StopIteration:
-                    policy_iter = policy_data.batches(policy_batch, policy_rng)
-                    p_batch = next(policy_iter)
-                from .policy_rows import policy_losses
-                p_tensors = policy_data.tensors(p_batch, dev)
-                stage["policy_wait"] += time.perf_counter() - t_p
+            if p_tensors is not None:
                 if policy_soft_targets and "vals" not in p_tensors:
                     # REFUSE rather than fall through to the hard target: a run asked for the
                     # soft arm and silently training the hard one would produce a result
@@ -2285,7 +2428,6 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                         "--policy-soft-targets: this extract carries no per-candidate search "
                         "values (`vals`). It predates #496; re-extract with the current "
                         "policy_prior before running the soft arm.")
-                from .policy_rows import explore_row_weights
                 # #676 D: None at weight 1.0 (the unweighted code path, bit-identical to
                 # every run before the flag); a per-row vector otherwise.
                 p_w = explore_row_weights(p_tensors["explore_flag"], float(policy_explore_weight)) \
@@ -2296,37 +2438,91 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                soft_targets=bool(policy_soft_targets),
                                                soft_temperature=float(policy_soft_temperature),
                                                row_weight=p_w,
-                                               trunk_grad_scale=float(policy_trunk_grad_scale))
+                                               trunk_grad_scale=float(policy_trunk_grad_scale),
+                                               rows=ballot_dev)
                 b_r = int(len(p_batch["x"]))
                 total = total + float(policy_weight) * (
                     p_bce + float(policy_listwise_weight) * p_lw)
-            finite = torch.isfinite(total).to(torch.float32)
-            if sync_every == 1 and not bool(finite):
-                raise TrainError("training loss is non-finite")
-            optim.zero_grad(set_to_none=True)
-            total.backward()
-            optim.step()
-            zero = torch.zeros((), device=total.device)
-            contrib = torch.stack((total.detach() * b, ce.detach() * b,
-                                   (a_loss.detach() * b) if a_loss is not None else zero,
-                                   torch.full((), float(b), device=total.device),
-                                   (p_bce.detach() * b_r) if p_bce is not None else zero,
-                                   (p_lw.detach() * b_r) if p_lw is not None else zero,
-                                   torch.full((), float(b_r), device=total.device))
-                                  ).to(torch.float32)
-            finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
-            pending = contrib if pending is None else pending + contrib
-            batches += 1
-            stage["step"] += time.perf_counter() - t_dev
-            if batches % sync_every == 0:
-                t_s = time.perf_counter()
-                flush()
-                stage["sync"] += time.perf_counter() - t_s
+            return total, b, ce, a_loss, p_bce, p_lw, b_r
+
+        def host_batches():
+            """``(value batch, root batch, search rows, ballot rows)`` in training
+            order.  One root batch per value batch, ALWAYS forwarded (the policy
+            twin runs the same batches with the loss weighted 0); a root batch
+            is drawn only once its value batch exists, so the policy RNG
+            advances exactly as when the loop drew it inline.  The row plans
+            (``host_used_rows``, ``ballot_rows``) are None when the device is
+            to choose the rows itself."""
+            policy_iter = (policy_data.batches(policy_batch, policy_rng)
+                           if policy_data is not None else None)
+            for raw in store.iter_batches(masks["train"], batch_size, **loader_iter_kw):
+                p_batch = None
+                if policy_iter is not None:
+                    try:
+                        p_batch = next(policy_iter)
+                    except StopIteration:
+                        policy_iter = policy_data.batches(policy_batch, policy_rng)
+                        p_batch = next(policy_iter)
+                search_rows = None
+                if host_rows and soft_rows and "search_mean_played" in raw:
+                    search_rows = host_used_rows(raw["search_mean_played"], raw["role_attacker"],
+                                                 raw.get("search_level_played"))
+                ballot = (ballot_rows(p_batch["tgt"])
+                          if host_rows and p_batch is not None else None)
+                yield raw, p_batch, search_rows, ballot
+
+        stream = Prefetch(host_batches, prefetch_depth) if prefetch_depth else host_batches()
+        copies = DeviceCopies(dev, async_copy_depth)
+        try:
+            for raw, p_batch, search_rows, ballot in timed_batches(iter(stream)):
+                t_iter = time.perf_counter()
+                # Every copy to the device happens here, before this step's work is
+                # queued.  A blocking copy waits for everything already queued; the
+                # non-blocking ones wait only for the step async_copy_depth back.
+                copies.begin_step()
+                t = tensors_of(raw, dev, copy=copies)
+                rows_dev = None if search_rows is None else copies(search_rows)
+                t_dev = time.perf_counter()
+                stage["to_device"] += t_dev - t_iter
+                p_tensors = ballot_dev = None
+                if p_batch is not None:
+                    p_tensors = policy_data.tensors(p_batch, dev, copy=copies)
+                    ballot_dev = None if ballot is None else copies(ballot)
+                    t_now = time.perf_counter()
+                    stage["policy_wait"] += t_now - t_dev
+                    t_dev = t_now
+                total, b, ce, a_loss, p_bce, p_lw, b_r = train_step(
+                    t, rows_dev, search_rows, raw, p_tensors, ballot_dev, p_batch)
+                finite = torch.isfinite(total).to(torch.float32)
+                if sync_every == 1 and not bool(finite):
+                    raise TrainError("training loss is non-finite")
+                optim.zero_grad(set_to_none=True)
+                total.backward()
+                optim.step()
+                zero = torch.zeros((), device=total.device)
+                contrib = torch.stack((total.detach() * b, ce.detach() * b,
+                                       (a_loss.detach() * b) if a_loss is not None else zero,
+                                       torch.full((), float(b), device=total.device),
+                                       (p_bce.detach() * b_r) if p_bce is not None else zero,
+                                       (p_lw.detach() * b_r) if p_lw is not None else zero,
+                                       torch.full((), float(b_r), device=total.device))
+                                      ).to(torch.float32)
+                finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
+                pending = contrib if pending is None else pending + contrib
+                copies.end_step()
+                batches += 1
+                stage["step"] += time.perf_counter() - t_dev
+                if batches % sync_every == 0:
+                    t_s = time.perf_counter()
+                    flush()
+                    stage["sync"] += time.perf_counter() - t_s
+        finally:
+            copies.drain()          # the device has read every host array before it goes
+            if prefetch_depth:
+                stream.close()
         t_s = time.perf_counter()
         flush()
         stage["sync"] += time.perf_counter() - t_s
-        # policy_wait happens inside the iteration, so take it back out of step
-        stage["step"] -= stage["policy_wait"]
         train_metrics = {"loss": sums["total"] / max(rows, 1),
                          "cross_entropy": sums["ce"] / max(rows, 1), "rows": rows,
                          "batches": batches}
@@ -3012,6 +3208,21 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--val-rank-records", type=int, default=DEFAULTS["val_rank_records"],
                    help="search records of the val (and test) split in the candidate set "
                         "(per shard: ceil(N / shards)); 0 disables the rank pass")
+    t.add_argument("--val-rows", type=int, default=None,
+                   help="score each epoch's validation rows on a seeded subset of the val deals "
+                        "covering at least N rows (whole deals, the same subset every epoch); "
+                        "the final val/test pass still reads every row. Default: every val row "
+                        "every epoch. val_ce, val_mae and the points metrics become subset "
+                        "estimates; the rank metrics read the candidate set "
+                        "(--val-rank-records) and do not change. Predeclare N before a run "
+                        "that selects on val_ce.")
+    t.add_argument("--compile", action="store_true", dest="compile_trunk",
+                   help="torch.compile the mlp trunk (the value, policy and per-epoch "
+                        "validation forwards all run through it). NOT bit-identical to eager: "
+                        "fused kernels round differently and draw dropout differently, so use "
+                        "it for a new run, never to continue or reproduce an eager one. "
+                        "Recorded in the config; checkpoints and the final evaluation are "
+                        "eager. Default off.")
     t.add_argument("--frozen-population", default=None,
                    help="opt-in frozen base split, candidate and policy-row contract")
     t.add_argument("--frozen-population-sha256", default=None,
@@ -3085,6 +3296,7 @@ def main(argv: list[str] | None = None) -> int:
                   policy_tower_width=args.policy_tower_width,
                   policy_trunk_grad_scale=args.policy_trunk_grad_scale,
                   val_rank_records=args.val_rank_records, init=args.init,
+                  val_rows=args.val_rows, compile_trunk=args.compile_trunk,
                   frozen_population=args.frozen_population,
                   frozen_population_sha256=args.frozen_population_sha256,
                   init_lr_scale=args.init_lr_scale,

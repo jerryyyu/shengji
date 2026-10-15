@@ -97,7 +97,7 @@ def test_timing_excludes_consumer_pause_and_partial_close_cleans_pool(monkeypatc
             return None
 
     class Pool:
-        def __init__(self, *, max_workers):
+        def __init__(self, *, max_workers, mp_context=None):
             self.max_workers = max_workers
 
         def submit(self, *args):
@@ -168,7 +168,7 @@ def test_stage_counts_cover_parallel_loader_and_exclude_consumer_residency(monke
             return None
 
     class Pool:
-        def __init__(self, *, max_workers):
+        def __init__(self, *, max_workers, mp_context=None):
             self.max_workers = max_workers
 
         def submit(self, *args):
@@ -218,7 +218,7 @@ def test_stage_counts_record_oversized_parallel_window_serial_fallback(monkeypat
             return None
 
     class Pool:
-        def __init__(self, *, max_workers):
+        def __init__(self, *, max_workers, mp_context=None):
             self.max_workers = max_workers
 
         def submit(self, *args):

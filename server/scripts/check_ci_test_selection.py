@@ -43,7 +43,7 @@ Not modelled: pytest ``-k``/``-m``/``--deselect``/``--ignore`` and skip markers
 ``matrix.include``/``exclude``, shell brace expansion, and paths built from
 shell variables at run time.
 
-Engine modes (the two-engine rule, added after #888/#891):
+Engine modes (the two-engine rule):
 
 A test module that imports the engine boundary must be selected by at least
 one PURE-engine pytest command and at least one COMPILED-engine pytest command,
@@ -55,8 +55,8 @@ or be listed with a reason in ``server/tests/ci_engine_mode_exclusions.txt``
   ``shengji.engine.fast`` and ``shengji.engine._fast`` (the modules
   ``SHENGJI_FAST=1`` reroutes through the Cython kernels), plus every
   ``shengji.luna.benchmark_*`` module whose own source imports a core module
-  (today benchmark_games/legacy_evidence/policy/rollout_proof/rollouts; the set
-  is derived, so a new benchmark module that calls engine legality joins it).
+  (the set is derived, so a new benchmark module that calls engine legality
+  joins it).
   ``shengji.engine.combos``/``cards`` are rerouted too but imported almost
   everywhere; they are deliberately outside the set.
 * A test module imports the boundary when its AST contains ``import M``,

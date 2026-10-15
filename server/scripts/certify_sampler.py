@@ -64,26 +64,19 @@ RESERVOIRS = {"original": "rl_data/highn_corpus_all.jsonl",
               "late": "rl_data/highn_late_air.jsonl",
               "deep": "rl_data/deep_leads.v1.jsonl"}
 
-#: REGISTERED per-source state quotas. A single global `--limit` across ordered
-#: paths certified whatever the FIRST path supplied: `original` holds 20,845
-#: rows, so every 1,600-state run exhausted its limit inside `original` and
-#: exercised ZERO `late` rows. Both the `eea78d2` certificate and its
-#: replacement were therefore original-only while advertising more (Codex).
-#: Per-source quotas make the certified population explicit and checkable.
+#: REGISTERED per-source state quotas. A single global limit across ordered
+#: paths would certify only what the FIRST path supplied; per-source quotas
+#: make the certified population explicit and checkable.
 #: `deep` is capped by supply (768 rows) and is the reservoir v6 draws all 170
 #: of its late-band states from.
 SOURCE_QUOTA = {"original": 500, "late": 500, "deep": 500}
 
-#: The registered toy-state count. Accepting "some nonzero number" let a run
-#: report 40/40 where the registered certificate claimed 120/120.
+#: The registered toy-state count; any other count refuses certification.
 REGISTERED_TOY_STATES = 120
 
 #: The EXACT scope a GLOBAL certificate must have. Anything narrower is SCREEN
-#: evidence, never a certificate. Each field closes a hole that let
-#: `certified=true` stand for less than it claimed (Codex): `--worlds 0`
-#: certified with zero sampled worlds; a single-source invocation certified
-#: while the ledger said all three sources were mandatory; and neither a clean
-#: tree nor an actually-active compiled path was required.
+#: evidence, never a certificate: every source, nonzero sampled worlds, a
+#: clean tree and an actually-active compiled path are all required.
 REGISTERED_CERT = {
     "sources": ("original", "late", "deep"),
     "states": 1500,          # 500 per source
@@ -178,8 +171,7 @@ def check_world(world, extra, rnd, seat, cons):
             total.update(tp.cards)
     # NOT rnd.buried on top: `extra` already carries it. For the banker the
     # sampler returns the real burial; for anyone else it returns a sampled
-    # kitty standing in for it. Adding it again double-counted eight cards,
-    # and truncating the diff to four entries hid that it was exactly eight.
+    # kitty standing in for it.
     deck = Counter(make_deck())
     if total != deck:
         missing = {c: deck[c] - total.get(c, 0)
@@ -289,10 +281,9 @@ def enumerate_legal(rnd, seat, cons, cap=60000):
 #: Named, counted fallbacks. Both generators below skip a state or row whose
 #: replay raises. That is defensible — a corpus row that cannot be rebuilt
 #: cannot be certified — but a SILENT skip lets the certifier report
-#: "120/120 certified" over whatever happened to work, which is the same
-#: "a result only describes the population it measured" trap that has bitten
-#: this project repeatedly. Counting them makes the certified population
-#: legible; `certification_skips()` is printed with every run.
+#: "120/120 certified" over whatever happened to work. Counting them makes
+#: the certified population legible; `certification_skips()` is printed with
+#: every run.
 SKIPPED = {"toy_state_replay": 0, "corpus_row_replay": 0,
            "corpus_deck_mismatch": 0, "corpus_wrong_seat_or_phase": 0}
 
@@ -598,7 +589,7 @@ def main() -> None:
               "happened to work.")
     print("\nNOT CERTIFIED: distribution fidelity. Legality and reachability "
           "say nothing about whether worlds are produced in the right "
-          "PROPORTIONS; that needs exact toy posteriors (Codex).")
+          "PROPORTIONS; that needs exact toy posteriors.")
 
     os.makedirs("runs/logs", exist_ok=True)
     result = {**prov, "states": n_states, "requested": requested,
@@ -614,10 +605,8 @@ def main() -> None:
         "source_quota": SOURCE_QUOTA,
         "registered_toy_states": REGISTERED_TOY_STATES,
         "skipped_any": any(certification_skips().values()),
-        # `certified` now requires a COMPLETE population. It previously could
-        # stay true while replay loops silently dropped states and rows, which
-        # certifies the sampler over whatever happened to rebuild (Codex).
-        # Fail closed: a nonzero skip means look, not assume.
+        # `certified` requires a COMPLETE population. Fail closed: any skip
+        # blocks certification.
         "registered_cert": REGISTERED_CERT,
         "scope_failures": scope_failures,
         # A GLOBAL certificate requires the exact registered scope, a clean

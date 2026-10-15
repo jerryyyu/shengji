@@ -1,6 +1,6 @@
 """Release-45 server-path smoke: the wide value-only bury (K=64) through the server.
 
-The deploy gate for release 45 (#974 on release 44). It builds the served bot
+The deploy gate for release 45. It builds the served bot
 from a fly.toml ``[env]`` exactly as the server does (`cwv_serving_smoke.
 build_production_bot`: registry registration from the env, ``make_bot(SHENGJI_BOT)``),
 then for each of N first-round deals with four bot seats:

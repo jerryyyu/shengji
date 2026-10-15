@@ -108,8 +108,8 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("--report-worlds", type=int, default=S.REPORT_WORLDS)
         p.add_argument("--baseline-select-worlds", type=int, default=S.BASELINE_SELECT_WORLDS)
         p.add_argument("--trump-ranks", type=_trump_ranks, default=None,
-                       help="comma-separated trump ranks cycled over clusters (default: all 13, "
-                            "#222's cycle); the Run A/B/C checkpoints saw rank-2 first rounds "
+                       help="comma-separated trump ranks cycled over clusters (default: all 13); "
+                            "the Run A/B/C checkpoints saw rank-2 first rounds "
                             "only and the encoder one-hots the rank, so --trump-ranks 2 keeps "
                             "the learned leaf in distribution; run refuses a calibration made "
                             "on other ranks")

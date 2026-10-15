@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""How often does a seat that could over-declare stay silent?  (#707 S15(4))
+"""How often does a seat that could over-declare stay silent?
 
 Read-only over production room logs (``logs/*.jsonl`` and ``logs/archive``):
 for every round with one ``round_start`` (the deck) and one ``trump`` event,

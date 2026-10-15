@@ -89,19 +89,27 @@ def follow_env(path):
     return env
 
 
-def test_registry_follow_reaches_server_snapshot_and_commit(pinned_production_package, tmp_path):
-    recipe = pv.pv_env_recipe(follow_env(pinned_production_package))
+@pytest.mark.parametrize('hand_cap,node_cap', [(3, 50_000_000), (6, 50_000_000), (6, 1)])
+def test_registry_follow_reaches_server_snapshot_and_commit(
+        pinned_production_package, tmp_path, hand_cap, node_cap):
+    env = follow_env(pinned_production_package)
+    env['SHENGJI_PV_EXACT_FOLLOW_MAX_NODES'] = str(node_cap)
+    recipe = pv.pv_env_recipe(env)
     entries = pv.pv_registry_entries(**recipe)
     name, factory = next(iter(entries.items()))
     bot = factory(seed=7)
     assert bot.policy_name == name and bot.config.exact_follow
     assert bot.exact_follow_solver == 'compact-level'
     assert bot.exact_follow_max_cards == bot.exact_deep_cards == 6
-    assert bot.exact_follow_max_nodes == 50_000_000
+    assert bot.exact_follow_max_nodes == node_cap
     assert bot.worlds == 64 and bot.candidates == 8 and bot.serving_budget_seconds == 3
     rnd, heuristic = _play_state(), HeuristicBot()
-    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= 3):
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= hand_cap):
         rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    baseline_recipe = dict(recipe, exact_follow=False)
+    baseline = pv.make_pv_search_bot(**baseline_recipe, seed=7)
+    expected = baseline.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert baseline.last_decision_record['work_complete']
 
     async def scenario():
         game = Game(random.Random(7))
@@ -119,13 +127,25 @@ def test_registry_follow_reaches_server_snapshot_and_commit(pinned_production_pa
         assert copied.policy_name == name and copied.exact_follow_solver == 'compact-level'
         record = copied.last_decision_record
         assert record['work_complete'] and record['exact_follow_attempted']
-        assert record['exact_follow_abandoned'] is None
-        assert record['exact_follow_worlds'] == 64
+        if node_cap == 1:
+            assert record['exact_follow_abandoned'] == 'error'
+            assert record['exact_follow_error'] == 'ExactFollowRefusal'
+            assert not record['exact_follow_applied']
+            assert 'exact_follow_scores' not in record
+            assert list(prepared.decision.cards) == expected
+            for key in ('admitted', 'selected_index', 'value_means', 'played',
+                        'value_evaluations', 'value_batches'):
+                assert record[key] == baseline.last_decision_record[key]
+        else:
+            assert record['exact_follow_abandoned'] is None
+            assert record['exact_follow_worlds'] == 64
         from shengji.train.search_screen import trace_fields
         persisted = trace_fields(record)
         for key in ('exact_follow_attempted', 'exact_follow_abandoned',
-                    'exact_follow_applied', 'exact_follow_worlds', 'exact_follow_scores'):
-            assert persisted[key] == record[key]
+                    'exact_follow_applied', 'exact_follow_worlds', 'exact_follow_scores',
+                    'exact_follow_error'):
+            if key in record:
+                assert persisted[key] == record[key]
         assert srv._commit_bot_turn(room, prepared)
         assert not srv._commit_bot_turn(room, prepared)
         assert len(rnd.hands[seat]) == len(hands[seat]) - len(prepared.decision.cards)

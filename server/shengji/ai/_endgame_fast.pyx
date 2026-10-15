@@ -463,7 +463,7 @@ cdef class FastWorld:
                 if self.subs[s][m] != NULL:
                     free(self.subs[s][m])
 
-    # -- slots ------------------------------------------------------------------
+# Slot representation.
 
     cdef int _slot_mask(self, int seat, int code, int first, int count) except -1:
         """Mask of slots [first, first+count) of ``code`` in ``seat``; grows."""
@@ -663,7 +663,7 @@ cdef class FastWorld:
         self.n_subs[seat][hand] = n
         return n
 
-    # -- moves ------------------------------------------------------------------
+# Move enumeration.
 
     cdef int _moves(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
                     int nplays, uint8_t* out_action, uint8_t* out_played) except -1:
@@ -792,7 +792,7 @@ cdef class FastWorld:
         trick_pts[0] = pts
         return winner
 
-    # -- transposition table ----------------------------------------------------
+# Transposition table.
 
     cdef inline Entry* _lookup(self, uint64_t k1, uint64_t k2) noexcept:
         cdef uint64_t mask = self.tt_cap - 1
@@ -843,7 +843,7 @@ cdef class FastWorld:
         free(old)
         return 0
 
-    # -- search -----------------------------------------------------------------
+# Search.
 
     cdef int _child(self, uint8_t* hands, int turn, int points, int leader,
                     uint8_t* plays, int nplays, int played,

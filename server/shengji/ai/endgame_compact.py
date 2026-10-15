@@ -121,7 +121,7 @@ class _CompactSolver:
         self._removed: dict[tuple, tuple] = {}
         self._resolved: dict[tuple, tuple] = {}
 
-    # -- binding ---------------------------------------------------------------
+    # Round binding.
 
     def bind(self, rnd: Round) -> None:
         """Bind the rule context from a root of this session's context."""
@@ -129,7 +129,7 @@ class _CompactSolver:
         self.banker_parity = rnd.banker % 2
         self.kitty_points = _round.total_points(rnd.buried)
 
-    # -- memoized rule questions -----------------------------------------------
+    # Memoized rule queries.
 
     def _srt(self, cards: tuple) -> tuple:
         got = self._sorted.get(cards)
@@ -225,7 +225,7 @@ class _CompactSolver:
         got = self._resolved[cards] = (winner, pts)
         return got
 
-    # -- the search --------------------------------------------------------------
+    # Search.
 
     def value(self, hands, turn, points, leader, plays,
               alpha=_NEG_INF, beta=_POS_INF) -> int:

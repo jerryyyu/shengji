@@ -32,6 +32,13 @@ def test_production_head_complete_state_matches_enumerated_consumer(pinned_produ
     kwargs = dict(worlds=8, cap=4000, key='s22-local-fixture',
                   state_id=0, store_index=0, cluster_index=0)
     ww.collect_state(view, predict, int(predict.version), out=fast, **kwargs)
+    original_enumerate, original_legal = legal.enumerate_legal, legal.is_legal
+    def reference_enumerate(*args, **kwargs):
+        with monkeypatch.context() as reference:
+            reference.setattr(legal, 'is_legal', original_legal)
+            return original_enumerate(*args, **kwargs)
+    monkeypatch.setattr(legal, 'enumerate_legal', reference_enumerate)
+    monkeypatch.setattr(legal, 'is_legal', lambda *args: True)
     monkeypatch.setattr(legal, 'count_lead_actions', lambda *args: None)
     ww.collect_state(view, predict, int(predict.version), out=slow, **kwargs)
     assert any(m[2] for m in fast.ev_meta) and any(not m[2] for m in fast.ev_meta)
@@ -39,6 +46,38 @@ def test_production_head_complete_state_matches_enumerated_consumer(pinned_produ
         np.testing.assert_array_equal(getattr(fast, field), getattr(slow, field))
     for reading in ww.READINGS:
         np.testing.assert_array_equal(fast.ev_logp[reading], slow.ev_logp[reading])
+
+
+def test_impossible_historical_follow_skips_listing_but_validates_head(monkeypatch):
+    import shengji.harvest.legal as legal
+    from shengji.train.cwv_prior_admission import root_clone
+    view = _views(synthetic_cluster(1000), picks=(30,))[0]
+    d = view.decision
+    _, _, worlds, _ = ww.served_worlds(d.rnd, d.seat, d.refusals, 64, 11)
+    witness = None
+    for i, ev in enumerate(view.events):
+        if ev.seat == d.seat or not ev.snap.trick.plays:
+            continue
+        since = ww.played_since(view.events, i)
+        for world in worlds:
+            clone = root_clone(ev.snap, ww.hands_at(ev, since, d.seat, world[0]), world[1])
+            if not legal.is_legal(clone, ev.seat, ev.attempted):
+                witness = ev, since, world
+                break
+        if witness:
+            break
+    assert witness, 'fixture must contain a historical follow violation'
+    ev, since, world = witness
+    def forbidden(*args, **kwargs):
+        pytest.fail('impossible history must not enumerate actions')
+    monkeypatch.setattr(legal, 'enumerate_legal', forbidden)
+    got = ww.event_log_probs(lambda X: np.zeros((len(X), N_CARDS)), 2,
+                            ev, since, d.seat, [world])
+    assert got['legal'][0] == 0
+    assert all(np.isneginf(got[r][0]) for r in ww.READINGS)
+    with pytest.raises(ww.WorldWeightingError, match='finite'):
+        ww.event_log_probs(lambda X: np.full((len(X), N_CARDS), np.nan), 2,
+                           ev, since, d.seat, [world])
 
 
 @pytest.mark.parametrize('trump', ['H', None])

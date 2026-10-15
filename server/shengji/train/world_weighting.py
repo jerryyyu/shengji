@@ -249,15 +249,19 @@ def event_log_probs(predict, version: int, event: PlayEvent, since: Sequence[Cou
         clone = root_clone(event.snap, h, buried)
         rows.append(flat_input(root_tensors(clone, event.seat, version), version))
         try:
+            acting = (clone.phase == 'play' and clone.turn == event.seat
+                      and clone.ordering is not None and clone.trick is not None)
             count = (count_lead_actions(h[event.seat], clone.ordering)
-                     if clone.phase == 'play' and clone.turn == event.seat
-                     and clone.ordering is not None and clone.trick is not None
-                     and not clone.trick.plays else None)
-            if count and (cap is None or count <= cap):
+                     if acting and not clone.trick.plays else None)
+            if acting and not is_legal(clone, event.seat, event.attempted):
+                # The old enumerator rejects this same must_include action,
+                # but only after constructing/counting its full legal set.
+                # Keep model evaluation and finite-logit validation unchanged.
+                legal_sets.append(None)
+            elif count and (cap is None or count <= cap):
                 # Same complete support as the enumerator, without building
                 # its action listing or the actions-by-54 score matrix.
-                legal_sets.append((h[event.seat], clone.ordering, count)
-                                  if is_legal(clone, event.seat, event.attempted) else None)
+                legal_sets.append((h[event.seat], clone.ordering, count))
             else:
                 # Capped support and follow obligations are unchanged.
                 legal = enumerate_legal(clone, event.seat, cap=cap, must_include=[event.attempted])

@@ -66,7 +66,7 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 import numpy as np
 
-from ..ai.memory import Memory
+from ..ai.memory import Memory, iter_known
 from ..ai.refusal import (Refusal, RefusalLedger, pin_unplayed_attempt, plays_since)
 from ..engine.cards import SUITS, TRUMP
 from ..harvest.rebuild import round_from_setup
@@ -290,7 +290,7 @@ def belief_features(rnd, seat: int, refusals: Sequence[Refusal] = (),
         declared = _counts(decl["cards"])
     blocks += [declarer, declared]
     pinned = np.zeros((3, N_CARDS), np.float32)
-    for code, (holder, copies) in mem.known.items():
+    for code, (holder, copies) in iter_known(mem):
         rel = (holder - seat) % 4
         if rel:
             pinned[rel - 1, CARD_INDEX[code]] += float(copies)

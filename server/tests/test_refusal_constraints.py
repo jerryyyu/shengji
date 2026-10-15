@@ -119,6 +119,83 @@ def engine_refuses(before, now, world_hands, refusal):
             and clone.notice["forced"] == list(refusal.forced))
 
 
+def test_declared_and_refused_twins_keep_both_public_holders(monkeypatch):
+    """A real deal proves one C2 in each of two hands, not two in one hand."""
+    from shengji.ai.memory import iter_known
+    from shengji.train.belief_labels import belief_features, CARD_INDEX
+    from shengji.train.belief_eval import known_counts
+    from shengji.train.pv_soft_oracle import hidden_layout
+
+    rnd = Game(random.Random(5)).start_round()
+    h = HeuristicBot()
+    while rnd.phase == 'deal':
+        actor, _, _ = rnd.deal_next()
+        cards = h.decide_declare(rnd, actor)
+        if cards:
+            rnd.declare(actor, cards)
+    for actor in range(4):
+        cards = h.decide_declare(rnd, actor, final=True)
+        if cards:
+            rnd.declare(actor, cards)
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, h.decide_bury(rnd, rnd.banker))
+    assert rnd.declaration['seat'] == 0 and rnd.declaration['cards'] == ['C2']
+    for _ in range(100):
+        actor = rnd.turn
+        if (actor == 1 and not rnd.trick.plays and 'C2' in rnd.hands[0]
+                and {'C2', 'C4'} <= set(rnd.hands[1])):
+            forced, message = validate_lead(['C2', 'C4'], rnd.hands[1],
+                [rnd.hands[s] for s in range(4) if s != 1], rnd.ordering)
+            if message is not None and forced == ['C4']:
+                rnd.play(1, ['C2', 'C4'])
+                break
+        rnd.play(actor, h.decide_play(rnd, actor))
+    else:
+        pytest.fail('seed 5 no longer reaches the public-twin witness')
+    assert rnd.turn == 2
+    refusal = R.observe_refusal(rnd)
+    mem = Memory(rnd, 2, own_kitty=True)
+    assert mem.known['C2'] == (0, 1)
+    assert R.pin_unplayed_attempt(mem, rnd, refusal, 2) == 1
+    assert R.pin_unplayed_attempt(mem, rnd, refusal, 2) == 0
+    assert sorted(pin for code, pin in iter_known(mem) if code == 'C2') == [(0, 1), (1, 1)]
+
+    bot = MCBot(seed=0)
+    worlds, _ = sample_worlds(bot, rnd, 2, 32, mem=mem)
+    assert len(worlds) == 32
+    for hands, _ in worlds:
+        assert hands[0].count('C2') == hands[1].count('C2') == 1
+        assert R.refusal_consistent(rnd, hands, refusal)
+    layout = hidden_layout(bot, rnd, 2, mem, rnd.hands, rnd.buried)
+    assert 'C2' not in layout.free
+    x = belief_features(rnd, 2, [refusal], mem=mem)
+    counts = known_counts(x[None])[0, CARD_INDEX['C2']]
+    # Relative receiver order from seat 2: seat 3, seat 0, seat 1, kitty.
+    assert counts.tolist() == [0, 1, 1, 0]
+    # Force the existing bounded-search fallback, without claiming it occurs
+    # naturally on this deal. Public holder facts must survive that boundary.
+    with monkeypatch.context() as patch:
+        patch.setattr(R, 'refusal_consistent', lambda *args: False)
+        policy = served(seed=0, worlds=4, refusal_constraints=True)
+        policy.sampler.SAMPLE_ATTEMPT_FACTOR = 1
+        fallback, _ = policy._worlds(copy.deepcopy(rnd), 2)
+        assert len(fallback) == 4
+        assert policy._last_sampling['refusal_fallback_worlds'] == 4
+        for hands, _ in fallback:
+            assert hands[0].count('C2') == hands[1].count('C2') == 1
+
+
+def test_refusal_pin_upgrades_existing_same_holder_without_double_counting():
+    from shengji.ai.memory import iter_known
+    _, rnd, _, _ = thrown(0)
+    refusal = R.observe_refusal(rnd)
+    mem = Memory(rnd, 1, own_kitty=True)
+    mem.known['D2'] = (0, 1)
+    assert R.pin_unplayed_attempt(mem, rnd, refusal, 1) == 1
+    assert R.pin_unplayed_attempt(mem, rnd, refusal, 1) == 0
+    assert [pin for code, pin in iter_known(mem) if code == 'D2'] == [(0, 2)]
+
+
 def heuristic_until(rnd, stop):
     h = HeuristicBot()
     while not stop(rnd):

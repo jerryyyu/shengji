@@ -220,6 +220,28 @@ def test_latency_worker_seals_factory_refusal_without_retry(tmp_path, monkeypatc
     assert not (tmp_path / 'measure_test.jsonl').exists()
 
 
+def test_latency_duplicate_refusal_witness_is_outside_commit_timing(monkeypatch):
+    import asyncio
+    from scripts import exact_endgame_latency as worker
+    from shengji.api import server as srv
+    from test_bot_scheduler import _real_room
+
+    clock = [0.0]
+    calls = []
+    original = srv._commit_bot_turn
+    def commit(room, prepared):
+        accepted = original(room, prepared)
+        calls.append(accepted)
+        clock[0] += 1.0 if len(calls) == 1 else 100.0
+        return accepted
+    monkeypatch.setattr(srv, '_commit_bot_turn', commit)
+    monkeypatch.setattr(worker.time, 'perf_counter', lambda: clock[0])
+    room = _real_room()
+    _, step, commit_seconds, once = asyncio.run(worker.timed_turn(srv, room, room.round.turn))
+    assert calls == [True, False] and once
+    assert step == 0.0 and commit_seconds == 1.0
+
+
 def test_latency_harvest_refuses_old_capture_source_before_creating_output(tmp_path, monkeypatch):
     import asyncio
     from scripts import exact_endgame_latency as worker

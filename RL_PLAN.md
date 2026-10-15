@@ -376,6 +376,25 @@ oracle or infer true-person disjointness from mutable display names.
   triage has an MDE80 of about 0.033 on the shortlist-era capped screens and about 0.05 on the
   served policy/value-search screens; each readout reports its own MDE80. Ten shared-control
   windows are a nominal read, and only fresh held-out deals confirm.
+- **Predeclared statistics options** (board D9, 2026-10-15). A lane may predeclare either option or both, before any
+  outcome; the code is `server/shengji/eval/paired_window_stats.py`. A lane that predeclares neither keeps the frozen
+  DerSimonian-Laird pool and one ten-window read. Sealed rows keep their original pooling and labels.
+  - *Q-gated fixed-effect pooling* (`fe-q-gated`): use the inverse-variance estimate unless Cochran's Q rejects
+    homogeneity at p < 0.10 (Q > 14.68 on 9 df), in which case use DerSimonian-Laird. The canonical lines state Q, Q/df,
+    p, tau² and the estimator that fired. A Q/df ≤ 1 gate would change nothing, because DL's tau² is already zero
+    there. On the 48 sealed primaries no label changes, and 16 intervals are narrower (mean 0.90×). Simulated with no
+    between-window variance, coverage is 95.4% and the SE is 3.7% below DL's.
+  - *Two-look design* (`two-look-obf-futility-v1`). The launcher interleaves arms by seed and pauses after five seeds.
+    At five windows: POSITIVE or NEGATIVE if |z| > 2.797; otherwise NOT AHEAD (a binding futility stop) if the point
+    estimate is ≤ 0; otherwise continue. At ten windows: judge at |z| > 1.977. Intervals are 95% repeated-confidence
+    intervals (point ± critical z × SE).
+    - Exact error: two-sided 0.028; false POSITIVE 0.025.
+    - Power 0.794 at the fixed-design MDE80; the design's own MDE80 is 2.823 × SE.
+    - Expected windows under the null: 7.5.
+    - On the 18 audited ten-window contrasts it stops 15 at five windows and keeps all 9 positives.
+    - NOT AHEAD is never "null", "equal" or "harm". Harm detection below the interim bound is given up: v79's sealed
+      NEGATIVE reads NOT AHEAD.
+    - For a lane that predeclares it, it replaces the five-window triage rule above, whose two-sided error is 0.062.
 - First-round deals (the banker is decided by the declaration) and later-round deals (the banker
   is fixed) are separate populations, screened and read separately, never pooled.
 - The points margin is a predeclared descriptive secondary since v66 (Jerry, 2026-10-09; #707

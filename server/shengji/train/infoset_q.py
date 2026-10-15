@@ -650,27 +650,47 @@ def predict_split(model, mu, sd, data, rerank: bool) -> np.ndarray:
     return np.concatenate(outs)
 
 
+GATES = (5, 10, 15, 25)
+
+
 def evaluate(dirs: Sequence[str], heads: Mapping[str, tuple[str, bool]], out: str,
              alphas: Sequence[float] = (0.25, 0.5, 0.75), log=print) -> dict:
-    """Test-split agreement and regret: W64 (the stored served means), the policy
-    log-odds argmax, every head, and alpha-blends of each head with W64 (alpha
-    picked on calib, all reported)."""
+    """Calib and test agreement and regret: W64 (the stored served means), the
+    policy log-odds argmax, every head, alpha-blends of each head with W64, and
+    ``<head>_cal``: the blend ``W + alpha * (h - W)`` applied only up to trick
+    ``gate``, with (alpha, gate) chosen by calib agreement and then read on test."""
     torch = _torch()
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "4")))
-    res: dict[str, Any] = {}
+    res: dict[str, Any] = {"selected": {}}
     for split in ("calib", "test"):
         data = load_split(dirs, split)
-        scores = {"w64": data["W"].astype(np.float64), "policy": data["P"].astype(np.float64)}
+        w = data["W"].astype(np.float64)
+        scores = {"w64": w, "policy": data["P"].astype(np.float64)}
         for name, (path, rerank) in heads.items():
             model, mu, sd = load_model(path, rerank)
             h = predict_split(model, mu, sd, data, rerank).astype(np.float64)
             scores[name] = h
             for al in alphas:
-                scores[f"{name}_blend{al:g}"] = al * h + (1 - al) * scores["w64"]
+                scores[f"{name}_blend{al:g}"] = al * h + (1 - al) * w
+            if split == "calib":
+                best = None
+                for al in (*alphas, 1.0):
+                    for gate in GATES:
+                        on = (data["trick"] <= gate)[:, None]
+                        sc = np.where(on, w + al * (h - w), w)
+                        agree, _ = outcome(choose(sc, data["M"]), data["T"], data["M"])
+                        if best is None or agree.mean() > best[0]:
+                            best = (float(agree.mean()), al, gate)
+                res["selected"][name] = {"calib_agree": best[0], "alpha": best[1],
+                                         "gate": best[2]}
+            sel = res["selected"][name]
+            on = (data["trick"] <= sel["gate"])[:, None]
+            scores[f"{name}_cal"] = np.where(on, w + sel["alpha"] * (h - w), w)
         res[split] = report(scores, data)
         log(f"[eval] {split} " + json.dumps({k: (v["agree"] if isinstance(v, dict) and "agree" in v
                                                   else v) for k, v in res[split].items()}),
             flush=True)
+    log(f"[eval] selected {json.dumps(res['selected'])}", flush=True)
     Path(out).write_text(json.dumps(res, indent=1))
     return res
 

@@ -893,6 +893,7 @@ class _BotTurnSnapshot:
     phase: str
     mode: str
     owner_left_at: float | None
+    play_cursor: tuple[int, int] | None
 
 
 @dataclass(frozen=True)
@@ -950,6 +951,7 @@ def _snapshot_bot_turn(room: Room, seat: int, mode: str
         phase=rnd.phase,
         mode=mode,
         owner_left_at=room.seats[seat].left_at,
+        play_cursor=(len(rnd.history), len(rnd.trick.plays)) if rnd.phase == "play" else None,
     )
 
 
@@ -1054,6 +1056,12 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             or room.round is not snapshot.round_token
             or room.round is None
             or room.round.phase != snapshot.phase
+            # The fourth player can win and immediately lead. Seat and phase
+            # then match an OLD snapshot, but the previous follow is not a
+            # decision for the new lead. Store this outside round_copy because
+            # speculative policy code may mutate its isolated copy.
+            or (snapshot.phase == "play" and snapshot.play_cursor !=
+                (len(room.round.history), len(room.round.trick.plays)))
             or not _turn_eligible(
                 room, snapshot.seat, snapshot.mode,
                 owner_left_at=snapshot.owner_left_at)):

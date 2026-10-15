@@ -36,6 +36,7 @@ def _snapshot(seat: int = 0) -> srv._BotTurnSnapshot:
         phase="play",
         mode="bot",
         owner_left_at=None,
+        play_cursor=None,
     )
 
 
@@ -520,6 +521,36 @@ def test_unchanged_snapshot_commits_cloned_bot_and_action():
     assert room.bot is not live_bot
     assert room.bot.play_calls == 1
     assert len(room.round.hands[seat]) < before
+
+
+@pytest.mark.parametrize('same_prepared', [True, False])
+def test_winning_fourth_follow_cannot_commit_again_as_next_lead(same_prepared):
+    import pickle
+    from shengji.engine.round import Trick
+
+    room = _real_room()
+    rnd = room.round
+    rnd.hands = [['S3', 'C3'], ['S4', 'C4'], ['S5', 'C5'], ['SA', 'SA']]
+    rnd.turn = 0
+    rnd.trick = Trick(leader=0)
+    room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+    for seat, card in enumerate(('S3', 'S4', 'S5')):
+        rnd.play(seat, [card])
+    prepared = _prepare_real(room)
+    stale = prepared if same_prepared else _prepare_real(room)
+    assert prepared.decision.cards == ['SA']
+    assert srv._commit_bot_turn(room, prepared)
+    assert rnd.turn == 3 and not rnd.trick.plays and rnd.hands[3] == ['SA']
+    after = pickle.dumps(rnd)
+    bot = room.bot
+    rng = bot.rng.getstate()
+    assert srv._commit_bot_turn(room, stale) is False
+    assert pickle.dumps(rnd) == after
+    assert room.bot is bot and bot.rng.getstate() == rng
+    fresh = _prepare_real(room)
+    assert fresh.decision.snapshot.play_cursor != prepared.decision.snapshot.play_cursor
+    assert srv._commit_bot_turn(room, fresh)
+    assert room.bot.play_calls == 2 and rnd.hands[3] == []
 
 
 def test_claimed_bot_seat_discards_action_rng_and_counters():

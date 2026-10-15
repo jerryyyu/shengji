@@ -118,3 +118,28 @@ def test_widened_model_starts_as_the_s17_model():
     assert wide.config["decl_row"] == bd.DECL_ROW and "decl_row" not in base.config
     with pytest.raises(bs.BeliefSeqError):
         bs.expand_state_dict(wide.state_dict(), base)
+
+
+def test_capacity_aware_draw_is_legal_and_keeps_a_starved_receiver_on_its_marginals():
+    from shengji.train import belief_seq as bs
+    rng = np.random.default_rng(4)
+    # 20 "trump" copies the kitty almost never holds, 30 others; kitty 8 slots
+    n_c = np.zeros(54, np.int64)
+    n_c[:20] = 1
+    n_c[20:50] = 1
+    M = np.zeros((54, 4), bool)
+    M[:50] = True
+    sizes = np.array([14, 14, 14, 8])
+    P = np.zeros((54, 4))
+    P[:20] = [1 / 3, 1 / 3, 1 / 3, 1e-4]
+    P[20:50] = [0.25, 0.25, 0.25, 0.25]
+    P = bs.project_sizes(P, n_c, sizes, M)
+    for fn in (bs.sample_worlds, bs.sample_worlds_capacity):
+        W = fn(P, n_c, M, sizes, 400, rng)
+        assert (W.sum(-1) == n_c[None]).all() and (W.sum(1) == sizes[None]).all()
+        assert not (W[:, ~M] > 0).any()
+    plain = bs.sample_worlds(P, n_c, M, sizes, 400, rng)[:, :20, 3].sum(1).mean()
+    capacity = bs.sample_worlds_capacity(P, n_c, M, sizes, 400, rng)[:, :20, 3].sum(1).mean()
+    expected = (P[:20, 3] * n_c[:20]).sum()
+    assert expected < 0.05
+    assert capacity < 0.1 < plain

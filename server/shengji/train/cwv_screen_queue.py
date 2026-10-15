@@ -32,6 +32,11 @@ def main(argv=None):
     parser.add_argument("--arm-policy",
                         help="screen a served bot by registry name instead of a checkpoint "
                              "(release 29 confirmation: the policy/value search + bury vs production)")
+    parser.add_argument("--shadow-arm",
+                        help="with --arm-policy: the comparator the arm shadows in every window "
+                             "(cwv_shortlist_screen --shadow-arm); passed through with --shadow-env")
+    parser.add_argument("--shadow-env", type=Path,
+                        help="with --shadow-arm: the comparator's frozen expected-window identity file")
     parser.add_argument("--out", type=Path, required=True,
                         help="fresh queue root, distinct from any reference-encoding run")
     parser.add_argument("--name", required=True, help="window directory prefix")
@@ -78,6 +83,10 @@ def main(argv=None):
     for name in (args.name, args.cost_order_name or args.name):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name):
             parser.error("window names must be simple alphanumeric prefixes")
+    if bool(args.shadow_arm) != (args.shadow_env is not None):
+        parser.error("--shadow-arm and --shadow-env go together")
+    if args.shadow_arm and (not args.arm_policy or args.shadow_arm == args.arm_policy):
+        parser.error("--shadow-arm needs --arm-policy and a comparator name other than it")
     if args.arm_policy:
         if args.checkpoint is not None or args.checkpoint_sha256 or args.prior_checkpoint is not None \
                 or args.value_head is not None or args.throw_components or args.report_tie_keeps_incumbent:
@@ -112,6 +121,8 @@ def main(argv=None):
                     command += ["--cost-order-from", str(prior)]
                 if args.round_kind != "first":
                     command += ["--round-kind", args.round_kind]
+                if args.shadow_arm:
+                    command += ["--shadow-arm", args.shadow_arm, "--shadow-env", str(args.shadow_env)]
                 print(f"window {index + 1}/{len(args.seeds)} seed={seed}: open/resume (policy {args.arm_policy})",
                       flush=True)
                 result = screen.main(command)

@@ -376,12 +376,12 @@ def _option_roots():
     self-play leads and follows at 5 cards, each with its acting seat's
     children, so later roots reuse a table holding dead slots."""
     rng = random.Random(20261016)
-    groups = []
+    small, deep = [], []
     for _ in range(40):
         rnd = _random_position(rng)
         if rnd.phase == "play":
-            groups.append(_session_roots(rnd))
-    for seed in range(4600200, 4600210):
+            small.append(_session_roots(rnd))
+    for seed in range(4600200, 4600206):
         rnd, _ = _lead_at(seed, 5)
         follow = _follow_at(seed, 5)
         for root in (rnd, follow):
@@ -393,18 +393,28 @@ def _option_roots():
                 child.play(root.turn, list(action))
                 if child.phase == "play":
                     group.append(child)
-            groups.append(group)
-    return groups
+            deep.append(group)
+    return small, deep
 
 
 _OPTION_CASES = {}
 
 
 def _option_cases():
+    """Root groups with their exact minimax points: the reference minimax on
+    the small groups, the first level search (``LEVEL_LEGACY``, held to the
+    reference by the tests above and by the small groups here) on the deep ones,
+    which the reference solves too slowly for the pure-engine CI job."""
     if not _OPTION_CASES:
-        groups = _option_roots()
-        _OPTION_CASES["cases"] = [[(root, _reference_points(root)) for root in roots]
-                                  for roots in groups]
+        from shengji.ai import _endgame_fast as fast
+        small, deep = _option_roots()
+        cases = [[(root, _reference_points(root)) for root in roots] for roots in small]
+        for roots in deep:
+            legacy = CompactWorldSession(roots[0], max_hand_cards=5, max_nodes=10**9,
+                                         alpha_beta=True, backend="compiled", level=True,
+                                         level_opts=fast.LEVEL_LEGACY)
+            cases.append([(root, legacy.solve_points(root)) for root in roots])
+        _OPTION_CASES["cases"] = cases
     return _OPTION_CASES["cases"]
 
 

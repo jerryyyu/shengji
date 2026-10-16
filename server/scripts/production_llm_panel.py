@@ -18,12 +18,13 @@ def run_row(*, row, model_paths, prepared_roots_from, prepared_roots_sha256,
             output, seeds, run=False, codex_binary="codex", capacity_retries=False,
             accept_recovered_reconnects=False, invalid_action_feedback=False,
             classify_final_action_failures=False, failure_protocol=FAIL_STOP,
-            retention_plan=None, retention_plan_sha256=None):
+            retention_plan=None, retention_plan_sha256=None, actor_only=False):
     controls = dict(capacity_retries=capacity_retries,
                     accept_recovered_reconnects=accept_recovered_reconnects,
                     invalid_action_feedback=invalid_action_feedback,
                     classify_final_action_failures=classify_final_action_failures)
-    if type(run) is not bool or any(type(v) is not bool for v in controls.values()):
+    if (type(run) is not bool or type(actor_only) is not bool
+            or any(type(v) is not bool for v in controls.values())):
         raise ValueError("run and recovery controls must be bool")
     if failure_protocol not in (FAIL_STOP, PRESERVE_ILLEGAL):
         raise ValueError("unknown failure protocol")
@@ -45,7 +46,7 @@ def run_row(*, row, model_paths, prepared_roots_from, prepared_roots_sha256,
         checkpoint=recipe.identity.get("checkpoint"), policy=recipe.policy,
         prepared_recipe=recipe, prepared_roots_from=prepared_roots_from,
         prepared_roots_sha256=prepared_roots_sha256, output=output, seeds=seeds,
-        models=("sol",), information=("actor-only", "perfect"),
+        models=("sol",), information=("actor-only",) if actor_only else ("actor-only", "perfect"),
         wall_seconds=43200.0, token_limit=45000000, timeout_seconds=300,
         run=run, codex_binary=codex_binary, **options)
 
@@ -60,6 +61,8 @@ def main(argv=None):
     parser.add_argument("--seeds", nargs="+", required=True)
     parser.add_argument("--codex-binary", default="codex")
     parser.add_argument("--run", action="store_true")
+    parser.add_argument("--actor-only", action="store_true",
+                        help="Schedule only actor-private Sol, without perfect-information mirrors")
     parser.add_argument("--retry-provider-capacity", dest="capacity_retries", action="store_true")
     parser.add_argument("--accept-recovered-reconnects", action="store_true")
     parser.add_argument("--invalid-action-feedback", action="store_true")

@@ -1,6 +1,7 @@
 # Learning and search research plan
 
-Last reconciled: **2026-10-13** (release 45 live; new screens compare against release 45 as served).
+Last reconciled: **2026-10-16** (release 46 live; new screens compare against release 45 as served until Jerry
+moves the comparator; proposed: release 46).
 This document owns the research architecture, the estimands, the decision tree and the planned work.
 Live state is on GitHub: the board issue #707 (one row per open question; its predecessor #679 holds
 everything finished through 2026-10-03), its topic issues and open PRs; fleet state is
@@ -14,13 +15,17 @@ the scaling page (`docs/scaling_log/`). Retired lines are summarised once below 
 Build a Shengji policy that is demonstrably stronger than what production plays, under a
 correct engine and a reproducible evaluator: beat the live policy on fresh mirrored whole games with a
 single learned model that keeps improving from its own search data, and keep production's latency
-tail bounded. Production is release 45 (deployed 2026-10-13 05:27 ET): the gen-5 SMV3 checkpoint
+tail bounded. Production is release 46 (deployed 2026-10-16 14:49 ET), release 45 plus the v92 combo. Release 45
+(deployed 2026-10-13 05:27 ET, now the previous release and the rollback) is the gen-5 SMV3 checkpoint
 `3e89e86f`'s outcome head as one NumPy package (`smv3out-491ee4bf.npz`, served since release 36) in the
 policy/value search — the policy head admits eight candidates over 64 sampled worlds, the value head
 prices them, no Monte Carlo playouts — with five search rules (div, rc, tb, la, dtr), the value-guided
-trump declaration (release 44) and the wide value-only bury (release 45). The exact contract is
-`AI_POLICIES.md` "Production contract". The champion for every NEW strength claim is release 45 as
-served (Jerry, in-session 2026-10-13: "Yes change to 45", recorded on #988 issuecomment-6142666693); confirmations keep their parent's comparator and
+trump declaration (release 44) and the wide value-only bury (release 45); release 46 adds history-legal,
+belief-proposed play worlds (the S17 belief model), the exact endgame stages at ≤ 7 cards (D7 + X7) and the value
+declaration at every first-round chance (`vdef`). The exact contract is `AI_POLICIES.md` "Production contract".
+The champion for every NEW strength claim is still release 45 as served (Jerry, in-session 2026-10-13: "Yes change
+to 45", recorded on #988 issuecomment-6142666693) until Jerry moves it (proposed: release 46 as served);
+confirmations keep their parent's comparator and
 historical reads keep their original labels. MC-LCB is the common control inside each screen, not the
 prospective comparator.
 
@@ -56,10 +61,12 @@ The work queue and each lane's state are on the board issue [#707](https://githu
 model plans and decision gates on #663; search and gameplay diagnostics on #700. Production and its rollback are
 in `DEPLOY.md` "Current production".
 
-**What would change production next:** a change that beats release 45 as served on a ten-window served-bot screen,
+**What would change production next:** a change that beats the comparator (release 45 as served until Jerry moves
+it; release 46 proposed) on a ten-window served-bot screen,
 then the `DEPLOY.md` release checklist and Jerry's word. Confirmation is Jerry's call per change (in-session
 2026-10-13, recorded on #663 issuecomment-6142998363): a positive screen can ship on his word, and a fresh-seed
-confirmation runs when he asks or when the effect is small or borderline. Releases 44 and 45 shipped that way.
+confirmation runs when he asks or when the effect is small or borderline. Releases 44 and 45 shipped that way;
+release 46 shipped on its screen plus a fresh-seed confirmation (v92c) and a latency gate (v93lat).
 Correctness fixes may ship with no strength claim when the served screen is not demonstrated negative (releases 42
 and 43).
 
@@ -73,6 +80,14 @@ continuations the search uses.
 
 Each item is a board row on #707 (row id in brackets); its state there is authoritative.
 
+0. **Shipped: the v92 combo as release 46 (2026-10-16, #1072; source #1066).** S17 belief worlds + D7 + X7 + `vdef`:
+   v92combo45 +0.2167 [+0.1923, +0.2412] and confirmation v92c +0.2284 [+0.2046, +0.2521] vs release 45 as served,
+   each judged alone; latency v93lat QUALIFIED (`AI_POLICIES.md` ladder row 15). The D6 + X6-only fallback (#1065) is
+   superseded. Screens below that name release 45 as the comparator keep it until Jerry moves it (proposed: release
+   46 as served). Release 46 also serves the belief observability log (#1068, on by default): each production play record carries `belief_seed`
+   and a compact belief-marginal snapshot, and `server/scripts/belief_debug.py` replays a logged decision's worlds,
+   so belief proposals can be debugged from production records.
+
 1. **Heuristic replacement, declare and bury [S15].** Screens of release 45 plus one flag, vs release 45 as served,
    the wider bury first (two-card swaps #984, merged off by default; K=128), run in parallel with the S18 screen
    (cloud and perf, both vs release 45 as served); then, in this order: declare worlds that
@@ -81,9 +96,8 @@ Each item is a board row on #707 (row id in brackets); its state there is author
    and chooser together. The paired contrast of value declare at every first-round chance vs declare-ASAP
    (v74vdefasap) is reviewed and waiting for a host. Not pursued: the policy-head first trick in the value leaf
    (`lpft`, #972; v75lpft44 inconclusive).
-2. **Exact small-endgame leads [S18, #981, Codex].** An opt-in exact continuation for small endgames; fixed-root
-   host qualification and the local full-round cost gate are complete. Next: a fresh paired screen vs release 45
-   as served, in parallel with the S15 wider-bury screen (cloud and perf). Related Codex drafts: first-trick response search and attribution [S19/S21, #987] and structural
+2. **Exact small-endgame leads [S18, #981, Codex].** An opt-in exact continuation for small endgames; shipped in
+   release 46 as the 7-card lead and follow stages (D7 + X7; alone v89dx7 +0.0439 [+0.0307, +0.0570]). Related Codex drafts: first-trick response search and attribution [S19/S21, #987] and structural
    lead admission [S20, #986]. The whole-hand lead admission `fla` (#973) stays off: the release-44 diagnostic
    found its admission omissions were all refused throws.
 3. **C14, the grid trunk [M9].** The G1 grid trunk (`--trunk-block grid --grid-channels 44`, d3, h330),
@@ -100,9 +114,8 @@ Each item is a board row on #707 (row id in brackets); its state there is author
    its one world (`SHENGJI_PV_ORACLE_WORLDS`, #975, merged; the screen harness only, serving refuses it) vs the
    served bot. It is a diagnostic of the current imperfect policy, not a perfect-information ceiling or a
    belief-vs-evaluation split: it keeps the finite candidate set, the evaluator and the heuristic continuation,
-   and changes W64 to W1. S17, a learned belief over hidden hands that weights sampled worlds, opens only if S16
-   reads large AND the read can be attributed to information rather than the W64→1 change (a sampled-world W1
-   control may be needed).
+   and changes W64 to W1. S17, a learned belief over hidden hands, shipped in release 46 as the proposal for the
+   sampled play worlds (alone v86bw45 +0.1165 [+0.0914, +0.1416]).
 5. **History encoder [M10].** The model sees per-seat counts of played cards, not play order, declaration history
    or scores (`rl/encode.py`). A sequence encoder over the trick history is a new model class: an encoder-closure
    change that needs a compatibility path for the hash-pinned package and a full re-encode. Design only, sequenced
@@ -177,10 +190,11 @@ Every row is on the scaling page with its receipt; these are the conclusions.
 
 ## Search and teacher strategy
 
-1. **Candidate admission and search cost.** Keep the release-45 recipe as the reference;
+1. **Candidate admission and search cost.** Keep the release-46 recipe (the served search) as the reference;
    separate exact speedups from policy changes; compute-match controls when a claim is about
    cost.
-2. **Depth and allocation.** Test one bounded change against the frozen release-45 control
+2. **Depth and allocation.** Test one bounded change against the frozen comparator (release 45 as served until
+   Jerry moves it)
    before any larger tree recipe; the ballot-rooted PUCT ladder is closed.
 3. **Model and teacher transport.** Improve data and targets against the actual consumer (the
    search's own values as the target), preserve held-out deals, then test the resulting head in

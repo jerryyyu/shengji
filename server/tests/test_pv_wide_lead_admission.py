@@ -213,6 +213,40 @@ def _decide(bot, rnd=None):
     return played, bot.last_decision_record
 
 
+def test_wide_ballot_exact_expiry_preserves_completed_pv_decision(monkeypatch):
+    from shengji.train import pv_exact_deep
+    from test_pv_finish_lead import root
+
+    rnd = root(7)
+    baseline = _served(worlds=2, wide_lead_admission=True)
+    expected, base_record = _decide(baseline, rnd)
+    policy = _served(worlds=2, wide_lead_admission=True,
+                     exact_lead_endgame=True, exact_deep_cards=7)
+    observed = []
+
+    def expire(rnd, seat, admitted, worlds, leaf_fn, check_budget, **limits):
+        observed.append((copy.deepcopy(admitted), len(worlds), limits))
+        raise pv.PVSearchBudgetExceeded("injected exact-stage expiry")
+
+    monkeypatch.setattr(pv_exact_deep, "exact_root_means", expire)
+    played, record = _decide(policy, rnd)
+    assert len(observed) == 1
+    admitted, world_count, limits = observed[0]
+    assert admitted == base_record["admitted"]
+    assert len(admitted) == WIDE and world_count == 2
+    assert limits["max_hand_cards"] == 7
+    assert record["schema"] == RECORD_SCHEMA and record["work_complete"]
+    assert record["wide_lead_admission_k"] == WIDE
+    assert record["exact_lead_status"] == "abandoned"
+    assert record["exact_lead_abandon_reason"] == "hard_budget"
+    assert record["exact_lead_changed"] is False
+    assert played == expected
+    for key in ("admitted", "value_means", "selected_index", "played",
+                "value_batches", "value_evaluations"):
+        assert record[key] == base_record[key]
+    assert policy.sampler.rng.getstate() == baseline.sampler.rng.getstate()
+
+
 def test_bare_lead_admits_32_as_a_superset_of_the_8_in_order():
     rnd = state()
     assert leading(rnd)

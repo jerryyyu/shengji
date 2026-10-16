@@ -294,3 +294,45 @@ def test_shadow_through_the_deadline_child(arms, package, tmp_path, monkeypatch)
     summary = json.loads((tmp_path / "shadow" / "summary.json").read_text())
     assert summary["shadow_arm"]["mirrors"] == 2 and summary["decision_latency"]["arm"]["decisions"] == len(decisions)
     assert os.environ["SHENGJI_PV_CKPT"] == package[0]
+
+
+def test_bank_replay_witness_from_a_real_window(arms, package, tmp_path, monkeypatch):
+    """comparator_bank.py end to end on a real window: build a bank from the comparator's own
+    window, replay one cluster under the frozen deadline with a hash-verified package relocation,
+    and check admits the witness; a non-package override and an off-hash relocation are refused
+    by the producer before any replay."""
+    import importlib.util
+    import shutil
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("comparator_bank", Path(__file__).resolve().parents[1] / "scripts" / "comparator_bank.py")
+    bank = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bank)
+    _export(monkeypatch, arms["cmp_env"], arms["cand_env"])
+    out = tmp_path / "cmp"
+    assert screen.main(["--arm", "policy", "--arm-policy", arms["cmp"], "--out", str(out), "--clusters", "1", "--workers", "1",
+                        "--seed0", str(SEED0 + 11), "--decision-deadline", "300", "--baseline-policy", CONTROL]) == 0
+    manifest = tmp_path / "bank.json"
+    assert bank.main(["build", "--out", str(manifest), "--window", str(out)]) == 0
+    frozen = json.loads(arms["frozen"].read_text())
+    moved = tmp_path / "moved.npz"
+    shutil.copyfile(package[0], moved)
+    config = json.loads((out / "config.json").read_text())
+    expected = tmp_path / "expected.json"       # frozen as a lane freezes it: the exported SHENGJI_* environment
+    expected.write_text(json.dumps({**frozen, "clusters": 1, "environment": {
+        k: v for k, v in config["runtime"]["environment"].items() if k.startswith("SHENGJI_")}}))
+    witness = tmp_path / "witness.json"
+    assert bank.main(["replay", "--bank", str(manifest), "--expected", str(expected), "--out", str(witness),
+                      "--cluster", "0", "--relocate", f"SHENGJI_PV_CKPT={moved}"]) == 0
+    body = json.loads(witness.read_text())
+    assert body["all_equal"] is True and body["deadline"] == dict(screen.DEADLINE_RECIPE)
+    assert body["relocations"] == {"SHENGJI_PV_CKPT": {"from": package[0], "to": str(moved), "sha256": package[1]}}
+    assert body["environment"]["SHENGJI_PV_CKPT"] == str(moved)
+    configs = tmp_path / "configs.json"
+    configs.write_text(json.dumps([{"arm_policy": "cand"}, config]))
+    assert bank.main(["check", "--bank", str(manifest), "--expected", str(expected), "--configs", str(configs),
+                      "--seed", str(SEED0 + 11), "--replay-witness", str(witness)]) == 0
+    for bad in (["--relocate", "SHENGJI_PV_WORLDS=1"], ["--relocate", f"SHENGJI_PV_CKPT={tmp_path / 'bank.json'}"],
+                ["--relocate", f"SHENGJI_PV_SHA256={moved}"]):
+        assert bank.main(["replay", "--bank", str(manifest), "--expected", str(expected), "--out", str(tmp_path / "w2.json"),
+                          "--cluster", "0", *bad]) == 1
+        assert not (tmp_path / "w2.json").exists()

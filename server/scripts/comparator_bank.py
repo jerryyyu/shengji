@@ -24,8 +24,11 @@ take the comparator windows for a lane's seeds from it, after an identity check.
             the lane's side (a new rule flag at its default); a changed or removed leaf,
             an environment or package difference is never waived.
 ``replay``  re-runs k clusters of bank windows on THIS tree with the lane's frozen
-            comparator identity and writes the witness: equal ``history_sha256`` on
-            every mirror, or not.
+            comparator identity, under the frozen deadline recipe and the frozen
+            execution environment (the only override is a hash-verified relocation of
+            a ``SHENGJI_*_CKPT`` package), and writes the witness: equal
+            ``history_sha256`` on every mirror, or not.  ``check`` admits a witness only
+            when its deadline and effective environment are the frozen ones.
 
 Exit status: 0 when the mode passed; 1 on a refusal; 2 when an input cannot be read.
 """
@@ -290,6 +293,62 @@ def waivable(drift: dict, lane_identity: dict) -> bool:
     return all(path.startswith("arm_policy_identity.config.") for path in drift["added"])
 
 
+def verified_relocation(frozen_env: dict, key: str, path: str) -> dict:
+    """A package relocation ``key=path`` the frozen environment vouches for: ``key`` is a
+    ``SHENGJI_*_CKPT`` key of the frozen environment and the file at ``path`` hashes to
+    the frozen sha256 of that package (its ``_SHA256`` sibling, or the sibling of
+    another ``_CKPT`` key the frozen environment points at the same file)."""
+    if not key.endswith(LOCATION_SUFFIX) or key not in frozen_env:
+        raise Refusal(f"{key} is not a package location of the frozen environment; only a same-hash "
+                      f"SHENGJI_*_CKPT relocation is accepted")
+    sha = frozen_env.get(key[:-len(LOCATION_SUFFIX)] + "_SHA256")
+    if sha is None:
+        twins = [k for k, v in frozen_env.items() if k != key and k.endswith(LOCATION_SUFFIX) and v == frozen_env[key]]
+        shas = {frozen_env.get(k[:-len(LOCATION_SUFFIX)] + "_SHA256") for k in twins} - {None}
+        if len(shas) != 1:
+            raise Refusal(f"the frozen environment pins no sha256 for {key}; it cannot be relocated")
+        sha, = shas
+    if not Path(path).is_file():
+        raise Refusal(f"{path} is not a file")
+    actual = file_sha256(Path(path))
+    if actual != sha:
+        raise Refusal(f"{path} hashes to {actual[:16]}, not the frozen {sha[:16]} of {key}")
+    return {"from": frozen_env[key], "to": path, "sha256": sha}
+
+
+def admit_witness(witness: dict, expected: dict, *, bank_path: Path, expected_path: Path) -> None:
+    """A replay witness waives anything only when it replayed THIS bank with THIS frozen
+    identity under the frozen deadline recipe and the frozen execution environment,
+    every package relocation hash-verified, and every cluster came back equal."""
+    if (witness.get("schema") != REPLAY_SCHEMA or witness.get("bank_sha256") != file_sha256(bank_path)
+            or witness.get("expected_sha256") != file_sha256(expected_path)):
+        raise Refusal("the replay witness was not made for this bank and this expected identity")
+    if witness.get("all_equal") is not True or not witness.get("clusters"):
+        raise Refusal("the replay witness holds an unequal or empty replay; it waives nothing")
+    deadline = expected.get("decision_deadline")
+    if not isinstance(deadline, dict) or witness.get("deadline") != deadline:
+        raise Refusal("the replay witness did not replay the frozen decision_deadline recipe; it waives nothing")
+    frozen_env = expected.get("environment")
+    environment, relocations = witness.get("environment"), witness.get("relocations")
+    if not isinstance(frozen_env, dict) or not isinstance(environment, dict) or not isinstance(relocations, dict):
+        raise Refusal("the replay witness records no effective environment; it waives nothing")
+    for key, move in relocations.items():
+        if (not isinstance(move, dict) or not key.endswith(LOCATION_SUFFIX) or key not in frozen_env
+                or move.get("from") != frozen_env[key] or environment.get(key) != move.get("to")):
+            raise Refusal(f"the replay witness relocates {key} outside the frozen environment; it waives nothing")
+        sha = frozen_env.get(key[:-len(LOCATION_SUFFIX)] + "_SHA256")
+        if sha is None:
+            twins = {frozen_env.get(k[:-len(LOCATION_SUFFIX)] + "_SHA256") for k, v in frozen_env.items()
+                     if k != key and k.endswith(LOCATION_SUFFIX) and v == frozen_env[key]} - {None}
+            sha = twins.pop() if len(twins) == 1 else None
+        if sha is None or move.get("sha256") != sha:
+            raise Refusal(f"the replay witness relocation of {key} is not bound to the frozen package sha256; it waives nothing")
+    effective = {k: (relocations[k]["from"] if k in relocations else v) for k, v in environment.items()}
+    if effective != frozen_env:
+        drift = identity_drift(frozen_env, effective)
+        raise Refusal(f"the replay witness ran under another execution environment than the frozen one: {canonical(drift)}")
+
+
 def check(args) -> int:
     bank = load_bank(Path(args.bank))
     expected = load_json(regular(Path(args.expected)))
@@ -306,11 +365,7 @@ def check(args) -> int:
     witness = None
     if args.replay_witness:
         witness = load_json(regular(Path(args.replay_witness)))
-        if (witness.get("schema") != REPLAY_SCHEMA or witness.get("bank_sha256") != file_sha256(Path(args.bank))
-                or witness.get("expected_sha256") != file_sha256(Path(args.expected))):
-            raise Refusal("the replay witness was not made for this bank and this expected identity")
-        if witness.get("all_equal") is not True or not witness.get("clusters"):
-            raise Refusal("the replay witness holds an unequal or empty replay; it waives nothing")
+        admit_witness(witness, expected, bank_path=Path(args.bank), expected_path=Path(args.expected))
     if not identity_ok:
         if witness is not None and waivable(drift, lane):
             waived.append({"kind": "added config leaves at the lane's side", "leaves": drift["added"]})
@@ -359,23 +414,19 @@ def replay(args) -> int:
     expected = load_json(regular(Path(args.expected)))
     if expected.get("schema") != EXPECTED_SCHEMA:
         raise Refusal(f"the expected identity is not a {EXPECTED_SCHEMA} file")
-    environment = dict(expected["environment"])
-    overrides = {}
-    for item in args.env or []:
+    frozen_env = dict(expected["environment"])
+    if not isinstance(expected.get("decision_deadline"), dict):
+        raise Refusal("the expected identity freezes no decision_deadline; a replay witness needs the frozen recipe")
+    relocations = {}
+    for item in args.relocate or []:
         key, sep, value = item.partition("=")
         if not sep or not key:
-            raise Refusal(f"--env needs KEY=VALUE, not {item!r}")
-        overrides[key] = value
-    for key in args.unset or []:
-        overrides[key] = None
-    for key, value in overrides.items():
-        if value is None:
-            environment.pop(key, None)
-        else:
-            environment[key] = value
+            raise Refusal(f"--relocate needs KEY=PATH, not {item!r}")
+        relocations[key] = verified_relocation(frozen_env, key, value)
+    environment = {**frozen_env, **{k: v["to"] for k, v in relocations.items()}}
     package = environment.get("SHENGJI_PV_CKPT")
     if not package or not Path(package).is_file():
-        raise Refusal(f"the package {package!r} is not a file here (override the path with --env SHENGJI_PV_CKPT=...)")
+        raise Refusal(f"the package {package!r} is not a file here (relocate it with --relocate SHENGJI_PV_CKPT=<path>)")
     if file_sha256(Path(package)) != environment.get("SHENGJI_PV_SHA256"):
         raise Refusal("the package at SHENGJI_PV_CKPT does not hash to SHENGJI_PV_SHA256")
     for key in list(os.environ):
@@ -400,8 +451,8 @@ def replay(args) -> int:
     for window in selected:
         config = dict(load_json(Path(window["directory"]) / "config.json"))
         config["arm_policy"], config["arm_policy_identity"] = name, identity
-        if args.no_deadline:
-            config.pop("decision_deadline", None)
+        # the replay plays the frozen deadline recipe, never an in-process shortcut
+        config["decision_deadline"] = dict(expected["decision_deadline"])
         for cluster in args.cluster:
             if not 0 <= cluster < window["clusters"]:
                 raise Refusal(f"cluster {cluster} is outside the window")
@@ -419,8 +470,9 @@ def replay(args) -> int:
         "schema": REPLAY_SCHEMA, "bank_sha256": file_sha256(Path(args.bank)),
         "bank_identity_sha256": bank["identity_sha256"],
         "expected_sha256": file_sha256(Path(args.expected)), "arm_policy": name,
-        "tree_sha256": tree, "deadline": not args.no_deadline,
-        "environment_overrides": overrides, "clusters": witness_rows, "all_equal": all_equal,
+        "tree_sha256": tree, "deadline": dict(expected["decision_deadline"]),
+        "environment": dict(sorted(environment.items())), "relocations": relocations,
+        "clusters": witness_rows, "all_equal": all_equal,
         "created_at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     out = Path(args.out)
@@ -455,9 +507,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True, help="the witness to write (never overwritten)")
     p.add_argument("--window", action="append", help="bank window directory or name (default: every window)")
     p.add_argument("--cluster", type=int, action="append", required=True, help="cluster index to replay (repeat)")
-    p.add_argument("--env", action="append", help="KEY=VALUE override of the frozen environment (a local package path)")
-    p.add_argument("--unset", action="append", help="a frozen environment key to drop")
-    p.add_argument("--no-deadline", action="store_true", help="in-process bots instead of the deadline child")
+    p.add_argument("--relocate", action="append",
+                   help="KEY=PATH: a SHENGJI_*_CKPT package found at another path on this host; accepted only "
+                        "when the file hashes to the frozen package sha256 (no other override exists)")
     p.set_defaults(run=replay)
     return parser
 

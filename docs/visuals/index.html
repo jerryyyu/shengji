@@ -58,10 +58,10 @@ svg .bg { fill: none }
 </div>
 <figure class="fig wide">
   <h3>One play decision <span class="verdict">ADKY live</span></h3>
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 860" role="img" aria-label="One release-46 play decision, drawn from a live lead in room ADKY: seat 3 holds 3, 5, 7, 8, Q, A of clubs and the jack of diamonds; the S17 belief model gives each hidden card&#x27;s holder probabilities (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in each world and the mean picks the ace of clubs (1.799); the exact endgame (7 or fewer cards per hand) solves all 64 worlds in 0.197 s and switches to the jack of diamonds (1.797 vs 1.719 levels), played in 0.49 s. The value step is 512 positions (values) in 4 forward calls (batches of 128); the exact step makes no network call: 429,026 nodes, 173,315 cache hits. On one world, the true deal, the exact search after the J of diamonds finds the bot team&#x27;s best lead 3 of clubs (attackers 45, +1 level), queen of clubs 50, ace of clubs 65.">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 980" role="img" aria-label="One release-46 play decision, drawn from a live lead in room ADKY: seat 3 holds 3, 5, 7, 8, Q, A of clubs and the jack of diamonds; the S17 belief model gives each hidden card&#x27;s holder probabilities (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in each world and the mean picks the ace of clubs (1.799); the value step is 512 positions (values) in 4 forward calls (batches of 128). Exact endgame at 7 or fewer cards per hand, in five steps: the 64 belief worlds; play each candidate (on a lead the heuristic finishes trick 1); try each one with all hands face up to the round&#x27;s end; average over the 64 worlds; pick the best average. On one world, the true deal, the J of diamonds and the ace of clubs both end with attackers on 45 (+1 level) and the 5, 8, ace of clubs with attackers on 80, a lost deal. Alpha-beta pruning and a transposition-table cache: 429,026 positions tried, 173,315 reused, 0.197 s. Mean J of diamonds 1.797 vs ace of clubs 1.719, so the J of diamonds plays, in 0.49 s.">
 
 <defs><marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
-<rect x="0.0" y="0.0" width="1000.0" height="860.0" class="bg"/>
+<rect x="0.0" y="0.0" width="1000.0" height="980.0" class="bg"/>
 <text x="24.0" y="36.0" class="ttl">One play decision, drawn</text>
 <text x="24.0" y="60.0" class="mut">Live lead in room ADKY (release 46): seat 3, no trump, 7 cards per hand. 64 legal plays → 8 candidates → J<tspan class="red">♦</tspan> in 0.49 s.</text>
 <circle cx="30.0" cy="88.0" r="6" class="root"/><text x="41.0" y="92.0" class="mut">position</text><rect x="114.6" y="81.0" width="20.0" height="13.0" rx="2" class="world"/><text x="141.6" y="92.0" class="mut">sampled world</text><rect x="248.7" y="83.0" width="22.0" height="9.0" rx="2" class="play"/><text x="277.7" y="92.0" class="mut">heuristic finishes trick</text><path d="M464.5,81.5 L470.5,87.5 L464.5,93.5 L458.5,87.5 Z" class="net"/><text x="476.5" y="92.0" class="mut">net value</text><text x="556.8" y="92.0" class="hdr">NEW IN 46</text><rect x="636.1" y="78.0" width="18.0" height="18.0" rx="3" class="belsoft"/><rect x="639.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.11"/><rect x="643.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.14"/><rect x="647.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><rect x="639.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.29"/><rect x="643.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.23"/><rect x="647.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><rect x="639.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.06"/><rect x="643.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.17"/><rect x="647.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><text x="659.1" y="92.0" class="mut">belief</text><line x1="721.3" y1="87.0" x2="728.5" y2="82.3" class="exline"/><line x1="728.5" y1="82.3" x2="737.3" y2="80.0" class="exline"/><circle cx="737.3" cy="80.0" r="1.7000000000000002" class="ex"/><line x1="728.5" y1="82.3" x2="737.3" y2="84.7" class="exline"/><circle cx="737.3" cy="84.7" r="1.7000000000000002" class="ex"/><circle cx="728.5" cy="82.3" r="2.2" class="exnode"/><line x1="721.3" y1="87.0" x2="728.5" y2="91.7" class="exline"/><line x1="728.5" y1="91.7" x2="737.3" y2="89.3" class="exline"/><circle cx="737.3" cy="89.3" r="1.7000000000000002" class="ex"/><line x1="728.5" y1="91.7" x2="737.3" y2="94.0" class="exline"/><circle cx="737.3" cy="94.0" r="1.7000000000000002" class="ex"/><circle cx="728.5" cy="91.7" r="2.2" class="exnode"/><circle cx="721.3" cy="87.0" r="3.2" class="exnode"/><text x="745.3" y="92.0" class="mut">exact</text>
@@ -990,88 +990,118 @@ svg .bg { fill: none }
 <circle cx="912.3" cy="246.0" r="9" class="ring"/>
 <text x="820.0" y="224.0" class="sm b">pick A<tspan class="">♣</tspan></text>
 <path d="M912.3,236.0 L912.3,224.0 L988.0,224.0 L988.0,600.0 L956.0,600.0 L956.0,612.0" class="arrow" marker-end="url(#ar1)"/>
-<rect x="24.0" y="614.0" width="952.0" height="210.0" rx="6" class="exsoft"/>
+<rect x="24.0" y="614.0" width="952.0" height="326.0" rx="6" class="exsoft"/>
 <rect x="40.0" y="628.0" width="93.4" height="18.0" rx="9" class="ex"/><text x="86.7" y="641.0" class="chipt" text-anchor="middle">NEW IN 46</text>
 <text x="143.4" y="642.0" class="hdr ext">EXACT ENDGAME · ≤ 7 CARDS PER HAND</text>
-<circle cx="52.0" cy="730.0" r="8" class="exnode"/>
-<text x="52.0" y="754.0" class="sm b ext" text-anchor="middle">max</text>
-<text x="40.0" y="668.0" class="sm mut">true deal, after trick 1: seat 3 leads</text>
-<line x1="60.0" y1="730.0" x2="96.0" y2="684.0" class="exline"/>
-<rect x="98.0" y="671.0" width="24.0" height="26.0" rx="3" class="card"/><text x="110.0" y="688.5" class="b sm" text-anchor="middle">3<tspan class="">♣</tspan></text>
-<text x="128.0" y="689.0" class="sm b ext">→ 45 pts</text>
-<line x1="60.0" y1="730.0" x2="96.0" y2="718.0" class="linemut"/>
-<rect x="98.0" y="705.0" width="24.0" height="26.0" rx="3" class="card"/><text x="110.0" y="722.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
-<text x="128.0" y="723.0" class="sm mut">→ 50 pts</text>
-<line x1="60.0" y1="730.0" x2="96.0" y2="752.0" class="linemut"/>
-<rect x="98.0" y="739.0" width="24.0" height="26.0" rx="3" class="card"/><text x="110.0" y="756.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
-<text x="128.0" y="757.0" class="sm mut">→ 65 pts</text>
-<line x1="60.0" y1="730.0" x2="96.0" y2="786.0" class="linemut"/>
-<text x="100.0" y="791.0" class="sm mut">+ 59 more leads</text>
-<text x="214.0" y="706.0" class="sm b ext">best: 45</text>
-<text x="214.0" y="723.0" class="sm ext">= +1 level</text>
-<text x="214.0" y="754.0" class="h ext">× 64 worlds</text>
-<text x="40.0" y="810.0" class="sm mut it">every line to the round end; no network</text>
-<text x="360.0" y="666.0" class="sm mut" text-anchor="middle">PV value</text>
-<text x="500.0" y="666.0" class="sm mut" text-anchor="middle">exact level</text>
-<line x1="360.0" y1="672.0" x2="360.0" y2="794.0" class="axis"/>
-<line x1="500.0" y1="672.0" x2="500.0" y2="794.0" class="axis"/>
-<text x="352.0" y="794.5" class="sm mut" text-anchor="end">1.2</text>
-<line x1="356.0" y1="790.0" x2="360.0" y2="790.0" class="axis"/>
-<text x="352.0" y="759.4" class="sm mut" text-anchor="end">1.4</text>
-<line x1="356.0" y1="754.9" x2="360.0" y2="754.9" class="axis"/>
-<text x="352.0" y="724.3" class="sm mut" text-anchor="end">1.6</text>
-<line x1="356.0" y1="719.8" x2="360.0" y2="719.8" class="axis"/>
-<text x="352.0" y="689.3" class="sm mut" text-anchor="end">1.8</text>
-<line x1="356.0" y1="684.8" x2="360.0" y2="684.8" class="axis"/>
-<line x1="360.0" y1="707.0" x2="500.0" y2="753.8" class="linemut"/>
-<circle cx="360.0" cy="707.0" r="2.5" class="mutf"/>
-<circle cx="500.0" cy="753.8" r="2.5" class="mutf"/>
-<line x1="360.0" y1="707.0" x2="500.0" y2="753.8" class="linemut"/>
-<circle cx="360.0" cy="707.0" r="2.5" class="mutf"/>
-<circle cx="500.0" cy="753.8" r="2.5" class="mutf"/>
-<line x1="360.0" y1="707.0" x2="500.0" y2="753.8" class="linemut"/>
-<circle cx="360.0" cy="707.0" r="2.5" class="mutf"/>
-<circle cx="500.0" cy="753.8" r="2.5" class="mutf"/>
-<line x1="360.0" y1="707.6" x2="500.0" y2="753.8" class="linemut"/>
-<circle cx="360.0" cy="707.6" r="2.5" class="mutf"/>
-<circle cx="500.0" cy="753.8" r="2.5" class="mutf"/>
-<line x1="360.0" y1="717.3" x2="500.0" y2="784.0" class="linemut"/>
-<circle cx="360.0" cy="717.3" r="2.5" class="mutf"/>
-<circle cx="500.0" cy="784.0" r="2.5" class="mutf"/>
-<line x1="360.0" y1="707.0" x2="500.0" y2="753.8" class="linemut"/>
-<circle cx="360.0" cy="707.0" r="2.5" class="mutf"/>
-<circle cx="500.0" cy="753.8" r="2.5" class="mutf"/>
-<line x1="360.0" y1="684.9" x2="500.0" y2="699.0" class="lineink"/>
-<circle cx="360.0" cy="684.9" r="3.5" class="inkf"/>
-<circle cx="500.0" cy="699.0" r="3.5" class="inkf"/>
-<line x1="360.0" y1="696.8" x2="500.0" y2="685.3" class="lineex"/>
-<circle cx="360.0" cy="696.8" r="3.5" class="ex"/>
-<circle cx="500.0" cy="685.3" r="3.5" class="ex"/>
-<text x="510.0" y="689.8" class="sm b ext">J<tspan class="red">♦</tspan> 1.797</text>
-<text x="510.0" y="711.0" class="sm b">A♣ 1.719</text>
-<text x="510.0" y="758.3" class="sm mut">5 others 1.406</text>
-<text x="510.0" y="788.5" class="sm mut">1 at 1.234</text>
-<text x="330.0" y="810.0" class="sm mut">mean over 64 worlds · +1 level = 1.5</text>
-<line x1="600.0" y1="726.0" x2="634.0" y2="726.0" class="arrow" marker-end="url(#ar1)"/>
-<rect x="640.0" y="700.0" width="108.0" height="52.0" rx="26" class="panelf"/>
-<rect x="640.0" y="700.0" width="108.0" height="52.0" rx="26" class="ring"/>
-<text x="694.0" y="722.0" class="b" text-anchor="middle">play J<tspan class="red">♦</tspan></text>
-<text x="694.0" y="740.0" class="sm ext b" text-anchor="middle">+0.078 levels</text>
-<text x="694.0" y="774.0" class="sm mut" text-anchor="middle">0.49 s of 3 s</text>
-<line x1="768.0" y1="664.0" x2="768.0" y2="810.0" class="grid"/>
-<text x="782.0" y="666.0" class="sm b">this lead, ADKY</text>
-<text x="782.0" y="692.0" class="sm mut">worlds solved</text>
-<text x="960.0" y="692.0" class="mono sm" text-anchor="end">64 / 64</text>
-<text x="782.0" y="714.0" class="sm mut">nodes</text>
-<text x="960.0" y="714.0" class="mono sm" text-anchor="end">429,026</text>
-<text x="782.0" y="736.0" class="sm mut">cache hits</text>
-<text x="960.0" y="736.0" class="mono sm" text-anchor="end">173,315</text>
-<text x="782.0" y="758.0" class="sm mut">exact stage</text>
-<text x="960.0" y="758.0" class="mono sm" text-anchor="end">0.197 s</text>
-<text x="782.0" y="780.0" class="sm mut">node cap / world</text>
-<text x="960.0" y="780.0" class="mono sm" text-anchor="end">50M</text>
-<text x="782.0" y="810.0" class="sm ext b">network calls: none</text>
-<text x="984.0" y="850.0" class="mut sm" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-bot-turn.svg</text>
+<circle cx="50.0" cy="660.0" r="10" class="ex"/>
+<text x="50.0" y="664.5" class="chipt" text-anchor="middle">1</text>
+<rect x="77.0" y="661.0" width="30.0" height="30.0" rx="3" class="belsoft"/><rect x="80.5" y="664.5" width="5.0" height="5.0" class="bel" fill-opacity="0.13"/><rect x="86.5" y="664.5" width="5.0" height="5.0" class="bel" fill-opacity="0.85"/><rect x="92.5" y="664.5" width="5.0" height="5.0" class="bel" fill-opacity="0.23"/><rect x="98.5" y="664.5" width="5.0" height="5.0" class="bel" fill-opacity="0.17"/><rect x="80.5" y="670.5" width="5.0" height="5.0" class="bel" fill-opacity="0.85"/><rect x="86.5" y="670.5" width="5.0" height="5.0" class="bel" fill-opacity="0.07"/><rect x="92.5" y="670.5" width="5.0" height="5.0" class="bel" fill-opacity="0.15"/><rect x="98.5" y="670.5" width="5.0" height="5.0" class="bel" fill-opacity="0.28"/><rect x="80.5" y="676.5" width="5.0" height="5.0" class="bel" fill-opacity="0.85"/><rect x="86.5" y="676.5" width="5.0" height="5.0" class="bel" fill-opacity="0.11"/><rect x="92.5" y="676.5" width="5.0" height="5.0" class="bel" fill-opacity="0.18"/><rect x="98.5" y="676.5" width="5.0" height="5.0" class="bel" fill-opacity="0.12"/><rect x="80.5" y="682.5" width="5.0" height="5.0" class="bel" fill-opacity="0.26"/><rect x="86.5" y="682.5" width="5.0" height="5.0" class="bel" fill-opacity="0.85"/><rect x="92.5" y="682.5" width="5.0" height="5.0" class="bel" fill-opacity="0.12"/><rect x="98.5" y="682.5" width="5.0" height="5.0" class="bel" fill-opacity="0.29"/>
+<rect x="124.0" y="664.0" width="30.0" height="20.0" rx="2" class="world"/><line x1="127.5" y1="667.5" x2="148.5" y2="667.5" class="thumb"/><line x1="127.5" y1="674.0" x2="147.4" y2="674.0" class="thumb"/><line x1="127.5" y1="680.5" x2="143.2" y2="680.5" class="thumb"/>
+<rect x="129.0" y="669.0" width="30.0" height="20.0" rx="2" class="world"/><line x1="132.5" y1="672.5" x2="144.5" y2="672.5" class="thumb"/><line x1="132.5" y1="679.0" x2="153.6" y2="679.0" class="thumb"/><line x1="132.5" y1="685.5" x2="152.5" y2="685.5" class="thumb"/>
+<rect x="134.0" y="674.0" width="30.0" height="20.0" rx="2" class="world"/><line x1="137.5" y1="677.5" x2="159.9" y2="677.5" class="thumb"/><line x1="137.5" y1="684.0" x2="159.8" y2="684.0" class="thumb"/><line x1="137.5" y1="690.5" x2="148.6" y2="690.5" class="thumb"/>
+<text x="120.0" y="716.0" class="sm b" text-anchor="middle">belief → 64 worlds</text>
+<text x="120.0" y="732.0" class="sm mut" text-anchor="middle">the same sampled worlds</text>
+<line x1="190.0" y1="678.0" x2="216.0" y2="678.0" class="arrow" marker-end="url(#ar1)"/>
+<circle cx="236.0" cy="660.0" r="10" class="ex"/>
+<text x="236.0" y="664.5" class="chipt" text-anchor="middle">2</text>
+<rect x="266.0" y="664.0" width="26.0" height="28.0" rx="3" class="card"/><text x="279.0" y="682.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text>
+<rect x="298.0" y="673.0" width="60.0" height="10.0" rx="2" class="playtrack"/><rect x="298.0" y="673.0" width="34.0" height="10.0" rx="2" class="play"/>
+<text x="306.0" y="716.0" class="sm b" text-anchor="middle">play each candidate</text>
+<text x="306.0" y="732.0" class="sm mut" text-anchor="middle">lead: heuristic trick 1</text>
+<line x1="376.0" y1="678.0" x2="402.0" y2="678.0" class="arrow" marker-end="url(#ar1)"/>
+<circle cx="422.0" cy="660.0" r="10" class="ex"/>
+<text x="422.0" y="664.5" class="chipt" text-anchor="middle">3</text>
+<rect x="452.0" y="662.0" width="84.0" height="34.0" rx="6" class="panelf"/>
+<line x1="462.0" y1="679.0" x2="484.5" y2="669.4" class="exline"/><line x1="484.5" y1="669.4" x2="512.0" y2="667.0" class="exline"/><circle cx="512.0" cy="667.0" r="1.7000000000000002" class="ex"/><line x1="484.5" y1="669.4" x2="512.0" y2="671.8" class="exline"/><circle cx="512.0" cy="671.8" r="1.7000000000000002" class="ex"/><circle cx="484.5" cy="669.4" r="2.2" class="exnode"/><line x1="462.0" y1="679.0" x2="484.5" y2="679.0" class="exline"/><line x1="484.5" y1="679.0" x2="512.0" y2="676.6" class="exline"/><circle cx="512.0" cy="676.6" r="1.7000000000000002" class="ex"/><line x1="484.5" y1="679.0" x2="512.0" y2="681.4" class="exline"/><circle cx="512.0" cy="681.4" r="1.7000000000000002" class="ex"/><circle cx="484.5" cy="679.0" r="2.2" class="exnode"/><line x1="462.0" y1="679.0" x2="484.5" y2="688.6" class="exline"/><line x1="484.5" y1="688.6" x2="512.0" y2="686.2" class="exline"/><circle cx="512.0" cy="686.2" r="1.7000000000000002" class="ex"/><line x1="484.5" y1="688.6" x2="512.0" y2="691.0" class="exline"/><circle cx="512.0" cy="691.0" r="1.7000000000000002" class="ex"/><circle cx="484.5" cy="688.6" r="2.2" class="exnode"/><circle cx="462.0" cy="679.0" r="3.2" class="exnode"/>
+<text x="492.0" y="716.0" class="sm b ext" text-anchor="middle">try each one, face up</text>
+<text x="492.0" y="732.0" class="sm mut" text-anchor="middle">every play, to round end</text>
+<line x1="562.0" y1="678.0" x2="588.0" y2="678.0" class="arrow" marker-end="url(#ar1)"/>
+<circle cx="608.0" cy="660.0" r="10" class="ex"/>
+<text x="608.0" y="664.5" class="chipt" text-anchor="middle">4</text>
+<rect x="638.0" y="662.0" width="44.0" height="6.0" class="wd"/>
+<rect x="638.0" y="671.0" width="72.0" height="6.0" class="inkf"/>
+<rect x="638.0" y="680.0" width="49.6" height="6.0" class="wd"/>
+<rect x="638.0" y="689.0" width="38.4" height="6.0" class="wd"/>
+<text x="678.0" y="716.0" class="sm b" text-anchor="middle">average over 64 worlds</text>
+<text x="678.0" y="732.0" class="sm mut" text-anchor="middle">one mean per candidate</text>
+<line x1="748.0" y1="678.0" x2="774.0" y2="678.0" class="arrow" marker-end="url(#ar1)"/>
+<circle cx="794.0" cy="660.0" r="10" class="ex"/>
+<text x="794.0" y="664.5" class="chipt" text-anchor="middle">5</text>
+<rect x="824.0" y="664.0" width="84.0" height="30.0" rx="15" class="ringex"/>
+<text x="866.0" y="684.0" class="sm b" text-anchor="middle">play J♦</text>
+<text x="864.0" y="716.0" class="sm b" text-anchor="middle">pick the best average</text>
+<text x="864.0" y="732.0" class="sm mut" text-anchor="middle">follow: only if better</text>
+<text x="40.0" y="764.0" class="hdr ext">ONE WORLD, STEP ③ (HERE: THE TRUE DEAL)</text>
+<rect x="44.0" y="804.0" width="44.0" height="32.0" rx="2" class="world"/><line x1="47.5" y1="807.5" x2="73.6" y2="807.5" class="thumb"/><line x1="47.5" y1="820.0" x2="71.7" y2="820.0" class="thumb"/><line x1="47.5" y1="832.5" x2="67.0" y2="832.5" class="thumb"/>
+<text x="66.0" y="856.0" class="sm mut" text-anchor="middle">face up</text>
+<path d="M90.0,820.0 C103.0,820.0 103.0,788.0 116.0,788.0" class="exline"/>
+<rect x="118.0" y="776.0" width="25.0" height="24.0" rx="3" class="card"/><text x="130.5" y="792.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text>
+<line x1="200.0" y1="788.0" x2="236.0" y2="788.0" class="arrow" marker-end="url(#ar1)"/>
+<rect x="242.0" y="776.0" width="220.0" height="24.0" rx="12" class="panelf"/>
+<rect x="242.0" y="776.0" width="220.0" height="24.0" rx="12" class="ringex"/>
+<text x="352.0" y="792.5" class="sm b ext" text-anchor="middle">attackers 45 · +1 level</text>
+<path d="M90.0,820.0 C103.0,820.0 103.0,822.0 116.0,822.0" class="exline"/>
+<rect x="118.0" y="810.0" width="25.0" height="24.0" rx="3" class="card"/><text x="130.5" y="826.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<line x1="200.0" y1="822.0" x2="236.0" y2="822.0" class="arrow" marker-end="url(#ar1)"/>
+<rect x="242.0" y="810.0" width="220.0" height="24.0" rx="12" class="panelf"/>
+<rect x="242.0" y="810.0" width="220.0" height="24.0" rx="12" class="ringex"/>
+<text x="352.0" y="826.5" class="sm b ext" text-anchor="middle">attackers 45 · +1 level</text>
+<path d="M90.0,820.0 C103.0,820.0 103.0,856.0 116.0,856.0" class="linemut"/>
+<rect x="118.0" y="844.0" width="25.0" height="24.0" rx="3" class="card"/><text x="130.5" y="860.5" class="b sm" text-anchor="middle">5<tspan class="">♣</tspan></text>
+<rect x="144.0" y="844.0" width="25.0" height="24.0" rx="3" class="card"/><text x="156.5" y="860.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
+<rect x="170.0" y="844.0" width="25.0" height="24.0" rx="3" class="card"/><text x="182.5" y="860.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<line x1="200.0" y1="856.0" x2="236.0" y2="856.0" class="arrow" marker-end="url(#ar1)"/>
+<rect x="242.0" y="844.0" width="220.0" height="24.0" rx="12" class="panelbox"/>
+<text x="352.0" y="860.5" class="sm mut" text-anchor="middle">attackers 80 · loses the deal</text>
+<text x="118.0" y="888.0" class="sm mut">tie in this world; the 64-world average breaks it</text>
+<text x="560.0" y="762.0" class="sm mut" text-anchor="middle">value head</text>
+<text x="660.0" y="762.0" class="sm mut" text-anchor="middle">exact mean</text>
+<line x1="560.0" y1="766.0" x2="560.0" y2="884.0" class="axis"/>
+<line x1="660.0" y1="766.0" x2="660.0" y2="884.0" class="axis"/>
+<text x="552.0" y="884.5" class="sm mut" text-anchor="end">1.2</text>
+<line x1="556.0" y1="880.0" x2="560.0" y2="880.0" class="axis"/>
+<text x="552.0" y="850.7" class="sm mut" text-anchor="end">1.4</text>
+<line x1="556.0" y1="846.2" x2="560.0" y2="846.2" class="axis"/>
+<text x="552.0" y="816.8" class="sm mut" text-anchor="end">1.6</text>
+<line x1="556.0" y1="812.3" x2="560.0" y2="812.3" class="axis"/>
+<text x="552.0" y="783.0" class="sm mut" text-anchor="end">1.8</text>
+<line x1="556.0" y1="778.5" x2="560.0" y2="778.5" class="axis"/>
+<line x1="560.0" y1="799.9" x2="660.0" y2="845.1" class="linemut"/>
+<circle cx="560.0" cy="799.9" r="2.5" class="mutf"/>
+<circle cx="660.0" cy="845.1" r="2.5" class="mutf"/>
+<line x1="560.0" y1="799.9" x2="660.0" y2="845.1" class="linemut"/>
+<circle cx="560.0" cy="799.9" r="2.5" class="mutf"/>
+<circle cx="660.0" cy="845.1" r="2.5" class="mutf"/>
+<line x1="560.0" y1="799.9" x2="660.0" y2="845.1" class="linemut"/>
+<circle cx="560.0" cy="799.9" r="2.5" class="mutf"/>
+<circle cx="660.0" cy="845.1" r="2.5" class="mutf"/>
+<line x1="560.0" y1="800.5" x2="660.0" y2="845.1" class="linemut"/>
+<circle cx="560.0" cy="800.5" r="2.5" class="mutf"/>
+<circle cx="660.0" cy="845.1" r="2.5" class="mutf"/>
+<line x1="560.0" y1="809.9" x2="660.0" y2="874.2" class="linemut"/>
+<circle cx="560.0" cy="809.9" r="2.5" class="mutf"/>
+<circle cx="660.0" cy="874.2" r="2.5" class="mutf"/>
+<line x1="560.0" y1="799.9" x2="660.0" y2="845.1" class="linemut"/>
+<circle cx="560.0" cy="799.9" r="2.5" class="mutf"/>
+<circle cx="660.0" cy="845.1" r="2.5" class="mutf"/>
+<line x1="560.0" y1="778.6" x2="660.0" y2="792.2" class="lineink"/>
+<circle cx="560.0" cy="778.6" r="3.5" class="inkf"/>
+<circle cx="660.0" cy="792.2" r="3.5" class="inkf"/>
+<line x1="560.0" y1="790.1" x2="660.0" y2="779.0" class="lineex"/>
+<circle cx="560.0" cy="790.1" r="3.5" class="ex"/>
+<circle cx="660.0" cy="779.0" r="3.5" class="ex"/>
+<text x="670.0" y="783.5" class="sm b ext">J<tspan class="red">♦</tspan> 1.797</text>
+<text x="670.0" y="804.2" class="sm b">A♣ 1.719</text>
+<text x="670.0" y="849.6" class="sm mut">5 others 1.406</text>
+<text x="670.0" y="878.7" class="sm mut">1 at 1.234</text>
+<line x1="800.0" y1="824.0" x2="834.0" y2="824.0" class="arrow" marker-end="url(#ar1)"/>
+<rect x="840.0" y="798.0" width="112.0" height="52.0" rx="26" class="panelf"/>
+<rect x="840.0" y="798.0" width="112.0" height="52.0" rx="26" class="ring"/>
+<text x="896.0" y="820.0" class="b" text-anchor="middle">play J<tspan class="red">♦</tspan></text>
+<text x="896.0" y="838.0" class="sm mut" text-anchor="middle">0.49 s of 3 s</text>
+<text x="40.0" y="910.0" class="sm mut">Alpha-beta pruning + a transposition-table cache (429,026 positions tried, 173,315 reused, 0.197 s); on budget expiry the value-head pick stands.</text>
+<text x="40.0" y="930.0" class="sm b ext">mean J♦ 1.797 vs A♣ 1.719 → J♦   (value units: +1 level = 1.5, +2 levels = 2.5)</text>
+<text x="984.0" y="970.0" class="mut sm" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-bot-turn.svg</text>
 </svg>
   <figcaption>A real lead: belief worlds, the policy head and 512 value-head positions pick the ace of clubs; the exact search switches to the jack of diamonds.</figcaption>
 </figure>

@@ -289,6 +289,8 @@ jobs:
             tests/test_pv_tiebreak_points.py \
             tests/test_pv_lead_anchor.py \
             tests/test_pv_tree_search.py \
+            tests/test_hybrid_duel_policy.py \
+            tests/test_hybrid_search_duel.py \
             tests/test_pv_search_serving.py \
             tests/test_pv_search_hooks.py \
             tests/test_pv_value_matrix.py \

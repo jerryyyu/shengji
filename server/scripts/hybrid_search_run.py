@@ -19,6 +19,80 @@ from scripts.hybrid_search_probe import run_hybrid_search_probe, score_true_deal
 MAX_LINE_BYTES = 2 * 1024 * 1024
 
 
+def summarize_probe_rows(rows, *, bootstrap_seed=0, resamples=2000):
+    """Decision-weighted regret with paired, whole-deal bootstrap intervals.
+
+    Callers must assign the same deal_id to every root from one original deal,
+    including seat swaps. IDs are input provenance, not inferred independence.
+    This reader does not establish matched-budget or gameplay qualification.
+    """
+    import numpy as np
+
+    if type(resamples) is not int or resamples < 100:
+        raise ValueError('at least 100 bootstrap resamples required')
+    if len(rows) < 3 or rows[0].get('schema') != 'hybrid-search-run-v1' \
+            or rows[0].get('type') != 'header':
+        raise ValueError('missing run header or roots')
+    terminal, roots = rows[-1], rows[1:-1]
+    if terminal.get('type') != 'terminal' or terminal.get('status') != 'COMPLETE' \
+            or terminal.get('completed') != len(roots) \
+            or terminal.get('attempted') != len(roots):
+        raise ValueError('requires complete terminal and full root population')
+    clusters, seen, deltas = {}, set(), []
+    for line, row in enumerate(roots, 1):
+        if row.get('type') != 'root' or row.get('line') != line:
+            raise ValueError('root sequence mismatch')
+        deal = row.get('deal_id')
+        index = row.get('root_index')
+        if not isinstance(deal, str) or not deal.strip() \
+                or type(index) is not int or index < 0:
+            raise ValueError('explicit deal_id and root_index required')
+        if (deal, index) in seen:
+            raise ValueError('duplicate root within deal')
+        seen.add((deal, index))
+        if row['regret'].get('label') != 'true_deal_best_admitted_only':
+            raise ValueError('requires best-admitted true-deal oracle values')
+        truth = row['regret']['values']
+        means = row['baseline']['means']
+        if not truth or len(truth) != len(means) or len(truth) != len(row['admitted']) \
+                or any(type(x) not in (int, float) or not math.isfinite(x)
+                       for x in (*truth, *means)):
+            raise ValueError('finite aligned ballot required')
+        proposal = row['proposal']['index']
+        if type(proposal) is not int or not 0 <= proposal < len(truth):
+            raise ValueError('proposal index outside ballot')
+        flat = max(range(len(means)), key=means.__getitem__)
+        base = max(truth) - truth[flat]
+        candidate = max(truth) - truth[proposal]
+        clusters.setdefault(deal, []).append((base, candidate))
+        deltas.append(base - candidate)
+    # Resample whole deals, retaining every root and its paired contrast.
+    totals = np.asarray([(len(v), sum(x[0] for x in v), sum(x[1] for x in v))
+                         for v in clusters.values()], dtype=float)
+    count, base_sum, candidate_sum = totals.sum(axis=0)
+    base_mean, candidate_mean = base_sum / count, candidate_sum / count
+    interval = relative_interval = None
+    if len(clusters) >= 2:
+        rng = np.random.default_rng(bootstrap_seed)
+        draws = np.asarray([totals[rng.integers(0, len(totals), size=len(totals))].sum(axis=0)
+                            for _ in range(resamples)])
+        interval = np.quantile((draws[:, 1] - draws[:, 2]) / draws[:, 0], [.025, .975]).tolist()
+        if np.all(draws[:, 1] > 0):
+            relative_interval = np.quantile(
+                (draws[:, 1] - draws[:, 2]) / draws[:, 1], [.025, .975]).tolist()
+    return dict(scope='true-deal best-admitted diagnostic; not strength or budget qualification',
+                comparator='baseline value argmax; selection-rule removal excluded',
+                roots=len(roots), deals=len(clusters),
+                baseline_regret=base_mean, hybrid_regret=candidate_mean,
+                regret_reduction=base_mean - candidate_mean,
+                relative_reduction=(base_sum - candidate_sum) / base_sum if base_sum > 0 else None,
+                reduction_ci95=interval, relative_reduction_ci95=relative_interval,
+                corrections=sum(x > 0 for x in deltas), regressions=sum(x < 0 for x in deltas),
+                ties=sum(x == 0 for x in deltas),
+                evaluable=bool(base_sum > 0 and len(clusters) >= 2),
+                bootstrap_seed=bootstrap_seed, resamples=resamples)
+
+
 def ranking_attribution(probe, regret):
     """Separate selection-rule removal from changed values on one ballot.
 
@@ -116,6 +190,9 @@ def run_probe_file(input_path, output_path, bot_factory, *, completed_tricks,
                 root_index = row.get("root_index", attempted - 1)
                 if type(root_index) is not int or root_index < 0:
                     raise ValueError("root_index must be a non-negative integer")
+                deal_id = row.get("deal_id")
+                if deal_id is not None and (not isinstance(deal_id, str) or not deal_id.strip()):
+                    raise ValueError("deal_id must be a nonempty string when supplied")
                 rnd, ledger = restore_with_ledger(packet)
                 seat = rnd.turn
                 root_max_hand = max((len(hand) for hand in rnd.hands), default=0)
@@ -143,6 +220,7 @@ def run_probe_file(input_path, output_path, bot_factory, *, completed_tricks,
                 pv_index = probe["baseline"]["pv_winner"]
                 emit(dest, {"type": "root", "line": attempted,
                             "root_index": root_index,
+                            "deal_id": deal_id,
                             "seat": probe["seat"],
                             "lead": not bool(rnd.trick.plays),
                             "max_hand": root_max_hand,

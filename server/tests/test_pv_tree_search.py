@@ -457,7 +457,7 @@ def test_hybrid_search_run_real_capture_to_saved_regret(
         capture.committed(rnd, event["seat"], event["attempted"])
     packet = capture.capture(rnd, ledger=RefusalLedger(), decision={})
     source, output = tmp_path / "roots.jsonl", tmp_path / "result.jsonl"
-    source.write_text(json.dumps({"root_index": 52,
+    source.write_text(json.dumps({"root_index": 52, "deal_id": "xmtj-functional-fixture",
                                   "packet" if packet_key == "cli" else packet_key: packet})
                       + "\nINVALID NEXT ROW\n")
     belief_path, belief_sha = hybrid_belief_package
@@ -500,6 +500,49 @@ def test_hybrid_search_run_real_capture_to_saved_regret(
     assert result["leafstats"]["tree_exact_leaves"] > 0
     assert result["regret"]["regret_reduction"] == pytest.approx(
         result["regret"]["baseline_regret"] - result["regret"]["hybrid_regret"])
+    summary = hybrid_run.summarize_probe_rows(rows)
+    assert summary['roots'] == summary['deals'] == 1
+    assert summary['evaluable'] is False and summary['reduction_ci95'] is None
+    assert summary['baseline_regret'] == pytest.approx(
+        result['ranking_attribution']['baseline_value_argmax_regret'])
+
+
+def test_hybrid_summary_uses_deal_clusters_and_value_control():
+    def root(line, deal, index, values):
+        return dict(type='root', line=line, deal_id=deal, root_index=index,
+                    admitted=[['A'], ['B'], ['C']],
+                    baseline=dict(index=0, means=[0., 2., 1.]),
+                    proposal=dict(index=2),
+                    regret=dict(label='true_deal_best_admitted_only', values=values))
+
+    rows = [dict(type='header', schema='hybrid-search-run-v1'),
+            root(1, 'a', 0, [0., 2., 3.]),
+            root(2, 'a', 1, [0., 2., 3.]),
+            root(3, 'b', 0, [0., 3., 2.]),
+            dict(type='terminal', status='COMPLETE', attempted=3, completed=3)]
+    result = hybrid_run.summarize_probe_rows(rows)
+    assert result['deals'] == 2 and result['roots'] == 3
+    assert result['corrections'] == 2 and result['regressions'] == 1
+    assert result['regret_reduction'] == pytest.approx(1 / 3)
+    assert result['relative_reduction'] == pytest.approx(.5)
+    assert result['reduction_ci95'] == [-1., 1.]
+    assert result['relative_reduction_ci95'] is None
+    assert result == hybrid_run.summarize_probe_rows(rows)
+    for mutate in (
+            lambda r: r[-1].update(status='PARTIAL'),
+            lambda r: r[-1].update(completed=2),
+            lambda r: r[1].pop('deal_id'),
+            lambda r: r[2].update(root_index=0),
+            lambda r: r[1].update(line=3),
+            lambda r: r[1]['regret'].update(values=[float('nan'), 2., 3.])):
+        bad = copy.deepcopy(rows)
+        mutate(bad)
+        with pytest.raises(ValueError):
+            hybrid_run.summarize_probe_rows(bad)
+    for row in rows[1:-1]:
+        row['regret']['values'] = [0., 3., 3.]
+    zero = hybrid_run.summarize_probe_rows(rows)
+    assert zero['evaluable'] is False and zero['relative_reduction'] is None
 
 
 BELIEF_SHA = "763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343"

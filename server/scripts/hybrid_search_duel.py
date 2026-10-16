@@ -30,6 +30,10 @@ from shengji.engine.game import Game  # noqa: E402
 
 SCHEMA = "shengji-hybrid-duel-v1"
 SEAT_OFFSETS = (0, 500_000, 1_000_000, 1_500_000)
+PLAY_COUNTERS = ('play_decisions', 'pv_fallback_budget', 'pv_fallback_search_error',
+                 'pv_fallback_other', 'pv_record_missing')
+COUNTERS = (*PLAY_COUNTERS, 'hybrid_attempted', 'hybrid_applied', 'hybrid_changed',
+            'hybrid_expired', 'hybrid_invalid')
 
 
 class DuelRefusal(ValueError):
@@ -61,6 +65,7 @@ def _telemetry(bot) -> dict:
     if isinstance(cumulative, Mapping):
         out.update({f"hybrid_{name}": int(cumulative.get(name, 0))
                     for name in names})
+        out.update({name: int(cumulative.get(name, 0)) for name in PLAY_COUNTERS})
     # An adapter may expose cumulative counters; prefer those when present.
     for name in names:
         key = f"hybrid_{name}_count"
@@ -72,6 +77,7 @@ def _telemetry(bot) -> dict:
 def _instrument(bot, check_wall=None):
     """Count per-decision hybrid fields, without changing bot semantics."""
     counts = {name: 0 for name in ("attempted", "applied", "changed", "expired", "invalid")}
+    counts.update({name: 0 for name in PLAY_COUNTERS})
     original = getattr(bot, "decide_play", None)
     if original is None or not callable(original):
         return counts
@@ -80,10 +86,20 @@ def _instrument(bot, check_wall=None):
         if check_wall:
             check_wall()
         self.hybrid_last_fields = None
+        self.last_decision_record = None
         result = original(*args, **kwargs)
+        counts['play_decisions'] += 1
+        record = getattr(self, 'last_decision_record', None)
+        if not isinstance(record, Mapping):
+            counts['pv_record_missing'] += 1
+        elif record.get('schema') == 'pv-search-fallback-v1':
+            key = {'budget': 'pv_fallback_budget',
+                   'search-error': 'pv_fallback_search_error'}.get(
+                       record.get('reason'), 'pv_fallback_other')
+            counts[key] += 1
         fields = getattr(self, "hybrid_last_fields", None)
         if isinstance(fields, Mapping):
-            for name in counts:
+            for name in ('attempted', 'applied', 'changed', 'expired', 'invalid'):
                 if name in ('expired', 'invalid'):
                     reason = fields.get('hybrid_fallback', '')
                     value = reason == 'budget' if name == 'expired' else reason not in ('', 'budget', 'disabled', 'exact_endgame')
@@ -240,10 +256,36 @@ def _utility_fields(row):
                     int(row["candidate_team"]))
 
 
+def rehearsal_counters(path: str | Path) -> dict:
+    """Validate the terminal and expose only non-outcome capacity evidence.
+
+    Counters cover written completed mirrors, including an unpaired final
+    mirror; an interrupted mirror has no result and is not in this denominator.
+    """
+    result = read_duel(path)
+    terminal = _read_jsonl(Path(path))[-1]
+    totals = {arm: {key: 0 for key in COUNTERS} for arm in ('candidate', 'baseline')}
+    for row in result['rows']:
+        for arm in totals:
+            bots = row.get('telemetry', {}).get(arm)
+            if not isinstance(bots, list) or len(bots) != 2:
+                raise DuelRefusal('missing per-arm capacity counters')
+            for bot in bots:
+                for key in COUNTERS:
+                    value = bot.get(key)
+                    if type(value) is not int or value < 0:
+                        raise DuelRefusal('missing or invalid capacity counter')
+                    totals[arm][key] += value
+    return dict(status=result['status'], deals=result['header']['deals'],
+                completed_deals=result['deals'], mirrors_written=len(result['rows']),
+                elapsed_seconds=terminal['elapsed_seconds'], error=terminal.get('error'),
+                counters=totals)
+
+
 def run_duel(factory_candidate: Callable[[int], object],
              factory_baseline: Callable[[int], object], output: str | Path,
              *, deals: int, seed0: int, wall_seconds: float,
-             header: Mapping[str, object], clock=time.monotonic) -> dict:
+             header: Mapping[str, object], clock=time.monotonic, blind=False) -> dict:
     """Run one worker, preserving completed rounds under a wall cap."""
     if type(deals) is not int or deals < 1 or type(seed0) is not int or not math.isfinite(wall_seconds) or wall_seconds <= 0:
         raise ValueError("deals and wall_seconds must be positive")
@@ -311,7 +353,7 @@ def run_duel(factory_candidate: Callable[[int], object],
             terminal["error"] = failure
         fh.write(json.dumps(terminal, sort_keys=True) + "\n")
         fh.flush(); os.fsync(fh.fileno())
-    return read_duel(path)
+    return rehearsal_counters(path) if blind else read_duel(path)
 
 
 def _main(argv=None):
@@ -339,6 +381,7 @@ def _main(argv=None):
                 for key, value in package_paths.items()}
     result = run_duel(candidate, baseline, args.output, deals=args.deals,
                       seed0=args.seed0, wall_seconds=args.wall_seconds,
+                      blind=args.rehearsal,
                       header={"recipe": recipe, "policy": name,
                               "candidate": name + '-dev-two-completed-tricks',
                               "source_head": source, "env": env, "packages": packages,
@@ -346,8 +389,9 @@ def _main(argv=None):
                               "hybrid": {"completed_tricks": 2, "exact_tail": 0,
                                          "skip_max_hand_le": 7, "stop_fraction": 0.8},
                               "rehearsal": bool(args.rehearsal)})
-    print(json.dumps({k: result.get(k) for k in ("status", "deals", "paired_utility_mean",
-                                              "paired_utility_ci")}, sort_keys=True))
+    printed = result if args.rehearsal else {k: result.get(k) for k in (
+        'status', 'deals', 'paired_utility_mean', 'paired_utility_ci')}
+    print(json.dumps(printed, sort_keys=True))
 
 
 if __name__ == "__main__":

@@ -135,3 +135,57 @@ def test_reader_refuses_wrong_pair_contract(monkeypatch, tmp_path, mutation):
     path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
     with pytest.raises(duel.DuelRefusal):
         duel.read_duel(path)
+
+
+def test_blind_runner_reports_complete_capacity_without_outcomes(monkeypatch, tmp_path):
+    class Bot(_Bot):
+        def decide_play(self, reason):
+            self.last_decision_record = {'schema': 'pv-search-fallback-v1', 'reason': reason}
+            self.hybrid_last_fields = {'hybrid_attempted': True,
+                                      'hybrid_fallback': 'budget'}
+            return ['C2']
+    def play(game, bots):
+        for bot in bots:
+            bot.decide_play('budget')
+            bot.decide_play('search-error')
+        return _Log(0)
+    monkeypatch.setattr(duel, 'play_round', play)
+    path = tmp_path / 'blind.jsonl'
+    result = duel.run_duel(Bot, Bot, path, deals=1, seed0=9300,
+                           wall_seconds=30, header={}, blind=True)
+    assert result == duel.rehearsal_counters(path)
+    assert result['completed_deals'] == 1 and result['mirrors_written'] == 2
+    assert result['elapsed_seconds'] >= 0 and result['error'] is None
+    for arm in ('candidate', 'baseline'):
+        counters = result['counters'][arm]
+        assert counters['play_decisions'] == 8
+        assert counters['pv_fallback_budget'] == 4
+        assert counters['pv_fallback_search_error'] == 4
+        assert counters['hybrid_expired'] == 8
+    def keys(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                yield key
+                yield from keys(child)
+    assert not any(any(word in key for word in ('utility', 'winner', 'level_change'))
+                   for key in keys(result))
+    rows = path.read_text().splitlines()
+    path.write_text('\n'.join(rows[:-1]) + '\n')
+    with pytest.raises(duel.DuelRefusal, match='terminal'):
+        duel.rehearsal_counters(path)
+
+
+def test_missing_pv_record_is_not_reused_from_previous_decision():
+    class Bot:
+        def decide_play(self, write):
+            if write:
+                self.last_decision_record = {'schema': 'pv-search-fallback-v1', 'reason': 'budget'}
+            return ['C2']
+    bot = Bot()
+    duel._instrument(bot)
+    bot.decide_play(True)
+    bot.decide_play(False)
+    counters = duel._telemetry(bot)
+    assert counters['play_decisions'] == 2
+    assert counters['pv_fallback_budget'] == 1
+    assert counters['pv_record_missing'] == 1

@@ -33,7 +33,6 @@ from shengji.train.screen_deadline import DeadlineSession, DecisionExpired, RECI
 from shengji.train.search_screen import _run_pending
 from tests.test_cwv_shortlist_screen import cfg
 from tests.test_encoder_round_compat import PACKAGE_SHA, pinned_production_package  # noqa: F401
-from tests.test_release46_fly_config import without_combo
 from tests.test_screen_deadline import ProbeBot, play_state
 
 PER_WORKER = S.PER_WORKER_CHILD
@@ -261,6 +260,11 @@ def test_a_stuck_child_falls_back_per_cluster_exactly_as_the_owned_child(monkeyp
         assert without_timing(actual) == without_timing(expected)
         latency = S.summary_for([actual], shared)["decision_latency"]
         assert {side: stats["timeouts"] for side, stats in latency.items()} == {"arm": 4, "baseline": 4}
+        expired = [d["deadline"] for t in actual["decision_traces"] for d in t["decisions"]
+                   if d.get("deadline", {}).get("timed_out")]
+        # every expiry is the blocked first-trick search, never the child's (re)start
+        assert len(expired) == 8 and all(d["phase"] != "startup-or-transfer" for d in expired), \
+            sorted({d["phase"] for d in expired})
     # the kills mid-cluster respawned the child; the reset before cluster 1 ran on the respawn
     assert worker_state.session.process.is_alive()
 
@@ -337,6 +341,9 @@ def served_recipe(package):
     """Release 45's search, bury and rules from fly.toml (production without release
     46's combo lines) on the given package, with the serving budgets lifted so no
     decision depends on this host's load."""
+    # imported here, not at module level: the spawned deadline child imports this module to
+    # unpickle its factories, and its startup counts against the decision deadline
+    from tests.test_release46_fly_config import without_combo
     env = without_combo(tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"])
     env = {k: v for k, v in env.items() if k.startswith("SHENGJI_PV_")}
     env.update(SHENGJI_PV_CKPT=str(package), SHENGJI_PV_SHA256=PACKAGE_SHA,

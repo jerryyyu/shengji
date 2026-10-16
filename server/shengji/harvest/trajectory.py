@@ -376,6 +376,13 @@ DEFAULT_EXPLORE_K = 2
 ALLOCATION_KIND = "search-work"
 PREFERENCE_KIND = "trajectory-preference-v1"
 ACTION_VALUES_KIND = "trajectory-action-values-v1"
+#: a pv-search record field with this prefix belongs to the belief proposal
+BELIEF_RECORD_PREFIX = "belief_"
+#: the draw's counters a belief replay checks itself against
+#: (``scripts/belief_debug.py``), carried beside the belief fields when present
+BELIEF_REPLAY_COUNTERS = ("history_follow_events", "history_rejections",
+                          "history_fallback_worlds", "refusal_rejections",
+                          "refusal_fallback_worlds")
 MANIFEST_SCHEMA = "shengji-trajectory-manifest-v1"
 SHARD_SCHEMA = "shengji-trajectory-shard-v1"
 RUN_SCHEMA = "shengji-trajectory-run-v1"
@@ -1452,6 +1459,14 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dic
         "worlds": worlds,
         "policy_log_odds": [_finite(v) for v in rec.get("policy_log_odds_admitted", [])],
     }
+    belief = {key: rec[key] for key in rec if key.startswith(BELIEF_RECORD_PREFIX)}
+    if belief:
+        # the belief proposal's record fields as the producer wrote them (its
+        # counts and, under its log flag, the replay seed and the snapshot),
+        # with the draw's counters a replay is checked against; an absent
+        # counter stays absent
+        belief.update({key: rec[key] for key in BELIEF_REPLAY_COUNTERS if key in rec})
+        action_values["belief"] = belief
     return allocation, preference, action_values
 
 

@@ -163,7 +163,9 @@ def test_main_refuses_raw_disk_access():
         readout.main(["--reports", "/tmp/reports.json"])
 
 
-def test_real_synthetic_transport_pipeline_reaches_actor_readout(tmp_path, monkeypatch):
+@pytest.mark.parametrize("through_supervisor", [False, True])
+def test_real_synthetic_transport_pipeline_reaches_actor_readout(tmp_path, monkeypatch,
+                                                               through_supervisor):
     """Prepared roots, engine mirrors, and terminal accounting reach the pure reader."""
     from scripts import prepare_llm_panel_roots as root_producer
     from scripts import production_llm_panel as panel
@@ -203,24 +205,67 @@ def test_real_synthetic_transport_pipeline_reaches_actor_readout(tmp_path, monke
 
     expected = {}
     reports = {}
+    outputs = tmp_path / "campaign-output" if through_supervisor else tmp_path
     for policy in readout.POLICIES:
         dry = panel.run_row(
             row=policy, model_paths={}, prepared_roots_from=roots,
             prepared_roots_sha256=roots_sha, output=tmp_path / f"dry-{policy}",
             seeds=seeds, actor_only=True, run=False,
             failure_protocol=PRESERVE_ILLEGAL, invalid_action_feedback=True,
-            classify_final_action_failures=True, wall_seconds=60,
-            token_limit=1_000_000, timeout_seconds=10)
+            classify_final_action_failures=True, wall_seconds=21600.0,
+            token_limit=20_000_000, timeout_seconds=300)
         expected[policy] = copy.deepcopy(dry["config"])
         expected[policy]["run"] = True
-        output = tmp_path / policy
-        reports[policy] = panel.run_row(
-            row=policy, model_paths={}, prepared_roots_from=roots,
-            prepared_roots_sha256=roots_sha, output=output, seeds=seeds,
-            actor_only=True, run=True,
-            failure_protocol=PRESERVE_ILLEGAL, invalid_action_feedback=True,
-            classify_final_action_failures=True, wall_seconds=60,
-            token_limit=1_000_000, timeout_seconds=10)
+        if not through_supervisor:
+            reports[policy] = panel.run_row(
+                row=policy, model_paths={}, prepared_roots_from=roots,
+                prepared_roots_sha256=roots_sha, output=outputs / policy, seeds=seeds,
+                actor_only=True, run=True,
+                failure_protocol=PRESERVE_ILLEGAL, invalid_action_feedback=True,
+                classify_final_action_failures=True, wall_seconds=21600.0,
+                token_limit=20_000_000, timeout_seconds=300)
+    if through_supervisor:
+        from scripts import launch_production_llm_panel as launcher
+        from test_launch_production_llm_panel import _real_validation_fixture
+        fixture = tmp_path / "launch-fixture"
+        fixture.mkdir()
+        config_path, _, _ = _real_validation_fixture(fixture)
+        config = json.loads(config_path.read_text())
+        config.update(
+            schema=launcher.ACTOR_PANEL_SCHEMA, rows=list(readout.POLICIES),
+            row_wall_seconds=21600, row_soft_tokens=20_000_000,
+            provider_call_seconds=300, seeds=seeds, output=str(outputs),
+            prepared_roots=str(roots), prepared_roots_sha256=roots_sha,
+            failure_protocol=PRESERVE_ILLEGAL, illegal_failure_limit=8,
+            provider_capacity_retry_delays=[], recovery_controls={
+                "capacity_retries": False, "accept_recovered_reconnects": False,
+                "invalid_action_feedback": True, "classify_final_action_failures": True})
+        config_path.write_text(json.dumps(config, sort_keys=True))
+        config_sha = _plan_pin(config_path)
+        (fixture / "RELEASE").write_text(config_sha)
+        monkeypatch.setattr(launcher, "LOCK", tmp_path / "host-lock")
+        monkeypatch.setattr(launcher.os, "nice", lambda _: 10)
+        monkeypatch.setattr(launcher, "_require_recovery_memory", lambda _: None)
+        commands = []
+
+        def supervise(command, **kwargs):
+            from contextlib import redirect_stdout
+            commands.append(command)
+            assert command[3] == "scripts.production_llm_panel"
+            assert kwargs["wall"] == 21630
+            with redirect_stdout(kwargs["log"]):
+                assert panel.main(command[4:]) == 0
+            return {"row": kwargs["row"], "pid": 123, "returncode": 0,
+                    "status": "exited", "elapsed_seconds": 0.1}
+
+        monkeypatch.setattr(launcher, "supervise", supervise)
+        terminal = launcher.run(config_path, config_sha, arm=True)
+        assert terminal["status"] == "scheduled-terminal"
+        assert len(commands) == 2
+        assert not (outputs / "panel-readout.json").exists()
+        assert not (tmp_path / "host-lock").exists()
+        reports = {policy: json.loads((outputs / policy / "result.json").read_text())
+                   for policy in readout.POLICIES}
     result = readout.analyze_actor_panel_reports(reports, expected, bootstrap_seed=23)
 
     assert result["status"] == "complete"
@@ -229,7 +274,7 @@ def test_real_synthetic_transport_pipeline_reaches_actor_readout(tmp_path, monke
     assert all(report["config"]["information"] == ["actor-only"] for report in reports.values())
     refs = {}
     for policy in readout.POLICIES:
-        path = tmp_path / policy / "result.json"
+        path = outputs / policy / "result.json"
         refs[policy] = {"path": str(path), "sha256": _plan_pin(path)}
     plan_path = tmp_path / "sealed-pipeline-plan.json"
     plan_path.write_text(json.dumps({"schema": readout.PLAN_SCHEMA,

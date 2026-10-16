@@ -31,6 +31,22 @@ STAGE1_ROWS = ("smv3-pv", "m1-prior")
 STAGE2_SCHEMA = "sol-feedback-on-stage2-v1"
 STAGE2_ROWS = ("smart", "mc-lcb", "soft-pv", "js-m1-shortlist",
                "w32-original", "mc-strong", "mc")
+ACTOR_PANEL_SCHEMA = "sol-actor-panel-v1"
+ACTOR_PANEL_ROWS = ("smv3-pv", "release46-pv")
+ACTOR_PANEL_WALL_SECONDS = 21600
+ACTOR_PANEL_SOFT_TOKENS = 20000000
+ACTOR_PANEL_CALL_SECONDS = 300
+ACTOR_PANEL_PLANNED_MIRRORS = 20
+ACTOR_PANEL_CONTROLS = {
+    'capacity_retries': False, 'accept_recovered_reconnects': False,
+    'invalid_action_feedback': True, 'classify_final_action_failures': True,
+}
+ACTOR_PANEL_FORBIDDEN_FIELDS = frozenset({
+    'continuation', 'continuation_from', 'continuation_plan', 'continue',
+    'continue_from', 'continue_path', 'resume', 'resume_from',
+    'resume_path', 'resume_plan', 'resumed_from', 'continued_from',
+    'retention', 'memory_wait',
+})
 RECOVERY_MEMORY_WAIT = {"timeout_seconds": 1800, "poll_seconds": 60}
 def default_reservation_path(platform):
     # Linux fleet screens use this same atomic directory reservation. A
@@ -109,8 +125,9 @@ def validate(config_path, expected):
     schema = config.get("schema")
     recovery = schema == RECOVERY_SCHEMA
     stage1 = schema in (STAGE1_SCHEMA, STAGE2_SCHEMA)
+    actor_panel = schema == ACTOR_PANEL_SCHEMA
     stage_rows = STAGE2_ROWS if schema == STAGE2_SCHEMA else STAGE1_ROWS
-    controlled = recovery or stage1
+    controlled = recovery or stage1 or actor_panel
     retries = config.get("provider_capacity_retry_delays", [])
     if controlled:
         recovery_control_args(config)
@@ -121,16 +138,27 @@ def validate(config_path, expected):
     expected_retries = (list(CAPACITY_RETRY_DELAYS)
                         if schema == "sol-nine-policy-campaign-v2" or
                         (controlled and config['recovery_controls']['capacity_retries']) else [])
-    if (schema not in ("sol-nine-policy-campaign-v1", "sol-nine-policy-campaign-v2", RECOVERY_SCHEMA, STAGE1_SCHEMA, STAGE2_SCHEMA)
+    expected_rows = (ACTOR_PANEL_ROWS if actor_panel else
+                     stage_rows if stage1 else RECOVERY_ROWS if recovery else ROWS)
+    expected_wall = ACTOR_PANEL_WALL_SECONDS if actor_panel else 43200
+    expected_tokens = ACTOR_PANEL_SOFT_TOKENS if actor_panel else 45000000
+    if (schema not in ("sol-nine-policy-campaign-v1", "sol-nine-policy-campaign-v2", RECOVERY_SCHEMA, STAGE1_SCHEMA, STAGE2_SCHEMA, ACTOR_PANEL_SCHEMA)
             or type(retries) is not list
             or any(type(delay) is not int for delay in retries)
             or retries != expected_retries
-            or config.get("rows") != list(stage_rows if stage1 else RECOVERY_ROWS if recovery else ROWS)
-            or config.get("row_wall_seconds") != 43200
-            or config.get("row_soft_tokens") != 45000000
-            or config.get("provider_call_seconds") != 300):
+            or config.get("rows") != list(expected_rows)
+            or config.get("row_wall_seconds") != expected_wall
+            or config.get("row_soft_tokens") != expected_tokens
+            or config.get("provider_call_seconds") != ACTOR_PANEL_CALL_SECONDS):
         raise ValueError("campaign recipe drift")
-    if stage1:
+    if actor_panel:
+        if (config['recovery_controls'] != ACTOR_PANEL_CONTROLS
+                or config.get('failure_protocol') != PRESERVE_ILLEGAL
+                or type(config.get('illegal_failure_limit')) is not int
+                or config['illegal_failure_limit'] != 8
+                or any(key in config for key in ACTOR_PANEL_FORBIDDEN_FIELDS)):
+            raise ValueError('actor panel control or continuation recipe drift')
+    elif stage1:
         if (config.get("failure_protocol") != PRESERVE_ILLEGAL
                 or type(config.get("illegal_failure_limit")) is not int
                 or config['illegal_failure_limit'] != 8
@@ -365,7 +393,8 @@ def _start_contained_process(command, *, cwd, env, log, python):
         os.close(read_fd)
 
 
-def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.executable):
+def supervise(command, *, cwd, env, log, row, output, wall=43200,
+              planned_mirrors=40, python=sys.executable):
     start = time.monotonic()
     child, watchdog_fd = _start_contained_process(
         command, cwd=cwd, env=env, log=log, python=python)
@@ -381,7 +410,7 @@ def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.exe
             except subprocess.TimeoutExpired:
                 completed = len(list(output.glob("mirror-*.json"))) if output.exists() else 0
                 print(json.dumps({"event": "row-live", "row": row, "pid": child.pid,
-                                  "completed_attempts": completed, "total": 40,
+                                  "completed_attempts": completed, "total": planned_mirrors,
                                   "elapsed_seconds": time.monotonic() - start}), flush=True)
     finally:
         try:
@@ -410,15 +439,19 @@ def run(config_path, expected, *, arm=False):
         require_predecessor(config)
     recovery = config.get("schema") == RECOVERY_SCHEMA
     stage1 = config.get("schema") in (STAGE1_SCHEMA, STAGE2_SCHEMA)
+    actor_panel = config.get("schema") == ACTOR_PANEL_SCHEMA
     stage = 2 if config.get("schema") == STAGE2_SCHEMA else 1
-    controlled = recovery or stage1
-    rows = (STAGE2_ROWS if stage == 2 else STAGE1_ROWS) if stage1 else RECOVERY_ROWS if recovery else ROWS
+    controlled = recovery or stage1 or actor_panel
+    rows = (ACTOR_PANEL_ROWS if actor_panel else
+            (STAGE2_ROWS if stage == 2 else STAGE1_ROWS) if stage1 else
+            RECOVERY_ROWS if recovery else ROWS)
     output = Path(config["output"])
     hold = config_path.parent / "HOLD"
     if os.path.lexists(hold) or os.path.lexists(output):
         raise ValueError("HOLD or existing campaign output; no retry")
     if not arm:
-        return {"status": "unarmed", "rows": len(rows), "rounds": 40 * len(rows)}
+        planned = ACTOR_PANEL_PLANNED_MIRRORS if actor_panel else 40
+        return {"status": "unarmed", "rows": len(rows), "rounds": planned * len(rows)}
     if os.nice(0) < 10:
         raise ValueError("campaign requires nice >=10")
     if controlled:
@@ -461,6 +494,10 @@ def run(config_path, expected, *, arm=False):
                 if controlled:
                     command.extend(recovery_control_args(config))
                     command.extend(["--failure-protocol", PRESERVE_ILLEGAL])
+                    if actor_panel:
+                        command.extend(["--actor-only", "--wall-seconds", str(ACTOR_PANEL_WALL_SECONDS),
+                                        "--soft-token-limit", str(ACTOR_PANEL_SOFT_TOKENS),
+                                        "--timeout-seconds", str(ACTOR_PANEL_CALL_SECONDS)])
                     if recovery and row in config["retention"]:
                         retained = config["retention"][row]
                         command.extend(["--retention-plan", retained["plan"],
@@ -469,8 +506,15 @@ def run(config_path, expected, *, arm=False):
                 with (output / f"{row}.log").open("x") as log:
                     if controlled:
                         _require_recovery_release(config_path, expected)
-                    result = supervise(command, cwd=config["source_root"], env=env,
-                                       log=log, row=row, output=row_output, python=config["python"])
+                    supervise_kwargs = {
+                        "cwd": config["source_root"], "env": env, "log": log,
+                        "row": row, "output": row_output,
+                        "wall": ACTOR_PANEL_WALL_SECONDS + 30 if actor_panel else 43200,
+                        "python": config["python"],
+                    }
+                    if actor_panel:
+                        supervise_kwargs["planned_mirrors"] = ACTOR_PANEL_PLANNED_MIRRORS
+                    result = supervise(command, **supervise_kwargs)
                 results.append(result)
                 publish(output / f"{row}.terminal.json", result)
                 if result["returncode"] != 0 or result["status"] == "deadline":
@@ -478,6 +522,8 @@ def run(config_path, expected, *, arm=False):
                 report = json.loads((row_output / "result.json").read_bytes())
                 if stage1 and report.get('config', {}).get('invalid_action_feedback') is not True:
                     raise ValueError('stage1 terminal must declare feedback ON')
+                if actor_panel and report.get('config', {}).get('invalid_action_feedback') is not True:
+                    raise ValueError('actor panel terminal must declare feedback ON')
                 if controlled:
                     from shengji.luna.benchmark_terminal import validate_scheduled_terminal
                     fence(stamps)
@@ -490,8 +536,13 @@ def run(config_path, expected, *, arm=False):
                             'result_sha256': plan['result_sha256'],
                             'plan_sha256': retained['sha256'],
                         }
-                    accounting = validate_scheduled_terminal(
-                        report, seeds=config["seeds"], retention_binding=retention_binding)
+                    validator_kwargs = {
+                        "seeds": config["seeds"],
+                        "retention_binding": retention_binding,
+                    }
+                    if actor_panel:
+                        validator_kwargs["information_modes"] = ("actor-only",)
+                    accounting = validate_scheduled_terminal(report, **validator_kwargs)
                     publish(output / f"{row}.accounting.json", accounting)
                 else:
                     mirrors = report["mirrors"]
@@ -516,6 +567,17 @@ def run(config_path, expected, *, arm=False):
                     "status": terminal['status'],
                     "scientific_readout": f"pending-feedback-on-stage{stage}-reader",
                     "required_prior_rows": list(STAGE1_ROWS) if stage == 2 else [],
+                    "rows": {
+                        row: (json.loads((output / f"{row}.accounting.json").read_bytes())
+                              if (output / f"{row}.accounting.json").exists()
+                              else {"status": "not-terminally-validated"})
+                        for row in rows},
+                })
+            elif actor_panel:
+                publish(output / "actor-panel-summary.json", {
+                    "schema": "sol-actor-panel-summary-v1",
+                    "config_sha256": expected,
+                    "status": terminal["status"],
                     "rows": {
                         row: (json.loads((output / f"{row}.accounting.json").read_bytes())
                               if (output / f"{row}.accounting.json").exists()

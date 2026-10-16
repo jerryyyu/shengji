@@ -162,6 +162,20 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     terminal = json.loads((tmp_path / 'terminal_measure_entry.json').read_text())
     entry_rows = [json.loads(line) for line in (tmp_path / 'measure_entry.jsonl').read_text().splitlines()]
     assert summarize_completed(entry_rows, roots, terminal, arm='r45', pass_label='entry')['roots'] == 4
+    monkeypatch.setattr(worker, 'build', lambda arm, *a: (
+        worker.NAMES[arm], served(refusal_constraints=True), {}))
+    assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--roots', str(path), '--pass-label', 'combo-entry', '--arm', 'combo']) == 0
+    combo_terminal = json.loads((tmp_path / 'terminal_measure_combo-entry.json').read_text())
+    combo_rows = [json.loads(line) for line in (tmp_path / 'measure_combo-entry.jsonl').read_text().splitlines()]
+    assert summarize_completed(combo_rows, roots, combo_terminal,
+                               arm='combo', pass_label='combo-entry')['roots'] == 4
+    wrong_combo = {**combo_terminal, 'policy': worker.NAMES['dx']}
+    with pytest.raises(ValueError, match='worker terminal drift: policy'):
+        summarize_completed(combo_rows, roots, wrong_combo, arm='combo', pass_label='combo-entry')
+    belief = dict(belief_fallback=1, belief_proposed=0, belief_ms=2.5,
+                  belief_error='BeliefNumpyError', history_rejections=3, history_fallback_worlds=2)
+    assert all(worker.record_fields(belief)[key] == value for key, value in belief.items())
     for key, value in [('error', {'type': 'RuntimeError', 'message': 'late failure'}),
                        ('result', {'roots_measured': 3}), ('result', {'roots_measured': True}),
                        ('policy', worker.NAMES['dx']), ('mode', 'harvest'),
@@ -206,6 +220,19 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     terminals = {label: {**terminal, 'arm': label.rsplit('-', 1)[0], 'pass_label': label,
                          'policy': worker.NAMES[label.rsplit('-', 1)[0]]} for label in passes}
     assert paired_completed_summary(passes, roots, terminals) == paired
+    combo_passes, combo_terminals = {}, {}
+    for label, values in passes.items():
+        renamed = label.replace('dx-', 'combo-')
+        arm = renamed.rsplit('-', 1)[0]
+        combo_passes[renamed] = [{**row, 'arm': arm, 'pass_label': renamed} for row in values]
+        combo_terminals[renamed] = {**terminals[label], 'arm': arm, 'pass_label': renamed,
+                                   'policy': worker.NAMES[arm]}
+    combo_paired = paired_completed_summary(combo_passes, roots, combo_terminals, candidate_arm='combo')
+    assert combo_paired['paired_combo_minus_r45'] == paired['paired_dx_minus_r45']
+    with pytest.raises(ValueError, match='four ABBA'):
+        paired_completed_summary(combo_passes, roots, combo_terminals)
+    with pytest.raises(ValueError, match='invalid paired candidate arm'):
+        paired_summary(combo_passes, roots, candidate_arm='r45')
     stale_policy = copy.deepcopy(terminals)
     stale_policy['dx-a']['policy'] = 'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed6-xf6-xfcompactlevel-rd774ea98-bury-hybrid-bwv-ba1c68b8fa9a'
     with pytest.raises(ValueError, match='worker terminal drift: policy'):

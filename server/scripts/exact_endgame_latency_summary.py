@@ -45,7 +45,7 @@ def summarize(rows, roots, *, arm, pass_label):
         if not ok:
             raise ValueError(why)
 
-    need(arm in ('r45', 'dx') and isinstance(pass_label, str) and pass_label, 'invalid arm/pass')
+    need(arm in ('r45', 'dx', 'combo') and isinstance(pass_label, str) and pass_label, 'invalid arm/pass')
     expected = {}
     for root in roots:
         index = root.get('root_index')
@@ -102,9 +102,15 @@ def summarize(rows, roots, *, arm, pass_label):
                       'Not a Fly qualification, stage-success rate, or strength result.')
 
 
-def paired_completed_summary(passes, roots, terminals):
+def _paired_labels(candidate_arm):
+    if candidate_arm not in ('dx', 'combo'):
+        raise ValueError('invalid paired candidate arm')
+    return ('r45-a', f'{candidate_arm}-a', f'{candidate_arm}-b', 'r45-b')
+
+
+def paired_completed_summary(passes, roots, terminals, *, candidate_arm='dx'):
     """Terminal-checked entrypoint for the sealed four-pass reader."""
-    labels = ('r45-a', 'dx-a', 'dx-b', 'r45-b')
+    labels = _paired_labels(candidate_arm)
     if set(passes) != set(labels) or set(terminals) != set(labels):
         raise ValueError('requires exactly four ABBA passes and terminals')
     roots = list(roots)
@@ -112,16 +118,16 @@ def paired_completed_summary(passes, roots, terminals):
     for label in labels:
         summarize_completed(passes[label], roots, terminals[label],
                             arm=label.rsplit('-', 1)[0], pass_label=label)
-    return paired_summary(passes, roots)
+    return paired_summary(passes, roots, candidate_arm=candidate_arm)
 
 
-def paired_summary(passes, roots):
-    """ABBA per-root dx-minus-r45 wall differences; retain negative speedups.
+def paired_summary(passes, roots, *, candidate_arm='dx'):
+    """ABBA per-root candidate-minus-r45 differences; retain negative speedups.
 
     The sealed caller must establish actual dispatch order and equal host
     conditions. Pass labels alone cannot prove either of those facts.
     """
-    labels = ('r45-a', 'dx-a', 'dx-b', 'r45-b')
+    labels = _paired_labels(candidate_arm)
     if set(passes) != set(labels):
         raise ValueError('requires exactly the four ABBA passes')
     roots = list(roots)
@@ -134,7 +140,7 @@ def paired_summary(passes, roots):
     for root in roots:
         index = root['root_index']
         t = {label: indexed[label][index]['wall_total_seconds'] for label in labels}
-        delta = (t['dx-a'] + t['dx-b'] - t['r45-a'] - t['r45-b']) / 2
+        delta = (t[labels[1]] + t[labels[2]] - t['r45-a'] - t['r45-b']) / 2
         deltas['lead' if root['lead'] else 'follow'].append(delta)
     by_turn = {}
     for kind, values in deltas.items():
@@ -144,6 +150,6 @@ def paired_summary(passes, roots):
                              p90_seconds=values[math.ceil(.9 * len(values)) - 1] if values else None,
                              min_seconds=min(values) if values else None,
                              max_seconds=max(values) if values else None)
-    return dict(passes=validated, paired_dx_minus_r45=by_turn,
-                scope='Signed per-root ABBA whole-turn differences on the measured host. '
-                      'Not a Fly qualification or gameplay strength estimate.')
+    return {'passes': validated, f'paired_{candidate_arm}_minus_r45': by_turn,
+            'scope': 'Signed per-root ABBA whole-turn differences on the measured host. '
+                     'Not a Fly qualification or gameplay strength estimate.'}

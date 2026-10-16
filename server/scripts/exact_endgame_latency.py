@@ -1,4 +1,4 @@
-"""D7+X7 whole-decision latency worker; no launch authorization.
+"""D7+X7 and belief-combo late-game latency worker; no launch authorization.
 
 Derived from the qualified S18 server-path worker. Harvest uses the release-45
 recipe on the selected source and captures BOTH leads and follows when all
@@ -10,20 +10,27 @@ supervisor, sealing and review belong to the external launch packet.
 
 The dx arm requires the integrated D7+X7 source; an older tree must refuse.
 Screen-host timings are not Fly qualification without an explicit host model.
+The combo arm measures belief only on these late-game roots, not all hand sizes.
 """
 import argparse, asyncio, json, os, platform, random, resource, sys, time
 from pathlib import Path
 
 PACKAGE_SHA = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
 NAMES = {'r45': 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8',
-         'dx': 'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed7-xf7-xfcompactlevel-r8250a8cc-bury-hybrid-bwv-1cca424ae14c'}
+         'dx': 'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed7-xf7-xfcompactlevel-r8250a8cc-bury-hybrid-bwv-1cca424ae14c',
+         'combo': 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0'}
+BELIEF_SHA = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'
+BELIEF_PATH = '/data/models/s17long-e2-763b5e05.npz'
 MAPS = {'/data/models/smv3out-491ee4bf.npz': '/root/models/smv3out-491ee4bf.npz',
-        '/data/models/js-m1-0d17fd03.npz': '/root/models/js-m1-0d17fd03.npz'}
+        '/data/models/js-m1-0d17fd03.npz': '/root/models/js-m1-0d17fd03.npz',
+        BELIEF_PATH: '/root/models/s17long-e2-763b5e05.npz'}
 EXACT_FIELDS = ('exact_lead_status', 'exact_lead_seconds', 'exact_lead_worlds_completed', 'exact_lead_nodes',
                 'exact_lead_cache_hits', 'exact_lead_changed', 'exact_lead_change_kind', 'exact_lead_abandon_reason',
                 'exact_lead_abandon_error', 'exact_deep_cards',
                 'exact_follow_attempted', 'exact_follow_applied', 'exact_follow_abandoned',
                 'exact_follow_error', 'exact_follow_worlds', 'exact_follow_nodes')
+BELIEF_FIELDS = ('belief_fallback', 'belief_proposed', 'belief_ms', 'belief_error',
+                 'history_rejections', 'history_fallback_worlds')
 
 
 def memory():
@@ -45,20 +52,31 @@ def build(arm, fly_toml, maps):
     assert env['SHENGJI_PV_SHA256'] == PACKAGE_SHA and 'SHENGJI_PV_EXACT_LEAD_ENDGAME' not in env
     assert not [k for k in os.environ if k.startswith('SHENGJI_') and k not in ('SHENGJI_FAST', 'SHENGJI_REQUIRE_VOIDS')], \
         'deploy SHENGJI_* keys in the process environment'
-    if arm == 'dx':
+    assert arm in NAMES, 'unknown latency arm'
+    exact = arm in ('dx', 'combo')
+    if exact:
         env.update(SHENGJI_PV_EXACT_LEAD_ENDGAME='1', SHENGJI_PV_EXACT_DEEP_CARDS='7',
                    SHENGJI_PV_EXACT_FOLLOW='1', SHENGJI_PV_EXACT_FOLLOW_SOLVER='compact-level',
                    SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS='7', SHENGJI_PV_EXACT_FOLLOW_MAX_NODES='50000000')
-        env['SHENGJI_BOT'] = NAMES['dx']
+        env['SHENGJI_BOT'] = NAMES[arm]
+    if arm == 'combo':
+        env.update(SHENGJI_PV_WORLD_HISTORY_LEGAL='1', SHENGJI_PV_WORLD_HISTORY_DRAW='1',
+                   SHENGJI_PV_BELIEF_WORLDS='1', SHENGJI_PV_BELIEF_CKPT=maps[BELIEF_PATH],
+                   SHENGJI_PV_BELIEF_SHA256=BELIEF_SHA, SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST='1')
     name, bot = build_production_bot(env)
     assert name == NAMES[arm] and type(bot).__name__ == 'PVSearchBuryBot'
-    assert bot.exact_lead_endgame is (arm == 'dx') and bot.config.exact_lead_endgame is (arm == 'dx')
-    if arm == 'dx':
+    assert bot.exact_lead_endgame is exact and bot.config.exact_lead_endgame is exact
+    if exact:
         assert bot.exact_deep_cards == bot.config.exact_deep_cards == 7
         assert bot.exact_follow is True and bot.config.exact_follow is True
         assert (bot.exact_follow_solver, bot.exact_follow_max_cards, bot.exact_follow_max_nodes) == ('compact-level', 7, 50000000)
         from shengji.ai.endgame_compact import default_backend
         assert default_backend() == 'compiled', 'compiled exact solver required'
+    assert bot.config.belief_worlds is (arm == 'combo')
+    if arm == 'combo':
+        assert bot.config.world_history_legal and bot.config.world_history_draw
+        assert bot.config.belief_sha256 == BELIEF_SHA and bot.belief_model is not None
+        assert bot.config.value_declare_every_first and bot.value_declare_every_first
     assert bot.serving_budget_seconds == 3.0 and bot.worlds == 64 and bot.candidates == 8
     assert getattr(bot.evaluator, 'backend', None) == 'numpy', 'not the model-serving (numpy) path'
     from shengji.engine import combos, fast
@@ -109,7 +127,7 @@ def record_fields(rec):
     rec = rec or {}
     out = dict(schema=rec.get('schema'), reason=rec.get('reason'), work_complete=rec.get('work_complete'),
                record_seconds=rec.get('seconds', rec.get('elapsed_seconds')))
-    out.update({k: rec.get(k) for k in EXACT_FIELDS if k in rec})
+    out.update({k: rec.get(k) for k in EXACT_FIELDS + BELIEF_FIELDS if k in rec})
     return out
 
 
@@ -210,7 +228,7 @@ def main(argv=None):
     p.add_argument('mode', choices=('harvest', 'measure'))
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--fly-toml', type=Path, required=True)
-    p.add_argument('--arm', choices=('r45', 'dx'), default='r45')
+    p.add_argument('--arm', choices=tuple(NAMES), default='r45')
     p.add_argument('--rounds', type=int, default=0)
     p.add_argument('--seed0', type=int, default=0)
     p.add_argument('--roots', type=Path)

@@ -112,6 +112,7 @@ jobs:
           tests/test_v52ec_recovery_reader.py
           tests/test_v52ec_recovery_integration.py
           tests/test_fast_parity.py
+          tests/test_mc_native_rollout.py
       # New modules in these families are selected without editing this list.
       - name: Test Sol benchmark contracts in pure mode
         run: >-
@@ -134,6 +135,7 @@ jobs:
           tests/test_benchmark_terminal.py
           tests/test_engine_parity.py
           tests/test_fast_parity.py
+          tests/test_mc_native_rollout.py
           tests/test_action_semantics.py
           tests/test_game.py
           tests/test_banker_sampler.py

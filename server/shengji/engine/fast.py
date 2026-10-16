@@ -101,6 +101,7 @@ if HAVE_FAST:
     cheapest_winning = _fast.cheapest_winning      # HeuristicBot contest core
     decompose_uncached = _fast.decompose_uncached  # combos._decompose_uncached
     find_tractor_runs_uncached = _fast.find_tractor_runs_uncached
+    rollout_play_loop = _fast.rollout_play_loop    # MCBot._rollout continuation
 else:  # pure-Python fallbacks
     decompose = combos.decompose
     find_tractor_runs = combos.find_tractor_runs
@@ -118,6 +119,7 @@ else:  # pure-Python fallbacks
     cheapest_winning = None
     decompose_uncached = combos._decompose_uncached
     find_tractor_runs_uncached = combos._find_tractor_runs_uncached
+    rollout_play_loop = None
 
 
 # ------------------------------------------------------------------ activation
@@ -255,11 +257,15 @@ def activate() -> bool:
         setattr(HeuristicBot, attr, wrapper)
     _fast.set_follow_fallback(Ordering, _saved["HeuristicBot._follow"])
     _fast.set_lead_fallback(_saved["HeuristicBot._lead"])
+    from . import round as round_mod
     from .round import KITTY_MULTIPLIER, Round, Trick, TrickPlay
     _saved["Round.play"] = Round.play
     _fast.set_play_deps(Round, Trick, TrickPlay, _saved["Round.play"],
                         KITTY_MULTIPLIER)
     Round.play = _fast.round_play
+    # The rollout loop admits only a bot whose decide_play IS this pure method
+    # and keeps the lead on the pure validate_lead that Round.play itself calls.
+    _fast.set_rollout_deps(HeuristicBot.decide_play, round_mod.validate_lead)
     return True
 
 
@@ -282,4 +288,5 @@ def deactivate() -> None:
     if "Round.play" in _saved:
         from .round import Round
         Round.play = _saved.pop("Round.play")
+    _fast.set_rollout_deps(None, None)
     _rebind({globals()[key]: _saved.pop(key) for key, _, _ in _ROUTED})

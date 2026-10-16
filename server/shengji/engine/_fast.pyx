@@ -920,6 +920,120 @@ def round_play(rnd, seat, cards):
     return None
 
 
+cdef object _HEURISTIC_DECIDE_PLAY = None
+cdef object _VALIDATE_LEAD = None
+
+
+def set_rollout_deps(heuristic_decide_play, validate_lead):
+    """Register the pure ``HeuristicBot.decide_play`` the native rollout loop
+    stands in for, and the pure ``validate_lead`` its lead branch keeps
+    calling.  Until registered ``rollout_play_loop`` returns None, so pure
+    mode and import order stay untouched (the ``set_play_deps`` contract).
+    """
+    global _HEURISTIC_DECIDE_PLAY, _VALIDATE_LEAD
+    _HEURISTIC_DECIDE_PLAY = heuristic_decide_play
+    _VALIDATE_LEAD = validate_lead
+
+
+cdef int _lead_play(rnd, int seat, cards) except -1:
+    """The pure ``Round.play`` LEAD branch on a trusted rollout clone.
+
+    ``validate_lead`` stays the registered pure function: its throw penalty
+    is the audited outcome-changing rule.  Everything around it follows the
+    pure method's own sequence: validate, remove, age the notice, append the
+    play, seed the trick caches, advance the turn.  A refused throw's notice
+    is dropped exactly as the pure ``_set_notice`` drops it on a trusted
+    clone.  Any guard miss defers to the pure method before any mutation.
+    """
+    trick = rnd.trick
+    hands = rnd.hands
+    ordering = rnd.ordering
+    if (type(trick) is not _TRICK_CLS
+            or type(trick.plays) is not list or trick.plays
+            or type(cards) is not list or not cards
+            or rnd.phase != "play" or rnd.turn != seat
+            or type(hands) is not list or len(hands) != 4
+            or type(hands[0]) is not list or type(hands[1]) is not list
+            or type(hands[2]) is not list or type(hands[3]) is not list
+            or (_POLICY_ORDERING_TYPE is not None
+                and type(ordering) is not _POLICY_ORDERING_TYPE)):
+        _PURE_PLAY(rnd, seat, cards)
+        return 0
+    plays = trick.plays
+    rnd.message = None
+    others = [hands[s] for s in range(4) if s != seat]
+    res = _VALIDATE_LEAD(cards, hands[seat], others, ordering)
+    actual = res[0]
+    rnd.message = res[1]
+    hand = hands[seat]
+    for c in actual:
+        (<list>hand).remove(c)
+    if rnd.notice is not None:
+        left = rnd._notice_plays_left - 1
+        rnd._notice_plays_left = left
+        if left <= 0:
+            rnd.notice = None
+    plays.append(_TRICKPLAY_CLS(seat, list(actual)))
+    played = (<object>plays[len(plays) - 1]).cards
+    trick.running_points = total_points(played)
+    suit = uniform_suit(played, ordering)
+    if suit is not None:
+        trick.incumbent = (seat, suit, decompose(played, ordering).top_level())
+    rnd.turn = (seat + 1) % 4
+    return 0
+
+
+def rollout_play_loop(rnd, bot):
+    """Drive a trusted rollout clone to ``round_end`` with ``bot``'s policy.
+
+    One native frame replaces, per play, the Python ``HeuristicBot.decide_play``
+    dispatch, the ``Round.play`` lookup and the caller's loop iteration; the
+    sub-decisions (``_lead``/``_follow``/``_forced_follow``, ``validate_follow``,
+    the follow commit) are the same routed callables the pure loop reaches.
+    The loop draws no random numbers.  Returns the final attacker points, or
+    None without touching the round when a guard misses before the first
+    play; a guard miss mid-round also returns None, and the caller's pure
+    loop finishes the round from the untouched intermediate state (every
+    step is committed by the pure method's own contract, so the two loops
+    compose).  Only a bot whose ``decide_play`` IS the registered pure method
+    is admitted: subclass overrides keep their own semantics.
+    """
+    if (_PURE_PLAY is None or _HEURISTIC_DECIDE_PLAY is None
+            or _VALIDATE_LEAD is None
+            or type(rnd) is not _ROUND_CLS
+            or getattr(rnd, "_trusted_rollout", False) is not True
+            or getattr(type(bot), "decide_play", None)
+            is not _HEURISTIC_DECIDE_PLAY):
+        return None
+    cdef int seat
+    while rnd.phase == "play":
+        turn = rnd.turn
+        trick = rnd.trick
+        hands = rnd.hands
+        ordering = rnd.ordering
+        if (type(turn) is not int or not 0 <= <object>turn <= 3
+                or type(trick) is not _TRICK_CLS
+                or type(trick.plays) is not list
+                or type(hands) is not list or len(hands) != 4
+                or ordering is None):
+            return None
+        seat = <int>(<object>turn)
+        plays = trick.plays
+        if not plays:
+            _lead_play(rnd, seat, bot._lead(rnd, seat))
+        else:
+            cards = bot._follow(rnd, seat)
+            hand = hands[seat]
+            lead = (<object>plays[0]).cards
+            try:
+                validate_follow(cards, hand, lead, ordering)
+            except IllegalPlay:
+                cards = bot._forced_follow(hand, lead, ordering,
+                                           prefer_points=False)
+            round_play(rnd, seat, cards)
+    return rnd.attacker_points
+
+
 def heuristic_lead(bot, rnd, seat):
     """HeuristicBot._lead drop-in: wrapper guards at C speed.
 

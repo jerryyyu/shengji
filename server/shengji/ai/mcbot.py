@@ -31,6 +31,12 @@ WEIGHTED_SPLITS = bool(os.environ.get("SHENGJI_WEIGHTED_SPLITS"))
 #: one — the second named posterior bias. Also off by default.
 UNIFORM_DEAL = bool(os.environ.get("SHENGJI_UNIFORM_DEAL"))
 PHYSICAL_FILLS = bool(os.environ.get("SHENGJI_PHYSICAL_FILLS"))
+#: Opt-in: drive each rollout continuation through the compiled play loop
+#: (`engine._fast.rollout_play_loop`) instead of the Python
+#: decide_play/Round.play loop.  The continuation draws no random numbers and
+#: the loop reaches the same routed sub-decisions, so the decision and the
+#: RNG stream are unchanged; off by default until a screen replay says so.
+NATIVE_ROLLOUT = bool(os.environ.get("SHENGJI_MC_NATIVE_ROLLOUT"))
 from math import factorial as _fact
 
 import copy
@@ -38,6 +44,7 @@ import hashlib
 import random
 from collections import Counter
 
+from ..engine import fast as _engine_fast
 from ..engine.cards import TRUMP
 from ..engine.combos import decompose
 from ..engine.legal import IllegalPlay, suit_cards, uniform_suit, validate_follow, validate_lead
@@ -1999,6 +2006,13 @@ class MCBot(SmartBot):
         clone.play(seat, list(candidate))
         policy = self.rollout_policy
         _exact_on = self.EXACT_ENDGAME
+        if (NATIVE_ROLLOUT and not _exact_on
+                and _engine_fast.rollout_play_loop is not None):
+            # None: a guard missed (pure mode, a foreign policy or round
+            # class); the loop below finishes the round from the same state.
+            native = _engine_fast.rollout_play_loop(clone, policy)
+            if native is not None:
+                return float(native)
         while clone.phase == "play":
             exact = (self._exact_endgame_value(clone, exact_session)
                      if _exact_on else None)

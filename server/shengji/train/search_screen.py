@@ -237,7 +237,7 @@ def exact_lead_summary(shards):
     """
     import math
 
-    statuses = ('ineligible', 'single_candidate', 'skipped_budget', 'abandoned', 'complete')
+    statuses = ('ineligible', 'skipped_budget', 'abandoned', 'complete')
     kinds = ('unchanged', 'higher', 'tie', 'lower', 'post_selection_override')
     out = {side: dict(total_traces=0, missing=0, invalid=0,
                      statuses=dict.fromkeys(statuses, 0),

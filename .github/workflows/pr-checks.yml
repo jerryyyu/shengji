@@ -90,6 +90,7 @@ jobs:
           tests/test_bot_scheduler.py
           tests/test_server_ws.py
           tests/test_health_activity.py
+          tests/test_hybrid_duel_quality.py
           tests/test_room_bot_seed.py
           tests/test_structured_bury.py
           tests/test_harvest_trajectory.py

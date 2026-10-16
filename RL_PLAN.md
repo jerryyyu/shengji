@@ -1,450 +1,357 @@
 # Learning and search research plan
 
-Last reconciled: **2026-10-16** (release 46 live; new screens compare against release 45 as served until Jerry
-moves the comparator; proposed: release 46).
-This document owns the research architecture, the estimands, the decision tree and the planned work.
-Live state is on GitHub: the board issue #707 (one row per open question; its predecessor #679 holds
-everything finished through 2026-10-03), its topic issues and open PRs; fleet state is
-`server/scripts/fleet_status.sh`. Policy names, deployment state and the measured ladder are in
-`AI_POLICIES.md`; every screen is in Atlas v2 (`docs/atlas_v2/registry.json`) and every training run on
-the scaling page (`docs/scaling_log/`). Retired lines are summarised once below and live in
-`docs_archive/`.
+As of 2026-10-16. Production is release 46; new screens compare against release 46 as served.
+
+This file owns the research architecture, the estimands, the process rules for compute and measurement, and the
+lessons that shape planned work. Everything else lives on its canonical surface:
+
+| what | where |
+|---|---|
+| open questions, row state, next tests and bars | board issue [#1075](https://github.com/jerryyyu/shengji/issues/1075) (predecessors #707, #679, closed) |
+| model plans and decision gates; search diagnostics | #663; #700 |
+| production contract, measured ladder, policy names | `AI_POLICIES.md` ("Production contract", the ladder table) |
+| releases, rollback, deploy checklist | `DEPLOY.md` |
+| every screen | Atlas v2, `docs/atlas_v2/registry.json` |
+| every training run | the scaling page, `docs/scaling_log/` |
+| fleet state | `server/scripts/fleet_status.sh` |
+| this plan's history and full detail | `docs_archive/rl-plan-through-2026-10-16.md` and earlier `docs_archive/rl-plan-*` files |
+
+## Glossary
+
+| term | meaning |
+|---|---|
+| **level/round** | the primary metric: paired signed level utility per round, clustered by deal seed |
+| **window** | one 520-cluster mirrored screen block of fresh deal seeds |
+| **MDE80** | minimum detectable effect at 80% power for that readout |
+| **as served** | the full production bot path, including declare, bury and budgets |
+| **comparator** | the champion a new strength claim must beat; now release 46 as served |
+| **MC-LCB** | the confirmed Monte Carlo search; the common control inside each screen, not the comparator |
+| **W / K** | sampled worlds per decision / candidates the policy head admits (served: W64, K8) |
+| **head-driven search** | policy head admits K candidates, value head prices them over W worlds, no playouts |
+| **rule tokens** | served search flags (`div`, `rc`, `tb`, `la`, `dtr`, `vd`, `bwv`, `vdef`, …); defined in `AI_POLICIES.md` |
+| **D7 + X7** | exact endgame stages at ≤ 7 cards: lead (D7) and follow (X7) |
+| **belief worlds** | play worlds whose hidden hands the S17 belief model proposes |
+| **first-round / later-round** | deals where the declaration decides the banker / where the banker is fixed |
+| **val_ce** | offline validation cross-entropy, a checkpoint-selection signal |
 
 ## Objective and evidence standard
 
-Build a Shengji policy that is demonstrably stronger than what production plays, under a
-correct engine and a reproducible evaluator: beat the live policy on fresh mirrored whole games with a
-single learned model that keeps improving from its own search data, and keep production's latency
-tail bounded. Production is release 46 (deployed 2026-10-16 14:49 ET), release 45 plus the v92 combo. Release 45
-(deployed 2026-10-13 05:27 ET, now the previous release and the rollback) is the gen-5 SMV3 checkpoint
-`3e89e86f`'s outcome head as one NumPy package (`smv3out-491ee4bf.npz`, served since release 36) in the
-policy/value search — the policy head admits eight candidates over 64 sampled worlds, the value head
-prices them, no Monte Carlo playouts — with five search rules (div, rc, tb, la, dtr), the value-guided
-trump declaration (release 44) and the wide value-only bury (release 45); release 46 adds history-legal,
-belief-proposed play worlds (the S17 belief model), the exact endgame stages at ≤ 7 cards (D7 + X7) and the value
-declaration at every first-round chance (`vdef`). The exact contract is `AI_POLICIES.md` "Production contract".
-The champion for every NEW strength claim is still release 45 as served (Jerry, in-session 2026-10-13: "Yes change
-to 45", recorded on #988 issuecomment-6142666693) until Jerry moves it (proposed: release 46 as served);
-confirmations keep their parent's comparator and
-historical reads keep their original labels. MC-LCB is the common control inside each screen, not the
-prospective comparator.
+Build a Shengji policy demonstrably stronger than production, under a correct engine and a reproducible evaluator:
+beat the served bot on fresh mirrored whole games with one learned model that keeps improving from its own search
+data, with production's latency tail bounded. The standing goal is +0.05 levels/round over the served release
+(Jerry 2026-10-15; board #1075).
 
-Evidence labels:
+- **Production:** release 46, deployed 2026-10-16 14:49 ET: release 45 plus the v92 combo (S17 belief worlds,
+  D7 + X7, `vdef`). Release 45 (2026-10-13 05:27 ET) is the rollback. Exact contract: `AI_POLICIES.md`
+  "Production contract".
+- **Comparator:** new screens compare against release 46 as served (Jerry 2026-10-16, recorded on #1075).
+  Confirmations keep their parent's comparator; historical reads keep their original labels. The previous
+  comparator was release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693).
 
-- **MECHANICS:** code, legality, parity, leakage, throughput, or rehearsal.
-- **OFFLINE:** held-out prediction, calibration, stability, or teacher value.
-- **SCREEN:** fresh state or whole-round evidence that selects a design.
-- **CONFIRM:** pre-registered fresh mirrored evidence supporting a strength claim.
-- **REJECT/SELECT NONE:** the exact registered recipe failed its bar.
+| evidence label | supports |
+|---|---|
+| **MECHANICS** | code, legality, parity, leakage, throughput or rehearsal |
+| **OFFLINE** | held-out prediction, calibration, stability or teacher value |
+| **SCREEN** | fresh state or whole-round evidence that selects a design |
+| **CONFIRM** | pre-registered fresh mirrored evidence for a strength claim |
+| **REJECT/SELECT NONE** | the exact registered recipe failed its bar |
 
-The primary policy metric is paired signed level utility per round, clustered by deal seed.
-Win rate, role splits, advancement tails and catastrophic losses are required diagnostics.
-Offline loss, Brier score, point regret, Elo pools and human agreement never substitute for a
-fresh whole-game comparison, and every strength claim goes through `scripts/evaluate.py` with
-a bar.
+Win rate, role splits, advancement tails and catastrophic losses are required diagnostics beside the primary
+metric. Offline loss, Brier score, point regret, Elo pools and human agreement never substitute for a fresh
+whole-game comparison; every strength claim goes through `scripts/evaluate.py` with a bar.
 
 ## Operating modes (rigor tiers)
 
-| tier | what it supports | keep | drop |
+| tier | supports | keep | drop |
 |---|---|---|---|
-| **i — exploratory / DEV** | pipeline works; a model exists; a diagnostic number | score-free until sealed, reproducibility stamp (git SHA, seeds, hashes), receipts | pre-registration, confirmation machinery |
-| **ii — selection screen** | choosing between designs | tier i plus a pre-registered comparison, literal parent, matched control | the tier iii machinery |
-| **iii — confirmation** | a deploy or strength claim | the full immutable machinery: exact-head freeze, one-shot admission, independent reconstruction, ledger markers | — |
+| **i — exploratory / DEV** | pipeline works; a model exists; a diagnostic number | score-free until sealed; reproducibility stamp (git SHA, seeds, hashes); receipts | pre-registration, confirmation machinery |
+| **ii — selection screen** | choosing between designs | tier i + pre-registered comparison, literal parent, matched control | the tier iii machinery |
+| **iii — confirmation** | a deploy or strength claim | exact-head freeze, one-shot admission, independent reconstruction, ledger markers | — |
 
-A lane enters tier iii only when a candidate beats the champion on a tier ii paired screen and a confirmation is
-owed: Jerry's call per change (2026-10-13, in-session; recorded on #663 issuecomment-6142998363). A positive screen
-can ship on his word; a fresh-seed confirmation runs when he asks or when the effect is small or borderline.
-
-## Current program
-
-The work queue and each lane's state are on the board issue [#707](https://github.com/jerryyyu/shengji/issues/707);
-model plans and decision gates on #663; search and gameplay diagnostics on #700. Production and its rollback are
-in `DEPLOY.md` "Current production".
-
-**What would change production next:** a change that beats the comparator (release 45 as served until Jerry moves
-it; release 46 proposed) on a ten-window served-bot screen,
-then the `DEPLOY.md` release checklist and Jerry's word. Confirmation is Jerry's call per change (in-session
-2026-10-13, recorded on #663 issuecomment-6142998363): a positive screen can ship on his word, and a fresh-seed
-confirmation runs when he asks or when the effect is small or borderline. Releases 44 and 45 shipped that way;
-release 46 shipped on its screen plus a fresh-seed confirmation (v92c) and a latency gate (v93lat).
-Correctness fixes may ship with no strength claim when the served screen is not demonstrated negative (releases 42
-and 43).
-
-**The direction (Jerry, 2026-10-11 and 2026-10-13).** "Where we use heuristics, it may be better to use the model";
-after release 45, "we should keep trying in this direction." Value-guided declaration improved on heuristic declaration (release 44), and the wider value-only bury improved on
-the existing hybrid bury (release 45), with width versus chooser contribution unresolved (`AI_POLICIES.md` ladder rows 13–14). The
-remaining heuristic decisions are the play anchor, the heuristic first trick inside each value leaf and the
-continuations the search uses.
+A lane enters tier iii only when a candidate beats the comparator on a tier ii paired screen and a confirmation is
+owed. Confirmation is Jerry's call per change (2026-10-13, #663 issuecomment-6142998363): a positive screen can
+ship on his word; a fresh-seed confirmation runs when he asks or when the effect is small or borderline.
 
 ## Planned work
 
-Each item is a board row on #707 (row id in brackets); its state there is authoritative.
+**What changes production next:** a change that beats release 46 as served on a ten-window served-bot screen,
+then the `DEPLOY.md` release checklist and Jerry's word. Release 46 shipped on its screen plus a confirmation
+(v92c) and a latency gate (v93lat). Correctness fixes may ship with no strength
+claim when the served screen is not demonstrated negative (releases 42, 43).
 
-0. **Shipped: the v92 combo as release 46 (2026-10-16, #1072; source #1066).** S17 belief worlds + D7 + X7 + `vdef`:
-   v92combo45 +0.2167 [+0.1923, +0.2412] and confirmation v92c +0.2284 [+0.2046, +0.2521] vs release 45 as served,
-   each judged alone; latency v93lat QUALIFIED (`AI_POLICIES.md` ladder row 15). The D6 + X6-only fallback (#1065) is
-   superseded. Screens below that name release 45 as the comparator keep it until Jerry moves it (proposed: release
-   46 as served). Release 46 also serves the belief observability log (#1068, on by default): each production play record carries `belief_seed`
-   and a compact belief-marginal snapshot, and `server/scripts/belief_debug.py` replays a logged decision's worlds,
-   so belief proposals can be debugged from production records.
+**Direction (Jerry 2026-10-11, 2026-10-13):** "Where we use heuristics, it may be better to use the model";
+after release 45, "we should keep trying in this direction." Heuristics still in the served bot: the play
+anchor, the heuristic first trick inside each value leaf, and the continuations before the exact endgame.
 
-1. **Heuristic replacement, declare and bury [S15].** Screens of release 45 plus one flag, vs release 45 as served,
-   the wider bury first (two-card swaps #984, merged off by default; K=128), run in parallel with the S18 screen
-   (cloud and perf, both vs release 45 as served); then, in this order: declare worlds that
-   score with the served bury instead of the heuristic one; declare worlds consistent with the opponents' passes,
-   plus a 'wait' option; wide-bury attribution arms (K32 value-only, K64 hybrid), since release 45 changed width
-   and chooser together. The paired contrast of value declare at every first-round chance vs declare-ASAP
-   (v74vdefasap) is reviewed and waiting for a host. Not pursued: the policy-head first trick in the value leaf
-   (`lpft`, #972; v75lpft44 inconclusive).
-2. **Exact small-endgame leads [S18, #981, Codex].** An opt-in exact continuation for small endgames; shipped in
-   release 46 as the 7-card lead and follow stages (D7 + X7; alone v89dx7 +0.0439 [+0.0307, +0.0570]). Related Codex drafts: first-trick response search and attribution [S19/S21, #987] and structural
-   lead admission [S20, #986]. The whole-hand lead admission `fla` (#973) stays off: the release-44 diagnostic
-   found its admission omissions were all refused throws.
-3. **C14, the grid trunk [M9].** The G1 grid trunk (`--trunk-block grid --grid-channels 44`, d3, h330),
-   warm-started from GEN4-G1-SOFT-336k (checkpoint `4b829486`, the largest offline val_ce step of any
-   generation and a served null in gen 4; #663 issuecomment-6130726746), on the C11 base + runPVC1–10 +
-   runVD1–6 (≈ 880k shards, tag `GEN5-PROD-SOFT-allPV-plusMCLCB-880k-SMV3-C14-GRID`), with C12's settings and
-   both checkpoint selections (val_ce and rank regret). Jerry 2026-10-13: "We can start training grid model now"
-   and "All six (VD1–6)" (#663 issuecomment-6142998363); the launch packet is in review. Claim limit: against C12 it moves data, init
-   lineage and trunk together, so a positive read is a representation swing, not an attribution. The warm start
-   loads every G1 tensor, including its search head, so this is fine-tuning on the new targets. Screens: both
-   selections vs release 45 as served. Width (h1024) moves to C15; C13 (C12's recipe + VD data) is parked as the
-   one-variable control if attribution is wanted.
-4. **True-world probe [S16] and learned belief [S17].** S16 runs the served search with the TRUE hidden hands as
-   its one world (`SHENGJI_PV_ORACLE_WORLDS`, #975, merged; the screen harness only, serving refuses it) vs the
-   served bot. It is a diagnostic of the current imperfect policy, not a perfect-information ceiling or a
-   belief-vs-evaluation split: it keeps the finite candidate set, the evaluator and the heuristic continuation,
-   and changes W64 to W1. S17, a learned belief over hidden hands, shipped in release 46 as the proposal for the
-   sampled play worlds (alone v86bw45 +0.1165 [+0.0914, +0.1416]).
-5. **History encoder [M10].** The model sees per-seat counts of played cards, not play order, declaration history
-   or scores (`rl/encode.py`). A sequence encoder over the trick history is a new model class: an encoder-closure
-   change that needs a compatibility path for the hash-pinned package and a full re-encode. Design only, sequenced
-   after S16 and C14 show where the gain is.
-6. **Human-play metric [D4].** Bot win and level rate against humans in production rooms, by release, from the
-   refreshed production logs. Report only when a release reaches 20 complete human rounds; refresh the log cache
-   (`scripts/fetch_fly_logs.sh`) after each release.
+The open rows below mirror board #1075; the board is authoritative for state, next test, bar, owner and host.
 
-Data: the runVD1–6 block (16k deals each, the release-44 bot as teacher) feeds C14, all six stores; runVD1–4 are
-ingested, VD5–6 are next (their ingest lane is in review). The doomed-throw re-select's all-excluded fallback (it plays the throw's forced component,
-which the admitted list does not contain) broke the trajectory extract until #977 recorded that play as a point
-mass; completed shards were preserved and only missing clusters regenerated.
+| area | open rows (board id: question) | parked rows |
+|---|---|---|
+| search | S35 belief-informed multi-trick hybrid search; S33 greedy-finished leaves; S38 paired completed-trick horizon; S32 wider lead shortlist (K=32) | S36 eight-card exact dedup; S37 failed-throw exposure |
+| belief | S39 belief successors (later S17 checkpoints) | S34 capacity-aware kitty draw; S25 human-seat model; S22, S23 (propose close) |
+| model | M13 C15 value model on release 45's trunk; M9 C14 epoch 11 (v88); M10 history encoder, after M13 | M12 game-state objective |
+| sampler / declare | S30 model-free fallback sampler (`wu`+`kb`); S15 'wait' declare under belief | S31 (into S30); S40 later-round value declare |
+| data | M17 corpus round coverage (runPVS1/2) | — |
+| infra / measure | D8 comparator bank; D9 two-look screens; D11 lane overhead; D4 human-play metric | D13 SSD dropout (propose close) |
 
-Parked or low priority (board rows): further tree/PUCT variants [S2], search beyond W64 [S6], the lookahead-teacher
-corpus [M3], runSL value-only data [M5], early-round value bias [M8], the level-scale ladder benchmark [D2].
+Packets built against release 45 (S32, M9, S30) are rebuilt against release 46 before queueing.
 
-## What the scaling work taught (models)
+## What we learned
 
-Every row is on the scaling page with its receipt; these are the conclusions.
+Each lesson summarises Atlas v2 and scaling-page rows. Superseded wording is in the archive.
 
-- **Offline loss does not order play.** The best validation CE of the programme (grid S-d4,
-  0.6057) played like the leader; a 0.0376 CE gain from the v2 encoder was real in play while
-  later CE gains were not. Read val_ce as calibration; the search consumes ranking.
-- **Data volume inside the shortlist saturated.** 72k → 96k → 144k → 176k clusters: the last
-  full doubling bought −0.0036 CE and no resolved play difference at ten windows (twelve
-  proposer swaps all crossed zero).
-- **Width and depth alone did not move play** (h256–h2048, d4 residual) at the shortlist
-  instrument; the two-head M1 recipe (outcome + search-mean heads) was the only shortlist-era
-  model to confirm on fresh deals (+0.021 [+0.004, +0.039]).
-- **Encoders:** v2 was the one real gain; v3/v4/v5 bought nothing in play; v5 is closed.
-- **Warm-started generations were null as packages** inside the shortlist (gen-1, gen-2,
-  gen-3-warm, gen-4 run 1): the shortlist instrument ties 54–62% of deals, so the package screen
-  cannot resolve small head differences.
-- **The soft target is the ingredient with the largest point estimate** in the head-driven
-  search (soft +0.086 vs its hard twin +0.024 on the same deals, paired +0.063 exploratory);
-  no head in the W64 family is shown superior to another; a confirmation is owed.
-- **Since gen 5, data and recipe changes have not moved the served read.** The five gen-5 retrains
-  (`AI_POLICIES.md`), C11 and C12's three packages were inconclusive against production; deeper
-  trunks (DEEP8) and the tower ladder (TOWER1) did not confirm. The open model bets are
-  representation (C14's grid trunk) and inputs (M10's history encoder).
-- **Corpus seeds are decks.** A screen window inside a corpus's seed range replays decks the
-  trained model saw; ranges are recorded on #436 and excluded per model.
+### Models
 
-## What the search work taught
+| lesson | evidence | status |
+|---|---|---|
+| Offline loss does not order play; val_ce is calibration, search consumes ranking | grid S-d4 best val CE 0.6057 played like the leader; v2 encoder's 0.0376 CE gain was real in play, later ones not | still true |
+| Checkpoint selection by val_ce can leave strength unused | C11 epoch 9 beat val-selected epoch 6: v54ep9c +0.0455 [+0.0079, +0.0831] | still true |
+| Heads in the W64 family can differ resolvably | SMV3 head vs release 30: v36a2 +0.0393 [+0.0033, +0.0752], confirmed (release 36)¹ | corrected |
+| Shortlist-era data volume saturated | 72k → 176k clusters: last doubling −0.0036 CE, twelve proposer swaps all crossed zero | still true (shortlist era) |
+| Width and depth alone did not move play | h256–h2048, d4; DEEP8 and TOWER1 did not confirm | still true |
+| Encoders: v2 was the one real gain | v3/v4/v5 bought nothing in play; v5 closed | still true |
+| Soft (search-value) targets carry the largest point estimate | soft +0.086 vs hard twin +0.024 on the same deals; paired +0.063 exploratory | still true |
+| Retrains since SMV3 have not beaten production | gen-5 arms, C11 e9 vs release 38 (v55e9r38 −0.0145), C12, C14 E5 (v84 −0.0133): all inconclusive | still true; open bets are C15 (M13) and history (M10) |
+| Corpus seeds are decks | a window inside a corpus's seed range replays decks the model saw; ranges on #436, excluded per model | still true |
 
-- **Model proposes, search decides** (the W32 shortlist, +0.139 on 256 rank-2 deals) was the
-  first learned win; K4 beat K8; wider worlds, more final rollouts, adaptive allocation and one
-  extra trick of guided depth all failed to add to it.
-- **The head as the whole search** replaces playouts: the policy head admits, the value head
-  prices, and it beats MC-LCB by +0.095 at W16 and +0.187 at W64 at a fraction of the cost;
-  W4 loses. More worlds beyond 64 are not shown to help.
-- **Policy head alone beats SmartBot after the units fix:** +0.24 vs SmartBot (arm F,
-  2026-09-30; through gen 3 it was SmartBot-level); the gain does not show in served play.
-- **Admission and selection rules beat tree search here** (2026-10): diversity, refusal-aware
-  worlds and a points tie-break on the release-36 search were CONFIRMED in combination and
-  lead-anchor on top was POSITIVE incremental (above; not a second confirmation), while PUCT on
-  the same package lost (−0.417 signed levels per round vs release 36) and adaptive K16 did not
-  resolve. Alone, div, rc and tb were unconfirmed or inconclusive; lead-anchor alone was positive
-  exploratory, below the extension triage.
-- **Model-owned decisions moved the result** (2026-10): value-guided declaration improved on heuristic
-  declaration (release 44, POSITIVE in first-round and later-round deals), and the wider value-only bury
-  improved on the existing hybrid bury (release 45, POSITIVE on first-round deals; width versus chooser
-  contribution unresolved), against search-side changes that mostly did not resolve
-  (adaptive worlds not confirmed, wide lead admission inconclusive, `lpft` no demonstrated gain).
-- **Terminal-level MC vs a T1 value cutoff:** the cutoff is the gain; learned continuations
-  and PUCT over sampled worlds lose or add nothing at large multiples of the cost.
-- **The served read is smaller than the card-play read** (+0.049 [+0.003, +0.095] served vs
-  +0.086 [+0.042, +0.131] in card play, on different deals and designs). The served number is
-  a common-opponent, summary-level random-effects estimate, not paired served-vs-served
-  inference; own declare and bury and the opponent mix are possible explanations for the
-  difference, not a measured cause. The deploy gate is the served design.
+¹ The shortlist instrument tied 54–62% of deals and could not resolve head differences (warm-started generations
+null as packages); the served W64 screens can. The M1 two-head recipe was the one shortlist-era confirmed model
+gain, +0.021 [+0.004, +0.039].
+
+### Search
+
+| lesson | evidence | status |
+|---|---|---|
+| Model proposes, search decides | W32 shortlist +0.139 on 256 rank-2 deals; K4 beat K8 | still true |
+| The heads can be the whole search | head-driven search vs MC-LCB +0.095 at W16, +0.187 at W64; W4 loses | still true |
+| World quality matters, not world count | belief worlds v86bw45 +0.1165 [+0.0914, +0.1416]; offline 512 vs 64 worlds −0.0007 | replaces "worlds are the lever" |
+| A better policy head alone does not show in served play | head alone +0.24 vs SmartBot (arm F, 2026-09-30); value head decides | still true |
+| Admission and selection rules beat tree search | div + rc + tb confirmed together (release 38); PUCT −0.417 vs release 36 | still true |
+| Model-owned decisions and exact endgames moved the result | `vd` (release 44), `bwv` (release 45), v92 combo +0.2167 [+0.1923, +0.2412] (release 46) | still true |
+| The value cutoff is the gain, not terminal MC | learned continuations and PUCT over worlds lose or add nothing at large cost | still true |
+| Knowing the hidden hands is worth a lot to the current search | true-world probe v78orc45 +0.4026 [+0.3806, +0.4245]; a diagnostic, not a ceiling² | still true |
+| The served read is smaller than the card-play read | +0.049 [+0.003, +0.095] served vs +0.086 [+0.042, +0.131] card play³ | still true |
+
+² v78 keeps the candidate set, the evaluator and the heuristic continuation, and changes W64 to one true world; it
+is not a perfect-information ceiling or a belief-vs-evaluation split. The soft-oracle probe v83sorc45 read +0.3093.
+
+³ Different deals and designs; the served number is a common-opponent summary-level estimate, not paired
+served-vs-served inference. Own declare/bury and the opponent mix are possible, unmeasured explanations. The
+deploy gate is the served design.
 
 ## Search and teacher strategy
 
-1. **Candidate admission and search cost.** Keep the release-46 recipe (the served search) as the reference;
-   separate exact speedups from policy changes; compute-match controls when a claim is about
-   cost.
-2. **Depth and allocation.** Test one bounded change against the frozen comparator (release 45 as served until
-   Jerry moves it)
-   before any larger tree recipe; the ballot-rooted PUCT ladder is closed.
-3. **Model and teacher transport.** Improve data and targets against the actual consumer (the
-   search's own values as the target), preserve held-out deals, then test the resulting head in
-   the same search on fresh seeds. Neither a better teacher nor better offline prediction
-   guarantees this link.
-4. **Paired worlds, and the flat W64 search as the yardstick** (search audit, 2026-10-15, board
-   S33). Every search variant scores all candidates, and every reply inside a lookahead, on the
-   SAME sampled worlds. In the served search 88% of per-leaf value variance is common to all
-   candidates (96% before trick 8; candidate signal 6%, interaction 5%), so an unpaired estimate
-   is about 10× noisier per sample: giving each candidate its own 64 of 512 worlds flips the
-   argmax in 51% of decisions and costs +0.0158 [+0.0133, +0.0182] levels per decision, and
-   resolving the median top-2 gap (0.0185 levels) at z = 2 takes about 11,000 unpaired visits
-   per child against about 120 paired worlds, roughly 90×. Never allocate one world per visit
-   (PUCT v1's −0.417). Before any screen, a search change must first beat the flat W64 K8 paired
-   search offline on the audit's true-deal yardstick (`search_audit_probe_v4.py` /
-   `analyze_audit.py`, same probe states): sf Δ ≥ +0.003 per decision with a 95% CI above zero
-   and vt Δ ≥ 0 on at least 700 decisions.
+1. **Admission and cost.** The release-46 search is the reference. Separate exact speedups from policy changes;
+   compute-match controls when a claim is about cost.
+2. **Depth and allocation.** Test one bounded change against the comparator before any larger tree recipe; the
+   ballot-rooted PUCT ladder is closed.
+3. **Model and teacher transport.** Improve data and targets against the actual consumer (the search's own values
+   as the target), preserve held-out deals, then test the head in the same search on fresh seeds. A better teacher
+   or better offline prediction does not guarantee this link.
+4. **Paired worlds, and the flat W64 search as the yardstick** (search audit, 2026-10-15, S33). Every search
+   variant scores all candidates, and every reply inside a lookahead, on the SAME sampled worlds. Never allocate
+   one world per visit (PUCT v1's −0.417). Before any screen, a search change must beat the flat W64 K8 paired
+   search offline on the audit's true-deal yardstick (`search_audit_probe_v4.py` / `analyze_audit.py`, same probe
+   states): sf Δ ≥ +0.003 per decision with a 95% CI above zero, and vt Δ ≥ 0, on at least 700 decisions.⁴
 
 Measure search work, world quality, consumer decision dose and whole-game utility separately.
 
-## Retired lines (summary; details in the archive)
+⁴ Why: 88% of per-leaf value variance is common to all candidates (96% before trick 8; candidate signal 6%,
+interaction 5%), so an unpaired estimate is about 10× noisier per sample. Giving each candidate its own 64 of 512
+worlds flips the argmax in 51% of decisions and costs +0.0158 [+0.0133, +0.0182] levels per decision; resolving
+the median top-2 gap (0.0185 levels) at z = 2 takes about 11,000 unpaired visits per child against about 120
+paired worlds, roughly 90×.
 
-- **BELIEF R4/R5** (closed 2026-08-31): the offline Brier gain did not survive its label
-  control; the DEV consumer showed no policy signal; R5 reopens only on an oracle-belief
-  probe. The information contract (public facts / actor-private / beliefs / privileged labels;
-  hidden-twin invariance; worlds sampled, never marginals) is retained in
-  `docs_archive/BELIEF_V1_*.md` and `docs_archive/rl-plan-through-2026-08-15.md`.
-- **Privileged and LLM teachers** (PT0/PT1/PT-Full, Sol/Luna): small or negative transport
-  into whole-game play; Luna data retained as evidence, no active lane.
-- **Global learned rankers, V11, Direct-Q, T4 widening, S4/S6 mechanisms, C0:** better label
-  fit did not transport; none cleared a registered bar. Do not revive unchanged.
-- **C12** (C11 base + runPVC1–10, exploration-miss weighting): three packages inconclusive vs release 42,
-  closed 2026-10-12 with no demonstrated gain (#663 issuecomment-6119248471). **C13** (C12's recipe + VD data)
-  is parked as C14's one-variable control.
-- **Search-side flags left off** (Atlas v2 has each read): adaptive worlds (S12), wide lead admission (`wla`),
-  the small-joker lead guard (S4), event-complete refusal history (S8), policy-head first trick (`lpft`).
-- **The shortlist era (releases 22–28)** is condensed in `docs_archive/ai-policies-release-sections-through-r38.md`.
+## Closed and retired lines
+
+One list for retired lines, flags left off and parked successors. Atlas v2 has each read; do not revive a line
+unchanged.
+
+| line | outcome | pointer |
+|---|---|---|
+| BELIEF R4/R5 (closed 2026-08-31) | Brier gain failed its label control; superseded by the S17 learned belief (release 46) | `docs_archive/BELIEF_V1_*.md` |
+| Privileged and LLM teachers (PT0/PT1/PT-Full, Sol/Luna) | small or negative transport to whole games; Luna data kept as evidence | archive |
+| Global rankers, V11, Direct-Q, T4 widening, S4/S6 mechanisms, C0 | better label fit did not transport; no registered bar cleared | archive |
+| C12 (C11 base + runPVC1–10) | three packages inconclusive vs release 42; closed 2026-10-12 | #663 issuecomment-6119248471 |
+| C13 (C12 recipe + VD data) | parked as a one-variable control for C14; no board row | #663 |
+| Search flags left off | adaptive worlds (S12), `wla`, small-joker guard (S4), refusal history (S8), `lpft`, `fla` | Atlas v2 |
+| PUCT, root allocation, adaptive K16, W128/W256 | none cleared zero vs its parent | `AI_POLICIES.md` "Not taken" |
+| Shortlist era (releases 22–28) | condensed | `docs_archive/ai-policies-release-sections-through-r38.md` |
+
+The information contract from the BELIEF work (public facts / actor-private / beliefs / privileged labels;
+hidden-twin invariance; worlds sampled, never marginals) still binds belief lanes; see
+`docs_archive/rl-plan-through-2026-08-15.md`.
 
 ## Literature-derived design constraints
 
-This is an architecture filter, not evidence that a method transfers to
-four-seat partnership Shengji.
+An architecture filter, not evidence that a method transfers to four-seat partnership Shengji. The full table, with
+links and every reported number, is in `docs_archive/rl-plan-through-2026-10-16.md`.
 
-| system | useful result | Shengji constraint |
+| theme | systems | what we take |
 |---|---|---|
-| [AlphaGo](https://storage.googleapis.com/deepmind-media/alphago/AlphaGoNaturePaper.pdf), [AlphaZero](https://arxiv.org/abs/1712.01815) | Policy focuses search, value truncates it, and improved search supplies later training targets. | Preserve the division of labor, but operate at a public-belief root. Fully observed two-player MCTS and one scalar observation value do not transfer directly. |
-| [Suphx](https://arxiv.org/abs/2003.13590) | Human pretraining, distributed self-play, decision specialization, privileged-information policy curriculum, and per-hand adaptation. | Privileged scalar subtraction was not a faithful Suphx test. Separate decision surfaces and gradually remove privileged policy features if this lane reopens. |
-| [DouZero](https://proceedings.mlr.press/v139/zha21a.html) | Role-specific recurrent action values learned from terminal returns at scale. | A faithful successor is from-scratch, role/action-conditioned Q with immutable actors and correct signed returns—not a warm-started oracle-residual hybrid. |
-| [Libratus](https://noambrown.github.io/papers/17-Science-Superhuman.pdf), [Pluribus](https://noambrown.github.io/papers/19-Science-Superhuman.pdf), [depth-limited solving](https://arxiv.org/abs/1805.08195) | Imperfect-information search reasons over ranges and robust continuation strategies. | Keep a fixed blueprint/partner policy and test a small continuation portfolio. Poker equilibrium guarantees do not transfer to decentralized partnership play. |
-| [DeepStack](https://arxiv.org/abs/1701.01724), [bridge belief Monte Carlo search](https://www.ieee-jas.com/article/doi/10.1109/JAS.2024.124488) | Maintain ranges over private hands; the bridge work supervises a belief network on true deals and samples deals from it for Monte Carlo search. | This is the closest BELIEF precedent: privileged labels, actor-visible inference, calibrated complete-world sampling, then search. Offline calibration is not strength. |
-| [Bayesian Action Decoder](https://arxiv.org/abs/1811.01458) | Public actions update approximate beliefs over private information. | Feeding, withholding, joker use, failed throws, and declaration timing may inform probabilities, but require policy-shift and chronology controls. |
-| [ReBeL](https://papers.nips.cc/paper/2020/hash/c61f571dbd2fb949d3fe5ae1608dd48b-Abstract.html), [Student of Games](https://arxiv.org/abs/2112.03178) | Public state plus a distribution over private states is an explicit search state. | Search a belief/range, not one determinization; two-player zero-sum convergence claims do not transfer. |
-| [Meowjong](https://arxiv.org/abs/2202.12847), [Mortal](https://mortal.ekyu.moe/), [Mahjax](https://arxiv.org/abs/2605.20577) | Specialized decisions plus enormous fast-simulator experience can make simple learning recipes strong. | Treat simulator/native throughput as research leverage and specialize heterogeneous Shengji surfaces; speed cannot repair a wrong target. |
-| [AutoGo](https://evjang.com/2026/04/28/autogo.html#cover) | Make the complete collect→train→evaluate loop work on a smaller domain before scaling and automation. | Rehearse the exact mechanics path at small scale, then freeze. Automation may execute a reviewed metric; it may not invent or promote one. |
-| [GIB](https://www.jair.org/index.php/jair/article/download/10279/24508/), [Ben](https://github.com/lorserker/ben/blob/main/src/config/default.conf) | Bridge's standard is PIMC over constraint-consistent deals; Ben keeps up to 200 of 5,000 generated deals whose every observed play has NN probability ≥ 0.03 (opponents) or ≥ 0.1 (partner). | Add a policy-likelihood filter or weight on our constraint-only sampler, with probability floors, a partner-vs-opponent trust split and a minimum-sample fallback, never exact 0/1 likelihoods. |
-| [NooK challenge](https://www.computerbridge.se/copy-of-nukkai/), [recursive MC](https://ieee-cog.org/2020/papers/paper_82.pdf) | NooK beat eight champions 6,147–5,238 in declarer-only 3NT against WBridge5 defence, and level-1 recursive MC beat MC+DDS by +0.58 tricks/deal at roughly 10× time per level. | Declarer-only and recursion-priced results do not fit a 3 s shared-CPU budget; keep one-level determinized search. |
-| [Kermit](https://www.ijcai.org/Proceedings/09/Papers/236.pdf), [card-location inference](https://arxiv.org/abs/1903.09604), [policy-based inference](https://arxiv.org/abs/1905.10911) | In Skat, bid inference was worth +4.65 TP/G (suit), play-history card-location inference +4.9 to +5.4 TP/G over bidding-only, and policy-likelihood inference +2.32 TP/G over that at ~5× runtime, mostly on defence. | Weight worlds by actor-visible history (declarations, bury, leads, sloughs, feeds) using our own search or policy head as the seat model, and gate on offline true-deal card agreement before any screen. |
-| [Long et al. 2010](https://cdn.aaai.org/ojs/7562/7562-13-11092-1-2-20201228.pdf) | PIMC is near-optimal in trick-taking games with high leaf correlation; CFR solving of the last three Skat tricks beat PIMC by 0.42 TP on unresolved games, extrapolated to 0.063 TP/deal at their 15% frequency, with a multiplayer-CFR caveat. | A CFR-vs-PIMC endgame comparison in another game gives no quantitative ceiling for our exact-search-vs-value-leaf endgame change; our priority on inference rests on our own v78/v83 evidence, not on this analogy. |
-| [Frank & Basin](https://cdn.aaai.org/AAAI/1998/AAAI98-071.pdf), [αμ](https://arxiv.org/abs/1911.07960), [EPIMC](https://arxiv.org/abs/2408.02380) | αμ (M=3) raised balanced-deal bridge declarer wins from 60.2% to 62.0% over PIMC, and EPIMC gave no gain on its trick-taking card game. | Our hypothesis is that strategy fusion enters mainly through per-world minimax (S18) and heuristic continuations that see more than the actor, because our leaf is an outcome-under-π value; we test local fixes there (S24) before considering αμ. |
-| [ISMCTS](https://eprints.whiterose.ac.uk/id/eprint/75048/1/CowlingPowleyWhitehouse2012.pdf), [GO-MCTS](https://arxiv.org/abs/2404.13150) | ISMCTS matched but did not beat determinization in Dou Di Zhu; GO-MCTS beat the Hearts state of the art by 1.74 pts/hand at 25.6 s/move and lost to Kermit in Skat by 9.84 pts at 42 s/move. | Published per-move times are far above our 3 s budget, but they are not a benchmark of an implementation on Fly; we keep determinized search plus inference as the current scope choice. |
-| [PerfectDou](https://arxiv.org/abs/2203.16406) | A training-time perfect-information critic with an imperfect-information actor beat DouZero (0.732 WP / 1.270 ADP at ~1e9 samples); against DouZero ~1e9, removing the perfect critic input cost 0.090 ADP and removing the oracle reward cost 0.780 ADP. | Our value head shares privileged-state value input but is used for sampled-world serving, not to train an actor; the open transfers are an infoset head trained on true-world value targets (M11) and privileged auxiliary targets. |
-| [DanZero](https://arxiv.org/abs/2210.17087), [DanZero+](https://arxiv.org/abs/2312.02561), [GuanZero](https://arxiv.org/abs/2402.13582) | Guandan agents used model-free DMC (30 days on 160 CPUs) with partner-move and team-level features; DanZero+ PPO reranking of DMC top-k actions scored 55.13% vs DMC at k=2 but 38.45% at k=5, and was also compared with rule agents and humans; GuanZero cooperation features reached 75–77% vs a DouZero-style agent. | Learned top-k reranking is a candidate mechanism for our shortlist, but its gain and k-sensitivity have not been shown to transfer to Sheng Ji; partner-state and level-aware features are the cheaper first borrow. |
-| [ShengJi+](https://www2.eecs.berkeley.edu/Pubs/TechRpts/2023/EECS-2023-127.pdf), [PKU Botzone 双升](https://ai.pku.edu.cn/docs/2024-07/20240704001737320453.pdf) | The only Tractor RL reports measure against random or rule agents (97.6% level rate vs random), and Suphx-style oracle guiding lost head-to-head 34.5% vs 65.5%. | No published Sheng Ji system is a strength benchmark for us, and the oracle-guiding failure is a second reason not to reopen feature dropout. |
-| [piKL](https://arxiv.org/abs/2112.07544) | KL-regularizing search toward a human-imitation anchor improved both human-prediction accuracy and strength in chess, Go and Diplomacy. | In production rooms, model human seats with a human-imitation policy for world weighting, and consider an anchor only if the human-play metric (D4) shows partner-coordination losses. |
-| [Joint Policy Search](https://arxiv.org/abs/2008.06495) | Jointly improving a partnership's policies lifted bridge bidding to +0.63 IMPs/b vs WBridge5 (prior state of the art +0.41). | Partnership conventions are learnable through partner-aware policy training; we treat that as a training-side hypothesis rather than a search-time change. |
+| search with learned heads | AlphaGo, AlphaZero | policy focuses, value truncates, search supplies targets; root at a public belief |
+| beliefs over hidden hands | DeepStack, bridge belief MC, ReBeL, Student of Games, BAD | search a belief, not one determinization; supervised belief, calibrated sampling |
+| inference from play | GIB, Ben, Kermit, card-location and policy-based inference | weight worlds by visible history, with floors; gate on true-deal card agreement |
+| strategy fusion, endgames | Frank & Basin, αμ, EPIMC, Long et al. 2010 | fix per-world minimax and continuations locally first; no transferable ceiling |
+| search cost | NooK, recursive MC, ISMCTS, GO-MCTS | published per-move costs exceed 3 s; keep one-level determinized search |
+| imperfect-information solving | Libratus, Pluribus, depth-limited solving | fixed blueprint plus a small continuation portfolio; no equilibrium guarantee |
+| privileged training | Suphx, PerfectDou, ShengJi+, PKU Botzone | privileged critics/auxiliaries may transfer; oracle guiding failed in Sheng Ji |
+| scale and specialization | DouZero, Meowjong, Mortal, Mahjax, AutoGo | throughput is leverage; rehearse the loop small; speed cannot fix a target |
+| partnership and humans | DanZero(+), GuanZero, piKL, Joint Policy Search | partner/level features first; human-seat model for world weighting (D4-gated) |
 
 ## Data and artifact contract
 
-Keep these artifact classes distinct:
+| artifact class | must carry |
+|---|---|
+| state reservoir | reconstructable actor-visible state and a frozen split; old labels are not generic truth |
+| belief corpus | actor row and a separately sealed hidden-allocation target, physically cross-bound; no world-generating metadata in model input |
+| counterfactual teacher set | complete ballot, common worlds, continuation, objective, perspective and paired outcomes, not only argmax |
+| episodic RL set | immutable actor/checkpoint identity, sequential history, role-correct return, retry-free provenance |
+| human behavior set | replay key, pseudonymous player/deal grouping, actual action, source completeness, counterfactual price before policy use |
 
-1. **State reservoir:** reconstructable actor-visible state plus frozen split;
-   old labels are not generic truth.
-2. **Belief corpus:** actor row and separately sealed hidden-allocation target,
-   with physical cross-binding and no world-generating metadata in model input.
-3. **Counterfactual teacher set:** complete ballot, common worlds,
-   continuation, objective, perspective, and paired outcomes—not only argmax.
-4. **Episodic RL set:** immutable actor/checkpoint identity, sequential history,
-   role-correct return, and retry-free provenance.
-5. **Human behavior set:** replay key, pseudonymous player/deal grouping, actual
-   action, source completeness, and counterfactual price before policy use.
-
-Every dataset binds selection and split, source/engine, observation semantics,
-ballot, sampler, continuation, objective/perspective, budget, producer, model,
-and transitive source identity. Repeated valid sampled worlds are retained with
-replacement when they represent probability mass. Invalid actor visibility,
-private-kitty drift, or target cross-binding quarantines an asset regardless of
-shape compatibility.
-
-Trajectory corpora record the generating policy's identity, work and value units per store
-(`policy_flags`); a corpus's deal-seed range is excluded from every screen of a model trained
-on it (#436). Human data supplies policy diversity and behavioral evidence. Use all trump
-ranks and player/deal-disjoint splits; do not call mixed-skill human moves an
-oracle or infer true-person disjointness from mutable display names.
+- Every dataset binds selection and split, source/engine, observation semantics, ballot, sampler, continuation,
+  objective/perspective, budget, producer, model and transitive source identity.
+- Repeated valid sampled worlds are kept with replacement when they represent probability mass.
+- Invalid actor visibility, private-kitty drift or target cross-binding quarantines an asset, whatever its shape.
+- Trajectory corpora record the generating policy's identity, work and value units per store (`policy_flags`); a
+  corpus's deal-seed range is excluded from every screen of a model trained on it (#436).
+- Human data supplies policy diversity and behavioral evidence: use all trump ranks and player/deal-disjoint
+  splits; mixed-skill human moves are not an oracle, and mutable display names do not prove person-disjointness.
 
 ## Compute, review, and recovery rules
 
-- Before authorizing a projected multi-hour run, review its complete execution
-  DAG with the user. The packet must identify any repeated full-data pass and
-  justify why it is not duplicate integrity work; give the worker count and
-  expected utilization for every expensive node; show the exact checkpoint,
-  resume, and partial-result behavior for each failure boundary; and put the
-  fastest learning-bearing pilot or intermediate artifact before scale. A
-  byte-integrity check is not automatically entitled to another multi-day
-  recomputation.
-- Profile the actual end-to-end DAG before setting caps. Admission uses measured
-  pace; a conservative wall cap must not intentionally sterilize usable time.
-- Long stages enforce deadlines inside their loops and publish stage, completed,
-  total, percent, elapsed, ETA, worker count, and deadline headroom.
-- Safe parallel stages should use available cores; GPU use must be justified by
-  measured end-to-end improvement, determinism, memory, and transfer cost.
-- A deadline may seal the best complete common epoch as explicitly truncated.
-  Truncation is valid evidence only when it cannot masquerade as convergence.
-- Durable capture/reference/index/cache/checkpoint/calibration artifacts should
-  be reusable across a repaired run only when their exact contract permits it.
-- Rehearsals exercise every DAG edge, refusal, reopen, and terminal route on a
-  small non-scientific population. They may not tune scientific seeds,
-  thresholds, architecture, or stopping behavior.
-- Review the smallest consolidated source+freeze packet once. Request another
-  review only after a load-bearing finding or material byte change.
-- Training and calibration may inspect train/calibration splits. Test bytes
-  remain closed until a durable readiness record proves every upstream artifact
-  independently reopens and the terminal path has headroom.
-- A missing/dirty manifest, seed-forwarding failure, hidden leakage, impossible
-  world, silent short-work fallback, or unreconciled counter invalidates the
-  result regardless of score.
-- Use all safe cores for independent work and record the measured scaling; do not stack competing
-  heavy jobs merely to report utilization. Optimize the path before scaling the population.
-- Opaque multi-hour stages publish progress, active workers and ETA at least every 60 seconds.
-- Material nodes are atomic, immutable, idempotently reopenable and resumable; a failure leaves a
-  typed diagnostic and preserves completed work.
-- Align with the user before a design adds a duplicate multi-hour reconstruction or integrity pass.
-  An independent reproduction must answer a meaningfully independent question, not call the same
-  implementation again.
-- A deadline at any completed DAG node (collection, reconstruction, training or scoring) is graceful
-  truncation, not automatic loss: seal the best valid completed boundary with an explicit truncated
-  status. The common-epoch clause above is the training case of this rule.
-- Seal the first interpretable scientific result before optional or independent reconstruction;
-  track later verification separately, and a verifier failure must not erase valid datasets,
-  checkpoints or sealed results.
-- Build and exercise recovery before a one-shot opening. Recovery reuses byte-bound valid inputs and
-  completed checkpoints and reruns only invalid or incomplete descendants.
-- Rehearse the exact production terminal path, not just training or helper functions: a witness must
-  reach the recorded output at the altitude where a regression would matter.
-- Do not raise a frozen resource cap merely because the measured projection exceeds it; a cap change
-  needs an independent rationale, renewed headroom analysis and explicit review.
-- Prefer one optimized critical-path owner; do not keep serial and optimized copies competing for
-  hosts unless the fallback has a named, still-useful role.
-- Negative, incomplete, and resource-failed attempts remain in the ledger with
-  their useful artifacts and explicit non-claims. Rigor must prevent cherry
-  picking without erasing operational learning.
+**Before a multi-hour run**
+
+- Review its complete execution DAG with the user. The packet identifies any repeated full-data pass and why it is
+  not duplicate integrity work; gives worker count and expected utilization for every expensive node; shows
+  checkpoint, resume and partial-result behavior at each failure boundary; and puts the fastest learning-bearing
+  pilot or intermediate artifact before scale.
+- Align with the user before a design adds a duplicate multi-hour reconstruction or integrity pass. A byte-integrity
+  check is not automatically entitled to another multi-day recomputation; an independent reproduction must answer a
+  meaningfully independent question, not call the same implementation again.
+- Profile the actual end-to-end DAG before setting caps. Admission uses measured pace; a conservative wall cap must
+  not intentionally sterilize usable time. Do not raise a frozen cap merely because the projection exceeds it: a cap
+  change needs an independent rationale, renewed headroom analysis and explicit review.
+- Rehearse every DAG edge, refusal, reopen and terminal route on a small non-scientific population; rehearsals may
+  not tune scientific seeds, thresholds, architecture or stopping. Rehearse the exact production terminal path: a
+  witness must reach the recorded output at the altitude where a regression would matter.
+- Build and exercise recovery before a one-shot opening.
+- Review the smallest consolidated source+freeze packet once; request another review only after a load-bearing
+  finding or material byte change.
+
+**Resources**
+
+- Use all safe cores for independent work and record measured scaling; do not stack competing heavy jobs merely to
+  report utilization. Optimize the path before scaling the population.
+- GPU use must be justified by measured end-to-end improvement, determinism, memory and transfer cost.
+- Prefer one optimized critical-path owner; keep serial and optimized copies competing for hosts only when the
+  fallback has a named, still-useful role.
+
+**While running**
+
+- Long stages enforce deadlines inside their loops and publish stage, completed, total, percent, elapsed, ETA,
+  worker count and deadline headroom. Opaque multi-hour stages publish progress, active workers and ETA at least
+  every 60 seconds.
+- Material nodes are atomic, immutable, idempotently reopenable and resumable; a failure leaves a typed diagnostic
+  and preserves completed work.
+- Training and calibration may inspect train/calibration splits. Test bytes stay closed until a durable readiness
+  record proves every upstream artifact independently reopens and the terminal path has headroom.
+
+**Deadlines, failure and recovery**
+
+- A deadline at any completed DAG node (collection, reconstruction, training or scoring) is graceful truncation,
+  not automatic loss: seal the best valid completed boundary (for training, the best complete common epoch) with an
+  explicit truncated status. Truncation is valid evidence only when it cannot masquerade as convergence.
+- A missing/dirty manifest, seed-forwarding failure, hidden leakage, impossible world, silent short-work fallback
+  or unreconciled counter invalidates the result regardless of score.
+- Recovery reuses byte-bound valid inputs and completed checkpoints and reruns only invalid or incomplete
+  descendants. Durable capture/reference/index/cache/checkpoint/calibration artifacts are reused across a repaired
+  run only when their exact contract permits it.
+- Seal the first interpretable scientific result before optional or independent reconstruction; track later
+  verification separately, and a verifier failure must not erase valid datasets, checkpoints or sealed results.
+- Negative, incomplete and resource-failed attempts stay in the ledger with their useful artifacts and explicit
+  non-claims. Rigor must prevent cherry picking without erasing operational learning.
 
 ### Fleet handover and review latency
 
-1. While a predecessor runs, maintain its next named successor on the existing
-   #707 board/owning issue: priority, owner, user-authority reference, source
-   and model recipe, remaining review gates, required predecessor outputs,
+1. While a predecessor runs, keep its next named successor on the board (#1075) or the owning issue: priority,
+   owner, user-authority reference, source and model recipe, remaining review gates, required predecessor outputs,
    host reservation and next action. A prepared successor is not ARMED.
-2. Prepare those gates before the predecessor ends. If no successor is ready,
-   name the exact blocker and the useful preparation that can proceed. Recheck
-   current authority when a user decision changes; retire superseded budget
-   or scope blockers rather than copying the previous status.
-3. During an active work session, target a delta-review response within 15
-   minutes when it would free a host. If that is not feasible, send an explicit
-   ownership handoff and current blocker instead of silently holding the queue.
-   This is a triage target, not permission to skip evidence or a background SLA.
-4. For unchanged CI or a live predecessor, use one existing passive watcher
-   (`gh run watch <run-id>` or cursor-neutral `agent-bus watch --actionable`)
-   and work on an independent task. Record the watcher handle before yielding;
-   reuse it. Observation timeout is not job failure. If persistent observation
-   is unavailable, leave the pending pointer for the next real work turn.
-5. At handover, verify the terminal state and usable required outputs, current
-   host guards and reservation. Let an existing authorized launcher advance;
-   intervene only with evidence of a stalled handover. Claude still owns
-   RELEASE, and every launch retains its independent authority and review gates.
-6. Spare capacity may run only named, authorized, reviewed filler. Before using
-   a preemptible supervisor, test its actual stop/resume path: it owns the
-   process group, stops only its own children, waits for them to exit before
-   releasing the host lock, preserves completed shards, resumes without
-   overwriting them, and cannot reacquire ahead of a higher-priority request.
-   Exercise competing admission and stale-PID cases. If these guarantees are
-   unresolved, keep the filler on HOLD and prepare the higher-priority lane;
-   an idle host does not justify an unsafe launch or killing a peer job.
+2. Prepare those gates before the predecessor ends. If no successor is ready, name the exact blocker and the useful
+   preparation that can proceed. Recheck authority when a user decision changes; retire superseded budget or scope
+   blockers rather than copying the previous status.
+3. During an active session, target a delta-review response within 15 minutes when it would free a host; otherwise
+   send an explicit ownership handoff and current blocker instead of silently holding the queue. This is a triage
+   target, not permission to skip evidence or a background SLA.
+4. For unchanged CI or a live predecessor, use one existing passive watcher (`gh run watch <run-id>` or
+   cursor-neutral `agent-bus watch --actionable`) and work on an independent task. Record the watcher handle before
+   yielding and reuse it. An observation timeout is not job failure. Without persistent observation, leave the
+   pending pointer for the next real work turn.
+5. At handover, verify the terminal state, usable required outputs, current host guards and reservation. Let an
+   existing authorized launcher advance; intervene only with evidence of a stalled handover. Claude still owns
+   RELEASE, and every launch keeps its independent authority and review gates.
+6. Spare capacity runs only named, authorized, reviewed filler. Before using a preemptible supervisor, test its real
+   stop/resume path: it owns the process group, stops only its own children, waits for them to exit before releasing
+   the host lock, preserves completed shards, resumes without overwriting them, and cannot reacquire ahead of a
+   higher-priority request. Exercise competing admission and stale-PID cases. If any guarantee is unresolved, keep
+   the filler on HOLD and prepare the higher-priority lane; an idle host does not justify an unsafe launch or
+   killing a peer job.
 
 ## Measurement rules
 
-- Use deterministic factories and mirrored deal-seed clusters; report paired
-  uncertainty over the actual randomization unit.
-- Keep selection and strength separate. Sibling duels/Elo choose candidates;
-  only fresh direct comparison against the named champion supports strength.
-- Use common hidden worlds inside a fixed comparison and domain-separated RNG
-  streams across folds.
-- Select a complete multi-seed cohort by the frozen rule, never a lucky seed.
-- Bind target, perspective, continuation, state distribution/horizon, ballot,
-  encoder, and objective in every checkpoint.
-- Report utility primary plus win rate, role splits, and signed advancement
-  distribution. Do not replace the primary metric post hoc.
-- A local mechanism gain must survive realistic full-round composition.
-- A positive point estimate that misses its gate is a clue, not permission.
-- An interval overlap is not a difference test; superiority between two arms needs a
-  contrast that clears zero on a common opponent or paired deals.
-- Five windows first, extend to ten only when the point exceeds +0.015 and the interval crosses
-  zero. A five-window interval that spans zero is INCONCLUSIVE, reported with its MDE80; it
-  supports neither "not large" nor "equal" (amendment adopted on #663). Capped (300 s) and
-  uncapped screens are separate populations. Screens are 520-cluster mirrored windows. A five-window
-  triage has an MDE80 of about 0.033 on the shortlist-era capped screens and about 0.05 on the
-  served policy/value-search screens; each readout reports its own MDE80. Ten shared-control
-  windows are a nominal read, and only fresh held-out deals confirm.
-- **Predeclared statistics options** (board D9, 2026-10-15). A lane may predeclare either option or both, before any
-  outcome; the code is `server/shengji/eval/paired_window_stats.py`. A lane that predeclares neither keeps the frozen
-  DerSimonian-Laird pool and one ten-window read. Sealed rows keep their original pooling and labels.
-  - **Adoption gate.** An option's numbers come in two kinds, and every result and canonical line says which:
-    - *nominal*: the ideal reference model (known window SEs, equal information per window, no between-window
-      variance, fixed-effect pooling);
-    - *calibrated*: simulated through the module itself, with SEs estimated from 520 clusters.
+**Design**
 
-    The calibration holds only inside its envelope: package or fully divergent arms, whose window SEs rest on hundreds
-    of divergent clusters, with between-window SD at most one window SE. Flag arms with mostly identical rounds are
-    outside it. A lane adopts an option only by predeclaring that it lies inside the envelope and which calibrated
-    target applies. A Q below the gate is not evidence of homogeneity.
-  - *Q-gated fixed-effect pooling* (`fe-q-gated`): use the inverse-variance estimate unless Cochran's Q rejects
-    homogeneity at p < 0.10 (Q > 14.68 on 9 df), in which case use DerSimonian-Laird. The canonical lines state Q, Q/df,
-    p, tau², the estimator that fired, and the interval's calibrated coverage. A Q/df ≤ 1 gate would change nothing,
-    because DL's tau² is already zero there.
-    - On the 48 sealed primaries no label changes, and 16 intervals are narrower (mean 0.90×).
-    - Calibrated, at ten windows: the nominal 95% interval covers 95.4% with no between-window variance and 93.5% at
-      SD 0.5× the window SE (DL: 96.1% and 94.6%). The SE is 3.7% below DL's.
-  - *Two-look design* (`two-look-obf-futility-v1`). The launcher interleaves arms by seed and pauses after five seeds.
-    At five windows: POSITIVE or NEGATIVE if |z| > 2.797; otherwise NOT AHEAD (a binding futility stop) if the point
-    estimate is ≤ 0; otherwise continue. At ten windows: judge at |z| > 1.977. Intervals are nominal 95%
-    repeated-confidence intervals (point ± critical z × SE).
-    - Nominal (ideal model): two-sided error 0.028; false POSITIVE 0.025; power 0.794 at the fixed-design MDE80;
-      MDE80 2.823 × SE; 7.5 expected windows under the null.
-    - Calibrated with `fe-q-gated`: false POSITIVE 0.023; power 0.769 at the fixed-design MDE80; MDE80 2.92 × SE.
-      False POSITIVE rises to 0.034 at between-window SD 0.5× the window SE and 0.053 at 1.0×.
-    - Calibrated with DL: false POSITIVE 0.020; power 0.743; MDE80 2.99 × SE.
-    - For comparison, today's single ten-window DL read is calibrated at false POSITIVE 0.020 and power 0.741.
-    - The D9 target (power ≥ 0.79 and error ≤ 0.03 at the fixed-design MDE80) holds only in the ideal model. The
-      implemented procedure keeps the error bound when windows are homogeneous but reaches power 0.80 only at about
-      2.92 × SE.
-    - On the 18 audited ten-window contrasts it stops 15 at five windows and keeps all 9 positives.
-    - NOT AHEAD is never "null", "equal" or "harm". Harm detection below the interim bound is given up: v79's sealed
-      NEGATIVE reads NOT AHEAD.
-    - For a lane that predeclares it, it replaces the five-window triage rule above, whose two-sided error is 0.062.
-- First-round deals (the banker is decided by the declaration) and later-round deals (the banker
-  is fixed) are separate populations, screened and read separately, never pooled.
-- The points margin is a predeclared descriptive secondary since v66 (Jerry, 2026-10-09; #707
-  board); it never overrides the level primary and is role-confounded when an arm changes who
-  banks.
+- Deterministic factories and mirrored deal-seed clusters; report paired uncertainty over the actual randomization
+  unit.
+- Common hidden worlds inside a fixed comparison; domain-separated RNG streams across folds.
+- Bind target, perspective, continuation, state distribution/horizon, ballot, encoder and objective in every
+  checkpoint. Select a complete multi-seed cohort by the frozen rule, never a lucky seed.
+- First-round and later-round deals are separate populations, screened and read separately, never pooled.
+- Capped (300 s) and uncapped screens are separate populations.
+
+**Reading**
+
+- Selection is not strength: sibling duels and Elo choose candidates; only a fresh direct comparison against the
+  named comparator supports strength.
+- Report utility primary plus win rate, role splits and signed advancement distribution; never replace the primary
+  post hoc. The points margin is a predeclared descriptive secondary since v66 (Jerry 2026-10-09); it never
+  overrides the level primary and is role-confounded when an arm changes who banks.
+- A local mechanism gain must survive realistic full-round composition. A positive point that misses its gate is a
+  clue, not permission.
+- Interval overlap is not a difference test: superiority between two arms needs a contrast that clears zero on a
+  common opponent or paired deals.
+
+**Window rule (default)**
+
+- Five windows first; extend to ten only when the point exceeds +0.015 and the interval crosses zero.
+- A five-window interval spanning zero is INCONCLUSIVE, reported with its MDE80; it supports neither "not large"
+  nor "equal" (amendment adopted on #663).
+- Five-window MDE80 is about 0.033 on shortlist-era capped screens and about 0.05 on served head-driven screens;
+  each readout reports its own. Ten shared-control windows are a nominal read; only fresh held-out deals confirm.
+
+**Predeclared statistics options** (D9, 2026-10-15; code `server/shengji/eval/paired_window_stats.py`; adoption on
+HOLD per board #1075). A lane may predeclare either or both before any outcome; otherwise it keeps the frozen
+DerSimonian-Laird (DL) pool and one ten-window read. Sealed rows keep their original pooling and labels.
+
+- **Adoption gate.** Every number is labelled *nominal* (the ideal model: known window SEs, equal information,
+  no between-window variance, fixed-effect pooling) or *calibrated* (simulated through the module, SEs estimated
+  from 520 clusters). A lane adopts an option only by predeclaring that it lies inside the calibration envelope⁵
+  and which calibrated target applies.
+- **`fe-q-gated`.** Inverse-variance pool unless Cochran's Q rejects homogeneity at p < 0.10 (Q > 14.68 on 9 df),
+  then DL. Canonical lines state Q, Q/df, p, tau², the estimator that fired and the interval's calibrated coverage.
+- **`two-look-obf-futility-v1`.** The launcher interleaves arms by seed and pauses after five seeds. At five
+  windows: POSITIVE or NEGATIVE if |z| > 2.797; NOT AHEAD (a binding futility stop) if the point is ≤ 0; else
+  continue. At ten windows: judge at |z| > 1.977. Intervals are nominal 95% repeated-confidence intervals.
+- A Q below the gate is not evidence of homogeneity.
+- NOT AHEAD is never "null", "equal" or "harm"; harm below the interim bound is not detected (v79's sealed NEGATIVE
+  reads NOT AHEAD).
+- For a lane that predeclares two-look, it replaces the five-window rule (two-sided error 0.062).
+- Coverage, error, power and audit figures for both options are in `docs_archive/rl-plan-through-2026-10-16.md`.
+
+⁵ Package or fully divergent arms, with window SEs resting on hundreds of divergent clusters and between-window SD
+at most one window SE. Flag arms with mostly identical rounds are outside it.
 
 ## Archive boundary
 
-Closed lanes live in `docs_archive/` and the tag `archive/code-lanes-pre-cleanup-20260905`.
-Update this file when the architecture, estimand, live decision tree or planned work changes.
+Closed lanes live in `docs_archive/` and the tag `archive/code-lanes-pre-cleanup-20260905`. Update this file when
+the architecture, estimand, process rules or a lesson changes; row state belongs on the board.

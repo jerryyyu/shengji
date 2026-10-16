@@ -5,6 +5,7 @@ validator must refuse candidate drift, a play-turn shortfall, non-finite or nega
 timings and a fallback; a failure after a completed round must leave that round, a
 typed terminal failure row and the room logs on disk, and exit non-zero.
 """
+import asyncio
 import json
 import math
 from types import SimpleNamespace
@@ -54,12 +55,93 @@ def expected(rounds=1, plays=4, **changes):
     return out
 
 
+def full_row(seed=FIRST, **changes):
+    max_plays = smoke.MAX_PLAYS
+    row = good_row(seed, plays=max_plays)
+    row.update({
+        "plays_requested": max_plays,
+        "full_round": True,
+        "plays": [{"seat": i % 4, "seconds": 0.03, "committed": True}
+                  for i in range(96)],
+        "play_stop": {"reason": "round_end", "phase": "round_end"},
+        "terminal_phase": "round_end",
+        "hands_empty": True,
+        "trick_empty": True,
+        "round_result": {"attacker_points": 80, "kitty_points": 20,
+                          "winner_team": 0, "level_change": 1, "next_banker": 1,
+                          "new_levels": ["2", "2"], "game_over": False,
+                          "games_won": [0, 0], "point_scored": False},
+    })
+    row.update(changes)
+    return row
+
+
 def types_of(failures):
     return {f["type"] for f in failures}
 
 
 def test_a_complete_row_passes():
     assert smoke.validate_receipt(bot_info(), [good_row()], expected()) == []
+
+
+def test_full_round_accepts_terminal_before_the_100_action_bound():
+    # Kitty multipliers can legitimately make the reported attacker score
+    # exceed 200; terminal validation must preserve the engine's result.
+    assert smoke.validate_receipt(bot_info(), [full_row(round_result={
+        **full_row()["round_result"], "attacker_points": 4120})],
+                                  expected(full_round=True)) == []
+
+
+@pytest.mark.parametrize("change", [
+    {"play_stop": {"reason": "phase", "phase": "play"}},
+    {"terminal_phase": "play"},
+    {"hands_empty": False},
+    {"trick_empty": False},
+    {"round_result": None},
+])
+def test_full_round_requires_engine_terminal_witness(change):
+    assert "terminal" in types_of(smoke.validate_receipt(
+        bot_info(), [full_row(**change)], expected(full_round=True)))
+
+
+def test_full_round_rejects_uncommitted_action():
+    row = full_row()
+    row["plays"][12]["committed"] = False
+    assert "plays" in types_of(smoke.validate_receipt(
+        bot_info(), [row], expected(full_round=True)))
+
+
+def test_full_round_real_engine_path_reaches_terminal_with_multicard_plays(tmp_path):
+    """The bounded producer uses the server snapshot/commit path, not direct Round.play."""
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import server as srv
+
+    bot = HeuristicBot()
+    # _one_round records the bury contract for the served policy; the cheap
+    # engine bot has no policy record, so supply the empty optional witness.
+    bot.last_bury_record = {}
+    row = asyncio.run(smoke._one_round(srv, bot, FIRST, 4, tmp_path,
+                                       full_round=True))
+    assert row["play_stop"] == {"reason": "round_end", "phase": "round_end"}
+    assert row["terminal_phase"] == "round_end"
+    assert row["hands_empty"] is True and row["trick_empty"] is True
+    assert row["round_result"]["winner_team"] in (0, 1)
+    assert len(row["plays"]) < smoke.MAX_PLAYS
+    assert any(len(event.get("cards", [])) > 1
+               for event in smoke._events(tmp_path / f"S{FIRST}.jsonl", "play"))
+
+    # Reuse the real producer's play/terminal fields with only the unrelated
+    # wide-bury witness supplied by this validator's fixture, then prove that
+    # removing terminal evidence is rejected.
+    receipt_row = good_row(plays=smoke.MAX_PLAYS)
+    receipt_row.update({key: row[key] for key in (
+        "plays_requested", "full_round", "plays", "play_stop",
+        "terminal_phase", "hands_empty", "trick_empty", "round_result")})
+    assert smoke.validate_receipt(bot_info(), [receipt_row],
+                                  expected(full_round=True)) == []
+    receipt_row["terminal_phase"] = "play"
+    assert "terminal" in types_of(smoke.validate_receipt(
+        bot_info(), [receipt_row], expected(full_round=True)))
 
 
 @pytest.mark.parametrize("candidates", [32, 63, 65, None, "64"])
@@ -163,7 +245,7 @@ def mocked(monkeypatch):
         monkeypatch.setattr(cwv_serving_smoke, "build_production_bot", lambda env: (env["SHENGJI_BOT"], fake_bot()))
         queue = list(rows_or_errors)
 
-        async def one_round(srv, bot, deal_seed, plays, log_dir):
+        async def one_round(srv, bot, deal_seed, plays, log_dir, *, full_round=False):
             (log_dir / f"S{deal_seed}.jsonl").write_text(json.dumps({"e": "bury", "seed": deal_seed}) + "\n")
             item = queue.pop(0)
             if isinstance(item, BaseException):

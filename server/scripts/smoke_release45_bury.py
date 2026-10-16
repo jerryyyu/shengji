@@ -15,7 +15,8 @@ then for each of N first-round deals with four bot seats:
   chooser, the fallback reason, the size of the legal widened pool, and that
   the turn committed exactly once (a second commit of the same prepared turn
   is refused and the room log holds one ``bury`` event);
-- plays the requested number of play turns through the same path.
+- plays either the requested fixed number of turns or, with ``--full-round``,
+  until the engine reaches ``round_end`` (bounded to 100 committed actions).
 
     SHENGJI_FAST=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 \\
     python scripts/smoke_release45_bury.py --fly-toml ../fly.toml \\
@@ -55,9 +56,8 @@ EXPECTED_CHOOSER = "wide-value"
 EXPECTED_SWAPS = 1
 EXPECTED_RECORD_SCHEMA = "cwv-bury-policy-v1"
 EXPECTED_KITTY = 8
-#: a first round deals 108 cards: an 8-card kitty and 25 cards to each of 4 seats,
-#: so its play phase has exactly 100 play turns and a request of at most 100
-#: can never end with the round; a shortfall is therefore always a failure
+#: A first round has 100 engine play actions. Fixed-count runs may request
+#: fewer; full-round mode stops on the engine's round_end transition.
 MAX_PLAYS = 100
 
 
@@ -97,7 +97,8 @@ def wide_pool_size(hand, record: dict, ordering) -> tuple[int | None, bool]:
     return len(pool), True
 
 
-async def _one_round(srv, bot, deal_seed: int, plays: int, log_dir: Path) -> dict:
+async def _one_round(srv, bot, deal_seed: int, plays: int, log_dir: Path,
+                     *, full_round: bool = False) -> dict:
     from shengji.engine.game import Game
 
     code = f"S{deal_seed}"
@@ -167,11 +168,16 @@ async def _one_round(srv, bot, deal_seed: int, plays: int, log_dir: Path) -> dic
         "declare_max_call_seconds": round(max(declare_calls), 4),
         "value_declare_decisions": len(decisions),
         "value_declare_search_seconds": [round(s, 4) for s in gated_seconds],
-        "plays_requested": plays,
+        "plays_requested": MAX_PLAYS if full_round else plays,
+        "full_round": full_round,
         "plays": [],
         "play_stop": None,
+        "terminal_phase": None,
+        "hands_empty": None,
+        "trick_empty": None,
+        "round_result": None,
     }
-    for _ in range(plays):
+    for _ in range(MAX_PLAYS if full_round else plays):
         if rnd.phase != "play":
             row["play_stop"] = {"reason": "phase", "phase": rnd.phase}
             break
@@ -184,6 +190,26 @@ async def _one_round(srv, bot, deal_seed: int, plays: int, log_dir: Path) -> dic
             ok = srv._commit_bot_turn(room, prepared)
         row["plays"].append({"seat": seat, "seconds": round(time.perf_counter() - started, 4),
                              "committed": bool(ok)})
+        if full_round and rnd.phase == "round_end":
+            result = room.game.result
+            row.update({
+                "play_stop": {"reason": "round_end", "phase": rnd.phase},
+                "terminal_phase": rnd.phase,
+                "hands_empty": not any(rnd.hands),
+                "trick_empty": rnd.trick is None,
+                "round_result": ({
+                    "attacker_points": result.attacker_points,
+                    "kitty_points": result.kitty_points,
+                    "winner_team": result.winner_team,
+                    "level_change": result.level_change,
+                    "next_banker": result.next_banker,
+                    "new_levels": list(result.new_levels),
+                    "game_over": result.game_over,
+                    "games_won": list(result.games_won),
+                    "point_scored": result.point_scored,
+                } if result is not None else None),
+            })
+            break
     return row
 
 
@@ -201,8 +227,8 @@ def validate_receipt(bot_info: dict | None, rows: list[dict], expected: dict) ->
     (``{"type", "deal_seed", "detail"}``), empty only on a pass.
 
     ``expected``: ``policy`` (the fly.toml SHENGJI_BOT), ``k`` (the served cap,
-    64), ``rounds`` (>= 1), ``plays`` (0..MAX_PLAYS), ``first_seed`` and
-    ``budget_seconds`` (finite, > 0).
+    64), ``rounds`` (>= 1), ``plays`` (0..MAX_PLAYS), ``full_round``,
+    ``first_seed`` and ``budget_seconds`` (finite, > 0).
 
     Recipe: the built bot is ``policy``; the env and the bot both say wide value
     on with K = ``k`` and single-card swaps.  Coverage: exactly ``rounds`` rows,
@@ -214,9 +240,10 @@ def validate_receipt(bot_info: dict | None, rows: list[dict], expected: dict) ->
     than K legitimately scores them all, and no fewer; a missing pool size
     fails); committed, the recommit refused, exactly one ``bury`` log event,
     phase ``play`` after it, an 8-card kitty; wall seconds under the budget.
-    Each round: exactly ``plays`` play turns, each committed (no shortfall
-    rule: a first round has 100 play turns, so a request of at most
-    ``MAX_PLAYS`` never outruns the round); at least one declare call.
+    Each round: exactly ``plays`` fixed-count turns, each committed, or in
+    full-round mode a genuine ``round_end`` witness with empty hands/trick,
+    a complete engine result, and no uncommitted actions; at least one declare
+    call.
     Every timing finite and >= 0; every count a nonnegative int."""
     failures: list[dict] = []
 
@@ -224,6 +251,7 @@ def validate_receipt(bot_info: dict | None, rows: list[dict], expected: dict) ->
         failures.append({"type": kind, "deal_seed": seed, "detail": detail})
 
     k, rounds, plays = expected.get("k"), expected.get("rounds"), expected.get("plays")
+    full_round = expected.get("full_round") is True
     budget = expected.get("budget_seconds")
     if type(k) is not int or k < 2:
         fail("expected_invalid", f"k {k!r} is not an int >= 2")
@@ -298,10 +326,32 @@ def validate_receipt(bot_info: dict | None, rows: list[dict], expected: dict) ->
                 fail("count", f"{name} {r.get(name)!r} is not a nonnegative int", seed)
         if r.get("declare_calls") == 0:
             fail("count", "no declare call ran", seed)
-        if r.get("plays_requested") != plays:
-            fail("plays", f"row requested {r.get('plays_requested')!r} play turns, expected {plays}", seed)
-        if len(play_rows) != plays or r.get("play_stop") is not None:
-            fail("plays", f"{len(play_rows)} of {plays} play turns (stop {r.get('play_stop')!r})", seed)
+        if full_round:
+            if r.get("plays_requested") != MAX_PLAYS or r.get("full_round") is not True:
+                fail("plays", "full-round row is not marked as a bounded full-round run", seed)
+            if not 1 <= len(play_rows) <= MAX_PLAYS:
+                fail("plays", f"full-round produced {len(play_rows)} actions, expected 1..{MAX_PLAYS}", seed)
+            if r.get("play_stop") != {"reason": "round_end", "phase": "round_end"}:
+                fail("terminal", f"full-round stop {r.get('play_stop')!r} is not round_end", seed)
+            if (r.get("terminal_phase") != "round_end" or r.get("hands_empty") is not True
+                    or r.get("trick_empty") is not True):
+                fail("terminal", "full-round lacks empty-hand/empty-trick evidence", seed)
+            result = r.get("round_result")
+            if (not isinstance(result, dict) or type(result.get("winner_team")) is not int
+                    or result.get("winner_team") not in (0, 1)
+                    or type(result.get("attacker_points")) is not int
+                    or result["attacker_points"] < 0
+                    or type(result.get("kitty_points")) is not int
+                    or type(result.get("level_change")) is not int
+                    or type(result.get("next_banker")) is not int
+                    or result.get("next_banker") not in range(4)
+                    or type(result.get("game_over")) is not bool):
+                fail("terminal", f"invalid full-round engine result {result!r}", seed)
+        else:
+            if r.get("plays_requested") != plays:
+                fail("plays", f"row requested {r.get('plays_requested')!r} play turns, expected {plays}", seed)
+            if len(play_rows) != plays or r.get("play_stop") is not None:
+                fail("plays", f"{len(play_rows)} of {plays} play turns (stop {r.get('play_stop')!r})", seed)
         if not all(p.get("committed") is True for p in play_rows):
             fail("plays", "a play turn did not commit", seed)
     return failures
@@ -339,7 +389,7 @@ def summarize(rows: list[dict]) -> dict:
 
 
 def run(env: dict[str, str], *, rounds: int, plays: int, first_seed: int, receipt_path: Path,
-        expect_k: int = 64) -> dict:
+        expect_k: int = 64, full_round: bool = False) -> dict:
     """Run the smoke, writing the receipt as it goes; returns the terminal row.
 
     Refuses (FileExistsError, before anything runs) an existing receipt path or
@@ -351,7 +401,8 @@ def run(env: dict[str, str], *, rounds: int, plays: int, first_seed: int, receip
         raise FileExistsError(f"log directory {logs_dir} exists: refusing to mix evidence")
     rows: list[dict] = []
     bot_info = None
-    expected = {"policy": env.get("SHENGJI_BOT"), "k": expect_k, "rounds": rounds, "plays": plays,
+    expected = {"policy": env.get("SHENGJI_BOT"), "k": expect_k, "rounds": rounds,
+                "plays": MAX_PLAYS if full_round else plays, "full_round": full_round,
                 "first_seed": first_seed, "budget_seconds": None}
     with open(receipt_path, "x") as fh:
         def write(obj):
@@ -382,7 +433,11 @@ def run(env: dict[str, str], *, rounds: int, plays: int, first_seed: int, receip
 
             async def scenario():
                 for i in range(rounds):
-                    row = await _one_round(srv, bot, first_seed + i, plays, logs_dir)
+                    if full_round:
+                        row = await _one_round(srv, bot, first_seed + i, plays, logs_dir,
+                                               full_round=True)
+                    else:
+                        row = await _one_round(srv, bot, first_seed + i, plays, logs_dir)
                     rows.append(row)
                     write({"kind": "round", **row})
             asyncio.run(scenario())
@@ -431,6 +486,8 @@ def main(argv=None) -> int:
     parser.add_argument("--map", action="append", default=[], help="volume_path=local_path")
     parser.add_argument("--rounds", type=_positive, default=40)
     parser.add_argument("--plays", type=_plays_arg, default=4)
+    parser.add_argument("--full-round", action="store_true",
+                        help="play until round_end, bounded to 100 committed actions")
     parser.add_argument("--first-seed", type=int, default=4500)
     parser.add_argument("--expect-k", type=_positive, default=64)
     parser.add_argument("--receipt", type=Path, required=True,
@@ -438,7 +495,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     env = env_from_fly_toml(args.fly_toml, dict(item.split("=", 1) for item in args.map))
     terminal = run(env, rounds=args.rounds, plays=args.plays, first_seed=args.first_seed,
-                   receipt_path=args.receipt, expect_k=args.expect_k)
+                   receipt_path=args.receipt, expect_k=args.expect_k,
+                   full_round=args.full_round)
     rows = [r for r in read_receipt(args.receipt) if r.get("kind") == "round"]
     print("deal  banker trump declared  bury_s  elapsed_s  cand  pool  chooser     fallback  "
           "committed_once  plays  vd_decisions")

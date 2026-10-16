@@ -28,6 +28,14 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # The pytest jobs below may be skipped, so the review-ledger guard that
+      # server/tests/conftest.py runs in every pytest session also runs here,
+      # unconditionally and outside the classifier's fallback: the literal PR
+      # head ledger must extend the literal base ledger byte for byte. It reads
+      # the event payload exactly as conftest does and returns on non-PR events.
+      - name: Review ledger guard
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
       - name: Classify changed paths
         id: classify
         env:
@@ -191,6 +199,7 @@ jobs:
           tests/test_release46_fly_config.py
           tests/test_check_ci_test_selection.py
           tests/test_check_comment_provenance.py
+          tests/test_ci_review_ledger_step.py
           tests/test_receipt_summary.py
           tests/test_paired_window_metadata.py
           tests/test_paired_window_stats.py

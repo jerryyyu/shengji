@@ -303,6 +303,37 @@ def test_latency_worker_seals_factory_refusal_without_retry(tmp_path, monkeypatc
     assert not (tmp_path / 'measure_test.jsonl').exists()
 
 
+def test_all_play_latency_producer_to_terminal_consumer(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from shengji.api import server as srv
+    from scripts import exact_endgame_latency as worker
+    from scripts.exact_endgame_latency_summary import summarize_completed
+    from test_pv_admission_rules import served
+
+    asyncio.run(worker.harvest(
+        SimpleNamespace(rounds=1, seed0=4600000, arm='r45', max_hand=25),
+        srv, served(refusal_constraints=True), tmp_path))
+    roots = [json.loads(line) for line in (tmp_path / 'roots.jsonl').read_text().splitlines()]
+    assert {r['lead'] for r in roots if r['max_hand'] == 25} == {True, False}
+    turns = [json.loads(line) for line in (tmp_path / 'harvest_turns.jsonl').read_text().splitlines()]
+    assert len(roots) == len(turns)
+    assert all(r['small_endgame'] == (r['max_hand'] <= 7) for r in turns)
+    sample = roots[:4]
+    path = tmp_path / 'early.jsonl'
+    path.write_text(''.join(json.dumps(r) + '\n' for r in sample))
+    monkeypatch.setattr(worker, 'build', lambda *a: (
+        worker.NAMES['combo'], served(refusal_constraints=True), {}))
+    assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--roots', str(path), '--pass-label', 'early', '--arm', 'combo',
+                        '--max-hand', '25']) == 0
+    rows = [json.loads(line) for line in (tmp_path / 'measure_early.jsonl').read_text().splitlines()]
+    terminal = json.loads((tmp_path / 'terminal_measure_early.json').read_text())
+    assert summarize_completed(rows, sample, terminal, arm='combo', pass_label='early', max_hand=25)['roots'] == 4
+    with pytest.raises(ValueError, match='scope drift'):
+        summarize_completed(rows, sample, terminal, arm='combo', pass_label='early')
+
+
 def test_latency_duplicate_refusal_witness_is_outside_commit_timing(monkeypatch):
     import asyncio
     from scripts import exact_endgame_latency as worker

@@ -165,7 +165,7 @@ async def harvest(args, srv, bot, out):
             seat = rnd.turn
             lead = leading(rnd)
             max_hand = max(map(len, rnd.hands))
-            eligible = max_hand <= 7
+            eligible = max_hand <= getattr(args, 'max_hand', 7)
             if eligible:
                 packet = capture.capture_turn(rnd, ledger=room.bot._refusals, decision={})
                 roots.write(dict(root_index=n_roots, deal_seed=deal_seed, trick=trick_no, seat=seat,
@@ -179,7 +179,7 @@ async def harvest(args, srv, bot, out):
                 capture.committed(rnd, seat, list(prepared.decision.cards))
             rec = prepared.decision.snapshot.bot_copy.last_decision_record
             turns.write(dict(deal_seed=deal_seed, trick=trick_no, seat=seat, lead=lead, max_hand=max_hand,
-                             small_endgame=eligible, wall_step_seconds=step, wall_commit_seconds=commit,
+                             small_endgame=max_hand <= 7, wall_step_seconds=step, wall_commit_seconds=commit,
                              compute_seconds=prepared.compute_seconds, **record_fields(rec),
                              model_search=[e for e in events if e['kind'] == 'model_search']))
         print(json.dumps(dict(round=i, deal_seed=deal_seed, roots=n_roots, mem=memory())), flush=True)
@@ -208,7 +208,7 @@ async def measure(args, srv, bot, out):
         room.ids = [dict(enumerate(h)) for h in rnd.hands]
         room._kitty_given = True
         leading_before = not bool(rnd.trick.plays)
-        assert leading_before == item['lead'] and max(map(len, rnd.hands)) == item['max_hand'] <= 7
+        assert leading_before == item['lead'] and max(map(len, rnd.hands)) == item['max_hand'] <= getattr(args, 'max_hand', 7)
         prepared, step, commit, once = await timed_turn(srv, room, seat)
         if not once:
             raise RuntimeError(f'root {item["root_index"]}: play not committed exactly once')
@@ -232,6 +232,8 @@ def main(argv=None):
     p.add_argument('--rounds', type=int, default=0)
     p.add_argument('--seed0', type=int, default=0)
     p.add_argument('--roots', type=Path)
+    p.add_argument('--max-hand', type=int, choices=range(1, 26), default=7,
+                   help='Capture/replay hand-size ceiling; 25 includes early play, not declaration or bury.')
     p.add_argument('--pass-label', default='')
     p.add_argument('--map', action='append', default=[])
     args = p.parse_args(argv)
@@ -253,7 +255,7 @@ def main(argv=None):
         result = asyncio.run(run(args, srv, bot, args.out))
     except Exception as exc:   # typed terminal witness; never retried
         error = dict(type=type(exc).__name__, message=str(exc)[:500])
-    terminal.write(dict(mode=args.mode, arm=args.arm, policy=name, pass_label=args.pass_label, result=result, error=error,
+    terminal.write(dict(mode=args.mode, arm=args.arm, policy=name, pass_label=args.pass_label, result=result, error=error, max_hand=args.max_hand,
                         seconds=time.perf_counter() - started, memory_start=mem0, memory_after_build=mem_built,
                         memory_end=memory(), python=platform.python_version(), machine=platform.machine(),
                         argv=sys.argv))

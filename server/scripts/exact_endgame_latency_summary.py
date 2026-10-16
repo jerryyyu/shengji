@@ -7,7 +7,7 @@ import math
 from collections import Counter
 
 
-def summarize_completed(rows, roots, terminal, *, arm, pass_label):
+def summarize_completed(rows, roots, terminal, *, arm, pass_label, max_hand=7):
     """Bind a worker's successful terminal result to its complete row population.
 
     The caller must still verify file seals, source identity and process exit.
@@ -18,6 +18,8 @@ def summarize_completed(rows, roots, terminal, *, arm, pass_label):
     roots = list(roots)
     if not isinstance(terminal, dict) or arm not in NAMES:
         raise ValueError('invalid worker terminal')
+    if terminal.get('max_hand', 7) != max_hand:
+        raise ValueError('worker terminal hand-size scope drift')
     for key, expected in (('mode', 'measure'), ('arm', arm),
                           ('pass_label', pass_label), ('policy', NAMES[arm])):
         if terminal.get(key) != expected:
@@ -32,10 +34,10 @@ def summarize_completed(rows, roots, terminal, *, arm, pass_label):
     seconds = terminal.get('seconds')
     if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
         raise ValueError('invalid worker elapsed time')
-    return summarize(rows, roots, arm=arm, pass_label=pass_label)
+    return summarize(rows, roots, arm=arm, pass_label=pass_label, max_hand=max_hand)
 
 
-def summarize(rows, roots, *, arm, pass_label):
+def summarize(rows, roots, *, arm, pass_label, max_hand=7):
     """Require one successful transaction per captured root, without filtering.
 
     Optional-stage abandonment is NOT a failed server transaction: those rows
@@ -46,12 +48,13 @@ def summarize(rows, roots, *, arm, pass_label):
             raise ValueError(why)
 
     need(arm in ('r45', 'dx', 'combo') and isinstance(pass_label, str) and pass_label, 'invalid arm/pass')
+    need(type(max_hand) is int and 1 <= max_hand <= 25, 'invalid hand-size scope')
     expected = {}
     for root in roots:
         index = root.get('root_index')
         need(type(index) is int and index >= 0 and index not in expected, 'invalid/duplicate root')
         need(type(root.get('lead')) is bool, 'invalid root lead')
-        need(type(root.get('max_hand')) is int and 1 <= root['max_hand'] <= 7, 'invalid root size')
+        need(type(root.get('max_hand')) is int and 1 <= root['max_hand'] <= max_hand, 'invalid root size')
         need(type(root.get('hand_size')) is int and 1 <= root['hand_size'] <= root['max_hand'], 'invalid acting hand')
         expected[index] = root
     need(bool(expected), 'empty root population')
@@ -97,7 +100,7 @@ def summarize(rows, roots, *, arm, pass_label):
                            whole_turn_over_3s=sum(t > 3 for t in walls),
                            stage_statuses=dict(sorted(counts.items())),
                            decision_schemas=dict(sorted(Counter(r['schema'] for r in group).items())))
-    return dict(arm=arm, pass_label=pass_label, roots=len(expected), by_turn=result,
+    return dict(arm=arm, pass_label=pass_label, roots=len(expected), by_turn=result, max_hand=max_hand,
                 scope='Whole-turn wall on this host; includes optional-stage abandonments. '
                       'Not a Fly qualification, stage-success rate, or strength result.')
 
@@ -108,7 +111,7 @@ def _paired_labels(candidate_arm):
     return ('r45-a', f'{candidate_arm}-a', f'{candidate_arm}-b', 'r45-b')
 
 
-def paired_completed_summary(passes, roots, terminals, *, candidate_arm='dx'):
+def paired_completed_summary(passes, roots, terminals, *, candidate_arm='dx', max_hand=7):
     """Terminal-checked entrypoint for the sealed four-pass reader."""
     labels = _paired_labels(candidate_arm)
     if set(passes) != set(labels) or set(terminals) != set(labels):
@@ -117,11 +120,11 @@ def paired_completed_summary(passes, roots, terminals, *, candidate_arm='dx'):
     passes = {label: list(passes[label]) for label in labels}
     for label in labels:
         summarize_completed(passes[label], roots, terminals[label],
-                            arm=label.rsplit('-', 1)[0], pass_label=label)
-    return paired_summary(passes, roots, candidate_arm=candidate_arm)
+                            arm=label.rsplit('-', 1)[0], pass_label=label, max_hand=max_hand)
+    return paired_summary(passes, roots, candidate_arm=candidate_arm, max_hand=max_hand)
 
 
-def paired_summary(passes, roots, *, candidate_arm='dx'):
+def paired_summary(passes, roots, *, candidate_arm='dx', max_hand=7):
     """ABBA per-root candidate-minus-r45 differences; retain negative speedups.
 
     The sealed caller must establish actual dispatch order and equal host
@@ -134,7 +137,7 @@ def paired_summary(passes, roots, *, candidate_arm='dx'):
     validated, indexed = {}, {}
     for label in labels:
         rows = list(passes[label])
-        validated[label] = summarize(rows, roots, arm=label.rsplit('-', 1)[0], pass_label=label)
+        validated[label] = summarize(rows, roots, arm=label.rsplit('-', 1)[0], pass_label=label, max_hand=max_hand)
         indexed[label] = {row['root_index']: row for row in rows}
     deltas = {'lead': [], 'follow': []}
     for root in roots:

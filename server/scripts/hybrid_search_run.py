@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 import time
+import argparse
 from pathlib import Path
 
 from shengji.train.lead_root_capture import restore_with_ledger
@@ -59,7 +60,7 @@ def _validate_caps(completed_tricks, exact_max_cards, oracle_max_cards,
 
 def run_probe_file(input_path, output_path, bot_factory, *, completed_tricks,
                    exact_max_cards, oracle_max_cards, max_nodes, max_roots,
-                   wall_seconds, seed):
+                   wall_seconds, seed, recipe=None):
     """Consume up to ``max_roots`` packet rows into a new compact JSONL file."""
     if not callable(bot_factory):
         raise TypeError("bot_factory must be callable")
@@ -83,6 +84,7 @@ def run_probe_file(input_path, output_path, bot_factory, *, completed_tricks,
 
     with input_path.open("rb") as source, output_path.open("x", encoding="utf-8") as dest:
         emit(dest, {"type": "header", "schema": "hybrid-search-run-v1",
+                    "recipe": recipe,
                     "config": {"completed_tricks": completed_tricks,
                                "exact_max_cards": exact_max_cards,
                                "oracle_max_cards": oracle_max_cards,
@@ -177,3 +179,46 @@ def run_probe_file(input_path, output_path, bot_factory, *, completed_tricks,
                     "completed": completed})
         return {"status": "COMPLETE", "reason": "root_limit",
                 "attempted": attempted, "completed": completed}
+
+
+def main(argv=None):
+    """Run one explicit diagnostic configuration; never select or retry arms."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--input', type=Path, required=True)
+    parser.add_argument('--output', type=Path, required=True)
+    for name in ('play-package', 'play-sha256', 'belief-package', 'belief-sha256'):
+        parser.add_argument('--' + name, required=True)
+    for name in ('completed-tricks', 'exact-max-cards', 'oracle-max-cards',
+                 'max-nodes', 'max-roots', 'seed'):
+        parser.add_argument('--' + name, type=int, required=True)
+    parser.add_argument('--wall-seconds', type=float, required=True)
+    args = parser.parse_args(argv)
+    _validate_caps(args.completed_tricks, args.exact_max_cards, args.oracle_max_cards,
+                   args.max_nodes, args.max_roots, args.wall_seconds, args.seed)
+    from shengji.train.pv_search_policy import make_pv_search_bot
+    from shengji.train.pv_tree_config import PVTreeConfig
+
+    def factory(seed):
+        return make_pv_search_bot(
+            args.play_package, sha256=args.play_sha256,
+            tree=PVTreeConfig(sims=0), worlds=64, candidates=8, cap=4000,
+            seed=seed, world_history_legal=True, world_history_draw=True,
+            belief_worlds=True, belief_checkpoint=args.belief_package,
+            belief_sha256=args.belief_sha256)
+
+    recipe = dict(play_package=args.play_package, play_sha256=args.play_sha256,
+                  belief_package=args.belief_package, belief_sha256=args.belief_sha256,
+                  worlds=64, candidates=8, cap=4000, tree_sims=0,
+                  world_history_legal=True, world_history_draw=True, belief_worlds=True,
+                  scope='PV belief baseline; no post-selection exact override; not the full combo recipe')
+    result = run_probe_file(
+        args.input, args.output, factory, completed_tricks=args.completed_tricks,
+        exact_max_cards=args.exact_max_cards, oracle_max_cards=args.oracle_max_cards,
+        max_nodes=args.max_nodes, max_roots=args.max_roots,
+        wall_seconds=args.wall_seconds, seed=args.seed, recipe=recipe)
+    print(json.dumps(result, sort_keys=True))
+    return {'COMPLETE': 0, 'PARTIAL': 2, 'FAILED': 1}[result['status']]
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

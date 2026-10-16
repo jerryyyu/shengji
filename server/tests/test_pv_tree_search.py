@@ -321,6 +321,36 @@ def test_true_deal_regret_records_forced_throw_component():
     assert result["actions"][0]["accepted"] == ["D8"]
 
 
+@pytest.mark.parametrize("status,code", [("COMPLETE", 0), ("PARTIAL", 2), ("FAILED", 1)])
+def test_hybrid_search_cli_pins_factory_and_propagates_terminal(monkeypatch, status, code):
+    from shengji.train import pv_search_policy
+    observed = {}
+
+    def factory(package, **kwargs):
+        observed.update(package=package, **kwargs)
+        return "constructed"
+
+    def run(source, output, factory, **kwargs):
+        assert str(source) == "input" and str(output) == "output"
+        assert factory(13) == "constructed"
+        assert kwargs['completed_tricks'] == 2 and kwargs['exact_max_cards'] == 0
+        assert kwargs['recipe']['worlds'] == 64
+        return dict(status=status)
+
+    monkeypatch.setattr(pv_search_policy, 'make_pv_search_bot', factory)
+    monkeypatch.setattr(hybrid_run, 'run_probe_file', run)
+    assert hybrid_run.main([
+        '--input', 'input', '--output', 'output', '--play-package', 'play',
+        '--play-sha256', 'a' * 64, '--belief-package', 'belief',
+        '--belief-sha256', 'b' * 64, '--completed-tricks', '2',
+        '--exact-max-cards', '0', '--oracle-max-cards', '8', '--max-nodes', '1000',
+        '--max-roots', '1', '--wall-seconds', '30', '--seed', '7']) == code
+    assert observed['seed'] == 13 and observed['tree'].sims == 0
+    assert observed['worlds'] == 64 and observed['candidates'] == 8
+    assert observed['belief_sha256'] == 'b' * 64
+    assert observed['sha256'] == 'a' * 64
+
+
 def test_hybrid_ranking_attribution_separates_selection_from_depth():
     probe = {"baseline": {"means": [0.0, 2.0, 1.0], "pv_winner": 0},
              "hybrid_value_argmax_index": 2}

@@ -39,6 +39,21 @@ def test_ties_keep_first_ballot_action():
     assert all(f["trick_index"] == f["policy_index"] == 0 for f in result["folds"])
 
 
+def test_evaluation_rows_do_not_select_their_own_moves():
+    row = capture([[1, 0]] * 4, [[0, 2]] * 4)
+    before = held_out_horizon(row)["folds"][0]
+    row["decision"] = row.pop("replay")["decision"]
+    for name in ("trick", "policy"):
+        row["paired_horizon"]["arms"][name]["values"] = copy.deepcopy(
+            row["paired_horizon"]["arms"][name]["values"])
+    row["paired_horizon"]["arms"]["trick"]["values"][1] = [0, 100]
+    row["paired_horizon"]["arms"]["policy"]["values"][1] = [100, 0]
+    after = held_out_horizon(row)["folds"][0]
+    assert (after["trick_index"], after["policy_index"]) == (
+        before["trick_index"], before["policy_index"])
+    assert after["held_out_gap_mean"] != before["held_out_gap_mean"]
+
+
 @pytest.mark.parametrize("mutation", [
     lambda r: r["paired_horizon"].update(status="abandoned"),
     lambda r: r["paired_horizon"].update(worlds=3),

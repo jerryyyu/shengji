@@ -544,6 +544,9 @@ def run(config_path, expected, *, arm=False):
                         validator_kwargs["information_modes"] = ("actor-only",)
                     accounting = validate_scheduled_terminal(report, **validator_kwargs)
                     publish(output / f"{row}.accounting.json", accounting)
+                    if actor_panel and (accounting["status"] != "scheduled-terminal"
+                                        or accounting["failed"]):
+                        raise ValueError("row not clean; preserve partials, no further spend")
                 else:
                     mirrors = report["mirrors"]
                     if len(mirrors) != 40 or any(r.get("complete") is not True for r in mirrors):

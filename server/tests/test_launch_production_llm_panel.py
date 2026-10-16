@@ -381,6 +381,57 @@ def test_actor_panel_failure_aborts_before_second_row(tmp_path, monkeypatch):
     assert not (Path(config["output"]) / "release46-pv").exists()
 
 
+@pytest.mark.parametrize("failures", [1, 8])
+def test_actor_panel_failed_accounting_preserves_evidence_and_stops(tmp_path, monkeypatch, failures):
+    from shengji.luna.benchmark_failure_protocol import summarize_scheduled
+
+    path, digest, _ = _real_actor_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    monkeypatch.setattr(launcher, "LOCK", tmp_path / "lock")
+    monkeypatch.setattr(launcher.os, "nice", lambda _: 10)
+    monkeypatch.setattr(launcher, "_require_recovery_memory", lambda stage: None)
+    (tmp_path / "RELEASE").write_text(digest)
+    report = _actor_report(config["seeds"])
+    for index, mirror in enumerate(report["mirrors"]):
+        if index < failures:
+            seat = mirror["flip"]
+            mirror.update(complete=False, error="illegal action",
+                          events=[{"seat": seat, "attempted_cards": []}],
+                          failure={"schema": "benchmark-action-failure-v1",
+                                   "category": "model_illegal_action", "stage": "engine_play",
+                                   "seat": seat, "attempted_cards": [], "event_index": 0})
+        elif failures == 8:
+            mirror.update(complete=False, status="not_run")
+        if not mirror["complete"]:
+            mirror.pop("signed_levels")
+    report["scheduled_summary"] = summarize_scheduled(report["mirrors"], failure_limit=8)
+    raw = json.dumps(report)
+    calls = []
+
+    def failed_row(command, *, row, output, **kwargs):
+        calls.append(row)
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "result.json").write_text(raw)
+        return {"row": row, "pid": 1, "returncode": 0,
+                "status": "exited", "elapsed_seconds": 0.1}
+
+    monkeypatch.setattr(launcher, "supervise", failed_row)
+    with pytest.raises(ValueError, match="row not clean"):
+        launcher.run(path, digest, arm=True)
+    output = Path(config["output"])
+    assert calls == ["smv3-pv"]
+    assert not (output / "release46-pv").exists()
+    assert (output / "smv3-pv" / "result.json").read_text() == raw
+    accounting = json.loads((output / "smv3-pv.accounting.json").read_text())
+    assert accounting["failed"] == failures
+    assert accounting["status"] == ("failure-limit" if failures == 8 else "scheduled-terminal")
+    terminal = json.loads((output / "terminal.json").read_text())
+    assert terminal["error"] == "row not clean; preserve partials, no further spend"
+    summary = json.loads((output / "actor-panel-summary.json").read_text())
+    assert summary["rows"]["smv3-pv"] == accounting
+    assert summary["rows"]["release46-pv"]["status"] == "not-terminally-validated"
+
+
 @pytest.mark.parametrize("pin", ["0" * 64, "ABC", None, True, 123])
 def test_declared_codex_digest_is_verified(tmp_path, pin):
     path, _, _ = _real_validation_fixture(tmp_path)

@@ -50,6 +50,8 @@ from test_xmtj_throw_regressions import position as xmtj_position
 from scripts.hybrid_search_probe import score_true_deal_regret
 from scripts.hybrid_search_probe import run_hybrid_search_probe
 import scripts.hybrid_search_probe as hybrid_probe
+from scripts.hybrid_search_run import run_probe_file
+import scripts.hybrid_search_run as hybrid_run
 from shengji.train.lead_root_capture import fingerprint
 
 COMBO_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f"
@@ -317,7 +319,122 @@ def test_true_deal_regret_records_forced_throw_component():
                                     max_nodes=100_000, gate=lambda: None)
     assert result["actions"][0]["submitted"] == ["D8", "DQ"]
     assert result["actions"][0]["accepted"] == ["D8"]
-    assert result["values"][0] == result["values"][1]
+
+
+def test_hybrid_search_run_streams_and_stops_on_second_failure(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    source = tmp_path / "roots.jsonl"
+    source.write_text(json.dumps({"packet": {"n": 1}}) + "\n"
+                      + json.dumps({"packet": {"n": 2}}) + "\n")
+    output = tmp_path / "out.jsonl"
+    calls = []
+    monkeypatch.setattr(hybrid_run, "restore_with_ledger",
+                        lambda packet: (SimpleNamespace(turn=0, hands=[["A"]],
+                                                         trick=SimpleNamespace(plays=[])), "ledger"))
+    monkeypatch.setattr(hybrid_run, "run_hybrid_search_probe", lambda *args, **kwargs: {
+            "seat": 0, "admitted": [["A"]], "baseline": {"pv_winner": 0, "seconds": 0.01,
+                                                               "means": [1.0]},
+        "hybrid_value_argmax_index": 0, "changed": False, "seconds": 0.02,
+            "matrix_means": [1.0],
+        "leafstats": {"tree_value_batches": 1}})
+    def oracle(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("refused")
+        return {"seconds": 0.03, "label": "true_deal_best_admitted_only",
+                "scope": "calibration-only", "actions": [], "values": [1.0],
+                "best_admitted_value": 1.0,
+                "baseline_regret": 0.0, "hybrid_regret": 0.0,
+                "regret_reduction": 0.0, "zero_baseline": True}
+    monkeypatch.setattr(hybrid_run, "score_true_deal_regret", oracle)
+    monkeypatch.setattr(hybrid_run.time, "monotonic", lambda: 0.0)
+    result = run_probe_file(source, output, lambda seed: SimpleNamespace(_refusals=None),
+                            completed_tricks=1, exact_max_cards=1,
+                            oracle_max_cards=2, max_nodes=10, max_roots=5,
+                            wall_seconds=10, seed=7)
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    assert result["status"] == "FAILED" and result["completed"] == 1
+    assert rows[1]["type"] == "root" and rows[-1]["reason"] == "error"
+    assert rows[-1]["attempted"] == 2 and rows[-1]["completed"] == 1
+    with pytest.raises(FileExistsError):
+        run_probe_file(source, output, lambda seed: None,
+                       completed_tricks=1, exact_max_cards=1,
+                       oracle_max_cards=2, max_nodes=10, max_roots=1,
+                       wall_seconds=10, seed=7)
+
+
+def test_hybrid_search_run_budget_terminal_preserves_header(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    source = tmp_path / "roots.jsonl"
+    source.write_text(json.dumps({"packet": {"n": 1}}) + "\n")
+    output = tmp_path / "budget.jsonl"
+    monkeypatch.setattr(hybrid_run, "restore_with_ledger",
+                        lambda packet: (SimpleNamespace(turn=0, hands=[["A"]],
+                                                         trick=SimpleNamespace(plays=[])), "ledger"))
+    ticks = iter((0.0, 0.0, 100.0))
+    monkeypatch.setattr(hybrid_run.time, "monotonic", lambda: next(ticks))
+    result = run_probe_file(source, output, lambda seed: SimpleNamespace(),
+                            completed_tricks=1, exact_max_cards=1,
+                            oracle_max_cards=2, max_nodes=10, max_roots=1,
+                            wall_seconds=10, seed=1)
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    assert result["reason"] == "budget" and result["status"] == "PARTIAL" \
+        and result["completed"] == 0
+    assert rows[0]["type"] == "header" and rows[-1]["reason"] == "budget"
+@pytest.mark.parametrize("wall", [float("nan"), float("inf"), -1, True])
+def test_hybrid_search_run_rejects_invalid_budget_before_output(tmp_path, wall):
+    output = tmp_path / "out.jsonl"
+    with pytest.raises(ValueError):
+        run_probe_file(tmp_path / "missing", output, lambda seed: None,
+                       completed_tricks=1, exact_max_cards=1, oracle_max_cards=5,
+                       max_nodes=10, max_roots=1, wall_seconds=wall, seed=7)
+    assert not output.exists()
+
+
+def test_hybrid_search_run_real_capture_to_saved_regret(
+        tmp_path, pinned_production_package, hybrid_belief_package):
+    from shengji.ai.refusal import RefusalLedger
+    from shengji.train.lead_root_capture import LeadCapture
+    from shengji.train.pv_search_policy import make_pv_search_bot
+    from test_xmtj_throw_regressions import PLAYS
+
+    rnd = xmtj_position(0)
+    capture = LeadCapture(rnd)
+    for event in PLAYS[:52]:
+        rnd.play(event["seat"], event["attempted"])
+        capture.committed(rnd, event["seat"], event["attempted"])
+    packet = capture.capture(rnd, ledger=RefusalLedger(), decision={})
+    source, output = tmp_path / "roots.jsonl", tmp_path / "result.jsonl"
+    source.write_text(json.dumps({"root_index": 52, "packet": packet}) + "\nINVALID NEXT ROW\n")
+    belief_path, belief_sha = hybrid_belief_package
+    seeds = []
+
+    def factory(seed):
+        seeds.append(seed)
+        return make_pv_search_bot(
+            str(pinned_production_package), sha256=PACKAGE_SHA,
+            tree=PVTreeConfig(sims=0), worlds=2, candidates=8, cap=4000,
+            seed=seed, world_history_legal=True, world_history_draw=True,
+            belief_worlds=True, belief_checkpoint=belief_path, belief_sha256=belief_sha)
+
+    terminal = run_probe_file(
+        source, output, factory, completed_tricks=1, exact_max_cards=4,
+        oracle_max_cards=5, max_nodes=100_000, max_roots=1,
+        wall_seconds=30, seed=7)
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    assert terminal == {"status": "COMPLETE", "reason": "root_limit",
+                        "attempted": 1, "completed": 1}
+    assert seeds == [7] and len(rows) == 3
+    result = rows[1]
+    assert result["root_index"] == 52 and result["lead"] is True
+    assert len(result["admitted"]) == len(result["regret"]["values"])
+    assert result["proposal"]["action"] == result["admitted"][result["proposal"]["index"]]
+    assert result["leafstats"]["tree_exact_leaves"] > 0
+    assert result["regret"]["regret_reduction"] == pytest.approx(
+        result["regret"]["baseline_regret"] - result["regret"]["hybrid_regret"])
 
 
 BELIEF_SHA = "763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343"

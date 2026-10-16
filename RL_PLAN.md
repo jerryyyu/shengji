@@ -186,6 +186,18 @@ Every row is on the scaling page with its receipt; these are the conclusions.
    search's own values as the target), preserve held-out deals, then test the resulting head in
    the same search on fresh seeds. Neither a better teacher nor better offline prediction
    guarantees this link.
+4. **Paired worlds, and the flat W64 search as the yardstick** (search audit, 2026-10-15, board
+   S33). Every search variant scores all candidates, and every reply inside a lookahead, on the
+   SAME sampled worlds. In the served search 88% of per-leaf value variance is common to all
+   candidates (96% before trick 8; candidate signal 6%, interaction 5%), so an unpaired estimate
+   is about 10× noisier per sample: giving each candidate its own 64 of 512 worlds flips the
+   argmax in 51% of decisions and costs +0.0158 [+0.0133, +0.0182] levels per decision, and
+   resolving the median top-2 gap (0.0185 levels) at z = 2 takes about 11,000 unpaired visits
+   per child against about 120 paired worlds, roughly 90×. Never allocate one world per visit
+   (PUCT v1's −0.417). Before any screen, a search change must first beat the flat W64 K8 paired
+   search offline on the audit's true-deal yardstick (`search_audit_probe_v4.py` /
+   `analyze_audit.py`, same probe states): sf Δ ≥ +0.003 per decision with a 95% CI above zero
+   and vt Δ ≥ 0 on at least 700 decisions.
 
 Measure search work, world quality, consumer decision dose and whole-game utility separately.
 

@@ -45,9 +45,30 @@ def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():
     assert result['valid']
     arm = result['sides']['arm']
     assert arm['total_traces'] == 4 and arm['missing'] == 1
-    assert arm['statuses'] == dict(ineligible=1, skipped_budget=1, abandoned=1, complete=0)
+    assert arm['statuses'] == dict(ineligible=1, single_candidate=0,
+                                   skipped_budget=1, abandoned=1, complete=0)
     assert arm['changed'] == 0
     assert result['sides']['baseline']['missing'] == 1
+
+
+def test_exact_lead_summary_accepts_single_candidate_from_real_producer():
+    from test_pv_finish_lead import bot as lead_bot, root
+
+    rnd = root(2)
+    policy = lead_bot(False, exact_lead_endgame=True, exact_deep_cards=4)
+    policy.candidates = 1
+    consumer = S.TimedPolicy(policy)
+    consumer.decide_play(copy.deepcopy(rnd), rnd.turn)
+    trace, = consumer.decisions
+    assert trace['exact_lead_status'] == 'single_candidate'
+    assert trace['exact_lead_worlds_completed'] == 0
+
+    result = S.exact_lead_summary([{
+        'decision_traces': [{'side': 'arm', 'decisions': consumer.decisions}]
+    }])
+    assert result['valid']
+    assert result['sides']['arm']['statuses']['single_candidate'] == 1
+    assert result['sides']['arm']['changed'] == 0
 
 
 def test_exact_baseline_cards_are_retained_but_other_string_lists_stay_bounded():

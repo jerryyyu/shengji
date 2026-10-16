@@ -1085,7 +1085,12 @@ def test_pinned_belief_producer_reaches_hybrid_cutoff(
     rnd = xmtj_position(root_index)
     seat = rnd.turn
     assert max(map(len, rnd.hands)) <= 3
+    assert bool(rnd.trick.plays) is (root_index == 57)
     baseline_action = baseline.decide_play(copy.deepcopy(rnd), seat)
+    assert baseline.last_decision_record["belief_fallback"] == 0
+    assert baseline.last_decision_record["belief_proposed"] >= 64
+    root_before = (copy.deepcopy(rnd.hands), copy.deepcopy(rnd.history),
+                   rnd.turn, rnd.attacker_points, rnd.phase)
     captured = {}
     real_decide = hybrid._tree_decide
 
@@ -1102,6 +1107,10 @@ def test_pinned_belief_producer_reaches_hybrid_cutoff(
     assert len(captured["worlds"]) == 64
     assert captured["v0"].shape == (64, len(captured["admitted"]))
     assert np.isfinite(captured["v0"]).all()
+    np.testing.assert_allclose(captured["means"],
+                               captured["v0"].mean(axis=0))
+    assert hybrid.last_decision_record["belief_fallback"] == 0
+    assert hybrid.last_decision_record["belief_proposed"] >= 64
 
     actions = captured["admitted"][:2]
     worlds = captured["worlds"][:2]
@@ -1114,6 +1123,7 @@ def test_pinned_belief_producer_reaches_hybrid_cutoff(
     assert stats["tree_model_leaves"] == 0
     assert stats["tree_completed_tricks_min"] == 1
     assert stats["tree_completed_tricks_max"] == 1
+    assert (rnd.hands, rnd.history, rnd.turn, rnd.attacker_points, rnd.phase) == root_before
 
 
 def test_trick_mode_skips_when_the_root_seat_plays_last():

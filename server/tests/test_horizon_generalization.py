@@ -61,6 +61,8 @@ def test_evaluation_rows_do_not_select_their_own_moves():
     lambda r: r["replay"]["decision"].update(admitted=[["C4"]]),
     lambda r: r["paired_horizon"]["arms"]["policy"].update(values=[[0, 1]]),
     lambda r: r["paired_horizon"]["arms"]["policy"].update(values=[[0, float("nan")]] * 4),
+    lambda r: r.update(decision=dict(admitted=[["C4"]])),
+    lambda r: r["paired_horizon"]["arms"]["policy"].update(values=[[-1e308, 1e308]] * 4),
 ])
 def test_incomplete_or_mismatched_captures_refuse(mutation):
     row = capture([[1, 0]] * 4, [[0, 2]] * 4)

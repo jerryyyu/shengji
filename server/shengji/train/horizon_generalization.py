@@ -10,6 +10,14 @@ from __future__ import annotations
 import numpy as np
 
 
+def _mean(values, axis=None):
+    with np.errstate(over="ignore", invalid="ignore"):
+        result = values.mean(axis=axis)
+    if not np.isfinite(result).all():
+        raise ValueError("non-finite derived horizon mean")
+    return result
+
+
 def held_out_horizon(record):
     """Select each horizon's move on one parity, evaluate on the other.
 
@@ -22,9 +30,12 @@ def held_out_horizon(record):
     if not isinstance(horizon, dict) or horizon.get("status") != "complete":
         raise ValueError("requires a complete paired-horizon capture")
     decision = record.get("decision")
+    replay = record.get("replay")
+    replay_decision = replay.get("decision") if isinstance(replay, dict) else None
+    if decision is not None and replay_decision is not None and decision != replay_decision:
+        raise ValueError("conflicting decision witnesses")
     if not isinstance(decision, dict):
-        replay = record.get("replay")
-        decision = replay.get("decision") if isinstance(replay, dict) else None
+        decision = replay_decision
     actions = horizon.get("actions")
     if (not isinstance(actions, list) or not actions or not isinstance(decision, dict)
             or actions != decision.get("admitted")):
@@ -50,17 +61,20 @@ def held_out_horizon(record):
     for parity in (0, 1):
         train = indices % 2 == parity
         test = ~train
-        winners = {name: int(np.argmax(matrix[train].mean(axis=0)))
+        winners = {name: int(np.argmax(_mean(matrix[train], axis=0)))
                    for name, matrix in matrices.items()}
-        gap = (matrices["policy"][test, winners["policy"]]
-               - matrices["policy"][test, winners["trick"]])
+        with np.errstate(over="ignore", invalid="ignore"):
+            gap = (matrices["policy"][test, winners["policy"]]
+                   - matrices["policy"][test, winners["trick"]])
+        if not np.isfinite(gap).all():
+            raise ValueError("non-finite held-out gap")
         gaps[test] = gap
         folds.append(dict(selection_parity=parity, selection_worlds=int(train.sum()),
                           evaluation_worlds=int(test.sum()),
                           trick_index=winners["trick"], policy_index=winners["policy"],
                           winner_flip=winners["trick"] != winners["policy"],
-                          held_out_gap_mean=float(gap.mean())))
+                          held_out_gap_mean=float(_mean(gap))))
     return dict(schema="paired-horizon-held-out-v1", worlds=worlds, folds=folds,
-                held_out_gap_mean=float(gaps.mean()),
+                held_out_gap_mean=float(_mean(gaps)),
                 claim="Evaluator-relative sampled-world generalization, not gameplay strength; "
                       "no independence or confidence-interval claim.")

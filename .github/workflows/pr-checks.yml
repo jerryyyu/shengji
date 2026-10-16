@@ -13,6 +13,102 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Path classification for the heavy jobs. A push to main always runs the full
+  # suite; on a pull request, `code` is false only when every changed path is
+  # documentation, and `luna` is false only when no changed path can reach the
+  # luna-profiles job. Any error, or an empty diff, reports both as true.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+      luna: ${{ steps.classify.outputs.luna }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # The pytest jobs below may be skipped, so the review-ledger guard that
+      # server/tests/conftest.py runs in every pytest session also runs here,
+      # unconditionally and outside the classifier's fallback: the literal PR
+      # head ledger must extend the literal base ledger byte for byte. It reads
+      # the event payload exactly as conftest does and returns on non-PR events.
+      - name: Review ledger guard
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
+      - name: Classify changed paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess, sys
+
+          # Documentation that no CI job reads. HANDOFF_REVIEW.md is not here:
+          # the conftest review-ledger guard checks it on every PR test session.
+          DOC_PREFIXES = ("docs/", "docs_archive/", "incidents/")
+
+          def is_doc(path):
+              if path == "HANDOFF_REVIEW.md":
+                  return False
+              return path.endswith(".md") or path.startswith(DOC_PREFIXES)
+
+          def luna_test_modules():
+              # Test modules the luna-profiles job selects, plus the sibling test
+              # modules they import (helpers shared through `from test_x import`).
+              text = open(".github/workflows/pr-checks.yml").read()
+              block = re.search(r"\n  luna-profiles:\n(.*?)(?=\n  [A-Za-z_-]+:\n|\Z)", text, re.S)
+              names = set(re.findall(r"tests/(test_\w+)\.py", block.group(1)))
+              if not names:
+                  raise RuntimeError("no luna-profiles test modules found")
+              todo = list(names)
+              while todo:
+                  source = open(f"server/tests/{todo.pop()}.py").read()
+                  for name in re.findall(r"^\s*(?:from|import) (test_\w+)", source, re.M):
+                      if name not in names and os.path.exists(f"server/tests/{name}.py"):
+                          names.add(name)
+                          todo.append(name)
+              return {f"server/tests/{name}.py" for name in names}
+
+          def reaches_luna(path, luna_tests):
+              # The luna-profiles suites import nearly every shengji package, the
+              # scripts package, conftest helpers, fixtures and fly.toml; only
+              # documentation, the web client and other server test modules are out.
+              if is_doc(path) or path.startswith("web/"):
+                  return False
+              if re.fullmatch(r"server/tests/test_\w+\.py", path):
+                  return path in luna_tests
+              return True
+
+          def classify():
+              if os.environ["EVENT_NAME"] != "pull_request":
+                  return True, True, "not a pull request"
+              base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
+              out = subprocess.run(
+                  ["git", "diff", "--name-only", "--no-renames", f"{base}...{head}"],
+                  check=True, capture_output=True, text=True).stdout
+              paths = [line for line in out.splitlines() if line]
+              if not paths:
+                  return True, True, "empty diff"
+              luna_tests = luna_test_modules()
+              code = any(not is_doc(path) for path in paths)
+              luna = any(reaches_luna(path, luna_tests) for path in paths)
+              for path in paths:
+                  print(f"{'doc ' if is_doc(path) else 'code'} "
+                        f"{'luna' if reaches_luna(path, luna_tests) else '    '} {path}")
+              return code, luna, f"{len(paths)} changed paths"
+
+          try:
+              code, luna, why = classify()
+          except Exception as error:
+              code, luna, why = True, True, f"classification failed, running everything: {error!r}"
+          print(f"code={str(code).lower()} luna={str(luna).lower()} ({why})")
+          with open(os.environ.get("GITHUB_OUTPUT", "/dev/stdout"), "a") as output:
+              output.write(f"code={str(code).lower()}\nluna={str(luna).lower()}\n")
+          PY
+
   test-selection:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -40,6 +136,8 @@ jobs:
         run: python3 server/scripts/check_comment_provenance.py --base ${{ github.event.pull_request.base.sha }}
 
   server:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # The pure suite alone reached 14m22s on a shared runner; leave room for
     # the compiled parity step too. Durations expose the tail for optimization.
@@ -102,6 +200,7 @@ jobs:
           tests/test_release46_fly_config.py
           tests/test_check_ci_test_selection.py
           tests/test_check_comment_provenance.py
+          tests/test_ci_review_ledger_step.py
           tests/test_receipt_summary.py
           tests/test_paired_window_metadata.py
           tests/test_paired_window_stats.py
@@ -187,6 +286,8 @@ jobs:
         run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_release46_fly_config.py
 
   import-walk:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # This job installs the rl group (torch), builds the engine, walks every
     # module AND runs scripts/ci_cwv_modes.sh; on a shared runner that has been
@@ -237,6 +338,8 @@ jobs:
         run: uv run python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider tests/test_screen_deadline_child.py -k release45
 
   search-regression:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -330,6 +433,8 @@ jobs:
             tests/test_belief_sampler.py
 
   luna-profiles:
+    needs: changes
+    if: needs.changes.outputs.luna == 'true'
     runs-on: ubuntu-latest
     # Each shard also runs the shared observation/ballot suite; the CLI shard
     # reached 10 min with no test failing (#805, #809 on 2026-10-05).

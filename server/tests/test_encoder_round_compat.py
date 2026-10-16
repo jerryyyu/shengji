@@ -520,6 +520,17 @@ def test_production_package_value_declare_server_smoke(pinned_production_package
     assert record["worlds"] == 64
     assert record["fallback_reason"] == ("hard_budget" if budget < 1 else None)
     assert record["evaluated"] == (budget >= 1)
+    # Real inference -> server commit/log -> production refresh consumer.
+    from scripts.production_log_delta import summarize
+    report = summarize([{"e": kind, **data} for kind, data in events])["declaration"]
+    assert report["committed_events"] == report["value_records"] == 1
+    assert report["unknown_records"] == 0
+    assert report["evaluated"] == int(budget >= 1)
+    assert report["not_evaluated"] == int(budget < 1)
+    assert report["fallback_reasons"] == ({"hard_budget": 1} if budget < 1 else {})
+    assert report["fallback_fraction"] == (1.0 if budget < 1 else 0.0)
+    assert report["decision_seconds_p50"] == record["seconds"]
+    assert report["model_search_completed"] == 1
     if budget >= 1:
         assert record["worlds_completed"] == 64
         assert all(np.isfinite(record["outcome_means"]))

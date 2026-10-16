@@ -39,12 +39,14 @@ The exact contract, the caveats on these reads, what was tried and not taken, an
 Rollback and gates: [DEPLOY.md](DEPLOY.md). Every screen: [Atlas v2](docs/atlas_v2/registry.json).
 Open work: the board issue (see AGENTS.md) and [RL_PLAN.md](RL_PLAN.md#planned-work).
 
-## How a change ships
+## How a strength change ships (current workflow)
 
-<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, cheap DEV test with a predeclared bar, screen of 10 windows by 520 clusters where the candidate and the current release each play the same fixed MC-LCB control (positive if the 95% CI lower bound is above zero), fresh-seed confirmation, latency and memory gate on one core, reviewed release PR with green CI, deploy on Jerry's word, post-deploy Fly check." width="100%">
+<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, cheap DEV test with a predeclared bar, screen of 10 windows by 520 clusters where the candidate and the current release each play the same fixed MC-LCB control (positive if the 95% CI lower bound is above zero), fresh-seed confirmation when required, latency and memory gate on one core, reviewed release PR with green CI, deploy on Jerry's word, post-deploy Fly check." width="100%">
 
 The screen never plays the candidate against the release directly: both play the same fixed MC-LCB
-control on the same deals, and the result is the difference, so every screen sits on one scale.
+control on the same deals, and the result is the difference. That puts the two arms of one screen on one scale; rows
+of the ladder come from different eras and instruments, so read each alone. Confirmation runs when Jerry or the
+packet requires it.
 
 ## Quick start
 

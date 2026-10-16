@@ -115,7 +115,7 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
     process and sha-verified against `SHENGJI_PV_BELIEF_SHA256` when the policy registers. A belief error,
     including a preparation over `belief_numpy.PREP_SECONDS` (0.25 s), falls back for that decision to the
     history-legal production draw and is recorded (`belief_fallback`, `belief_error`). The belief log is on by
-    default (`SHENGJI_PV_BELIEF_LOG` unset): each decision record gains `belief_seed`, a uint8 marginal snapshot
+    default (`SHENGJI_PV_BELIEF_LOG` unset): each successful sampled decision record gains `belief_seed`, a uint8 marginal snapshot
     and its summary; `server/scripts/belief_debug.py` replays a logged decision's worlds. No name, digest or
     decision depends on the log.
   - **Exact endgame at 7 cards** (`SHENGJI_PV_EXACT_LEAD_ENDGAME`, `SHENGJI_PV_EXACT_DEEP_CARDS = '7'`,
@@ -258,8 +258,8 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 - Watch list: `/healthz` bot is the name above; any `pv-search-fallback-v1`, `belief_fallback`, exact
   `abandoned`/`skipped_budget` or `exact_follow_abandoned` record against the triggers above; whole-decision p95 on
   Fly's shared CPU; the bury and declare records as for release 45; the `/healthz` `activity` counters (the
-  release-45 "Next deploy" item: release 46 is that deploy). The belief log (#1068, default on) gives each live play
-  record `belief_seed` and a marginal snapshot, so `server/scripts/belief_debug.py` can replay a production
+  release-45 "Next deploy" item: release 46 is that deploy). The belief log (#1068, default on) gives each successful sampled
+  play record `belief_seed` and a marginal snapshot, so `server/scripts/belief_debug.py` can replay a production
   decision's belief proposal.
 
 ## Release 45 (previous production, the rollback target; release 44 plus the wide value-only bury)

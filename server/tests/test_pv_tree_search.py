@@ -47,7 +47,10 @@ from test_pv_admission_rules import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION
                                      predict, production_package)  # noqa: F401  (fixture)
 from test_encoder_round_compat import PACKAGE_SHA, pinned_production_package  # noqa: F401
 from test_xmtj_throw_regressions import position as xmtj_position
+from scripts.hybrid_search_probe import score_true_deal_regret
 from scripts.hybrid_search_probe import run_hybrid_search_probe
+import scripts.hybrid_search_probe as hybrid_probe
+from shengji.train.lead_root_capture import fingerprint
 
 COMBO_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f"
 RELEASE38_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457"
@@ -186,6 +189,135 @@ def test_hybrid_search_probe_restores_hook_when_gate_expires():
                                 exact_max_cards=1,
                                 gate=lambda: (_ for _ in ()).throw(RuntimeError("expired")))
     assert bot._tree_decide.__func__ is original.__func__
+
+
+@pytest.mark.parametrize("banker", [0, 1])
+def test_true_deal_regret_matches_two_card_reference(monkeypatch, banker):
+    """True-deal regret uses fresh exact roots and preserves the source round."""
+    rnd = endgame(2)
+    rnd.banker = banker
+    seat = rnd.turn
+    report = {"root_fingerprint": fingerprint(rnd),
+              "seat": seat, "admitted": [["S2"], ["D2"]],
+              "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 1}
+    before = fingerprint(rnd)
+    result = score_true_deal_regret(rnd, seat, report, max_hand_cards=2,
+                                    max_nodes=100_000, gate=lambda: None)
+    assert result["label"] == "true_deal_best_admitted_only"
+    assert len(result["values"]) == 2
+    for index, action in enumerate(report["admitted"]):
+        clone = afterstate(rnd, seat, rnd.hands, rnd.buried, action,
+                           finish_trick=False)
+        reference = ExactWorldSession(clone, max_hand_cards=2,
+                                      max_nodes=100_000).solve(clone)
+        expected = category_signed_level(
+            signed_level_category(reference.attacker_points,
+                                  clone.is_attacker(seat)))
+        assert result["values"][index] == pytest.approx(expected)
+    assert fingerprint(rnd) == before
+
+
+def test_true_deal_regret_refuses_root_over_cap_before_solver():
+    rnd = endgame(2)
+    report = {"root_fingerprint": fingerprint(rnd),
+              "seat": rnd.turn, "admitted": [["S2"]], "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 0}
+    with pytest.raises(ValueError, match="exceeds max_hand_cards"):
+        score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=1,
+                               max_nodes=100_000)
+
+
+def test_true_deal_regret_refuses_report_from_wrong_root_or_seat():
+    rnd = endgame(2)
+    report = {"root_fingerprint": fingerprint(rnd), "seat": rnd.turn,
+              "admitted": [["S2"]], "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 0}
+    other = endgame(2)
+    other.attacker_points += 1
+    with pytest.raises(ValueError, match="root or seat"):
+        score_true_deal_regret(other, other.turn, report, max_hand_cards=2,
+                               max_nodes=100_000)
+    with pytest.raises(ValueError, match="root or seat"):
+        score_true_deal_regret(rnd, (rnd.turn + 1) % 4, report, max_hand_cards=2,
+                               max_nodes=100_000)
+
+
+def test_true_deal_regret_sign_and_zero_regret(monkeypatch):
+    from types import SimpleNamespace
+    rnd = endgame(2)
+    report = {"root_fingerprint": fingerprint(rnd), "seat": rnd.turn,
+              "admitted": [["S2"], ["D2"]], "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 1}
+    points = iter((100, 100))
+
+    def terminal(*args, **kwargs):
+        value = next(points)
+        return SimpleNamespace(phase="round_end", attacker_points=value,
+                               is_attacker=lambda seat: True, trick=None,
+                               last_trick=None)
+
+    monkeypatch.setattr(hybrid_probe, "afterstate", terminal)
+    result = score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=2,
+                                    max_nodes=100_000)
+    assert result["best_admitted_value"] != 0
+    assert result["baseline_regret"] == 0
+    assert result["zero_baseline"] is True
+
+    points = iter((100, 200))
+    result = score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=2,
+                                    max_nodes=100_000)
+    assert result["regret_reduction"] > 0
+    assert result["baseline_regret"] > result["hybrid_regret"]
+    assert result["regret_reduction"] == result["baseline_regret"] - result["hybrid_regret"]
+    points = iter((200, 100))
+    result = score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=2,
+                                    max_nodes=100_000)
+    assert result["regret_reduction"] < 0
+    assert result["zero_baseline"] is True
+
+
+def test_true_deal_regret_refuses_expiry_after_final_solver(monkeypatch):
+    rnd = endgame(2)
+    report = {"root_fingerprint": fingerprint(rnd), "seat": rnd.turn,
+              "admitted": [["S2"]], "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 0}
+    expired = False
+
+    class Session:
+        nodes = 1
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def solve_level(self, clone):
+            nonlocal expired
+            expired = True
+            return 100
+
+    def gate():
+        if expired:
+            raise tree.PVTreeBudgetExceeded("oracle expired")
+
+    monkeypatch.setattr(hybrid_probe, "CompactWorldSession", Session)
+    with pytest.raises(tree.PVTreeBudgetExceeded, match="oracle expired"):
+        score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=2,
+                               max_nodes=100_000, gate=gate)
+
+
+def test_true_deal_regret_records_forced_throw_component():
+    """A rejected throw is scored with the engine's accepted root component."""
+    rnd = endgame(2)
+    rnd.hands = [["D8", "DQ"], ["D9", "DA"], ["H3", "H4"], ["C3", "C4"]]
+    rnd.turn = 0
+    report = {"root_fingerprint": fingerprint(rnd), "seat": 0,
+              "admitted": [["D8", "DQ"], ["D8"]],
+              "baseline": {"pv_winner": 0}, "hybrid_value_argmax_index": 0}
+    result = score_true_deal_regret(rnd, 0, report, max_hand_cards=2,
+                                    max_nodes=100_000, gate=lambda: None)
+    assert result["actions"][0]["submitted"] == ["D8", "DQ"]
+    assert result["actions"][0]["accepted"] == ["D8"]
+    assert result["values"][0] == result["values"][1]
 
 
 BELIEF_SHA = "763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343"
@@ -1251,6 +1383,11 @@ def test_pinned_belief_producer_reaches_hybrid_cutoff(
     assert probe["baseline"]["pv_winner"] in range(len(probe["admitted"]))
     assert probe["hybrid_value_argmax_index"] in range(len(probe["admitted"]))
     assert "leafstats" in probe
+    scored = score_true_deal_regret(copy.deepcopy(rnd), seat, probe,
+                                    max_hand_cards=5, max_nodes=100_000,
+                                    gate=lambda: None)
+    assert scored["label"] == "true_deal_best_admitted_only"
+    assert len(scored["values"]) == len(probe["admitted"])
     branch = "tree_model_leaves" if probe_cap == 1 else "tree_exact_leaves"
     assert probe["leafstats"][branch] > 0
 

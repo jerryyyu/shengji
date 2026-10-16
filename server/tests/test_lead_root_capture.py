@@ -298,7 +298,9 @@ def test_latency_harvest_captures_seven_card_leads_and_follows(tmp_path):
 
 
 def test_preplay_latency_runs_server_transactions_to_terminal(tmp_path, monkeypatch):
+    import copy
     from scripts import exact_endgame_latency as worker
+    from scripts.exact_endgame_latency_summary import summarize_preplay_completed
     from test_pv_admission_rules import served
 
     monkeypatch.setattr(worker, 'build', lambda *a: (
@@ -317,6 +319,30 @@ def test_preplay_latency_runs_server_transactions_to_terminal(tmp_path, monkeypa
     assert all(r['wall_total_seconds'] >= 0 for r in rows)
     assert terminal['result'] == dict(rounds=1, declarations=104, buries=1)
     assert not (tmp_path / 'roots.jsonl').exists()
+    def summarize(data, end=terminal):
+        return summarize_preplay_completed(data, end, arm='combo',
+                                            pass_label='combo-pre', seeds=[4600000])
+    summary = summarize(rows)
+    assert summary['by_phase']['declare']['count'] == 104
+    assert summary['by_phase']['bury']['count'] == 1
+    for bad in (rows[:-1], rows + [rows[-1]], rows[1:]):
+        with pytest.raises(ValueError):
+            summarize(bad)
+    for key, value in (('error', {'type': 'TimeoutError'}), ('policy', worker.NAMES['r45'])):
+        with pytest.raises(ValueError):
+            summarize(rows, {**terminal, key: value})
+    for key, value in (('wall_total_seconds', float('nan')), ('arm', 'r45'),
+                       ('deal_seed', 4600001), ('final', 1)):
+        bad = copy.deepcopy(rows)
+        bad[0][key] = value
+        with pytest.raises(ValueError):
+            summarize(bad)
+    gated = copy.deepcopy(rows)
+    gated[0]['model_search'] = [{'kind': 'model_search', 'event': 'complete'}]
+    gated[0]['wall_total_seconds'] = 4.0
+    summary = summarize(gated)
+    assert summary['by_phase']['model_declare']['max_seconds'] == 4.0
+    assert summary['by_phase']['model_declare']['over_3s'] == 1
 
 
 def test_latency_worker_seals_factory_refusal_without_retry(tmp_path, monkeypatch):

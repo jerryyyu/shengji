@@ -7,6 +7,75 @@ import math
 from collections import Counter
 
 
+def summarize_preplay_completed(rows, terminal, *, arm, pass_label, seeds):
+    """Describe a complete declared seed population, including cheap calls.
+
+    Model-gated declarations have their own distribution so inline no-ops
+    cannot hide their latency. Host admission and provenance remain external.
+    """
+    from scripts.exact_endgame_latency import NAMES
+
+    def need(ok, why):
+        if not ok:
+            raise ValueError(why)
+
+    seeds = list(seeds)
+    need(bool(seeds) and all(type(s) is int for s in seeds)
+         and len(set(seeds)) == len(seeds), 'invalid preplay seeds')
+    need(arm in NAMES and isinstance(pass_label, str) and bool(pass_label), 'invalid preplay arm/pass')
+    need(isinstance(terminal, dict), 'invalid preplay terminal')
+    for key, value in (('mode', 'preplay'), ('arm', arm), ('pass_label', pass_label),
+                       ('policy', NAMES[arm])):
+        need(terminal.get(key) == value, 'preplay terminal drift: ' + key)
+    need('error' in terminal and terminal['error'] is None, 'preplay terminal failed')
+    result = terminal.get('result')
+    expected = dict(rounds=len(seeds), declarations=104 * len(seeds), buries=len(seeds))
+    need(isinstance(result, dict) and result == expected
+         and all(type(v) is int for v in result.values()), 'preplay terminal population drift')
+    groups = dict(declare=[], model_declare=[], bury=[])
+    counts = Counter()
+    for row in rows:
+        need(row.get('arm') == arm and row.get('pass_label') == pass_label, 'preplay row arm/pass drift')
+        seed, seat, phase = row.get('deal_seed'), row.get('seat'), row.get('phase')
+        need(type(seed) is int and seed in seeds and type(seat) is int and 0 <= seat < 4,
+             'preplay row context drift')
+        need(phase in ('declare', 'bury'), 'invalid preplay phase')
+        wall = row.get('wall_total_seconds')
+        need(type(wall) in (int, float) and math.isfinite(wall) and wall >= 0, 'invalid preplay time')
+        events = row.get('model_search')
+        need(isinstance(events, list) and all(isinstance(e, dict) for e in events), 'invalid model events')
+        groups[phase].append(wall)
+        if phase == 'declare':
+            need(type(row.get('final')) is bool, 'invalid final declaration marker')
+            counts[(seed, seat, row['final'])] += 1
+            if events:
+                groups['model_declare'].append(wall)
+        else:
+            need(row.get('committed_once') is True, 'bury not committed')
+            counts[(seed, 'bury')] += 1
+            for key in ('wall_step_seconds', 'wall_commit_seconds', 'compute_seconds'):
+                value = row.get(key)
+                need(type(value) in (int, float) and math.isfinite(value) and value >= 0,
+                     'invalid bury time')
+            need(math.isclose(wall, row['wall_step_seconds'] + row['wall_commit_seconds'],
+                              rel_tol=1e-9, abs_tol=1e-9), 'bury wall accounting drift')
+    for seed in seeds:
+        need(counts[(seed, 'bury')] == 1, 'missing/duplicate bury')
+        for seat in range(4):
+            need(counts[(seed, seat, False)] == 25 and counts[(seed, seat, True)] == 1,
+                 'incomplete declaration population')
+    def describe(values):
+        values = sorted(values)
+        return dict(count=len(values),
+                    p50_seconds=values[math.ceil(.5 * len(values)) - 1] if values else None,
+                    p90_seconds=values[math.ceil(.9 * len(values)) - 1] if values else None,
+                    max_seconds=max(values) if values else None,
+                    over_3s=sum(v > 3 for v in values))
+    return dict(arm=arm, pass_label=pass_label, rounds=len(seeds),
+                by_phase={k: describe(v) for k, v in groups.items()},
+                scope='Recipe timings on this host, not matched-state comparisons or Fly qualification.')
+
+
 def summarize_completed(rows, roots, terminal, *, arm, pass_label, max_hand=7):
     """Bind a worker's successful terminal result to its complete row population.
 

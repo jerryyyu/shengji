@@ -2,6 +2,13 @@
 web/node_modules
 web/dist
 server/.venv
+# Research corpora are not runtime inputs. Keep local evidence out of builds.
+server/rl_data
+# Only the legacy NumPy packages named by Dockerfile belong in the image.
+server/snapshots_v7w/*
+!server/snapshots_v7w/ep02.npz
+server/snapshots_v11pair/*
+!server/snapshots_v11pair/ep07.npz
 # Never let a host build cache supply a Darwin object/shared library to the
 # remote Linux build. The container must compile the extension from source.
 server/build

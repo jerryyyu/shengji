@@ -136,11 +136,16 @@ is a deploy record; the "Current production" block below stays release 45 until 
 - **Preconditions as they must be met** (the Release checklist): (1) a non-author PASS on the release PR at its
   exact head and all CI checks green, including the package-gate step, which now runs
   `tests/test_release46_fly_config.py` (name, exact knobs, `default_backend() == "compiled"`); (2) no package
-  change, nothing moves on the volume; (3) the server-path smoke on the MERGED tree with full rounds, so the
-  ≤ 6-card endgames run through the server path with the exact stages on:
-  `SHENGJI_FAST=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 python scripts/smoke_release45_bury.py --fly-toml ../fly.toml --map /data/models/smv3out-491ee4bf.npz=<local> --map /data/models/js-m1-0d17fd03.npz=<local> --rounds 10 --plays 100 --receipt smoke46.jsonl`
+  change, nothing moves on the volume; (3) the server-path smoke on the MERGED tree in full-round mode (#1067:
+  the round ends on the engine's `round_end`, 44–56 actions for a 100-card round since pairs and tractors take
+  several cards per action, so a fixed `--plays 100` can never reach it), so the ≤ 6-card endgames run through
+  the server path with the exact stages on:
+  `SHENGJI_FAST=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 python scripts/smoke_release45_bury.py --fly-toml ../fly.toml --map /data/models/smv3out-491ee4bf.npz=<local> --map /data/models/js-m1-0d17fd03.npz=<local> --rounds 10 --full-round --receipt smoke46.jsonl`
   (validator PASS; then the reader below over `smoke46.jsonl.logs/*.jsonl`: eligible exact decisions > 0,
-  abandons 0, fallbacks 0, p95 and max recorded); (4) v87c POSITIVE and the latency packet read; (5) Jerry's
+  abandons 0, fallbacks 0, p95 and max recorded). The #1067 review's witness on this configuration: a 3-round
+  release-46 full-round smoke ran 44 / 56 / 48 actions, 6 exact-eligible leads, 8 exact follows, 0 abandons
+  (receipt `/Users/jerryyu/.claude/jobs/d0498cda/tmp/smoke46fr.jsonl`; a review witness, not the merged-tree
+  gate); (4) v87c POSITIVE and the latency packet read; (5) Jerry's
   word, in session. Deploy with `fly deploy --ha=false` from a clean worktree at the merge commit, at 0 rooms.
 - **Fly serving-budget check, after the deploy** (the exact stages add solver time to endgame decisions; the
   screen and the smoke run on faster hosts than Fly's shared CPU):

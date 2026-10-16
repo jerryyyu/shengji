@@ -412,8 +412,9 @@ def test_hybrid_search_run_rejects_invalid_budget_before_output(tmp_path, wall):
     assert not output.exists()
 
 
+@pytest.mark.parametrize("packet_key", ["packet", "replay"])
 def test_hybrid_search_run_real_capture_to_saved_regret(
-        tmp_path, pinned_production_package, hybrid_belief_package):
+        tmp_path, pinned_production_package, hybrid_belief_package, packet_key):
     from shengji.ai.refusal import RefusalLedger
     from shengji.train.lead_root_capture import LeadCapture
     from shengji.train.pv_search_policy import make_pv_search_bot
@@ -426,7 +427,7 @@ def test_hybrid_search_run_real_capture_to_saved_regret(
         capture.committed(rnd, event["seat"], event["attempted"])
     packet = capture.capture(rnd, ledger=RefusalLedger(), decision={})
     source, output = tmp_path / "roots.jsonl", tmp_path / "result.jsonl"
-    source.write_text(json.dumps({"root_index": 52, "packet": packet}) + "\nINVALID NEXT ROW\n")
+    source.write_text(json.dumps({"root_index": 52, packet_key: packet}) + "\nINVALID NEXT ROW\n")
     belief_path, belief_sha = hybrid_belief_package
     seeds = []
 

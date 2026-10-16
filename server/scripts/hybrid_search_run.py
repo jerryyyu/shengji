@@ -105,9 +105,12 @@ def run_probe_file(input_path, output_path, bot_factory, *, completed_tricks,
                 if not raw.strip():
                     raise ValueError("blank input line")
                 row = json.loads(raw.decode("utf-8"))
-                if not isinstance(row, dict) or not isinstance(row.get("packet"), dict):
-                    raise ValueError("input row must contain a packet object")
-                packet = row["packet"]
+                if not isinstance(row, dict):
+                    raise ValueError("input row must be an object")
+                packet_keys = [key for key in ("packet", "replay") if key in row]
+                if len(packet_keys) != 1 or not isinstance(row[packet_keys[0]], dict):
+                    raise ValueError("input row requires exactly one packet or replay object")
+                packet = row[packet_keys[0]]
                 root_index = row.get("root_index", attempted - 1)
                 if type(root_index) is not int or root_index < 0:
                     raise ValueError("root_index must be a non-negative integer")

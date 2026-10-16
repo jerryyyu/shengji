@@ -32,7 +32,7 @@ every first-round chance).
 | digest | `sha256:0d2d92e5d85948309741a8486f739a751537b13d36c622a266fc33b4809c2d4a` |
 | source | main `ab6fd1b2fdecafc9552836326b746fb715bf30d9` (#1072; Codex PASS at `ca62a35f`) |
 | evidence | `AI_POLICIES.md` ladder row 15 (v92combo45, confirmed v92c, latency v93lat QUALIFIED) |
-| comparator | new screens still compare against release 45 as served until Jerry moves it[^cmp] |
+| comparator | new screens compare against release 46 as served[^cmp] |
 
 Served name:
 
@@ -370,8 +370,8 @@ Policy cost, not the rules engine, sets CPU capacity.
 - Load-test the chosen policy and room mix before advertising capacity. Memory per room is small; more than one
   process would need external state and room-affinity routing.
 
-[^cmp]: Jerry, in session 2026-10-13: "Yes change to 45" (#988 issuecomment-6142666693). Proposed next comparator:
-    release 46 as served. Confirmations keep their parent's comparator.
+[^cmp]: Jerry, in session 2026-10-16: "compare new screens to release 46" (#707 issuecomment-6223485189); before that,
+    release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693). Confirmations keep their parent's comparator.
 [^belief]: Registration refuses a missing or mismatched belief file, so a served bot at all means the sha matched;
     the in-machine line (Release checklist, step 8) prints its first eight hex digits.
 [^fast]: Its `ls` fails the build if a `.so` is missing; `.dockerignore` keeps a local Darwin `_endgame_fast*.so`

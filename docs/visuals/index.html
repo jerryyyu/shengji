@@ -1,0 +1,321 @@
+<title>Sheng Ji Release 46</title>
+<style>
+/* Layout: one reading column; each diagram sits on its own white plate so its fixed palette reads in both themes. */
+:root {
+  --bg: #eef1f4; --fg: #1e2833; --muted: #5d6a77; --rule: #d5dae0; --plate: #ffffff; --accent: #b4520f; --teal: #117a75;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141a20; --fg: #e4e9ee; --muted: #9aa7b3; --rule: #2c3640; --plate: #ffffff; --accent: #f0a065; --teal: #5cc2bb; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #141a20; --fg: #e4e9ee; --muted: #9aa7b3; --rule: #2c3640; --plate: #ffffff; --accent: #f0a065; --teal: #5cc2bb; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.55; }
+main { max-width: 1040px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 48px; display: grid; gap: 40px; }
+header { display: grid; gap: 8px; max-width: 68ch; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--teal); }
+h1 { margin: 0; font-size: 28px; line-height: 1.2; text-wrap: balance; }
+h1 b { color: var(--accent); font-weight: 700; }
+h2 { margin: 0; font-size: 19px; text-wrap: balance; }
+p { margin: 0; }
+.lede { color: var(--muted); }
+section { display: grid; gap: 10px; min-width: 0; }
+.cap { color: var(--muted); max-width: 68ch; }
+.plate { margin: 0; background: var(--plate); border: 1px solid var(--rule); border-radius: 8px; min-width: 0; }
+.scroll { overflow-x: auto; }
+.scroll svg { display: block; width: 100%; min-width: 640px; height: auto; }
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 16px; }
+</style>
+<main>
+<header>
+<span class="eyebrow">Sheng Ji AI · production bot</span>
+<h1>Release 46 is live: <b>+0.22 levels per round</b> over release 45</h1>
+<p class="lede">Served since 2026-10-16 14:49 ET. The combo adds belief-model worlds, an exact endgame at 7 cards and every-chance first-round value declaration to release 45. Screen +0.2167 [+0.1923, +0.2412]; fresh-seed confirmation +0.2284 [+0.2046, +0.2521].</p>
+</header>
+<section id="bot-turn">
+<h2>The bot's turn</h2>
+<p class="cap">Release 46 keeps release 45's declaration and bury and adds three things, marked in orange: first-round value declaration at every chance, hidden worlds drawn by the S17 belief model, and an exact endgame once every hand holds 7 cards or fewer.</p>
+<figure class="plate"><div class="scroll"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 925" role="img" aria-label="Release 46, the production bot&#x27;s turn. Declare: the value head scores every legal declaration and PASS over 64 sampled completions; new in 46, in the first round it is consulted at every declare chance with an option. Bury: release 45&#x27;s wide value-only bury, 64 candidates, value head picks. Play: heuristic anchor, legal actions, new in 46 64 hidden worlds proposed by the S17 belief model and required to be history-legal, rc, policy head, la, admit 8 with div, value head over the 64 worlds, tb, dtr, new in 46 exact endgame at 7 or fewer cards per hand, then play.">
+<rect x="0" y="0" width="1000" height="925" fill="#ffffff"/>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,system-ui,sans-serif;font-size:12px;fill:#1e2833}.mut{fill:#5d6a77;font-size:11px}.hdr{font-size:11px;font-weight:600;letter-spacing:.07em;fill:#5d6a77}.big{font-size:13px;font-weight:600}.new{fill:#b4520f;font-weight:600}.teal{fill:#117a75;font-weight:600}.ttl{font-size:16px;font-weight:600}.tag{font-size:10px;font-weight:700;letter-spacing:.06em;fill:#ffffff}.num{font-variant-numeric:tabular-nums}</style>
+<defs><marker id="s0a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3b4f63"/></marker><marker id="s0an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b4520f"/></marker></defs>
+<text x="24" y="34" class="ttl">The production bot's turn · release 46</text>
+<text x="24" y="53" class="mut">One NumPy policy/value package (SMV3 outcome head) plus the S17 belief model. The heuristic is the anchor and the fallback.</text>
+<rect x="742" y="22" width="14" height="14" rx="3" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="762" y="33" class="mut">served before 46</text>
+<rect x="864" y="22" width="14" height="14" rx="3" fill="#fcebd9" stroke="#b4520f" stroke-width="1.8"/>
+<text x="884" y="33" class="mut">new in 46</text>
+<rect x="24" y="74" width="522" height="176" rx="6" fill="#f6f7f9" stroke="#d5dae0"/>
+<text x="38" y="96" class="hdr">DECLARE · VALUE DECLARATION</text>
+<text x="38" y="121">The value head scores every legal declaration plus PASS over 64 sampled</text>
+<text x="38" y="137">completions; the heuristic&#x27;s choice is replaced only when beaten.</text>
+<rect x="36.0" y="150.0" width="498.0" height="76.0" rx="6" fill="#fcebd9" stroke="#b4520f" stroke-width="1.8"/>
+<rect x="48.0" y="159.0" width="69.6" height="16" rx="8" fill="#b4520f"/>
+<text x="82.8" y="170.5" class="tag" text-anchor="middle">NEW IN 46</text>
+<text x="48.0" y="195.0" class="new">vdef: in the first round the value head is consulted at every declare chance</text>
+<text x="48.0" y="211.0" class="new">that has an option, not only when the heuristic gate opens.</text>
+<text x="38" y="244" class="mut">Heuristic on expiry or error.</text>
+<rect x="566" y="74" width="410" height="176" rx="6" fill="#f6f7f9" stroke="#d5dae0"/>
+<text x="580" y="96" class="hdr">BURY · WIDE VALUE-ONLY BURY</text>
+<text x="580" y="121">64 candidates: the hybrid ballot plus the heuristic bury&#x27;s</text>
+<text x="580" y="137">single-card swaps. The value head picks; no Monte Carlo stage.</text>
+<text x="580" y="159" class="mut">2 s budget, heuristic fallback. Unchanged since release 45.</text>
+<rect x="24" y="270" width="952" height="625" rx="6" fill="#f6f7f9" stroke="#d5dae0"/><text x="38" y="292" class="hdr">PLAY · ONE-PLY POLICY/VALUE SEARCH · 3 S BUDGET PER PLAY</text>
+<rect x="44.0" y="304.0" width="150.0" height="190.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="56.0" y="330.0" class="big">heuristic anchor</text>
+<text x="56.0" y="351.0" class="mut">the heuristic&#x27;s play;</text>
+<text x="56.0" y="366.0" class="mut">always a candidate</text>
+<rect x="224.0" y="304.0" width="170.0" height="190.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="236.0" y="330.0" class="big">legal actions</text>
+<text x="236.0" y="352.0">capped at 4,000, anchor</text>
+<text x="236.0" y="368.0">forced in</text>
+<rect x="424.0" y="304.0" width="360.0" height="190.0" rx="6" fill="#fcebd9" stroke="#b4520f" stroke-width="1.8"/>
+<rect x="436.0" y="313.0" width="69.6" height="16" rx="8" fill="#b4520f"/>
+<text x="470.8" y="324.5" class="tag" text-anchor="middle">NEW IN 46</text>
+<text x="436.0" y="350.0" class="big">64 hidden worlds from the S17 belief model</text>
+<text x="436.0" y="372.0">A NumPy model reads the round&#x27;s public history (package</text>
+<text x="436.0" y="388.0">s17long-e2-763b5e05) and proposes hidden hands under</text>
+<text x="436.0" y="404.0">draw-time constraints: hand sizes, public voids, pins,</text>
+<text x="436.0" y="420.0">pair obligations.</text>
+<text x="436.0" y="442.0">History-legal: every earlier follow must have been</text>
+<text x="436.0" y="458.0">legal for the hand this world gives that seat.</text>
+<text x="436.0" y="479.0" class="mut">Belief error: fall back to the history-legal draw.</text>
+<rect x="814.0" y="304.0" width="142.0" height="190.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="826.0" y="330.0" class="big">rc</text>
+<text x="826.0" y="352.0">each world must</text>
+<text x="826.0" y="368.0">make this round&#x27;s</text>
+<text x="826.0" y="384.0">refused throws</text>
+<text x="826.0" y="400.0">refusable with the</text>
+<text x="826.0" y="416.0">same forced</text>
+<text x="826.0" y="432.0">component</text>
+<line x1="196.0" y1="332.0" x2="221.0" y2="332.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<line x1="396.0" y1="332.0" x2="421.0" y2="332.0" stroke="#b4520f" stroke-width="1.6" marker-end="url(#s0an)"/>
+<line x1="786.0" y1="332.0" x2="811.0" y2="332.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<rect x="44.0" y="528.0" width="200.0" height="127.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="56.0" y="554.0" class="big">policy head</text>
+<text x="56.0" y="576.0">scores every legal action:</text>
+<text x="56.0" y="592.0">card log-odds summed, mean</text>
+<text x="56.0" y="608.0">over the worlds</text>
+<rect x="274.0" y="528.0" width="236.0" height="127.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="286.0" y="554.0" class="big">la</text>
+<text x="286.0" y="576.0">leading a non-trump single that is</text>
+<text x="286.0" y="592.0">not the top live card? slot 0 =</text>
+<text x="286.0" y="608.0">highest plain pair or tractor, else</text>
+<text x="286.0" y="624.0">the policy&#x27;s top action</text>
+<rect x="540.0" y="528.0" width="236.0" height="127.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="552.0" y="554.0" class="big">admit 8 · div</text>
+<text x="552.0" y="576.0">slot 0, then walk all legal actions</text>
+<text x="552.0" y="592.0">in policy order until 8 are in; div</text>
+<text x="552.0" y="608.0">keeps at most 2 per shape, skips</text>
+<text x="552.0" y="624.0">near-duplicates, back-fills if</text>
+<text x="552.0" y="640.0">short</text>
+<rect x="806.0" y="528.0" width="150.0" height="127.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="818.0" y="554.0" class="big">value head</text>
+<text x="818.0" y="576.0">per candidate: play</text>
+<text x="818.0" y="592.0">it, finish the trick</text>
+<text x="818.0" y="608.0">heuristically, score</text>
+<text x="818.0" y="624.0">all 64 worlds, take</text>
+<text x="818.0" y="640.0">the mean</text>
+<line x1="246.0" y1="556.0" x2="271.0" y2="556.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<line x1="512.0" y1="556.0" x2="537.0" y2="556.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<line x1="778.0" y1="556.0" x2="803.0" y2="556.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<path d="M916.0,496.0 L916.0,511.0 L84.0,511.0 L84.0,525.0" fill="none" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<rect x="44.0" y="689.0" width="196.0" height="174.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="56.0" y="715.0" class="big">tb</text>
+<text x="56.0" y="737.0">candidates within 0.02 level</text>
+<text x="56.0" y="753.0">of the best: most root-team</text>
+<text x="56.0" y="769.0">points from the current</text>
+<text x="56.0" y="785.0">trick</text>
+<rect x="270.0" y="689.0" width="250.0" height="174.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="282.0" y="715.0" class="big">dtr</text>
+<text x="282.0" y="737.0">a selected lead throw the engine</text>
+<text x="282.0" y="753.0">refuses in every world with the same</text>
+<text x="282.0" y="769.0">forced component? exclude it and that</text>
+<text x="282.0" y="785.0">component, re-select among the</text>
+<text x="282.0" y="801.0">admitted leads</text>
+<rect x="550.0" y="689.0" width="338.0" height="174.0" rx="6" fill="#fcebd9" stroke="#b4520f" stroke-width="1.8"/>
+<rect x="562.0" y="698.0" width="69.6" height="16" rx="8" fill="#b4520f"/>
+<text x="596.8" y="709.5" class="tag" text-anchor="middle">NEW IN 46</text>
+<text x="562.0" y="735.0" class="big">exact endgame</text>
+<text x="562.0" y="757.0">At 7 or fewer cards per hand, with more than one</text>
+<text x="562.0" y="773.0">admitted candidate:</text>
+<text x="562.0" y="795.0">leads are re-scored by exact minimax in each world;</text>
+<text x="562.0" y="811.0">follows are re-ranked by the compiled compact-level</text>
+<text x="562.0" y="827.0">solver (50M-node cap).</text>
+<text x="562.0" y="848.0" class="mut">Budget expiry: the finalized PV choice plays.</text>
+<rect x="918.0" y="695.0" width="38.0" height="44" rx="22" fill="#e7ecf1" stroke="#3b4f63" stroke-width="1.5"/>
+<text x="937.0" y="722.0" class="big" text-anchor="middle">play</text>
+<line x1="242.0" y1="717.0" x2="267.0" y2="717.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<line x1="522.0" y1="717.0" x2="547.0" y2="717.0" stroke="#b4520f" stroke-width="1.6" marker-end="url(#s0an)"/>
+<line x1="890.0" y1="717.0" x2="915.0" y2="717.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<path d="M916.0,657.0 L916.0,672.0 L84.0,672.0 L84.0,686.0" fill="none" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s0a)"/>
+<text x="38" y="883" class="mut">rc, la, div, tb and dtr are the five search rules carried over from earlier releases. The value and policy heads come from one package; the belief model is a second.</text>
+<text x="976" y="915" class="mut" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-bot-turn.svg</text>
+</svg></div></figure>
+</section>
+<section id="ladder">
+<h2>Served results by release</h2>
+<p class="cap">Each release step against its predecessor, drawn to one scale. Release 46 shows its screen and its fresh-seed confirmation; both intervals sit far from zero.</p>
+<figure class="plate"><div class="scroll"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 504" role="img" aria-label="Forest plot of served results by release, levels per round with 95% CI: release 46 combo vs 45 +0.2167 [+0.1923, +0.2412], confirmation +0.2284 [+0.2046, +0.2521]; release 45 wide bury vs 44 +0.0488 [+0.0286, +0.0690]; release 44 value declaration vs 43 +0.0497 [+0.0379, +0.0615]; div+rc+tb vs release 36 +0.0461 [+0.0242, +0.0681]; +la +0.0106 [+0.0006, +0.0205]; release 36 SMV3 outcome head vs 30 +0.0393 [+0.0033, +0.0752]; release 29 policy/value search vs 28 +0.049 [+0.003, +0.095]. Separate contrasts through a common MC-LCB control; not additive.">
+<rect x="0" y="0" width="1000" height="504" fill="#ffffff"/>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,system-ui,sans-serif;font-size:12px;fill:#1e2833}.mut{fill:#5d6a77;font-size:11px}.hdr{font-size:11px;font-weight:600;letter-spacing:.07em;fill:#5d6a77}.big{font-size:13px;font-weight:600}.new{fill:#b4520f;font-weight:600}.teal{fill:#117a75;font-weight:600}.ttl{font-size:16px;font-weight:600}.tag{font-size:10px;font-weight:700;letter-spacing:.06em;fill:#ffffff}.num{font-variant-numeric:tabular-nums}</style>
+<defs><marker id="s1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3b4f63"/></marker><marker id="s1an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b4520f"/></marker></defs>
+<text x="24" y="34" class="ttl">Served results by release</text>
+<text x="24" y="53" class="mut">Each row: one release step against its predecessor, in signed levels per round, with the 95% confidence interval.</text>
+<text x="976" y="70" class="hdr" text-anchor="end">POINT [95% CI]</text>
+<text x="24" y="70" class="hdr">CHANGE</text>
+<rect x="16" y="80" width="968" height="60" rx="6" fill="#fcebd9"/>
+<line x1="318.1" y1="78" x2="318.1" y2="394" stroke="#3b4f63" stroke-width="1.4"/>
+<text x="318.1" y="412" class="mut num" text-anchor="middle">0</text>
+<line x1="408.9" y1="78" x2="408.9" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="408.9" y="412" class="mut num" text-anchor="middle">+0.05</text>
+<line x1="499.6" y1="78" x2="499.6" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="499.6" y="412" class="mut num" text-anchor="middle">+0.10</text>
+<line x1="590.4" y1="78" x2="590.4" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="590.4" y="412" class="mut num" text-anchor="middle">+0.15</text>
+<line x1="681.1" y1="78" x2="681.1" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="681.1" y="412" class="mut num" text-anchor="middle">+0.20</text>
+<line x1="771.9" y1="78" x2="771.9" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="771.9" y="412" class="mut num" text-anchor="middle">+0.25</text>
+<line x1="300" y1="394" x2="790" y2="394" stroke="#3b4f63" stroke-width="1"/>
+<text x="545.0" y="432" class="mut" text-anchor="middle">levels per round (positive: the newer release wins more)</text>
+<text x="24" y="107.0" class="big">release 46 · the combo</text>
+<text x="24" y="123.0" class="mut">belief worlds + D7/X7 + vdef, vs release 45</text>
+<line x1="667.1" y1="101.0" x2="755.9" y2="101.0" stroke="#b4520f" stroke-width="2.2"/>
+<line x1="667.1" y1="96.0" x2="667.1" y2="106.0" stroke="#b4520f" stroke-width="1.6"/>
+<line x1="755.9" y1="96.0" x2="755.9" y2="106.0" stroke="#b4520f" stroke-width="1.6"/>
+<circle cx="711.4" cy="101.0" r="5" fill="#b4520f"/>
+<text x="657.1" y="105.0" class="mut" text-anchor="end">screen</text>
+<text x="976" y="105.0" class="num new" text-anchor="end">+0.2167 [+0.1923, +0.2412]</text>
+<line x1="689.5" y1="119.0" x2="775.7" y2="119.0" stroke="#b4520f" stroke-width="2.2"/>
+<line x1="689.5" y1="114.0" x2="689.5" y2="124.0" stroke="#b4520f" stroke-width="1.6"/>
+<line x1="775.7" y1="114.0" x2="775.7" y2="124.0" stroke="#b4520f" stroke-width="1.6"/>
+<path d="M732.7,113.0 L738.7,119.0 L732.7,125.0 L726.7,119.0 z" fill="#ffffff" stroke="#b4520f" stroke-width="2"/>
+<text x="679.5" y="123.0" class="mut" text-anchor="end">confirmation</text>
+<text x="976" y="123.0" class="num new" text-anchor="end">+0.2284 [+0.2046, +0.2521]</text>
+<line x1="24" y1="184" x2="976" y2="184" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="160.0" class="big">release 45 · wide value-only bury</text>
+<text x="24" y="176.0" class="mut">vs release 44</text>
+<line x1="370.1" y1="163.0" x2="443.4" y2="163.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="370.1" y1="158.0" x2="370.1" y2="168.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="443.4" y1="158.0" x2="443.4" y2="168.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="406.7" cy="163.0" r="5" fill="#117a75"/>
+<text x="976" y="167.0" class="num" text-anchor="end">+0.0488 [+0.0286, +0.0690]</text>
+<line x1="24" y1="226" x2="976" y2="226" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="202.0" class="big">release 44 · value declaration</text>
+<text x="24" y="218.0" class="mut">vs release 43, first-round deals</text>
+<line x1="386.9" y1="205.0" x2="429.8" y2="205.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="386.9" y1="200.0" x2="386.9" y2="210.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="429.8" y1="200.0" x2="429.8" y2="210.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="408.3" cy="205.0" r="5" fill="#117a75"/>
+<text x="976" y="209.0" class="num" text-anchor="end">+0.0497 [+0.0379, +0.0615]</text>
+<line x1="24" y1="268" x2="976" y2="268" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="244.0" class="big">div + rc + tb</text>
+<text x="24" y="260.0" class="mut">vs release 36</text>
+<line x1="362.1" y1="247.0" x2="441.7" y2="247.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="362.1" y1="242.0" x2="362.1" y2="252.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="441.7" y1="242.0" x2="441.7" y2="252.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="401.8" cy="247.0" r="5" fill="#117a75"/>
+<text x="976" y="251.0" class="num" text-anchor="end">+0.0461 [+0.0242, +0.0681]</text>
+<line x1="24" y1="310" x2="976" y2="310" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="286.0" class="big">+ la</text>
+<text x="24" y="302.0" class="mut">vs div + rc + tb</text>
+<line x1="319.2" y1="289.0" x2="355.4" y2="289.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="319.2" y1="284.0" x2="319.2" y2="294.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="355.4" y1="284.0" x2="355.4" y2="294.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="337.4" cy="289.0" r="5" fill="#117a75"/>
+<text x="976" y="293.0" class="num" text-anchor="end">+0.0106 [+0.0006, +0.0205]</text>
+<line x1="24" y1="352" x2="976" y2="352" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="328.0" class="big">release 36 · SMV3 outcome head</text>
+<text x="24" y="344.0" class="mut">vs release 30</text>
+<line x1="324.1" y1="331.0" x2="454.6" y2="331.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="324.1" y1="326.0" x2="324.1" y2="336.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="454.6" y1="326.0" x2="454.6" y2="336.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="389.5" cy="331.0" r="5" fill="#117a75"/>
+<text x="976" y="335.0" class="num" text-anchor="end">+0.0393 [+0.0033, +0.0752]</text>
+<text x="24" y="370.0" class="big">release 29 · policy/value search</text>
+<text x="24" y="386.0" class="mut">vs release 28</text>
+<line x1="323.6" y1="373.0" x2="490.6" y2="373.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="323.6" y1="368.0" x2="323.6" y2="378.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="490.6" y1="368.0" x2="490.6" y2="378.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="407.1" cy="373.0" r="5" fill="#117a75"/>
+<text x="976" y="377.0" class="num" text-anchor="end">+0.049 [+0.003, +0.095]</text>
+<text x="24" y="460" class="mut">Each row is a separate contrast read through a common MC-LCB control, so the values are not additive.</text>
+<text x="24" y="476" class="mut">Release 46: screen v92combo45, fresh-seed confirmation v92c. Release 44 shown on first-round deals.</text>
+<text x="976" y="494" class="mut" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release-ladder.svg</text>
+</svg></div></figure>
+</section>
+<section id="ships">
+<h2>How a change ships</h2>
+<p class="cap">The current workflow for a strength change. Confirmation runs when Jerry or the packet requires it (release 45 shipped on one screen), and correctness fixes can ship without a strength claim. The common control puts a screen's candidate and comparator on one scale; ladder rows are separate contrasts from different eras and instruments, and they do not add.</p>
+<figure class="plate"><div class="scroll"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 513" role="img" aria-label="How a change ships: idea, then a cheap DEV test with a predeclared bar (offline agreement, double-dummy regret, or a head-to-head DEV duel, triage only), then a screen of 10 windows by 520 clusters on first-round deals where the candidate and the current release each play the same fixed MC-LCB control, positive if and only if the 95% CI lower bound is above zero, then a fresh-seed confirmation when Jerry or the packet requires one, a latency and memory gate on one core, a reviewed release PR with green CI, deploy on Jerry&#x27;s word, and a post-deploy Fly check.">
+<rect x="0" y="0" width="1000" height="513" fill="#ffffff"/>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,system-ui,sans-serif;font-size:12px;fill:#1e2833}.mut{fill:#5d6a77;font-size:11px}.hdr{font-size:11px;font-weight:600;letter-spacing:.07em;fill:#5d6a77}.big{font-size:13px;font-weight:600}.new{fill:#b4520f;font-weight:600}.teal{fill:#117a75;font-weight:600}.ttl{font-size:16px;font-weight:600}.tag{font-size:10px;font-weight:700;letter-spacing:.06em;fill:#ffffff}.num{font-variant-numeric:tabular-nums}</style>
+<defs><marker id="s2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3b4f63"/></marker><marker id="s2an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b4520f"/></marker></defs>
+<text x="24" y="34" class="ttl">How a strength change ships (current workflow)</text>
+<text x="24" y="53" class="mut">Each gate either passes the change forward or parks it with its numbers recorded on the board.</text>
+<rect x="24.0" y="76.0" width="120.0" height="206.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="36.0" y="102.0" class="big">idea</text>
+<text x="36.0" y="123.0" class="mut">a board row with</text>
+<text x="36.0" y="138.0" class="mut">its pass bar</text>
+<text x="36.0" y="153.0" class="mut">written before</text>
+<text x="36.0" y="168.0" class="mut">the test runs</text>
+<rect x="178.0" y="76.0" width="250.0" height="206.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="190.0" y="102.0" class="big">cheap DEV test</text>
+<text x="190.0" y="124.0">predeclared bar: offline agreement,</text>
+<text x="190.0" y="140.0">double-dummy regret, or a</text>
+<text x="190.0" y="156.0">head-to-head DEV duel</text>
+<text x="190.0" y="177.0" class="mut">Head-to-head reads ran 5–7× larger than</text>
+<text x="190.0" y="192.0" class="mut">screens in recent lanes: triage only.</text>
+<rect x="462" y="76" width="302" height="206" rx="6" fill="#e3f1ef" stroke="#117a75" stroke-width="1.8"/>
+<text x="474" y="98" class="big">screen</text>
+<text x="526" y="98" class="mut">10 windows × 520 clusters, first-round deals</text>
+<rect x="482" y="116" width="120" height="30" rx="4" fill="#fcebd9" stroke="#b4520f" stroke-width="1.4"/>
+<text x="542.0" y="135" text-anchor="middle">candidate</text>
+<path d="M542.0,148 L542.0,193" fill="none" stroke="#3b4f63" stroke-width="1.3" stroke-dasharray="4 3"/>
+<rect x="624" y="116" width="120" height="30" rx="4" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="684.0" y="135" text-anchor="middle">current release</text>
+<path d="M684.0,148 L684.0,193" fill="none" stroke="#3b4f63" stroke-width="1.3" stroke-dasharray="4 3"/>
+<text x="613.0" y="171" class="mut" text-anchor="middle">each plays the</text>
+<text x="613.0" y="184" class="mut" text-anchor="middle">same deals vs</text>
+<rect x="512" y="194" width="202" height="28" rx="4" fill="#e7ecf1" stroke="#3b4f63" stroke-width="1.4"/>
+<text x="613.0" y="212" text-anchor="middle">fixed MC-LCB control</text>
+<text x="474" y="252"><tspan class="teal">POSITIVE</tspan> iff the 95% CI lower bound of</text>
+<text x="474" y="269">the difference (candidate minus release) is above 0</text>
+<rect x="798.0" y="76.0" width="178.0" height="206.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="810.0" y="102.0" class="big">fresh-seed</text>
+<text x="810.0" y="119.0" class="big">confirmation</text>
+<text x="810.0" y="141.0">the same lane on new</text>
+<text x="810.0" y="157.0">seeds</text>
+<text x="810.0" y="178.0" class="mut">when Jerry or the packet</text>
+<text x="810.0" y="193.0" class="mut">requires one</text>
+<line x1="146.0" y1="106.0" x2="175.0" y2="106.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s2a)"/>
+<line x1="430.0" y1="106.0" x2="459.0" y2="106.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s2a)"/>
+<line x1="766.0" y1="106.0" x2="795.0" y2="106.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s2a)"/>
+<rect x="24.0" y="316.0" width="220.0" height="95.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="36.0" y="342.0" class="big">latency + memory gate</text>
+<text x="36.0" y="364.0">measured on one core: Fly runs</text>
+<text x="36.0" y="380.0">shared-cpu-1x with 512 MB</text>
+<rect x="278.0" y="316.0" width="210.0" height="95.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="290.0" y="342.0" class="big">release PR</text>
+<text x="290.0" y="364.0">reviewed by the agent that did</text>
+<text x="290.0" y="380.0">not write it, with every CI</text>
+<text x="290.0" y="396.0">check green</text>
+<rect x="522.0" y="316.0" width="190.0" height="95.0" rx="6" fill="#e7ecf1" stroke="#3b4f63" stroke-width="1.4"/>
+<text x="534.0" y="342.0" class="big">deploy</text>
+<text x="534.0" y="364.0">on Jerry&#x27;s word, after</text>
+<text x="534.0" y="380.0">the required gates pass</text>
+<rect x="746.0" y="316.0" width="230.0" height="95.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="758.0" y="342.0" class="big">post-deploy Fly check</text>
+<text x="758.0" y="364.0">confirm the live Fly app serves</text>
+<text x="758.0" y="380.0">the reviewed release</text>
+<line x1="246.0" y1="346.0" x2="275.0" y2="346.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s2a)"/>
+<line x1="490.0" y1="346.0" x2="519.0" y2="346.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s2a)"/>
+<line x1="714.0" y1="346.0" x2="743.0" y2="346.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s2a)"/>
+<path d="M936.0,284.0 L936.0,301.0 L64.0,301.0 L64.0,313.0" fill="none" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#s2a)"/>
+<text x="24" y="449">Why a common control: the candidate never plays the release directly. Both play the same fixed MC-LCB opponent on the same deals,</text>
+<text x="24" y="466">so within one screen the two arms share a scale. Ladder rows are separate contrasts from different eras; they do not add.</text>
+<text x="976" y="503" class="mut" text-anchor="end">2026-10-16 · docs/visuals/how-a-change-ships.svg</text>
+</svg></div></figure>
+</section>
+<footer>The same three diagrams appear in the repository README as static SVGs (docs/visuals/).</footer>
+</main>

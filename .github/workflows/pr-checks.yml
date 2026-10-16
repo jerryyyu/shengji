@@ -245,6 +245,9 @@ jobs:
             tests/test_pair_resource_admission.py \
             tests/test_pair_resource_pipeline.py \
             tests/test_refusal_constraints.py \
+            tests/test_world_history_legal.py \
+            tests/test_world_history_draw.py \
+            tests/test_pv_belief_worlds.py \
             tests/test_pv_tiebreak_points.py \
             tests/test_pv_lead_anchor.py \
             tests/test_pv_tree_search.py \
@@ -282,7 +285,10 @@ jobs:
             tests/test_pv_sampler_telemetry.py \
             tests/test_tactical_public_observations.py \
             tests/test_belief_labels.py \
-            tests/test_belief_eval.py
+            tests/test_belief_eval.py \
+            tests/test_belief_history.py \
+            tests/test_world_weighting.py \
+            tests/test_belief_sampler.py
 
   luna-profiles:
     runs-on: ubuntu-latest

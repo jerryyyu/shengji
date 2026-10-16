@@ -32,6 +32,18 @@ class HumanPointerError(ValueError):
     pass
 
 
+def _require_human_event(events: list[dict], event_index: int,
+                         pointer_kind: str, line_no: int) -> None:
+    try:
+        is_human = events[event_index].get("bot") is False
+    except (IndexError, AttributeError):
+        is_human = False
+    if not is_human:
+        raise HumanPointerError(
+            f"{pointer_kind} pointer {line_no}: source event bot flag "
+            "must be exactly false")
+
+
 def _resolve_source(name: str, repo: Path = REPO) -> Path:
     candidates = [repo / "logs" / name, *sorted((repo / "logs" / "archive").glob(f"*/{name}")),
                   repo / "logs" / "local" / name]
@@ -104,6 +116,7 @@ def extract_human(human_dir: Path = HUMAN_V8, *, cap: int | None = 256,
                 raise HumanPointerError(f"pointer {line_no}: seat drift")
             if action_key(base["action"]) != action_key(row["chosen"]):
                 raise HumanPointerError(f"pointer {line_no}: chosen cards drift")
+            _require_human_event(events, int(row["event_index"]), "play", line_no)
             if pseudonym(names[base["seat"]]) != row["player_id"]:
                 counts["pseudonym_mismatch"] += 1
             if row.get("human_action_appended"):
@@ -118,6 +131,9 @@ def extract_human(human_dir: Path = HUMAN_V8, *, cap: int | None = 256,
             ordered_play.append((line_no, finalize_record(record)))
         for line_no, row in group["buries"]:
             bury_rec = next(r for r in records if r["decision_kind"] == "bury")
+            bury_event_index = next(
+                i for i, event in enumerate(events) if event.get("e") == "bury")
+            _require_human_event(events, bury_event_index, "bury", line_no)
             if bury_rec["seat"] != int(row["seat"]):
                 raise HumanPointerError(f"bury pointer {line_no}: seat drift")
             if action_key(bury_rec["action"]) != action_key(row["chosen"]):

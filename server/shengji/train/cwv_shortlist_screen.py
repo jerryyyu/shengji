@@ -599,47 +599,48 @@ def run_cluster(config, cluster):
             base, cluster, seed, mirror, bot_factory=factory,
             counter_fn=work_counters, game_factory=game_factory)
                 for mirror in (0, 1)]
+        if len(rows) != len(games):
+            raise ValueError("ranked screen game factory did not produce one game per mirror")
+        for (record, _), game in zip(rows, games, strict=True):
+            if record["trump_rank"] != rank:
+                raise ValueError(f"cluster {cluster} dealt trump rank {record['trump_rank']!r}, expected {rank!r}")
+            if banker is not None and record["banker"] != banker:
+                raise ValueError(f"cluster {cluster} banker {record['banker']!r}, expected fixed {banker!r}")
+            record["arm"] = config["arm"]
+            if "trump_ranks" in config:
+                round_state = getattr(game, "round", None)
+                actual_suit = getattr(round_state, "trump_suit", None)
+                if actual_suit is None:
+                    if not getattr(round_state, "trump_is_nt", False):
+                        raise ValueError(f"cluster {cluster} has no declared trump suit/NT witness")
+                    actual_suit = "NT"
+                if actual_suit not in ("S", "H", "D", "C", "NT"):
+                    raise ValueError(f"cluster {cluster} has invalid actual trump suit {actual_suit!r}")
+                record["trump_suit"] = actual_suit
+        return {
+            "schema": "cwv-shortlist-shard-v1", "cluster": cluster,
+            "seed": seed, "rank": rank, "recipe": _recipe(config),
+            "records": [record for record, _ in rows],
+            "timings": [timing for _, timing in rows],
+            "decision_traces": [{"mirror": i // 4, "side": side,
+                                 "decisions": policy.decisions,
+                                 "bury_decisions": getattr(policy, "bury_decisions", []),
+                                 # only a policy that published declare records
+                                 # (pv-search ``value_declare``) carries the key
+                                 **({"declare_decisions": policy.__dict__["declare_decisions"]}
+                                    if policy.__dict__.get("declare_decisions") else {})}
+                                for i, (side, policy) in enumerate(created)],
+        }
     except BaseException:
-        # A child that saw a failed cluster is never reused: no shard is
-        # published and the next cluster starts from a fresh interpreter.
+        # A child that saw a failed cluster, in play or in the round
+        # validation and shard assembly after it, is never reused: no shard
+        # is published and the next cluster starts from a fresh interpreter.
         if session:
             session.close()
         raise
     finally:
         if session and child is None:
             session.close()
-    if len(rows) != len(games):
-        raise ValueError("ranked screen game factory did not produce one game per mirror")
-    for (record, _), game in zip(rows, games, strict=True):
-        if record["trump_rank"] != rank:
-            raise ValueError(f"cluster {cluster} dealt trump rank {record['trump_rank']!r}, expected {rank!r}")
-        if banker is not None and record["banker"] != banker:
-            raise ValueError(f"cluster {cluster} banker {record['banker']!r}, expected fixed {banker!r}")
-        record["arm"] = config["arm"]
-        if "trump_ranks" in config:
-            round_state = getattr(game, "round", None)
-            actual_suit = getattr(round_state, "trump_suit", None)
-            if actual_suit is None:
-                if not getattr(round_state, "trump_is_nt", False):
-                    raise ValueError(f"cluster {cluster} has no declared trump suit/NT witness")
-                actual_suit = "NT"
-            if actual_suit not in ("S", "H", "D", "C", "NT"):
-                raise ValueError(f"cluster {cluster} has invalid actual trump suit {actual_suit!r}")
-            record["trump_suit"] = actual_suit
-    return {
-        "schema": "cwv-shortlist-shard-v1", "cluster": cluster,
-        "seed": seed, "rank": rank, "recipe": _recipe(config),
-        "records": [record for record, _ in rows],
-        "timings": [timing for _, timing in rows],
-        "decision_traces": [{"mirror": i // 4, "side": side,
-                             "decisions": policy.decisions,
-                             "bury_decisions": getattr(policy, "bury_decisions", []),
-                             # only a policy that published declare records
-                             # (pv-search ``value_declare``) carries the key
-                             **({"declare_decisions": policy.__dict__["declare_decisions"]}
-                                if policy.__dict__.get("declare_decisions") else {})}
-                            for i, (side, policy) in enumerate(created)],
-    }
 
 
 def reopen_shard(path, config, cluster):

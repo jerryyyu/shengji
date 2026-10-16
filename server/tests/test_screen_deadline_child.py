@@ -215,6 +215,33 @@ def test_a_crash_fails_the_cluster_closed_and_the_next_cluster_gets_a_new_child(
     assert failure["failed_clusters"] == [0] and failure["type"] == "RuntimeError"
 
 
+def test_a_post_round_validation_failure_also_closes_the_child(monkeypatch, worker_state):
+    """The rounds complete; the trump-rank witness the driver returns is wrong.
+    The failure is after play, in the cluster's validation, and must still
+    leave no reusable child."""
+    monkeypatch.setattr(S, "_deadline_side", witness_factory)
+    real = S.duel.play_screen_round
+
+    def corrupted(*args, **kwargs):
+        record, timing = real(*args, **kwargs)
+        return {**record, "trump_rank": "K"}, timing
+
+    config = cfg("identity", decision_deadline=RECIPE, deadline_child=PER_WORKER, clusters=2)
+    S.run_cluster(config, 0)
+    pid = worker_state.session.process.pid
+    monkeypatch.setattr(S.duel, "play_screen_round", corrupted)
+    with pytest.raises(ValueError, match="dealt trump rank 'K'"):
+        S.run_cluster(config, 1)
+    assert worker_state.session.process is None
+    monkeypatch.setattr(S.duel, "play_screen_round", real)
+    shard = S.run_cluster(config, 1)
+    assert shard["cluster"] == 1 and worker_state.session.process.pid != pid
+    # the default path raises the same error
+    monkeypatch.setattr(S.duel, "play_screen_round", corrupted)
+    with pytest.raises(ValueError, match="dealt trump rank 'K'"):
+        S.run_cluster(cfg("identity", decision_deadline=RECIPE), 0)
+
+
 def test_a_stuck_child_falls_back_per_cluster_exactly_as_the_owned_child(monkeypatch, worker_state):
     recipe = dict(RECIPE, seconds=2)
     monkeypatch.setattr(S, "DEADLINE_RECIPE", recipe)

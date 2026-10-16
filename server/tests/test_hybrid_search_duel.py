@@ -105,6 +105,30 @@ def test_wall_expiry_preserves_complete_prefix_and_dangling_mirror(monkeypatch, 
                       wall_seconds=30, header={})
 
 
+def test_completed_mirror_is_durable_before_next_mirror(monkeypatch, tmp_path):
+    path = tmp_path / 'interrupted.jsonl'
+    calls = 0
+
+    def play(game, bots):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            saved = [json.loads(line) for line in path.read_text().splitlines()]
+            assert [row['kind'] for row in saved] == ['header', 'round']
+            assert saved[1]['seed'] == 20 and saved[1]['flip'] == 0
+            raise KeyboardInterrupt('simulated non-cooperative stop')
+        return _Log(0)
+
+    monkeypatch.setattr(duel, 'play_round', play)
+    with pytest.raises(KeyboardInterrupt):
+        duel.run_duel(_Bot, _Bot, path, deals=1, seed0=20,
+                      wall_seconds=30, header={})
+    saved = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [row['kind'] for row in saved] == ['header', 'round']
+    with pytest.raises(duel.DuelRefusal, match='terminal'):
+        duel.read_duel(path)
+
+
 def test_telemetry_counts_each_decision_and_clears_stale_fields():
     class Bot:
         def decide_play(self, mode):

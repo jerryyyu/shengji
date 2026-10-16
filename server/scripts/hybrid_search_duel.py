@@ -313,8 +313,12 @@ def run_duel(factory_candidate: Callable[[int], object],
                     def check_wall():
                         if clock() - started >= wall_seconds:
                             raise DuelWallExpired("wall cap reached")
-                    pair.append(_round(factory_candidate, factory_baseline, seed,
-                                       flip, check_wall))
+                    row = _round(factory_candidate, factory_baseline, seed,
+                                 flip, check_wall)
+                    pair.append(row)
+                    # A hard stop during the next mirror must retain this one.
+                    fh.write(json.dumps(row, sort_keys=True) + "\n")
+                    fh.flush(); os.fsync(fh.fileno())
             except DuelWallExpired as exc:
                 saw_partial = True
             except Exception as exc:
@@ -324,14 +328,8 @@ def run_duel(factory_candidate: Callable[[int], object],
             if len(pair) != 2:
                 # A partial pair is deliberately not scored, but already
                 # completed rounds are retained for forensic inspection.
-                for row in pair:
-                    fh.write(json.dumps(row, sort_keys=True) + "\n")
-                fh.flush(); os.fsync(fh.fileno())
                 saw_partial = True
                 break
-            for row in pair:
-                fh.write(json.dumps(row, sort_keys=True) + "\n")
-            fh.flush(); os.fsync(fh.fileno())
             rows.extend(pair)
         completed = {}
         for row in rows[1:]:

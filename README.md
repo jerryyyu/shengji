@@ -14,11 +14,30 @@ with Mandarin voice announcements.
 outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds,
 8 candidates) with five search rules (div, rc, tb, la, dtr), the value-guided trump declaration
 (release 44) and the wide value-only bury (release 45). The model owns declaration, bury and card
-play; the heuristic is the anchor and the fallback. Orange marks what release 46 added.
+play; the heuristic is the anchor and the fallback. Colour marks what release 46 added: violet belief,
+berry exact endgame, blue declaration.
 
-<img src="docs/visuals/release46-bot-turn.svg" alt="The production bot's turn in release 46. Declare: the value head scores every legal declaration and PASS over 64 sampled completions; new in 46, in the first round it is consulted at every declare chance with an option. Bury: release 45's wide value-only bury, 64 candidates, value head picks. Play: heuristic anchor, legal actions, then (new in 46) 64 hidden worlds proposed by the S17 belief model and required to be history-legal, then rc, policy head, la, admit 8 with div, value head over the 64 worlds, tb, dtr, then (new in 46) an exact endgame at 7 or fewer cards per hand, then play." width="100%">
+<img src="docs/visuals/release46-bot-turn.svg" alt="One release-46 play decision drawn from a live lead in room ADKY: seat 3 holds seven cards; the S17 belief model gives each hidden card&#39;s holder probabilities as a heatmap (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in every world (rows candidates, columns worlds: 512 positions (values) sent as 4 forward calls, batches of 128) and the mean picks the ace of clubs (1.799); then the exact endgame, in five steps (belief worlds; play each candidate; try each one with all hands face up to the round's end; average over the 64 worlds; pick the best average), with alpha-beta pruning and a transposition-table cache (429,026 positions tried, 173,315 reused, 0.197 s), switches to the jack of diamonds (mean 1.797 vs 1.719), played in 0.49 s. One world, the true deal, is drawn: the jack of diamonds and the ace of clubs both end with attackers on 45 (+1 level), the 5-8-ace of clubs on 80, a lost deal." width="100%">
 
-<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Separate contrasts through a common MC-LCB control; not additive." width="100%">
+<img src="docs/visuals/release46-played-out.svg" alt="How the J of diamonds played out live in room ADKY: six tricks from the lead at 7 cards each, with the human in seat 0; the banker team (bots 1 and 3) won every trick, the attackers stayed on 35 points, and the banker team went up 2 levels." width="100%">
+
+<img src="docs/visuals/release46-model-calls.svg" alt="How each decision calls the models, read from the code. Belief: public history, one S17 forward pass, a 54 by 4 holder table, 64 worlds drawn and checked against every earlier follow. Policy: 64 root positions of 833 inputs, one forward call, 64 by 54 card log-odds, each legal play scored by the mean sum of its cards&#39; log-odds, 8 admitted; under la a weak-single lead admits the strongest pair or tractor as candidate zero. Value: an 8 by 64 grid, rows candidates and columns worlds; one cell is called out: the candidate played in that world, the heuristic finishes the trick, the 833-number afterstate goes through the value head, and one value is written into the cell; all 512 positions (values) are sent as 4 forward calls of 128; the row means pick the candidate, then tb and dtr. Exact at 7 or fewer cards, in five steps: belief worlds; play each candidate (on a lead the heuristic finishes trick 1); try each one with all hands face up: every play by every player to the round end, keeping the best result for each side (max ours, min theirs), with alpha-beta pruning and a transposition-table cache (429,026 positions tried, 173,315 reused); average over 64 worlds; pick the best average (a follow switches only if strictly better). One world drawn simply: the J of diamonds and the ace of clubs both end at attackers 45, +1 level, the 5-8-ace of clubs at attackers 80, a lost deal. Declare: 64 sampled deals times the distinct (banker, trump) outcomes, PASS included unless merged, in batches of 128 (this chance: 2 outcomes, 128 positions, one batch); the best outcome replaces the heuristic&#39;s choice if higher; vdef runs this at every first-round chance. Bury: up to 64 candidate kitties times 32 worlds, 2048 positions in 16 forward calls of 128, highest mean wins, 2 s budget." width="100%">
+
+Rule tokens used in the figures and tables:
+
+- **div**: diversify candidates (at most 2 of the same shape)
+- **rc**: keep only worlds where this round's refused throws stay refusable
+- **la**: lead anchor: on a weak-single lead, admit the strongest pair/tractor as candidate zero
+- **tb**: tie-break near-equal moves by points won this trick
+- **dtr**: drop a lead throw the engine would refuse in every world
+- **vd**: value-guided trump declaration
+- **vdef**: in round 1, consult the value head at every declare chance
+- **whl / whd**: sampled worlds must be consistent with every earlier follow (history-legal)
+- **bw**: hidden hands proposed by the S17 belief model
+- **ele / ed7 / xf7**: exact endgame search for leads and follows at ≤7 cards
+- **bwv**: wide value-only bury (64 candidate kitties)
+
+<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Separate contrasts through a common MC-LCB control; not additive." width="100%">
 
 **Served results** (signed levels per round, 95% CI; indirect contrasts through a common MC-LCB control):
 
@@ -41,7 +60,7 @@ Open work: the board issue (see AGENTS.md) and [RL_PLAN.md](RL_PLAN.md#planned-w
 
 ## How a strength change ships (current workflow)
 
-<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, cheap DEV test with a predeclared bar, screen of 10 windows by 520 clusters where the candidate and the current release each play the same fixed MC-LCB control (positive if the 95% CI lower bound is above zero), fresh-seed confirmation when required, latency and memory gate on one core, reviewed release PR with green CI, deploy on Jerry's word, post-deploy Fly check." width="100%">
+<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, DEV test with a predeclared bar, screen of 10 windows, confirmation (dashed: when Jerry or the packet requires it), latency gate on one core, reviewed release PR with green CI, deploy on Jerry&#39;s word, Fly check. Inside one screen, example v92c: release 46 and release 45 each play the same fixed MC-LCB control; window dots and 95% CIs give +0.540 and +0.312 levels per round, a difference of +0.228 [+0.205, +0.252], POSITIVE because the lower bound is above zero." width="100%">
 
 The screen never plays the candidate against the release directly: both play the same fixed MC-LCB
 control on the same deals, and the result is the difference. That puts the two arms of one screen on one scale; rows

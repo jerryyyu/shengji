@@ -1,0 +1,799 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1776" width="1000" height="1776" role="img" aria-label="How release 46 calls its models. Play 1: the S17 belief model reads the public history in one forward pass and gives a 54 by 4 holder probability table; 64 worlds are drawn from it and any world that makes an earlier follow illegal is rejected. Play 2: the SMV3 net&#x27;s policy head reads 64 root positions (64 by 833) and returns 54 card log-odds per world; each legal play scores the sum of its cards&#x27; log-odds averaged over worlds, and 8 are admitted. Play 3: for each candidate in each world the heuristic finishes the trick, the afterstate is encoded as 833 numbers, and the value head returns one value written into that cell of an 8 by 64 grid (rows candidates, columns worlds); all 512 positions (values) are sent as 4 forward calls (batches of 128); the row means pick the candidate, then tb and dtr. Play 4, in five steps: the belief worlds; each candidate played (on a lead the heuristic finishes trick 1); try each one with all hands face up: every legal play by every player to the round end, keeping the best result for each side (max for the bot team, min for the attackers), with alpha-beta pruning and a transposition-table cache (429,026 positions tried, 173,315 reused); the average over 64 worlds; the best average. One world (here the true ADKY deal) is drawn: the J of diamonds and the ace of clubs both end with attackers on 45, +1 level, and the 5, 8, ace of clubs with attackers on 80, a lost deal; repeated for 64 worlds and 8 candidates the means are 1.797 for the J of diamonds and 1.719 for the ace of clubs. Declare: 64 sampled deals times the distinct (banker, trump) outcomes, PASS included, sent in batches of 128 (this chance: 2 outcomes, 128 positions, one batch); the best outcome replaces the heuristic&#x27;s choice if its mean is higher; vdef does this at every first-round chance. Bury: up to 64 candidate kitties times 32 worlds, 2048 positions in 16 forward calls of 128; the highest mean wins; 2 s budget.">
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#1e2833;font-size:13px}.bg{fill:#ffffff}.mut{fill:#65727f}.b{font-weight:600}.ttl{font-size:20px;font-weight:600}.h{font-size:15px;font-weight:600}.hdr{font-size:12.5px;font-weight:600;letter-spacing:.06em;fill:#65727f}.sm{font-size:12.5px}.it{font-style:italic}.edge{stroke:#d5dae0;stroke-width:1.5;fill:none}.edge.strong{stroke:#3b4f63}.edgebel{stroke:#6a4bb0;stroke-width:1.5;fill:none}.edgeex{stroke:#b03a73;stroke-width:1.5;fill:none}.arrow{stroke:#3b4f63;stroke-width:1.6;fill:none}.ah{fill:#3b4f63}.world{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.worldx{fill:#ffffff;stroke:#d5dae0;stroke-width:1.3}.thumb{stroke:#3b4f63;stroke-width:1.6;stroke-linecap:round}.xmark{stroke:#a63d2f;stroke-width:2;stroke-linecap:round}.badt{fill:#a63d2f}.goodt{fill:#2e7d4f}.cand{fill:#ffffff;stroke:#1e2833;stroke-width:1.5}.card{fill:#ffffff;stroke:#3b4f63;stroke-width:1}.red{fill:#c0392b}.play{fill:#a8741c}.playtrack{fill:#f3e7cc}.net{fill:#117a75}.nett{fill:#117a75}.root{fill:#1e2833}.inkf{fill:#1e2833}.mutf{fill:#65727f}.rulef{fill:#d5dae0}.paperf{fill:#f4f5f7}.panelf{fill:#ffffff}.bel{fill:#6a4bb0}.belt{fill:#6a4bb0}.belsoft{fill:#ece6f7;stroke:#6a4bb0;stroke-width:1.3}.ex{fill:#b03a73}.ext{fill:#b03a73}.exsoft{fill:#f8e6ef;stroke:#b03a73;stroke-width:1.3}.exline{stroke:#b03a73;stroke-width:1.5;fill:none}.exnode{fill:#ffffff;stroke:#b03a73;stroke-width:1.5}.vd{fill:#2a6fb0}.vdt{fill:#2a6fb0}.vdsoft{fill:#e1ecf7;stroke:#2a6fb0;stroke-width:1.3}.wd{fill:#3b4f63}.wdt{fill:#3b4f63}.wdsoft{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.axis{stroke:#65727f;stroke-width:1;fill:none}.grid{stroke:#d5dae0;stroke-width:1;fill:none}.zero{stroke:#1e2833;stroke-width:1.3;fill:none}.ring{fill:none;stroke:#1e2833;stroke-width:1.8}.ringex{fill:none;stroke:#b03a73;stroke-width:2}.panelbox{fill:#f4f5f7;stroke:#d5dae0;stroke-width:1}.dash{fill:#ffffff;stroke:#3b4f63;stroke-width:1.5;stroke-dasharray:5 4}.stage{fill:#ffffff;stroke:#3b4f63;stroke-width:1.4}.stagej{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.4}.lineink{stroke:#1e2833;stroke-width:2.2;fill:none}.linemut{stroke:#65727f;stroke-width:1.2;fill:none}.linebel{stroke:#6a4bb0;stroke-width:2.2;fill:none}.linevd{stroke:#2a6fb0;stroke-width:2.2;fill:none}.linewd{stroke:#3b4f63;stroke-width:2.2;fill:none}.lineex{stroke:#b03a73;stroke-width:2.2;fill:none}.linenet{stroke:#117a75;stroke-width:2.2;fill:none}.chipt{font-size:12.5px;font-weight:700;letter-spacing:.05em;fill:#ffffff}.netbox{fill:#d6ecea;stroke:#117a75;stroke-width:1.5}.netlayer{stroke:#117a75;stroke-width:3;stroke-linecap:round}.netwire{stroke:#117a75;stroke-width:0.8;opacity:.6}.cardatt{fill:#ffffff;stroke:#a63d2f;stroke-width:1.3}.cone{fill:#d5dae0;fill-opacity:.35}.conel{stroke:#65727f;stroke-width:1;stroke-dasharray:3 3;fill:none}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
+<defs><marker id="ar9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<rect x="0.0" y="0.0" width="1000.0" height="1776.0" class="bg"/>
+<text x="24.0" y="36.0" class="ttl">How each decision calls the models</text>
+<text x="24.0" y="60.0" class="mut">Input → network → output → how the output is used. Shapes are rows × features.</text>
+<rect x="24.0" y="78.0" width="30.0" height="20.0" rx="4" class="netbox"/>
+<text x="62.0" y="93.0" class="sm">SMV3 net 491ee4bf: MLP, 4 blocks × 165 wide; value head 204 outcomes, policy head 54</text>
+<rect x="24.0" y="104.0" width="30.0" height="20.0" rx="4" class="belsoft"/>
+<text x="62.0" y="119.0" class="sm">S17 belief 763b5e05: transformer, d 96, 2 history + 2 card layers</text>
+<rect x="624.0" y="104.0" width="30.0" height="20.0" rx="4" class="exsoft"/>
+<text x="662.0" y="119.0" class="sm">exact solver, no network</text>
+<line x1="24.0" y1="134.0" x2="976.0" y2="134.0" class="grid"/>
+<text x="24.0" y="160.0" class="hdr belt">PLAY · 1</text>
+<text x="99.6" y="160.0" class="h">The belief model proposes the 64 worlds</text>
+<rect x="24.0" y="195.0" width="150.0" height="54.0" rx="6" class="stage"/><text x="99.0" y="218.0" class="sm b" text-anchor="middle">public history</text><text x="99.0" y="235.0" class="sm mut" text-anchor="middle">13 tricks, 27 follows</text>
+<line x1="178.0" y1="222.0" x2="263.7" y2="222.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="220.8" y="214.0" class="mono sm" text-anchor="middle">features</text>
+<rect x="267.7" y="194.0" width="92.0" height="56.0" rx="7" class="belsoft"/><rect x="290.7" y="199.0" width="46.0" height="46.0" rx="3" class="belsoft"/><rect x="294.2" y="202.5" width="9.0" height="9.0" class="bel" fill-opacity="0.27"/><rect x="304.2" y="202.5" width="9.0" height="9.0" class="bel" fill-opacity="0.26"/><rect x="314.2" y="202.5" width="9.0" height="9.0" class="bel" fill-opacity="0.25"/><rect x="324.2" y="202.5" width="9.0" height="9.0" class="bel" fill-opacity="0.85"/><rect x="294.2" y="212.5" width="9.0" height="9.0" class="bel" fill-opacity="0.18"/><rect x="304.2" y="212.5" width="9.0" height="9.0" class="bel" fill-opacity="0.20"/><rect x="314.2" y="212.5" width="9.0" height="9.0" class="bel" fill-opacity="0.10"/><rect x="324.2" y="212.5" width="9.0" height="9.0" class="bel" fill-opacity="0.85"/><rect x="294.2" y="222.5" width="9.0" height="9.0" class="bel" fill-opacity="0.21"/><rect x="304.2" y="222.5" width="9.0" height="9.0" class="bel" fill-opacity="0.25"/><rect x="314.2" y="222.5" width="9.0" height="9.0" class="bel" fill-opacity="0.07"/><rect x="324.2" y="222.5" width="9.0" height="9.0" class="bel" fill-opacity="0.85"/><rect x="294.2" y="232.5" width="9.0" height="9.0" class="bel" fill-opacity="0.09"/><rect x="304.2" y="232.5" width="9.0" height="9.0" class="bel" fill-opacity="0.18"/><rect x="314.2" y="232.5" width="9.0" height="9.0" class="bel" fill-opacity="0.85"/><rect x="324.2" y="232.5" width="9.0" height="9.0" class="bel" fill-opacity="0.27"/><text x="313.7" y="267.0" class="sm b belt" text-anchor="middle">S17 belief</text><text x="313.7" y="283.0" class="sm mut" text-anchor="middle">1 forward · 763b5e05</text>
+<line x1="363.7" y1="222.0" x2="434.1" y2="222.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="398.9" y="214.0" class="mono sm" text-anchor="middle">54 × 4</text>
+<rect x="471.1" y="194.0" width="9.0" height="9.0" class="paperf"/><rect x="471.1" y="194.0" width="9.0" height="9.0" class="bel" fill-opacity="0.11"/><rect x="481.1" y="194.0" width="9.0" height="9.0" class="paperf"/><rect x="481.1" y="194.0" width="9.0" height="9.0" class="bel" fill-opacity="0.87"/><rect x="491.1" y="194.0" width="9.0" height="9.0" class="paperf"/><rect x="491.1" y="194.0" width="9.0" height="9.0" class="bel" fill-opacity="0.02"/><rect x="501.1" y="194.0" width="9.0" height="9.0" class="paperf"/><rect x="471.1" y="204.0" width="9.0" height="9.0" class="paperf"/><rect x="471.1" y="204.0" width="9.0" height="9.0" class="bel" fill-opacity="0.04"/><rect x="481.1" y="204.0" width="9.0" height="9.0" class="paperf"/><rect x="491.1" y="204.0" width="9.0" height="9.0" class="paperf"/><rect x="491.1" y="204.0" width="9.0" height="9.0" class="bel" fill-opacity="0.15"/><rect x="501.1" y="204.0" width="9.0" height="9.0" class="paperf"/><rect x="501.1" y="204.0" width="9.0" height="9.0" class="bel" fill-opacity="0.81"/><rect x="471.1" y="214.0" width="9.0" height="9.0" class="paperf"/><rect x="471.1" y="214.0" width="9.0" height="9.0" class="bel" fill-opacity="0.05"/><rect x="481.1" y="214.0" width="9.0" height="9.0" class="paperf"/><rect x="491.1" y="214.0" width="9.0" height="9.0" class="paperf"/><rect x="491.1" y="214.0" width="9.0" height="9.0" class="bel" fill-opacity="0.35"/><rect x="501.1" y="214.0" width="9.0" height="9.0" class="paperf"/><rect x="501.1" y="214.0" width="9.0" height="9.0" class="bel" fill-opacity="0.60"/><rect x="471.1" y="224.0" width="9.0" height="9.0" class="paperf"/><rect x="471.1" y="224.0" width="9.0" height="9.0" class="bel" fill-opacity="0.05"/><rect x="481.1" y="224.0" width="9.0" height="9.0" class="paperf"/><rect x="481.1" y="224.0" width="9.0" height="9.0" class="bel" fill-opacity="0.00"/><rect x="491.1" y="224.0" width="9.0" height="9.0" class="paperf"/><rect x="491.1" y="224.0" width="9.0" height="9.0" class="bel" fill-opacity="0.02"/><rect x="501.1" y="224.0" width="9.0" height="9.0" class="paperf"/><rect x="501.1" y="224.0" width="9.0" height="9.0" class="bel" fill-opacity="0.92"/><rect x="471.1" y="234.0" width="9.0" height="9.0" class="paperf"/><rect x="471.1" y="234.0" width="9.0" height="9.0" class="bel" fill-opacity="0.13"/><rect x="481.1" y="234.0" width="9.0" height="9.0" class="paperf"/><rect x="481.1" y="234.0" width="9.0" height="9.0" class="bel" fill-opacity="0.06"/><rect x="491.1" y="234.0" width="9.0" height="9.0" class="paperf"/><rect x="491.1" y="234.0" width="9.0" height="9.0" class="bel" fill-opacity="0.40"/><rect x="501.1" y="234.0" width="9.0" height="9.0" class="paperf"/><rect x="501.1" y="234.0" width="9.0" height="9.0" class="bel" fill-opacity="0.40"/><text x="465.1" y="236.0" class="sm mut" text-anchor="end">⋮</text><text x="493.1" y="263.0" class="sm b belt" text-anchor="middle">P(card → holder)</text><text x="493.1" y="279.0" class="sm mut" text-anchor="middle">masked: voids, sizes</text>
+<line x1="552.1" y1="222.0" x2="607.3" y2="222.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="579.7" y="214.0" class="mono sm" text-anchor="middle">draw</text>
+<rect x="656.3" y="200.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="659.8" y1="203.5" x2="679.0" y2="203.5" class="thumb"/><line x1="659.8" y1="213.0" x2="684.5" y2="213.0" class="thumb"/><line x1="659.8" y1="222.5" x2="681.4" y2="222.5" class="thumb"/><rect x="662.3" y="206.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="665.8" y1="209.5" x2="684.9" y2="209.5" class="thumb"/><line x1="665.8" y1="219.0" x2="682.5" y2="219.0" class="thumb"/><line x1="665.8" y1="228.5" x2="687.9" y2="228.5" class="thumb"/><rect x="668.3" y="212.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="671.8" y1="215.5" x2="698.0" y2="215.5" class="thumb"/><line x1="671.8" y1="225.0" x2="700.1" y2="225.0" class="thumb"/><line x1="671.8" y1="234.5" x2="701.1" y2="234.5" class="thumb"/><rect x="674.3" y="218.0" width="40.0" height="26.0" rx="2" class="worldx"/><line x1="677.8" y1="221.5" x2="707.1" y2="221.5" class="grid"/><line x1="677.8" y1="231.0" x2="707.6" y2="231.0" class="grid"/><line x1="677.8" y1="240.5" x2="701.5" y2="240.5" class="grid"/><line x1="672.3" y1="216.0" x2="716.3" y2="246.0" class="xmark"/><line x1="716.3" y1="216.0" x2="672.3" y2="246.0" class="xmark"/><text x="686.3" y="263.0" class="sm b" text-anchor="middle">history check</text><text x="686.3" y="279.0" class="sm mut" text-anchor="middle">each earlier follow legal?</text>
+<line x1="765.3" y1="222.0" x2="812.0" y2="222.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="788.7" y="214.0" class="mono sm" text-anchor="middle">64</text>
+<rect x="816.0" y="186.5" width="160.0" height="71.0" rx="6" class="belsoft"/><text x="896.0" y="209.5" class="sm b belt" text-anchor="middle">64 worlds kept</text><text x="896.0" y="226.5" class="sm mut" text-anchor="middle">ADKY: 66 drawn, 2 out</text><text x="896.0" y="243.5" class="sm mut" text-anchor="middle">26.9 ms</text>
+<text x="24.0" y="300.0" class="sm mut">One forward pass per decision; preparation is capped at 0.25 s; on any belief error the plain history-legal draw is used.</text>
+<line x1="24.0" y1="304.0" x2="976.0" y2="304.0" class="grid"/>
+<text x="24.0" y="330.0" class="hdr nett">PLAY · 2</text>
+<text x="99.6" y="330.0" class="h">The policy head picks 8 of the legal plays</text>
+<rect x="49.0" y="370.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="52.5" y1="373.5" x2="71.7" y2="373.5" class="thumb"/><line x1="52.5" y1="383.0" x2="77.2" y2="383.0" class="thumb"/><line x1="52.5" y1="392.5" x2="74.1" y2="392.5" class="thumb"/><rect x="55.0" y="376.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="58.5" y1="379.5" x2="77.6" y2="379.5" class="thumb"/><line x1="58.5" y1="389.0" x2="75.2" y2="389.0" class="thumb"/><line x1="58.5" y1="398.5" x2="80.5" y2="398.5" class="thumb"/><rect x="61.0" y="382.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="64.5" y1="385.5" x2="90.7" y2="385.5" class="thumb"/><line x1="64.5" y1="395.0" x2="92.8" y2="395.0" class="thumb"/><line x1="64.5" y1="404.5" x2="93.8" y2="404.5" class="thumb"/><rect x="67.0" y="388.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="70.5" y1="391.5" x2="99.7" y2="391.5" class="thumb"/><line x1="70.5" y1="401.0" x2="100.3" y2="401.0" class="thumb"/><line x1="70.5" y1="410.5" x2="94.2" y2="410.5" class="thumb"/><text x="79.0" y="433.0" class="sm b" text-anchor="middle">64 root positions</text><text x="79.0" y="449.0" class="sm mut" text-anchor="middle">one per world</text>
+<line x1="138.0" y1="392.0" x2="243.0" y2="392.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="190.5" y="384.0" class="mono sm" text-anchor="middle">64 × 833</text>
+<rect x="247.0" y="364.0" width="92.0" height="56.0" rx="7" class="netbox"/><line x1="261.0" y1="374.0" x2="261.0" y2="410.0" class="netlayer"/><line x1="282.3" y1="374.0" x2="282.3" y2="410.0" class="netlayer"/><line x1="303.7" y1="374.0" x2="303.7" y2="410.0" class="netlayer"/><line x1="325.0" y1="374.0" x2="325.0" y2="410.0" class="netlayer"/><line x1="261.0" y1="384.8" x2="282.3" y2="399.2" class="netwire"/><line x1="261.0" y1="399.2" x2="282.3" y2="384.8" class="netwire"/><line x1="282.3" y1="384.8" x2="303.7" y2="399.2" class="netwire"/><line x1="282.3" y1="399.2" x2="303.7" y2="384.8" class="netwire"/><line x1="303.7" y1="384.8" x2="325.0" y2="399.2" class="netwire"/><line x1="303.7" y1="399.2" x2="325.0" y2="384.8" class="netwire"/><text x="293.0" y="437.0" class="sm b nett" text-anchor="middle">policy head</text><text x="293.0" y="453.0" class="sm mut" text-anchor="middle">SMV3 · 491ee4bf</text>
+<line x1="343.0" y1="392.0" x2="509.0" y2="392.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="426.0" y="384.0" class="mono sm" text-anchor="middle">64 × 54 log-odds</text>
+<rect x="513.0" y="356.5" width="180.0" height="71.0" rx="6" class="stage"/><text x="603.0" y="379.5" class="sm b" text-anchor="middle">score each legal play</text><text x="603.0" y="396.5" class="sm mut" text-anchor="middle">Σ its cards' log-odds</text><text x="603.0" y="413.5" class="sm mut" text-anchor="middle">mean over 64 worlds</text>
+<line x1="697.0" y1="392.0" x2="802.0" y2="392.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="749.5" y="384.0" class="mono sm" text-anchor="middle">64 legal</text>
+<rect x="812.0" y="362.0" width="38.0" height="22.0" rx="3" class="card"/><text x="831.0" y="378.0" class="sm b" text-anchor="middle">A<tspan class="">♣</tspan></text><rect x="853.0" y="362.0" width="38.0" height="22.0" rx="3" class="card"/><text x="872.0" y="378.0" class="sm b" text-anchor="middle">J<tspan class="red">♦</tspan></text><rect x="894.0" y="362.0" width="38.0" height="22.0" rx="3" class="card"/><text x="913.0" y="378.0" class="sm b" text-anchor="middle">7<tspan class="">♣</tspan></text><rect x="935.0" y="362.0" width="38.0" height="22.0" rx="3" class="card"/><text x="954.0" y="378.0" class="sm b" text-anchor="middle">7<tspan class="">♣</tspan>…</text><rect x="812.0" y="388.0" width="38.0" height="22.0" rx="3" class="card"/><text x="831.0" y="404.0" class="sm b" text-anchor="middle">7<tspan class="">♣</tspan>…</text><rect x="853.0" y="388.0" width="38.0" height="22.0" rx="3" class="card"/><text x="872.0" y="404.0" class="sm b" text-anchor="middle">8<tspan class="">♣</tspan>…</text><rect x="894.0" y="388.0" width="38.0" height="22.0" rx="3" class="card"/><text x="913.0" y="404.0" class="sm b" text-anchor="middle">5<tspan class="">♣</tspan>…</text><rect x="935.0" y="388.0" width="38.0" height="22.0" rx="3" class="card"/><text x="954.0" y="404.0" class="sm b" text-anchor="middle">7<tspan class="">♣</tspan>…</text><rect x="810.0" y="360.0" width="42.0" height="26.0" rx="4" class="ring"/><text x="891.0" y="433.0" class="sm b" text-anchor="middle">admit 8 of 64</text><text x="891.0" y="449.0" class="sm mut" text-anchor="middle">slot 0 anchor · div</text>
+<text x="24.0" y="468.0" class="sm mut">One forward call. Candidate 0 is the heuristic's play, except under la on a weak-single lead, where it is the strongest</text>
+<text x="24.0" y="485.0" class="sm mut">pair/tractor (else the policy's top play). The heuristic's play stays the fallback. div keeps at most 2 candidates of one shape.</text>
+<line x1="24.0" y1="494.0" x2="976.0" y2="494.0" class="grid"/>
+<text x="24.0" y="520.0" class="hdr nett">PLAY · 3</text>
+<text x="99.6" y="520.0" class="h">The value head fills an 8 × 64 grid, one value per cell</text>
+<rect x="124.0" y="540.0" width="672.0" height="122.0" rx="8" class="panelbox"/>
+<rect x="140.0" y="566.0" width="30.0" height="22.0" rx="2" class="world"/><line x1="143.5" y1="569.5" x2="160.5" y2="569.5" class="thumb"/><line x1="143.5" y1="577.0" x2="164.1" y2="577.0" class="thumb"/><line x1="143.5" y1="584.5" x2="166.0" y2="584.5" class="thumb"/><text x="155.0" y="604.0" class="mono sm mut" text-anchor="middle">w17</text><rect x="178.0" y="566.0" width="26.0" height="30.0" rx="3" class="card"/><text x="191.0" y="586.0" class="sm b" text-anchor="middle">A<tspan class="">♣</tspan></text><rect x="210.0" y="576.0" width="82.0" height="10.0" rx="2" class="playtrack"/><rect x="210.0" y="576.0" width="82.0" height="10.0" rx="2" class="play"/><rect x="214.0" y="568.0" width="20.0" height="26.0" rx="2" class="card" stroke-dasharray="2 2"/><rect x="240.0" y="568.0" width="20.0" height="26.0" rx="2" class="card" stroke-dasharray="2 2"/><rect x="266.0" y="568.0" width="20.0" height="26.0" rx="2" class="card" stroke-dasharray="2 2"/><text x="216.0" y="633.0" class="sm b" text-anchor="middle">A♣ in one world</text><text x="216.0" y="649.0" class="sm mut" text-anchor="middle">heuristic finishes trick</text>
+<line x1="300.0" y1="592.0" x2="329.5" y2="592.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="339.5" y="578.0" width="86.2" height="20.0" class="wd" fill-opacity="0.85"/><rect x="425.7" y="578.0" width="41.5" height="20.0" class="net" fill-opacity="0.85"/><rect x="467.2" y="578.0" width="2.5" height="20.0" class="inkf" fill-opacity="0.85"/><text x="382.6" y="572.0" class="sm mut" text-anchor="middle">561 public</text><text x="467.5" y="572.0" class="sm mut" text-anchor="end">5×54</text><text x="403.5" y="633.0" class="sm b" text-anchor="middle">833 inputs, encoder v2</text><text x="403.5" y="649.0" class="sm mut" text-anchor="middle">+ 2 team perspective</text>
+<line x1="477.5" y1="592.0" x2="538.5" y2="592.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="508.0" y="584.0" class="mono sm" text-anchor="middle">1 × 833</text>
+<rect x="542.5" y="564.0" width="92.0" height="56.0" rx="7" class="netbox"/><line x1="556.5" y1="574.0" x2="556.5" y2="610.0" class="netlayer"/><line x1="577.8" y1="574.0" x2="577.8" y2="610.0" class="netlayer"/><line x1="599.1" y1="574.0" x2="599.1" y2="610.0" class="netlayer"/><line x1="620.5" y1="574.0" x2="620.5" y2="610.0" class="netlayer"/><line x1="556.5" y1="584.8" x2="577.8" y2="599.2" class="netwire"/><line x1="556.5" y1="599.2" x2="577.8" y2="584.8" class="netwire"/><line x1="577.8" y1="584.8" x2="599.1" y2="599.2" class="netwire"/><line x1="577.8" y1="599.2" x2="599.1" y2="584.8" class="netwire"/><line x1="599.1" y1="584.8" x2="620.5" y2="599.2" class="netwire"/><line x1="599.1" y1="599.2" x2="620.5" y2="584.8" class="netwire"/><text x="588.5" y="637.0" class="sm b nett" text-anchor="middle">value head</text><text x="588.5" y="653.0" class="sm mut" text-anchor="middle">SMV3 · 491ee4bf</text>
+<line x1="638.5" y1="592.0" x2="668.0" y2="592.0" class="arrow" marker-end="url(#ar9)"/>
+<path d="M690.0,575.0 L701.0,586.0 L690.0,597.0 L679.0,586.0 Z" class="net"/><text x="708.0" y="591.0" class="mono b">+1.80</text><text x="728.0" y="633.0" class="sm b" text-anchor="middle">Σ p × level</text><text x="728.0" y="649.0" class="sm mut" text-anchor="middle">+ = root team gains</text>
+<path d="M205.5,716.0 L124.0,662.0 L796.0,662.0 L211.0,716.0 Z" class="cone"/>
+<line x1="205.5" y1="716.0" x2="124.0" y2="662.0" class="conel"/>
+<line x1="211.0" y1="716.0" x2="796.0" y2="662.0" class="conel"/>
+<rect x="24.0" y="717.0" width="82.0" height="15.0" rx="3" class="card"/>
+<text x="65.0" y="729.0" class="sm b" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<rect x="112.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="117.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.55"/>
+<rect x="123.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.69"/>
+<rect x="128.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="134.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.42"/>
+<rect x="139.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.64"/>
+<rect x="145.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.69"/>
+<rect x="150.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.96"/>
+<rect x="156.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.27"/>
+<rect x="161.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.30"/>
+<rect x="167.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.49"/>
+<rect x="172.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="178.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.88"/>
+<rect x="183.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="189.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="194.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.65"/>
+<rect x="200.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="205.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.95"/>
+<rect x="211.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.32"/>
+<rect x="216.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="222.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.61"/>
+<rect x="227.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.37"/>
+<rect x="233.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.60"/>
+<rect x="238.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.31"/>
+<rect x="244.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.81"/>
+<rect x="249.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.66"/>
+<rect x="255.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.33"/>
+<rect x="260.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.42"/>
+<rect x="266.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="271.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="277.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.46"/>
+<rect x="282.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.33"/>
+<rect x="288.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="293.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.30"/>
+<rect x="299.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.50"/>
+<rect x="304.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="310.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.39"/>
+<rect x="315.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.48"/>
+<rect x="321.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="326.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.40"/>
+<rect x="332.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.34"/>
+<rect x="337.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.44"/>
+<rect x="343.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.71"/>
+<rect x="348.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="354.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.76"/>
+<rect x="359.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.30"/>
+<rect x="365.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.46"/>
+<rect x="370.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.34"/>
+<rect x="376.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.67"/>
+<rect x="381.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="387.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.81"/>
+<rect x="392.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.68"/>
+<rect x="398.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.69"/>
+<rect x="403.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="409.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.66"/>
+<rect x="414.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.30"/>
+<rect x="420.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.33"/>
+<rect x="425.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="431.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="436.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.25"/>
+<rect x="442.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="447.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.39"/>
+<rect x="453.0" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.48"/>
+<rect x="458.5" y="717.0" width="4.9" height="15.0" class="net" fill-opacity="0.68"/>
+<rect x="24.0" y="735.0" width="82.0" height="15.0" rx="3" class="card"/>
+<text x="65.0" y="747.0" class="sm b" text-anchor="middle">J<tspan class="red">♦</tspan></text>
+<rect x="112.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.95"/>
+<rect x="117.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.27"/>
+<rect x="123.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="128.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="134.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="139.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="145.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.31"/>
+<rect x="150.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.54"/>
+<rect x="156.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="161.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="167.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.54"/>
+<rect x="172.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.84"/>
+<rect x="178.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.86"/>
+<rect x="183.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.80"/>
+<rect x="189.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.60"/>
+<rect x="194.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="200.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.36"/>
+<rect x="205.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.54"/>
+<rect x="211.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.48"/>
+<rect x="216.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="222.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="227.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="233.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="238.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.53"/>
+<rect x="244.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.49"/>
+<rect x="249.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="255.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="260.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="266.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="271.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="277.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.44"/>
+<rect x="282.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.54"/>
+<rect x="288.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.48"/>
+<rect x="293.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.67"/>
+<rect x="299.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.43"/>
+<rect x="304.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="310.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.50"/>
+<rect x="315.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="321.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="326.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.75"/>
+<rect x="332.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.45"/>
+<rect x="337.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="343.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="1.00"/>
+<rect x="348.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="354.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="359.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.30"/>
+<rect x="365.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.82"/>
+<rect x="370.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.47"/>
+<rect x="376.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.58"/>
+<rect x="381.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="387.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="392.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="398.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.31"/>
+<rect x="403.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="409.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.70"/>
+<rect x="414.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="420.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.26"/>
+<rect x="425.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="431.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="436.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.25"/>
+<rect x="442.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="447.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.80"/>
+<rect x="453.0" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="458.5" y="735.0" width="4.9" height="15.0" class="net" fill-opacity="0.32"/>
+<rect x="24.0" y="753.0" width="82.0" height="15.0" rx="3" class="card"/>
+<text x="65.0" y="765.0" class="sm b" text-anchor="middle">7<tspan class="">♣</tspan></text>
+<rect x="112.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.42"/>
+<rect x="117.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.66"/>
+<rect x="123.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.70"/>
+<rect x="128.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.80"/>
+<rect x="134.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.26"/>
+<rect x="139.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="145.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.41"/>
+<rect x="150.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.51"/>
+<rect x="156.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.37"/>
+<rect x="161.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="167.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.44"/>
+<rect x="172.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.72"/>
+<rect x="178.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.46"/>
+<rect x="183.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.34"/>
+<rect x="189.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.50"/>
+<rect x="194.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.47"/>
+<rect x="200.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.47"/>
+<rect x="205.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="1.00"/>
+<rect x="211.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.69"/>
+<rect x="216.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="222.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.73"/>
+<rect x="227.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.99"/>
+<rect x="233.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="238.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.61"/>
+<rect x="244.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.45"/>
+<rect x="249.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.43"/>
+<rect x="255.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="260.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.61"/>
+<rect x="266.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="271.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.95"/>
+<rect x="277.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.65"/>
+<rect x="282.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="288.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="293.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.85"/>
+<rect x="299.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.95"/>
+<rect x="304.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.57"/>
+<rect x="310.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.34"/>
+<rect x="315.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.76"/>
+<rect x="321.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.84"/>
+<rect x="326.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="332.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.86"/>
+<rect x="337.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.88"/>
+<rect x="343.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.30"/>
+<rect x="348.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.71"/>
+<rect x="354.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.33"/>
+<rect x="359.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.64"/>
+<rect x="365.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="370.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.68"/>
+<rect x="376.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.46"/>
+<rect x="381.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="387.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.72"/>
+<rect x="392.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.84"/>
+<rect x="398.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.60"/>
+<rect x="403.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.36"/>
+<rect x="409.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.50"/>
+<rect x="414.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="420.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.51"/>
+<rect x="425.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.40"/>
+<rect x="431.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.99"/>
+<rect x="436.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.51"/>
+<rect x="442.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.25"/>
+<rect x="447.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.43"/>
+<rect x="453.0" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="458.5" y="753.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="24.0" y="771.0" width="82.0" height="15.0" rx="3" class="card"/>
+<text x="65.0" y="783.0" class="sm b" text-anchor="middle">7<tspan class="">♣</tspan>A<tspan class="">♣</tspan></text>
+<rect x="112.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.60"/>
+<rect x="117.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="123.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.50"/>
+<rect x="128.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="134.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.36"/>
+<rect x="139.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.32"/>
+<rect x="145.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.59"/>
+<rect x="150.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.27"/>
+<rect x="156.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="161.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="167.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.37"/>
+<rect x="172.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.91"/>
+<rect x="178.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="183.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.82"/>
+<rect x="189.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="194.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.34"/>
+<rect x="200.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.43"/>
+<rect x="205.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.61"/>
+<rect x="211.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.39"/>
+<rect x="216.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.88"/>
+<rect x="222.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.54"/>
+<rect x="227.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.73"/>
+<rect x="233.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.55"/>
+<rect x="238.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="244.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.49"/>
+<rect x="249.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="255.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="260.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.73"/>
+<rect x="266.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.31"/>
+<rect x="271.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.95"/>
+<rect x="277.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="282.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.31"/>
+<rect x="288.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="293.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.39"/>
+<rect x="299.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.27"/>
+<rect x="304.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="310.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="315.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.51"/>
+<rect x="321.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="326.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.80"/>
+<rect x="332.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="337.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.46"/>
+<rect x="343.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="348.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="354.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.45"/>
+<rect x="359.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.26"/>
+<rect x="365.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.80"/>
+<rect x="370.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.54"/>
+<rect x="376.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.65"/>
+<rect x="381.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.44"/>
+<rect x="387.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.53"/>
+<rect x="392.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="398.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.91"/>
+<rect x="403.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="409.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="414.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.88"/>
+<rect x="420.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.47"/>
+<rect x="425.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.72"/>
+<rect x="431.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.46"/>
+<rect x="436.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="442.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.54"/>
+<rect x="447.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="453.0" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="458.5" y="771.0" width="4.9" height="15.0" class="net" fill-opacity="0.36"/>
+<rect x="24.0" y="789.0" width="82.0" height="15.0" rx="3" class="card"/>
+<text x="65.0" y="801.0" class="sm b" text-anchor="middle">7<tspan class="">♣</tspan>A<tspan class="">♣</tspan>Q<tspan class="">♣</tspan></text>
+<rect x="112.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="117.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="123.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.91"/>
+<rect x="128.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="134.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.48"/>
+<rect x="139.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="145.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="150.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.57"/>
+<rect x="156.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.70"/>
+<rect x="161.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="167.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.76"/>
+<rect x="172.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="178.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.36"/>
+<rect x="183.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.72"/>
+<rect x="189.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.57"/>
+<rect x="194.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="200.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.97"/>
+<rect x="205.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.68"/>
+<rect x="211.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.53"/>
+<rect x="216.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.66"/>
+<rect x="222.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.95"/>
+<rect x="227.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.37"/>
+<rect x="233.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.77"/>
+<rect x="238.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.96"/>
+<rect x="244.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.75"/>
+<rect x="249.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.33"/>
+<rect x="255.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.85"/>
+<rect x="260.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.64"/>
+<rect x="266.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.39"/>
+<rect x="271.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="277.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.91"/>
+<rect x="282.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.80"/>
+<rect x="288.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.97"/>
+<rect x="293.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.36"/>
+<rect x="299.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="1.00"/>
+<rect x="304.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="310.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="315.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.65"/>
+<rect x="321.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.88"/>
+<rect x="326.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.81"/>
+<rect x="332.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="337.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.40"/>
+<rect x="343.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="348.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.95"/>
+<rect x="354.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.91"/>
+<rect x="359.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.44"/>
+<rect x="365.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="370.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.57"/>
+<rect x="376.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.71"/>
+<rect x="381.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.95"/>
+<rect x="387.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="392.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.67"/>
+<rect x="398.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.46"/>
+<rect x="403.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.84"/>
+<rect x="409.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.67"/>
+<rect x="414.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.32"/>
+<rect x="420.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.59"/>
+<rect x="425.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.71"/>
+<rect x="431.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.57"/>
+<rect x="436.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.68"/>
+<rect x="442.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="447.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="453.0" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.68"/>
+<rect x="458.5" y="789.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="24.0" y="807.0" width="82.0" height="15.0" rx="3" class="card"/>
+<text x="65.0" y="819.0" class="sm b" text-anchor="middle">8<tspan class="">♣</tspan>Q<tspan class="">♣</tspan></text>
+<rect x="112.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="117.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.85"/>
+<rect x="123.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.61"/>
+<rect x="128.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="134.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.97"/>
+<rect x="139.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="145.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.73"/>
+<rect x="150.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="156.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.99"/>
+<rect x="161.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="167.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="172.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.39"/>
+<rect x="178.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="183.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="189.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.55"/>
+<rect x="194.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.40"/>
+<rect x="200.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.47"/>
+<rect x="205.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.59"/>
+<rect x="211.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.33"/>
+<rect x="216.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.97"/>
+<rect x="222.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="227.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.50"/>
+<rect x="233.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="238.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.68"/>
+<rect x="244.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.46"/>
+<rect x="249.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.99"/>
+<rect x="255.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.75"/>
+<rect x="260.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.50"/>
+<rect x="266.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.99"/>
+<rect x="271.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="277.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.42"/>
+<rect x="282.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="288.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="293.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.43"/>
+<rect x="299.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="304.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="310.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.37"/>
+<rect x="315.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="321.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="326.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.40"/>
+<rect x="332.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="337.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.27"/>
+<rect x="343.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.60"/>
+<rect x="348.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.27"/>
+<rect x="354.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="359.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.27"/>
+<rect x="365.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="370.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.82"/>
+<rect x="376.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="381.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.97"/>
+<rect x="387.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.86"/>
+<rect x="392.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="398.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.60"/>
+<rect x="403.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.69"/>
+<rect x="409.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="414.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.37"/>
+<rect x="420.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.84"/>
+<rect x="425.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="431.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.31"/>
+<rect x="436.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.48"/>
+<rect x="442.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="447.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="453.0" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="458.5" y="807.0" width="4.9" height="15.0" class="net" fill-opacity="0.33"/>
+<rect x="24.0" y="825.0" width="82.0" height="15.0" rx="3" class="card"/>
+<text x="65.0" y="837.0" class="sm b" text-anchor="middle">5<tspan class="">♣</tspan>8<tspan class="">♣</tspan>A<tspan class="">♣</tspan></text>
+<rect x="112.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.97"/>
+<rect x="117.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.82"/>
+<rect x="123.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="128.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.85"/>
+<rect x="134.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="139.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="145.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.64"/>
+<rect x="150.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.96"/>
+<rect x="156.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.97"/>
+<rect x="161.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.91"/>
+<rect x="167.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.47"/>
+<rect x="172.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.91"/>
+<rect x="178.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.66"/>
+<rect x="183.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="189.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="194.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.35"/>
+<rect x="200.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.60"/>
+<rect x="205.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.42"/>
+<rect x="211.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.91"/>
+<rect x="216.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.99"/>
+<rect x="222.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.81"/>
+<rect x="227.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="233.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.71"/>
+<rect x="238.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="244.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="249.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.75"/>
+<rect x="255.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="260.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.34"/>
+<rect x="266.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="271.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.34"/>
+<rect x="277.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.43"/>
+<rect x="282.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="288.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.77"/>
+<rect x="293.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.33"/>
+<rect x="299.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.75"/>
+<rect x="304.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.31"/>
+<rect x="310.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="315.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="321.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="326.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="332.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="337.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.71"/>
+<rect x="343.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.73"/>
+<rect x="348.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="354.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.73"/>
+<rect x="359.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.96"/>
+<rect x="365.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.81"/>
+<rect x="370.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.84"/>
+<rect x="376.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.99"/>
+<rect x="381.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.97"/>
+<rect x="387.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.42"/>
+<rect x="392.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="398.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="1.00"/>
+<rect x="403.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="409.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.32"/>
+<rect x="414.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.93"/>
+<rect x="420.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.43"/>
+<rect x="425.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.84"/>
+<rect x="431.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.32"/>
+<rect x="436.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.65"/>
+<rect x="442.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.92"/>
+<rect x="447.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.71"/>
+<rect x="453.0" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.40"/>
+<rect x="458.5" y="825.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="24.0" y="843.0" width="82.0" height="15.0" rx="3" class="card"/>
+<text x="65.0" y="855.0" class="sm b" text-anchor="middle">7<tspan class="">♣</tspan>8<tspan class="">♣</tspan>A<tspan class="">♣</tspan>Q<tspan class="">♣</tspan></text>
+<rect x="112.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.80"/>
+<rect x="117.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="123.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.41"/>
+<rect x="128.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.96"/>
+<rect x="134.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.84"/>
+<rect x="139.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.34"/>
+<rect x="145.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.32"/>
+<rect x="150.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.25"/>
+<rect x="156.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="161.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.47"/>
+<rect x="167.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.57"/>
+<rect x="172.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.81"/>
+<rect x="178.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.54"/>
+<rect x="183.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.44"/>
+<rect x="189.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.50"/>
+<rect x="194.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="200.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.79"/>
+<rect x="205.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.62"/>
+<rect x="211.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.53"/>
+<rect x="216.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.96"/>
+<rect x="222.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="227.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.52"/>
+<rect x="233.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="238.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.55"/>
+<rect x="244.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="249.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.99"/>
+<rect x="255.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.41"/>
+<rect x="260.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="266.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.71"/>
+<rect x="271.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="277.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.38"/>
+<rect x="282.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.89"/>
+<rect x="288.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.56"/>
+<rect x="293.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="299.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.90"/>
+<rect x="304.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.31"/>
+<rect x="310.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.75"/>
+<rect x="315.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.57"/>
+<rect x="321.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.67"/>
+<rect x="326.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="332.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.40"/>
+<rect x="337.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.25"/>
+<rect x="343.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.32"/>
+<rect x="348.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.83"/>
+<rect x="354.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.49"/>
+<rect x="359.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.51"/>
+<rect x="365.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.87"/>
+<rect x="370.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.41"/>
+<rect x="376.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="381.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="387.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.28"/>
+<rect x="392.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.78"/>
+<rect x="398.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.60"/>
+<rect x="403.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.63"/>
+<rect x="409.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.49"/>
+<rect x="414.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.96"/>
+<rect x="420.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.67"/>
+<rect x="425.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.29"/>
+<rect x="431.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.74"/>
+<rect x="436.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.88"/>
+<rect x="442.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.98"/>
+<rect x="447.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.96"/>
+<rect x="453.0" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.94"/>
+<rect x="458.5" y="843.0" width="4.9" height="15.0" class="net" fill-opacity="0.85"/>
+<rect x="204.0" y="715.5" width="7.9" height="17.0" rx="1" class="ring"/>
+<path d="M760,592.0 L812,592.0 L812,694.0 L251.5,694.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="201.5" y="682.0" width="46.0" height="22.0" rx="11" class="panelf"/>
+<rect x="201.5" y="682.0" width="46.0" height="22.0" rx="11" class="ring"/>
+<text x="224.5" y="698.0" class="mono sm b" text-anchor="middle">+1.80</text>
+<line x1="208.0" y1="704.0" x2="208.0" y2="715.0" class="lineink"/>
+<text x="620.0" y="688.0" class="sm mut" text-anchor="middle">written into its cell</text>
+<rect x="112.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="118.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="123.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="129.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="134.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="140.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="145.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="151.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="156.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="162.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="167.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="173.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="178.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="184.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="189.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="195.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="200.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="206.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="211.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="217.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="222.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="228.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="233.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="239.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="244.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="250.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="255.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="261.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="266.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="272.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="277.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="283.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="288.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="294.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="299.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="305.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="310.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="316.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="321.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="327.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="332.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="338.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="343.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="349.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="354.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="360.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="365.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="371.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="376.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="382.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="387.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="393.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="398.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="404.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="409.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="415.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="420.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="426.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="431.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="437.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="442.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="448.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="453.5" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<rect x="459.0" y="864.0" width="4.1" height="8.0" rx="1" class="world"/>
+<text x="112.0" y="888.0" class="sm mut">columns: 64 worlds</text>
+<text x="24.0" y="888.0" class="sm mut">rows: 8</text>
+<text x="24.0" y="910.0" class="sm b">All 512 cells = 512 positions, sent as 4 batches of 128 (4 forward calls).</text>
+<text x="486.0" y="710.0" class="sm mut">row mean</text>
+<line x1="467.0" y1="725.0" x2="482.0" y2="725.0" class="edge"/>
+<rect x="486.0" y="719.0" width="105.3" height="11.0" class="inkf"/>
+<text x="648.0" y="729.0" class="mono sm b" text-anchor="end">1.799</text>
+<line x1="467.0" y1="743.0" x2="482.0" y2="743.0" class="edge"/>
+<rect x="486.0" y="737.0" width="76.6" height="11.0" class="wd"/>
+<text x="648.0" y="747.0" class="mono sm mut" text-anchor="end">1.731</text>
+<line x1="467.0" y1="761.0" x2="482.0" y2="761.0" class="edge"/>
+<rect x="486.0" y="755.0" width="52.1" height="11.0" class="wd"/>
+<text x="648.0" y="765.0" class="mono sm mut" text-anchor="end">1.673</text>
+<line x1="467.0" y1="779.0" x2="482.0" y2="779.0" class="edge"/>
+<rect x="486.0" y="773.0" width="52.1" height="11.0" class="wd"/>
+<text x="648.0" y="783.0" class="mono sm mut" text-anchor="end">1.673</text>
+<line x1="467.0" y1="797.0" x2="482.0" y2="797.0" class="edge"/>
+<rect x="486.0" y="791.0" width="52.1" height="11.0" class="wd"/>
+<text x="648.0" y="801.0" class="mono sm mut" text-anchor="end">1.673</text>
+<line x1="467.0" y1="815.0" x2="482.0" y2="815.0" class="edge"/>
+<rect x="486.0" y="809.0" width="50.6" height="11.0" class="wd"/>
+<text x="648.0" y="819.0" class="mono sm mut" text-anchor="end">1.670</text>
+<line x1="467.0" y1="833.0" x2="482.0" y2="833.0" class="edge"/>
+<rect x="486.0" y="827.0" width="27.2" height="11.0" class="wd"/>
+<text x="648.0" y="837.0" class="mono sm mut" text-anchor="end">1.614</text>
+<line x1="467.0" y1="851.0" x2="482.0" y2="851.0" class="edge"/>
+<rect x="486.0" y="845.0" width="52.1" height="11.0" class="wd"/>
+<text x="648.0" y="855.0" class="mono sm mut" text-anchor="end">1.673</text>
+<line x1="658.0" y1="788.0" x2="706.0" y2="788.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="712.0" y="752.5" width="262.0" height="71.0" rx="6" class="stage"/><text x="843.0" y="775.5" class="sm b" text-anchor="middle">pick A♣ (1.799)</text><text x="843.0" y="792.5" class="sm mut" text-anchor="middle">then tb: near-ties by points</text><text x="843.0" y="809.5" class="sm mut" text-anchor="middle">dtr: drop refused throws</text>
+<line x1="24.0" y1="914.0" x2="976.0" y2="914.0" class="grid"/>
+<text x="24.0" y="940.0" class="hdr ext">PLAY · 4</text>
+<text x="99.6" y="940.0" class="h">At ≤ 7 cards per hand, an exact search plays each world to the end</text>
+<rect x="41.0" y="977.0" width="38.0" height="46.0" rx="3" class="belsoft"/><rect x="44.5" y="980.5" width="7.0" height="7.0" class="bel" fill-opacity="0.13"/><rect x="52.5" y="980.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="60.5" y="980.5" width="7.0" height="7.0" class="bel" fill-opacity="0.23"/><rect x="68.5" y="980.5" width="7.0" height="7.0" class="bel" fill-opacity="0.17"/><rect x="44.5" y="988.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="52.5" y="988.5" width="7.0" height="7.0" class="bel" fill-opacity="0.07"/><rect x="60.5" y="988.5" width="7.0" height="7.0" class="bel" fill-opacity="0.15"/><rect x="68.5" y="988.5" width="7.0" height="7.0" class="bel" fill-opacity="0.28"/><rect x="44.5" y="996.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="52.5" y="996.5" width="7.0" height="7.0" class="bel" fill-opacity="0.11"/><rect x="60.5" y="996.5" width="7.0" height="7.0" class="bel" fill-opacity="0.18"/><rect x="68.5" y="996.5" width="7.0" height="7.0" class="bel" fill-opacity="0.12"/><rect x="44.5" y="1004.5" width="7.0" height="7.0" class="bel" fill-opacity="0.26"/><rect x="52.5" y="1004.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="60.5" y="1004.5" width="7.0" height="7.0" class="bel" fill-opacity="0.12"/><rect x="68.5" y="1004.5" width="7.0" height="7.0" class="bel" fill-opacity="0.29"/><rect x="44.5" y="1012.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="52.5" y="1012.5" width="7.0" height="7.0" class="bel" fill-opacity="0.26"/><rect x="60.5" y="1012.5" width="7.0" height="7.0" class="bel" fill-opacity="0.25"/><rect x="68.5" y="1012.5" width="7.0" height="7.0" class="bel" fill-opacity="0.25"/><line x1="86.0" y1="1000.0" x2="110.0" y2="1000.0" class="arrow" marker-end="url(#ar9)"/><rect x="116.0" y="980.0" width="40.0" height="24.0" rx="2" class="world"/><line x1="119.5" y1="983.5" x2="149.7" y2="983.5" class="thumb"/><line x1="119.5" y1="992.0" x2="148.1" y2="992.0" class="thumb"/><line x1="119.5" y1="1000.5" x2="142.0" y2="1000.5" class="thumb"/><rect x="122.0" y="986.0" width="40.0" height="24.0" rx="2" class="world"/><line x1="125.5" y1="989.5" x2="142.8" y2="989.5" class="thumb"/><line x1="125.5" y1="998.0" x2="155.7" y2="998.0" class="thumb"/><line x1="125.5" y1="1006.5" x2="154.2" y2="1006.5" class="thumb"/><rect x="128.0" y="992.0" width="40.0" height="24.0" rx="2" class="world"/><line x1="131.5" y1="995.5" x2="163.7" y2="995.5" class="thumb"/><line x1="131.5" y1="1004.0" x2="163.6" y2="1004.0" class="thumb"/><line x1="131.5" y1="1012.5" x2="147.4" y2="1012.5" class="thumb"/><text x="99.0" y="1043.0" class="sm b" text-anchor="middle">belief → 64 worlds</text><text x="99.0" y="1059.0" class="sm mut" text-anchor="middle">the worlds from PLAY · 1</text><circle cx="32.0" cy="968.0" r="10" class="ex"/><text x="32.0" y="972.5" class="chipt" text-anchor="middle">1</text>
+<line x1="178.0" y1="1002.0" x2="209.0" y2="1002.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="233.0" y="982.0" width="26.0" height="30.0" rx="3" class="card"/><text x="246.0" y="1001.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text><rect x="267.0" y="992.0" width="90.0" height="10.0" rx="2" class="playtrack"/><rect x="267.0" y="992.0" width="50.0" height="10.0" rx="2" class="play"/><text x="298.0" y="1043.0" class="sm b" text-anchor="middle">play each candidate move</text><text x="298.0" y="1059.0" class="sm mut" text-anchor="middle">lead: heuristic finishes trick 1</text><circle cx="221.0" cy="968.0" r="10" class="ex"/><text x="221.0" y="972.5" class="chipt" text-anchor="middle">2</text>
+<line x1="387.0" y1="1002.0" x2="418.0" y2="1002.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="462.0" y="976.0" width="110.0" height="46.0" rx="7" class="exsoft"/><line x1="476.0" y1="999.0" x2="507.5" y2="985.4" class="exline"/><line x1="507.5" y1="985.4" x2="546.0" y2="982.0" class="exline"/><circle cx="546.0" cy="982.0" r="1.9" class="ex"/><line x1="507.5" y1="985.4" x2="546.0" y2="988.8" class="exline"/><circle cx="546.0" cy="988.8" r="1.9" class="ex"/><circle cx="507.5" cy="985.4" r="2.4" class="exnode"/><line x1="476.0" y1="999.0" x2="507.5" y2="999.0" class="exline"/><line x1="507.5" y1="999.0" x2="546.0" y2="995.6" class="exline"/><circle cx="546.0" cy="995.6" r="1.9" class="ex"/><line x1="507.5" y1="999.0" x2="546.0" y2="1002.4" class="exline"/><circle cx="546.0" cy="1002.4" r="1.9" class="ex"/><circle cx="507.5" cy="999.0" r="2.4" class="exnode"/><line x1="476.0" y1="999.0" x2="507.5" y2="1012.6" class="exline"/><line x1="507.5" y1="1012.6" x2="546.0" y2="1009.2" class="exline"/><circle cx="546.0" cy="1009.2" r="1.9" class="ex"/><line x1="507.5" y1="1012.6" x2="546.0" y2="1016.0" class="exline"/><circle cx="546.0" cy="1016.0" r="1.9" class="ex"/><circle cx="507.5" cy="1012.6" r="2.4" class="exnode"/><circle cx="476.0" cy="999.0" r="3.4" class="exnode"/><text x="512.0" y="1043.0" class="sm b ext" text-anchor="middle">try each one, all hands face up</text><text x="512.0" y="1059.0" class="sm mut" text-anchor="middle">every play by every player, to round end</text><circle cx="452.0" cy="968.0" r="10" class="ex"/><text x="452.0" y="972.5" class="chipt" text-anchor="middle">3</text>
+<line x1="606.0" y1="1002.0" x2="637.0" y2="1002.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="671.0" y="976.0" width="49.5" height="8.0" class="wd"/><rect x="671.0" y="987.0" width="81.0" height="8.0" class="inkf"/><rect x="671.0" y="998.0" width="55.8" height="8.0" class="wd"/><rect x="671.0" y="1009.0" width="43.2" height="8.0" class="wd"/><text x="709.0" y="1043.0" class="sm b" text-anchor="middle">average over 64 worlds</text><text x="709.0" y="1059.0" class="sm mut" text-anchor="middle">one mean per candidate</text><circle cx="655.0" cy="968.0" r="10" class="ex"/><text x="655.0" y="972.5" class="chipt" text-anchor="middle">4</text>
+<line x1="781.0" y1="1002.0" x2="812.0" y2="1002.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="856.0" y="980.0" width="92.0" height="36.0" rx="18" class="ringex"/><text x="902.0" y="1003.0" class="b" text-anchor="middle">play J♦</text><text x="896.0" y="1043.0" class="sm b" text-anchor="middle">pick the best average</text><text x="896.0" y="1059.0" class="sm mut" text-anchor="middle">follow: only if strictly better</text><circle cx="844.0" cy="968.0" r="10" class="ex"/><text x="844.0" y="972.5" class="chipt" text-anchor="middle">5</text>
+<text x="24.0" y="1080.0" class="sm mut">Step ③ tries each legal play for every player to the round's end and keeps the best result for each side (max ours, min theirs).</text>
+<text x="24.0" y="1098.0" class="sm mut">Alpha-beta pruning skips lines that can't change the answer; a transposition-table cache reuses positions already solved.</text>
+<text x="24.0" y="1116.0" class="sm mut">On a follow the candidate is just played; on budget expiry the value-head pick stands.</text>
+<text x="24.0" y="1146.0" class="hdr ext">ONE WORLD, STEP ③ (HERE: THE TRUE DEAL)</text>
+<text x="24.0" y="1178.0" class="sm mut">0</text>
+<rect x="38.0" y="1160.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="50.0" y="1176.5" class="b sm" text-anchor="middle">Q<tspan class="">♠</tspan></text>
+<rect x="63.0" y="1160.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="75.0" y="1176.5" class="b sm" text-anchor="middle">7<tspan class="red">♥</tspan></text>
+<rect x="88.0" y="1160.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="100.0" y="1176.5" class="b sm" text-anchor="middle">8<tspan class="red">♥</tspan></text>
+<rect x="113.0" y="1160.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="125.0" y="1176.5" class="b sm" text-anchor="middle">9<tspan class="red">♥</tspan></text>
+<rect x="138.0" y="1160.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="150.0" y="1176.5" class="b sm" text-anchor="middle">5<tspan class="red">♥</tspan></text>
+<rect x="163.0" y="1160.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="175.0" y="1176.5" class="b sm" text-anchor="middle">9<tspan class="">♠</tspan></text>
+<rect x="188.0" y="1160.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="200.0" y="1176.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
+<text x="24.0" y="1204.0" class="sm mut">1</text>
+<rect x="38.0" y="1186.0" width="24.0" height="24.0" rx="3" class="card"/><text x="50.0" y="1202.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
+<rect x="63.0" y="1186.0" width="24.0" height="24.0" rx="3" class="card"/><text x="75.0" y="1202.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
+<rect x="88.0" y="1186.0" width="24.0" height="24.0" rx="3" class="card"/><text x="100.0" y="1202.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
+<rect x="113.0" y="1186.0" width="24.0" height="24.0" rx="3" class="card"/><text x="125.0" y="1202.5" class="b sm" text-anchor="middle">10<tspan class="">♣</tspan></text>
+<rect x="138.0" y="1186.0" width="24.0" height="24.0" rx="3" class="card"/><text x="150.0" y="1202.5" class="b sm" text-anchor="middle">10<tspan class="">♠</tspan></text>
+<rect x="163.0" y="1186.0" width="24.0" height="24.0" rx="3" class="card"/><text x="175.0" y="1202.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<rect x="188.0" y="1186.0" width="24.0" height="24.0" rx="3" class="card"/><text x="200.0" y="1202.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
+<text x="24.0" y="1230.0" class="sm mut">2</text>
+<rect x="38.0" y="1212.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="50.0" y="1228.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
+<rect x="63.0" y="1212.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="75.0" y="1228.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
+<rect x="88.0" y="1212.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="100.0" y="1228.5" class="b sm" text-anchor="middle">4<tspan class="">♣</tspan></text>
+<rect x="113.0" y="1212.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="125.0" y="1228.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
+<rect x="138.0" y="1212.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="150.0" y="1228.5" class="b sm" text-anchor="middle">K<tspan class="">♣</tspan></text>
+<rect x="163.0" y="1212.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="175.0" y="1228.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
+<rect x="188.0" y="1212.0" width="24.0" height="24.0" rx="3" class="cardatt"/><text x="200.0" y="1228.5" class="b sm" text-anchor="middle">5<tspan class="">♠</tspan></text>
+<text x="24.0" y="1256.0" class="sm mut">3</text>
+<rect x="38.0" y="1238.0" width="24.0" height="24.0" rx="3" class="card"/><text x="50.0" y="1254.5" class="b sm" text-anchor="middle">3<tspan class="">♣</tspan></text>
+<rect x="63.0" y="1238.0" width="24.0" height="24.0" rx="3" class="card"/><text x="75.0" y="1254.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
+<rect x="88.0" y="1238.0" width="24.0" height="24.0" rx="3" class="card"/><text x="100.0" y="1254.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
+<rect x="113.0" y="1238.0" width="24.0" height="24.0" rx="3" class="card"/><text x="125.0" y="1254.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
+<rect x="138.0" y="1238.0" width="24.0" height="24.0" rx="3" class="card"/><text x="150.0" y="1254.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text>
+<rect x="163.0" y="1238.0" width="24.0" height="24.0" rx="3" class="card"/><text x="175.0" y="1254.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<rect x="188.0" y="1238.0" width="24.0" height="24.0" rx="3" class="card"/><text x="200.0" y="1254.5" class="b sm" text-anchor="middle">5<tspan class="">♣</tspan></text>
+<text x="24.0" y="1284.0" class="sm mut">all four hands face up</text>
+<path d="M214.0,1210.0 C257.0,1210.0 257.0,1174.0 300.0,1174.0" class="exline"/>
+<rect x="304.0" y="1161.0" width="26.0" height="26.0" rx="3" class="card"/><text x="317.0" y="1178.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text>
+<path d="M392.0,1174.0 L560.0,1174.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="476.0" y="1168.0" class="sm mut" text-anchor="middle">every reply, to round end</text>
+<rect x="568.0" y="1161.0" width="260.0" height="26.0" rx="13" class="exsoft"/>
+<text x="698.0" y="1178.5" class="sm b ext" text-anchor="middle">attackers 45 → +1 level</text>
+<path d="M214.0,1210.0 C257.0,1210.0 257.0,1214.0 300.0,1214.0" class="exline"/>
+<rect x="304.0" y="1201.0" width="26.0" height="26.0" rx="3" class="card"/><text x="317.0" y="1218.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<path d="M392.0,1214.0 L560.0,1214.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="476.0" y="1208.0" class="sm mut" text-anchor="middle">every reply, to round end</text>
+<rect x="568.0" y="1201.0" width="260.0" height="26.0" rx="13" class="exsoft"/>
+<text x="698.0" y="1218.5" class="sm b ext" text-anchor="middle">attackers 45 → +1 level</text>
+<path d="M214.0,1210.0 C257.0,1210.0 257.0,1254.0 300.0,1254.0" class="linemut"/>
+<rect x="304.0" y="1241.0" width="26.0" height="26.0" rx="3" class="card"/><text x="317.0" y="1258.5" class="b sm" text-anchor="middle">5<tspan class="">♣</tspan></text>
+<rect x="331.0" y="1241.0" width="26.0" height="26.0" rx="3" class="card"/><text x="344.0" y="1258.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
+<rect x="358.0" y="1241.0" width="26.0" height="26.0" rx="3" class="card"/><text x="371.0" y="1258.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<path d="M392.0,1254.0 L560.0,1254.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="476.0" y="1248.0" class="sm mut" text-anchor="middle">every reply, to round end</text>
+<rect x="568.0" y="1241.0" width="260.0" height="26.0" rx="13" class="panelbox"/>
+<text x="698.0" y="1258.5" class="sm mut" text-anchor="middle">attackers 80 → bot team loses the deal</text>
+<text x="842.0" y="1194.0" class="sm mut">tie in this world;</text>
+<text x="842.0" y="1211.0" class="sm mut">the 64-world average</text>
+<text x="842.0" y="1228.0" class="sm mut">breaks it</text>
+<text x="24.0" y="1310.0" class="sm b">64 worlds × 8 candidates in 0.197 s (429,026 positions tried, 173,315 reused from cache) · mean J♦ 1.797 vs A♣ 1.719 → play J♦.</text>
+<line x1="24.0" y1="1340.0" x2="976.0" y2="1340.0" class="grid"/>
+<text x="24.0" y="1366.0" class="hdr vdt">DECLARE</text>
+<text x="91.9" y="1366.0" class="h">The value head at a declare chance (vd; vdef = every first-round chance)</text>
+<rect x="46.0" y="1406.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="49.5" y1="1409.5" x2="68.7" y2="1409.5" class="thumb"/><line x1="49.5" y1="1419.0" x2="74.2" y2="1419.0" class="thumb"/><line x1="49.5" y1="1428.5" x2="71.1" y2="1428.5" class="thumb"/><rect x="52.0" y="1412.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="55.5" y1="1415.5" x2="74.6" y2="1415.5" class="thumb"/><line x1="55.5" y1="1425.0" x2="72.2" y2="1425.0" class="thumb"/><line x1="55.5" y1="1434.5" x2="77.5" y2="1434.5" class="thumb"/><rect x="58.0" y="1418.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="61.5" y1="1421.5" x2="87.7" y2="1421.5" class="thumb"/><line x1="61.5" y1="1431.0" x2="89.8" y2="1431.0" class="thumb"/><line x1="61.5" y1="1440.5" x2="90.8" y2="1440.5" class="thumb"/><rect x="64.0" y="1424.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="67.5" y1="1427.5" x2="96.7" y2="1427.5" class="thumb"/><line x1="67.5" y1="1437.0" x2="97.3" y2="1437.0" class="thumb"/><line x1="67.5" y1="1446.5" x2="91.2" y2="1446.5" class="thumb"/><text x="76.0" y="1469.0" class="sm b" text-anchor="middle">64 sampled deals</text><text x="76.0" y="1485.0" class="sm mut" text-anchor="middle">unseen shuffled</text>
+<line x1="132.0" y1="1428.0" x2="215.1" y2="1428.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="173.5" y="1420.0" class="mono sm" text-anchor="middle">× outcomes</text>
+<rect x="219.1" y="1392.5" width="170.0" height="71.0" rx="6" class="stage"/><text x="304.1" y="1415.5" class="sm b" text-anchor="middle">per outcome (PASS too):</text><text x="304.1" y="1432.5" class="sm mut" text-anchor="middle">declare, no counter-call,</text><text x="304.1" y="1449.5" class="sm mut" text-anchor="middle">heuristic bury + trick 1</text>
+<line x1="393.1" y1="1428.0" x2="506.6" y2="1428.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="449.8" y="1420.0" class="mono sm" text-anchor="middle">batches of 128</text>
+<rect x="510.6" y="1400.0" width="92.0" height="56.0" rx="7" class="netbox"/><line x1="524.6" y1="1410.0" x2="524.6" y2="1446.0" class="netlayer"/><line x1="546.0" y1="1410.0" x2="546.0" y2="1446.0" class="netlayer"/><line x1="567.3" y1="1410.0" x2="567.3" y2="1446.0" class="netlayer"/><line x1="588.6" y1="1410.0" x2="588.6" y2="1446.0" class="netlayer"/><line x1="524.6" y1="1420.8" x2="546.0" y2="1435.2" class="netwire"/><line x1="524.6" y1="1435.2" x2="546.0" y2="1420.8" class="netwire"/><line x1="546.0" y1="1420.8" x2="567.3" y2="1435.2" class="netwire"/><line x1="546.0" y1="1435.2" x2="567.3" y2="1420.8" class="netwire"/><line x1="567.3" y1="1420.8" x2="588.6" y2="1435.2" class="netwire"/><line x1="567.3" y1="1435.2" x2="588.6" y2="1420.8" class="netwire"/><text x="556.6" y="1473.0" class="sm b nett" text-anchor="middle">value head</text><text x="556.6" y="1489.0" class="sm mut" text-anchor="middle">SMV3 · 491ee4bf</text>
+<line x1="606.6" y1="1428.0" x2="659.2" y2="1428.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="632.9" y="1420.0" class="mono sm" text-anchor="middle">values</text>
+<rect x="712.7" y="1406.0" width="24.4" height="14.0" class="wd"/><text x="708.7" y="1418.0" class="sm b" text-anchor="end">PASS</text><text x="741.2" y="1418.0" class="mono sm">-0.49</text><rect x="737.2" y="1428.0" width="19.0" height="14.0" class="vd"/><text x="733.2" y="1440.0" class="sm b" text-anchor="end">2♣</text><text x="760.2" y="1440.0" class="mono sm">+0.38</text><line x1="737.2" y1="1402.0" x2="737.2" y2="1446.0" class="zero"/><text x="731.2" y="1469.0" class="sm b" text-anchor="middle">mean per outcome</text><text x="731.2" y="1485.0" class="sm mut" text-anchor="middle">ADKY: 34 cards dealt</text>
+<line x1="803.2" y1="1428.0" x2="832.0" y2="1428.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="836.0" y="1392.5" width="140.0" height="71.0" rx="6" class="vdsoft"/><text x="906.0" y="1415.5" class="sm b vdt" text-anchor="middle">declare 2♣</text><text x="906.0" y="1432.5" class="sm mut" text-anchor="middle">beats heuristic's PASS</text><text x="906.0" y="1449.5" class="sm mut" text-anchor="middle">0.10 s</text>
+<text x="24.0" y="1506.0" class="sm mut">Outcomes = distinct (banker, trump) results of the options, PASS included unless merged; 64 × outcomes positions, batches of 128.</text>
+<text x="24.0" y="1524.0" class="sm mut">This chance (ADKY record): 2 outcomes, PASS and 2♣ → 128 positions, one batch. vd runs only when the heuristic would declare</text>
+<text x="24.0" y="1542.0" class="sm mut">or in the final window; vdef at every first-round chance with an option. The best outcome replaces the heuristic's only if its mean is higher.</text>
+<line x1="24.0" y1="1550.0" x2="976.0" y2="1550.0" class="grid"/>
+<text x="24.0" y="1576.0" class="hdr nett">BURY · bwv</text>
+<text x="115.0" y="1576.0" class="h">The value head picks the kitty</text>
+<text x="976.0" y="1576.0" class="sm mut" text-anchor="end">unchanged since release 45</text>
+<rect x="28.0" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="31.7" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="35.4" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="39.1" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="42.8" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="46.5" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="50.2" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="53.9" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="57.6" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="61.3" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="65.0" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="68.7" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="72.4" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="76.1" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="79.8" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="83.5" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="87.2" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="90.8" y="1610.0" width="2.5" height="30.0" rx="1" class="red" fill-opacity="0.8"/><rect x="94.5" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="98.2" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="101.9" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="105.6" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="109.3" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="113.0" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="116.7" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="120.4" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="124.1" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="127.8" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="131.5" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="135.2" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="138.9" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="142.6" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><rect x="146.3" y="1610.0" width="2.5" height="30.0" rx="1" class="wd" fill-opacity="0.8"/><text x="89.0" y="1673.0" class="sm b" text-anchor="middle">banker: 33 cards</text><text x="89.0" y="1689.0" class="sm mut" text-anchor="middle">25 + 8 kitty</text>
+<line x1="158.0" y1="1632.0" x2="190.4" y2="1632.0" class="arrow" marker-end="url(#ar9)"/>
+<rect x="200.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="208.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="216.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="224.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="232.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="240.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="248.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="256.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="264.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="272.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="280.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="288.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="296.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="304.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="312.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="320.4" y="1606.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="200.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="208.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="216.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="224.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="232.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="240.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="248.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="256.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="264.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="272.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="280.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="288.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="296.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="304.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="312.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="320.4" y="1615.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="200.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="208.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="216.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="224.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="232.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="240.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="248.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="256.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="264.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="272.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="280.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="288.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="296.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="304.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="312.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="320.4" y="1624.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="200.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="208.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="216.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="224.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="232.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="240.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="248.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="256.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="264.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="272.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="280.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="288.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="296.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="304.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="312.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><rect x="320.4" y="1633.0" width="6.0" height="7.0" rx="1" class="wdsoft"/><text x="264.4" y="1673.0" class="sm b" text-anchor="middle">≤ 64 kitties</text><text x="264.4" y="1689.0" class="sm mut" text-anchor="middle">ballot + 1-card swaps</text>
+<line x1="338.4" y1="1632.0" x2="432.6" y2="1632.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="385.5" y="1624.0" class="mono sm" text-anchor="middle">× 32 worlds</text>
+<rect x="461.6" y="1610.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="465.1" y1="1613.5" x2="484.3" y2="1613.5" class="thumb"/><line x1="465.1" y1="1623.0" x2="489.9" y2="1623.0" class="thumb"/><line x1="465.1" y1="1632.5" x2="486.7" y2="1632.5" class="thumb"/><rect x="467.6" y="1616.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="471.1" y1="1619.5" x2="490.3" y2="1619.5" class="thumb"/><line x1="471.1" y1="1629.0" x2="487.8" y2="1629.0" class="thumb"/><line x1="471.1" y1="1638.5" x2="493.2" y2="1638.5" class="thumb"/><rect x="473.6" y="1622.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="477.1" y1="1625.5" x2="503.3" y2="1625.5" class="thumb"/><line x1="477.1" y1="1635.0" x2="505.4" y2="1635.0" class="thumb"/><line x1="477.1" y1="1644.5" x2="506.4" y2="1644.5" class="thumb"/><rect x="479.6" y="1628.0" width="40.0" height="26.0" rx="2" class="world"/><line x1="483.1" y1="1631.5" x2="512.4" y2="1631.5" class="thumb"/><line x1="483.1" y1="1641.0" x2="512.9" y2="1641.0" class="thumb"/><line x1="483.1" y1="1650.5" x2="506.8" y2="1650.5" class="thumb"/><text x="491.6" y="1673.0" class="sm b" text-anchor="middle">32 worlds</text><text x="491.6" y="1689.0" class="sm mut" text-anchor="middle">MC sampler, not belief</text>
+<line x1="550.6" y1="1632.0" x2="667.8" y2="1632.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="609.2" y="1624.0" class="mono sm" text-anchor="middle">2048 positions</text>
+<rect x="671.8" y="1604.0" width="92.0" height="56.0" rx="7" class="netbox"/><line x1="685.8" y1="1614.0" x2="685.8" y2="1650.0" class="netlayer"/><line x1="707.1" y1="1614.0" x2="707.1" y2="1650.0" class="netlayer"/><line x1="728.4" y1="1614.0" x2="728.4" y2="1650.0" class="netlayer"/><line x1="749.8" y1="1614.0" x2="749.8" y2="1650.0" class="netlayer"/><line x1="685.8" y1="1624.8" x2="707.1" y2="1639.2" class="netwire"/><line x1="685.8" y1="1639.2" x2="707.1" y2="1624.8" class="netwire"/><line x1="707.1" y1="1624.8" x2="728.4" y2="1639.2" class="netwire"/><line x1="707.1" y1="1639.2" x2="728.4" y2="1624.8" class="netwire"/><line x1="728.4" y1="1624.8" x2="749.8" y2="1639.2" class="netwire"/><line x1="728.4" y1="1639.2" x2="749.8" y2="1624.8" class="netwire"/><text x="717.8" y="1677.0" class="sm b nett" text-anchor="middle">value head</text><text x="717.8" y="1693.0" class="sm mut" text-anchor="middle">SMV3 · 491ee4bf</text>
+<line x1="767.8" y1="1632.0" x2="862.0" y2="1632.0" class="arrow" marker-end="url(#ar9)"/>
+<text x="814.9" y="1624.0" class="mono sm" text-anchor="middle">2048 values</text>
+<rect x="876.0" y="1598.0" width="75.5" height="5.5" class="rulef"/><rect x="876.0" y="1605.0" width="46.4" height="5.5" class="rulef"/><rect x="876.0" y="1612.0" width="80.0" height="5.5" class="rulef"/><rect x="876.0" y="1619.0" width="50.6" height="5.5" class="inkf"/><rect x="876.0" y="1626.0" width="50.6" height="5.5" class="rulef"/><rect x="876.0" y="1633.0" width="66.4" height="5.5" class="rulef"/><rect x="876.0" y="1640.0" width="73.4" height="5.5" class="rulef"/><rect x="876.0" y="1647.0" width="54.2" height="5.5" class="rulef"/><text x="921.0" y="1673.0" class="sm b" text-anchor="middle">mean per kitty</text><text x="921.0" y="1689.0" class="sm mut" text-anchor="middle">argmax · bars illustrative</text>
+<text x="24.0" y="1722.0" class="sm mut">2048 positions, sent as 16 forward calls (batches of 128). Each position: bury, then the heuristic plays trick 1.</text>
+<text x="24.0" y="1740.0" class="sm mut">2 s budget; on expiry or error the heuristic's bury stands. ADKY buried 3♣ 6♣ 6♦ 7♦ 4♥ 9♥ 3♠ 6♠.</text>
+<text x="984.0" y="1766.0" class="mut sm" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-model-calls.svg</text>
+</svg>

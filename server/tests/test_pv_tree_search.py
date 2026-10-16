@@ -17,12 +17,15 @@ pairing by world; (f) the lookahead on a hand-built position, terminal leaves;
 the screen trace filter; (i) determinism; (j) the real package.
 """
 import copy
+import hashlib
 import json
 import math
+import os
 from collections import Counter
 import pickle
 import random
 import zlib
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -42,6 +45,8 @@ from shengji.train.pv_tree_config import (PVTreeConfig, PVTreeConfigError, TREE_
 from test_policy_world_search import state
 from test_pv_admission_rules import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION_SHA,
                                      predict, production_package)  # noqa: F401  (fixture)
+from test_encoder_round_compat import PACKAGE_SHA, pinned_production_package  # noqa: F401
+from test_xmtj_throw_regressions import position as xmtj_position
 
 COMBO_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f"
 RELEASE38_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457"
@@ -101,6 +106,35 @@ def bot_of(tree_config=None, *, evaluator=None, worlds=4, seed=17, budget=None,
     cls = pv.PVSearchBot if tree_config is None else tree.PVTreeSearchBot
     return cls(policy, evaluator=HashEvaluator() if evaluator is None else evaluator,
                version=2, config=config, checkpoint="/dev/null", seed=seed)
+
+
+BELIEF_SHA = "763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343"
+
+
+@pytest.fixture(scope="module")
+def hybrid_belief_package(tmp_path_factory):
+    """Real env-selected belief package, or a deterministic seeded DEV fixture."""
+    configured = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
+    if configured:
+        path = Path(configured)
+        if not path.exists():
+            pytest.fail(f"SHENGJI_PV_BELIEF_PACKAGE_PATH is missing: {path}")
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        expected = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_SHA256", BELIEF_SHA)
+        assert actual == expected, f"belief package is {actual}, not {expected}"
+        return str(path), actual
+
+    torch = pytest.importorskip("torch")
+    from shengji.train import belief_seq as bs
+    from shengji.train.belief_sampler import export
+    torch.manual_seed(5)
+    root = tmp_path_factory.mktemp("s35-hybrid-belief")
+    model = bs.build_model(d=16, heads=2, enc_layers=1, xattn_layers=1, x_hidden=16).eval()
+    torch.save({"model": model.state_dict(), "config": model.config,
+                "args": {"no_history": False}, "epoch": 1, "calib_ll": 1.0},
+               root / "best.pt")
+    info = export(str(root / "best.pt"), str(root / "s17.npz"), temperature=1.0)
+    return str(root / "s17.npz"), info["sha256"]
 
 
 def deal(seed):
@@ -1024,6 +1058,62 @@ def test_exact_tail_rejects_invalid_limits_and_greedy_override():
     greedy = bot_of(PVTreeConfig(sims=8, cont="trick-greedy"), worlds=2)
     with pytest.raises(tree.PVSearchPolicyError):
         greedy._tree_lookahead(rnd, seat, [["D2"]], [world], exact_max_cards=1)
+
+
+@pytest.mark.parametrize("root_index", [56, 57])
+def test_pinned_belief_producer_reaches_hybrid_cutoff(
+        pinned_production_package, hybrid_belief_package, root_index):
+    """Pinned policy + belief worlds feed the offline hybrid consumer.
+
+    The two XMTJ positions are an existing replay witness: index 56 is a
+    <=3-card lead and 57 is a <=3-card follow. This is a functional path
+    witness only; it makes no strength or timing claim.
+    """
+    import shengji.train.pv_search_policy as search
+
+    production = str(pinned_production_package)
+    belief_path, belief_sha = hybrid_belief_package
+    kwargs = dict(
+        worlds=64, candidates=8, cap=4000, batch_size=128, seed=7,
+        world_history_legal=True, world_history_draw=True,
+        belief_worlds=True, belief_checkpoint=belief_path,
+        belief_sha256=belief_sha)
+    baseline = search.make_pv_search_bot(production, sha256=PACKAGE_SHA, **kwargs)
+    hybrid = search.make_pv_search_bot(
+        production, sha256=PACKAGE_SHA, tree=PVTreeConfig(sims=0), **kwargs)
+
+    rnd = xmtj_position(root_index)
+    seat = rnd.turn
+    assert max(map(len, rnd.hands)) <= 3
+    baseline_action = baseline.decide_play(copy.deepcopy(rnd), seat)
+    captured = {}
+    real_decide = hybrid._tree_decide
+
+    def capture(root, acting_seat, admitted, means, worlds, pv_winner, fields, select_kwargs):
+        captured.update(admitted=copy.deepcopy(admitted), means=np.asarray(means).copy(),
+                        worlds=copy.deepcopy(worlds), v0=hybrid._tree_v0.copy(),
+                        pv_winner=pv_winner)
+        return real_decide(root, acting_seat, admitted, means, worlds, pv_winner,
+                           fields, select_kwargs)
+
+    hybrid._tree_decide = capture
+    hybrid_action = hybrid.decide_play(copy.deepcopy(rnd), seat)
+    assert hybrid_action == baseline_action
+    assert len(captured["worlds"]) == 64
+    assert captured["v0"].shape == (64, len(captured["admitted"]))
+    assert np.isfinite(captured["v0"]).all()
+
+    actions = captured["admitted"][:2]
+    worlds = captured["worlds"][:2]
+    values, stats = hybrid._tree_lookahead(
+        rnd, seat, actions, worlds, completed_tricks=1,
+        exact_max_cards=2, exact_max_nodes=100_000)
+    assert values.shape == (2, 2) and np.isfinite(values).all()
+    assert stats["tree_exact_leaves"] + stats["tree_model_leaves"] == 4
+    assert stats["tree_exact_leaves"] == 4
+    assert stats["tree_model_leaves"] == 0
+    assert stats["tree_completed_tricks_min"] == 1
+    assert stats["tree_completed_tricks_max"] == 1
 
 
 def test_trick_mode_skips_when_the_root_seat_plays_last():

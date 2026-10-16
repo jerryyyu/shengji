@@ -491,6 +491,146 @@
       "host": "ubuntu-32gb-hel1-1",
       "git_head": "ac1e4320a26f42863d71dc40743d65a00d4f040a",
       "note": "W64/K8 pv-search data teacher with the RELEASE-36 package smv3out-491ee4bf (production since 2026-09-30 11:53 ET): the runPV1..10 recipe with one variable changed, the package. Policy pv-search-491ee4bf-w64-k8-r10159821-bury-hybrid-74c08df78d4f (budgets unset), explore 0.1/k 2, cap 256, 32,000 rounds. Block runPVR1..10 = 35260910..35420909 at 16,000 seeds per store, checked clear against this registry on 2026-09-30 before arming (Jerry 2026-09-30: gen new data on pv search with the production policy). Dealing on the host since 2026-10-01 14:22Z (armed behind runPVR3; host registration traj-s35340910-b142e9b566d0). Recorded here because a window registered only on a remote host is invisible to the repo."
+    },
+    {
+      "name": "runPVS1",
+      "purpose": "trajectory",
+      "seed0": 61580910,
+      "clusters": 16000,
+      "span": [
+        61580910,
+        61596910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS1: slice 1 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS2",
+      "purpose": "trajectory",
+      "seed0": 61596910,
+      "clusters": 16000,
+      "span": [
+        61596910,
+        61612910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS2: slice 2 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS3",
+      "purpose": "trajectory",
+      "seed0": 61612910,
+      "clusters": 16000,
+      "span": [
+        61612910,
+        61628910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS3: slice 3 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS4",
+      "purpose": "trajectory",
+      "seed0": 61628910,
+      "clusters": 16000,
+      "span": [
+        61628910,
+        61644910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS4: slice 4 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS5",
+      "purpose": "trajectory",
+      "seed0": 61644910,
+      "clusters": 16000,
+      "span": [
+        61644910,
+        61660910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS5: slice 5 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS6",
+      "purpose": "trajectory",
+      "seed0": 61660910,
+      "clusters": 16000,
+      "span": [
+        61660910,
+        61676910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS6: slice 6 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS7",
+      "purpose": "trajectory",
+      "seed0": 61676910,
+      "clusters": 16000,
+      "span": [
+        61676910,
+        61692910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS7: slice 7 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS8",
+      "purpose": "trajectory",
+      "seed0": 61692910,
+      "clusters": 16000,
+      "span": [
+        61692910,
+        61708910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS8: slice 8 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS9",
+      "purpose": "trajectory",
+      "seed0": 61708910,
+      "clusters": 16000,
+      "span": [
+        61708910,
+        61724910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS9: slice 9 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS10",
+      "purpose": "trajectory",
+      "seed0": 61724910,
+      "clusters": 16000,
+      "span": [
+        61724910,
+        61740910
+      ],
+      "created_at": "2026-10-15T09:56:38-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
+      "note": "runPVS10: slice 10 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
     }
   ]
 }

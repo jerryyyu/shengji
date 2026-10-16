@@ -11,7 +11,12 @@ clients hold WebSockets to it. That drives every deployment rule below.
   Deploy when it's quiet.
 - TLS is handled by the platform/proxy; the frontend auto-selects `wss://`
   on https pages (same-origin), no config needed.
-- Health check: `GET /healthz`.
+- Health check: `GET /healthz`. Its `activity` block counts, since the process started: rooms created,
+  games started, rounds recorded (a `round_start` record reached disk), records written, record write
+  failures, the last successful write (ISO UTC) and the last failure's exception class and errno.
+  `games_started` ahead of `rounds_recorded` is a room-log write failure; everything at zero for days is
+  inactivity. The counters observe the room path and never gate it; none carries a room code, path or
+  payload, so the endpoint stays unauthenticated.
 - Pick the bot with `SHENGJI_BOT`. The source fallback is `mc` (N=10); Fly configuration
   selects the served bot named under "Current production" below (`SHENGJI_PV_*`; `/healthz`
   reports it under `pv_search`). The release-28 shortlist keys stay in `fly.toml` so that
@@ -133,6 +138,14 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
   `cwv-bury-fallback-v1` record (a budget fallback rate above a few percent is the rollback trigger); the
   release-44 declare records (`declare_decision`, `pv-declare-serving-fallback-v1`); decision wall p50/p95; the
   first live room's log. Live acceptance pending: the first live room completing a game without fallback records.
+- Next deploy (the first to ship the `/healthz` `activity` counters; board #707 row D4): the deciding test is a
+  real game. Production wrote no room log between 2026-10-09 19:04Z and at least 10-15, and nothing could tell
+  inactivity from a silent write failure. After the deploy the game must create `/data/logs/<CODE>.jsonl` at its
+  `round_start` (read-only: `fly ssh console -a shengji -C "ls -lt /data/logs" | head -3`) and move the counters:
+  `rooms_created`, `games_started`, `rounds_recorded` and `records_written` all at least 1,
+  `record_write_failures` 0, `last_record_write` at the game's time. `games_started` moving while
+  `rounds_recorded` stays 0 is a write failure, named by `last_record_failure` and by the one warning line
+  `room <CODE> event logging failed (<class> errno=<name>)`. Whether to play that game deliberately is Jerry's call.
 - Earlier records: releases 28–38 in
   [docs_archive/deploy-releases-28-38.md](docs_archive/deploy-releases-28-38.md); the release 39–41
   overlay recipe in the [#778 release record](https://github.com/jerryyyu/shengji/pull/778#issuecomment-5988860620)

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import errno
 import json
 import logging
 import random
 import string
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +126,73 @@ app = FastAPI(title="shengji")
 rooms: dict[str, "Room"] = {}
 
 
+def _iso_utc(t: float) -> str:
+    return datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _errno_name(exc: OSError) -> str | None:
+    """``ENOSPC``/``EROFS``/``EACCES`` for an errno the platform names, else None."""
+    if exc.errno is None:
+        return None
+    return errno.errorcode.get(exc.errno)
+
+
+@dataclass
+class Activity:
+    """Process-lifetime counters reported by ``/healthz``.
+
+    From outside, a server whose room log silently stopped reaching disk looks
+    exactly like a server nobody is playing on: both leave no new file.  These
+    counters tell the two apart without opening a log.  ``games_started``
+    moves on the game path when a table starts; ``rounds_recorded`` moves only
+    when that round's ``round_start`` record reached disk; a gap between them
+    is a write failure, and ``last_record_failure`` names its class and errno.
+
+    Plain integers, mutated only on the event loop (every ``log_event`` call
+    runs there).  They observe the room path and never gate it: a counter
+    cannot raise into a game.  Nothing here carries a room code, a path or a
+    record payload, so the unauthenticated health endpoint may show it.
+    """
+    rooms_created: int = 0
+    games_started: int = 0
+    rounds_recorded: int = 0
+    records_written: int = 0
+    record_write_failures: int = 0
+    last_record_write_t: float | None = None
+    last_record_failure: dict | None = None
+
+    def record_written(self, kind: str) -> None:
+        self.records_written += 1
+        self.last_record_write_t = time.time()
+        if kind == "round_start":
+            self.rounds_recorded += 1
+
+    def record_failed(self, exc: OSError) -> None:
+        self.record_write_failures += 1
+        self.last_record_failure = {
+            "at": _iso_utc(time.time()),
+            "class": type(exc).__name__,
+            "errno": exc.errno,
+            "errno_name": _errno_name(exc),
+        }
+
+    def health(self) -> dict:
+        return {
+            "rooms_created": self.rooms_created,
+            "games_started": self.games_started,
+            "rounds_recorded": self.rounds_recorded,
+            "records_written": self.records_written,
+            "record_write_failures": self.record_write_failures,
+            "last_record_write": (None if self.last_record_write_t is None
+                                  else _iso_utc(self.last_record_write_t)),
+            "last_record_failure": (None if self.last_record_failure is None
+                                    else dict(self.last_record_failure)),
+        }
+
+
+ACTIVITY = Activity()
+
+
 @dataclass
 class Seat:
     name: str
@@ -177,8 +246,12 @@ class Room:
     chat: list[dict] = field(default_factory=list)  # last CHAT_KEEP messages
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    bot: HeuristicBot = field(
-        default_factory=lambda: make_bot(os.environ.get("SHENGJI_BOT", "mc")))
+    # None builds the served policy (SHENGJI_BOT) in `__post_init__` with this
+    # room's own seed, so rooms do not share one sampler stream
+    bot: HeuristicBot | None = None
+    # the seed that bot was built with (None for a bot passed in); every
+    # round_start record carries it, so a room's decisions can be replayed
+    bot_seed: int | None = None
     bot_task: asyncio.Task | None = None
     deal_task: asyncio.Task | None = None
     watchdog_task: asyncio.Task | None = None
@@ -195,6 +268,8 @@ class Room:
     # different root plus an immutable server-only identity; no websocket path
     # can construct one yet.
     log_dir: Path | None = None
+    # Bound warnings during a persistent disk failure without stopping retries.
+    _log_error_reported: bool = field(default=False, init=False, repr=False)
     evaluation: HumanEvaluationContext | None = None
     # Any missing evaluation event destroys the assigned session's evidence
     # chain.  Keep the room terminally unusable rather than allowing a retry or
@@ -205,6 +280,10 @@ class Room:
     experimental_policy: str | None = None
 
     def __post_init__(self) -> None:
+        if self.bot is None:
+            if self.bot_seed is None:
+                self.bot_seed = secrets.randbits(31)
+            self.bot = make_bot(os.environ.get("SHENGJI_BOT", "mc"), seed=self.bot_seed)
         if self.log_dir is None:
             self.log_dir = LOG_DIR
         else:
@@ -262,10 +341,22 @@ class Room:
                 rec["training_excluded"] = True
             with open(self.log_dir / f"{self.code}.jsonl", "a") as f:
                 f.write(json.dumps(rec) + "\n")
-        except OSError:
+        except OSError as exc:
+            ACTIVITY.record_failed(exc)
             if self.evaluation is not None:
                 self.evaluation_invalidated = True
                 raise  # evidence rooms fail closed instead of silently playing
+            if not self._log_error_reported:
+                self._log_error_reported = True
+                # Do not send event payloads, chat, or exception paths to
+                # stderr.  The class alone cannot separate a full disk from a
+                # read-only mount or an I/O error; the errno can.
+                logging.warning("room %s event logging failed (%s errno=%s); "
+                                "gameplay continues, records may be missing",
+                                self.code, type(exc).__name__,
+                                _errno_name(exc) or exc.errno)
+        else:
+            ACTIVITY.record_written(kind)
 
     # ------------------------------------------------------------- id mapping
     def index_round(self) -> None:
@@ -815,7 +906,7 @@ def _log_round_start(room: Room) -> None:
         ]
     room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
-                   players=players)
+                   players=players, bot_seed=room.bot_seed)
 
 
 def _log_round_end(room: Room) -> None:
@@ -877,6 +968,7 @@ class _BotTurnSnapshot:
     phase: str
     mode: str
     owner_left_at: float | None
+    play_cursor: tuple[int, int] | None
 
 
 @dataclass(frozen=True)
@@ -934,6 +1026,7 @@ def _snapshot_bot_turn(room: Room, seat: int, mode: str
         phase=rnd.phase,
         mode=mode,
         owner_left_at=room.seats[seat].left_at,
+        play_cursor=(len(rnd.history), len(rnd.trick.plays)) if rnd.phase == "play" else None,
     )
 
 
@@ -1038,6 +1131,12 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             or room.round is not snapshot.round_token
             or room.round is None
             or room.round.phase != snapshot.phase
+            # The fourth player can win and immediately lead. Seat and phase
+            # then match an OLD snapshot, but the previous follow is not a
+            # decision for the new lead. Store this outside round_copy because
+            # speculative policy code may mutate its isolated copy.
+            or (snapshot.phase == "play" and snapshot.play_cursor !=
+                (len(room.round.history), len(room.round.trick.plays)))
             or not _turn_eligible(
                 room, snapshot.seat, snapshot.mode,
                 owner_left_at=snapshot.owner_left_at)):
@@ -1494,6 +1593,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         # games_to_win=None: a table keeps playing. Holding A scores a
         # point and the levels restart, rather than ending the session.
         room.game = Game(start_level=room.start_level, games_to_win=None)
+        ACTIVITY.games_started += 1
         room.game.start_round()
         room.index_round()
         _log_round_start(room)
@@ -1598,6 +1698,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         continue
                     room = Room(code=new_code(), start_level=start_level, **options)
                     rooms[room.code] = room
+                    ACTIVITY.rooms_created += 1
                     # Through _attach like every other path: hand-rolling the
                     # queue/writer here skipped the generation bump AND the
                     # resume token, so a creator had no identity and an
@@ -1950,7 +2051,11 @@ async def healthz() -> dict:
             # The served policy prior (#435), or null: a deploy that binds a
             # prior must show its SHA256 here, and a rollback must show null.
             "prior": _prior_health(),
-            "pv_search": _pv_search_health()}
+            "pv_search": _pv_search_health(),
+            # Since this process started: rooms, games, records on disk and
+            # record write failures, so a quiet week and a silent log failure
+            # read differently without opening the volume.
+            "activity": ACTIVITY.health()}
 
 
 from .debug import register_debug  # noqa: E402

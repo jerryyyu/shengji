@@ -1,0 +1,363 @@
+{
+  "seat": 3,
+  "phase": "play",
+  "hand": [
+    "S5",
+    "SQ",
+    "SA",
+    "SA",
+    "H3",
+    "H3",
+    "H10",
+    "D3",
+    "D3",
+    "D5",
+    "DJ",
+    "DQ",
+    "DK",
+    "DA",
+    "C4",
+    "C8",
+    "C9",
+    "C10",
+    "CJ",
+    "CK",
+    "H2",
+    "S2",
+    "C2",
+    "C2",
+    "LJ"
+  ],
+  "is_attacker": false,
+  "voids": {
+    "0": [],
+    "1": [],
+    "2": []
+  },
+  "unseen_trumps": 25,
+  "unseen_by_suit": {
+    "S": [
+      "SK",
+      "SK",
+      "SQ",
+      "SJ",
+      "SJ",
+      "S10",
+      "S10",
+      "S9",
+      "S8",
+      "S8"
+    ],
+    "H": [
+      "HA",
+      "HA",
+      "HK",
+      "HK",
+      "HQ",
+      "HJ",
+      "HJ",
+      "H10",
+      "H9",
+      "H9"
+    ],
+    "D": [
+      "DA",
+      "DK",
+      "DQ",
+      "DJ",
+      "D10",
+      "D10",
+      "D9",
+      "D9",
+      "D8",
+      "D8"
+    ],
+    "C": [],
+    "T": [
+      "BJ",
+      "BJ",
+      "LJ",
+      "D2",
+      "D2",
+      "H2",
+      "S2",
+      "CA",
+      "CA",
+      "CK"
+    ]
+  },
+  "boss_cards": [
+    "SA",
+    "DA"
+  ],
+  "ruff_risky_suits": [],
+  "candidates": [
+    {
+      "index": 0,
+      "play": [
+        "SA",
+        "SA"
+      ],
+      "acting_team_levels": -0.5793,
+      "model_score": -0.5793,
+      "policy_log_odds": 0.6868,
+      "attackers_avg": null,
+      "se": null,
+      "paired_se_vs_incumbent": null,
+      "selection_worlds": 64,
+      "old_ballot": null,
+      "anchor": true,
+      "heuristic_pick": true,
+      "model_nominated": false,
+      "report_finalist": false,
+      "selected": true,
+      "bot_plays": true
+    },
+    {
+      "index": 1,
+      "play": [
+        "C2",
+        "C2"
+      ],
+      "acting_team_levels": -0.6181,
+      "model_score": -0.6181,
+      "policy_log_odds": 0.6766,
+      "attackers_avg": null,
+      "se": null,
+      "paired_se_vs_incumbent": null,
+      "selection_worlds": 64,
+      "old_ballot": null,
+      "anchor": false,
+      "heuristic_pick": false,
+      "model_nominated": true,
+      "report_finalist": false,
+      "selected": false,
+      "bot_plays": false
+    },
+    {
+      "index": 2,
+      "play": [
+        "DA"
+      ],
+      "acting_team_levels": -0.5842,
+      "model_score": -0.5842,
+      "policy_log_odds": 0.5937,
+      "attackers_avg": null,
+      "se": null,
+      "paired_se_vs_incumbent": null,
+      "selection_worlds": 64,
+      "old_ballot": null,
+      "anchor": false,
+      "heuristic_pick": false,
+      "model_nominated": true,
+      "report_finalist": false,
+      "selected": false,
+      "bot_plays": false
+    },
+    {
+      "index": 3,
+      "play": [
+        "C2",
+        "C2",
+        "H2"
+      ],
+      "acting_team_levels": -0.5767,
+      "model_score": -0.5767,
+      "policy_log_odds": 0.4572,
+      "attackers_avg": null,
+      "se": null,
+      "paired_se_vs_incumbent": null,
+      "selection_worlds": 64,
+      "old_ballot": null,
+      "anchor": false,
+      "heuristic_pick": false,
+      "model_nominated": true,
+      "report_finalist": false,
+      "selected": false,
+      "bot_plays": false
+    },
+    {
+      "index": 4,
+      "play": [
+        "SA"
+      ],
+      "acting_team_levels": -0.5815,
+      "model_score": -0.5815,
+      "policy_log_odds": 0.3434,
+      "attackers_avg": null,
+      "se": null,
+      "paired_se_vs_incumbent": null,
+      "selection_worlds": 64,
+      "old_ballot": null,
+      "anchor": false,
+      "heuristic_pick": false,
+      "model_nominated": true,
+      "report_finalist": false,
+      "selected": false,
+      "bot_plays": false
+    },
+    {
+      "index": 5,
+      "play": [
+        "C2"
+      ],
+      "acting_team_levels": -0.6482,
+      "model_score": -0.6482,
+      "policy_log_odds": 0.3383,
+      "attackers_avg": null,
+      "se": null,
+      "paired_se_vs_incumbent": null,
+      "selection_worlds": 64,
+      "old_ballot": null,
+      "anchor": false,
+      "heuristic_pick": false,
+      "model_nominated": true,
+      "report_finalist": false,
+      "selected": false,
+      "bot_plays": false
+    },
+    {
+      "index": 6,
+      "play": [
+        "D3",
+        "DA"
+      ],
+      "acting_team_levels": -0.6496,
+      "model_score": -0.6496,
+      "policy_log_odds": 0.306,
+      "attackers_avg": null,
+      "se": null,
+      "paired_se_vs_incumbent": null,
+      "selection_worlds": 64,
+      "old_ballot": null,
+      "anchor": false,
+      "heuristic_pick": false,
+      "model_nominated": true,
+      "report_finalist": false,
+      "selected": false,
+      "bot_plays": false
+    },
+    {
+      "index": 7,
+      "play": [
+        "D3",
+        "D3",
+        "DA"
+      ],
+      "acting_team_levels": -0.6407,
+      "model_score": -0.6407,
+      "policy_log_odds": 0.0183,
+      "attackers_avg": null,
+      "se": null,
+      "paired_se_vs_incumbent": null,
+      "selection_worlds": 64,
+      "old_ballot": null,
+      "anchor": false,
+      "heuristic_pick": false,
+      "model_nominated": true,
+      "report_finalist": false,
+      "selected": false,
+      "bot_plays": false
+    }
+  ],
+  "bury": null,
+  "analysis": {
+    "source": "isolated_current_state_replay",
+    "historical_decision": false,
+    "schema": "pv-search-decision-v1",
+    "policy": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8",
+    "reason": "pv_search",
+    "applied_rules": [
+      "tiebreak_applied"
+    ],
+    "anchor_selected": true,
+    "selected_index": 0,
+    "work_complete": true,
+    "model": {
+      "backend": "numpy",
+      "checkpoint_sha256": "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670",
+      "source_checkpoint_sha256": "3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8",
+      "encoding": "mlp-static",
+      "effective_encoding": "mlp-static",
+      "max_batch": 128,
+      "device": "cpu",
+      "encoder_version": 2
+    },
+    "model_score_units": "expected signed levels for acting team",
+    "selection_score_units": "expected signed levels for acting team",
+    "report": null,
+    "recipe": {
+      "worlds": 64,
+      "alternatives": 8,
+      "cap": 4000,
+      "serving_budget_seconds": 3.0,
+      "encoder_version": 2
+    },
+    "sampling": {
+      "worlds": 64,
+      "sample_attempts": 64,
+      "impossible_worlds_delta": 0,
+      "rejected_worlds_delta": 0
+    },
+    "admission": {
+      "legal_count": 1646,
+      "actions": 1646,
+      "legal_complete": true,
+      "admitted": 8,
+      "diversity_skipped": 4,
+      "forced_single_added": 0
+    },
+    "stages": {
+      "tiebreak": {
+        "tiebreak_applied": true,
+        "tiebreak_near_set": [
+          0,
+          2,
+          3,
+          4
+        ],
+        "tiebreak_points": [
+          11.7969,
+          4.2188,
+          -5.2344,
+          6.1719
+        ]
+      },
+      "lead_anchor": {
+        "lead_anchor_applied": false,
+        "lead_anchor_from": "SA SA",
+        "lead_anchor_to": "SA SA",
+        "lead_anchor_source": "heuristic"
+      },
+      "doomed_throw_reselect": {
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_from": "SA SA",
+        "doomed_throw_reselect_to": "SA SA",
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_fallback_forced": false
+      },
+      "refusal": {
+        "refusal_observations": 0,
+        "refusal_rejections": 0,
+        "refusal_fallback_worlds": 0,
+        "refusal_pinned_codes": 0
+      }
+    },
+    "work": {
+      "value_evaluations": 512,
+      "value_batches": 4,
+      "worlds": 64
+    },
+    "search_seconds": 0.102,
+    "evaluation_seconds": 0.25,
+    "candidate_count": 8,
+    "candidates_truncated": false,
+    "snapshot": {
+      "trick_number": 1,
+      "plays_in_trick": 0,
+      "acting_seat": 3
+    }
+  },
+  "ml": null
+}

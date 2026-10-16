@@ -65,6 +65,7 @@ alone) for these arrays.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -178,6 +179,8 @@ def cwv_source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
         if version == 6:
             paths["encode_banker_kitty_corrected"] = (
                 _SHENGJI / "rl" / "encode_banker_kitty_corrected.py")
+        if version == 7:
+            paths["encode_next_actor"] = _SHENGJI / "rl" / "encode_next_actor.py"
     return paths
 
 
@@ -256,9 +259,19 @@ def encoder_cache_key(version: int = ENC_VERSION) -> str:
 
 
 def cache_path(cache_dir: str | os.PathLike, shard_sha256: str, *, history: bool = False,
-               version: int = ENC_VERSION) -> Path:
-    flavour = "cwvh" if history else "cwv"
+               version: int = ENC_VERSION, trick_end: bool = False) -> Path:
+    """``trick_end`` names the flavour that also carries each record's trick-end row
+    (``build_cache``); it never shares a file with the plain flavour."""
+    if trick_end and history:
+        raise TrainDataError("trick-end rows are built for the history-free (mlp) cache only")
+    flavour = "cwvte" if trick_end else ("cwvh" if history else "cwv")
     return Path(cache_dir) / f"{shard_sha256}.{flavour}-{encoder_cache_key(version)}.npz"
+
+
+def cache_rows(meta: Mapping[str, Any]) -> int:
+    """Rows in a cache file: one per encoded record, plus its trick-end rows if it has them."""
+    counts = meta["counts"]
+    return int(counts["encoded"]) + int((counts.get("trick_end") or {}).get("rows", 0))
 
 
 # ------------------------------------------------------------------ levels
@@ -448,6 +461,92 @@ def bridge_record(record: Mapping[str, Any], *, version: int = ENC_VERSION) -> R
         successor=successor)
 
 
+#: why a record has no trick-end row: its afterstate already ends a trick (the root played
+#: fourth, so that row IS the trick-end state), the trick ends the round (a terminal state the
+#: served search scores exactly, never with the net), no record of the round reaches the end of
+#: the trick, the shard's records finish the trick in more than one way and the record does not
+#: name its round, or the continuation does not replay through the engine.
+TRICK_END_SKIPS = ("boundary", "terminal", "no_continuation", "ambiguous", "replay_failed")
+TRICK_END_SHA_PREFIX = b"shengji-cwv-trick-end-row-v1|"
+
+
+def trick_end_record_sha256(record_sha256: str) -> str:
+    """The ``record_sha256`` a trick-end row carries: derived from its record's, so the row
+    stays traceable, and never equal to any record's, so no sidecar search mean attaches."""
+    return hashlib.sha256(TRICK_END_SHA_PREFIX + str(record_sha256).encode("ascii")).hexdigest()
+
+
+def _play_sequence(rnd) -> list[tuple[int, tuple[str, ...]]]:
+    """Every engine-accepted play of ``rnd`` so far, in order, as ``(seat, cards)``."""
+    tricks = list(rnd.history) + ([rnd.trick] if rnd.trick is not None else [])
+    return [(int(play.seat), tuple(play.cards)) for trick in tricks for play in trick.plays]
+
+
+def round_of(source_ref: str) -> str | None:
+    """The round a trajectory record belongs to: ``<run>:<cluster>:<mirror>`` of its
+    ``<run>:<cluster>:<mirror>:<seat>:<ply>`` source_ref, or None for another format."""
+    parts = str(source_ref).rsplit(":", 4)
+    if len(parts) != 5 or not all(p.isdigit() for p in parts[1:4]) \
+            or not (parts[4].isdigit() or parts[4] == "bury"):
+        return None
+    return ":".join(parts[:3])
+
+
+def trick_end_rows(rows: Sequence[Row], *, version: int = ENC_VERSION
+                   ) -> tuple[list[tuple[Row, Any, ValueAfterstateTensors]], dict]:
+    """For each bridged row of ONE shard whose afterstate is mid-trick, the state after the
+    fourth play of that trick, as the round actually continued, encoded from the row's seat.
+
+    The continuation comes from the shard's own rows: each row's afterstate holds every
+    accepted play of its round up to and including its own, so the longest sequences of a
+    round extend every shorter one of it, and a row's trick is finished by replaying, through
+    the engine, the plays a sequence of ITS round continues it with.  The round is the one the
+    row's ``source_ref`` names (``round_of``): the two mirrors of a deal share the deck and can
+    share an opening, so a prefix alone does not identify the round.  A row whose source_ref
+    names no round is finished only when every sequence of the shard that extends it agrees on
+    the rest of the trick.  Returns ``([(row, trick-end state, tensors)], counts)``; nothing
+    is guessed, and a row whose continuation is missing or ambiguous is counted, not filled."""
+    counts = {"rows": 0, "skipped": {reason: 0 for reason in TRICK_END_SKIPS}}
+    sequences = [_play_sequence(row.successor) for row in rows]
+    rounds = [round_of(row.source_ref) for row in rows]
+    longest: dict[str | None, list[list[tuple[int, tuple[str, ...]]]]] = {}
+    for seq, key in sorted(zip(sequences, rounds), key=lambda pair: len(pair[0]), reverse=True):
+        known_seqs = longest.setdefault(key, [])
+        if not any(len(known) >= len(seq) and known[:len(seq)] == seq for known in known_seqs):
+            known_seqs.append(seq)
+    out: list[tuple[Row, Any, ValueAfterstateTensors]] = []
+    for row, seq, key in zip(rows, sequences, rounds):
+        state = row.successor
+        if state.phase != "play" or not state.trick.plays:
+            counts["skipped"]["terminal" if state.phase != "play" else "boundary"] += 1
+            continue
+        end = len(seq) + 4 - len(state.trick.plays)
+        pool = longest[key] if key is not None else [k for ks in longest.values() for k in ks]
+        rests = {tuple(k[len(seq):end]) for k in pool if len(k) >= end and k[:len(seq)] == seq}
+        if not rests:
+            counts["skipped"]["no_continuation"] += 1
+            continue
+        if len(rests) > 1:
+            counts["skipped"]["ambiguous"] += 1
+            continue
+        finished = copy.deepcopy(state)
+        try:
+            for seat, cards in next(iter(rests)):
+                finished.play(seat, list(cards))
+        except Exception:
+            counts["skipped"]["replay_failed"] += 1
+            continue
+        if finished.phase != "play":
+            counts["skipped"]["terminal"] += 1
+            continue
+        if finished.trick.plays or len(finished.history) != len(state.history) + 1:
+            raise TrainDataError(f"{row.source_ref}: the replayed continuation does not end "
+                                 "the record's trick")
+        out.append((row, finished, tensors_at(finished, row.seat, version=version)))
+        counts["rows"] += 1
+    return out, counts
+
+
 def reference_check(record: Mapping[str, Any], row: Row, *,
                     version: int = ENC_VERSION) -> None:
     """Refuse a bridged row that differs from ``value_afterstate``'s own binding."""
@@ -589,12 +688,18 @@ class CwvBlock:
     #: per-row arrays that a sidecar may attach; absent unless
     #: the store was given a sidecar directory
     OPTIONAL_ARRAYS = ("search_mean_played", "search_level_played")
+    #: per-row bool, present only in the trick-end flavour (``build_cache``): True on a
+    #: record's added trick-end row.  ``data.SplitSelector`` keeps such rows out of every
+    #: part but ``train``, so held-out metrics stay one row per record.
+    TRICK_END = "trick_end"
     #: per-row arrays (the history members are ragged)
     ROW_ARRAYS = ARRAYS
 
     def __init__(self, arrays: Mapping[str, np.ndarray], meta: dict, path: str | None = None):
         self.history = "history_offsets" in arrays
         names = self.ARRAYS + (self.HISTORY_ARRAYS if self.history else ())
+        if self.TRICK_END in arrays:
+            names += (self.TRICK_END,)
         for name in names:
             setattr(self, name, arrays[name])
         self.optional = tuple(name for name in self.OPTIONAL_ARRAYS if name in arrays)
@@ -603,11 +708,20 @@ class CwvBlock:
         self.meta = meta
         self.path = path
         self.n = int(self.public.shape[0])
+        if self.TRICK_END in arrays:
+            flags = arrays[self.TRICK_END]
+            if flags.dtype != np.bool_ or flags.shape != (self.n,):
+                raise TrainDataError(f"{path}: trick_end must be one bool per row")
+        else:
+            self.trick_end = None
         self.nbytes = int(sum(int(arrays[name].nbytes) for name in names))
 
-    def arrays(self) -> dict[str, np.ndarray]:
+    def _names(self) -> tuple[str, ...]:
         names = self.ARRAYS + (self.HISTORY_ARRAYS if self.history else ())
-        return {name: getattr(self, name) for name in names}
+        return names + ((self.TRICK_END,) if self.trick_end is not None else ())
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        return {name: getattr(self, name) for name in self._names()}
 
     @property
     def history_lengths(self) -> np.ndarray:
@@ -618,6 +732,8 @@ class CwvBlock:
     def subset(self, idx: np.ndarray) -> "CwvBlock":
         idx = np.asarray(idx, dtype=np.int64)
         arrays = {name: getattr(self, name)[idx] for name in self.ROW_ARRAYS + self.optional}
+        if self.trick_end is not None:
+            arrays[self.TRICK_END] = self.trick_end[idx]
         if self.history:
             lengths = self.history_lengths[idx]
             starts = self.history_offsets[idx]
@@ -647,7 +763,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
                 private: bool = False, reference_every: int = REFERENCE_EVERY,
                 witness_every: int = WITNESS_EVERY, witness_seed: int = 0,
                 progress: Callable[[dict], None] | None = None,
-                version: int = ENC_VERSION) -> tuple[Path, dict]:
+                version: int = ENC_VERSION, trick_end: bool = False) -> tuple[Path, dict]:
     """Encode every usable play record of ``shard`` into its cache file.
 
     Every ``reference_every``-th encoded row is re-derived through
@@ -655,7 +771,21 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
     ``world_witness``; either disagreement refuses the whole shard and
     leaves no file.  The bytes depend on nothing but the shard, the
     encoder, the flavour and the witness seed.
+
+    ``trick_end`` writes the trick-end flavour (``cache_path``): the same rows,
+    in the same order, followed by one TRICK-END row per record whose
+    afterstate is mid-trick (``trick_end_rows``), flagged in the ``trick_end``
+    member.  A trick-end row is the state after the fourth play of the
+    record's trick, realised in the same round, encoded from the record's seat
+    with the record's label.  That is the state type the served search scores
+    (every leaf is a finished trick), which the plain flavour holds only for
+    records played fourth.  It carries no search-mean evidence: the record's
+    search means value the root's choices over sampled replies, not this
+    realised continuation, so its ``record_sha256`` is a derived digest the
+    sidecar never matches.
     """
+    if trick_end and history:
+        raise TrainDataError("trick-end rows are built for the history-free (mlp) cache only")
     reference_every = max(1, int(reference_every))
     witness_every = max(1, int(witness_every))
     counts = _fresh_counts()
@@ -666,6 +796,7 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
     hist_meta: list[np.ndarray] = []
     hist_lengths: list[int] = []
     scalars: dict[str, list] = {k: [] for k in CwvBlock.ARRAYS if k not in ("public", "world")}
+    bridged: list[Row] = []
     started = time.perf_counter()
     for record in iter_records(shard):
         counts["records"] += 1
@@ -717,11 +848,29 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
         scalars["n_search"].append(len(row.search_means))
         counts["action_values_means_2plus"]["present" if row.search_means else "absent"] += 1
         counts["encoded"] += 1
+        if trick_end:
+            bridged.append(row)
         if progress and counts["encoded"] % 5000 == 0:
             progress({"label": shard.label, "records": counts["records"],
                       "encoded": counts["encoded"],
                       "secs": round(time.perf_counter() - started, 1)})
-    n = counts["encoded"]
+    if trick_end:
+        added, counts["trick_end"] = trick_end_rows(bridged, version=version)
+        for row, state, tensors in added:
+            if not world_conservation(tensors, state):
+                raise TrainDataError(f"{shard.label}: a trick-end world tensor does not account "
+                                     f"for the {DECK_SIZE}-card deck")
+            public_rows.append(tensors.public)
+            world_rows.append(np.rint(tensors.world * 2.0).astype(np.uint8))
+            scalars["perspective"].append(1 if tensors.perspective[0] == 1.0 else 0)
+            for name in ("target", "utility", "attacker_points", "points_so_far", "ply",
+                         "role_attacker", "seat", "deal_key", "cluster", "source_ref"):
+                scalars[name].append(getattr(row, name))
+            scalars["record_sha256"].append(trick_end_record_sha256(row.record_sha256))
+            scalars["input_sha256"].append(tensors.sha256())
+            scalars["has_search_means"].append(False)
+            scalars["n_search"].append(0)
+    n = len(public_rows)
     arrays = {
         "public": (np.stack(public_rows) if n
                    else np.zeros((0, public_dim(version)), np.float32)),
@@ -752,6 +901,10 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
         arrays["history_meta"] = (np.concatenate(hist_meta) if n
                                   else np.zeros((0, HISTORY_META_DIM), np.uint8))
         arrays["history_offsets"] = offsets
+    if trick_end:
+        flags = np.zeros(n, dtype=bool)
+        flags[counts["encoded"]:] = True
+        arrays[CwvBlock.TRICK_END] = flags
     nbytes = int(sum(int(a.nbytes) for a in arrays.values()))
     meta = {
         "schema": CACHE_SCHEMA,
@@ -769,7 +922,11 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
         "sees_hidden_hands": SEES_HIDDEN_HANDS,
         "view": VIEW,
     }
-    path = cache_path(cache_dir, shard.sha256, history=history, version=version)
+    if trick_end:
+        # stated only on the trick-end flavour, so the plain flavour's bytes are unchanged
+        meta["trick_end"] = True
+    path = cache_path(cache_dir, shard.sha256, history=history, version=version,
+                      trick_end=trick_end)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     with open(tmp, "wb") as fh:
@@ -787,7 +944,8 @@ def read_meta(path: str | os.PathLike) -> dict:
 
 
 def check_meta(meta: Mapping[str, Any], *, path: str | os.PathLike,
-               shard_sha256: str | None = None, history: bool | None = None) -> dict:
+               shard_sha256: str | None = None, history: bool | None = None,
+               trick_end: bool | None = None) -> dict:
     """Refuse a cache of another schema / encoder / shard / flavour."""
     if meta.get("schema") != CACHE_SCHEMA:
         raise TrainDataError(f"{path}: cache schema {meta.get('schema')!r}")
@@ -799,6 +957,9 @@ def check_meta(meta: Mapping[str, Any], *, path: str | os.PathLike,
         raise TrainDataError(f"{path}: cache derived from another shard")
     if history is not None and bool(meta.get("history")) != bool(history):
         raise TrainDataError(f"{path}: cache flavour (history={meta.get('history')}) differs")
+    if trick_end is not None and bool(meta.get("trick_end")) != bool(trick_end):
+        raise TrainDataError(f"{path}: cache flavour (trick_end={bool(meta.get('trick_end'))}) "
+                             "differs")
     if meta.get("sees_hidden_hands") is not True:
         raise TrainDataError(f"{path}: cache does not declare sees_hidden_hands")
     return dict(meta)
@@ -816,10 +977,16 @@ def check_public_width(arrays: Mapping[str, np.ndarray], meta: Mapping[str, Any]
                              f"rows are {public_dim(version)}")
 
 
+def _member_names(meta: Mapping[str, Any]) -> tuple[str, ...]:
+    """The per-row members a cache of this flavour holds."""
+    return (CwvBlock.ARRAYS + (CwvBlock.HISTORY_ARRAYS if meta.get("history") else ())
+            + ((CwvBlock.TRICK_END,) if meta.get("trick_end") else ()))
+
+
 def load_block(path: str | os.PathLike, *, shard_sha256: str | None = None,
                history: bool | None = None, sidecar_dir: str | None = None) -> CwvBlock:
     meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256, history=history)
-    names = CwvBlock.ARRAYS + (CwvBlock.HISTORY_ARRAYS if meta.get("history") else ())
+    names = _member_names(meta)
     with zipfile.ZipFile(path) as zf:
         arrays = {name: _read_member(zf, name) for name in names}
     check_public_width(arrays, meta, path=path)
@@ -845,28 +1012,120 @@ def decode_arrays(task: tuple[str, str | None, bool | None]
     path, shard_sha256, history = task
     meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256,
                       history=history)
-    names = CwvBlock.ARRAYS + (CwvBlock.HISTORY_ARRAYS if meta.get("history") else ())
+    names = _member_names(meta)
     with zipfile.ZipFile(path) as zf:
         arrays = {name: _read_member(zf, name) for name in names}
     check_public_width(arrays, meta, path=path)
     return arrays, meta
 
 
-def _valid_meta(path: Path, shard_sha256: str, history: bool) -> dict | None:
+def read_columns(task: tuple[str, str | None, bool | None, tuple[str, ...], np.ndarray | None]
+                 ) -> dict[str, np.ndarray]:
+    """The members ``names`` of one cached shard, plus its ``trick_end`` flags
+    when the cache is that flavour, restricted to the kept rows ``keep_idx``
+    (``None`` = all), after the hash and flavour check ``decode_arrays`` runs.
+    Module level and argument-picklable so a process pool can call it."""
+    path, shard_sha256, history, names, keep_idx = task
+    meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256, history=history)
+    names = tuple(names)
+    if meta.get("trick_end") and CwvBlock.TRICK_END not in names:
+        names += (CwvBlock.TRICK_END,)
+    with zipfile.ZipFile(path) as zf:
+        arrays = {name: _read_member(zf, name) for name in names}
+    if keep_idx is not None:
+        idx = np.asarray(keep_idx, dtype=np.int64)
+        arrays = {name: column[idx] for name, column in arrays.items()}
+    return arrays
+
+
+def read_columns_many(tasks: Sequence[tuple]) -> list[dict[str, np.ndarray]]:
+    """``read_columns`` over several shards in one pool task."""
+    return [read_columns(task) for task in tasks]
+
+
+def selector_rows(columns: Mapping[str, np.ndarray]) -> Any:
+    """What a ``data.SplitSelector`` reads of a block (its deal keys and, in the
+    trick-end flavour, the derived-row flags), from ``read_columns`` output."""
+    from types import SimpleNamespace
+    return SimpleNamespace(deal_key=columns["deal_key"],
+                           trick_end=columns.get(CwvBlock.TRICK_END))
+
+
+def selector_block(store: Any, i: int) -> Any:
+    """What a ``data.SplitSelector`` reads of shard ``i`` (``selector_rows``):
+    the deal-key and flag columns from the cache when the store can read
+    columns, else the whole decoded block."""
+    if hasattr(store, "column_task"):
+        return selector_rows(read_columns(store.column_task(i, ("deal_key",))))
+    return store.block(i)
+
+
+def part_row_counts(store: Any, selectors: Mapping[str, Callable[[Any], np.ndarray]]
+                    ) -> Iterator[tuple[int, dict[str, int]]]:
+    """``(i, {part: rows})`` for every shard: the sum of ``selector(block(i))``.
+
+    A ``data.SplitSelector`` reads a block's deal keys, and outside ``train``
+    also its ``trick_end`` flags.  So for a shard whose recorded deal keys all
+    answer the same way, the count is all of its kept rows or none of them,
+    known without decoding, unless the shard carries trick-end rows and the
+    part is not ``train``.  Only those shards, and shards whose keys straddle
+    a part boundary, are read (``selector_block``).  Any other selector type
+    gets the full decode of every block."""
+    from types import SimpleNamespace
+    if not all(type(selector) is SplitSelector for selector in selectors.values()):
+        for i in range(len(store)):
+            block = store.block(i)
+            yield i, {part: int(np.asarray(selector(block), dtype=bool).sum())
+                      for part, selector in selectors.items()}
+        return
+    rows = store.rows()
+    metas = getattr(store, "metas", None)
+    for i in range(len(store)):
+        keys = SimpleNamespace(deal_key=np.asarray(store.keys_of(i), dtype=str), trick_end=None)
+        derived = True if metas is None else bool(metas[i].get("trick_end"))
+        block = None
+        counts = {}
+        for part, selector in selectors.items():
+            hit = np.asarray(selector(keys), dtype=bool)
+            if not bool(hit.any()):
+                counts[part] = 0
+            elif bool(hit.all()) and (selector.part == "train" or not derived):
+                counts[part] = int(rows[i])
+            else:
+                if block is None:
+                    block = selector_block(store, i)
+                counts[part] = int(np.asarray(selector(block), dtype=bool).sum())
+        yield i, counts
+
+
+def split_row_counts(store: Any, selectors: Mapping[str, Callable[[Any], np.ndarray]]
+                     ) -> dict[str, int]:
+    """Rows per part, equal to summing ``selector(block)`` over every block
+    (``part_row_counts``; most shards are counted without being decoded)."""
+    total = {part: 0 for part in selectors}
+    for _i, counts in part_row_counts(store, selectors):
+        for part, n in counts.items():
+            total[part] += n
+    return total
+
+
+def _valid_meta(path: Path, shard_sha256: str, history: bool,
+                trick_end: bool = False) -> dict | None:
     if not Path(path).is_file():
         return None
     try:
         return check_meta(read_meta(path), path=path, shard_sha256=shard_sha256,
-                          history=history)
+                          history=history, trick_end=trick_end)
     except (TrainDataError, OSError, ValueError, KeyError):
         return None
 
 
 def _build_cache_task(task: tuple) -> dict:
-    shard, cache_dir, history, private, witness_seed, version = task
+    shard, cache_dir, history, private, witness_seed, version, *flavour = task
     started = time.perf_counter()
     _path, counts = build_cache(shard, cache_dir, history=history, private=private,
-                                witness_seed=witness_seed, version=version)
+                                witness_seed=witness_seed, version=version,
+                                trick_end=bool(flavour and flavour[0]))
     return {"sha256": shard.sha256, "label": shard.label, "records": counts["records"],
             "encoded": counts["encoded"], "secs": round(time.perf_counter() - started, 3)}
 
@@ -874,7 +1133,7 @@ def _build_cache_task(task: tuple) -> dict:
 def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.PathLike, *,
                  history: bool = False, witness_seed: int = 0, workers: int | None = None,
                  progress: Callable[[str], None] | None = None,
-                 version: int = ENC_VERSION) -> list[dict]:
+                 version: int = ENC_VERSION, trick_end: bool = False) -> list[dict]:
     """Build the caches of ``jobs`` (``(shard, private)`` pairs), ``workers``
     at a time in spawned processes (one shard per task); byte-identical to
     the in-process build."""
@@ -890,7 +1149,7 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
             started = time.perf_counter()
             _path, counts = build_cache(shard, cache_dir, history=history, private=private,
                                         version=version,
-                                        witness_seed=witness_seed)
+                                        witness_seed=witness_seed, trick_end=trick_end)
             results.append({"sha256": shard.sha256, "label": shard.label,
                             "records": counts["records"], "encoded": counts["encoded"],
                             "secs": round(time.perf_counter() - started, 3)})
@@ -898,7 +1157,7 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
                 f"secs={results[-1]['secs']}")
         return results
     tasks = [(shard, str(cache_dir), bool(history), bool(private), int(witness_seed),
-              int(version))
+              int(version), *((True,) if trick_end else ()))
              for shard, private in jobs]
     say(f"cwv cache: building {len(tasks)} shard(s) with {min(workers, len(tasks))} workers")
     ctx = multiprocessing.get_context("spawn")
@@ -915,22 +1174,24 @@ def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.Path
 def ensure_caches(shards: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.PathLike, *,
                   history: bool = False, witness_seed: int = 0, workers: int | None = None,
                   progress: Callable[[str], None] | None = None,
-                  version: int = ENC_VERSION) -> list[tuple[dict, bool]]:
+                  version: int = ENC_VERSION, trick_end: bool = False) -> list[tuple[dict, bool]]:
     """``[(meta, rebuilt), ...]`` in the order of ``shards``."""
     version = check_version(version)
-    metas = [_valid_meta(cache_path(cache_dir, s.sha256, history=history, version=version),
-                         s.sha256, history)
+    metas = [_valid_meta(cache_path(cache_dir, s.sha256, history=history, version=version,
+                                    trick_end=trick_end),
+                         s.sha256, history, trick_end)
              for s, _p in shards]
     pending = [(s, p) for (s, p), m in zip(shards, metas) if m is None]
     if pending:
         build_caches(pending, cache_dir, history=history, witness_seed=witness_seed,
-                     workers=workers, progress=progress, version=version)
+                     workers=workers, progress=progress, version=version, trick_end=trick_end)
     out: list[tuple[dict, bool]] = []
     for (shard, _private), meta in zip(shards, metas):
         if meta is None:
-            path = cache_path(cache_dir, shard.sha256, history=history, version=version)
+            path = cache_path(cache_dir, shard.sha256, history=history, version=version,
+                              trick_end=trick_end)
             meta = check_meta(read_meta(path), path=path, shard_sha256=shard.sha256,
-                              history=history)
+                              history=history, trick_end=trick_end)
             out.append((meta, True))
         else:
             out.append((meta, False))
@@ -1044,6 +1305,52 @@ class CwvBlockStore:
                 continue
             yield self.block(i)
 
+    def column_task(self, i: int, names: Sequence[str]) -> tuple:
+        """The picklable argument ``read_columns`` needs for shard ``i``."""
+        shard, path = self.entries[i]
+        return (str(path), shard.sha256, self.history, tuple(names), self.keep_idx[i])
+
+    def iter_columns(self, names: Sequence[str], *, workers: int = 0,
+                     skip: Callable[[list[str]], bool] | None = None,
+                     chunk: int = 32) -> Iterator[tuple[int, dict[str, np.ndarray]]]:
+        """``(i, {name: column})`` for every shard ``skip`` does not reject,
+        in shard order, each column restricted to the kept rows as
+        ``block(i)`` would hold them.
+
+        Only the named members are read (``read_columns``), so a pass that
+        needs a few per-row columns skips the wide ``public`` / ``world``
+        members a full decode spends its time on.  ``workers`` > 0 reads in
+        that many processes, ``chunk`` shards per task and a bounded number
+        of tasks in flight.  The order and the values do not depend on
+        ``workers``.  Nothing is admitted to the residency, and sidecar
+        columns are not attached."""
+        todo = [i for i in range(len(self.entries))
+                if skip is None or not skip(self.keys_of(i))]
+        if int(workers) <= 0 or len(todo) <= 1:
+            for i in todo:
+                yield i, read_columns(self.column_task(i, names))
+            return
+        from collections import deque
+        groups = [todo[k:k + int(chunk)] for k in range(0, len(todo), int(chunk))]
+        with ProcessPoolExecutor(max_workers=int(workers),
+                                 mp_context=multiprocessing.get_context("spawn")) as pool:
+            pending: deque = deque()
+            upcoming = iter(groups)
+
+            def submit_next() -> None:
+                group = next(upcoming, None)
+                if group is not None:
+                    tasks = [self.column_task(i, names) for i in group]
+                    pending.append((group, pool.submit(read_columns_many, tasks)))
+
+            for _ in range(4 * int(workers)):
+                submit_next()
+            while pending:
+                group, future = pending.popleft()
+                results = future.result()
+                submit_next()
+                yield from zip(group, results)
+
     def windows(self, order: Sequence[int], window: int) -> list[list[int]]:
         return _window_groups(order, self.sizes, self.residency.budget, window,
                               lambda i: self.entries[i][0].label)
@@ -1115,7 +1422,11 @@ class CwvBlockStore:
                 rng.shuffle(order)
             batch_size = max(1, int(batch_size))
             groups = self.windows(order, window)
-            pool = (ProcessPoolExecutor(max_workers=int(decode_workers))
+            # spawn, not fork: the trainer iterates this on its prefetch thread,
+            # and forking a process whose other threads hold locks can hang the
+            # child (spawn is already the default on macOS)
+            pool = (ProcessPoolExecutor(max_workers=int(decode_workers),
+                                        mp_context=multiprocessing.get_context("spawn"))
                     if int(decode_workers) > 0 and len(groups) > 1 else None)
         finally:
             finish_stage("setup", started)
@@ -1317,14 +1628,18 @@ def collate(block: CwvBlock, idx: np.ndarray) -> dict[str, np.ndarray]:
     return gather([block], np.zeros(len(idx), dtype=np.int64), idx)
 
 
-def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
+def tensors_of(batch: Mapping[str, np.ndarray], device,
+               copy: Callable[[np.ndarray], Any] | None = None) -> dict:
     """The afterstate batch tensors of a gathered batch: ``public`` float32,
     ``world`` float32 (counts / 2), ``perspective`` one-hot, ``history`` /
     ``history_mask`` (a single all-zero event per row when the batch carries
     none: the mlp ignores it, the batch contract still holds), plus the
-    targets."""
+    targets.  ``copy`` moves one host array to the device (``DeviceCopies``);
+    the default is a plain ``.to(device)``."""
     import torch
 
+    if copy is None:
+        copy = lambda array: torch.from_numpy(array).to(device)  # noqa: E731
     b = int(batch["public"].shape[0])
     perspective = np.zeros((b, PERSPECTIVE_DIM), dtype=np.float32)
     attacker = batch["perspective"].astype(bool)
@@ -1337,21 +1652,18 @@ def tensors_of(batch: Mapping[str, np.ndarray], device) -> dict:
         history = np.zeros((b, 1, HISTORY_EVENT_DIM), dtype=np.float32)
         mask = np.ones((b, 1), dtype=bool)
     out = {
-        "public": torch.from_numpy(np.ascontiguousarray(batch["public"])).to(device),
-        "world": (torch.from_numpy(np.ascontiguousarray(batch["world"])).to(device)
-                  .to(torch.float32) * 0.5),
-        "perspective": torch.from_numpy(perspective).to(device),
-        "history": torch.from_numpy(history).to(device),
-        "history_mask": torch.from_numpy(mask).to(device),
-        "target": torch.from_numpy(np.ascontiguousarray(batch["target"])).to(device),
-        "attacker_points": torch.from_numpy(
-            np.ascontiguousarray(batch["attacker_points"])).to(device),
-        "role_attacker": torch.from_numpy(
-            np.ascontiguousarray(batch["role_attacker"]).astype(bool)).to(device),
+        "public": copy(np.ascontiguousarray(batch["public"])),
+        "world": copy(np.ascontiguousarray(batch["world"])).to(torch.float32) * 0.5,
+        "perspective": copy(perspective),
+        "history": copy(history),
+        "history_mask": copy(mask),
+        "target": copy(np.ascontiguousarray(batch["target"])),
+        "attacker_points": copy(np.ascontiguousarray(batch["attacker_points"])),
+        "role_attacker": copy(np.ascontiguousarray(batch["role_attacker"]).astype(bool)),
     }
     for name in ("search_mean_played", "search_level_played"):
         if name in batch:
-            out[name] = torch.from_numpy(np.ascontiguousarray(batch[name])).to(device)
+            out[name] = copy(np.ascontiguousarray(batch[name]))
     return out
 
 
@@ -1371,6 +1683,164 @@ def tensors_rows(batch: Mapping[str, np.ndarray]) -> list[ValueAfterstateTensors
         tensors.validate()
         rows.append(tensors)
     return rows
+
+
+class Prefetch:
+    """Run an iterator on a background thread, at most ``depth`` items ahead
+    of the consumer, so the next batch is gathered while the device trains
+    on this one.
+
+    ``produce`` is a zero-argument callable returning the iterator.  It is
+    called, advanced and closed on the background thread, so a generator's
+    ``finally`` (a decode pool's shutdown) runs there.  Items arrive in the
+    producer's order, and an exception the producer raises is re-raised at
+    the consumer's next read.  ``close`` (also on ``with`` exit) stops the
+    producer after its current item, closes the iterator and joins.
+
+    The producer owns whatever it advances (random generators, the store's
+    residency) until the iteration ends or ``close`` returns; nothing else
+    may touch that state meanwhile.  Under that rule the items, and the
+    order of every random draw, are exactly those of iterating ``produce()``
+    inline."""
+
+    _END = object()
+
+    def __init__(self, produce: Callable[[], Iterator], depth: int = 2):
+        import queue
+        import threading
+        if int(depth) < 1:
+            raise ValueError("prefetch depth must be >= 1")
+        self._queue: Any = queue.Queue(maxsize=int(depth))
+        self._stop = threading.Event()
+        self._finished = False
+        self._thread = threading.Thread(target=self._run, args=(produce,),
+                                        name="cwv-prefetch", daemon=True)
+        self._thread.start()
+
+    def _put(self, item: tuple[bool, Any]) -> bool:
+        import queue
+        while not self._stop.is_set():
+            try:
+                self._queue.put(item, timeout=0.05)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _run(self, produce: Callable[[], Iterator]) -> None:
+        iterator = None
+        outcome: tuple[bool, Any] = (True, self._END)
+        try:
+            iterator = iter(produce())
+            for item in iterator:
+                if not self._put((True, item)):
+                    return
+        except BaseException as exc:          # re-raised by the consumer
+            outcome = (False, exc)
+        finally:
+            # The iterator is closed before the terminal item is published:
+            # the consumer reads nothing past the end marker, so an error the
+            # close raises must be the terminal item itself.  A producer
+            # error already in hand is the one reported.
+            close = getattr(iterator, "close", None)
+            if close is not None:
+                try:
+                    close()
+                except BaseException as exc:
+                    if outcome[0]:
+                        outcome = (False, exc)
+            self._put(outcome)
+
+    def __iter__(self) -> "Prefetch":
+        return self
+
+    def __next__(self) -> Any:
+        if self._finished:
+            raise StopIteration
+        ok, item = self._queue.get()
+        if ok and item is not self._END:
+            return item
+        self._finished = True
+        self._thread.join()
+        if ok:
+            raise StopIteration
+        raise item
+
+    def close(self) -> None:
+        self._stop.set()
+        self._finished = True
+        self._thread.join()
+
+    def __enter__(self) -> "Prefetch":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
+
+class DeviceCopies:
+    """Host-to-device copies that do not make the host wait for the device.
+
+    On MPS a plain ``.to(device)`` waits until everything already queued has
+    run, so the next step cannot even be queued until the previous one has
+    finished.  A ``non_blocking`` copy returns at once, but the device reads
+    the host memory later, when the copy reaches the front of its queue: the
+    host array must stay alive and unchanged until then.  So this keeps every
+    step's host arrays and, before a new step's copies, waits on an event
+    recorded after the step ``depth`` back, then lets that step's arrays go.
+    At most ``depth`` steps are queued ahead of the device.  The bytes copied
+    are the same either way.
+
+    ``depth`` 0, or a device without events (CPU), is a plain blocking copy.
+    ``event`` makes the event factory injectable for tests."""
+
+    def __init__(self, device: Any, depth: int = 2, *, event: Callable[[], Any] | None = None):
+        import torch
+        self.device = torch.device(device)
+        if event is None and self.device.type == "mps":
+            event = torch.mps.Event
+        elif event is None and self.device.type == "cuda":
+            event = torch.cuda.Event
+        self._event = event
+        self.depth = int(depth) if event is not None else 0
+        self._held: list = []
+        self._ring: list[tuple[Any, list]] = []
+
+    def __call__(self, value: Any) -> Any:
+        """``value`` (a numpy array or a host tensor) on the device."""
+        import torch
+        host = torch.from_numpy(value) if isinstance(value, np.ndarray) else value
+        if not self.depth:
+            return host.to(self.device)
+        self._held.append(host)
+        return host.to(self.device, non_blocking=True)
+
+    def begin_step(self) -> None:
+        """Before a step's copies: wait until at most ``depth - 1`` earlier steps
+        are unfinished on the device, and release their host arrays."""
+        while self.depth and len(self._ring) >= self.depth:
+            event, _held = self._ring.pop(0)
+            event.synchronize()
+
+    def end_step(self) -> None:
+        """After a step's work is queued: close it with an event."""
+        if not self.depth:
+            return
+        event = self._event()
+        event.record()
+        self._ring.append((event, self._held))
+        self._held = []
+
+    def drain(self) -> None:
+        """Wait for every queued step and release every host array."""
+        for event, _held in self._ring:
+            event.synchronize()
+        self._ring = []
+        if self._held:
+            event = self._event()
+            event.record()
+            event.synchronize()
+            self._held = []
 
 
 # ------------------------------------------------------------------ splits
@@ -1447,15 +1917,19 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
                    progress: Callable[[str], None] | None = None,
                    cache_workers: int | None = None, residency: Residency | None = None,
                    resident_bytes: int | None = None, sidecar_dir: str | None = None,
-                   pack_dir: str | None = None) -> Prepared:
+                   pack_dir: str | None = None, trick_end: bool = False) -> Prepared:
     """Discover, verify, encode (the missing shard caches ``cache_workers``
-    at a time) and index every store into one ``CwvBlockStore``."""
+    at a time) and index every store into one ``CwvBlockStore``.
+
+    ``trick_end`` reads the trick-end flavour (``build_cache``): every record's row
+    plus its trick-end row, the added rows usable by the ``train`` part only."""
     stores = [discover_store(path, limit_clusters=limit_clusters) for path in paths]
     jobs = [(shard, store.private) for store in stores for shard in store.shards]
     if not jobs:
         raise TrainDataError("no shard to train on")
     built = ensure_caches(jobs, cache_dir, history=history, witness_seed=witness_seed,
-                          workers=cache_workers, progress=progress, version=version)
+                          workers=cache_workers, progress=progress, version=version,
+                          trick_end=trick_end)
     entries: list[tuple[ShardRef, str]] = []
     keep: list = []
     counts: dict = {"shards": 0, "cache_rebuilt": 0, "cache_reused": 0}
@@ -1469,11 +1943,13 @@ def prepare_stores(paths: Sequence[str], cache_dir: Path, *, limit_clusters: int
             counts["cache_rebuilt" if rebuilt else "cache_reused"] += 1
             _merge_counts(counts, {"records": canonical_counts(meta["counts"])})
             path = str(cache_path(cache_dir, shard.sha256, history=history,
-                                  version=version))
+                                  version=version, trick_end=trick_end))
             cache_files.append({"label": shard.label, "shard_sha256": shard.sha256,
                                 "cache": path, "records": int(meta["counts"]["encoded"]),
                                 "nbytes": int(meta["nbytes"]), "history": bool(history),
-                                "rebuilt": rebuilt})
+                                "rebuilt": rebuilt,
+                                **({"trick_end_rows": cache_rows(meta) - int(meta["counts"]["encoded"])}
+                                   if trick_end else {})})
             entries.append((shard, path))
             keep.append(None)
         if limit_clusters is not None and store.layout != "shard-store":
@@ -1508,6 +1984,7 @@ __all__ = [
     "check_witness", "collate", "compact_history", "cwv_encoder_identity", "deal_assignment",
     "ensure_caches", "expand_history", "expected_levels", "gather", "load_block",
     "prepare_stores", "pt0_level", "read_meta", "reference_check", "search_means", "canonical_counts",
+    "cache_rows", "trick_end_record_sha256", "trick_end_rows", "TRICK_END_SKIPS",
     "split_deals", "split_mask", "SplitSelector", "target_category", "tensors_of", "tensors_rows",
     "world_conservation", "world_witness", "LEVEL_SUPPORT", "PT0_SUPPORT",
 ]

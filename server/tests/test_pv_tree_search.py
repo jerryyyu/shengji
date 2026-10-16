@@ -763,6 +763,94 @@ def test_each_continuation_mode_on_a_hand_built_position():
     assert stats["tree_policy_rows"] == 4 and stats["tree_forced_plays"] == 2
 
 
+@pytest.mark.parametrize("horizon, expected_history", [(1, 13), (2, 14), (3, 15)])
+def test_offline_completed_trick_override_reaches_requested_horizon(horizon, expected_history):
+    """The DEV horizon is measured in completed tricks, not individual plies."""
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    values, stats = bot._tree_lookahead(
+        rnd, seat, [["D8"]], [world], completed_tricks=horizon)
+    leaf, = bot.evaluator.seen
+
+    assert values.shape == (1, 1)
+    assert len(leaf.history) == expected_history
+    assert stats["tree_completed_tricks_min"] == horizon
+    assert stats["tree_completed_tricks_max"] == horizon
+
+
+def test_offline_completed_trick_override_shortens_at_round_end():
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    _, stats = bot._tree_lookahead(
+        rnd, seat, [["D2"]], [world], completed_tricks=3)
+
+    assert stats["tree_terminal_leaves"] == 1
+    assert stats["tree_completed_tricks_min"] == 2
+    assert stats["tree_completed_tricks_max"] == 2
+
+
+def test_completed_trick_override_two_matches_configured_policy_default():
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    actions = [["D8"]]
+    default = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    override = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    baseline, baseline_stats = default._tree_lookahead(rnd, seat, actions, [world])
+    same_horizon, override_stats = override._tree_lookahead(
+        rnd, seat, actions, [world], completed_tricks=2)
+
+    np.testing.assert_array_equal(same_horizon, baseline)
+    assert override_stats == {
+        **baseline_stats,
+        "tree_completed_tricks_min": 2,
+        "tree_completed_tricks_max": 2,
+    }
+
+
+def test_completed_trick_override_preserves_world_action_matrix_and_rejects_invalid_values():
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    values, _ = bot._tree_lookahead(
+        rnd, seat, [["D8"], ["DQ"]], [world, world], completed_tricks=1)
+    assert values.shape == (2, 2)
+    assert len(bot.evaluator.seen) == 4
+
+    for invalid in (True, False, 0, 4, 1.5, "2"):
+        with pytest.raises(tree.PVSearchPolicyError):
+            bot._tree_lookahead(rnd, seat, [["D8"]], [world],
+                                completed_tricks=invalid)
+
+    greedy = bot_of(PVTreeConfig(sims=8, cont="trick-greedy"), worlds=2)
+    with pytest.raises(tree.PVSearchPolicyError):
+        greedy._tree_lookahead(rnd, seat, [["D8"]], [world], completed_tricks=1)
+
+
+def test_completed_trick_override_honors_budget_gate():
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    def expired():
+        raise tree.PVTreeBudgetExceeded("test")
+
+    with pytest.raises(tree.PVTreeBudgetExceeded):
+        bot._tree_lookahead(rnd, seat, [["D8"]], [world], expired,
+                             completed_tricks=3)
+    assert bot.evaluator.seen == []
+
+
 def test_trick_mode_skips_when_the_root_seat_plays_last():
     """The root seat's play completes the trick: ``trick`` has nothing to look
     ahead (d = 0), the tree is skipped and counted; the two modes that play a

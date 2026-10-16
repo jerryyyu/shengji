@@ -666,16 +666,33 @@ class PVTreeMixin:
         stats["tree_terminal_leaves"] = sum(c.phase == "round_end" for c in clones)
         return values.reshape(len(worlds), len(actions)), {k: int(v) for k, v in stats.items()}
 
-    def _tree_lookahead(self, rnd, seat, actions, worlds, gate=None):
+    def _tree_lookahead(self, rnd, seat, actions, worlds, gate=None, *,
+                        completed_tricks=None):
         """``(values, stats)``: ``values[w, a]`` is the root-team value of
         contender ``a`` in visited world ``w`` after the continuation
         (``cont``, module docstring).  Every contender is evaluated in every
-        given world.  Raises `PVTreeContinuationRefused` when the engine does
-        not accept a continuation lead as submitted."""
+        given world.  ``completed_tricks`` is an offline DEV override for the
+        number of completed tricks from the root, including the current trick.
+        It is deliberately bounded and never read by the serving path: the default remains the
+        continuation configured in ``PVTreeConfig``.  Raises
+        `PVTreeContinuationRefused` when the engine does not accept a
+        continuation lead as submitted."""
         cont = self.tree_config.cont
+        if completed_tricks is not None:
+            if cont == "trick-greedy":
+                raise PVSearchPolicyError(
+                    "completed_tricks override is not supported for trick-greedy")
+            if (isinstance(completed_tricks, (bool, np.bool_))
+                    or not isinstance(completed_tricks, (int, np.integer))
+                    or not 1 <= int(completed_tricks) <= 3):
+                raise PVSearchPolicyError(
+                    "completed_tricks override must be an integer in [1, 3]")
+            completed_tricks = int(completed_tricks)
         if cont == "trick-greedy":
             return self._tree_lookahead_greedy(rnd, seat, actions, worlds, gate)
-        target = len(rnd.history) + (1 if cont == "trick" else 2)
+        target = len(rnd.history) + (
+            completed_tricks if completed_tricks is not None
+            else (1 if cont == "trick" else 2))
         clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
                   for hands, buried in worlds for action in actions]
         heuristic = default_finisher() if cont == "trick-next-heuristic" else None
@@ -728,6 +745,10 @@ class PVTreeMixin:
                  "tree_multi_leads": int(multi_leads),
                  "tree_terminal_leaves": sum(c.phase == "round_end" for c in clones),
                  "tree_value_batches": int(batches)}
+        if completed_tricks is not None:
+            depths = [len(clone.history) - len(rnd.history) for clone in clones]
+            stats.update(tree_completed_tricks_min=min(depths),
+                         tree_completed_tricks_max=max(depths))
         return values.reshape(len(worlds), len(actions)), stats
 
 

@@ -103,3 +103,36 @@ def test_actor_only_cli_reaches_actual_adapter(monkeypatch):
                 '--seeds', '12', '--actor-only'])
     assert calls[0]['information'] == ('actor-only',)
     assert calls[0]['run'] is False
+
+
+@pytest.mark.parametrize('missing', ['wall_seconds', 'token_limit', 'timeout_seconds'])
+def test_actor_only_execution_cannot_inherit_limits(options, monkeypatch, missing):
+    limits = dict(wall_seconds=60.0, token_limit=1000, timeout_seconds=10)
+    limits.pop(missing)
+    monkeypatch.setattr(panel, 'prepare_recipe', lambda *a: pytest.fail('recipe reached'))
+    with pytest.raises(ValueError, match='explicit'):
+        panel.run_row(**options, actor_only=True, run=True, **limits)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('wall_seconds', float('nan')), ('wall_seconds', float('inf')),
+    ('wall_seconds', True), ('wall_seconds', 0), ('token_limit', True),
+    ('token_limit', 1.5), ('token_limit', -1), ('timeout_seconds', 0),
+    ('timeout_seconds', True), ('timeout_seconds', 0.5),
+])
+def test_invalid_explicit_limits_refuse_before_recipe(options, monkeypatch, field, value):
+    monkeypatch.setattr(panel, 'prepare_recipe', lambda *a: pytest.fail('recipe reached'))
+    with pytest.raises(ValueError, match='limits'):
+        panel.run_row(**options, **{field: value})
+
+
+def test_explicit_cli_limits_reach_runner_without_implied_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(panel, 'run_benchmark', lambda **kw: calls.append(kw) or {})
+    panel.main(['--row', 'smart', '--prepared-roots-from', '/synthetic/roots',
+                '--prepared-roots-sha256', 'a'*64, '--output', '/synthetic/out',
+                '--seeds', '12', '--actor-only', '--wall-seconds', '60',
+                '--soft-token-limit', '1000', '--timeout-seconds', '10'])
+    assert calls[0]['run'] is False
+    assert (calls[0]['wall_seconds'], calls[0]['token_limit'],
+            calls[0]['timeout_seconds']) == (60, 1000, 10)

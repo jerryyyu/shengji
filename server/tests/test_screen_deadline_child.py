@@ -1,5 +1,9 @@
 """One deadline child per pool worker (``--persistent-deadline-child``).
 
+The harness imports torch, so this module runs in the policy-modes job (both
+engines); the release-45 differential needs the pinned package and runs where
+``SHENGJI_PV_PACKAGE_PATH`` is set.
+
 The child outlives its cluster: ``DeadlineSession.reset`` drops every bot in it,
 so a cluster never sees another cluster's bots, RNGs or receipts, while the
 interpreter, its imports and the package weights persist.  With the flag off
@@ -146,10 +150,12 @@ def test_reset_reaps_a_child_that_died_idle_and_the_next_call_spawns_afresh():
 
 
 def test_reset_that_does_not_answer_kills_the_child_and_raises(monkeypatch):
-    monkeypatch.setattr(screen_deadline, "STARTUP_SECONDS", 1)
     session = DeadlineSession(probe_factory, 10)
     try:
+        # the cold start (imports) keeps the full budget; only the reset,
+        # which the native block in ResetProbe.__del__ holds for 10 s, is bounded
         session.register("stuck-reset")
+        monkeypatch.setattr(screen_deadline, "STARTUP_SECONDS", 1)
         with pytest.raises(DecisionExpired):
             session.reset()
         assert session.process is None

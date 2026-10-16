@@ -1,238 +1,85 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="1000" height="640" role="img" aria-label="How the J of diamonds played out in room ADKY. Live: six tricks, the banker team (bots 1 and 3) won five of them; the attackers finished on 35 points, so the banker team went up 2 levels. Double-dummy with all cards visible and everyone playing perfectly: leading the J of diamonds ends with attackers on 35 (banker team +2 levels); leading the ace of clubs ends with attackers on 45 (+1 level). The bot chose from 64 sampled worlds; on this real deal the exact answer agrees.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 360" width="1000" height="360" role="img" aria-label="How the J of diamonds played out live in room ADKY: six tricks from the lead at 7 cards each, seat 0 the human; the banker team (bots 1 and 3) won all six, so the attackers stayed on 35 points and the banker team went up 2 levels.">
 <style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#1e2833;font-size:13px}.bg{fill:#ffffff}.mut{fill:#65727f}.b{font-weight:600}.ttl{font-size:20px;font-weight:600}.h{font-size:15px;font-weight:600}.hdr{font-size:12.5px;font-weight:600;letter-spacing:.06em;fill:#65727f}.sm{font-size:12.5px}.it{font-style:italic}.edge{stroke:#d5dae0;stroke-width:1.5;fill:none}.edge.strong{stroke:#3b4f63}.edgebel{stroke:#6a4bb0;stroke-width:1.5;fill:none}.edgeex{stroke:#b03a73;stroke-width:1.5;fill:none}.arrow{stroke:#3b4f63;stroke-width:1.6;fill:none}.ah{fill:#3b4f63}.world{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.worldx{fill:#ffffff;stroke:#d5dae0;stroke-width:1.3}.thumb{stroke:#3b4f63;stroke-width:1.6;stroke-linecap:round}.xmark{stroke:#a63d2f;stroke-width:2;stroke-linecap:round}.badt{fill:#a63d2f}.goodt{fill:#2e7d4f}.cand{fill:#ffffff;stroke:#1e2833;stroke-width:1.5}.card{fill:#ffffff;stroke:#3b4f63;stroke-width:1}.red{fill:#c0392b}.play{fill:#a8741c}.playtrack{fill:#f3e7cc}.net{fill:#117a75}.nett{fill:#117a75}.root{fill:#1e2833}.inkf{fill:#1e2833}.mutf{fill:#65727f}.rulef{fill:#d5dae0}.paperf{fill:#f4f5f7}.panelf{fill:#ffffff}.bel{fill:#6a4bb0}.belt{fill:#6a4bb0}.belsoft{fill:#ece6f7;stroke:#6a4bb0;stroke-width:1.3}.ex{fill:#b03a73}.ext{fill:#b03a73}.exsoft{fill:#f8e6ef;stroke:#b03a73;stroke-width:1.3}.exline{stroke:#b03a73;stroke-width:1.5;fill:none}.exnode{fill:#ffffff;stroke:#b03a73;stroke-width:1.5}.vd{fill:#2a6fb0}.vdt{fill:#2a6fb0}.vdsoft{fill:#e1ecf7;stroke:#2a6fb0;stroke-width:1.3}.wd{fill:#3b4f63}.wdt{fill:#3b4f63}.wdsoft{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.axis{stroke:#65727f;stroke-width:1;fill:none}.grid{stroke:#d5dae0;stroke-width:1;fill:none}.zero{stroke:#1e2833;stroke-width:1.3;fill:none}.ring{fill:none;stroke:#1e2833;stroke-width:1.8}.ringex{fill:none;stroke:#b03a73;stroke-width:2}.panelbox{fill:#f4f5f7;stroke:#d5dae0;stroke-width:1}.dash{fill:#ffffff;stroke:#3b4f63;stroke-width:1.5;stroke-dasharray:5 4}.stage{fill:#ffffff;stroke:#3b4f63;stroke-width:1.4}.stagej{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.4}.lineink{stroke:#1e2833;stroke-width:2.2;fill:none}.linemut{stroke:#65727f;stroke-width:1.2;fill:none}.linebel{stroke:#6a4bb0;stroke-width:2.2;fill:none}.linevd{stroke:#2a6fb0;stroke-width:2.2;fill:none}.linewd{stroke:#3b4f63;stroke-width:2.2;fill:none}.lineex{stroke:#b03a73;stroke-width:2.2;fill:none}.linenet{stroke:#117a75;stroke-width:2.2;fill:none}.chipt{font-size:12.5px;font-weight:700;letter-spacing:.05em;fill:#ffffff}.netbox{fill:#d6ecea;stroke:#117a75;stroke-width:1.5}.netlayer{stroke:#117a75;stroke-width:3;stroke-linecap:round}.netwire{stroke:#117a75;stroke-width:0.8;opacity:.6}.cardatt{fill:#ffffff;stroke:#a63d2f;stroke-width:1.3}.cone{fill:#d5dae0;fill-opacity:.35}.conel{stroke:#65727f;stroke-width:1;stroke-dasharray:3 3;fill:none}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
 <defs><marker id="ar8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
-<rect x="0.0" y="0.0" width="1000.0" height="640.0" class="bg"/>
+<rect x="0.0" y="0.0" width="1000.0" height="360.0" class="bg"/>
 <text x="24.0" y="36.0" class="ttl">How J♦ played out</text>
-<text x="24.0" y="60.0" class="mut">ADKY round 1, from the lead at 7 cards each. Seat 0 is the human; seats 1, 2, 3 are bots; 1 and 3 are the banker team.</text>
+<text x="24.0" y="60.0" class="mut">ADKY round 1, live, from the lead at 7 cards each. Seat 0 is the human; 1, 2, 3 are bots; 1 and 3 are the banker team.</text>
 <rect x="24.0" y="76.0" width="20.0" height="16.0" rx="3" class="card"/>
 <text x="50.0" y="89.0" class="sm mut">banker team card</text>
 <rect x="180.0" y="76.0" width="20.0" height="16.0" rx="3" class="cardatt"/>
 <text x="206.0" y="89.0" class="sm mut">attackers' card</text>
 <rect x="330.0" y="76.0" width="20.0" height="16.0" rx="3" class="ring"/>
 <text x="356.0" y="89.0" class="sm mut">wins the trick</text>
-<text x="24.0" y="128.0" class="hdr">LIVE (WHAT HAPPENED)</text>
-<text x="24.0" y="162.0" class="sm mut">1</text>
-<rect x="44.0" y="144.0" width="24.0" height="26.0" rx="3" class="card"/><text x="56.0" y="161.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text>
-<rect x="42.0" y="142.0" width="28.0" height="30.0" rx="4" class="ring"/>
-<text x="56.0" y="186.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="102.0" y="144.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="114.0" y="161.5" class="b sm" text-anchor="middle">7<tspan class="red">♥</tspan></text>
-<text x="114.0" y="186.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="160.0" y="144.0" width="24.0" height="26.0" rx="3" class="card"/><text x="172.0" y="161.5" class="b sm" text-anchor="middle">10<tspan class="">♠</tspan></text>
-<text x="172.0" y="186.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="218.0" y="144.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="230.0" y="161.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
-<text x="230.0" y="186.0" class="sm mut" text-anchor="middle">2</text>
-<text x="280.0" y="162.0" class="mono sm mut">10 pts</text>
-<text x="24.0" y="212.0" class="sm mut">2</text>
-<rect x="44.0" y="194.0" width="24.0" height="26.0" rx="3" class="card"/><text x="56.0" y="211.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
-<text x="56.0" y="236.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="102.0" y="194.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="114.0" y="211.5" class="b sm" text-anchor="middle">8<tspan class="red">♥</tspan></text>
-<text x="114.0" y="236.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="160.0" y="194.0" width="24.0" height="26.0" rx="3" class="card"/><text x="172.0" y="211.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
-<rect x="158.0" y="192.0" width="28.0" height="30.0" rx="4" class="ring"/>
-<text x="172.0" y="236.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="218.0" y="194.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="230.0" y="211.5" class="b sm" text-anchor="middle">4<tspan class="">♣</tspan></text>
-<text x="230.0" y="236.0" class="sm mut" text-anchor="middle">2</text>
-<text x="280.0" y="212.0" class="mono sm mut">0</text>
-<text x="24.0" y="262.0" class="sm mut">3</text>
-<rect x="44.0" y="244.0" width="24.0" height="26.0" rx="3" class="card"/><text x="56.0" y="261.5" class="b sm" text-anchor="middle">10<tspan class="">♣</tspan></text>
-<text x="56.0" y="286.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="102.0" y="244.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="114.0" y="261.5" class="b sm" text-anchor="middle">K<tspan class="">♣</tspan></text>
-<text x="114.0" y="286.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="160.0" y="244.0" width="24.0" height="26.0" rx="3" class="card"/><text x="172.0" y="261.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
-<rect x="158.0" y="242.0" width="28.0" height="30.0" rx="4" class="ring"/>
-<text x="172.0" y="286.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="218.0" y="244.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="230.0" y="261.5" class="b sm" text-anchor="middle">9<tspan class="red">♥</tspan></text>
-<text x="230.0" y="286.0" class="sm mut" text-anchor="middle">0</text>
-<text x="280.0" y="262.0" class="mono sm mut">20 pts</text>
-<text x="24.0" y="312.0" class="sm mut">4</text>
-<rect x="44.0" y="294.0" width="24.0" height="26.0" rx="3" class="card"/><text x="56.0" y="311.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
-<rect x="42.0" y="292.0" width="28.0" height="30.0" rx="4" class="ring"/>
-<text x="56.0" y="336.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="102.0" y="294.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="114.0" y="311.5" class="b sm" text-anchor="middle">9<tspan class="">♠</tspan></text>
-<text x="114.0" y="336.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="160.0" y="294.0" width="24.0" height="26.0" rx="3" class="card"/><text x="172.0" y="311.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
-<text x="172.0" y="336.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="218.0" y="294.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="230.0" y="311.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
-<text x="230.0" y="336.0" class="sm mut" text-anchor="middle">2</text>
-<text x="280.0" y="312.0" class="mono sm mut">0</text>
-<text x="24.0" y="362.0" class="sm mut">5</text>
-<rect x="44.0" y="344.0" width="24.0" height="26.0" rx="3" class="card"/><text x="56.0" y="361.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
-<text x="56.0" y="386.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="102.0" y="344.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="114.0" y="361.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
-<text x="114.0" y="386.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="160.0" y="344.0" width="24.0" height="26.0" rx="3" class="card"/><text x="172.0" y="361.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
-<rect x="158.0" y="342.0" width="28.0" height="30.0" rx="4" class="ring"/>
-<text x="172.0" y="386.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="218.0" y="344.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="230.0" y="361.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
-<text x="230.0" y="386.0" class="sm mut" text-anchor="middle">2</text>
-<text x="280.0" y="362.0" class="mono sm mut">0</text>
-<text x="24.0" y="412.0" class="sm mut">6</text>
-<rect x="44.0" y="394.0" width="24.0" height="26.0" rx="3" class="card"/><text x="56.0" y="411.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
-<rect x="70.0" y="394.0" width="24.0" height="26.0" rx="3" class="card"/><text x="82.0" y="411.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
-<rect x="42.0" y="392.0" width="54.0" height="30.0" rx="4" class="ring"/>
-<text x="69.0" y="436.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="102.0" y="394.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="114.0" y="411.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
-<rect x="128.0" y="394.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="140.0" y="411.5" class="b sm" text-anchor="middle">5<tspan class="">♠</tspan></text>
-<text x="127.0" y="436.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="160.0" y="394.0" width="24.0" height="26.0" rx="3" class="card"/><text x="172.0" y="411.5" class="b sm" text-anchor="middle">3<tspan class="">♣</tspan></text>
-<rect x="186.0" y="394.0" width="24.0" height="26.0" rx="3" class="card"/><text x="198.0" y="411.5" class="b sm" text-anchor="middle">5<tspan class="">♣</tspan></text>
-<text x="185.0" y="436.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="218.0" y="394.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="230.0" y="411.5" class="b sm" text-anchor="middle">Q<tspan class="">♠</tspan></text>
-<rect x="244.0" y="394.0" width="24.0" height="26.0" rx="3" class="cardatt"/><text x="256.0" y="411.5" class="b sm" text-anchor="middle">5<tspan class="red">♥</tspan></text>
-<text x="243.0" y="436.0" class="sm mut" text-anchor="middle">0</text>
-<text x="280.0" y="412.0" class="mono sm mut">15 pts</text>
-<text x="24.0" y="470.0" class="b">Attackers end on 35 points</text>
-<text x="24.0" y="490.0" class="b">→ banker team +2 levels.</text>
-<text x="24.0" y="514.0" class="sm mut">Points in banker-team tricks</text>
-<text x="24.0" y="531.0" class="sm mut">never reach the attackers.</text>
-<line x1="352.0" y1="116.0" x2="352.0" y2="540.0" class="grid"/>
-<text x="372.0" y="128.0" class="sm b">DOUBLE-DUMMY: everyone plays perfectly with all cards visible; the human did not</text>
-<text x="372.0" y="152.0" class="sm b ext">lead J♦ (played)</text>
-<rect x="372.0" y="162.0" width="22.0" height="26.0" rx="3" class="card"/><text x="383.0" y="179.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text>
-<rect x="370.0" y="160.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="383.0" y="204.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="422.0" y="162.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="433.0" y="179.5" class="b sm" text-anchor="middle">5<tspan class="red">♥</tspan></text>
-<text x="433.0" y="204.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="472.0" y="162.0" width="22.0" height="26.0" rx="3" class="card"/><text x="483.0" y="179.5" class="b sm" text-anchor="middle">10<tspan class="">♠</tspan></text>
-<text x="483.0" y="204.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="522.0" y="162.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="533.0" y="179.5" class="b sm" text-anchor="middle">4<tspan class="">♣</tspan></text>
-<text x="533.0" y="204.0" class="sm mut" text-anchor="middle">2</text>
-<text x="576.0" y="180.0" class="mono sm mut">15 pts</text>
-<rect x="372.0" y="212.0" width="22.0" height="26.0" rx="3" class="card"/><text x="383.0" y="229.5" class="b sm" text-anchor="middle">3<tspan class="">♣</tspan></text>
-<text x="383.0" y="254.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="422.0" y="212.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="433.0" y="229.5" class="b sm" text-anchor="middle">7<tspan class="red">♥</tspan></text>
-<text x="433.0" y="254.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="472.0" y="212.0" width="22.0" height="26.0" rx="3" class="card"/><text x="483.0" y="229.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
-<rect x="470.0" y="210.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="483.0" y="254.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="522.0" y="212.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="533.0" y="229.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
-<text x="533.0" y="254.0" class="sm mut" text-anchor="middle">2</text>
-<text x="576.0" y="230.0" class="mono sm mut">0</text>
-<rect x="372.0" y="262.0" width="22.0" height="26.0" rx="3" class="card"/><text x="383.0" y="279.5" class="b sm" text-anchor="middle">10<tspan class="">♣</tspan></text>
-<rect x="370.0" y="260.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="383.0" y="304.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="422.0" y="262.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="433.0" y="279.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
-<text x="433.0" y="304.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="472.0" y="262.0" width="22.0" height="26.0" rx="3" class="card"/><text x="483.0" y="279.5" class="b sm" text-anchor="middle">5<tspan class="">♣</tspan></text>
-<text x="483.0" y="304.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="522.0" y="262.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="533.0" y="279.5" class="b sm" text-anchor="middle">8<tspan class="red">♥</tspan></text>
-<text x="533.0" y="304.0" class="sm mut" text-anchor="middle">0</text>
-<text x="576.0" y="280.0" class="mono sm mut">15 pts</text>
-<rect x="372.0" y="312.0" width="22.0" height="26.0" rx="3" class="card"/><text x="383.0" y="329.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
-<rect x="370.0" y="310.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="383.0" y="354.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="422.0" y="312.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="433.0" y="329.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
-<text x="433.0" y="354.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="472.0" y="312.0" width="22.0" height="26.0" rx="3" class="card"/><text x="483.0" y="329.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
-<text x="483.0" y="354.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="522.0" y="312.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="533.0" y="329.5" class="b sm" text-anchor="middle">9<tspan class="red">♥</tspan></text>
-<text x="533.0" y="354.0" class="sm mut" text-anchor="middle">0</text>
-<text x="576.0" y="330.0" class="mono sm mut">0</text>
-<rect x="372.0" y="362.0" width="22.0" height="26.0" rx="3" class="card"/><text x="383.0" y="379.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
-<rect x="370.0" y="360.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="383.0" y="404.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="422.0" y="362.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="433.0" y="379.5" class="b sm" text-anchor="middle">K<tspan class="">♣</tspan></text>
-<text x="433.0" y="404.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="472.0" y="362.0" width="22.0" height="26.0" rx="3" class="card"/><text x="483.0" y="379.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
-<text x="483.0" y="404.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="522.0" y="362.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="533.0" y="379.5" class="b sm" text-anchor="middle">9<tspan class="">♠</tspan></text>
-<text x="533.0" y="404.0" class="sm mut" text-anchor="middle">0</text>
-<text x="576.0" y="380.0" class="mono sm mut">10 pts</text>
-<rect x="372.0" y="412.0" width="22.0" height="26.0" rx="3" class="card"/><text x="383.0" y="429.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
-<text x="383.0" y="454.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="422.0" y="412.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="433.0" y="429.5" class="b sm" text-anchor="middle">5<tspan class="">♠</tspan></text>
-<text x="433.0" y="454.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="472.0" y="412.0" width="22.0" height="26.0" rx="3" class="card"/><text x="483.0" y="429.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
-<rect x="470.0" y="410.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="483.0" y="454.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="522.0" y="412.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="533.0" y="429.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
-<text x="533.0" y="454.0" class="sm mut" text-anchor="middle">0</text>
-<text x="576.0" y="430.0" class="mono sm mut">5 pts</text>
-<rect x="372.0" y="462.0" width="22.0" height="26.0" rx="3" class="card"/><text x="383.0" y="479.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
-<rect x="370.0" y="460.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="383.0" y="504.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="422.0" y="462.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="433.0" y="479.5" class="b sm" text-anchor="middle">Q<tspan class="">♠</tspan></text>
-<text x="433.0" y="504.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="472.0" y="462.0" width="22.0" height="26.0" rx="3" class="card"/><text x="483.0" y="479.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
-<text x="483.0" y="504.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="522.0" y="462.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="533.0" y="479.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
-<text x="533.0" y="504.0" class="sm mut" text-anchor="middle">2</text>
-<text x="576.0" y="480.0" class="mono sm mut">0</text>
-<text x="372.0" y="530.0" class="b ext">attackers 35 → +2 levels</text>
-<text x="686.0" y="152.0" class="sm b ">lead A♣ (value-head pick)</text>
-<rect x="686.0" y="162.0" width="22.0" height="26.0" rx="3" class="card"/><text x="697.0" y="179.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
-<rect x="684.0" y="160.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="697.0" y="204.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="736.0" y="162.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="747.0" y="179.5" class="b sm" text-anchor="middle">5<tspan class="red">♥</tspan></text>
-<text x="747.0" y="204.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="786.0" y="162.0" width="22.0" height="26.0" rx="3" class="card"/><text x="797.0" y="179.5" class="b sm" text-anchor="middle">10<tspan class="">♣</tspan></text>
-<text x="797.0" y="204.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="836.0" y="162.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="847.0" y="179.5" class="b sm" text-anchor="middle">4<tspan class="">♣</tspan></text>
-<text x="847.0" y="204.0" class="sm mut" text-anchor="middle">2</text>
-<text x="890.0" y="180.0" class="mono sm mut">15 pts</text>
-<rect x="686.0" y="212.0" width="22.0" height="26.0" rx="3" class="card"/><text x="697.0" y="229.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text>
-<rect x="684.0" y="210.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="697.0" y="254.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="736.0" y="212.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="747.0" y="229.5" class="b sm" text-anchor="middle">7<tspan class="red">♥</tspan></text>
-<text x="747.0" y="254.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="786.0" y="212.0" width="22.0" height="26.0" rx="3" class="card"/><text x="797.0" y="229.5" class="b sm" text-anchor="middle">10<tspan class="">♠</tspan></text>
-<text x="797.0" y="254.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="836.0" y="212.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="847.0" y="229.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
-<text x="847.0" y="254.0" class="sm mut" text-anchor="middle">2</text>
-<text x="890.0" y="230.0" class="mono sm mut">10 pts</text>
-<rect x="686.0" y="262.0" width="22.0" height="26.0" rx="3" class="card"/><text x="697.0" y="279.5" class="b sm" text-anchor="middle">3<tspan class="">♣</tspan></text>
-<text x="697.0" y="304.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="736.0" y="262.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="747.0" y="279.5" class="b sm" text-anchor="middle">8<tspan class="red">♥</tspan></text>
-<text x="747.0" y="304.0" class="sm mut" text-anchor="middle">0</text>
-<rect x="786.0" y="262.0" width="22.0" height="26.0" rx="3" class="card"/><text x="797.0" y="279.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
-<rect x="784.0" y="260.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="797.0" y="304.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="836.0" y="262.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="847.0" y="279.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
-<text x="847.0" y="304.0" class="sm mut" text-anchor="middle">2</text>
-<text x="890.0" y="280.0" class="mono sm mut">0</text>
-<rect x="686.0" y="312.0" width="22.0" height="26.0" rx="3" class="card"/><text x="697.0" y="329.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
-<rect x="684.0" y="310.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="697.0" y="354.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="736.0" y="312.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="747.0" y="329.5" class="b sm" text-anchor="middle">5<tspan class="">♠</tspan></text>
-<text x="747.0" y="354.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="786.0" y="312.0" width="22.0" height="26.0" rx="3" class="card"/><text x="797.0" y="329.5" class="b sm" text-anchor="middle">5<tspan class="">♣</tspan></text>
-<text x="797.0" y="354.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="836.0" y="312.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="847.0" y="329.5" class="b sm" text-anchor="middle">9<tspan class="red">♥</tspan></text>
-<text x="847.0" y="354.0" class="sm mut" text-anchor="middle">0</text>
-<text x="890.0" y="330.0" class="mono sm mut">10 pts</text>
-<rect x="686.0" y="362.0" width="22.0" height="26.0" rx="3" class="card"/><text x="697.0" y="379.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
-<rect x="684.0" y="360.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="697.0" y="404.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="736.0" y="362.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="747.0" y="379.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
-<text x="747.0" y="404.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="786.0" y="362.0" width="22.0" height="26.0" rx="3" class="card"/><text x="797.0" y="379.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
-<text x="797.0" y="404.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="836.0" y="362.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="847.0" y="379.5" class="b sm" text-anchor="middle">9<tspan class="">♠</tspan></text>
-<text x="847.0" y="404.0" class="sm mut" text-anchor="middle">0</text>
-<text x="890.0" y="380.0" class="mono sm mut">0</text>
-<rect x="686.0" y="412.0" width="22.0" height="26.0" rx="3" class="card"/><text x="697.0" y="429.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
-<rect x="684.0" y="410.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="697.0" y="454.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="736.0" y="412.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="747.0" y="429.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
-<text x="747.0" y="454.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="786.0" y="412.0" width="22.0" height="26.0" rx="3" class="card"/><text x="797.0" y="429.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
-<text x="797.0" y="454.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="836.0" y="412.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="847.0" y="429.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
-<text x="847.0" y="454.0" class="sm mut" text-anchor="middle">0</text>
-<text x="890.0" y="430.0" class="mono sm mut">0</text>
-<rect x="686.0" y="462.0" width="22.0" height="26.0" rx="3" class="card"/><text x="697.0" y="479.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
-<text x="697.0" y="504.0" class="sm mut" text-anchor="middle">1</text>
-<rect x="736.0" y="462.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="747.0" y="479.5" class="b sm" text-anchor="middle">K<tspan class="">♣</tspan></text>
-<rect x="734.0" y="460.0" width="26.0" height="30.0" rx="4" class="ring"/>
-<text x="747.0" y="504.0" class="sm mut" text-anchor="middle">2</text>
-<rect x="786.0" y="462.0" width="22.0" height="26.0" rx="3" class="card"/><text x="797.0" y="479.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
-<text x="797.0" y="504.0" class="sm mut" text-anchor="middle">3</text>
-<rect x="836.0" y="462.0" width="22.0" height="26.0" rx="3" class="cardatt"/><text x="847.0" y="479.5" class="b sm" text-anchor="middle">Q<tspan class="">♠</tspan></text>
-<text x="847.0" y="504.0" class="sm mut" text-anchor="middle">0</text>
-<text x="890.0" y="480.0" class="mono sm badt">10 pts</text>
-<text x="686.0" y="530.0" class="b ">attackers 45 → +1 level</text>
-<text x="372.0" y="560.0" class="sm">J♦ is worth one more level on this deal; the bot chose it from 64 sampled worlds (J♦ 1.797 vs A♣ 1.719).</text>
-<text x="372.0" y="578.0" class="sm mut">One real deal can disagree with the sampled mean; this one did not.</text>
-<text x="24.0" y="606.0" class="sm mut">Solver: endgame_compact.CompactWorldSession (alpha-beta, exact points), run on the true hands rebuilt from the ADKY log.</text>
-<text x="984.0" y="630.0" class="mut sm" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-played-out.svg</text>
+<text x="24.0" y="126.0" class="hdr">TRICK 1</text>
+<text x="24.0" y="155.0" class="sm mut">lead · seat 3</text>
+<rect x="106.0" y="136.0" width="26.0" height="28.0" rx="3" class="card"/><text x="119.0" y="154.5" class="b sm" text-anchor="middle">J<tspan class="red">♦</tspan></text>
+<rect x="104.0" y="134.0" width="30.0" height="32.0" rx="4" class="ring"/>
+<text x="24.0" y="193.0" class="sm mut">seat 0</text>
+<rect x="106.0" y="174.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="119.0" y="192.5" class="b sm" text-anchor="middle">7<tspan class="red">♥</tspan></text>
+<text x="24.0" y="231.0" class="sm mut">seat 1</text>
+<rect x="106.0" y="212.0" width="26.0" height="28.0" rx="3" class="card"/><text x="119.0" y="230.5" class="b sm" text-anchor="middle">10<tspan class="">♠</tspan></text>
+<text x="24.0" y="269.0" class="sm mut">seat 2</text>
+<rect x="106.0" y="250.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="119.0" y="268.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
+<text x="24.0" y="304.0" class="sm b">seat 3 wins · 10 pts</text>
+<text x="182.0" y="126.0" class="hdr">TRICK 2</text>
+<text x="182.0" y="155.0" class="sm mut">lead · seat 3</text>
+<rect x="264.0" y="136.0" width="26.0" height="28.0" rx="3" class="card"/><text x="277.0" y="154.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
+<text x="182.0" y="193.0" class="sm mut">seat 0</text>
+<rect x="264.0" y="174.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="277.0" y="192.5" class="b sm" text-anchor="middle">8<tspan class="red">♥</tspan></text>
+<text x="182.0" y="231.0" class="sm mut">seat 1</text>
+<rect x="264.0" y="212.0" width="26.0" height="28.0" rx="3" class="card"/><text x="277.0" y="230.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<rect x="262.0" y="210.0" width="30.0" height="32.0" rx="4" class="ring"/>
+<text x="182.0" y="269.0" class="sm mut">seat 2</text>
+<rect x="264.0" y="250.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="277.0" y="268.5" class="b sm" text-anchor="middle">4<tspan class="">♣</tspan></text>
+<text x="182.0" y="304.0" class="sm mut">seat 1 wins · 0 pts</text>
+<text x="340.0" y="126.0" class="hdr">TRICK 3</text>
+<text x="340.0" y="155.0" class="sm mut">lead · seat 1</text>
+<rect x="422.0" y="136.0" width="26.0" height="28.0" rx="3" class="card"/><text x="435.0" y="154.5" class="b sm" text-anchor="middle">10<tspan class="">♣</tspan></text>
+<text x="340.0" y="193.0" class="sm mut">seat 2</text>
+<rect x="422.0" y="174.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="435.0" y="192.5" class="b sm" text-anchor="middle">K<tspan class="">♣</tspan></text>
+<text x="340.0" y="231.0" class="sm mut">seat 3</text>
+<rect x="422.0" y="212.0" width="26.0" height="28.0" rx="3" class="card"/><text x="435.0" y="230.5" class="b sm" text-anchor="middle">A<tspan class="">♣</tspan></text>
+<rect x="420.0" y="210.0" width="30.0" height="32.0" rx="4" class="ring"/>
+<text x="340.0" y="269.0" class="sm mut">seat 0</text>
+<rect x="422.0" y="250.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="435.0" y="268.5" class="b sm" text-anchor="middle">9<tspan class="red">♥</tspan></text>
+<text x="340.0" y="304.0" class="sm b">seat 3 wins · 20 pts</text>
+<text x="498.0" y="126.0" class="hdr">TRICK 4</text>
+<text x="498.0" y="155.0" class="sm mut">lead · seat 3</text>
+<rect x="580.0" y="136.0" width="26.0" height="28.0" rx="3" class="card"/><text x="593.0" y="154.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
+<rect x="578.0" y="134.0" width="30.0" height="32.0" rx="4" class="ring"/>
+<text x="498.0" y="193.0" class="sm mut">seat 0</text>
+<rect x="580.0" y="174.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="593.0" y="192.5" class="b sm" text-anchor="middle">9<tspan class="">♠</tspan></text>
+<text x="498.0" y="231.0" class="sm mut">seat 1</text>
+<rect x="580.0" y="212.0" width="26.0" height="28.0" rx="3" class="card"/><text x="593.0" y="230.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
+<text x="498.0" y="269.0" class="sm mut">seat 2</text>
+<rect x="580.0" y="250.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="593.0" y="268.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
+<text x="498.0" y="304.0" class="sm mut">seat 3 wins · 0 pts</text>
+<text x="656.0" y="126.0" class="hdr">TRICK 5</text>
+<text x="656.0" y="155.0" class="sm mut">lead · seat 3</text>
+<rect x="738.0" y="136.0" width="26.0" height="28.0" rx="3" class="card"/><text x="751.0" y="154.5" class="b sm" text-anchor="middle">8<tspan class="">♣</tspan></text>
+<text x="656.0" y="193.0" class="sm mut">seat 0</text>
+<rect x="738.0" y="174.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="751.0" y="192.5" class="b sm" text-anchor="middle">J<tspan class="">♠</tspan></text>
+<text x="656.0" y="231.0" class="sm mut">seat 1</text>
+<rect x="738.0" y="212.0" width="26.0" height="28.0" rx="3" class="card"/><text x="751.0" y="230.5" class="b sm" text-anchor="middle">Q<tspan class="">♣</tspan></text>
+<rect x="736.0" y="210.0" width="30.0" height="32.0" rx="4" class="ring"/>
+<text x="656.0" y="269.0" class="sm mut">seat 2</text>
+<rect x="738.0" y="250.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="751.0" y="268.5" class="b sm" text-anchor="middle">9<tspan class="">♣</tspan></text>
+<text x="656.0" y="304.0" class="sm mut">seat 1 wins · 0 pts</text>
+<text x="814.0" y="126.0" class="hdr">TRICK 6</text>
+<text x="814.0" y="155.0" class="sm mut">lead · seat 1</text>
+<rect x="896.0" y="136.0" width="26.0" height="28.0" rx="3" class="card"/><text x="909.0" y="154.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
+<rect x="924.0" y="136.0" width="26.0" height="28.0" rx="3" class="card"/><text x="937.0" y="154.5" class="b sm" text-anchor="middle">2<tspan class="">♣</tspan></text>
+<rect x="894.0" y="134.0" width="58.0" height="32.0" rx="4" class="ring"/>
+<text x="814.0" y="193.0" class="sm mut">seat 2</text>
+<rect x="896.0" y="174.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="909.0" y="192.5" class="b sm" text-anchor="middle">7<tspan class="">♣</tspan></text>
+<rect x="924.0" y="174.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="937.0" y="192.5" class="b sm" text-anchor="middle">5<tspan class="">♠</tspan></text>
+<text x="814.0" y="231.0" class="sm mut">seat 3</text>
+<rect x="896.0" y="212.0" width="26.0" height="28.0" rx="3" class="card"/><text x="909.0" y="230.5" class="b sm" text-anchor="middle">3<tspan class="">♣</tspan></text>
+<rect x="924.0" y="212.0" width="26.0" height="28.0" rx="3" class="card"/><text x="937.0" y="230.5" class="b sm" text-anchor="middle">5<tspan class="">♣</tspan></text>
+<text x="814.0" y="269.0" class="sm mut">seat 0</text>
+<rect x="896.0" y="250.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="909.0" y="268.5" class="b sm" text-anchor="middle">Q<tspan class="">♠</tspan></text>
+<rect x="924.0" y="250.0" width="26.0" height="28.0" rx="3" class="cardatt"/><text x="937.0" y="268.5" class="b sm" text-anchor="middle">5<tspan class="red">♥</tspan></text>
+<text x="814.0" y="304.0" class="sm b">seat 1 wins · 15 pts</text>
+<text x="24.0" y="336.0" class="b">Round end: attackers 35 points → banker team (the bot's team) +2 levels.</text>
+<text x="984.0" y="350.0" class="mut sm" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-played-out.svg</text>
 </svg>

@@ -124,7 +124,7 @@ gain, +0.021 [+0.004, +0.039].
 |---|---|---|
 | Model proposes, search decides | W32 shortlist +0.139 on 256 rank-2 deals; K4 beat K8 | still true |
 | The heads can be the whole search | head-driven search vs MC-LCB +0.095 at W16, +0.187 at W64; W4 loses | still true |
-| World quality matters, not world count | belief worlds v86bw45 +0.1165 [+0.0914, +0.1416]; offline 512 vs 64 worlds −0.0007 | replaces "worlds are the lever" |
+| World quality matters, not world count | belief worlds v86bw45 +0.1165 [+0.0914, +0.1416]; 512 vs 64 worlds −0.0007 [−0.0022, +0.0008] per decision on 2,133 replayed decisions (board #707 S2 closure) | replaces "worlds are the lever" |
 | A better policy head alone does not show in served play | head alone +0.24 vs SmartBot (arm F, 2026-09-30); value head decides | still true |
 | Admission and selection rules beat tree search | div + rc + tb confirmed together (release 38); PUCT −0.417 vs release 36 | still true |
 | Model-owned decisions and exact endgames moved the result | `vd` (release 44), `bwv` (release 45), v92 combo +0.2167 [+0.1923, +0.2412] (release 46) | still true |

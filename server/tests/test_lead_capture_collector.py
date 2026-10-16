@@ -119,7 +119,7 @@ def test_summarize_captured_horizon_rejects_wrong_matrix_and_leaf_count():
 
 @pytest.mark.parametrize('mode', ['historical', 'served', 'fallback', 'served_round',
                                   'served_stop', 'served_error', 'horizon', 'horizon_timeout',
-                                  'horizon_yield'])
+                                  'horizon_yield', 'horizon_cost'])
 def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     plays = [e for e in events if e['e'] == 'play']
@@ -190,6 +190,8 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         snapshot.write_text('{}')
         args = ['--served-env', str(snapshot), *args]
     costs = tmp_path / 'costs.jsonl'
+    if mode == 'horizon_cost':
+        args = ['--cost-out', str(costs), *args]
     if mode.startswith('served_'):
         args = ['--max-rounds', '1', '--cost-out', str(costs), *args]
         # A round cap, not the lead cap, must stop the next deal.
@@ -213,6 +215,14 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
     else:
         collector.main(args)
     rows = [json.loads(line) for line in out.read_text().splitlines()]
+    if mode == 'horizon_cost':
+        journal = [json.loads(line) for line in costs.read_text().splitlines()]
+        assert journal[-1]['kind'] == 'terminal'
+        assert journal[-1]['rounds'] == 0
+        assert journal[-1]['positions'] == 16
+        assert len([r for r in journal if r['kind'] == 'decision']) == cursor
+        assert not any(r['kind'] == 'round_complete' for r in journal)
+        assert all(row['paired_horizon']['consumer_witness'] for row in rows)
     if mode.startswith('served_'):
         journal = [json.loads(line) for line in costs.read_text().splitlines()]
         assert journal[0]['kind'] == 'start'

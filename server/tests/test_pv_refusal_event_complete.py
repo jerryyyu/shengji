@@ -88,7 +88,7 @@ def test_release38_name_and_digest_unchanged_off_and_distinct_on(production_pack
     assert pv.pv_env_recipe({**RELEASE38_ENV, FLAG: "1"})["refusal_event_complete"] is True
     assert "refusal_event_complete" not in pv.pv_env_recipe(RELEASE38_ENV)
     assert pv.RULE_FLAGS["REFUSAL_EVENT_COMPLETE"] == "refusal_event_complete"
-    assert [t for _, t in pv.RULE_TOKENS] == ["div", "fs", "rc", "rcec", "whl", "whd", "tb", "fla", "ak16", "wla", "la", "lp", "dts", "sjg", "aw", "awl", "dtr", "vd", "vdef", "vdsb", "vdpw", "vdw", "asap", "lpft", "orc"]
+    assert [t for _, t in pv.RULE_TOKENS] == ["div", "fs", "rc", "rcec", "whl", "whd", "wu", "kb", "tb", "fla", "ak16", "wla", "la", "lp", "dts", "sjg", "aw", "awl", "dtr", "vd", "vdef", "vdsb", "vdpw", "vdw", "asap", "lpft", "orc"]
     assert pv.SAMPLER_DEFAULTS["refusal_event_complete"] is False
     assert on().refusal_event_complete is True and served().refusal_event_complete is False
 

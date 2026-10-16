@@ -25,6 +25,26 @@ from ..engine.round import Round
 _DECK_CODES: tuple[str, ...] = tuple(sorted(set(make_deck())))
 
 
+def iter_known(mem):
+    """Yield every public card-holder pin known by ``mem``.
+
+    ``Memory.known`` remains the legacy one-holder-per-code view used by older
+    callers.  A code can, however, have two physical copies and independent
+    public observations can prove one copy in each of two hands.  Newer
+    consumers use ``known_by_holder`` for those additional facts; this helper
+    presents both views without duplicating a same-holder entry.
+    """
+    legacy = getattr(mem, "known", {})
+    extra = getattr(mem, "known_by_holder", {})
+    merged: dict[tuple[str, int], int] = {}
+    for code, (holder, count) in legacy.items():
+        merged[(code, holder)] = max(merged.get((code, holder), 0), count)
+    for (code, holder), count in extra.items():
+        merged[(code, holder)] = max(merged.get((code, holder), 0), count)
+    for (code, holder), count in merged.items():
+        yield code, (holder, count)
+
+
 class Memory:
     def __init__(self, rnd: Round, seat: int, own_kitty: bool = True):
         assert rnd.ordering is not None
@@ -95,7 +115,10 @@ class Memory:
         # PAIR is provably in ONE hand — sampling it split made KK-pair
         # leads look boss in most worlds). Track declared cards still
         # unplayed and not our own: the sampler pins them to the declarer.
-        self.known: dict[str, tuple[int, int]] = {}  # code -> (seat, copies)
+        self.known: dict[str, tuple[int, int]] = {}  # legacy: code -> (seat, copies)
+        # Additional facts for a second physical copy.  Keep this separate so
+        # existing callers that inspect or copy ``known`` retain their API.
+        self.known_by_holder: dict[tuple[str, int], int] = {}
         decl = rnd.declaration
         if decl is not None and decl.get("seat") is not None                 and decl["seat"] != seat:
             dc = Counter(decl["cards"])

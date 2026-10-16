@@ -131,7 +131,7 @@ def _ballot_identity(bot) -> dict:
                           for name in MC_BALLOT_ATTRS))
     return dict(_cached_ballot_identity(type(bot), config))
 from .heuristic import PLAIN_SUITS, HeuristicBot
-from .memory import Memory
+from .memory import Memory, iter_known
 from .smart import SmartBot
 
 
@@ -1607,7 +1607,7 @@ class MCBot(SmartBot):
         pinned: Counter[str] = Counter()
         pre: dict[int, list[str]] = {s: [] for s in others}
         if self.DECLARER_PIN:
-            for code, (dseat, ncopies) in mem.known.items():
+            for code, (dseat, ncopies) in iter_known(mem):
                 if dseat in pre:
                     take = min(ncopies, sizes[dseat] - len(pre[dseat]))
                     for _ in range(take):

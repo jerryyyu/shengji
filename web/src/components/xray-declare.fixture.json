@@ -1,0 +1,94 @@
+{
+  "seat": 2,
+  "phase": "declare",
+  "hand": [
+    "BJ",
+    "C5",
+    "C6",
+    "CA",
+    "D10",
+    "D2",
+    "D2",
+    "D4",
+    "DJ",
+    "DQ",
+    "H10",
+    "H2",
+    "H4",
+    "H5",
+    "H6",
+    "H8",
+    "HJ",
+    "HQ",
+    "S10",
+    "S2",
+    "S4",
+    "S9",
+    "SJ",
+    "SJ",
+    "SK"
+  ],
+  "is_attacker": null,
+  "voids": {},
+  "unseen_trumps": null,
+  "unseen_by_suit": {},
+  "boss_cards": [],
+  "ruff_risky_suits": [],
+  "candidates": null,
+  "bury": null,
+  "analysis": null,
+  "ml": null,
+  "declare": {
+    "policy": "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8",
+    "phase": "declare",
+    "final": true,
+    "cards_dealt": 100,
+    "options": [
+      [
+        "D2"
+      ],
+      [
+        "D2",
+        "D2"
+      ],
+      [
+        "H2"
+      ],
+      [
+        "S2"
+      ]
+    ],
+    "chosen": [
+      "H2"
+    ],
+    "current": null,
+    "record": {
+      "schema": "pv-value-declare-decision-v1",
+      "final": true,
+      "cards_dealt": 100,
+      "gate": "final",
+      "evaluated": true,
+      "heuristic": "H2",
+      "value_choice": "H2",
+      "played": "H2",
+      "changed": false,
+      "worlds": 64,
+      "worlds_completed": 64,
+      "fallback_reason": null,
+      "outcomes": "2:H=H2 | 2:D=D2 D2 | 2:S=S2 | 0:flip=PASS",
+      "outcome_means": [
+        0.9855,
+        0.5621,
+        0.621,
+        0.5197
+      ],
+      "heuristic_mean": 0.9855,
+      "best_mean": 0.9855,
+      "margin": 0.0,
+      "seconds": 0.068,
+      "leaf_first_trick": "heuristic",
+      "leaf_first_trick_fallbacks": 0
+    },
+    "evaluation_seconds": 0.07
+  }
+}

@@ -25,6 +25,9 @@ per-window row shuffle -- so the batch sequence, and therefore training, is iden
 
 History (seq) caches are not packed: they are ragged and the seq arch is not the trained
 recipe.  A pack built with a sidecar carries ``search_mean_played`` and ``search_level_played`` per row.
+A pack of trick-end caches (``cwv_data.build_cache(trick_end=True)``) carries their per-row
+``trick_end`` flag, so the split selectors keep the added rows out of validation and test exactly
+as they do on the cache path; a pack is all one flavour.
 """
 from __future__ import annotations
 
@@ -37,7 +40,8 @@ from typing import Any, Callable, Collection, Iterator, Mapping, Sequence
 import numpy as np
 
 from ..harvest.common import sha256_file
-from .cwv_data import (CwvBlock, TrainDataError, gather, load_block, read_meta, check_meta)
+from .cwv_data import (CwvBlock, TrainDataError, cache_rows, gather, load_block, read_meta,
+                       check_meta)
 from .data import Residency, ShardRef, _window_groups
 from .search_mean_sidecar import sidecar_path
 
@@ -122,6 +126,8 @@ def _decode_task(task: tuple) -> dict:
     if sidecar_dir is not None:
         out["search_mean_played"] = np.ascontiguousarray(block.search_mean_played)
         out["search_level_played"] = np.ascontiguousarray(block.search_level_played)
+    if block.trick_end is not None:
+        out[CwvBlock.TRICK_END] = np.ascontiguousarray(block.trick_end)
     keys = np.unique(block.deal_key)
     clusters = np.unique(block.cluster)
     if keys.size != 1 or clusters.size != 1:
@@ -179,6 +185,7 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
     # ---- pass 1: metas (rows, nbytes, identity) and the column split
     metas = []
     identity = None
+    flavours = set()
     for shard, path in entries:
         meta = check_meta(read_meta(path), path=path, shard_sha256=shard.sha256, history=False)
         enc = meta.get("encoder") or {}
@@ -189,7 +196,11 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
             raise PackError(f"{path}: encoder identity {ident} differs from {identity}")
         if meta.get("history"):
             raise PackError(f"{path}: history caches are not packed")
+        flavours.add(bool(meta.get("trick_end")))
+        if len(flavours) > 1:
+            raise PackError(f"{path}: a pack is all trick-end caches or none")
         metas.append(meta)
+    trick_end = flavours == {True}
     public_dim = None
     half_ok = None
     for (shard, path), _meta in list(zip(entries, metas))[:max(1, int(classify_shards))]:
@@ -208,7 +219,7 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
         half_ok[int(c)] = False
     half_cols = np.flatnonzero(half_ok).astype(np.int64)
     f32_cols = np.flatnonzero(~half_ok).astype(np.int64)
-    rows_total = int(sum(int(m["counts"]["encoded"]) for m in metas))
+    rows_total = int(sum(cache_rows(m) for m in metas))
     say(f"pack: {len(entries)} shards, {rows_total} rows, public {public_dim} = "
         f"{half_cols.size} half-multiple byte columns + {f32_cols.size} float32; identity {identity}")
     # ---- string dtypes: per-row strings as the widest seen in pass 1 (verified in pass 2)
@@ -230,6 +241,8 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
     if with_sidecar:
         arrays["search_mean_played"] = _memmap(out / "search_mean_played.f32", np.float32, (rows_total,), "w+")
         arrays["search_level_played"] = _memmap(out / "search_level_played.f32", np.float32, (rows_total,), "w+")
+    if trick_end:
+        arrays[CwvBlock.TRICK_END] = _memmap(out / "trick_end.bool", np.bool_, (rows_total,), "w+")
     # ---- pass 2: decode every shard once and append (decode in ``workers`` processes when
     # asked; the main process writes in entry order either way, so the pack is a function
     # of its inputs and ``workers`` — the first real 176k build ran 0.18 s/shard single-process)
@@ -253,6 +266,8 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
         if with_sidecar:
             arrays["search_mean_played"][offset:offset + n] = dec["search_mean_played"]
             arrays["search_level_played"][offset:offset + n] = dec["search_level_played"]
+        if trick_end:
+            arrays[CwvBlock.TRICK_END][offset:offset + n] = dec[CwvBlock.TRICK_END]
         shards_out.append({"sha256": shard.sha256, "label": shard.label, "offset": offset, "rows": n,
                            "nbytes": int(meta.get("nbytes") or 0), "deal_key": dec["deal_key"],
                            "cluster": dec["cluster"],
@@ -279,6 +294,9 @@ def build_pack(entries: Sequence[tuple[ShardRef, str]], out_dir: str | os.PathLi
         "sidecar_dir": None if sidecar_dir is None else str(Path(sidecar_dir).resolve()),
         "shards": shards_out,
     }
+    if trick_end:
+        # stated only on a trick-end pack, so every other manifest is unchanged
+        manifest["trick_end"] = True
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
     say(f"pack: done in {time.perf_counter() - started:.0f}s -> {out}")
     return manifest
@@ -314,8 +332,10 @@ class CwvPackStore:
             enc = meta.get("encoder") or {}
             if str(enc.get("implementation_sha256")) != self.manifest["encoder"]["implementation_sha256"]:
                 raise PackError(f"{path}: encoder identity differs from the pack's")
-            if int(meta["counts"]["encoded"]) != int(rec["rows"]) or int(meta.get("nbytes") or 0) != int(rec["nbytes"]):
+            if cache_rows(meta) != int(rec["rows"]) or int(meta.get("nbytes") or 0) != int(rec["nbytes"]):
                 raise PackError(f"{path}: rows/nbytes differ from the pack's record; rebuild the pack")
+            if bool(meta.get("trick_end")) != bool(self.manifest.get("trick_end")):
+                raise PackError(f"{path}: cache and pack disagree about trick-end rows")
             if sidecar_dir is not None:
                 # the baked search_mean_played column is only valid for the sidecar file it was
                 # built from: bind by digest, per shard
@@ -366,6 +386,8 @@ class CwvPackStore:
                 raise PackError(f"{self.dir}: pack has search_mean_played but no search_level_played; "
                                 "it predates sidecar v3 -- rebuild the pack")
             self._arr["search_level_played"] = _memmap(level, np.float32, (rows,), "r")
+        if m.get("trick_end"):
+            self._arr[CwvBlock.TRICK_END] = _memmap(self.dir / "trick_end.bool", np.bool_, (rows,), "r")
 
     # -- the CwvBlockStore surface ---------------------------------------------------
     def __len__(self) -> int:
@@ -408,7 +430,7 @@ class CwvPackStore:
         m = self.manifest
         arrays["deal_key"] = np.full(n, rec["deal_key"], dtype=np.dtype(m["deal_key_dtype"]))
         arrays["cluster"] = np.full(n, rec["cluster"], dtype=np.dtype(m["cluster_dtype"]))
-        for name in ("search_mean_played", "search_level_played"):
+        for name in ("search_mean_played", "search_level_played", CwvBlock.TRICK_END):
             if name in self._arr:
                 arrays[name] = np.asarray(self._arr[name][lo:hi])
         block = CwvBlock(arrays, meta, self.entries[i][1])

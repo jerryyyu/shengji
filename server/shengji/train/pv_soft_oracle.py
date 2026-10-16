@@ -38,6 +38,8 @@ import random
 from collections import Counter
 from dataclasses import dataclass
 
+from ..ai.memory import iter_known
+
 #: name tokens (`pv_policy_name`): ``-orcm<k>`` / ``-orcq<100 q>``
 MIX_TOKEN = "orcm"
 PIN_TOKEN = "orcq"
@@ -125,7 +127,7 @@ def hidden_layout(sampler, rnd, seat, mem, true_hands, true_buried) -> HiddenLay
     pinned: Counter = Counter()
     pre: dict = {s: [] for s in others}
     if getattr(sampler, "DECLARER_PIN", True):
-        for code, (dseat, ncopies) in mem.known.items():
+        for code, (dseat, ncopies) in iter_known(mem):
             if dseat in pre:
                 take = min(ncopies, sizes[dseat] - len(pre[dseat]))
                 for _ in range(take):

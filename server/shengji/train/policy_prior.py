@@ -553,9 +553,29 @@ def _weighted_row_mean(per_row, w):
     return (per_row * w).sum() / w.sum()
 
 
-def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0, row_weight=None):
+def ballot_rows(tgt: np.ndarray) -> np.ndarray:
+    """Host indices of the rows with a ballot target (``tgt >= 0``), the
+    ``rows`` argument of the listwise losses."""
+    return np.flatnonzero(np.asarray(tgt) >= 0)
+
+
+def _ballot_selector(tgt, rows):
+    """What the listwise losses index their rows with: the boolean mask
+    ``tgt >= 0``, or ``rows`` (its indices, computed on the host) when given.
+    Both select the same rows in the same order and give the same values
+    and gradients; the boolean mask makes the host wait for the device
+    (``nonzero``), the index tensor does not.  ``None`` = no row qualifies."""
+    if rows is not None:
+        return rows if rows.numel() else None
+    ok = tgt >= 0
+    return ok if bool(ok.any()) else None
+
+
+def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0, row_weight=None,
+                       *, rows=None):
     """Listwise CE against the SEARCH'S DISTRIBUTION where it exists, the played action
     elsewhere.  ``row_weight`` (b,) weights rows; ``None`` is the unweighted mean.
+    ``rows`` (optional): ``ballot_rows(tgt)`` as an int64 tensor on the device.
 
     ``listwise_loss`` teaches "the search played this one"; this teaches "the search
     preferred these, in this proportion" -- the information the search actually produced
@@ -563,8 +583,8 @@ def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0, 
     hard target rather than being dropped, so the row count does not move between arms.
     """
     import torch
-    ok = tgt >= 0
-    if not bool(ok.any()):
+    ok = _ballot_selector(tgt, rows)
+    if ok is None:
         return logits.sum() * 0.0
     lo = logits[ok]
     b = ball[ok].long()
@@ -582,13 +602,14 @@ def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0, 
     return _weighted_row_mean(per_row, row_weight[ok])
 
 
-def listwise_loss(logits, ball, mask, tgt, row_weight=None):
+def listwise_loss(logits, ball, mask, tgt, row_weight=None, *, rows=None):
     """Cross-entropy over the ballot's factorised scores, rows whose played action is
     in the ballot only.  ``logits`` (b, 54); ``ball`` (b, B, C) card indices or -1.
-    ``row_weight`` (b,) weights rows; ``None`` is the unweighted cross-entropy."""
+    ``row_weight`` (b,) weights rows; ``None`` is the unweighted cross-entropy.
+    ``rows`` (optional): ``ballot_rows(tgt)`` as an int64 tensor on the device."""
     import torch
-    ok = tgt >= 0
-    if not bool(ok.any()):
+    ok = _ballot_selector(tgt, rows)
+    if ok is None:
         return logits.sum() * 0.0
     lo = logits[ok]                                                    # (n, 54) log-odds
     b = ball[ok].long()

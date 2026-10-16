@@ -35,7 +35,7 @@ from . import encode as _v1
 from .encode import ENC_VERSION, N_CARDS, OBS_DIM, OBS_SCHEMA  # noqa: F401  (re-export)
 
 #: the highest version ``encode_obs`` can emit
-ENC_VERSION_MAX = 6
+ENC_VERSION_MAX = 7
 OBS_SCHEMA_BY_VERSION = {
     1: OBS_SCHEMA,
     2: "rl-observation-v2-trick-state",
@@ -52,6 +52,9 @@ OBS_SCHEMA_BY_VERSION = {
     # Version 6 is the ONE version that is not a strict extension: v2's columns with the
     # unseen plane CORRECTED (the banker's own burial removed) plus a kitty_known flag.
     6: "rl-observation-v6-banker-kitty-corrected",
+    # Version 7 is v2 plus who acts next (``encode_next_actor``); like v5 it does
+    # not include 3, 4, 5 or 6.
+    7: "rl-observation-v7-next-actor",
 }
 #: v2 appends 16 trick-local, 5 points-regime and 8 hand-shape columns
 _OBS_EXTRA_V2 = 16 + 5 + 8                                   # = 29
@@ -69,6 +72,23 @@ OBS_DIM_BY_VERSION[5] = OBS_DIM_BY_VERSION[2] + _OBS_EXTRA_V5  # 616
 #: UNCORRECTED plane with nothing to catch it (measured: kitty-serve-mismatch-probe.txt).
 _OBS_EXTRA_V6 = 1
 OBS_DIM_BY_VERSION[6] = OBS_DIM_BY_VERSION[2] + _OBS_EXTRA_V6  # 561
+#: v7 appends the 4 next-actor columns of ``encode_next_actor``
+_OBS_EXTRA_V7 = 4
+OBS_DIM_BY_VERSION[7] = OBS_DIM_BY_VERSION[2] + _OBS_EXTRA_V7  # 564
+#: Widths that archived checkpoints of a reserved, unregistered version carry.
+#: Dispatch is by width, so no registered version may produce one of these: an
+#: archived v3 net (observation 568, complete-world public 569) would otherwise
+#: be served that version's encoder without any width or identity mismatch.
+RESERVED_OBS_DIMS = {3: 568}
+assert not set(RESERVED_OBS_DIMS.values()) & set(OBS_DIM_BY_VERSION.values())
+assert not {dim + 1 for dim in RESERVED_OBS_DIMS.values()} \
+    & {dim + 1 for dim in OBS_DIM_BY_VERSION.values()}
+#: Versions whose vector is ANOTHER version's vector with columns appended at its
+#: end: ``encode_obs(..., version=v)[:OBS_DIM_BY_VERSION[base]]`` is the base
+#: version's vector, byte for byte.  A net trained at ``base`` can therefore be
+#: widened to ``v`` by giving the appended inputs zero weight.  v6 is absent: it
+#: rewrites columns inside the v1 block.
+APPENDS_TO = {2: 1, 4: 2, 5: 2, 7: 2}
 
 
 def check_version(version: object) -> int:
@@ -103,6 +123,10 @@ def encoder_version_for(arch: object) -> int:
     for version, dim in OBS_DIM_BY_VERSION.items():
         if dim == width:
             return version
+    for version, dim in RESERVED_OBS_DIMS.items():
+        if dim == width:
+            raise ValueError(f"obs_dim {width} is reserved encoder v{version}, which this tree "
+                             "does not register")
     raise ValueError(f"no encoder version produces obs_dim {width}")
 
 
@@ -235,6 +259,10 @@ def encode_obs(rnd: Round, seat: int, *, version: int = ENC_VERSION) -> list[flo
                                                     corrected_unseen_plane, UNSEEN)
         obs[UNSEEN] = corrected_unseen_plane(rnd, seat)
         obs += banker_kitty_corrected_columns(rnd, seat)
+    if version == 7:
+        # Who acts next: the one Markov fact a trick-boundary state lacks.
+        from .encode_next_actor import next_actor_columns
+        obs += next_actor_columns(rnd, seat)
     assert len(obs) == OBS_DIM_BY_VERSION[version]
     return obs
 
@@ -253,8 +281,8 @@ def call_encode(encoder, rnd: Round, seat: int, version: int = ENC_VERSION) -> l
 
 
 __all__ = [
-    "ENC_VERSION", "ENC_VERSION_MAX", "OBS_DIM", "OBS_DIM_BY_VERSION",
-    "OBS_SCHEMA", "OBS_SCHEMA_BY_VERSION", "check_version", "encode_obs",
+    "APPENDS_TO", "ENC_VERSION", "ENC_VERSION_MAX", "OBS_DIM", "OBS_DIM_BY_VERSION",
+    "OBS_SCHEMA", "OBS_SCHEMA_BY_VERSION", "RESERVED_OBS_DIMS", "check_version", "encode_obs",
     "encode_obs_v2_columns", "encoder_version_for", "obs_dim", "obs_schema",
     "trick_state", "call_encode",
 ]

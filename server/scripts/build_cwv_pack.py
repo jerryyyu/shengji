@@ -3,10 +3,12 @@
 
     python -P -B scripts/build_cwv_pack.py --data DIR [--data DIR ...] --cache-dir DIR \
         --out PACKDIR [--encoder-version 5] [--search-mean-sidecar DIR] [--force-float32 508 ...]
+        [--trick-end-rows]
 
 Discovers the stores exactly as the trainer does (same shard order), requires every cache
 shard to exist and validate (it builds none), then writes the pack.  Train with
-``--pack-dir PACKDIR``; the batch sequence is identical to the cache path.
+``--pack-dir PACKDIR``; the batch sequence is identical to the cache path.  ``--trick-end-rows``
+packs the trick-end caches a ``train_cwv.py train --trick-end-rows`` run builds and reads.
 """
 from __future__ import annotations
 
@@ -32,16 +34,20 @@ def main(argv=None) -> int:
     p.add_argument("--classify-shards", type=int, default=500)
     p.add_argument("--force-float32", type=int, action="append", default=[])
     p.add_argument("--workers", type=int, default=1, help="decode processes for pass 2 (1 = sequential)")
+    p.add_argument("--trick-end-rows", action="store_true",
+                   help="pack the trick-end cache flavour (each record's row plus its trick-end row)")
     a = p.parse_args(argv)
     say = lambda s: print(f"{time.strftime('%H:%M:%S')} {s}", flush=True)
     entries = []
     for path in a.data:
         store = discover_store(path, limit_clusters=None)
         for shard in store.shards:
-            cp = cache_path(a.cache_dir, shard.sha256, history=False, version=a.encoder_version)
+            cp = cache_path(a.cache_dir, shard.sha256, history=False, version=a.encoder_version,
+                            trick_end=a.trick_end_rows)
             if not Path(cp).is_file():
                 raise SystemExit(f"{shard.label}: cache {cp} is missing; run the trainer's cache build first")
-            check_meta(read_meta(cp), path=cp, shard_sha256=shard.sha256, history=False)
+            check_meta(read_meta(cp), path=cp, shard_sha256=shard.sha256, history=False,
+                       trick_end=a.trick_end_rows)
             entries.append((shard, str(cp)))
     say(f"{len(entries)} cached shards across {len(a.data)} stores")
     manifest = build_pack(entries, a.out, sidecar_dir=a.search_mean_sidecar,

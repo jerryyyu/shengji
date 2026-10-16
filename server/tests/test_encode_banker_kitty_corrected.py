@@ -123,7 +123,7 @@ def test_v6_is_complete_in_every_version_table_and_identity_closure():
     from shengji.train import cwv_data
     from shengji.ai import cwv_policy
 
-    assert ev.ENC_VERSION_MAX == 6
+    assert ev.ENC_VERSION_MAX == 7
     for table, name in ((ev.OBS_DIM_BY_VERSION, "OBS_DIM_BY_VERSION"),
                         (ev.OBS_SCHEMA_BY_VERSION, "OBS_SCHEMA_BY_VERSION")):
         assert 6 in table, f"v6 missing from {name}"

@@ -3,7 +3,7 @@ import pytest
 from shengji.train import cwv_data
 
 
-@pytest.mark.parametrize('version', [1, 2, 4, 5, 6])
+@pytest.mark.parametrize('version', [1, 2, 4, 5, 6, 7])
 def test_public_identity_computed_once_and_refreshed(monkeypatch, version):
     before = cwv_data.cwv_encoder_identity(version)
     original = cwv_data.public_encoder_identity

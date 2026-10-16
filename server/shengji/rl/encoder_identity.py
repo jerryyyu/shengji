@@ -69,6 +69,10 @@ def source_paths(version: int = ENC_VERSION) -> dict[str, Path]:
             # the correction would leave every v6 cache file and checkpoint validating
             # against a stale digest -- the hazard #476 fixed for v4.
             paths["encode_banker_kitty_corrected"] = here.with_name("encode_banker_kitty_corrected.py")
+        if version == 7:
+            # The dispatcher digest is pinned for every version that hashes it, so the
+            # module that computes v7's columns is what binds v7's identity to its code.
+            paths["encode_next_actor"] = here.with_name("encode_next_actor.py")
     return paths
 
 

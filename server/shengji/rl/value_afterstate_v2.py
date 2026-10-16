@@ -51,7 +51,7 @@ class ValueAfterstateTensorsV2(ValueAfterstateTensors):
 
     def validate(self) -> None:
         expected = (
-            # any declared post-v1 width: v2 (561) or v4 (636); v1 has its own class
+            # any declared post-v1 width (v2 561, v7 565, ...); v1 has its own class
             (self.public, (None,), "public"),
             (self.history, (None, HISTORY_EVENT_DIM), "history"),
             (self.world, (WORLD_RECEIVERS, N_CARDS), "world"),
@@ -109,6 +109,12 @@ def widen_to(v1: ValueAfterstateTensors, rnd, root_seat: int,
         raise ValueError(
             "encoder v6 corrects the v1 unseen plane and cannot be widened from a v1 tensor; "
             "encode it directly with encode_obs(..., version=6)")
+    if version == 7:
+        # v2's columns then the next-actor block: what ``encode_obs`` appends at v7,
+        # without rebuilding the v1 prefix this tensor already carries.
+        from .encode_next_actor import next_actor_columns
+        return _widen_columns(v1, [*encode_obs_v2_columns(rnd, root_seat),
+                                   *next_actor_columns(rnd, root_seat)])
     from .encode import OBS_DIM
     from .encode_versions import encode_obs
     return _widen_columns(v1, encode_obs(rnd, root_seat, version=version)[OBS_DIM:])

@@ -115,9 +115,9 @@ class CWVNumpyConfig:
         elif not self.width <= self.policy_tower_width <= 65536:
             raise CWVNumpyError("invalid policy tower width")
         # Encoder widths are deliberately checked without importing the
-        # training stack; v1/v2 are the only supported identity-preserving
-        # public dimensions.
-        expected = {1: 532, 2: 561}.get(self.enc_version)
+        # training stack; these are the supported identity-preserving public
+        # dimensions (v7 = v2 plus the 4 next-actor columns).
+        expected = {1: 532, 2: 561, 7: 565}.get(self.enc_version)
         if expected is None or self.public_dim != expected:
             raise CWVNumpyError("public_dim/enc_version identity mismatch")
 

@@ -58,7 +58,9 @@ def test_v1_stays_the_default_and_v2_is_declared_beside_it():
     assert OBS_SCHEMA == OBS_SCHEMA_BY_VERSION[1] == \
         "rl-observation-v1-public-no-private-kitty"
     # 3 is reserved for Codex's own-hand block (PR #336); 4 is v2 + opponent pairs (#341)
-    assert ENC_VERSION_MAX == 6 and OBS_DIM_BY_VERSION[2] == 560 and OBS_DIM_BY_VERSION[4] == 635
+    assert ENC_VERSION_MAX == 7 and OBS_DIM_BY_VERSION[2] == 560 and OBS_DIM_BY_VERSION[4] == 635
+    # v7 is v2 plus the 4 next-actor columns; 568 stays reserved for the archived v3 nets
+    assert OBS_DIM_BY_VERSION[7] == 564
     # v6 is the corrected-unseen-plane arm (#477); 561 so it cannot share v2's width
     assert OBS_DIM_BY_VERSION[5] == 616 and OBS_DIM_BY_VERSION[6] == 561
     assert OBS_DIM_BY_VERSION[5] == 616, "v5 = v2 + the 56 banker-kitty columns"
@@ -124,10 +126,17 @@ def test_encode_py_may_change_only_behind_the_source_pin_and_the_golden():
     encode_versions.py) at pinned pre-change digests, and tests/test_encoder_bytes_golden.py is
     the guard.  What this test still pins: the published identities must not move, and the v1
     encoder must not grow v2's columns."""
+    from shengji.ai.cwv_encoder_compat import round_notice_identity
     from shengji.rl import encode as encode_v1
     from shengji.train.cwv_data import PUBLISHED_SOURCE_SHA256, cwv_encoder_identity
-    assert cwv_encoder_identity(2)["implementation_sha256"].startswith("a56679bbd170")
-    assert cwv_encoder_identity(4)["implementation_sha256"].startswith("d99e7836cc4c")
+    from tests.test_encoder_bytes_golden import CURRENT_CWV, PRISTINE
+    # the identities this tree computes, and the named round.py migration back to the ones the
+    # archived checkpoints (release 30's package among them) declare
+    for version in (2, 4):
+        current = cwv_encoder_identity(version)
+        assert current["implementation_sha256"] == CURRENT_CWV[version]
+        assert round_notice_identity(current) == PRISTINE[f"cwv_v{version}"]
+    assert PRISTINE["cwv_v2"].startswith("a56679bbd170") and PRISTINE["cwv_v4"].startswith("d99e7836cc4c")
     assert "encode" in PUBLISHED_SOURCE_SHA256 and "memory" in PUBLISHED_SOURCE_SHA256
     assert not hasattr(encode_v1, "encode_obs_v2_columns")
 

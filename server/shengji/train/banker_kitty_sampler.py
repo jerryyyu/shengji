@@ -40,6 +40,10 @@ class BankerKittySupportMixin:
         relaxed = copy(mem)
         relaxed.known = {code: pin for code, pin in mem.known.items()
                          if pin[0] != rnd.banker}
+        relaxed.known_by_holder = {
+            key: count for key, count in getattr(mem, "known_by_holder", {}).items()
+            if key[1] != rnd.banker
+        }
         impossible_before = self.impossible_worlds
         sampled = super()._sample_hands(rnd, seat, relaxed)
         if sampled is None:

@@ -292,6 +292,11 @@ def test_selector_picks_different_epochs_per_metric():
         {"loss": 0.66, "rank_regret": 0.16, "points_mae": 24.0, "policy_miss_at_64": 0.15, **at_k[3]},   # best points
         {"loss": 0.67, "rank_regret": 0.17, "points_mae": 26.0, "policy_miss_at_64": 0.16, **at_k[4]},
     ]
+    # the served-leaf keys (train.served_rank): best at epoch 4 on the level scale and at
+    # epoch 3 on the points scale
+    for block, served, points in zip(epochs, (0.30, 0.26, 0.24, 0.21, 0.22),
+                                     (9.0, 8.0, 7.5, 7.9, 8.1)):
+        block.update(served_rank_regret=served, served_rank_regret_points=points)
     # the synthetic at_1 column IS the rank_regret column (the k = 1 identity)
     assert [b["rank_regret_at_1"] for b in epochs] == [b["rank_regret"] for b in epochs]
     picks = {}
@@ -309,12 +314,13 @@ def test_selector_picks_different_epochs_per_metric():
     assert picks == {"val_ce": 3, "val_rank_regret": 2, "val_points_mae": 4,
                      "val_rank_regret_at_1": 2, "val_rank_regret_at_2": 2,
                      "val_rank_regret_at_4": 5, "val_rank_regret_at_8": 5,
-                     "val_policy_miss_at_64": 1}
+                     "val_policy_miss_at_64": 1, "val_served_rank_regret": 4,
+                     "val_served_rank_regret_points": 3}
     # the top-4 metric picks an epoch NEITHER val_ce NOR val_rank_regret picks
     assert picks["val_rank_regret_at_4"] not in (picks["val_ce"], picks["val_rank_regret"])
     assert stops == {"val_ce": 5, "val_rank_regret": 4,                 # patience 2 after best
                      "val_rank_regret_at_1": 4, "val_rank_regret_at_2": 4,
-                     "val_policy_miss_at_64": 3}
+                     "val_policy_miss_at_64": 3, "val_served_rank_regret_points": 5}
     # the whole reason the policy metric exists: the checkpoint that is best for the
     # admission prior is NOT the one any value metric would have kept.
     assert picks["val_policy_miss_at_64"] not in (

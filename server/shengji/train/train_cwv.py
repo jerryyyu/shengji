@@ -3,8 +3,12 @@
     train_cwv.py train --data DIR [--data DIR ...] [--eval-luna PATH] --out DIR
         --arch mlp|seq [--device mps|cpu] [--limit-clusters N] [--aux-points]
         [--seed N] [--public-head CKPT] [--epochs 20] [--batch-size 1024]
-        [--select-metric val_ce|val_rank_regret|val_rank_regret_at_K|val_points_mae]
-        [--val-rank-records N]
+        [--select-metric val_ce|val_rank_regret|val_rank_regret_at_K|val_points_mae|
+                         val_served_rank_regret[_points]]
+        [--val-rank-records N] [--served-rank-deals N [--served-rank-per-bucket K]]
+        [--lr-schedule constant|cosine|linear [--lr-final-scale F]]
+        [--weight-average none|ema|swa [--ema-decay D | --swa-start-epoch E]
+         [--select-averaged]] [--window SHARDS]
         [--init CKPT [--init-lr-scale F] [--init-exclude-exposed]] ...
     train_cwv.py evaluate --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR
         [--split test|novel|val|train|all] [--public-head CKPT]
@@ -75,6 +79,28 @@ them read the top-1 shape and which the top-k shape.  ``rank_regret`` and
 ``rank_regret_at_k`` alike are the level-bracket transform of the search's
 MEAN points, U(E[points]), an MC-ranking proxy -- not E[U].
 
+``rank_regret`` is not the quantity the served search consumes.  At one
+record per deal it reads almost only trick-0 decisions.  It scores
+immediate afterstates where the search scores trick-finished leaves.  On
+pv-search records its truth is the producer's own sampled-world means.
+``--served-rank-deals N`` adds ``train.served_rank``'s served-leaf ranking
+on N val deals: records spread over early/mid/late tricks by a seeded hash,
+candidates scored at the trick-finished leaf on the true world, truth from
+the true-world heuristic continuation.  Its keys are ``served_rank_regret``
+(bucket-balanced), ``served_rank_regret_points``, ``served_by_trick`` and
+``served_search_regret``, and ``--select-metric val_served_rank_regret``
+selects on it.  ``scripts/served_rank_regret.py`` scores saved checkpoints
+and packages the same way.
+
+Optimiser noise (all off by default, so an unchanged command line trains
+what it trained before): ``--lr-schedule cosine|linear`` decays the AdamW
+rate per step to ``--lr-final-scale`` over the planned epochs;
+``--weight-average ema|swa`` keeps an average of the weights, validates it
+beside the raw weights every epoch (``val.averaged``) and saves it as
+``checkpoints/epoch-NN.avg.pt``; ``--select-averaged`` selects on it.
+``--window`` widens the shuffle window (the default 64 shards puts about 51
+deals in a 1,024-row batch).
+
 Labelled harvest holdouts (``--eval-holdout NAME=PATH``, repeatable)
 --------------------------------------------------------------------
 A file written by ``scripts/label_harvest.py`` (``train.harvest_labels``:
@@ -127,8 +153,10 @@ import torch
 from torch import nn
 
 from ..rl.douzero_micro import HISTORY_MAX_EVENTS
-from ..rl.encode_versions import ENC_VERSION, OBS_DIM_BY_VERSION, check_version
-from ..rl.value_afterstate import OUTCOME_CLASSES, ValueAfterstateTensors
+from ..rl.encode_versions import APPENDS_TO, ENC_VERSION, OBS_DIM_BY_VERSION, check_version
+from ..rl.encode import N_CARDS
+from ..rl.value_afterstate import (OUTCOME_CLASSES, PERSPECTIVE_DIM, WORLD_RECEIVERS,
+                                  ValueAfterstateTensors)
 from ..rl.value_afterstate_v2 import public_dim
 from ..rl.value_checkpoint import (
     ValueCheckpointError,
@@ -146,13 +174,19 @@ from .cwv_data import (
     VIEW,
     CwvBlock,
     CwvBlockStore,
+    DeviceCopies,
+    Prefetch,
     Prepared,
     bridge_record,
     collate,
     cwv_encoder_identity,
     expected_levels,
     median_pt0,
+    part_row_counts,
     prepare_stores,
+    selector_block,
+    selector_rows,
+    split_row_counts,
     tensors_of,
 )
 from .cwv_eval import (
@@ -265,6 +299,24 @@ for _k in RANK_KS:
         f"legal enumeration; levels are U(E[points]), the bracket transform of the search's "
         f"MEAN points -- an MC-ranking proxy, not E[U])")
 del _k
+#: The served-leaf ranking (``train.served_rank``), opt-in with
+#: ``--served-rank-deals``: records spread over the round by a seeded hash,
+#: candidates scored at the trick-finished leaf on the true world, truth from
+#: the true-world heuristic continuation (never a model's own search means).
+SELECT_METRICS["val_served_rank_regret"] = (
+    "served_rank_regret",
+    "validation served-leaf rank regret of the level head (train.served_rank): candidates "
+    "scored at the leaf the served search scores (trick finished by the heuristic) on the "
+    "true world; truth = the true-world heuristic continuation's signed level; records "
+    "chosen per deal and trick bucket by sha256(seed|source_ref); bucket-balanced over "
+    "early/mid/late tricks")
+SELECT_METRICS["val_served_rank_regret_points"] = (
+    "served_rank_regret_points",
+    "validation served-leaf rank regret in the acting team's rollout points (train.served_rank; "
+    "the same records, leaves and continuation as val_served_rank_regret on a finer scale)")
+#: ``--lr-schedule`` kinds and ``--weight-average`` kinds (both off by default).
+LR_SCHEDULES = ("constant", "cosine", "linear")
+WEIGHT_AVERAGES = ("none", "ema", "swa")
 #: New trainings default to encoder v2. Jerry, 2026-09-08, with cost explicitly
 #: set aside. This is a DECISION UNDER UNCERTAINTY, not a demonstrated win: the
 #: v2 encoder's own effect crosses zero at both data sizes (+0.0510 [-0.006,
@@ -283,6 +335,9 @@ DEFAULTS = {
     "seq_width": 64, "seq_layers": 2, "seq_heads": 4, "seq_feedforward": 128,
     "bench_batch": 1024, "select_metric": "val_ce", "val_rank_records": 20_000,
     "init_lr_scale": 1.0,
+    "served_rank_deals": 0, "served_rank_per_bucket": 1,
+    "lr_schedule": "constant", "lr_final_scale": 0.0,
+    "weight_average": "none", "ema_decay": 0.9999, "swa_start_epoch": 1,
     # A fresh run has no checkpoint to read a version from, so this is where the
     # version is chosen.  It became 2 on 2026-09-08, so an unchanged command line
     # now produces v2 (560 + 1) checkpoints; pass --encoder-version 1 for the
@@ -692,10 +747,32 @@ def full_metrics(ev: Mapping[str, np.ndarray], baselines: Mapping[str, Any], *, 
     return metrics
 
 
-def fit_baselines(store: CwvBlockStore, mask_fn: Callable[[CwvBlock], np.ndarray]) -> dict:
+#: the per-row columns ``fit_baselines`` reads (``deal_key`` for the split mask)
+BASELINE_COLUMNS = ("deal_key", "ply", "role_attacker", "points_so_far", "utility")
+
+
+def fit_baselines(store: CwvBlockStore, mask_fn: Callable[[CwvBlock], np.ndarray], *,
+                  workers: int = 0) -> dict:
     """The stratified prior (phase x role x points so far -> mean PT0
-    utility) from the TRAINING rows: ``train.baselines.StratifiedPrior``."""
+    utility) from the TRAINING rows: ``train.baselines.StratifiedPrior``.
+
+    With ``workers`` > 0 and a deal-key split mask, the shards are read in
+    that many processes, only the ``BASELINE_COLUMNS`` of each, and shards
+    with no row in the part are not read at all.  The prior's sums depend on
+    the order rows are added, so the shards are still added one at a time in
+    store order, with the same arrays: the result is identical to the serial
+    pass over fully decoded blocks."""
     prior = StratifiedPrior()
+    if (int(workers) > 0 and type(mask_fn) is SplitSelector
+            and hasattr(store, "iter_columns")):
+        for _i, cols in store.iter_columns(
+                BASELINE_COLUMNS, workers=int(workers),
+                skip=lambda keys: not mask_fn.selects_any(keys)):
+            sel = np.flatnonzero(mask_fn(selector_rows(cols)))
+            if sel.size:
+                prior.add(cols["ply"][sel], cols["role_attacker"][sel],
+                          cols["points_so_far"][sel], cols["utility"][sel])
+        return {"stratified_prior": prior.to_dict(), "fitted_on": "train"}
     for block in store.iter_blocks():
         sel = np.flatnonzero(mask_fn(block))
         if sel.size:
@@ -803,6 +880,62 @@ def ranking_block(pass_result: Mapping[str, Any], *, n_boot: int, seed: int) -> 
 
 # ------------------------------------------------- search-facing validation
 
+#: the stream of the ``--val-rows`` subset's generator, next to the run seed
+VAL_SUBSET_STREAM = 0x76616C
+
+
+def val_row_subset(store: CwvBlockStore, assignment: Mapping[str, str], n_rows: int, *,
+                   seed: int) -> tuple[SplitSelector, dict]:
+    """``--val-rows``: the per-epoch validation subset and its receipt block.
+
+    Whole val deals in a seeded order (``seed``, ``VAL_SUBSET_STREAM``) until
+    their rows reach ``n_rows`` or the split runs out.  Whole deals, because
+    a shard holds one deal and evaluation pays per shard it decodes; one
+    fixed subset, so every epoch is scored on the same rows.  The stopping
+    rule adds each deal's exact val rows, so the subset reaches ``n_rows``
+    whenever the split holds that many: a shard with one val deal is counted
+    without a read (``part_row_counts``); a shard holding several val deals
+    has its deal-key column read and counted per deal, because the deals
+    need not share its rows evenly.  The receipt counts the chosen rows
+    again through the selector the epochs will use."""
+    val = SplitSelector(assignment, "val")
+    val_keys = sorted(k for k, v in assignment.items() if v == "val")
+    deal_rows: dict[str, int] = {}
+    for i, counts in part_row_counts(store, {"val": val}):
+        keys = [k for k in store.keys_of(i) if assignment.get(k) == "val"]
+        if len(keys) == 1:
+            deal_rows[keys[0]] = deal_rows.get(keys[0], 0) + int(counts["val"])
+        elif keys:
+            block = selector_block(store, i)
+            hit = np.asarray(val(block), dtype=bool)
+            uniq, per_deal = np.unique(np.asarray(block.deal_key, dtype=str)[hit],
+                                       return_counts=True)
+            for key, n in zip(uniq.tolist(), per_deal.tolist()):
+                deal_rows[key] = deal_rows.get(key, 0) + int(n)
+    order = np.random.default_rng([int(seed), VAL_SUBSET_STREAM]).permutation(len(val_keys))
+    chosen: list[str] = []
+    covered = 0
+    for j in order:
+        if covered >= int(n_rows):
+            break
+        chosen.append(val_keys[int(j)])
+        covered += deal_rows.get(val_keys[int(j)], 0)
+    keys = sorted(chosen)
+    selector = SplitSelector({k: "val" for k in keys}, "val")
+    counted = split_row_counts(store, {"val": selector})["val"]
+    block = {
+        "rows_requested": int(n_rows), "rows": int(counted), "deals": len(keys),
+        "val_deals": len(val_keys), "seed": int(seed), "stream": VAL_SUBSET_STREAM,
+        "digest": hashlib.sha256("\n".join(keys).encode()).hexdigest(),
+        "rule": "whole val deals in a seeded permutation until their rows reach "
+                "rows_requested; the same subset every epoch",
+        "scope": "per-epoch validation rows only (val_ce, val_mae, val_rps, points); the "
+                 "rank metrics read the candidate set and the final val/test pass reads "
+                 "every row",
+    }
+    return selector, block
+
+
 def per_shard_cap(n_records: int, n_shards: int) -> int:
     """``--val-rank-records N`` as a per-shard cap: ceil(N / shards)."""
     return int(math.ceil(int(n_records) / max(int(n_shards), 1))) if n_records > 0 else 0
@@ -885,6 +1018,116 @@ def search_facing(model: ValueNetwork, ev: Mapping[str, np.ndarray],
     block = search_facing_metrics(ev, levels=levels, cands=cands)
     block["rank_secs"] = round(time.perf_counter() - t0, 3)
     return block
+
+
+def served_set_for(store: CwvBlockStore, keys: set[str], cache: Path | None, *, deals: int,
+                   per_bucket: int, seed: int, workers: int, label: str,
+                   progress: Callable[[str], None] | None, version: int = ENC_VERSION):
+    """The split's memoised ``served_rank.ServedCandidateSet`` over ``deals``
+    of its deals (chosen by ``served_rank.served_deals``); None when off."""
+    if deals <= 0:
+        return None
+    from .served_rank import ensure_served_set, served_deals
+    chosen = set(served_deals(keys, int(deals), int(seed)))
+    with rng_guard():
+        return ensure_served_set(shard_keys_of(store, chosen), cache,
+                                 per_bucket=int(per_bucket), seed=int(seed), workers=workers,
+                                 label=label, progress=progress, version=version)
+
+
+def served_facing(model: ValueNetwork, sset, device: torch.device, *, batch_size: int) -> dict:
+    """``served_rank.served_rank_metrics`` for ``model`` on ``sset``, plus
+    the seconds the candidate forward took."""
+    from .served_rank import served_rank_metrics
+    t0 = time.perf_counter()
+    levels = (None if sset is None or sset.records == 0
+              else rank_levels(model, sset.cands, device, batch_size=batch_size))
+    block = served_rank_metrics(levels, sset) if levels is not None \
+        else served_rank_metrics(np.zeros(0), None)
+    block["served_secs"] = round(time.perf_counter() - t0, 3)
+    return block
+
+
+def lr_factor(kind: str, step: int, planned: int, final_scale: float) -> float:
+    """The ``--lr-schedule`` multiplier after ``step`` optimiser steps of
+    ``planned``: 1 throughout for ``constant``; ``cosine`` and ``linear`` fall
+    from 1 to ``final_scale`` and stay there past ``planned``."""
+    if kind == "constant":
+        return 1.0
+    progress = min(1.0, max(0.0, step / max(1, int(planned))))
+    if kind == "cosine":
+        shape = 0.5 * (1.0 + math.cos(math.pi * progress))
+    elif kind == "linear":
+        shape = 1.0 - progress
+    else:
+        raise TrainError(f"--lr-schedule must be one of {LR_SCHEDULES}")
+    return float(final_scale) + (1.0 - float(final_scale)) * shape
+
+
+class WeightAverage:
+    """An average of the trained parameters, evaluated beside the raw ones.
+
+    ``ema``: ``avg <- decay * avg + (1 - decay) * w`` after every optimiser
+    step, starting from the weights at step 0 (the init when warm-starting).
+    ``swa``: the equal-weight mean of the weights after every step from the
+    first step of ``start_epoch`` on.  ``swapped()`` puts the average into the
+    live parameters (the model and the aux head) and restores the raw ones.
+    """
+
+    def __init__(self, params: Sequence[torch.nn.Parameter], kind: str, *, decay: float,
+                 start_epoch: int):
+        if kind not in ("ema", "swa"):
+            raise TrainError(f"--weight-average must be one of {WEIGHT_AVERAGES}")
+        self.params = list(params)
+        self.kind = kind
+        self.decay = float(decay)
+        self.start_epoch = int(start_epoch)
+        self.updates = 0
+        self.shadow = ([p.detach().clone() for p in self.params] if kind == "ema" else None)
+
+    @torch.no_grad()
+    def update(self, epoch: int) -> None:
+        if self.kind == "ema":
+            for avg, p in zip(self.shadow, self.params):
+                avg.lerp_(p.detach(), 1.0 - self.decay)
+            self.updates += 1
+            return
+        if epoch < self.start_epoch:
+            return
+        if self.shadow is None:
+            self.shadow = [p.detach().clone() for p in self.params]
+            self.updates = 1
+            return
+        self.updates += 1
+        for avg, p in zip(self.shadow, self.params):
+            avg.lerp_(p.detach(), 1.0 / self.updates)
+
+    @property
+    def ready(self) -> bool:
+        return self.shadow is not None and self.updates > 0
+
+    @contextlib.contextmanager
+    def swapped(self):
+        if not self.ready:
+            raise TrainError("the weight average has no update yet")
+        raw = [p.detach().clone() for p in self.params]
+        with torch.no_grad():
+            for p, avg in zip(self.params, self.shadow):
+                p.copy_(avg)
+        try:
+            yield
+        finally:
+            with torch.no_grad():
+                for p, r in zip(self.params, raw):
+                    p.copy_(r)
+
+    def payload(self) -> dict:
+        out: dict[str, Any] = {"kind": self.kind, "updates": int(self.updates)}
+        if self.kind == "ema":
+            out["decay"] = self.decay
+        else:
+            out["start_epoch"] = self.start_epoch
+        return out
 
 
 def parse_holdouts(specs: Sequence[str] | None) -> dict[str, str]:
@@ -1167,14 +1410,51 @@ def exposure_report(keys: Collection[str], exposure: Mapping[str, Any]) -> dict:
 
 # ------------------------------------------------------------- warm start
 
+def _widen_first_layer(state: dict, ours: Mapping[str, torch.Tensor], cfg: ValueModelConfig,
+                       source_version: int) -> tuple[dict, dict]:
+    """``state`` with zero input columns inserted for the columns ``cfg``'s encoder appends
+    to ``source_version``'s, so the widened net computes the source's function at step 0.
+
+    Exactly one parameter reads the public tensor directly: the mlp trunk's first Linear
+    (plain or residual) or the grid trunk's stem, whose input carries the public scalars
+    after the grid features.  In both, the appended columns sit immediately before the
+    public tensor's last column, the terminal flag, which is followed by the world planes
+    (plain/residual) or the two perspective columns (grid)."""
+    added = OBS_DIM_BY_VERSION[cfg.enc_version] - OBS_DIM_BY_VERSION[source_version]
+    changed = [k for k in ours if k in state and state[k].shape != ours[k].shape]
+    if len(changed) != 1 or state[changed[0]].dim() != 2:
+        raise TrainError(f"encoder widening expects one input layer to differ, found {changed}")
+    key = changed[0]
+    weight = state[key]
+    rows, cols = weight.shape
+    if tuple(ours[key].shape) != (rows, cols + added):
+        raise TrainError(f"encoder widening: {key} is {tuple(ours[key].shape)}, expected "
+                         f"{(rows, cols + added)}")
+    after_flag = PERSPECTIVE_DIM if cfg.trunk_block == "grid" else WORLD_RECEIVERS * N_CARDS + PERSPECTIVE_DIM
+    at = cols - after_flag - 1
+    if cfg.trunk_block != "grid" and at != OBS_DIM_BY_VERSION[source_version]:
+        raise TrainError("encoder widening: the input layout is not public | world | perspective")
+    zeros = weight.new_zeros((rows, added))
+    widened = dict(state)
+    widened[key] = torch.cat((weight[:, :at], zeros, weight[:, at:]), dim=1)
+    return widened, {"from": int(source_version), "to": int(cfg.enc_version), "parameter": key,
+                     "zero_columns": int(added), "inserted_at": int(at)}
+
+
 def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
                config: Mapping[str, Any], device: torch.device, *,
-               loaded: tuple[ValueNetwork, dict, AuxPointsHead | None] | None = None) -> dict:
+               loaded: tuple[ValueNetwork, dict, AuxPointsHead | None] | None = None,
+               widen_encoder: bool = False) -> dict:
     """Load ``init``'s trunk + heads into ``model`` (and the aux head when
     both sides have one); refused unless the architecture, the model
     configuration (hidden widths) and the feature layout (encoder identity,
     ``load_cwv_checkpoint``'s check) all match.  The exposure check
-    (``exposure_conflict``) runs on the split, before this."""
+    (``exposure_conflict``) runs on the split, before this.
+
+    ``widen_encoder`` admits ONE feature-layout difference: an mlp source trained at
+    the encoder version this run's version appends to (``encode_versions.APPENDS_TO``,
+    e.g. v2 -> v7).  The appended inputs get zero weights (``_widen_first_layer``), so the
+    run starts from the source's exact function and learns the new columns."""
     source, metadata, source_aux = (load_cwv_checkpoint(init, device) if loaded is None
                                     else loaded)
     if metadata.get("arch") != config["arch"]:
@@ -1199,7 +1479,15 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
     # policy logits at step 0 are the source's (or, with a fresh policy head,
     # that head on the bare trunk features).  Tower -> same tower loads strictly;
     # tower -> towerless, or two different towers, is refused.
-    _skip = ("policy_head", "trunk_layers", "policy_tower_layers", "policy_tower_width")
+    ours_version = int(ours_cfg.get("enc_version", ENC_VERSION))
+    theirs_version = int(theirs_cfg.get("enc_version", ENC_VERSION))
+    widened = widen_encoder and ours_version != theirs_version
+    if widened and (config["arch"] != "mlp" or APPENDS_TO.get(ours_version) != theirs_version):
+        raise TrainError(f"--init {init}: encoder v{theirs_version} cannot be widened to "
+                         f"v{ours_version}; only an mlp at the version v{ours_version} appends "
+                         f"to (v{APPENDS_TO.get(ours_version)}) can")
+    _skip = ("policy_head", "trunk_layers", "policy_tower_layers", "policy_tower_width") \
+        + (("public_dim", "enc_version") if widened else ())
     core = lambda cfg: {k: v for k, v in cfg.items() if k not in _skip}
     tower_of = lambda cfg: (int(cfg.get("policy_tower_layers", 0)), int(cfg.get("policy_tower_width", 0)))
     tower_fresh = tower_of(ours_cfg)[0] > 0 and tower_of(theirs_cfg)[0] == 0
@@ -1220,6 +1508,9 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
                          "tower may only warm-start from a towerless net or the same tower)")
     theirs = source.state_dict()
     ours = model.state_dict()
+    widening = None
+    if widened:
+        theirs, widening = _widen_first_layer(theirs, ours, model.config, theirs_version)
     blocks_added = 0
     if deeper:
         # trunk = Sequential(stem=0, blocks 1..L, LayerNorm L+1, ReLU); remap the
@@ -1277,6 +1568,8 @@ def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
         # present only when a tower was added, so a towerless warm start's
         # init block (and the metadata it is saved in) is unchanged
         **({"policy_tower_fresh": True, "policy_tower_identity_init": True} if tower_fresh else {}),
+        # present only on a widened warm start, so every other init block is unchanged
+        **({"encoder_widened": widening} if widening is not None else {}),
         "selection": {k: (metadata.get("selection") or {}).get(k)
                       for k in ("metric", "best_epoch", "best_loss", "best_value")},
         "exposure": {k: v for k, v in exposure_of_checkpoint(metadata, path=init).items()
@@ -1376,7 +1669,16 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  init: str | None = None,
                  init_lr_scale: float = DEFAULTS["init_lr_scale"],
                  init_exclude_exposed: bool = False,
-                 encoder_version: int = DEFAULTS["encoder_version"]) -> dict:
+                 encoder_version: int = DEFAULTS["encoder_version"],
+                 served_rank_deals: int = DEFAULTS["served_rank_deals"],
+                 served_rank_per_bucket: int = DEFAULTS["served_rank_per_bucket"],
+                 lr_schedule: str = DEFAULTS["lr_schedule"],
+                 lr_final_scale: float = DEFAULTS["lr_final_scale"],
+                 weight_average: str = DEFAULTS["weight_average"],
+                 ema_decay: float = DEFAULTS["ema_decay"],
+                 swa_start_epoch: int = DEFAULTS["swa_start_epoch"],
+                 select_averaged: bool = False,
+                 val_rows: int | None = None, compile_trunk: bool = False) -> dict:
     """Everything that determines the trained model and its metrics."""
     try:
         encoder_version = check_version(encoder_version)
@@ -1384,8 +1686,35 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError(f"--encoder-version: {exc}") from None
     if arch not in ARCHES:
         raise TrainError(f"--arch must be one of {ARCHES}")
+    if val_rows is not None and int(val_rows) < 1:
+        raise TrainError("--val-rows must be >= 1 (omit it to validate on every val row)")
+    if compile_trunk and arch != "mlp":
+        raise TrainError("--compile compiles the mlp trunk; the seq architecture has none")
     if select_metric not in SELECT_METRICS:
         raise TrainError(f"--select-metric must be one of {tuple(SELECT_METRICS)}")
+    if int(served_rank_deals) < 0:
+        raise TrainError("--served-rank-deals must be >= 0 (0 disables the served pass)")
+    if int(served_rank_per_bucket) < 1:
+        raise TrainError("--served-rank-per-bucket must be >= 1")
+    if select_metric.startswith("val_served") and int(served_rank_deals) == 0:
+        raise TrainError(f"--select-metric {select_metric} needs --served-rank-deals > 0")
+    if int(served_rank_deals) and arch != "mlp":
+        raise TrainError("--served-rank-deals scores static (mlp) encodings; the seq "
+                         "architecture reads the history")
+    if lr_schedule not in LR_SCHEDULES:
+        raise TrainError(f"--lr-schedule must be one of {LR_SCHEDULES}")
+    if not (math.isfinite(float(lr_final_scale)) and 0.0 <= float(lr_final_scale) <= 1.0):
+        raise TrainError("--lr-final-scale must be in [0, 1]")
+    if lr_schedule == "constant" and float(lr_final_scale) != DEFAULTS["lr_final_scale"]:
+        raise TrainError("--lr-final-scale needs --lr-schedule cosine|linear")
+    if weight_average not in WEIGHT_AVERAGES:
+        raise TrainError(f"--weight-average must be one of {WEIGHT_AVERAGES}")
+    if not (math.isfinite(float(ema_decay)) and 0.0 < float(ema_decay) < 1.0):
+        raise TrainError("--ema-decay must be in (0, 1)")
+    if not 1 <= int(swa_start_epoch) <= int(epochs):
+        raise TrainError("--swa-start-epoch must be in [1, --epochs]")
+    if select_averaged and weight_average == "none":
+        raise TrainError("--select-averaged needs --weight-average ema|swa")
     if select_metric == "val_points_mae" and not aux_points:
         raise TrainError("--select-metric val_points_mae needs --aux-points")
     if int(val_rank_records) < 0:
@@ -1466,6 +1795,26 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                             policy_tower_width=int(config.policy_tower_width))
     if policy_head and float(policy_trunk_grad_scale) != 1.0:
         tower_fields["policy_trunk_grad_scale"] = float(policy_trunk_grad_scale)
+    # The same omit-at-default rule for the served pass, the LR schedule and the
+    # weight average: a run that sets none of them has the historical config.
+    if int(served_rank_deals):
+        tower_fields["served_rank"] = {"deals": int(served_rank_deals),
+                                       "per_bucket": int(served_rank_per_bucket),
+                                       "seed": int(seed)}
+    if lr_schedule != "constant":
+        tower_fields["lr_schedule"] = {"kind": lr_schedule,
+                                       "final_scale": float(lr_final_scale)}
+    if weight_average != "none":
+        tower_fields["weight_average"] = {
+            "kind": weight_average, "select": bool(select_averaged),
+            **({"decay": float(ema_decay)} if weight_average == "ema"
+               else {"start_epoch": int(swa_start_epoch)})}
+    # the same omit-at-default rule for the per-epoch validation subset and the
+    # compiled trunk (the latter changes the numerics, so a run records it)
+    if val_rows is not None:
+        tower_fields["val_rows"] = int(val_rows)
+    if compile_trunk:
+        tower_fields["compile"] = "trunk"
     return {
         **tower_fields,
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
@@ -1628,11 +1977,25 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_trunk_grad_scale: float = 1.0,
           eval_holdout: Sequence[str] | None = None,
           frozen_population: str | None = None, frozen_population_sha256: str | None = None,
+          trick_end_rows: bool = False, init_widen_encoder: bool = False,
+          served_rank_deals: int = DEFAULTS["served_rank_deals"],
+          served_rank_per_bucket: int = DEFAULTS["served_rank_per_bucket"],
+          lr_schedule: str = DEFAULTS["lr_schedule"],
+          lr_final_scale: float = DEFAULTS["lr_final_scale"],
+          weight_average: str = DEFAULTS["weight_average"],
+          ema_decay: float = DEFAULTS["ema_decay"],
+          swa_start_epoch: int = DEFAULTS["swa_start_epoch"],
+          select_averaged: bool = False,
+          val_rows: int | None = None, compile_trunk: bool = False,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
     if loader_stage_timing and pack_dir is not None:
         raise TrainError("--loader-stage-timing is not supported with --pack-dir")
+    if trick_end_rows and arch != "mlp":
+        raise TrainError("--trick-end-rows builds the history-free cache the mlp reads")
+    if init_widen_encoder and init is None:
+        raise TrainError("--init-widen-encoder needs --init")
     from .frozen_population import load_contract, bind_store, require_policy_identity
     try:
         frozen = load_contract(frozen_population, frozen_population_sha256)
@@ -1662,8 +2025,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         seq_feedforward=seq_feedforward, public_head=public_head, rank_limit=rank_limit,
         select_metric=select_metric, val_rank_records=val_rank_records, init=init,
         init_lr_scale=init_lr_scale, init_exclude_exposed=init_exclude_exposed,
-        encoder_version=encoder_version)
+        encoder_version=encoder_version, val_rows=val_rows, compile_trunk=compile_trunk,
+        served_rank_deals=served_rank_deals,
+        served_rank_per_bucket=served_rank_per_bucket, lr_schedule=lr_schedule,
+        lr_final_scale=lr_final_scale, weight_average=weight_average, ema_decay=ema_decay,
+        swa_start_epoch=swa_start_epoch, select_averaged=select_averaged)
     config["eval_holdouts"] = dict(holdouts)
+    # Recorded only when set, so every other run's config (and config_sha256) is unchanged.
+    if trick_end_rows:
+        config["trick_end_rows"] = True
+    if init_widen_encoder:
+        config["init_widen_encoder"] = True
     if frozen is not None:
         config["frozen_population"] = {"path": str(Path(frozen_population).resolve()),
                                         "sha256": frozen_population_sha256}
@@ -1712,7 +2084,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters, history=history,
                               witness_seed=seed, progress=say, cache_workers=workers,
                               residency=residency, version=enc_version, sidecar_dir=sidecar_dir,
-                              pack_dir=pack_dir)
+                              pack_dir=pack_dir, trick_end=trick_end_rows)
     store = prepared.block_store
     sidecar_coverage = None
     if sidecar_dir is not None:
@@ -1727,6 +2099,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say(f"pack: blocks come from {Path(pack_dir).resolve()} (#531); the cache validated every shard")
     say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
         f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
+    sizes = list(getattr(store, "sizes", None) or [])
+    if int(window) != DEFAULTS["window"] and sizes:
+        # A window is also closed when its decoded bytes would pass the residency
+        # budget, so an over-wide --window silently becomes a shorter one.
+        per_shard = float(np.median(sizes))
+        want = per_shard * int(window)
+        say(f"shuffle window: {int(window)} shards x ~{per_shard / 1e6:.2f} MB decoded = "
+            f"~{want / 1e9:.2f} GB per window against the {budget} byte residency budget"
+            + ("" if budget is None or want <= budget else
+               f"; the budget caps a window at ~{int(budget // max(per_shard, 1.0))} shards"))
     if frozen is None:
         assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
                                  test_fraction=test_fraction)
@@ -1765,10 +2147,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             f"(--init-exclude-exposed={init_exclude_exposed})")
     masks = {part: SplitSelector(assignment, part)
              for part in ("train", "val", "test")}
-    n_rows = {part: 0 for part in masks}
-    for block in store.iter_blocks():
-        for part, fn in masks.items():
-            n_rows[part] += int(fn(block).sum())
+    # from the deal keys the store recorded, decoding only a shard whose keys
+    # straddle two parts (this was a full serial decode of every shard)
+    n_rows = split_row_counts(store, masks)
     deals = split_counts(assignment)
     split = {
         "method": config["split_method"], "seed": int(seed),
@@ -1787,6 +2168,13 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                          "need all three (at least three deals)")
     say(f"split: deals train={deals['train']} val={deals['val']} test={deals['test']} "
         f"records train={n_rows['train']} val={n_rows['val']} test={n_rows['test']}")
+    epoch_val_mask, val_subset = masks["val"], None
+    if val_rows is not None:
+        epoch_val_mask, val_subset = val_row_subset(store, assignment, int(val_rows), seed=seed)
+        say(f"val subset (--val-rows {int(val_rows)}): {val_subset['deals']} of "
+            f"{val_subset['val_deals']} val deals, {val_subset['rows']} of {n_rows['val']} rows "
+            f"(digest {val_subset['digest'][:12]}); per-epoch validation only, the final "
+            "pass reads every val row")
     population = fit_population(assignment, stores=prepared.stores)
     # #425/#428: root rows are FIT exposure (their loss updates the shared trunk).
     # They are read here, against this run's split: rows in val/test or in the
@@ -1866,7 +2254,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         assert not set(population["test"]) & (src["fit"] | src["selection"])
     say(f"exposure: fit={exposure['counts']['fit']} selection={exposure['counts']['selection']} "
         f"deals (ancestors {len(exposure['ancestors'])}; root-only fit {len(root_fit - set(population['train']))})")
-    baselines = fit_baselines(store, masks["train"])
+    baselines = fit_baselines(store, masks["train"], workers=decode_workers)
     say(f"baselines: stratified prior n={baselines['stratified_prior']['n']} "
         f"empty_cells={baselines['stratified_prior']['empty_cells']}")
     val_cands = candidate_set_for(store, set(population["val"]), cache,
@@ -1881,6 +2269,19 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                         or val_cands.records == 0):
         raise TrainError(f"--select-metric {select_metric}: the validation split has no "
                          "search record (no action_values means)")
+    val_served = served_set_for(store, set(population["val"]), cache,
+                                deals=int(served_rank_deals),
+                                per_bucket=int(served_rank_per_bucket), seed=int(seed),
+                                workers=eval_workers, label="val", progress=say,
+                                version=enc_version)
+    if val_served is not None:
+        say(f"served set (val): {val_served.records} records / {val_served.candidates} "
+            f"candidates over {min(int(served_rank_deals), len(population['val']))} deals "
+            f"(per bucket {int(served_rank_per_bucket)}, {val_served.meta.get('secs', 0)}s)")
+    if select_metric.startswith("val_served") and (val_served is None
+                                                   or val_served.records == 0):
+        raise TrainError(f"--select-metric {select_metric}: the validation split has no "
+                         "served record (no search record that rebuilds)")
     if frozen is not None:
         from .cwv_eval import candidate_set_digest
         for part in ("val", "test"):
@@ -1936,15 +2337,37 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     aux_head = AuxPointsHead(model_cfg.width).to(dev) if aux_points else None
     init_info = None
     if init is not None:
-        init_info = apply_init(model, aux_head, init, config, dev, loaded=init_loaded)
+        init_info = apply_init(model, aux_head, init, config, dev, loaded=init_loaded,
+                               widen_encoder=init_widen_encoder)
         init_info["excluded"] = init_excluded
         init_info["exclude_exposed"] = bool(init_exclude_exposed)
         say(f"init: {init_info['path']} sha={init_info['sha256'][:12]} "
             f"epoch={init_info['epoch']} aux_head_loaded={init_info['aux_points_head_loaded']} "
             f"lr={lr} x {init_lr_scale}")
+    if compile_trunk:
+        # In place: the parameters, the state dict and every checkpoint are the
+        # eager module's.  Each forward through the trunk (value batch, root
+        # batch, per-epoch validation) runs the compiled graph; best.pt is
+        # reloaded eager before the final evaluation.
+        model.trunk.compile()
+        say("compile: the mlp trunk runs through torch.compile (not bit-identical to eager)")
     lr_effective = float(lr) * (float(init_lr_scale) if init is not None else 1.0)
     params = list(model.parameters()) + (list(aux_head.parameters()) if aux_head else [])
     optim = torch.optim.AdamW(params, lr=lr_effective, weight_decay=weight_decay)
+    # --lr-schedule: the planned horizon is epochs x ceil(train rows / batch).
+    # Each window ends on a partial batch, so the real step count is slightly
+    # larger; the factor reaches its floor just before the end and holds there.
+    planned_steps = int(epochs) * max(1, math.ceil(n_rows["train"] / int(batch_size)))
+    step_count = 0
+    averager = (None if weight_average == "none" else
+                WeightAverage(params, weight_average, decay=float(ema_decay),
+                              start_epoch=int(swa_start_epoch)))
+    if lr_schedule != "constant" or averager is not None:
+        say(f"optimiser: lr {lr_effective} schedule {lr_schedule}"
+            f"{f' -> x{float(lr_final_scale)} over ~{planned_steps} steps' if lr_schedule != 'constant' else ''}"
+            f"; weight average {weight_average}"
+            f"{'' if averager is None else ' ' + str(averager.payload())}"
+            f"{' (selected)' if select_averaged else ''}")
     rng = np.random.default_rng(seed)
     epoch_rows: list[dict] = []
     best = {"epoch": None, "loss": math.inf}
@@ -1954,13 +2377,26 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     selection = {"split": SELECTION_SPLIT, "criterion": selector.criterion,
                  "metric": select_metric, "metric_key": selector.key, "patience": int(patience),
                  "val_rank_records": int(val_rank_records), "lr_effective": lr_effective}
+    if select_averaged:
+        selection["weights"] = "averaged"
+    if val_subset is not None:
+        selection["val_subset"] = val_subset
     consumer = consumer_block(select_metric, aux_points, search_head, policy_head)
+    if val_served is not None:
+        from .served_rank import SERVED_DEFINITION
+        consumer["heads"]["level_head"]["served_leaf_metric"] = {
+            "keys": ["served_rank_regret", "served_rank_regret_points", "served_search_regret",
+                     "served_by_trick"],
+            "definition": SERVED_DEFINITION,
+            "selectable": ["val_served_rank_regret", "val_served_rank_regret_points"]}
     policy_rng = np.random.default_rng(int(seed) + 1_000_003)
 
     def validate() -> dict:
-        ev = run_eval(model, store, masks["val"], dev, batch_size=batch_size, aux_head=aux_head)
+        ev = run_eval(model, store, epoch_val_mask, dev, batch_size=batch_size, aux_head=aux_head)
         metrics = quick_metrics(ev)
         metrics.update(search_facing(model, ev, val_cands, dev, batch_size=batch_size))
+        if val_served is not None:
+            metrics.update(served_facing(model, val_served, dev, batch_size=batch_size))
         if search_head:
             # #373: the same ranking pass through the search-mean head.  Never
             # the selection metric (the Selector reads top-level keys only).
@@ -1988,6 +2424,24 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     shown[f"val_rank_regret_at_{k}"] = f"val_rank_regret_at_{k}={value:.4f}"
                     shown[f"val_rank_recall_at_{k}"] = (
                         f"val_rank_recall_at_{k}={metrics[f'rank_recall_at_{k}']:.3f}")
+        if metrics.get("served_rank_regret") is not None:
+            shown["val_served_rank_regret"] = (
+                f"val_served_rank_regret={metrics['served_rank_regret']:.4f}")
+            shown["val_served_rank_regret_points"] = (
+                f"val_served_rank_regret_points={metrics['served_rank_regret_points']:.3f}")
+            shown["val_served_by_trick"] = "val_served_by_trick=" + "/".join(
+                "-" if (metrics.get(f"served_rank_regret_{b}") is None)
+                else f"{metrics[f'served_rank_regret_{b}']:.4f}" for b in ("early", "mid", "late"))
+            shown["val_served_search_regret"] = (
+                f"val_served_search_regret={metrics['served_search_regret']:.4f}")
+        avg = metrics.get("averaged") or {}
+        if avg.get("loss") is not None:
+            shown["val_avg_ce"] = f"val_avg_ce={avg['loss']:.4f}"
+            if avg.get("rank_regret") is not None:
+                shown["val_avg_rank_regret"] = f"val_avg_rank_regret={avg['rank_regret']:.4f}"
+            if avg.get("served_rank_regret") is not None:
+                shown["val_avg_served_rank_regret"] = (
+                    f"val_avg_served_rank_regret={avg['served_rank_regret']:.4f}")
         sh = metrics.get("search_head") or {}
         if sh.get("rank_regret") is not None:
             shown["val_search_head_rank_regret"] = (
@@ -2086,6 +2540,22 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     }
     n_params = int(sum(p.numel() for p in model.parameters()))
     say(f"model: {model_cfg.architecture} params={n_params}")
+    from .policy_prior import ballot_rows
+    from .policy_rows import explore_row_weights, policy_losses
+    from .search_mean_target import host_used_rows, soft_targets
+    # Loop settings that change the wall time and nothing else (the parity
+    # tests run both ways and compare weights and metrics bit for bit):
+    # SHENGJI_CWV_PREFETCH = batches the loader thread may gather ahead of the
+    # step (0 = gather inline, the single-threaded loop); SHENGJI_CWV_HOST_ROWS=0
+    # = let the device pick the search-head and ballot rows through boolean
+    # masks, which makes the host wait for the device several times a batch.
+    prefetch_depth = max(0, int(os.environ.get("SHENGJI_CWV_PREFETCH", "2")))
+    host_rows = os.environ.get("SHENGJI_CWV_HOST_ROWS", "1") != "0"
+    # SHENGJI_CWV_ASYNC_COPY = steps the host may queue ahead of the device with
+    # non-blocking copies (DeviceCopies; 0 = blocking copies, MPS/CUDA only)
+    async_copy_depth = max(0, int(os.environ.get("SHENGJI_CWV_ASYNC_COPY", "2")))
+    # SHENGJI_CWV_LOSS_TRACE=PATH appends each flushed window's mean losses to PATH
+    loss_trace = os.environ.get("SHENGJI_CWV_LOSS_TRACE") or None
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
         model.train()
@@ -2095,8 +2565,6 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 "policy_rows": 0}
         rows = 0
         batches = 0
-        policy_iter = (policy_data.batches(policy_batch, policy_rng) if policy_data is not None
-                       else None)
         # Issue #342 finding 2, measured on MPS (batch 1024, h512-class net,
         # best of 3): a step costs 3.4 ms without host syncs and 7.3 ms with
         # the four this loop used to force per batch (isfinite + three
@@ -2110,8 +2578,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         sync_every = max(1, int(os.environ.get("SHENGJI_CWV_LOSS_SYNC_EVERY", "32")))
         pending = None          # device-side [total*b, ce*b, aux*b, rows]
         finite_all = None       # device-side logical AND over the window, kept SEPARATE
+        # the search head's per-batch CE, pulled to the host at the flush and summed
+        # there in batch order (the same float64 sum the per-batch .item() built)
+        search_ce_pending: list[tuple[torch.Tensor, int]] = []
         def flush():
             nonlocal pending, finite_all, rows
+            if search_ce_pending:
+                values = torch.stack([v for v, _n in search_ce_pending]).tolist()
+                for value, (_v, n_used) in zip(values, search_ce_pending):
+                    sums["search_head_ce"] = sums.get("search_head_ce", 0.0) + value * n_used
+                search_ce_pending.clear()
             if pending is None:
                 return
             vals = pending.tolist()
@@ -2124,15 +2600,27 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             rows += int(vals[3])
             sums["policy_bce"] += vals[4]; sums["policy_listwise"] += vals[5]
             sums["policy_rows"] += int(vals[6])
+            if loss_trace:
+                # diagnostic only: one line per flushed window (a loss curve finer
+                # than the epoch means, for comparing two runs step by step)
+                import json
+                with open(loss_trace, "a") as fh:
+                    fh.write(json.dumps({
+                        "epoch": epoch, "batches": batches, "rows": int(vals[3]),
+                        "loss": vals[0] / max(vals[3], 1.0), "ce": vals[1] / max(vals[3], 1.0),
+                        "policy_bce": vals[4] / max(vals[6], 1.0),
+                        "policy_listwise": vals[5] / max(vals[6], 1.0)}) + "\n")
             pending = None
             finite_all = None
         # Where an epoch's wall goes (2026-09-20, Jerry: measure before optimising).  Host
-        # wall per stage: batch_wait = time blocked inside iter_batches (decode + gather +
-        # worker wait), to_device = tensors_of, policy_wait = the root batch fetch + its
-        # tensors, sync = the loss flushes (the .item()/.tolist() that wait for the device),
-        # step = everything else in the iteration (forward, losses, backward, optimiser
-        # step -- host time; device work not yet awaited lands in the next sync).  The
-        # key ends in "secs" so the exact-reproducibility comparison strips it.
+        # wall per stage: batch_wait = time the loop waits for its next batch (with the
+        # prefetch thread, only what the loader did not finish while the previous step
+        # ran; inline, all of decode + gather + the root batch fetch), to_device = the
+        # value batch's tensors, policy_wait = the root batch's tensors, sync = the loss
+        # flushes (the .tolist() that waits for the device), step = everything else in
+        # the iteration (forward, losses, backward, optimiser step -- host time; device
+        # work not yet awaited lands in the next copy or sync).  The key ends in "secs"
+        # so the exact-reproducibility comparison strips it.
         stage = {"batch_wait": 0.0, "to_device": 0.0, "policy_wait": 0.0, "step": 0.0, "sync": 0.0}
         loader_stage = {} if loader_stage_timing else None
         loader_stage_counts = {} if loader_stage_timing else None
@@ -2156,23 +2644,25 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             loader_iter_kw["stage_secs"] = loader_stage
             loader_iter_kw["stage_counts"] = loader_stage_counts
             loader_iter_kw["decode_stage_secs"] = loader_decode_stage
-        for raw in timed_batches(iter(store.iter_batches(masks["train"], batch_size,
-                                                        **loader_iter_kw))):
-            t_iter = time.perf_counter()
-            t = tensors_of(raw, dev)
-            t_dev = time.perf_counter()
-            stage["to_device"] += t_dev - t_iter
+        soft_rows = target == "search-mean" or search_head
+
+        def train_step(t, rows_dev, search_rows, raw, p_tensors, ballot_dev, p_batch):
+            """One batch's forward and losses: ``(total, b, ce, aux loss, policy
+            BCE, policy listwise, root rows)``.  ``rows_dev`` / ``ballot_dev`` are
+            the host's row plans on the device (None: the device chooses the rows
+            through boolean masks, as before the plans existed)."""
             s_logits = None
             if search_head:
                 logits, aux, s_logits = forward_batch_heads(model, t, aux_head)
             else:
                 logits, aux = forward_batch(model, t, aux_head)
             if target == "search-mean" and "search_mean_played" in t:
-                from .search_mean_target import soft_targets
                 probs, used = soft_targets(t["search_mean_played"], t["role_attacker"],
-                                           t["target"], level=t.get("search_level_played"))
+                                           t["target"], level=t.get("search_level_played"),
+                                           rows=rows_dev)
                 ce = nn.functional.cross_entropy(logits, probs)
-                sums["search_rows"] = sums.get("search_rows", 0) + int(used.sum().item())
+                n_soft = int(search_rows.size) if rows_dev is not None else int(used.sum().item())
+                sums["search_rows"] = sums.get("search_rows", 0) + n_soft
             else:
                 ce = nn.functional.cross_entropy(logits, t["target"])
             total = ce
@@ -2183,37 +2673,33 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 total = total + float(aux_weight) * a_loss
             s_loss = None
             if s_logits is not None and "search_mean_played" in t:
-                # #373: the search-mean head learns ONLY the rows that carry a
-                # sidecar mean inside the support; the others contribute nothing
-                # to it (no realised one-hot leaks into this head).
-                from .search_mean_target import soft_targets
+                # The search-mean head learns ONLY the rows that carry a sidecar
+                # mean inside the support; the others contribute nothing to it
+                # (no realised one-hot leaks into this head).
                 s_probs, s_used = soft_targets(t["search_mean_played"], t["role_attacker"],
-                                               t["target"], level=t.get("search_level_played"))
-                n_used = int(s_used.sum().item())
+                                               t["target"], level=t.get("search_level_played"),
+                                               rows=rows_dev)
+                if rows_dev is not None:
+                    # the same rows, known on the host: nothing waits for the device
+                    s_sel, n_used = rows_dev, int(search_rows.size)
+                    if "search_level_played" in t:
+                        n_level = int(np.isfinite(raw["search_level_played"][search_rows]).sum())
+                else:
+                    s_sel, n_used = s_used, int(s_used.sum().item())
+                    if "search_level_played" in t:
+                        n_level = int((s_used & torch.isfinite(t["search_level_played"]))
+                                      .sum().item())
                 if "search_level_played" in t:
-                    n_level = int((s_used & torch.isfinite(t["search_level_played"])).sum().item())
                     sums["search_head_level_rows"] = sums.get("search_head_level_rows", 0) + n_level
                 if n_used:
-                    s_loss = nn.functional.cross_entropy(s_logits[s_used], s_probs[s_used])
+                    s_loss = nn.functional.cross_entropy(s_logits[s_sel], s_probs[s_sel])
                     total = total + float(search_head_weight) * s_loss
                 sums["search_head_rows"] = sums.get("search_head_rows", 0) + n_used
                 if s_loss is not None:
-                    sums["search_head_ce"] = sums.get("search_head_ce", 0.0) \
-                        + float(s_loss.detach().item()) * n_used
+                    search_ce_pending.append((s_loss.detach(), n_used))
             p_bce = p_lw = None
             b_r = 0
-            if policy_iter is not None:
-                # #425: one root batch per value batch, ALWAYS forwarded (the twin
-                # runs the same batches with the loss weighted 0).
-                t_p = time.perf_counter()
-                try:
-                    p_batch = next(policy_iter)
-                except StopIteration:
-                    policy_iter = policy_data.batches(policy_batch, policy_rng)
-                    p_batch = next(policy_iter)
-                from .policy_rows import policy_losses
-                p_tensors = policy_data.tensors(p_batch, dev)
-                stage["policy_wait"] += time.perf_counter() - t_p
+            if p_tensors is not None:
                 if policy_soft_targets and "vals" not in p_tensors:
                     # REFUSE rather than fall through to the hard target: a run asked for the
                     # soft arm and silently training the hard one would produce a result
@@ -2222,7 +2708,6 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                         "--policy-soft-targets: this extract carries no per-candidate search "
                         "values (`vals`). It predates #496; re-extract with the current "
                         "policy_prior before running the soft arm.")
-                from .policy_rows import explore_row_weights
                 # #676 D: None at weight 1.0 (the unweighted code path, bit-identical to
                 # every run before the flag); a per-row vector otherwise.
                 p_w = explore_row_weights(p_tensors["explore_flag"], float(policy_explore_weight)) \
@@ -2233,40 +2718,105 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                soft_targets=bool(policy_soft_targets),
                                                soft_temperature=float(policy_soft_temperature),
                                                row_weight=p_w,
-                                               trunk_grad_scale=float(policy_trunk_grad_scale))
+                                               trunk_grad_scale=float(policy_trunk_grad_scale),
+                                               rows=ballot_dev)
                 b_r = int(len(p_batch["x"]))
                 total = total + float(policy_weight) * (
                     p_bce + float(policy_listwise_weight) * p_lw)
-            finite = torch.isfinite(total).to(torch.float32)
-            if sync_every == 1 and not bool(finite):
-                raise TrainError("training loss is non-finite")
-            optim.zero_grad(set_to_none=True)
-            total.backward()
-            optim.step()
-            zero = torch.zeros((), device=total.device)
-            contrib = torch.stack((total.detach() * b, ce.detach() * b,
-                                   (a_loss.detach() * b) if a_loss is not None else zero,
-                                   torch.full((), float(b), device=total.device),
-                                   (p_bce.detach() * b_r) if p_bce is not None else zero,
-                                   (p_lw.detach() * b_r) if p_lw is not None else zero,
-                                   torch.full((), float(b_r), device=total.device))
-                                  ).to(torch.float32)
-            finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
-            pending = contrib if pending is None else pending + contrib
-            batches += 1
-            stage["step"] += time.perf_counter() - t_dev
-            if batches % sync_every == 0:
-                t_s = time.perf_counter()
-                flush()
-                stage["sync"] += time.perf_counter() - t_s
+            return total, b, ce, a_loss, p_bce, p_lw, b_r
+
+        def host_batches():
+            """``(value batch, root batch, search rows, ballot rows)`` in training
+            order.  One root batch per value batch, ALWAYS forwarded (the policy
+            twin runs the same batches with the loss weighted 0); a root batch
+            is drawn only once its value batch exists, so the policy RNG
+            advances exactly as when the loop drew it inline.  The row plans
+            (``host_used_rows``, ``ballot_rows``) are None when the device is
+            to choose the rows itself."""
+            policy_iter = (policy_data.batches(policy_batch, policy_rng)
+                           if policy_data is not None else None)
+            for raw in store.iter_batches(masks["train"], batch_size, **loader_iter_kw):
+                p_batch = None
+                if policy_iter is not None:
+                    try:
+                        p_batch = next(policy_iter)
+                    except StopIteration:
+                        policy_iter = policy_data.batches(policy_batch, policy_rng)
+                        p_batch = next(policy_iter)
+                search_rows = None
+                if host_rows and soft_rows and "search_mean_played" in raw:
+                    search_rows = host_used_rows(raw["search_mean_played"], raw["role_attacker"],
+                                                 raw.get("search_level_played"))
+                ballot = (ballot_rows(p_batch["tgt"])
+                          if host_rows and p_batch is not None else None)
+                yield raw, p_batch, search_rows, ballot
+
+        stream = Prefetch(host_batches, prefetch_depth) if prefetch_depth else host_batches()
+        copies = DeviceCopies(dev, async_copy_depth)
+        try:
+            for raw, p_batch, search_rows, ballot in timed_batches(iter(stream)):
+                t_iter = time.perf_counter()
+                # Every copy to the device happens here, before this step's work is
+                # queued.  A blocking copy waits for everything already queued; the
+                # non-blocking ones wait only for the step async_copy_depth back.
+                copies.begin_step()
+                t = tensors_of(raw, dev, copy=copies)
+                rows_dev = None if search_rows is None else copies(search_rows)
+                t_dev = time.perf_counter()
+                stage["to_device"] += t_dev - t_iter
+                p_tensors = ballot_dev = None
+                if p_batch is not None:
+                    p_tensors = policy_data.tensors(p_batch, dev, copy=copies)
+                    ballot_dev = None if ballot is None else copies(ballot)
+                    t_now = time.perf_counter()
+                    stage["policy_wait"] += t_now - t_dev
+                    t_dev = t_now
+                total, b, ce, a_loss, p_bce, p_lw, b_r = train_step(
+                    t, rows_dev, search_rows, raw, p_tensors, ballot_dev, p_batch)
+                finite = torch.isfinite(total).to(torch.float32)
+                if sync_every == 1 and not bool(finite):
+                    raise TrainError("training loss is non-finite")
+                optim.zero_grad(set_to_none=True)
+                total.backward()
+                if lr_schedule != "constant":
+                    lr_now = lr_effective * lr_factor(lr_schedule, step_count, planned_steps,
+                                                      float(lr_final_scale))
+                    for group in optim.param_groups:
+                        group["lr"] = lr_now
+                optim.step()
+                step_count += 1
+                if averager is not None:
+                    averager.update(epoch)
+                zero = torch.zeros((), device=total.device)
+                contrib = torch.stack((total.detach() * b, ce.detach() * b,
+                                       (a_loss.detach() * b) if a_loss is not None else zero,
+                                       torch.full((), float(b), device=total.device),
+                                       (p_bce.detach() * b_r) if p_bce is not None else zero,
+                                       (p_lw.detach() * b_r) if p_lw is not None else zero,
+                                       torch.full((), float(b_r), device=total.device))
+                                      ).to(torch.float32)
+                finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
+                pending = contrib if pending is None else pending + contrib
+                copies.end_step()
+                batches += 1
+                stage["step"] += time.perf_counter() - t_dev
+                if batches % sync_every == 0:
+                    t_s = time.perf_counter()
+                    flush()
+                    stage["sync"] += time.perf_counter() - t_s
+        finally:
+            copies.drain()          # the device has read every host array before it goes
+            if prefetch_depth:
+                stream.close()
         t_s = time.perf_counter()
         flush()
         stage["sync"] += time.perf_counter() - t_s
-        # policy_wait happens inside the iteration, so take it back out of step
-        stage["step"] -= stage["policy_wait"]
         train_metrics = {"loss": sums["total"] / max(rows, 1),
                          "cross_entropy": sums["ce"] / max(rows, 1), "rows": rows,
                          "batches": batches}
+        if lr_schedule != "constant":
+            train_metrics["lr_end"] = float(optim.param_groups[0]["lr"])
+            train_metrics["steps"] = int(step_count)
         if target == "search-mean":
             train_metrics["search_mean_rows"] = int(sums.get("search_rows", 0))
         if search_head:
@@ -2298,6 +2848,19 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             "%s %.1fs (%.0f%%)" % (k, v, 100.0 * v / train_secs if train_secs else 0.0)
             for k, v in stage.items() if k != "total"))
         val_metrics = validate()
+        avg_metrics = None
+        if averager is not None and averager.ready:
+            # The averaged weights through the SAME validation, saved beside the
+            # raw epoch checkpoint so either can be re-scored later.
+            with averager.swapped():
+                avg_metrics = validate()
+                save_cwv_checkpoint(
+                    ckpt_dir / f"epoch-{epoch:02d}.avg.pt", model,
+                    metadata={**base_metadata, "epoch": epoch, "weights": "averaged",
+                              "weight_average": averager.payload(),
+                              "selection": {**selection, "val": avg_metrics},
+                              "aux_points_head": None if aux_head is None else aux_head.payload()})
+            val_metrics["averaged"] = {**avg_metrics, "weight_average": averager.payload()}
         secs = round(time.perf_counter() - t0, 3)
         epoch_rows.append({"epoch": epoch, "train": train_metrics, "val": val_metrics,
                            "val_role": SPLIT_ROLES["val"]["role"], "secs": secs,
@@ -2305,11 +2868,19 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         metadata = {**base_metadata, "epoch": epoch, "selection": {**selection, "val": val_metrics},
                     "aux_points_head": None if aux_head is None else aux_head.payload()}
         save_cwv_checkpoint(ckpt_dir / f"epoch-{epoch:02d}.pt", model, metadata=metadata)
-        improved, stop = selector.observe(epoch, val_metrics)
+        selected = avg_metrics if select_averaged else val_metrics
+        if selected is None:
+            # --select-averaged before the SWA window opens: nothing to select yet
+            improved, stop = False, False
+        else:
+            improved, stop = selector.observe(epoch, selected)
         if improved:
-            best = {"epoch": epoch, "loss": float(val_metrics["loss"]),
+            best = {"epoch": epoch, "loss": float(selected["loss"]),
                     "value": selector.best_value}
-            shutil.copyfile(ckpt_dir / f"epoch-{epoch:02d}.pt", out_dir / "best.pt")
+            if select_averaged:
+                best["weight_average"] = averager.payload()
+            shutil.copyfile(ckpt_dir / (f"epoch-{epoch:02d}.avg.pt" if select_averaged
+                                        else f"epoch-{epoch:02d}.pt"), out_dir / "best.pt")
         say(epoch_line(f"epoch {epoch:02d}/{epochs}", val_metrics,
                        f" train_ce={train_metrics['cross_entropy']:.4f}"
                        f"{' *' if improved else ''} ({secs}s, rank {val_metrics['rank_secs']}s)"
@@ -2365,6 +2936,15 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     for name, cands in (("val", val_cands), ("test", test_cands)):
         final[name]["search_facing"]["candidate_set"] = (
             None if cands is None else {k: v for k, v in cands.meta.items() if k != "encoder"})
+    if val_served is not None:
+        test_served = served_set_for(store, test_keys, cache, deals=int(served_rank_deals),
+                                     per_bucket=int(served_rank_per_bucket), seed=int(seed),
+                                     workers=eval_workers, label="test", progress=say,
+                                     version=enc_version)
+        for name, sset in (("val", val_served), ("test", test_served)):
+            final[name]["served_facing"] = served_facing(model, sset, dev, batch_size=batch_size)
+            final[name]["served_facing"]["served_set"] = {
+                k: v for k, v in sset.meta.items() if k != "encoder"}
     holdout_report = holdout_blocks(
         holdouts, model=model, aux_head=aux_head, dev=dev, batch_size=batch_size,
         history=history, seed=seed, cache=cache, workers=workers, residency=residency,
@@ -2421,10 +3001,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "val_rank_regret_at_k": final["val"]["search_facing"].get("rank_regret_at_k"),
         "forward_positions_per_second_cpu_1024": bench.get("forward_positions_per_second"),
     }
+    if val_served is not None:
+        headline["val_served_rank_regret"] = final["val"]["served_facing"].get(
+            "served_rank_regret")
+        headline["test_served_rank_regret"] = final["test"]["served_facing"].get(
+            "served_rank_regret")
     save_cwv_checkpoint(out_dir / "best.pt", model, metadata={
         **base_metadata, "epoch": best["epoch"], "selection": selection,
         "aux_points_head": None if aux_head is None else aux_head.payload(),
-        "headline": headline, "inference_benchmark": bench})
+        "headline": headline, "inference_benchmark": bench,
+        **({"weights": "averaged", "weight_average": best.get("weight_average")}
+           if select_averaged else {})})
     wall = round(time.perf_counter() - started, 3)
     receipt = {
         "schema": RECEIPT_SCHEMA,
@@ -2835,8 +3422,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--encoder-version", type=int, choices=sorted(OBS_DIM_BY_VERSION),
                    default=DEFAULTS["encoder_version"],
                    help="observation encoder layout to TRAIN on (1 = 531 columns, "
-                        "2 = 531 + 29 trick/points/hand columns); recorded in the run "
-                        "config and in the checkpoint's encoder identity")
+                        "2 = 531 + 29 trick/points/hand columns, 7 = v2 + 4 next-actor "
+                        "columns); recorded in the run config and in the checkpoint's "
+                        "encoder identity")
     t.add_argument("--trunk-layers", type=int, default=2,
                    help="hidden layers in the mlp trunk (2 = every model trained "
                         "before 2026-09-11; >2 needs --trunk-block residual to train)")
@@ -2854,7 +3442,12 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--aux-weight", type=float, default=DEFAULTS["aux_weight"])
     t.add_argument("--n-boot", type=int, default=DEFAULTS["n_boot"])
     t.add_argument("--window", type=int, default=DEFAULTS["window"],
-                   help="shards per shuffle window (also bounded by --resident-bytes)")
+                   help="shards per shuffle window; rows are shuffled only inside a window. "
+                        "Default 64: a 1,024-row batch then holds ~51 deals. Memory: a shard "
+                        "decodes to ~0.45 MB on the PV corpora, so --window 2048 holds ~0.9 GB "
+                        "of decoded rows (plus the decode pool's staging). A window also closes "
+                        "when its decoded bytes would pass --resident-bytes, which silently "
+                        "shortens it, so raise --resident-bytes with it")
     t.add_argument("--decode-workers", type=int, default=DEFAULTS["decode_workers"],
                    help="decode a window's shards in this many worker processes "
                         "(default 6, measured 2026-09-07 on the A+C+D store: epoch "
@@ -2944,10 +3537,58 @@ def build_parser() -> argparse.ArgumentParser:
                    help="early stopping + best.pt on this validation metric (default val_ce; "
                         "val_rank_regret is the recommendation for the top-1 ranking "
                         "consumers (one-ply, PUCT prior), val_rank_regret_at_4 for the "
-                        "shortlist, val_points_mae for the vleaf leaf)")
+                        "shortlist, val_points_mae for the vleaf leaf; "
+                        "val_served_rank_regret[_points] reads the served-leaf ranking "
+                        "of --served-rank-deals)")
     t.add_argument("--val-rank-records", type=int, default=DEFAULTS["val_rank_records"],
                    help="search records of the val (and test) split in the candidate set "
                         "(per shard: ceil(N / shards)); 0 disables the rank pass")
+    t.add_argument("--served-rank-deals", type=int, default=DEFAULTS["served_rank_deals"],
+                   help="score the served-leaf ranking (train.served_rank) every epoch on this "
+                        "many val deals (and as many test deals at the end), chosen by "
+                        "sha256(seed|deal); 0 (default) = off and the run is unchanged. Needed "
+                        "by --select-metric val_served_rank_regret[_points]. Memory: about "
+                        "90 KB of candidate tensors per deal at --served-rank-per-bucket 2 "
+                        "(8,000 deals: ~0.7 GB, built once and memoised in the cache dir)")
+    t.add_argument("--served-rank-per-bucket", type=int,
+                   default=DEFAULTS["served_rank_per_bucket"],
+                   help="served records per deal and trick bucket (early 0-4, mid 5-9, late 10+)")
+    t.add_argument("--lr-schedule", choices=LR_SCHEDULES, default=DEFAULTS["lr_schedule"],
+                   help="per-step LR decay over the planned epochs x batches (default constant "
+                        "= the historical fixed AdamW rate)")
+    t.add_argument("--lr-final-scale", type=float, default=DEFAULTS["lr_final_scale"],
+                   help="with --lr-schedule cosine|linear: the LR at the end of the planned "
+                        "horizon as a fraction of --lr (default 0)")
+    t.add_argument("--weight-average", choices=WEIGHT_AVERAGES,
+                   default=DEFAULTS["weight_average"],
+                   help="keep an average of the weights and validate it beside the raw ones "
+                        "every epoch, saving checkpoints/epoch-NN.avg.pt: ema (exponential, "
+                        "--ema-decay per step) or swa (equal-weight mean of every step from "
+                        "--swa-start-epoch). Default none")
+    t.add_argument("--ema-decay", type=float, default=DEFAULTS["ema_decay"],
+                   help="per-step decay of --weight-average ema (default 0.9999: an average "
+                        "over the last ~10,000 steps, about a tenth of an 880k-deal epoch at "
+                        "batch 1,024; a short run needs a smaller decay)")
+    t.add_argument("--swa-start-epoch", type=int, default=DEFAULTS["swa_start_epoch"],
+                   help="first epoch averaged by --weight-average swa (default 1)")
+    t.add_argument("--select-averaged", action="store_true",
+                   help="select epochs (early stopping and best.pt) on the averaged weights' "
+                        "validation instead of the raw weights'")
+    t.add_argument("--val-rows", type=int, default=None,
+                   help="score each epoch's validation rows on a seeded subset of the val deals "
+                        "covering at least N rows (whole deals, the same subset every epoch); "
+                        "the final val/test pass still reads every row. Default: every val row "
+                        "every epoch. val_ce, val_mae and the points metrics become subset "
+                        "estimates; the rank metrics read the candidate set "
+                        "(--val-rank-records) and do not change. Predeclare N before a run "
+                        "that selects on val_ce.")
+    t.add_argument("--compile", action="store_true", dest="compile_trunk",
+                   help="torch.compile the mlp trunk (the value, policy and per-epoch "
+                        "validation forwards all run through it). NOT bit-identical to eager: "
+                        "fused kernels round differently and draw dropout differently, so use "
+                        "it for a new run, never to continue or reproduce an eager one. "
+                        "Recorded in the config; checkpoints and the final evaluation are "
+                        "eager. Default off.")
     t.add_argument("--frozen-population", default=None,
                    help="opt-in frozen base split, candidate and policy-row contract")
     t.add_argument("--frozen-population-sha256", default=None,
@@ -2960,6 +3601,14 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--init-exclude-exposed", action="store_true",
                    help="with --init: drop the source's (and its ancestors') fit/selection "
                         "deals from this run's val/test instead of refusing (never into train)")
+    t.add_argument("--init-widen-encoder", action="store_true",
+                   help="with --init: accept an mlp source trained at the encoder version this "
+                        "run's --encoder-version appends to (v2 for v7); the appended inputs "
+                        "start at zero weight, so step 0 computes the source's function")
+    t.add_argument("--trick-end-rows", action="store_true",
+                   help="also train on each record's realised trick-end state (the state type "
+                        "the served search scores) with the record's label; the added rows are "
+                        "train-only, so validation and test stay one row per record")
 
     e = sub.add_parser("evaluate", help="score a checkpoint")
     common(e)
@@ -3013,10 +3662,18 @@ def main(argv: list[str] | None = None) -> int:
                   policy_tower_width=args.policy_tower_width,
                   policy_trunk_grad_scale=args.policy_trunk_grad_scale,
                   val_rank_records=args.val_rank_records, init=args.init,
+                  val_rows=args.val_rows, compile_trunk=args.compile_trunk,
                   frozen_population=args.frozen_population,
                   frozen_population_sha256=args.frozen_population_sha256,
+                  served_rank_deals=args.served_rank_deals,
+                  served_rank_per_bucket=args.served_rank_per_bucket,
+                  lr_schedule=args.lr_schedule, lr_final_scale=args.lr_final_scale,
+                  weight_average=args.weight_average, ema_decay=args.ema_decay,
+                  swa_start_epoch=args.swa_start_epoch, select_averaged=args.select_averaged,
                   init_lr_scale=args.init_lr_scale,
                   init_exclude_exposed=args.init_exclude_exposed,
+                  init_widen_encoder=args.init_widen_encoder,
+                  trick_end_rows=args.trick_end_rows,
                   encoder_version=args.encoder_version,
                   trunk_layers=args.trunk_layers, trunk_block=args.trunk_block,
                   grid_channels=args.grid_channels, **exec_kw)

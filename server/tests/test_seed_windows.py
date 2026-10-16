@@ -69,7 +69,9 @@ def test_committed_registry_holds_the_known_windows():
     for w in reg["windows"]:
         assert w["span"] == [w["seed0"], w["seed0"] + w["clusters"]]
         assert w["purpose"] in seeds.PURPOSES
-    assert len(reg["windows"]) == 15
+    # The registry grows as stores are reserved; retain the pinned historical
+    # witnesses above without freezing the total number of future entries.
+    assert len(by) == len(reg["windows"]), "registry names must be unique"
 
 
 def test_window_and_overlap_span():
@@ -353,11 +355,15 @@ def test_witness_concurrent_same_span_admits_exactly_one(registry, tmp_path):
 
 
 def test_witness_concurrent_disjoint_spans_both_persist(registry, tmp_path):
+    before = seeds.load(registry)["windows"]
     verdicts = _contend(registry, [("left", 77, 1), ("right", 78, 1), ("far", 1_000, 5)], tmp_path)
     assert all(v["admitted"] for v in verdicts.values()), verdicts
-    names = {w["name"] for w in seeds.load(registry)["windows"]}
-    assert {"left", "right", "far"} <= names
-    assert len(seeds.load(registry)["windows"]) == 15 + 3
+    after = seeds.load(registry)["windows"]
+    assert after[:len(before)] == before
+    added = after[len(before):]
+    assert len(added) == 3
+    assert {w["name"]: w["span"] for w in added} == {
+        "left": [77, 78], "right": [78, 79], "far": [1_000, 1_005]}
 
 
 def test_red_without_the_lock_both_are_admitted_and_one_is_lost(registry, tmp_path, monkeypatch):

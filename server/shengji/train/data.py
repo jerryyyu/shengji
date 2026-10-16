@@ -804,11 +804,14 @@ OBS_SEGMENTS_V5_EXTRA = [["kitty_known", 1, "bits2"], ["kitty", N_CARDS, "bits2"
 #: v6 packs EXACTLY like v2 plus one flag: it corrects the VALUE of the unseen plane, it does
 #: not move or resize any column, so the v1 segment table still describes the first 560.
 OBS_SEGMENTS_V6_EXTRA = [["kitty_known", 1, "bits2"]]
+#: v7 appends the seat-relative one-hot of who acts next.
+OBS_SEGMENTS_V7_EXTRA = [["next_actor", 4, "bits2"]]
 OBS_SEGMENTS_BY_VERSION = {1: OBS_SEGMENTS_V1,
                            2: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA,
                            4: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V4_EXTRA,
                            5: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V5_EXTRA,
-                           6: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V6_EXTRA}
+                           6: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V6_EXTRA,
+                           7: OBS_SEGMENTS_V1 + OBS_SEGMENTS_V2_EXTRA + OBS_SEGMENTS_V7_EXTRA}
 #: the DEFAULT (v1) table; ``obs_layout_for`` selects another version's
 OBS_SEGMENTS = OBS_SEGMENTS_BY_VERSION[ENC_VERSION]
 CAND_SEGMENTS = [["cards", N_CARDS, "bits2"], ["n_cards", 1, "u8"], ["n_pairs", 1, "u8"],
@@ -1809,7 +1812,7 @@ class SplitSelector:
         self._keys = part_keys(assignment, part)
 
     def __call__(self, block: Block) -> np.ndarray:
-        return keys_mask(block.deal_key, self._keys)
+        return _record_rows(block, self.part, keys_mask(block.deal_key, self._keys))
 
     def selects_any(self, deal_keys: Sequence[str]) -> bool:
         """Whether any of ``deal_keys`` is in this part.
@@ -1825,7 +1828,20 @@ class SplitSelector:
 
 def split_mask(block: Block, assignment: Mapping[str, str], part: str) -> np.ndarray:
     """Rows of ``block`` whose ``deal_key`` is assigned to ``part``."""
-    return keys_mask(block.deal_key, part_keys(assignment, part))
+    return _record_rows(block, part, keys_mask(block.deal_key, part_keys(assignment, part)))
+
+
+def _record_rows(block, part: str, mask: np.ndarray) -> np.ndarray:
+    """``mask`` without derived training rows outside ``train``.
+
+    A complete-world block in the trick-end flavour (``cwv_data.build_cache``) carries a
+    ``trick_end`` flag on each record's added trick-end row.  Those rows are a training
+    signal, not records: validation, test and every reported number stay one row per
+    record, the population they always measured.  Blocks without the flag are unchanged."""
+    derived = getattr(block, "trick_end", None)
+    if derived is None or part == "train":
+        return mask
+    return mask & ~derived
 
 
 def split_counts(assignment: Mapping[str, str]) -> dict[str, int]:

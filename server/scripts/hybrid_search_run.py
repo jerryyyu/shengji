@@ -18,6 +18,27 @@ from scripts.hybrid_search_probe import run_hybrid_search_probe, score_true_deal
 MAX_LINE_BYTES = 2 * 1024 * 1024
 
 
+def ranking_attribution(probe, regret):
+    """Separate selection-rule removal from changed values on one ballot.
+
+    Positive deltas mean better true-deal value. This is an algebraic
+    decomposition, not a causal strength estimate or an extra search arm.
+    """
+    means = probe["baseline"]["means"]
+    truth = regret["values"]
+    if not means or len(means) != len(truth) or any(
+            not math.isfinite(float(v)) for v in (*means, *truth)):
+        raise ValueError("attribution requires finite aligned ballot values")
+    served = probe["baseline"]["pv_winner"]
+    hybrid = probe["hybrid_value_argmax_index"]
+    flat = max(range(len(means)), key=means.__getitem__)
+    return {"baseline_value_argmax_index": flat,
+            "baseline_value_argmax_regret": max(truth) - truth[flat],
+            "selection_rule_removal_delta": truth[flat] - truth[served],
+            "lookahead_value_delta": truth[hybrid] - truth[flat],
+            "total_delta": truth[hybrid] - truth[served]}
+
+
 def _validate_caps(completed_tricks, exact_max_cards, oracle_max_cards,
                    max_nodes, max_roots, wall_seconds, seed):
     if type(completed_tricks) is not int or not 1 <= completed_tricks <= 3:
@@ -132,6 +153,7 @@ def run_probe_file(input_path, output_path, bot_factory, *, completed_tricks,
                                        "baseline_seconds": probe["baseline"]["seconds"],
                                        "oracle_seconds": regret["seconds"]},
                             "leafstats": probe["leafstats"],
+                            "ranking_attribution": ranking_attribution(probe, regret),
                             "regret": {key: regret[key] for key in (
                                 "label", "scope", "actions", "values",
                                 "best_admitted_value", "baseline_regret",

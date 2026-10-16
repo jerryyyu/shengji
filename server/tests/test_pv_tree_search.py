@@ -321,6 +321,23 @@ def test_true_deal_regret_records_forced_throw_component():
     assert result["actions"][0]["accepted"] == ["D8"]
 
 
+def test_hybrid_ranking_attribution_separates_selection_from_depth():
+    probe = {"baseline": {"means": [0.0, 2.0, 1.0], "pv_winner": 0},
+             "hybrid_value_argmax_index": 2}
+    result = hybrid_run.ranking_attribution(probe, {"values": [1.0, 3.0, 2.0]})
+    assert result["selection_rule_removal_delta"] == 2.0
+    assert result["lookahead_value_delta"] == -1.0
+    assert result["total_delta"] == 1.0
+    assert result["baseline_value_argmax_regret"] == 0.0
+    assert result["total_delta"] == (result["selection_rule_removal_delta"]
+                                     + result["lookahead_value_delta"])
+    probe["baseline"]["means"] = [2.0, 2.0, 1.0]
+    assert hybrid_run.ranking_attribution(probe, {"values": [1., 3., 2.]})[
+        "baseline_value_argmax_index"] == 0
+    with pytest.raises(ValueError, match="finite aligned"):
+        hybrid_run.ranking_attribution(probe, {"values": [float("nan"), 3., 2.]})
+
+
 def test_hybrid_search_run_streams_and_stops_on_second_failure(tmp_path, monkeypatch):
     import json
     from types import SimpleNamespace
@@ -357,6 +374,7 @@ def test_hybrid_search_run_streams_and_stops_on_second_failure(tmp_path, monkeyp
     rows = [json.loads(line) for line in output.read_text().splitlines()]
     assert result["status"] == "FAILED" and result["completed"] == 1
     assert rows[1]["type"] == "root" and rows[-1]["reason"] == "error"
+    assert rows[1]["ranking_attribution"]["total_delta"] == 0.0
     assert rows[-1]["attempted"] == 2 and rows[-1]["completed"] == 1
     with pytest.raises(FileExistsError):
         run_probe_file(source, output, lambda seed: None,

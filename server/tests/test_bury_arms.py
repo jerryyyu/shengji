@@ -47,7 +47,8 @@ def _fly_env():
     assert env.get("SHENGJI_PV_DOOMED_THROW_RESELECT") == "1"
     return {k: v for k, v in env.items() if k not in (
         "SHENGJI_PV_DOOMED_THROW_RESELECT", "SHENGJI_PV_VALUE_DECLARE",
-        "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
+        "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
+        and not k.startswith("SHENGJI_PV_EXACT_")}   # release 46's exact endgame search (#1039)
 
 
 def _names(monkeypatch, **overrides):

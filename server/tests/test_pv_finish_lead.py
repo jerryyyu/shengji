@@ -22,6 +22,13 @@ from test_pv_search_serving import package  # noqa: F401
 from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA  # noqa: F401
 
 
+def release45_env():
+    """Production's fly.toml without release 46's six SHENGJI_PV_EXACT_* lines (the documented
+    rollback): the scenarios below set the one exact or finish flag they test themselves."""
+    env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    return {k: v for k, v in env.items() if not k.startswith('SHENGJI_PV_EXACT_')}
+
+
 def root(cards=8):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     rnd = rebuild_round(events)
@@ -185,7 +192,7 @@ def _check_recipe_candidate_snapshot_and_commit(decision_package, tmp_path, expi
     from shengji.engine.game import Game
 
     path, sha = decision_package
-    env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    env = release45_env()
     flag = 'SHENGJI_PV_FINISH_LEAD_ADMISSION' if candidate == 'finish' else 'SHENGJI_PV_EXACT_LEAD_ENDGAME'
     recipe = pv.pv_env_recipe({**env, 'SHENGJI_PV_CKPT': path,
                               'SHENGJI_PV_SHA256': sha,
@@ -282,7 +289,7 @@ def _check_exact_stage_expiry_server_commit(decision_package, tmp_path, monkeypa
     from shengji.train import pv_exact_endgame as exact
 
     path, sha = decision_package
-    env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    env = release45_env()
     recipe = pv.pv_env_recipe({**env, 'SHENGJI_PV_CKPT': path,
                               'SHENGJI_PV_SHA256': sha,
                               'SHENGJI_PV_EXACT_LEAD_ENDGAME': '0',

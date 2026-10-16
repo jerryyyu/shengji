@@ -21,7 +21,12 @@ RELEASE42 = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-r0f40c8b5-bury-hybrid-27
 RELEASE43 = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b"
 RELEASE44 = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6"
 RELEASE45 = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8"
+RELEASE46 = ("pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed6-xf6-xfcompactlevel-"
+             "rd774ea98-bury-hybrid-bwv-ba1c68b8fa9a")
 WIDE_BURY = ("SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
+EXACT_ENDGAME = ("SHENGJI_PV_EXACT_LEAD_ENDGAME", "SHENGJI_PV_EXACT_DEEP_CARDS",
+                 "SHENGJI_PV_EXACT_FOLLOW", "SHENGJI_PV_EXACT_FOLLOW_SOLVER",
+                 "SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS", "SHENGJI_PV_EXACT_FOLLOW_MAX_NODES")
 
 
 def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
@@ -64,19 +69,30 @@ def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     # Release 43 (Jerry 2026-10-09): the doomed-throw re-select (#946) replaces the swap.
     # Release 44 (Jerry 2026-10-11): release 43 plus the value-guided declaration (#952, #959).
     # Release 45 (Jerry 2026-10-13): release 44 plus the wide value-only bury at K=64 (#974).
+    # Release 46: release 45 plus the deeper exact endgame search D6 + X6 (#1039), the six
+    # SHENGJI_PV_EXACT_* lines; the name is the one v87dx45 screened.
     for flag in ("ADMISSION_DIVERSITY", "REFUSAL_CONSTRAINTS", "TIEBREAK_POINTS", "LEAD_ANCHOR",
-                 "DOOMED_THROW_RESELECT", "VALUE_DECLARE"):
+                 "DOOMED_THROW_RESELECT", "VALUE_DECLARE", "EXACT_LEAD_ENDGAME", "EXACT_FOLLOW"):
         assert pv_recipe["SHENGJI_PV_" + flag] == "1"
+    assert (pv_recipe["SHENGJI_PV_EXACT_DEEP_CARDS"], pv_recipe["SHENGJI_PV_EXACT_FOLLOW_SOLVER"],
+            pv_recipe["SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS"],
+            pv_recipe["SHENGJI_PV_EXACT_FOLLOW_MAX_NODES"]) == ("6", "compact-level", "6", "50000000")
     # The served name is the one the server derives from this env (pv_env_recipe ->
     # pv_registry_entries); the package is not in the repo, so only its on-disk hash
     # lookup is stood in by the pinned sha.
     monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: SERVED_PV_SHA[:8])
     names = list(pv.pv_registry_entries(**pv.pv_env_recipe(env)))
-    assert names == [env["SHENGJI_BOT"]] == [RELEASE45]
+    assert names == [env["SHENGJI_BOT"]] == [RELEASE46]
     assert (pv_recipe["SHENGJI_PV_BURY_WIDE_VALUE"], pv_recipe["SHENGJI_PV_BURY_WIDE_K"]) == ("1", "64")
-    # Rollback to release 44: the same env without the two wide-bury lines; the play digest
+    # Rollback to release 45: the same env without the six exact-endgame lines. The play
+    # digest moves (the exact stages are play rules) and the bury suffix digests the play
+    # identity, so the bury recipe is unchanged although its suffix differs.
+    release45 = {k: v for k, v in env.items() if k not in EXACT_ENDGAME}
+    assert list(pv.pv_registry_entries(**pv.pv_env_recipe(release45))) == [RELEASE45]
+    assert RELEASE46.endswith("-bury-hybrid-bwv-ba1c68b8fa9a") and RELEASE45.endswith("-bury-hybrid-bwv-7a73e8fbf1a8")
+    # Rollback to release 44: release 45 without the two wide-bury lines; the play digest
     # is untouched, only the bury digest moves.
-    release44 = {k: v for k, v in env.items() if k not in WIDE_BURY}
+    release44 = {k: v for k, v in release45.items() if k not in WIDE_BURY}
     assert list(pv.pv_registry_entries(**pv.pv_env_recipe(release44))) == [RELEASE44]
     assert RELEASE45[:RELEASE45.index("-bury-")] == RELEASE44[:RELEASE44.index("-bury-")]
     # Rollback to release 43: release 44 without the value-declare line.

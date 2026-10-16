@@ -98,7 +98,8 @@ def fly_env():
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
     assert env.get(VD) == "1"
     return {k: v for k, v in env.items()
-            if k not in (VD, "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
+            if k not in (VD, "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
+            and not k.startswith("SHENGJI_PV_EXACT_")}   # release 46's exact endgame search (#1039)
 
 
 # ------------------------------------------------------------ (a) off: identity

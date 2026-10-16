@@ -168,16 +168,18 @@ def bury_state(index):
 
 
 def fly_env():
-    """The RELEASE-44 env: production's fly.toml minus the two wide-bury lines.
+    """The RELEASE-44 env: production's fly.toml minus the two wide-bury lines and the six
+    exact-endgame lines.
 
-    Production is release 45 (release 44 + SHENGJI_PV_BURY_WIDE_VALUE/_K, #974), so the
-    release-44 identities here and in the modules that import this helper are derived from
-    the documented release-44 rollback."""
+    Production is release 46 (release 44 + SHENGJI_PV_BURY_WIDE_VALUE/_K, #974, + the
+    SHENGJI_PV_EXACT_* search, #1039), so the release-44 identities here and in the modules
+    that import this helper are derived from the documented rollbacks."""
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
     assert env.get(VD) == "1"
     assert (env.get("SHENGJI_PV_BURY_WIDE_VALUE"), env.get("SHENGJI_PV_BURY_WIDE_K")) == ("1", "64")
     return {k: v for k, v in env.items()
-            if k not in ("SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
+            if k not in ("SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
+            and not k.startswith("SHENGJI_PV_EXACT_")}
 
 
 def best_single(cards, log_odds=NEGATIVE):

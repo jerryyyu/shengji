@@ -38,7 +38,11 @@ class FollowDevBot(pv.PVSearchBuryBot):
 
 @pytest.mark.parametrize('hand_cap', [3, 4])
 def test_pinned_model_follow_snapshot_and_commit(pinned_production_package, tmp_path, hand_cap):
-    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    # the release-45 base (production's fly.toml without release 46's six SHENGJI_PV_EXACT_*
+    # lines): the baseline bot runs no exact stage and the dev bot sets its own
+    env = {k: v for k, v in tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml')
+                                          .read_text())['env'].items()
+           if not k.startswith('SHENGJI_PV_EXACT_')}
     env['SHENGJI_PV_CKPT'] = str(pinned_production_package)
     recipe = pv.pv_env_recipe(env)
     rnd = _play_state()
@@ -240,8 +244,10 @@ def test_follow_solver_contract_matches_lazy_implementation():
 
 
 def test_follow_off_recipe_does_not_import_optional_solver(pinned_production_package):
-    fly_env = tomllib.loads(
-        (Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    # the release-45 base: production's fly.toml without release 46's six exact lines
+    fly_env = {k: v for k, v in tomllib.loads(
+        (Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env'].items()
+        if not k.startswith('SHENGJI_PV_EXACT_')}
     source = """
 import json
 import sys

@@ -81,13 +81,39 @@ primary_region = 'ewr'
   # (#707 issuecomment-6136852119). Rollback: delete the SHENGJI_PV_BURY_WIDE_VALUE and
   # SHENGJI_PV_BURY_WIDE_K lines and restore the release-44 name:
   # RELEASE 44 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8'
+  # RELEASE 46 (Jerry 2026-10-15: release 46 = D6 + X6, gated on the screen, a confirmation, the
+  # latency packet and the Fly check; deploy on his word): release 45 plus the deeper exact endgame
+  # search (#1039, -ele -ed6 -xf6 -xfcompactlevel). A LEAD where every hand holds <= 6 cards and more
+  # than one candidate is admitted is re-scored by exact level-mode minimax in each of the 64 sampled
+  # worlds after the first-trick leaf (50M nodes per world); a FOLLOW at <= 6 cards with more than one
+  # admitted candidate is re-ranked by exact play from each candidate on the compiled compact-level
+  # solver (50M nodes). Both stages run inside the unchanged 3 s play budget; on budget expiry or any
+  # solver error the finalized baseline choice plays. Declaration, bury, package, worlds and budgets
+  # are release 45's (the bury recipe is unchanged; the play digest moves, and the bury suffix
+  # digests the play identity with it). Evidence: v87dx45
+  # (ten fresh first-round windows vs release 45 as served) +0.0384 [+0.0278, +0.0491] POSITIVE,
+  # 10/10 windows positive; points +0.920 [+0.647, +1.194]; exact stages on 6.69 decisions per
+  # round, abandons 21 of 69,584 (0.03%, cap 2%), 0 refusals, 0 play fallbacks (#707
+  # issuecomment-6203794263); fresh-seed confirmation v87c and the whole-decision latency packet
+  # (#1047) are recorded in DEPLOY.md. Rollback: delete the six SHENGJI_PV_EXACT_* lines and
+  # restore the release-45 name:
+  # RELEASE 45 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed6-xf6-xfcompactlevel-rd774ea98-bury-hybrid-bwv-ba1c68b8fa9a'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
   SHENGJI_PV_LEAD_ANCHOR = '1'
   SHENGJI_PV_DOOMED_THROW_RESELECT = '1'
   SHENGJI_PV_VALUE_DECLARE = '1'
+  # Release 46: the deeper exact endgame search (#1039; see the RELEASE 46 note above). The
+  # compact-level solver is the compiled _endgame_fast extension when SHENGJI_FAST=1 activated
+  # the engine (its pure-Python twin otherwise, identical results, slower).
+  SHENGJI_PV_EXACT_LEAD_ENDGAME = '1'
+  SHENGJI_PV_EXACT_DEEP_CARDS = '6'
+  SHENGJI_PV_EXACT_FOLLOW = '1'
+  SHENGJI_PV_EXACT_FOLLOW_SOLVER = 'compact-level'
+  SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS = '6'
+  SHENGJI_PV_EXACT_FOLLOW_MAX_NODES = '50000000'
   SHENGJI_PV_CKPT = '/data/models/smv3out-491ee4bf.npz'
   SHENGJI_PV_SHA256 = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
   SHENGJI_PV_WORLDS = '64'

@@ -58,8 +58,10 @@ def fly_env():
     import tomllib
     from pathlib import Path
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
-    assert env["SHENGJI_BOT"] == RELEASE45
-    return dict(env)
+    # production is release 46 (release 45 + the SHENGJI_PV_EXACT_* search, #1039); the
+    # release-45 base is the documented rollback, the env without those six lines
+    assert env["SHENGJI_BOT"].startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-ele-")
+    return {k: v for k, v in env.items() if not k.startswith("SHENGJI_PV_EXACT_")}
 
 
 class KittyEvaluator:

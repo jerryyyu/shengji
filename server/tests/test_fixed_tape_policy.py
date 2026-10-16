@@ -126,7 +126,8 @@ def test_release38_adapter_is_bound_to_production_environment(monkeypatch):
     assert env.get('SHENGJI_PV_DOOMED_THROW_RESELECT') == '1'
     env = {k: v for k, v in env.items() if k not in (
         'SHENGJI_PV_DOOMED_THROW_RESELECT', 'SHENGJI_PV_VALUE_DECLARE',
-        'SHENGJI_PV_BURY_WIDE_VALUE', 'SHENGJI_PV_BURY_WIDE_K')}
+        'SHENGJI_PV_BURY_WIDE_VALUE', 'SHENGJI_PV_BURY_WIDE_K')
+        and not k.startswith('SHENGJI_PV_EXACT_')}   # release 46's exact endgame search (#1039)
     recipe = pv.pv_env_recipe(env)
     monkeypatch.setattr(cwv_policy, 'checkpoint_id', lambda path: recipe['sha256'][:8])
     assert list(pv.pv_registry_entries(**recipe)) == [

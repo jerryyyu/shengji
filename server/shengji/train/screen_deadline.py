@@ -3,6 +3,11 @@
 One spawned process per cluster shares evaluator caches across its bot instances.
 Only completed RPCs commit bot/RNG state. Cancellation restores the previous
 checkpoint, including RNG, rather than accepting half-computed search evidence.
+
+A session may instead outlive its cluster: ``reset`` drops every bot in the
+child and forgets the session's specs and checkpoints, so the next cluster
+registers its bots into an interpreter that is already imported and holds the
+package weights, with no bot, RNG or receipt state carried over.
 """
 from __future__ import annotations
 
@@ -19,6 +24,9 @@ from ..ai.smart import SmartBot
 
 RECIPE = {"seconds": 300.0, "version": "spawn-total-play-v1",
           "fallback": "SmartBot-v1", "rng_recovery": "rollback-uncommitted-play"}
+#: budget for the RPCs that carry no play clock: registering a bot (a cold
+#: child imports and loads the package first) and resetting the child
+STARTUP_SECONDS = 120
 
 
 def validate_deadline(value):
@@ -110,6 +118,14 @@ def _worker(conn, factory, specs, checkpoints, parent_pid):
         while True:
             request, index, method, args, kwargs, spec = conn.recv()
             try:
+                if method == "reset":
+                    # Every bot, with its RNG and receipts, goes, including the
+                    # one the last request left bound; the imported modules and
+                    # the cached package weights stay.
+                    wrapped = None
+                    bots.clear()
+                    conn.send((request, "result", (None, None, None)))
+                    continue
                 if index not in bots:
                     bots[index] = factory(*spec)
                 wrapped = bots[index]
@@ -175,8 +191,22 @@ class DeadlineSession:
     def register(self, *spec):
         index = len(self.specs)
         self.specs.append(spec)
-        self.call(index, "register", (), {}, deadline=time.monotonic() + 120)
+        self.call(index, "register", (), {}, deadline=time.monotonic() + STARTUP_SECONDS)
         return DeadlinePolicy(self, index)
+
+    def reset(self):
+        """Forget every registered bot, in the child and here, keeping the child alive.
+
+        A child that died while idle held nothing, so it is only reaped and
+        the next ``call`` spawns afresh. A live child that does not answer
+        within the startup budget is killed and the failure raised. Policies
+        issued before the reset are dead handles.
+        """
+        if self.process is not None and not self.process.is_alive():
+            self.close()
+        if self.process is not None:
+            self.call(None, "reset", (), {}, deadline=time.monotonic() + STARTUP_SECONDS)
+        self.specs, self.checkpoints = [], {}
 
     def call(self, index, method, args, kwargs, *, deadline=None):
         self.sequence += 1
@@ -185,12 +215,13 @@ class DeadlineSession:
             self._start()
         conn = self.conn
         messages = queue.Queue()
+        spec = None if index is None else self.specs[index]
 
         # Neither serializing/sending a Round nor receiving a large result may
         # block the watchdog. A reader thread handles the complete framed IPC.
         def exchange():
             try:
-                conn.send((request, index, method, args, kwargs, self.specs[index]))
+                conn.send((request, index, method, args, kwargs, spec))
                 while True:
                     message = conn.recv()
                     messages.put(message)
@@ -223,7 +254,8 @@ class DeadlineSession:
                 if kind != "result":
                     raise RuntimeError(f"deadline worker {kind}: {payload}")
                 result, checkpoint, traces = payload
-                self.checkpoints[index] = checkpoint
+                if index is not None:
+                    self.checkpoints[index] = checkpoint
                 return result, traces, phase, legal_count
         except BaseException:
             self.close()

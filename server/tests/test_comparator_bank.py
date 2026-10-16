@@ -180,11 +180,20 @@ def test_check_refuses_every_kind_of_identity_drift(built, tmp_path, capsys, edi
     assert report["refusals"][0]["kind"] == "identity drift" and report["drift"][where]
 
 
-def witness_for(path, out, expected, tree, directories, *, equal=True):
-    path.write_text(json.dumps({
+def witness_for(path, out, expected, tree, directories, *, equal=True, deadline=DEADLINE, environment=None,
+                relocations=None, **extra):
+    """A replay witness as ``replay`` writes it: bound to the bank, the expected identity, the tree,
+    the frozen deadline recipe and the effective execution environment."""
+    frozen = json.loads(Path(expected).read_text())["environment"]
+    body = {
         "schema": bank.REPLAY_SCHEMA, "bank_sha256": bank.file_sha256(out), "expected_sha256": bank.file_sha256(expected),
-        "tree_sha256": tree, "all_equal": equal,
-        "clusters": [{"directory": d, "cluster": 0, "equal": equal} for d in directories]}))
+        "tree_sha256": tree, "all_equal": equal, "deadline": deadline,
+        "environment": frozen if environment is None else environment, "relocations": relocations or {},
+        "clusters": [{"directory": d, "cluster": 0, "equal": equal} for d in directories]}
+    body.update(extra)
+    for key in [k for k, v in body.items() if v == "ABSENT"]:
+        del body[key]
+    path.write_text(json.dumps(body))
     return path
 
 
@@ -216,6 +225,36 @@ def test_replay_witness_waives_tree_drift_and_added_config_leaves_only(built, tm
                    witness_for(tmp_path / "w4.json", tmp_path / "configs.json", expected, lane_tree, [str(windows[0])])):
         assert check(out, expected, configs, seeds=(100,), witness=broken) == 1
         assert "witness" in capsys.readouterr().err
+    # the deadline and the execution environment must be the frozen ones: a disabled or missing
+    # deadline, a changed key, an unset key or a relocation off the frozen hash waives nothing
+    good = [str(windows[0]), str(windows[2])]
+    frozen = json.loads(expected.read_text())["environment"]
+    for label, w in (
+            ("deadline false", witness_for(tmp_path / "n1.json", out, expected, lane_tree, good, deadline=False)),
+            ("deadline missing", witness_for(tmp_path / "n2.json", out, expected, lane_tree, good, deadline="ABSENT")),
+            ("deadline changed", witness_for(tmp_path / "n3.json", out, expected, lane_tree, good, deadline={**DEADLINE, "seconds": 30.0})),
+            ("env key changed", witness_for(tmp_path / "n4.json", out, expected, lane_tree, good, environment={**frozen, "SHENGJI_FAST": "0"})),
+            ("env key unset", witness_for(tmp_path / "n5.json", out, expected, lane_tree, good,
+                                          environment={k: v for k, v in frozen.items() if k != "SHENGJI_FAST"})),
+            ("env key added", witness_for(tmp_path / "n6.json", out, expected, lane_tree, good, environment={**frozen, "SHENGJI_PV_SEED": "1"})),
+            ("env missing", witness_for(tmp_path / "n7.json", out, expected, lane_tree, good, environment="ABSENT")),
+            ("relocation off hash", witness_for(tmp_path / "n8.json", out, expected, lane_tree, good,
+                                                environment={**frozen, "SHENGJI_PV_CKPT": "/else/x.npz"},
+                                                relocations={"SHENGJI_PV_CKPT": {"from": "/root/models/x.npz", "to": "/else/x.npz", "sha256": "c" * 64}})),
+            ("relocation of a non-package key", witness_for(tmp_path / "n9.json", out, expected, lane_tree, good,
+                                                            environment={**frozen, "SHENGJI_PV_WORLDS": "32"},
+                                                            relocations={"SHENGJI_PV_WORLDS": {"from": "64", "to": "32", "sha256": "a" * 64}})),
+            ("relocation not applied", witness_for(tmp_path / "n10.json", out, expected, lane_tree, good,
+                                                   relocations={"SHENGJI_PV_CKPT": {"from": "/root/models/x.npz", "to": "/else/x.npz", "sha256": "a" * 64}}))):
+        assert check(out, expected, configs, seeds=(100, 300), witness=w) == 1, label
+        err = capsys.readouterr().err
+        assert "waives nothing" in err or "not bound" in err or "another execution environment" in err, (label, err)
+    # a same-hash relocation of the package path is the one accepted override
+    moved = witness_for(tmp_path / "p1.json", out, expected, lane_tree, good,
+                        environment={**frozen, "SHENGJI_PV_CKPT": "/else/x.npz"},
+                        relocations={"SHENGJI_PV_CKPT": {"from": "/root/models/x.npz", "to": "/else/x.npz", "sha256": "a" * 64}})
+    assert check(out, expected, configs, seeds=(100, 300), witness=moved) == 0
+    assert json.loads(capsys.readouterr().out)["verdict"] == "PASS"
     # a changed leaf is never waived, witness or not
     changed = copy.deepcopy(added)
     changed["config"]["worlds"] = 32

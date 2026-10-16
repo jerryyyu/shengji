@@ -155,11 +155,14 @@ def test_attach_rejects_existing_tree_bot():
 
 
 def test_pinned_combo_keeps_exact_endgame_path(pinned_production_package,
-                                               hybrid_belief_package):
+                                               hybrid_belief_package, monkeypatch):
     from copy import deepcopy
+    from shengji.ai import belief_numpy
     from shengji.train.pv_search_policy import make_pv_search_bot
     from test_xmtj_throw_regressions import position
 
+    # Wiring identity must not depend on cold-start preparation timing.
+    monkeypatch.setattr(belief_numpy, 'PREP_SECONDS', 60.0)
     belief_path, belief_sha = hybrid_belief_package
     recipe = dict(sha256=PACKAGE_SHA, worlds=2, candidates=8, seed=13,
                   world_history_legal=True, world_history_draw=True,
@@ -175,6 +178,8 @@ def test_pinned_combo_keeps_exact_endgame_path(pinned_production_package,
     expected = baseline.decide_play(deepcopy(rnd), rnd.turn)
     assert candidate.decide_play(deepcopy(rnd), rnd.turn) == expected
     assert candidate.last_decision_record['hybrid_fallback'] == 'exact_endgame'
+    assert baseline.last_decision_record['belief_fallback'] == 0
+    assert candidate.last_decision_record['belief_fallback'] == 0
     for key, value in baseline.last_decision_record.items():
         if key.startswith('exact_') and 'seconds' not in key:
             assert candidate.last_decision_record[key] == value

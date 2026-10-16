@@ -23,6 +23,8 @@ from shengji.ai.endgame_compact import (HAVE_FAST, LEVEL_CUTS, CompactWorldSessi
 from shengji.ai.env import prepare_round
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
+from shengji.engine.cards import Ordering
+from shengji.engine.round import Round, Trick
 from shengji.rl.value_afterstate import category_signed_level, signed_level_category
 from shengji.train import pv_exact_deep, pv_search_policy as pv
 from shengji.train.cwv_prior_admission import root_clone
@@ -257,6 +259,67 @@ def test_level_session_answers_only_level_questions():
         CompactWorldSession(rnd, level=True).solve(rnd)
     with pytest.raises(ExactEndgameRefusal):
         CompactWorldSession(rnd).solve_level(rnd)
+
+
+_EIGHT_LEAD = ["H2", "H2", "H3", "H3", "H4", "H4", "H5", "H5"]
+_EIGHT_HIGH = ["HJ", "HJ", "HQ", "HQ", "HK", "HK", "HA", "HA"]
+_EIGHT_OFF_A = ["C6", "C6", "C8", "C8", "C9", "C9", "C10", "C10"]
+_EIGHT_OFF_B = ["D6", "D6", "D8", "D8", "D9", "D9", "D10", "D10"]
+
+
+def _eight_card_root(*, attacker_wins: bool):
+    """Create a synthetic but legal eight-card root through the real engine."""
+    # Banker 0 means seats 1 and 3 are attackers.  Exchange the one trump
+    # follow hand to make the same fixture cover both partnership outcomes;
+    # the other hands are forced discards, so this remains a one-path search.
+    follows = ([_EIGHT_OFF_A, _EIGHT_OFF_B, _EIGHT_HIGH] if attacker_wins else
+               [_EIGHT_OFF_A, _EIGHT_HIGH, _EIGHT_OFF_B])
+    rnd = Round("7", banker=0, rng=random.Random(0))
+    rnd.phase = "play"
+    rnd.ordering = Ordering("H", "7")
+    rnd.trump_suit = "H"
+    rnd.trump_is_nt = False
+    rnd.hands = [list(_EIGHT_LEAD), *(list(hand) for hand in follows)]
+    rnd.buried = ["C5", "C5", "D5", "D5", "S5", "S5", "C4", "C4"]
+    rnd.trick = Trick(leader=0)
+    rnd.turn = 0
+    rnd.deck = [card for hand in rnd.hands for card in hand] + list(rnd.buried)
+    rnd.play(0, list(_EIGHT_LEAD))
+    assert rnd.phase == "play" and rnd.turn == 1
+    assert len(rnd.hands[0]) == 0
+    assert len(rnd.trick.plays[0].cards) == 8
+    return rnd
+
+
+@pytest.mark.parametrize("attacker_wins", [True, False])
+@pytest.mark.parametrize("backend", ["python", "compiled"] if HAVE_FAST else ["python"])
+def test_eight_card_compact_matches_independent_solver(backend, attacker_wins):
+    """The exact-8 boundary preserves winner and terminal kitty scoring."""
+    root = _eight_card_root(attacker_wins=attacker_wins)
+    assert max(map(len, root.hands)) == 8
+    reference = ExactWorldSession(root, max_hand_cards=8, max_nodes=100)
+    compact = CompactWorldSession(
+        root, max_hand_cards=8, max_nodes=100, alpha_beta=True, backend=backend)
+    level = CompactWorldSession(
+        root, max_hand_cards=8, max_nodes=100, alpha_beta=True,
+        backend=backend, level=True)
+
+    expected = reference.solve(root)
+    actual = compact.solve(root)
+    level_points_result = level.solve_points(root)
+    level_result = level.solve_level(root)
+
+    assert (actual.attacker_points, actual.action) == (
+        expected.attacker_points, expected.action)
+    if attacker_wins:
+        assert actual.attacker_points == 550
+    else:
+        assert actual.attacker_points == 0
+    assert level_points_result == expected.attacker_points
+    assert level_result == _expected_level_points(root, expected.attacker_points)
+    assert actual.nodes <= 100
+    assert compact.backend == backend
+    assert level.backend == backend
 
 
 # -- registry identity ----------------------------------------------------------

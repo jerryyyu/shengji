@@ -223,9 +223,64 @@ async def measure(args, srv, bot, out):
     return dict(roots_measured=n)
 
 
+async def preplay(args, srv, bot, out):
+    """Measure all declaration opportunities and bury without playing a round.
+
+    Each arm generates its own declarations and resulting bury hand. These
+    timings cover a recipe, not matched-state action-quality comparisons.
+    """
+    from shengji.engine.game import Game
+    rows = Sink(out / f'preplay_{args.pass_label}.jsonl')
+    declarations = buries = 0
+    for i in range(args.rounds):
+        deal_seed = args.seed0 + i
+        events = []
+        room = room_for(srv, f'P{deal_seed}', bot, events)
+        room.game = Game(random.Random(deal_seed))
+        rnd = room.game.start_round()
+        room.index_round()
+        room.seats = [srv.Seat(name=f'Bot {s}', is_bot=True) for s in range(4)]
+
+        async def declare(seat, final=False):
+            nonlocal declarations
+            events.clear()
+            started = time.perf_counter()
+            complete = await srv._bot_declares(room, [seat], final=final)
+            elapsed = time.perf_counter() - started
+            if not complete:
+                raise RuntimeError('declaration transaction invalidated')
+            rows.write(dict(phase='declare', deal_seed=deal_seed, seat=seat,
+                            final=final, arm=args.arm, pass_label=args.pass_label,
+                            wall_total_seconds=elapsed,
+                            model_search=[e for e in events if e['kind'] == 'model_search']))
+            declarations += 1
+
+        while rnd.phase == 'deal':
+            async with room.lock:
+                seat, idx, card = rnd.deal_next()
+                room.ids[seat][idx] = card
+            await declare(seat)
+        for seat in range(4):
+            await declare(seat, final=True)
+        async with room.lock:
+            rnd.finalize_declare()
+        events.clear()
+        prepared, step, commit, once = await timed_turn(srv, room, rnd.banker)
+        if not once or rnd.phase != 'play':
+            raise RuntimeError('bury transaction did not commit exactly once')
+        rows.write(dict(phase='bury', deal_seed=deal_seed, seat=rnd.banker,
+                        arm=args.arm, pass_label=args.pass_label,
+                        wall_total_seconds=step + commit, wall_step_seconds=step,
+                        wall_commit_seconds=commit, compute_seconds=prepared.compute_seconds,
+                        committed_once=once,
+                        model_search=[e for e in events if e['kind'] == 'model_search']))
+        buries += 1
+    return dict(rounds=args.rounds, declarations=declarations, buries=buries)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('mode', choices=('harvest', 'measure'))
+    p.add_argument('mode', choices=('harvest', 'measure', 'preplay'))
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--fly-toml', type=Path, required=True)
     p.add_argument('--arm', choices=tuple(NAMES), default='r45')
@@ -240,8 +295,10 @@ def main(argv=None):
     maps = dict(MAPS, **dict(m.split('=', 1) for m in args.map))
     if args.mode == 'harvest':
         assert args.arm == 'r45' and args.rounds > 0, 'harvest uses release 45 and needs --rounds'
-    else:
+    elif args.mode == 'measure':
         assert args.roots and args.pass_label, 'measure needs --roots and --pass-label'
+    else:
+        assert args.rounds > 0 and args.pass_label, 'preplay needs --rounds and --pass-label'
     terminal = Sink(args.out / f'terminal_{args.mode}{"_" + args.pass_label if args.pass_label else ""}.json')
     started = time.perf_counter()
     mem0 = memory()
@@ -251,7 +308,7 @@ def main(argv=None):
         name, bot, _ = build(args.arm, args.fly_toml, maps)
         mem_built = memory()
         from shengji.api import server as srv
-        run = harvest if args.mode == 'harvest' else measure
+        run = {'harvest': harvest, 'measure': measure, 'preplay': preplay}[args.mode]
         result = asyncio.run(run(args, srv, bot, args.out))
     except Exception as exc:   # typed terminal witness; never retried
         error = dict(type=type(exc).__name__, message=str(exc)[:500])

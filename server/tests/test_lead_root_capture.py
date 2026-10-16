@@ -297,6 +297,28 @@ def test_latency_harvest_captures_seven_card_leads_and_follows(tmp_path):
     assert all(1 <= root['max_hand'] <= 7 for root in roots)
 
 
+def test_preplay_latency_runs_server_transactions_to_terminal(tmp_path, monkeypatch):
+    from scripts import exact_endgame_latency as worker
+    from test_pv_admission_rules import served
+
+    monkeypatch.setattr(worker, 'build', lambda *a: (
+        worker.NAMES['combo'], served(refusal_constraints=True), {}))
+    assert worker.main(['preplay', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--rounds', '1', '--seed0', '4600000',
+                        '--pass-label', 'combo-pre', '--arm', 'combo']) == 0
+    rows = [json.loads(line) for line in
+            (tmp_path / 'preplay_combo-pre.jsonl').read_text().splitlines()]
+    terminal = json.loads((tmp_path / 'terminal_preplay_combo-pre.json').read_text())
+    assert terminal['error'] is None
+    declarations = [r for r in rows if r['phase'] == 'declare']
+    assert len(declarations) == 104
+    assert sum(r['final'] for r in declarations) == 4
+    assert rows[-1]['phase'] == 'bury' and rows[-1]['committed_once']
+    assert all(r['wall_total_seconds'] >= 0 for r in rows)
+    assert terminal['result'] == dict(rounds=1, declarations=104, buries=1)
+    assert not (tmp_path / 'roots.jsonl').exists()
+
+
 def test_latency_worker_seals_factory_refusal_without_retry(tmp_path, monkeypatch):
     from scripts import exact_endgame_latency as worker
 

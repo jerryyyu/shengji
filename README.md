@@ -14,11 +14,26 @@ with Mandarin voice announcements.
 outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds,
 8 candidates) with five search rules (div, rc, tb, la, dtr), the value-guided trump declaration
 (release 44) and the wide value-only bury (release 45). The model owns declaration, bury and card
-play; the heuristic is the anchor and the fallback. Orange marks what release 46 added.
+play; the heuristic is the anchor and the fallback. Colour marks what release 46 added: violet belief,
+berry exact endgame, blue declaration.
 
-<img src="docs/visuals/release46-bot-turn.svg" alt="The production bot's turn in release 46. Declare: the value head scores every legal declaration and PASS over 64 sampled completions; new in 46, in the first round it is consulted at every declare chance with an option. Bury: release 45's wide value-only bury, 64 candidates, value head picks. Play: heuristic anchor, legal actions, then (new in 46) 64 hidden worlds proposed by the S17 belief model and required to be history-legal, then rc, policy head, la, admit 8 with div, value head over the 64 worlds, tb, dtr, then (new in 46) an exact endgame at 7 or fewer cards per hand, then play." width="100%">
+<img src="docs/visuals/release46-bot-turn.svg" alt="One release-46 play decision drawn from a live lead in room ADKY: seat 3 holds seven cards; the S17 belief model gives each hidden card&#39;s holder probabilities as a heatmap (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in every world and the mean picks the ace of clubs (1.799); the exact endgame at 7 or fewer cards solves all 64 worlds and switches to the jack of diamonds (exact level 1.797 vs 1.719), played in 0.49 s. In v92c 10,500 of 28,150 exact leads changed: 6,788 higher, 3,543 tie, 169 lower. Declare strip: first declaration at a median of 19 cards dealt vs 74 for release 45. Bury strip: unchanged since 45, 64 candidate kitties." width="100%">
 
-<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Separate contrasts through a common MC-LCB control; not additive." width="100%">
+Rule tokens used in the figures and tables:
+
+- **div**: diversify candidates (at most 2 of the same shape)
+- **rc**: keep only worlds where this round's refused throws stay refusable
+- **la**: lead anchor (lead the strongest pair or tractor instead of a weak single)
+- **tb**: tie-break near-equal moves by points won this trick
+- **dtr**: drop a lead throw the engine would refuse in every world
+- **vd**: value-guided trump declaration
+- **vdef**: in round 1, consult the value head at every declare chance
+- **whl / whd**: sampled worlds must be consistent with every earlier follow (history-legal)
+- **bw**: hidden hands proposed by the S17 belief model
+- **ele / ed7 / xf7**: exact endgame search for leads and follows at ≤7 cards
+- **bwv**: wide value-only bury (64 candidate kitties)
+
+<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Separate contrasts through a common MC-LCB control; not additive." width="100%">
 
 **Served results** (signed levels per round, 95% CI; indirect contrasts through a common MC-LCB control):
 
@@ -41,7 +56,7 @@ Open work: the board issue (see AGENTS.md) and [RL_PLAN.md](RL_PLAN.md#planned-w
 
 ## How a strength change ships (current workflow)
 
-<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, cheap DEV test with a predeclared bar, screen of 10 windows by 520 clusters where the candidate and the current release each play the same fixed MC-LCB control (positive if the 95% CI lower bound is above zero), fresh-seed confirmation when required, latency and memory gate on one core, reviewed release PR with green CI, deploy on Jerry's word, post-deploy Fly check." width="100%">
+<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, DEV test with a predeclared bar, screen of 10 windows, confirmation (dashed: when Jerry or the packet requires it), latency gate on one core, reviewed release PR with green CI, deploy on Jerry&#39;s word, Fly check. Inside one screen, example v92c: release 46 and release 45 each play the same fixed MC-LCB control; window dots and 95% CIs give +0.540 and +0.312 levels per round, a difference of +0.228 [+0.205, +0.252], POSITIVE because the lower bound is above zero." width="100%">
 
 The screen never plays the candidate against the release directly: both play the same fixed MC-LCB
 control on the same deals, and the result is the difference. That puts the two arms of one screen on one scale; rows

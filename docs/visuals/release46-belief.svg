@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 250" width="640" height="250" role="img" aria-label="S17 belief worlds: the belief model proposes hidden hands, history-illegal ones are rejected; v92c: 44.9% of decisions reject at least one world, 0.1% history-fallback worlds, 0 belief fallbacks in 355,670 decisions, belief time p50 12.1 ms and p90 20.2 ms.">
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#1e2833;font-size:13px}.bg{fill:#ffffff}.mut{fill:#65727f}.b{font-weight:600}.ttl{font-size:20px;font-weight:600}.h{font-size:15px;font-weight:600}.hdr{font-size:12.5px;font-weight:600;letter-spacing:.06em;fill:#65727f}.sm{font-size:12.5px}.it{font-style:italic}.edge{stroke:#d5dae0;stroke-width:1.5;fill:none}.edge.strong{stroke:#3b4f63}.edgebel{stroke:#6a4bb0;stroke-width:1.5;fill:none}.edgeex{stroke:#b03a73;stroke-width:1.5;fill:none}.arrow{stroke:#3b4f63;stroke-width:1.6;fill:none}.ah{fill:#3b4f63}.world{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.worldx{fill:#ffffff;stroke:#d5dae0;stroke-width:1.3}.thumb{stroke:#3b4f63;stroke-width:1.6;stroke-linecap:round}.xmark{stroke:#a63d2f;stroke-width:2;stroke-linecap:round}.badt{fill:#a63d2f}.goodt{fill:#2e7d4f}.cand{fill:#ffffff;stroke:#1e2833;stroke-width:1.5}.card{fill:#ffffff;stroke:#3b4f63;stroke-width:1}.red{fill:#c0392b}.play{fill:#a8741c}.playtrack{fill:#f3e7cc}.net{fill:#117a75}.nett{fill:#117a75}.root{fill:#1e2833}.inkf{fill:#1e2833}.mutf{fill:#65727f}.rulef{fill:#d5dae0}.paperf{fill:#f4f5f7}.panelf{fill:#ffffff}.bel{fill:#6a4bb0}.belt{fill:#6a4bb0}.belsoft{fill:#ece6f7;stroke:#6a4bb0;stroke-width:1.3}.ex{fill:#b03a73}.ext{fill:#b03a73}.exsoft{fill:#f8e6ef;stroke:#b03a73;stroke-width:1.3}.exline{stroke:#b03a73;stroke-width:1.5;fill:none}.exnode{fill:#ffffff;stroke:#b03a73;stroke-width:1.5}.vd{fill:#2a6fb0}.vdt{fill:#2a6fb0}.vdsoft{fill:#e1ecf7;stroke:#2a6fb0;stroke-width:1.3}.wd{fill:#3b4f63}.wdt{fill:#3b4f63}.wdsoft{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.axis{stroke:#65727f;stroke-width:1;fill:none}.grid{stroke:#d5dae0;stroke-width:1;fill:none}.zero{stroke:#1e2833;stroke-width:1.3;fill:none}.ring{fill:none;stroke:#1e2833;stroke-width:1.8}.ringex{fill:none;stroke:#b03a73;stroke-width:2}.panelbox{fill:#f4f5f7;stroke:#d5dae0;stroke-width:1}.dash{fill:#ffffff;stroke:#3b4f63;stroke-width:1.5;stroke-dasharray:5 4}.stage{fill:#ffffff;stroke:#3b4f63;stroke-width:1.4}.stagej{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.4}.lineink{stroke:#1e2833;stroke-width:2.2;fill:none}.linemut{stroke:#65727f;stroke-width:1.2;fill:none}.linebel{stroke:#6a4bb0;stroke-width:2.2;fill:none}.linevd{stroke:#2a6fb0;stroke-width:2.2;fill:none}.linewd{stroke:#3b4f63;stroke-width:2.2;fill:none}.lineex{stroke:#b03a73;stroke-width:2.2;fill:none}.linenet{stroke:#117a75;stroke-width:2.2;fill:none}.chipt{font-size:12.5px;font-weight:700;letter-spacing:.05em;fill:#ffffff}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
+<defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<rect x="0.0" y="0.0" width="640.0" height="250.0" class="bg"/>
+<circle cx="30.0" cy="120.0" r="8" class="root"/>
+<text x="30.0" y="146.0" class="sm mut" text-anchor="middle">position</text>
+<path d="M38.0,120.0 C51.0,120.0 51.0,120.0 64.0,120.0" class="edgebel"/>
+<rect x="65.0" y="93.0" width="38.0" height="54.0" rx="3" class="belsoft"/><rect x="68.5" y="96.5" width="7.0" height="7.0" class="bel" fill-opacity="0.20"/><rect x="76.5" y="96.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="84.5" y="96.5" width="7.0" height="7.0" class="bel" fill-opacity="0.08"/><rect x="92.5" y="96.5" width="7.0" height="7.0" class="bel" fill-opacity="0.28"/><rect x="68.5" y="104.5" width="7.0" height="7.0" class="bel" fill-opacity="0.21"/><rect x="76.5" y="104.5" width="7.0" height="7.0" class="bel" fill-opacity="0.07"/><rect x="84.5" y="104.5" width="7.0" height="7.0" class="bel" fill-opacity="0.05"/><rect x="92.5" y="104.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="68.5" y="112.5" width="7.0" height="7.0" class="bel" fill-opacity="0.11"/><rect x="76.5" y="112.5" width="7.0" height="7.0" class="bel" fill-opacity="0.11"/><rect x="84.5" y="112.5" width="7.0" height="7.0" class="bel" fill-opacity="0.30"/><rect x="92.5" y="112.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="68.5" y="120.5" width="7.0" height="7.0" class="bel" fill-opacity="0.19"/><rect x="76.5" y="120.5" width="7.0" height="7.0" class="bel" fill-opacity="0.19"/><rect x="84.5" y="120.5" width="7.0" height="7.0" class="bel" fill-opacity="0.15"/><rect x="92.5" y="120.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="68.5" y="128.5" width="7.0" height="7.0" class="bel" fill-opacity="0.11"/><rect x="76.5" y="128.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/><rect x="84.5" y="128.5" width="7.0" height="7.0" class="bel" fill-opacity="0.09"/><rect x="92.5" y="128.5" width="7.0" height="7.0" class="bel" fill-opacity="0.28"/><rect x="68.5" y="136.5" width="7.0" height="7.0" class="bel" fill-opacity="0.24"/><rect x="76.5" y="136.5" width="7.0" height="7.0" class="bel" fill-opacity="0.22"/><rect x="84.5" y="136.5" width="7.0" height="7.0" class="bel" fill-opacity="0.07"/><rect x="92.5" y="136.5" width="7.0" height="7.0" class="bel" fill-opacity="0.85"/>
+<text x="84.0" y="166.0" class="sm belt b" text-anchor="middle">S17 belief</text>
+<path d="M106.0,120.0 C128.0,120.0 128.0,30.0 150.0,30.0" class="edgebel"/>
+<rect x="150.0" y="19.0" width="34.0" height="22.0" rx="3" class="world"/>
+<text x="167.0" y="34.5" class="mono sm" text-anchor="middle">w1</text>
+<path d="M184.0,30.0 C211.0,30.0 211.0,100.0 238.0,100.0" class="edge strong"/>
+<path d="M106.0,120.0 C128.0,120.0 128.0,70.0 150.0,70.0" class="edgebel"/>
+<rect x="150.0" y="59.0" width="34.0" height="22.0" rx="3" class="world"/>
+<text x="167.0" y="74.5" class="mono sm" text-anchor="middle">w2</text>
+<path d="M184.0,70.0 C211.0,70.0 211.0,100.0 238.0,100.0" class="edge strong"/>
+<path d="M106.0,120.0 C128.0,120.0 128.0,110.0 150.0,110.0" class="edgebel"/>
+<rect x="150.0" y="99.0" width="34.0" height="22.0" rx="3" class="world"/>
+<text x="167.0" y="114.5" class="mono sm" text-anchor="middle">w3</text>
+<path d="M184.0,110.0 C211.0,110.0 211.0,100.0 238.0,100.0" class="edge strong"/>
+<path d="M106.0,120.0 C128.0,120.0 128.0,150.0 150.0,150.0" class="edgebel"/>
+<rect x="150.0" y="139.0" width="34.0" height="22.0" rx="3" class="world"/>
+<text x="167.0" y="154.5" class="mono sm" text-anchor="middle">…</text>
+<path d="M184.0,150.0 C211.0,150.0 211.0,100.0 238.0,100.0" class="edge strong"/>
+<path d="M106.0,120.0 C128.0,120.0 128.0,196.0 150.0,196.0" class="edgebel"/>
+<rect x="150.0" y="185.0" width="34.0" height="22.0" rx="2" class="worldx"/><line x1="153.5" y1="188.5" x2="179.8" y2="188.5" class="grid"/><line x1="153.5" y1="196.0" x2="179.7" y2="196.0" class="grid"/><line x1="153.5" y1="203.5" x2="166.5" y2="203.5" class="grid"/><line x1="148.0" y1="183.0" x2="186.0" y2="209.0" class="xmark"/><line x1="186.0" y1="183.0" x2="148.0" y2="209.0" class="xmark"/>
+<text x="194.0" y="200.5" class="sm badt b">history-illegal</text>
+<rect x="240.0" y="82.0" width="66.0" height="36.0" rx="4" class="cand"/>
+<text x="273.0" y="105.0" class="sm" text-anchor="middle">search</text>
+<text x="6.0" y="240.0" class="sm mut it">schematic</text>
+<line x1="320.0" y1="20.0" x2="320.0" y2="232.0" class="grid"/>
+<text x="330.0" y="28.0" class="sm b">v92c · 355,670 decisions</text>
+<text x="330.0" y="54.0" class="sm">decisions rejecting ≥ 1 world</text>
+<rect x="330.0" y="61.0" width="220.0" height="12.0" rx="2" class="paperf"/>
+<rect x="330.0" y="61.0" width="98.8" height="12.0" rx="2" class="bel"/>
+<text x="558.0" y="72.0" class="mono sm b belt">44.9%</text>
+<text x="330.0" y="96.0" class="sm">history-fallback worlds</text>
+<rect x="330.0" y="103.0" width="220.0" height="12.0" rx="2" class="paperf"/>
+<rect x="330.0" y="103.0" width="1.5" height="12.0" rx="2" class="bel"/>
+<text x="558.0" y="114.0" class="mono sm b belt">0.1%</text>
+<text x="330.0" y="138.0" class="sm">belief fallbacks</text>
+<rect x="330.0" y="145.0" width="220.0" height="12.0" rx="2" class="paperf"/>
+<rect x="330.0" y="145.0" width="0.0" height="12.0" rx="2" class="bel"/>
+<text x="558.0" y="156.0" class="mono sm b belt">0</text>
+<text x="330.0" y="180.0" class="sm">belief time per decision, ms</text>
+<line x1="330.0" y1="196.0" x2="550.0" y2="196.0" class="axis"/>
+<line x1="436.5" y1="196.0" x2="507.8" y2="196.0" class="linebel"/>
+<circle cx="436.5" cy="196.0" r="4.5" class="bel"/>
+<line x1="507.8" y1="190.0" x2="507.8" y2="202.0" class="linebel"/>
+<text x="330.0" y="216.0" class="sm mut" text-anchor="middle">0</text>
+<text x="418.0" y="216.0" class="sm mut" text-anchor="middle">10</text>
+<text x="506.0" y="216.0" class="sm mut" text-anchor="middle">20</text>
+<text x="558.0" y="200.0" class="mono sm belt b">p50 12.1</text>
+<text x="558.0" y="216.0" class="mono sm belt">p90 20.2</text>
+</svg>

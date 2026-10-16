@@ -62,6 +62,7 @@ jobs:
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_test_checkout.py
+          tests/test_horizon_generalization.py
           tests/test_production_package_gate.py
           tests/test_prepare_llm_panel_roots.py
           tests/test_panel_root_import.py

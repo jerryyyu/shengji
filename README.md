@@ -9,35 +9,22 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 45** (since 2026-10-13 05:27 ET): the SMV3 outcome-head package
-`smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds, 8 candidates) with five
-search rules (div, rc, tb, la, dtr in the diagram), the value-guided trump declaration (release 44)
-and the wide value-only bury (release 45). The model now owns declaration, bury and card play;
-the heuristic is the anchor and the fallback.
+**Live: release 46** (since 2026-10-16 14:49 ET), the combo: belief-model worlds + exact endgame at
+7 cards + every-chance first-round value declaration, on release 45. Release 45 is the SMV3
+outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds,
+8 candidates) with five search rules (div, rc, tb, la, dtr), the value-guided trump declaration
+(release 44) and the wide value-only bury (release 45). The model owns declaration, bury and card
+play; the heuristic is the anchor and the fallback. Orange marks what release 46 added.
 
-```mermaid
-flowchart TD
-  turn(["bot's turn"]) --> phase{phase}
-  phase -->|declare| dec["value declare: every legal declaration + PASS<br/>scored by the value head over 64 sampled completions;<br/>the heuristic's choice is replaced only when beaten<br/>(heuristic on expiry or error)"]
-  phase -->|bury| bury["wide value-only bury: 64 candidates (the hybrid ballot<br/>+ the heuristic bury's single-card swaps),<br/>value head picks, no MC stage<br/>(2 s budget, heuristic fallback)"]
-  phase -->|play| anchor["heuristic play = anchor"]
-  anchor --> legal["legal actions, capped at 4,000,<br/>anchor forced in"]
-  legal --> worlds["sample 64 hidden worlds<br/>consistent with public info"]
-  worlds --> rc["rc · each world must make this round's refused<br/>throws refusable with the same forced component"]
-  rc --> prior["policy head scores every legal action<br/>(card log-odds summed, mean over worlds)"]
-  prior --> la["la · leading a non-trump single that is not the<br/>top live card? slot 0 = highest plain pair/tractor,<br/>else the policy's top action"]
-  la --> admit["admit 8: slot 0, then walk ALL legal actions<br/>in policy-score order until 8 are admitted"]
-  div["div · during the walk: at most 2 per shape<br/>(suit, size, components); skip actions sharing all but<br/>one card with an admitted one, so lower-ranked actions<br/>enter; back-fill from the skipped if short"] -.-> admit
-  admit --> value["value head (SMV3 outcome) per candidate:<br/>play it, finish the trick heuristically,<br/>score all 64 worlds, take the mean"]
-  value --> tb["tb · candidates within 0.02 level of the best:<br/>most root-team points from the current trick"]
-  tb --> dtr["dtr · a selected lead throw the engine refuses in every<br/>world with the same forced component? exclude it and<br/>that component, re-select among the admitted leads"]
-  dtr --> play(["play"])
-```
+<img src="docs/visuals/release46-bot-turn.svg" alt="The production bot's turn in release 46. Declare: the value head scores every legal declaration and PASS over 64 sampled completions; new in 46, in the first round it is consulted at every declare chance with an option. Bury: release 45's wide value-only bury, 64 candidates, value head picks. Play: heuristic anchor, legal actions, then (new in 46) 64 hidden worlds proposed by the S17 belief model and required to be history-legal, then rc, policy head, la, admit 8 with div, value head over the 64 worlds, tb, dtr, then (new in 46) an exact endgame at 7 or fewer cards per hand, then play." width="100%">
+
+<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Separate contrasts through a common MC-LCB control; not additive." width="100%">
 
 **Served results** (signed levels per round, 95% CI; indirect contrasts through a common MC-LCB control):
 
 | change | against | result | reading |
 |---|---|---|---|
+| the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) |
 | wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) |
 | value-guided declaration (release 44) | release 43 | +0.0497 [+0.0379, +0.0615] first-round; +0.0352 [+0.0233, +0.0471] later-round | POSITIVE in both populations, ten windows each (v70vd43, v71vd43lr) |
 | doomed-throw swap / re-select (releases 42, 43) | release 38 / 42 | interval spans zero | correctness fixes, no strength claim |
@@ -50,7 +37,14 @@ The exact contract, the caveats on these reads, what was tried and not taken, an
 [AI_POLICIES.md](AI_POLICIES.md#production-contract) and its
 [ladder](AI_POLICIES.md#the-ladder-every-production-change-and-what-it-measured).
 Rollback and gates: [DEPLOY.md](DEPLOY.md). Every screen: [Atlas v2](docs/atlas_v2/registry.json).
-Open work: board issue #707 and [RL_PLAN.md](RL_PLAN.md#planned-work).
+Open work: the board issue (see AGENTS.md) and [RL_PLAN.md](RL_PLAN.md#planned-work).
+
+## How a change ships
+
+<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, cheap DEV test with a predeclared bar, screen of 10 windows by 520 clusters where the candidate and the current release each play the same fixed MC-LCB control (positive if the 95% CI lower bound is above zero), fresh-seed confirmation, latency and memory gate on one core, reviewed release PR with green CI, deploy on Jerry's word, post-deploy Fly check." width="100%">
+
+The screen never plays the candidate against the release directly: both play the same fixed MC-LCB
+control on the same deals, and the result is the difference, so every screen sits on one scale.
 
 ## Quick start
 

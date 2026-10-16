@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 925" width="1000" height="925" role="img" aria-label="Release 46, the production bot&#x27;s turn. Declare: the value head scores every legal declaration and PASS over 64 sampled completions; new in 46, in the first round it is consulted at every declare chance with an option. Bury: release 45&#x27;s wide value-only bury, 64 candidates, value head picks. Play: heuristic anchor, legal actions, new in 46 64 hidden worlds proposed by the S17 belief model and required to be history-legal, rc, policy head, la, admit 8 with div, value head over the 64 worlds, tb, dtr, new in 46 exact endgame at 7 or fewer cards per hand, then play.">
+<rect x="0" y="0" width="1000" height="925" fill="#ffffff"/>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,system-ui,sans-serif;font-size:12px;fill:#1e2833}.mut{fill:#5d6a77;font-size:11px}.hdr{font-size:11px;font-weight:600;letter-spacing:.07em;fill:#5d6a77}.big{font-size:13px;font-weight:600}.new{fill:#b4520f;font-weight:600}.teal{fill:#117a75;font-weight:600}.ttl{font-size:16px;font-weight:600}.tag{font-size:10px;font-weight:700;letter-spacing:.06em;fill:#ffffff}.num{font-variant-numeric:tabular-nums}</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3b4f63"/></marker><marker id="an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b4520f"/></marker></defs>
+<text x="24" y="34" class="ttl">The production bot's turn · release 46</text>
+<text x="24" y="53" class="mut">One NumPy policy/value package (SMV3 outcome head) plus the S17 belief model. The heuristic is the anchor and the fallback.</text>
+<rect x="742" y="22" width="14" height="14" rx="3" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="762" y="33" class="mut">served before 46</text>
+<rect x="864" y="22" width="14" height="14" rx="3" fill="#fcebd9" stroke="#b4520f" stroke-width="1.8"/>
+<text x="884" y="33" class="mut">new in 46</text>
+<rect x="24" y="74" width="522" height="176" rx="6" fill="#f6f7f9" stroke="#d5dae0"/>
+<text x="38" y="96" class="hdr">DECLARE · VALUE DECLARATION</text>
+<text x="38" y="121">The value head scores every legal declaration plus PASS over 64 sampled</text>
+<text x="38" y="137">completions; the heuristic&#x27;s choice is replaced only when beaten.</text>
+<rect x="36.0" y="150.0" width="498.0" height="76.0" rx="6" fill="#fcebd9" stroke="#b4520f" stroke-width="1.8"/>
+<rect x="48.0" y="159.0" width="69.6" height="16" rx="8" fill="#b4520f"/>
+<text x="82.8" y="170.5" class="tag" text-anchor="middle">NEW IN 46</text>
+<text x="48.0" y="195.0" class="new">vdef: in the first round the value head is consulted at every declare chance</text>
+<text x="48.0" y="211.0" class="new">that has an option, not only when the heuristic gate opens.</text>
+<text x="38" y="244" class="mut">Heuristic on expiry or error.</text>
+<rect x="566" y="74" width="410" height="176" rx="6" fill="#f6f7f9" stroke="#d5dae0"/>
+<text x="580" y="96" class="hdr">BURY · WIDE VALUE-ONLY BURY</text>
+<text x="580" y="121">64 candidates: the hybrid ballot plus the heuristic bury&#x27;s</text>
+<text x="580" y="137">single-card swaps. The value head picks; no Monte Carlo stage.</text>
+<text x="580" y="159" class="mut">2 s budget, heuristic fallback. Unchanged since release 45.</text>
+<rect x="24" y="270" width="952" height="625" rx="6" fill="#f6f7f9" stroke="#d5dae0"/><text x="38" y="292" class="hdr">PLAY · ONE-PLY POLICY/VALUE SEARCH · 3 S BUDGET PER PLAY</text>
+<rect x="44.0" y="304.0" width="150.0" height="190.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="56.0" y="330.0" class="big">heuristic anchor</text>
+<text x="56.0" y="351.0" class="mut">the heuristic&#x27;s play;</text>
+<text x="56.0" y="366.0" class="mut">always a candidate</text>
+<rect x="224.0" y="304.0" width="170.0" height="190.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="236.0" y="330.0" class="big">legal actions</text>
+<text x="236.0" y="352.0">capped at 4,000, anchor</text>
+<text x="236.0" y="368.0">forced in</text>
+<rect x="424.0" y="304.0" width="360.0" height="190.0" rx="6" fill="#fcebd9" stroke="#b4520f" stroke-width="1.8"/>
+<rect x="436.0" y="313.0" width="69.6" height="16" rx="8" fill="#b4520f"/>
+<text x="470.8" y="324.5" class="tag" text-anchor="middle">NEW IN 46</text>
+<text x="436.0" y="350.0" class="big">64 hidden worlds from the S17 belief model</text>
+<text x="436.0" y="372.0">A NumPy model reads the round&#x27;s public history (package</text>
+<text x="436.0" y="388.0">s17long-e2-763b5e05) and proposes hidden hands under</text>
+<text x="436.0" y="404.0">draw-time constraints: hand sizes, public voids, pins,</text>
+<text x="436.0" y="420.0">pair obligations.</text>
+<text x="436.0" y="442.0">History-legal: every earlier follow must have been</text>
+<text x="436.0" y="458.0">legal for the hand this world gives that seat.</text>
+<text x="436.0" y="479.0" class="mut">Belief error: fall back to the history-legal draw.</text>
+<rect x="814.0" y="304.0" width="142.0" height="190.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="826.0" y="330.0" class="big">rc</text>
+<text x="826.0" y="352.0">each world must</text>
+<text x="826.0" y="368.0">make this round&#x27;s</text>
+<text x="826.0" y="384.0">refused throws</text>
+<text x="826.0" y="400.0">refusable with the</text>
+<text x="826.0" y="416.0">same forced</text>
+<text x="826.0" y="432.0">component</text>
+<line x1="196.0" y1="332.0" x2="221.0" y2="332.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="396.0" y1="332.0" x2="421.0" y2="332.0" stroke="#b4520f" stroke-width="1.6" marker-end="url(#an)"/>
+<line x1="786.0" y1="332.0" x2="811.0" y2="332.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="44.0" y="528.0" width="200.0" height="127.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="56.0" y="554.0" class="big">policy head</text>
+<text x="56.0" y="576.0">scores every legal action:</text>
+<text x="56.0" y="592.0">card log-odds summed, mean</text>
+<text x="56.0" y="608.0">over the worlds</text>
+<rect x="274.0" y="528.0" width="236.0" height="127.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="286.0" y="554.0" class="big">la</text>
+<text x="286.0" y="576.0">leading a non-trump single that is</text>
+<text x="286.0" y="592.0">not the top live card? slot 0 =</text>
+<text x="286.0" y="608.0">highest plain pair or tractor, else</text>
+<text x="286.0" y="624.0">the policy&#x27;s top action</text>
+<rect x="540.0" y="528.0" width="236.0" height="127.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="552.0" y="554.0" class="big">admit 8 · div</text>
+<text x="552.0" y="576.0">slot 0, then walk all legal actions</text>
+<text x="552.0" y="592.0">in policy order until 8 are in; div</text>
+<text x="552.0" y="608.0">keeps at most 2 per shape, skips</text>
+<text x="552.0" y="624.0">near-duplicates, back-fills if</text>
+<text x="552.0" y="640.0">short</text>
+<rect x="806.0" y="528.0" width="150.0" height="127.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="818.0" y="554.0" class="big">value head</text>
+<text x="818.0" y="576.0">per candidate: play</text>
+<text x="818.0" y="592.0">it, finish the trick</text>
+<text x="818.0" y="608.0">heuristically, score</text>
+<text x="818.0" y="624.0">all 64 worlds, take</text>
+<text x="818.0" y="640.0">the mean</text>
+<line x1="246.0" y1="556.0" x2="271.0" y2="556.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="512.0" y1="556.0" x2="537.0" y2="556.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="778.0" y1="556.0" x2="803.0" y2="556.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M916.0,496.0 L916.0,511.0 L84.0,511.0 L84.0,525.0" fill="none" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="44.0" y="689.0" width="196.0" height="174.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="56.0" y="715.0" class="big">tb</text>
+<text x="56.0" y="737.0">candidates within 0.02 level</text>
+<text x="56.0" y="753.0">of the best: most root-team</text>
+<text x="56.0" y="769.0">points from the current</text>
+<text x="56.0" y="785.0">trick</text>
+<rect x="270.0" y="689.0" width="250.0" height="174.0" rx="6" fill="#ffffff" stroke="#117a75" stroke-width="1.4"/>
+<text x="282.0" y="715.0" class="big">dtr</text>
+<text x="282.0" y="737.0">a selected lead throw the engine</text>
+<text x="282.0" y="753.0">refuses in every world with the same</text>
+<text x="282.0" y="769.0">forced component? exclude it and that</text>
+<text x="282.0" y="785.0">component, re-select among the</text>
+<text x="282.0" y="801.0">admitted leads</text>
+<rect x="550.0" y="689.0" width="338.0" height="174.0" rx="6" fill="#fcebd9" stroke="#b4520f" stroke-width="1.8"/>
+<rect x="562.0" y="698.0" width="69.6" height="16" rx="8" fill="#b4520f"/>
+<text x="596.8" y="709.5" class="tag" text-anchor="middle">NEW IN 46</text>
+<text x="562.0" y="735.0" class="big">exact endgame</text>
+<text x="562.0" y="757.0">At 7 or fewer cards per hand, with more than one</text>
+<text x="562.0" y="773.0">admitted candidate:</text>
+<text x="562.0" y="795.0">leads are re-scored by exact minimax in each world;</text>
+<text x="562.0" y="811.0">follows are re-ranked by the compiled compact-level</text>
+<text x="562.0" y="827.0">solver (50M-node cap).</text>
+<text x="562.0" y="848.0" class="mut">Budget expiry: the finalized PV choice plays.</text>
+<rect x="918.0" y="695.0" width="38.0" height="44" rx="22" fill="#e7ecf1" stroke="#3b4f63" stroke-width="1.5"/>
+<text x="937.0" y="722.0" class="big" text-anchor="middle">play</text>
+<line x1="242.0" y1="717.0" x2="267.0" y2="717.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="522.0" y1="717.0" x2="547.0" y2="717.0" stroke="#b4520f" stroke-width="1.6" marker-end="url(#an)"/>
+<line x1="890.0" y1="717.0" x2="915.0" y2="717.0" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<path d="M916.0,657.0 L916.0,672.0 L84.0,672.0 L84.0,686.0" fill="none" stroke="#3b4f63" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="38" y="883" class="mut">rc, la, div, tb and dtr are the five search rules carried over from earlier releases. The value and policy heads come from one package; the belief model is a second.</text>
+<text x="976" y="915" class="mut" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-bot-turn.svg</text>
+</svg>

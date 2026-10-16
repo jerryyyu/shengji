@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 504" width="1000" height="504" role="img" aria-label="Forest plot of served results by release, levels per round with 95% CI: release 46 combo vs 45 +0.2167 [+0.1923, +0.2412], confirmation +0.2284 [+0.2046, +0.2521]; release 45 wide bury vs 44 +0.0488 [+0.0286, +0.0690]; release 44 value declaration vs 43 +0.0497 [+0.0379, +0.0615]; div+rc+tb vs release 36 +0.0461 [+0.0242, +0.0681]; +la +0.0106 [+0.0006, +0.0205]; release 36 SMV3 outcome head vs 30 +0.0393 [+0.0033, +0.0752]; release 29 policy/value search vs 28 +0.049 [+0.003, +0.095]. Separate contrasts through a common MC-LCB control; not additive.">
+<rect x="0" y="0" width="1000" height="504" fill="#ffffff"/>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,system-ui,sans-serif;font-size:12px;fill:#1e2833}.mut{fill:#5d6a77;font-size:11px}.hdr{font-size:11px;font-weight:600;letter-spacing:.07em;fill:#5d6a77}.big{font-size:13px;font-weight:600}.new{fill:#b4520f;font-weight:600}.teal{fill:#117a75;font-weight:600}.ttl{font-size:16px;font-weight:600}.tag{font-size:10px;font-weight:700;letter-spacing:.06em;fill:#ffffff}.num{font-variant-numeric:tabular-nums}</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3b4f63"/></marker><marker id="an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b4520f"/></marker></defs>
+<text x="24" y="34" class="ttl">Served results by release</text>
+<text x="24" y="53" class="mut">Each row: one release step against its predecessor, in signed levels per round, with the 95% confidence interval.</text>
+<text x="976" y="70" class="hdr" text-anchor="end">POINT [95% CI]</text>
+<text x="24" y="70" class="hdr">CHANGE</text>
+<rect x="16" y="80" width="968" height="60" rx="6" fill="#fcebd9"/>
+<line x1="318.1" y1="78" x2="318.1" y2="394" stroke="#3b4f63" stroke-width="1.4"/>
+<text x="318.1" y="412" class="mut num" text-anchor="middle">0</text>
+<line x1="408.9" y1="78" x2="408.9" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="408.9" y="412" class="mut num" text-anchor="middle">+0.05</text>
+<line x1="499.6" y1="78" x2="499.6" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="499.6" y="412" class="mut num" text-anchor="middle">+0.10</text>
+<line x1="590.4" y1="78" x2="590.4" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="590.4" y="412" class="mut num" text-anchor="middle">+0.15</text>
+<line x1="681.1" y1="78" x2="681.1" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="681.1" y="412" class="mut num" text-anchor="middle">+0.20</text>
+<line x1="771.9" y1="78" x2="771.9" y2="394" stroke="#d5dae0" stroke-width="1"/>
+<text x="771.9" y="412" class="mut num" text-anchor="middle">+0.25</text>
+<line x1="300" y1="394" x2="790" y2="394" stroke="#3b4f63" stroke-width="1"/>
+<text x="545.0" y="432" class="mut" text-anchor="middle">levels per round (positive: the newer release wins more)</text>
+<text x="24" y="107.0" class="big">release 46 · the combo</text>
+<text x="24" y="123.0" class="mut">belief worlds + D7/X7 + vdef, vs release 45</text>
+<line x1="667.1" y1="101.0" x2="755.9" y2="101.0" stroke="#b4520f" stroke-width="2.2"/>
+<line x1="667.1" y1="96.0" x2="667.1" y2="106.0" stroke="#b4520f" stroke-width="1.6"/>
+<line x1="755.9" y1="96.0" x2="755.9" y2="106.0" stroke="#b4520f" stroke-width="1.6"/>
+<circle cx="711.4" cy="101.0" r="5" fill="#b4520f"/>
+<text x="657.1" y="105.0" class="mut" text-anchor="end">screen</text>
+<text x="976" y="105.0" class="num new" text-anchor="end">+0.2167 [+0.1923, +0.2412]</text>
+<line x1="689.5" y1="119.0" x2="775.7" y2="119.0" stroke="#b4520f" stroke-width="2.2"/>
+<line x1="689.5" y1="114.0" x2="689.5" y2="124.0" stroke="#b4520f" stroke-width="1.6"/>
+<line x1="775.7" y1="114.0" x2="775.7" y2="124.0" stroke="#b4520f" stroke-width="1.6"/>
+<path d="M732.7,113.0 L738.7,119.0 L732.7,125.0 L726.7,119.0 z" fill="#ffffff" stroke="#b4520f" stroke-width="2"/>
+<text x="679.5" y="123.0" class="mut" text-anchor="end">confirmation</text>
+<text x="976" y="123.0" class="num new" text-anchor="end">+0.2284 [+0.2046, +0.2521]</text>
+<line x1="24" y1="184" x2="976" y2="184" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="160.0" class="big">release 45 · wide value-only bury</text>
+<text x="24" y="176.0" class="mut">vs release 44</text>
+<line x1="370.1" y1="163.0" x2="443.4" y2="163.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="370.1" y1="158.0" x2="370.1" y2="168.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="443.4" y1="158.0" x2="443.4" y2="168.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="406.7" cy="163.0" r="5" fill="#117a75"/>
+<text x="976" y="167.0" class="num" text-anchor="end">+0.0488 [+0.0286, +0.0690]</text>
+<line x1="24" y1="226" x2="976" y2="226" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="202.0" class="big">release 44 · value declaration</text>
+<text x="24" y="218.0" class="mut">vs release 43, first-round deals</text>
+<line x1="386.9" y1="205.0" x2="429.8" y2="205.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="386.9" y1="200.0" x2="386.9" y2="210.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="429.8" y1="200.0" x2="429.8" y2="210.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="408.3" cy="205.0" r="5" fill="#117a75"/>
+<text x="976" y="209.0" class="num" text-anchor="end">+0.0497 [+0.0379, +0.0615]</text>
+<line x1="24" y1="268" x2="976" y2="268" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="244.0" class="big">div + rc + tb</text>
+<text x="24" y="260.0" class="mut">vs release 36</text>
+<line x1="362.1" y1="247.0" x2="441.7" y2="247.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="362.1" y1="242.0" x2="362.1" y2="252.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="441.7" y1="242.0" x2="441.7" y2="252.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="401.8" cy="247.0" r="5" fill="#117a75"/>
+<text x="976" y="251.0" class="num" text-anchor="end">+0.0461 [+0.0242, +0.0681]</text>
+<line x1="24" y1="310" x2="976" y2="310" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="286.0" class="big">+ la</text>
+<text x="24" y="302.0" class="mut">vs div + rc + tb</text>
+<line x1="319.2" y1="289.0" x2="355.4" y2="289.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="319.2" y1="284.0" x2="319.2" y2="294.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="355.4" y1="284.0" x2="355.4" y2="294.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="337.4" cy="289.0" r="5" fill="#117a75"/>
+<text x="976" y="293.0" class="num" text-anchor="end">+0.0106 [+0.0006, +0.0205]</text>
+<line x1="24" y1="352" x2="976" y2="352" stroke="#d5dae0" stroke-width="0.8" stroke-dasharray="2 3"/>
+<text x="24" y="328.0" class="big">release 36 · SMV3 outcome head</text>
+<text x="24" y="344.0" class="mut">vs release 30</text>
+<line x1="324.1" y1="331.0" x2="454.6" y2="331.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="324.1" y1="326.0" x2="324.1" y2="336.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="454.6" y1="326.0" x2="454.6" y2="336.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="389.5" cy="331.0" r="5" fill="#117a75"/>
+<text x="976" y="335.0" class="num" text-anchor="end">+0.0393 [+0.0033, +0.0752]</text>
+<text x="24" y="370.0" class="big">release 29 · policy/value search</text>
+<text x="24" y="386.0" class="mut">vs release 28</text>
+<line x1="323.6" y1="373.0" x2="490.6" y2="373.0" stroke="#117a75" stroke-width="2.2"/>
+<line x1="323.6" y1="368.0" x2="323.6" y2="378.0" stroke="#117a75" stroke-width="1.6"/>
+<line x1="490.6" y1="368.0" x2="490.6" y2="378.0" stroke="#117a75" stroke-width="1.6"/>
+<circle cx="407.1" cy="373.0" r="5" fill="#117a75"/>
+<text x="976" y="377.0" class="num" text-anchor="end">+0.049 [+0.003, +0.095]</text>
+<text x="24" y="460" class="mut">Each row is a separate contrast read through a common MC-LCB control, so the values are not additive.</text>
+<text x="24" y="476" class="mut">Release 46: screen v92combo45, fresh-seed confirmation v92c. Release 44 shown on first-round deals.</text>
+<text x="976" y="494" class="mut" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release-ladder.svg</text>
+</svg>

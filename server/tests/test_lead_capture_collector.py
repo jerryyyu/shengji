@@ -10,7 +10,7 @@ from scripts import lead_admission_diagnostic as collector
 from shengji.ai.refusal import RefusalLedger
 from shengji.rl.replay_log import rebuild_round
 from shengji.train.lead_root_capture import restore_with_ledger, fingerprint
-from shengji.train.lead_root_capture import observe_finish_pool, classify_finish_lead
+from shengji.train.lead_root_capture import observe_finish_pool, observe_throw_verdicts, classify_finish_lead
 from shengji.train import pv_search_policy as pv
 from test_pv_search_serving import package  # noqa: F401
 
@@ -204,15 +204,16 @@ def test_finish_pool_observation_preserves_real_decision_and_rng(package, budget
     packet = next(p for p in packets() if finish_eligible(restore_with_ledger(p)[0], p['root']['turn']))
     roots = [restore_with_ledger(packet)[0] for _ in range(2)]
     bots = [pv.make_pv_search_bot(path, sha256=sha, seed=17, worlds=2, candidates=2,
-                                 serving_budget_seconds=budget) for _ in range(2)]
+                                 serving_budget_seconds=budget, doomed_throw_reselect=True) for _ in range(2)]
     for bot in bots:
         _, bot._refusals = restore_with_ledger(packet)
     root, direct_root = roots
     bot, direct = bots
     assert '_legal' not in vars(bot)
-    with observe_finish_pool(bot, root, root.turn) as evidence:
+    with observe_finish_pool(bot, root, root.turn) as evidence, observe_throw_verdicts(bot) as verdicts:
         action = bot.decide_play(root, root.turn)
     assert '_legal' not in vars(bot)
+    assert '_doomed_verdicts' not in vars(bot)
     assert action == direct.decide_play(direct_root, direct_root.turn)
     assert bot.sampler.rng.getstate() == direct.sampler.rng.getstate()
     def stable(record):
@@ -223,11 +224,15 @@ def test_finish_pool_observation_preserves_real_decision_and_rng(package, budget
     # fallback still has observed pool evidence, but no completed admission.
     assert type(evidence['present']) is bool
     packet['decision'] = bot.last_decision_record
-    row = dict(replay=packet, seat=root.turn, attempted=action, finish_pool=evidence)
+    row = dict(replay=packet, seat=root.turn, attempted=action, finish_pool=evidence,
+               throw_verdicts=json.loads(json.dumps(verdicts)))
     result = classify_finish_lead(row)
     assert result['pool_present'] == evidence['present']
     assert result['whole_hand_refused_true_deal'] is True
     assert result['ranking_or_horizon_error'] is None
+    matching = [{k: v for k, v in call.items() if k != 'action'} for call in verdicts
+                if sorted(call['action']) == sorted(action)]
+    assert result['sampled_throw_verdicts'] == (matching or None)
     if budget < 1:
         assert result['admitted'] is None
 
@@ -244,6 +249,70 @@ def test_finish_pool_restores_hook_on_error_and_preserves_unknown():
         with observe_finish_pool(bot, root, root.turn) as evidence:
             bot._legal(root, root.turn, [])
     assert evidence['present'] is None and bot._legal is failing
+
+
+@pytest.mark.parametrize('refused,variants', [(0, set()), (2, {('H2',)}),
+                                            (4, {('H2',)}), (4, {('H2',), ('H3',)})])
+def test_throw_verdict_observer_to_json_classifier(refused, variants):
+    from types import SimpleNamespace
+    from test_lead_root_capture import packets
+    from shengji.train.lead_root_capture import finish_eligible
+    from scripts.lead_finish_classify import summarize
+    packet = next(p for p in packets() if finish_eligible(restore_with_ledger(p)[0], p['root']['turn']))
+    root = restore_with_ledger(packet)[0]
+    action = packet['decision']['played']
+    calls = []
+    answer = (refused, variants)
+    def original(*args):
+        calls.append(args)
+        return answer
+    bot = SimpleNamespace(_doomed_verdicts=original)
+    with observe_throw_verdicts(bot) as evidence:
+        assert bot._doomed_verdicts(root, root.turn, action, [None]*4) is answer
+    assert len(calls) == 1 and bot._doomed_verdicts is original
+    row = dict(game='fixture', round=0, trick=1, seat=root.turn, replay=packet,
+               attempted=action, throw_verdicts=evidence)
+    result = summarize(json.loads(json.dumps([row])))['rows'][0]
+    assert result['sampled_throw_verdicts'] == [dict(worlds=4, refused=refused,
+                                                  forced_variants=len(variants))]
+    row['throw_verdicts'][0]['refused'] = 5
+    with pytest.raises(ValueError, match='invalid sampled'):
+        summarize([row])
+
+
+def test_throw_verdict_exception_keeps_unknown_and_restores_hook():
+    from types import SimpleNamespace
+    def original(*args):
+        raise TimeoutError('partial engine verdicts unavailable')
+    bot = SimpleNamespace(_doomed_verdicts=original)
+    with pytest.raises(TimeoutError):
+        with observe_throw_verdicts(bot) as evidence:
+            bot._doomed_verdicts(None, 0, ['H2'], [None])
+    assert evidence == [] and bot._doomed_verdicts is original
+
+
+def test_actual_engine_verdict_reaches_classifier_without_model_call(package, monkeypatch):
+    from test_lead_root_capture import packets
+    from shengji.train.lead_root_capture import finish_eligible
+    from scripts.lead_finish_classify import summarize
+    packet = next(p for p in packets() if finish_eligible(restore_with_ledger(p)[0], p['root']['turn']))
+    root = restore_with_ledger(packet)[0]
+    path, sha = package
+    bot = pv.make_pv_search_bot(path, sha256=sha, worlds=2, candidates=2)
+    def forbidden(*args, **kwargs):
+        pytest.fail('verdict observation must not call the value model')
+    monkeypatch.setattr(bot, 'value_matrix', forbidden)
+    action = list(root.hands[root.turn])
+    worlds = [(root.hands, [])] * 2
+    with observe_throw_verdicts(bot) as evidence:
+        refused, variants = bot._doomed_verdicts(root, root.turn, action, worlds)
+    assert refused == 2 and len(variants) == 1
+    packet['decision']['played'] = action
+    row = dict(game='fixture', round=0, trick=1, seat=root.turn, replay=packet,
+               attempted=action, throw_verdicts=evidence)
+    result = summarize(json.loads(json.dumps([row])))['rows'][0]
+    assert result['sampled_throw_verdicts'] == [dict(worlds=2, refused=2, forced_variants=1)]
+    assert result['whole_hand_refused_true_deal'] is True
 
 
 def test_finish_classification_distinguishes_absence_from_unknown():

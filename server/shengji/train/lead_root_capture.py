@@ -21,6 +21,38 @@ def finish_eligible(rnd, seat):
 
 
 @contextmanager
+def observe_throw_verdicts(bot):
+    """Collector-only: observe existing sampled-engine verdicts, never rerun them.
+
+    An empty list means no completed verdict call, not zero refusal probability.
+    A budget exception records no partial counts. Restore instance overrides too.
+    """
+    evidence = []
+    if not hasattr(bot, '_doomed_verdicts'):
+        yield evidence
+        return
+    original = bot._doomed_verdicts
+    had_own = '_doomed_verdicts' in vars(bot)
+    own = vars(bot).get('_doomed_verdicts')
+
+    def observed(rnd, seat, action, worlds, *args, **kwargs):
+        result = original(rnd, seat, action, worlds, *args, **kwargs)
+        refused, variants = result
+        evidence.append(dict(action=sorted(action), worlds=len(worlds),
+                             refused=refused, forced_variants=len(variants)))
+        return result
+
+    bot._doomed_verdicts = observed
+    try:
+        yield evidence
+    finally:
+        if had_own:
+            bot._doomed_verdicts = own
+        else:
+            del bot._doomed_verdicts
+
+
+@contextmanager
 def observe_finish_pool(bot, rnd, seat):
     """Observe the actual returned legal pool; never rerun enumeration/inference.
 
@@ -82,12 +114,22 @@ def classify_finish_lead(row):
     if present is False and in_admitted is True:
         raise ValueError('admitted finish absent from captured pool')
     forced = forced_lead(rnd, rnd.turn, hand) if eligible else None
+    sampled = []
+    for call in row.get('throw_verdicts') or []:
+        w, r, v = (call[k] for k in ('worlds', 'refused', 'forced_variants'))
+        if (any(type(n) is not int for n in (w, r, v)) or not 0 <= v <= r <= w
+                or w < 1 or (r > 0 and v == 0)):
+            raise ValueError('invalid sampled throw verdict counts')
+        if sorted(call['action']) == sorted(attempted):
+            sampled.append(dict(worlds=w, refused=r, forced_variants=v))
     return dict(eligible=eligible, hand_size=len(hand),
                 decision_schema=rec.get('schema'), work_complete=rec.get('work_complete'),
                 pool_present=present if eligible else None, admitted=in_admitted,
                 whole_hand_played=sorted(attempted) == hand,
                 whole_hand_refused_true_deal=(forced is not None) if eligible else None,
                 forced_component=forced,
+                sampled_throw_verdicts=sampled or None,
+                reselection_abandoned=rec.get('doomed_throw_reselect_abandoned'),
                 ranking_or_horizon_error=None)
 
 

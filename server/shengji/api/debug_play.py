@@ -66,6 +66,10 @@ PV_STAGES = {
         "small_joker_guard_anchor_to", "small_joker_guard_big_jokers_out",
         "small_joker_guard_other_trumps"),
     "wide_lead": ("wide_lead_admission_applied", "wide_lead_admission_k"),
+    # the belief proposal's summary only: its seed and snapshot stay in the log
+    "belief": (
+        "belief_fallback", "belief_proposed", "belief_ms", "belief_entropy_bits",
+        "belief_top_mass", "belief_hidden_copies"),
 }
 #: the sampler's per-decision counter deltas (`PVSearchBot.decide_play`)
 PV_SAMPLING_DELTAS = ("impossible_worlds_delta", "rejected_worlds_delta")

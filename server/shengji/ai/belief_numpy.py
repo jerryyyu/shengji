@@ -440,6 +440,9 @@ class BeliefProposal:
         if check_budget is not None:
             check_budget()
         P = model.marginals(self.inp)
+        # the model's own prediction, before the draw's masking and projection
+        # (read by the belief log, never by the draw)
+        self.P = P
         # the model reads the public mask; the draw also honours the forbidden
         # cards (``ai.history_legality.draw_constraints``: {(seat, effective
         # suit): codes}) by masking those receivers after the model
@@ -485,3 +488,68 @@ class BeliefProposal:
             self._refill()
         self.drawn += 1
         return self.queue.pop()
+
+
+# ------------------------------------------------------------------ belief log
+
+#: the compact snapshot's version: ``rows`` is the 54-bit mask (hex) of the
+#: cards with a hidden copy, ``p`` the base64 of their marginals (row-major,
+#: four receivers -- next, partner, previous, kitty -- per card) quantised to
+#: uint8 as ``round(255 * p)``
+SNAPSHOT_VERSION = 1
+SNAPSHOT_SCALE = 255
+
+
+def encode_snapshot(P: np.ndarray) -> dict[str, Any]:
+    """The marginals ``P`` (54 x 4) as a compact JSON object."""
+    import base64
+    P = np.asarray(P, np.float64)
+    if P.shape != (N_CARDS, N_RECV):
+        raise BeliefNumpyError("a snapshot is the 54 x 4 marginals")
+    rows = np.flatnonzero(P.sum(-1) > 0)
+    mask = sum(1 << int(i) for i in rows)
+    q = np.clip(np.rint(P[rows] * SNAPSHOT_SCALE), 0, SNAPSHOT_SCALE).astype(np.uint8)
+    return {"v": SNAPSHOT_VERSION, "rows": f"{mask:014x}",
+            "p": base64.b64encode(q.tobytes()).decode("ascii")}
+
+
+def decode_snapshot(snapshot: Mapping[str, Any]) -> np.ndarray:
+    """The (54 x 4) marginals of an ``encode_snapshot`` object, dequantised;
+    a card without a hidden copy is all zero."""
+    import base64
+    if not isinstance(snapshot, Mapping) or snapshot.get("v") != SNAPSHOT_VERSION:
+        raise BeliefNumpyError("unknown belief snapshot version")
+    mask = int(snapshot["rows"], 16)
+    rows = [i for i in range(N_CARDS) if mask >> i & 1]
+    if mask >> N_CARDS:
+        raise BeliefNumpyError("snapshot row mask names a card beyond the deck")
+    q = np.frombuffer(base64.b64decode(snapshot["p"], validate=True), np.uint8)
+    if q.size != N_RECV * len(rows):
+        raise BeliefNumpyError("snapshot payload does not match its row mask")
+    P = np.zeros((N_CARDS, N_RECV))
+    P[rows] = q.reshape(len(rows), N_RECV) / SNAPSHOT_SCALE
+    return P
+
+
+def snapshot_summary(P: np.ndarray, n_c: np.ndarray) -> dict[str, Any]:
+    """Per-copy means over the hidden copies: the entropy (bits) of a copy's
+    receiver distribution and the mass of its most likely receiver."""
+    P = np.asarray(P, np.float64)
+    n = np.asarray(n_c, np.float64)
+    live = (P.sum(-1) > 0) & (n > 0)
+    copies = float(n[live].sum())
+    if copies == 0:
+        return {"belief_entropy_bits": 0.0, "belief_top_mass": 0.0, "belief_hidden_copies": 0}
+    p = P[live]
+    logs = np.log2(np.where(p > 0, p, 1.0))
+    entropy = -(p * logs).sum(-1)
+    return {"belief_entropy_bits": round(float((n[live] * entropy).sum() / copies), 4),
+            "belief_top_mass": round(float((n[live] * p.max(-1)).sum() / copies), 4),
+            "belief_hidden_copies": int(copies)}
+
+
+def log_fields(proposal: BeliefProposal) -> dict[str, Any]:
+    """The belief-log record fields of one built proposal: the snapshot of
+    the model's marginals and its summary."""
+    return {"belief_snapshot": encode_snapshot(proposal.P),
+            **snapshot_summary(proposal.P, proposal.inp["n_c"])}

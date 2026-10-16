@@ -166,6 +166,17 @@ after ``-whd``, and the decision record gains ``belief_fallback``,
 ``belief_proposed`` and ``belief_ms``; off, every existing name, digest, sampled
 world and record is unchanged.
 
+Its log, ON BY DEFAULT while the proposal is on: ``SHENGJI_PV_BELIEF_LOG`` (``0``
+or ``1``; unset is ``1``) adds ``belief_log`` and, per drawn proposal, the
+proposal's seed ``belief_seed`` (the one draw it takes from the sampler stream;
+the proposal's worlds are a function of it and the public state), the round's
+refusal ledger ``belief_refusals`` when it is non-empty, the model's marginals
+as a uint8 snapshot ``belief_snapshot`` (`belief_numpy.encode_snapshot`) and
+their summary (``belief_entropy_bits``, ``belief_top_mass``,
+``belief_hidden_copies``).  It only reads what the draw computed: no name,
+digest, draw or decision depends on it (`scripts/belief_debug.py` replays a
+logged decision's worlds).
+
 Optional admission width rule (#676 C), OFF BY DEFAULT: ``SHENGJI_PV_ADAPTIVE_K=1``
 admits ``candidates_lead_multi`` (16) instead of ``candidates`` (8) when the seat
 is leading and the scored legal set holds a multi-card action -- the K=8 ballot
@@ -893,6 +904,22 @@ _BELIEF_REQUIRES = ("belief_worlds requires world_history_legal and world_histor
                     "belief proposal plugs into the history-legal draw and honours its draw-time "
                     "constraints (SHENGJI_PV_BELIEF_WORLDS=1 needs SHENGJI_PV_WORLD_HISTORY_LEGAL=1 "
                     "and SHENGJI_PV_WORLD_HISTORY_DRAW=1)")
+#: the belief proposal's log flag: ``0`` or ``1``, unset (or empty) is the default
+BELIEF_LOG_ENV = "SHENGJI_PV_BELIEF_LOG"
+BELIEF_LOG_DEFAULT = True
+
+
+def belief_log_enabled(environ=None) -> bool:
+    """``SHENGJI_PV_BELIEF_LOG`` as a bool; anything but ``0``/``1``/unset refuses."""
+    env = os.environ if environ is None else environ
+    raw = env.get(BELIEF_LOG_ENV)
+    if raw in (None, ""):
+        return BELIEF_LOG_DEFAULT
+    if raw not in ("0", "1"):
+        raise PVSearchPolicyError(f"{BELIEF_LOG_ENV} must be 0 or 1, not {raw!r}")
+    return raw == "1"
+
+
 _DOOMED_THROW_EXCLUSIVE = ("doomed_throw_swap and doomed_throw_reselect are exclusive "
                            "(SHENGJI_PV_DOOMED_THROW_SWAP=1 with SHENGJI_PV_DOOMED_THROW_RESELECT=1)")
 #: the fallback record's ``error_message`` is the exception text cut to this
@@ -1405,6 +1432,9 @@ class PVSearchBot(PolicyValueBot):
     exact_lead_tie_baseline = False
     exact_lead_policy_first = False
     exact_deep_cards = 0
+    #: the belief proposal's log (module docstring), ON by default; it is read
+    #: only while ``belief_worlds`` is on and enters no name or digest
+    belief_log = BELIEF_LOG_DEFAULT
     #: the diagnostic oracle (module docstring) and its harness hook: a callable
     #: ``(rnd, seat) -> (hands, buried)`` bound ONLY by `bind_oracle_deal` (the
     #: screen harness); None = unbound, and an oracle bot then refuses to play
@@ -2377,8 +2407,9 @@ class PVSearchBot(PolicyValueBot):
         ``BELIEF_PREP_SECONDS``, an infeasible state -- falls back to the
         history-legal production draw for this decision, recorded as
         ``belief_fallback`` with the error's type."""
-        from ..ai.belief_numpy import BeliefNumpyError, BeliefProposal
+        from ..ai.belief_numpy import BeliefNumpyError, BeliefProposal, log_fields
         t0 = time.perf_counter()
+        seed = None
         try:
             if check_budget is not None:
                 check_budget()
@@ -2387,8 +2418,9 @@ class PVSearchBot(PolicyValueBot):
             # the draw-time constraints the history-legal draw would apply: a
             # proposal bypasses them there, so it honours them itself
             constraints = draw_constraints(rnd, seat)
+            seed = self.sampler.rng.getrandbits(63)
             propose = BeliefProposal(self.belief_model, rnd, seat, refusals,
-                                     seed=self.sampler.rng.getrandbits(63), batch=self.worlds,
+                                     seed=seed, batch=self.worlds,
                                      forbidden=constraints, check_budget=check_budget)
             worlds, attempts, stats = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
@@ -2397,6 +2429,14 @@ class PVSearchBot(PolicyValueBot):
                          history_draw_forbidden=sum(sum(c.values()) for c in constraints.values()),
                          belief_fallback=0, belief_proposed=int(propose.drawn),
                          belief_ms=round(1e3 * (time.perf_counter() - t0), 3))
+            if self.belief_log:
+                stats.update(self._belief_log_seed(seed, refusals))
+                # the log never decides: a failure here is recorded, and the
+                # drawn worlds are returned as they are
+                try:
+                    stats.update(log_fields(propose))
+                except Exception as exc:
+                    stats["belief_log_error"] = type(exc).__name__
             return worlds, attempts, stats
         except (PVSearchBudgetExceeded, _AdaptiveWorldsExpired):
             raise
@@ -2408,7 +2448,19 @@ class PVSearchBot(PolicyValueBot):
             stats.update(belief_fallback=1, belief_proposed=0,
                          belief_ms=round(1e3 * (time.perf_counter() - t0), 3),
                          belief_error=type(exc).__name__)
+            if self.belief_log and seed is not None:
+                stats.update(self._belief_log_seed(seed, refusals))
             return worlds, attempts, stats
+
+    @staticmethod
+    def _belief_log_seed(seed, refusals):
+        """The replay handle of a drawn proposal: its seed, and the refusal
+        ledger it was built with (`ai.refusal.Refusal`) when non-empty."""
+        out = {"belief_seed": int(seed)}
+        if refusals:
+            out["belief_refusals"] = [[int(r.seat), list(r.attempted), list(r.forced),
+                                       int(r.trick_index)] for r in refusals]
+        return out
 
     def _score_leaves(self, rnd, seat, actions, worlds, check_budget=None, capture=None):
         """The ONE scoring and batching loop; serving's accumulator, unchanged.
@@ -2946,6 +2998,8 @@ class PVSearchBot(PolicyValueBot):
                 out.update(history_draw_constraints=0, history_draw_forbidden=0)
         if getattr(self, "belief_worlds", False):
             out.update(belief_fallback=0, belief_proposed=0, belief_ms=0.0)
+            if self.belief_log:
+                out["belief_log"] = 1
         if not out:
             return {}
         return {**out, **self._last_sampling}
@@ -3371,6 +3425,10 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     if config.belief_worlds:
         bot.belief_model = _load_belief(belief_checkpoint, belief_sha256)
         bot.belief_checkpoint = str(belief_checkpoint)
+        # the log flag is read where the package is bound, from the serving
+        # environment: an instance attribute only when it differs from the default
+        if belief_log_enabled() != BELIEF_LOG_DEFAULT:
+            bot.belief_log = not BELIEF_LOG_DEFAULT
     if oracle_deal is not None:
         bot.bind_oracle_deal(oracle_deal)
     if name is not None:
@@ -3653,6 +3711,9 @@ def pv_env_recipe(environ=None) -> dict:
         if len(belief_sha) != 64:
             raise PVSearchPolicyError("SHENGJI_PV_BELIEF_SHA256 must be the belief package's full sha256")
         recipe.update(belief_checkpoint=belief_ckpt, belief_sha256=belief_sha)
+    # the belief log flag is no part of the recipe (no name or digest reads it);
+    # a malformed value still refuses here, before any bot is built
+    belief_log_enabled(env)
     for key in ("worlds", "candidates", "cap", "batch_size", "seed"):
         raw = env.get(ENV_PREFIX + key.upper())
         if raw not in (None, ""):

@@ -24,7 +24,7 @@ dashboard row or file's presence is never evidence that a capability works.
 
 ## Choosing what to work on
 
-- Rank every lane against the standing outcome goal on board #707 (Jerry 2026-10-15: +0.05 levels/round
+- Rank every lane against the standing outcome goal on board #1075 (Jerry 2026-10-15: +0.05 levels/round
   over the served release) by expected gain toward it per unit cost. True-world and partial-truth probes
   inform that ranking; they do not establish attainable strength or a ceiling. A lane waits when its
   predeclared DEV bar fails or its expected effect is below screen resolution.
@@ -101,7 +101,7 @@ Claude reviews Codex's PRs and launch packets, writes the RELEASE files that sta
 - **Merge rule:** a PR merges only on the other agent's PASS at the exact head plus every CI check green, by REST squash at that sha (`gh api -X PUT repos/jerryyyu/shengji/pulls/<N>/merge -f merge_method=squash -f sha=<full sha>`); never `--auto`. A rebased head needs the reviewer's explicit PASS on that new head: given after verifying the full tree is identical to the reviewed one, or after verifying the PR's own delta is unchanged *and* reviewing whatever changed underneath it. An unchanged patch-id alone is not enough, because the same patch on a changed base can be a different program.
 - **RELEASE:** Claude writes it, after an independent PASS from the agent that did not author the exact launcher or packet sha and its dependency cone. Before writing: recompute that sha on the host, confirm no HOLD, confirm the launch's supervising state (a live waiter for waiter-based lanes; for a directly admitted job, its current host and queue guards), and write noclobber. A RELEASE adds no authority beyond what Jerry has already given. Dispatch digests (admission, pins) are posted before any outcome is opened.
 - **Readouts:** the named reader runs once on sealed output; Claude archives under `~/shengji-archive/2026-09-13/readouts/<lane>/` with `SHA256SUMS` and `receipt.json`, then adds the Atlas row: edit `docs/atlas_v2/registry.json`, rebuild `atlas_v2.html` with `build_v2.py`, never hand-edit the generated HTML.
-- **Board:** an open question gets a row on #707; a finished one becomes a closed paragraph.
+- **Board:** an open question gets a row on #1075; a finished one becomes a closed paragraph.
 - **Hosts:** long jobs run detached on the host (`nohup setsid`); a running script is never edited; anything destructive, any deploy and any Sol resume is Jerry's call.
 
 ## Checkouts (shared by both agents; Jerry 2026-10-04, #688)
@@ -181,7 +181,7 @@ does not validate provenance or authorize opening sealed scientific results.
 
 | what | where |
 |---|---|
-| open questions, ordered work | board issue #707 and its topic issues; finished items become closed paragraphs there |
+| open questions, ordered work | board issue #1075 (successor to #707) and its topic issues; finished items become closed paragraphs there |
 | technical roadmap, compute and measurement rules | `RL_PLAN.md` |
 | measured policy evidence, evidence standard | `AI_POLICIES.md` (the ladder table) |
 | releases, deploy checklist, rollback | `DEPLOY.md` |

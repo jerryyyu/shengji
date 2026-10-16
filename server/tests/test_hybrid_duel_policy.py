@@ -115,22 +115,32 @@ def test_exact_endgame_is_skipped_to_preserve_d7_baseline():
 
 
 def test_attach_runs_real_decision_and_publishes_hybrid_record():
+    from copy import deepcopy
     from test_policy_world_search import state
     from test_pv_tree_search import bot_of
 
+    baseline = bot_of(tree_config=None, worlds=2, seed=11)
     bot = bot_of(tree_config=None, worlds=2, seed=11)
     original_config = bot.config
     attach_hybrid(bot)
     assert bot.config is original_config
     assert bot.config.tree is None
     rnd = state()
+    hands = deepcopy(rnd.hands)
+    baseline.decide_play(deepcopy(rnd), rnd.turn)
     action = bot.decide_play(rnd, rnd.turn)
     record = bot.last_decision_record
     assert isinstance(action, list) and action
     assert record["hybrid_attempted"] is True
     assert record["hybrid_worlds"] == 2
     assert record["hybrid_actions"] >= 1
-    assert record["hybrid_completed_tricks"] in (0, 2)
+    assert record["hybrid_applied"] is True
+    assert record["hybrid_fallback"] == ""
+    assert record["hybrid_completed_tricks"] == 2
+    assert record["hybrid_completed_tricks_min"] == 2
+    assert record["hybrid_completed_tricks_max"] == 2
+    assert rnd.hands == hands
+    assert bot.sampler.rng.getstate() == baseline.sampler.rng.getstate()
 
 
 def test_attach_off_preserves_real_decision_identity():

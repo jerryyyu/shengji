@@ -1042,6 +1042,33 @@ def test_exact_tail_checks_gate_after_final_solver(monkeypatch):
             completed_tricks=1, exact_max_cards=2, exact_max_nodes=100_000)
 
 
+@pytest.mark.parametrize("exact_cap", [0, 1])
+def test_lookahead_rejects_expiry_in_final_model_batch(exact_cap):
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    expired = False
+
+    def score(clones, root_seat):
+        nonlocal expired
+        assert root_seat == seat
+        assert len(clones) == 1
+        expired = True
+        return np.zeros(len(clones))
+
+    def gate():
+        if expired:
+            raise tree.PVTreeBudgetExceeded("expired in final model batch")
+
+    bot.evaluator.score = score
+    with pytest.raises(tree.PVTreeBudgetExceeded, match="final model batch"):
+        bot._tree_lookahead(
+            rnd, seat, [["D8"]], [world], gate,
+            completed_tricks=1, exact_max_cards=exact_cap)
+    assert expired
+
+
 def test_exact_tail_rejects_invalid_limits_and_greedy_override():
     rnd = endgame(2)
     seat = rnd.turn
@@ -1576,6 +1603,31 @@ def test_tree_that_would_overrun_abandons_itself_for_the_pv_decision(monkeypatch
     craft(free, flat([0.50, 0.49, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
     free.decide_play(copy.deepcopy(rnd), seat)
     assert free.last_decision_record["tree_applied"] is True
+
+
+def test_final_value_batch_expiry_preserves_pv_action_and_record(monkeypatch):
+    rnd = state()
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, "perf_counter", lambda: clock[0])
+    bot = bot_of(PVTreeConfig(sims=8, zmin=0.0), worlds=8, budget=10.0)
+    craft(bot, flat([0.50, 0.49, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+    batches = []
+
+    def score(clones, seat):
+        batches.append(len(clones))
+        clock[0] = 8.1
+        return np.zeros(len(clones))
+
+    bot.evaluator.score = score
+    played = bot.decide_play(copy.deepcopy(rnd), rnd.turn)
+    record = bot.last_decision_record
+    assert len(batches) == 1
+    assert played == record["admitted"][record["tree_pv_action"]]
+    assert record["schema"] == pv.RECORD_SCHEMA
+    assert record["tree_skipped"] == "budget"
+    assert record["tree_skipped_budget"] is True
+    assert record["tree_applied"] is False
+    assert record["tree_worlds"] == 0
 
 
 def test_an_error_inside_the_tree_keeps_the_pv_decision_and_is_labelled():

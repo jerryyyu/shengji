@@ -808,8 +808,8 @@ class PVTreeMixin:
                     raise ValueError("value evaluator requires one finite root-team score per leaf")
                 values[indices] = scores
                 batches += 1
-            if gate is not None:
-                gate()
+        if gate is not None:
+            gate()
         stats = {"tree_policy_rows": int(policy_rows), "tree_forced_plays": int(forced),
                  "tree_multi_leads": int(multi_leads),
                  "tree_terminal_leaves": sum(c.phase == "round_end" for c in clones),

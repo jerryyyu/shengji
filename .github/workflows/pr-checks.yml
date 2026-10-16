@@ -192,6 +192,7 @@ jobs:
           tests/test_room_bot_seed.py
           tests/test_structured_bury.py
           tests/test_harvest_trajectory.py
+          tests/test_human_pointer_attribution.py
           tests/test_oracle_screen.py
           tests/test_harvest_ballot_capture.py
           tests/test_report_world_reuse.py
@@ -251,6 +252,7 @@ jobs:
           tests/test_heuristic_suit_groups.py
           tests/test_memory.py
           tests/test_harvest_ballot_capture.py
+          tests/test_human_pointer_attribution.py
           tests/test_pv_exact_follow.py
       # #636: the served bot must still CONSTRUCT from the real production package on this
       # tree. The package is not in the repo (Jerry 2026-09-28: do not commit it); CI fetches

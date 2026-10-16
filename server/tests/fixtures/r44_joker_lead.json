@@ -1,0 +1,1347 @@
+{
+  "deck": [
+    "SK",
+    "D7",
+    "H7",
+    "S9",
+    "LJ",
+    "CK",
+    "D5",
+    "D10",
+    "SA",
+    "CA",
+    "C4",
+    "D8",
+    "CJ",
+    "HK",
+    "D7",
+    "SK",
+    "S10",
+    "HK",
+    "BJ",
+    "C3",
+    "C2",
+    "DJ",
+    "HJ",
+    "C10",
+    "D9",
+    "HQ",
+    "CQ",
+    "SJ",
+    "DA",
+    "DJ",
+    "S5",
+    "SJ",
+    "HQ",
+    "S3",
+    "C5",
+    "S7",
+    "S4",
+    "LJ",
+    "S6",
+    "S4",
+    "H3",
+    "S9",
+    "S6",
+    "D5",
+    "C10",
+    "CA",
+    "HJ",
+    "H6",
+    "C8",
+    "C7",
+    "H2",
+    "S5",
+    "C6",
+    "HA",
+    "D4",
+    "BJ",
+    "H10",
+    "H6",
+    "H8",
+    "H8",
+    "S10",
+    "S2",
+    "CJ",
+    "H5",
+    "H4",
+    "D6",
+    "S3",
+    "CK",
+    "H2",
+    "H9",
+    "CQ",
+    "D9",
+    "DA",
+    "D8",
+    "D3",
+    "DQ",
+    "C8",
+    "SA",
+    "HA",
+    "D2",
+    "D3",
+    "C3",
+    "H7",
+    "S7",
+    "C4",
+    "S2",
+    "D10",
+    "S8",
+    "H3",
+    "D4",
+    "H5",
+    "SQ",
+    "SQ",
+    "D2",
+    "S8",
+    "DQ",
+    "DK",
+    "H4",
+    "H9",
+    "D6",
+    "H10",
+    "C9",
+    "DK",
+    "C7",
+    "C5",
+    "C9",
+    "C6",
+    "C2"
+  ],
+  "first_round": false,
+  "ledger": {
+    "key": [
+      "SK",
+      "D7",
+      "H7",
+      "S9",
+      "LJ",
+      "CK",
+      "D5",
+      "D10",
+      "SA",
+      "CA",
+      "C4",
+      "D8",
+      "CJ",
+      "HK",
+      "D7",
+      "SK",
+      "S10",
+      "HK",
+      "BJ",
+      "C3",
+      "C2",
+      "DJ",
+      "HJ",
+      "C10",
+      "D9",
+      "HQ",
+      "CQ",
+      "SJ",
+      "DA",
+      "DJ",
+      "S5",
+      "SJ",
+      "HQ",
+      "S3",
+      "C5",
+      "S7",
+      "S4",
+      "LJ",
+      "S6",
+      "S4",
+      "H3",
+      "S9",
+      "S6",
+      "D5",
+      "C10",
+      "CA",
+      "HJ",
+      "H6",
+      "C8",
+      "C7",
+      "H2",
+      "S5",
+      "C6",
+      "HA",
+      "D4",
+      "BJ",
+      "H10",
+      "H6",
+      "H8",
+      "H8",
+      "S10",
+      "S2",
+      "CJ",
+      "H5",
+      "H4",
+      "D6",
+      "S3",
+      "CK",
+      "H2",
+      "H9",
+      "CQ",
+      "D9",
+      "DA",
+      "D8",
+      "D3",
+      "DQ",
+      "C8",
+      "SA",
+      "HA",
+      "D2",
+      "D3",
+      "C3",
+      "H7",
+      "S7",
+      "C4",
+      "S2",
+      "D10",
+      "S8",
+      "H3",
+      "D4",
+      "H5",
+      "SQ",
+      "SQ",
+      "D2",
+      "S8",
+      "DQ",
+      "DK",
+      "H4",
+      "H9",
+      "D6",
+      "H10",
+      "C9",
+      "DK",
+      "C7",
+      "C5",
+      "C9",
+      "C6",
+      "C2"
+    ],
+    "refusals": [
+      {
+        "attempted": [
+          "H10",
+          "H10",
+          "H3",
+          "H3"
+        ],
+        "forced": [
+          "H3",
+          "H3"
+        ],
+        "seat": 0,
+        "trick_index": 3
+      }
+    ]
+  },
+  "limits": [
+    "Full hidden deal: DEV-only, not policy input.",
+    "Exact engine state and observed ledger only; no bot RNG restoration.",
+    "No claim of historical provenance or playing strength."
+  ],
+  "plays": [
+    {
+      "accepted": [
+        "DA",
+        "DA",
+        "DK",
+        "DK"
+      ],
+      "attempted": [
+        "DA",
+        "DA",
+        "DK",
+        "DK"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "D6",
+        "D8",
+        "DJ",
+        "DJ"
+      ],
+      "attempted": [
+        "D6",
+        "D8",
+        "DJ",
+        "DJ"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "D10",
+        "D3",
+        "D4",
+        "D7"
+      ],
+      "attempted": [
+        "D10",
+        "D3",
+        "D4",
+        "D7"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "D2",
+        "D8",
+        "DQ",
+        "DQ"
+      ],
+      "attempted": [
+        "D2",
+        "D8",
+        "DQ",
+        "DQ"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "C8",
+        "C8",
+        "C9",
+        "C9"
+      ],
+      "attempted": [
+        "C8",
+        "C8",
+        "C9",
+        "C9"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "C3",
+        "C7",
+        "CA",
+        "CA"
+      ],
+      "attempted": [
+        "C3",
+        "C7",
+        "CA",
+        "CA"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "C4",
+        "CJ",
+        "CQ",
+        "CQ"
+      ],
+      "attempted": [
+        "C4",
+        "CJ",
+        "CQ",
+        "CQ"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "C10",
+        "C3",
+        "CK",
+        "H6"
+      ],
+      "attempted": [
+        "C10",
+        "C3",
+        "CK",
+        "H6"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "C2",
+        "C2",
+        "C6",
+        "C6"
+      ],
+      "attempted": [
+        "C2",
+        "C2",
+        "C6",
+        "C6"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "CK",
+        "D2",
+        "D4",
+        "D7"
+      ],
+      "attempted": [
+        "CK",
+        "D2",
+        "D4",
+        "D7"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "H2",
+        "H8",
+        "H9",
+        "HJ"
+      ],
+      "attempted": [
+        "H2",
+        "H8",
+        "H9",
+        "HJ"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "D6",
+        "D9",
+        "S7",
+        "S7"
+      ],
+      "attempted": [
+        "D6",
+        "D9",
+        "S7",
+        "S7"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "H3",
+        "H3"
+      ],
+      "attempted": [
+        "H10",
+        "H10",
+        "H3",
+        "H3"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "HK",
+        "HK"
+      ],
+      "attempted": [
+        "HK",
+        "HK"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "H7",
+        "H7"
+      ],
+      "attempted": [
+        "H7",
+        "H7"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "D10",
+        "H8"
+      ],
+      "attempted": [
+        "D10",
+        "H8"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "HA"
+      ],
+      "attempted": [
+        "HA"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "HA"
+      ],
+      "attempted": [
+        "HA"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "SK"
+      ],
+      "attempted": [
+        "SK"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "H10"
+      ],
+      "attempted": [
+        "H10"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "SJ",
+        "SJ"
+      ],
+      "attempted": [
+        "SJ",
+        "SJ"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "S10",
+        "S10"
+      ],
+      "attempted": [
+        "S10",
+        "S10"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "S2",
+        "S2"
+      ],
+      "attempted": [
+        "S2",
+        "S2"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "S6",
+        "S6"
+      ],
+      "attempted": [
+        "S6",
+        "S6"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "S4"
+      ],
+      "attempted": [
+        "S4"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "SK"
+      ],
+      "attempted": [
+        "SK"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "LJ"
+      ],
+      "attempted": [
+        "LJ"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "BJ"
+      ],
+      "attempted": [
+        "BJ"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "S3"
+      ],
+      "attempted": [
+        "S3"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "H5"
+      ],
+      "attempted": [
+        "H5"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "LJ"
+      ],
+      "attempted": [
+        "LJ"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "S9"
+      ],
+      "attempted": [
+        "S9"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "SQ"
+      ],
+      "attempted": [
+        "SQ"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "SA"
+      ],
+      "attempted": [
+        "SA"
+      ],
+      "seat": 1
+    },
+    {
+      "accepted": [
+        "S5"
+      ],
+      "attempted": [
+        "S5"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "S9"
+      ],
+      "attempted": [
+        "S9"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "S8"
+      ],
+      "attempted": [
+        "S8"
+      ],
+      "seat": 2
+    },
+    {
+      "accepted": [
+        "D5"
+      ],
+      "attempted": [
+        "D5"
+      ],
+      "seat": 3
+    },
+    {
+      "accepted": [
+        "SA"
+      ],
+      "attempted": [
+        "SA"
+      ],
+      "seat": 0
+    },
+    {
+      "accepted": [
+        "S3"
+      ],
+      "attempted": [
+        "S3"
+      ],
+      "seat": 1
+    }
+  ],
+  "root": {
+    "_deal_pos": 100,
+    "_notice_plays_left": 0,
+    "_notice_seq": 1,
+    "attacker_points": 75,
+    "banker": 0,
+    "buried": [
+      "H2",
+      "D3",
+      "H4",
+      "C4",
+      "C7",
+      "D9",
+      "CJ",
+      "HQ"
+    ],
+    "deck": [
+      "SK",
+      "D7",
+      "H7",
+      "S9",
+      "LJ",
+      "CK",
+      "D5",
+      "D10",
+      "SA",
+      "CA",
+      "C4",
+      "D8",
+      "CJ",
+      "HK",
+      "D7",
+      "SK",
+      "S10",
+      "HK",
+      "BJ",
+      "C3",
+      "C2",
+      "DJ",
+      "HJ",
+      "C10",
+      "D9",
+      "HQ",
+      "CQ",
+      "SJ",
+      "DA",
+      "DJ",
+      "S5",
+      "SJ",
+      "HQ",
+      "S3",
+      "C5",
+      "S7",
+      "S4",
+      "LJ",
+      "S6",
+      "S4",
+      "H3",
+      "S9",
+      "S6",
+      "D5",
+      "C10",
+      "CA",
+      "HJ",
+      "H6",
+      "C8",
+      "C7",
+      "H2",
+      "S5",
+      "C6",
+      "HA",
+      "D4",
+      "BJ",
+      "H10",
+      "H6",
+      "H8",
+      "H8",
+      "S10",
+      "S2",
+      "CJ",
+      "H5",
+      "H4",
+      "D6",
+      "S3",
+      "CK",
+      "H2",
+      "H9",
+      "CQ",
+      "D9",
+      "DA",
+      "D8",
+      "D3",
+      "DQ",
+      "C8",
+      "SA",
+      "HA",
+      "D2",
+      "D3",
+      "C3",
+      "H7",
+      "S7",
+      "C4",
+      "S2",
+      "D10",
+      "S8",
+      "H3",
+      "D4",
+      "H5",
+      "SQ",
+      "SQ",
+      "D2",
+      "S8",
+      "DQ",
+      "DK",
+      "H4",
+      "H9",
+      "D6",
+      "H10",
+      "C9",
+      "DK",
+      "C7",
+      "C5",
+      "C9",
+      "C6",
+      "C2"
+    ],
+    "declaration": {
+      "cards": [
+        "S5"
+      ],
+      "seat": 3,
+      "strength": 1
+    },
+    "first_round": false,
+    "hands": [
+      [
+        "S4",
+        "C10",
+        "H10",
+        "C5"
+      ],
+      [
+        "HQ",
+        "H6",
+        "H9",
+        "H4"
+      ],
+      [
+        "D5",
+        "C5",
+        "HJ",
+        "H5"
+      ],
+      [
+        "S5",
+        "BJ",
+        "S8",
+        "SQ"
+      ]
+    ],
+    "history": [
+      {
+        "incumbent": null,
+        "leader": 0,
+        "plays": [
+          {
+            "cards": [
+              "DA",
+              "DA",
+              "DK",
+              "DK"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "D6",
+              "D8",
+              "DJ",
+              "DJ"
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "D10",
+              "D3",
+              "D4",
+              "D7"
+            ],
+            "seat": 2
+          },
+          {
+            "cards": [
+              "D2",
+              "D8",
+              "DQ",
+              "DQ"
+            ],
+            "seat": 3
+          }
+        ],
+        "points": 30,
+        "running_points": null,
+        "winner": 0
+      },
+      {
+        "incumbent": null,
+        "leader": 0,
+        "plays": [
+          {
+            "cards": [
+              "C8",
+              "C8",
+              "C9",
+              "C9"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "C3",
+              "C7",
+              "CA",
+              "CA"
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "C4",
+              "CJ",
+              "CQ",
+              "CQ"
+            ],
+            "seat": 2
+          },
+          {
+            "cards": [
+              "C10",
+              "C3",
+              "CK",
+              "H6"
+            ],
+            "seat": 3
+          }
+        ],
+        "points": 20,
+        "running_points": null,
+        "winner": 0
+      },
+      {
+        "incumbent": null,
+        "leader": 0,
+        "plays": [
+          {
+            "cards": [
+              "C2",
+              "C2",
+              "C6",
+              "C6"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "CK",
+              "D2",
+              "D4",
+              "D7"
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "H2",
+              "H8",
+              "H9",
+              "HJ"
+            ],
+            "seat": 2
+          },
+          {
+            "cards": [
+              "D6",
+              "D9",
+              "S7",
+              "S7"
+            ],
+            "seat": 3
+          }
+        ],
+        "points": 10,
+        "running_points": null,
+        "winner": 0
+      },
+      {
+        "incumbent": null,
+        "leader": 0,
+        "plays": [
+          {
+            "cards": [
+              "H3",
+              "H3"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "HK",
+              "HK"
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "H7",
+              "H7"
+            ],
+            "seat": 2
+          },
+          {
+            "cards": [
+              "D10",
+              "H8"
+            ],
+            "seat": 3
+          }
+        ],
+        "points": 30,
+        "running_points": null,
+        "winner": 1
+      },
+      {
+        "incumbent": null,
+        "leader": 1,
+        "plays": [
+          {
+            "cards": [
+              "HA"
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "HA"
+            ],
+            "seat": 2
+          },
+          {
+            "cards": [
+              "SK"
+            ],
+            "seat": 3
+          },
+          {
+            "cards": [
+              "H10"
+            ],
+            "seat": 0
+          }
+        ],
+        "points": 20,
+        "running_points": null,
+        "winner": 3
+      },
+      {
+        "incumbent": null,
+        "leader": 3,
+        "plays": [
+          {
+            "cards": [
+              "SJ",
+              "SJ"
+            ],
+            "seat": 3
+          },
+          {
+            "cards": [
+              "S10",
+              "S10"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "S2",
+              "S2"
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "S6",
+              "S6"
+            ],
+            "seat": 2
+          }
+        ],
+        "points": 20,
+        "running_points": null,
+        "winner": 3
+      },
+      {
+        "incumbent": null,
+        "leader": 3,
+        "plays": [
+          {
+            "cards": [
+              "S4"
+            ],
+            "seat": 3
+          },
+          {
+            "cards": [
+              "SK"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "LJ"
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "BJ"
+            ],
+            "seat": 2
+          }
+        ],
+        "points": 10,
+        "running_points": null,
+        "winner": 2
+      },
+      {
+        "incumbent": null,
+        "leader": 2,
+        "plays": [
+          {
+            "cards": [
+              "S3"
+            ],
+            "seat": 2
+          },
+          {
+            "cards": [
+              "H5"
+            ],
+            "seat": 3
+          },
+          {
+            "cards": [
+              "LJ"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "S9"
+            ],
+            "seat": 1
+          }
+        ],
+        "points": 5,
+        "running_points": null,
+        "winner": 0
+      },
+      {
+        "incumbent": null,
+        "leader": 0,
+        "plays": [
+          {
+            "cards": [
+              "SQ"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "SA"
+            ],
+            "seat": 1
+          },
+          {
+            "cards": [
+              "S5"
+            ],
+            "seat": 2
+          },
+          {
+            "cards": [
+              "S9"
+            ],
+            "seat": 3
+          }
+        ],
+        "points": 5,
+        "running_points": null,
+        "winner": 2
+      },
+      {
+        "incumbent": null,
+        "leader": 2,
+        "plays": [
+          {
+            "cards": [
+              "S8"
+            ],
+            "seat": 2
+          },
+          {
+            "cards": [
+              "D5"
+            ],
+            "seat": 3
+          },
+          {
+            "cards": [
+              "SA"
+            ],
+            "seat": 0
+          },
+          {
+            "cards": [
+              "S3"
+            ],
+            "seat": 1
+          }
+        ],
+        "points": 5,
+        "running_points": null,
+        "winner": 3
+      }
+    ],
+    "kitty": [
+      "H10",
+      "C9",
+      "DK",
+      "C7",
+      "C5",
+      "C9",
+      "C6",
+      "C2"
+    ],
+    "kitty_bonus": 0,
+    "last_trick": {
+      "incumbent": null,
+      "leader": 2,
+      "plays": [
+        {
+          "cards": [
+            "S8"
+          ],
+          "seat": 2
+        },
+        {
+          "cards": [
+            "D5"
+          ],
+          "seat": 3
+        },
+        {
+          "cards": [
+            "SA"
+          ],
+          "seat": 0
+        },
+        {
+          "cards": [
+            "S3"
+          ],
+          "seat": 1
+        }
+      ],
+      "points": 5,
+      "running_points": null,
+      "winner": 3
+    },
+    "last_trick_winner": null,
+    "message": null,
+    "notice": null,
+    "ordering": {
+      "plain_ranks": [
+        "2",
+        "3",
+        "4",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "J",
+        "Q",
+        "K",
+        "A"
+      ],
+      "trump_rank": "5",
+      "trump_suit": "S"
+    },
+    "passed": [],
+    "phase": "play",
+    "trick": {
+      "incumbent": null,
+      "leader": 3,
+      "plays": [],
+      "points": 0,
+      "running_points": null,
+      "winner": null
+    },
+    "trump_is_nt": false,
+    "trump_rank": "5",
+    "trump_suit": "S",
+    "turn": 3
+  },
+  "schema": "lead-root-capture-dev-v1",
+  "setup": {
+    "banker": 0,
+    "buried": [
+      "H2",
+      "D3",
+      "H4",
+      "C4",
+      "C7",
+      "D9",
+      "CJ",
+      "HQ"
+    ],
+    "declaration": {
+      "cards": [
+        "S5"
+      ],
+      "seat": 3,
+      "strength": 1
+    },
+    "declarations": [
+      {
+        "cards": [
+          "S5"
+        ],
+        "seat": 3
+      }
+    ],
+    "passed": [],
+    "trump_is_nt": false,
+    "trump_rank": "5",
+    "trump_suit": "S"
+  }
+}

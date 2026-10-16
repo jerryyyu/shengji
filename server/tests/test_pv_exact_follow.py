@@ -1,0 +1,468 @@
+"""DEV exact-follow reranking keeps the normal ballot atomic."""
+
+import random
+import copy
+import time
+import asyncio
+import json
+import os
+import subprocess
+import sys
+import tomllib
+from dataclasses import replace
+from pathlib import Path
+import numpy as np
+
+import pytest
+
+from shengji.ai.endgame import exhaustive_legal_actions
+from shengji.engine.cards import Ordering
+from shengji.engine.round import Round, Trick, TrickPlay
+from shengji.train.pv_exact_follow import ExactFollowRefusal, rerank_follow
+from shengji.train import pv_search_policy as pv
+from test_pv_admission_rules import predict, ZeroEvaluator
+from test_endgame import _round
+from test_encoder_round_compat import pinned_production_package  # noqa: F401
+from test_pv_search_serving import _play_state
+from shengji.ai.heuristic import HeuristicBot
+from shengji.api import server as srv
+from shengji.engine.game import Game
+
+
+class FollowDevBot(pv.PVSearchBuryBot):
+    """Keep the reference-solver diagnostic fixture's small node limit."""
+    def __init__(self, *args, config, **kwargs):
+        super().__init__(*args, config=replace(config, exact_follow=True,
+                                               exact_follow_max_nodes=10000), **kwargs)
+
+
+@pytest.mark.parametrize('hand_cap', [3, 4])
+def test_pinned_model_follow_snapshot_and_commit(pinned_production_package, tmp_path, hand_cap):
+    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env['SHENGJI_PV_CKPT'] = str(pinned_production_package)
+    recipe = pv.pv_env_recipe(env)
+    rnd = _play_state()
+    heuristic = HeuristicBot()
+    while rnd.phase == 'play':
+        if rnd.trick.plays and max(map(len, rnd.hands)) <= hand_cap:
+            break
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    assert rnd.phase == 'play'
+    baseline = pv.make_pv_search_bot(**recipe, seed=7)
+    expected = baseline.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert baseline.last_decision_record['work_complete']
+    bot = pv.make_pv_search_bot(**recipe, seed=7, bot_factory=FollowDevBot)
+    bot.policy_name = 'pv-search-exact-follow-dev'
+
+    async def scenario():
+        game = Game(random.Random(7))
+        game.round = rnd
+        room = srv.Room(code='EFDEV', game=game, bot=bot,
+            seats=[srv.Seat(str(i), is_bot=True) for i in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        room.log_event = lambda *args, **kwargs: None
+        seat = rnd.turn
+        before = list(rnd.hands[seat])
+        rng = bot.sampler.rng.getstate()
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        assert prepared is not None
+        assert rnd.hands[seat] == before and bot.sampler.rng.getstate() == rng
+        record = prepared.decision.snapshot.bot_copy.last_decision_record
+        assert record['work_complete'] and record['exact_follow_attempted']
+        assert list(prepared.decision.cards) == expected
+        if hand_cap == 3:
+            assert record['exact_follow_worlds'] == 64
+            assert len(set(record['exact_follow_scores'])) == 1
+            assert not record['exact_follow_applied']
+        else:
+            assert record['exact_follow_abandoned'] is not None
+        assert srv._commit_bot_turn(room, prepared)
+        assert len(rnd.hands[seat]) == len(before) - len(expected)
+
+    asyncio.run(scenario())
+
+
+def follow_env(path):
+    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env.update(SHENGJI_PV_CKPT=str(path), SHENGJI_PV_EXACT_LEAD_ENDGAME='1',
+               SHENGJI_PV_EXACT_DEEP_CARDS='6', SHENGJI_PV_EXACT_FOLLOW='1',
+               SHENGJI_PV_EXACT_FOLLOW_SOLVER='compact-level',
+               SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS='6',
+               SHENGJI_PV_EXACT_FOLLOW_MAX_NODES='50000000')
+    return env
+
+
+@pytest.mark.parametrize('hand_cap,node_cap,cancel_partial', [
+    (3, 50_000_000, False), (6, 50_000_000, False), (6, 1, False),
+    (3, 50_000_000, True),
+])
+def test_registry_follow_reaches_server_snapshot_and_commit(
+        pinned_production_package, tmp_path, monkeypatch, hand_cap, node_cap, cancel_partial):
+    sessions = []
+    if cancel_partial:
+        from shengji.train import pv_exact_follow
+        from shengji.ai.endgame_compact import CompactWorldSession, default_backend
+        clock = [0.0]
+        monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+
+        class ExpireAfterOneCandidate(CompactWorldSession):
+            def __init__(self, *args, check_budget, **kwargs):
+                self.completed = 0
+                def guard():
+                    if self.completed:
+                        clock[0] = 4.0  # real 3-second serving deadline, not a solver refusal
+                    check_budget()
+                super().__init__(*args, check_budget=guard, **kwargs)
+                sessions.append(self)
+
+            def solve_level(self, *args, **kwargs):
+                result = super().solve_level(*args, **kwargs)
+                self.completed += 1
+                return result
+
+        monkeypatch.setattr(pv_exact_follow, 'CompactWorldSession', ExpireAfterOneCandidate)
+    env = follow_env(pinned_production_package)
+    env['SHENGJI_PV_EXACT_FOLLOW_MAX_NODES'] = str(node_cap)
+    recipe = pv.pv_env_recipe(env)
+    entries = pv.pv_registry_entries(**recipe)
+    name, factory = next(iter(entries.items()))
+    bot = factory(seed=7)
+    assert bot.policy_name == name and bot.config.exact_follow
+    assert bot.exact_follow_solver == 'compact-level'
+    assert bot.exact_follow_max_cards == bot.exact_deep_cards == 6
+    assert bot.exact_follow_max_nodes == node_cap
+    assert bot.worlds == 64 and bot.candidates == 8 and bot.serving_budget_seconds == 3
+    rnd, heuristic = _play_state(), HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= hand_cap):
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    baseline_recipe = dict(recipe, exact_follow=False)
+    baseline = pv.make_pv_search_bot(**baseline_recipe, seed=7)
+    expected = baseline.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert baseline.last_decision_record['work_complete']
+
+    async def scenario():
+        game = Game(random.Random(7))
+        game.round = rnd
+        room = srv.Room(code='EFFACTORY', game=game, bot=bot,
+            seats=[srv.Seat(str(i), is_bot=True) for i in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        room.log_event = lambda *args, **kwargs: None
+        seat, hands, rng = rnd.turn, copy.deepcopy(rnd.hands), bot.sampler.rng.getstate()
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        assert prepared is not None
+        assert rnd.hands == hands and bot.sampler.rng.getstate() == rng
+        copied = prepared.decision.snapshot.bot_copy
+        assert copied.policy_name == name and copied.exact_follow_solver == 'compact-level'
+        record = copied.last_decision_record
+        assert record['work_complete'] and record['exact_follow_attempted']
+        if cancel_partial or node_cap == 1 or record['exact_follow_abandoned'] is not None:
+            if node_cap == 1:
+                assert record['exact_follow_abandoned'] == 'error'
+                assert record['exact_follow_error'] == 'ExactFollowRefusal'
+            elif cancel_partial:
+                assert len(sessions) == 1 and sessions[0].completed == 1
+                assert sessions[0].nodes > 0
+                assert sessions[0].backend == default_backend()
+                assert record['exact_follow_abandoned'] == 'hard_budget'
+                assert record['exact_follow_error'] == 'PVSearchBudgetExceeded'
+                assert 'exact_follow_worlds' not in record
+            else:
+                # Slower hosts may exhaust the real serving deadline.  That
+                # must preserve the baseline, never publish partial means.
+                assert hand_cap == 6
+                assert record['exact_follow_abandoned'] in ('soft_budget', 'hard_budget')
+            assert not record['exact_follow_applied']
+            assert 'exact_follow_scores' not in record
+            assert list(prepared.decision.cards) == expected
+            for key in ('admitted', 'selected_index', 'value_means', 'played',
+                        'value_evaluations', 'value_batches'):
+                assert record[key] == baseline.last_decision_record[key]
+        else:
+            assert record['exact_follow_abandoned'] is None
+            assert record['exact_follow_worlds'] == 64
+        from shengji.train.search_screen import trace_fields, exact_follow_summary
+        persisted = trace_fields(record)
+        for key in ('exact_follow_attempted', 'exact_follow_abandoned',
+                    'exact_follow_applied', 'exact_follow_worlds', 'exact_follow_scores',
+                    'exact_follow_error'):
+            if key in record:
+                assert persisted[key] == record[key]
+        summary = exact_follow_summary([{'decision_traces': [
+            {'side': 'arm', 'decisions': [persisted]},
+            {'side': 'baseline', 'decisions': [trace_fields(baseline.last_decision_record)]}]}])
+        assert summary['valid']
+        counts = summary['sides']['arm']
+        assert counts['attempted'] == 1 and counts['missing'] == 0
+        reason = record['exact_follow_abandoned']
+        outcome = ('complete' if reason is None else
+                   'refusal' if record.get('exact_follow_error') == 'ExactFollowRefusal'
+                   else reason)
+        assert counts[outcome] == 1
+        assert counts['applied'] == int(record['exact_follow_applied'])
+        assert summary['sides']['baseline']['missing'] == 1
+        assert summary['sides']['baseline']['attempted'] == 0
+        assert srv._commit_bot_turn(room, prepared)
+        assert not srv._commit_bot_turn(room, prepared)
+        assert len(rnd.hands[seat]) == len(hands[seat]) - len(prepared.decision.cards)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('key,value', [('EXACT_FOLLOW', 'yes'),
+    ('EXACT_FOLLOW_MAX_CARDS', '9'), ('EXACT_FOLLOW_MAX_CARDS', '2.5'),
+    ('EXACT_FOLLOW_MAX_NODES', '0'), ('EXACT_FOLLOW_SOLVER', 'other')])
+def test_follow_env_rejects_invalid_parameters(key, value):
+    env = follow_env('/unused')
+    env['SHENGJI_PV_' + key] = value
+    with pytest.raises(pv.PVSearchPolicyError):
+        recipe = pv.pv_env_recipe(env)
+        pv.pv_registry_entries(**recipe)
+
+
+@pytest.mark.parametrize('key,value', [('EXACT_FOLLOW_MAX_CARDS', '6'),
+    ('EXACT_FOLLOW_MAX_NODES', '100'), ('EXACT_FOLLOW_SOLVER', 'compact-level')])
+def test_follow_parameters_require_enabled_rule(key, value):
+    env = follow_env('/unused')
+    for name in list(env):
+        if name.startswith('SHENGJI_PV_EXACT_FOLLOW'):
+            del env[name]
+    env['SHENGJI_PV_' + key] = value
+    with pytest.raises(pv.PVSearchPolicyError):
+        pv.pv_env_recipe(env)
+
+
+def test_follow_solver_contract_matches_lazy_implementation():
+    from shengji.train import pv_exact_follow
+
+    assert pv._EXACT_FOLLOW_SOLVERS == pv_exact_follow.SOLVERS
+
+
+def test_follow_off_recipe_does_not_import_optional_solver(pinned_production_package):
+    fly_env = tomllib.loads(
+        (Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    source = """
+import json
+import sys
+from shengji.train import pv_search_policy as pv
+env = json.loads(sys.argv[1])
+env['SHENGJI_PV_CKPT'] = sys.argv[2]
+env['SHENGJI_PV_SHA256'] = sys.argv[3]
+recipe = pv.pv_env_recipe(env)
+assert not recipe.get('exact_follow', False)
+name, factory = next(iter(pv.pv_registry_entries(**recipe).items()))
+bot = factory(seed=7)
+assert bot.policy_name == name
+assert 'shengji.train.pv_exact_follow' not in sys.modules
+assert 'shengji.ai._endgame_fast' not in sys.modules
+"""
+    env = dict(os.environ)
+    env['PYTHONPATH'] = str(Path(__file__).resolve().parents[1])
+    result = subprocess.run(
+        [sys.executable, '-P', '-B', '-c', source, json.dumps(fly_env),
+         str(pinned_production_package),
+         '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'],
+        cwd=Path(__file__).resolve().parents[1], env=env,
+        capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[-2000:]
+
+
+def test_follow_identity_off_preserved_and_parameters_distinct():
+    config = pv.PVSearchConfig(checkpoint_sha256='f' * 64)
+    base = pv.pv_policy_name('ffffffff', config)
+    assert pv.pv_policy_name('ffffffff', replace(config, exact_follow=False)) == base
+    on = replace(config, exact_follow=True)
+    variants = [on, replace(on, exact_follow_max_cards=6),
+                replace(on, exact_follow_solver='compact-level'),
+                replace(on, exact_follow_max_nodes=50_000_000)]
+    names = {pv.pv_policy_name('ffffffff', c) for c in variants}
+    assert len(names) == len(variants) and base not in names
+
+
+def test_pinned_model_singleton_follow_does_not_solve(pinned_production_package, monkeypatch):
+    from shengji.train import pv_exact_follow
+    env = follow_env(pinned_production_package)
+    recipe = pv.pv_env_recipe(env)
+    rnd, heuristic = _play_state(), HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= 3):
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    def forbidden(*args, **kwargs):
+        pytest.fail('a singleton ballot cannot benefit from exact reranking')
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', forbidden)
+    bot = pv.make_pv_search_bot(**recipe, seed=7)
+    assert bot.decide_play(copy.deepcopy(rnd), rnd.turn) == ['D5']
+    assert bot.last_decision_record['work_complete']
+    assert not bot.last_decision_record.get('exact_follow_attempted', False)
+    assert bot.last_decision_record['admitted'] == [['D5']]
+
+
+def test_registry_ineligible_follow_does_not_enter_exact_stage(
+        pinned_production_package, monkeypatch):
+    from shengji.train import pv_exact_follow
+    recipe = pv.pv_env_recipe(follow_env(pinned_production_package))
+    _, factory = next(iter(pv.pv_registry_entries(**recipe).items()))
+    bot = factory(seed=7)
+    rnd, heuristic = _play_state(), HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= 7):
+        rnd.play(rnd.turn, heuristic.decide_play(rnd, rnd.turn))
+    assert max(map(len, rnd.hands)) > bot.exact_follow_max_cards
+    baseline = pv.make_pv_search_bot(**dict(recipe, exact_follow=False), seed=7)
+    expected = baseline.decide_play(copy.deepcopy(rnd), rnd.turn)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('ineligible follow must not enter the exact solver')
+
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', forbidden)
+    assert bot.decide_play(copy.deepcopy(rnd), rnd.turn) == expected
+    record = bot.last_decision_record
+    assert record['work_complete'] and len(record['admitted']) > 1
+    assert not any(k.startswith('exact_follow_') for k in record)
+    for key in ('admitted', 'selected_index', 'value_means', 'played',
+                'value_evaluations', 'value_batches'):
+        assert record[key] == baseline.last_decision_record[key]
+
+
+def disagreement():
+    return _round([["C5", "C10"], ["S8", "D3", "HJ"],
+                   ["HA", "H4", "CK"], ["D2", "SJ", "SK"]],
+                  plays=[(0, ["C5"])], attacker_points=35)
+
+
+def search_case(deadline=None, on=True, max_nodes=10000, preferred='D3'):
+    """Real enumeration/admission/search/engine, with a controlled value head.
+
+    This isolates the mechanism; it is not a measured production-model mistake.
+    """
+    rnd = disagreement()
+    policy = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
+        config=pv.PVSearchConfig(checkpoint_sha256='f' * 64, worlds=2,
+            candidates=8, cap=4000, exact_follow=on,
+            exact_follow_max_nodes=max_nodes), checkpoint='/dev/null', seed=7)
+    worlds = [(copy.deepcopy(rnd.hands), []) for _ in range(2)]
+    policy._worlds = lambda *args: (worlds, 2)
+    policy.scores = lambda r, s, actions, w: np.zeros((len(w), len(actions)))
+    policy._value_means = lambda r, s, actions, w, check: (
+        np.asarray([1.0 if a == [preferred] else 0.0 for a in actions]), 1)
+    before = copy.deepcopy(rnd.__dict__, {id(rnd.ordering): rnd.ordering})
+    played = policy._search(rnd, 1, ['D3'], time.perf_counter(), deadline)
+    assert rnd.__dict__ == before
+    record = policy.last_decision_record
+    assert record['admitted'][record['admitted_indices'].index(record['selected_index'])] == played
+    rnd.play(1, played)
+    assert rnd.trick.plays[-1].cards == played
+    comparable = {k: v for k, v in record.items()
+                  if not k.startswith('exact_follow_') and k != 'seconds'}
+    return policy, (played, comparable)
+
+
+def test_real_search_changes_wrong_ranking_without_changing_ballot():
+    off, (base, base_record) = search_case(on=False)
+    on, (changed, changed_record) = search_case()
+    assert base == ['D3'] and changed == ['HJ']
+    assert base_record['admitted'] == changed_record['admitted']
+    record = on.last_decision_record
+    values = dict(zip(map(tuple, record['admitted']), record['exact_follow_scores']))
+    assert values[('HJ',)] > values[('D3',)]
+    assert record['exact_follow_worlds'] == 2
+    assert record['exact_follow_applied']
+
+
+def test_incomplete_exact_search_preserves_finalized_baseline():
+    _, base = search_case(on=False)
+    policy, failed = search_case(max_nodes=1)
+    assert failed == base
+    assert policy.last_decision_record['exact_follow_abandoned'] == 'error'
+
+
+@pytest.mark.parametrize('preferred', ['D3', 'HJ'])
+def test_exact_follow_publication_checks_deadline_even_if_action_unchanged(monkeypatch, preferred):
+    from shengji.train import pv_exact_follow
+    _, baseline = search_case(on=False, preferred=preferred)
+    original = pv_exact_follow.rerank_follow
+    expired = False
+    results = []
+
+    def finish_then_expire(*args, **kwargs):
+        nonlocal expired
+        result = original(*args, **kwargs)
+        results.append((result.winner, kwargs['baseline_index']))
+        expired = True
+        return result
+
+    def check():
+        if expired:
+            raise pv.PVSearchBudgetExceeded('expired before exact publication')
+
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', finish_then_expire)
+    bot, actual = search_case(deadline=check, preferred=preferred)
+    assert len(results) == 1
+    assert (results[0][0] == results[0][1]) == (preferred == 'HJ')
+    assert actual == baseline
+    record = bot.last_decision_record
+    assert record['exact_follow_abandoned'] == 'hard_budget'
+    assert record['exact_follow_error'] == 'PVSearchBudgetExceeded'
+    assert not record['exact_follow_applied']
+    assert 'exact_follow_scores' not in record
+    assert 'exact_follow_worlds' not in record
+
+
+def test_recipe_identity_and_own_hand_multiset():
+    config = pv.PVSearchConfig(checkpoint_sha256='f' * 64)
+    assert 'exact_follow' not in pv.recipe_payload(config)
+    config = pv.PVSearchConfig(checkpoint_sha256='f' * 64, exact_follow=True)
+    assert pv.recipe_payload(config)['exact_follow'] is True
+    rnd = disagreement()
+    hands = copy.deepcopy(rnd.hands)
+    hands[1].reverse()
+    actions = [['D3'], ['HJ']]
+    result = rerank_follow(rnd, 1, actions, [(hands, [])])
+    assert result.winner == 1
+    hands[1][0] = 'C2'
+    with pytest.raises(ExactFollowRefusal, match='acting hand'):
+        rerank_follow(rnd, 1, actions, [(hands, [])])
+
+
+def _follow_round():
+    rnd = Round("7", banker=0, rng=random.Random(0))
+    rnd.phase = "play"
+    rnd.ordering = Ordering("H", "7")
+    rnd.trump_suit = "H"
+    rnd.hands = [["C3"], ["C4", "C5"], ["C6", "C7"], ["C8", "C9"]]
+    rnd.buried = []
+    rnd.trick = Trick(leader=0, plays=[TrickPlay(0, ["C3"])])
+    rnd.turn = 1
+    rnd.deck = [c for hand in rnd.hands for c in hand]
+    return rnd
+
+
+def test_actual_follow_rerank_is_complete_and_legal():
+    rnd = _follow_round()
+    legal = exhaustive_legal_actions(rnd, 1)
+    result = rerank_follow(rnd, 1, legal, [( [list(h) for h in rnd.hands], [])],
+                           max_nodes=10_000)
+    assert 0 <= result.winner < len(legal)
+    assert tuple(legal[result.winner]) in {tuple(action) for action in legal}
+    assert result.worlds == 1 and result.nodes > 0
+    assert rnd.hands[1] == ["C4", "C5"]
+
+
+def test_follow_refuses_leads_and_node_caps_without_partial_result():
+    rnd = _follow_round()
+    with pytest.raises(ExactFollowRefusal, match="follow root"):
+        lead = Round("7", banker=0, rng=random.Random(0))
+        lead.phase, lead.ordering = "play", rnd.ordering
+        rerank_follow(lead, 0, [["C3"]], [([ ["C3"]] * 4, [])])
+    with pytest.raises(ExactFollowRefusal):
+        rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
+                      [([list(h) for h in rnd.hands], [])], max_nodes=1)
+
+
+def test_budget_callback_cancels_before_exact_result():
+    rnd = _follow_round()
+    def cancel():
+        raise RuntimeError("cancel")
+    with pytest.raises(RuntimeError, match="cancel"):
+        rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
+                      [([list(h) for h in rnd.hands], [])], check_budget=cancel)

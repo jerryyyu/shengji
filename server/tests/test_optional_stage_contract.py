@@ -8,6 +8,7 @@ A NEW optional stage adds a `StageCase` to ``CASES`` below.
 """
 import copy
 import time
+import numpy as np
 
 import pytest
 
@@ -22,6 +23,8 @@ from test_pv_doomed_throw_reselect import (DECISIONS, draw, served as dtr_served
                                            yjqj)
 from test_pv_value_declare import NT_CASE, NTEvaluator, served as vd_served, state_at
 from test_pv_declare_wait import WAIT_CASE, OtherDeclarerEvaluator, bot as vdw_bot
+from test_pv_exact_follow import search_case as ef_search
+from shengji.train import pv_exact_follow
 
 
 # ------------------------------------------------------- the stages under the contract
@@ -114,7 +117,44 @@ def _vdw_abandon(bot):
     return record["fallback_reason"], record["fallback_error"]
 
 
+def _exact_run(deadline, on=True, **variants):
+    from test_pv_finish_lead import root, bot as lead_bot
+    rnd = root(2)
+    bot = lead_bot(False, exact_lead_endgame=True, **variants)
+    actions = [[rnd.hands[rnd.turn][0]]]
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    base = (np.array([-100.0]), 1, 0, actions[0], 1)
+    result = (bot._exact_lead_decision(rnd, rnd.turn, actions, worlds,
+              time.perf_counter(), deadline, [0.0], base) if on else base)
+    return bot, (result[0].tolist(), list(result[3]))
+
+
+def _exact_abandon(bot):
+    record = bot._exact_lead
+    if record['exact_lead_status'] != 'abandoned':
+        return None
+    return record['exact_lead_abandon_reason'], record['exact_lead_abandon_error']
+
+
 CASES = [
+    StageCase("exact_lead_endgame", run=_exact_run,
+              base=lambda: _exact_run(Deadline(), on=False)[1],
+              abandon=_exact_abandon, abandons_errors=True),
+    # its two opt-in variants run inside the same stage (`test_pv_exact_lead_variants`)
+    StageCase("exact_lead_tie_baseline",
+              run=lambda deadline, on=True: _exact_run(deadline, on, exact_lead_tie_baseline=True),
+              base=lambda: _exact_run(Deadline(), on=False)[1],
+              abandon=_exact_abandon, abandons_errors=True),
+    StageCase("exact_lead_policy_first",
+              run=lambda deadline, on=True: _exact_run(deadline, on, exact_lead_policy_first=True),
+              base=lambda: _exact_run(Deadline(), on=False)[1],
+              abandon=_exact_abandon, abandons_errors=True),
+    StageCase("exact_follow", run=ef_search,
+              base=lambda: ef_search(on=False)[1],
+              abandon=lambda bot: (
+                  bot.last_decision_record.get('exact_follow_abandoned'),
+                  bot.last_decision_record.get('exact_follow_error')),
+              abandons_errors=True, nested=(pv_exact_follow, 'rerank_follow')),
     StageCase("adaptive_worlds", run=_aw_run,
               base=lambda: _aw_run(Deadline(), adaptive=False)[1],
               abandon=_aw_abandon, abandons_errors=True),

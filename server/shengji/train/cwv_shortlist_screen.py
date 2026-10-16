@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import threading
 
 from ..ai.cwv_policy import shared_evaluator
 from ..ai.registry import make_bot
@@ -532,12 +533,44 @@ def _deadline_side(config, side, seed):
     return CwvTimedPolicy(make_side(config, side, seed))
 
 
+#: ``config["deadline_child"]``: absent means one child per cluster, spawned at
+#: its first registration and killed at its end.  ``PER_WORKER_CHILD`` keeps one
+#: child per pool worker across clusters, reset before each one.  The key is an
+#: execution setting, not part of the recipe, so shards from either mode reopen
+#: against the other.
+PER_WORKER_CHILD = "per-worker"
+
+# Each pool worker runs its clusters on one thread, so thread-local storage is
+# per worker under the process pool and per thread under a thread executor.
+_worker_state = threading.local()
+
+
+def _worker_session(deadline):
+    """This worker's persistent session, reset for the cluster about to run."""
+    held = getattr(_worker_state, "session", None)
+    if held is not None and (held.factory is not _deadline_side
+                             or held.seconds != deadline["seconds"]):
+        held.close()
+        held = None
+    if held is None:
+        held = _worker_state.session = DeadlineSession(_deadline_side, deadline["seconds"])
+    # Bots, RNGs and receipts are per cluster; only the interpreter persists.
+    held.reset()
+    return held
+
+
 def run_cluster(config, cluster):
     created = []
     deadline = config.get("decision_deadline")
     if deadline is not None and deadline != DEADLINE_RECIPE:
         raise ValueError("unsupported screen decision deadline recipe")
-    session = DeadlineSession(_deadline_side, deadline["seconds"]) if deadline else None
+    child = config.get("deadline_child")
+    if child is None:
+        session = DeadlineSession(_deadline_side, deadline["seconds"]) if deadline else None
+    elif child == PER_WORKER_CHILD and deadline:
+        session = _worker_session(deadline)
+    else:
+        raise ValueError(f"unsupported deadline child mode {child!r}")
 
     def factory(_config, side, seed):
         wrapped = (session.register(config, side, seed) if session
@@ -566,41 +599,48 @@ def run_cluster(config, cluster):
             base, cluster, seed, mirror, bot_factory=factory,
             counter_fn=work_counters, game_factory=game_factory)
                 for mirror in (0, 1)]
-    finally:
+        if len(rows) != len(games):
+            raise ValueError("ranked screen game factory did not produce one game per mirror")
+        for (record, _), game in zip(rows, games, strict=True):
+            if record["trump_rank"] != rank:
+                raise ValueError(f"cluster {cluster} dealt trump rank {record['trump_rank']!r}, expected {rank!r}")
+            if banker is not None and record["banker"] != banker:
+                raise ValueError(f"cluster {cluster} banker {record['banker']!r}, expected fixed {banker!r}")
+            record["arm"] = config["arm"]
+            if "trump_ranks" in config:
+                round_state = getattr(game, "round", None)
+                actual_suit = getattr(round_state, "trump_suit", None)
+                if actual_suit is None:
+                    if not getattr(round_state, "trump_is_nt", False):
+                        raise ValueError(f"cluster {cluster} has no declared trump suit/NT witness")
+                    actual_suit = "NT"
+                if actual_suit not in ("S", "H", "D", "C", "NT"):
+                    raise ValueError(f"cluster {cluster} has invalid actual trump suit {actual_suit!r}")
+                record["trump_suit"] = actual_suit
+        return {
+            "schema": "cwv-shortlist-shard-v1", "cluster": cluster,
+            "seed": seed, "rank": rank, "recipe": _recipe(config),
+            "records": [record for record, _ in rows],
+            "timings": [timing for _, timing in rows],
+            "decision_traces": [{"mirror": i // 4, "side": side,
+                                 "decisions": policy.decisions,
+                                 "bury_decisions": getattr(policy, "bury_decisions", []),
+                                 # only a policy that published declare records
+                                 # (pv-search ``value_declare``) carries the key
+                                 **({"declare_decisions": policy.__dict__["declare_decisions"]}
+                                    if policy.__dict__.get("declare_decisions") else {})}
+                                for i, (side, policy) in enumerate(created)],
+        }
+    except BaseException:
+        # A child that saw a failed cluster, in play or in the round
+        # validation and shard assembly after it, is never reused: no shard
+        # is published and the next cluster starts from a fresh interpreter.
         if session:
             session.close()
-    if len(rows) != len(games):
-        raise ValueError("ranked screen game factory did not produce one game per mirror")
-    for (record, _), game in zip(rows, games, strict=True):
-        if record["trump_rank"] != rank:
-            raise ValueError(f"cluster {cluster} dealt trump rank {record['trump_rank']!r}, expected {rank!r}")
-        if banker is not None and record["banker"] != banker:
-            raise ValueError(f"cluster {cluster} banker {record['banker']!r}, expected fixed {banker!r}")
-        record["arm"] = config["arm"]
-        if "trump_ranks" in config:
-            round_state = getattr(game, "round", None)
-            actual_suit = getattr(round_state, "trump_suit", None)
-            if actual_suit is None:
-                if not getattr(round_state, "trump_is_nt", False):
-                    raise ValueError(f"cluster {cluster} has no declared trump suit/NT witness")
-                actual_suit = "NT"
-            if actual_suit not in ("S", "H", "D", "C", "NT"):
-                raise ValueError(f"cluster {cluster} has invalid actual trump suit {actual_suit!r}")
-            record["trump_suit"] = actual_suit
-    return {
-        "schema": "cwv-shortlist-shard-v1", "cluster": cluster,
-        "seed": seed, "rank": rank, "recipe": _recipe(config),
-        "records": [record for record, _ in rows],
-        "timings": [timing for _, timing in rows],
-        "decision_traces": [{"mirror": i // 4, "side": side,
-                             "decisions": policy.decisions,
-                             "bury_decisions": getattr(policy, "bury_decisions", []),
-                             # only a policy that published declare records
-                             # (pv-search ``value_declare``) carries the key
-                             **({"declare_decisions": policy.__dict__["declare_decisions"]}
-                                if policy.__dict__.get("declare_decisions") else {})}
-                            for i, (side, policy) in enumerate(created)],
-    }
+        raise
+    finally:
+        if session and child is None:
+            session.close()
 
 
 def reopen_shard(path, config, cluster):
@@ -773,6 +813,10 @@ def main(argv=None):
     parser.add_argument("--checkpoint")
     parser.add_argument("--decision-deadline", type=float, default=300,
                         help="300s total play deadline (default); 0 explicitly selects legacy uncapped policy")
+    parser.add_argument("--persistent-deadline-child", action="store_true",
+                        help="keep one deadline child per pool worker across clusters, reset "
+                             "before each cluster, instead of spawning one per cluster; "
+                             "an execution setting outside the shard recipe")
     parser.add_argument("--worlds", type=int, default=1)
     parser.add_argument("--selection-worlds", type=int, default=30)
     parser.add_argument("--alternatives", type=int, default=4)
@@ -837,6 +881,8 @@ def main(argv=None):
         validate_deadline(args.decision_deadline)
         if args.decision_deadline != 300:
             parser.error("screen recipe supports --decision-deadline 300 or legacy 0 only")
+    if args.persistent_deadline_child and args.decision_deadline == 0:
+        parser.error("--persistent-deadline-child requires the deadline child (--decision-deadline 300)")
     if (min(args.worlds, args.selection_worlds, args.alternatives,
             args.batch_size, args.clusters, args.workers) < 1
             or args.report_worlds < 30 or args.correction_worlds < 1
@@ -952,6 +998,8 @@ def _run_screen(args, trump_ranks):
     }
     if args.decision_deadline:
         config["decision_deadline"] = dict(DEADLINE_RECIPE)
+    if args.persistent_deadline_child:
+        config["deadline_child"] = PER_WORKER_CHILD
     # Leave old/default recipes unchanged; enabled receipts explicitly bind it.
     if args.reuse_successors:
         config["reuse_successors"] = True

@@ -199,6 +199,28 @@ jobs:
         run: bash scripts/ci_cwv_modes.sh
       - name: Test policy-head training and search in both engine modes
         run: bash scripts/ci_policy_modes.sh
+      # The screen harness imports torch, so the real-package deadline-child
+      # differential (release 45, flag off vs on, byte-identical shards) runs in
+      # this job: the same pinned asset and hash as the server job's gate, and
+      # a skip FAILS under SHENGJI_REQUIRE_PV_PACKAGE=1.
+      - name: Fetch the pinned production package
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/smv3out-491ee4bf.npz
+          PACKAGE_SHA256: 491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/smv3out-491ee4bf.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/smv3out-491ee4bf.npz" | sha256sum -c -
+      - name: Screen deadline child on the production package (differential must run)
+        env:
+          SHENGJI_FAST: "1"
+          SHENGJI_REQUIRE_VOIDS: "1"
+          SHENGJI_REQUIRE_PV_PACKAGE: "1"
+          SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider tests/test_screen_deadline_child.py -k release45
 
   search-regression:
     runs-on: ubuntu-latest

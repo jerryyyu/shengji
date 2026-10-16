@@ -1386,7 +1386,13 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                         rnd.declare(s, cards)
                         room.log_event("declare", seat=s, cards=cards, bot=True)
                     except IllegalPlay:
-                        pass
+                        continue
+                # Model-free policies may publish receipts too. Keep their
+                # decisions inline, but log only after a valid action/pass,
+                # just like the off-loop branch below.
+                record = getattr(bot, "last_declare_record", None)
+                if record is not None:
+                    room.log_event("declare_decision", seat=s, record=record, bot=True)
                 continue
             game, owner = room.game, room.seats[s]
             phase, declaration = rnd.phase, rnd.declaration

@@ -36,7 +36,10 @@ for releases 29–38 and 42–45):
 
 1. A non-author PASS on the PR at its exact head, and all CI checks green. CI fetches the pinned
    production package and loads it on the tree (`.github/workflows/pr-checks.yml`);
-   `server/tests/test_bury_fly_config.py` pins the served name that the `fly.toml` environment derives.
+   `server/tests/test_bury_fly_config.py` pins the served name that the `fly.toml` environment derives, and
+   `server/tests/test_release46_fly_config.py` builds the served bot from that environment on the pinned
+   production and belief packages under the package gate (name, every combo knob, the bound belief model, the
+   compiled compact solver, one served play through the server path with the belief proposal and no fallback).
 2. For a package change: the package on the volume, SHA256-verified against `fly.toml`.
 3. Serving smoke on the MERGED tree against the SHA-verified packages
    (`server/scripts/cwv_serving_smoke.py`, which builds the `pv-search` bot when `SHENGJI_PV_CKPT` is
@@ -66,6 +69,7 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 
 | release | deployed (ET) | what changed | package/bot change? | PR(s) | image / rollback |
 |---:|---|---|---|---|---|
+| 46 | PENDING (not deployed; deployment id and time TBD; see "Release 46" below) | The combo screened as v92combo45, as twelve `fly.toml` lines on release 45's environment: history-legal, belief-proposed play worlds (`SHENGJI_PV_WORLD_HISTORY_LEGAL = '1'`, `SHENGJI_PV_WORLD_HISTORY_DRAW = '1'`, `SHENGJI_PV_BELIEF_WORLDS = '1'`, `SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'`, `SHENGJI_PV_BELIEF_SHA256 = '763b5e05…4343'`; tokens `whl whd bw`), the exact endgame search at 7 cards (`SHENGJI_PV_EXACT_LEAD_ENDGAME = '1'`, `SHENGJI_PV_EXACT_DEEP_CARDS = '7'`, `SHENGJI_PV_EXACT_FOLLOW = '1'`, `SHENGJI_PV_EXACT_FOLLOW_SOLVER = 'compact-level'`, `SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS = '7'`, `SHENGJI_PV_EXACT_FOLLOW_MAX_NODES = '50000000'`; tokens `ele ed7 xf7 xfcompactlevel`) and the value-guided declaration at every first-round declare chance (`SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST = '1'`; token `vdef`). Play, bury and declaration budgets, play package, worlds and candidates are release 45's. Evidence v92combo45 +0.2167 [+0.1923, +0.2412] vs release 45 as served, first-round deals, POSITIVE; confirmation v92c +0.2284 [+0.2046, +0.2521] POSITIVE; latency v93lat QUALIFIED (combo play p95 0.187 s, peak RSS +48 MiB, one perf core). | new BELIEF package on the volume (`s17long-e2-763b5e05.npz`, sha256 `763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343`); new served name `pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0`; same play package `491ee4bf…`, same prior `0d17fd03…` | release PR (evidence #707 issuecomment-6216352632; source #1066 and the belief log) | PENDING (image TBD, digest TBD). Rollback: delete the twelve release-46 lines, restore the release-45 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-45 image `deployment-01M4T9AVEVK51WP2GG8J34NRC9`. The belief package may stay on the volume. |
 | 45 | 2026-10-13 05:27 | The wide value-only bury on, as two `fly.toml` lines: `SHENGJI_PV_BURY_WIDE_VALUE = '1'` and `SHENGJI_PV_BURY_WIDE_K = '64'` (#974, token `bwv`): the bury candidates widen to 64 and the value head alone picks the bury, no MC stage; same 2 s bury budget and heuristic fallback. Play, declaration, package and other budgets are release 44's (the play digest is unchanged; only the bury digest moves). Built from main, so it also ships main since `8ac9543e`: #972 policy-head first trick, #973 whole-hand lead admission, #975 oracle-worlds diagnostic (all flag-gated off; #975 screen harness only), #955 lead-admission diagnostic, #977 harvest, #984 two-card bury swaps (flag-gated off), the round-end "Buried by <banker> · N pts" row #982, tests and Atlas. Evidence v76bwv44 +0.0488 [+0.0286, +0.0690] vs release 44 as served, first-round deals, POSITIVE, 10/10 windows positive. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8`; same package `491ee4bf…`, same prior `0d17fd03…` | #983 (evidence #707 issuecomment-6136852119; authority 6137203703; rule #974) | `deployment-01M4T9AVEVK51WP2GG8J34NRC9` (Fly v45), digest `sha256:6194eb27e62efab5f0e9218f453e730e7733fcacdeaf4996eef249718389dbcb`, from main `1ca97051`. Merged-tree smoke: bury p50/p90/max 0.218/0.226/0.234 s, 64 candidates, 0 fallbacks, 160 plays max 0.093 s. Rollback: delete the two `SHENGJI_PV_BURY_WIDE_*` lines, restore the release-44 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-44 image. |
 | 44 | 2026-10-11 17:05 | The value-guided trump declaration on, as one `fly.toml` flag: `SHENGJI_PV_VALUE_DECLARE` (#952, token `vd`): at each gated declare chance every option plus PASS is scored by the value head over 64 sampled completions and the heuristic's choice is replaced only when beaten; served off the event loop with stale guards and the heuristic as fallback (#959, #958, #965's gate fix). Package, width, other rules, bury and budgets are release 43's. Evidence v70vd43 +0.0497 [+0.0379, +0.0615] (first-round deals) and v71vd43lr +0.0352 [+0.0233, +0.0471] (later-round deals), both POSITIVE vs release 43 as served, 20/20 windows positive. | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6`; same package `491ee4bf…`, same prior `0d17fd03…` | #963 (evidence #707 issuecomment-6103734355 and 6110908081; rule #952; serving #959/#958/#965) | `deployment-01M4PC7724HSXC27PCEEREZWY4` (Fly v44), digest `sha256:d618f2371cd75fe31aad44a1e711cc5a8f13c517ad45ad93bc700d4bacc0abff`, from main `8ac9543e`. Rollback: delete the `SHENGJI_PV_VALUE_DECLARE` line, restore the release-43 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-43 image. |
 | 43 | 2026-10-09 15:46 | The doomed-throw re-select replaces the swap, as one `fly.toml` flag: `SHENGJI_PV_DOOMED_THROW_RESELECT` (#946, token `dtr`) instead of `SHENGJI_PV_DOOMED_THROW_SWAP`. When re-selection completes with an eligible alternative, a doomed throw and its forced component are excluded and the bot re-selects among its remaining admitted leads (reviewed fallbacks: budget abandonment keeps the first selection; all-excluded plays the forced component). A functional correctness fix (YJQJ round 1), no strength claim. Package, width, other rules, bury and budgets are release 42's. Built from main, so it also ships main since `e3aa1724`: the experimental rules adaptive worlds #936, its leads-only scope #944, wide lead admission #945 and value declare #952, all flag-gated off; #949's behaviour-preserving OptionalStage guard refactor, which is active through the re-select; tests/CI; Atlas. Evidence v67dtrg −0.0004 [−0.0122, +0.0114] vs release 42, INCONCLUSIVE, DEPLOY-ELIGIBLE (not noninferiority). | flag only; new served name `pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-r91979586-bury-hybrid-28570365d86b`; same package `491ee4bf…`, same prior `0d17fd03…` | #953 (evidence v67dtrg, #707 issuecomment-6080113005; rule #946) | `deployment-01M4H37RYNM42YHH6ZPEC6GKCK` (Fly v43), digest `sha256:2c0d94e2c263e94cf0cdc8b9cf3fce9c5c14d81d646a400b4db813ff0577eb7a`, from main `6b385b55`. Rollback: replace the `SHENGJI_PV_DOOMED_THROW_RESELECT` line with `SHENGJI_PV_DOOMED_THROW_SWAP = '1'`, restore the release-42 `SHENGJI_BOT` kept as the comment above it, redeploy; or the release-42 image. |
@@ -85,6 +89,158 @@ is `registry.fly.io/shengji:<image>`; every deploy was `fly deploy --ha=false` o
 | 29 | 2026-09-22 00:29 | The policy/value search (`pv-search` W64/K8, no playouts, 3 s budget) with hybrid bury (2 s) on the soft head 8ecd4fea. | new mode and package `soft-8ecd4fea.npz` (`ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75`); served name `pv-search-ccade130-w64-k8-r8bc573be-bury-hybrid-4f003f41e23e` | #588 (evidence #553, #589, #583) | `deployment-01M33NZERJS18A0G2NNG7S5FJ8` from main `292ee6e6`. Rollback: `SHENGJI_BOT` back to the release-28 name (its keys stay in `fly.toml`), redeploy; release 27 next. |
 | 28 | 2026-09-16 00:5x | JS-M1, the from-scratch joint net, as ONE package (value and prior) inside the MC shortlist. | new package `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747`; served name `mc-shortlist-0d17fd03-w32-r0d610b62-prior-0d17fd03-bury-hybrid-003c2abe49ff` | #425 / #435 (#455, #457) | `deployment-01M2M90VYR34R7CWKTTEA4C57V` from main `bf7fde5e`. Rollback: release 27 (`deployment-01M2M1B48P44H5HJXEP6ETYQXE`) or release 24 (`deployment-01M2BGBXE7JXWYBEVWNMG2YM5A`); prior-only rollback removes the four `SHENGJI_CWV_PRIOR_*` settings. |
 | 22–27 | — | The release-28 plan as approved, release 27, the release-26 image rollback, release 25 and its plan, and the release-22 boundary (hybrid bury on W32, the September-8 W32 rollout, the release-19/18 boundaries). | see the archive | — | [docs_archive/w32-fly-serving-through-2026-09-22.md](docs_archive/w32-fly-serving-through-2026-09-22.md), heading "Moved from DEPLOY.md on 2026-10-01". |
+
+## Release 46 (prepared, NOT deployed; release 45 plus the v92 combo)
+
+Prepared so that, once the gates below read, only Jerry's word and the deploy remain. Nothing in this section
+is a deploy record; the "Current production" block below stays release 45 until the deploy record exists.
+Jerry chose this release in session on 2026-10-16 ("Ok I want to ship v92 as next release"); the deploy itself
+is still his word. The D6 + X6-only release (draft #1065) is the fallback if the combo's gates fail.
+
+- **What changes.** Twelve `fly.toml` lines on release 45's environment, every other line byte-identical, and
+  `SHENGJI_BOT` becomes the name the registry derives from them,
+  `pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0`,
+  exactly the candidate v92combo45 screened (its launcher exported these twelve keys, the belief package at the
+  screen host's path with the same sha256):
+  - **Play worlds** (`SHENGJI_PV_WORLD_HISTORY_LEGAL`, `SHENGJI_PV_WORLD_HISTORY_DRAW`, `SHENGJI_PV_BELIEF_WORLDS`,
+    `SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'`, `SHENGJI_PV_BELIEF_SHA256`): every sampled
+    world must be history-legal, the draw honours the pair obligation, and the hidden hands are proposed by the
+    S17 belief model, a NumPy package (`ai/belief_numpy`, `shengji-belief-numpy-v1`; no torch) loaded once per
+    process and sha-verified against `SHENGJI_PV_BELIEF_SHA256` when the policy registers. A belief error,
+    including a preparation over `belief_numpy.PREP_SECONDS` (0.25 s), falls back for that decision to the
+    history-legal production draw and is recorded (`belief_fallback`, `belief_error`). The belief log is on by
+    default (`SHENGJI_PV_BELIEF_LOG` unset): each decision record gains `belief_seed`, a uint8 marginal snapshot
+    and its summary; `server/scripts/belief_debug.py` replays a logged decision's worlds. No name, digest or
+    decision depends on the log.
+  - **Exact endgame at 7 cards** (`SHENGJI_PV_EXACT_LEAD_ENDGAME`, `SHENGJI_PV_EXACT_DEEP_CARDS = '7'`,
+    `SHENGJI_PV_EXACT_FOLLOW`, `_SOLVER = 'compact-level'`, `_MAX_CARDS = '7'`, `_MAX_NODES = '50000000'`): a LEAD
+    where every hand holds ≤ 7 cards and more than one candidate is admitted is re-scored by exact level-mode
+    minimax in each sampled world after the first-trick leaf; a FOLLOW at ≤ 7 cards with more than one admitted
+    candidate is re-ranked by exact play on the compact-level solver. Both inside the unchanged 3 s play budget;
+    on budget expiry or any solver error the finalized baseline plays and the record says so
+    (`exact_lead_status` `abandoned`/`skipped_budget`, `exact_follow_abandoned`).
+  - **Declaration** (`SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST`): in the first round (no fixed banker) the
+    value-guided declaration's gate admits every declare chance with an option, not only the heuristic's; the
+    candidates, worlds, margin and every fallback are release 44's (`pv-declare-serving-fallback-v1`). Its record
+    carries `gate` (`every_first` counts the chances this flag added).
+  - Bury, budgets, play package, worlds and candidates are release 45's; the play digest moves (`r73993d62`)
+    and the bury suffix digests the play identity with it.
+  - Built from main plus the combo source, it also ships main since release 45's `1ca97051`: the consolidated
+    combo source (#1066: the belief stack and the optimized compact solver), the belief log, #1039 (the exact
+    stages), the `/healthz` `activity` counters (#1055; the "Next deploy" check in the release-45 block applies
+    to this deploy), the X-ray explanation of pv-search decisions (#1051), the stale-bot-play guard (#1050),
+    room-log failure reporting (#1043), per-room bot seeds (#1037), the duplicate-pin fix (#1035), training and
+    screen-harness changes and Atlas rows.
+- **Dependencies of the served path.** The belief path imports only NumPy and the standard library
+  (`ai/belief_numpy.py` and the featurizer modules it imports lazily; torch appears only inside training and
+  export functions that serving never calls); the image installs `uv sync --no-dev` (FastAPI, NumPy, Uvicorn),
+  and a full round of the served combo ran with `torch`, `scipy`, `pytest` and `Cython` blocked from import.
+  The compact solver is `ai/_endgame_fast`, built in the Dockerfile's `fastbuild` stage (its `ls` fails the
+  build if a `.so` is missing) and copied into the runtime stage; `fly.toml` sets `SHENGJI_FAST = '1'`;
+  `.dockerignore` keeps a local Darwin `_endgame_fast*.so` out of the build context. The pure-Python twin
+  returns identical results, only slower: a `python` backend in production is a latency regression, not a
+  wrong play.
+- **Evidence (ladder row 15 in `AI_POLICIES.md`).** v92combo45, ten first-round windows 126060910…126960910 vs
+  release 45 as served on cloud, **+0.2167 [+0.1923, +0.2412] POSITIVE**, MDE80 0.035 (#707
+  issuecomment-6216352632; archive `readouts/v92combo45-combo-vs-r45/`, result `f81f642b…`). Belief fallbacks 0
+  of 356,238 records; history-fallback worlds 0.1%; exact stages on 8.11 eligible decisions per arm-round,
+  abandons within the cap, 0 play fallbacks; bury unchanged. Banker share 71.4% vs 51.9% (vdef declares at every
+  first-round chance), so the points margin is role-confounded. Components alone, never pooled: v86bw45 belief
+  +0.1165, v89 D7 + X7 +0.0439, v85c vdef +0.0421 (confirmed). First-round deals only.
+  **Confirmation v92c: POSITIVE** (the same lane byte for byte on ten new seeds 128060910…128960910, cloud,
+  launcher `bb7d995d…`, reader `6b8be790…`): **+0.2284 [+0.2046, +0.2521]** levels/round (MDE80 0.034); belief
+  fallbacks 0 of 355,670 search records; exact abandons and timeouts 127 of 83,929 eligible (0.2%, cap 2%); no
+  play fallback or outer timeout on either arm (#707 issuecomment-6221702452; archive
+  `readouts/v92c-combo-confirm-vs-r45/`, result `4b184c78…`). Judged alone, never pooled with v92combo45.
+- **Latency gate: QUALIFIED** (v93lat, #707 issuecomment-6221489445; archive `readouts/v93lat-combo-latency/`).
+  `smoke_release45_bury.py --full-round` on this tree's `fly.toml` (the release-46 combo) vs `fly.toml` at main
+  `f22559f7` (release 45), ABBA 4 x 100 full rounds, perf core 3 under `taskset`, single-thread BLAS, one room,
+  through `_bot_declares` and `_paced_bot_step` -> `_commit_bot_turn`; reader `d518e037…`. Combo vs release 45:
+  play wall p50 / p95 / p99 / max 0.113 / 0.187 / 0.400 / 2.404 s vs 0.102 / 0.154 / 0.177 / 0.348 s (12,964 vs
+  12,828 plays); lead p95 0.229 vs 0.170 s, follow p95 0.161 vs 0.141 s; bury max 0.562 vs 0.489 s; declare max
+  call 0.081 vs 0.155 s; budget fallbacks 0 and 0, plays >= 3 s 0 and 0; exact abandons 1 of 2,911; belief
+  fallbacks 0 of 12,964; peak RSS 172.4 / 173.9 MB vs 124.5 / 124.7 MB (+48 MiB). Bars (predeclared): combo
+  play p95 <= 1.5 s and p99 <= 2.5 s, bury max < 2 s, zero budget fallbacks and nothing >= 3 s, abandons <= 2%,
+  peak RSS <= release 45 + 64 MiB and <= 448 MiB: all PASS. Limits: one perf core, one room; Fly's
+  shared-cpu-1x is slower and shared, so the tail (a 2.40 s follow on perf) may reach the 3 s budget there and
+  play the finalized baseline; the Fly check below reads that. Declaration timings are reported, not barred.
+- **Preconditions as they must be met** (the Release checklist): (1) a non-author PASS on the release PR at its
+  exact head and all CI checks green, including the package-gate step, which fetches BOTH pinned packages from
+  the `serving-packages` release (`smv3out-491ee4bf.npz`, `s17long-e2-763b5e05.npz`, each sha256-verified) and
+  runs `tests/test_release46_fly_config.py`; the combo source (#1066) and the belief log reviewed and merged on
+  main first; (2) the belief package on the volume, sha-verified, BEFORE the deploy (below): the policy
+  registers at server import and refuses a missing or mismatched belief file, so a deploy without it does not
+  boot the served bot; (3) the server-path smoke on the MERGED tree in full-round mode, so the 7-card endgames
+  and the belief proposal run through the server path:
+  `SHENGJI_FAST=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 python scripts/smoke_release45_bury.py --fly-toml ../fly.toml --map /data/models/smv3out-491ee4bf.npz=<local> --map /data/models/js-m1-0d17fd03.npz=<local> --map /data/models/s17long-e2-763b5e05.npz=<local> --rounds 10 --full-round --receipt smoke46.jsonl`
+  (validator PASS, the receipt's `bot.files` lists the belief package at `763b5e05…`; then the reader below
+  over `smoke46.jsonl.logs/*.jsonl`: belief fallbacks 0, exact-eligible decisions > 0, abandons 0, fallbacks
+  0, p95 and max recorded); (4) v92c POSITIVE and the latency packet read; (5) Jerry's word, in session. Deploy
+  with `fly deploy --ha=false` from a clean worktree at the merge commit, at 0 rooms.
+- **Belief package upload, before the deploy** (the play package and prior do not move):
+  1. Upload the asset to the volume through the running release-45 machine (it does not read the file):
+     `fly ssh sftp shell -a shengji`, then `put <local>/s17long-e2-763b5e05.npz /data/models/s17long-e2-763b5e05.npz`
+     (the local copy first verified with `shasum -a 256` against `763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343`,
+     or fetched from the `serving-packages` release asset of the same name).
+  2. Verify on the volume:
+     `fly ssh console -a shengji -C "sha256sum /data/models/s17long-e2-763b5e05.npz"` must print
+     `763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343`. Only then deploy the new `fly.toml`
+     (the switch of `SHENGJI_BOT`).
+- **Fly serving-budget check, after the deploy** (the combo adds the belief proposal to every play decision and
+  solver time to endgame decisions; the screen and the smoke run on faster hosts than Fly's shared CPU):
+  1. `/healthz`: `bot` is the name above, `fast: true`, `pv_search.sha256` `491ee4bf…`, `prior` `0d17fd03…`,
+     `budget_seconds "3"`, `bury_arm hybrid`, `bury_budget_seconds "2"`; and the `activity` block as the
+     release-45 "Next deploy" item describes. `/healthz` does not report the belief package; that the served bot
+     registered at all is the evidence its sha matched (registration refuses a mismatch).
+  2. The compiled solver and the belief package in the image and on the volume, one read-only line in the
+     machine (not the serving process; the same image and interpreter):
+     `fly ssh console -a shengji -C "sh -c 'cd /app/server && SHENGJI_FAST=1 .venv/bin/python -c \"import sys; from shengji.ai.endgame_compact import HAVE_FAST, default_backend; from shengji.ai.belief_numpy import load_belief_numpy; m = load_belief_numpy(sys.argv[1], sys.argv[2]); print(HAVE_FAST, default_backend(), m.package_sha256[:8])\" /data/models/s17long-e2-763b5e05.npz 763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'"`
+     must print `True compiled 763b5e05`. `False python` means `_endgame_fast` did not ship or does not import:
+     roll back (the latency gate did not qualify the pure twin).
+  3. The first live room's log, read once from the log cache (`server/scripts/fetch_fly_logs.sh`, then
+     `logs/<CODE>.jsonl`; read-only). Over its `play` events that carry a `decision`:
+     ```
+     python3 - logs/<CODE>.jsonl <<'EOF'
+     import json, sys
+     rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+     d = [r["decision"] for r in rows if r.get("e") == "play" and r.get("decision")]
+     bw = [x for x in d if "belief_fallback" in x]
+     bfb = [x for x in bw if x["belief_fallback"]]
+     leads = [x for x in d if x.get("exact_lead_status", "ineligible") != "ineligible"]
+     follows = [x for x in d if x.get("exact_follow_attempted")]
+     ab = [x for x in leads if x["exact_lead_status"] in ("abandoned", "skipped_budget")] + \
+          [x for x in follows if x.get("exact_follow_abandoned")]
+     fb = [x for x in d if x.get("schema") == "pv-search-fallback-v1" or not x.get("work_complete", True)]
+     q = lambda xs, p: sorted(xs)[min(len(xs) - 1, int(round(p * (len(xs) - 1))))] if xs else None
+     secs = [x["seconds"] for x in d if "seconds" in x]
+     endg = [x["seconds"] for x in leads + follows if "seconds" in x]
+     bms = [x["belief_ms"] for x in bw if "belief_ms" in x]
+     print(f"plays {len(d)} belief-drawn {len(bw)} belief fallbacks {len(bfb)} {sorted({x.get('belief_error') for x in bfb})}")
+     print(f"exact-eligible leads {len(leads)} follows {len(follows)} abandons {len(ab)} fallbacks {len(fb)}")
+     print(f"decision s all p50 {q(secs,.5)} p95 {q(secs,.95)} max {max(secs) if secs else None}; endgame p50 {q(endg,.5)} p95 {q(endg,.95)} max {max(endg) if endg else None}; belief_ms p50 {q(bms,.5)} p95 {q(bms,.95)}")
+     EOF
+     ```
+     The `bot_timing` events with `phase == "play"` give the same decisions' server-side wall
+     (`compute_seconds`, snapshot plus off-loop compute; `pacing_seconds` is the 0.7 s floor, not search), and the
+     `model_search` events their queue/run stages; the `declare_decision` records show `gate`. Record the lines
+     here with the room code. Rollback triggers: any `pv-search-fallback-v1` (budget) record; belief fallbacks
+     above 1% of belief-drawn decisions (the screen had 0); exact abandons above 2% of eligible decisions; or a
+     whole-decision p95 above 1.5 s (the latency packet's bar); any decision at the 3 s budget is examined (its
+     record says whether the PV search or only an exact stage expired) and two or more in the first room are a
+     trigger. One belief fallback on the
+     first decision after a boot (a cold preparation over 0.25 s) is recorded, not a trigger by itself.
+- **Rollback.** In `fly.toml` delete the twelve release-46 lines (`SHENGJI_PV_WORLD_HISTORY_LEGAL`,
+  `SHENGJI_PV_WORLD_HISTORY_DRAW`, `SHENGJI_PV_BELIEF_WORLDS`, `SHENGJI_PV_BELIEF_CKPT`, `SHENGJI_PV_BELIEF_SHA256`,
+  the six `SHENGJI_PV_EXACT_*`, `SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST`) and restore the release-45 `SHENGJI_BOT`
+  kept as the comment directly above it
+  (`pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8`), then
+  `fly deploy --ha=false`; or redeploy the release-45 image:
+  `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:deployment-01M4T9AVEVK51WP2GG8J34NRC9`
+  (Fly v45). The belief package may stay on the volume (release 45 does not read it).
+  `tests/test_bury_fly_config.py` and `tests/test_release46_fly_config.py` pin that the env without the twelve
+  lines derives release 45's name. Deeper rollbacks are release 45's below.
+- **On deploy**, move this section's facts into the Releases-table row 46 (image, digest, deploy time, authority
+  comment), rewrite "Current production" for release 46 and record the checks above with their numbers.
 
 ## Current production (release 45; release 44 plus the wide value-only bury)
 
@@ -167,7 +323,15 @@ heuristically) in every world; the highest mean plays. Declare is the heuristic 
 44, the value-guided declaration (`SHENGJI_PV_VALUE_DECLARE`; fallback record `pv-declare-serving-fallback-v1`). Bury
 is the release-27/28 value-guided hybrid arm on the same package (`SHENGJI_PV_BURY_ARM`, `SHENGJI_PV_BURY_*`,
 `SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS`; `PVSearchBuryBot`), since release 45 with the wide value-only chooser
-(`SHENGJI_PV_BURY_WIDE_VALUE`, `SHENGJI_PV_BURY_WIDE_K`; fallback record `cwv-bury-fallback-v1`). On budget expiry or any search error the sampler RNG is restored and the anchor
+(`SHENGJI_PV_BURY_WIDE_VALUE`, `SHENGJI_PV_BURY_WIDE_K`; fallback record `cwv-bury-fallback-v1`). Release 46 draws the
+play worlds history-legal and belief-proposed (`SHENGJI_PV_WORLD_HISTORY_LEGAL`, `SHENGJI_PV_WORLD_HISTORY_DRAW`,
+`SHENGJI_PV_BELIEF_WORLDS` with the hash-pinned `SHENGJI_PV_BELIEF_CKPT`; `ai/history_legality`, `ai/belief_numpy`;
+the record carries `history_*`, `belief_fallback`, `belief_proposed`, `belief_ms` and the belief log), adds the exact
+endgame stages on the play decision (`SHENGJI_PV_EXACT_LEAD_ENDGAME`, `SHENGJI_PV_EXACT_DEEP_CARDS`,
+`SHENGJI_PV_EXACT_FOLLOW` and its solver/max-cards/nodes knobs; `pv_exact_deep`, `pv_exact_follow`,
+`ai/endgame_compact` on the compiled `_endgame_fast`; the record carries `exact_lead_status`, `exact_lead_seconds`
+and the `exact_follow_*` fields, and a stage that does not complete leaves the finalized baseline choice) and opens
+the value declaration at every first-round chance (`SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST`; record `gate`). On budget expiry or any search error the sampler RNG is restored and the anchor
 plays with a `pv-search-fallback-v1` record; otherwise the record is `pv-search-decision-v1`
 (carries `played`, the admitted indices, value means, work counts).
 

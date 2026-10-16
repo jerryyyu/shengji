@@ -38,6 +38,7 @@ from shengji.train import pv_search_policy as pv
 from test_refusal_constraints import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION_SHA,
                                       ZeroEvaluator, predict, thrown)
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
+from test_release46_fly_config import without_combo
 
 RULE_KEYS = {"history_follow_events", "history_rejections", "history_fallback_worlds",
              "history_rejections_by_age"}
@@ -354,7 +355,9 @@ def test_a_proposal_source_plugs_in_at_the_draw():
 def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, tmp_path):
     """No stub model/sampler: the enabled env recipe reaches the live consumer."""
     from shengji.api import server as srv
-    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    # the release-45 base (production without release 46's combo lines) plus the one rule
+    env = without_combo(tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml')
+                                      .read_text())['env'])
     env.update(SHENGJI_PV_CKPT=str(pinned_production_package),
                SHENGJI_PV_WORLD_HISTORY_LEGAL='1')
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))

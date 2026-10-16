@@ -81,13 +81,55 @@ primary_region = 'ewr'
   # (#707 issuecomment-6136852119). Rollback: delete the SHENGJI_PV_BURY_WIDE_VALUE and
   # SHENGJI_PV_BURY_WIDE_K lines and restore the release-44 name:
   # RELEASE 44 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-6c1fb26b80e6
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8'
+  # RELEASE 46 (Jerry 2026-10-16: "Ok I want to ship v92 as next release"; gated on the v92c
+  # confirmation, the latency packet and the Fly check; deploy on his word): release 45 plus the
+  # combo screened as v92combo45 (-whl -whd -bw -ele -vdef -ed7 -xf7 -xfcompactlevel).
+  # PLAY WORLDS: every sampled world must be history-legal (an earlier follow by another seat
+  # must have been legal for the hand that world gives it), the draw itself honours the pair
+  # obligation, and the hidden hands are proposed by the S17 belief model (a NumPy package,
+  # sha-pinned, on the volume) from the round's public history; any belief error falls back to
+  # the history-legal draw for that decision. EXACT ENDGAME: a LEAD where every hand holds <= 7
+  # cards and more than one candidate is admitted is re-scored by exact level-mode minimax in
+  # each sampled world after the first-trick leaf; a FOLLOW at <= 7 cards with more than one
+  # admitted candidate is re-ranked by exact play on the compiled compact-level solver (50M
+  # nodes). DECLARATION: in the first round (no fixed banker) the value-guided declaration is
+  # consulted at every declare chance with an option. Play, bury and declaration budgets,
+  # package, worlds and candidates are release 45's (the bury recipe is unchanged; the play
+  # digest moves and the bury suffix digests the play identity with it). Evidence: v92combo45
+  # (ten fresh first-round windows vs release 45 as served) +0.2167 [+0.1923, +0.2412] POSITIVE
+  # (#707 issuecomment-6216352632); belief fallbacks 0 of 356,238 records, history-fallback
+  # worlds 0.1%; components alone v86bw45 +0.1165, v89 D7+X7 +0.0439, v85c vdef +0.0421 (not
+  # pooled); banker share 71.4% vs 51.9% (vdef), so the points margin is role-confounded. The
+  # fresh-seed confirmation v92c and the whole-decision latency packet are recorded in
+  # DEPLOY.md. Rollback: delete the twelve release-46 lines below (three WORLD_HISTORY/BELIEF
+  # flags, the two BELIEF package lines, the six SHENGJI_PV_EXACT_* lines and
+  # SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST) and restore the release-45 name:
+  # RELEASE 45 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
   SHENGJI_PV_LEAD_ANCHOR = '1'
   SHENGJI_PV_DOOMED_THROW_RESELECT = '1'
   SHENGJI_PV_VALUE_DECLARE = '1'
+  # Release 46: the combo (see the RELEASE 46 note above). History-legal, belief-proposed
+  # play worlds; the belief package must be on the volume at this path with this sha256.
+  SHENGJI_PV_WORLD_HISTORY_LEGAL = '1'
+  SHENGJI_PV_WORLD_HISTORY_DRAW = '1'
+  SHENGJI_PV_BELIEF_WORLDS = '1'
+  SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'
+  SHENGJI_PV_BELIEF_SHA256 = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'
+  # The exact endgame search at 7 cards. The compact-level solver is the compiled
+  # _endgame_fast extension when SHENGJI_FAST=1 activated the engine (its pure-Python twin
+  # otherwise, identical results, slower).
+  SHENGJI_PV_EXACT_LEAD_ENDGAME = '1'
+  SHENGJI_PV_EXACT_DEEP_CARDS = '7'
+  SHENGJI_PV_EXACT_FOLLOW = '1'
+  SHENGJI_PV_EXACT_FOLLOW_SOLVER = 'compact-level'
+  SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS = '7'
+  SHENGJI_PV_EXACT_FOLLOW_MAX_NODES = '50000000'
+  # The value-guided declaration at every first-round declare chance.
+  SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST = '1'
   SHENGJI_PV_CKPT = '/data/models/smv3out-491ee4bf.npz'
   SHENGJI_PV_SHA256 = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
   SHENGJI_PV_WORLDS = '64'

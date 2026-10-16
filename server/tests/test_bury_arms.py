@@ -31,6 +31,7 @@ from test_bury_fly_config import RELEASE38, SERVED_PV_SHA
 from test_cwv_bury_policy import _Evaluator, _Helper, _bury_state
 from test_cwv_bury_serving import Evaluator
 from test_pv_search_serving import package  # noqa: F401
+from test_release46_fly_config import COMBO_KEYS
 
 SMALL = dict(worlds=3, candidates=4, cap=400, batch_size=16)
 BURY = dict(max_candidates=4, model_worlds=2, selection_worlds=2, alternatives=1)
@@ -47,7 +48,8 @@ def _fly_env():
     assert env.get("SHENGJI_PV_DOOMED_THROW_RESELECT") == "1"
     return {k: v for k, v in env.items() if k not in (
         "SHENGJI_PV_DOOMED_THROW_RESELECT", "SHENGJI_PV_VALUE_DECLARE",
-        "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
+        "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
+        and k not in COMBO_KEYS}   # release 46's combo lines
 
 
 def _names(monkeypatch, **overrides):

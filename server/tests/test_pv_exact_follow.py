@@ -24,6 +24,7 @@ from test_pv_admission_rules import predict, ZeroEvaluator
 from test_endgame import _round
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
 from test_pv_search_serving import _play_state
+from test_release46_fly_config import without_combo
 from shengji.ai.heuristic import HeuristicBot
 from shengji.api import server as srv
 from shengji.engine.game import Game
@@ -38,7 +39,10 @@ class FollowDevBot(pv.PVSearchBuryBot):
 
 @pytest.mark.parametrize('hand_cap', [3, 4])
 def test_pinned_model_follow_snapshot_and_commit(pinned_production_package, tmp_path, hand_cap):
-    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    # the release-45 base (production's fly.toml without release 46's twelve combo lines):
+    # the baseline bot runs no exact stage and the dev bot sets its own
+    env = without_combo(tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml')
+                                      .read_text())['env'])
     env['SHENGJI_PV_CKPT'] = str(pinned_production_package)
     recipe = pv.pv_env_recipe(env)
     rnd = _play_state()
@@ -84,7 +88,10 @@ def test_pinned_model_follow_snapshot_and_commit(pinned_production_package, tmp_
 
 
 def follow_env(path, exact_cards=6):
-    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    # the release-45 base with the exact stages set here, so the follow stage is the only
+    # rule under test
+    env = without_combo(tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml')
+                                      .read_text())['env'])
     env.update(SHENGJI_PV_CKPT=str(path), SHENGJI_PV_EXACT_LEAD_ENDGAME='1',
                SHENGJI_PV_EXACT_DEEP_CARDS=str(exact_cards), SHENGJI_PV_EXACT_FOLLOW='1',
                SHENGJI_PV_EXACT_FOLLOW_SOLVER='compact-level',
@@ -243,8 +250,9 @@ def test_follow_solver_contract_matches_lazy_implementation():
 
 
 def test_follow_off_recipe_does_not_import_optional_solver(pinned_production_package):
-    fly_env = tomllib.loads(
-        (Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    # the release-45 base: production's fly.toml without release 46's twelve combo lines
+    fly_env = without_combo(tomllib.loads(
+        (Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env'])
     source = """
 import json
 import sys

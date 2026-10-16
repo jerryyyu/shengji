@@ -28,6 +28,7 @@ from shengji.engine.game import Game
 from shengji.train import pv_search_policy as pv
 from test_refusal_constraints import PRODUCTION_SHA
 from test_world_history_legal import RELEASE45_ENV, RELEASE45_NAME
+from test_release46_fly_config import without_combo
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
 
 SERVER = Path(__file__).resolve().parents[1]
@@ -137,7 +138,9 @@ def belief_package(tmp_path_factory):
 
 
 def served_env(package_path, belief):
-    env = tomllib.loads((SERVER.parent / "fly.toml").read_text())["env"]
+    # the release-45 base (production without release 46's combo lines) plus the
+    # belief proposal: the exact stages and the declaration gate are not under test
+    env = without_combo(tomllib.loads((SERVER.parent / "fly.toml").read_text())["env"])
     env = {k: v for k, v in env.items() if k.startswith("SHENGJI_PV_")}
     # no serving budget: a wall-clock fallback would make the two arms differ
     # for a reason that is not the flag

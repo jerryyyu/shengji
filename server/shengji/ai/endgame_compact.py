@@ -48,7 +48,10 @@ the signed-level objective, :data:`LEVEL_CUTS`).  The compiled backend runs a
 separate search for it (``_endgame_fast`` level-mode notes) whose node counts
 differ from ``solve``; the python backend solves the root exactly and maps the
 value, so both return the same number.  ``solve`` keeps its exact contract and
-is untouched by this mode.
+is untouched by this mode.  ``level_opts`` (compiled only; None = the default
+set ``_endgame_fast.LEVEL_DEFAULT``) picks the level search's options, none of
+which changes a value; :meth:`~CompactWorldSession.play_key` names the plays
+that search treats as one move.
 """
 
 from __future__ import annotations
@@ -359,7 +362,7 @@ class CompactWorldSession:
     def __init__(self, rnd: Round, *, max_hand_cards: int = 4,
                  max_nodes: int = 250_000, check_budget=None, alpha_beta=False,
                  backend: str | None = None, budget_every: int = 256,
-                 level: bool = False):
+                 level: bool = False, level_opts: int | None = None):
         self.context = _context_key(rnd)
         # the reference argument checks, whichever backend runs
         _CompactSolver(max_hand_cards=max_hand_cards, max_nodes=max_nodes)
@@ -381,6 +384,7 @@ class CompactWorldSession:
         self.alpha_beta = alpha_beta
         self.budget_every = budget_every
         self.level = bool(level)
+        self.level_opts = level_opts
         self.frontiers = 0
         self.solver = None
         self._root = None          # the first root: binds the rule context
@@ -419,7 +423,7 @@ class CompactWorldSession:
                 budget_every=self.budget_every,
                 exc_type=ExactEndgameRefusal,
                 budget_exc_type=ExactEndgameBudgetExceeded,
-                **({'level': True} if self.level else {}))
+                **({'level': True, 'level_opts': self.level_opts} if self.level else {}))
 
     def _to_python(self) -> None:
         """Rebuild this session's table on the Python backend (class doc)."""
@@ -482,6 +486,21 @@ class CompactWorldSession:
         root = int(rnd.attacker_points)
         reduced = level_points(points, cuts)
         return reduced if reduced > root else root
+
+    def play_key(self, rnd: Round, cards):
+        """On a compiled level session: a key equal for two plays of the acting
+        seat at ``rnd`` when the level search treats them as interchangeable
+        (``_endgame_fast`` ``play_key``), so their children have equal values;
+        None on the python backend (no such reduction there)."""
+        if not self.level:
+            raise ExactEndgameRefusal("play_key needs a level-mode session")
+        self._check_root(rnd)
+        if self.backend != "compiled":
+            return None
+        try:
+            return self.solver.play_key(rnd, list(cards))
+        except _endgame_fast.SlotCapacityExceeded:
+            return None
 
     def solve_points(self, rnd: Round) -> int:
         """The root's exact minimax attacker points on a level-mode session

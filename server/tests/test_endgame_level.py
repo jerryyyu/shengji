@@ -129,6 +129,106 @@ def test_exact_root_means_match_reference(monkeypatch, backend):
     assert checked >= 6
 
 
+def _option_sets():
+    if not HAVE_FAST:
+        return []
+    from shengji.ai import _endgame_fast as fast
+    each = [fast.LEVEL_EQV, fast.LEVEL_FGEN, fast.LEVEL_ETC, fast.LEVEL_KIT, fast.LEVEL_CANON,
+            fast.LEVEL_GUESS, fast.LEVEL_FSN, fast.LEVEL_ORDER, fast.LEVEL_NOLASTTT]
+    every = 0
+    for opt in each:
+        every |= opt
+    return [fast.LEVEL_LEGACY, *each, fast.LEVEL_DEFAULT, every]
+
+
+def _option_roots():
+    """Session root groups: dense random positions (4 cards) and heuristic
+    self-play leads and follows at 5 cards, each with its acting seat's
+    children, so later roots reuse a table holding dead slots."""
+    rng = random.Random(20261016)
+    small, deep = [], []
+    for _ in range(40):
+        rnd = _random_position(rng)
+        if rnd.phase == "play":
+            small.append(_session_roots(rnd))
+    for seed in range(4600200, 4600206):
+        rnd, _ = _lead_at(seed, 5)
+        follow = _follow_at(seed, 5)
+        for root in (rnd, follow):
+            if root is None:
+                continue
+            group = [root]
+            for action in exhaustive_legal_actions(root, root.turn, max_hand_cards=5)[:5]:
+                child = _clone_for_play(root)
+                child.play(root.turn, list(action))
+                if child.phase == "play":
+                    group.append(child)
+            deep.append(group)
+    return small, deep
+
+
+_OPTION_CASES = {}
+
+
+def _option_cases():
+    """Root groups with their exact minimax points: the reference minimax on
+    the small groups, the first level search (``LEVEL_LEGACY``, held to the
+    reference by the tests above and by the small groups here) on the deep ones,
+    which the reference solves too slowly for the pure-engine CI job."""
+    if not _OPTION_CASES:
+        from shengji.ai import _endgame_fast as fast
+        small, deep = _option_roots()
+        cases = [[(root, _reference_points(root)) for root in roots] for roots in small]
+        for roots in deep:
+            legacy = CompactWorldSession(roots[0], max_hand_cards=5, max_nodes=10**9,
+                                         alpha_beta=True, backend="compiled", level=True,
+                                         level_opts=fast.LEVEL_LEGACY)
+            cases.append([(root, legacy.solve_points(root)) for root in roots])
+        _OPTION_CASES["cases"] = cases
+    return _OPTION_CASES["cases"]
+
+
+@pytest.mark.skipif(not HAVE_FAST, reason="compiled engine only")
+@pytest.mark.parametrize("opts", _option_sets())
+def test_level_options_match_reference_minimax(opts):
+    compared = 0
+    for group in _option_cases():
+        points_session = CompactWorldSession(group[0][0], max_hand_cards=5, max_nodes=10**9,
+                                             alpha_beta=True, backend="compiled", level=True,
+                                             level_opts=opts)
+        level_session = CompactWorldSession(group[0][0], max_hand_cards=5, max_nodes=10**9,
+                                            alpha_beta=True, backend="compiled", level=True,
+                                            level_opts=opts)
+        for root, want in group:
+            assert level_session.solve_level(root) == _expected_level_points(root, want)
+            assert points_session.solve_points(root) == want
+            compared += 1
+    assert compared >= 250
+
+
+@pytest.mark.skipif(not HAVE_FAST, reason="compiled engine only")
+def test_play_key_classes_have_equal_values():
+    """Plays with one ``play_key`` lead to children of equal value."""
+    merged = 0
+    for group in _option_cases():
+        root = group[0][0]
+        session = CompactWorldSession(root, max_hand_cards=5, max_nodes=10**9,
+                                      alpha_beta=True, backend="compiled", level=True)
+        seen = {}
+        for action in exhaustive_legal_actions(root, root.turn, max_hand_cards=5):
+            child = _clone_for_play(root)
+            child.play(root.turn, list(action))
+            value = (child.attacker_points if child.phase == "round_end"
+                     else session.solve_points(child))
+            key = session.play_key(root, action)
+            if key in seen:
+                assert seen[key] == value
+                merged += 1
+            else:
+                seen[key] = value
+    assert merged >= 10
+
+
 def test_exact_root_means_refusals():
     rnd, _ = _lead_at(4600001, 5)
     seat = rnd.turn

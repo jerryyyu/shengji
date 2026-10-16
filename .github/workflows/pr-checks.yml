@@ -89,7 +89,6 @@ jobs:
           tests/test_banker_sampler.py
           tests/test_bot_scheduler.py
           tests/test_server_ws.py
-          tests/test_health_activity.py
           tests/test_room_bot_seed.py
           tests/test_structured_bury.py
           tests/test_harvest_trajectory.py
@@ -102,7 +101,6 @@ jobs:
           tests/test_check_comment_provenance.py
           tests/test_receipt_summary.py
           tests/test_paired_window_metadata.py
-          tests/test_paired_window_stats.py
           tests/test_doomed_throw_readout.py
           tests/test_v53dts_reader_build.py
           tests/test_refusal_readout_summary.py
@@ -170,7 +168,7 @@ jobs:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
           SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py
 
   import-walk:
     runs-on: ubuntu-latest

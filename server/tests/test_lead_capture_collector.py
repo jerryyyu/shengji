@@ -15,8 +15,111 @@ from shengji.train import pv_search_policy as pv
 from test_pv_search_serving import package  # noqa: F401
 
 
+def _horizon_record(*, worlds=2, trick=None, policy=None, leaves=True,
+                    actions=None, admitted=None):
+    actions = [['A'], ['K']] if actions is None else actions
+    admitted = actions if admitted is None else admitted
+    arms = {
+        'trick': {'values': trick if trick is not None else [[1.0, 0.0], [1.0, 0.0]]},
+        'policy': {'values': policy if policy is not None else [[2.0, 0.0], [2.0, 0.0]]},
+    }
+    if leaves:
+        arms['trick']['leaves'] = [
+            {'action_plies': 2, 'completed_tricks': 1, 'terminal': False},
+            {'action_plies': 3, 'completed_tricks': 1, 'terminal': True},
+            {'action_plies': 2, 'completed_tricks': 1, 'terminal': False},
+            {'action_plies': 3, 'completed_tricks': 1, 'terminal': True},
+        ]
+        arms['policy']['leaves'] = [
+            {'action_plies': 4, 'completed_tricks': 2, 'terminal': False},
+            {'action_plies': 5, 'completed_tricks': 2, 'terminal': True},
+            {'action_plies': 4, 'completed_tricks': 2, 'terminal': False},
+            {'action_plies': 5, 'completed_tricks': 2, 'terminal': True},
+        ]
+    return {'status': 'complete', 'actions': actions, 'worlds': worlds,
+            'arms': arms}, {'admitted': admitted}
+
+
+def test_summarize_captured_horizon_describes_winners_and_actual_depths():
+    from shengji.train.paired_horizon import summarize_captured_horizon
+    horizon, decision = _horizon_record(
+        # Large shared world offsets leave a constant paired candidate gap.
+        trick=[[1004.0, 1002.0], [4.0, 2.0]],
+        policy=[[1005.0, 1003.0], [5.0, 3.0]])
+    summary = summarize_captured_horizon(horizon, decision)
+    assert summary['trick_mean_argmax_index'] == 0
+    assert summary['policy_mean_argmax_index'] == 0
+    assert summary['winner_flip'] is False
+    assert summary['policy_winner_minus_trick_winner_mean'] == 0.0
+    assert summary['policy_winner_minus_trick_winner_se'] == 0.0
+    assert summary['actual']['trick'] == {
+        'action_plies_min': 2, 'action_plies_max': 3,
+        'completed_tricks_min': 1, 'completed_tricks_max': 1,
+        'terminal_count': 2}
+    assert summary['actual']['policy']['terminal_count'] == 2
+    assert summarize_captured_horizon(
+        {'paired_horizon': horizon, 'replay': {'decision': decision}}) == summary
+
+    horizon, decision = _horizon_record(
+        # Shared offsets are large, but the selected deep-arm gap is stable.
+        trick=[[104.0, 102.0], [4.0, 2.0]],
+        policy=[[100.0, 103.0], [0.0, 3.0]], leaves=False)
+    summary = summarize_captured_horizon(horizon, decision)
+    assert summary['trick_mean_argmax_index'] == 0
+    assert summary['policy_mean_argmax_index'] == 1
+    assert summary['winner_flip'] is True
+    assert summary['policy_winner_minus_trick_winner_mean'] == 3.0
+    assert summary['policy_winner_minus_trick_winner_se'] == 0.0
+
+    horizon, decision = _horizon_record(
+        trick=[[2.0, 2.0], [1.0, 1.0]],
+        policy=[[0.0, 3.0], [0.0, 1.0]], leaves=False)
+    summary = summarize_captured_horizon(horizon, decision)
+    assert summary['winner_flip'] is True
+    assert summary['policy_winner_minus_trick_winner_mean'] == 2.0
+    assert summary['policy_winner_minus_trick_winner_se'] == 1.0
+
+
+def test_summarize_captured_horizon_single_world_and_skip_states():
+    from shengji.train.paired_horizon import summarize_captured_horizon
+    horizon, decision = _horizon_record(
+        worlds=1, trick=[[4.0, 4.0]], policy=[[9.0, 1.0]], leaves=False)
+    summary = summarize_captured_horizon(horizon, decision)
+    assert summary['policy_winner_minus_trick_winner_se'] is None
+    assert summarize_captured_horizon({'status': 'abandoned', 'reason': 'Yield'}) == {
+        'status': 'abandoned', 'reason': 'Yield'}
+    assert summarize_captured_horizon({'status': 'skipped',
+                                       'reason': 'incomplete_served_capture'}) == {
+        'status': 'skipped', 'reason': 'incomplete_served_capture'}
+
+
+@pytest.mark.parametrize('mutate, message', [
+    (lambda h, d: h['arms']['trick']['values'][0].__setitem__(0, float('nan')), 'finite'),
+    (lambda h, d: d.__setitem__('admitted', [['Q'], ['K']]), 'match'),
+])
+def test_summarize_captured_horizon_rejects_malformed_complete(mutate, message):
+    from shengji.train.paired_horizon import summarize_captured_horizon
+    horizon, decision = _horizon_record()
+    mutate(horizon, decision)
+    with pytest.raises(ValueError, match=message):
+        summarize_captured_horizon(horizon, decision)
+
+
+def test_summarize_captured_horizon_rejects_wrong_matrix_and_leaf_count():
+    from shengji.train.paired_horizon import summarize_captured_horizon
+    horizon, decision = _horizon_record()
+    horizon['arms']['trick']['values'] = [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]
+    with pytest.raises(ValueError, match='shape'):
+        summarize_captured_horizon(horizon, decision)
+    horizon, decision = _horizon_record()
+    horizon['arms']['policy']['leaves'].pop()
+    with pytest.raises(ValueError, match='contain 4 rows'):
+        summarize_captured_horizon(horizon, decision)
+
+
 @pytest.mark.parametrize('mode', ['historical', 'served', 'fallback', 'served_round',
-                                  'served_stop', 'served_error'])
+                                  'served_stop', 'served_error', 'horizon', 'horizon_timeout',
+                                  'horizon_yield', 'horizon_cost'])
 def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     plays = [e for e in events if e['e'] == 'play']
@@ -32,6 +135,9 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             self.sampler = Sampler()
             self._refusals = RefusalLedger()
 
+        def _select(self, root, seat, admitted, means, worlds=None):
+            return 0
+
         def decide_play(self, root, seat):
             nonlocal cursor
             if mode == 'served_error' and cursor == 4:
@@ -45,6 +151,9 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             self._cap = ([event['attempted'], ['fixture-only']],)
             self._probe = True
             self.last_decision_record = dict(work_complete=mode != 'fallback', played=list(event['attempted']))
+            if mode.startswith('horizon'):
+                self._select(root, seat, [list(event['attempted'])], [0.0],
+                             worlds=[([list(h) for h in root.hands], list(root.buried))])
             return list(event['attempted'])
 
     class Game:
@@ -81,16 +190,39 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         snapshot.write_text('{}')
         args = ['--served-env', str(snapshot), *args]
     costs = tmp_path / 'costs.jsonl'
+    if mode == 'horizon_cost':
+        args = ['--cost-out', str(costs), *args]
     if mode.startswith('served_'):
         args = ['--max-rounds', '1', '--cost-out', str(costs), *args]
         # A round cap, not the lead cap, must stop the next deal.
         args[args.index('16')] = '128'
+    if mode.startswith('horizon'):
+        from shengji.train import paired_horizon
+        def measured(bot, captured, record, *, gate):
+            gate()
+            assert captured['actions'] == [record['played']]
+            assert len(captured['worlds']) == 1
+            if mode == 'horizon_timeout':
+                raise pv.PVSearchBudgetExceeded('test deadline')
+            if mode == 'horizon_yield':
+                raise collector.Yield('stop_file')
+            return {'status': 'complete', 'consumer_witness': True}
+        monkeypatch.setattr(paired_horizon, 'measure_captured_horizon', measured)
+        args = ['--paired-horizon-seconds', '1', *args]
     if mode == 'served_error':
         with pytest.raises(RuntimeError, match='injected later'):
             collector.main(args)
     else:
         collector.main(args)
     rows = [json.loads(line) for line in out.read_text().splitlines()]
+    if mode == 'horizon_cost':
+        journal = [json.loads(line) for line in costs.read_text().splitlines()]
+        assert journal[-1]['kind'] == 'terminal'
+        assert journal[-1]['rounds'] == 0
+        assert journal[-1]['positions'] == 16
+        assert len([r for r in journal if r['kind'] == 'decision']) == cursor
+        assert not any(r['kind'] == 'round_complete' for r in journal)
+        assert all(row['paired_horizon']['consumer_witness'] for row in rows)
     if mode.startswith('served_'):
         journal = [json.loads(line) for line in costs.read_text().splitlines()]
         assert journal[0]['kind'] == 'start'
@@ -109,9 +241,27 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             return  # partial roots and every completed decision survived
         assert journal[-1]['reason'] == 'max_rounds'
         assert journal[-1]['rounds'] == 1
-    assert cursor == len(plays) == 64
-    assert len(rows) == 16
-    if mode != 'historical':
+    assert len(plays) == 64
+    assert cursor == (1 if mode == 'horizon_yield' else 61 if mode.startswith('horizon') else 64)
+    assert len(rows) == (1 if mode == 'horizon_yield' else 16)
+    if mode.startswith('horizon'):
+        # Stop before committing the final captured action, never finish the
+        # rest of its trick/round after max_positions or a global stop signal.
+        assert rnd.phase == 'play' and not rnd.trick.plays
+    assert all(('paired_horizon' in row) == mode.startswith('horizon') for row in rows)
+    if mode.startswith('horizon'):
+        assert all(row['collection']['mode'] == 'served-recipe-paired-horizon-dev' for row in rows)
+        assert all(row['collection']['paired_horizon_seconds'] == 1 for row in rows)
+        assert all('No counterfactual analysis or bot RNG restoration.' not in row['collection']['limits']
+                   for row in rows)
+    if mode == 'horizon':
+        assert all(row['paired_horizon']['consumer_witness'] for row in rows)
+    if mode == 'horizon_timeout':
+        assert all(row['paired_horizon'] == {'status': 'abandoned', 'reason': 'PVSearchBudgetExceeded'}
+                   for row in rows)
+    if mode == 'horizon_yield':
+        assert rows[0]['paired_horizon'] == {'status': 'abandoned', 'reason': 'Yield'}
+    if mode not in ('historical', 'horizon_yield'):
         from scripts.lead_finish_classify import main as classify
         classified = tmp_path / 'classified.json'
         classify([str(out), str(classified)])
@@ -133,8 +283,9 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             assert row['attempted'] == row['replay']['decision']['played']
             assert 'variants' not in row
         assert ledger.observe(root) == ledger.refusals
-    assert any(e['attempted'] != e['accepted'] for row in rows for e in row['replay']['plays'])
-    assert any(row['replay']['ledger']['refusals'] and row['replay']['root']['notice'] is None for row in rows)
+    if mode != 'horizon_yield':
+        assert any(e['attempted'] != e['accepted'] for row in rows for e in row['replay']['plays'])
+        assert any(row['replay']['ledger']['refusals'] and row['replay']['root']['notice'] is None for row in rows)
     saved = out.read_bytes()
     with pytest.raises(FileExistsError):
         collector.main(args)
@@ -151,7 +302,7 @@ def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, mo
 
 
 @pytest.mark.parametrize('budget', ['0.000000001', '60'])
-def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budget):
+def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budget, monkeypatch):
     """Real tiny package, registry factory, lifecycle and lead replay; no screen."""
     path, sha = package
     env = dict(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
@@ -180,10 +331,52 @@ def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budg
             assert bury['schema'] == 'cwv-bury-policy-v1'
         assert any(bot.last_declare_record is not None for bot in group)
     root = roots[0]
-    cards = bots[root.turn].decide_play(root, root.turn)
+    from shengji.train.paired_horizon import capture_horizon_inputs, measure_captured_horizon
+    with capture_horizon_inputs(bots[root.turn]) as horizon_inputs:
+        cards = bots[root.turn].decide_play(root, root.turn)
     assert cards == direct[root.turn].decide_play(roots[1], root.turn)
     record = bots[root.turn].last_decision_record
     assert record['work_complete'] == (float(budget) > 1)
+    rng = bots[root.turn].sampler.rng.getstate()
+    saved_record = copy.deepcopy(record)
+    counter_keys = ('calls', 'positions', 'model_rows', 'terminal_rows',
+                    'forward_calls', 'wall_secs', 'cpu_secs')
+    evaluator_before = {k: getattr(bots[root.turn].evaluator, k) for k in counter_keys}
+    horizon = measure_captured_horizon(bots[root.turn], horizon_inputs, record, gate=lambda: None)
+    assert horizon['status'] == ('complete' if float(budget) > 1 else 'skipped')
+    assert bots[root.turn].sampler.rng.getstate() == rng
+    assert bots[root.turn].last_decision_record == saved_record
+    assert {k: getattr(bots[root.turn].evaluator, k) for k in counter_keys} == evaluator_before
+    if horizon['status'] == 'complete':
+        assert horizon['actions'] == record['admitted']
+        assert horizon['worlds'] == 2
+        assert horizon['summary']['status'] == 'complete'
+        assert horizon['summary']['trick_mean_argmax_index'] in (0, 1)
+        assert horizon['summary']['policy_mean_argmax_index'] in (0, 1)
+        serialized = json.loads(json.dumps(horizon))
+        assert serialized['summary']['policy_winner_minus_trick_winner_se'] is not None
+        for name, depth in [('trick', 1), ('policy', 2)]:
+            assert len(serialized['arms'][name]['values']) == 2
+            assert all(r['completed_tricks'] == depth for r in serialized['arms'][name]['leaves'])
+        # Expiry during summary construction must discard the whole pair,
+        # including a fully computed matrix, before collector publication.
+        from shengji.train import paired_horizon as ph
+        original_summary = ph.summarize_captured_horizon
+        expired = False
+        def summarize_then_expire(*args):
+            nonlocal expired
+            result = original_summary(*args)
+            expired = True
+            return result
+        def gate():
+            if expired:
+                raise pv.PVSearchBudgetExceeded('summary deadline')
+        with monkeypatch.context() as patch:
+            patch.setattr(ph, 'summarize_captured_horizon', summarize_then_expire)
+            with pytest.raises(pv.PVSearchBudgetExceeded, match='summary deadline'):
+                ph.measure_captured_horizon(bots[root.turn], horizon_inputs, record, gate=gate)
+        assert bots[root.turn].last_decision_record == saved_record
+        assert bots[root.turn].sampler.rng.getstate() == rng
     packet = collector.LeadCapture(root).capture(root, ledger=bots[root.turn]._refusals, decision=record)
     restored, _ = restore_with_ledger(packet)
     restored.play(root.turn, cards)

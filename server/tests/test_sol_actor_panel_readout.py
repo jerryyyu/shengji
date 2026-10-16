@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -226,6 +227,17 @@ def test_real_synthetic_transport_pipeline_reaches_actor_readout(tmp_path, monke
     assert result["comparison"]["clean_complete_coverage"] is True
     assert result["comparison"]["complete_deal_seeds"] == seeds
     assert all(report["config"]["information"] == ["actor-only"] for report in reports.values())
+    refs = {}
+    for policy in readout.POLICIES:
+        path = tmp_path / policy / "result.json"
+        refs[policy] = {"path": str(path), "sha256": _plan_pin(path)}
+    plan_path = tmp_path / "sealed-pipeline-plan.json"
+    plan_path.write_text(json.dumps({"schema": readout.PLAN_SCHEMA,
+                                    "report_refs": refs, "expected_configs": expected}))
+    sealed = readout.read_sealed_actor_panel(plan_path, _plan_pin(plan_path))
+    assert sealed["status"] == "complete"
+    assert sealed["comparison"]["complete_deal_seeds"] == seeds
+    assert sealed["comparison"]["clean_complete_coverage"] is True
 
 
 def test_opposite_mirror_effects_are_clustered_before_bootstrap():
@@ -241,3 +253,98 @@ def test_opposite_mirror_effects_are_clustered_before_bootstrap():
     assert paired["count"] == 10
     assert paired["values"] == [1.0] * 10
     assert paired["ci95"] == [1.0, 1.0]
+
+
+def _sealed_plan(tmp_path):
+    reports = {"smv3-pv": _report("smv3-pv"),
+               "release46-pv": _report("release46-pv", offset=1)}
+    refs = {}
+    for policy, report in reports.items():
+        path = tmp_path / f"{policy}.json"
+        path.write_bytes(json.dumps(report, separators=(",", ":")).encode())
+        refs[policy] = {"path": str(path),
+                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    plan = {"schema": readout.PLAN_SCHEMA, "report_refs": refs,
+            "expected_configs": _expected_configs()}
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_bytes(json.dumps(plan, separators=(",", ":")).encode())
+    return plan, plan_path, reports
+
+
+def _plan_pin(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_sealed_entrypoint_authenticates_plan_and_reads_each_report_once(tmp_path, monkeypatch):
+    _, plan_path, _ = _sealed_plan(tmp_path)
+    reads = []
+    original = Path.read_bytes
+
+    def tracked(path):
+        reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", tracked)
+    result = readout.read_sealed_actor_panel(plan_path, _plan_pin(plan_path))
+    assert result["comparison"]["classification"] == "POSITIVE"
+    assert result["seals"]["metadata_and_content_validated"] is True
+    assert sum(path.name == "smv3-pv.json" for path in reads) == 1
+    assert sum(path.name == "release46-pv.json" for path in reads) == 1
+
+
+@pytest.mark.parametrize("mutation", ["wrong-plan-pin", "wrong-ref-set",
+                                       "relative-path", "report-digest",
+                                       "wrong-expected-config"])
+def test_sealed_entrypoint_refuses_invalid_plan_before_report_reads(tmp_path, mutation,
+                                                                    monkeypatch):
+    plan, plan_path, _ = _sealed_plan(tmp_path)
+    report_reads = []
+    original = Path.read_bytes
+
+    def tracked(path):
+        if path.name in {"smv3-pv.json", "release46-pv.json"}:
+            report_reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", tracked)
+    if mutation == "wrong-plan-pin":
+        pin = "0" * 64
+    else:
+        if mutation == "wrong-ref-set":
+            plan["report_refs"]["extra"] = plan["report_refs"].pop("smv3-pv")
+        elif mutation == "relative-path":
+            plan["report_refs"]["smv3-pv"]["path"] = "relative/report.json"
+        elif mutation == "report-digest":
+            plan["report_refs"]["smv3-pv"]["sha256"] = "0" * 64
+        else:
+            plan["expected_configs"]["smv3-pv"]["models"] = ["luna"]
+        plan_path.write_bytes(json.dumps(plan, separators=(",", ":")).encode())
+        pin = _plan_pin(plan_path)
+    with pytest.raises(readout.ActorPanelReadoutError):
+        readout.read_sealed_actor_panel(plan_path, pin)
+    # A digest mismatch is discovered by hashing that pinned report's bytes;
+    # malformed metadata is rejected before either report is opened.
+    if mutation != "report-digest":
+        assert report_reads == []
+
+
+def test_sealed_entrypoint_rejects_symlink_report(tmp_path):
+    _, plan_path, _ = _sealed_plan(tmp_path)
+    target = tmp_path / "smv3-pv.json"
+    link = tmp_path / "smv3-link.json"
+    link.symlink_to(target)
+    plan = json.loads(plan_path.read_text())
+    plan["report_refs"]["smv3-pv"]["path"] = str(link)
+    plan["report_refs"]["smv3-pv"]["sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
+    plan_path.write_text(json.dumps(plan, separators=(",", ":")))
+    with pytest.raises(readout.ActorPanelReadoutError):
+        readout.read_sealed_actor_panel(plan_path, _plan_pin(plan_path))
+
+
+def test_sealed_cli_emits_validated_result_without_writing_files(tmp_path, capsys):
+    _, path, _ = _sealed_plan(tmp_path)
+    before = set(tmp_path.iterdir())
+    assert readout.main(["--plan", str(path), "--plan-sha256", _plan_pin(path)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["comparison"]["classification"] == "POSITIVE"
+    assert set(tmp_path.iterdir()) == before

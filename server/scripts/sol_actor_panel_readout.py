@@ -2,19 +2,23 @@
 
 The producer records ``signed_levels`` from the opponent's perspective.  This
 reader negates those scores once, averages the two flips into deal clusters,
-and compares release 46 with the frozen release-36 recipe.  It accepts decoded
-terminal reports only; filesystem, provider, and gameplay access are outside
-this reader's contract.
+and compares release 46 with the frozen release-36 recipe.  The pure reader
+accepts decoded terminal reports; the sealed entrypoint below only opens the
+two report bytes pinned by an independently authenticated input plan.
 """
 from __future__ import annotations
 
+import argparse
+import json
 import math
 from collections.abc import Mapping
+from pathlib import Path
 
 from shengji.luna.benchmark_failure_protocol import (
     PRESERVE_ILLEGAL, attempt_disposition,
 )
 from shengji.luna.benchmark_terminal import validate_scheduled_terminal
+from shengji.luna.benchmark_retention import _directory, _json, _read, _regular
 from scripts.production_llm_panel_readout import _contrast
 
 
@@ -25,6 +29,8 @@ SEED_COUNT = 10
 MIRROR_COUNT = SEED_COUNT * 2
 BOOTSTRAP_SEED = 20261016
 ALLOWED_CONFIG_DIFFERENCES = frozenset({"baseline_recipe", "policy", "checkpoint"})
+PLAN_SCHEMA = "sol-actor-panel-readout-plan-v1"
+PLAN_KEYS = frozenset({"schema", "report_refs", "expected_configs"})
 
 
 class ActorPanelReadoutError(ValueError):
@@ -283,13 +289,151 @@ def analyze_actor_panel_reports(report_data: Mapping[str, object],
     }
 
 
+def _sealed_path(value: object, *, label: str) -> Path:
+    """Validate a sealed artifact path without opening its contents."""
+    if not isinstance(value, (str, Path)):
+        raise ActorPanelReadoutError(f"{label} path must be a string")
+    path = Path(value)
+    if not path.is_absolute() or any(component in (".", "..")
+                                    for component in path.parts):
+        raise ActorPanelReadoutError(
+            f"{label} path must be absolute without traversal")
+    try:
+        _directory(path.parent, f"{label} parent")
+        # lstat-based validation is intentionally done before any report is
+        # opened.  _read repeats it at the trust boundary.
+        _regular(path, label)
+    except Exception as exc:
+        if isinstance(exc, ActorPanelReadoutError):
+            raise
+        raise ActorPanelReadoutError(str(exc)) from exc
+    return path
+
+
+def _sealed_plan(plan_path: object, expected_sha256: object):
+    """Authenticate the plan and all report metadata before reading reports."""
+    plan = _sealed_path(plan_path, label="readout plan")
+    if type(expected_sha256) is not str:
+        raise ActorPanelReadoutError("plan SHA256 must be a lowercase SHA256")
+    try:
+        plan_sha256 = _hex64(expected_sha256, label="plan SHA256")
+        raw, actual_sha256 = _read(plan, "readout plan")
+        if actual_sha256 != plan_sha256:
+            raise ActorPanelReadoutError("readout plan SHA256 differs from its pin")
+        value = _json(raw, "readout plan")
+    except ActorPanelReadoutError:
+        raise
+    except Exception as exc:
+        raise ActorPanelReadoutError(str(exc)) from exc
+    if (not isinstance(value, Mapping)
+            or set(value) != PLAN_KEYS
+            or value.get("schema") != PLAN_SCHEMA):
+        raise ActorPanelReadoutError("invalid actor-panel readout plan")
+
+    refs = value.get("report_refs")
+    expected_configs = value.get("expected_configs")
+    if (not isinstance(refs, Mapping) or set(refs) != set(POLICIES)
+            or not isinstance(expected_configs, Mapping)
+            or set(expected_configs) != set(POLICIES)):
+        raise ActorPanelReadoutError(
+            "exact smv3-pv and release46-pv report refs/configs are required")
+
+    validated_configs: dict[str, Mapping[str, object]] = {}
+    ordered_seeds: list[int] | None = None
+    for policy in POLICIES:
+        expected = _mapping(expected_configs[policy], label=f"{policy} expected config")
+        seeds = expected.get("seeds")
+        if (not isinstance(seeds, list) or len(seeds) != SEED_COUNT
+                or any(type(seed) is not int or isinstance(seed, bool) for seed in seeds)
+                or len(set(seeds)) != SEED_COUNT):
+            raise ActorPanelReadoutError(f"{policy}: expected config needs ten ordered seeds")
+        if ordered_seeds is None:
+            ordered_seeds = list(seeds)
+        elif list(seeds) != ordered_seeds:
+            raise ActorPanelReadoutError("expected configs do not share the ordered seed list")
+        # Comparing the expected config to itself validates its independently
+        # supplied shape without consulting either report.
+        _validate_expected_config(policy, expected, expected, seeds=ordered_seeds)
+        validated_configs[policy] = expected
+    first_config = validated_configs[POLICIES[0]]
+    for policy in POLICIES[1:]:
+        other = validated_configs[policy]
+        for key in set(first_config) | set(other):
+            if key in ALLOWED_CONFIG_DIFFERENCES:
+                continue
+            if not _strict_equal(first_config.get(key), other.get(key)):
+                raise ActorPanelReadoutError(f"{policy}: expected Sol configuration differs for {key!r}")
+
+    # Validate every reference and every expected config before opening either
+    # report.  In particular, a malformed second ref cannot leave the first
+    # report read as a side effect.
+    paths: dict[str, Path] = {}
+    normalized_refs: dict[str, tuple[Path, str]] = {}
+    for policy in POLICIES:
+        ref = refs[policy]
+        if not isinstance(ref, Mapping) or set(ref) != {"path", "sha256"}:
+            raise ActorPanelReadoutError(f"{policy}: invalid report reference")
+        try:
+            digest = _hex64(ref["sha256"], label=f"{policy} report SHA256")
+        except ActorPanelReadoutError:
+            raise
+        paths[policy] = _sealed_path(ref["path"], label=f"{policy} report")
+        # Keep the normalized pin separate from the untrusted mapping.  This
+        # also makes it impossible for later code to derive a pin from bytes.
+        normalized_refs[policy] = (paths[policy], digest)
+    if paths[POLICIES[0]] == paths[POLICIES[1]]:
+        raise ActorPanelReadoutError("policy reports must be distinct files")
+
+    reports: dict[str, Mapping[str, object]] = {}
+    for policy in POLICIES:
+        path, pinned_sha256 = normalized_refs[policy]
+        try:
+            report_raw, actual_sha256 = _read(path, f"{policy} sealed report")
+            if actual_sha256 != pinned_sha256:
+                raise ActorPanelReadoutError(
+                    f"{policy}: report SHA256 differs from its pin")
+            report = _json(report_raw, f"{policy} sealed report")
+        except ActorPanelReadoutError:
+            raise
+        except Exception as exc:
+            raise ActorPanelReadoutError(str(exc)) from exc
+        if not isinstance(report, Mapping):
+            raise ActorPanelReadoutError(f"{policy}: sealed report must be an object")
+        reports[policy] = report
+    result = analyze_actor_panel_reports(reports, validated_configs)
+    result["seals"] = {
+        "plan_sha256": plan_sha256,
+        "report_refs": {
+            policy: {"path": str(paths[policy]),
+                     "sha256": normalized_refs[policy][1]}
+            for policy in POLICIES
+        },
+        "metadata_and_content_validated": True,
+    }
+    return result
+
+
+def read_sealed_actor_panel(plan_path: str | Path,
+                            expected_sha256: str) -> dict[str, object]:
+    """Read exactly the two report bytes pinned by an external plan."""
+    return _sealed_plan(plan_path, expected_sha256)
+
+
 def main(argv=None):
-    raise ActorPanelReadoutError(
-        "actor panel readout accepts sealed decoded reports only; raw disk access is forbidden")
+    if argv is not None and "--reports" in argv:
+        raise ActorPanelReadoutError(
+            "decoded reports/raw disk access is not a sealed plan; use --plan and --plan-sha256")
+    parser = argparse.ArgumentParser(prog="sol_actor_panel_readout")
+    parser.add_argument("--plan", required=True)
+    parser.add_argument("--plan-sha256", required=True)
+    args = parser.parse_args(argv)
+    result = read_sealed_actor_panel(args.plan, args.plan_sha256)
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0
 
 
-__all__ = ["ActorPanelReadoutError", "BOOTSTRAP_SEED", "POLICIES", "SCHEMA",
-           "analyze_actor_panel_reports"]
+__all__ = ["ActorPanelReadoutError", "BOOTSTRAP_SEED", "PLAN_SCHEMA", "POLICIES",
+           "SCHEMA", "analyze_actor_panel_reports", "read_sealed_actor_panel"]
 
 
 if __name__ == "__main__":

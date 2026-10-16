@@ -124,9 +124,9 @@ gain, +0.021 [+0.004, +0.039].
 |---|---|---|
 | Model proposes, search decides | W32 shortlist +0.139 on 256 rank-2 deals; K4 beat K8 | still true |
 | The heads can be the whole search | head-driven search vs MC-LCB +0.095 at W16, +0.187 at W64; W4 loses | still true |
-| World quality matters, not world count | belief worlds v86bw45 +0.1165 [+0.0914, +0.1416]; 512 vs 64 worlds −0.0007 [−0.0022, +0.0008] per decision on 2,133 replayed decisions (board #707 S2 closure) | replaces "worlds are the lever" |
+| No resolved benefit from the tested additional-world recipes; a better world draw helped | belief worlds v86bw45 +0.1165 [+0.0914, +0.1416]; 512 vs 64 worlds −0.0007 [−0.0022, +0.0008] per decision on 2,133 replayed decisions (board #707 S2 closure) | replaces "worlds are the lever" |
 | A better policy head alone does not show in served play | head alone +0.24 vs SmartBot (arm F, 2026-09-30); value head decides | still true |
-| Admission and selection rules beat tree search | div + rc + tb confirmed together (release 38); PUCT −0.417 vs release 36 | still true |
+| The tested admission-rule combo beat its parent; the tested PUCT recipe lost | div + rc + tb confirmed together (release 38); PUCT −0.417 vs release 36 | tested recipes only; horizon/hybrid search stays open (S35, S38) |
 | Model-owned decisions and exact endgames moved the result | `vd` (release 44), `bwv` (release 45), v92 combo +0.2167 [+0.1923, +0.2412] (release 46) | still true |
 | The value cutoff is the gain, not terminal MC | learned continuations and PUCT over worlds lose or add nothing at large cost | still true |
 | Knowing the hidden hands is worth a lot to the current search | true-world probe v78orc45 +0.4026 [+0.3806, +0.4245]; a diagnostic, not a ceiling² | still true |
@@ -193,7 +193,7 @@ links and every reported number, is in `docs_archive/rl-plan-through-2026-10-16.
 | beliefs over hidden hands | DeepStack, bridge belief MC, ReBeL, Student of Games, BAD | search a belief, not one determinization; supervised belief, calibrated sampling |
 | inference from play | GIB, Ben, Kermit, card-location and policy-based inference | weight worlds by visible history, with floors; gate on true-deal card agreement |
 | strategy fusion, endgames | Frank & Basin, αμ, EPIMC, Long et al. 2010 | fix per-world minimax and continuations locally first; no transferable ceiling |
-| search cost | NooK, recursive MC, ISMCTS, GO-MCTS | published per-move costs exceed 3 s; keep one-level determinized search |
+| search cost | NooK, recursive MC, ISMCTS, GO-MCTS | published per-move costs (not a benchmark on our Fly host) exceed 3 s; they are context, not a general depth limit |
 | imperfect-information solving | Libratus, Pluribus, depth-limited solving | fixed blueprint plus a small continuation portfolio; no equilibrium guarantee |
 | privileged training | Suphx, PerfectDou, ShengJi+, PKU Botzone | privileged critics/auxiliaries may transfer; oracle guiding failed in Sheng Ji |
 | scale and specialization | DouZero, Meowjong, Mortal, Mahjax, AutoGo | throughput is leverage; rehearse the loop small; speed cannot fix a target |

@@ -147,6 +147,16 @@ def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
     assert summary['roots'] == 4
     assert summary['by_turn']['lead']['count'] == sum(r['lead'] for r in roots)
     assert summary['by_turn']['follow']['count'] == sum(not r['lead'] for r in roots)
+    assert summary['by_max_hand_and_turn'] == {'7': summary['by_turn']}
+    mixed_roots, mixed_rows = copy.deepcopy(roots), copy.deepcopy(rows)
+    mixed_roots[0]['max_hand'] = mixed_rows[0]['max_hand'] = 25
+    mixed_rows[0]['wall_step_seconds'] = mixed_rows[0]['compute_seconds'] = 4.0
+    mixed_rows[0]['wall_total_seconds'] = 4.0 + mixed_rows[0]['wall_commit_seconds']
+    mixed = summarize(mixed_rows, mixed_roots, arm='r45', pass_label='test', max_hand=25)
+    kind = 'lead' if mixed_roots[0]['lead'] else 'follow'
+    assert mixed['by_max_hand_and_turn']['25'][kind]['whole_turn_over_3s'] == 1
+    assert mixed['by_max_hand_and_turn']['25'][kind]['count'] == 1
+    assert sum(g['count'] for g in mixed['by_max_hand_and_turn']['7'].values()) == 3
     too_deep = copy.deepcopy(roots)
     too_deep[0]['max_hand'] = too_deep[0]['hand_size'] = 8
     with pytest.raises(ValueError, match='invalid root size'):

@@ -59,6 +59,7 @@ def summarize(rows, roots, *, arm, pass_label, max_hand=7):
         expected[index] = root
     need(bool(expected), 'empty root population')
     groups = {'lead': [], 'follow': []}
+    hand_groups = {}
     seen = set()
     for row in rows:
         index = row.get('root_index')
@@ -78,10 +79,11 @@ def summarize(rows, roots, *, arm, pass_label, max_hand=7):
         need(math.isclose(row['wall_total_seconds'], row['wall_step_seconds'] + row['wall_commit_seconds'],
                           rel_tol=1e-9, abs_tol=1e-9), 'wall accounting drift')
         need(isinstance(row.get('schema'), str) and row['schema'], 'missing decision schema')
-        groups['lead' if root['lead'] else 'follow'].append(row)
+        kind = 'lead' if root['lead'] else 'follow'
+        groups[kind].append(row)
+        hand_groups.setdefault((root['max_hand'], kind), []).append(row)
     need(seen == set(expected), 'incomplete measured population')
-    result = {}
-    for kind, group in groups.items():
+    def describe(kind, group):
         walls = sorted(row['wall_total_seconds'] for row in group)
         counts = Counter()
         for row in group:
@@ -93,14 +95,19 @@ def summarize(rows, roots, *, arm, pass_label, max_hand=7):
                 status = 'not_attempted'
             need(isinstance(status, str), 'invalid stage status')
             counts[status] += 1
-        result[kind] = dict(count=len(group),
+        return dict(count=len(group),
                            p50_seconds=walls[math.ceil(.5 * len(walls)) - 1] if walls else None,
                            p90_seconds=walls[math.ceil(.9 * len(walls)) - 1] if walls else None,
                            max_seconds=max(walls) if walls else None,
                            whole_turn_over_3s=sum(t > 3 for t in walls),
                            stage_statuses=dict(sorted(counts.items())),
                            decision_schemas=dict(sorted(Counter(r['schema'] for r in group).items())))
+    result = {kind: describe(kind, group) for kind, group in groups.items()}
+    by_hand = {}
+    for (size, kind), group in sorted(hand_groups.items()):
+        by_hand.setdefault(str(size), {})[kind] = describe(kind, group)
     return dict(arm=arm, pass_label=pass_label, roots=len(expected), by_turn=result, max_hand=max_hand,
+                by_max_hand_and_turn=by_hand,
                 scope='Whole-turn wall on this host; includes optional-stage abandonments. '
                       'Not a Fly qualification, stage-success rate, or strength result.')
 

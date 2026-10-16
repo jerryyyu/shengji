@@ -3,10 +3,9 @@
 Last reconciled: **2026-10-16**.
 
 **Production is release 46** (live 2026-10-16 14:49 ET, Fly v46): release 45 plus the v92 combo. Release 45 is the
-rollback. **New screens still compare against release 45 as served** (Jerry, in-session 2026-10-13: "Yes change to
-45", recorded on [#988 issuecomment-6142666693](https://github.com/jerryyyu/shengji/pull/988#issuecomment-6142666693);
-it replaces the 10-07 release-42 ruling) until Jerry moves it (proposed: release 46 as served). Confirmations keep
-their parent's comparator; screens already read keep their declared comparator.
+rollback. **New screens compare against release 46 as served** (Jerry, in session 2026-10-16: "compare new
+screens to release 46", #707 issuecomment-6223485189; before that release 45, 2026-10-13). Confirmations keep their
+parent's comparator; screens already read keep their declared comparator.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The
@@ -194,28 +193,37 @@ As of 2026-10-16; runs are on the scaling page (`docs/scaling_log/`), the search
   release-30 head by +0.21 in a head-only duel that sees the true hands; the served gain was +0.0393.
 - **The soft target** (the search's own values) is the training ingredient with the largest point estimate.
 - **The value head replaces playouts**; a T1 value cutoff beats terminal-level MC.
-- **World quality, not world count.** Gains stopped at 64 worlds (offline 512 vs 64 −0.0007 [−0.0022, +0.0008] per
-  decision); belief worlds gave +0.1165 (board S2, D6).
-- **K8, not K16.** Learned continuations and bounded PUCT lose or add nothing at large cost; any tree search keeps
-  candidates on paired worlds (RL_PLAN "Search and teacher strategy" item 4).
-- **Exact search pays in small endgames**: D7 + X7 +0.0439 alone.
+- **World count beyond 64, as tested, showed no resolved benefit** (offline 512 vs 64 worlds −0.0007 [−0.0022,
+  +0.0008] per decision, board S2); changing how worlds are drawn did: belief worlds +0.1165 [+0.0914, +0.1416] vs
+  release 45 (v86bw45). History legality alone was not an independently confirmed gain.
+- **The tested K16 recipe showed no resolved gain over K8**, and the tested learned continuations and bounded PUCT
+  lost or added nothing resolved at large cost. These rule out those recipes, not ranking or horizon work; any tree
+  search keeps candidates on paired worlds (RL_PLAN "Search and teacher strategy" item 4).
+- **Exact minimax pays in small endgames**: D7 + X7 +0.0439 [+0.0307, +0.0570] alone (≤ 7 cards). It is a different
+  mechanism from a learned finite-horizon continuation; it motivates S35 but is no evidence that a learned boundary
+  value works.
 - Release 29's served read (+0.049) is below its card-play read (+0.086) with no measured cause; the deploy gate is
   the served design. Corpus seeds are decks and are excluded from screens per model.
 
 Superseded since the 2026-09-22 version: "no head in the W64 family is shown superior" (contradicted by v36a2 and
 by C11 epoch 9 over epoch 6, v54ep9c +0.0455 [+0.0079, +0.0831]); "worlds were the lever through 64" (it is world
-quality); "learned continuations lose" (the exact endgame continuation wins at ≤ 7 cards).
+quality); "learned continuations lose" is now scoped to the tested learned recipes (exact minimax at ≤ 7 cards is a
+separate, positive result).
 
 ## Current scientific conclusions
 
-- **Belief worlds are the biggest served gain** (v86bw45 +0.1165 alone); search is belief-limited.
+- **Belief worlds are the largest single served gain so far** (v86bw45 +0.1165 [+0.0914, +0.1416] vs release 45,
+  read alone). This does not show belief is the only bottleneck; ranking and horizon lanes stay open (S35, S38).
 - **Components are not additive; the combo read is the decision.** Belief, D7 + X7 and `vdef` (+0.0421) were read
   alone, and `vdef` changes who banks (71.4% vs 51.9%), so release 46 was screened and confirmed as one policy.
-- **DEV head-to-head duels run several times larger than screens:** `vdef` vs release 45 +0.115 [+0.060, +0.175]
-  (200 DEV deals) against screens of +0.0220 and +0.0421; D6 + X6 double-dummy +0.256 [+0.170, +0.352] against
-  +0.0384; S18 +0.064 against +0.0071 (board S26, S29). DEV bars rank lanes; the screen decides.
-- **Value noise is not the lever.** More evaluations on the same worlds (adaptive worlds, W > 64) did not confirm;
-  better worlds (belief, history legality) did.
+- **DEV reads and screens measure different things.** Observed: the `vdef` head-to-head DEV duel read +0.115
+  [+0.060, +0.175] (200 deals) where its screens read +0.0220 and +0.0421; separately, double-dummy probes (true hands,
+  a different estimand) read D6 + X6 +0.256 [+0.170, +0.352] and S18 +0.064, where their screens read +0.0384 and
+  +0.0071 (board S26, S29). No fixed conversion from either kind of DEV read to a common-control screen effect is
+  established; DEV bars rank lanes and the screen decides.
+- **The tested noise reductions did not confirm**: adaptive worlds (more worlds on close decisions) read +0.022 then
+  +0.003, and 512 vs 64 worlds showed no resolved per-decision gain; a better world draw (belief) did. These test
+  those recipes only.
 - **Model-owned decisions move the result** where heuristics decided: declaration (44, `vdef` in 46) and bury (45).
   Successors: RL_PLAN "Planned work".
 

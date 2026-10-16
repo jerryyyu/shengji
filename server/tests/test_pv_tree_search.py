@@ -1060,13 +1060,13 @@ def test_exact_tail_rejects_invalid_limits_and_greedy_override():
         greedy._tree_lookahead(rnd, seat, [["D2"]], [world], exact_max_cards=1)
 
 
-@pytest.mark.parametrize("root_index", [56, 57])
+@pytest.mark.parametrize("root_index", [52, 53])
 def test_pinned_belief_producer_reaches_hybrid_cutoff(
         pinned_production_package, hybrid_belief_package, root_index):
     """Pinned policy + belief worlds feed the offline hybrid consumer.
 
-    The two XMTJ positions are an existing replay witness: index 56 is a
-    <=3-card lead and 57 is a <=3-card follow. This is a functional path
+    The two XMTJ positions are an existing replay witness: index 52 is a
+    five-card lead and 53 is a five-card follow. This is a functional path
     witness only; it makes no strength or timing claim.
     """
     import shengji.train.pv_search_policy as search
@@ -1084,8 +1084,8 @@ def test_pinned_belief_producer_reaches_hybrid_cutoff(
 
     rnd = xmtj_position(root_index)
     seat = rnd.turn
-    assert max(map(len, rnd.hands)) <= 3
-    assert bool(rnd.trick.plays) is (root_index == 57)
+    assert max(map(len, rnd.hands)) == 5
+    assert bool(rnd.trick.plays) is (root_index == 53)
     baseline_action = baseline.decide_play(copy.deepcopy(rnd), seat)
     assert baseline.last_decision_record["belief_fallback"] == 0
     assert baseline.last_decision_record["belief_proposed"] >= 64
@@ -1116,13 +1116,20 @@ def test_pinned_belief_producer_reaches_hybrid_cutoff(
     worlds = captured["worlds"][:2]
     values, stats = hybrid._tree_lookahead(
         rnd, seat, actions, worlds, completed_tricks=1,
-        exact_max_cards=2, exact_max_nodes=100_000)
+        exact_max_cards=4, exact_max_nodes=100_000)
     assert values.shape == (2, 2) and np.isfinite(values).all()
     assert stats["tree_exact_leaves"] + stats["tree_model_leaves"] == 4
     assert stats["tree_exact_leaves"] == 4
     assert stats["tree_model_leaves"] == 0
     assert stats["tree_completed_tricks_min"] == 1
     assert stats["tree_completed_tricks_max"] == 1
+    assert (rnd.hands, rnd.history, rnd.turn, rnd.attacker_points, rnd.phase) == root_before
+    model_values, model_stats = hybrid._tree_lookahead(
+        rnd, seat, actions, worlds, completed_tricks=1,
+        exact_max_cards=1, exact_max_nodes=100_000)
+    assert model_values.shape == (2, 2) and np.isfinite(model_values).all()
+    assert model_stats["tree_model_leaves"] > 0
+    assert model_stats["tree_model_leaves"] + model_stats["tree_exact_leaves"] == 4
     assert (rnd.hands, rnd.history, rnd.turn, rnd.attacker_points, rnd.phase) == root_before
 
 

@@ -83,22 +83,24 @@ def test_pinned_model_follow_snapshot_and_commit(pinned_production_package, tmp_
     asyncio.run(scenario())
 
 
-def follow_env(path):
+def follow_env(path, exact_cards=6):
     env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
     env.update(SHENGJI_PV_CKPT=str(path), SHENGJI_PV_EXACT_LEAD_ENDGAME='1',
-               SHENGJI_PV_EXACT_DEEP_CARDS='6', SHENGJI_PV_EXACT_FOLLOW='1',
+               SHENGJI_PV_EXACT_DEEP_CARDS=str(exact_cards), SHENGJI_PV_EXACT_FOLLOW='1',
                SHENGJI_PV_EXACT_FOLLOW_SOLVER='compact-level',
-               SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS='6',
+               SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=str(exact_cards),
                SHENGJI_PV_EXACT_FOLLOW_MAX_NODES='50000000')
     return env
 
 
-@pytest.mark.parametrize('hand_cap,node_cap,cancel_partial', [
-    (3, 50_000_000, False), (6, 50_000_000, False), (6, 1, False),
-    (3, 50_000_000, True),
+@pytest.mark.parametrize('hand_cap,node_cap,cancel_partial,exact_cards', [
+    (3, 50_000_000, False, 6), (6, 50_000_000, False, 6),
+    (6, 1, False, 6), (3, 50_000_000, True, 6),
+    (7, 50_000_000, False, 7),
 ])
 def test_registry_follow_reaches_server_snapshot_and_commit(
-        pinned_production_package, tmp_path, monkeypatch, hand_cap, node_cap, cancel_partial):
+        pinned_production_package, tmp_path, monkeypatch, hand_cap, node_cap,
+        cancel_partial, exact_cards):
     sessions = []
     if cancel_partial:
         from shengji.train import pv_exact_follow
@@ -122,7 +124,7 @@ def test_registry_follow_reaches_server_snapshot_and_commit(
                 return result
 
         monkeypatch.setattr(pv_exact_follow, 'CompactWorldSession', ExpireAfterOneCandidate)
-    env = follow_env(pinned_production_package)
+    env = follow_env(pinned_production_package, exact_cards)
     env['SHENGJI_PV_EXACT_FOLLOW_MAX_NODES'] = str(node_cap)
     recipe = pv.pv_env_recipe(env)
     entries = pv.pv_registry_entries(**recipe)
@@ -130,7 +132,8 @@ def test_registry_follow_reaches_server_snapshot_and_commit(
     bot = factory(seed=7)
     assert bot.policy_name == name and bot.config.exact_follow
     assert bot.exact_follow_solver == 'compact-level'
-    assert bot.exact_follow_max_cards == bot.exact_deep_cards == 6
+    assert bot.exact_follow_max_cards == bot.exact_deep_cards == exact_cards
+    assert f'-ed{exact_cards}' in name and f'-xf{exact_cards}' in name
     assert bot.exact_follow_max_nodes == node_cap
     assert bot.worlds == 64 and bot.candidates == 8 and bot.serving_budget_seconds == 3
     rnd, heuristic = _play_state(), HeuristicBot()
@@ -171,7 +174,7 @@ def test_registry_follow_reaches_server_snapshot_and_commit(
             else:
                 # Slower hosts may exhaust the real serving deadline.  That
                 # must preserve the baseline, never publish partial means.
-                assert hand_cap == 6
+                assert hand_cap in (6, 7)
                 assert record['exact_follow_abandoned'] in ('soft_budget', 'hard_budget')
             assert not record['exact_follow_applied']
             assert 'exact_follow_scores' not in record
@@ -446,6 +449,81 @@ def test_actual_follow_rerank_is_complete_and_legal():
     assert tuple(legal[result.winner]) in {tuple(action) for action in legal}
     assert result.worlds == 1 and result.nodes > 0
     assert rnd.hands[1] == ["C4", "C5"]
+
+
+def test_compact_follow_grouping_preserves_candidate_scores(monkeypatch):
+    from shengji.ai.endgame_compact import HAVE_FAST, CompactWorldSession
+    from shengji.train import pv_exact_follow
+    if not HAVE_FAST:
+        pytest.skip("compiled exact backend is not built")
+    rnd = _follow_round()
+    rnd.hands[1] = ["C8", "C9"]
+    rnd.hands[2] = ["C6", "C7"]
+    rnd.hands[3] = ["D8", "D9"]
+    rnd.deck = [c for hand in rnd.hands for c in hand]
+    legal = exhaustive_legal_actions(rnd, 1)
+    worlds = [([list(hand) for hand in rnd.hands], [])]
+    real = CompactWorldSession
+    probe = real(rnd, backend="compiled", level=True, max_nodes=10_000)
+    assert len({probe.play_key(rnd, action) for action in legal}) < len(legal)
+    clones = []
+    real_root_clone = pv_exact_follow.root_clone
+    grouped_solves = []
+
+    def tracked_root_clone(*args, **kwargs):
+        clones.append(True)
+        return real_root_clone(*args, **kwargs)
+
+    class GroupedSession(real):
+        def solve_level(self, *args, **kwargs):
+            grouped_solves.append(True)
+            return super().solve_level(*args, **kwargs)
+
+    monkeypatch.setattr(pv_exact_follow, "root_clone", tracked_root_clone)
+    monkeypatch.setattr(
+        pv_exact_follow, "CompactWorldSession",
+        lambda *args, **kwargs: GroupedSession(*args, backend="compiled", **kwargs))
+    grouped = rerank_follow(rnd, 1, legal, worlds, max_nodes=10_000,
+                            solver="compact-level")
+    assert len(clones) == len(legal) + 1
+    assert len(grouped_solves) == 1
+
+    ungrouped_solves = []
+
+    class UngroupedSession(real):
+        def play_key(self, rnd, cards):
+            return None
+
+        def solve_level(self, *args, **kwargs):
+            ungrouped_solves.append(True)
+            return super().solve_level(*args, **kwargs)
+
+    monkeypatch.setattr(
+        pv_exact_follow, "CompactWorldSession",
+        lambda *args, **kwargs: UngroupedSession(*args, backend="compiled", **kwargs))
+    ungrouped = rerank_follow(rnd, 1, legal, worlds, max_nodes=10_000,
+                              solver="compact-level")
+    assert grouped.winner == ungrouped.winner
+    assert grouped.scores == ungrouped.scores
+    assert len(ungrouped_solves) == 2
+
+
+def test_group_reuse_does_not_bypass_engine_validation(monkeypatch):
+    from shengji.ai.endgame_compact import CompactWorldSession
+    from shengji.engine.legal import IllegalPlay
+    from shengji.train import pv_exact_follow
+
+    class SameKeySession(CompactWorldSession):
+        def play_key(self, rnd, cards):
+            return 1
+
+    monkeypatch.setattr(pv_exact_follow, 'CompactWorldSession', SameKeySession)
+    rnd = _follow_round()
+    hands = copy.deepcopy(rnd.hands)
+    with pytest.raises(IllegalPlay):
+        rerank_follow(rnd, 1, [['C4'], ['SA']], [(hands, [])],
+                      max_nodes=10_000, solver='compact-level')
+    assert rnd.hands == hands
 
 
 def test_follow_refuses_leads_and_node_caps_without_partial_result():

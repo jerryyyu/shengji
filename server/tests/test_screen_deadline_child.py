@@ -33,6 +33,7 @@ from shengji.train.screen_deadline import DeadlineSession, DecisionExpired, RECI
 from shengji.train.search_screen import _run_pending
 from tests.test_cwv_shortlist_screen import cfg
 from tests.test_encoder_round_compat import PACKAGE_SHA, pinned_production_package  # noqa: F401
+from tests.test_release46_fly_config import without_combo
 from tests.test_screen_deadline import ProbeBot, play_state
 
 PER_WORKER = S.PER_WORKER_CHILD
@@ -333,9 +334,10 @@ def test_without_timing_keeps_the_deadline_recipe_and_budget_fields():
 
 
 def served_recipe(package):
-    """Release 45's search, bury and rules from fly.toml on the given package, with
-    the serving budgets lifted so no decision depends on this host's load."""
-    env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    """Release 45's search, bury and rules from fly.toml (production without release
+    46's combo lines) on the given package, with the serving budgets lifted so no
+    decision depends on this host's load."""
+    env = without_combo(tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"])
     env = {k: v for k, v in env.items() if k.startswith("SHENGJI_PV_")}
     env.update(SHENGJI_PV_CKPT=str(package), SHENGJI_PV_SHA256=PACKAGE_SHA,
                SHENGJI_PV_SERVING_BUDGET_SECONDS="1e9",

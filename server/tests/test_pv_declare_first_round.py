@@ -40,6 +40,7 @@ from test_pv_adaptive_worlds import RELEASE42_ENV, RELEASE42_NAME
 from test_pv_admission_rules import (PRODUCTION_ENV, PRODUCTION_SHA, ZeroEvaluator, names,
                                      production_package)  # noqa: F401
 from test_pv_value_declare import NTEvaluator, RaisingEvaluator, served
+from test_release46_fly_config import COMBO_KEYS
 
 VD = "SHENGJI_PV_VALUE_DECLARE"
 VDEF = "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST"
@@ -98,7 +99,8 @@ def fly_env():
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
     assert env.get(VD) == "1"
     return {k: v for k, v in env.items()
-            if k not in (VD, "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
+            if k not in (VD, "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
+            and k not in COMBO_KEYS}   # release 46's combo lines
 
 
 # ------------------------------------------------------------ (a) off: identity

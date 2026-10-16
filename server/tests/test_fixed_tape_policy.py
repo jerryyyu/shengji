@@ -8,6 +8,7 @@ import pytest
 from shengji.eval.fixed_tape_policy import capture_policy_ranks, release38_admission
 from shengji.train.pv_search_policy import PVSearchBot
 from test_policy_world_search import state
+from test_release46_fly_config import COMBO_KEYS
 
 
 def setup():
@@ -126,7 +127,8 @@ def test_release38_adapter_is_bound_to_production_environment(monkeypatch):
     assert env.get('SHENGJI_PV_DOOMED_THROW_RESELECT') == '1'
     env = {k: v for k, v in env.items() if k not in (
         'SHENGJI_PV_DOOMED_THROW_RESELECT', 'SHENGJI_PV_VALUE_DECLARE',
-        'SHENGJI_PV_BURY_WIDE_VALUE', 'SHENGJI_PV_BURY_WIDE_K')}
+        'SHENGJI_PV_BURY_WIDE_VALUE', 'SHENGJI_PV_BURY_WIDE_K')
+        and k not in COMBO_KEYS}   # release 46's combo lines
     recipe = pv.pv_env_recipe(env)
     monkeypatch.setattr(cwv_policy, 'checkpoint_id', lambda path: recipe['sha256'][:8])
     assert list(pv.pv_registry_entries(**recipe)) == [

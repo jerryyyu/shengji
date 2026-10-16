@@ -6,6 +6,7 @@ import tomllib
 
 from shengji.train.cwv_bury_policy import bury_env_recipe
 from shengji.train.cwv_shortlist import resolved_recipe, shortlist_policy_name
+from test_release46_fly_config import COMBO_KEYS, RELEASE46, V92_CANDIDATE_ENV, without_combo
 
 # The shipping package (#425/#435, Jerry's go 2026-09-15 23:4x ET): the from-scratch joint
 # net JS-M1 a5248cc5 as ONE NumPy package (0d17fd03…) that is both the value net and, via
@@ -64,19 +65,32 @@ def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     # Release 43 (Jerry 2026-10-09): the doomed-throw re-select (#946) replaces the swap.
     # Release 44 (Jerry 2026-10-11): release 43 plus the value-guided declaration (#952, #959).
     # Release 45 (Jerry 2026-10-13): release 44 plus the wide value-only bury at K=64 (#974).
+    # Release 46: release 45 plus the combo (history-legal belief-proposed worlds, the exact
+    # endgame search at 7 cards, the every-first-round value declaration), the twelve lines of
+    # V92_CANDIDATE_ENV; the name is the one v92combo45 screened.
     for flag in ("ADMISSION_DIVERSITY", "REFUSAL_CONSTRAINTS", "TIEBREAK_POINTS", "LEAD_ANCHOR",
                  "DOOMED_THROW_RESELECT", "VALUE_DECLARE"):
         assert pv_recipe["SHENGJI_PV_" + flag] == "1"
+    assert {k: pv_recipe[k] for k in COMBO_KEYS} == V92_CANDIDATE_ENV
     # The served name is the one the server derives from this env (pv_env_recipe ->
-    # pv_registry_entries); the package is not in the repo, so only its on-disk hash
-    # lookup is stood in by the pinned sha.
+    # pv_registry_entries); the packages are not in the repo, so only their on-disk hash
+    # lookups are stood in by the pinned shas (the belief package's registration check
+    # reads the file named by SHENGJI_PV_BELIEF_CKPT).
     monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: SERVED_PV_SHA[:8])
+    belief_volume = {V92_CANDIDATE_ENV["SHENGJI_PV_BELIEF_CKPT"]: V92_CANDIDATE_ENV["SHENGJI_PV_BELIEF_SHA256"]}
+    monkeypatch.setattr(pv, "file_sha256", lambda path: belief_volume[str(path)])
     names = list(pv.pv_registry_entries(**pv.pv_env_recipe(env)))
-    assert names == [env["SHENGJI_BOT"]] == [RELEASE45]
+    assert names == [env["SHENGJI_BOT"]] == [RELEASE46]
     assert (pv_recipe["SHENGJI_PV_BURY_WIDE_VALUE"], pv_recipe["SHENGJI_PV_BURY_WIDE_K"]) == ("1", "64")
-    # Rollback to release 44: the same env without the two wide-bury lines; the play digest
+    # Rollback to release 45: the same env without the twelve combo lines. The play digest
+    # moves (the world, exact and declaration rules are in it) and the bury suffix digests
+    # the play identity, so the bury recipe is unchanged although its suffix differs.
+    release45 = without_combo(env)
+    assert list(pv.pv_registry_entries(**pv.pv_env_recipe(release45))) == [RELEASE45]
+    assert RELEASE46.endswith("-bury-hybrid-bwv-cf77a93949b0") and RELEASE45.endswith("-bury-hybrid-bwv-7a73e8fbf1a8")
+    # Rollback to release 44: release 45 without the two wide-bury lines; the play digest
     # is untouched, only the bury digest moves.
-    release44 = {k: v for k, v in env.items() if k not in WIDE_BURY}
+    release44 = {k: v for k, v in release45.items() if k not in WIDE_BURY}
     assert list(pv.pv_registry_entries(**pv.pv_env_recipe(release44))) == [RELEASE44]
     assert RELEASE45[:RELEASE45.index("-bury-")] == RELEASE44[:RELEASE44.index("-bury-")]
     # Rollback to release 43: release 44 without the value-declare line.

@@ -7,6 +7,7 @@ server/.venv
 server/build
 server/shengji/engine/_fast*.so
 server/shengji/ai/_cwv_math*.so
+server/shengji/ai/_endgame_fast*.so
 **/__pycache__
 **/.pytest_cache
 .DS_Store

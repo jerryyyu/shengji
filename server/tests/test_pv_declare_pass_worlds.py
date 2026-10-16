@@ -43,6 +43,7 @@ from test_encoder_round_compat import PACKAGE_SHA, pinned_production_package  # 
 from test_pv_admission_rules import names, production_package  # noqa: F401
 from test_pv_search_serving import package  # noqa: F401
 from test_pv_value_declare import NT_CASE, drive, fresh, state_at
+from test_release46_fly_config import RELEASE46, without_combo
 
 FLAG = "SHENGJI_PV_VALUE_DECLARE_PASS_WORLDS"
 HEURISTIC = HeuristicBot()
@@ -61,8 +62,10 @@ def fly_env():
     import tomllib
     from pathlib import Path
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
-    assert env["SHENGJI_BOT"] == RELEASE45
-    return dict(env)
+    # production is release 46 (release 45 + the combo); the release-45 base is the
+    # documented rollback, the env without the twelve combo lines
+    assert env["SHENGJI_BOT"] == RELEASE46
+    return without_combo(env)
 
 
 class KittyEvaluator:

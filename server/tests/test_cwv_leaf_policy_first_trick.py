@@ -49,6 +49,7 @@ from test_pv_admission_rules import (PRODUCTION_ENV, PRODUCTION_SHA, names,
                                      production_package)  # noqa: F401
 from test_pv_declare_first_round import RELEASE43_VD, drive as drive_declare, fresh as fresh_deal
 from test_pv_value_declare import NTEvaluator
+from test_release46_fly_config import COMBO_KEYS
 
 FLAG = "SHENGJI_PV_LEAF_POLICY_FIRST_TRICK"
 VD = "SHENGJI_PV_VALUE_DECLARE"
@@ -168,16 +169,18 @@ def bury_state(index):
 
 
 def fly_env():
-    """The RELEASE-44 env: production's fly.toml minus the two wide-bury lines.
+    """The RELEASE-44 env: production's fly.toml minus the two wide-bury lines and the
+    twelve release-46 combo lines.
 
-    Production is release 45 (release 44 + SHENGJI_PV_BURY_WIDE_VALUE/_K, #974), so the
-    release-44 identities here and in the modules that import this helper are derived from
-    the documented release-44 rollback."""
+    Production is release 46 (release 44 + SHENGJI_PV_BURY_WIDE_VALUE/_K + the combo), so
+    the release-44 identities here and in the modules that import this helper are derived
+    from the documented rollbacks."""
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
     assert env.get(VD) == "1"
     assert (env.get("SHENGJI_PV_BURY_WIDE_VALUE"), env.get("SHENGJI_PV_BURY_WIDE_K")) == ("1", "64")
     return {k: v for k, v in env.items()
-            if k not in ("SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")}
+            if k not in ("SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
+            and k not in COMBO_KEYS}
 
 
 def best_single(cards, log_odds=NEGATIVE):

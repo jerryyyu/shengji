@@ -47,6 +47,7 @@ from test_pv_admission_rules import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION
                                      predict, production_package)  # noqa: F401  (fixture)
 from test_encoder_round_compat import PACKAGE_SHA, pinned_production_package  # noqa: F401
 from test_xmtj_throw_regressions import position as xmtj_position
+from scripts.hybrid_search_probe import run_hybrid_search_probe
 
 COMBO_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f"
 RELEASE38_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457"
@@ -106,6 +107,85 @@ def bot_of(tree_config=None, *, evaluator=None, worlds=4, seed=17, budget=None,
     cls = pv.PVSearchBot if tree_config is None else tree.PVTreeSearchBot
     return cls(policy, evaluator=HashEvaluator() if evaluator is None else evaluator,
                version=2, config=config, checkpoint="/dev/null", seed=seed)
+
+
+@pytest.mark.parametrize("failure", [None, "post-selection", "means", "sampler", "matrix"])
+def test_hybrid_search_probe_captures_and_restores_real_decision_hook(failure):
+    """The offline consumer uses one captured ballot and never resamples it."""
+    from types import SimpleNamespace
+
+    rnd = state()
+
+    class FakeBot:
+        tree_config = SimpleNamespace(sims=0)
+        _tree_v0 = np.asarray([[0.2, 0.1]])
+        sampler = SimpleNamespace(rng=random.Random(17))
+
+        def _tree_decide(self, root, acting_seat, admitted, means, worlds,
+                         pv_winner, fields, select_kwargs):
+            return pv_winner
+
+        def decide_play(self, root, acting_seat):
+            self._tree_decide(root, acting_seat, [["D2"], ["S2"]],
+                              np.asarray([0.1, 0.2] if failure == "means" else [0.2, 0.1]),
+                              [((), ())], 1, {}, {})
+            return ["D2"] if failure == "post-selection" else ["S2"]
+
+        def _tree_lookahead(self, root, acting_seat, actions, worlds, gate,
+                            *, completed_tricks, exact_max_cards,
+                            exact_max_nodes):
+            if failure == "sampler":
+                self.sampler.rng.random()
+            values = [[float("nan"), 0.1]] if failure == "matrix" else [[0.9, 0.1]]
+            return np.asarray(values), {"tree_value_batches": 1}
+
+    bot = FakeBot()
+    sampler_state = bot.sampler.rng.getstate()
+    original = bot._tree_decide
+    def run():
+        return run_hybrid_search_probe(bot, rnd, 0, completed_tricks=1,
+                                       exact_max_cards=1, gate=lambda: None)
+    if failure:
+        with pytest.raises(RuntimeError):
+            run()
+        assert "_tree_decide" not in vars(bot)
+        return
+    report = run()
+    assert bot._tree_decide.__func__ is original.__func__
+    assert bot._tree_decide.__self__ is original.__self__
+    assert report["baseline"]["pv_winner"] == 1
+    assert np.argmax(report["baseline"]["means"]) == 0
+    assert report["hybrid_value_argmax_index"] == 0
+    assert bot.sampler.rng.getstate() == sampler_state
+
+
+def test_hybrid_search_probe_restores_hook_when_gate_expires():
+    from types import SimpleNamespace
+
+    rnd = state()
+
+    class FakeBot:
+        tree_config = SimpleNamespace(sims=0)
+        _tree_v0 = np.asarray([[0.1, 0.2]])
+
+        def _tree_decide(self, *args):
+            return args[5]
+
+        def decide_play(self, root, acting_seat):
+            self._tree_decide(root, acting_seat, [["D2"], ["S2"]],
+                              np.asarray([0.1, 0.2]), [((), ())], 1, {}, {})
+            return ["S2"]
+
+        def _tree_lookahead(self, *args, **kwargs):
+            args[4]()
+
+    bot = FakeBot()
+    original = bot._tree_decide
+    with pytest.raises(RuntimeError, match="expired"):
+        run_hybrid_search_probe(bot, rnd, 0, completed_tricks=1,
+                                exact_max_cards=1,
+                                gate=lambda: (_ for _ in ()).throw(RuntimeError("expired")))
+    assert bot._tree_decide.__func__ is original.__func__
 
 
 BELIEF_SHA = "763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343"
@@ -1088,8 +1168,9 @@ def test_exact_tail_rejects_invalid_limits_and_greedy_override():
 
 
 @pytest.mark.parametrize("root_index", [52, 53])
+@pytest.mark.parametrize("probe_cap", [1, 4])
 def test_pinned_belief_producer_reaches_hybrid_cutoff(
-        pinned_production_package, hybrid_belief_package, root_index):
+        pinned_production_package, hybrid_belief_package, root_index, probe_cap):
     """Pinned policy + belief worlds feed the offline hybrid consumer.
 
     The two XMTJ positions are an existing replay witness: index 52 is a
@@ -1158,6 +1239,20 @@ def test_pinned_belief_producer_reaches_hybrid_cutoff(
     assert model_stats["tree_model_leaves"] > 0
     assert model_stats["tree_model_leaves"] + model_stats["tree_exact_leaves"] == 4
     assert (rnd.hands, rnd.history, rnd.turn, rnd.attacker_points, rnd.phase) == root_before
+
+    # Exercise the reusable consumer on a cheap W2 production witness; the W64
+    # capture above remains the package witness for the full serving sampler.
+    probe_bot = search.make_pv_search_bot(
+        production, sha256=PACKAGE_SHA, tree=PVTreeConfig(sims=0),
+        **{**kwargs, "worlds": 2})
+    probe = run_hybrid_search_probe(probe_bot, copy.deepcopy(rnd), seat,
+                                    completed_tricks=1, exact_max_cards=probe_cap,
+                                    gate=lambda: None, exact_max_nodes=100_000)
+    assert probe["baseline"]["pv_winner"] in range(len(probe["admitted"]))
+    assert probe["hybrid_value_argmax_index"] in range(len(probe["admitted"]))
+    assert "leafstats" in probe
+    branch = "tree_model_leaves" if probe_cap == 1 else "tree_exact_leaves"
+    assert probe["leafstats"][branch] > 0
 
 
 def test_trick_mode_skips_when_the_root_seat_plays_last():

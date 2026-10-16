@@ -386,6 +386,16 @@ def decision_inputs(rnd, seat: int, refusals: Sequence[Any] = (), mem=None) -> d
 #: the proposal's identity in a recipe: the marginals, projected to the receiver
 #: sizes, drawn copy by copy under Hall's condition (sizes, voids, pins exact)
 PROPOSAL = "s17-marginals-sinkhorn-hall-v1"
+#: the same proposal with the bury-rule kitty (`ai.kitty_rule`): a seat that
+#: is not the banker re-splits each world's banker hand plus kitty with the
+#: served bury's incumbent rule, so the kitty is the discard the rule makes
+#: from what the marginals dealt the banker, not eight cards drawn on their
+#: own kitty mass
+PROPOSAL_KITTY_RULE = "s17-marginals-sinkhorn-hall-kitty-rule-v1"
+#: batches the kitty rule may draw per refill before the rest of the refill
+#: comes from the plain draw (so a state the rule rarely accepts cannot stall
+#: the search); each batch is ``batch`` worlds
+KITTY_RULE_BATCHES = 16
 #: the per-decision preparation (featurize + forward + projection) must finish
 #: within this many seconds, else the caller falls back to its own draw
 PREP_SECONDS = 0.25
@@ -425,17 +435,29 @@ class BeliefProposal:
     ``batch`` at a time and handed out one per call.  Every world places each
     unknown copy on a receiver the public facts allow, fills every receiver to
     its size, keeps the public pins with their holders and the actor's own
-    burial when it is known.  Errors propagate: the caller falls back."""
+    burial when it is known.  ``kitty_rule`` selects the bury-rule kitty
+    (``PROPOSAL_KITTY_RULE``): for a seat that is not the banker, each drawn
+    world's banker hand plus kitty is re-split by `ai.kitty_rule.
+    kitty_rule_split`, a world the rule rejects is redrawn, and after
+    ``KITTY_RULE_BATCHES`` batches the rest of the refill is the plain draw
+    (counted in ``kitty_fallback``); off, the draw and its stream are
+    ``PROPOSAL``'s, unchanged.  Errors propagate: the caller falls back."""
 
     def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
                  seed: int, batch: int, forbidden: Mapping | None = None,
-                 check_budget=None):
+                 check_budget=None, kitty_rule: bool = False):
         from ..train.belief_seq import project_sizes
         import time
         t0 = time.perf_counter()
         if check_budget is not None:
             check_budget()
         self.rnd, self.seat = rnd, int(seat)
+        self.kitty_rule = bool(kitty_rule)
+        # the banker's own draw-constraint codes, which the rule's hand may not hold
+        self.banker_forbidden = frozenset(
+            code for (other, _suit), codes in (forbidden or {}).items()
+            if int(other) == int(rnd.banker) for code in codes)
+        self.kitty_worlds = self.kitty_rejections = self.kitty_fallback = 0
         self.inp = decision_inputs(rnd, seat, refusals)
         if check_budget is not None:
             check_budget()
@@ -459,13 +481,15 @@ class BeliefProposal:
         if self.prep_seconds > PREP_SECONDS:
             raise BeliefNumpyError(f"belief preparation took {self.prep_seconds:.3f}s")
 
-    def _refill(self) -> None:
+    def _draw(self) -> list:
+        """One batch of plain worlds, in draw order."""
         from ..train.belief_seq import sample_worlds
         inp, rnd, seat = self.inp, self.rnd, self.seat
         W = sample_worlds(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
         codes = _codes()
         idx = np.arange(N_CARDS)
         K = inp["K"]
+        out = []
         for w in W:
             hands = {}
             for rel in (1, 2, 3):
@@ -475,13 +499,49 @@ class BeliefProposal:
                 buried = [codes[c] for c in np.repeat(idx, w[:, 3].astype(np.int64))]
             else:
                 buried = list(rnd.buried)
-            self.queue.append((hands, buried))
+            out.append((hands, buried))
+        return out
+
+    def _refill(self, mem=None) -> None:
+        rnd, seat = self.rnd, self.seat
+        banker = int(rnd.banker)
+        if not (self.kitty_rule and self.kitty_hidden and seat != banker):
+            worlds = self._draw()
+        else:
+            from .kitty_rule import kitty_rule_split
+            if mem is None:
+                raise BeliefNumpyError("the kitty rule needs the actor's memory")
+            played = sorted(mem.played_by[banker].elements())
+            order = {code: i for i, code in enumerate(_codes())}
+            worlds, rejected = [], []
+            for _ in range(KITTY_RULE_BATCHES):
+                rejected = []
+                for hands, buried in self._draw():
+                    if len(worlds) == self.batch:
+                        break
+                    split = kitty_rule_split(rnd, mem, hands[banker] + buried, played,
+                                             self.banker_forbidden, len(buried))
+                    if split is None:
+                        self.kitty_rejections += 1
+                        rejected.append((hands, buried))
+                        continue
+                    hand, kitty = split
+                    worlds.append(({**hands, banker: sorted(hand, key=order.get)},
+                                   sorted(kitty, key=order.get)))
+                    self.kitty_worlds += 1
+                if len(worlds) == self.batch:
+                    break
+            # the budget is spent: the last batch's rejected worlds, plain, fill the rest
+            rest = rejected[:self.batch - len(worlds)]
+            self.kitty_fallback += len(rest)
+            worlds.extend(rest)
+        self.queue.extend(worlds)
         self.queue.reverse()
 
     def __call__(self, rnd, seat, mem):
         if rnd is not self.rnd or int(seat) != self.seat:
             raise BeliefNumpyError("a proposal serves the decision it was built for")
         if not self.queue:
-            self._refill()
+            self._refill(mem)
         self.drawn += 1
         return self.queue.pop()

@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1044" width="1000" height="1044" role="img" aria-label="One release-46 play decision, drawn from a live lead in room ADKY: seat 3 holds 3, 5, 7, 8, Q, A of clubs and the jack of diamonds; the S17 belief model gives each hidden card&#x27;s holder probabilities (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in each world and the mean picks the ace of clubs (1.799); the exact endgame (7 or fewer cards per hand) solves all 64 worlds in 0.197 s and switches to the jack of diamonds (1.797 vs 1.719 levels), played in 0.49 s. In the v92c screen 10,500 of 28,150 exact leads changed: 6,788 higher, 3,543 tie, 169 lower. Declare: first declaration at a median of 19 cards dealt (p10 4, p90 50) vs 74 (55, 100) in release 45. Bury: unchanged, 64 candidate kitties, the value head picks one.">
-<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#1e2833;font-size:13px}.bg{fill:#ffffff}.mut{fill:#65727f}.b{font-weight:600}.ttl{font-size:20px;font-weight:600}.h{font-size:15px;font-weight:600}.hdr{font-size:12.5px;font-weight:600;letter-spacing:.06em;fill:#65727f}.sm{font-size:12.5px}.it{font-style:italic}.edge{stroke:#d5dae0;stroke-width:1.5;fill:none}.edge.strong{stroke:#3b4f63}.edgebel{stroke:#6a4bb0;stroke-width:1.5;fill:none}.edgeex{stroke:#b03a73;stroke-width:1.5;fill:none}.arrow{stroke:#3b4f63;stroke-width:1.6;fill:none}.ah{fill:#3b4f63}.world{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.worldx{fill:#ffffff;stroke:#d5dae0;stroke-width:1.3}.thumb{stroke:#3b4f63;stroke-width:1.6;stroke-linecap:round}.xmark{stroke:#a63d2f;stroke-width:2;stroke-linecap:round}.badt{fill:#a63d2f}.goodt{fill:#2e7d4f}.cand{fill:#ffffff;stroke:#1e2833;stroke-width:1.5}.card{fill:#ffffff;stroke:#3b4f63;stroke-width:1}.red{fill:#c0392b}.play{fill:#a8741c}.playtrack{fill:#f3e7cc}.net{fill:#117a75}.nett{fill:#117a75}.root{fill:#1e2833}.inkf{fill:#1e2833}.mutf{fill:#65727f}.rulef{fill:#d5dae0}.paperf{fill:#f4f5f7}.panelf{fill:#ffffff}.bel{fill:#6a4bb0}.belt{fill:#6a4bb0}.belsoft{fill:#ece6f7;stroke:#6a4bb0;stroke-width:1.3}.ex{fill:#b03a73}.ext{fill:#b03a73}.exsoft{fill:#f8e6ef;stroke:#b03a73;stroke-width:1.3}.exline{stroke:#b03a73;stroke-width:1.5;fill:none}.exnode{fill:#ffffff;stroke:#b03a73;stroke-width:1.5}.vd{fill:#2a6fb0}.vdt{fill:#2a6fb0}.vdsoft{fill:#e1ecf7;stroke:#2a6fb0;stroke-width:1.3}.wd{fill:#3b4f63}.wdt{fill:#3b4f63}.wdsoft{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.axis{stroke:#65727f;stroke-width:1;fill:none}.grid{stroke:#d5dae0;stroke-width:1;fill:none}.zero{stroke:#1e2833;stroke-width:1.3;fill:none}.ring{fill:none;stroke:#1e2833;stroke-width:1.8}.ringex{fill:none;stroke:#b03a73;stroke-width:2}.panelbox{fill:#f4f5f7;stroke:#d5dae0;stroke-width:1}.dash{fill:#ffffff;stroke:#3b4f63;stroke-width:1.5;stroke-dasharray:5 4}.stage{fill:#ffffff;stroke:#3b4f63;stroke-width:1.4}.stagej{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.4}.lineink{stroke:#1e2833;stroke-width:2.2;fill:none}.linemut{stroke:#65727f;stroke-width:1.2;fill:none}.linebel{stroke:#6a4bb0;stroke-width:2.2;fill:none}.linevd{stroke:#2a6fb0;stroke-width:2.2;fill:none}.linewd{stroke:#3b4f63;stroke-width:2.2;fill:none}.lineex{stroke:#b03a73;stroke-width:2.2;fill:none}.linenet{stroke:#117a75;stroke-width:2.2;fill:none}.chipt{font-size:12.5px;font-weight:700;letter-spacing:.05em;fill:#ffffff}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 860" width="1000" height="860" role="img" aria-label="One release-46 play decision, drawn from a live lead in room ADKY: seat 3 holds 3, 5, 7, 8, Q, A of clubs and the jack of diamonds; the S17 belief model gives each hidden card&#x27;s holder probabilities (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in each world and the mean picks the ace of clubs (1.799); the exact endgame (7 or fewer cards per hand) solves all 64 worlds in 0.197 s and switches to the jack of diamonds (1.797 vs 1.719 levels), played in 0.49 s. The value step is 512 value-head calls in 4 passes of 128; the exact step makes no network call: 429,026 nodes, 173,315 cache hits.">
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#1e2833;font-size:13px}.bg{fill:#ffffff}.mut{fill:#65727f}.b{font-weight:600}.ttl{font-size:20px;font-weight:600}.h{font-size:15px;font-weight:600}.hdr{font-size:12.5px;font-weight:600;letter-spacing:.06em;fill:#65727f}.sm{font-size:12.5px}.it{font-style:italic}.edge{stroke:#d5dae0;stroke-width:1.5;fill:none}.edge.strong{stroke:#3b4f63}.edgebel{stroke:#6a4bb0;stroke-width:1.5;fill:none}.edgeex{stroke:#b03a73;stroke-width:1.5;fill:none}.arrow{stroke:#3b4f63;stroke-width:1.6;fill:none}.ah{fill:#3b4f63}.world{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.worldx{fill:#ffffff;stroke:#d5dae0;stroke-width:1.3}.thumb{stroke:#3b4f63;stroke-width:1.6;stroke-linecap:round}.xmark{stroke:#a63d2f;stroke-width:2;stroke-linecap:round}.badt{fill:#a63d2f}.goodt{fill:#2e7d4f}.cand{fill:#ffffff;stroke:#1e2833;stroke-width:1.5}.card{fill:#ffffff;stroke:#3b4f63;stroke-width:1}.red{fill:#c0392b}.play{fill:#a8741c}.playtrack{fill:#f3e7cc}.net{fill:#117a75}.nett{fill:#117a75}.root{fill:#1e2833}.inkf{fill:#1e2833}.mutf{fill:#65727f}.rulef{fill:#d5dae0}.paperf{fill:#f4f5f7}.panelf{fill:#ffffff}.bel{fill:#6a4bb0}.belt{fill:#6a4bb0}.belsoft{fill:#ece6f7;stroke:#6a4bb0;stroke-width:1.3}.ex{fill:#b03a73}.ext{fill:#b03a73}.exsoft{fill:#f8e6ef;stroke:#b03a73;stroke-width:1.3}.exline{stroke:#b03a73;stroke-width:1.5;fill:none}.exnode{fill:#ffffff;stroke:#b03a73;stroke-width:1.5}.vd{fill:#2a6fb0}.vdt{fill:#2a6fb0}.vdsoft{fill:#e1ecf7;stroke:#2a6fb0;stroke-width:1.3}.wd{fill:#3b4f63}.wdt{fill:#3b4f63}.wdsoft{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.3}.axis{stroke:#65727f;stroke-width:1;fill:none}.grid{stroke:#d5dae0;stroke-width:1;fill:none}.zero{stroke:#1e2833;stroke-width:1.3;fill:none}.ring{fill:none;stroke:#1e2833;stroke-width:1.8}.ringex{fill:none;stroke:#b03a73;stroke-width:2}.panelbox{fill:#f4f5f7;stroke:#d5dae0;stroke-width:1}.dash{fill:#ffffff;stroke:#3b4f63;stroke-width:1.5;stroke-dasharray:5 4}.stage{fill:#ffffff;stroke:#3b4f63;stroke-width:1.4}.stagej{fill:#dfe5ec;stroke:#3b4f63;stroke-width:1.4}.lineink{stroke:#1e2833;stroke-width:2.2;fill:none}.linemut{stroke:#65727f;stroke-width:1.2;fill:none}.linebel{stroke:#6a4bb0;stroke-width:2.2;fill:none}.linevd{stroke:#2a6fb0;stroke-width:2.2;fill:none}.linewd{stroke:#3b4f63;stroke-width:2.2;fill:none}.lineex{stroke:#b03a73;stroke-width:2.2;fill:none}.linenet{stroke:#117a75;stroke-width:2.2;fill:none}.chipt{font-size:12.5px;font-weight:700;letter-spacing:.05em;fill:#ffffff}.netbox{fill:#d6ecea;stroke:#117a75;stroke-width:1.5}.netlayer{stroke:#117a75;stroke-width:3;stroke-linecap:round}.netwire{stroke:#117a75;stroke-width:0.8;opacity:.6}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
 <defs><marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
-<rect x="0.0" y="0.0" width="1000.0" height="1044.0" class="bg"/>
+<rect x="0.0" y="0.0" width="1000.0" height="860.0" class="bg"/>
 <text x="24.0" y="36.0" class="ttl">One play decision, drawn</text>
 <text x="24.0" y="60.0" class="mut">Live lead in room ADKY (release 46): seat 3, no trump, 7 cards per hand. 64 legal plays → 8 candidates → J<tspan class="red">♦</tspan> in 0.49 s.</text>
-<circle cx="30.0" cy="88.0" r="6" class="root"/><text x="41.0" y="92.0" class="mut">position</text><rect x="114.6" y="81.0" width="20.0" height="13.0" rx="2" class="world"/><text x="141.6" y="92.0" class="mut">sampled world</text><rect x="248.7" y="83.0" width="22.0" height="9.0" rx="2" class="play"/><text x="277.7" y="92.0" class="mut">heuristic finishes trick</text><path d="M464.5,81.5 L470.5,87.5 L464.5,93.5 L458.5,87.5 Z" class="net"/><text x="476.5" y="92.0" class="mut">net value</text><text x="556.8" y="92.0" class="hdr">NEW IN 46</text><rect x="636.1" y="78.0" width="18.0" height="18.0" rx="3" class="belsoft"/><rect x="639.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.11"/><rect x="643.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.14"/><rect x="647.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><rect x="639.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.29"/><rect x="643.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.23"/><rect x="647.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><rect x="639.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.06"/><rect x="643.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.17"/><rect x="647.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><text x="659.1" y="92.0" class="mut">belief</text><line x1="721.3" y1="87.0" x2="728.5" y2="82.3" class="exline"/><line x1="728.5" y1="82.3" x2="737.3" y2="80.0" class="exline"/><circle cx="737.3" cy="80.0" r="1.7000000000000002" class="ex"/><line x1="728.5" y1="82.3" x2="737.3" y2="84.7" class="exline"/><circle cx="737.3" cy="84.7" r="1.7000000000000002" class="ex"/><circle cx="728.5" cy="82.3" r="2.2" class="exnode"/><line x1="721.3" y1="87.0" x2="728.5" y2="91.7" class="exline"/><line x1="728.5" y1="91.7" x2="737.3" y2="89.3" class="exline"/><circle cx="737.3" cy="89.3" r="1.7000000000000002" class="ex"/><line x1="728.5" y1="91.7" x2="737.3" y2="94.0" class="exline"/><circle cx="737.3" cy="94.0" r="1.7000000000000002" class="ex"/><circle cx="728.5" cy="91.7" r="2.2" class="exnode"/><circle cx="721.3" cy="87.0" r="3.2" class="exnode"/><text x="745.3" y="92.0" class="mut">exact</text><rect x="798.8" y="81.0" width="20.0" height="13.0" rx="2" class="vdsoft"/><text x="825.8" y="92.0" class="mut">declare</text>
+<circle cx="30.0" cy="88.0" r="6" class="root"/><text x="41.0" y="92.0" class="mut">position</text><rect x="114.6" y="81.0" width="20.0" height="13.0" rx="2" class="world"/><text x="141.6" y="92.0" class="mut">sampled world</text><rect x="248.7" y="83.0" width="22.0" height="9.0" rx="2" class="play"/><text x="277.7" y="92.0" class="mut">heuristic finishes trick</text><path d="M464.5,81.5 L470.5,87.5 L464.5,93.5 L458.5,87.5 Z" class="net"/><text x="476.5" y="92.0" class="mut">net value</text><text x="556.8" y="92.0" class="hdr">NEW IN 46</text><rect x="636.1" y="78.0" width="18.0" height="18.0" rx="3" class="belsoft"/><rect x="639.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.11"/><rect x="643.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.14"/><rect x="647.6" y="81.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><rect x="639.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.29"/><rect x="643.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.23"/><rect x="647.6" y="85.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><rect x="639.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.06"/><rect x="643.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.17"/><rect x="647.6" y="89.5" width="3.0" height="3.0" class="bel" fill-opacity="0.85"/><text x="659.1" y="92.0" class="mut">belief</text><line x1="721.3" y1="87.0" x2="728.5" y2="82.3" class="exline"/><line x1="728.5" y1="82.3" x2="737.3" y2="80.0" class="exline"/><circle cx="737.3" cy="80.0" r="1.7000000000000002" class="ex"/><line x1="728.5" y1="82.3" x2="737.3" y2="84.7" class="exline"/><circle cx="737.3" cy="84.7" r="1.7000000000000002" class="ex"/><circle cx="728.5" cy="82.3" r="2.2" class="exnode"/><line x1="721.3" y1="87.0" x2="728.5" y2="91.7" class="exline"/><line x1="728.5" y1="91.7" x2="737.3" y2="89.3" class="exline"/><circle cx="737.3" cy="89.3" r="1.7000000000000002" class="ex"/><line x1="728.5" y1="91.7" x2="737.3" y2="94.0" class="exline"/><circle cx="737.3" cy="94.0" r="1.7000000000000002" class="ex"/><circle cx="728.5" cy="91.7" r="2.2" class="exnode"/><circle cx="721.3" cy="87.0" r="3.2" class="exnode"/><text x="745.3" y="92.0" class="mut">exact</text>
 <line x1="24.0" y1="108.0" x2="976.0" y2="108.0" class="grid"/>
 <text x="24.0" y="140.0" class="hdr">ROOT</text>
 <circle cx="32.0" cy="162.0" r="7" class="root"/>
@@ -325,8 +325,6 @@
 <text x="330.0" y="446.0" class="sm badt b">✗ 2 history-illegal</text>
 <text x="330.0" y="463.0" class="sm mut">(5 and 13 tricks back)</text>
 <path d="M296.0,330.0 C310.0,330.0 310.0,330.0 324.0,330.0" class="edgebel"/>
-<text x="330.0" y="577.0" class="sm">v92c: 44.9% of decisions</text>
-<text x="330.0" y="594.0" class="sm">reject ≥ 1 world</text>
 <text x="470.0" y="140.0" class="hdr">8 CANDIDATES</text>
 <text x="470.0" y="158.0" class="sm mut">of 64 legal</text>
 <text x="620.0" y="224.0" class="sm mut" text-anchor="end">policy log-odds</text>
@@ -367,12 +365,12 @@
 <text x="620.0" y="463.0" class="sm mut" text-anchor="middle">0</text>
 <text x="572.0" y="463.0" class="sm mut" text-anchor="middle">−2</text>
 <line x1="572.0" y1="447.0" x2="572.0" y2="451.0" class="axis"/>
-<text x="640.0" y="140.0" class="hdr">VALUE × 64 WORLDS</text>
+<text x="640.0" y="140.0" class="hdr">VALUE HEAD × WORLDS</text>
 <rect x="640.0" y="149.0" width="30.0" height="10.0" rx="2" class="playtrack"/><rect x="640.0" y="149.0" width="14.0" height="10.0" rx="2" class="play"/>
 <path d="M670.0,154.0 C676.0,154.0 676.0,154.0 682.0,154.0" class="edge"/>
 <path d="M690.0,148.0 L696.0,154.0 L690.0,160.0 L684.0,154.0 Z" class="net"/>
-<text x="702.0" y="159.0" class="sm mut">per cell</text>
-<text x="640.0" y="224.0" class="sm mut">512 net values</text>
+<text x="702.0" y="159.0" class="sm mut">= 1 cell</text>
+<text x="640.0" y="224.0" class="sm mut">rows: candidates</text>
 <rect x="640.0" y="236.0" width="2.1" height="20.0" class="net" fill-opacity="0.75"/>
 <rect x="642.5" y="236.0" width="2.1" height="20.0" class="net" fill-opacity="0.40"/>
 <rect x="645.0" y="236.0" width="2.1" height="20.0" class="net" fill-opacity="0.16"/>
@@ -893,7 +891,9 @@
 <rect x="795.0" y="425.0" width="2.1" height="20.0" class="net" fill-opacity="0.15"/>
 <rect x="797.5" y="425.0" width="2.1" height="20.0" class="net" fill-opacity="1.00"/>
 <line x1="624.0" y1="435.0" x2="636.0" y2="435.0" class="edge"/>
-<text x="640.0" y="463.0" class="sm mut it">cells illustrative</text>
+<text x="640.0" y="463.0" class="sm mut">64 columns: worlds</text>
+<text x="640.0" y="480.0" class="sm mut">512 calls, 4 × 128</text>
+<text x="640.0" y="497.0" class="sm mut it">cells illustrative</text>
 <text x="820.0" y="140.0" class="hdr">MEAN</text>
 <text x="820.0" y="158.0" class="sm mut">PV value, levels</text>
 <line x1="837.5" y1="232.0" x2="837.5" y2="447.0" class="grid"/>
@@ -980,7 +980,7 @@
 <text x="510.0" y="711.0" class="sm b">A♣ 1.719</text>
 <text x="510.0" y="758.3" class="sm mut">5 others 1.406</text>
 <text x="510.0" y="788.5" class="sm mut">1 at 1.234</text>
-<text x="360.0" y="810.0" class="sm mut">ADKY: 64 worlds · 429,026 nodes · 0.197 s</text>
+<text x="360.0" y="810.0" class="sm mut">exact level = mean over 64 solved worlds</text>
 <line x1="600.0" y1="726.0" x2="634.0" y2="726.0" class="arrow" marker-end="url(#ar1)"/>
 <rect x="640.0" y="700.0" width="108.0" height="52.0" rx="26" class="panelf"/>
 <rect x="640.0" y="700.0" width="108.0" height="52.0" rx="26" class="ring"/>
@@ -988,148 +988,17 @@
 <text x="694.0" y="740.0" class="sm ext b" text-anchor="middle">+0.078 levels</text>
 <text x="694.0" y="774.0" class="sm mut" text-anchor="middle">0.49 s of 3 s</text>
 <line x1="768.0" y1="664.0" x2="768.0" y2="810.0" class="grid"/>
-<text x="782.0" y="666.0" class="sm b">v92c · 28,150 leads</text>
-<rect x="782.0" y="678.0" width="110.4" height="18.0" class="rulef"/>
-<rect x="892.4" y="678.0" width="42.4" height="18.0" class="ex"/>
-<rect x="934.8" y="678.0" width="22.2" height="18.0" class="exsoft"/>
-<rect x="956.9" y="678.0" width="1.5" height="18.0" class="badt"/>
-<text x="782.0" y="716.0" class="sm mut">same</text>
-<text x="958.0" y="716.0" class="mono sm mut" text-anchor="end">17,650</text>
-<text x="782.0" y="734.0" class="sm ext b">higher</text>
-<text x="958.0" y="734.0" class="mono sm ext b" text-anchor="end">6,788</text>
-<text x="782.0" y="752.0" class="sm ext">tie</text>
-<text x="958.0" y="752.0" class="mono sm ext" text-anchor="end">3,543</text>
-<text x="782.0" y="770.0" class="sm badt">lower</text>
-<text x="958.0" y="770.0" class="mono sm badt" text-anchor="end">169</text>
-<text x="782.0" y="794.0" class="sm mut">55,779 follows re-ranked</text>
-<text x="782.0" y="810.0" class="sm mut">abandons 0.2%</text>
-<rect x="24.0" y="846.0" width="560.0" height="168.0" rx="6" class="panelbox"/>
-<rect x="40.0" y="860.0" width="93.4" height="18.0" rx="9" class="vd"/><text x="86.7" y="873.0" class="chipt" text-anchor="middle">NEW IN 46</text>
-<text x="143.4" y="874.0" class="hdr vdt">DECLARE · FIRST DECLARATION</text>
-<line x1="160.0" y1="910.0" x2="160.0" y2="982.0" class="grid"/>
-<text x="160.0" y="998.0" class="sm mut" text-anchor="middle">0</text>
-<line x1="260.0" y1="910.0" x2="260.0" y2="982.0" class="grid"/>
-<text x="260.0" y="998.0" class="sm mut" text-anchor="middle">25</text>
-<line x1="360.0" y1="910.0" x2="360.0" y2="982.0" class="grid"/>
-<text x="360.0" y="998.0" class="sm mut" text-anchor="middle">50</text>
-<line x1="460.0" y1="910.0" x2="460.0" y2="982.0" class="grid"/>
-<text x="460.0" y="998.0" class="sm mut" text-anchor="middle">75</text>
-<line x1="560.0" y1="910.0" x2="560.0" y2="982.0" class="grid"/>
-<text x="560.0" y="998.0" class="sm mut" text-anchor="middle">100</text>
-<text x="40.0" y="998.0" class="sm mut">cards dealt</text>
-<text x="40.0" y="929.0" class="sm b vdt">release 46</text>
-<text x="40.0" y="945.0" class="sm mut">declares 92.5%</text>
-<rect x="176.0" y="919.0" width="184.0" height="18.0" rx="3" class="vdsoft"/>
-<line x1="236.0" y1="917.0" x2="236.0" y2="939.0" class="linevd"/>
-<text x="236.0" y="914.0" class="mono sm vdt" text-anchor="middle">19</text>
-<text x="40.0" y="967.0" class="sm b wdt">release 45</text>
-<text x="40.0" y="983.0" class="sm mut">declares 56.0%</text>
-<rect x="380.0" y="957.0" width="180.0" height="18.0" rx="3" class="wdsoft"/>
-<line x1="456.0" y1="955.0" x2="456.0" y2="977.0" class="linewd"/>
-<text x="456.0" y="952.0" class="mono sm wdt" text-anchor="middle">74</text>
-<text x="40.0" y="896.0" class="sm vdt">vdef: in round 1, consult the value head at every declare chance</text>
-<text x="560.0" y="874.0" class="sm mut" text-anchor="end">p10–p90, median · v92c</text>
-<rect x="604.0" y="846.0" width="372.0" height="168.0" rx="6" class="panelbox"/>
-<text x="620.0" y="874.0" class="hdr">BURY · UNCHANGED SINCE 45</text>
-<text x="620.0" y="896.0" class="sm">bwv: wide value-only bury (64 candidate kitties)</text>
-<rect x="620.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="630.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="640.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="650.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="660.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="670.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="680.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="690.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="700.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="710.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="720.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="730.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="740.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="750.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="760.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="770.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="780.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="790.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="red" fill-opacity="0.8"/>
-<rect x="800.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="810.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="820.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="830.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="840.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="850.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="860.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="870.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="880.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="890.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="900.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="910.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="920.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="930.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<rect x="940.0" y="906.0" width="8.0" height="22.0" rx="1.5" class="wd" fill-opacity="0.8"/>
-<text x="620.0" y="944.0" class="sm mut">33 cards in hand</text>
-<rect x="620.0" y="963.4" width="3.6" height="22.6" class="rulef"/>
-<rect x="625.1" y="961.8" width="3.6" height="24.2" class="rulef"/>
-<rect x="630.2" y="969.1" width="3.6" height="16.9" class="rulef"/>
-<rect x="635.3" y="964.3" width="3.6" height="21.7" class="rulef"/>
-<rect x="640.4" y="977.5" width="3.6" height="8.5" class="rulef"/>
-<rect x="645.5" y="977.6" width="3.6" height="8.4" class="rulef"/>
-<rect x="650.6" y="973.6" width="3.6" height="12.4" class="rulef"/>
-<rect x="655.7" y="960.7" width="3.6" height="25.3" class="rulef"/>
-<rect x="660.8" y="967.6" width="3.6" height="18.4" class="rulef"/>
-<rect x="665.9" y="970.7" width="3.6" height="15.3" class="rulef"/>
-<rect x="671.0" y="963.3" width="3.6" height="22.7" class="rulef"/>
-<rect x="676.1" y="966.9" width="3.6" height="19.1" class="rulef"/>
-<rect x="681.2" y="971.0" width="3.6" height="15.0" class="rulef"/>
-<rect x="686.3" y="957.6" width="3.6" height="28.4" class="rulef"/>
-<rect x="691.4" y="960.2" width="3.6" height="25.8" class="rulef"/>
-<rect x="696.5" y="972.6" width="3.6" height="13.4" class="rulef"/>
-<rect x="701.6" y="963.6" width="3.6" height="22.4" class="rulef"/>
-<rect x="706.7" y="964.9" width="3.6" height="21.1" class="rulef"/>
-<rect x="711.8" y="955.4" width="3.6" height="30.6" class="rulef"/>
-<rect x="716.9" y="959.4" width="3.6" height="26.6" class="rulef"/>
-<rect x="722.0" y="971.4" width="3.6" height="14.6" class="rulef"/>
-<rect x="727.1" y="952.5" width="3.6" height="33.5" class="rulef"/>
-<rect x="732.2" y="976.0" width="3.6" height="10.0" class="rulef"/>
-<rect x="737.3" y="967.8" width="3.6" height="18.2" class="rulef"/>
-<rect x="742.4" y="958.6" width="3.6" height="27.4" class="rulef"/>
-<rect x="747.5" y="975.1" width="3.6" height="10.9" class="rulef"/>
-<rect x="752.6" y="965.9" width="3.6" height="20.1" class="rulef"/>
-<rect x="757.7" y="978.1" width="3.6" height="7.9" class="rulef"/>
-<rect x="762.8" y="961.0" width="3.6" height="25.0" class="rulef"/>
-<rect x="767.9" y="958.4" width="3.6" height="27.6" class="rulef"/>
-<rect x="773.0" y="963.6" width="3.6" height="22.4" class="rulef"/>
-<rect x="778.1" y="955.4" width="3.6" height="30.6" class="rulef"/>
-<rect x="783.2" y="970.7" width="3.6" height="15.3" class="rulef"/>
-<rect x="788.3" y="960.3" width="3.6" height="25.7" class="rulef"/>
-<rect x="793.4" y="963.0" width="3.6" height="23.0" class="rulef"/>
-<rect x="798.5" y="963.4" width="3.6" height="22.6" class="rulef"/>
-<rect x="803.6" y="966.8" width="3.6" height="19.2" class="rulef"/>
-<rect x="808.7" y="956.4" width="3.6" height="29.6" class="rulef"/>
-<rect x="813.8" y="953.5" width="3.6" height="32.5" class="rulef"/>
-<rect x="818.9" y="966.3" width="3.6" height="19.7" class="rulef"/>
-<rect x="824.0" y="961.1" width="3.6" height="24.9" class="rulef"/>
-<rect x="829.1" y="977.5" width="3.6" height="8.5" class="rulef"/>
-<rect x="834.2" y="960.1" width="3.6" height="25.9" class="rulef"/>
-<rect x="839.3" y="961.6" width="3.6" height="24.4" class="rulef"/>
-<rect x="844.4" y="952.2" width="3.6" height="33.8" class="net"/>
-<rect x="849.5" y="956.8" width="3.6" height="29.2" class="rulef"/>
-<rect x="854.6" y="971.5" width="3.6" height="14.5" class="rulef"/>
-<rect x="859.7" y="968.7" width="3.6" height="17.3" class="rulef"/>
-<rect x="864.8" y="961.0" width="3.6" height="25.0" class="rulef"/>
-<rect x="869.9" y="978.6" width="3.6" height="7.4" class="rulef"/>
-<rect x="875.0" y="966.6" width="3.6" height="19.4" class="rulef"/>
-<rect x="880.1" y="974.6" width="3.6" height="11.4" class="rulef"/>
-<rect x="885.2" y="976.0" width="3.6" height="10.0" class="rulef"/>
-<rect x="890.3" y="977.6" width="3.6" height="8.4" class="rulef"/>
-<rect x="895.4" y="958.3" width="3.6" height="27.7" class="rulef"/>
-<rect x="900.5" y="975.7" width="3.6" height="10.3" class="rulef"/>
-<rect x="905.6" y="972.5" width="3.6" height="13.5" class="rulef"/>
-<rect x="910.7" y="968.6" width="3.6" height="17.4" class="rulef"/>
-<rect x="915.8" y="955.5" width="3.6" height="30.5" class="rulef"/>
-<rect x="920.9" y="977.0" width="3.6" height="9.0" class="rulef"/>
-<rect x="926.0" y="967.0" width="3.6" height="19.0" class="rulef"/>
-<rect x="931.1" y="964.3" width="3.6" height="21.7" class="rulef"/>
-<rect x="936.2" y="955.2" width="3.6" height="30.8" class="rulef"/>
-<rect x="941.3" y="956.9" width="3.6" height="29.1" class="rulef"/>
-<text x="620.0" y="1004.0" class="sm mut">64 kitties → value head picks 1 · illustrative</text>
-<text x="984.0" y="1034.0" class="mut sm" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-bot-turn.svg</text>
+<text x="782.0" y="666.0" class="sm b">this lead, ADKY</text>
+<text x="782.0" y="692.0" class="sm mut">worlds solved</text>
+<text x="960.0" y="692.0" class="mono sm" text-anchor="end">64 / 64</text>
+<text x="782.0" y="714.0" class="sm mut">nodes</text>
+<text x="960.0" y="714.0" class="mono sm" text-anchor="end">429,026</text>
+<text x="782.0" y="736.0" class="sm mut">cache hits</text>
+<text x="960.0" y="736.0" class="mono sm" text-anchor="end">173,315</text>
+<text x="782.0" y="758.0" class="sm mut">exact stage</text>
+<text x="960.0" y="758.0" class="mono sm" text-anchor="end">0.197 s</text>
+<text x="782.0" y="780.0" class="sm mut">node cap / world</text>
+<text x="960.0" y="780.0" class="mono sm" text-anchor="end">50M</text>
+<text x="782.0" y="810.0" class="sm ext b">network calls: none</text>
+<text x="984.0" y="850.0" class="mut sm" text-anchor="end">release 46 · 2026-10-16 · docs/visuals/release46-bot-turn.svg</text>
 </svg>

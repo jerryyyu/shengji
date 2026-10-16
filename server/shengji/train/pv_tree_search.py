@@ -145,9 +145,11 @@ from itertools import islice
 import numpy as np
 
 from ..ai.cwv_policy import afterstate, child_position, default_finisher, finish_current_trick
+from ..ai.endgame_compact import CompactWorldSession
 from ..engine.combos import find_tractor_runs
 from ..harvest.legal import (MAX_TRACTOR, _follow_case, _lead_groups, count_multiset_subsets,
                              iter_follow_actions)
+from ..rl.value_afterstate import category_signed_level, signed_level_category
 from .pv_search_policy import PVSearchBot, PVSearchBuryBot, PVSearchPolicyError
 from .pv_tree_config import PVTreeConfig
 
@@ -667,17 +669,34 @@ class PVTreeMixin:
         return values.reshape(len(worlds), len(actions)), {k: int(v) for k, v in stats.items()}
 
     def _tree_lookahead(self, rnd, seat, actions, worlds, gate=None, *,
-                        completed_tricks=None):
+                        completed_tricks=None, exact_max_cards=0,
+                        exact_max_nodes=250_000):
         """``(values, stats)``: ``values[w, a]`` is the root-team value of
         contender ``a`` in visited world ``w`` after the continuation
         (``cont``, module docstring).  Every contender is evaluated in every
         given world.  ``completed_tricks`` is an offline DEV override for the
         number of completed tricks from the root, including the current trick.
         It is deliberately bounded and never read by the serving path: the default remains the
-        continuation configured in ``PVTreeConfig``.  Raises
+        continuation configured in ``PVTreeConfig``.  ``exact_max_cards`` is
+        another offline-only opt-in: eligible determinized leaves at this
+        cutoff are solved exactly up to ``exact_max_nodes``; ineligible leaves
+        retain the learned evaluator.  Exact failures are propagated and no
+        partial matrix is returned.  The default ``exact_max_cards=0`` leaves
+        this method's existing evaluator path unchanged.  Raises
         `PVTreeContinuationRefused` when the engine does not accept a
         continuation lead as submitted."""
         cont = self.tree_config.cont
+        if (isinstance(exact_max_cards, (bool, np.bool_))
+                or not isinstance(exact_max_cards, (int, np.integer))
+                or not 0 <= int(exact_max_cards) <= 7):
+            raise PVSearchPolicyError(
+                "exact_max_cards must be an integer in [0, 7]")
+        if (isinstance(exact_max_nodes, (bool, np.bool_))
+                or not isinstance(exact_max_nodes, (int, np.integer))
+                or int(exact_max_nodes) < 1):
+            raise PVSearchPolicyError("exact_max_nodes must be a positive integer")
+        exact_max_cards = int(exact_max_cards)
+        exact_max_nodes = int(exact_max_nodes)
         if completed_tricks is not None:
             if cont == "trick-greedy":
                 raise PVSearchPolicyError(
@@ -688,6 +707,9 @@ class PVTreeMixin:
                 raise PVSearchPolicyError(
                     "completed_tricks override must be an integer in [1, 3]")
             completed_tricks = int(completed_tricks)
+        if exact_max_cards and cont == "trick-greedy":
+            raise PVSearchPolicyError(
+                "exact tail is not supported for trick-greedy")
         if cont == "trick-greedy":
             return self._tree_lookahead_greedy(rnd, seat, actions, worlds, gate)
         target = len(rnd.history) + (
@@ -732,15 +754,62 @@ class PVTreeMixin:
             active = [c for c in active if open_(c)]
         values = np.empty(len(clones), dtype=np.float64)
         batches = 0
-        for start in range(0, len(clones), self.batch_size):
+        if not exact_max_cards:
+            for start in range(0, len(clones), self.batch_size):
+                if gate is not None:
+                    gate()
+                chunk = clones[start:start + self.batch_size]
+                scores = np.asarray(self.evaluator.score(chunk, seat), dtype=np.float64)
+                if scores.shape != (len(chunk),) or not np.isfinite(scores).all():
+                    raise ValueError("value evaluator requires one finite root-team score per leaf")
+                values[start:start + len(chunk)] = scores
+                batches += 1
+            exact_leaves = model_leaves = exact_nodes = exact_cache_hits = 0
+        else:
+            model_indices = []
+            exact_leaves = exact_nodes = exact_cache_hits = 0
+            for index, clone in enumerate(clones):
+                eligible = clone.phase == "round_end" or (
+                    getattr(clone, "_determinized_world", False)
+                    and max((len(hand) for hand in clone.hands), default=0)
+                    <= exact_max_cards)
+                if not eligible:
+                    model_indices.append(index)
+                    continue
+                if gate is not None:
+                    gate()
+                if clone.phase == "round_end":
+                    points = clone.attacker_points
+                    solved_nodes = solved_hits = 0
+                else:
+                    session = CompactWorldSession(
+                        clone, max_hand_cards=exact_max_cards,
+                        max_nodes=exact_max_nodes, check_budget=gate,
+                        alpha_beta=True, level=True)
+                    before_nodes = session.nodes
+                    before_hits = session.cache_hits
+                    points = session.solve_level(clone)
+                    solved_nodes = session.nodes - before_nodes
+                    solved_hits = session.cache_hits - before_hits
+                values[index] = category_signed_level(
+                    signed_level_category(points, clone.is_attacker(seat)))
+                exact_leaves += 1
+                exact_nodes += solved_nodes
+                exact_cache_hits += solved_hits
+            model_leaves = len(model_indices)
+            for start in range(0, len(model_indices), self.batch_size):
+                if gate is not None:
+                    gate()
+                indices = model_indices[start:start + self.batch_size]
+                scores = np.asarray(
+                    self.evaluator.score([clones[index] for index in indices], seat),
+                    dtype=np.float64)
+                if scores.shape != (len(indices),) or not np.isfinite(scores).all():
+                    raise ValueError("value evaluator requires one finite root-team score per leaf")
+                values[indices] = scores
+                batches += 1
             if gate is not None:
                 gate()
-            chunk = clones[start:start + self.batch_size]
-            scores = np.asarray(self.evaluator.score(chunk, seat), dtype=np.float64)
-            if scores.shape != (len(chunk),) or not np.isfinite(scores).all():
-                raise ValueError("value evaluator requires one finite root-team score per leaf")
-            values[start:start + len(chunk)] = scores
-            batches += 1
         stats = {"tree_policy_rows": int(policy_rows), "tree_forced_plays": int(forced),
                  "tree_multi_leads": int(multi_leads),
                  "tree_terminal_leaves": sum(c.phase == "round_end" for c in clones),
@@ -749,6 +818,11 @@ class PVTreeMixin:
             depths = [len(clone.history) - len(rnd.history) for clone in clones]
             stats.update(tree_completed_tricks_min=min(depths),
                          tree_completed_tricks_max=max(depths))
+        if exact_max_cards:
+            stats.update(tree_exact_leaves=int(exact_leaves),
+                         tree_model_leaves=int(model_leaves),
+                         tree_exact_nodes=int(exact_nodes),
+                         tree_exact_cache_hits=int(exact_cache_hits))
         return values.reshape(len(worlds), len(actions)), stats
 
 

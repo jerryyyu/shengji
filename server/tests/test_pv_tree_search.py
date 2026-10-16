@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 
 from shengji.ai.cwv_policy import afterstate
+from shengji.ai.endgame import ExactWorldSession
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.combos import decompose
 from shengji.engine.game import Game
@@ -35,6 +36,7 @@ from shengji.harvest.legal import enumerate_legal
 from shengji.train import pv_search_policy as pv
 from shengji.train import pv_tree_search as tree
 from shengji.train.policy_prior import CARD_INDEX
+from shengji.rl.value_afterstate import category_signed_level, signed_level_category
 from shengji.train.pv_tree_config import (PVTreeConfig, PVTreeConfigError, TREE_DEFAULTS,
                                           tree_env, tree_token)
 from test_policy_world_search import state
@@ -849,6 +851,179 @@ def test_completed_trick_override_honors_budget_gate():
         bot._tree_lookahead(rnd, seat, [["D8"]], [world], expired,
                              completed_tricks=3)
     assert bot.evaluator.seen == []
+
+
+@pytest.mark.parametrize("banker", [0, 1])
+def test_exact_tail_matches_independent_reference_solver(monkeypatch, banker):
+    rnd = endgame(2)
+    rnd.banker = banker
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    fingerprint = (copy.deepcopy(rnd.hands), list(rnd.history), rnd.turn,
+                   rnd.attacker_points, rnd.phase)
+    recorded = []
+    compact = tree.CompactWorldSession
+
+    class RecordingSession(compact):
+        def __init__(self, root, *args, **kwargs):
+            recorded.append(root)
+            super().__init__(root, *args, **kwargs)
+
+    monkeypatch.setattr(tree, "CompactWorldSession", RecordingSession)
+    values, stats = bot._tree_lookahead(
+        rnd, seat, [["D2"]], [world], completed_tricks=1,
+        exact_max_cards=2, exact_max_nodes=100_000)
+
+    assert len(recorded) == 1 and stats["tree_exact_leaves"] == 1
+    reference = ExactWorldSession(recorded[0], max_hand_cards=2,
+                                  max_nodes=100_000).solve(recorded[0])
+    expected = category_signed_level(
+        signed_level_category(reference.attacker_points,
+                              recorded[0].is_attacker(seat)))
+    assert values[0, 0] == pytest.approx(expected)
+    assert stats["tree_model_leaves"] == 0
+    assert stats["tree_exact_nodes"] >= 0
+    assert fingerprint == (rnd.hands, rnd.history, rnd.turn,
+                           rnd.attacker_points, rnd.phase)
+
+
+def test_exact_tail_terminal_bypass_and_mixed_model_order(monkeypatch):
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    # A terminal leaf is exact even when there is no nonterminal solver call.
+    values, terminal_stats = bot._tree_lookahead(
+        rnd, seat, [["D2"]], [world], completed_tricks=2,
+        exact_max_cards=1, exact_max_nodes=100_000)
+    assert values.shape == (1, 1)
+    assert terminal_stats["tree_exact_leaves"] == 1
+    assert terminal_stats["tree_model_leaves"] == 0
+    assert bot.evaluator.seen == []
+
+    real_afterstate = tree.afterstate
+    calls = [0]
+
+    def mixed_afterstate(*args, **kwargs):
+        clone = real_afterstate(*args, **kwargs)
+        # Make only the first cross-product cell model-valued; the second stays
+        # a determinized exact candidate. This checks matrix placement, not a
+        # serving policy.
+        if calls[0] == 0:
+            clone._determinized_world = False
+        calls[0] += 1
+        return clone
+
+    class SentinelEvaluator(HashEvaluator):
+        def score(self, leaves, seat):
+            self.seen.extend(leaves)
+            return np.full(len(leaves), -7.0)
+
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2,
+                 evaluator=SentinelEvaluator())
+    monkeypatch.setattr(tree, "afterstate", mixed_afterstate)
+    mixed, mixed_stats = bot._tree_lookahead(
+        rnd, seat, [["D2"], ["S2"]], [world], completed_tricks=1,
+        exact_max_cards=2, exact_max_nodes=100_000)
+    assert mixed.shape == (1, 2)
+    assert mixed_stats["tree_exact_leaves"] == 1
+    assert mixed_stats["tree_model_leaves"] == 1
+    assert len(bot.evaluator.seen) == 1
+    assert mixed[0, 0] == -7.0 and mixed[0, 1] != -7.0
+
+
+def test_exact_tail_above_cap_stays_model_valued():
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+
+    class SentinelEvaluator(HashEvaluator):
+        def score(self, leaves, seat):
+            self.seen.extend(leaves)
+            return np.full(len(leaves), -9.0)
+
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2,
+                 evaluator=SentinelEvaluator())
+    values, stats = bot._tree_lookahead(
+        rnd, seat, [["D8"]], [world], completed_tricks=1,
+        exact_max_cards=1, exact_max_nodes=100_000)
+
+    assert values[0, 0] == -9.0
+    assert stats["tree_exact_leaves"] == 0
+    assert stats["tree_model_leaves"] == 1
+    assert len(bot.evaluator.seen) == 1
+
+
+def test_exact_tail_propagates_solver_budget_failure(monkeypatch):
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+
+    class FailingSession:
+        nodes = 0
+        cache_hits = 0
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def solve_level(self, _root):
+            raise tree.PVTreeBudgetExceeded("exact test budget")
+
+    monkeypatch.setattr(tree, "CompactWorldSession", FailingSession)
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    with pytest.raises(tree.PVTreeBudgetExceeded, match="exact test budget"):
+        bot._tree_lookahead(
+            rnd, seat, [["D2"]], [world], completed_tricks=1,
+            exact_max_cards=2, exact_max_nodes=100_000)
+
+
+def test_exact_tail_checks_gate_after_final_solver(monkeypatch):
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    expired = [False]
+
+    def gate():
+        if expired[0]:
+            raise tree.PVTreeBudgetExceeded("expired after exact solve")
+
+    class FinishingSession:
+        nodes = 1
+        cache_hits = 0
+
+        def __init__(self, *args, check_budget=None, **kwargs):
+            self.check_budget = check_budget
+
+        def solve_level(self, root):
+            expired[0] = True
+            return root.attacker_points
+
+    monkeypatch.setattr(tree, "CompactWorldSession", FinishingSession)
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    with pytest.raises(tree.PVTreeBudgetExceeded, match="expired after exact solve"):
+        bot._tree_lookahead(
+            rnd, seat, [["D2"]], [world], gate,
+            completed_tricks=1, exact_max_cards=2, exact_max_nodes=100_000)
+
+
+def test_exact_tail_rejects_invalid_limits_and_greedy_override():
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    for cards in (True, -1, 8, 1.5, "2"):
+        with pytest.raises(tree.PVSearchPolicyError):
+            bot._tree_lookahead(rnd, seat, [["D2"]], [world],
+                                exact_max_cards=cards)
+    for nodes in (True, 0, -1, 1.5, "10"):
+        with pytest.raises(tree.PVSearchPolicyError):
+            bot._tree_lookahead(rnd, seat, [["D2"]], [world],
+                                exact_max_cards=2, exact_max_nodes=nodes)
+    greedy = bot_of(PVTreeConfig(sims=8, cont="trick-greedy"), worlds=2)
+    with pytest.raises(tree.PVSearchPolicyError):
+        greedy._tree_lookahead(rnd, seat, [["D2"]], [world], exact_max_cards=1)
 
 
 def test_trick_mode_skips_when_the_root_seat_plays_last():

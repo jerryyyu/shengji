@@ -12,9 +12,10 @@ import math
 import os
 from pathlib import Path
 import platform
+import time
 
 from ..ai.cwv_policy import shared_evaluator
-from ..ai.registry import make_bot
+from ..ai.registry import REGISTRY, make_bot, register_pv_search_policies
 from ..oracle import screen as duel
 from .cwv_shortlist import CWVShortlistBot, CWVShortlistConfig
 from .cwv_double_shortlist import CWVDoubleShortlistBot
@@ -333,6 +334,162 @@ def _arm_policy_kwargs(config: dict) -> dict:
     return {"oracle_deal": oracle_true_deal} if on else {}
 
 
+#: the schema of a lane's frozen expected-window identity: what ``--shadow-env``
+#: reads the shadow primary's identity and environment from
+SHADOW_IDENTITY_SCHEMA = "claude-expected-window-identity-v1"
+#: the registration side `run_cluster` asks the deadline child for a shadow primary
+SHADOW_PRIMARY_SIDE = "shadow-primary"
+
+
+def _validate_shadow_config(config: dict) -> None:
+    """A shadow is an execution strategy for a flag-only candidate, never a policy
+    change: the window's arm stays ``--arm policy`` on the same package as the
+    primary, with no oracle on either side, and the primary is another name."""
+    shadow = config["shadow_arm"]
+    if config.get("arm") != "policy":
+        raise ValueError("a shadow arm needs --arm policy")
+    if any(config.get(key) for key in ("oracle_worlds", "oracle_mix_k", "oracle_pin_q")):
+        raise ValueError("a shadow arm cannot carry an oracle diagnostic")
+    if (set(shadow) != {"arm_policy", "arm_policy_identity", "environment"}
+            or not isinstance(shadow["arm_policy"], str)
+            or not isinstance(shadow["arm_policy_identity"], dict)
+            or not isinstance(shadow["environment"], dict)
+            or not all(isinstance(k, str) and isinstance(v, str) for k, v in shadow["environment"].items())):
+        raise ValueError("malformed shadow_arm block")
+    if shadow["arm_policy"] == config["arm_policy"]:
+        raise ValueError("the shadow primary must be a different registry name from the arm")
+    identity, arm = shadow["arm_policy_identity"], config["arm_policy_identity"]
+    if identity.get("checkpoint_sha256") != arm.get("checkpoint_sha256"):
+        raise ValueError("a shadow arm needs the arm's own package: the primary serves another")
+    inner = identity.get("config") or {}
+    if inner.get("oracle_worlds") or inner.get("oracle_mix_k") or inner.get("oracle_pin_q"):
+        raise ValueError("the shadow primary cannot be an oracle arm")
+
+
+def make_shadow_primary(config: dict, seed: int):
+    """The primary bot of a shadowed window (`ShadowPolicy`): the comparator,
+    registered from the frozen environment the config carries (a worker that
+    imported the candidate's environment registers the candidate, not this
+    name) and built with the seed the candidate takes; refused unless the bot
+    the registry builds is identical to the frozen object."""
+    shadow = config["shadow_arm"]
+    name = shadow["arm_policy"]
+    if name not in REGISTRY:
+        from .pv_search_policy import PVSearchPolicyError, pv_env_recipe
+        try:
+            recipe = pv_env_recipe(shadow["environment"])
+        except PVSearchPolicyError as exc:
+            raise ValueError(f"shadow environment: {exc}") from None
+        names = register_pv_search_policies(recipe.pop("checkpoint"), **recipe)
+        if name not in names:
+            raise ValueError(f"the shadow environment registers {names}, not {name!r}")
+    bot = make_bot(name, seed=seed)
+    if _policy_identity(bot) != shadow["arm_policy_identity"]:
+        raise ValueError("shadow primary identity changed between configuration and worker")
+    return bot
+
+
+def shadow_arm_config(name: str, identity_path) -> dict:
+    """The ``shadow_arm`` config block for the primary ``name``: the lane's frozen
+    expected-window identity file names it and carries its environment; the
+    block is accepted only once the registry, fed that environment, builds a
+    bot identical to the frozen object (`make_shadow_primary`)."""
+    frozen = json.loads(Path(identity_path).read_text())
+    if not isinstance(frozen, dict) or frozen.get("schema") != SHADOW_IDENTITY_SCHEMA:
+        raise ValueError(f"{identity_path} is not a {SHADOW_IDENTITY_SCHEMA} file")
+    if frozen.get("arm_policy") != name:
+        raise ValueError(f"{identity_path} freezes {frozen.get('arm_policy')!r}, not the shadow arm {name!r}")
+    environment = frozen.get("environment")
+    if (not isinstance(environment, dict) or not isinstance(frozen.get("arm_policy_identity"), dict)
+            or not all(isinstance(k, str) and isinstance(v, str) for k, v in environment.items())):
+        raise ValueError(f"{identity_path} lacks a policy identity or an environment of strings")
+    block = {"arm_policy": name, "arm_policy_identity": copy.deepcopy(frozen["arm_policy_identity"]),
+             "environment": dict(sorted(environment.items()))}
+    make_shadow_primary({"shadow_arm": block}, seed=0)
+    return block
+
+
+def _round_fingerprint(rnd) -> tuple:
+    """Everything a decision may read of a round and must leave unchanged."""
+    trick = rnd.trick
+    return (rnd.phase, rnd.turn, rnd.banker, rnd.trump_rank, rnd.trump_suit, rnd.trump_is_nt,
+            rnd._deal_pos, tuple(rnd.deck), tuple(tuple(hand) for hand in rnd.hands),
+            tuple(rnd.kitty), tuple(rnd.buried), repr(rnd.declaration), tuple(sorted(rnd.passed)),
+            len(rnd.history),
+            None if trick is None else (trick.leader, tuple((p.seat, tuple(p.cards)) for p in trick.plays)),
+            rnd.attacker_points, rnd.kitty_bonus, rnd.last_trick_winner)
+
+
+def _as_action(value):
+    """A decision as the two bots' answers are compared: a card sequence exactly
+    (a different order is a divergence, which costs a replay, never correctness)."""
+    return list(value) if isinstance(value, (list, tuple)) else value
+
+
+class ShadowPolicy:
+    """A candidate shadowing the comparator's game (``--shadow-arm``).
+
+    The table plays the PRIMARY (the comparator).  Before each of its decisions
+    the CANDIDATE is asked the same question on the same round, which it must
+    not change, and the mirror stays ``identical`` while every candidate action
+    equals the primary's.  By induction over the decisions, a mirror that stays
+    identical is the round the candidate's own game would have played: the same
+    deal, the control bots with the same seeds reaching the same states, and the
+    candidate asked the same questions in the same order on the same states, so
+    its records, counters and RNG are those of its own game and the primary's
+    committed round is its round.  After the first divergence the candidate is
+    not asked again and `run_cluster` replays the mirror with the full
+    candidate; a candidate decision that hit the outer deadline is a divergence
+    too (a fallback is not the candidate's search).  Attribute reads (counters,
+    traces, timing) are the candidate's: the window is the candidate's.
+    """
+
+    def __init__(self, primary, candidate, mirror: dict):
+        self.primary, self.candidate, self.mirror = primary, candidate, mirror
+        self.shadow_wall_seconds = 0.0
+        self.candidate_decisions = 0
+
+    def __getattr__(self, name):
+        return getattr(self.candidate, name)
+
+    def observe_public(self, rnd):
+        for bot in (self.primary, self.candidate):
+            observe = getattr(bot, "observe_public", None)
+            if observe is not None:
+                observe(rnd)
+
+    def _both(self, method, rnd, seat, *args, **kwargs):
+        asked = self.mirror["identical"]
+        mine = timed_out = None
+        if asked:
+            before = _round_fingerprint(rnd)
+            records = len(self.candidate.decisions)
+            started = time.perf_counter()
+            mine = _as_action(getattr(self.candidate, method)(rnd, seat, *args, **kwargs))
+            self.shadow_wall_seconds += time.perf_counter() - started
+            self.candidate_decisions += 1
+            if _round_fingerprint(rnd) != before:
+                raise ValueError("the shadowed candidate changed the round it was asked about")
+            timed_out = (method == "decide_play" and len(self.candidate.decisions) > records
+                         and bool((self.candidate.decisions[-1].get("deadline") or {}).get("timed_out")))
+        theirs = getattr(self.primary, method)(rnd, seat, *args, **kwargs)
+        if asked and (mine != _as_action(theirs) or timed_out):
+            self.mirror["identical"] = False
+            self.mirror["first_divergence"] = {
+                "method": method, "seat": seat, "phase": rnd.phase, "trick": len(rnd.history),
+                "candidate": mine, "primary": _as_action(theirs), "candidate_timed_out": timed_out}
+        return theirs
+
+    def decide_declare(self, rnd, seat, final=False):
+        return self._both("decide_declare", rnd, seat, final=final)
+
+    def decide_bury(self, rnd, seat):
+        return self._both("decide_bury", rnd, seat)
+
+    def decide_play(self, rnd, seat):
+        return self._both("decide_play", rnd, seat)
+
+
 def make_side(config: dict, side: str, seed: int):
     if (config.get("hybrid_bury")
             and (config["arm"] != "learned" or config.get("baseline") not in
@@ -521,15 +678,22 @@ def _recipe(config):
     for key in ("double_shortlist", "baseline", "decision_deadline", "throw_components",
                 "hybrid_bury", "corrected_rollout", "wide_tail", "prior",
                 "arm_policy", "arm_policy_identity", "round_kind", "oracle_worlds",
-                "oracle_mix_k", "oracle_pin_q"):
+                "oracle_mix_k", "oracle_pin_q", "shadow_arm"):
         if key in config:
             recipe[key] = config[key]
     return recipe
 
 
+def _side_bot(config, side, seed):
+    """A seat's bot by side: the shadow primary is the one side `make_side` does not build."""
+    if side == SHADOW_PRIMARY_SIDE:
+        return make_shadow_primary(config, seed)
+    return make_side(config, side, seed)
+
+
 def _deadline_side(config, side, seed):
     """Top-level spawn factory; the child shares cached evaluators across seats."""
-    return CwvTimedPolicy(make_side(config, side, seed))
+    return CwvTimedPolicy(_side_bot(config, side, seed))
 
 
 def run_cluster(config, cluster):
@@ -538,10 +702,25 @@ def run_cluster(config, cluster):
     if deadline is not None and deadline != DEADLINE_RECIPE:
         raise ValueError("unsupported screen decision deadline recipe")
     session = DeadlineSession(_deadline_side, deadline["seconds"]) if deadline else None
+    shadow = config.get("shadow_arm")
+    if shadow is not None:
+        _validate_shadow_config(config)
+    mirror_state = {}
+
+    def build(side, seed):
+        return (session.register(config, side, seed) if session
+                else CwvTimedPolicy(_side_bot(config, side, seed)))
 
     def factory(_config, side, seed):
-        wrapped = (session.register(config, side, seed) if session
-                   else CwvTimedPolicy(make_side(config, side, seed)))
+        if shadow is not None and side == "arm":
+            wrapped = ShadowPolicy(build(SHADOW_PRIMARY_SIDE, seed), build("arm", seed), mirror_state)
+        else:
+            wrapped = build(side, seed)
+        created.append((side, wrapped))
+        return wrapped
+
+    def full_factory(_config, side, seed):
+        wrapped = build(side, seed)
         created.append((side, wrapped))
         return wrapped
 
@@ -561,11 +740,36 @@ def run_cluster(config, cluster):
         games.append(game)
         return game
 
+    rows, shadows = [], []
     try:
-        rows = [duel.play_screen_round(
-            base, cluster, seed, mirror, bot_factory=factory,
-            counter_fn=work_counters, game_factory=game_factory)
-                for mirror in (0, 1)]
+        for mirror in (0, 1):
+            first = len(created)
+            mirror_state.clear()
+            mirror_state.update(identical=True, first_divergence=None)
+            row = duel.play_screen_round(
+                base, cluster, seed, mirror, bot_factory=factory,
+                counter_fn=work_counters, game_factory=game_factory)
+            if shadow is not None:
+                arms = [wrapped for side, wrapped in created[first:] if side == "arm"]
+                report = {
+                    "mirror": mirror, "identical": mirror_state["identical"],
+                    "first_divergence": mirror_state["first_divergence"],
+                    "candidate_decisions": sum(arm.candidate_decisions for arm in arms),
+                    "shadow_wall_seconds": round(sum(arm.shadow_wall_seconds for arm in arms), 4),
+                    "primary_wall_secs": row[1]["wall_secs"],
+                    "primary_history_sha256": row[0]["history_sha256"],
+                }
+                if not mirror_state["identical"]:
+                    # Nothing of the shadowed game is the candidate's once it
+                    # diverged: the mirror is replayed with the full candidate.
+                    del created[first:]
+                    games.pop()
+                    row = duel.play_screen_round(
+                        base, cluster, seed, mirror, bot_factory=full_factory,
+                        counter_fn=work_counters, game_factory=game_factory)
+                    report["replayed_wall_secs"] = row[1]["wall_secs"]
+                shadows.append(report)
+            rows.append(row)
     finally:
         if session:
             session.close()
@@ -587,6 +791,9 @@ def run_cluster(config, cluster):
             if actual_suit not in ("S", "H", "D", "C", "NT"):
                 raise ValueError(f"cluster {cluster} has invalid actual trump suit {actual_suit!r}")
             record["trump_suit"] = actual_suit
+    # a shadowed arm's traces are the candidate's own (ShadowPolicy)
+    traced = [(side, policy.candidate if isinstance(policy, ShadowPolicy) else policy)
+              for side, policy in created]
     return {
         "schema": "cwv-shortlist-shard-v1", "cluster": cluster,
         "seed": seed, "rank": rank, "recipe": _recipe(config),
@@ -599,7 +806,9 @@ def run_cluster(config, cluster):
                              # (pv-search ``value_declare``) carries the key
                              **({"declare_decisions": policy.__dict__["declare_decisions"]}
                                 if policy.__dict__.get("declare_decisions") else {})}
-                            for i, (side, policy) in enumerate(created)],
+                            for i, (side, policy) in enumerate(traced)],
+        # only a shadowed window carries the key, so every other shard is unchanged
+        **({"shadow": shadows} if shadow is not None else {}),
     }
 
 
@@ -619,7 +828,11 @@ def reopen_shard(path, config, cluster):
                        and r.get("trump_suit") not in ("S", "H", "D", "C", "NT"))
                    or ("round_kind" in config
                        and r.get("banker") != banker_for(config, cluster))
-                   for r in rows)):
+                   for r in rows)
+            or ("shadow_arm" in config) != ("shadow" in shard)
+            or ("shadow" in shard and (
+                [s.get("mirror") for s in shard["shadow"]] != [0, 1]
+                or any(type(s.get("identical")) is not bool for s in shard["shadow"])))):
         raise ValueError("completed shard does not match its mirrored pair and recipe")
     return shard
 
@@ -759,7 +972,30 @@ def summary_for(shards, config):
             " Interrupted search counters/CPU are uncommitted lower bounds, not zero work.")
         if not complete_accounting:
             result["arm_over_baseline_decision_cpu"] = None
+    if config.get("shadow_arm"):
+        result["shadow_arm"] = shadow_summary(shards, config)
     return result
+
+
+def shadow_summary(shards, config) -> dict:
+    """How a shadowed window was produced: the mirrors the candidate shadowed
+    identically (kept as the primary's round) and the ones it replayed, with
+    the wall seconds of each path.  Execution accounting; it enters no outcome."""
+    reports = [report for shard in shards for report in shard["shadow"]]
+    identical = [r for r in reports if r["identical"]]
+    replayed = [r for r in reports if not r["identical"]]
+    return {
+        "arm_policy": config["shadow_arm"]["arm_policy"],
+        "mirrors": len(reports), "identical": len(identical), "replayed": len(replayed),
+        "identical_fraction": len(identical) / len(reports) if reports else None,
+        "candidate_decisions": sum(r["candidate_decisions"] for r in reports),
+        "shadow_wall_seconds": round(sum(r["shadow_wall_seconds"] for r in reports), 4),
+        "primary_wall_seconds": round(sum(r["primary_wall_secs"] for r in reports), 4),
+        "replayed_wall_seconds": round(sum(r["replayed_wall_secs"] for r in replayed), 4),
+        "first_divergence_methods": {
+            method: sum(1 for r in replayed if (r["first_divergence"] or {}).get("method") == method)
+            for method in ("decide_declare", "decide_bury", "decide_play")},
+    }
 
 
 def main(argv=None):
@@ -768,6 +1004,14 @@ def main(argv=None):
     parser.add_argument("--arm-policy",
                         help="with --arm policy: the registry name of the served bot to screen "
                              "(registered from the SHENGJI_* environment, as the server does)")
+    parser.add_argument("--shadow-arm",
+                        help="with --arm policy: the registry name of the comparator whose game "
+                             "each mirror plays, the arm shadowing it on the same states; a mirror "
+                             "on which every arm action equals the comparator's is kept as the "
+                             "arm's round, any other is replayed with the arm itself (ShadowPolicy)")
+    parser.add_argument("--shadow-env", type=Path,
+                        help="with --shadow-arm: the lane's frozen expected-window identity file "
+                             "of the comparator (its registry environment and policy identity)")
     parser.add_argument("--checkpoint")
     parser.add_argument("--decision-deadline", type=float, default=300,
                         help="300s total play deadline (default); 0 explicitly selects legacy uncapped policy")
@@ -846,6 +1090,10 @@ def main(argv=None):
         parser.error("learned requires --checkpoint")
     if (args.arm == "policy") != bool(args.arm_policy):
         parser.error("--arm policy requires --arm-policy, and --arm-policy requires --arm policy")
+    if bool(args.shadow_arm) != (args.shadow_env is not None):
+        parser.error("--shadow-arm and --shadow-env go together")
+    if args.shadow_arm and (args.arm != "policy" or args.shadow_arm == args.arm_policy):
+        parser.error("--shadow-arm needs --arm policy and a comparator name other than --arm-policy")
     if args.arm == "policy" and (args.prior_checkpoint is not None or args.hybrid_bury
                                  or args.inner_mode is not None or args.value_head is not None
                                  or args.wide_tail or args.throw_components
@@ -1001,6 +1249,9 @@ def _run_screen(args, trump_ranks):
         probe = make_bot(args.arm_policy, seed=0, **_arm_policy_kwargs(config))
         config["arm_policy"] = args.arm_policy
         config["arm_policy_identity"] = _policy_identity(probe)
+        if args.shadow_arm:
+            config["shadow_arm"] = shadow_arm_config(args.shadow_arm, args.shadow_env)
+            _validate_shadow_config(config)
     cost_order = (_cost_order(args.cost_order_from, range(args.clusters), args.seed0,
                               trump_ranks=trump_ranks)
                   if args.cost_order_from is not None else None)

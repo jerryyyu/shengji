@@ -442,7 +442,7 @@ def test_hybrid_search_run_rejects_invalid_budget_before_output(tmp_path, wall):
     assert not output.exists()
 
 
-@pytest.mark.parametrize("packet_key", ["packet", "replay"])
+@pytest.mark.parametrize("packet_key", ["packet", "replay", "cli"])
 def test_hybrid_search_run_real_capture_to_saved_regret(
         tmp_path, pinned_production_package, hybrid_belief_package, packet_key):
     from shengji.ai.refusal import RefusalLedger
@@ -457,7 +457,9 @@ def test_hybrid_search_run_real_capture_to_saved_regret(
         capture.committed(rnd, event["seat"], event["attempted"])
     packet = capture.capture(rnd, ledger=RefusalLedger(), decision={})
     source, output = tmp_path / "roots.jsonl", tmp_path / "result.jsonl"
-    source.write_text(json.dumps({"root_index": 52, packet_key: packet}) + "\nINVALID NEXT ROW\n")
+    source.write_text(json.dumps({"root_index": 52,
+                                  "packet" if packet_key == "cli" else packet_key: packet})
+                      + "\nINVALID NEXT ROW\n")
     belief_path, belief_sha = hybrid_belief_package
     seeds = []
 
@@ -469,14 +471,28 @@ def test_hybrid_search_run_real_capture_to_saved_regret(
             seed=seed, world_history_legal=True, world_history_draw=True,
             belief_worlds=True, belief_checkpoint=belief_path, belief_sha256=belief_sha)
 
-    terminal = run_probe_file(
-        source, output, factory, completed_tricks=1, exact_max_cards=4,
-        oracle_max_cards=5, max_nodes=100_000, max_roots=1,
-        wall_seconds=30, seed=7)
+    if packet_key == "cli":
+        assert hybrid_run.main([
+            '--input', str(source), '--output', str(output),
+            '--play-package', str(pinned_production_package), '--play-sha256', PACKAGE_SHA,
+            '--belief-package', belief_path, '--belief-sha256', belief_sha,
+            '--completed-tricks', '1', '--exact-max-cards', '4', '--oracle-max-cards', '5',
+            '--max-nodes', '100000', '--max-roots', '1', '--wall-seconds', '30',
+            '--seed', '7']) == 0
+        terminal = json.loads(output.read_text().splitlines()[-1])
+        terminal.pop('type')
+    else:
+        terminal = run_probe_file(
+            source, output, factory, completed_tricks=1, exact_max_cards=4,
+            oracle_max_cards=5, max_nodes=100_000, max_roots=1,
+            wall_seconds=30, seed=7)
     rows = [json.loads(line) for line in output.read_text().splitlines()]
     assert terminal == {"status": "COMPLETE", "reason": "root_limit",
                         "attempted": 1, "completed": 1}
-    assert seeds == [7] and len(rows) == 3
+    assert seeds == ([] if packet_key == "cli" else [7]) and len(rows) == 3
+    if packet_key == "cli":
+        assert rows[0]['recipe']['worlds'] == 64
+        assert rows[0]['recipe']['belief_sha256'] == belief_sha
     result = rows[1]
     assert result["root_index"] == 52 and result["lead"] is True
     assert len(result["admitted"]) == len(result["regret"]["values"])

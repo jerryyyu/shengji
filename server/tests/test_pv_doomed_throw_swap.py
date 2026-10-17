@@ -27,6 +27,9 @@ import copy
 import numpy as np
 import pytest
 
+from scripts.lead_alias_probe import (refill_lead_aliases, score_refill,
+                                      replay_logged_worlds, score_logged_refill)
+
 from shengji.ai.memory import Memory
 from shengji.ai.refusal import RefusalLedger, pin_unplayed_attempt
 from shengji.harvest.legal import forced_lead
@@ -77,6 +80,244 @@ def oxps():
             rnd.play(e["seat"], list(e["cards"]))
     assert module.leading(rnd) and rnd.turn == SEAT and len(rnd.history) == 1
     return rnd
+
+
+def test_alias_refill_uses_engine_signatures_and_real_value_consumer():
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    admitted = [THROW, OTHER_C2_THROW, FORCED]
+    original_hands = copy.deepcopy(rnd.hands)
+    bot = PolicyValueBot(lambda *args: None, evaluator=LeafEvaluator())
+    result = score_refill(bot, rnd, SEAT, admitted,
+                          [THROW, OTHER_C2_THROW, FORCED, ["D6"], ["DQ"]], worlds)
+    assert result["alias_slots"] == result["replacement_slots"] == 2
+    assert result["admitted"] == [THROW, ["D6"], ["DQ"]]
+    assert len(set(result["original_means"])) == 1
+    assert result["max_mean_delta"] >= 0
+    assert rnd.hands == original_hands
+    assert admitted == [THROW, OTHER_C2_THROW, FORCED]
+
+
+def test_equal_value_means_are_not_alias_evidence():
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    bot = PolicyValueBot(lambda *args: None, evaluator=ZeroEvaluator())
+    actions = [["C2"], ["D6"], ["DQ"]]
+    result = score_refill(bot, rnd, SEAT, actions, actions, worlds)
+    assert len(set(result["original_means"])) == 1
+    assert result["alias_slots"] == result["replacement_slots"] == 0
+    assert result["admitted"] == actions
+
+
+def test_alias_refill_insufficient_replacements_preserves_width():
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    result = refill_lead_aliases(rnd, SEAT, [THROW, OTHER_C2_THROW, FORCED], [], worlds)
+    assert result["admitted"] == [THROW, OTHER_C2_THROW, FORCED]
+    assert result["alias_slots"] == 2
+    assert result["replacement_slots"] == 0
+
+
+def test_alias_refill_requires_agreement_in_every_world():
+    rnd = oxps()
+    real = (copy.deepcopy(rnd.hands), list(rnd.buried))
+    result = refill_lead_aliases(rnd, SEAT, [THROW, FORCED], [],
+                                 [real, standing_world(rnd)])
+    assert result["alias_slots"] == 0
+    assert result["admitted"] == [THROW, FORCED]
+
+
+def test_alias_refill_rejects_missing_worlds_and_wrong_actor_hand():
+    rnd = oxps()
+    with pytest.raises(ValueError, match="requires worlds"):
+        refill_lead_aliases(rnd, SEAT, [FORCED], [], [])
+    hands = copy.deepcopy(rnd.hands)
+    hands[SEAT].pop()
+    with pytest.raises(ValueError, match="actor hand"):
+        refill_lead_aliases(rnd, SEAT, [FORCED], [], [(hands, rnd.buried)])
+
+
+@pytest.mark.parametrize("defect", [None, "policy", "fill", "counter", "snapshot", "fallback"])
+def test_alias_logged_replay_guards(monkeypatch, defect):
+    from types import SimpleNamespace
+    from scripts import belief_debug
+    from shengji.ai import belief_numpy as bn
+
+    rnd = oxps()
+    worlds = [(rnd.hands, rnd.buried)]
+    proposal = SimpleNamespace(P=np.full((54, 4), 0.25), drawn=1)
+    stats = {"history_rejections": 0, "history_fallback_worlds": 0}
+    record = dict(policy="expected", schema="pv-search-decision-v1", work_complete=True,
+                  worlds=1, belief_fallback=0, belief_proposed=1,
+                  history_rejections=0, history_fallback_worlds=0,
+                  belief_snapshot=bn.encode_snapshot(proposal.P))
+    if defect == "policy":
+        record["policy"] = "other"
+    elif defect == "counter":
+        del record["history_rejections"]
+    elif defect == "snapshot":
+        record["belief_snapshot"] = bn.encode_snapshot(np.zeros((54, 4)))
+    elif defect == "fallback":
+        record["belief_fallback"] = 1
+    monkeypatch.setattr(belief_debug, "regenerate",
+                        lambda *a: (proposal, worlds, stats, int(defect == "fill")))
+    if defect is None:
+        assert replay_logged_worlds(None, rnd, SEAT, record, "expected") is worlds
+    else:
+        with pytest.raises(ValueError):
+            replay_logged_worlds(None, rnd, SEAT, record, "expected")
+
+
+@pytest.mark.parametrize("defect", [None, "listing", "means", "played", "truncated",
+                                    "regenerated", "prior_drift"])
+def test_logged_refill_replays_value_and_selection_consumers(monkeypatch, defect):
+    from types import SimpleNamespace
+
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    actions = [THROW, OTHER_C2_THROW, ["D6"]]
+    bot = PolicyValueBot(lambda *a: None, evaluator=LeafEvaluator(),
+                         doomed_throw_reselect=True)
+    monkeypatch.setattr(bot, "_legal", lambda *a: SimpleNamespace(actions=actions), raising=False)
+    admitted = actions[:2]
+    means, _ = bot._value_means(rnd, SEAT, admitted, worlds)
+    record = dict(admitted=admitted, admitted_indices=[0, 1],
+                  policy_log_odds_listing=[3., 2., 1.], value_means=means.tolist(),
+                  policy_log_odds_admitted=[3., 2.],
+                  played=FORCED)
+    if defect == "listing":
+        record["admitted_indices"] = [1, 0]
+    elif defect == "means":
+        record["value_means"][0] += 1
+    elif defect == "played":
+        record["played"] = ["D6"]
+    elif defect == "truncated":
+        record["policy_log_odds_listing"] = [3., 2.]
+    elif defect in ("regenerated", "prior_drift"):
+        record["policy_log_odds_listing"] = [3., 2.]
+        monkeypatch.setattr(bot, "scores", lambda *a: np.array([[3., 2., 1.]]))
+        if defect == "prior_drift":
+            record["policy_log_odds_admitted"] = [3., 9.]
+    complete = defect in ("regenerated", "prior_drift")
+    if defect not in (None, "regenerated"):
+        with pytest.raises(ValueError):
+            score_logged_refill(bot, rnd, SEAT, record, worlds, complete_listings=complete)
+    else:
+        result = score_logged_refill(bot, rnd, SEAT, record, worlds, complete_listings=complete)
+        assert result["original_played"] == FORCED
+        assert result["refilled_played"] == ["D6"]
+        assert result["selection_changed"]
+        assert result["replacement_slots"] == 1
+        assert result["listing_regenerated"] == complete
+
+
+def test_alias_probe_attributes_takeover_per_play():
+    from scripts.lead_alias_probe import logged_play_modes
+
+    def play(bot=True):
+        return dict(e="play", round=1, seat=0, bot=bot, decision={"policy": "p"})
+
+    def timing(mode, **extra):
+        return dict(e="bot_timing", round=1, seat=0, phase="play", policy="p",
+                    mode=mode, acted=True, **extra)
+
+    events = [play(), timing("bot"), play(False), play(), timing("takeover")]
+    assert logged_play_modes(events) == {(1, 0): "bot", (1, 1): "human", (1, 2): "takeover"}
+    assert logged_play_modes([play()]) == {(1, 0): "unknown"}
+    assert logged_play_modes([play(), timing("bot", stale_discarded=True)]) == {(1, 0): "unknown"}
+    with pytest.raises(ValueError, match="ambiguous"):
+        logged_play_modes([play(), play()])
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_alias_smoke_runs_complete_budgeted_serving_path(enabled):
+    from scripts.lead_alias_probe import serving_smoke
+
+    def factory(seed):
+        bot = served(lead_alias_refill=enabled, serving_budget_seconds=3)
+        bot.policy_name = "test-serving"
+        return bot
+
+    rnd = oxps()
+    original = copy.deepcopy(rnd.hands)
+    result = serving_smoke(factory, rnd, SEAT, {}, seed=0)
+    assert result["legal"] and result["work_complete"]
+    assert result["schema"] == "pv-search-decision-v1"
+    assert result["fallback_reason"] is None
+    assert result["budget_seconds"] == 3
+    assert result["elapsed_seconds"] < 3
+    assert bool(result["refill"]) == enabled
+    assert rnd.hands == original
+
+
+@pytest.mark.parametrize("expiry", [None, "first", "publish", "soft"])
+def test_serving_alias_refill_is_transactional(monkeypatch, expiry):
+    from shengji.train import lead_alias_refill as lar
+
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    actions = [THROW, OTHER_C2_THROW, ["D6"]]
+    monkeypatch.setattr(lar, "MAX_SECONDS", 10 if expiry != "soft" else -1)
+    calls = []
+
+    def guard():
+        calls.append(1)
+        if (expiry == "first" and len(calls) == 1) or (expiry == "publish" and len(calls) == 4):
+            raise pv.PVSearchBudgetExceeded("injected")
+
+    chosen, record = lar.refill_indices(rnd, SEAT, actions, [3., 2., 1.], [0, 1], worlds, guard)
+    if expiry is None:
+        assert chosen == [0, 2]
+        assert record["lead_alias_refill_replacements"] == 1
+    else:
+        assert chosen == [0, 1]
+        assert not record["lead_alias_refill_applied"]
+        assert record["lead_alias_refill_abandoned"] == (
+            "soft_budget" if expiry == "soft" else "hard_budget")
+
+
+@pytest.mark.parametrize("error", [RuntimeError, KeyboardInterrupt])
+def test_serving_alias_refill_does_not_hide_errors(monkeypatch, error):
+    from shengji.train import lead_alias_refill as lar
+
+    rnd = oxps()
+
+    def fail(*args):
+        raise error("injected")
+
+    monkeypatch.setattr(lar, "resolve_lead", fail)
+    with pytest.raises(error):
+        lar.refill_indices(rnd, SEAT, [THROW, OTHER_C2_THROW], [2., 1.], [0, 1],
+                           [(rnd.hands, rnd.buried)])
+
+
+def test_alias_refill_integrated_served_decision():
+    rnd = oxps()
+    _, before = decide(served(**RELEASE38_RULES), rnd)
+    played, after = decide(served(lead_alias_refill=True, **RELEASE38_RULES), rnd)
+    assert after["work_complete"] and played == after["played"]
+    assert len(after["admitted"]) == len(before["admitted"])
+    assert after["admitted"][0] == before["admitted"][0]
+    assert after["lead_alias_refill_replacements"] > 0
+    assert len(after["value_means"]) == len(after["admitted"])
+    assert not any(k.startswith("lead_alias_refill") for k in before)
+
+
+def test_alias_refill_identity_and_env():
+    from dataclasses import replace
+
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64)
+    assert pv.recipe_payload(config) == pv.recipe_payload(replace(config, lead_alias_refill=False))
+    on = replace(config, lead_alias_refill=True)
+    assert pv.recipe_digest(config) != pv.recipe_digest(on)
+    assert pv.recipe_payload(on)["lead_alias_max_actions"] == 64
+    assert pv.recipe_payload(on)["lead_alias_max_seconds"] == 0.05
+    env = {"SHENGJI_PV_CKPT": "/unused", "SHENGJI_PV_SHA256": "f" * 64,
+           "SHENGJI_PV_LEAD_ALIAS_REFILL": "1"}
+    assert pv.pv_env_recipe(env)["lead_alias_refill"] is True
+    for field in ("small_joker_guard", "admit_forced_single", "finish_lead_admission"):
+        with pytest.raises(pv.PVSearchPolicyError):
+            pv.recipe_payload(replace(on, **{field: True}))
 
 
 class LeafEvaluator:

@@ -680,6 +680,8 @@ WIDE_LEAD_RULE = {"WIDE_LEAD_ADMISSION": "wide_lead_admission"}
 WIDE_LEAD_DEFAULTS = dict(wide_lead_admission=False)
 #: `wide_lead_admission`: the policy admission width on every lead (served K is 8)
 WIDE_LEAD_K = 32
+LEAD_ALIAS_RULE = {"LEAD_ALIAS_REFILL": "lead_alias_refill"}
+LEAD_ALIAS_DEFAULTS = dict(lead_alias_refill=False)
 FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
 EXACT_FOLLOW_RULE = {"EXACT_FOLLOW": "exact_follow"}
@@ -830,6 +832,7 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
+              **LEAD_ALIAS_RULE,
               **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE,
               **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
@@ -844,6 +847,7 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("exact_lead_policy_first", "elp"),
                                                    ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
+                                                   ("lead_alias_refill", "lar"),
                                                    ("lead_anchor", "la"),
                                                    ("lead_tiebreak_prior", "lp"),
                                                    ("doomed_throw_swap", "dts"),
@@ -1059,6 +1063,8 @@ class PVSearchConfig:
     adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"]
     # the optional lead admission width (exclusive with ``adaptive_k``); the same contract
     wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
+    # the optional lead alias refill rule; the same contract
+    lead_alias_refill: bool = LEAD_ALIAS_DEFAULTS["lead_alias_refill"]
     finish_lead_admission: bool = False
     exact_lead_endgame: bool = False
     # its two optional variants (module docstring); each requires it
@@ -1236,6 +1242,17 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         if config.adaptive_k:
             raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
         payload["wide_lead_k"] = WIDE_LEAD_K
+    if config.lead_alias_refill:
+        from .lead_alias_refill import MAX_ACTIONS, MAX_SECONDS
+        payload["lead_alias_max_actions"] = MAX_ACTIONS
+        payload["lead_alias_max_seconds"] = MAX_SECONDS
+        if config.tree is not None:
+            raise PVSearchPolicyError('lead_alias_refill does not combine with the tree')
+        if (config.small_joker_guard or config.admit_forced_single
+                or config.finish_lead_admission):
+            raise PVSearchPolicyError(
+                'lead_alias_refill does not combine with small_joker_guard, '
+                'admit_forced_single or finish_lead_admission')
     if config.exact_lead_endgame:
         if (config.tree is not None or config.adaptive_worlds or config.adaptive_worlds_leads
                 or config.oracle_worlds or config.oracle_mix_k or config.oracle_pin_q):
@@ -1494,6 +1511,8 @@ class PVSearchBot(PolicyValueBot):
     _adaptive_worlds = None
     wide_lead_admission = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
     _wide_lead = None
+    lead_alias_refill = LEAD_ALIAS_DEFAULTS["lead_alias_refill"]
+    _lead_alias_refill = None
     value_declare = VALUE_DECLARE_DEFAULTS["value_declare"]
     value_declare_worlds = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
     value_declare_margin = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
@@ -1598,6 +1617,16 @@ class PVSearchBot(PolicyValueBot):
         if config.wide_lead_admission and config.adaptive_k:
             raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
         self.wide_lead_admission = config.wide_lead_admission
+        if type(config.lead_alias_refill) is not bool:
+            raise PVSearchPolicyError("lead_alias_refill must be a bool")
+        if config.lead_alias_refill:
+            if (config.tree is not None or config.small_joker_guard
+                    or config.admit_forced_single or config.finish_lead_admission):
+                raise PVSearchPolicyError(
+                    'lead_alias_refill does not combine with tree, small_joker_guard, '
+                    'admit_forced_single or finish_lead_admission')
+        self.lead_alias_refill = config.lead_alias_refill
+        self._lead_alias_refill = None
         if type(config.finish_lead_admission) is not bool:
             raise PVSearchPolicyError('finish_lead_admission must be a bool')
         if config.finish_lead_admission and config.tree is not None:
@@ -2658,6 +2687,7 @@ class PVSearchBot(PolicyValueBot):
         will price."""
         chosen = super()._admit(rnd, seat, actions, preferences, anchor_index)
         self._finish_lead_added = False
+        self._lead_alias_refill = None
         finish = self._finish_lead_action(rnd, seat)
         if finish:
             for i, action in enumerate(actions):
@@ -2665,6 +2695,17 @@ class PVSearchBot(PolicyValueBot):
                     chosen = list(chosen) + [i]
                     self._finish_lead_added = True
                     break
+        if self.lead_alias_refill and leading(rnd) and len(chosen) > 1:
+            worlds, check_budget = self._admission_context
+            eligible = bool(worlds)
+            if eligible and self.exact_lead_endgame and self.exact_deep_cards:
+                eligible = max(map(len, rnd.hands)) > self.exact_deep_cards
+            if eligible:
+                from .lead_alias_refill import refill_indices
+                chosen, diagnostic = refill_indices(
+                    rnd, seat, actions, preferences, chosen, worlds,
+                    check_budget=check_budget)
+                self._lead_alias_refill = dict(diagnostic)
         return chosen
 
     # -- the optional lead admission width (class docstring) ----------------------
@@ -2693,6 +2734,8 @@ class PVSearchBot(PolicyValueBot):
             record['finish_lead_admission_added'] = self._finish_lead_added
         if self.wide_lead_admission and self._wide_lead is not None:
             record.update(self._wide_lead)
+        if self.lead_alias_refill and self._lead_alias_refill is not None:
+            record.update(self._lead_alias_refill)
         return record
 
     def _candidate_limit(self, rnd):
@@ -3364,6 +3407,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
                        adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
                        wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
+                       lead_alias_refill: bool = LEAD_ALIAS_DEFAULTS["lead_alias_refill"],
                        finish_lead_admission: bool = False,
                        exact_lead_endgame: bool = False,
                        exact_lead_tie_baseline: bool = False,
@@ -3436,6 +3480,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             adaptive_worlds=adaptive_worlds,
                             adaptive_worlds_leads=adaptive_worlds_leads,
                             wide_lead_admission=wide_lead_admission,
+                            lead_alias_refill=lead_alias_refill,
                             finish_lead_admission=finish_lead_admission,
                             exact_lead_endgame=exact_lead_endgame,
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
@@ -3551,6 +3596,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         adaptive_worlds: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds"],
                         adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"],
                         wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"],
+                        lead_alias_refill: bool = LEAD_ALIAS_DEFAULTS["lead_alias_refill"],
                         finish_lead_admission: bool = False,
                         exact_lead_endgame: bool = False,
                         exact_lead_tie_baseline: bool = False,
@@ -3604,6 +3650,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             adaptive_worlds=adaptive_worlds,
                             adaptive_worlds_leads=adaptive_worlds_leads,
                             wide_lead_admission=wide_lead_admission,
+                            lead_alias_refill=lead_alias_refill,
                             finish_lead_admission=finish_lead_admission,
                             exact_lead_endgame=exact_lead_endgame,
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
@@ -3710,6 +3757,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                adaptive_worlds=config.adaptive_worlds,
                                adaptive_worlds_leads=config.adaptive_worlds_leads,
                                wide_lead_admission=config.wide_lead_admission,
+                               lead_alias_refill=config.lead_alias_refill,
                                finish_lead_admission=config.finish_lead_admission,
                                exact_lead_endgame=config.exact_lead_endgame,
                                exact_lead_tie_baseline=config.exact_lead_tie_baseline,

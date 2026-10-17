@@ -137,7 +137,9 @@ def test_exact_target_provenance_preserves_values(status, follow_applied):
 @pytest.fixture
 def exact_data_policy(package, monkeypatch):
     yield from _register_data_policy(package, monkeypatch, EXACT_LEAD_ENDGAME=1,
-                                     EXACT_DEEP_CARDS=4)
+                                     EXACT_DEEP_CARDS=4, EXACT_FOLLOW=1,
+                                     EXACT_FOLLOW_MAX_CARDS=4,
+                                     EXACT_FOLLOW_SOLVER='compact-level')
 
 
 def test_exact_producer_values_reach_harvest(exact_data_policy, tmp_path):
@@ -146,6 +148,14 @@ def test_exact_producer_values_reach_harvest(exact_data_policy, tmp_path):
     plays = [r for r in run['records'] if r['decision_kind'] == 'play']
     assert any(r['action_values'].get('exact_search', {}).get('exact_lead_status') == 'complete'
                for r in plays)
+    follows = [r for r in plays if r['action_values'].get('exact_search', {}).get('exact_follow_attempted')]
+    assert follows
+    for r in follows:
+        values = r['action_values']
+        assert values['exact_search']['exact_follow_abandoned'] is None
+        assert type(values['exact_search']['exact_follow_applied']) is bool
+        assert 'model-bootstrap' in values['value_source']
+        assert values['means'] == r['preference']['means']
     for r in plays:
         values = r['action_values']
         if values.get('exact_search', {}).get('exact_lead_status') == 'complete':

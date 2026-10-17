@@ -320,6 +320,18 @@ def test_alias_refill_identity_and_env():
             pv.recipe_payload(replace(on, **{field: True}))
 
 
+@pytest.mark.parametrize('flag', ['adaptive_worlds', 'adaptive_worlds_leads'])
+def test_alias_refill_rejects_world_expansion(flag):
+    config = pv.PVSearchConfig(checkpoint_sha256='f' * 64,
+                               lead_alias_refill=True, **{flag: True})
+    with pytest.raises(pv.PVSearchPolicyError, match='lead_alias_refill.*adaptive worlds'):
+        pv.recipe_payload(config)
+    with pytest.raises(pv.PVSearchPolicyError, match='lead_alias_refill.*adaptive worlds'):
+        served(lead_alias_refill=True, **{flag: True})
+    # World expansion remains available without alias collapsing.
+    served(**{flag: True})
+
+
 class LeafEvaluator:
     """A stub value head that reads only the leaf STATE: 1 when the root seat's
     play in the resolved trick is C2 alone, plus a small term in the trick's

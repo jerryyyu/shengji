@@ -136,7 +136,25 @@ def _exact_abandon(bot):
     return record['exact_lead_abandon_reason'], record['exact_lead_abandon_error']
 
 
+from shengji.train import lead_alias_refill
+
+
+def _alias_run(deadline):
+    from types import SimpleNamespace
+    from test_pv_doomed_throw_swap import oxps, THROW, OTHER_C2_THROW, SEAT
+
+    rnd = oxps()
+    chosen, record = lead_alias_refill.refill_indices(
+        rnd, SEAT, [THROW, OTHER_C2_THROW, ["D6"]], [3., 2., 1.], [0, 1],
+        [(rnd.hands, rnd.buried)], deadline)
+    return SimpleNamespace(record=record), chosen
+
+
 CASES = [
+    StageCase("lead_alias_refill", run=_alias_run, base=lambda: [0, 1],
+              abandon=lambda bot: (bot.record.get("lead_alias_refill_abandoned"),
+                                   bot.record.get("lead_alias_refill_error")),
+              abandons_errors=False, nested=(lead_alias_refill, "execution_signature")),
     StageCase("exact_lead_endgame", run=_exact_run,
               base=lambda: _exact_run(Deadline(), on=False)[1],
               abandon=_exact_abandon, abandons_errors=True),

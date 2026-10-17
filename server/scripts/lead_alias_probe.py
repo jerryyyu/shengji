@@ -187,6 +187,40 @@ def logged_play_modes(events):
     return modes
 
 
+def serving_smoke(factory, rnd, seat, record, *, seed):
+    """A complete serving call on a captured state, with fresh sampled worlds.
+
+    This is correctness/latency validation, not a replay of the logged choice
+    or a gameplay comparison. Only public refusal memory is restored.
+    """
+    import copy
+    import time
+    from scripts.belief_debug import refusals_of
+    from shengji.ai.refusal import on_record
+
+    bot = factory(seed=seed)
+    if bot.serving_budget_seconds is None:
+        raise ValueError("serving smoke requires a finite configured deadline")
+    refusals = refusals_of(record)
+    if not all(on_record(rnd, r) for r in refusals):
+        raise ValueError("logged refusal memory does not match the captured round")
+    bot._refusals.key = tuple(rnd.deck)
+    bot._refusals.refusals = refusals
+    state = copy.deepcopy(rnd)
+    started = time.perf_counter()
+    cards = bot.decide_play(state, seat)
+    elapsed = time.perf_counter() - started
+    decision = bot.last_decision_record
+    legal = copy.deepcopy(rnd)
+    legal.play(seat, list(cards))
+    return {"policy": bot.policy_name, "elapsed_seconds": elapsed,
+            "budget_seconds": bot.serving_budget_seconds,
+            "schema": decision.get("schema"), "work_complete": decision.get("work_complete"),
+            "played": list(cards), "legal": True,
+            "fallback_reason": decision.get("reason"),
+            "refill": {k: v for k, v in decision.items() if k.startswith("lead_alias_refill")}}
+
+
 def main():
     import argparse
     import json
@@ -204,7 +238,10 @@ def main():
     parser.add_argument("--value-package", help="also score replacements with the pinned served recipe")
     parser.add_argument("--serving-refill", action="store_true", help="use the bounded serving helper")
     parser.add_argument("--complete-listings", action="store_true", help="recompute truncated policy scores")
+    parser.add_argument("--serving-smoke", action="store_true", help="paired full serving calls, not gameplay")
     args = parser.parse_args()
+    if args.serving_smoke and not args.value_package:
+        parser.error("--serving-smoke requires --value-package")
     if Path(args.log).stat().st_size > 8 * 1024 * 1024:
         parser.error("room log exceeds the 8 MiB census bound")
     events = [json.loads(line) for line in Path(args.log).read_text().splitlines() if line.strip()]
@@ -229,6 +266,11 @@ def main():
             raise ValueError("belief package differs from the served recipe")
         entries = pv_registry_entries(**pv_env_recipe(env))
         bot = entries[args.policy](seed=0)
+        if args.serving_smoke:
+            base_factory = entries[args.policy]
+            env["SHENGJI_PV_LEAD_ALIAS_REFILL"] = "1"
+            candidate_entries = pv_registry_entries(**pv_env_recipe(env))
+            candidate_factory = next(iter(candidate_entries.values()))
     rows, skipped = [], Counter()
     for rno, ply, rnd, seat, record in room_log_decisions(args.log):
         if record.get("policy") != args.policy or rnd.trick.plays:
@@ -238,6 +280,14 @@ def main():
             continue
         if len(rows) >= 200:
             raise ValueError("census exceeds 200 non-exact leads")
+        if args.serving_smoke:
+            if modes[(rno, ply)] != "bot":
+                skipped["not_bot_mode"] += 1
+                continue
+            rows.append({"round": rno, "ply": ply, "seat": seat,
+                         "baseline": serving_smoke(base_factory, rnd, seat, record, seed=ply),
+                         "candidate": serving_smoke(candidate_factory, rnd, seat, record, seed=ply)})
+            continue
         try:
             worlds = replay_logged_worlds(model, rnd, seat, record, args.policy)
         except ValueError as exc:
@@ -271,12 +321,15 @@ def main():
         rows.append(row)
     result = {"policy": args.policy, "belief_sha256": model.package_sha256,
               "policy_plays_by_mode": dict(policy_plays),
-              "decisions": len(rows), "slots": sum(r["slots"] for r in rows),
-              "alias_slots": sum(r["alias_slots"] for r in rows),
-              "equal_mean_slots": sum(r["equal_mean_slots"] for r in rows),
+              "decisions": len(rows), "slots": sum(r.get("slots", 0) for r in rows),
+              "alias_slots": sum(r.get("alias_slots", 0) for r in rows),
+              "equal_mean_slots": sum(r.get("equal_mean_slots", 0) for r in rows),
               "skipped": dict(skipped), "rows": rows,
-              "scope": "all logged served-policy bot decisions, including takeovers",
-              "claim": "executed-lead census and optional evaluator-relative selection replay; no gameplay strength estimate"}
+              "scope": ("non-exact leads in bot mode only" if args.serving_smoke else
+                        "all logged served-policy bot decisions, including takeovers"),
+              "claim": ("full serving correctness/latency smoke; fresh worlds; not gameplay strength"
+                        if args.serving_smoke else
+                        "executed-lead census and optional evaluator-relative selection replay; no gameplay strength estimate")}
     with open(args.output, "x") as stream:
         json.dump(result, stream, indent=2, allow_nan=False)
         stream.write("\n")

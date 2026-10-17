@@ -27,7 +27,8 @@ import copy
 import numpy as np
 import pytest
 
-from scripts.lead_alias_probe import refill_lead_aliases, score_refill
+from scripts.lead_alias_probe import (refill_lead_aliases, score_refill,
+                                      replay_logged_worlds, score_logged_refill)
 
 from shengji.ai.memory import Memory
 from shengji.ai.refusal import RefusalLedger, pin_unplayed_attempt
@@ -134,6 +135,71 @@ def test_alias_refill_rejects_missing_worlds_and_wrong_actor_hand():
     hands[SEAT].pop()
     with pytest.raises(ValueError, match="actor hand"):
         refill_lead_aliases(rnd, SEAT, [FORCED], [], [(hands, rnd.buried)])
+
+
+@pytest.mark.parametrize("defect", [None, "policy", "fill", "counter", "snapshot", "fallback"])
+def test_alias_logged_replay_guards(monkeypatch, defect):
+    from types import SimpleNamespace
+    from scripts import belief_debug
+    from shengji.ai import belief_numpy as bn
+
+    rnd = oxps()
+    worlds = [(rnd.hands, rnd.buried)]
+    proposal = SimpleNamespace(P=np.full((54, 4), 0.25), drawn=1)
+    stats = {"history_rejections": 0, "history_fallback_worlds": 0}
+    record = dict(policy="expected", schema="pv-search-decision-v1", work_complete=True,
+                  worlds=1, belief_fallback=0, belief_proposed=1,
+                  history_rejections=0, history_fallback_worlds=0,
+                  belief_snapshot=bn.encode_snapshot(proposal.P))
+    if defect == "policy":
+        record["policy"] = "other"
+    elif defect == "counter":
+        del record["history_rejections"]
+    elif defect == "snapshot":
+        record["belief_snapshot"] = bn.encode_snapshot(np.zeros((54, 4)))
+    elif defect == "fallback":
+        record["belief_fallback"] = 1
+    monkeypatch.setattr(belief_debug, "regenerate",
+                        lambda *a: (proposal, worlds, stats, int(defect == "fill")))
+    if defect is None:
+        assert replay_logged_worlds(None, rnd, SEAT, record, "expected") is worlds
+    else:
+        with pytest.raises(ValueError):
+            replay_logged_worlds(None, rnd, SEAT, record, "expected")
+
+
+@pytest.mark.parametrize("defect", [None, "listing", "means", "played", "truncated"])
+def test_logged_refill_replays_value_and_selection_consumers(monkeypatch, defect):
+    from types import SimpleNamespace
+
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    actions = [THROW, OTHER_C2_THROW, ["D6"]]
+    bot = PolicyValueBot(lambda *a: None, evaluator=LeafEvaluator(),
+                         doomed_throw_reselect=True)
+    monkeypatch.setattr(bot, "_legal", lambda *a: SimpleNamespace(actions=actions), raising=False)
+    admitted = actions[:2]
+    means, _ = bot._value_means(rnd, SEAT, admitted, worlds)
+    record = dict(admitted=admitted, admitted_indices=[0, 1],
+                  policy_log_odds_listing=[3., 2., 1.], value_means=means.tolist(),
+                  played=FORCED)
+    if defect == "listing":
+        record["admitted_indices"] = [1, 0]
+    elif defect == "means":
+        record["value_means"][0] += 1
+    elif defect == "played":
+        record["played"] = ["D6"]
+    elif defect == "truncated":
+        record["policy_log_odds_listing"] = [3., 2.]
+    if defect is not None:
+        with pytest.raises(ValueError):
+            score_logged_refill(bot, rnd, SEAT, record, worlds)
+    else:
+        result = score_logged_refill(bot, rnd, SEAT, record, worlds)
+        assert result["original_played"] == FORCED
+        assert result["refilled_played"] == ["D6"]
+        assert result["selection_changed"]
+        assert result["replacement_slots"] == 1
 
 
 class LeafEvaluator:

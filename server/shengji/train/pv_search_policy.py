@@ -1301,6 +1301,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload["wide_lead_k"] = WIDE_LEAD_K
     if config.lead_alias_refill:
         from .lead_alias_refill import MAX_ACTIONS, MAX_SECONDS
+        if config.adaptive_worlds or config.adaptive_worlds_leads:
+            raise PVSearchPolicyError('lead_alias_refill does not combine with adaptive worlds')
         payload["lead_alias_max_actions"] = MAX_ACTIONS
         payload["lead_alias_max_seconds"] = MAX_SECONDS
         if config.tree is not None:
@@ -1687,6 +1689,8 @@ class PVSearchBot(PolicyValueBot):
         if type(config.lead_alias_refill) is not bool:
             raise PVSearchPolicyError("lead_alias_refill must be a bool")
         if config.lead_alias_refill:
+            if config.adaptive_worlds or config.adaptive_worlds_leads:
+                raise PVSearchPolicyError('lead_alias_refill does not combine with adaptive worlds')
             if (config.tree is not None or config.small_joker_guard
                     or config.admit_forced_single or config.finish_lead_admission):
                 raise PVSearchPolicyError(

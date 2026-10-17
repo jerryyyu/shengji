@@ -1,4 +1,4 @@
-"""Offline ballot-refill probe; never installed in the serving policy.
+"""Offline ballot-refill replay and full serving-call smoke checks.
 
 Aliases here mean identical executed leads in every supplied world, not equal
 average values. They do not imply equal public information after a failed

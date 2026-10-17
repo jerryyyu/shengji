@@ -76,7 +76,9 @@ ship on his word; a fresh-seed confirmation runs when he asks or when the effect
 
 - **DEV duel before a screen.** An offline metric (agreement, calibration, true-world regret, coverage) does not by
   itself admit a screen. A new lever first passes a paired seat-swapped DEV duel against the served release (about
-  600 deals, fresh seeds) with a bar written before it runs; only then does it get a ten-window screen. Offline gains
+  600 deals, fresh seeds) with a bar written before it runs; only then does it get a ten-window screen. A 600-deal duel
+  resolves about ±0.075 levels/round, so when the expected gain is smaller its bar is no regression and no operational
+  fault (fallbacks, expiries, latency), not a positive estimate. Offline gains
   have not carried: belief epoch 8's +0.83 pp agreement read +0.0062 [−0.0118, +0.0243] levels/round (v95s17e8);
   wide lead admission's 45.5% outside-K8 gap read +0.0168 [−0.0078, +0.0414] (v94wla46).
 - **Strength ceiling before cost work.** A search mechanism's first gameplay test runs with its serving deadline and

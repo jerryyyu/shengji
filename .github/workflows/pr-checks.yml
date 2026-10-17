@@ -134,6 +134,11 @@ jobs:
       # server/scripts and web/src carry no attribution, issue labels, history or banners.
       - name: Check added comments for provenance
         run: python3 server/scripts/check_comment_provenance.py --base ${{ github.event.pull_request.base.sha }}
+      # Added lines in AI_POLICIES.md, RL_PLAN.md, README.md and DEPLOY.md state no absolute
+      # claim without an interval and name no stale release as the current comparator.
+      - name: Check added doc lines for absolute claims and stale comparators
+        if: ${{ !cancelled() }}
+        run: python3 server/scripts/check_doc_claims.py --base ${{ github.event.pull_request.base.sha }}
 
   server:
     needs: changes
@@ -201,6 +206,7 @@ jobs:
           tests/test_release46_fly_config.py
           tests/test_check_ci_test_selection.py
           tests/test_check_comment_provenance.py
+          tests/test_check_doc_claims.py
           tests/test_ci_review_ledger_step.py
           tests/test_receipt_summary.py
           tests/test_paired_window_metadata.py

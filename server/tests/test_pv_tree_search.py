@@ -17,17 +17,21 @@ pairing by world; (f) the lookahead on a hand-built position, terminal leaves;
 the screen trace filter; (i) determinism; (j) the real package.
 """
 import copy
+import hashlib
 import json
 import math
+import os
 from collections import Counter
 import pickle
 import random
 import zlib
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from shengji.ai.cwv_policy import afterstate
+from shengji.ai.endgame import ExactWorldSession
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.combos import decompose
 from shengji.engine.game import Game
@@ -35,11 +39,20 @@ from shengji.harvest.legal import enumerate_legal
 from shengji.train import pv_search_policy as pv
 from shengji.train import pv_tree_search as tree
 from shengji.train.policy_prior import CARD_INDEX
+from shengji.rl.value_afterstate import category_signed_level, signed_level_category
 from shengji.train.pv_tree_config import (PVTreeConfig, PVTreeConfigError, TREE_DEFAULTS,
                                           tree_env, tree_token)
 from test_policy_world_search import state
 from test_pv_admission_rules import (PRODUCTION_ENV, PRODUCTION_NAME, PRODUCTION_SHA,
                                      predict, production_package)  # noqa: F401  (fixture)
+from test_encoder_round_compat import PACKAGE_SHA, pinned_production_package  # noqa: F401
+from test_xmtj_throw_regressions import position as xmtj_position
+from scripts.hybrid_search_probe import score_true_deal_regret
+from scripts.hybrid_search_probe import run_hybrid_search_probe
+import scripts.hybrid_search_probe as hybrid_probe
+from scripts.hybrid_search_run import run_probe_file
+import scripts.hybrid_search_run as hybrid_run
+from shengji.train.lead_root_capture import fingerprint
 
 COMBO_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-rfb4dfc7c-bury-hybrid-9dba7b43087f"
 RELEASE38_NAME = "pv-search-491ee4bf-w64-k8-div-rc-tb-la-r7092480e-bury-hybrid-5517ddbd7457"
@@ -99,6 +112,466 @@ def bot_of(tree_config=None, *, evaluator=None, worlds=4, seed=17, budget=None,
     cls = pv.PVSearchBot if tree_config is None else tree.PVTreeSearchBot
     return cls(policy, evaluator=HashEvaluator() if evaluator is None else evaluator,
                version=2, config=config, checkpoint="/dev/null", seed=seed)
+
+
+@pytest.mark.parametrize("failure", [None, "post-selection", "means", "sampler", "matrix"])
+def test_hybrid_search_probe_captures_and_restores_real_decision_hook(failure):
+    """The offline consumer uses one captured ballot and never resamples it."""
+    from types import SimpleNamespace
+
+    rnd = state()
+
+    class FakeBot:
+        tree_config = SimpleNamespace(sims=0)
+        _tree_v0 = np.asarray([[0.2, 0.1]])
+        sampler = SimpleNamespace(rng=random.Random(17))
+
+        def _tree_decide(self, root, acting_seat, admitted, means, worlds,
+                         pv_winner, fields, select_kwargs):
+            return pv_winner
+
+        def decide_play(self, root, acting_seat):
+            self._tree_decide(root, acting_seat, [["D2"], ["S2"]],
+                              np.asarray([0.1, 0.2] if failure == "means" else [0.2, 0.1]),
+                              [((), ())], 1, {}, {})
+            return ["D2"] if failure == "post-selection" else ["S2"]
+
+        def _tree_lookahead(self, root, acting_seat, actions, worlds, gate,
+                            *, completed_tricks, exact_max_cards,
+                            exact_max_nodes):
+            if failure == "sampler":
+                self.sampler.rng.random()
+            values = [[float("nan"), 0.1]] if failure == "matrix" else [[0.9, 0.1]]
+            return np.asarray(values), {"tree_value_batches": 1}
+
+    bot = FakeBot()
+    sampler_state = bot.sampler.rng.getstate()
+    original = bot._tree_decide
+    def run():
+        return run_hybrid_search_probe(bot, rnd, 0, completed_tricks=1,
+                                       exact_max_cards=1, gate=lambda: None)
+    if failure:
+        with pytest.raises(RuntimeError):
+            run()
+        assert "_tree_decide" not in vars(bot)
+        return
+    report = run()
+    assert bot._tree_decide.__func__ is original.__func__
+    assert bot._tree_decide.__self__ is original.__self__
+    assert report["baseline"]["pv_winner"] == 1
+    assert np.argmax(report["baseline"]["means"]) == 0
+    assert report["hybrid_value_argmax_index"] == 0
+    assert bot.sampler.rng.getstate() == sampler_state
+
+
+def test_hybrid_search_probe_restores_hook_when_gate_expires():
+    from types import SimpleNamespace
+
+    rnd = state()
+
+    class FakeBot:
+        tree_config = SimpleNamespace(sims=0)
+        _tree_v0 = np.asarray([[0.1, 0.2]])
+
+        def _tree_decide(self, *args):
+            return args[5]
+
+        def decide_play(self, root, acting_seat):
+            self._tree_decide(root, acting_seat, [["D2"], ["S2"]],
+                              np.asarray([0.1, 0.2]), [((), ())], 1, {}, {})
+            return ["S2"]
+
+        def _tree_lookahead(self, *args, **kwargs):
+            args[4]()
+
+    bot = FakeBot()
+    original = bot._tree_decide
+    with pytest.raises(RuntimeError, match="expired"):
+        run_hybrid_search_probe(bot, rnd, 0, completed_tricks=1,
+                                exact_max_cards=1,
+                                gate=lambda: (_ for _ in ()).throw(RuntimeError("expired")))
+    assert bot._tree_decide.__func__ is original.__func__
+
+
+@pytest.mark.parametrize("banker", [0, 1])
+def test_true_deal_regret_matches_two_card_reference(monkeypatch, banker):
+    """True-deal regret uses fresh exact roots and preserves the source round."""
+    rnd = endgame(2)
+    rnd.banker = banker
+    seat = rnd.turn
+    report = {"root_fingerprint": fingerprint(rnd),
+              "seat": seat, "admitted": [["S2"], ["D2"]],
+              "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 1}
+    before = fingerprint(rnd)
+    result = score_true_deal_regret(rnd, seat, report, max_hand_cards=2,
+                                    max_nodes=100_000, gate=lambda: None)
+    assert result["label"] == "true_deal_best_admitted_only"
+    assert len(result["values"]) == 2
+    for index, action in enumerate(report["admitted"]):
+        clone = afterstate(rnd, seat, rnd.hands, rnd.buried, action,
+                           finish_trick=False)
+        reference = ExactWorldSession(clone, max_hand_cards=2,
+                                      max_nodes=100_000).solve(clone)
+        expected = category_signed_level(
+            signed_level_category(reference.attacker_points,
+                                  clone.is_attacker(seat)))
+        assert result["values"][index] == pytest.approx(expected)
+    assert fingerprint(rnd) == before
+
+
+def test_true_deal_regret_refuses_root_over_cap_before_solver():
+    rnd = endgame(2)
+    report = {"root_fingerprint": fingerprint(rnd),
+              "seat": rnd.turn, "admitted": [["S2"]], "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 0}
+    with pytest.raises(ValueError, match="exceeds max_hand_cards"):
+        score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=1,
+                               max_nodes=100_000)
+
+
+def test_true_deal_regret_refuses_report_from_wrong_root_or_seat():
+    rnd = endgame(2)
+    report = {"root_fingerprint": fingerprint(rnd), "seat": rnd.turn,
+              "admitted": [["S2"]], "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 0}
+    other = endgame(2)
+    other.attacker_points += 1
+    with pytest.raises(ValueError, match="root or seat"):
+        score_true_deal_regret(other, other.turn, report, max_hand_cards=2,
+                               max_nodes=100_000)
+    with pytest.raises(ValueError, match="root or seat"):
+        score_true_deal_regret(rnd, (rnd.turn + 1) % 4, report, max_hand_cards=2,
+                               max_nodes=100_000)
+
+
+def test_true_deal_regret_sign_and_zero_regret(monkeypatch):
+    from types import SimpleNamespace
+    rnd = endgame(2)
+    report = {"root_fingerprint": fingerprint(rnd), "seat": rnd.turn,
+              "admitted": [["S2"], ["D2"]], "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 1}
+    points = iter((100, 100))
+
+    def terminal(*args, **kwargs):
+        value = next(points)
+        return SimpleNamespace(phase="round_end", attacker_points=value,
+                               is_attacker=lambda seat: True, trick=None,
+                               last_trick=None)
+
+    monkeypatch.setattr(hybrid_probe, "afterstate", terminal)
+    result = score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=2,
+                                    max_nodes=100_000)
+    assert result["best_admitted_value"] != 0
+    assert result["baseline_regret"] == 0
+    assert result["zero_baseline"] is True
+
+    points = iter((100, 200))
+    result = score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=2,
+                                    max_nodes=100_000)
+    assert result["regret_reduction"] > 0
+    assert result["baseline_regret"] > result["hybrid_regret"]
+    assert result["regret_reduction"] == result["baseline_regret"] - result["hybrid_regret"]
+    points = iter((200, 100))
+    result = score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=2,
+                                    max_nodes=100_000)
+    assert result["regret_reduction"] < 0
+    assert result["zero_baseline"] is True
+
+
+def test_true_deal_regret_refuses_expiry_after_final_solver(monkeypatch):
+    rnd = endgame(2)
+    report = {"root_fingerprint": fingerprint(rnd), "seat": rnd.turn,
+              "admitted": [["S2"]], "baseline": {"pv_winner": 0},
+              "hybrid_value_argmax_index": 0}
+    expired = False
+
+    class Session:
+        nodes = 1
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def solve_level(self, clone):
+            nonlocal expired
+            expired = True
+            return 100
+
+    def gate():
+        if expired:
+            raise tree.PVTreeBudgetExceeded("oracle expired")
+
+    monkeypatch.setattr(hybrid_probe, "CompactWorldSession", Session)
+    with pytest.raises(tree.PVTreeBudgetExceeded, match="oracle expired"):
+        score_true_deal_regret(rnd, rnd.turn, report, max_hand_cards=2,
+                               max_nodes=100_000, gate=gate)
+
+
+def test_true_deal_regret_records_forced_throw_component():
+    """A rejected throw is scored with the engine's accepted root component."""
+    rnd = endgame(2)
+    rnd.hands = [["D8", "DQ"], ["D9", "DA"], ["H3", "H4"], ["C3", "C4"]]
+    rnd.turn = 0
+    report = {"root_fingerprint": fingerprint(rnd), "seat": 0,
+              "admitted": [["D8", "DQ"], ["D8"]],
+              "baseline": {"pv_winner": 0}, "hybrid_value_argmax_index": 0}
+    result = score_true_deal_regret(rnd, 0, report, max_hand_cards=2,
+                                    max_nodes=100_000, gate=lambda: None)
+    assert result["actions"][0]["submitted"] == ["D8", "DQ"]
+    assert result["actions"][0]["accepted"] == ["D8"]
+
+
+@pytest.mark.parametrize("status,code", [("COMPLETE", 0), ("PARTIAL", 2), ("FAILED", 1)])
+def test_hybrid_search_cli_pins_factory_and_propagates_terminal(monkeypatch, status, code):
+    from shengji.train import pv_search_policy
+    observed = {}
+
+    def factory(package, **kwargs):
+        observed.update(package=package, **kwargs)
+        return "constructed"
+
+    def run(source, output, factory, **kwargs):
+        assert str(source) == "input" and str(output) == "output"
+        assert factory(13) == "constructed"
+        assert kwargs['completed_tricks'] == 2 and kwargs['exact_max_cards'] == 0
+        assert kwargs['recipe']['worlds'] == 64
+        return dict(status=status)
+
+    monkeypatch.setattr(pv_search_policy, 'make_pv_search_bot', factory)
+    monkeypatch.setattr(hybrid_run, 'run_probe_file', run)
+    assert hybrid_run.main([
+        '--input', 'input', '--output', 'output', '--play-package', 'play',
+        '--play-sha256', 'a' * 64, '--belief-package', 'belief',
+        '--belief-sha256', 'b' * 64, '--completed-tricks', '2',
+        '--exact-max-cards', '0', '--oracle-max-cards', '8', '--max-nodes', '1000',
+        '--max-roots', '1', '--wall-seconds', '30', '--seed', '7']) == code
+    assert observed['seed'] == 13 and observed['tree'].sims == 0
+    assert observed['worlds'] == 64 and observed['candidates'] == 8
+    assert observed['belief_sha256'] == 'b' * 64
+    assert observed['sha256'] == 'a' * 64
+
+
+def test_hybrid_ranking_attribution_separates_selection_from_depth():
+    probe = {"baseline": {"means": [0.0, 2.0, 1.0], "pv_winner": 0},
+             "hybrid_value_argmax_index": 2}
+    result = hybrid_run.ranking_attribution(probe, {"values": [1.0, 3.0, 2.0]})
+    assert result["selection_rule_removal_delta"] == 2.0
+    assert result["lookahead_value_delta"] == -1.0
+    assert result["total_delta"] == 1.0
+    assert result["baseline_value_argmax_regret"] == 0.0
+    assert result["total_delta"] == (result["selection_rule_removal_delta"]
+                                     + result["lookahead_value_delta"])
+    probe["baseline"]["means"] = [2.0, 2.0, 1.0]
+    assert hybrid_run.ranking_attribution(probe, {"values": [1., 3., 2.]})[
+        "baseline_value_argmax_index"] == 0
+    with pytest.raises(ValueError, match="finite aligned"):
+        hybrid_run.ranking_attribution(probe, {"values": [float("nan"), 3., 2.]})
+
+
+def test_hybrid_search_run_streams_and_stops_on_second_failure(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    source = tmp_path / "roots.jsonl"
+    source.write_text(json.dumps({"packet": {"n": 1}}) + "\n"
+                      + json.dumps({"packet": {"n": 2}}) + "\n")
+    output = tmp_path / "out.jsonl"
+    calls = []
+    monkeypatch.setattr(hybrid_run, "restore_with_ledger",
+                        lambda packet: (SimpleNamespace(turn=0, hands=[["A"]],
+                                                         trick=SimpleNamespace(plays=[])), "ledger"))
+    monkeypatch.setattr(hybrid_run, "run_hybrid_search_probe", lambda *args, **kwargs: {
+            "seat": 0, "admitted": [["A"]], "baseline": {"pv_winner": 0, "seconds": 0.01,
+                                                               "means": [1.0]},
+        "hybrid_value_argmax_index": 0, "changed": False, "seconds": 0.02,
+            "matrix_means": [1.0],
+        "leafstats": {"tree_value_batches": 1}})
+    def oracle(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("refused")
+        return {"seconds": 0.03, "label": "true_deal_best_admitted_only",
+                "scope": "calibration-only", "actions": [], "values": [1.0],
+                "best_admitted_value": 1.0,
+                "baseline_regret": 0.0, "hybrid_regret": 0.0,
+                "regret_reduction": 0.0, "zero_baseline": True}
+    monkeypatch.setattr(hybrid_run, "score_true_deal_regret", oracle)
+    monkeypatch.setattr(hybrid_run.time, "monotonic", lambda: 0.0)
+    result = run_probe_file(source, output, lambda seed: SimpleNamespace(_refusals=None),
+                            completed_tricks=1, exact_max_cards=1,
+                            oracle_max_cards=2, max_nodes=10, max_roots=5,
+                            wall_seconds=10, seed=7)
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    assert result["status"] == "FAILED" and result["completed"] == 1
+    assert rows[1]["type"] == "root" and rows[-1]["reason"] == "error"
+    assert rows[1]["ranking_attribution"]["total_delta"] == 0.0
+    assert rows[-1]["attempted"] == 2 and rows[-1]["completed"] == 1
+    with pytest.raises(FileExistsError):
+        run_probe_file(source, output, lambda seed: None,
+                       completed_tricks=1, exact_max_cards=1,
+                       oracle_max_cards=2, max_nodes=10, max_roots=1,
+                       wall_seconds=10, seed=7)
+
+
+def test_hybrid_search_run_budget_terminal_preserves_header(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    source = tmp_path / "roots.jsonl"
+    source.write_text(json.dumps({"packet": {"n": 1}}) + "\n")
+    output = tmp_path / "budget.jsonl"
+    monkeypatch.setattr(hybrid_run, "restore_with_ledger",
+                        lambda packet: (SimpleNamespace(turn=0, hands=[["A"]],
+                                                         trick=SimpleNamespace(plays=[])), "ledger"))
+    ticks = iter((0.0, 0.0, 100.0))
+    monkeypatch.setattr(hybrid_run.time, "monotonic", lambda: next(ticks))
+    result = run_probe_file(source, output, lambda seed: SimpleNamespace(),
+                            completed_tricks=1, exact_max_cards=1,
+                            oracle_max_cards=2, max_nodes=10, max_roots=1,
+                            wall_seconds=10, seed=1)
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    assert result["reason"] == "budget" and result["status"] == "PARTIAL" \
+        and result["completed"] == 0
+    assert rows[0]["type"] == "header" and rows[-1]["reason"] == "budget"
+@pytest.mark.parametrize("wall", [float("nan"), float("inf"), -1, True])
+def test_hybrid_search_run_rejects_invalid_budget_before_output(tmp_path, wall):
+    output = tmp_path / "out.jsonl"
+    with pytest.raises(ValueError):
+        run_probe_file(tmp_path / "missing", output, lambda seed: None,
+                       completed_tricks=1, exact_max_cards=1, oracle_max_cards=5,
+                       max_nodes=10, max_roots=1, wall_seconds=wall, seed=7)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("packet_key", ["packet", "replay", "cli"])
+def test_hybrid_search_run_real_capture_to_saved_regret(
+        tmp_path, pinned_production_package, hybrid_belief_package, packet_key):
+    from shengji.ai.refusal import RefusalLedger
+    from shengji.train.lead_root_capture import LeadCapture
+    from shengji.train.pv_search_policy import make_pv_search_bot
+    from test_xmtj_throw_regressions import PLAYS
+
+    rnd = xmtj_position(0)
+    capture = LeadCapture(rnd)
+    for event in PLAYS[:52]:
+        rnd.play(event["seat"], event["attempted"])
+        capture.committed(rnd, event["seat"], event["attempted"])
+    packet = capture.capture(rnd, ledger=RefusalLedger(), decision={})
+    source, output = tmp_path / "roots.jsonl", tmp_path / "result.jsonl"
+    source.write_text(json.dumps({"root_index": 52, "deal_id": "xmtj-functional-fixture",
+                                  "packet" if packet_key == "cli" else packet_key: packet})
+                      + "\nINVALID NEXT ROW\n")
+    belief_path, belief_sha = hybrid_belief_package
+    seeds = []
+
+    def factory(seed):
+        seeds.append(seed)
+        return make_pv_search_bot(
+            str(pinned_production_package), sha256=PACKAGE_SHA,
+            tree=PVTreeConfig(sims=0), worlds=2, candidates=8, cap=4000,
+            seed=seed, world_history_legal=True, world_history_draw=True,
+            belief_worlds=True, belief_checkpoint=belief_path, belief_sha256=belief_sha)
+
+    if packet_key == "cli":
+        assert hybrid_run.main([
+            '--input', str(source), '--output', str(output),
+            '--play-package', str(pinned_production_package), '--play-sha256', PACKAGE_SHA,
+            '--belief-package', belief_path, '--belief-sha256', belief_sha,
+            '--completed-tricks', '1', '--exact-max-cards', '4', '--oracle-max-cards', '5',
+            '--max-nodes', '100000', '--max-roots', '1', '--wall-seconds', '30',
+            '--seed', '7']) == 0
+        terminal = json.loads(output.read_text().splitlines()[-1])
+        terminal.pop('type')
+    else:
+        terminal = run_probe_file(
+            source, output, factory, completed_tricks=1, exact_max_cards=4,
+            oracle_max_cards=5, max_nodes=100_000, max_roots=1,
+            wall_seconds=30, seed=7)
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    assert terminal == {"status": "COMPLETE", "reason": "root_limit",
+                        "attempted": 1, "completed": 1}
+    assert seeds == ([] if packet_key == "cli" else [7]) and len(rows) == 3
+    if packet_key == "cli":
+        assert rows[0]['recipe']['worlds'] == 64
+        assert rows[0]['recipe']['belief_sha256'] == belief_sha
+    result = rows[1]
+    assert result["root_index"] == 52 and result["lead"] is True
+    assert len(result["admitted"]) == len(result["regret"]["values"])
+    assert result["proposal"]["action"] == result["admitted"][result["proposal"]["index"]]
+    assert result["leafstats"]["tree_exact_leaves"] > 0
+    assert result["regret"]["regret_reduction"] == pytest.approx(
+        result["regret"]["baseline_regret"] - result["regret"]["hybrid_regret"])
+    summary = hybrid_run.summarize_probe_rows(rows)
+    assert summary['roots'] == summary['deals'] == 1
+    assert summary['evaluable'] is False and summary['reduction_ci95'] is None
+    assert summary['baseline_regret'] == pytest.approx(
+        result['ranking_attribution']['baseline_value_argmax_regret'])
+
+
+def test_hybrid_summary_uses_deal_clusters_and_value_control():
+    def root(line, deal, index, values):
+        return dict(type='root', line=line, deal_id=deal, root_index=index,
+                    admitted=[['A'], ['B'], ['C']],
+                    baseline=dict(index=0, means=[0., 2., 1.]),
+                    proposal=dict(index=2),
+                    regret=dict(label='true_deal_best_admitted_only', values=values))
+
+    rows = [dict(type='header', schema='hybrid-search-run-v1'),
+            root(1, 'a', 0, [0., 2., 3.]),
+            root(2, 'a', 1, [0., 2., 3.]),
+            root(3, 'b', 0, [0., 3., 2.]),
+            dict(type='terminal', status='COMPLETE', attempted=3, completed=3)]
+    result = hybrid_run.summarize_probe_rows(rows)
+    assert result['deals'] == 2 and result['roots'] == 3
+    assert result['corrections'] == 2 and result['regressions'] == 1
+    assert result['regret_reduction'] == pytest.approx(1 / 3)
+    assert result['relative_reduction'] == pytest.approx(.5)
+    assert result['reduction_ci95'] == [-1., 1.]
+    assert result['relative_reduction_ci95'] is None
+    assert result == hybrid_run.summarize_probe_rows(rows)
+    for mutate in (
+            lambda r: r[-1].update(status='PARTIAL'),
+            lambda r: r[-1].update(completed=2),
+            lambda r: r[1].pop('deal_id'),
+            lambda r: r[2].update(root_index=0),
+            lambda r: r[1].update(line=3),
+            lambda r: r[1]['regret'].update(values=[float('nan'), 2., 3.])):
+        bad = copy.deepcopy(rows)
+        mutate(bad)
+        with pytest.raises(ValueError):
+            hybrid_run.summarize_probe_rows(bad)
+    for row in rows[1:-1]:
+        row['regret']['values'] = [0., 3., 3.]
+    zero = hybrid_run.summarize_probe_rows(rows)
+    assert zero['evaluable'] is False and zero['relative_reduction'] is None
+
+
+BELIEF_SHA = "763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343"
+
+
+@pytest.fixture(scope="module")
+def hybrid_belief_package(tmp_path_factory):
+    """Real env-selected belief package, or a deterministic seeded DEV fixture."""
+    configured = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
+    if configured:
+        path = Path(configured)
+        if not path.exists():
+            pytest.fail(f"SHENGJI_PV_BELIEF_PACKAGE_PATH is missing: {path}")
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        expected = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_SHA256", BELIEF_SHA)
+        assert actual == expected, f"belief package is {actual}, not {expected}"
+        return str(path), actual
+
+    torch = pytest.importorskip("torch")
+    from shengji.train import belief_seq as bs
+    from shengji.train.belief_sampler import export
+    torch.manual_seed(5)
+    root = tmp_path_factory.mktemp("s35-hybrid-belief")
+    model = bs.build_model(d=16, heads=2, enc_layers=1, xattn_layers=1, x_hidden=16).eval()
+    torch.save({"model": model.state_dict(), "config": model.config,
+                "args": {"no_history": False}, "epoch": 1, "calib_ll": 1.0},
+               root / "best.pt")
+    info = export(str(root / "best.pt"), str(root / "s17.npz"), temperature=1.0)
+    return str(root / "s17.npz"), info["sha256"]
 
 
 def deal(seed):
@@ -763,6 +1236,387 @@ def test_each_continuation_mode_on_a_hand_built_position():
     assert stats["tree_policy_rows"] == 4 and stats["tree_forced_plays"] == 2
 
 
+@pytest.mark.parametrize("horizon, expected_history", [(1, 13), (2, 14), (3, 15)])
+def test_offline_completed_trick_override_reaches_requested_horizon(horizon, expected_history):
+    """The DEV horizon is measured in completed tricks, not individual plies."""
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    values, stats = bot._tree_lookahead(
+        rnd, seat, [["D8"]], [world], completed_tricks=horizon)
+    leaf, = bot.evaluator.seen
+
+    assert values.shape == (1, 1)
+    assert len(leaf.history) == expected_history
+    assert stats["tree_completed_tricks_min"] == horizon
+    assert stats["tree_completed_tricks_max"] == horizon
+
+
+def test_offline_completed_trick_override_shortens_at_round_end():
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    _, stats = bot._tree_lookahead(
+        rnd, seat, [["D2"]], [world], completed_tricks=3)
+
+    assert stats["tree_terminal_leaves"] == 1
+    assert stats["tree_completed_tricks_min"] == 2
+    assert stats["tree_completed_tricks_max"] == 2
+
+
+def test_completed_trick_override_two_matches_configured_policy_default():
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    actions = [["D8"]]
+    default = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    override = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    baseline, baseline_stats = default._tree_lookahead(rnd, seat, actions, [world])
+    same_horizon, override_stats = override._tree_lookahead(
+        rnd, seat, actions, [world], completed_tricks=2)
+
+    np.testing.assert_array_equal(same_horizon, baseline)
+    assert override_stats == {
+        **baseline_stats,
+        "tree_completed_tricks_min": 2,
+        "tree_completed_tricks_max": 2,
+    }
+
+
+def test_completed_trick_override_preserves_world_action_matrix_and_rejects_invalid_values():
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    values, _ = bot._tree_lookahead(
+        rnd, seat, [["D8"], ["DQ"]], [world, world], completed_tricks=1)
+    assert values.shape == (2, 2)
+    assert len(bot.evaluator.seen) == 4
+
+    for invalid in (True, False, 0, 4, 1.5, "2"):
+        with pytest.raises(tree.PVSearchPolicyError):
+            bot._tree_lookahead(rnd, seat, [["D8"]], [world],
+                                completed_tricks=invalid)
+
+    greedy = bot_of(PVTreeConfig(sims=8, cont="trick-greedy"), worlds=2)
+    with pytest.raises(tree.PVSearchPolicyError):
+        greedy._tree_lookahead(rnd, seat, [["D8"]], [world], completed_tricks=1)
+
+
+def test_completed_trick_override_honors_budget_gate():
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    def expired():
+        raise tree.PVTreeBudgetExceeded("test")
+
+    with pytest.raises(tree.PVTreeBudgetExceeded):
+        bot._tree_lookahead(rnd, seat, [["D8"]], [world], expired,
+                             completed_tricks=3)
+    assert bot.evaluator.seen == []
+
+
+@pytest.mark.parametrize("banker", [0, 1])
+def test_exact_tail_matches_independent_reference_solver(monkeypatch, banker):
+    rnd = endgame(2)
+    rnd.banker = banker
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    fingerprint = (copy.deepcopy(rnd.hands), list(rnd.history), rnd.turn,
+                   rnd.attacker_points, rnd.phase)
+    recorded = []
+    compact = tree.CompactWorldSession
+
+    class RecordingSession(compact):
+        def __init__(self, root, *args, **kwargs):
+            recorded.append(root)
+            super().__init__(root, *args, **kwargs)
+
+    monkeypatch.setattr(tree, "CompactWorldSession", RecordingSession)
+    values, stats = bot._tree_lookahead(
+        rnd, seat, [["D2"]], [world], completed_tricks=1,
+        exact_max_cards=2, exact_max_nodes=100_000)
+
+    assert len(recorded) == 1 and stats["tree_exact_leaves"] == 1
+    reference = ExactWorldSession(recorded[0], max_hand_cards=2,
+                                  max_nodes=100_000).solve(recorded[0])
+    expected = category_signed_level(
+        signed_level_category(reference.attacker_points,
+                              recorded[0].is_attacker(seat)))
+    assert values[0, 0] == pytest.approx(expected)
+    assert stats["tree_model_leaves"] == 0
+    assert stats["tree_exact_nodes"] >= 0
+    assert fingerprint == (rnd.hands, rnd.history, rnd.turn,
+                           rnd.attacker_points, rnd.phase)
+
+
+def test_exact_tail_terminal_bypass_and_mixed_model_order(monkeypatch):
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+
+    # A terminal leaf is exact even when there is no nonterminal solver call.
+    values, terminal_stats = bot._tree_lookahead(
+        rnd, seat, [["D2"]], [world], completed_tricks=2,
+        exact_max_cards=1, exact_max_nodes=100_000)
+    assert values.shape == (1, 1)
+    assert terminal_stats["tree_exact_leaves"] == 1
+    assert terminal_stats["tree_model_leaves"] == 0
+    assert bot.evaluator.seen == []
+
+    real_afterstate = tree.afterstate
+    calls = [0]
+
+    def mixed_afterstate(*args, **kwargs):
+        clone = real_afterstate(*args, **kwargs)
+        # Make only the first cross-product cell model-valued; the second stays
+        # a determinized exact candidate. This checks matrix placement, not a
+        # serving policy.
+        if calls[0] == 0:
+            clone._determinized_world = False
+        calls[0] += 1
+        return clone
+
+    class SentinelEvaluator(HashEvaluator):
+        def score(self, leaves, seat):
+            self.seen.extend(leaves)
+            return np.full(len(leaves), -7.0)
+
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2,
+                 evaluator=SentinelEvaluator())
+    monkeypatch.setattr(tree, "afterstate", mixed_afterstate)
+    mixed, mixed_stats = bot._tree_lookahead(
+        rnd, seat, [["D2"], ["S2"]], [world], completed_tricks=1,
+        exact_max_cards=2, exact_max_nodes=100_000)
+    assert mixed.shape == (1, 2)
+    assert mixed_stats["tree_exact_leaves"] == 1
+    assert mixed_stats["tree_model_leaves"] == 1
+    assert len(bot.evaluator.seen) == 1
+    assert mixed[0, 0] == -7.0 and mixed[0, 1] != -7.0
+
+
+def test_exact_tail_above_cap_stays_model_valued():
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+
+    class SentinelEvaluator(HashEvaluator):
+        def score(self, leaves, seat):
+            self.seen.extend(leaves)
+            return np.full(len(leaves), -9.0)
+
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2,
+                 evaluator=SentinelEvaluator())
+    values, stats = bot._tree_lookahead(
+        rnd, seat, [["D8"]], [world], completed_tricks=1,
+        exact_max_cards=1, exact_max_nodes=100_000)
+
+    assert values[0, 0] == -9.0
+    assert stats["tree_exact_leaves"] == 0
+    assert stats["tree_model_leaves"] == 1
+    assert len(bot.evaluator.seen) == 1
+
+
+def test_exact_tail_propagates_solver_budget_failure(monkeypatch):
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+
+    class FailingSession:
+        nodes = 0
+        cache_hits = 0
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def solve_level(self, _root):
+            raise tree.PVTreeBudgetExceeded("exact test budget")
+
+    monkeypatch.setattr(tree, "CompactWorldSession", FailingSession)
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    with pytest.raises(tree.PVTreeBudgetExceeded, match="exact test budget"):
+        bot._tree_lookahead(
+            rnd, seat, [["D2"]], [world], completed_tricks=1,
+            exact_max_cards=2, exact_max_nodes=100_000)
+
+
+def test_exact_tail_checks_gate_after_final_solver(monkeypatch):
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    expired = [False]
+
+    def gate():
+        if expired[0]:
+            raise tree.PVTreeBudgetExceeded("expired after exact solve")
+
+    class FinishingSession:
+        nodes = 1
+        cache_hits = 0
+
+        def __init__(self, *args, check_budget=None, **kwargs):
+            self.check_budget = check_budget
+
+        def solve_level(self, root):
+            expired[0] = True
+            return root.attacker_points
+
+    monkeypatch.setattr(tree, "CompactWorldSession", FinishingSession)
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    with pytest.raises(tree.PVTreeBudgetExceeded, match="expired after exact solve"):
+        bot._tree_lookahead(
+            rnd, seat, [["D2"]], [world], gate,
+            completed_tricks=1, exact_max_cards=2, exact_max_nodes=100_000)
+
+
+@pytest.mark.parametrize("exact_cap", [0, 1])
+def test_lookahead_rejects_expiry_in_final_model_batch(exact_cap):
+    rnd = endgame(3)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    expired = False
+
+    def score(clones, root_seat):
+        nonlocal expired
+        assert root_seat == seat
+        assert len(clones) == 1
+        expired = True
+        return np.zeros(len(clones))
+
+    def gate():
+        if expired:
+            raise tree.PVTreeBudgetExceeded("expired in final model batch")
+
+    bot.evaluator.score = score
+    with pytest.raises(tree.PVTreeBudgetExceeded, match="final model batch"):
+        bot._tree_lookahead(
+            rnd, seat, [["D8"]], [world], gate,
+            completed_tricks=1, exact_max_cards=exact_cap)
+    assert expired
+
+
+def test_exact_tail_rejects_invalid_limits_and_greedy_override():
+    rnd = endgame(2)
+    seat = rnd.turn
+    world = ([list(h) for h in rnd.hands], list(rnd.buried))
+    bot = bot_of(PVTreeConfig(sims=8, cont="policy"), worlds=2)
+    for cards in (True, -1, 8, 1.5, "2"):
+        with pytest.raises(tree.PVSearchPolicyError):
+            bot._tree_lookahead(rnd, seat, [["D2"]], [world],
+                                exact_max_cards=cards)
+    for nodes in (True, 0, -1, 1.5, "10"):
+        with pytest.raises(tree.PVSearchPolicyError):
+            bot._tree_lookahead(rnd, seat, [["D2"]], [world],
+                                exact_max_cards=2, exact_max_nodes=nodes)
+    greedy = bot_of(PVTreeConfig(sims=8, cont="trick-greedy"), worlds=2)
+    with pytest.raises(tree.PVSearchPolicyError):
+        greedy._tree_lookahead(rnd, seat, [["D2"]], [world], exact_max_cards=1)
+
+
+@pytest.mark.parametrize("root_index", [52, 53])
+@pytest.mark.parametrize("probe_cap", [1, 4])
+def test_pinned_belief_producer_reaches_hybrid_cutoff(
+        pinned_production_package, hybrid_belief_package, root_index, probe_cap):
+    """Pinned policy + belief worlds feed the offline hybrid consumer.
+
+    The two XMTJ positions are an existing replay witness: index 52 is a
+    five-card lead and 53 is a five-card follow. This is a functional path
+    witness only; it makes no strength or timing claim.
+    """
+    import shengji.train.pv_search_policy as search
+
+    production = str(pinned_production_package)
+    belief_path, belief_sha = hybrid_belief_package
+    kwargs = dict(
+        worlds=64, candidates=8, cap=4000, batch_size=128, seed=7,
+        world_history_legal=True, world_history_draw=True,
+        belief_worlds=True, belief_checkpoint=belief_path,
+        belief_sha256=belief_sha)
+    baseline = search.make_pv_search_bot(production, sha256=PACKAGE_SHA, **kwargs)
+    hybrid = search.make_pv_search_bot(
+        production, sha256=PACKAGE_SHA, tree=PVTreeConfig(sims=0), **kwargs)
+
+    rnd = xmtj_position(root_index)
+    seat = rnd.turn
+    assert max(map(len, rnd.hands)) == 5
+    assert bool(rnd.trick.plays) is (root_index == 53)
+    baseline_action = baseline.decide_play(copy.deepcopy(rnd), seat)
+    assert baseline.last_decision_record["belief_fallback"] == 0
+    assert baseline.last_decision_record["belief_proposed"] >= 64
+    root_before = (copy.deepcopy(rnd.hands), copy.deepcopy(rnd.history),
+                   rnd.turn, rnd.attacker_points, rnd.phase)
+    captured = {}
+    real_decide = hybrid._tree_decide
+
+    def capture(root, acting_seat, admitted, means, worlds, pv_winner, fields, select_kwargs):
+        captured.update(admitted=copy.deepcopy(admitted), means=np.asarray(means).copy(),
+                        worlds=copy.deepcopy(worlds), v0=hybrid._tree_v0.copy(),
+                        pv_winner=pv_winner)
+        return real_decide(root, acting_seat, admitted, means, worlds, pv_winner,
+                           fields, select_kwargs)
+
+    hybrid._tree_decide = capture
+    hybrid_action = hybrid.decide_play(copy.deepcopy(rnd), seat)
+    assert hybrid_action == baseline_action
+    assert len(captured["worlds"]) == 64
+    assert captured["v0"].shape == (64, len(captured["admitted"]))
+    assert np.isfinite(captured["v0"]).all()
+    np.testing.assert_allclose(captured["means"],
+                               captured["v0"].mean(axis=0))
+    assert hybrid.last_decision_record["belief_fallback"] == 0
+    assert hybrid.last_decision_record["belief_proposed"] >= 64
+
+    actions = captured["admitted"][:2]
+    worlds = captured["worlds"][:2]
+    values, stats = hybrid._tree_lookahead(
+        rnd, seat, actions, worlds, completed_tricks=1,
+        exact_max_cards=4, exact_max_nodes=100_000)
+    assert values.shape == (2, 2) and np.isfinite(values).all()
+    assert stats["tree_exact_leaves"] + stats["tree_model_leaves"] == 4
+    assert stats["tree_exact_leaves"] == 4
+    assert stats["tree_model_leaves"] == 0
+    assert stats["tree_completed_tricks_min"] == 1
+    assert stats["tree_completed_tricks_max"] == 1
+    assert (rnd.hands, rnd.history, rnd.turn, rnd.attacker_points, rnd.phase) == root_before
+    model_values, model_stats = hybrid._tree_lookahead(
+        rnd, seat, actions, worlds, completed_tricks=1,
+        exact_max_cards=1, exact_max_nodes=100_000)
+    assert model_values.shape == (2, 2) and np.isfinite(model_values).all()
+    assert model_stats["tree_model_leaves"] > 0
+    assert model_stats["tree_model_leaves"] + model_stats["tree_exact_leaves"] == 4
+    assert (rnd.hands, rnd.history, rnd.turn, rnd.attacker_points, rnd.phase) == root_before
+
+    # Exercise the reusable consumer on a cheap W2 production witness; the W64
+    # capture above remains the package witness for the full serving sampler.
+    probe_bot = search.make_pv_search_bot(
+        production, sha256=PACKAGE_SHA, tree=PVTreeConfig(sims=0),
+        **{**kwargs, "worlds": 2})
+    probe = run_hybrid_search_probe(probe_bot, copy.deepcopy(rnd), seat,
+                                    completed_tricks=1, exact_max_cards=probe_cap,
+                                    gate=lambda: None, exact_max_nodes=100_000)
+    assert probe["baseline"]["pv_winner"] in range(len(probe["admitted"]))
+    assert probe["hybrid_value_argmax_index"] in range(len(probe["admitted"]))
+    assert "leafstats" in probe
+    scored = score_true_deal_regret(copy.deepcopy(rnd), seat, probe,
+                                    max_hand_cards=5, max_nodes=100_000,
+                                    gate=lambda: None)
+    assert scored["label"] == "true_deal_best_admitted_only"
+    assert len(scored["values"]) == len(probe["admitted"])
+    branch = "tree_model_leaves" if probe_cap == 1 else "tree_exact_leaves"
+    assert probe["leafstats"][branch] > 0
+
+
 def test_trick_mode_skips_when_the_root_seat_plays_last():
     """The root seat's play completes the trick: ``trick`` has nothing to look
     ahead (d = 0), the tree is skipped and counted; the two modes that play a
@@ -1206,6 +2060,31 @@ def test_tree_that_would_overrun_abandons_itself_for_the_pv_decision(monkeypatch
     craft(free, flat([0.50, 0.49, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
     free.decide_play(copy.deepcopy(rnd), seat)
     assert free.last_decision_record["tree_applied"] is True
+
+
+def test_final_value_batch_expiry_preserves_pv_action_and_record(monkeypatch):
+    rnd = state()
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, "perf_counter", lambda: clock[0])
+    bot = bot_of(PVTreeConfig(sims=8, zmin=0.0), worlds=8, budget=10.0)
+    craft(bot, flat([0.50, 0.49, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+    batches = []
+
+    def score(clones, seat):
+        batches.append(len(clones))
+        clock[0] = 8.1
+        return np.zeros(len(clones))
+
+    bot.evaluator.score = score
+    played = bot.decide_play(copy.deepcopy(rnd), rnd.turn)
+    record = bot.last_decision_record
+    assert len(batches) == 1
+    assert played == record["admitted"][record["tree_pv_action"]]
+    assert record["schema"] == pv.RECORD_SCHEMA
+    assert record["tree_skipped"] == "budget"
+    assert record["tree_skipped_budget"] is True
+    assert record["tree_applied"] is False
+    assert record["tree_worlds"] == 0
 
 
 def test_an_error_inside_the_tree_keeps_the_pv_decision_and_is_labelled():

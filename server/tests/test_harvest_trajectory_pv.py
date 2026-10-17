@@ -361,3 +361,82 @@ def test_value_units_are_the_half_integer_signed_level_not_pt0():
     assert takeover == 0.5 and pt0_level(takeover) == 1.0
     assert trajectory.PV_VALUE_UNITS == "expected-signed-level-half-integer"
     assert "pt0" not in trajectory.PV_VALUE_UNITS
+
+
+@pytest.mark.parametrize("rule", ["doomed_throw_reselect", "doomed_throw_swap"])
+@pytest.mark.parametrize("case", ["alias", "absent"])
+def test_forced_play_survives_search_to_policy_rows(rule, case, monkeypatch, tmp_path):
+    """Actual search finalizer -> harvest row -> schema/rebuild/policy extractor.
+
+    Only anchor/admission and leaf values are controlled, not selection, forced-play
+    handling, record publication, or consumers. No value is copied to a new slot.
+    """
+    import copy
+    from collections import Counter
+    import numpy as np
+    from shengji.harvest.rebuild import setup_from_round
+    from shengji.harvest.schema import finalize_record
+    from shengji.train.policy_prior import _shard_rows
+    from test_pv_doomed_throw_reselect import (
+        DECISIONS, DTR_RULES, SEAT, YJQJ_PLAYS, YJQJ_SETUP, draw, served, yjqj)
+
+    d = DECISIONS["SJ" if case == "alias" else "CJ"]
+    rnd = yjqj(d["plays"])
+    admitted = ([["S4", "S4", "SJ"], ["SJ"]] if case == "alias"
+                else [["CA", "CJ", "CQ"], ["C3", "CJ"]])
+    bot = served(worlds=8, **DTR_RULES, **{rule: True})
+    bot.__class__ = trajectory.pv_trajectory_class(type(bot))
+    bot._trajectory_init(random.Random(0))
+    monkeypatch.setattr(pv.HeuristicBot, "decide_play", lambda *a: list(admitted[0]))
+    monkeypatch.setattr(pv.PVSearchBot, "_admit", lambda self, rnd, seat, actions, prefs, anchor:
+                        [[action_key(a) for a in actions].index(action_key(a)) for a in admitted])
+    worlds = draw(rnd, 0, 8)
+    monkeypatch.setattr(bot, "_worlds", lambda *a, **kw: (worlds, 8))
+    monkeypatch.setattr(bot, "_value_means", lambda *a, **kw: (np.array([0.5, 0.4]), 1))
+    action = bot.decide_play(copy.deepcopy(rnd), SEAT)
+    rec = copy.deepcopy(bot.last_decision_record)
+    assert action == d["played"]
+    assert rec["admitted"][rec["admitted_indices"].index(rec["selected_index"])] == admitted[0]
+    if case == "absent":
+        # A capped legal listing need not contain the post-search component.
+        from dataclasses import replace
+        bot.last_legal = replace(bot.last_legal, actions=admitted, complete=False)
+    prefix = [{"seat": s, "cards": c.split()} for s, c in YJQJ_PLAYS[:d["plays"]]]
+    base = {"source": "trajectory", "policy": "test-pv", "deck": list(rnd.deck),
+            "setup": setup_from_round(rnd)}
+    base["setup"]["declarations"] = [
+        {"seat": e["seat"], "cards": e["cards"]} for e in YJQJ_SETUP if e["e"] == "declare"]
+    fields = trajectory._play_fields(base, "forced", 0, 0, rnd, SEAT, prefix,
+                                     action, bot, 256, Counter())
+    row = finalize_record(fields)
+    expected = admitted if case == "alias" else admitted + [action]
+    assert row["ballot"] == expected
+    assert row["ballot"][row["allocation"]["played_index"]] == action
+    assert row["allocation"]["selection_worlds"] == ([8, 8] if case == "alias" else [8, 8, 0])
+    assert row["allocation"]["total_worlds"] == 16
+    assert row["allocation"]["post_search_override"] == {
+        "reason": "doomed_throw_forced_component", "selected_index": 0,
+        "appended_unpriced": case == "absent"}
+    assert sum(row["allocation"]["weights"]) == 1
+    assert search_means(row) == ([0, 1], [0.5, 0.4])
+    assert bot.last_decision_record == rec and bot.last_ballot == admitted
+    path = tmp_path / "forced.jsonl"
+    path.write_text(json.dumps(row) + "\n")
+    rows = _shard_rows((str(path), 0.0, 1.0, 1.0, 0, 2))
+    assert len(rows) == 1
+    means = rows[0][9]
+    assert means[:2] == [20.0, 16.0]  # policy temperature units; original targets unchanged
+    if case == "absent":
+        assert np.isnan(means[2])
+        assert row["preference"]["means"][2] is None
+    # Unknown or inconsistent overrides remain hard errors, not silent repairs.
+    bad = copy.deepcopy(rec)
+    bad.pop(rule + ("_fallback_forced" if rule.endswith("reselect") else "_applied"))
+    with pytest.raises(trajectory.TrajectoryError, match="played_index"):
+        trajectory.pv_trajectory_ballot(bad, admitted)
+    bad = copy.deepcopy(rec)
+    bad[rule + "_to"] = "HA"
+    with pytest.raises(trajectory.TrajectoryError, match="played_index"):
+        trajectory.pv_trajectory_ballot(bad, admitted)
+    with pytest.raises(trajectory.TrajectoryError, match="different ballot"):
+        trajectory.pv_trajectory_ballot(rec, admitted[:-1])

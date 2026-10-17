@@ -114,6 +114,46 @@ def _gen(out, policy, **opt):
     return _read_dir(out)
 
 
+@pytest.mark.parametrize('status', [None, 'ineligible', 'single_candidate',
+                                   'skipped_budget', 'abandoned', 'complete'])
+@pytest.mark.parametrize('follow_applied', [False, True])
+def test_exact_target_provenance_preserves_values(status, follow_applied):
+    ballot = [['S3'], ['S4']]
+    rec = dict(admitted=ballot, admitted_indices=[2, 5], selected_index=5,
+               played=['S4'], value_means=[-0.5, 1.0], worlds=3,
+               exact_follow_attempted=True, exact_follow_applied=follow_applied,
+               exact_follow_abandoned=None, exact_lead_seconds=0.125)
+    if status is not None:
+        rec['exact_lead_status'] = status
+    allocation, preference, values = trajectory.pv_fields_from_record(rec, ballot)
+    assert allocation['played_index'] == 1
+    assert preference['means'] == values['means'] == rec['value_means']
+    assert ('exact-lead sampled-world minimax' in values['value_source']) == (status == 'complete')
+    assert values['exact_search'] == {key: value for key, value in rec.items()
+                                     if key.startswith('exact_') and key != 'exact_lead_seconds'}
+    assert search_means({'action_values': values, 'ballot': ballot}) == ([0, 1], [-0.5, 1.0])
+
+
+@pytest.fixture
+def exact_data_policy(package, monkeypatch):
+    yield from _register_data_policy(package, monkeypatch, EXACT_LEAD_ENDGAME=1,
+                                     EXACT_DEEP_CARDS=4)
+
+
+def test_exact_producer_values_reach_harvest(exact_data_policy, tmp_path):
+    from shengji.train.cwv_data import bridge_record
+    run = _gen(tmp_path / 'exact', exact_data_policy, explore_rate=0.0, explore_k=0)
+    plays = [r for r in run['records'] if r['decision_kind'] == 'play']
+    assert any(r['action_values'].get('exact_search', {}).get('exact_lead_status') == 'complete'
+               for r in plays)
+    for r in plays:
+        values = r['action_values']
+        if values.get('exact_search', {}).get('exact_lead_status') == 'complete':
+            assert 'exact-lead sampled-world minimax' in values['value_source']
+            assert r['preference']['means'] == values['means']
+    assert all(bridge_record(r) is not None for r in plays)
+
+
 def test_pv_records_carry_the_admitted_ballot_and_priced_values(data_policy, tmp_path):
     run = _gen(tmp_path / "pv0", data_policy, explore_rate=0.0, explore_k=0)
     plays = [r for r in run["records"] if r["decision_kind"] == "play"]

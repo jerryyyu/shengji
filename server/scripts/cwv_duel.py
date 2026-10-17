@@ -74,6 +74,7 @@ import statistics
 import subprocess
 import sys
 import time
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 
 SERVER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -310,6 +311,7 @@ class TimedPolicy:
         self.keep_states = keep_states
         self.walls: list[float] = []
         self.states: list[tuple] = []
+        self.play_health = Counter()
 
     def decide_declare(self, rnd, seat, **kw):
         return self.inner.decide_declare(rnd, seat, **kw)
@@ -323,6 +325,19 @@ class TimedPolicy:
         cards = self.inner.decide_play(rnd, seat)
         wall = time.perf_counter() - started
         self.walls.append(wall)
+        record = getattr(self.inner, "last_decision_record", None)
+        self.play_health["decisions"] += 1
+        if isinstance(record, dict) and record.get("schema") == "pv-search-decision-v1":
+            self.play_health["pv_complete" if record.get("work_complete") else "pv_incomplete"] += 1
+            for key in ("lead_alias_refill_applied", "lead_alias_refill_abandoned",
+                        "lead_alias_refill_replacements"):
+                self.play_health[key] += int(record.get(key, 0))
+        elif isinstance(record, dict) and record.get("schema") == "pv-search-fallback-v1":
+            self.play_health["pv_fallback"] += 1
+            reason = record.get("reason")
+            self.play_health["pv_budget" if reason == "budget" else "pv_error"] += 1
+        else:
+            self.play_health["non_pv_record"] += 1
         if snapshot is not None and getattr(self.inner, "last_decision_record", None) is not None:
             self.states.append((snapshot, seat, wall))
         return cards
@@ -809,6 +824,8 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
         "arm_play_wall_secs": round(sum(sum(t.walls) for t in arm_timers), 4),
         "opp_play_decisions": sum(len(t.walls) for t in opp_timers),
         "opp_play_wall_secs": round(sum(sum(t.walls) for t in opp_timers), 4),
+        "arm_play_health": dict(sum((t.play_health for t in arm_timers), Counter())),
+        "opp_play_health": dict(sum((t.play_health for t in opp_timers), Counter())),
     }
 
 

@@ -408,6 +408,60 @@ def test_explicit_rank_2_deals_are_the_canonical_deals(duel):
     assert duel.rank_plan("canonical") is None and duel.rank_plan("2") == ["2"]
     assert duel.rank_plan("cycle") == list(duel.RANKS)
     assert duel.rank_for(duel.rank_plan("cycle"), 14) == duel.RANKS[1]
+
+
+def test_pv_health_reaches_persisted_mixed_rank_mirrors(duel, monkeypatch, tmp_path):
+    class Bot:
+        def __init__(self, candidate):
+            self.candidate = candidate
+            self.calls = 0
+
+        def decide_play(self, rnd, seat):
+            self.calls += 1
+            if not self.candidate:
+                self.last_decision_record = None
+            elif self.calls == 1:
+                self.last_decision_record = {
+                    'schema': 'pv-search-decision-v1', 'work_complete': True,
+                    'lead_alias_refill_applied': True,
+                    'lead_alias_refill_replacements': 2,
+                }
+            elif self.calls == 2:
+                self.last_decision_record = {
+                    'schema': 'pv-search-decision-v1', 'work_complete': True,
+                    'lead_alias_refill_abandoned': True,
+                }
+            else:
+                self.last_decision_record = {
+                    'schema': 'pv-search-fallback-v1', 'work_complete': False,
+                    'reason': 'budget' if self.calls == 3 else 'search-error',
+                }
+            return [seat]
+
+    monkeypatch.setattr(duel, 'make_bot', lambda policy, **kw: Bot(policy == 'candidate'))
+
+    def play(game, policies, rank):
+        for _ in range(4):
+            for seat, bot in enumerate(policies):
+                assert bot.decide_play(None, seat) == [seat]
+        return duel.RoundLog(rank, 0, 0, 0, 1)
+
+    monkeypatch.setattr(duel, 'play_round_at', play)
+    path = str(tmp_path / 'shard.jsonl')
+    rows = duel.play_shard('unit', [('alias', 'candidate')], [0, 1], 10,
+                           '2,A', 'control', sink=duel.ShardSink(path))
+    assert duel.read_shard(path) == rows
+    assert [(r['trump_rank'], r['flip']) for r in rows] == [
+        ('2', 0), ('2', 1), ('A', 0), ('A', 1)]
+    for row in rows:
+        assert row['arm_play_health'] == {
+            'decisions': 8, 'pv_complete': 4, 'pv_fallback': 4,
+            'pv_budget': 2, 'pv_error': 2,
+            'lead_alias_refill_applied': 2, 'lead_alias_refill_replacements': 4,
+            'lead_alias_refill_abandoned': 2,
+        }
+        assert row['opp_play_health'] == {'decisions': 8, 'non_pv_record': 8}
+        assert row['arm_play_decisions'] == row['arm_play_health']['decisions']
     with pytest.raises(ValueError):
         duel.rank_plan("1")
     assert duel.parse_budgets("1x,3x,10x") == [1.0, 3.0, 10.0]

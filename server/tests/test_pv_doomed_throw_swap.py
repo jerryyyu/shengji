@@ -229,6 +229,27 @@ def test_alias_probe_attributes_takeover_per_play():
         logged_play_modes([play(), play()])
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_alias_smoke_runs_complete_budgeted_serving_path(enabled):
+    from scripts.lead_alias_probe import serving_smoke
+
+    def factory(seed):
+        bot = served(lead_alias_refill=enabled, serving_budget_seconds=3)
+        bot.policy_name = "test-serving"
+        return bot
+
+    rnd = oxps()
+    original = copy.deepcopy(rnd.hands)
+    result = serving_smoke(factory, rnd, SEAT, {}, seed=0)
+    assert result["legal"] and result["work_complete"]
+    assert result["schema"] == "pv-search-decision-v1"
+    assert result["fallback_reason"] is None
+    assert result["budget_seconds"] == 3
+    assert result["elapsed_seconds"] < 3
+    assert bool(result["refill"]) == enabled
+    assert rnd.hands == original
+
+
 @pytest.mark.parametrize("expiry", [None, "first", "publish", "soft"])
 def test_serving_alias_refill_is_transactional(monkeypatch, expiry):
     from shengji.train import lead_alias_refill as lar

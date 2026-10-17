@@ -72,6 +72,14 @@ with level-mode sessions (`pv_exact_deep.exact_root_means`): the minimax value
 resolved only up to the signed-level steps the means use, so the means are a
 full minimax's, at a per-world node cap of ``EXACT_DEEP_LIMITS['max_nodes']``
 instead of 10000; the start gate, deadline and fallback are the exact lead's.
+Two DEV caps exist for a ceiling measurement that lifts those limits:
+``SHENGJI_PV_EXACT_LEAD_MAX_SECONDS`` (the stage deadline, default
+``EXACT_LEAD_LIMITS['max_seconds']``, token ``els<ms>``) and
+``SHENGJI_PV_EXACT_DEEP_MAX_NODES`` (default ``EXACT_DEEP_LIMITS['max_nodes']``,
+token ``edn<nodes>``).  At their defaults they enter neither the name nor the
+digest; any other value replaces the constant in the digested limits.  The
+serving budget's start gate and soft deadline still apply, so a ceiling run also
+raises ``SHENGJI_PV_SERVING_BUDGET_SECONDS``.
 Follow decisions take the separate ``exact_follow`` stage (`pv_exact_follow`).
 
 Optional admission rules (#676 A/C, #677 strategy 1), BOTH OFF BY DEFAULT:
@@ -694,6 +702,18 @@ EXACT_DEEP_CARDS_RANGE = (4, 8)
 EXACT_DEEP_LIMITS = dict(max_nodes=50_000_000, solver="level-cuts-relative-tt-ordered")
 EXACT_LEAD_LIMITS = dict(max_hand_cards=4, max_nodes=10000, max_seconds=2.25,
                          start_fraction=0.5, soft_fraction=0.8)
+#: DEV caps for an exact-lead ceiling measurement (module docstring): env suffix
+#: -> keyword.  Each defaults to the constant above and is ABSENT from the name
+#: and payload at that value, so a served recipe keeps its identity; any other
+#: value replaces the constant in the digested limits and adds a name token.
+EXACT_LEAD_CAP_PARAMS = {"EXACT_LEAD_MAX_SECONDS": "exact_lead_max_seconds",
+                         "EXACT_DEEP_MAX_NODES": "exact_deep_max_nodes"}
+EXACT_LEAD_CAP_DEFAULTS = dict(exact_lead_max_seconds=EXACT_LEAD_LIMITS["max_seconds"],
+                               exact_deep_max_nodes=EXACT_DEEP_LIMITS["max_nodes"])
+#: the accepted ranges: a stage deadline of at least a millisecond and at most a
+#: day (its name token is ``els<ms>``), and a per-world node cap up to 10**12
+EXACT_LEAD_MAX_SECONDS_RANGE = (0.001, 86400.0)
+EXACT_DEEP_MAX_NODES_RANGE = (1, 10**12)
 FINISH_LEAD_MAX_CARDS = 8
 #: `adaptive_worlds`: the top-2 value gap is unresolved when it is below this many
 #: paired standard errors of (v_a - v_b) over the base worlds
@@ -1046,6 +1066,11 @@ class PVSearchConfig:
     exact_lead_policy_first: bool = False
     # the deeper exact rule (module docstring): 0 is off
     exact_deep_cards: int = 0
+    # DEV caps of the exact lead stage (``EXACT_LEAD_CAP_PARAMS``): the stage
+    # deadline (needs ``exact_lead_endgame``) and the deeper rule's per-world
+    # node cap (needs ``exact_deep_cards``); at their defaults ABSENT from the payload
+    exact_lead_max_seconds: float = EXACT_LEAD_CAP_DEFAULTS["exact_lead_max_seconds"]
+    exact_deep_max_nodes: int = EXACT_LEAD_CAP_DEFAULTS["exact_deep_max_nodes"]
     # DEV-only exact follow reranking; intentionally not exposed by factories.
     exact_follow: bool = False
     exact_follow_max_nodes: int = 250_000
@@ -1104,6 +1129,45 @@ def _check_exact_deep_cards(cards) -> None:
     lo, hi = EXACT_DEEP_CARDS_RANGE
     if isinstance(cards, bool) or type(cards) is not int or not (cards == 0 or lo <= cards <= hi):
         raise PVSearchPolicyError(f"exact_deep_cards must be 0 (off) or an int in [{lo}, {hi}]")
+
+
+def _check_exact_lead_caps(config) -> tuple[bool, bool]:
+    """Validate the two DEV caps; returns which of them differ from their
+    defaults.  A lifted cap whose stage is off would change the identity of a
+    recipe whose decisions it cannot change, so it is refused."""
+    seconds, nodes = config.exact_lead_max_seconds, config.exact_deep_max_nodes
+    lo, hi = EXACT_LEAD_MAX_SECONDS_RANGE
+    if (isinstance(seconds, bool) or type(seconds) not in (int, float)
+            or not math.isfinite(seconds) or not lo <= seconds <= hi):
+        raise PVSearchPolicyError(
+            f"exact_lead_max_seconds must be a finite number in [{lo}, {hi}]")
+    lo, hi = EXACT_DEEP_MAX_NODES_RANGE
+    if isinstance(nodes, bool) or type(nodes) is not int or not lo <= nodes <= hi:
+        raise PVSearchPolicyError(f"exact_deep_max_nodes must be an int in [{lo}, {hi}]")
+    lifted_seconds = seconds != EXACT_LEAD_CAP_DEFAULTS["exact_lead_max_seconds"]
+    lifted_nodes = nodes != EXACT_LEAD_CAP_DEFAULTS["exact_deep_max_nodes"]
+    if lifted_seconds and not config.exact_lead_endgame:
+        raise PVSearchPolicyError("exact_lead_max_seconds needs exact_lead_endgame "
+                                  "(SHENGJI_PV_EXACT_LEAD_MAX_SECONDS needs "
+                                  "SHENGJI_PV_EXACT_LEAD_ENDGAME=1)")
+    if lifted_nodes and not config.exact_deep_cards:
+        raise PVSearchPolicyError("exact_deep_max_nodes needs exact_deep_cards "
+                                  "(SHENGJI_PV_EXACT_DEEP_MAX_NODES needs "
+                                  "SHENGJI_PV_EXACT_DEEP_CARDS)")
+    return lifted_seconds, lifted_nodes
+
+
+def exact_lead_cap_tokens(config) -> str:
+    """The name tokens of lifted caps, ``""`` at the defaults: ``-els<ms>`` for
+    the stage deadline in whole milliseconds and ``-edn<nodes>`` for the node cap
+    (the digest carries the exact values)."""
+    lifted_seconds, lifted_nodes = _check_exact_lead_caps(config)
+    tokens = ""
+    if lifted_seconds:
+        tokens += f"-els{round(config.exact_lead_max_seconds * 1000)}"
+    if lifted_nodes:
+        tokens += f"-edn{config.exact_deep_max_nodes}"
+    return tokens
 
 
 def _check_exact_follow_params(config: PVSearchConfig) -> None:
@@ -1177,6 +1241,13 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                 or config.oracle_worlds or config.oracle_mix_k or config.oracle_pin_q):
             raise PVSearchPolicyError('exact_lead_endgame excludes tree, adaptive worlds and oracle worlds')
         payload['exact_lead_limits'] = EXACT_LEAD_LIMITS
+    # the DEV caps enter the payload only through the limits they replace
+    lifted_seconds, lifted_nodes = _check_exact_lead_caps(config)
+    for key in EXACT_LEAD_CAP_PARAMS.values():
+        del payload[key]
+    if lifted_seconds:
+        payload['exact_lead_limits'] = {**EXACT_LEAD_LIMITS,
+                                        'max_seconds': float(config.exact_lead_max_seconds)}
     if (config.exact_lead_tie_baseline or config.exact_lead_policy_first
             or config.exact_deep_cards) \
             and not config.exact_lead_endgame:
@@ -1184,6 +1255,9 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     _check_exact_deep_cards(config.exact_deep_cards)
     if config.exact_deep_cards:
         payload['exact_deep_limits'] = EXACT_DEEP_LIMITS
+        if lifted_nodes:
+            payload['exact_deep_limits'] = {**EXACT_DEEP_LIMITS,
+                                            'max_nodes': config.exact_deep_max_nodes}
     else:
         del payload['exact_deep_cards']
     if config.exact_lead_tie_baseline:
@@ -1296,6 +1370,7 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     # the soft oracle's token after the rule tokens; "" while off
     if config.exact_deep_cards:
         rules += f"-ed{config.exact_deep_cards}"
+    rules += exact_lead_cap_tokens(config)   # "" at the default caps
     if config.oracle_mix_k:
         rules += f"-{soft_oracle.mix_token(config.oracle_mix_k)}"
     if config.oracle_pin_q:
@@ -1432,6 +1507,10 @@ class PVSearchBot(PolicyValueBot):
     exact_lead_tie_baseline = False
     exact_lead_policy_first = False
     exact_deep_cards = 0
+    #: the exact lead stage's DEV caps: class-level defaults, instance state only
+    #: when lifted
+    exact_lead_max_seconds = EXACT_LEAD_CAP_DEFAULTS["exact_lead_max_seconds"]
+    exact_deep_max_nodes = EXACT_LEAD_CAP_DEFAULTS["exact_deep_max_nodes"]
     #: the belief proposal's log (module docstring), ON by default; it is read
     #: only while ``belief_worlds`` is on and enters no name or digest
     belief_log = BELIEF_LOG_DEFAULT
@@ -1545,6 +1624,11 @@ class PVSearchBot(PolicyValueBot):
             if not config.exact_lead_endgame:
                 raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
             self.exact_deep_cards = config.exact_deep_cards
+        lifted_seconds, lifted_nodes = _check_exact_lead_caps(config)
+        if lifted_seconds:
+            self.exact_lead_max_seconds = float(config.exact_lead_max_seconds)
+        if lifted_nodes:
+            self.exact_deep_max_nodes = config.exact_deep_max_nodes
         if type(config.exact_follow) is not bool:
             raise PVSearchPolicyError("exact_follow must be a bool")
         if type(config.exact_follow_max_nodes) is not int or config.exact_follow_max_nodes < 1:
@@ -2788,7 +2872,7 @@ class PVSearchBot(PolicyValueBot):
         if budget is not None and now - started >= EXACT_LEAD_LIMITS['start_fraction'] * budget:
             state['exact_lead_status'] = 'skipped_budget'
             return base
-        deadline = now + EXACT_LEAD_LIMITS['max_seconds']
+        deadline = now + self.exact_lead_max_seconds
         if budget is not None:
             deadline = min(deadline, started + EXACT_LEAD_LIMITS['soft_fraction'] * budget)
         stage = OptionalStage(self, ADAPTIVE_WORLDS_RULE_STATE, hard_check=check_budget,
@@ -2812,7 +2896,7 @@ class PVSearchBot(PolicyValueBot):
                 from .pv_exact_deep import exact_root_means
                 means, stats = exact_root_means(
                     rnd, seat, admitted, worlds, leaf_fn, stage.guard, max_hand_cards=max_cards,
-                    max_nodes=EXACT_DEEP_LIMITS['max_nodes'])
+                    max_nodes=self.exact_deep_max_nodes)
             else:
                 means, stats = exact_lead_means(rnd, seat, admitted, worlds, leaf_fn, stage.guard,
                                                max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
@@ -3285,6 +3369,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_lead_tie_baseline: bool = False,
                        exact_lead_policy_first: bool = False,
                        exact_deep_cards: int = 0,
+                       exact_lead_max_seconds: float = EXACT_LEAD_CAP_DEFAULTS["exact_lead_max_seconds"],
+                       exact_deep_max_nodes: int = EXACT_LEAD_CAP_DEFAULTS["exact_deep_max_nodes"],
                        exact_follow: bool = False,
                        exact_follow_max_nodes: int = 250_000,
                        exact_follow_solver: str = "reference",
@@ -3355,6 +3441,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
                             exact_deep_cards=exact_deep_cards,
+                            exact_lead_max_seconds=exact_lead_max_seconds,
+                            exact_deep_max_nodes=exact_deep_max_nodes,
                             exact_follow=exact_follow,
                             exact_follow_max_nodes=exact_follow_max_nodes,
                             exact_follow_solver=exact_follow_solver,
@@ -3468,6 +3556,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_lead_tie_baseline: bool = False,
                         exact_lead_policy_first: bool = False,
                         exact_deep_cards: int = 0,
+                        exact_lead_max_seconds: float = EXACT_LEAD_CAP_DEFAULTS["exact_lead_max_seconds"],
+                        exact_deep_max_nodes: int = EXACT_LEAD_CAP_DEFAULTS["exact_deep_max_nodes"],
                         exact_follow: bool = False,
                         exact_follow_max_nodes: int = 250_000,
                         exact_follow_solver: str = "reference",
@@ -3519,6 +3609,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
                             exact_deep_cards=exact_deep_cards,
+                            exact_lead_max_seconds=exact_lead_max_seconds,
+                            exact_deep_max_nodes=exact_deep_max_nodes,
                             exact_follow=exact_follow,
                             exact_follow_max_nodes=exact_follow_max_nodes,
                             exact_follow_solver=exact_follow_solver,
@@ -3623,6 +3715,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_lead_tie_baseline=config.exact_lead_tie_baseline,
                                exact_lead_policy_first=config.exact_lead_policy_first,
                                exact_deep_cards=config.exact_deep_cards,
+                               exact_lead_max_seconds=config.exact_lead_max_seconds,
+                               exact_deep_max_nodes=config.exact_deep_max_nodes,
                                exact_follow=config.exact_follow,
                                exact_follow_max_nodes=config.exact_follow_max_nodes,
                                exact_follow_solver=config.exact_follow_solver,
@@ -3667,7 +3761,9 @@ def pv_env_recipe(environ=None) -> dict:
     / ``_VALUE_DECLARE_WAIT`` / ``_DECLARE_ASAP_FIRST`` /
     ``_LEAF_POLICY_FIRST_TRICK``
     / ``_EXACT_FOLLOW`` and its ``_EXACT_FOLLOW_MAX_NODES`` /
-    ``_EXACT_FOLLOW_SOLVER`` / ``_EXACT_FOLLOW_MAX_CARDS`` DEV knobs
+    ``_EXACT_FOLLOW_SOLVER`` / ``_EXACT_FOLLOW_MAX_CARDS`` DEV knobs, the exact lead
+    stage's ``_EXACT_LEAD_MAX_SECONDS`` (needs ``_EXACT_LEAD_ENDGAME=1``) and
+    ``_EXACT_DEEP_MAX_NODES`` (needs ``_EXACT_DEEP_CARDS``) DEV caps
     / ``_ORACLE_WORLDS`` rule flags (``0`` or ``1`` only; unset or empty is off) and the
     ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless
     ``_VALUE_DECLARE=1``), as keyword arguments for `pv_registry_entries`.
@@ -3787,6 +3883,27 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not an int: {raw!r}") from None
         _check_exact_deep_cards(value)
         recipe[key] = value
+    # the exact lead stage's DEV caps: unset or empty is the default; a value is
+    # refused unless its stage is on and the value is in range
+    for suffix, key in EXACT_LEAD_CAP_PARAMS.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, ""):
+            continue
+        needs = ("EXACT_LEAD_ENDGAME=1" if key == "exact_lead_max_seconds"
+                 else "EXACT_DEEP_CARDS")
+        if not recipe.get("exact_lead_endgame" if key == "exact_lead_max_seconds"
+                          else "exact_deep_cards"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} needs {ENV_PREFIX}{needs}")
+        try:
+            value = float(raw) if key == "exact_lead_max_seconds" else int(raw)
+        except ValueError:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not a number: {raw!r}") from None
+        recipe[key] = value
+    _check_exact_lead_caps(PVSearchConfig(
+        checkpoint_sha256=recipe["sha256"],
+        exact_lead_endgame=bool(recipe.get("exact_lead_endgame", False)),
+        exact_deep_cards=recipe.get("exact_deep_cards", 0),
+        **{key: recipe[key] for key in EXACT_LEAD_CAP_PARAMS.values() if key in recipe}))
     # the declaration rule's parameters: only with the rule on
     for suffix, key in VALUE_DECLARE_PARAMS.items():
         raw = env.get(ENV_PREFIX + suffix)

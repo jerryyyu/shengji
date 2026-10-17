@@ -102,13 +102,13 @@ def test_reservation_cleanup_removes_only_owned_identity(tmp_path):
 
 
 def test_host_reservation_platform_contract():
-    assert launcher.default_reservation_path('linux') == Path('/root/.claude-host.lock')
+    assert launcher.default_reservation_path('linux') == Path('/root/.claude-light.lock')
     assert launcher.default_reservation_path('darwin') == Path('/private/tmp/shengji-sol-panel-mini.lock')
 
 
-def test_screen_first_blocks_sol_without_modifying_owner(tmp_path):
-    lock = tmp_path / '.claude-host.lock'
-    lock.mkdir()  # Actual screen arbitration primitive.
+def test_light_lane_blocks_sol_without_modifying_owner(tmp_path):
+    lock = tmp_path / '.claude-light.lock'
+    lock.mkdir()
     (lock / 'owner').write_text('12345 v54ep9 synthetic\n')
     with pytest.raises(FileExistsError):
         with launcher.reservation(lock, shared_host=True):
@@ -117,13 +117,13 @@ def test_screen_first_blocks_sol_without_modifying_owner(tmp_path):
     assert list(lock.iterdir()) == [lock / 'owner']
 
 
-def test_sol_first_blocks_screen_and_releases_after_failure(tmp_path):
-    lock = tmp_path / '.claude-host.lock'
+def test_sol_blocks_another_light_lane_and_releases_after_failure(tmp_path):
+    lock = tmp_path / '.claude-light.lock'
     with pytest.raises(RuntimeError, match='synthetic row failure'):
         with launcher.reservation(lock, shared_host=True):
             assert (lock / 'owner').read_text() == f'{os.getpid()} sol-nine-policy\n'
             with pytest.raises(FileExistsError):
-                lock.mkdir()  # Screen cannot claim while Sol owns it.
+                lock.mkdir()
             raise RuntimeError('synthetic row failure')
     assert not lock.exists()
 
@@ -137,14 +137,14 @@ def test_shared_cleanup_preserves_changed_peer_owner(tmp_path):
 
 
 @pytest.mark.parametrize('recovery', [False, True])
-def test_linux_run_refuses_screen_before_creating_output(tmp_path, monkeypatch, recovery):
+def test_linux_run_refuses_light_lane_before_creating_output(tmp_path, monkeypatch, recovery):
     config = _config(tmp_path)
     if recovery:
         config['schema'] = launcher.RECOVERY_SCHEMA
         monkeypatch.setattr(launcher, '_require_recovery_memory', lambda stage: None)
         (tmp_path / 'RELEASE').write_text('a' * 64)
     _stub_validation(monkeypatch, config)
-    lock = tmp_path / '.claude-host.lock'
+    lock = tmp_path / '.claude-light.lock'
     lock.mkdir()
     (lock / 'owner').write_text('12345 screen\n')
     monkeypatch.setattr(launcher, 'LOCK', lock)
@@ -154,6 +154,29 @@ def test_linux_run_refuses_screen_before_creating_output(tmp_path, monkeypatch, 
         launcher.run(tmp_path / 'campaign.json', 'a' * 64, arm=True)
     assert not Path(config['output']).exists()
     assert (lock / 'owner').read_text() == '12345 screen\n'
+
+
+def test_linux_run_uses_light_reservation_and_preserves_screen(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    _stub_validation(monkeypatch, config)
+    screen = tmp_path / '.claude-host.lock'
+    screen.mkdir()
+    (screen / 'owner').write_text('12345 screen\n')
+    light = tmp_path / launcher.default_reservation_path('linux').name
+    monkeypatch.setattr(launcher, 'LOCK', light)
+    monkeypatch.setattr(launcher.sys, 'platform', 'linux')
+
+    def stop_at_dispatch(*args, **kwargs):
+        assert (light / 'owner').read_text() == f'{os.getpid()} sol-nine-policy\n'
+        assert (screen / 'owner').read_text() == '12345 screen\n'
+        raise RuntimeError('synthetic dispatch boundary')
+
+    monkeypatch.setattr(launcher, 'supervise', stop_at_dispatch)
+    with pytest.raises(RuntimeError, match='synthetic dispatch boundary'):
+        launcher.run(tmp_path / 'campaign.json', 'config-sha', arm=True)
+    assert not light.exists()
+    assert (screen / 'owner').read_text() == '12345 screen\n'
+    assert json.loads((Path(config['output']) / 'terminal.json').read_text())['status'] == 'failed'
 
 
 @pytest.mark.parametrize("failure", ["nonzero", "incomplete", "deadline"])

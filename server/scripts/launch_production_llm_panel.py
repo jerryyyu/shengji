@@ -33,10 +33,10 @@ STAGE2_ROWS = ("smart", "mc-lcb", "soft-pv", "js-m1-shortlist",
                "w32-original", "mc-strong", "mc")
 RECOVERY_MEMORY_WAIT = {"timeout_seconds": 1800, "poll_seconds": 60}
 def default_reservation_path(platform):
-    # Linux fleet screens use this same atomic directory reservation. A
-    # Sol-only name cannot exclude an already-running screen on that host.
+    # Linux Sol campaigns serialize with each other while leaving the screen
+    # reservation independent; co-run admission still requires measured capacity.
     if platform == "linux":
-        return Path("/root/.claude-host.lock")
+        return Path("/root/.claude-light.lock")
     return Path("/private/tmp/shengji-sol-panel-mini.lock")
 
 

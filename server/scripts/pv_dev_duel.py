@@ -11,6 +11,7 @@ import json
 import os
 import math
 import statistics
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -41,6 +42,21 @@ def register_pair(control, candidate):
     return names[0], names[1]
 
 
+def capacity_summary(rows, play_wall_seconds):
+    """Project only operational fields; never inspect utilities or winners."""
+    sides = {}
+    for side in ('arm', 'opp'):
+        counts = Counter()
+        for row in rows:
+            counts.update(row[f'{side}_play_health'])
+        sides[side] = dict(health=dict(counts),
+                           decisions=sum(r[f'{side}_play_decisions'] for r in rows),
+                           decision_seconds=sum(r[f'{side}_play_wall_secs'] for r in rows),
+                           max_decision_seconds=max(r[f'{side}_play_max_secs'] for r in rows))
+    return dict(schema='pv-dev-capacity-v1', rounds=len(rows),
+                play_wall_seconds=play_wall_seconds, sides=sides)
+
+
 def run(control, candidate, *, out, seed0, pairs, ranks, cluster0=0):
     if pairs < 1 or seed0 < 0 or cluster0 < 0:
         raise ValueError('positive pairs and nonnegative seeds/cluster offset required')
@@ -55,12 +71,17 @@ def run(control, candidate, *, out, seed0, pairs, ranks, cluster0=0):
                 pairs=pairs, cluster0=cluster0, ranks=plan)
     (out / 'run.json').write_text(json.dumps(meta, sort_keys=True, indent=2))
     sink = duel.ShardSink(str(out / 'rounds.jsonl'))
+    started = time.perf_counter()
     # Global cluster indices preserve rank phase when a run is split into shards.
     rows = duel.play_shard('pv-dev', [('candidate', treatment)],
                            range(cluster0, cluster0 + pairs), seed0, ranks,
                            baseline, sink=sink, progress=True)
     if len(rows) != pairs * 2 or sink.written != pairs * 2:
         raise RuntimeError('incomplete shard; output preserved without DONE')
+    with (out / 'health.json').open('x') as fh:
+        json.dump(capacity_summary(rows, time.perf_counter() - started), fh, sort_keys=True)
+        fh.flush()
+        os.fsync(fh.fileno())
     with (out / 'DONE').open('x') as fh:
         fh.write(f'{pairs} complete pairs\n')
         fh.flush()

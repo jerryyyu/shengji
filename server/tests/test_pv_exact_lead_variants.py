@@ -358,3 +358,145 @@ def test_variants_on_captured_joker_root(pinned_production_package, monkeypatch)
     assert both[1]['value_means'] == first[1]['value_means']
     assert first[1]['exact_lead_policy_fallbacks'] == 0
     assert first[1]['exact_lead_policy_plays'] > 0
+
+
+# ------------------------------------------------- exact lead DEV caps (S48)
+
+SECONDS = 'SHENGJI_PV_EXACT_LEAD_MAX_SECONDS'
+NODES = 'SHENGJI_PV_EXACT_DEEP_MAX_NODES'
+
+
+def served_name(monkeypatch, **extra):
+    """The registry name production's fly.toml env (plus ``extra``) resolves to,
+    with the package hashes stubbed: names and digests read no package bytes."""
+    import tomllib
+    from shengji.ai import cwv_policy
+    env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    by_path = {env['SHENGJI_PV_CKPT']: env['SHENGJI_PV_SHA256'],
+               env['SHENGJI_PV_BELIEF_CKPT']: env['SHENGJI_PV_BELIEF_SHA256']}
+    monkeypatch.setattr(cwv_policy, 'file_sha256', lambda path: by_path[str(path)])
+    monkeypatch.setattr(pv, 'file_sha256', lambda path: by_path[str(path)])
+    name, = pv.pv_registry_entries(**pv.pv_env_recipe({**env, **extra}))
+    return name
+
+
+def test_cap_defaults_are_the_served_constants():
+    assert pv.EXACT_LEAD_CAP_DEFAULTS == {'exact_lead_max_seconds': 2.25,
+                                          'exact_deep_max_nodes': 50_000_000}
+    assert pv.EXACT_LEAD_LIMITS['max_seconds'] == 2.25
+    assert pv.EXACT_DEEP_LIMITS['max_nodes'] == 50_000_000
+    config = pv.PVSearchConfig(checkpoint_sha256='f' * 64)
+    assert (config.exact_lead_max_seconds, config.exact_deep_max_nodes) == (2.25, 50_000_000)
+    assert (pv.PVSearchBot.exact_lead_max_seconds, pv.PVSearchBot.exact_deep_max_nodes) \
+        == (2.25, 50_000_000)
+    # a default bot carries no cap instance state
+    policy = variant_bot(exact_deep_cards=7)
+    assert not {'exact_lead_max_seconds', 'exact_deep_max_nodes'} & set(vars(policy))
+
+
+def test_release46_name_is_unchanged_at_the_default_caps(monkeypatch):
+    from test_release46_fly_config import RELEASE46
+    for extra in ({}, {SECONDS: '', NODES: ''}, {SECONDS: '2.25', NODES: '50000000'}):
+        assert served_name(monkeypatch, **extra) == RELEASE46
+
+
+def test_default_caps_leave_the_payload_byte_identical():
+    sha = 'f' * 64
+    for kw in ({}, dict(exact_lead_endgame=True), dict(exact_lead_endgame=True, exact_deep_cards=7)):
+        payload = pv.recipe_payload(pv.PVSearchConfig(checkpoint_sha256=sha, **kw))
+        assert not set(pv.EXACT_LEAD_CAP_PARAMS.values()) & set(payload)
+        if kw:
+            assert payload['exact_lead_limits'] is pv.EXACT_LEAD_LIMITS
+        if 'exact_deep_cards' in kw:
+            assert payload['exact_deep_limits'] is pv.EXACT_DEEP_LIMITS
+
+
+def test_lifted_caps_change_the_name_and_digest(monkeypatch):
+    from test_release46_fly_config import RELEASE46
+    import re
+    base_digest, = re.findall(r'-r([0-9a-f]{8})-bury-', RELEASE46)
+    names = {}
+    for extra in ({SECONDS: '600'}, {NODES: '1000000000'},
+                  {SECONDS: '600', NODES: '1000000000'}, {SECONDS: '2.5'}):
+        name = served_name(monkeypatch, **extra)
+        assert name != RELEASE46 and f'-r{base_digest}-' not in name
+        names[tuple(sorted(extra.items()))] = name
+    assert len(set(names.values())) == 4
+    both = names[((NODES, '1000000000'), (SECONDS, '600'))]
+    assert '-ed7-els600000-edn1000000000-xf7-' in both
+    assert '-els2500-' in names[((SECONDS, '2.5'),)]
+    payload = pv.recipe_payload(pv.PVSearchConfig(
+        checkpoint_sha256='f' * 64, exact_lead_endgame=True, exact_deep_cards=8,
+        exact_lead_max_seconds=600.0, exact_deep_max_nodes=10**9))
+    assert payload['exact_lead_limits'] == {**pv.EXACT_LEAD_LIMITS, 'max_seconds': 600.0}
+    assert payload['exact_deep_limits'] == {**pv.EXACT_DEEP_LIMITS, 'max_nodes': 10**9}
+
+
+@pytest.mark.parametrize('extra,match', [
+    ({SECONDS: 'nan'}, 'exact_lead_max_seconds must be a finite number'),
+    ({SECONDS: 'inf'}, 'exact_lead_max_seconds must be a finite number'),
+    ({SECONDS: '0'}, 'exact_lead_max_seconds must be a finite number'),
+    ({SECONDS: '-1'}, 'exact_lead_max_seconds must be a finite number'),
+    ({SECONDS: '1e9'}, 'exact_lead_max_seconds must be a finite number'),
+    ({SECONDS: 'soon'}, 'is not a number'),
+    ({NODES: '0'}, 'exact_deep_max_nodes must be an int'),
+    ({NODES: '-5'}, 'exact_deep_max_nodes must be an int'),
+    ({NODES: '1e9'}, 'is not a number'),
+    ({NODES: '1.5'}, 'is not a number'),
+])
+def test_invalid_caps_refuse(extra, match):
+    env = dict(SHENGJI_PV_CKPT='x.npz', SHENGJI_PV_SHA256='f' * 64,
+               SHENGJI_PV_EXACT_LEAD_ENDGAME='1', SHENGJI_PV_EXACT_DEEP_CARDS='8')
+    with pytest.raises(pv.PVSearchPolicyError, match=match):
+        pv.pv_env_recipe({**env, **extra})
+
+
+def test_caps_refuse_without_their_stage():
+    env = dict(SHENGJI_PV_CKPT='x.npz', SHENGJI_PV_SHA256='f' * 64)
+    with pytest.raises(pv.PVSearchPolicyError, match='needs SHENGJI_PV_EXACT_LEAD_ENDGAME=1'):
+        pv.pv_env_recipe({**env, SECONDS: '600'})
+    with pytest.raises(pv.PVSearchPolicyError, match='needs SHENGJI_PV_EXACT_DEEP_CARDS'):
+        pv.pv_env_recipe({**env, 'SHENGJI_PV_EXACT_LEAD_ENDGAME': '1', NODES: '10'})
+    sha = 'f' * 64
+    for kw, match in ((dict(exact_lead_max_seconds=600.0), 'needs exact_lead_endgame'),
+                      (dict(exact_lead_endgame=True, exact_deep_max_nodes=10),
+                       'needs exact_deep_cards'),
+                      (dict(exact_lead_endgame=True, exact_lead_max_seconds=True),
+                       'finite number'),
+                      (dict(exact_lead_endgame=True, exact_deep_cards=8,
+                            exact_deep_max_nodes=10.0), 'must be an int')):
+        with pytest.raises(pv.PVSearchPolicyError, match=match):
+            pv.recipe_payload(pv.PVSearchConfig(checkpoint_sha256=sha, **kw))
+        with pytest.raises(pv.PVSearchPolicyError, match=match):
+            bot(False, **kw)
+
+
+@pytest.mark.parametrize('lifted', [False, True])
+def test_lead_stage_honours_a_raised_deadline_and_node_cap(monkeypatch, lifted):
+    from shengji.train import pv_exact_deep
+    rnd = root(2)
+    kw = dict(exact_lead_max_seconds=600.0, exact_deep_max_nodes=10**9) if lifted else {}
+    policy = variant_bot(exact_deep_cards=8, **kw)
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+    actions = [['C3'], ['C4']]
+    base = (np.array([0.0, 0.0]), 1, 0, actions[0], 2)
+    seen = {}
+
+    def slow(rnd, seat, admitted, worlds, leaf, check, *, max_hand_cards, max_nodes):
+        seen['max_nodes'] = max_nodes
+        clock[0] = 100.0   # past the default 2.25 s deadline, inside 600 s
+        check()
+        return np.array([0.0, 1.0]), dict(worlds_completed=2, nodes=9, cache_hits=0)
+    monkeypatch.setattr(pv_exact_deep, 'exact_root_means', slow)
+    monkeypatch.setattr(policy, '_select', lambda *a, **k: 1)
+    monkeypatch.setattr(policy, '_swap_doomed_throw', lambda r, s, action, *a: action)
+    result = policy._exact_lead_decision(rnd, rnd.turn, actions, [], 0.0, None, [0.0] * 2, base)
+    state = policy._exact_lead
+    assert seen['max_nodes'] == (10**9 if lifted else 50_000_000)
+    if lifted:
+        assert state['exact_lead_status'] == 'complete'
+        assert result[2] == 1 and result[3] == ['C4']
+    else:
+        assert result is base
+        assert state['exact_lead_abandon_reason'] == 'soft_budget'

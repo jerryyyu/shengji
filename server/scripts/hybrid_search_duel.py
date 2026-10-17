@@ -269,7 +269,13 @@ def read_duel_shards(paths) -> dict:
     paths = list(paths)
     if not paths:
         raise DuelRefusal('no duel shards')
-    shards = [read_duel(path) for path in paths]
+    return aggregate_duel_results([read_duel(path) for path in paths])
+
+
+def aggregate_duel_results(shards) -> dict:
+    """Aggregate mappings already validated by read_duel without reopening files."""
+    if not shards:
+        raise DuelRefusal('no duel shards')
     identity = None
     intervals = []
     values = []

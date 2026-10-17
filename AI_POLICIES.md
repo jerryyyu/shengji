@@ -69,26 +69,40 @@ packet required it.
 Newest first; rows 7–15 (release 29 up) are the README's "Served results by release" plot plus the correctness
 fixes. Row numbers are stable; other documents cite them.
 
-| row | rel. | change (token) | vs | result [95% CI] | status | reading | pointer |
-|---:|---:|---|---|---|---|---|---|
-| 15 | 46 | belief worlds (`whl whd bw`) + exact endgame D7/X7 (`ele ed7 xf7 xfcompactlevel`) + `vdef` | 45 | **+0.2167 [+0.1923, +0.2412]**; v92c **+0.2284 [+0.2046, +0.2521]** | POSITIVE, CONFIRMED | Three changes at once; the largest served gain. | v92combo45 #707 issuecomment-6216352632; v92c 6221702452 |
-| 14 | 45 | wide value-only bury, K=64 (`bwv`) | 44 | **+0.0488 [+0.0286, +0.0690]** | POSITIVE | One screen; width and chooser changed together. | v76bwv44 #707 issuecomment-6136852119 |
-| 13 | 44 | value-guided declaration (`vd`) | 43 | **+0.0497 [+0.0379, +0.0615]** first-round; **+0.0352 [+0.0233, +0.0471]** later-round | POSITIVE | First decision owned beyond card play; 20/20 windows positive. | v70vd43, v71vd43lr |
-| 12 | 43 | doomed-throw re-select (`dtr`) | 42 | −0.0004 [−0.0122, +0.0114] | spans zero: correctness fix | Re-selects the best remaining lead instead of the forced component. | v67dtrg #707 issuecomment-6080113005 |
-| 11 | 42 | doomed-throw swap (`dts`) | 38 | −0.0002 [−0.0102, +0.0099] | spans zero: correctness fix | Failed bot throws −64%; replaced in 43. | v57dts #707 issuecomment-6026001554 |
-| 10 | 38 | search rules `div` + `rc` + `tb` | 36 | **+0.0461 [+0.0242, +0.0681]** | CONFIRMED | Only in combination; each alone unconfirmed or inconclusive. | combo2 #676 issuecomment-5962364713 |
-| 10 | 38 | + lead anchor `la` | div+rc+tb | +0.0106 [+0.0006, +0.0205] | POSITIVE (incremental) | Lower bound near zero; not a second confirmation. | v43cla #676 issuecomment-5965252288 |
-| 9 | 36 | SMV3 outcome head (`491ee4bf`) | 30 | **+0.0393 [+0.0033, +0.0752]** | CONFIRMED | Gen-5 head, search unchanged; five windows, predeclared second read. | v36a2 (first read v36a), #663 |
-| 8 | 30 | hybrid-bury fix | 29 | not measured | correctness fix | Ended silent heuristic fallback on ~6% of banker burys. | #607 (#606) |
-| 7 | 29 | policy/value search, soft head (`pv-search` W64/K8) | 28 | **+0.049 [+0.003, +0.095]**; card play **+0.086 [+0.042, +0.131]** | POSITIVE | Policy admits, value prices, no playouts; five windows. | v34pv; #553, #588 |
-| 6 | 28 | JS-M1 as one package | 27 | +0.006 [−0.016, +0.028] | spans zero: cost | One file is both prior and value net. | release-era archive |
-| 5 | 27 | policy prior v2 | M1, paired | −0.0003 [−0.0017, +0.0012] | spans zero: cost | Bounds the tail above 1,000 legal actions. | release-era archive |
-| 4 | 25/27 | M1 value net | release-24 package | **+0.021 [+0.004, +0.039]** | CONFIRMED | The one confirmed model gain of the shortlist era. | release-era archive |
-| 3 | 22 | hybrid bury | heuristic bury | **+0.036 [+0.012, +0.060]** utility | POSITIVE | Research recipe; the served 2 s budget and fallback were not measured. | [bury report](docs_archive/value-guided-bury-dev-2026-09-08.md) |
-| 2 | 22 | W32/K4 shortlist | MC-LCB | **+0.139 [+0.065, +0.217]** | POSITIVE | First learned win: model picks what to search, MC decides. | release-era archive |
-| 1 | pre-22 | MC-LCB report rule | `mc-strong` | **+0.338 ± 0.068** | CONFIRMED | The rule, not extra search: matched null −0.019 ± 0.068. | release-era archive |
+| row | rel. | change (token) | vs | result [95% CI] | status | reading | vs Sol, actor-only [95% CI] | vs PT-Sol [95% CI] | pointer |
+|---:|---:|---|---|---|---|---|---|---|---|
+| 15 | 46 | belief worlds (`whl whd bw`) + exact endgame D7/X7 (`ele ed7 xf7 xfcompactlevel`) + `vdef` | 45 | **+0.2167 [+0.1923, +0.2412]**; v92c **+0.2284 [+0.2046, +0.2521]** | POSITIVE, CONFIRMED | Three changes at once; the largest served gain. | **+0.55 [+0.25, +0.90]** S47 | — | v92combo45 #707 issuecomment-6216352632; v92c 6221702452 |
+| 14 | 45 | wide value-only bury, K=64 (`bwv`) | 44 | **+0.0488 [+0.0286, +0.0690]** | POSITIVE | One screen; width and chooser changed together. | — | — | v76bwv44 #707 issuecomment-6136852119 |
+| 13 | 44 | value-guided declaration (`vd`) | 43 | **+0.0497 [+0.0379, +0.0615]** first-round; **+0.0352 [+0.0233, +0.0471]** later-round | POSITIVE | First decision owned beyond card play; 20/20 windows positive. | — | — | v70vd43, v71vd43lr |
+| 12 | 43 | doomed-throw re-select (`dtr`) | 42 | −0.0004 [−0.0122, +0.0114] | spans zero: correctness fix | Re-selects the best remaining lead instead of the forced component. | — | — | v67dtrg #707 issuecomment-6080113005 |
+| 11 | 42 | doomed-throw swap (`dts`) | 38 | −0.0002 [−0.0102, +0.0099] | spans zero: correctness fix | Failed bot throws −64%; replaced in 43. | — | — | v57dts #707 issuecomment-6026001554 |
+| 10 | 38 | search rules `div` + `rc` + `tb` | 36 | **+0.0461 [+0.0242, +0.0681]** | CONFIRMED | Only in combination; each alone unconfirmed or inconclusive. | — | — | combo2 #676 issuecomment-5962364713 |
+| 10 | 38 | + lead anchor `la` | div+rc+tb | +0.0106 [+0.0006, +0.0205] | POSITIVE (incremental) | Lower bound near zero; not a second confirmation. | — | — | v43cla #676 issuecomment-5965252288 |
+| 9 | 36 | SMV3 outcome head (`491ee4bf`) | 30 | **+0.0393 [+0.0033, +0.0752]** | CONFIRMED | Gen-5 head, search unchanged; five windows, predeclared second read. | +0.45 [0.00, +0.80] #355; 0.00 [−0.40, +0.35] S47 | +0.30 [−0.20, +0.80] | v36a2 (first read v36a), #663 |
+| 8 | 30 | hybrid-bury fix | 29 | not measured | correctness fix | Ended silent heuristic fallback on ~6% of banker burys. | — | — | #607 (#606) |
+| 7 | 29 | policy/value search, soft head (`pv-search` W64/K8) | 28 | **+0.049 [+0.003, +0.095]**; card play **+0.086 [+0.042, +0.131]** | POSITIVE | Policy admits, value prices, no playouts; five windows. | **+0.50 [+0.15, +0.90]** | +0.45 [−0.10, +0.95] | v34pv; #553, #588 |
+| 6 | 28 | JS-M1 as one package | 27 | +0.006 [−0.016, +0.028] | spans zero: cost | One file is both prior and value net. | +0.40 [0.00, +0.80] | −0.25 [−0.70, +0.15] | release-era archive |
+| 5 | 27 | policy prior v2 | M1, paired | −0.0003 [−0.0017, +0.0012] | spans zero: cost | Bounds the tail above 1,000 legal actions. | +0.30 [0.00, +0.65] | **−0.50 [−0.80, −0.20]** | release-era archive |
+| 4 | 25/27 | M1 value net | release-24 package | **+0.021 [+0.004, +0.039]** | CONFIRMED | The one confirmed model gain of the shortlist era. | — | — | release-era archive |
+| 3 | 22 | hybrid bury | heuristic bury | **+0.036 [+0.012, +0.060]** utility | POSITIVE | Research recipe; the served 2 s budget and fallback were not measured. | — | — | [bury report](docs_archive/value-guided-bury-dev-2026-09-08.md) |
+| 2 | 22 | W32/K4 shortlist | MC-LCB | **+0.139 [+0.065, +0.217]** | POSITIVE | First learned win: model picks what to search, MC decides. | **+0.65 [+0.35, +0.90]** | **−0.45 [−0.80, −0.10]** | release-era archive |
+| 1 | pre-22 | MC-LCB report rule | `mc-strong` | **+0.338 ± 0.068** | CONFIRMED | The rule, not extra search: matched null −0.019 ± 0.068. | **+0.60 [+0.30, +0.90]** | −0.30 [−0.60, 0.00] | release-era archive |
 
 **Notes** (everything else is in the detail archive, `DEPLOY.md` and Atlas v2):
+
+- **Sol columns.** A different instrument from the result column: the frozen release recipe plays card play only,
+  on common pre-buried roots, against the GPT-5.6 Sol LLM opponent (feedback ON), 10 deals × 2 mirrored roles = 20
+  rounds per cell; bot-minus-Sol signed levels per round, deal-cluster bootstrap 95% CI. Actor-only Sol sees one
+  seat's information; PT-Sol sees every hand. Not on the MC-LCB screen scale, not a ranking, and no claim about
+  declaration or bury. Unmarked cells are the #355 nine-policy panel (stage 1 SMV3 and M1-prior, issuecomment-6035429935;
+  stage 2 the rest, issuecomment-6108337271; paired contrasts issuecomment-6117387014). Its frozen recipes: row 7 is
+  the soft-head package `ccade130` served in releases 29–35, row 5 the M1 W32 + prior v2 shortlist, row 2 the original
+  `fd6bb411` W32/K4 shortlist. Its baselines on the same deals: SmartBot −0.10 [−0.50, +0.20] / −0.70 [−0.95, −0.45],
+  `mc-strong` +0.30 [−0.15, +0.70] / −0.60 [−0.90, −0.30], `mc` +0.20 [0.00, +0.55] / −0.35 [−0.80, +0.10].
+  **S47** (#1085, readout #1087 issuecomment-6239589478) is a fresh 10-deal actor-only panel: release 46 +0.55
+  [+0.25, +0.90], the frozen release-36 recipe 0.00 [−0.40, +0.35] on the same deals, paired release 46 − 36 +0.55
+  [+0.10, +1.15]. The two row-9 reads use different deals and are not pooled; the 09-27 release-30 pilot and the
+  feedback-OFF attempts are separate cohorts, kept on #355.
 
 - **46.** Components alone, never pooled: belief v86bw45 +0.1165 [+0.0914, +0.1416]; D7 + X7 v89dx7 +0.0439
   [+0.0307, +0.0570]; `vdef` v85vdef45 +0.0220, confirmed by v85c +0.0421 [+0.0252, +0.0590]. Banker share 71.4% vs

@@ -1403,8 +1403,8 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dic
       ``admitted_indices`` -- never the legal index;
     * ``selection_worlds`` is W per candidate (every candidate is priced in
       every sampled world; W is a sampled-world count, not MC visits);
-    * ``action_values.means`` are the value head's mean bootstrap values
-      after the candidate's trick, ``PV_VALUE_UNITS``, acting-team
+    * ``action_values.means`` are model-bootstrap values, or sampled-world
+      minimax values when the exact lead completed, ``PV_VALUE_UNITS``, acting-team
       perspective -- not completed returns and not paired MC evidence, so
       ``paired_se`` is absent and ``preference.tau`` is None (the softmax is
       the uniform "no paired evidence" case of ``preference_from_evidence``);
@@ -1459,6 +1459,14 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dic
         "worlds": worlds,
         "policy_log_odds": [_finite(v) for v in rec.get("policy_log_odds_admitted", [])],
     }
+    exact = {key: rec[key] for key in (
+        "exact_lead_status", "exact_follow_attempted", "exact_follow_applied",
+        "exact_follow_abandoned", "exact_follow_error") if key in rec}
+    if exact:
+        action_values["exact_search"] = exact
+    if rec.get("exact_lead_status") == "complete":
+        action_values["value_source"] = (
+            "pv-search: exact-lead sampled-world minimax level values, mean over the sampled worlds")
     belief = {key: rec[key] for key in rec if key.startswith(BELIEF_RECORD_PREFIX)}
     if belief:
         # the belief proposal's record fields as the producer wrote them (its

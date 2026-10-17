@@ -99,7 +99,8 @@ def score_refill(bot, rnd, seat, admitted, ranked_actions, worlds):
             "max_mean_delta": float(max(after) - max(before))}
 
 
-def score_logged_refill(bot, rnd, seat, record, worlds, *, serving_refill=False):
+def score_logged_refill(bot, rnd, seat, record, worlds, *, serving_refill=False,
+                        complete_listings=False):
     """Require the logged listing and baseline values to replay before refill."""
     import numpy as np
 
@@ -111,6 +112,15 @@ def score_logged_refill(bot, rnd, seat, record, worlds, *, serving_refill=False)
             for i, action in zip(indices, admitted)):
         raise ValueError("legal listing no longer aligns with logged admission")
     priors = record["policy_log_odds_listing"]
+    regenerated = False
+    if complete_listings and 0 < len(priors) < len(actions):
+        full = bot.scores(rnd, seat, actions, worlds).mean(axis=0)
+        if (not np.allclose(full[:len(priors)], priors, rtol=0, atol=1e-6)
+                or not np.allclose(full[indices], record["policy_log_odds_admitted"],
+                                   rtol=0, atol=1e-6)):
+            raise ValueError("regenerated policy scores disagree with logged prefix/admission")
+        priors = full.tolist()
+        regenerated = True
     if len(priors) != len(actions) or not np.isfinite(priors).all():
         raise ValueError("complete finite logged policy listing unavailable")
     before, _ = bot._value_means(rnd, seat, admitted, worlds)
@@ -142,10 +152,39 @@ def score_logged_refill(bot, rnd, seat, record, worlds, *, serving_refill=False)
         raise ValueError("selection tail does not reproduce the logged played action")
     new_index, new_played = select(result["admitted"], after)
     return {**result, "original_means": before.tolist(), "refilled_means": after.tolist(),
+            "listing_regenerated": regenerated,
             "max_mean_delta": float(max(after) - max(before)),
             "selection_changed": old_played != new_played,
             "selected_mean_delta": float(after[new_index] - before[old_index]),
             "original_played": old_played, "refilled_played": new_played}
+
+
+def logged_play_modes(events):
+    """Join each acted timing to its unmatched play, never infer a seat's mode."""
+    modes, pending, plies = {}, {}, {}
+    for event in events:
+        rno = event.get("round")
+        if event.get("e") == "play":
+            ply = plies.get(rno, 0)
+            plies[rno] = ply + 1
+            key = (rno, ply)
+            modes[key] = "human" if event.get("bot") is False else "unknown"
+            if event.get("bot") is True:
+                seat_key = (rno, event["seat"])
+                if seat_key in pending:
+                    raise ValueError("ambiguous unmatched bot plays for timing attribution")
+                pending[seat_key] = (key, (event.get("decision") or {}).get("policy"))
+        elif (event.get("e") == "bot_timing" and event.get("phase") == "play"
+              and event.get("acted") is True and not event.get("stale_discarded")):
+            previous = pending.pop((rno, event["seat"]), None)
+            if previous is None:
+                continue
+            key, policy = previous
+            if policy and policy != event.get("policy"):
+                raise ValueError("play/timing policy mismatch")
+            mode = event.get("mode")
+            modes[key] = mode if mode in ("bot", "takeover") else "unknown"
+    return modes
 
 
 def main():
@@ -164,9 +203,21 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--value-package", help="also score replacements with the pinned served recipe")
     parser.add_argument("--serving-refill", action="store_true", help="use the bounded serving helper")
+    parser.add_argument("--complete-listings", action="store_true", help="recompute truncated policy scores")
     args = parser.parse_args()
     if Path(args.log).stat().st_size > 8 * 1024 * 1024:
         parser.error("room log exceeds the 8 MiB census bound")
+    events = [json.loads(line) for line in Path(args.log).read_text().splitlines() if line.strip()]
+    modes = logged_play_modes(events)
+    policy_plays, plies = Counter(), Counter()
+    for event in events:
+        if event.get("e") != "play":
+            continue
+        rno = event.get("round")
+        key = (rno, plies[rno])
+        plies[rno] += 1
+        if (event.get("decision") or {}).get("policy") == args.policy:
+            policy_plays[modes[key]] += 1
     model = load_belief_numpy(args.belief_package, args.belief_sha256)
     bot = None
     if args.value_package:
@@ -197,14 +248,16 @@ def main():
         means = record["value_means"]
         if len(means) != len(admitted):
             raise ValueError("logged value means do not align with the ballot")
-        row = {"round": rno, "ply": ply, "seat": seat,
+        row = {"round": rno, "ply": ply, "seat": seat, "mode": modes[(rno, ply)],
                      "slots": len(admitted), "alias_slots": result["alias_slots"],
                      "equal_mean_slots": len(means) - len(set(means))}
         if bot is not None:
             try:
                 scored = score_logged_refill(bot, rnd, seat, record, worlds,
-                                             serving_refill=args.serving_refill)
+                                             serving_refill=args.serving_refill,
+                                             complete_listings=args.complete_listings)
                 row.update(replacement_slots=scored["replacement_slots"],
+                           listing_regenerated=scored["listing_regenerated"],
                            max_mean_delta=scored["max_mean_delta"],
                            selection_changed=scored["selection_changed"],
                            selected_mean_delta=scored["selected_mean_delta"],
@@ -217,6 +270,7 @@ def main():
                 row["score_refused"] = str(exc)
         rows.append(row)
     result = {"policy": args.policy, "belief_sha256": model.package_sha256,
+              "policy_plays_by_mode": dict(policy_plays),
               "decisions": len(rows), "slots": sum(r["slots"] for r in rows),
               "alias_slots": sum(r["alias_slots"] for r in rows),
               "equal_mean_slots": sum(r["equal_mean_slots"] for r in rows),

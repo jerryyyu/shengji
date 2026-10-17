@@ -168,7 +168,8 @@ def test_alias_logged_replay_guards(monkeypatch, defect):
             replay_logged_worlds(None, rnd, SEAT, record, "expected")
 
 
-@pytest.mark.parametrize("defect", [None, "listing", "means", "played", "truncated"])
+@pytest.mark.parametrize("defect", [None, "listing", "means", "played", "truncated",
+                                    "regenerated", "prior_drift"])
 def test_logged_refill_replays_value_and_selection_consumers(monkeypatch, defect):
     from types import SimpleNamespace
 
@@ -182,6 +183,7 @@ def test_logged_refill_replays_value_and_selection_consumers(monkeypatch, defect
     means, _ = bot._value_means(rnd, SEAT, admitted, worlds)
     record = dict(admitted=admitted, admitted_indices=[0, 1],
                   policy_log_odds_listing=[3., 2., 1.], value_means=means.tolist(),
+                  policy_log_odds_admitted=[3., 2.],
                   played=FORCED)
     if defect == "listing":
         record["admitted_indices"] = [1, 0]
@@ -191,15 +193,40 @@ def test_logged_refill_replays_value_and_selection_consumers(monkeypatch, defect
         record["played"] = ["D6"]
     elif defect == "truncated":
         record["policy_log_odds_listing"] = [3., 2.]
-    if defect is not None:
+    elif defect in ("regenerated", "prior_drift"):
+        record["policy_log_odds_listing"] = [3., 2.]
+        monkeypatch.setattr(bot, "scores", lambda *a: np.array([[3., 2., 1.]]))
+        if defect == "prior_drift":
+            record["policy_log_odds_admitted"] = [3., 9.]
+    complete = defect in ("regenerated", "prior_drift")
+    if defect not in (None, "regenerated"):
         with pytest.raises(ValueError):
-            score_logged_refill(bot, rnd, SEAT, record, worlds)
+            score_logged_refill(bot, rnd, SEAT, record, worlds, complete_listings=complete)
     else:
-        result = score_logged_refill(bot, rnd, SEAT, record, worlds)
+        result = score_logged_refill(bot, rnd, SEAT, record, worlds, complete_listings=complete)
         assert result["original_played"] == FORCED
         assert result["refilled_played"] == ["D6"]
         assert result["selection_changed"]
         assert result["replacement_slots"] == 1
+        assert result["listing_regenerated"] == complete
+
+
+def test_alias_probe_attributes_takeover_per_play():
+    from scripts.lead_alias_probe import logged_play_modes
+
+    def play(bot=True):
+        return dict(e="play", round=1, seat=0, bot=bot, decision={"policy": "p"})
+
+    def timing(mode, **extra):
+        return dict(e="bot_timing", round=1, seat=0, phase="play", policy="p",
+                    mode=mode, acted=True, **extra)
+
+    events = [play(), timing("bot"), play(False), play(), timing("takeover")]
+    assert logged_play_modes(events) == {(1, 0): "bot", (1, 1): "human", (1, 2): "takeover"}
+    assert logged_play_modes([play()]) == {(1, 0): "unknown"}
+    assert logged_play_modes([play(), timing("bot", stale_discarded=True)]) == {(1, 0): "unknown"}
+    with pytest.raises(ValueError, match="ambiguous"):
+        logged_play_modes([play(), play()])
 
 
 @pytest.mark.parametrize("expiry", [None, "first", "publish", "soft"])

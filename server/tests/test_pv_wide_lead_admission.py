@@ -453,7 +453,7 @@ def test_wla_token_in_the_width_slot_and_digest_when_on(production_package):
     assert both.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-wla-la-dts-awl-r")
     assert len({on, both, RELEASE42_NAME, AWL_NAME}) == 4
     tokens = [t for _, t in pv.RULE_TOKENS]
-    assert tokens.index("wla") == tokens.index("ak16") + 1 == tokens.index("la") - 1
+    assert tokens[tokens.index("ak16"):tokens.index("la") + 1] == ["ak16", "wla", "lar", "la"]
     assert pv.RULE_FLAGS["WIDE_LEAD_ADMISSION"] == "wide_lead_admission"
     base = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, serving_budget_seconds=3.0)
     wla = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, serving_budget_seconds=3.0,

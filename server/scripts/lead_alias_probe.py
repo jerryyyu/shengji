@@ -99,7 +99,7 @@ def score_refill(bot, rnd, seat, admitted, ranked_actions, worlds):
             "max_mean_delta": float(max(after) - max(before))}
 
 
-def score_logged_refill(bot, rnd, seat, record, worlds):
+def score_logged_refill(bot, rnd, seat, record, worlds, *, serving_refill=False):
     """Require the logged listing and baseline values to replay before refill."""
     import numpy as np
 
@@ -117,7 +117,17 @@ def score_logged_refill(bot, rnd, seat, record, worlds):
     if not np.allclose(before, record["value_means"], rtol=0, atol=1e-6):
         raise ValueError("real evaluator does not reproduce logged baseline means")
     ranked = [actions[i] for i in sorted(range(len(actions)), key=lambda i: (-priors[i], i))]
-    result = refill_lead_aliases(rnd, seat, admitted, ranked, worlds)
+    if serving_refill:
+        import time
+        from shengji.train.lead_alias_refill import refill_indices
+        started = time.perf_counter()
+        chosen, diagnostics = refill_indices(rnd, seat, actions, priors, indices, worlds)
+        elapsed = time.perf_counter() - started
+        result = {"admitted": [actions[i] for i in chosen],
+                  "replacement_slots": diagnostics["lead_alias_refill_replacements"],
+                  "refill_seconds": elapsed, "refill_diagnostics": diagnostics}
+    else:
+        result = refill_lead_aliases(rnd, seat, admitted, ranked, worlds)
     after, _ = bot._value_means(rnd, seat, result["admitted"], worlds)
     prior_by_action = {tuple(sorted(a)): priors[i] for i, a in enumerate(actions)}
 
@@ -153,6 +163,7 @@ def main():
     parser.add_argument("--policy", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--value-package", help="also score replacements with the pinned served recipe")
+    parser.add_argument("--serving-refill", action="store_true", help="use the bounded serving helper")
     args = parser.parse_args()
     if Path(args.log).stat().st_size > 8 * 1024 * 1024:
         parser.error("room log exceeds the 8 MiB census bound")
@@ -191,13 +202,17 @@ def main():
                      "equal_mean_slots": len(means) - len(set(means))}
         if bot is not None:
             try:
-                scored = score_logged_refill(bot, rnd, seat, record, worlds)
+                scored = score_logged_refill(bot, rnd, seat, record, worlds,
+                                             serving_refill=args.serving_refill)
                 row.update(replacement_slots=scored["replacement_slots"],
                            max_mean_delta=scored["max_mean_delta"],
                            selection_changed=scored["selection_changed"],
                            selected_mean_delta=scored["selected_mean_delta"],
                            original_played=scored["original_played"],
                            refilled_played=scored["refilled_played"])
+                if args.serving_refill:
+                    row.update(refill_seconds=scored["refill_seconds"],
+                               refill_diagnostics=scored["refill_diagnostics"])
             except ValueError as exc:
                 row["score_refused"] = str(exc)
         rows.append(row)

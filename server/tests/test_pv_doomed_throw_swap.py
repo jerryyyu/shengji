@@ -202,6 +202,76 @@ def test_logged_refill_replays_value_and_selection_consumers(monkeypatch, defect
         assert result["replacement_slots"] == 1
 
 
+@pytest.mark.parametrize("expiry", [None, "first", "publish", "soft"])
+def test_serving_alias_refill_is_transactional(monkeypatch, expiry):
+    from shengji.train import lead_alias_refill as lar
+
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    actions = [THROW, OTHER_C2_THROW, ["D6"]]
+    monkeypatch.setattr(lar, "MAX_SECONDS", 10 if expiry != "soft" else -1)
+    calls = []
+
+    def guard():
+        calls.append(1)
+        if (expiry == "first" and len(calls) == 1) or (expiry == "publish" and len(calls) == 4):
+            raise pv.PVSearchBudgetExceeded("injected")
+
+    chosen, record = lar.refill_indices(rnd, SEAT, actions, [3., 2., 1.], [0, 1], worlds, guard)
+    if expiry is None:
+        assert chosen == [0, 2]
+        assert record["lead_alias_refill_replacements"] == 1
+    else:
+        assert chosen == [0, 1]
+        assert not record["lead_alias_refill_applied"]
+        assert record["lead_alias_refill_abandoned"] == (
+            "soft_budget" if expiry == "soft" else "hard_budget")
+
+
+@pytest.mark.parametrize("error", [RuntimeError, KeyboardInterrupt])
+def test_serving_alias_refill_does_not_hide_errors(monkeypatch, error):
+    from shengji.train import lead_alias_refill as lar
+
+    rnd = oxps()
+
+    def fail(*args):
+        raise error("injected")
+
+    monkeypatch.setattr(lar, "resolve_lead", fail)
+    with pytest.raises(error):
+        lar.refill_indices(rnd, SEAT, [THROW, OTHER_C2_THROW], [2., 1.], [0, 1],
+                           [(rnd.hands, rnd.buried)])
+
+
+def test_alias_refill_integrated_served_decision():
+    rnd = oxps()
+    _, before = decide(served(**RELEASE38_RULES), rnd)
+    played, after = decide(served(lead_alias_refill=True, **RELEASE38_RULES), rnd)
+    assert after["work_complete"] and played == after["played"]
+    assert len(after["admitted"]) == len(before["admitted"])
+    assert after["admitted"][0] == before["admitted"][0]
+    assert after["lead_alias_refill_replacements"] > 0
+    assert len(after["value_means"]) == len(after["admitted"])
+    assert not any(k.startswith("lead_alias_refill") for k in before)
+
+
+def test_alias_refill_identity_and_env():
+    from dataclasses import replace
+
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64)
+    assert pv.recipe_payload(config) == pv.recipe_payload(replace(config, lead_alias_refill=False))
+    on = replace(config, lead_alias_refill=True)
+    assert pv.recipe_digest(config) != pv.recipe_digest(on)
+    assert pv.recipe_payload(on)["lead_alias_max_actions"] == 64
+    assert pv.recipe_payload(on)["lead_alias_max_seconds"] == 0.05
+    env = {"SHENGJI_PV_CKPT": "/unused", "SHENGJI_PV_SHA256": "f" * 64,
+           "SHENGJI_PV_LEAD_ALIAS_REFILL": "1"}
+    assert pv.pv_env_recipe(env)["lead_alias_refill"] is True
+    for field in ("small_joker_guard", "admit_forced_single", "finish_lead_admission"):
+        with pytest.raises(pv.PVSearchPolicyError):
+            pv.recipe_payload(replace(on, **{field: True}))
+
+
 class LeafEvaluator:
     """A stub value head that reads only the leaf STATE: 1 when the root seat's
     play in the resolved trick is C2 alone, plus a small term in the trick's

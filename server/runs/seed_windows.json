@@ -631,6 +631,146 @@
       "host": "Jerrys-Mac-mini.local",
       "git_head": "e5e64c2810d8b547fd12547aa2082b588815e202",
       "note": "runPVS10: slice 10 of the later-round PV corpus block runPVS1..10 = [61580910, 61740910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat (pv training audit finding 5: 82-90% of training deals were first rounds at rank 2). Teacher pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-ra15617d2-bury-hybrid-7b7f1cf58120 (release 45's play and declaration recipe with release 44's hybrid MC bury, budgets unset; the runVD teacher), explore 0.1/k 2, cap 256, 32,000 rounds, tree 7aad4192 (/root/claude-main-36). RESERVED BEFORE DEALING 2026-10-15: checked disjoint against this registry, every tree registry and reservation record on both hosts and 373 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS1r46",
+      "purpose": "trajectory",
+      "seed0": 61740910,
+      "clusters": 16000,
+      "span": [
+        61740910,
+        61756910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS1r46: slice 1 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS2r46",
+      "purpose": "trajectory",
+      "seed0": 61756910,
+      "clusters": 16000,
+      "span": [
+        61756910,
+        61772910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS2r46: slice 2 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS3r46",
+      "purpose": "trajectory",
+      "seed0": 61772910,
+      "clusters": 16000,
+      "span": [
+        61772910,
+        61788910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS3r46: slice 3 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS4r46",
+      "purpose": "trajectory",
+      "seed0": 61788910,
+      "clusters": 16000,
+      "span": [
+        61788910,
+        61804910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS4r46: slice 4 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS5r46",
+      "purpose": "trajectory",
+      "seed0": 61804910,
+      "clusters": 16000,
+      "span": [
+        61804910,
+        61820910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS5r46: slice 5 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS6r46",
+      "purpose": "trajectory",
+      "seed0": 61820910,
+      "clusters": 16000,
+      "span": [
+        61820910,
+        61836910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS6r46: slice 6 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS7r46",
+      "purpose": "trajectory",
+      "seed0": 61836910,
+      "clusters": 16000,
+      "span": [
+        61836910,
+        61852910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS7r46: slice 7 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS8r46",
+      "purpose": "trajectory",
+      "seed0": 61852910,
+      "clusters": 16000,
+      "span": [
+        61852910,
+        61868910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS8r46: slice 8 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS9r46",
+      "purpose": "trajectory",
+      "seed0": 61868910,
+      "clusters": 16000,
+      "span": [
+        61868910,
+        61884910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS9r46: slice 9 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on cloud). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "runPVS10r46",
+      "purpose": "trajectory",
+      "seed0": 61884910,
+      "clusters": 16000,
+      "span": [
+        61884910,
+        61900910
+      ],
+      "created_at": "2026-10-17T11:19:17-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "runPVS10r46: slice 10 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
     }
   ]
 }

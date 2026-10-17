@@ -216,7 +216,8 @@ def test_missing_pv_record_is_not_reused_from_previous_decision():
 
 
 @pytest.mark.parametrize("seconds", [None, 30.0])
-def test_cli_records_deadline_and_only_attaches_candidate(monkeypatch, tmp_path, seconds):
+@pytest.mark.parametrize("mode", [None, '--blind', '--rehearsal'])
+def test_cli_records_deadline_and_only_attaches_candidate(monkeypatch, tmp_path, seconds, mode, capsys):
     from scripts import cwv_serving_smoke as smoke, hybrid_duel_policy
     from shengji.ai import registry
 
@@ -236,12 +237,19 @@ def test_cli_records_deadline_and_only_attaches_candidate(monkeypatch, tmp_path,
         header = kwargs['header']['hybrid']
         assert header['total_seconds'] == seconds
         assert header['stop_fraction'] == (0.8 if seconds is None else 1.0)
-        return {}
+        assert kwargs['blind'] is (mode is not None)
+        assert kwargs['header']['rehearsal'] is (mode == '--rehearsal')
+        return {'status': 'COMPLETE', 'counters': {}} if mode else {'paired_utility_mean': 1.}
     monkeypatch.setattr(duel, 'run_duel', run)
     args = ['--recipe', str(recipe), '--output', str(tmp_path / 'out.jsonl')]
     if seconds is not None:
         args += ['--hybrid-total-seconds', str(seconds)]
+    if mode:
+        args += [mode]
     duel._main(args)
+    printed = json.loads(capsys.readouterr().out)
+    if mode:
+        assert printed == {'status': 'COMPLETE', 'counters': {}}
 
 
 @pytest.mark.parametrize('total,fraction,valid', [

@@ -427,6 +427,8 @@ def _main(argv=None):
     parser.add_argument("--wall-seconds", type=float, default=900)
     parser.add_argument("--rehearsal", action="store_true",
                         help="mark the input recipe as rehearsal; does not alter scoring")
+    parser.add_argument("--blind", action="store_true",
+                        help="print capacity counters only without marking the run as rehearsal")
     parser.add_argument("--recipe", required=True, type=Path)
     parser.add_argument("--hybrid-total-seconds", type=float, default=None,
                         help="DEV total play deadline, activated only after baseline selection")
@@ -448,7 +450,7 @@ def _main(argv=None):
                 for key, value in package_paths.items()}
     result = run_duel(candidate, baseline, args.output, deals=args.deals,
                       seed0=args.seed0, wall_seconds=args.wall_seconds,
-                      blind=args.rehearsal,
+                      blind=args.rehearsal or args.blind,
                       header={"recipe": recipe, "policy": name,
                               "candidate": name + '-dev-two-completed-tricks',
                               "source_head": source, "env": env, "packages": packages,
@@ -458,7 +460,7 @@ def _main(argv=None):
                                          "stop_fraction": 0.8 if args.hybrid_total_seconds is None else 1.0,
                                          "total_seconds": args.hybrid_total_seconds},
                               "rehearsal": bool(args.rehearsal)})
-    printed = result if args.rehearsal else {k: result.get(k) for k in (
+    printed = result if args.rehearsal or args.blind else {k: result.get(k) for k in (
         'status', 'deals', 'paired_utility_mean', 'paired_utility_ci')}
     print(json.dumps(printed, sort_keys=True))
 

@@ -262,3 +262,60 @@ def test_written_deadline_survives_readout_or_refuses_drift(
         with pytest.raises(duel.DuelRefusal, match='hybrid'):
             duel.run_duel(_Bot, _Bot, path, deals=1, seed0=10,
                            wall_seconds=30, header={'hybrid': hybrid})
+
+
+def test_shards_pool_deals_not_worker_means(monkeypatch, tmp_path):
+    results = iter([_Log(0), _Log(1)] + [_Log(1), _Log(0)] * 3)
+    monkeypatch.setattr(duel, 'play_round', lambda *args: next(results))
+    paths = [tmp_path / 'a.jsonl', tmp_path / 'b.jsonl']
+    a = duel.run_duel(_Bot, _Bot, paths[0], deals=1, seed0=10, wall_seconds=30, header={})
+    b = duel.run_duel(_Bot, _Bot, paths[1], deals=3, seed0=11, wall_seconds=30, header={})
+    result = duel.read_duel_shards(paths)
+    assert result['deals'] == result['requested_deals'] == 4
+    assert result['paired_utility_mean'] == (
+        a['paired_utility_mean'] + 3 * b['paired_utility_mean']) / 4
+    assert result['paired_utility_mean'] != (
+        a['paired_utility_mean'] + b['paired_utility_mean']) / 2
+    assert duel.read_duel_shards(paths[::-1]) == result
+
+
+@pytest.mark.parametrize('overlap', [True, False])
+def test_shards_refuse_overlap_and_recipe_drift(monkeypatch, tmp_path, overlap):
+    monkeypatch.setattr(duel, 'play_round', lambda *args: _Log(0))
+    paths = [tmp_path / 'a.jsonl', tmp_path / 'b.jsonl']
+    for i, path in enumerate(paths):
+        duel.run_duel(_Bot, _Bot, path, deals=1, seed0=10 if overlap else 10 + i,
+                      wall_seconds=30, header={'candidate': 'a' if overlap else str(i)})
+    with pytest.raises(duel.DuelRefusal, match='overlapping|recipe mismatch'):
+        duel.read_duel_shards(paths)
+
+
+def test_shards_preserve_partial_pairs_but_do_not_score_them(monkeypatch, tmp_path):
+    calls = [0]
+    def play(*args):
+        calls[0] += 1
+        if calls[0] == 4:
+            raise duel.DuelWallExpired('cap')
+        return _Log(0)
+    monkeypatch.setattr(duel, 'play_round', play)
+    paths = [tmp_path / 'a.jsonl', tmp_path / 'b.jsonl']
+    duel.run_duel(_Bot, _Bot, paths[0], deals=2, seed0=10, wall_seconds=30, header={})
+    duel.run_duel(_Bot, _Bot, paths[1], deals=1, seed0=12, wall_seconds=30, header={})
+    before = [p.read_bytes() for p in paths]
+    result = duel.read_duel_shards(paths)
+    assert result['status'] == 'PARTIAL'
+    assert result['deals'] == 2 and result['requested_deals'] == 3
+    assert result['unscored_mirrors'] == 1
+    assert [p.read_bytes() for p in paths] == before
+
+
+def test_shards_refuse_failed_worker(monkeypatch, tmp_path):
+    def fail(*args):
+        raise RuntimeError('worker failed')
+    monkeypatch.setattr(duel, 'play_round', fail)
+    path = tmp_path / 'failed.jsonl'
+    duel.run_duel(_Bot, _Bot, path, deals=1, seed0=10, wall_seconds=30, header={})
+    with pytest.raises(duel.DuelRefusal, match='failed duel shard'):
+        duel.read_duel_shards([path])
+    with pytest.raises(duel.DuelRefusal, match='no duel shards'):
+        duel.read_duel_shards([])

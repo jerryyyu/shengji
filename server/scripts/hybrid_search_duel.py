@@ -259,6 +259,56 @@ def read_duel(path: str | Path) -> dict:
             "rows": rounds, "header": header}
 
 
+def read_duel_shards(paths) -> dict:
+    """Pool complete deal pairs, never worker means, from one fixed recipe.
+
+    The caller must first verify the complete reserved shard list and seals.
+    Partial mirrors stay in their source files and do not enter the estimate.
+    This reader does not grant promotion or replace per-shard quality checks.
+    """
+    paths = list(paths)
+    if not paths:
+        raise DuelRefusal('no duel shards')
+    shards = [read_duel(path) for path in paths]
+    identity = None
+    intervals = []
+    values = []
+    partial_mirrors = 0
+    for shard in shards:
+        if shard['status'] == 'FAILED':
+            raise DuelRefusal('failed duel shard')
+        header = shard['header']
+        current = {k: v for k, v in header.items() if k not in ('seed0', 'deals')}
+        if identity is None:
+            identity = current
+        elif identity != current:
+            raise DuelRefusal('duel shard recipe mismatch')
+        start, count = header['seed0'], header['deals']
+        if type(start) is not int or type(count) is not int or count < 1:
+            raise DuelRefusal('invalid shard seed interval')
+        end = start + count
+        if any(start < old_end and old_start < end for old_start, old_end in intervals):
+            raise DuelRefusal('overlapping planned shard seeds')
+        intervals.append((start, end))
+        pairs = {}
+        for row in shard['rows']:
+            pairs.setdefault(row['seed'], []).append(row['level_utility'])
+        for seed, pair in pairs.items():
+            if len(pair) == 2:
+                values.append((seed, statistics.fmean(pair)))
+            else:
+                partial_mirrors += len(pair)
+    paired = [value for _, value in sorted(values)]
+    return {'schema': SCHEMA, 'shards': len(shards),
+            'status': 'COMPLETE' if all(s['status'] == 'COMPLETE' for s in shards) else 'PARTIAL',
+            'requested_deals': sum(end - start for start, end in intervals),
+            'deals': len(paired), 'unscored_mirrors': partial_mirrors,
+            'paired_utility_mean': statistics.fmean(paired) if paired else None,
+            'paired_utility_ci': _bootstrap(paired),
+            'header_common': identity,
+            'seed_intervals': sorted(intervals)}
+
+
 def _utility_fields(row):
     return _utility(type("Log", (), {"winner_team": row["winner_team"],
                                       "level_change": row["level_change"]}),

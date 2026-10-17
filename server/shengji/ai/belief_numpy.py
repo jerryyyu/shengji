@@ -401,6 +401,45 @@ def _codes() -> list[str]:
     return _CODES
 
 
+#: the rank-aware kitty patch's identity in a recipe (`rank_patch_marginals`)
+RANK_PATCH = "s49-side2-kitty-from-same-suit-low-v1"
+#: the donor ranks a side 2 borrows its kitty probability from, in order
+RANK_PATCH_DONORS = ("3", "4", "5", "6", "7", "8", "9")
+
+
+def rank_patch_marginals(P: np.ndarray, M: np.ndarray, trump_rank: str, eff_suit) -> tuple[np.ndarray, int]:
+    """The marginals with each side-suit 2's kitty probability replaced by that
+    of the first same-suit donor (``RANK_PATCH_DONORS``, skipping the trump rank)
+    that has a hidden copy, the 2's hand receivers rescaled so its row still
+    sums to one; returns the patched copy and the number of rows changed.
+
+    The S17 belief is trained on trump-rank-2 rounds only, where every 2 is a
+    trump, so at any other trump rank it gives a buried side 2 almost no kitty
+    mass.  At trump rank 2 there is no side 2 and the marginals are returned
+    unchanged.  A 2 with no hidden copy, an infeasible kitty receiver (``M``) or
+    no hand mass is left as it is; ``eff_suit`` is the round's
+    ``ordering.eff_suit``."""
+    from ..engine.cards import TRUMP
+    P = np.array(P, np.float64)
+    if str(trump_rank) == "2":
+        return P, 0
+    M = np.asarray(M, bool)
+    index = {c: i for i, c in enumerate(_codes())}
+    changed = 0
+    for suit in "SHDC":
+        c = index[suit + "2"]
+        hands = P[c, :3].sum()
+        if eff_suit(suit + "2") == TRUMP or not M[c, 3] or hands <= 0:
+            continue
+        donor = next((index[suit + r] for r in RANK_PATCH_DONORS
+                      if r != str(trump_rank) and P[index[suit + r]].sum() > 0), None)
+        kitty = 0.0 if donor is None else float(P[donor, 3])
+        P[c, :3] *= (1.0 - kitty) / hands
+        P[c, 3] = kitty
+        changed += 1
+    return P, changed
+
+
 def draw_mask(inp: Mapping[str, Any], rnd, seat: int, forbidden: Mapping | None) -> np.ndarray:
     """``inp["M"]`` with every forbidden (card, seat) receiver removed."""
     M = np.array(inp["M"], bool)
@@ -429,7 +468,7 @@ class BeliefProposal:
 
     def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
                  seed: int, batch: int, forbidden: Mapping | None = None,
-                 check_budget=None):
+                 check_budget=None, rank_patch: bool = False):
         from ..train.belief_seq import project_sizes
         import time
         t0 = time.perf_counter()
@@ -443,6 +482,12 @@ class BeliefProposal:
         # the model's own prediction, before the draw's masking and projection
         # (read by the belief log, never by the draw)
         self.P = P
+        # the rank-aware kitty patch (`rank_patch_marginals`), off by default: the draw
+        # reads the patched marginals, the log keeps the model's own
+        self.rank_patched = 0
+        if rank_patch:
+            P, self.rank_patched = rank_patch_marginals(P, self.inp["M"], rnd.trump_rank,
+                                                          rnd.ordering.eff_suit)
         # the model reads the public mask; the draw also honours the forbidden
         # cards (``ai.history_legality.draw_constraints``: {(seat, effective
         # suit): codes}) by masking those receivers after the model

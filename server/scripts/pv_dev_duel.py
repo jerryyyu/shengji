@@ -9,6 +9,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import math
+import statistics
+from collections import Counter
 from pathlib import Path
 
 from scripts import cwv_duel as duel
@@ -63,6 +66,76 @@ def run(control, candidate, *, out, seed0, pairs, ranks, cluster0=0):
         fh.flush()
         os.fsync(fh.fileno())
     return meta
+
+
+def read(out, expected):
+    """Read a completed shard only after the caller's seal/ownership checks.
+
+    ``expected`` is the pre-run metadata, not reconstructed from outcome files.
+    Confidence intervals cluster by deal, never by individual seat mirror.
+    """
+    out = Path(out)
+    if (expected.get('schema') != 'pv-dev-duel-v1'
+            or expected['control'] == expected['candidate'] or not expected['ranks']):
+        raise ValueError('invalid expected plan')
+    if json.loads((out / 'run.json').read_text()) != expected:
+        raise ValueError('run metadata differs from expected plan')
+    n = expected['pairs']
+    if n < 2 or (out / 'DONE').read_text() != f'{n} complete pairs\n':
+        raise ValueError('requires at least two completed pairs and exact terminal marker')
+    raw = (out / 'rounds.jsonl').read_bytes()
+    if not raw.endswith(b'\n'):
+        raise ValueError('torn completed shard')
+    rows = [json.loads(line) for line in raw.splitlines()]
+    start = expected['cluster0']
+    wanted = {(expected['seed0'] + i, flip): expected['ranks'][i % len(expected['ranks'])]
+              for i in range(start, start + n) for flip in (0, 1)}
+    seen, health, scores, by_rank = set(), {'arm': Counter(), 'opp': Counter()}, {}, {}
+    for row in rows:
+        key = (row['seed'], row['flip'])
+        if key in seen or key not in wanted or row['trump_rank'] != wanted[key]:
+            raise ValueError('duplicate or unexpected seed/flip/rank')
+        if (row['policy'] != expected['candidate'] or row['label'] != 'candidate'
+                or row['opponent'] != expected['control']):
+            raise ValueError('arm identity drift')
+        seen.add(key)
+        won = int(row['winner_team'] == row['flip'])
+        value = (1 if won else -1) * max(1, row['level_change'])
+        if (type(row['level_change']) is not int or row['level_change'] < 0
+                or row['winner_team'] not in (0, 1) or row['won'] != won
+                or row['level_utility'] != value):
+            raise ValueError('inconsistent round score')
+        scores[row['seed']] = scores.get(row['seed'], 0) + value / 2
+        by_rank[row['seed']] = row['trump_rank']
+        for side in health:
+            counts = row[f'{side}_play_health']
+            if any(type(v) is not int or v < 0 for v in counts.values()):
+                raise ValueError('invalid health counter')
+            decisions = counts.get('decisions', 0)
+            if (decisions <= 0 or decisions != row[f'{side}_play_decisions'] or decisions != sum(
+                    counts.get(k, 0) for k in ('pv_complete', 'pv_incomplete',
+                                               'pv_fallback', 'non_pv_record'))):
+                raise ValueError('health counters do not cover decisions')
+            health[side].update(counts)
+    if seen != set(wanted):
+        raise ValueError('missing mirrored rounds')
+    values = list(scores.values())
+    mean = statistics.fmean(values)
+    se = statistics.stdev(values) / math.sqrt(n)
+    ci = [mean - 1.96 * se, mean + 1.96 * se]
+    issues = [f'{side}:{key}={counts[key]}' for side, counts in health.items()
+              for key in ('pv_incomplete', 'pv_fallback', 'non_pv_record',
+                          'lead_alias_refill_abandoned') if counts.get(key, 0)]
+    return dict(pairs=n, rounds=2*n, mean_levels_per_round=mean,
+                ci95_normal=ci, ci95_bootstrap=list(duel.bootstrap_ci(values)),
+                mde80=2.8*se, health={k: dict(v) for k, v in health.items()},
+                quality_issues=issues,
+                verdict=('QUALITY_FAIL' if issues else 'POSITIVE' if ci[0] > 0
+                         else 'NEGATIVE' if ci[1] < 0 else 'INCONCLUSIVE'),
+                by_rank={rank: dict(pairs=sum(r == rank for r in by_rank.values()),
+                                    mean=statistics.fmean(scores[s] for s in scores
+                                                          if by_rank[s] == rank))
+                         for rank in sorted(set(by_rank.values()))})
 
 
 def main(argv=None):

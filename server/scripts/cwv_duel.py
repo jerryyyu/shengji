@@ -819,6 +819,7 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
     return {
         "run": run_id, "label": label, "policy": policy, "seed": seed,
         "flip": flip, "won": won,
+        "winner_team": int(log.winner_team), "level_change": int(log.level_change),
         "level_utility": (1 if won else -1) * max(1, int(log.level_change)),
         "arm": arm_counters, "opp": opp_counters,
         "banker": log.banker, "trump_rank": log.trump_rank,
@@ -925,6 +926,7 @@ def play_shard(run_id: str, plan, clusters, seed0: int, rank_spec: str | None,
                 log, arm, opp, timers = play_pair(
                     policy, opponent, seed, flip, trump_rank=rank_for(ranks, cluster))
                 record = _record(run_id, label, policy, seed, flip, log, arm, opp, timers)
+                record["opponent"] = opponent
                 if sink is not None:
                     sink(record)
                 records.append(record)

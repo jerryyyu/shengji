@@ -508,8 +508,8 @@ def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_
     control = {'SHENGJI_BOT': 'unit-control', 'recipe': 'unit-control'}
     candidate = {'SHENGJI_BOT': 'unit-candidate', 'recipe': 'unit-candidate'}
     out = tmp_path / 'duel'
-    adapter.run(control, candidate, out=out, seed0=100, pairs=2,
-                cluster0=1, ranks='2,A')
+    meta = adapter.run(control, candidate, out=out, seed0=100, pairs=2,
+                       cluster0=1, ranks='2,A')
     rows = adapter.duel.read_shard(str(out / 'rounds.jsonl'))
     assert [(r['seed'], r['flip'], r['trump_rank']) for r in rows] == [
         (101, 0, 'A'), (101, 1, 'A'), (102, 0, '2'), (102, 1, '2')]
@@ -517,6 +517,7 @@ def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_
     assert all(r['arm_play_health']['decisions'] == r['arm_play_decisions'] for r in rows)
     assert constructed[:2] == [('unit-control', 0), ('unit-candidate', 0)]
     assert (out / 'DONE').read_text() == '2 complete pairs\n'
+    assert adapter.read(out, meta)['verdict'] == 'QUALITY_FAIL'
     prior = (out / 'rounds.jsonl').read_bytes()
     with pytest.raises(FileExistsError):
         adapter.run(control, candidate, out=out, seed0=100, pairs=2, ranks='2,A')
@@ -534,3 +535,51 @@ def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_
         adapter.run(control, candidate, out=tmp_path / 'failed', seed0=200,
                     pairs=1, ranks='A')
     assert not (tmp_path / 'failed' / 'DONE').exists()
+
+
+def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):
+    import copy
+    adapter = _load_script('pv_dev_duel')
+    meta = dict(schema='pv-dev-duel-v1', candidate='T', control='C',
+                seed0=100, cluster0=0, pairs=2, ranks=['2', 'A'])
+    (tmp_path / 'run.json').write_text(json.dumps(meta))
+    (tmp_path / 'DONE').write_text('2 complete pairs\n')
+    rows = [dict(seed=100+i, flip=f, trump_rank=rank, policy='T', opponent='C',
+                 label='candidate', winner_team=f, level_change=1, won=1,
+                 level_utility=1, arm_play_decisions=1, opp_play_decisions=1,
+                 arm_play_health=dict(decisions=1, pv_complete=1),
+                 opp_play_health=dict(decisions=1, pv_complete=1))
+            for i, rank in enumerate(meta['ranks']) for f in (0, 1)]
+    path = tmp_path / 'rounds.jsonl'
+
+    def write(records):
+        path.write_text(''.join(json.dumps(r) + '\n' for r in records))
+
+    write(rows)
+    result = adapter.read(tmp_path, meta)
+    assert result['pairs'] == 2 and result['rounds'] == 4
+    assert result['mean_levels_per_round'] == 1
+    assert result['by_rank']['A'] == dict(pairs=1, mean=1)
+    assert result['verdict'] == 'POSITIVE'
+    for change in ({'seed': 999}, {'flip': 1}, {'trump_rank': 'A'},
+                   {'opponent': 'T'}, {'policy': 'C'}, {'level_utility': -1},
+                   {'winner_team': 1}, {'arm_play_decisions': 2}):
+        bad = copy.deepcopy(rows)
+        bad[0].update(change)
+        write(bad)
+        with pytest.raises(ValueError):
+            adapter.read(tmp_path, meta)
+    write(rows[:-1])
+    with pytest.raises(ValueError, match='missing'):
+        adapter.read(tmp_path, meta)
+    write(rows)
+    with pytest.raises(ValueError, match='metadata'):
+        adapter.read(tmp_path, {**meta, 'seed0': 101})
+    bad = copy.deepcopy(rows)
+    bad[0]['arm_play_health'] = dict(decisions=1, pv_fallback=1, pv_budget=1)
+    write(bad)
+    assert adapter.read(tmp_path, meta)['verdict'] == 'QUALITY_FAIL'
+    write(rows)
+    path.write_bytes(path.read_bytes()[:-1])
+    with pytest.raises(ValueError, match='torn'):
+        adapter.read(tmp_path, meta)

@@ -185,6 +185,15 @@ def read_duel(path: str | Path) -> dict:
     header = rows[0]
     if header.get("schema") != SCHEMA:
         raise DuelRefusal("wrong duel schema")
+    hybrid = header.get("hybrid")
+    if isinstance(hybrid, dict) and 'total_seconds' in hybrid:
+        total = hybrid['total_seconds']
+        if total is not None and (isinstance(total, bool)
+                or not isinstance(total, (int, float))
+                or not math.isfinite(total) or total <= 0):
+            raise DuelRefusal("invalid hybrid total deadline")
+        if hybrid.get('stop_fraction') != (0.8 if total is None else 1.0):
+            raise DuelRefusal("hybrid deadline mode disagrees with stop fraction")
     terminal = [r for r in rows if r.get("kind") == "terminal"]
     rounds = [r for r in rows if r.get("kind") == "round"]
     if len(terminal) != 1:

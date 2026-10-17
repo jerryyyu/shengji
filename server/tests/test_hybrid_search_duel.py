@@ -242,3 +242,23 @@ def test_cli_records_deadline_and_only_attaches_candidate(monkeypatch, tmp_path,
     if seconds is not None:
         args += ['--hybrid-total-seconds', str(seconds)]
     duel._main(args)
+
+
+@pytest.mark.parametrize('total,fraction,valid', [
+    (None, .8, True), (30., 1., True), (30., .8, False),
+    (None, 1., False), (True, 1., False), (0., 1., False),
+    (float('inf'), 1., False), ('30', 1., False),
+])
+def test_written_deadline_survives_readout_or_refuses_drift(
+        monkeypatch, tmp_path, total, fraction, valid):
+    monkeypatch.setattr(duel, 'play_round', lambda game, bots: _Log(0))
+    path = tmp_path / 'duel.jsonl'
+    hybrid = {'total_seconds': total, 'stop_fraction': fraction}
+    if valid:
+        result = duel.run_duel(_Bot, _Bot, path, deals=1, seed0=10,
+                               wall_seconds=30, header={'hybrid': hybrid})
+        assert result['header']['hybrid'] == hybrid
+    else:
+        with pytest.raises(duel.DuelRefusal, match='hybrid'):
+            duel.run_duel(_Bot, _Bot, path, deals=1, seed0=10,
+                           wall_seconds=30, header={'hybrid': hybrid})

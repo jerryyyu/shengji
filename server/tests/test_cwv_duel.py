@@ -517,6 +517,10 @@ def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_
     assert all(r['arm_play_health']['decisions'] == r['arm_play_decisions'] for r in rows)
     assert constructed[:2] == [('unit-control', 0), ('unit-candidate', 0)]
     assert (out / 'DONE').read_text() == '2 complete pairs\n'
+    health = json.loads((out / 'health.json').read_text())
+    assert health['rounds'] == 4
+    assert health['sides']['arm']['decisions'] == sum(r['arm_play_decisions'] for r in rows)
+    assert health['sides']['arm']['max_decision_seconds'] == max(r['arm_play_max_secs'] for r in rows)
     assert adapter.read(out, meta)['verdict'] == 'QUALITY_FAIL'
     prior = (out / 'rounds.jsonl').read_bytes()
     with pytest.raises(FileExistsError):
@@ -583,3 +587,23 @@ def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):
     path.write_bytes(path.read_bytes()[:-1])
     with pytest.raises(ValueError, match='torn'):
         adapter.read(tmp_path, meta)
+
+
+def test_pv_capacity_projection_never_reads_outcomes():
+    adapter = _load_script('pv_dev_duel')
+
+    class OperationalOnly(dict):
+        def __getitem__(self, key):
+            assert key.endswith(('_play_health', '_play_decisions',
+                                 '_play_wall_secs', '_play_max_secs'))
+            return super().__getitem__(key)
+
+    row = OperationalOnly(level_utility=999, winner_team=0, won=1)
+    for side in ('arm', 'opp'):
+        row.update({f'{side}_play_health': dict(decisions=2, pv_complete=2),
+                    f'{side}_play_decisions': 2, f'{side}_play_wall_secs': 0.4,
+                    f'{side}_play_max_secs': 0.3})
+    summary = adapter.capacity_summary([row], 1.0)
+    assert set(summary) == {'schema', 'rounds', 'play_wall_seconds', 'sides'}
+    assert summary['sides']['arm'] == dict(health=dict(decisions=2, pv_complete=2),
+        decisions=2, decision_seconds=0.4, max_decision_seconds=0.3)

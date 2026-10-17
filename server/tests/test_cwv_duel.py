@@ -408,6 +408,12 @@ def test_explicit_rank_2_deals_are_the_canonical_deals(duel):
     assert duel.rank_plan("canonical") is None and duel.rank_plan("2") == ["2"]
     assert duel.rank_plan("cycle") == list(duel.RANKS)
     assert duel.rank_for(duel.rank_plan("cycle"), 14) == duel.RANKS[1]
+    with pytest.raises(ValueError):
+        duel.rank_plan("1")
+    assert duel.parse_budgets("1x,3x,10x") == [1.0, 3.0, 10.0]
+    with pytest.raises(ValueError):
+        duel.parse_budgets("3x,1x")
+    assert duel.shards(5, 2) == [[0, 2, 4], [1, 3]]
 
 
 def test_pv_health_reaches_persisted_mixed_rank_mirrors(duel, monkeypatch, tmp_path):
@@ -481,9 +487,50 @@ def test_timed_duel_forwards_every_public_play_to_all_seats(duel, rank):
     assert plays > 0
     assert [len(seen) for seen in observations] == [plays] * 4
     assert all(seen[-1] == 'round_end' for seen in observations)
-    with pytest.raises(ValueError):
-        duel.rank_plan("1")
-    assert duel.parse_budgets("1x,3x,10x") == [1.0, 3.0, 10.0]
-    with pytest.raises(ValueError):
-        duel.parse_budgets("3x,1x")
-    assert duel.shards(5, 2) == [[0, 2, 4], [1, 3]]
+
+
+def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_path):
+    from shengji.ai import registry
+    from shengji.train import pv_search_policy as pv
+
+    adapter = _load_script('pv_dev_duel')
+    monkeypatch.setattr(registry, 'REGISTRY', dict(registry.REGISTRY))
+    constructed = []
+
+    def entries(**recipe):
+        def factory(seed):
+            constructed.append((recipe['name'], seed))
+            return _real_make_bot('smart', seed=seed)
+        return {recipe['name']: factory}
+
+    monkeypatch.setattr(pv, 'pv_env_recipe', lambda env: {'name': env['recipe']})
+    monkeypatch.setattr(pv, 'pv_registry_entries', entries)
+    control = {'SHENGJI_BOT': 'unit-control', 'recipe': 'unit-control'}
+    candidate = {'SHENGJI_BOT': 'unit-candidate', 'recipe': 'unit-candidate'}
+    out = tmp_path / 'duel'
+    adapter.run(control, candidate, out=out, seed0=100, pairs=2,
+                cluster0=1, ranks='2,A')
+    rows = adapter.duel.read_shard(str(out / 'rounds.jsonl'))
+    assert [(r['seed'], r['flip'], r['trump_rank']) for r in rows] == [
+        (101, 0, 'A'), (101, 1, 'A'), (102, 0, '2'), (102, 1, '2')]
+    assert all(r['policy'] == 'unit-candidate' for r in rows)
+    assert all(r['arm_play_health']['decisions'] == r['arm_play_decisions'] for r in rows)
+    assert constructed[:2] == [('unit-control', 0), ('unit-candidate', 0)]
+    assert (out / 'DONE').read_text() == '2 complete pairs\n'
+    prior = (out / 'rounds.jsonl').read_bytes()
+    with pytest.raises(FileExistsError):
+        adapter.run(control, candidate, out=out, seed0=100, pairs=2, ranks='2,A')
+    assert (out / 'rounds.jsonl').read_bytes() == prior
+    with pytest.raises(ValueError, match='derived PV recipe'):
+        adapter.register_pair(control, {**candidate, 'SHENGJI_BOT': 'wrong'})
+    with pytest.raises(ValueError, match='distinct'):
+        adapter.register_pair(control, control)
+
+    def broken(*args, **kw):
+        raise RuntimeError('synthetic worker failure')
+
+    monkeypatch.setattr(adapter.duel, 'play_shard', broken)
+    with pytest.raises(RuntimeError, match='synthetic worker failure'):
+        adapter.run(control, candidate, out=tmp_path / 'failed', seed0=200,
+                    pairs=1, ranks='A')
+    assert not (tmp_path / 'failed' / 'DONE').exists()

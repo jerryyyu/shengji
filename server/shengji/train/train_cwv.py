@@ -101,6 +101,27 @@ beside the raw weights every epoch (``val.averaged``) and saves it as
 ``--window`` widens the shuffle window (the default 64 shards puts about 51
 deals in a 1,024-row batch).
 
+Resume (``--resume-epoch NN [--resume-legacy]``)
+-----------------------------------------------
+Every epoch writes ``resume/epoch-NN.state.pt`` after its checkpoints: the
+AdamW state, the weight average, the step count, every RNG the loop draws
+from (the data-order and policy-row generators, torch, numpy, random), the
+selector and the epoch rows.  ``--resume-epoch NN`` with the same command
+line continues the run in ``--out`` from that state and is bit-identical to
+the run that did not stop (on a deterministic device).  It refuses a config
+that differs from the checkpoint's, a finished run, a later epoch on disk, a
+partial write, a population / exposure / split that differs, and a best.pt
+that is not the selected epoch's weights.  A checkpoint directory without
+state files continues only under ``--resume-legacy``: weights from
+``epoch-NN.pt``, the EMA from ``epoch-NN.avg.pt`` (its update count is the
+step count, so the LR schedule continues at the same step), the selector and
+epoch rows replayed from every epoch checkpoint's validation block; the AdamW
+moments restart from zero and later epochs draw from fresh data-order
+streams (still one uniformly shuffled pass per epoch).  That is a
+continuation of the same recipe, not a reproduction of the uninterrupted
+run, and the receipt's ``resume`` block says which one happened.
+``--resume-check`` runs the restore on CPU without reading data.
+
 Labelled harvest holdouts (``--eval-holdout NAME=PATH``, repeatable)
 --------------------------------------------------------------------
 A file written by ``scripts/label_harvest.py`` (``train.harvest_labels``:
@@ -139,6 +160,7 @@ import argparse
 import contextlib
 import copy
 import hashlib
+import json
 import math
 import os
 import random
@@ -165,7 +187,7 @@ from ..rl.value_checkpoint import (
     save_checkpoint as save_value_checkpoint,
 )
 from ..rl.value_inference import predict_tensors
-from ..rl.value_model import ValueModelConfig, ValueNetwork
+from ..rl.value_model import ValueModelConfig, ValueNetwork, model_state_sha256
 from ..rl.value_training import collate_tensors
 from .baselines import StratifiedPrior, cluster_bootstrap, reliability_table, value_summary
 from .cwv_data import (
@@ -1304,6 +1326,402 @@ class Selector:
                 "best_value": None if self.best_epoch is None else self.best_value}
 
 
+# Resume: every epoch also writes resume/epoch-NN.state.pt (optimizer, weight
+# average, step count, every RNG the loop draws from, the selector and the epoch
+# rows), so ``--resume-epoch NN`` continues the run exactly as if it had not
+# stopped.  A checkpoint directory written before the state file existed holds
+# only the per-epoch weights; ``--resume-legacy`` continues it from those
+# (module docstring, "Resume"), which is a continuation, not a reproduction.
+RESUME_STATE_SCHEMA = "shengji-cwv-resume-state-v1"
+RESUME_STREAM = 0x7E5_0E           # the fresh data-order streams of a legacy resume
+_RESUME_IDENTITY_SKIP = ("git",)   # base-metadata keys a resumed run may change
+
+
+def resume_state_path(out_dir: Path, epoch: int) -> Path:
+    return Path(out_dir) / "resume" / f"epoch-{int(epoch):02d}.state.pt"
+
+
+def _canon(value: Any) -> str:
+    return json.dumps(value, sort_keys=True)
+
+
+def _to_cpu(value: Any) -> Any:
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().clone()
+    if isinstance(value, dict):
+        return {k: _to_cpu(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_to_cpu(v) for v in value)
+    return value
+
+
+def _rng_states(rng: np.random.Generator, policy_rng: np.random.Generator) -> dict:
+    np_global = np.random.get_state(legacy=False)
+    return {"rng": rng.bit_generator.state, "policy_rng": policy_rng.bit_generator.state,
+            "python_random": [random.getstate()[0], list(random.getstate()[1]),
+                              random.getstate()[2]],
+            "numpy_global": {**np_global, "state": {"key": np_global["state"]["key"].tolist(),
+                                                    "pos": int(np_global["state"]["pos"])}}}
+
+
+def _set_rng_states(states: Mapping[str, Any], rng: np.random.Generator,
+                    policy_rng: np.random.Generator) -> None:
+    rng.bit_generator.state = states["rng"]
+    policy_rng.bit_generator.state = states["policy_rng"]
+    py = states["python_random"]
+    random.setstate((py[0], tuple(py[1]), py[2]))
+    g = states["numpy_global"]
+    np.random.set_state({**g, "state": {"key": np.asarray(g["state"]["key"], dtype=np.uint32),
+                                        "pos": int(g["state"]["pos"])}})
+
+
+def save_resume_state(out_dir: Path, epoch: int, *, optim: torch.optim.Optimizer,
+                      averager: "WeightAverage | None", step_count: int,
+                      rng: np.random.Generator, policy_rng: np.random.Generator,
+                      selector: Selector, best: Mapping[str, Any], epoch_rows: list[dict],
+                      model: ValueNetwork, device: torch.device) -> Path:
+    """Atomically write the state ``--resume-epoch`` needs (tmp + fsync + rename);
+    written after the epoch's checkpoints, so a state file implies them."""
+    path = resume_state_path(out_dir, epoch)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    meta = {"epoch": int(epoch), "step_count": int(step_count),
+            "averager": None if averager is None else averager.payload(),
+            "rng_states": _rng_states(rng, policy_rng),
+            "selector": {"best_epoch": selector.best_epoch,
+                         "best_value": selector.best_value, "since_best": selector.since_best,
+                         "metric": selector.metric, "patience": selector.patience},
+            "best": dict(best), "epoch_rows": list(epoch_rows),
+            "checkpoint_state_sha256": model_state_sha256(model)}
+    payload = {"schema": RESUME_STATE_SCHEMA, "epoch": int(epoch),
+               "optimizer": _to_cpu(optim.state_dict()),
+               "shadow": (None if averager is None or averager.shadow is None
+                          else [t.detach().cpu().clone() for t in averager.shadow]),
+               "torch_rng": torch.get_rng_state(),
+               "mps_rng": (torch.mps.get_rng_state() if device.type == "mps" else None),
+               "meta_json": json.dumps(meta)}
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        with tmp.open("wb") as fh:
+            torch.save(payload, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    return path
+
+
+def resume_layout_check(out_dir: Path, epoch: int, *, averaged: bool) -> None:
+    """The output directory of a run stopped after complete epoch ``epoch``:
+    its epoch checkpoints 1..epoch, nothing later, no partial write and no
+    receipt.  Raises ``TrainError`` naming what differs."""
+    ckpt_dir = Path(out_dir) / "checkpoints"
+    if epoch < 1:
+        raise TrainError("--resume-epoch must be >= 1")
+    if not ckpt_dir.is_dir():
+        raise TrainError(f"--resume-epoch {epoch}: {ckpt_dir} does not exist")
+    for name in ("receipt.json", "metrics.json"):
+        if (Path(out_dir) / name).exists():
+            raise TrainError(f"--resume-epoch {epoch}: {out_dir}/{name} exists (the run finished)")
+    names = sorted(p.name for p in ckpt_dir.iterdir())
+    partial = [n for n in names if n.endswith(".tmp")]
+    if partial:
+        raise TrainError(f"--resume-epoch {epoch}: partial checkpoint write(s) {partial}")
+    later = [n for n in names if n.startswith("epoch-") and n[6:8].isdigit()
+             and int(n[6:8]) > epoch]
+    if later:
+        raise TrainError(f"--resume-epoch {epoch}: later epoch checkpoint(s) exist {later}")
+    for e in range(1, epoch + 1):
+        if not (ckpt_dir / f"epoch-{e:02d}.pt").is_file():
+            raise TrainError(f"--resume-epoch {epoch}: epoch-{e:02d}.pt is missing")
+    if averaged and not (ckpt_dir / f"epoch-{epoch:02d}.avg.pt").is_file():
+        raise TrainError(f"--resume-epoch {epoch}: epoch-{epoch:02d}.avg.pt is missing")
+    state_dir = Path(out_dir) / "resume"
+    if state_dir.is_dir():
+        later = [p.name for p in state_dir.iterdir()
+                 if p.name.startswith("epoch-") and p.name[6:8].isdigit()
+                 and int(p.name[6:8]) > epoch]
+        if later:
+            raise TrainError(f"--resume-epoch {epoch}: later resume state(s) exist {later}")
+
+
+def resume_config_check(out_dir: Path, epoch: int, config: Mapping[str, Any]) -> dict:
+    """The checkpoint's run configuration must be this command line's, byte for
+    byte (``config`` and its sha256); returns the checkpoint metadata."""
+    path = Path(out_dir) / "checkpoints" / f"epoch-{epoch:02d}.pt"
+    try:
+        _model, meta = load_value_checkpoint(path, map_location="cpu")
+    except ValueCheckpointError as exc:
+        raise TrainError(f"{path}: {exc}") from exc
+    if int(meta.get("epoch", -1)) != int(epoch) or meta.get("weights") is not None:
+        raise TrainError(f"{path}: not the raw epoch-{epoch} checkpoint "
+                         f"(epoch {meta.get('epoch')}, weights {meta.get('weights')})")
+    if meta.get("config_sha256") != config_sha256(config) or \
+            _canon(meta.get("config")) != _canon(config):
+        old, new = meta.get("config") or {}, dict(config)
+        diff = sorted(k for k in set(old) | set(new) if _canon(old.get(k)) != _canon(new.get(k)))
+        raise TrainError(f"--resume-epoch {epoch}: this command line's config differs from the "
+                         f"checkpoint's ({str(meta.get('config_sha256'))[:12]} != "
+                         f"{config_sha256(config)[:12]}; keys {diff})")
+    return meta
+
+
+def _check_resume_identity(meta: Mapping[str, Any], base_metadata: Mapping[str, Any],
+                           selection: Mapping[str, Any], path: Path) -> None:
+    for key in base_metadata:
+        if key in _RESUME_IDENTITY_SKIP:
+            continue
+        if _canon(meta.get(key)) != _canon(base_metadata[key]):
+            raise TrainError(f"{path}: checkpoint {key!r} differs from this run's: the resumed "
+                             "run would not be the same run")
+    old = {k: v for k, v in (meta.get("selection") or {}).items() if k not in ("val", "init_val")}
+    new = {k: v for k, v in selection.items() if k != "init_val"}
+    if _canon(old) != _canon(new):
+        raise TrainError(f"{path}: checkpoint selection settings differ from this run's")
+
+
+def _copy_named(dst: torch.nn.Module, src: torch.nn.Module) -> None:
+    with torch.no_grad():
+        src_state = src.state_dict()
+        for name, tensor in dst.state_dict().items():
+            tensor.copy_(src_state[name])
+
+
+def resume_restore(out_dir: Path, epoch: int, *, epochs: int, model: ValueNetwork,
+                   aux_head: "AuxPointsHead | None", averager: "WeightAverage | None",
+                   optim: torch.optim.Optimizer, selector: Selector, select_averaged: bool,
+                   rng: np.random.Generator, policy_rng: np.random.Generator, seed: int,
+                   legacy: bool, device: torch.device,
+                   base_metadata: Mapping[str, Any] | None = None,
+                   selection: dict | None = None,
+                   lr_effective: float | None = None, lr_schedule: str = "constant",
+                   planned_steps: int | None = None, lr_final_scale: float = 0.0) -> dict:
+    """Put the run back where it stood after complete epoch ``epoch``.
+
+    The raw weights come from ``checkpoints/epoch-NN.pt``.  With the epoch's
+    resume state everything else does too (exact).  Without it, ``legacy``
+    must be set: the weight average comes from ``epoch-NN.avg.pt``, the step
+    count from its update count (``ema`` only), the selector and the epoch rows
+    from replaying every epoch checkpoint's validation block; the optimizer
+    moments start from zero and the data order from fresh streams.  Returns the
+    ``resume`` block of the receipt plus the restored step count, best record
+    and epoch rows (keys starting ``_``)."""
+    out_dir = Path(out_dir)
+    ckpt_dir = out_dir / "checkpoints"
+    resume_layout_check(out_dir, epoch, averaged=averager is not None)
+    raw_path = ckpt_dir / f"epoch-{epoch:02d}.pt"
+    raw, raw_meta, raw_aux = load_cwv_checkpoint(raw_path, "cpu")
+    if (aux_head is None) != (raw_aux is None):
+        raise TrainError(f"{raw_path}: aux points head presence differs from this run's")
+    if base_metadata is not None:
+        _check_resume_identity(raw_meta, base_metadata, selection or {}, raw_path)
+    _copy_named(model, raw)
+    if aux_head is not None:
+        _copy_named(aux_head, raw_aux)
+    info: dict[str, Any] = {
+        "from_epoch": int(epoch), "checkpoint": str(raw_path.resolve()),
+        "checkpoint_sha256": file_sha256(raw_path),
+        "checkpoint_git": raw_meta.get("git"), "checkpoint_config_sha256": raw_meta.get("config_sha256")}
+    state_path = resume_state_path(out_dir, epoch)
+    if state_path.is_file():
+        payload = torch.load(state_path, map_location="cpu", weights_only=True)
+        if payload.get("schema") != RESUME_STATE_SCHEMA or int(payload.get("epoch", -1)) != epoch:
+            raise TrainError(f"{state_path}: not an epoch-{epoch} {RESUME_STATE_SCHEMA} file")
+        meta = json.loads(payload["meta_json"])
+        if meta["checkpoint_state_sha256"] != model_state_sha256(raw):
+            raise TrainError(f"{state_path}: written for other weights than {raw_path}")
+        optim.load_state_dict(payload["optimizer"])
+        if (averager is None) != (meta["averager"] is None):
+            raise TrainError(f"{state_path}: weight-average presence differs from this run's")
+        if averager is not None:
+            if {k: v for k, v in meta["averager"].items() if k != "updates"} != \
+                    {k: v for k, v in averager.payload().items() if k != "updates"}:
+                raise TrainError(f"{state_path}: weight average {meta['averager']} differs")
+            shadow = payload["shadow"]
+            if shadow is not None:
+                if len(shadow) != len(averager.params):
+                    raise TrainError(f"{state_path}: weight-average layout differs")
+                averager.shadow = [t.to(p.device, p.dtype) for t, p in zip(shadow, averager.params)]
+            else:
+                averager.shadow = None
+            averager.updates = int(meta["averager"]["updates"])
+        sel = meta["selector"]
+        if sel["metric"] != selector.metric or int(sel["patience"]) != selector.patience:
+            raise TrainError(f"{state_path}: selector settings differ")
+        selector.best_epoch, selector.best_value, selector.since_best = (
+            sel["best_epoch"], float(sel["best_value"]), int(sel["since_best"]))
+        step_count, best, epoch_rows = int(meta["step_count"]), meta["best"], meta["epoch_rows"]
+        _set_rng_states(meta["rng_states"], rng, policy_rng)
+
+        def set_torch_rng() -> None:
+            torch.set_rng_state(payload["torch_rng"])
+            if payload.get("mps_rng") is not None and device.type == "mps":
+                torch.mps.set_rng_state(payload["mps_rng"])
+        info.update({"mode": "exact", "state": str(state_path.resolve()),
+                     "state_sha256": file_sha256(state_path),
+                     "optimizer": "restored", "data_order": "restored", "torch_rng": "restored"})
+    else:
+        if not legacy:
+            raise TrainError(f"--resume-epoch {epoch}: {state_path} does not exist; this "
+                             "checkpoint carries no optimizer/RNG state (pass --resume-legacy "
+                             "to continue from its weights; module docstring, Resume)")
+        if averager is None or averager.kind != "ema":
+            raise TrainError("--resume-legacy reads the step count from the EMA's update "
+                             "count: it needs --weight-average ema")
+        avg_path = ckpt_dir / f"epoch-{epoch:02d}.avg.pt"
+        avg, avg_meta, avg_aux = load_cwv_checkpoint(avg_path, "cpu")
+        wa = avg_meta.get("weight_average") or {}
+        if int(avg_meta.get("epoch", -1)) != epoch or avg_meta.get("weights") != "averaged" \
+                or wa.get("kind") != "ema" or float(wa.get("decay", -1)) != averager.decay:
+            raise TrainError(f"{avg_path}: not epoch {epoch}'s EMA checkpoint at decay "
+                             f"{averager.decay} ({avg_meta.get('epoch')}, {wa})")
+        if avg_meta.get("config_sha256") != raw_meta.get("config_sha256"):
+            raise TrainError(f"{avg_path}: config differs from {raw_path}")
+        avg_state = avg.state_dict()
+        shadow = [avg_state[name].detach().clone() for name, _p in model.named_parameters()]
+        if aux_head is not None:
+            aux_state = avg_aux.state_dict()
+            shadow += [aux_state[name].detach().clone() for name, _p in aux_head.named_parameters()]
+        if len(shadow) != len(averager.params):
+            raise TrainError(f"{avg_path}: weight-average layout differs")
+        averager.shadow = [t.to(p.device, p.dtype) for t, p in zip(shadow, averager.params)]
+        averager.updates = int(wa["updates"])
+        step_count = int(wa["updates"])
+        best = {"epoch": None, "loss": math.inf}
+        epoch_rows = []
+        replay = []
+        prev_steps = 0
+        for e in range(1, epoch + 1):
+            path = ckpt_dir / f"epoch-{e:02d}.pt"
+            meta = raw_meta if e == epoch else load_value_checkpoint(path, map_location="cpu")[1]
+            if int(meta.get("epoch", -1)) != e or meta.get("config_sha256") != raw_meta.get("config_sha256"):
+                raise TrainError(f"{path}: not epoch {e} of this run")
+            val = (meta.get("selection") or {}).get("val")
+            if not isinstance(val, Mapping):
+                raise TrainError(f"{path}: carries no validation block")
+            averaged = val.get("averaged")
+            chosen = averaged if select_averaged else val
+            if chosen is None:
+                improved, stop = False, False
+            else:
+                improved, stop = selector.observe(e, chosen)
+            if improved:
+                best = {"epoch": e, "loss": float(chosen["loss"]), "value": selector.best_value}
+                if select_averaged:
+                    best["weight_average"] = averaged["weight_average"]
+            steps = int(((averaged or {}).get("weight_average") or {}).get("updates", 0)) or None
+            train_row: dict[str, Any] = {
+                "restored": "legacy resume: the epoch checkpoint records no training-side block",
+                "steps": steps, "batches": None if steps is None else steps - prev_steps}
+            if steps is not None and lr_schedule != "constant" and planned_steps:
+                train_row["lr_end"] = float(lr_effective) * lr_factor(
+                    lr_schedule, steps - 1, planned_steps, float(lr_final_scale))
+            prev_steps = steps or prev_steps
+            epoch_rows.append({"epoch": e, "train": train_row, "val": dict(val),
+                               "val_role": SPLIT_ROLES["val"]["role"], "secs": None,
+                               "train_secs": None, "rank_secs": val.get("rank_secs")})
+            replay.append({"epoch": e, "value": None if chosen is None else selector.value_of(chosen),
+                           "improved": improved})
+            if stop and e < epochs:
+                raise TrainError(f"--resume-epoch {epoch}: the selector stops the run at epoch "
+                                 f"{e} (patience {selector.patience}); nothing to resume")
+        if epoch_rows[-1]["train"]["steps"] != step_count:
+            raise TrainError(f"{avg_path}: update count {step_count} differs from the epoch "
+                             f"{epoch} validation block's")
+        rng.bit_generator.state = np.random.default_rng(
+            [int(seed), RESUME_STREAM, int(epoch)]).bit_generator.state
+        policy_rng.bit_generator.state = np.random.default_rng(
+            [int(seed) + 1_000_003, RESUME_STREAM, int(epoch)]).bit_generator.state
+        torch_seed = int(np.random.default_rng([int(seed), RESUME_STREAM, int(epoch), 1])
+                         .integers(0, 2 ** 62))
+
+        def set_torch_rng() -> None:
+            torch.manual_seed(torch_seed)
+            if device.type == "mps" and hasattr(torch, "mps"):
+                torch.mps.manual_seed(torch_seed)
+        info.update({
+            "mode": "legacy", "avg_checkpoint": str(avg_path.resolve()),
+            "avg_checkpoint_sha256": file_sha256(avg_path),
+            "optimizer": "re-initialised: the checkpoint carries no AdamW moments; they "
+                         "restart from zero at the scheduled learning rate",
+            "data_order": f"fresh streams default_rng([seed, {RESUME_STREAM}, {epoch}]) and "
+                          f"([seed + 1000003, {RESUME_STREAM}, {epoch}]): each later epoch is "
+                          "still one pass over every training row in a uniformly random order",
+            "torch_rng": f"torch.manual_seed({torch_seed})",
+            "selection_replay": replay})
+    if selector.since_best >= selector.patience and epoch < epochs:
+        raise TrainError(f"--resume-epoch {epoch}: the selector had stopped the run")
+    if best.get("epoch") is not None:
+        best_path = out_dir / "best.pt"
+        src = ckpt_dir / (f"epoch-{int(best['epoch']):02d}.avg.pt" if select_averaged
+                          else f"epoch-{int(best['epoch']):02d}.pt")
+        if not best_path.is_file():
+            raise TrainError(f"--resume-epoch {epoch}: {best_path} is missing")
+        a, _m, a_aux = load_cwv_checkpoint(best_path, "cpu")
+        b, _m, b_aux = load_cwv_checkpoint(src, "cpu")
+        same = all(torch.equal(x, y) for x, y in zip(a.state_dict().values(), b.state_dict().values()))
+        if aux_head is not None:
+            same = same and all(torch.equal(x, y) for x, y in
+                                zip(a_aux.state_dict().values(), b_aux.state_dict().values()))
+        if not same:
+            raise TrainError(f"--resume-epoch {epoch}: {best_path} is not {src.name}")
+        info["best_pt_sha256"] = file_sha256(best_path)
+    if selection is not None:
+        selection["init_val"] = (raw_meta.get("selection") or {}).get("init_val")
+        if selection["init_val"] is None:
+            selection.pop("init_val")
+    info.update({"step_count": int(step_count), "best_epoch": best.get("epoch"),
+                 "selector": selector.payload(), "since_best": selector.since_best,
+                 "_best": best, "_epoch_rows": epoch_rows, "_step_count": int(step_count),
+                 "_init_val": (raw_meta.get("selection") or {}).get("init_val")})
+    # last: building the checkpoint models above draws from torch's generator
+    set_torch_rng()
+    return info
+
+
+def _resume_check(out_dir: Path, epoch: int, config: Mapping[str, Any], *, epochs: int,
+                  aux_points: bool, lr: float, init: str | None, init_lr_scale: float,
+                  weight_decay: float, weight_average: str, ema_decay: float,
+                  swa_start_epoch: int, select_metric: str, patience: int,
+                  select_averaged: bool, seed: int, legacy: bool,
+                  log: Callable[[str], None] | None) -> dict:
+    """``--resume-check``: ``resume_restore`` on CPU into a model built from the
+    config, without reading any data (the population, exposure and split are
+    compared against the checkpoint when the real run starts)."""
+    model_cfg = ValueModelConfig.from_payload(dict(config["model_config"]))
+    model = ValueNetwork(model_cfg)
+    aux_head = AuxPointsHead(model_cfg.width) if aux_points else None
+    params = list(model.parameters()) + (list(aux_head.parameters()) if aux_head else [])
+    lr_effective = float(lr) * (float(init_lr_scale) if init is not None else 1.0)
+    optim = torch.optim.AdamW(params, lr=lr_effective, weight_decay=weight_decay)
+    averager = (None if weight_average == "none" else
+                WeightAverage(params, weight_average, decay=float(ema_decay),
+                              start_epoch=int(swa_start_epoch)))
+    selector = Selector(select_metric, patience=patience)
+    rng = np.random.default_rng(seed)
+    policy_rng = np.random.default_rng(int(seed) + 1_000_003)
+    torch_state = torch.get_rng_state()
+    try:
+        info = resume_restore(out_dir, epoch, epochs=epochs, model=model, aux_head=aux_head,
+                              averager=averager, optim=optim, selector=selector,
+                              select_averaged=select_averaged, rng=rng, policy_rng=policy_rng,
+                              seed=seed, legacy=legacy, device=torch.device("cpu"))
+    finally:
+        torch.set_rng_state(torch_state)
+    rows = info.pop("_epoch_rows")
+    info.pop("_best"); info.pop("_init_val"); info.pop("_step_count")
+    info["epochs_restored"] = [r["epoch"] for r in rows]
+    info["config_sha256"] = config_sha256(config)
+    info["weights_state_sha256"] = model_state_sha256(model)
+    if averager is not None and averager.ready:
+        with averager.swapped():
+            info["averaged_state_sha256"] = model_state_sha256(model)
+    if log is not None:
+        log("RESUME CHECK OK " + json.dumps(info, sort_keys=True))
+    return {"resume_check": info}
+
+
 def consumer_block(select_metric: str, aux_points: bool, search_head: bool = False,
                    policy_head: bool = False) -> dict:
     """Which search designs consume which head on which positions, and
@@ -1987,9 +2405,16 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           swa_start_epoch: int = DEFAULTS["swa_start_epoch"],
           select_averaged: bool = False,
           val_rows: int | None = None, compile_trunk: bool = False,
+          resume_epoch: int | None = None, resume_legacy: bool = False,
+          resume_check: bool = False,
           argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
-    """Run the training pipeline; returns the receipt (also written)."""
+    """Run the training pipeline; returns the receipt (also written).  With
+    ``resume_epoch`` it continues the run in ``out`` after that complete epoch
+    (``resume_restore``); ``resume_check`` only proves that continuation is
+    admissible (no data is read) and returns its ``resume`` block."""
+    if (resume_legacy or resume_check) and resume_epoch is None:
+        raise TrainError("--resume-legacy / --resume-check need --resume-epoch")
     if loader_stage_timing and pack_dir is not None:
         raise TrainError("--loader-stage-timing is not supported with --pack-dir")
     if trick_end_rows and arch != "mlp":
@@ -2046,6 +2471,18 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     started = time.perf_counter()
     started_at = time.strftime("%Y-%m-%d %H:%M:%S")
     out_dir = Path(out)
+    if resume_epoch is not None:
+        # before any data is read: the same run, stopped after a complete epoch
+        resume_layout_check(out_dir, int(resume_epoch), averaged=weight_average != "none")
+        resume_config_check(out_dir, int(resume_epoch), config)
+        if resume_check:
+            return _resume_check(out_dir, int(resume_epoch), config, epochs=epochs,
+                                 aux_points=aux_points, lr=lr, init=init,
+                                 init_lr_scale=init_lr_scale, weight_decay=weight_decay,
+                                 weight_average=weight_average, ema_decay=ema_decay,
+                                 swa_start_epoch=swa_start_epoch, select_metric=select_metric,
+                                 patience=patience, select_averaged=select_averaged,
+                                 seed=seed, legacy=resume_legacy, log=log)
     out_dir.mkdir(parents=True, exist_ok=True)
     cache = Path(cache_dir) if cache_dir else out_dir / "cache"
     workers = default_cache_workers() if cache_workers is None else max(1, int(cache_workers))
@@ -2457,7 +2894,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         first = shown.pop(select_metric, f"{select_metric}=n/a")
         return f"{tag} {first} " + " ".join(shown.values()) + extra
 
-    if init_info is not None:
+    if init_info is not None and resume_epoch is None:
         init_val = validate()
         selection["init_val"] = init_val
         init_info["val"] = init_val
@@ -2538,6 +2975,28 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "population": population, "exposure": exposure, "baselines": baselines,
         "git": git_identity(), "receipt_schema": RECEIPT_SCHEMA,
     }
+    resume_info = None
+    start_epoch = 1
+    if resume_epoch is not None:
+        resume_info = resume_restore(
+            out_dir, int(resume_epoch), epochs=epochs, model=model, aux_head=aux_head,
+            averager=averager, optim=optim, selector=selector, select_averaged=select_averaged,
+            rng=rng, policy_rng=policy_rng, seed=seed, legacy=resume_legacy, device=dev,
+            base_metadata=base_metadata, selection=selection, lr_effective=lr_effective,
+            lr_schedule=lr_schedule, planned_steps=planned_steps,
+            lr_final_scale=float(lr_final_scale))
+        step_count = resume_info.pop("_step_count")
+        best = resume_info.pop("_best")
+        epoch_rows = resume_info.pop("_epoch_rows")
+        init_val = resume_info.pop("_init_val")
+        if init_info is not None and init_val is not None:
+            init_info["val"] = init_val
+        start_epoch = int(resume_epoch) + 1
+        say(f"resume ({resume_info['mode']}): after epoch {resume_epoch} of {epochs}, step "
+            f"{step_count}, best epoch {best.get('epoch')} ({selector.metric} "
+            f"{selector.best_value:.6f}, {selector.since_best} since); optimizer "
+            f"{resume_info['optimizer'].split(':')[0]}; data order "
+            f"{resume_info['data_order'].split(':')[0]}")
     n_params = int(sum(p.numel() for p in model.parameters()))
     say(f"model: {model_cfg.architecture} params={n_params}")
     from .policy_prior import ballot_rows
@@ -2556,7 +3015,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     async_copy_depth = max(0, int(os.environ.get("SHENGJI_CWV_ASYNC_COPY", "2")))
     # SHENGJI_CWV_LOSS_TRACE=PATH appends each flushed window's mean losses to PATH
     loss_trace = os.environ.get("SHENGJI_CWV_LOSS_TRACE") or None
-    for epoch in range(1, epochs + 1):
+    resume_brief = (None if resume_info is None else
+                    {"from_epoch": resume_info["from_epoch"], "mode": resume_info["mode"]})
+    for epoch in range(start_epoch, epochs + 1):
         t0 = time.perf_counter()
         model.train()
         if aux_head is not None:
@@ -2857,6 +3318,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 save_cwv_checkpoint(
                     ckpt_dir / f"epoch-{epoch:02d}.avg.pt", model,
                     metadata={**base_metadata, "epoch": epoch, "weights": "averaged",
+                              **({"resume": resume_brief} if resume_brief else {}),
                               "weight_average": averager.payload(),
                               "selection": {**selection, "val": avg_metrics},
                               "aux_points_head": None if aux_head is None else aux_head.payload()})
@@ -2866,6 +3328,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                            "val_role": SPLIT_ROLES["val"]["role"], "secs": secs,
                            "train_secs": train_secs, "rank_secs": val_metrics["rank_secs"]})
         metadata = {**base_metadata, "epoch": epoch, "selection": {**selection, "val": val_metrics},
+                    **({"resume": resume_brief} if resume_brief else {}),
                     "aux_points_head": None if aux_head is None else aux_head.payload()}
         save_cwv_checkpoint(ckpt_dir / f"epoch-{epoch:02d}.pt", model, metadata=metadata)
         selected = avg_metrics if select_averaged else val_metrics
@@ -2881,6 +3344,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 best["weight_average"] = averager.payload()
             shutil.copyfile(ckpt_dir / (f"epoch-{epoch:02d}.avg.pt" if select_averaged
                                         else f"epoch-{epoch:02d}.pt"), out_dir / "best.pt")
+        save_resume_state(out_dir, epoch, optim=optim, averager=averager, step_count=step_count,
+                          rng=rng, policy_rng=policy_rng, selector=selector, best=best,
+                          epoch_rows=epoch_rows, model=model, device=dev)
         say(epoch_line(f"epoch {epoch:02d}/{epochs}", val_metrics,
                        f" train_ce={train_metrics['cross_entropy']:.4f}"
                        f"{' *' if improved else ''} ({secs}s, rank {val_metrics['rank_secs']}s)"
@@ -3010,6 +3476,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         **base_metadata, "epoch": best["epoch"], "selection": selection,
         "aux_points_head": None if aux_head is None else aux_head.payload(),
         "headline": headline, "inference_benchmark": bench,
+        **({"resume": resume_brief} if resume_brief else {}),
         **({"weights": "averaged", "weight_average": best.get("weight_average")}
            if select_averaged else {})})
     wall = round(time.perf_counter() - started, 3)
@@ -3069,6 +3536,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         "eval_workers": eval_workers,
         "inference_benchmark": bench,
     }
+    if resume_info is not None:
+        receipt["resume"] = resume_info
     check_receipt(receipt)
     _write_json(out_dir / "receipt.json", receipt)
     _write_json(out_dir / "metrics.json", {"schema": RECEIPT_SCHEMA + "-metrics",
@@ -3079,7 +3548,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                            "best_epoch": best["epoch"],
                                            "consumer": consumer, "init": init_info,
                                            "holdouts": holdout_report,
-                                           "inference_benchmark": bench})
+                                           "inference_benchmark": bench,
+                                           **({"resume": resume_info} if resume_info else {})})
     _say_final(say, final, wall)
     return receipt
 
@@ -3609,6 +4079,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="also train on each record's realised trick-end state (the state type "
                         "the served search scores) with the record's label; the added rows are "
                         "train-only, so validation and test stay one row per record")
+    t.add_argument("--resume-epoch", type=int, default=None,
+                   help="continue the run in --out after this complete epoch, with the SAME "
+                        "command line otherwise (the config must match the checkpoint's): "
+                        "exact from resume/epoch-NN.state.pt; refuses a finished run, a later "
+                        "epoch on disk or a partial write")
+    t.add_argument("--resume-legacy", action="store_true",
+                   help="with --resume-epoch: accept a checkpoint with no resume state (fresh "
+                        "AdamW moments and data-order streams; the EMA, step count, selector "
+                        "and epoch rows come from the epoch checkpoints)")
+    t.add_argument("--resume-check", action="store_true",
+                   help="with --resume-epoch: restore on CPU without reading data, print "
+                        "'RESUME CHECK OK {...}' and exit")
 
     e = sub.add_parser("evaluate", help="score a checkpoint")
     common(e)
@@ -3676,7 +4158,10 @@ def main(argv: list[str] | None = None) -> int:
                   trick_end_rows=args.trick_end_rows,
                   encoder_version=args.encoder_version,
                   trunk_layers=args.trunk_layers, trunk_block=args.trunk_block,
-                  grid_channels=args.grid_channels, **exec_kw)
+                  grid_channels=args.grid_channels, resume_epoch=args.resume_epoch,
+                  resume_legacy=args.resume_legacy, resume_check=args.resume_check, **exec_kw)
+            if args.resume_check:
+                return 0
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,

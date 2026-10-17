@@ -62,6 +62,24 @@ def _hex64(value: object, *, label: str) -> str:
     return value
 
 
+def _config_equal(left: object, right: object, path: tuple[str, ...] = ()) -> bool:
+    numeric_paths = {
+        ("wall_seconds",),
+        ("baseline_recipe", "serving_budget_seconds"),
+        ("baseline_recipe", "bury_serving_budget_seconds"),
+    }
+    if path in numeric_paths:
+        if left is None or right is None:
+            return left is right
+        return (type(left) in (int, float) and type(right) in (int, float)
+                and math.isfinite(left) and math.isfinite(right) and left == right)
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return (type(left) is type(right) and set(left) == set(right)
+                and all(_config_equal(left[key], right[key], path + (key,))
+                        for key in left))
+    return _strict_equal(left, right)
+
+
 def _root_identity(config: Mapping[str, object], *, seeds: list[int], label: str):
     prepared = _mapping(config.get("prepared_roots_from"),
                         label=f"{label} prepared roots")
@@ -81,7 +99,7 @@ def _validate_expected_config(policy: str, actual: Mapping[str, object],
                               expected: Mapping[str, object], *, seeds: list[int]):
     if set(actual) != set(expected):
         raise ActorPanelReadoutError(f"{policy}: report config has unexpected fields")
-    if not _strict_equal(actual, expected):
+    if not _config_equal(actual, expected):
         raise ActorPanelReadoutError(f"{policy}: report config differs from expected config")
     if type(actual.get("policy")) is not str or not actual.get("policy"):
         raise ActorPanelReadoutError(f"{policy}: registered policy is missing")

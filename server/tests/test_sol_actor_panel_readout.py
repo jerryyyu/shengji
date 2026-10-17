@@ -58,6 +58,33 @@ def _expected_configs():
     return {policy: _config(policy) for policy in readout.POLICIES}
 
 
+@pytest.mark.parametrize("field", ["wall_seconds", "serving_budget_seconds",
+                                   "bury_serving_budget_seconds"])
+@pytest.mark.parametrize("actual,accepted", [(3.0, True), (3.5, False),
+                                             (True, False), (float("inf"), False),
+                                             (float("nan"), False)])
+def test_config_duration_numeric_equivalence_only(field, actual, accepted):
+    expected = _config("smv3-pv")
+    target = expected if field == "wall_seconds" else expected["baseline_recipe"]
+    target[field] = 3
+    observed = copy.deepcopy(expected)
+    target = observed if field == "wall_seconds" else observed["baseline_recipe"]
+    target[field] = actual
+    if accepted:
+        readout._validate_expected_config("smv3-pv", observed, expected, seeds=SEEDS)
+    else:
+        with pytest.raises(readout.ActorPanelReadoutError):
+            readout._validate_expected_config("smv3-pv", observed, expected, seeds=SEEDS)
+
+
+def test_config_duration_missing_key_and_unrelated_float_still_refuse():
+    expected = _config("smv3-pv")
+    for observed in (dict(expected, soft_token_limit=1_000_000.0),
+                     {k: v for k, v in expected.items() if k != "wall_seconds"}):
+        with pytest.raises(readout.ActorPanelReadoutError):
+            readout._validate_expected_config("smv3-pv", observed, expected, seeds=SEEDS)
+
+
 def test_valid_pair_negates_scores_uses_deal_clusters_and_classifies_positive():
     reports = {"smv3-pv": _report("smv3-pv", offset=0),
                "release46-pv": _report("release46-pv", offset=1)}
@@ -314,6 +341,27 @@ def _sealed_plan(tmp_path):
     plan_path = tmp_path / "plan.json"
     plan_path.write_bytes(json.dumps(plan, separators=(",", ":")).encode())
     return plan, plan_path, reports
+
+
+def test_sealed_reader_accepts_cli_float_durations_with_integer_plan(tmp_path):
+    plan, plan_path, reports = _sealed_plan(tmp_path)
+    for policy, report in reports.items():
+        expected = plan["expected_configs"][policy]
+        expected["baseline_recipe"]["serving_budget_seconds"] = 3
+        expected["baseline_recipe"]["bury_serving_budget_seconds"] = None
+        report["config"]["wall_seconds"] = float(expected["wall_seconds"])
+        report["config"]["baseline_recipe"]["serving_budget_seconds"] = 3.0
+        report["config"]["baseline_recipe"]["bury_serving_budget_seconds"] = None
+        if policy == "release46-pv":
+            expected["baseline_recipe"]["bury_serving_budget_seconds"] = 2
+            report["config"]["baseline_recipe"]["bury_serving_budget_seconds"] = 2.0
+        path = Path(plan["report_refs"][policy]["path"])
+        path.write_text(json.dumps(report))
+        plan["report_refs"][policy]["sha256"] = _plan_pin(path)
+    plan_path.write_text(json.dumps(plan))
+    result = readout.read_sealed_actor_panel(plan_path, _plan_pin(plan_path))
+    assert result["status"] == "complete"
+    assert result["comparison"]["mean"] == 1.0
 
 
 def _plan_pin(path):

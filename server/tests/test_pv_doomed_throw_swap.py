@@ -27,6 +27,8 @@ import copy
 import numpy as np
 import pytest
 
+from scripts.lead_alias_probe import refill_lead_aliases, score_refill
+
 from shengji.ai.memory import Memory
 from shengji.ai.refusal import RefusalLedger, pin_unplayed_attempt
 from shengji.harvest.legal import forced_lead
@@ -77,6 +79,61 @@ def oxps():
             rnd.play(e["seat"], list(e["cards"]))
     assert module.leading(rnd) and rnd.turn == SEAT and len(rnd.history) == 1
     return rnd
+
+
+def test_alias_refill_uses_engine_signatures_and_real_value_consumer():
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    admitted = [THROW, OTHER_C2_THROW, FORCED]
+    original_hands = copy.deepcopy(rnd.hands)
+    bot = PolicyValueBot(lambda *args: None, evaluator=LeafEvaluator())
+    result = score_refill(bot, rnd, SEAT, admitted,
+                          [THROW, OTHER_C2_THROW, FORCED, ["D6"], ["DQ"]], worlds)
+    assert result["alias_slots"] == result["replacement_slots"] == 2
+    assert result["admitted"] == [THROW, ["D6"], ["DQ"]]
+    assert len(set(result["original_means"])) == 1
+    assert result["max_mean_delta"] >= 0
+    assert rnd.hands == original_hands
+    assert admitted == [THROW, OTHER_C2_THROW, FORCED]
+
+
+def test_equal_value_means_are_not_alias_evidence():
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    bot = PolicyValueBot(lambda *args: None, evaluator=ZeroEvaluator())
+    actions = [["C2"], ["D6"], ["DQ"]]
+    result = score_refill(bot, rnd, SEAT, actions, actions, worlds)
+    assert len(set(result["original_means"])) == 1
+    assert result["alias_slots"] == result["replacement_slots"] == 0
+    assert result["admitted"] == actions
+
+
+def test_alias_refill_insufficient_replacements_preserves_width():
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    result = refill_lead_aliases(rnd, SEAT, [THROW, OTHER_C2_THROW, FORCED], [], worlds)
+    assert result["admitted"] == [THROW, OTHER_C2_THROW, FORCED]
+    assert result["alias_slots"] == 2
+    assert result["replacement_slots"] == 0
+
+
+def test_alias_refill_requires_agreement_in_every_world():
+    rnd = oxps()
+    real = (copy.deepcopy(rnd.hands), list(rnd.buried))
+    result = refill_lead_aliases(rnd, SEAT, [THROW, FORCED], [],
+                                 [real, standing_world(rnd)])
+    assert result["alias_slots"] == 0
+    assert result["admitted"] == [THROW, FORCED]
+
+
+def test_alias_refill_rejects_missing_worlds_and_wrong_actor_hand():
+    rnd = oxps()
+    with pytest.raises(ValueError, match="requires worlds"):
+        refill_lead_aliases(rnd, SEAT, [FORCED], [], [])
+    hands = copy.deepcopy(rnd.hands)
+    hands[SEAT].pop()
+    with pytest.raises(ValueError, match="actor hand"):
+        refill_lead_aliases(rnd, SEAT, [FORCED], [], [(hands, rnd.buried)])
 
 
 class LeafEvaluator:

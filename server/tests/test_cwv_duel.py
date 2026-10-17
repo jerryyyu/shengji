@@ -462,6 +462,25 @@ def test_pv_health_reaches_persisted_mixed_rank_mirrors(duel, monkeypatch, tmp_p
         }
         assert row['opp_play_health'] == {'decisions': 8, 'non_pv_record': 8}
         assert row['arm_play_decisions'] == row['arm_play_health']['decisions']
+
+
+@pytest.mark.parametrize('rank', [None, 'A'])
+def test_timed_duel_forwards_every_public_play_to_all_seats(duel, rank):
+    observations = [[], [], [], []]
+    timers = []
+    for seat in range(4):
+        bot = _real_make_bot('smart', seed=2718 + seat)
+        bot.observe_public = lambda rnd, seat=seat: observations[seat].append(rnd.phase)
+        timers.append(duel.TimedPolicy(bot))
+    game = duel.Game(random.Random(2718))
+    if rank is None:
+        duel.play_round(game, timers)
+    else:
+        duel.play_round_at(game, timers, rank)
+    plays = sum(len(t.walls) for t in timers)
+    assert plays > 0
+    assert [len(seen) for seen in observations] == [plays] * 4
+    assert all(seen[-1] == 'round_end' for seen in observations)
     with pytest.raises(ValueError):
         duel.rank_plan("1")
     assert duel.parse_budgets("1x,3x,10x") == [1.0, 3.0, 10.0]

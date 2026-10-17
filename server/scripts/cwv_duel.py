@@ -80,7 +80,7 @@ from concurrent.futures import ProcessPoolExecutor
 SERVER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SERVER)
 
-from shengji.ai.env import RoundLog, play_round  # noqa: E402
+from shengji.ai.env import RoundLog, play_round, observe_committed_play  # noqa: E402
 from shengji.ai.registry import (make_bot, register_cwv_policies,  # noqa: E402
                                  register_cwv_puct_policies,
                                  register_scaled_policies, scaled_policy_name)
@@ -294,6 +294,7 @@ def play_round_at(game: Game, policies: list, trump_rank: str) -> RoundLog:
     while rnd.phase == "play":
         seat = rnd.turn
         rnd.play(seat, policies[seat].decide_play(rnd, seat))
+        observe_committed_play(rnd, policies)
     result = game.finish_round()
     return RoundLog(rnd.trump_rank, rnd.banker, result.attacker_points,
                     result.winner_team, result.level_change)
@@ -312,6 +313,9 @@ class TimedPolicy:
         self.walls: list[float] = []
         self.states: list[tuple] = []
         self.play_health = Counter()
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
 
     def decide_declare(self, rnd, seat, **kw):
         return self.inner.decide_declare(rnd, seat, **kw)

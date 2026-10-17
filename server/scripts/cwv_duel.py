@@ -829,6 +829,8 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
         "arm_play_wall_secs": round(sum(sum(t.walls) for t in arm_timers), 4),
         "opp_play_decisions": sum(len(t.walls) for t in opp_timers),
         "opp_play_wall_secs": round(sum(sum(t.walls) for t in opp_timers), 4),
+        "arm_play_max_secs": max((w for t in arm_timers for w in t.walls), default=0.0),
+        "opp_play_max_secs": max((w for t in opp_timers for w in t.walls), default=0.0),
         "arm_play_health": dict(sum((t.play_health for t in arm_timers), Counter())),
         "opp_play_health": dict(sum((t.play_health for t in opp_timers), Counter())),
     }

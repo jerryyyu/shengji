@@ -213,3 +213,32 @@ def test_missing_pv_record_is_not_reused_from_previous_decision():
     assert counters['play_decisions'] == 2
     assert counters['pv_fallback_budget'] == 1
     assert counters['pv_record_missing'] == 1
+
+
+@pytest.mark.parametrize("seconds", [None, 30.0])
+def test_cli_records_deadline_and_only_attaches_candidate(monkeypatch, tmp_path, seconds):
+    from scripts import cwv_serving_smoke as smoke, hybrid_duel_policy
+    from shengji.ai import registry
+
+    recipe = tmp_path / 'recipe.json'
+    fly = tmp_path / 'fly.toml'
+    fly.write_text('')
+    recipe.write_text(json.dumps({'fly_toml': str(fly)}))
+    monkeypatch.setattr(smoke, 'env_from_fly_toml', lambda *args: {})
+    monkeypatch.setattr(smoke, 'build_production_bot', lambda env: ('served', object()))
+    monkeypatch.setattr(registry, 'make_bot', lambda name, seed: {'seed': seed})
+    def attach(bot, *, enabled, total_seconds):
+        return {**bot, 'total_seconds': total_seconds, 'hybrid': enabled}
+    monkeypatch.setattr(hybrid_duel_policy, 'attach_hybrid', attach)
+    def run(candidate, baseline, output, **kwargs):
+        assert baseline(12) == {'seed': 12}
+        assert candidate(12) == {'seed': 12, 'total_seconds': seconds, 'hybrid': True}
+        header = kwargs['header']['hybrid']
+        assert header['total_seconds'] == seconds
+        assert header['stop_fraction'] == (0.8 if seconds is None else 1.0)
+        return {}
+    monkeypatch.setattr(duel, 'run_duel', run)
+    args = ['--recipe', str(recipe), '--output', str(tmp_path / 'out.jsonl')]
+    if seconds is not None:
+        args += ['--hybrid-total-seconds', str(seconds)]
+    duel._main(args)

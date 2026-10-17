@@ -363,6 +363,8 @@ def _main(argv=None):
     parser.add_argument("--rehearsal", action="store_true",
                         help="mark the input recipe as rehearsal; does not alter scoring")
     parser.add_argument("--recipe", required=True, type=Path)
+    parser.add_argument("--hybrid-total-seconds", type=float, default=None,
+                        help="DEV total play deadline, activated only after baseline selection")
     args = parser.parse_args(argv)
     from scripts.cwv_serving_smoke import build_production_bot, env_from_fly_toml
     recipe = json.loads(args.recipe.read_text())
@@ -371,7 +373,9 @@ def _main(argv=None):
     from shengji.ai.registry import make_bot
     from scripts.hybrid_duel_policy import attach_hybrid
     baseline = lambda seed: make_bot(name, seed=seed)
-    candidate = lambda seed: attach_hybrid(make_bot(name, seed=seed), enabled=True)
+    candidate = lambda seed: attach_hybrid(make_bot(name, seed=seed), enabled=True,
+                                           total_seconds=args.hybrid_total_seconds)
+    candidate(args.seed0)
     source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=SERVER,
                                      text=True).strip()
     package_paths = {key: value for key, value in env.items() if key.endswith('_CKPT')}
@@ -385,7 +389,9 @@ def _main(argv=None):
                               "source_head": source, "env": env, "packages": packages,
                               "fly_toml_sha256": hashlib.sha256(Path(recipe['fly_toml']).read_bytes()).hexdigest(),
                               "hybrid": {"completed_tricks": 2, "exact_tail": 0,
-                                         "skip_max_hand_le": 7, "stop_fraction": 0.8},
+                                         "skip_max_hand_le": 7,
+                                         "stop_fraction": 0.8 if args.hybrid_total_seconds is None else 1.0,
+                                         "total_seconds": args.hybrid_total_seconds},
                               "rehearsal": bool(args.rehearsal)})
     printed = result if args.rehearsal else {k: result.get(k) for k in (
         'status', 'deals', 'paired_utility_mean', 'paired_utility_ci')}

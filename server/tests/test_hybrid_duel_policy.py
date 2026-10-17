@@ -40,6 +40,69 @@ def _select(self, rnd, seat, admitted, means, **kwargs):
     return int(np.argmax(means))
 
 
+@pytest.mark.parametrize("elapsed,expected", [(4.0, ["B"]), (31.0, ["anchor"])])
+def test_extended_deadline_reaches_outer_finalization_and_restores(monkeypatch, elapsed, expected):
+    import random
+    from shengji.train import pv_search_policy as pv
+    from shengji.train.policy_value_search import PolicyValueBot
+
+    clock = [1.0]
+    monkeypatch.setattr(time, "perf_counter", lambda: clock[0])
+    monkeypatch.setattr(pv.HeuristicBot, "decide_play", lambda *args: ["anchor"])
+    monkeypatch.setattr(PolicyValueBot, "_select", _select)
+
+    class Base:
+        def decide_play(self, rnd, seat):
+            return pv.PVSearchBot._decide_play(self, rnd, seat, clock[0])
+
+        def _require_oracle_bound(self):
+            pass
+
+        def _search(self, rnd, seat, anchor, started, check_budget):
+            assert self.serving_budget_seconds == 3.0
+            check_budget()
+            fields = {}
+            winner = self._hybrid_tree_decide(
+                rnd, seat, [["A"], ["B"]], np.asarray([.2, .1]),
+                [("w0",), ("w1",)], 0, fields, {})
+            check_budget()
+            return [["A"], ["B"]][winner]
+
+    class Bot(_Fake, Base):
+        def _tree_lookahead(self, *args, **kwargs):
+            clock[0] += elapsed
+            return super()._tree_lookahead(*args, **kwargs)
+
+    bot = Bot(budget=3.0)
+    bot.hybrid_total_seconds = 30.0
+    bot.sampler = SimpleNamespace(rng=random.Random(0))
+    assert bot.decide_play(_root(), 0) == expected
+    assert bot.serving_budget_seconds == 3.0
+    if elapsed > 30:
+        assert bot.last_decision_record["reason"] == "budget"
+
+
+def test_extended_deadline_restores_on_cancellation():
+    class Base:
+        def decide_play(self, rnd, seat):
+            self.serving_budget_seconds = 30.0
+            raise KeyboardInterrupt
+
+    class Bot(HybridMultiTrickMixin, Base):
+        serving_budget_seconds = 3.0
+
+    bot = Bot()
+    with pytest.raises(KeyboardInterrupt):
+        bot.decide_play(None, 0)
+    assert bot.serving_budget_seconds == 3.0
+
+
+@pytest.mark.parametrize("value", [True, 0, -1, float("nan"), float("inf"), 2.0])
+def test_extended_deadline_rejects_invalid_values(value):
+    with pytest.raises(ValueError):
+        attach_hybrid(SimpleNamespace(serving_budget_seconds=3.0), total_seconds=value)
+
+
 def test_enabled_path_uses_all_worlds_and_actions_and_selects_changed_move(monkeypatch):
     from shengji.train.policy_value_search import PolicyValueBot
 
@@ -114,7 +177,8 @@ def test_exact_endgame_is_skipped_to_preserve_d7_baseline():
     assert fields["hybrid_fallback"] == "exact_endgame"
 
 
-def test_attach_runs_real_decision_and_publishes_hybrid_record():
+@pytest.mark.parametrize("total_seconds", [None, 30.0])
+def test_attach_runs_real_decision_and_publishes_hybrid_record(total_seconds):
     from copy import deepcopy
     from test_policy_world_search import state
     from test_pv_tree_search import bot_of
@@ -122,7 +186,8 @@ def test_attach_runs_real_decision_and_publishes_hybrid_record():
     baseline = bot_of(tree_config=None, worlds=2, seed=11)
     bot = bot_of(tree_config=None, worlds=2, seed=11)
     original_config = bot.config
-    attach_hybrid(bot)
+    baseline.serving_budget_seconds = bot.serving_budget_seconds = 3.0
+    attach_hybrid(bot, total_seconds=total_seconds)
     assert bot.config is original_config
     assert bot.config.tree is None
     rnd = state()
@@ -141,6 +206,7 @@ def test_attach_runs_real_decision_and_publishes_hybrid_record():
     assert record["hybrid_completed_tricks_max"] == 2
     assert rnd.hands == hands
     assert bot.sampler.rng.getstate() == baseline.sampler.rng.getstate()
+    assert bot.serving_budget_seconds == 3.0
 
 
 def test_attach_off_preserves_real_decision_identity():

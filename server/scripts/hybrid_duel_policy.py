@@ -9,6 +9,7 @@ returns that baseline decision unchanged.
 
 from __future__ import annotations
 
+import math
 import time
 
 import numpy as np
@@ -48,7 +49,11 @@ class HybridMultiTrickMixin:
 
     def decide_play(self, rnd, seat):
         self.hybrid_decision_started = time.perf_counter()
-        return super().decide_play(rnd, seat)
+        original_budget = self.serving_budget_seconds
+        try:
+            return super().decide_play(rnd, seat)
+        finally:
+            self.serving_budget_seconds = original_budget
 
     @staticmethod
     def _hybrid_fields():
@@ -100,10 +105,17 @@ class HybridMultiTrickMixin:
         fields["hybrid_actions"] = len(admitted)
         started = self.hybrid_decision_started or self._tree_started or time.perf_counter()
         budget = self.serving_budget_seconds
+        total_budget = getattr(self, "hybrid_total_seconds", None)
+        cutoff = None if budget is None else budget * 0.8
+        if total_budget is not None:
+            # The baseline selection is complete before the extra allowance
+            # becomes visible to the outer PV finalization guard.
+            self.serving_budget_seconds = total_budget
+            cutoff = total_budget
 
         def gate():
-            # Leave the ordinary PV record/finalization headroom intact.
-            if budget is not None and time.perf_counter() - started >= budget * 0.8:
+            # Only the default mode reserves serving finalization headroom.
+            if cutoff is not None and time.perf_counter() - started >= cutoff:
                 raise HybridMultiTrickError("serving budget expired")
 
         try:
@@ -161,7 +173,7 @@ class HybridMultiTrickPVTreeSearchBuryBot(HybridMultiTrickMixin, PVTreeSearchBur
     """DEV hybrid paired with PV search plus the existing bury policy."""
 
 
-def attach_hybrid(bot, *, enabled=True):
+def attach_hybrid(bot, *, enabled=True, total_seconds=None):
     """Attach the DEV adapter to an already constructed PV serving bot.
 
     This is the intended duel hook: package, sampler, evaluator and checkpoint
@@ -169,15 +181,28 @@ def attach_hybrid(bot, *, enabled=True):
     ``PVTreeConfig(sims=0)`` marker needed by ``PVTreeMixin`` to expose the
     captured PV matrix and lookahead implementation.  No registry/default is
     changed, and the caller still chooses the ordinary bot as its baseline.
+
+    ``total_seconds`` gives the optional stage a finite total play deadline
+    instead of the serving headroom cutoff. It also extends outer finalization
+    for that decision only; baseline search, bury and declaration keep their
+    original budgets. The enclosing runner still needs a hard wall cap.
     """
     if type(enabled) is not bool:
         raise TypeError("enabled must be a bool")
+    if total_seconds is not None:
+        if (isinstance(total_seconds, bool) or not isinstance(total_seconds, (int, float))
+                or not math.isfinite(total_seconds) or total_seconds <= 0):
+            raise ValueError("total_seconds must be finite and positive")
+        existing = getattr(bot, "serving_budget_seconds", None)
+        if existing is None or total_seconds < existing:
+            raise ValueError("total_seconds must cover the finite baseline budget")
     if not isinstance(bot, PVSearchBot):
         raise TypeError("attach_hybrid expects a PVSearchBot or PVSearchBuryBot")
     if getattr(bot.config, "tree", None) is not None:
         raise TypeError("attach_hybrid expects a bot without an existing tree config")
     if isinstance(bot, HybridMultiTrickMixin):
         bot.hybrid_multi_trick = enabled
+        bot.hybrid_total_seconds = total_seconds
         return bot
     original = bot.__class__
     # Existing PV classes are pure Python and have no slots; this preserves the
@@ -189,6 +214,7 @@ def attach_hybrid(bot, *, enabled=True):
     )
     bot.__class__ = attached
     bot.hybrid_multi_trick = enabled
+    bot.hybrid_total_seconds = total_seconds
     bot.hybrid_decision_started = None
     bot.hybrid_last_fields = None
     bot._hybrid_tree_config = PVTreeConfig(sims=0)

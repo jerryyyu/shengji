@@ -58,6 +58,44 @@ def test_full_schedule_with_typed_failure_is_terminal():
         "unattempted": 0, "scheduled": 40}
 
 
+def _actor_report():
+    report = _report(failed=0)
+    report['config']['information'] = ['actor-only']
+    report['mirrors'] = [row for row in report['mirrors'] if row['information'] == 'actor-only']
+    report['scheduled_summary'] = summarize_scheduled(report['mirrors'], failure_limit=8)
+    return report
+
+
+def test_actor_only_terminal_requires_explicit_schedule():
+    report = _actor_report()
+    with pytest.raises(ValueError, match='configuration drift'):
+        validate_scheduled_terminal(report, seeds=SEEDS)
+    assert validate_scheduled_terminal(report, seeds=SEEDS, information_modes=('actor-only',)) == {
+        'status': 'scheduled-terminal', 'completed': 20, 'failed': 0,
+        'unattempted': 0, 'scheduled': 20}
+
+
+@pytest.mark.parametrize('mutation', ['missing', 'extra_perfect', 'replace_perfect', 'duplicate'])
+def test_actor_only_terminal_rejects_schedule_drift(mutation):
+    report = _actor_report()
+    if mutation == 'missing':
+        report['mirrors'].pop()
+    elif mutation == 'extra_perfect':
+        report['mirrors'].append(_row('perfect', 0, 0))
+    elif mutation == 'replace_perfect':
+        report['mirrors'][0] = _row('perfect', 0, 0)
+    else:
+        report['mirrors'][0] = report['mirrors'][1]
+    with pytest.raises(ValueError, match='mirrors|schedule'):
+        validate_scheduled_terminal(report, seeds=SEEDS, information_modes=('actor-only',))
+
+
+@pytest.mark.parametrize('modes', [(), ('perfect',), ('actor-only', 'actor-only'), ['actor-only']])
+def test_terminal_rejects_unsupported_information_modes(modes):
+    with pytest.raises(ValueError, match='information modes'):
+        validate_scheduled_terminal(_actor_report(), seeds=SEEDS, information_modes=modes)
+
+
 @pytest.mark.parametrize('stage', ['rollout_validate', 'rollout_continuation'])
 @pytest.mark.parametrize('bound', [False, True])
 def test_rollout_diagnostic_is_not_an_accepted_failure_disposition(stage, bound):

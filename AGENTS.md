@@ -35,8 +35,8 @@ dashboard row or file's presence is never evidence that a capability works.
 - Look outside the code: a red team that plays against the served bot (head-to-head, seat-swapped)
   finds gaps a common-control screen averages away, and a periodic literature scan adds rows with a
   first test each. Both feed the board, not a parallel document.
-- Run independent tests in parallel, each with a named host and a process cap; screens and the
-  top-ranked lane get priority on a contended host.
+- Run independent tests in parallel, each with a named host and a process cap; on a contended host the
+  order is screen > training > Sol panel > data gen, top-ranked lane first within a class.
 
 ## Long-running work
 
@@ -169,6 +169,7 @@ against a rule marked *none* counts as a repeat.
 | the shared checkout stays clean on `main` | launchd fast-forward skips a dirty or non-`main` tree (detects, does not prevent) | launchd job |
 | deploys, destructive actions and Sol resumes are Jerry's call; the bus carries no authority | none | judgement |
 | correctness, performance, calibration and strength are separate claims | none | reviewer |
+| inconclusive reads are not written as absolute claims; docs name the current comparator | `check_doc_claims.py` on the lines a PR adds to `AI_POLICIES.md`, `RL_PLAN.md`, `README.md`, `DEPLOY.md`; a line keeps such text only with `claim-ok: <reason>` | CI `comment-provenance` |
 | never `git add .`; preserve unrelated changes | none | judgement |
 
 ## Project records

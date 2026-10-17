@@ -72,6 +72,22 @@ A lane enters tier iii only when a candidate beats the comparator on a tier ii p
 owed. Confirmation is Jerry's call per change (2026-10-13, #663 issuecomment-6142998363): a positive screen can
 ship on his word; a fresh-seed confirmation runs when he asks or when the effect is small or borderline.
 
+**Promotion path (tier i to tier ii)**
+
+- **DEV duel before a screen.** An offline metric (agreement, calibration, true-world regret, coverage) does not by
+  itself admit a screen. A new lever first passes a paired seat-swapped DEV duel against the served release (about
+  600 deals, fresh seeds) with a bar written before it runs; only then does it get a ten-window screen. A 600-deal duel
+  resolves about ±0.075 levels/round, so when the expected gain is smaller its bar is no regression and no operational
+  fault (fallbacks, expiries, latency), not a positive estimate. Offline gains
+  have not carried: belief epoch 8's +0.83 pp agreement read +0.0062 [−0.0118, +0.0243] levels/round (v95s17e8);
+  wide lead admission's 45.5% outside-K8 gap read +0.0168 [−0.0078, +0.0414] (v94wla46).
+- **Strength ceiling before cost work.** A search mechanism's first gameplay test runs with its serving deadline and
+  node caps lifted. Latency or approximation work starts only after a positive ceiling; a null ceiling parks the
+  mechanism.
+- **Combination candidate.** The largest served gain came from composing proven parts: release 46 read
+  +0.2284 [+0.2046, +0.2521] vs release 45, more than its parts' sum. Keep one running combination of near-miss
+  levers on the board and test it as one duel rather than each lever alone.
+
 ## Planned work
 
 **What changes production next:** a change that beats release 46 as served on a ten-window served-bot screen,

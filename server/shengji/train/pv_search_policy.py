@@ -185,6 +185,15 @@ their summary (``belief_entropy_bits``, ``belief_top_mass``,
 digest, draw or decision depends on it (`scripts/belief_debug.py` replays a
 logged decision's worlds).
 
+Its rank-aware kitty patch (board row S49), OFF BY DEFAULT:
+``SHENGJI_PV_BELIEF_RANK_PATCH=1`` (requires ``SHENGJI_PV_BELIEF_WORLDS=1``) draws
+from the marginals with each side-suit 2's kitty probability taken from its suit's
+lowest hidden donor card (`ai.belief_numpy.rank_patch_marginals`) when the trump
+rank is not 2; at trump rank 2 the draw is unchanged.  On, the recipe digest gains
+the patch's identity, the name gains ``-bwr`` right after ``-bw``, and the record
+gains ``belief_rank_patched`` (the rows changed); the belief log keeps the model's
+own marginals.  Off, every existing name, digest, world and record is unchanged.
+
 Optional admission width rule (#676 C), OFF BY DEFAULT: ``SHENGJI_PV_ADAPTIVE_K=1``
 admits ``candidates_lead_multi`` (16) instead of ``candidates`` (8) when the seat
 is leading and the scored legal set holds a multi-card action -- the K=8 ballot
@@ -600,6 +609,7 @@ from ..ai.memory import Memory
 from ..ai.refusal import RefusalLedger, sample_worlds_refusal_aware
 from ..ai.history_legality import draw_constraints, sample_worlds_history_legal
 from ..ai.belief_numpy import (PREP_SECONDS as BELIEF_PREP_SECONDS, PROPOSAL as BELIEF_PROPOSAL,
+                               RANK_PATCH as BELIEF_RANK_PATCH,
                                SCHEMA as BELIEF_SCHEMA)
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
@@ -647,13 +657,15 @@ SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints",
                  "REFUSAL_EVENT_COMPLETE": "refusal_event_complete",
                  "WORLD_HISTORY_LEGAL": "world_history_legal",
                  "WORLD_HISTORY_DRAW": "world_history_draw",
-                 "BELIEF_WORLDS": "belief_worlds"}
+                 "BELIEF_WORLDS": "belief_worlds",
+                 "BELIEF_RANK_PATCH": "belief_rank_patch"}
 SAMPLER_DEFAULTS = dict(refusal_constraints=False, refusal_event_complete=False,
-                        world_history_legal=False, world_history_draw=False, belief_worlds=False)
+                        world_history_legal=False, world_history_draw=False, belief_worlds=False,
+                        belief_rank_patch=False)
 #: name tokens, in name order, for the rules that are on
 SAMPLER_TOKENS = (("refusal_constraints", "rc"), ("refusal_event_complete", "rcec"),
                   ("world_history_legal", "whl"), ("world_history_draw", "whd"),
-                  ("belief_worlds", "bw"))
+                  ("belief_worlds", "bw"), ("belief_rank_patch", "bwr"))
 #: the optional selection rule (`policy_value_search`): env flag -> recipe key
 TIEBREAK_RULE = {"TIEBREAK_POINTS": "tiebreak_points"}
 #: the optional admission width rule (`policy_value_search`): env flag -> recipe key
@@ -924,6 +936,8 @@ _BELIEF_REQUIRES = ("belief_worlds requires world_history_legal and world_histor
                     "belief proposal plugs into the history-legal draw and honours its draw-time "
                     "constraints (SHENGJI_PV_BELIEF_WORLDS=1 needs SHENGJI_PV_WORLD_HISTORY_LEGAL=1 "
                     "and SHENGJI_PV_WORLD_HISTORY_DRAW=1)")
+_BELIEF_RANK_PATCH_REQUIRES = ("belief_rank_patch requires belief_worlds "
+                               "(SHENGJI_PV_BELIEF_RANK_PATCH=1 needs SHENGJI_PV_BELIEF_WORLDS=1)")
 #: the belief proposal's log flag: ``0`` or ``1``, unset (or empty) is the default
 BELIEF_LOG_ENV = "SHENGJI_PV_BELIEF_LOG"
 BELIEF_LOG_DEFAULT = True
@@ -1041,6 +1055,8 @@ class PVSearchConfig:
     world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"]
     # the S17 belief proposal inside that test (requires it); the same contract
     belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"]
+    # its rank-aware kitty patch (`ai.belief_numpy.rank_patch_marginals`; requires it)
+    belief_rank_patch: bool = SAMPLER_DEFAULTS["belief_rank_patch"]
     # the optional selection rule (#676 E); the same contract
     tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
     # the optional admission width rule (#676 C); the same contract
@@ -1220,6 +1236,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                                             "fallback": "history-legal-production-draw"}
     elif belief_sha is not None:
         raise PVSearchPolicyError("belief_sha256 needs belief_worlds (SHENGJI_PV_BELIEF_WORLDS=1)")
+    if config.belief_rank_patch:
+        if not config.belief_worlds:
+            raise PVSearchPolicyError(_BELIEF_RANK_PATCH_REQUIRES)
+        payload["belief_worlds_package"]["rank_patch"] = BELIEF_RANK_PATCH
     if config.refusal_event_complete and not config.refusal_constraints:
         raise PVSearchPolicyError("refusal_event_complete requires refusal_constraints "
                                   "(SHENGJI_PV_REFUSAL_EVENT_COMPLETE=1 needs "
@@ -1581,6 +1601,13 @@ class PVSearchBot(PolicyValueBot):
         self.belief_worlds = bool(config.belief_worlds)
         if self.belief_worlds and not (self.world_history_legal and self.world_history_draw):
             raise PVSearchPolicyError(_BELIEF_REQUIRES)
+        # its rank-aware kitty patch: instance state only when on
+        if type(config.belief_rank_patch) is not bool:
+            raise PVSearchPolicyError("belief_rank_patch must be a bool")
+        if config.belief_rank_patch:
+            if not self.belief_worlds:
+                raise PVSearchPolicyError(_BELIEF_RANK_PATCH_REQUIRES)
+            self.belief_rank_patch = True
         self.belief_model = None
         for key in ("adaptive_worlds", "adaptive_worlds_leads"):
             if type(getattr(config, key)) is not bool:
@@ -2503,9 +2530,11 @@ class PVSearchBot(PolicyValueBot):
             # proposal bypasses them there, so it honours them itself
             constraints = draw_constraints(rnd, seat)
             seed = self.sampler.rng.getrandbits(63)
+            rank_patch = getattr(self, "belief_rank_patch", False)
             propose = BeliefProposal(self.belief_model, rnd, seat, refusals,
                                      seed=seed, batch=self.worlds,
-                                     forbidden=constraints, check_budget=check_budget)
+                                     forbidden=constraints, check_budget=check_budget,
+                                     rank_patch=rank_patch)
             worlds, attempts, stats = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
                 check_budget=check_budget, propose=propose, constrain=True)
@@ -2513,6 +2542,8 @@ class PVSearchBot(PolicyValueBot):
                          history_draw_forbidden=sum(sum(c.values()) for c in constraints.values()),
                          belief_fallback=0, belief_proposed=int(propose.drawn),
                          belief_ms=round(1e3 * (time.perf_counter() - t0), 3))
+            if rank_patch:
+                stats["belief_rank_patched"] = int(propose.rank_patched)
             if self.belief_log:
                 stats.update(self._belief_log_seed(seed, refusals))
                 # the log never decides: a failure here is recorded, and the
@@ -3082,6 +3113,8 @@ class PVSearchBot(PolicyValueBot):
                 out.update(history_draw_constraints=0, history_draw_forbidden=0)
         if getattr(self, "belief_worlds", False):
             out.update(belief_fallback=0, belief_proposed=0, belief_ms=0.0)
+            if getattr(self, "belief_rank_patch", False):
+                out["belief_rank_patched"] = 0
             if self.belief_log:
                 out["belief_log"] = 1
         if not out:
@@ -3351,6 +3384,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"],
                        world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"],
                        belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"],
+                       belief_rank_patch: bool = SAMPLER_DEFAULTS["belief_rank_patch"],
                        belief_checkpoint: str | None = None,
                        belief_sha256: str | None = None,
                        admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
@@ -3426,6 +3460,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             world_history_legal=world_history_legal,
                             world_history_draw=world_history_draw,
                             belief_worlds=belief_worlds, belief_sha256=belief_sha256,
+                            belief_rank_patch=belief_rank_patch,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -3538,6 +3573,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"],
                         world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"],
                         belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"],
+                        belief_rank_patch: bool = SAMPLER_DEFAULTS["belief_rank_patch"],
                         belief_checkpoint: str | None = None,
                         belief_sha256: str | None = None,
                         admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
@@ -3594,6 +3630,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             world_history_legal=world_history_legal,
                             world_history_draw=world_history_draw,
                             belief_worlds=belief_worlds, belief_sha256=belief_sha256,
+                            belief_rank_patch=belief_rank_patch,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -3697,6 +3734,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                world_history_legal=config.world_history_legal,
                                world_history_draw=config.world_history_draw,
                                belief_worlds=config.belief_worlds,
+                               belief_rank_patch=config.belief_rank_patch,
                                belief_checkpoint=belief_checkpoint,
                                belief_sha256=config.belief_sha256,
                                admission_diversity=config.admission_diversity,

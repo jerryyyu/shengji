@@ -586,3 +586,92 @@ def test_exact_lead_replay_refuses_unverified_results(deep):
                exact_lead_status='abandoned')
     with pytest.raises(ValueError, match='not published complete'):
         replay_exact_lead(bad, forbidden_leaf)
+
+
+def _follow_prefix_row():
+    bot, root, capture, _ = _observed_follow_bot()
+    with observe_exact_follow(bot, capture) as rows:
+        bot.decide_play(root, root.turn)
+    row = json.loads(json.dumps(rows[0]))
+    row['decision'] = normalized(bot.last_decision_record)
+    return row
+
+
+@pytest.mark.parametrize('budget,minimum,count,served', [
+    (0.5, 1, 0, False), (1.0, 1, 1, True), (1.0, 2, 1, False),
+    (2.0, 2, 1, False), (3.0, 2, 2, True),
+])
+def test_follow_prefix_whole_world_budget(budget, minimum, count, served):
+    from shengji.train.lead_root_capture import evaluate_follow_prefix
+    row = _follow_prefix_row()
+    ticks = iter([0., 1., 1., 3.])
+    result = evaluate_follow_prefix(row, budget_seconds=budget, min_worlds=minimum,
+                                    clock=lambda: next(ticks))
+    assert result['completed_prefix'] == count
+    assert result['served'] is served
+    assert result['world_seconds'] == [1., 2.]
+    if not served:
+        assert result['selected'] == row['input']['baseline_index']
+        assert result['prefix_means'] is None
+    assert result['full_means'] == row['result']['scores']
+
+
+def test_follow_prefix_fails_closed(monkeypatch):
+    from shengji.train.lead_root_capture import evaluate_follow_prefix
+    from shengji.train import pv_exact_follow
+    row = _follow_prefix_row()
+    bad = copy.deepcopy(row)
+    bad['result']['scores'][0] += 1
+    with pytest.raises(ValueError, match='replay result mismatch'):
+        evaluate_follow_prefix(bad, budget_seconds=10, min_worlds=1)
+    for kwargs in ({'budget_seconds': 0}, {'budget_seconds': float('nan')},
+                   {'budget_seconds': 1, 'time_scale': -1},
+                   {'budget_seconds': 1, 'min_worlds': True},
+                   {'budget_seconds': 1, 'min_worlds': 3}):
+        with pytest.raises(ValueError):
+            evaluate_follow_prefix(row, **kwargs)
+    def forbidden(*args, **kwargs):
+        pytest.fail('unpublished row must refuse before solving')
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', forbidden)
+    bad = copy.deepcopy(row)
+    bad['decision']['work_complete'] = False
+    with pytest.raises(ValueError, match='not published complete'):
+        evaluate_follow_prefix(bad, budget_seconds=1, min_worlds=1)
+
+
+def test_follow_prefix_ties_keep_actual_baseline(monkeypatch):
+    from shengji.train.lead_root_capture import evaluate_follow_prefix
+    from shengji.train import pv_exact_follow
+    row = _follow_prefix_row()
+    size = len(row['input']['admitted'])
+    baseline = row['input']['baseline_index']
+    assert baseline != 0
+    row['result'] = normalized(pv_exact_follow.ExactFollowResult(baseline, (0.,) * size, 2, 0))
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', lambda *a, **kw:
+                        pv_exact_follow.ExactFollowResult(baseline, (0.,) * size, 1, 0))
+    ticks = iter([0., 1., 1., 3.])
+    result = evaluate_follow_prefix(row, budget_seconds=2, min_worlds=1,
+                                    time_scale=2, clock=lambda: next(ticks))
+    assert result['completed_prefix'] == 1
+    assert result['selected'] == result['full_selected'] == baseline
+
+
+def test_follow_prefix_does_not_use_over_budget_world_scores(monkeypatch):
+    from shengji.train.lead_root_capture import evaluate_follow_prefix
+    from shengji.train import pv_exact_follow
+    row = _follow_prefix_row()
+    baseline = row['input']['baseline_index']
+    size = len(row['input']['admitted'])
+    first, second = [0.] * size, [0.] * size
+    first[0], second[baseline] = 1., 3.
+    full = tuple((a + b) / 2 for a, b in zip(first, second))
+    row['result'] = normalized(pv_exact_follow.ExactFollowResult(baseline, full, 2, 0))
+    outputs = iter([pv_exact_follow.ExactFollowResult(0, tuple(first), 1, 0),
+                    pv_exact_follow.ExactFollowResult(baseline, tuple(second), 1, 0)])
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', lambda *a, **kw: next(outputs))
+    ticks = iter([0., 1., 1., 3.])
+    result = evaluate_follow_prefix(row, budget_seconds=2, min_worlds=1,
+                                    clock=lambda: next(ticks))
+    assert result['served'] and result['selected'] == 0
+    assert result['full_selected'] == baseline and not result['agrees_full']
+    assert result['full_world_regret'] == 1.

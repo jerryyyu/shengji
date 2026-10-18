@@ -391,6 +391,90 @@ def replay_exact_lead(row, leaf_fn, *, policy_first=False):
     return means, stats
 
 
+def evaluate_follow_prefix(row, *, budget_seconds, min_worlds=16,
+                           time_scale=1.0, clock=None):
+    """DEV full-world benchmark and completed-prefix budget simulation.
+
+    This runs every world without a serving deadline, then simulates a prefix.
+    It is not a bounded serving implementation or proof of hard-budget safety.
+    The caller supplies the remaining stage budget and any measured host scale;
+    root restoration, earlier decision work and runtime contention are excluded.
+    Only published collection rows are accepted. They are conditioned on reaching
+    the solver, so this function cannot supply the eligibility denominator.
+    """
+    import math
+    import time
+    from .pv_exact_follow import rerank_follow, ExactFollowResult
+
+    for name, value in [('budget_seconds', budget_seconds), ('time_scale', time_scale)]:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f'{name} must be positive and finite')
+    if type(min_worlds) is not int or min_worlds < 1:
+        raise ValueError('min_worlds must be a positive integer')
+    if row.get('schema') != 'exact-follow-observation-dev-v1':
+        raise ValueError('expected exact-follow observation')
+    decision = row.get('decision')
+    if (not isinstance(decision, dict) or decision.get('work_complete') is not True
+            or decision.get('exact_follow_attempted') is not True
+            or decision.get('exact_follow_abandoned') is not None
+            or decision.get('exact_follow_error') is not None):
+        raise ValueError('follow stage was not published complete')
+    expected = row.get('result')
+    if not isinstance(expected, dict) or set(expected) != {'winner', 'scores', 'worlds', 'nodes'}:
+        raise ValueError('missing complete follow result')
+    rnd, _, admitted, worlds, baseline, _ = restore_exact_stage(row['input'])
+    config = row['config']
+    if set(config) != {'solver', 'max_hand_cards', 'max_nodes'}:
+        raise ValueError('unexpected follow solver config')
+    if min_worlds > len(worlds):
+        raise ValueError('not enough captured worlds')
+    clock = time.perf_counter if clock is None else clock
+    totals = [0.0] * len(admitted)
+    prefix_totals = None
+    elapsed, prefix_count, nodes = 0.0, 0, 0
+    costs = []
+    prefix_open = True
+    for world in worlds:
+        start = clock()
+        result = rerank_follow(rnd, rnd.turn, admitted, [world],
+                               baseline_index=baseline, **config)
+        duration = clock() - start
+        if not math.isfinite(duration) or duration < 0:
+            raise ValueError('invalid measured world duration')
+        costs.append(duration)
+        elapsed += duration * time_scale
+        for index, score in enumerate(result.scores):
+            totals[index] += score
+        nodes += result.nodes
+        if prefix_open and elapsed <= budget_seconds:
+            prefix_count += 1
+            prefix_totals = list(totals)
+        else:
+            prefix_open = False
+
+    def choose(means):
+        best = max(range(len(means)), key=lambda i: (means[i], -i))
+        return best if means[best] > means[baseline] else baseline
+
+    full_means = [value / len(worlds) for value in totals]
+    full_winner = choose(full_means)
+    full = ExactFollowResult(full_winner, tuple(full_means), len(worlds), nodes)
+    if normalized(full) != expected:
+        raise ValueError('full follow replay result mismatch')
+    served = prefix_count >= min_worlds
+    prefix_means = ([value / prefix_count for value in prefix_totals]
+                    if served else None)
+    selected = choose(prefix_means) if served else baseline
+    return dict(schema='exact-follow-prefix-dev-v1', worlds=len(worlds),
+                completed_prefix=prefix_count, min_worlds=min_worlds,
+                budget_seconds=budget_seconds, time_scale=time_scale,
+                world_seconds=costs, served=served, selected=selected,
+                full_selected=full_winner, agrees_full=(selected == full_winner),
+                prefix_means=prefix_means, full_means=full_means,
+                full_world_regret=full_means[full_winner] - full_means[selected],
+                claim='Simulated stage budget only; no hard-expiry, whole-decision latency, true-deal or strength claim')
+
+
 def fingerprint(rnd):
     state = dict(vars(rnd))
     # Ordering memoization is execution history, not game state.

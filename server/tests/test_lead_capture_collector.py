@@ -291,6 +291,18 @@ def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode,
                     'sha256': hashlib.sha256(journal_path.read_bytes()).hexdigest(),
                     'bytes': journal_path.stat().st_size,
                 }
+                truth_path = tmp_path / 'truth-summary.json'
+                truth_args = list(summary_args)
+                truth_args[2] = str(truth_path)
+                summarize(truth_args + ['--true-deal'])
+                truth_summary = json.loads(truth_path.read_text())
+                truth = rerank_follow(root, root.turn, admitted,
+                                      [(root.hands, root.buried)],
+                                      baseline_index=baseline, **row['config'])
+                assert truth_summary['true_deal'] is True
+                assert truth_summary['rows'][0]['truth_scores'] == list(truth.scores)
+                assert truth_summary['rows'][0]['selected'] == summary['rows'][0]['selected']
+                assert truth_summary['counts'] == summary['counts']
                 with pytest.raises(FileExistsError):
                     summarize(['missing', 'missing', str(summary_path), '--budget-seconds', '1'])
         if mode == 'fallback':

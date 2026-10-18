@@ -41,6 +41,8 @@ def main(argv=None):
     parser.add_argument('--min-worlds', type=int, default=16)
     parser.add_argument('--time-scale', type=float, default=1.0)
     parser.add_argument('--max-hand-size', type=int, default=8)
+    parser.add_argument('--true-deal', action='store_true',
+                        help='score the restored hidden deal as a diagnostic label')
     args = parser.parse_args(argv)
     if Path(args.output).exists():
         raise FileExistsError(args.output)
@@ -49,7 +51,8 @@ def main(argv=None):
     result = summarize_follow_prefix_collection(
         capture, journal,
         budget_seconds=args.budget_seconds, min_worlds=args.min_worlds,
-        time_scale=args.time_scale, max_hand_size=args.max_hand_size)
+        time_scale=args.time_scale, max_hand_size=args.max_hand_size,
+        true_deal=args.true_deal)
     result['inputs'] = {'capture': capture_input, 'journal': journal_input}
     with open(args.output, 'x') as output:
         json.dump(result, output, indent=2, sort_keys=True, allow_nan=False)

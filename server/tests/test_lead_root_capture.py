@@ -688,7 +688,8 @@ def test_prefix_summary_rejects_bad_join_before_solving(monkeypatch, bad):
 
 
 @pytest.mark.parametrize('kwargs', [dict(budget_seconds=0), dict(min_worlds=0),
-                                    dict(time_scale=-1), dict(time_scale=float('nan'))])
+                                    dict(time_scale=-1), dict(time_scale=float('nan')),
+                                    dict(true_deal=1)])
 def test_prefix_summary_validates_parameters_without_measured_rows(kwargs):
     from shengji.train.lead_root_capture import summarize_follow_prefix_collection
     capture, journal = _prefix_collection()
@@ -737,6 +738,144 @@ def test_follow_prefix_fails_closed(monkeypatch):
     bad['decision']['work_complete'] = False
     with pytest.raises(ValueError, match='not published complete'):
         evaluate_follow_prefix(bad, budget_seconds=1, min_worlds=1)
+
+
+def test_follow_prefix_true_deal_is_opt_in_and_validates_bool_before_replay():
+    from shengji.train.lead_root_capture import evaluate_follow_prefix
+    row = _follow_prefix_row()
+    result = evaluate_follow_prefix(row, budget_seconds=10, min_worlds=1,
+                                    true_deal=False)
+    assert result['true_deal'] is False
+    assert result['truth_scores'] is None
+    assert result['full_gain'] is None and result['prefix_gain'] is None
+    with pytest.raises(ValueError, match='true_deal must be a bool'):
+        evaluate_follow_prefix(row, budget_seconds=10, min_worlds=1, true_deal=1)
+
+
+def test_follow_prefix_true_deal_does_not_select_from_truth(monkeypatch):
+    from shengji.train import pv_exact_follow
+    from shengji.train.lead_root_capture import evaluate_follow_prefix, restore_exact_stage
+
+    row = _follow_prefix_row()
+    baseline = row['input']['baseline_index']
+    candidate = next(index for index in range(len(row['input']['admitted']))
+                     if index != baseline)
+    world_count = len(row['input']['worlds'])
+    sampled_scores = [0.0] * len(row['input']['admitted'])
+    sampled_scores[candidate] = 4.0
+    sampled = pv_exact_follow.ExactFollowResult(candidate, tuple(sampled_scores), 1, 0)
+    full_scores = list(sampled_scores)
+    row['result'] = normalized(pv_exact_follow.ExactFollowResult(
+        candidate, tuple(full_scores), world_count, 0))
+    truth_scores = [0.0] * len(sampled_scores)
+    truth_scores[baseline] = 1.0
+    truth_scores[candidate] = -2.0
+    calls = []
+
+    def rerank(rnd, seat, admitted, worlds, **kwargs):
+        calls.append((rnd, seat, admitted, worlds, kwargs))
+        if len(calls) <= world_count:
+            return sampled
+        return pv_exact_follow.ExactFollowResult(baseline, tuple(truth_scores), 1, 0)
+
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', rerank)
+    result = evaluate_follow_prefix(row, budget_seconds=10, min_worlds=1,
+                                    true_deal=True)
+    assert result['selected'] == result['full_selected'] == candidate
+    assert result['truth_scores'] == truth_scores
+    assert result['full_gain'] == result['prefix_gain'] == -3.0
+    truth_root, _, _, _, _, _ = restore_exact_stage(row['input'])
+    assert calls[-1][3] == [(truth_root.hands, truth_root.buried)]
+    assert calls[-1][4]['baseline_index'] == baseline
+
+
+def test_prefix_summary_truth_gains_keep_signed_rows_and_fallback(monkeypatch):
+    from shengji.train import lead_root_capture as module
+
+    capture, journal = _prefix_collection()
+    # Publish the second captured row as a completed fallback; index three
+    # remains a missing capture and must stay outside the measured denominator.
+    capture[2]['decision'].pop('exact_follow_abandoned')
+    outcomes = iter([
+        dict(served=True, agrees_full=True, truth_scores=[0.0],
+             full_gain=-2.0, prefix_gain=-1.0),
+        dict(served=False, agrees_full=False, truth_scores=[0.0],
+             full_gain=3.0, prefix_gain=0.0),
+    ])
+    monkeypatch.setattr(module, 'evaluate_follow_prefix',
+                        lambda *args, **kwargs: next(outcomes))
+    result = module.summarize_follow_prefix_collection(
+        capture, journal, budget_seconds=1, min_worlds=1, true_deal=True)
+    assert result['counts'] == dict(observed=3, no_capture=1, unpublished=0,
+                                    measured=2, served=1, fallback=1,
+                                    served_agrees=1, fallback_agrees=0)
+    assert [row['full_gain'] for row in result['rows']] == [-2.0, 3.0]
+    assert result['full_gain_sum'] == 1.0
+    assert result['full_gain_mean'] == 0.5
+    assert result['prefix_gain_sum'] == -1.0
+    assert result['prefix_gain_mean'] == -0.5
+    assert result['prefix_gain_ratio'] == -1.0
+    assert result['prefix_gain_ratio_reason'] is None
+
+
+@pytest.mark.parametrize('mode', ['nonpositive', 'empty'])
+def test_prefix_summary_truth_ratio_refuses_nonpositive_or_empty_denominator(
+        monkeypatch, mode):
+    from shengji.train import lead_root_capture as module
+
+    capture, journal = _prefix_collection()
+    if mode == 'empty':
+        capture[1]['decision']['work_complete'] = False
+        monkeypatch.setattr(module, 'evaluate_follow_prefix',
+                            lambda *args, **kwargs: pytest.fail('must not solve'))
+    else:
+        capture[2]['decision'].pop('exact_follow_abandoned')
+        outcomes = iter([
+            dict(served=True, agrees_full=True, truth_scores=[0.0],
+                 full_gain=-1.0, prefix_gain=2.0),
+            dict(served=False, agrees_full=False, truth_scores=[0.0],
+                 full_gain=1.0, prefix_gain=0.0),
+        ])
+        monkeypatch.setattr(module, 'evaluate_follow_prefix',
+                            lambda *args, **kwargs: next(outcomes))
+    result = module.summarize_follow_prefix_collection(
+        capture, journal, budget_seconds=1, min_worlds=1, true_deal=True)
+    assert result['prefix_gain_ratio'] is None
+    if mode == 'empty':
+        assert result['counts']['measured'] == 0
+        assert result['full_gain_sum'] == result['prefix_gain_sum'] == 0
+        assert result['full_gain_mean'] is result['prefix_gain_mean'] is None
+        assert result['prefix_gain_ratio_reason'] == 'no measured rows'
+    else:
+        assert result['counts']['measured'] == 2
+        assert result['full_gain_sum'] == 0.0
+        assert result['prefix_gain_sum'] == 2.0
+        assert result['prefix_gain_ratio_reason'] == 'full gain sum is not positive'
+
+
+def test_follow_prefix_truth_solver_refusal_fails_closed(monkeypatch):
+    from shengji.train import pv_exact_follow
+    from shengji.train.lead_root_capture import evaluate_follow_prefix
+
+    row = _follow_prefix_row()
+    world_count = len(row['input']['worlds'])
+    expected = pv_exact_follow.ExactFollowResult(
+        row['result']['winner'], tuple(row['result']['scores']), world_count, 0)
+    row['result'] = normalized(expected)
+    calls = 0
+
+    def rerank(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls > world_count:
+            raise pv_exact_follow.ExactFollowRefusal('truth diagnostic refusal')
+        return pv_exact_follow.ExactFollowResult(
+            expected.winner, expected.scores, 1, 0)
+
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', rerank)
+    with pytest.raises(pv_exact_follow.ExactFollowRefusal, match='truth diagnostic refusal'):
+        evaluate_follow_prefix(row, budget_seconds=10, min_worlds=1, true_deal=True)
+    assert calls == world_count + 1
 
 
 def test_follow_prefix_ties_keep_actual_baseline(monkeypatch):

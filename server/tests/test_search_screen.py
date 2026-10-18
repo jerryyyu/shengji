@@ -127,12 +127,34 @@ def test_exact_follow_summary_counts_both_sides_and_rejects_malformed_receipts()
     assert result['claim'].endswith('no latency or playing-strength inference')
     assert result['sides']['arm'] == {
         'total_traces': 10, 'missing': 1, 'invalid': 4, 'attempted': 9,
-        'complete': 1, 'soft_budget': 1, 'hard_budget': 1, 'refusal': 1,
+        'complete': 1, 'prefix_complete': 0, 'soft_budget': 1, 'hard_budget': 1, 'refusal': 1,
         'other_error': 1, 'applied': 1, 'score_unavailable': 0,
     }
     assert result['sides']['baseline']['complete'] == 1
     assert result['sides']['baseline']['score_unavailable'] == 1
     assert result['sides']['baseline']['applied'] == 0
+
+
+@pytest.mark.parametrize('patch,valid', [
+    ({}, True), ({'exact_follow_worlds': 15}, False),
+    ({'exact_follow_completed_worlds': 17}, False),
+    ({'exact_follow_requested_worlds': 8}, False),
+    ({'exact_follow_prefix': False}, False),
+    ({'exact_follow_prefix': 1}, False),
+    ({'exact_follow_prefix_min_worlds': True}, False),
+])
+def test_exact_follow_prefix_receipt_is_not_full_completion(patch, valid):
+    row = dict(exact_follow_attempted=True, exact_follow_applied=True,
+               exact_follow_abandoned=None, exact_follow_prefix=True,
+               exact_follow_worlds=16, exact_follow_completed_worlds=16,
+               exact_follow_requested_worlds=64, exact_follow_prefix_min_worlds=16,
+               exact_follow_nodes=20, exact_follow_scores=[0.0, 1.0])
+    row.update(patch)
+    result = S.exact_follow_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [S.trace_fields(row)]}]}])
+    assert result['valid'] is valid
+    assert result['sides']['arm']['complete'] == 0
+    assert result['sides']['arm']['prefix_complete'] == int(valid)
 
 
 def test_exact_follow_summary_missing_attempt_is_not_ineligible():

@@ -3,7 +3,9 @@
 The stage is deliberately independent of the serving factory.  It consumes the
 already sampled worlds and admitted ballot, applies each submitted follow
 through the real engine, and solves the remaining game exactly.  A stage is
-published only after every candidate in every world completed.
+published only after every candidate in every world completed on the default
+path; the explicit prefix path publishes only whole completed worlds after its
+minimum, never a partial world.
 """
 
 from __future__ import annotations
@@ -25,6 +27,10 @@ SOLVERS = ("reference", "compact-level")
 
 class ExactFollowRefusal(RuntimeError):
     """The root or one of its worlds is outside the exact follow boundary."""
+
+
+class _ExactFollowPrefixSoftStop(Exception):
+    """Stop a prefix only between worlds; a world in flight is discarded."""
 
 
 @dataclass(frozen=True)
@@ -72,6 +78,81 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
     if means[winner] <= baseline:
         winner = baseline_index
     return ExactFollowResult(winner=winner, scores=means, worlds=len(worlds), nodes=nodes)
+
+
+def rerank_follow_prefix(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
+                         max_hand_cards: int = 8, max_nodes: int = 250_000,
+                         min_worlds: int, check_budget=None, solver: str = "reference",
+                         soft_deadline=None, clock=None) -> ExactFollowResult:
+    """Rerank a complete prefix of worlds, stopping only at world boundaries.
+
+    The hard serving guard is passed through to the real world solver.  The
+    separate soft clock may interrupt a world, but that private exception is
+    caught only around the whole-world call, so no partial world's scores are
+    committed.  A short prefix is a refusal rather than a successful result.
+    """
+    if max_hand_cards != 8:
+        raise ExactFollowRefusal("exact follow prefix requires an eight-card boundary")
+    if type(min_worlds) is not int or min_worlds < 1:
+        raise ExactFollowRefusal("exact follow prefix requires a positive minimum")
+    if getattr(rnd, "phase", None) != "play" or rnd.trick is None \
+            or not rnd.trick.plays:
+        raise ExactFollowRefusal("exact follow requires a follow root")
+    if rnd.turn != seat:
+        raise ExactFollowRefusal("exact follow root is not the acting seat")
+    if not admitted or not worlds:
+        raise ExactFollowRefusal("exact follow requires a non-empty ballot")
+    if len(worlds) < min_worlds:
+        raise ExactFollowRefusal("exact follow prefix minimum exceeds available worlds")
+    if any(len(hand) > max_hand_cards for hand in rnd.hands):
+        raise ExactFollowRefusal("a world exceeds the exact hand-card boundary")
+    if max(map(len, rnd.hands)) != 8:
+        raise ExactFollowRefusal("exact follow prefix requires an eight-card root")
+    if solver not in SOLVERS:
+        raise ExactFollowRefusal(f"unknown exact follow solver {solver!r}")
+    if not 0 <= baseline_index < len(admitted):
+        raise ExactFollowRefusal("baseline index is outside the ballot")
+    if clock is None:
+        import time
+        clock = time.perf_counter
+
+    scores = [0.0] * len(admitted)
+    nodes = 0
+    completed = 0
+    root_attacker = bool(rnd.is_attacker(seat))
+    for world in worlds:
+        def guard():
+            # The hard check always precedes the soft clock, including at a
+            # world boundary after a soft stop was requested.
+            if check_budget is not None:
+                check_budget()
+            if soft_deadline is not None and clock() >= soft_deadline:
+                raise _ExactFollowPrefixSoftStop()
+
+        try:
+            row, solved = _world_scores(
+                rnd, seat, admitted, world, max_hand_cards, max_nodes,
+                guard, solver, root_attacker)
+        except _ExactFollowPrefixSoftStop:
+            # A soft stop never publishes an in-flight world's partial totals.
+            if check_budget is not None:
+                check_budget()
+            break
+        for index, value in enumerate(row):
+            scores[index] += value
+        nodes += solved
+        completed += 1
+    if completed < min_worlds:
+        raise ExactFollowRefusal(
+            f"exact follow prefix completed {completed} worlds, needs {min_worlds}")
+    if check_budget is not None:
+        check_budget()
+    means = tuple(score / completed for score in scores)
+    baseline = means[baseline_index]
+    winner = max(range(len(means)), key=lambda i: (means[i], -i))
+    if means[winner] <= baseline:
+        winner = baseline_index
+    return ExactFollowResult(winner=winner, scores=means, worlds=completed, nodes=nodes)
 
 
 def _world_scores(rnd, seat, admitted, world, max_hand_cards, max_nodes,

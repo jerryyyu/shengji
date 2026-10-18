@@ -18,7 +18,8 @@ import pytest
 from shengji.ai.endgame import exhaustive_legal_actions
 from shengji.engine.cards import Ordering
 from shengji.engine.round import Round, Trick, TrickPlay
-from shengji.train.pv_exact_follow import ExactFollowRefusal, rerank_follow
+from shengji.train.pv_exact_follow import (ExactFollowRefusal, rerank_follow,
+                                           rerank_follow_prefix)
 from shengji.train import pv_search_policy as pv
 from test_pv_admission_rules import predict, ZeroEvaluator
 from test_endgame import _round
@@ -291,6 +292,22 @@ def test_follow_identity_off_preserved_and_parameters_distinct():
     assert len(names) == len(variants) and base not in names
 
 
+def test_follow_prefix_recipe_is_opt_in_and_bounded():
+    base = pv.PVSearchConfig(checkpoint_sha256='f' * 64)
+    assert 'exact_follow_prefix_min_worlds' not in pv.recipe_payload(base)
+    enabled = replace(base, exact_follow=True, exact_follow_max_cards=8,
+                      worlds=4, exact_follow_prefix_min_worlds=2)
+    assert pv.recipe_payload(enabled)['exact_follow_prefix_min_worlds'] == 2
+    assert '-xfp2' in pv.pv_policy_name('ffffffff', enabled)
+    for invalid in (
+            replace(base, exact_follow_prefix_min_worlds=1),
+            replace(base, exact_follow=True, exact_follow_prefix_min_worlds=1),
+            replace(base, exact_follow=True, exact_follow_max_cards=8, worlds=1,
+                    exact_follow_prefix_min_worlds=2)):
+        with pytest.raises(pv.PVSearchPolicyError):
+            pv.recipe_payload(invalid)
+
+
 def test_pinned_model_singleton_follow_does_not_solve(pinned_production_package, monkeypatch):
     from shengji.train import pv_exact_follow
     env = follow_env(pinned_production_package)
@@ -552,3 +569,171 @@ def test_budget_callback_cancels_before_exact_result():
     with pytest.raises(RuntimeError, match="cancel"):
         rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
                       [([list(h) for h in rnd.hands], [])], check_budget=cancel)
+
+
+def _prefix_fixture():
+    rnd = _follow_round()
+    rnd.hands = [[f"C{i}" for i in range(3, 11)],
+                 [f"D{i}" for i in range(3, 11)],
+                 [f"S{i}" for i in range(3, 11)],
+                 [f"H{i}" for i in range(3, 11)]]
+    rnd.deck = [card for hand in rnd.hands for card in hand]
+    return rnd
+
+
+def test_prefix_soft_stop_discards_in_world_totals(monkeypatch):
+    from shengji.train import pv_exact_follow
+
+    rnd = _prefix_fixture()
+    worlds = [(rnd.hands, []) for _ in range(2)]
+    calls = 0
+    clock_values = iter((0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0))
+
+    def fake_world_scores(*args):
+        nonlocal calls
+        calls += 1
+        guard = args[6]
+        if calls == 1:
+            # Internal solver guards may be numerous; soft expiry remains
+            # active for all of them, not just the candidate boundaries.
+            for _ in range(5):
+                guard()
+            return [1.0, 3.0], 7
+        # A later internal boundary soft-stops this world.  No row from this
+        # in-flight world may reach the accumulated prefix.
+        guard()
+        guard()
+        return [100.0, 300.0], 700
+
+    monkeypatch.setattr(pv_exact_follow, '_world_scores', fake_world_scores)
+    result = rerank_follow_prefix(
+        rnd, 1, [['D3'], ['D4']], worlds, min_worlds=1,
+        soft_deadline=0.5, clock=lambda: next(clock_values))
+    assert result.worlds == 1
+    assert result.scores == (1.0, 3.0)
+    assert result.nodes == 7
+
+
+def test_prefix_soft_shortfall_is_refusal(monkeypatch):
+    from shengji.train import pv_exact_follow
+
+    rnd = _prefix_fixture()
+    worlds = [(rnd.hands, [])]
+
+    def stop(*args):
+        args[6]()
+        pytest.fail('soft stop should have raised before a world completed')
+
+    monkeypatch.setattr(pv_exact_follow, '_world_scores', stop)
+    with pytest.raises(ExactFollowRefusal, match='completed 0 worlds'):
+        rerank_follow_prefix(
+            rnd, 1, [['D3'], ['D4']], worlds, min_worlds=1,
+            soft_deadline=0.0, clock=lambda: 1.0)
+
+
+def test_prefix_hard_expiry_after_minimum_never_publishes(monkeypatch):
+    from shengji.train import pv_exact_follow
+
+    rnd = _prefix_fixture()
+    worlds = [(rnd.hands, []) for _ in range(2)]
+    checks = 0
+
+    def hard_check():
+        nonlocal checks
+        checks += 1
+        if checks > 1:
+            raise pv.PVSearchBudgetExceeded('hard expiry')
+
+    def fake_world_scores(*args):
+        args[6]()
+        return [1.0, 3.0], 7
+
+    monkeypatch.setattr(pv_exact_follow, '_world_scores', fake_world_scores)
+    with pytest.raises(pv.PVSearchBudgetExceeded, match='hard expiry'):
+        rerank_follow_prefix(
+            rnd, 1, [['D3'], ['D4']], worlds, min_worlds=1,
+            check_budget=hard_check)
+
+
+def test_prefix_solver_refusal_after_minimum_is_not_a_soft_stop(monkeypatch):
+    from shengji.train import pv_exact_follow
+    rnd = _prefix_fixture()
+    calls = [0]
+    def solve(*args):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise ExactFollowRefusal('node limit')
+        return [0.0, 1.0], 2
+    monkeypatch.setattr(pv_exact_follow, '_world_scores', solve)
+    with pytest.raises(ExactFollowRefusal, match='node limit'):
+        rerank_follow_prefix(rnd, 1, [['D3'], ['D4']], [(rnd.hands, [])] * 2,
+                             min_worlds=1)
+
+
+@pytest.mark.parametrize('mode', ['full', 'soft', 'short', 'hard', 'seven'])
+def test_prefix_bot_consumer_routes_only_eight_card_root(monkeypatch, mode):
+    from shengji.train import pv_exact_follow
+
+    rnd = _prefix_fixture()
+    if mode == 'seven':
+        rnd.hands = [hand[:7] for hand in rnd.hands]
+    worlds = [(rnd.hands, []) for _ in range(2)]
+    config = pv.PVSearchConfig(
+        checkpoint_sha256='f' * 64, worlds=2, candidates=2,
+        exact_follow=True, exact_follow_max_cards=8,
+        exact_follow_prefix_min_worlds=2 if mode == 'short' else 1,
+        serving_budget_seconds=3)
+    bot = pv.PVSearchBot(
+        predict, evaluator=ZeroEvaluator(), version=2, config=config,
+        checkpoint='/dev/null', seed=7)
+    bot._worlds = lambda *args: (worlds, len(worlds))
+    bot.scores = lambda *args: np.zeros((2, len(args[2])))
+    bot._value_means = lambda *args: (np.zeros(len(args[2])), 1)
+    bot._admission = lambda _r, _s, _a, _p, anchor_index, _w, _c: [
+        anchor_index, next(i for i in range(len(_a)) if i != anchor_index)]
+
+    clock = [0.0]
+    calls = [0]
+    monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+
+    def fake_world_scores(*args):
+        calls[0] += 1
+        if calls[0] == 2 and mode in ('soft', 'short', 'hard'):
+            clock[0] = 4.0 if mode == 'hard' else 2.5
+        if args[6] is not None:
+            args[6]()
+        return [0.0, 1.0], 2
+
+    monkeypatch.setattr(pv_exact_follow, '_world_scores', fake_world_scores)
+    def hard_check():
+        if clock[0] >= 3:
+            raise pv.PVSearchBudgetExceeded('hard serving deadline')
+    played = bot._search(rnd, 1, ['D3'], time.perf_counter(), check_budget=hard_check)
+    record = bot.last_decision_record
+    from shengji.train.search_screen import trace_fields, exact_follow_summary
+    summary = exact_follow_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [trace_fields(record)]}]}])
+    assert summary['valid']
+    if mode in ('short', 'hard'):
+        assert played == ['D3']
+        assert not record['exact_follow_applied']
+        assert 'exact_follow_scores' not in record
+        assert 'exact_follow_completed_worlds' not in record
+        assert record['exact_follow_abandoned'] == ('hard_budget' if mode == 'hard' else 'error')
+        assert record['exact_follow_error'] == ('PVSearchBudgetExceeded' if mode == 'hard'
+                                                else 'ExactFollowRefusal')
+        assert summary['sides']['arm']['hard_budget' if mode == 'hard' else 'refusal'] == 1
+        assert summary['sides']['arm']['prefix_complete'] == 0
+        return
+    assert played == record['admitted'][1]
+    if mode == 'seven':
+        assert 'exact_follow_prefix' not in record
+        assert record['exact_follow_worlds'] == 2
+        assert summary['sides']['arm']['complete'] == 1
+        return
+    assert record['exact_follow_prefix'] is True
+    assert record['exact_follow_prefix_min_worlds'] == 1
+    assert record['exact_follow_requested_worlds'] == 2
+    assert record['exact_follow_completed_worlds'] == (1 if mode == 'soft' else 2)
+    assert summary['sides']['arm']['prefix_complete'] == 1
+    assert summary['sides']['arm']['complete'] == 0

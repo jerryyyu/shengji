@@ -14,6 +14,12 @@ from shengji.harvest.rebuild import round_from_setup, setup_from_round
 from shengji.ai.refusal import Refusal, RefusalLedger, on_record
 
 
+# This hook is deliberately process-local.  It is a DEV collector facility,
+# not a serving extension: a collector must own the single thread that runs
+# the observed bot while the context is active.
+_EXACT_FOLLOW_OBSERVERS = set()
+
+
 def finish_eligible(rnd, seat):
     hand = rnd.hands[seat]
     return (rnd.phase == 'play' and not rnd.trick.plays and 2 <= len(hand) <= 8
@@ -101,6 +107,114 @@ def normalized(obj):
     return json.loads(json.dumps(obj, default=default, sort_keys=True))
 
 
+def _action_multiset(action):
+    """Return an order-independent, JSON-safe key for a submitted action."""
+    if not isinstance(action, list) or not action:
+        raise ValueError('malformed admitted actions')
+    try:
+        counts = Counter(action)
+    except TypeError as exc:
+        raise ValueError('malformed admitted actions') from exc
+    return tuple(sorted(counts.items()))
+
+
+@contextmanager
+def observe_exact_follow(bot, collector):
+    """Capture the real optional exact-follow stage for one DEV bot call.
+
+    ``PVSearchBot._search`` imports ``pv_exact_follow.rerank_follow`` at call
+    time, so patching the module function here observes the actual serving
+    consumer without changing the normal no-observer path.  The wrapper only
+    records a call made by this bot's active ``_search`` invocation and with
+    that invocation's root/seat; unrelated direct solver calls are ignored.
+
+    This is intentionally single-threaded collector plumbing.  Nested
+    observers are rejected, and the original instance method
+    and module function are restored even when the search or solver raises.
+    Captured rows describe the exact stage result, not the final played action:
+    the outer optional-stage guard may still abandon that result.
+    """
+    if not hasattr(collector, 'capture_exact_stage'):
+        raise TypeError('exact-follow collector must be LeadCapture-like')
+    identity = id(bot)
+    if _EXACT_FOLLOW_OBSERVERS:
+        raise RuntimeError('nested exact-follow observer')
+    from . import pv_exact_follow
+
+    original_rerank = pv_exact_follow.rerank_follow
+    original_search = bot._search
+    had_own_search = '_search' in vars(bot)
+    saved_own_search = vars(bot).get('_search')
+    active = []
+    rows = []
+    capture_failures = []
+
+    def observed_search(rnd, seat, *args, **kwargs):
+        active.append((rnd, seat))
+        try:
+            return original_search(rnd, seat, *args, **kwargs)
+        finally:
+            active.pop()
+
+    def observed_rerank(rnd, seat, admitted, worlds, *, baseline_index=0,
+                        max_hand_cards=4, max_nodes=250_000,
+                        check_budget=None, solver='reference'):
+        if not active or rnd is not active[-1][0] or seat != active[-1][1]:
+            return original_rerank(
+                rnd, seat, admitted, worlds, baseline_index=baseline_index,
+                max_hand_cards=max_hand_cards, max_nodes=max_nodes,
+                check_budget=check_budget, solver=solver)
+        try:
+            input_packet = collector.capture_exact_stage(
+                rnd, ledger=bot._refusals, admitted=admitted, worlds=worlds,
+                baseline_index=baseline_index)
+        except Exception as exc:
+            # The serving optional stage has a broad fallback for solver
+            # failures.  Do not let it turn a collector defect into a silent
+            # missing sample; re-raise the instrumentation failure after the
+            # surrounding context has restored both patched functions.
+            capture_failures.append(exc)
+            input_packet = None
+        row = {
+            'schema': 'exact-follow-observation-dev-v1',
+            'stage': 'result',
+            'latency_evidence': False,
+            'input': input_packet,
+            'config': {
+                'solver': solver,
+                'max_hand_cards': max_hand_cards,
+                'max_nodes': max_nodes,
+            },
+        }
+        try:
+            result = original_rerank(
+                rnd, seat, admitted, worlds, baseline_index=baseline_index,
+                max_hand_cards=max_hand_cards, max_nodes=max_nodes,
+                check_budget=check_budget, solver=solver)
+        except Exception as exc:
+            row['result'] = {'exception': type(exc).__name__}
+            rows.append(row)
+            raise
+        row['result'] = normalized(result)
+        rows.append(row)
+        return result
+
+    _EXACT_FOLLOW_OBSERVERS.add(identity)
+    try:
+        pv_exact_follow.rerank_follow = observed_rerank
+        bot._search = observed_search
+        yield rows
+    finally:
+        pv_exact_follow.rerank_follow = original_rerank
+        if had_own_search:
+            bot._search = saved_own_search
+        else:
+            del bot._search
+        _EXACT_FOLLOW_OBSERVERS.remove(identity)
+        if capture_failures:
+            raise capture_failures[0]
+
+
 def fingerprint(rnd):
     state = dict(vars(rnd))
     # Ordering memoization is execution history, not game state.
@@ -186,15 +300,25 @@ def restore_exact_stage(packet):
     if type(seat) is not int or rnd.turn != seat:
         raise ValueError('exact stage acting seat drift')
     admitted = packet.get('admitted')
-    if (not isinstance(admitted, list) or not admitted
-            or any(not isinstance(action, list) or not action for action in admitted)):
+    if not isinstance(admitted, list) or not admitted:
         raise ValueError('malformed admitted actions')
+    action_keys = []
+    hand_counts = Counter(rnd.hands[seat])
+    for action in admitted:
+        key = _action_multiset(action)
+        if Counter(action) - hand_counts:
+            raise ValueError('action cards outside acting hand')
+        if key in action_keys:
+            raise ValueError('duplicate admitted action')
+        action_keys.append(key)
     baseline = packet.get('baseline_index')
     if type(baseline) is not int or not 0 <= baseline < len(admitted):
         raise ValueError('baseline index is outside the ballot')
     actual = packet.get('actual_action')
-    if actual is not None and (not isinstance(actual, list) or actual not in admitted):
-        raise ValueError('actual action is outside the ballot')
+    if actual is not None:
+        actual_key = _action_multiset(actual)
+        if actual_key not in action_keys:
+            raise ValueError('actual action is outside the ballot')
     worlds = _stage_worlds(rnd, packet.get('worlds'), seat)
     return rnd, ledger, copy.deepcopy(admitted), worlds, baseline, copy.deepcopy(actual)
 
@@ -265,8 +389,11 @@ class LeadCapture:
             raise ValueError('malformed admitted actions')
         if type(baseline_index) is not int or not 0 <= baseline_index < len(admitted_copy):
             raise ValueError('baseline index is outside the ballot')
-        if actual_action is not None and actual_action not in admitted_copy:
-            raise ValueError('actual action is outside the ballot')
+        if actual_action is not None:
+            actual_key = _action_multiset(normalized(actual_action))
+            admitted_keys = [_action_multiset(action) for action in admitted_copy]
+            if actual_key not in admitted_keys:
+                raise ValueError('actual action is outside the ballot')
         packet = dict(schema='exact-stage-capture-dev-v1', replay=replay,
                       seat=rnd.turn, admitted=admitted_copy,
                       worlds=normalized(worlds), baseline_index=baseline_index,

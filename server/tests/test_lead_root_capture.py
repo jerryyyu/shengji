@@ -1,12 +1,13 @@
 import copy
 import json
+import time
 from pathlib import Path
 
 import pytest
 
 from shengji.train.lead_root_capture import (
-    LeadCapture, fingerprint, restore, restore_with_ledger, restore_exact_stage,
-    normalized,
+    LeadCapture, fingerprint, observe_exact_follow, restore, restore_with_ledger,
+    restore_exact_stage, normalized,
 )
 from shengji.ai.refusal import RefusalLedger
 from shengji.rl.replay_log import rebuild_round
@@ -312,3 +313,114 @@ def test_exact_stage_lead_capture_copies_producer_inputs():
     assert fingerprint(restored) == fingerprint(rnd)
     assert ballot == [[rnd.hands[rnd.turn][0]]] and baseline == 0
     assert sampled[0][0] == rnd.hands
+
+
+def _observed_follow_bot():
+    """Build the real PV search wrapper used by the exact-follow fixture."""
+    import numpy as np
+
+    from shengji.train import pv_search_policy as pv
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.harvest.legal import enumerate_legal
+    from test_pv_admission_rules import predict, ZeroEvaluator
+
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    ledgers = [RefusalLedger() for _ in range(4)]
+    driver = HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= 3):
+        seat = rnd.turn
+        ledgers[seat].observe(rnd)
+        attempted = driver.decide_play(rnd, seat)
+        rnd.play(seat, attempted)
+        capture.committed(rnd, seat, attempted)
+    seat = rnd.turn
+    anchor = HeuristicBot().decide_play(rnd, seat)
+    legal = enumerate_legal(rnd, seat, cap=4000, must_include=[anchor])
+    preferred = next(list(action) for action in legal.actions
+                     if list(action) != list(anchor))
+    bot = pv.PVSearchBot(
+        predict, evaluator=ZeroEvaluator(), version=2,
+        config=pv.PVSearchConfig(
+            checkpoint_sha256='f' * 64, worlds=2, candidates=8, cap=4000,
+            exact_follow=True, exact_follow_max_nodes=10_000),
+        checkpoint='/dev/null', seed=7)
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried)) for _ in range(2)]
+    bot._worlds = lambda *args: (worlds, 2)
+    bot.scores = lambda r, s, actions, w: np.zeros((len(w), len(actions)))
+    bot._value_means = lambda r, s, actions, w, check: (
+        np.asarray([1.0 if a == preferred else 0.0 for a in actions]), 1)
+    bot._refusals = ledgers[rnd.turn]
+    return bot, rnd, capture, anchor
+
+
+def test_observe_exact_follow_captures_real_search_and_json_replay():
+    from shengji.train.pv_exact_follow import rerank_follow
+
+    unobserved, root, _, anchor = _observed_follow_bot()
+    expected = unobserved._search(copy.deepcopy(root), root.turn, anchor,
+                                  time.perf_counter())
+
+    observed, root, capture, anchor = _observed_follow_bot()
+    with observe_exact_follow(observed, capture) as rows:
+        actual = observed._search(root, root.turn, anchor, time.perf_counter())
+    assert actual == expected
+    assert len(rows) == 1 and rows[0]['stage'] == 'result'
+    row = json.loads(json.dumps(rows[0]))
+    assert row['input']['baseline_index'] != 0
+    assert row['config']['max_nodes'] == 10_000
+
+    replayed_root, _, admitted, worlds, baseline, _ = restore_exact_stage(row['input'])
+    replayed = rerank_follow(
+        replayed_root, row['input']['seat'], admitted, worlds,
+        baseline_index=baseline, **row['config'])
+    assert normalized(replayed) == row['result']
+    assert row['result']['winner'] == replayed.winner
+
+
+def test_observe_exact_follow_restores_on_exception_and_rejects_nested():
+    from shengji.train import pv_exact_follow
+
+    bot, root, capture, anchor = _observed_follow_bot()
+    rows = None
+    original = pv_exact_follow.rerank_follow
+    with pytest.raises(RuntimeError, match='nested exact-follow observer'):
+        with observe_exact_follow(bot, capture) as rows:
+            with observe_exact_follow(bot, capture):
+                pass
+    assert pv_exact_follow.rerank_follow is original
+
+    def fail(*args, **kwargs):
+        raise RuntimeError('fixture failure')
+
+    pv_exact_follow.rerank_follow = fail
+    try:
+        with observe_exact_follow(bot, capture) as rows:
+            bot._search(root, root.turn, anchor, time.perf_counter())
+        assert rows[-1]['result'] == {'exception': 'RuntimeError'}
+        assert pv_exact_follow.rerank_follow is fail
+        assert '_search' not in vars(bot)
+    finally:
+        pv_exact_follow.rerank_follow = original
+
+    class FailingCapture:
+        def capture_exact_stage(self, *args, **kwargs):
+            raise ValueError('capture failure')
+
+    with pytest.raises(ValueError, match='capture failure'):
+        with observe_exact_follow(bot, FailingCapture()):
+            bot._search(root, root.turn, anchor, time.perf_counter())
+    assert pv_exact_follow.rerank_follow is original
+    assert '_search' not in vars(bot)
+
+
+@pytest.mark.parametrize('mutation,match', [
+    (lambda p: p['admitted'].append(list(p['admitted'][0])), 'duplicate admitted action'),
+    (lambda p: p['admitted'][0].append('not-in-hand'), 'action cards outside acting hand'),
+])
+def test_exact_stage_rejects_action_multiset_corruption(mutation, match):
+    _, packet, _ = _exact_follow_capture()
+    bad = copy.deepcopy(packet)
+    mutation(bad)
+    with pytest.raises(ValueError, match=match):
+        restore_exact_stage(bad)

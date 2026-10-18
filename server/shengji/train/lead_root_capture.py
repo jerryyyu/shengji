@@ -392,7 +392,7 @@ def replay_exact_lead(row, leaf_fn, *, policy_first=False):
 
 
 def evaluate_follow_prefix(row, *, budget_seconds, min_worlds=16,
-                           time_scale=1.0, clock=None):
+                           time_scale=1.0, clock=None, true_deal=False):
     """DEV full-world benchmark and completed-prefix budget simulation.
 
     This runs every world without a serving deadline, then simulates a prefix.
@@ -406,6 +406,8 @@ def evaluate_follow_prefix(row, *, budget_seconds, min_worlds=16,
     import time
     from .pv_exact_follow import rerank_follow, ExactFollowResult
 
+    if type(true_deal) is not bool:
+        raise ValueError('true_deal must be a bool')
     for name, value in [('budget_seconds', budget_seconds), ('time_scale', time_scale)]:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
             raise ValueError(f'{name} must be positive and finite')
@@ -465,6 +467,31 @@ def evaluate_follow_prefix(row, *, budget_seconds, min_worlds=16,
     prefix_means = ([value / prefix_count for value in prefix_totals]
                     if served else None)
     selected = choose(prefix_means) if served else baseline
+
+    # This is deliberately after sampled-world replay validation and prefix
+    # selection.  The hidden deal is a diagnostic label only; it must never
+    # alter either selected action or the simulated serving path.
+    truth_scores = None
+    full_gain = None
+    prefix_gain = None
+    if true_deal:
+        truth_world = (copy.deepcopy(rnd.hands), copy.deepcopy(rnd.buried))
+        truth = rerank_follow(rnd, rnd.turn, admitted, [truth_world],
+                              baseline_index=baseline, **config)
+        if (truth.worlds != 1 or len(truth.scores) != len(admitted)
+                or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                       or not math.isfinite(value) for value in truth.scores)):
+            raise ValueError('true-deal replay result mismatch')
+        truth_scores = list(truth.scores)
+        full_gain = truth_scores[full_winner] - truth_scores[baseline]
+        prefix_gain = (truth_scores[selected] - truth_scores[baseline]
+                       if served else 0.0)
+
+    claim = ('Simulated stage budget only; double-dummy true-deal scores and '
+             'baseline-relative gains are diagnostic, not paired gameplay '
+             'strength or deployment evidence.' if true_deal else
+             'Simulated stage budget only; no hard-expiry, whole-decision latency, '
+             'true-deal or strength claim')
     return dict(schema='exact-follow-prefix-dev-v1', worlds=len(worlds),
                 completed_prefix=prefix_count, min_worlds=min_worlds,
                 budget_seconds=budget_seconds, time_scale=time_scale,
@@ -472,12 +499,14 @@ def evaluate_follow_prefix(row, *, budget_seconds, min_worlds=16,
                 full_selected=full_winner, agrees_full=(selected == full_winner),
                 prefix_means=prefix_means, full_means=full_means,
                 full_world_regret=full_means[full_winner] - full_means[selected],
-                claim='Simulated stage budget only; no hard-expiry, whole-decision latency, true-deal or strength claim')
+                true_deal=true_deal, truth_scores=truth_scores,
+                full_gain=full_gain, prefix_gain=prefix_gain, claim=claim)
 
 
 def summarize_follow_prefix_collection(capture, journal, *, budget_seconds,
                                        min_worlds=16, time_scale=1.0,
-                                       max_hand_size=8, clock=None):
+                                       max_hand_size=8, clock=None,
+                                       true_deal=False):
     """Join one completed DEV collection before benchmarking any solver row.
 
     The denominator is observed follow calls at a fixed maximum hand size, not
@@ -486,6 +515,8 @@ def summarize_follow_prefix_collection(capture, journal, *, budget_seconds,
     """
     import math
 
+    if type(true_deal) is not bool:
+        raise ValueError('true_deal must be a bool')
     for name, value in [('budget_seconds', budget_seconds), ('time_scale', time_scale)]:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
             raise ValueError(f'{name} must be positive and finite')
@@ -595,13 +626,48 @@ def summarize_follow_prefix_collection(capture, journal, *, budget_seconds,
             unpublished_by_cause[cause] += 1
             continue
         result = evaluate_follow_prefix(row, budget_seconds=budget_seconds,
-                                        min_worlds=min_worlds, time_scale=time_scale, clock=clock)
+                                        min_worlds=min_worlds, time_scale=time_scale,
+                                        clock=clock, true_deal=true_deal)
+        if true_deal:
+            truth_scores = result.get('truth_scores')
+            if (not isinstance(truth_scores, list) or not truth_scores
+                    or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                           or not math.isfinite(value) for value in truth_scores)):
+                raise ValueError('true-deal result is missing finite truth scores')
+            for name in ('full_gain', 'prefix_gain'):
+                value = result.get(name)
+                if (isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not math.isfinite(value)):
+                    raise ValueError(f'true-deal result is missing finite {name}')
+            if not result.get('served') and result['prefix_gain'] != 0.0:
+                raise ValueError('fallback true-deal prefix gain must be zero')
         counts['measured'] += 1
         group = 'served' if result['served'] else 'fallback'
         counts[group] += 1
         counts[group + '_agrees'] += int(result['agrees_full'])
         results.append(dict(decision_index=index, **result))
     import os
+    full_gain_sum = prefix_gain_sum = None
+    full_gain_mean = prefix_gain_mean = prefix_gain_ratio = None
+    prefix_gain_ratio_reason = None
+    if true_deal:
+        full_gains = [row['full_gain'] for row in results]
+        prefix_gains = [row['prefix_gain'] for row in results]
+        full_gain_sum = sum(full_gains)
+        prefix_gain_sum = sum(prefix_gains)
+        if full_gains:
+            full_gain_mean = full_gain_sum / len(full_gains)
+            prefix_gain_mean = prefix_gain_sum / len(prefix_gains)
+        if full_gain_sum > 0:
+            prefix_gain_ratio = prefix_gain_sum / full_gain_sum
+        else:
+            prefix_gain_ratio_reason = ('no measured rows' if not full_gains else
+                                        'full gain sum is not positive')
+    claim = ('Simulated stage timing only; double-dummy true-deal scores and '
+             'baseline-relative gains are diagnostic, not paired gameplay '
+             'strength or deployment evidence.' if true_deal else
+             'Simulated stage timing only; no hard-expiry, Fly latency, true-deal '
+             'or strength claim.')
     return dict(schema='exact-follow-prefix-summary-dev-v1', counts=counts, rows=results,
                 max_hand_size=max_hand_size,
                 budget_seconds=budget_seconds, min_worlds=min_worlds, time_scale=time_scale,
@@ -612,11 +678,16 @@ def summarize_follow_prefix_collection(capture, journal, *, budget_seconds,
                 served_fraction_observed=counts['served'] / counts['observed'],
                 served_agreement=(counts['served_agrees'] / counts['served'] if counts['served'] else None),
                 unmeasured_fraction=(counts['no_capture'] + counts['unpublished']) / counts['observed'],
+                true_deal=true_deal, full_gain_sum=full_gain_sum,
+                full_gain_mean=full_gain_mean, prefix_gain_sum=prefix_gain_sum,
+                prefix_gain_mean=prefix_gain_mean,
+                prefix_gain_ratio=prefix_gain_ratio,
+                prefix_gain_ratio_reason=prefix_gain_ratio_reason,
                 limits=['Observed fixed-size follow calls, not solver eligibility or population prevalence.',
                         'Completion-conditioned full-world replay; missing/abandoned solves remain unmeasured.',
                         'Capture runs inside the served stage budget; capture-caused abandonment is not separable (no per-row capture_seconds).',
                         'The collection header does not record its engine; this summary records the reader engine.',
-                        'Simulated stage timing only; no hard-expiry, Fly latency, true-deal or strength claim.'])
+                        claim])
 
 
 def fingerprint(rnd):

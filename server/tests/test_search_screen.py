@@ -157,6 +157,26 @@ def test_exact_follow_prefix_receipt_is_not_full_completion(patch, valid):
     assert result['sides']['arm']['prefix_complete'] == int(valid)
 
 
+@pytest.mark.parametrize('prefix,abandoned,valid', [
+    (True, 'error', True), (False, 'error', False),
+    (True, 'hard_budget', False),
+])
+def test_prefix_shortfall_counts_only_as_soft_budget(prefix, abandoned, valid):
+    row = dict(exact_follow_attempted=True, exact_follow_applied=False,
+               exact_follow_abandoned=abandoned,
+               exact_follow_error='ExactFollowPrefixShortfall')
+    if prefix:
+        row.update(exact_follow_prefix=True, exact_follow_requested_worlds=64,
+                   exact_follow_prefix_min_worlds=16)
+    result = S.exact_follow_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [S.trace_fields(row)]}]}])
+    assert result['valid'] is valid
+    counts = result['sides']['arm']
+    assert counts['soft_budget'] == int(valid)
+    assert counts['invalid'] == int(not valid)
+    assert counts['refusal'] == counts['hard_budget'] == counts['prefix_complete'] == 0
+
+
 def test_exact_follow_summary_missing_attempt_is_not_ineligible():
     result = S.exact_follow_summary([
         {'decision_traces': [

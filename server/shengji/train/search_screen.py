@@ -397,7 +397,12 @@ def exact_follow_summary(shards):
                     if not valid:
                         counts['invalid'] += 1
                         continue
-                    if abandoned in ('soft_budget', 'hard_budget'):
+                    if row.get('exact_follow_error') == 'ExactFollowPrefixShortfall':
+                        if prefix and abandoned == 'error':
+                            counts['soft_budget'] += 1
+                        else:
+                            counts['invalid'] += 1
+                    elif abandoned in ('soft_budget', 'hard_budget'):
                         counts[abandoned] += 1
                     else:
                         if row.get('exact_follow_error') == 'ExactFollowRefusal':

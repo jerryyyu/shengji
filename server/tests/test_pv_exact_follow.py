@@ -727,7 +727,7 @@ def test_prefix_soft_stop_discards_in_world_totals(monkeypatch):
     assert result.nodes == 7
 
 
-def test_prefix_soft_shortfall_is_refusal(monkeypatch):
+def test_prefix_soft_shortfall_is_distinct_refusal(monkeypatch):
     from shengji.train import pv_exact_follow
 
     rnd = _prefix_fixture()
@@ -738,7 +738,8 @@ def test_prefix_soft_shortfall_is_refusal(monkeypatch):
         pytest.fail('soft stop should have raised before a world completed')
 
     monkeypatch.setattr(pv_exact_follow, '_world_scores', stop)
-    with pytest.raises(ExactFollowRefusal, match='completed 0 worlds'):
+    from shengji.train.pv_exact_follow import ExactFollowPrefixShortfall
+    with pytest.raises(ExactFollowPrefixShortfall, match='completed 0 worlds'):
         rerank_follow_prefix(
             rnd, 1, [['D3'], ['D4']], worlds, min_worlds=1,
             soft_deadline=0.0, clock=lambda: 1.0)
@@ -834,8 +835,9 @@ def test_prefix_bot_consumer_routes_only_eight_card_root(monkeypatch, mode):
         assert 'exact_follow_completed_worlds' not in record
         assert record['exact_follow_abandoned'] == ('hard_budget' if mode == 'hard' else 'error')
         assert record['exact_follow_error'] == ('PVSearchBudgetExceeded' if mode == 'hard'
-                                                else 'ExactFollowRefusal')
-        assert summary['sides']['arm']['hard_budget' if mode == 'hard' else 'refusal'] == 1
+                                                else 'ExactFollowPrefixShortfall')
+        assert summary['sides']['arm']['hard_budget' if mode == 'hard' else 'soft_budget'] == 1
+        assert summary['sides']['arm']['refusal'] == 0
         assert summary['sides']['arm']['prefix_complete'] == 0
         return
     assert played == record['admitted'][1]

@@ -29,6 +29,10 @@ class ExactFollowRefusal(RuntimeError):
     """The root or one of its worlds is outside the exact follow boundary."""
 
 
+class ExactFollowPrefixShortfall(ExactFollowRefusal):
+    """Soft time expired before the minimum whole-world prefix completed."""
+
+
 class _ExactFollowPrefixSoftStop(Exception):
     """Stop a prefix only between worlds; a world in flight is discarded."""
 
@@ -89,7 +93,9 @@ def rerank_follow_prefix(rnd, seat: int, admitted, worlds, *, baseline_index: in
     The hard serving guard is passed through to the real world solver.  The
     separate soft clock may interrupt a world, but that private exception is
     caught only around the whole-world call, so no partial world's scores are
-    committed.  A short prefix is a refusal rather than a successful result.
+    committed.  A short prefix raises a distinct soft-time shortfall refusal.
+    Returned nodes count completed worlds only, excluding discarded work;
+    they cannot measure total compute cost or latency.
     """
     if max_hand_cards != 8:
         raise ExactFollowRefusal("exact follow prefix requires an eight-card boundary")
@@ -143,7 +149,7 @@ def rerank_follow_prefix(rnd, seat: int, admitted, worlds, *, baseline_index: in
         nodes += solved
         completed += 1
     if completed < min_worlds:
-        raise ExactFollowRefusal(
+        raise ExactFollowPrefixShortfall(
             f"exact follow prefix completed {completed} worlds, needs {min_worlds}")
     if check_budget is not None:
         check_budget()

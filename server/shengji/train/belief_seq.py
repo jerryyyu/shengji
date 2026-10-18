@@ -428,6 +428,26 @@ def apply_speed_flags(model, args):
     return fwd, bool(getattr(args, "bf16", False))
 
 
+def speed_segment(args, epoch: int, buffer: int, *, inferred: bool = False) -> dict:
+    """One training segment's numerical recipe: the speed flags (and threads)
+    in force from ``(epoch, buffer)`` on.  ``args`` is a Namespace or a saved
+    ``vars(args)`` dict; ``inferred`` marks a segment reconstructed from a
+    checkpoint written before segments were recorded (its flags were off)."""
+    a = args if isinstance(args, Mapping) else vars(args)
+    seg = {"start_epoch": int(epoch), "start_buffer": int(buffer),
+           "grouped_xattn": bool(a.get("grouped_xattn", False)), "bf16": bool(a.get("bf16", False)),
+           "compile": bool(a.get("compile", False)), "threads": a.get("threads"),
+           "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if inferred:
+        seg["inferred"] = True
+    return seg
+
+
+def _segment_text(seg: Mapping[str, Any]) -> str:
+    return (f"grouped_xattn={int(seg['grouped_xattn'])} bf16={int(seg['bf16'])} "
+            f"compile={int(seg['compile'])} threads={seg['threads']}")
+
+
 def n_params(model) -> int:
     return int(sum(p.numel() for p in model.parameters()))
 
@@ -650,12 +670,17 @@ def train(args) -> int:
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
-        _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}")
+        # keep every earlier segment's recipe; this invocation's flags start a new one
+        segs = state.setdefault("speed_segments", [speed_segment(saved["args"], 0, 0, inferred=True)])
+        segs.append(speed_segment(args, state["epoch"], state["buffer"]))
+        _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']} "
+                        f"speed segment {len(segs)}: {_segment_text(segs[-1])}")
     else:
         _status(status, f"START params={n_params(model)} train_rows={stream.rows} "
                         f"chunks={len(stream.entries)} config={json.dumps(vars(args), default=str)}")
     # after any checkpoint load: the speed flags change no weight, key or saved state
     fwd, bf16 = apply_speed_flags(model, args)
+    state.setdefault("speed_segments", [speed_segment(args, 0, 0)])
     compiled_ok = not args.compile
 
     def lr_at(step):
@@ -715,7 +740,8 @@ def train(args) -> int:
         if cll < state["best"] - 1e-5:
             state["best"], state["bad"] = cll, 0
             torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
-                        "epoch": epoch + 1, "calib_ll": cll}, out / "best.pt")
+                        "epoch": epoch + 1, "calib_ll": cll,
+                        "speed_segments": state["speed_segments"]}, out / "best.pt")
         else:
             state["bad"] += 1
         state["epoch"] += 1

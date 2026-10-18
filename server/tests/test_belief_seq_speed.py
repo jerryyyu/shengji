@@ -170,3 +170,76 @@ def test_export_schema_is_unchanged_by_the_flags(model, tmp_path):
     (loss / n).backward()
     opt.step()
     assert export(model, "flags") == plain
+
+
+def test_compile_with_bf16_runs_and_stays_close_to_fp32(model):
+    tb = synthetic_batch(4, 20, 60, seed=5)
+    l0, _ = loss_and_grads(model, model, tb)
+    model.grouped_xattn = True
+    lb, gb = loss_and_grads(model, bs.compile_forward(model), tb, bf16=True)
+    assert abs(lb - l0) <= BF16_LOSS_REL * abs(l0)
+    assert all(torch.isfinite(g).all() and g.dtype == torch.float32 for g in gb.values())
+
+
+def test_numpy_package_predicts_like_torch_after_a_flagged_update(model, tmp_path):
+    from shengji.ai import belief_numpy as bn
+    args = bs.build_parser().parse_args(["train", "--data", "d", "--out", "o", "--grouped-xattn",
+                                         "--bf16"])
+    fwd, bf16 = bs.apply_speed_flags(model, args)
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-2)
+    loss, n = bs.batch_loss(fwd, synthetic_batch(3, 10, 20), bf16=bf16)
+    (loss / n).backward()
+    opt.step()
+    ck = tmp_path / "flags.pt"
+    torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
+                "epoch": 1, "calib_ll": 1.0}, ck)
+    info = bsm.export(str(ck), str(tmp_path / "flags.npz"), temperature=1.0)
+    pkg = bn.load_belief_numpy(tmp_path / "flags.npz", info["sha256"], dtype=np.float64)
+    tb = synthetic_batch(3, 14, 24, seed=6)
+    batch = {k: v.numpy() for k, v in tb.items()}
+    with torch.no_grad():
+        model.eval()
+        ref = model(tb).numpy().astype(np.float64)        # fp32 eager, as served parity reads it
+    for j in range(len(batch["X"])):
+        inp = bsm.row_inputs(batch, j)
+        assert np.abs(pkg.logits(inp) - ref[j])[inp["M"]].max() <= 1e-4
+
+
+class _FakeStream:
+    """Two one-batch buffers per epoch of synthetic batches (no files)."""
+
+    def __init__(self, entries, **kw):
+        self.entries = list(entries)
+        self.rows = 40
+
+    def batches(self, seed, epoch, start_buffer=0, prefetch=6):
+        for gi in range(start_buffer, len(self.entries)):
+            yield gi, {k: v.numpy() for k, v in synthetic_batch(2, 9, 20, seed=10 * epoch + gi).items()}
+
+
+def test_a_resume_with_other_speed_flags_records_both_segments(tmp_path, monkeypatch):
+    calib = {"M": np.ones((5, 54, N_RECV), bool), "Y": np.zeros((5, 54, N_RECV), np.float32),
+             "trick": np.ones(5, int), "role": np.zeros(5, int)}
+    calib["Y"][:, :, 0] = 1.0
+    monkeypatch.setattr(bs, "extract_entries", lambda dirs, split: [{"rows": 20}, {"rows": 20}])
+    monkeypatch.setattr(bs, "Stream", _FakeStream)
+    monkeypatch.setattr(bs, "load_eval", lambda *a, **k: calib)
+    monkeypatch.setattr(bs, "predict_logits",
+                        lambda model, part, **k: np.zeros((len(part["M"]), 54, N_RECV), np.float32))
+    out = tmp_path / "train"
+    base = ["train", "--data", "d", "--out", str(out), "--epochs", "1", "--save-every", "1e9",
+            "--threads", str(torch.get_num_threads()), "--d", "16", "--heads", "2", "--enc-layers", "1",
+            "--xattn-layers", "1", "--x-hidden", "16"]
+    out.mkdir()
+    (out / "STOP").touch()
+    assert bs.main(base) == 3                                # fp32 per-row, stopped after buffer 0
+    (out / "STOP").unlink()
+    assert bs.main(base + ["--grouped-xattn", "--bf16"]) == 0
+    want = [(0, 0, False, False), (0, 1, True, True)]
+    for f in ("checkpoint.pt", "best.pt"):
+        saved = torch.load(out / f, weights_only=False)
+        segs = saved["state"]["speed_segments"] if f == "checkpoint.pt" else saved["speed_segments"]
+        assert [(s["start_epoch"], s["start_buffer"], s["grouped_xattn"], s["bf16"]) for s in segs] == want
+        assert all(not s["compile"] and s["utc"] and "inferred" not in s for s in segs)
+    log = (out / "status.log").read_text()
+    assert "RESUME epoch 0 buffer 1 speed segment 2: grouped_xattn=1 bf16=1 compile=0" in log

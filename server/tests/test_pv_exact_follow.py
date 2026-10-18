@@ -597,6 +597,70 @@ def test_prefix_registry_preserves_explicit_opt_in(pinned_production_package):
         pv.pv_registry_entries(**recipe, exact_follow_prefix_min_worlds=True)
 
 
+@pytest.mark.parametrize('hard_expiry', [False, True])
+def test_prefix_server_snapshot_commit(pinned_production_package, tmp_path,
+                                       monkeypatch, hard_expiry):
+    from shengji.train import pv_exact_follow
+    from shengji.train.search_screen import trace_fields, exact_follow_summary
+
+    recipe = pv.pv_env_recipe(follow_env(pinned_production_package, 8))
+    entries = pv.pv_registry_entries(**recipe, exact_follow_prefix_min_worlds=1)
+    name, factory = next(iter(entries.items()))
+    bot = factory(seed=7)
+    rnd, heuristic = _play_state(), HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) == 8):
+        assert rnd.phase == 'play'
+        action = (heuristic.decide_play(rnd, rnd.turn) if rnd.trick.plays
+                  else [rnd.hands[rnd.turn][0]])
+        rnd.play(rnd.turn, action)
+    clock, calls = [0.0], [0]
+    monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+
+    def scores(*args):
+        args[6]()
+        calls[0] += 1
+        clock[0] = 4.0 if hard_expiry else 2.5
+        return [0.0] * len(args[2]), 1
+
+    monkeypatch.setattr(pv_exact_follow, '_world_scores', scores)
+
+    async def scenario():
+        game = Game(random.Random(7))
+        game.round = rnd
+        room = srv.Room(code='PREFIX', game=game, bot=bot,
+                        seats=[srv.Seat(str(i), is_bot=True) for i in range(4)],
+                        log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        room.log_event = lambda *args, **kwargs: None
+        seat, hands = rnd.turn, copy.deepcopy(rnd.hands)
+        rng = bot.sampler.rng.getstate()
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        assert prepared is not None
+        assert rnd.hands == hands and bot.sampler.rng.getstate() == rng
+        copied = prepared.decision.snapshot.bot_copy
+        assert copied.policy_name == name and copied.exact_follow_prefix_min_worlds == 1
+        record = copied.last_decision_record
+        assert record['exact_follow_prefix'] is True
+        assert calls[0] == 1
+        summary = exact_follow_summary([{'decision_traces': [
+            {'side': 'arm', 'decisions': [trace_fields(record)]}]}])
+        assert summary['valid']
+        if hard_expiry:
+            assert record['exact_follow_abandoned'] == 'hard_budget'
+            assert not record['exact_follow_applied']
+            assert 'exact_follow_scores' not in record
+            assert summary['sides']['arm']['hard_budget'] == 1
+        else:
+            assert record['exact_follow_completed_worlds'] == 1
+            assert summary['sides']['arm']['prefix_complete'] == 1
+        assert srv._commit_bot_turn(room, prepared)
+        assert not srv._commit_bot_turn(room, prepared)
+        assert len(rnd.hands[seat]) == len(hands[seat]) - len(prepared.decision.cards)
+
+    asyncio.run(scenario())
+
+
 def test_prefix_real_eight_card_solver_matches_full_world_and_stops(monkeypatch):
     from shengji.train import pv_exact_follow as module
     hands = [[suit + rank for rank in ('3', '4', '5', '6') for _ in range(2)]

@@ -551,3 +551,38 @@ def test_exact_lead_baseline_override_is_not_required_in_ballot():
     assert rows[0]['input']['actual_action'] is None
     assert rows[0]['baseline_played'] == played
     assert played not in admitted
+
+
+@pytest.mark.parametrize('deep', [False, True])
+def test_exact_lead_replay_refuses_unverified_results(deep):
+    from shengji.train.lead_root_capture import observe_exact_lead, replay_exact_lead
+
+    bot, root, capture, anchor = _observed_lead_bot(deep)
+    with observe_exact_lead(bot, capture) as rows:
+        bot._search(root, root.turn, anchor, time.perf_counter())
+    row = json.loads(json.dumps(rows[0]))
+    for field in ('means', 'stats'):
+        bad = copy.deepcopy(row)
+        if field == 'means':
+            bad['result']['means'][0] += 1
+        else:
+            bad['result']['stats']['worlds_completed'] += 1
+        with pytest.raises(ValueError, match='result mismatch'):
+            replay_exact_lead(bad, bot._leaf)
+
+    def forbidden_leaf(*args):
+        pytest.fail('invalid evidence must be refused before solver execution')
+
+    bad = copy.deepcopy(row)
+    bad['result'] = {'exception': '_AdaptiveWorldsExpired'}
+    with pytest.raises(ValueError, match='complete recorded result'):
+        replay_exact_lead(bad, forbidden_leaf)
+    bad = copy.deepcopy(row)
+    bad['exact_lead_policy_first'] = True
+    with pytest.raises(ValueError, match='leaf mode mismatch'):
+        replay_exact_lead(bad, forbidden_leaf)
+    bad = copy.deepcopy(row)
+    bad.update(decision={'work_complete': True, 'exact_lead_status': 'abandoned'},
+               exact_lead_status='abandoned')
+    with pytest.raises(ValueError, match='not published complete'):
+        replay_exact_lead(bad, forbidden_leaf)

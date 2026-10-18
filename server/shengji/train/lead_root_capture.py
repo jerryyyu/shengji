@@ -334,12 +334,31 @@ def observe_exact_lead(bot, collector):
             raise capture_failures[0]
 
 
-def replay_exact_lead(row, leaf_fn):
-    """Replay one captured solver result using an explicit leaf continuation."""
+def replay_exact_lead(row, leaf_fn, *, policy_first=False):
+    """Verify a complete captured result using its explicit leaf continuation.
+
+    Collection rows must also report a completed published lead stage. Bare
+    observer rows verify only the solver result, not final action publication.
+    Policy-first replay requires an explicit caller assertion of that mode;
+    result equality does not authenticate the callable or its provenance.
+    """
     if not callable(leaf_fn):
         raise TypeError('replay requires a callable leaf_fn')
     if row.get('schema') != 'exact-lead-observation-dev-v1':
         raise ValueError('unknown exact-lead observation schema')
+    expected = row.get('result')
+    if (not isinstance(expected, dict) or set(expected) != {'means', 'stats'}
+            or not isinstance(expected['means'], list) or not expected['means']
+            or not isinstance(expected['stats'], dict)):
+        raise ValueError('exact-lead replay requires a complete recorded result')
+    if type(policy_first) is not bool or row.get('exact_lead_policy_first') is not policy_first:
+        raise ValueError('exact-lead replay leaf mode mismatch')
+    if 'decision' in row:
+        decision = row['decision']
+        if (not isinstance(decision, dict) or decision.get('work_complete') is not True
+                or decision.get('exact_lead_status') != 'complete'
+                or row.get('exact_lead_status') != 'complete'):
+            raise ValueError('exact-lead collection stage was not published complete')
     packet = row.get('input')
     if not isinstance(packet, dict):
         raise ValueError('exact-lead observation has no replay input')
@@ -367,8 +386,8 @@ def replay_exact_lead(row, leaf_fn):
         raise ValueError('unknown exact-lead solver')
     if config:
         raise ValueError('unexpected exact-lead replay config')
-    # Preserve the solver's native ``(numpy means, stats)`` contract; callers
-    # can compare means.tolist() and stats for JSON equality.
+    if {'means': means.tolist(), 'stats': normalized(stats)} != expected:
+        raise ValueError('exact-lead replay result mismatch')
     return means, stats
 
 

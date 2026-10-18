@@ -232,8 +232,12 @@ def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode,
                 assert normalized(replayed) == row['result']
             else:
                 from shengji.train.lead_root_capture import replay_exact_lead
-                means, stats = replay_exact_lead(row, bot._leaf)
-                assert row['result'] == {'means': means.tolist(), 'stats': normalized(stats)}
+                if mode == 'fallback':
+                    with pytest.raises(ValueError, match='not published complete'):
+                        replay_exact_lead(row, bot._leaf)
+                else:
+                    means, stats = replay_exact_lead(row, bot._leaf)
+                    assert row['result'] == {'means': means.tolist(), 'stats': normalized(stats)}
         else:
             assert row['input'] is None
         if mode == 'complete':

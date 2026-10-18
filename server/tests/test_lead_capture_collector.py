@@ -96,6 +96,11 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         assert journal[0]['kind'] == 'start'
         assert journal[-1]['kind'] == 'terminal'
         decisions = [r for r in journal if r['kind'] == 'decision']
+        starts = [r for r in journal if r['kind'] == 'decision_start']
+        errors = [r for r in journal if r['kind'] == 'decision_error']
+        assert [r['decision_index'] for r in starts] == list(range(1, len(starts) + 1))
+        assert sorted(r['decision_index'] for r in decisions + errors) == [r['decision_index'] for r in starts]
+        assert len(errors) == (1 if mode == 'served_error' else 0)
         assert len(decisions) == cursor
         assert all(r['seconds'] >= 0 and r['played'] for r in decisions)
         assert any(not r['lead'] for r in decisions)
@@ -151,8 +156,8 @@ def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, mo
         collector.main([*flags, *(['unused'] * 8)])
 
 
-@pytest.mark.parametrize('first,second', [('follow', 'cost'), ('lead', 'cost'), ('lead', 'follow')])
-def test_exact_follow_output_is_exclusive_with_cost_journal(monkeypatch, first, second):
+@pytest.mark.parametrize('first,second', [('lead', 'follow')])
+def test_exact_stage_outputs_are_mutually_exclusive(monkeypatch, first, second):
     monkeypatch.setattr(collector, 'make_pv_search_bot',
                         lambda *a, **kw: pytest.fail('must reject before construction'))
     with pytest.raises(SystemExit):
@@ -203,7 +208,9 @@ def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode,
     snapshot = tmp_path / 'env.json'
     snapshot.write_text('{}')
     output = tmp_path / 'follow.jsonl'
+    journal_path = tmp_path / 'journal.jsonl'
     args = ['--served-env', str(snapshot), f'--exact-{stage}-out', str(output),
+            '--cost-out', str(journal_path),
             'unused', 'unused', '1', '16', '9999999999', str(tmp_path / 'leads.jsonl'),
             str(tmp_path / 'lock'), str(stop)]
     exception = {'error': RuntimeError, 'interrupt': KeyboardInterrupt,
@@ -214,6 +221,21 @@ def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode,
     else:
         collector.main(args)
     rows = [json.loads(line) for line in output.read_text().splitlines()]
+    journal = [json.loads(line) for line in journal_path.read_text().splitlines()]
+    assert journal[0]['exact_capture'] is True
+    assert journal[-1]['kind'] == 'terminal'
+    starts = [r for r in journal if r['kind'] == 'decision_start']
+    completed = [r for r in journal if r['kind'] == 'decision']
+    errors = [r for r in journal if r['kind'] == 'decision_error']
+    assert len(starts) == 1
+    assert starts[0]['decision_index'] == 1
+    assert starts[0]['lead'] == (stage == 'lead')
+    assert starts[0]['max_hand_size'] >= starts[0]['hand_size'] > 0
+    assert len(completed) == (0 if exception else 1)
+    assert len(errors) == (1 if exception else 0)
+    assert (errors or completed)[0]['decision_index'] == 1
+    if exception:
+        assert errors[0]['error'] == exception.__name__
     assert rows[0]['kind'] == 'start' and rows[-1]['kind'] == 'terminal'
     assert rows[0]['schema'] == rows[-1]['schema'] == f'exact-{stage}-collection-dev-v1'
     terminal = rows[-1]
@@ -223,6 +245,7 @@ def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode,
     assert terminal['rows'] == len(captured) == (0 if mode == 'disabled' else 1)
     if captured:
         row = captured[0]
+        assert row['decision_index'] == starts[0]['decision_index']
         assert row['latency_evidence'] is False
         if mode != 'capture_error':
             root, _, admitted, worlds, baseline, _ = restore_exact_stage(row['input'])

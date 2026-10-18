@@ -36,17 +36,21 @@ Prepared collector integration; no run is authorized by this file. Replay payloa
 full hidden deal for DEV reconstruction only, never as policy input. It does not restore bot RNG.
 Origin: archived leaddiag2-r42-20261008/lead_diag2.py; historical diagnostic unchanged.
 Usage: python -m scripts.lead_admission_diagnostic [--served-env SNAPSHOT.json]
- [--exact-follow-out FOLLOW.jsonl | --exact-lead-out LEAD.jsonl | --cost-out COST.jsonl]
+ [--exact-follow-out FOLLOW.jsonl | --exact-lead-out LEAD.jsonl] [--cost-out COST.jsonl]
  <package.npz> <sha256> <seed> <max_positions> <deadline_unix> <out.jsonl> <lock> <stop>
 
 With --exact-follow-out (served-env only), capture the actual optional exact-follow
 stage and its replayable inputs. The capture is DEV-only: it can consume serving
-budget and makes no latency or action-invariance claim. It is mutually exclusive
-with --cost-out; both outputs are fresh, exclusive JSONL files.
+budget and makes no latency or action-invariance claim. Pair it with --cost-out
+to retain all decision starts, completions and failures, including decisions
+that never reach the solver. All outputs are fresh, exclusive JSONL files.
 --exact-lead-out captures the corresponding lead stage instead. Lead replay
 requires the caller to supply the same first-trick leaf continuation; it is
 not a standalone model-free replay. Neither stage file counts decisions that
 never reach its solver, so it is not an eligibility denominator.
+The journal's pre-decision hand sizes identify a size stratum, not solver
+eligibility: admission and optional-stage guards can still skip the stage.
+With stage capture enabled, journal timings include capture overhead.
 """
 import copy
 import argparse
@@ -285,8 +289,8 @@ def main(argv=None):
                     else 'exact-follow-collection-dev-v1')
     if (options.max_rounds is not None or options.cost_out or exact_path) and not options.served_env:
         parser.error('--max-rounds/--cost-out/--exact-follow-out/--exact-lead-out require --served-env')
-    if sum(bool(x) for x in (options.exact_follow_out, options.exact_lead_out, options.cost_out)) > 1:
-        parser.error('--exact-follow-out, --exact-lead-out and --cost-out are mutually exclusive')
+    if options.exact_follow_out and options.exact_lead_out:
+        parser.error('--exact-follow-out and --exact-lead-out are mutually exclusive')
     if options.max_rounds is not None and options.max_rounds <= 0:
         parser.error('--max-rounds must be positive')
     args = options.args
@@ -318,6 +322,7 @@ def main(argv=None):
             costs.flush()
 
     collection_rows = 0
+    decision_index = 0
 
     def exact_row(row):
         nonlocal collection_rows
@@ -332,7 +337,7 @@ def main(argv=None):
         decision = normalized(rec) if isinstance(rec, dict) else None
         for observed in rows:
             observed = copy.deepcopy(observed)
-            observed.update(collection=identity, seed=SEED, round=round_index,
+            observed.update(collection=identity, seed=SEED, decision_index=decision_index, round=round_index,
                             game=game, trick=trick, seat=seat,
                             played_after_decide=(list(played) if played is not None else None),
                             decision=decision,
@@ -363,6 +368,7 @@ def main(argv=None):
     try:
         cost_row('start', seed=SEED, identity=identity, max_positions=MAXPOS,
                  max_rounds=options.max_rounds, deadline_unix=DEADLINE,
+                 exact_capture=bool(exact_path),
                  claim='Headless runtime diagnostic; no outcome or strength comparison')
         if exact_out is not None:
             exact_out.write(json.dumps(dict(kind='start', schema=exact_schema,
@@ -391,6 +397,10 @@ def main(argv=None):
                 if is_lead:
                     trick += 1
                     check()
+                decision_index += 1
+                cost_row('decision_start', decision_index=decision_index, round=r,
+                         game=f'{SEED}:{gid}', trick=trick, seat=seat, lead=is_lead,
+                         hand_size=len(rnd.hands[seat]), max_hand_size=max(map(len, rnd.hands)))
                 started = time.perf_counter()
                 exact_rows = []
                 cards = None
@@ -403,13 +413,15 @@ def main(argv=None):
                         with (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
                               else nullcontext(None)) as finish_pool:
                             cards = bot.decide_play(rnd, seat)
-                except BaseException:
+                except BaseException as exc:
                     # The hook can have a complete result row even when the
                     # outer decision later fails. Preserve it before re-raise.
                     emit_exact_rows(exact_rows, round_index=r, game=f'{SEED}:{gid}',
                                     trick=trick, seat=seat,
                                     played=(cards if isinstance(cards, list) else None),
                                     rec=getattr(bot, 'last_decision_record', None))
+                    cost_row('decision_error', decision_index=decision_index,
+                             error=type(exc).__name__, seconds=time.perf_counter() - started)
                     raise
                 decision_seconds = time.perf_counter() - started
                 rec = bot.last_decision_record
@@ -417,7 +429,7 @@ def main(argv=None):
                                 trick=trick, seat=seat, played=cards, rec=rec)
                 if costs is not None:
                     from shengji.train.search_screen import trace_fields
-                    cost_row('decision', round=r, seat=seat, lead=is_lead,
+                    cost_row('decision', decision_index=decision_index, round=r, seat=seat, lead=is_lead,
                              seconds=decision_seconds, played=list(cards),
                              trace=trace_fields(rec or {}, skip=('played',)))
                 eligible = identity is not None or (rec and rec.get("work_complete") and bot._cap is not None

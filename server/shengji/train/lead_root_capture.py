@@ -475,6 +475,150 @@ def evaluate_follow_prefix(row, *, budget_seconds, min_worlds=16,
                 claim='Simulated stage budget only; no hard-expiry, whole-decision latency, true-deal or strength claim')
 
 
+def summarize_follow_prefix_collection(capture, journal, *, budget_seconds,
+                                       min_worlds=16, time_scale=1.0,
+                                       max_hand_size=8, clock=None):
+    """Join one completed DEV collection before benchmarking any solver row.
+
+    The denominator is observed follow calls at a fixed maximum hand size, not
+    solver eligibility. Abandoned or absent captures stay unmeasured. Only
+    served prefixes contribute to served agreement; baseline fallback is separate.
+    """
+    import math
+
+    for name, value in [('budget_seconds', budget_seconds), ('time_scale', time_scale)]:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f'{name} must be positive and finite')
+    if type(min_worlds) is not int or min_worlds < 1:
+        raise ValueError('min_worlds must be a positive integer')
+    if type(max_hand_size) is not int or not 1 <= max_hand_size <= 8:
+        raise ValueError('max_hand_size must be an integer in [1, 8]')
+    schema = 'exact-follow-collection-dev-v1'
+    for rows in (capture, journal):
+        if len(rows) < 2 or rows[0].get('kind') != 'start' or rows[-1].get('kind') != 'terminal':
+            raise ValueError('missing collection start/terminal')
+        if any(row.get('kind') in ('start', 'terminal') for row in rows[1:-1]):
+            raise ValueError('interior collection boundary')
+    header, terminal = capture[0], capture[-1]
+    if header.get('schema') != schema or terminal.get('schema') != schema:
+        raise ValueError('wrong collection schema')
+    if (type(header.get('seed')) is not int
+            or not isinstance(header.get('collection'), dict)
+            or terminal.get('collection') != header['collection']
+            or journal[0].get('identity') != header['collection']
+            or journal[0].get('seed') != header.get('seed')
+            or journal[0].get('exact_capture') is not True):
+        raise ValueError('collection identity mismatch')
+    if (terminal.get('failure') is not False or terminal.get('error') is not None
+            or terminal.get('reason') not in ('stop_file', 'max_positions', 'max_rounds', 'deadline', 'host_lock')
+            or journal[-1].get('reason') != terminal['reason']):
+        raise ValueError('collection did not terminate cleanly')
+    observations = capture[1:-1]
+    if not observations or type(terminal.get('rows')) is not int or terminal['rows'] != len(observations):
+        raise ValueError('empty or miscounted capture')
+    starts, finished = {}, {}
+    for row in journal[1:-1]:
+        kind = row.get('kind')
+        if kind in ('prepared', 'round_complete'):
+            continue
+        if kind not in ('decision_start', 'decision', 'decision_error'):
+            raise ValueError('unknown journal record')
+        index = row.get('decision_index')
+        if type(index) is not int or index < 1:
+            raise ValueError('invalid decision index')
+        if kind == 'decision_start':
+            if index != len(starts) + 1 or len(finished) != len(starts):
+                raise ValueError('nonsequential decision starts')
+            if (type(row.get('lead')) is not bool
+                    or type(row.get('max_hand_size')) is not int
+                    or type(row.get('hand_size')) is not int
+                    or not 0 < row['hand_size'] <= row['max_hand_size']):
+                raise ValueError('invalid decision stratum')
+            starts[index] = row
+        else:
+            if index not in starts or index in finished or index != len(starts):
+                raise ValueError('unmatched decision completion')
+            if kind == 'decision_error':
+                raise ValueError('collection contains failed decision')
+            if any(row.get(k) != starts[index].get(k) for k in ('round', 'seat', 'lead')):
+                raise ValueError('decision completion identity mismatch')
+            finished[index] = row
+    if set(starts) != set(finished):
+        raise ValueError('unfinished decision in journal')
+    by_index = {}
+    for row in observations:
+        index = row.get('decision_index')
+        if type(index) is not int or index not in starts or index in by_index:
+            raise ValueError('unmatched or duplicate solver observation')
+        start = starts[index]
+        if (row.get('schema') != 'exact-follow-observation-dev-v1' or start['lead']
+                or row.get('collection') != header['collection']
+                or row.get('seed') != header['seed']
+                or any(row.get(k) != start.get(k) for k in ('game', 'round', 'trick', 'seat'))
+                or row.get('played_after_decide') != finished[index].get('played')):
+            raise ValueError('solver observation identity mismatch')
+        by_index[index] = row
+    selected = {i: row for i, row in starts.items()
+                if not row['lead'] and row['max_hand_size'] == max_hand_size}
+    if not selected:
+        raise ValueError('empty requested follow stratum')
+    counts = dict(observed=len(selected), no_capture=0, unpublished=0,
+                  measured=0, served=0, fallback=0, served_agrees=0, fallback_agrees=0)
+    unpublished_by_cause = Counter()
+    no_capture_by_cause = Counter()
+    results = []
+    for index in selected:
+        row = by_index.get(index)
+        if row is None:
+            counts['no_capture'] += 1
+            trace = finished[index].get('trace')
+            admitted_len = trace.get('admitted__len') if isinstance(trace, dict) else None
+            cause = 'admitted__len <= 1' if type(admitted_len) is int and admitted_len <= 1 else 'other'
+            no_capture_by_cause[cause] += 1
+            continue
+        decision = row.get('decision') or {}
+        if (decision.get('work_complete') is not True
+                or decision.get('exact_follow_attempted') is not True
+                or decision.get('exact_follow_abandoned') is not None
+                or decision.get('exact_follow_error') is not None):
+            counts['unpublished'] += 1
+            abandoned = decision.get('exact_follow_abandoned')
+            error = decision.get('exact_follow_error')
+            if abandoned is not None:
+                cause = f'exact_follow_abandoned:{abandoned}'
+            elif error is not None:
+                cause = f'exact_follow_error:{error}'
+            elif decision.get('work_complete') is not True:
+                cause = 'work_complete:false'
+            else:
+                cause = 'exact_follow_attempted:missing'
+            unpublished_by_cause[cause] += 1
+            continue
+        result = evaluate_follow_prefix(row, budget_seconds=budget_seconds,
+                                        min_worlds=min_worlds, time_scale=time_scale, clock=clock)
+        counts['measured'] += 1
+        group = 'served' if result['served'] else 'fallback'
+        counts[group] += 1
+        counts[group + '_agrees'] += int(result['agrees_full'])
+        results.append(dict(decision_index=index, **result))
+    import os
+    return dict(schema='exact-follow-prefix-summary-dev-v1', counts=counts, rows=results,
+                max_hand_size=max_hand_size,
+                budget_seconds=budget_seconds, min_worlds=min_worlds, time_scale=time_scale,
+                engine='compiled' if os.environ.get('SHENGJI_FAST') == '1' else 'pure',
+                capture_on=True,
+                no_capture_by_cause=dict(sorted(no_capture_by_cause.items())),
+                unpublished_by_cause=dict(sorted(unpublished_by_cause.items())),
+                served_fraction_observed=counts['served'] / counts['observed'],
+                served_agreement=(counts['served_agrees'] / counts['served'] if counts['served'] else None),
+                unmeasured_fraction=(counts['no_capture'] + counts['unpublished']) / counts['observed'],
+                limits=['Observed fixed-size follow calls, not solver eligibility or population prevalence.',
+                        'Completion-conditioned full-world replay; missing/abandoned solves remain unmeasured.',
+                        'Capture runs inside the served stage budget; capture-caused abandonment is not separable (no per-row capture_seconds).',
+                        'The collection header does not record its engine; this summary records the reader engine.',
+                        'Simulated stage timing only; no hard-expiry, Fly latency, true-deal or strength claim.'])
+
+
 def fingerprint(rnd):
     state = dict(vars(rnd))
     # Ordering memoization is execution history, not game state.

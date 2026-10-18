@@ -242,6 +242,13 @@ def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode,
             assert row['input'] is None
         if mode == 'complete':
             assert row['played_after_decide'] == row['decision']['played']
+            if stage == 'follow':
+                from shengji.train.lead_root_capture import evaluate_follow_prefix
+                ticks = iter([0.0, 0.1, 0.1, 0.2])
+                evaluated = evaluate_follow_prefix(row, budget_seconds=1, min_worlds=1,
+                                                   clock=lambda: next(ticks))
+                assert evaluated['served'] and evaluated['agrees_full']
+                assert evaluated['full_means'] == row['result']['scores']
         if mode == 'fallback':
             assert row['decision']['work_complete'] is False
             assert row['decision']['reason'] == 'budget'

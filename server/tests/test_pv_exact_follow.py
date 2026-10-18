@@ -581,6 +581,39 @@ def _prefix_fixture():
     return rnd
 
 
+def test_prefix_real_eight_card_solver_matches_full_world_and_stops(monkeypatch):
+    from shengji.train import pv_exact_follow as module
+    hands = [[suit + rank for rank in ('3', '4', '5', '6') for _ in range(2)]
+             for suit in ('C', 'D', 'S', 'H')]
+    lead = hands[0]
+    hands[0] = []
+    rnd = _round(hands, plays=[(0, lead)])
+    admitted = [list(hands[1])]
+    worlds = [(copy.deepcopy(hands), [])] * 2
+    config = dict(max_hand_cards=8, max_nodes=10_000, solver='compact-level',
+                  baseline_index=0)
+    expected = rerank_follow(rnd, 1, admitted, worlds[:1], **config)
+    original = module._world_scores
+    clock = [0.0]
+    completed = [0]
+    hard_checks = [0]
+    def hard_check():
+        hard_checks[0] += 1
+    def real_world(*args):
+        result = original(*args)
+        completed[0] += 1
+        clock[0] = 1.0
+        return result
+    monkeypatch.setattr(module, '_world_scores', real_world)
+    result = rerank_follow_prefix(rnd, 1, admitted, worlds, min_worlds=1,
+                                  soft_deadline=0.5, clock=lambda: clock[0],
+                                  check_budget=hard_check, **config)
+    assert result == expected
+    assert result.winner == 0
+    assert completed == [1] and hard_checks[0] > 3
+    assert rnd.hands == hands and rnd.turn == 1
+
+
 def test_prefix_soft_stop_discards_in_world_totals(monkeypatch):
     from shengji.train import pv_exact_follow
 

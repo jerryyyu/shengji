@@ -597,6 +597,74 @@ def _follow_prefix_row():
     return row
 
 
+def _prefix_collection():
+    row = _follow_prefix_row()
+    row.update(collection={'mode': 'test'}, seed=1, decision_index=1,
+               game='1:0', round=0, trick=1, seat=1,
+               played_after_decide=row['decision']['played'])
+    capture = [dict(kind='start', schema='exact-follow-collection-dev-v1',
+                    collection=row['collection'], seed=1), row,
+               dict(kind='terminal', schema='exact-follow-collection-dev-v1',
+                    collection=row['collection'], rows=1, failure=False, error=None, reason='stop_file')]
+    journal = [dict(kind='start', identity=row['collection'], seed=1, exact_capture=True)]
+    for index in range(1, 4):
+        journal.extend([dict(kind='decision_start', decision_index=index, lead=False,
+                             round=0, seat=1, game='1:0', trick=index, hand_size=8, max_hand_size=8),
+                        dict(kind='decision', decision_index=index, round=0, seat=1, lead=False,
+                             played=row['played_after_decide'])])
+    abandoned = copy.deepcopy(row)
+    abandoned.update(decision_index=2, trick=2)
+    abandoned['decision']['exact_follow_abandoned'] = 'hard_budget'
+    capture.insert(-1, abandoned)
+    capture[-1]['rows'] = 2
+    journal.append(dict(kind='terminal', reason='stop_file'))
+    return capture, journal
+
+
+@pytest.mark.parametrize('served', [True, False])
+def test_prefix_summary_separates_missing_abandoned_and_fallback(monkeypatch, served):
+    from shengji.train import lead_root_capture as module
+    capture, journal = _prefix_collection()
+    monkeypatch.setattr(module, 'evaluate_follow_prefix', lambda *a, **kw:
+                        dict(served=served, agrees_full=True))
+    result = module.summarize_follow_prefix_collection(capture, journal, budget_seconds=1)
+    assert result['counts'] == dict(observed=3, no_capture=1, unpublished=1,
+                                    measured=1, served=int(served), fallback=int(not served),
+                                    served_agrees=int(served), fallback_agrees=int(not served))
+    assert result['served_agreement'] == (1 if served else None)
+    assert result['unmeasured_fraction'] == 2 / 3
+
+
+@pytest.mark.parametrize('bad', ['terminal', 'count', 'seed', 'identity', 'duplicate',
+                                'unfinished', 'failed', 'join', 'start', 'empty'])
+def test_prefix_summary_rejects_bad_join_before_solving(monkeypatch, bad):
+    from shengji.train import lead_root_capture as module
+    capture, journal = _prefix_collection()
+    if bad == 'terminal': capture.pop()
+    elif bad == 'count': capture[-1]['rows'] += 1
+    elif bad == 'seed': journal[0]['seed'] = 99
+    elif bad == 'identity': journal[0]['identity'] = {}
+    elif bad == 'duplicate': capture[2]['decision_index'] = 1
+    elif bad == 'unfinished': journal.pop(-2)
+    elif bad == 'failed': capture[-1]['failure'] = True
+    elif bad == 'join': capture[1]['seat'] = 3
+    elif bad == 'start': journal[1]['decision_index'] = 2
+    elif bad == 'empty': capture = [capture[0], dict(capture[-1], rows=0)]
+    monkeypatch.setattr(module, 'evaluate_follow_prefix', lambda *a, **kw: pytest.fail('must not solve'))
+    with pytest.raises(ValueError):
+        module.summarize_follow_prefix_collection(capture, journal, budget_seconds=1)
+
+
+@pytest.mark.parametrize('kwargs', [dict(budget_seconds=0), dict(min_worlds=0),
+                                    dict(time_scale=-1), dict(time_scale=float('nan'))])
+def test_prefix_summary_validates_parameters_without_measured_rows(kwargs):
+    from shengji.train.lead_root_capture import summarize_follow_prefix_collection
+    capture, journal = _prefix_collection()
+    capture[1]['decision']['work_complete'] = False
+    with pytest.raises(ValueError):
+        summarize_follow_prefix_collection(capture, journal, **(dict(budget_seconds=1) | kwargs))
+
+
 @pytest.mark.parametrize('budget,minimum,count,served', [
     (0.5, 1, 0, False), (1.0, 1, 1, True), (1.0, 2, 1, False),
     (2.0, 2, 1, False), (3.0, 2, 2, True),

@@ -35,12 +35,21 @@ Yields to /root/.claude-host.lock between positions and before every value batch
 Prepared collector integration; no run is authorized by this file. Replay payloads include the
 full hidden deal for DEV reconstruction only, never as policy input. It does not restore bot RNG.
 Origin: archived leaddiag2-r42-20261008/lead_diag2.py; historical diagnostic unchanged.
-Usage: python -m scripts.lead_admission_diagnostic [--served-env SNAPSHOT.json] <package.npz> <sha256> <seed> <max_positions> <deadline_unix> <out.jsonl> <lock> <stop>
+Usage: python -m scripts.lead_admission_diagnostic [--served-env SNAPSHOT.json]
+ [--exact-follow-out FOLLOW.jsonl | --cost-out COST.jsonl]
+ <package.npz> <sha256> <seed> <max_positions> <deadline_unix> <out.jsonl> <lock> <stop>
+
+With --exact-follow-out (served-env only), capture the actual optional exact-follow
+stage and its replayable inputs. The capture is DEV-only: it can consume serving
+budget and makes no latency or action-invariance claim. It is mutually exclusive
+with --cost-out; both outputs are fresh, exclusive JSONL files.
 """
 import copy
 import argparse
 import json, os, random, sys, time
-from shengji.train.lead_root_capture import LeadCapture, normalized, observe_finish_pool
+from shengji.train.lead_root_capture import (LeadCapture, normalized,
+                                            observe_exact_follow,
+                                            observe_finish_pool)
 from contextlib import nullcontext
 import numpy as np
 from shengji.engine.game import Game
@@ -261,10 +270,14 @@ def main(argv=None):
     parser.add_argument('--served-env', help='JSON environment snapshot: capture only, including fallback leads')
     parser.add_argument('--max-rounds', type=int, help='Stop after this many complete rounds (served capture only)')
     parser.add_argument('--cost-out', help='New score-free JSONL journal of all decision costs, flushed per turn')
+    parser.add_argument('--exact-follow-out', help=('Opt-in JSONL capture of the actual exact-follow stage '
+                                                    '(served-env only; no latency or action-invariance claim)'))
     parser.add_argument('args', nargs=8, metavar='ARG')
     options = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    if (options.max_rounds is not None or options.cost_out) and not options.served_env:
-        parser.error('--max-rounds/--cost-out require --served-env')
+    if (options.max_rounds is not None or options.cost_out or options.exact_follow_out) and not options.served_env:
+        parser.error('--max-rounds/--cost-out/--exact-follow-out require --served-env')
+    if options.exact_follow_out and options.cost_out:
+        parser.error('--exact-follow-out and --cost-out are mutually exclusive')
     if options.max_rounds is not None and options.max_rounds <= 0:
         parser.error('--max-rounds must be positive')
     args = options.args
@@ -283,8 +296,11 @@ def main(argv=None):
     out = open(OUT, "x")  # a fresh DEV collection; never append a duplicate prefix
     try:
         costs = open(options.cost_out, 'x') if options.cost_out else None
+        exact_out = open(options.exact_follow_out, 'x') if options.exact_follow_out else None
     except Exception:
         out.close()
+        if 'costs' in locals() and costs is not None:
+            costs.close()
         raise
 
     def cost_row(kind, **fields):
@@ -292,12 +308,56 @@ def main(argv=None):
             costs.write(json.dumps(dict(kind=kind, **fields), allow_nan=False) + '\n')
             costs.flush()
 
+    collection_rows = 0
+
+    def exact_row(row):
+        nonlocal collection_rows
+        if exact_out is not None:
+            exact_out.write(json.dumps(row, allow_nan=False) + '\n')
+            exact_out.flush()
+        collection_rows += 1
+
+    def emit_exact_rows(rows, *, round_index, game, trick, seat, played=None, rec=None):
+        if exact_out is None:
+            return
+        decision = normalized(rec) if isinstance(rec, dict) else None
+        for observed in rows:
+            observed = copy.deepcopy(observed)
+            observed.update(collection=identity, seed=SEED, round=round_index,
+                            game=game, trick=trick, seat=seat,
+                            played_after_decide=(list(played) if played is not None else None),
+                            decision=decision,
+                            exact_follow_abandoned=(decision or {}).get('exact_follow_abandoned'),
+                            exact_follow_applied=(decision or {}).get('exact_follow_applied'),
+                            exact_follow_error=(decision or {}).get('exact_follow_error'))
+            exact_row(observed)
+
+    def exact_terminal(reason, *, error=None):
+        if exact_out is None:
+            return
+        row = dict(kind='terminal', schema='exact-follow-collection-dev-v1',
+                   collection=identity, rows=collection_rows, reason=reason,
+                   failure=error is not None,
+                   error=error,
+                   limits=['Capture can consume the served stage budget; no latency claim.',
+                           'Observed result and final played action are recorded; no action-invariance claim.',
+                           'No counterfactual reruns or production serving changes.'])
+        exact_out.write(json.dumps(row, allow_nan=False) + '\n')
+        exact_out.flush()
+
     game, gid = Game(random.Random(SEED)), 0
     t0, n, r, reason = time.time(), 0, 0, "max_positions"
     try:
         cost_row('start', seed=SEED, identity=identity, max_positions=MAXPOS,
                  max_rounds=options.max_rounds, deadline_unix=DEADLINE,
                  claim='Headless runtime diagnostic; no outcome or strength comparison')
+        if exact_out is not None:
+            exact_out.write(json.dumps(dict(kind='start', schema='exact-follow-collection-dev-v1',
+                                            seed=SEED, collection=identity,
+                                            claim='DEV replay capture only; no latency or action-invariance claim',
+                                            limits=['Capture can consume the served stage budget.',
+                                                    'No counterfactual reruns or production serving changes.'])) + '\n')
+            exact_out.flush()
         while n < MAXPOS:
             check()
             if game.game_over:
@@ -319,11 +379,28 @@ def main(argv=None):
                     trick += 1
                     check()
                 started = time.perf_counter()
-                with (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
-                      else nullcontext(None)) as finish_pool:
-                    cards = bot.decide_play(rnd, seat)
+                exact_rows = []
+                cards = None
+                follow_context = (observe_exact_follow(bot, capture)
+                                  if options.exact_follow_out else nullcontext(exact_rows))
+                try:
+                    with follow_context as observed_rows:
+                        exact_rows = observed_rows
+                        with (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
+                              else nullcontext(None)) as finish_pool:
+                            cards = bot.decide_play(rnd, seat)
+                except BaseException:
+                    # The hook can have a complete result row even when the
+                    # outer decision later fails. Preserve it before re-raise.
+                    emit_exact_rows(exact_rows, round_index=r, game=f'{SEED}:{gid}',
+                                    trick=trick, seat=seat,
+                                    played=(cards if isinstance(cards, list) else None),
+                                    rec=getattr(bot, 'last_decision_record', None))
+                    raise
                 decision_seconds = time.perf_counter() - started
                 rec = bot.last_decision_record
+                emit_exact_rows(exact_rows, round_index=r, game=f'{SEED}:{gid}',
+                                trick=trick, seat=seat, played=cards, rec=rec)
                 if costs is not None:
                     from shengji.train.search_screen import trace_fields
                     cost_row('decision', round=r, seat=seat, lead=is_lead,
@@ -356,17 +433,23 @@ def main(argv=None):
                 break
     except Yield as exc:
         reason = str(exc)
-    except Exception as exc:
+    except BaseException as exc:
         reason = 'error:' + type(exc).__name__
         raise
     finally:
-        out.close()
-        if costs is not None:
+        try:
+            exact_terminal(reason, error=(reason[6:] if reason.startswith('error:') else None))
+        finally:
+            out.close()
             try:
-                cost_row('terminal', reason=reason, positions=n, rounds=r,
-                         seconds=time.time() - t0)
+                if costs is not None:
+                    cost_row('terminal', reason=reason, positions=n, rounds=r,
+                             seconds=time.time() - t0)
             finally:
-                costs.close()
+                if costs is not None:
+                    costs.close()
+                if exact_out is not None:
+                    exact_out.close()
     print(f"EXIT reason={reason} positions={n} rounds={r} seconds={time.time() - t0:.0f}", flush=True)
 
 

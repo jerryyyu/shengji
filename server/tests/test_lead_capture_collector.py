@@ -142,12 +142,97 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
 
 
 @pytest.mark.parametrize('flags', [['--max-rounds', '0'], ['--max-rounds', '-1'],
-                                   ['--cost-out', 'unused']])
+                                   ['--cost-out', 'unused'],
+                                   ['--exact-follow-out', 'unused']])
 def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, monkeypatch):
     monkeypatch.setattr(collector, 'make_pv_search_bot',
                         lambda *a, **kw: pytest.fail('must reject before construction'))
     with pytest.raises(SystemExit):
         collector.main([*flags, *(['unused'] * 8)])
+
+
+def test_exact_follow_output_is_exclusive_with_cost_journal(monkeypatch):
+    monkeypatch.setattr(collector, 'make_pv_search_bot',
+                        lambda *a, **kw: pytest.fail('must reject before construction'))
+    with pytest.raises(SystemExit):
+        collector.main(['--served-env', 'env.json', '--exact-follow-out', 'follow.jsonl',
+                        '--cost-out', 'cost.jsonl', *(['unused'] * 8)])
+
+
+@pytest.mark.parametrize('mode', ['complete', 'disabled', 'fallback', 'error', 'interrupt', 'capture_error'])
+def test_exact_follow_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode):
+    from test_lead_root_capture import _observed_follow_bot
+    from shengji.train.lead_root_capture import restore_exact_stage, normalized
+    from shengji.train.pv_exact_follow import rerank_follow
+
+    bot, rnd, capture, _ = _observed_follow_bot()
+    stop = tmp_path / 'stop'
+    if mode == 'disabled':
+        bot.exact_follow = False
+    if mode == 'capture_error':
+        def fail_capture(*args, **kwargs):
+            raise ValueError('capture failed')
+        monkeypatch.setattr(capture, 'capture_exact_stage', fail_capture)
+    decide = bot.decide_play
+
+    def observed_decide(root, seat):
+        cards = decide(root, seat)
+        stop.touch()
+        if mode == 'error':
+            raise RuntimeError('after stage')
+        if mode == 'interrupt':
+            raise KeyboardInterrupt()
+        if mode == 'fallback':
+            bot.last_decision_record = dict(schema='fixture-fallback', work_complete=False,
+                                            reason='budget', played=list(cards))
+        return cards
+
+    monkeypatch.setattr(bot, 'decide_play', observed_decide)
+    monkeypatch.setattr(collector, 'served_capture_bots',
+                        lambda *args: ([bot] * 4, {'mode': 'test-served'}))
+    monkeypatch.setattr(collector.env, 'prepare_round', lambda *args: rnd)
+    monkeypatch.setattr(collector.env, 'observe_committed_play', lambda *args: None)
+    monkeypatch.setattr(collector, 'LeadCapture', lambda *args: capture)
+    snapshot = tmp_path / 'env.json'
+    snapshot.write_text('{}')
+    output = tmp_path / 'follow.jsonl'
+    args = ['--served-env', str(snapshot), '--exact-follow-out', str(output),
+            'unused', 'unused', '1', '16', '9999999999', str(tmp_path / 'leads.jsonl'),
+            str(tmp_path / 'lock'), str(stop)]
+    exception = {'error': RuntimeError, 'interrupt': KeyboardInterrupt,
+                 'capture_error': ValueError}.get(mode)
+    if exception:
+        with pytest.raises(exception):
+            collector.main(args)
+    else:
+        collector.main(args)
+    rows = [json.loads(line) for line in output.read_text().splitlines()]
+    assert rows[0]['kind'] == 'start' and rows[-1]['kind'] == 'terminal'
+    terminal = rows[-1]
+    assert terminal['failure'] == (exception is not None)
+    assert terminal['reason'] == ('error:' + exception.__name__ if exception else 'stop_file')
+    captured = rows[1:-1]
+    assert terminal['rows'] == len(captured) == (0 if mode == 'disabled' else 1)
+    if captured:
+        row = captured[0]
+        assert row['latency_evidence'] is False
+        if mode != 'capture_error':
+            root, _, admitted, worlds, baseline, _ = restore_exact_stage(row['input'])
+            replayed = rerank_follow(root, root.turn, admitted, worlds,
+                                     baseline_index=baseline, **row['config'])
+            assert normalized(replayed) == row['result']
+        else:
+            assert row['input'] is None
+        if mode == 'complete':
+            assert row['played_after_decide'] == row['decision']['played']
+        if mode == 'fallback':
+            assert row['decision']['work_complete'] is False
+            assert row['decision']['reason'] == 'budget'
+    saved = output.read_bytes()
+    args[args.index(str(tmp_path / 'leads.jsonl'))] = str(tmp_path / 'other-leads.jsonl')
+    with pytest.raises(FileExistsError):
+        collector.main(args)
+    assert output.read_bytes() == saved
 
 
 @pytest.mark.parametrize('budget', ['0.000000001', '60'])

@@ -255,9 +255,38 @@ def build_model(*, d: int = 64, heads: int = 4, enc_layers: int = 1, xattn_layer
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=mask)
             return self.o(out.transpose(1, 2).reshape(B, L, d))
 
+    # Opaque to torch.compile: the per-frame row counts are data, so tracing
+    # this loop would specialise (and recompile) on every batch's counts.
+    @torch.compiler.disable
+    def frame_sdpa(qq, k, v, counts, vis):
+        """Cross-attention of frame-sorted rows on their own frame's K/V.
+
+        ``qq`` is ``(B, 54, d)`` with rows sorted by frame, ``k``/``v`` are
+        ``(F, h, T+1, d/h)``, ``counts`` the rows per frame (``F``) and ``vis``
+        ``(B, T+1)`` each sorted row's visible keys.  Each frame's rows run as
+        one SDPA call with ``n * 54`` queries, so a frame's K/V is read in place
+        instead of being copied once per row."""
+        L = qq.shape[1]
+        h = heads
+        cl = counts.tolist()
+        outs = []
+        # split/unbind, not slicing: their backward is one cat/stack, where a
+        # slice's backward would zero-fill and add a full-size gradient per frame
+        for n, qf, mf, kf, vf in zip(cl, qq.split(cl), vis.split(cl), k.unbind(0), v.unbind(0)):
+            if not n:
+                continue
+            qf = qf.reshape(1, n * L, h, d // h).transpose(1, 2)
+            mf = mf[:, None, :].expand(n, L, mf.shape[1]).reshape(1, 1, n * L, -1)
+            o = torch.nn.functional.scaled_dot_product_attention(qf, kf[None], vf[None], attn_mask=mf)
+            outs.append(o.transpose(1, 2).reshape(n, L, d))
+        return torch.cat(outs, 0)
+
     class HistoryBelief(nn.Module):
         def __init__(self):
             super().__init__()
+            #: frame-grouped cross-attention (``frame_sdpa``); a runtime switch,
+            #: not part of ``config`` or the state_dict: both paths share weights
+            self.grouped_xattn = False
             self.config = dict(d=d, heads=heads, enc_layers=enc_layers, xattn_layers=xattn_layers,
                                x_hidden=x_hidden, card_self_attn=card_self_attn)
             self.card_id = nn.Parameter(torch.randn(N_CARDS, d) * 0.1)
@@ -309,7 +338,6 @@ def build_model(*, d: int = 64, heads: int = 4, enc_layers: int = 1, xattn_layer
             # rows
             g = self.x_mlp(b["X"])
             B = g.shape[0]
-            logits = self.x_logits(g).view(B, N_CARDS, N_RECV)
             q = (ce[b["rr"]] + self.row_card(torch.cat([b["row_card"], b["M"].float()], -1))
                  + self.x_to_q(g)[:, None])                                   # B,54,d
             frame = b["rr"] * 4 + b["seat"]
@@ -317,21 +345,49 @@ def build_model(*, d: int = 64, heads: int = 4, enc_layers: int = 1, xattn_layer
             steps = torch.arange(T, device=base.device)
             visible = torch.cat([torch.ones(B, 1, dtype=torch.bool, device=base.device),
                                  steps[None, :] < b["ply"][:, None]], 1)       # B,T+1
-            mask = visible[:, None, None, :]                                   # B,1,1,T+1
             h = heads
-            for i in range(len(self.xattn)):
-                kv = self.kv[i](torch.cat([self.null_kv.expand(R * 4, 1, d), enc], 1))  # R*4,T+1,2d
-                kv = kv[frame]                                                # B,T+1,2d
-                k, v = kv.split(d, -1)
-                k = k.view(B, T + 1, h, d // h).transpose(1, 2)
-                v = v.view(B, T + 1, h, d // h).transpose(1, 2)
-                q = q + self.xattn[i](self.ln_q[i](q), k, v, mask)
-                q = q + self.ff[i](q)
+            if self.grouped_xattn:
+                q = self._xattn_grouped(q, enc, frame, visible, R, T)
+            else:
+                mask = visible[:, None, None, :]                               # B,1,1,T+1
+                for i in range(len(self.xattn)):
+                    kv = self.kv[i](torch.cat([self.null_kv.expand(R * 4, 1, d), enc], 1))  # R*4,T+1,2d
+                    kv = kv[frame]                                            # B,T+1,2d
+                    k, v = kv.split(d, -1)
+                    k = k.view(B, T + 1, h, d // h).transpose(1, 2)
+                    v = v.view(B, T + 1, h, d // h).transpose(1, 2)
+                    q = q + self.xattn[i](self.ln_q[i](q), k, v, mask)
+                    q = q + self.ff[i](q)
             if hasattr(self, "self_attn"):
                 x = self.self_ln(q)
                 q = q + self.self_attn(x, x, x, need_weights=False)[0]
                 q = q + self.self_ff(q)
-            return logits + self.out(q)
+            # the output heads stay fp32 under a bf16 autocast (a no-op in fp32)
+            with torch.autocast("cpu", enabled=False):
+                return (self.x_logits(g.float()).view(B, N_CARDS, N_RECV)
+                        + self.out(q.float()))
+
+        def _xattn_grouped(self, q, enc, frame, visible, R, T):
+            """The cross-attention stack with rows grouped by frame: the same
+            weights and per-row math as the per-row path (equal up to the
+            summation order of the K/V gradients), without materialising each
+            row's frame K/V."""
+            F = R * 4
+            h = heads
+            order = torch.argsort(frame, stable=True)
+            counts = torch.bincount(frame, minlength=F)
+            vis = visible[order]
+            qs = q[order]
+            for i in range(len(self.xattn)):
+                kv = self.kv[i](torch.cat([self.null_kv.expand(F, 1, d), enc], 1))  # F,T+1,2d
+                k, v = kv.split(d, -1)
+                k = k.reshape(F, T + 1, h, d // h).transpose(1, 2).contiguous()
+                v = v.reshape(F, T + 1, h, d // h).transpose(1, 2).contiguous()
+                att = self.xattn[i]
+                qq = att.q(self.ln_q[i](qs))
+                qs = qs + att.o(frame_sdpa(qq, k, v, counts, vis))
+                qs = qs + self.ff[i](qs)
+            return qs[torch.argsort(order)]
 
     return HistoryBelief()
 
@@ -341,11 +397,55 @@ def to_torch(b: Mapping[str, np.ndarray]):
     return {k: torch.from_numpy(np.ascontiguousarray(v)) for k, v in b.items()}
 
 
-def batch_loss(model, tb):
+def batch_loss(model, tb, *, bf16: bool = False):
+    """Summed per-copy cross-entropy and the copy count.  ``bf16`` runs the
+    forward under a CPU bf16 autocast; the logits come back fp32 and the
+    mask, log-softmax and sum stay fp32 (as do the parameters and optimizer)."""
     import torch
-    logits = model(tb).masked_fill(~tb["M"], -1e9)
+    with torch.autocast("cpu", dtype=torch.bfloat16, enabled=bf16):
+        logits = model(tb)
+    logits = logits.float().masked_fill(~tb["M"], -1e9)
     logp = torch.log_softmax(logits, -1)
     return -(tb["Y"] * logp).sum(), tb["Y"].sum()
+
+
+def compile_forward(model):
+    """``torch.compile`` of ``model`` with dynamic shapes (R, T and B vary per
+    batch).  The returned wrapper shares ``model``'s parameters; save
+    ``model.state_dict()``, never the wrapper's (its keys carry ``_orig_mod.``).
+    Dynamo errors raise instead of falling back to eager."""
+    import torch
+    import torch._dynamo
+    torch._dynamo.config.suppress_errors = False
+    return torch.compile(model, dynamic=True)
+
+
+def apply_speed_flags(model, args):
+    """``(forward callable, bf16)`` for ``--grouped-xattn``/``--bf16``/``--compile``;
+    every flag off returns ``model`` itself."""
+    model.grouped_xattn = bool(getattr(args, "grouped_xattn", False))
+    fwd = compile_forward(model) if getattr(args, "compile", False) else model
+    return fwd, bool(getattr(args, "bf16", False))
+
+
+def speed_segment(args, epoch: int, buffer: int, *, inferred: bool = False) -> dict:
+    """One training segment's numerical recipe: the speed flags (and threads)
+    in force from ``(epoch, buffer)`` on.  ``args`` is a Namespace or a saved
+    ``vars(args)`` dict; ``inferred`` marks a segment reconstructed from a
+    checkpoint written before segments were recorded (its flags were off)."""
+    a = args if isinstance(args, Mapping) else vars(args)
+    seg = {"start_epoch": int(epoch), "start_buffer": int(buffer),
+           "grouped_xattn": bool(a.get("grouped_xattn", False)), "bf16": bool(a.get("bf16", False)),
+           "compile": bool(a.get("compile", False)), "threads": a.get("threads"),
+           "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if inferred:
+        seg["inferred"] = True
+    return seg
+
+
+def _segment_text(seg: Mapping[str, Any]) -> str:
+    return (f"grouped_xattn={int(seg['grouped_xattn'])} bf16={int(seg['bf16'])} "
+            f"compile={int(seg['compile'])} threads={seg['threads']}")
 
 
 def n_params(model) -> int:
@@ -570,10 +670,18 @@ def train(args) -> int:
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
-        _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}")
+        # keep every earlier segment's recipe; this invocation's flags start a new one
+        segs = state.setdefault("speed_segments", [speed_segment(saved["args"], 0, 0, inferred=True)])
+        segs.append(speed_segment(args, state["epoch"], state["buffer"]))
+        _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']} "
+                        f"speed segment {len(segs)}: {_segment_text(segs[-1])}")
     else:
         _status(status, f"START params={n_params(model)} train_rows={stream.rows} "
                         f"chunks={len(stream.entries)} config={json.dumps(vars(args), default=str)}")
+    # after any checkpoint load: the speed flags change no weight, key or saved state
+    fwd, bf16 = apply_speed_flags(model, args)
+    state.setdefault("speed_segments", [speed_segment(args, 0, 0)])
+    compiled_ok = not args.compile
 
     def lr_at(step):
         warm = max(1, int(0.02 * total_steps))
@@ -609,9 +717,16 @@ def train(args) -> int:
             for group in opt.param_groups:
                 group["lr"] = lr_at(epoch * n_buffers + gi)
             tb = to_torch(b)
-            loss, n = batch_loss(model, tb)
             opt.zero_grad()
-            (loss / n.clamp_min(1.0)).backward()
+            try:
+                loss, n = batch_loss(fwd, tb, bf16=bf16)
+                (loss / n.clamp_min(1.0)).backward()
+            except Exception as exc:
+                if compiled_ok:
+                    raise
+                _status(status, f"REFUSING: --compile failed on the first batch: {exc!r}")
+                raise BeliefSeqError(f"--compile failed: {exc!r}") from exc
+            compiled_ok = True
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
             tot += float(loss.detach())
@@ -625,7 +740,8 @@ def train(args) -> int:
         if cll < state["best"] - 1e-5:
             state["best"], state["bad"] = cll, 0
             torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
-                        "epoch": epoch + 1, "calib_ll": cll}, out / "best.pt")
+                        "epoch": epoch + 1, "calib_ll": cll,
+                        "speed_segments": state["speed_segments"]}, out / "best.pt")
         else:
             state["bad"] += 1
         state["epoch"] += 1
@@ -983,6 +1099,12 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--xattn-layers", type=int, default=2)
     t.add_argument("--x-hidden", type=int, default=256)
     t.add_argument("--no-card-self-attn", action="store_true")
+    t.add_argument("--grouped-xattn", action="store_true",
+                   help="frame-grouped cross-attention (same weights, equal up to summation order)")
+    t.add_argument("--bf16", action="store_true",
+                   help="CPU bf16 autocast for forward/backward; loss, params and AdamW stay fp32")
+    t.add_argument("--compile", action="store_true",
+                   help="torch.compile the forward (dynamic shapes); refuses if compiling fails")
     e = sub.add_parser("evaluate")
     e.add_argument("--data", nargs="+", required=True)
     e.add_argument("--model", action="append", required=True, help="name=path/best.pt")

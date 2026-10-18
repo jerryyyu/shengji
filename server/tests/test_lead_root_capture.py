@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from shengji.train.lead_root_capture import LeadCapture, fingerprint, restore, restore_with_ledger, normalized
+from shengji.train.lead_root_capture import (
+    LeadCapture, fingerprint, restore, restore_with_ledger, restore_exact_stage,
+    normalized,
+)
 from shengji.ai.refusal import RefusalLedger
 from shengji.rl.replay_log import rebuild_round
 
@@ -191,3 +194,121 @@ def test_served_search_record_to_capture_and_restored_engine():
     # Subsequent producer mutations must not rewrite the saved decision.
     bot.last_decision_record['admitted'].clear()
     assert packet['decision']['admitted']
+
+
+def _exact_follow_capture(hand_cap=2, solve=True):
+    """A real partial-trick root with a small legal endgame continuation."""
+    from shengji.ai.endgame import exhaustive_legal_actions
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.train.pv_exact_follow import rerank_follow
+
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    ledgers = [RefusalLedger() for _ in range(4)]
+    driver = HeuristicBot()
+    while not (rnd.trick.plays and max(map(len, rnd.hands)) <= hand_cap):
+        seat = rnd.turn
+        ledgers[seat].observe(rnd)
+        attempted = driver.decide_play(rnd, seat)
+        rnd.play(seat, attempted)
+        capture.committed(rnd, seat, attempted)
+    seat = rnd.turn
+    ledgers[seat].observe(rnd)
+    admitted = exhaustive_legal_actions(rnd, seat, max_hand_cards=max(hand_cap, 4))
+    worlds = [([list(hand) for hand in rnd.hands], list(rnd.buried))]
+    original = (rerank_follow(rnd, seat, admitted, worlds, max_nodes=10000)
+                if solve else None)
+    packet = capture.capture_exact_stage(
+        rnd, ledger=ledgers[seat], admitted=admitted, worlds=worlds,
+        baseline_index=0, actual_action=admitted[0])
+    return rnd, packet, original
+
+
+def test_exact_stage_capture_replays_follow_root_and_copies_inputs():
+    from shengji.train.pv_exact_follow import rerank_follow
+
+    original_root, packet, original = _exact_follow_capture()
+    serialized = json.loads(json.dumps(packet))
+    restored, ledger, admitted, worlds, baseline, actual = restore_exact_stage(serialized)
+    assert restored.trick.plays and restored.turn == original_root.turn
+    replayed = rerank_follow(restored, restored.turn, admitted, worlds,
+                             baseline_index=baseline, max_nodes=10000)
+    assert replayed == original
+    assert actual == admitted[0]
+    assert normalized(vars(ledger)) == serialized['replay']['ledger']
+    admitted[0].append('mutated')
+    worlds[0][0][0].append('mutated')
+    assert serialized['admitted'][0] != admitted[0]
+    assert 'mutated' not in serialized['worlds'][0][0][0]
+
+
+def test_exact_stage_capture_replays_an_eight_card_follow_root_without_solving():
+    original_root, packet, _ = _exact_follow_capture(hand_cap=8, solve=False)
+    assert max(map(len, original_root.hands)) <= 8
+    restored, _, _, worlds, _, _ = restore_exact_stage(json.loads(json.dumps(packet)))
+    assert fingerprint(restored) == fingerprint(original_root)
+    assert worlds and [len(hand) for hand in worlds[0][0]] == [len(hand) for hand in original_root.hands]
+
+
+def _swap_opponent_cards(packet):
+    seat = packet['seat']
+    hands = packet['worlds'][0][0]
+    others = [s for s in range(4) if s != seat]
+    left, right = others[:2]
+    hands[left][0], hands[right][0] = hands[right][0], hands[left][0]
+
+
+def _swap_acting_card(packet):
+    seat = packet['seat']
+    hands = packet['worlds'][0][0]
+    other = next(s for s in range(4) if s != seat)
+    hands[seat][0], hands[other][0] = hands[other][0], hands[seat][0]
+
+
+def test_exact_stage_keeps_a_nontrivial_hidden_world_swap():
+    _, packet, _ = _exact_follow_capture()
+    swapped = json.loads(json.dumps(packet))
+    original = copy.deepcopy(swapped['worlds'][0][0])
+    _swap_opponent_cards(swapped)
+    restored, _, _, worlds, _, _ = restore_exact_stage(swapped)
+    assert fingerprint(restored) == packet['replay']['root']
+    assert worlds[0][0] != original
+    assert worlds[0][0][swapped['seat']] == original[swapped['seat']]
+
+
+@pytest.mark.parametrize('mutation,match', [
+    (lambda p: p['worlds'][0][0].__setitem__(0, ['C2']),
+     'public hand sizes'),
+    (lambda p: p.__setitem__('seat', (p['seat'] + 1) % 4), 'acting seat drift'),
+    (lambda p: p.__setitem__('baseline_index', 99), 'baseline index'),
+    (lambda p: p.__setitem__('baseline_index', True), 'baseline index'),
+    (lambda p: p['worlds'][0][1].pop(), 'card multiset'),
+    (_swap_acting_card, 'sampled world changes the acting hand'),
+])
+def test_exact_stage_restore_rejects_malformed_inputs(mutation, match):
+    import copy
+
+    _, packet, _ = _exact_follow_capture()
+    bad = copy.deepcopy(packet)
+    mutation(bad)
+    with pytest.raises(ValueError, match=match):
+        restore_exact_stage(bad)
+
+
+def test_exact_stage_lead_capture_copies_producer_inputs():
+    rnd = rebuild_round(EVENTS)
+    collector = LeadCapture(rnd)
+    ledger = RefusalLedger()
+    ledger.observe(rnd)
+    admitted = [[rnd.hands[rnd.turn][0]]]
+    worlds = [[copy.deepcopy(rnd.hands), list(rnd.buried)]]
+    packet = collector.capture_exact_stage(
+        rnd, ledger=ledger, admitted=admitted, worlds=worlds)
+    admitted[0].clear()
+    worlds[0][0][0].clear()
+    restored, _, ballot, sampled, baseline, _ = restore_exact_stage(
+        json.loads(json.dumps(packet)))
+    assert not restored.trick.plays
+    assert fingerprint(restored) == fingerprint(rnd)
+    assert ballot == [[rnd.hands[rnd.turn][0]]] and baseline == 0
+    assert sampled[0][0] == rnd.hands

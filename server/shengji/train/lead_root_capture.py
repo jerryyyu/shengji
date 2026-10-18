@@ -17,7 +17,9 @@ from shengji.ai.refusal import Refusal, RefusalLedger, on_record
 # This hook is deliberately process-local.  It is a DEV collector facility,
 # not a serving extension: a collector must own the single thread that runs
 # the observed bot while the context is active.
-_EXACT_FOLLOW_OBSERVERS = set()
+# Follow and lead hooks patch process-global solver functions, so they share a
+# guard even when their collectors are otherwise independent.
+_EXACT_OBSERVERS = set()
 
 
 def finish_eligible(rnd, seat):
@@ -137,7 +139,7 @@ def observe_exact_follow(bot, collector):
     if not hasattr(collector, 'capture_exact_stage'):
         raise TypeError('exact-follow collector must be LeadCapture-like')
     identity = id(bot)
-    if _EXACT_FOLLOW_OBSERVERS:
+    if _EXACT_OBSERVERS:
         raise RuntimeError('nested exact-follow observer')
     from . import pv_exact_follow
 
@@ -199,7 +201,7 @@ def observe_exact_follow(bot, collector):
         rows.append(row)
         return result
 
-    _EXACT_FOLLOW_OBSERVERS.add(identity)
+    _EXACT_OBSERVERS.add(identity)
     try:
         pv_exact_follow.rerank_follow = observed_rerank
         bot._search = observed_search
@@ -210,9 +212,164 @@ def observe_exact_follow(bot, collector):
             bot._search = saved_own_search
         else:
             del bot._search
-        _EXACT_FOLLOW_OBSERVERS.remove(identity)
+        _EXACT_OBSERVERS.remove(identity)
         if capture_failures:
             raise capture_failures[0]
+
+
+@contextmanager
+def observe_exact_lead(bot, collector):
+    """Capture the real bounded exact-lead solver calls made by one bot.
+
+    The packet deliberately does not serialize the leaf continuation: replay
+    requires the caller to provide the same callable explicitly.  Both shallow
+    and deep solver seams are patched at their module boundary, and only calls
+    from this bot's active root/seat are recorded.
+    """
+    if not hasattr(collector, 'capture_exact_stage'):
+        raise TypeError('exact-lead collector must be LeadCapture-like')
+    identity = id(bot)
+    if _EXACT_OBSERVERS:
+        raise RuntimeError('nested exact-lead observer')
+    from . import pv_exact_deep, pv_exact_endgame
+
+    original_deep = pv_exact_deep.exact_root_means
+    original_shallow = pv_exact_endgame.exact_lead_means
+    original_lead_decision = getattr(bot, '_exact_lead_decision', None)
+    had_own_lead_decision = '_exact_lead_decision' in vars(bot)
+    saved_own_lead_decision = vars(bot).get('_exact_lead_decision')
+    lead_calls, rows, capture_failures = [], [], []
+
+    def observed_lead_decision(rnd, seat, admitted, worlds, started,
+                               check_budget, priors, base):
+        lead_calls.append((rnd, seat, base))
+        try:
+            return original_lead_decision(
+                rnd, seat, admitted, worlds, started, check_budget, priors, base)
+        finally:
+            lead_calls.pop()
+
+    def capture_call(kind, rnd, seat, admitted, worlds, leaf_fn,
+                     check_budget, max_nodes, max_hand_cards=None, level=None):
+        if (not lead_calls or rnd is not lead_calls[-1][0]
+                or seat != lead_calls[-1][1]):
+            return None
+        # base[2] is the actual finalized baseline candidate index; zero is not
+        # generally the baseline after policy selection and is not replayable evidence.
+        base = lead_calls[-1][2]
+        try:
+            packet = collector.capture_exact_stage(
+                rnd, ledger=bot._refusals, admitted=admitted, worlds=worlds,
+                baseline_index=base[2])
+        except Exception as exc:
+            capture_failures.append(exc)
+            packet = None
+        row = {
+            'schema': 'exact-lead-observation-dev-v1', 'stage': 'result',
+            'latency_evidence': False, 'input': packet,
+            'leaf_fn_required_for_replay': True,
+            'leaf_fn_source': 'caller-supplied',
+            'exact_lead_policy_first': bool(getattr(bot, 'exact_lead_policy_first', False)),
+            'baseline_played': normalized(base[3]),
+            'config': {'solver': kind, 'max_nodes': max_nodes},
+        }
+        if max_hand_cards is not None:
+            row['config']['max_hand_cards'] = max_hand_cards
+        if level is not None:
+            row['config']['level'] = level
+        return row
+
+    def observed_shallow(rnd, seat, admitted, worlds, leaf_fn, check_budget,
+                         *, max_nodes=10_000):
+        row = capture_call('shallow', rnd, seat, admitted, worlds, leaf_fn,
+                           check_budget, max_nodes)
+        try:
+            result = original_shallow(rnd, seat, admitted, worlds, leaf_fn,
+                                      check_budget, max_nodes=max_nodes)
+        except Exception as exc:
+            if row is not None:
+                row['result'] = {'exception': type(exc).__name__}; rows.append(row)
+            raise
+        if row is not None:
+            means, stats = result
+            row['result'] = {'means': means.tolist(), 'stats': normalized(stats)}
+            rows.append(row)
+        return result
+
+    def observed_deep(rnd, seat, admitted, worlds, leaf_fn, check_budget,
+                      *, max_hand_cards, max_nodes, level=True):
+        row = capture_call('deep', rnd, seat, admitted, worlds, leaf_fn,
+                           check_budget, max_nodes, max_hand_cards, level)
+        try:
+            result = original_deep(rnd, seat, admitted, worlds, leaf_fn,
+                                   check_budget, max_hand_cards=max_hand_cards,
+                                   max_nodes=max_nodes, level=level)
+        except Exception as exc:
+            if row is not None:
+                row['result'] = {'exception': type(exc).__name__}; rows.append(row)
+            raise
+        if row is not None:
+            means, stats = result
+            row['result'] = {'means': means.tolist(), 'stats': normalized(stats)}
+            rows.append(row)
+        return result
+
+    _EXACT_OBSERVERS.add(identity)
+    try:
+        pv_exact_deep.exact_root_means = observed_deep
+        pv_exact_endgame.exact_lead_means = observed_shallow
+        if original_lead_decision is not None:
+            bot._exact_lead_decision = observed_lead_decision
+        yield rows
+    finally:
+        pv_exact_deep.exact_root_means = original_deep
+        pv_exact_endgame.exact_lead_means = original_shallow
+        if original_lead_decision is not None:
+            if had_own_lead_decision:
+                bot._exact_lead_decision = saved_own_lead_decision
+            else:
+                del bot._exact_lead_decision
+        _EXACT_OBSERVERS.remove(identity)
+        if capture_failures:
+            raise capture_failures[0]
+
+
+def replay_exact_lead(row, leaf_fn):
+    """Replay one captured solver result using an explicit leaf continuation."""
+    if not callable(leaf_fn):
+        raise TypeError('replay requires a callable leaf_fn')
+    if row.get('schema') != 'exact-lead-observation-dev-v1':
+        raise ValueError('unknown exact-lead observation schema')
+    packet = row.get('input')
+    if not isinstance(packet, dict):
+        raise ValueError('exact-lead observation has no replay input')
+    rnd, _ledger, admitted, worlds, _baseline, _actual = restore_exact_stage(packet)
+    config = dict(row.get('config') or {})
+    solver = config.pop('solver', None)
+    if 'max_nodes' not in config:
+        raise ValueError('exact-lead replay config missing max_nodes')
+    max_nodes = config.pop('max_nodes')
+    if solver == 'shallow':
+        if config:
+            raise ValueError('unexpected exact-lead replay config')
+        from .pv_exact_endgame import exact_lead_means
+        means, stats = exact_lead_means(rnd, packet['seat'], admitted, worlds,
+                                        leaf_fn, None, max_nodes=max_nodes)
+    elif solver == 'deep':
+        if set(config) - {'max_hand_cards', 'level'} or 'max_hand_cards' not in config:
+            raise ValueError('unexpected exact-lead replay config')
+        from .pv_exact_deep import exact_root_means
+        means, stats = exact_root_means(
+            rnd, packet['seat'], admitted, worlds, leaf_fn, None,
+            max_hand_cards=config.pop('max_hand_cards'), max_nodes=max_nodes,
+            level=config.pop('level', True))
+    else:
+        raise ValueError('unknown exact-lead solver')
+    if config:
+        raise ValueError('unexpected exact-lead replay config')
+    # Preserve the solver's native ``(numpy means, stats)`` contract; callers
+    # can compare means.tolist() and stats for JSON equality.
+    return means, stats
 
 
 def fingerprint(rnd):

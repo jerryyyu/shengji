@@ -36,19 +36,24 @@ Prepared collector integration; no run is authorized by this file. Replay payloa
 full hidden deal for DEV reconstruction only, never as policy input. It does not restore bot RNG.
 Origin: archived leaddiag2-r42-20261008/lead_diag2.py; historical diagnostic unchanged.
 Usage: python -m scripts.lead_admission_diagnostic [--served-env SNAPSHOT.json]
- [--exact-follow-out FOLLOW.jsonl | --cost-out COST.jsonl]
+ [--exact-follow-out FOLLOW.jsonl | --exact-lead-out LEAD.jsonl | --cost-out COST.jsonl]
  <package.npz> <sha256> <seed> <max_positions> <deadline_unix> <out.jsonl> <lock> <stop>
 
 With --exact-follow-out (served-env only), capture the actual optional exact-follow
 stage and its replayable inputs. The capture is DEV-only: it can consume serving
 budget and makes no latency or action-invariance claim. It is mutually exclusive
 with --cost-out; both outputs are fresh, exclusive JSONL files.
+--exact-lead-out captures the corresponding lead stage instead. Lead replay
+requires the caller to supply the same first-trick leaf continuation; it is
+not a standalone model-free replay. Neither stage file counts decisions that
+never reach its solver, so it is not an eligibility denominator.
 """
 import copy
 import argparse
 import json, os, random, sys, time
 from shengji.train.lead_root_capture import (LeadCapture, normalized,
                                             observe_exact_follow,
+                                            observe_exact_lead,
                                             observe_finish_pool)
 from contextlib import nullcontext
 import numpy as np
@@ -272,12 +277,16 @@ def main(argv=None):
     parser.add_argument('--cost-out', help='New score-free JSONL journal of all decision costs, flushed per turn')
     parser.add_argument('--exact-follow-out', help=('Opt-in JSONL capture of the actual exact-follow stage '
                                                     '(served-env only; no latency or action-invariance claim)'))
+    parser.add_argument('--exact-lead-out', help='Opt-in lead-stage capture; replay requires the same leaf continuation')
     parser.add_argument('args', nargs=8, metavar='ARG')
     options = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    if (options.max_rounds is not None or options.cost_out or options.exact_follow_out) and not options.served_env:
-        parser.error('--max-rounds/--cost-out/--exact-follow-out require --served-env')
-    if options.exact_follow_out and options.cost_out:
-        parser.error('--exact-follow-out and --cost-out are mutually exclusive')
+    exact_path = options.exact_follow_out or options.exact_lead_out
+    exact_schema = ('exact-lead-collection-dev-v1' if options.exact_lead_out
+                    else 'exact-follow-collection-dev-v1')
+    if (options.max_rounds is not None or options.cost_out or exact_path) and not options.served_env:
+        parser.error('--max-rounds/--cost-out/--exact-follow-out/--exact-lead-out require --served-env')
+    if sum(bool(x) for x in (options.exact_follow_out, options.exact_lead_out, options.cost_out)) > 1:
+        parser.error('--exact-follow-out, --exact-lead-out and --cost-out are mutually exclusive')
     if options.max_rounds is not None and options.max_rounds <= 0:
         parser.error('--max-rounds must be positive')
     args = options.args
@@ -296,7 +305,7 @@ def main(argv=None):
     out = open(OUT, "x")  # a fresh DEV collection; never append a duplicate prefix
     try:
         costs = open(options.cost_out, 'x') if options.cost_out else None
-        exact_out = open(options.exact_follow_out, 'x') if options.exact_follow_out else None
+        exact_out = open(exact_path, 'x') if exact_path else None
     except Exception:
         out.close()
         if 'costs' in locals() and costs is not None:
@@ -330,12 +339,16 @@ def main(argv=None):
                             exact_follow_abandoned=(decision or {}).get('exact_follow_abandoned'),
                             exact_follow_applied=(decision or {}).get('exact_follow_applied'),
                             exact_follow_error=(decision or {}).get('exact_follow_error'))
+            if options.exact_lead_out:
+                observed.update(exact_lead_status=(decision or {}).get('exact_lead_status'),
+                                exact_lead_abandon_reason=(decision or {}).get('exact_lead_abandon_reason'),
+                                exact_lead_abandon_error=(decision or {}).get('exact_lead_abandon_error'))
             exact_row(observed)
 
     def exact_terminal(reason, *, error=None):
         if exact_out is None:
             return
-        row = dict(kind='terminal', schema='exact-follow-collection-dev-v1',
+        row = dict(kind='terminal', schema=exact_schema,
                    collection=identity, rows=collection_rows, reason=reason,
                    failure=error is not None,
                    error=error,
@@ -352,7 +365,7 @@ def main(argv=None):
                  max_rounds=options.max_rounds, deadline_unix=DEADLINE,
                  claim='Headless runtime diagnostic; no outcome or strength comparison')
         if exact_out is not None:
-            exact_out.write(json.dumps(dict(kind='start', schema='exact-follow-collection-dev-v1',
+            exact_out.write(json.dumps(dict(kind='start', schema=exact_schema,
                                             seed=SEED, collection=identity,
                                             claim='DEV replay capture only; no latency or action-invariance claim',
                                             limits=['Capture can consume the served stage budget.',
@@ -381,10 +394,11 @@ def main(argv=None):
                 started = time.perf_counter()
                 exact_rows = []
                 cards = None
-                follow_context = (observe_exact_follow(bot, capture)
-                                  if options.exact_follow_out else nullcontext(exact_rows))
+                exact_context = (observe_exact_follow(bot, capture) if options.exact_follow_out
+                                 else observe_exact_lead(bot, capture) if options.exact_lead_out
+                                 else nullcontext(exact_rows))
                 try:
-                    with follow_context as observed_rows:
+                    with exact_context as observed_rows:
                         exact_rows = observed_rows
                         with (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
                               else nullcontext(None)) as finish_pool:

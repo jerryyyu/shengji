@@ -143,7 +143,7 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
 
 @pytest.mark.parametrize('flags', [['--max-rounds', '0'], ['--max-rounds', '-1'],
                                    ['--cost-out', 'unused'],
-                                   ['--exact-follow-out', 'unused']])
+                                   ['--exact-follow-out', 'unused'], ['--exact-lead-out', 'unused']])
 def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, monkeypatch):
     monkeypatch.setattr(collector, 'make_pv_search_bot',
                         lambda *a, **kw: pytest.fail('must reject before construction'))
@@ -151,24 +151,31 @@ def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, mo
         collector.main([*flags, *(['unused'] * 8)])
 
 
-def test_exact_follow_output_is_exclusive_with_cost_journal(monkeypatch):
+@pytest.mark.parametrize('first,second', [('follow', 'cost'), ('lead', 'cost'), ('lead', 'follow')])
+def test_exact_follow_output_is_exclusive_with_cost_journal(monkeypatch, first, second):
     monkeypatch.setattr(collector, 'make_pv_search_bot',
                         lambda *a, **kw: pytest.fail('must reject before construction'))
     with pytest.raises(SystemExit):
-        collector.main(['--served-env', 'env.json', '--exact-follow-out', 'follow.jsonl',
-                        '--cost-out', 'cost.jsonl', *(['unused'] * 8)])
+        flag = lambda name: '--cost-out' if name == 'cost' else f'--exact-{name}-out'
+        collector.main(['--served-env', 'env.json', flag(first), 'first.jsonl',
+                        flag(second), 'second.jsonl', *(['unused'] * 8)])
 
 
+@pytest.mark.parametrize('stage,deep', [('follow', False), ('lead', False), ('lead', True)])
 @pytest.mark.parametrize('mode', ['complete', 'disabled', 'fallback', 'error', 'interrupt', 'capture_error'])
-def test_exact_follow_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode):
-    from test_lead_root_capture import _observed_follow_bot
+def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode, stage, deep):
+    from test_lead_root_capture import _observed_follow_bot, _observed_lead_bot
     from shengji.train.lead_root_capture import restore_exact_stage, normalized
     from shengji.train.pv_exact_follow import rerank_follow
 
-    bot, rnd, capture, _ = _observed_follow_bot()
+    bot, rnd, capture, _ = (_observed_follow_bot() if stage == 'follow'
+                            else _observed_lead_bot(deep=deep))
     stop = tmp_path / 'stop'
     if mode == 'disabled':
-        bot.exact_follow = False
+        if stage == 'follow':
+            bot.exact_follow = False
+        else:
+            bot.exact_lead_endgame = False
     if mode == 'capture_error':
         def fail_capture(*args, **kwargs):
             raise ValueError('capture failed')
@@ -196,7 +203,7 @@ def test_exact_follow_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode
     snapshot = tmp_path / 'env.json'
     snapshot.write_text('{}')
     output = tmp_path / 'follow.jsonl'
-    args = ['--served-env', str(snapshot), '--exact-follow-out', str(output),
+    args = ['--served-env', str(snapshot), f'--exact-{stage}-out', str(output),
             'unused', 'unused', '1', '16', '9999999999', str(tmp_path / 'leads.jsonl'),
             str(tmp_path / 'lock'), str(stop)]
     exception = {'error': RuntimeError, 'interrupt': KeyboardInterrupt,
@@ -208,6 +215,7 @@ def test_exact_follow_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode
         collector.main(args)
     rows = [json.loads(line) for line in output.read_text().splitlines()]
     assert rows[0]['kind'] == 'start' and rows[-1]['kind'] == 'terminal'
+    assert rows[0]['schema'] == rows[-1]['schema'] == f'exact-{stage}-collection-dev-v1'
     terminal = rows[-1]
     assert terminal['failure'] == (exception is not None)
     assert terminal['reason'] == ('error:' + exception.__name__ if exception else 'stop_file')
@@ -218,9 +226,14 @@ def test_exact_follow_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode
         assert row['latency_evidence'] is False
         if mode != 'capture_error':
             root, _, admitted, worlds, baseline, _ = restore_exact_stage(row['input'])
-            replayed = rerank_follow(root, root.turn, admitted, worlds,
-                                     baseline_index=baseline, **row['config'])
-            assert normalized(replayed) == row['result']
+            if stage == 'follow':
+                replayed = rerank_follow(root, root.turn, admitted, worlds,
+                                         baseline_index=baseline, **row['config'])
+                assert normalized(replayed) == row['result']
+            else:
+                from shengji.train.lead_root_capture import replay_exact_lead
+                means, stats = replay_exact_lead(row, bot._leaf)
+                assert row['result'] == {'means': means.tolist(), 'stats': normalized(stats)}
         else:
             assert row['input'] is None
         if mode == 'complete':

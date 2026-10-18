@@ -354,6 +354,47 @@ def _observed_follow_bot():
     return bot, rnd, capture, anchor
 
 
+def _observed_lead_bot(deep=False):
+    """Build a real PV bot at a small lead root for lead-hook probes."""
+    import numpy as np
+
+    from shengji.train import pv_search_policy as pv
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.harvest.legal import enumerate_legal
+    from test_pv_admission_rules import predict, ZeroEvaluator
+
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    ledgers = [RefusalLedger() for _ in range(4)]
+    driver = HeuristicBot()
+    while rnd.phase == 'play' and (rnd.trick.plays or max(map(len, rnd.hands)) > 3):
+        seat = rnd.turn
+        ledgers[seat].observe(rnd)
+        attempted = driver.decide_play(rnd, seat)
+        rnd.play(seat, attempted)
+        capture.committed(rnd, seat, attempted)
+    seat = rnd.turn
+    ledgers[seat].observe(rnd)
+    anchor = HeuristicBot().decide_play(rnd, seat)
+    legal = enumerate_legal(rnd, seat, cap=4000, must_include=[anchor])
+    preferred = next(list(action) for action in legal.actions
+                     if list(action) != list(anchor))
+    config = pv.PVSearchConfig(
+        checkpoint_sha256='f' * 64, worlds=2, candidates=8, cap=4000,
+        exact_lead_endgame=True, exact_deep_cards=4 if deep else 0,
+        exact_lead_max_seconds=30.0,
+        exact_deep_max_nodes=10_000 if deep else 50_000_000)
+    bot = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
+                         config=config, checkpoint='/dev/null', seed=7)
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried)) for _ in range(2)]
+    bot._worlds = lambda *args: (worlds, 2)
+    bot.scores = lambda r, s, actions, w: np.zeros((len(w), len(actions)))
+    bot._value_means = lambda r, s, actions, w, check: (
+        np.asarray([1.0 if a == preferred else 0.0 for a in actions]), 1)
+    bot._refusals = ledgers[seat]
+    return bot, rnd, capture, anchor
+
+
 def test_observe_exact_follow_captures_real_search_and_json_replay():
     from shengji.train.pv_exact_follow import rerank_follow
 
@@ -424,3 +465,89 @@ def test_exact_stage_rejects_action_multiset_corruption(mutation, match):
     mutation(bad)
     with pytest.raises(ValueError, match=match):
         restore_exact_stage(bad)
+
+
+@pytest.mark.parametrize('deep', [False, True])
+def test_observe_exact_lead_real_search_and_json_replay(deep):
+    from shengji.train.lead_root_capture import observe_exact_lead, replay_exact_lead
+
+    plain, plain_root, _, plain_anchor = _observed_lead_bot(deep)
+    expected = plain._search(plain_root, plain_root.turn, plain_anchor, time.perf_counter())
+    bot, root, capture, anchor = _observed_lead_bot(deep)
+    with observe_exact_lead(bot, capture) as rows:
+        actual = bot._search(root, root.turn, anchor, time.perf_counter())
+    assert actual == expected
+    assert len(rows) == 1
+    row = json.loads(json.dumps(rows[0]))
+    assert row['leaf_fn_required_for_replay'] is True
+    assert row['leaf_fn_source'] == 'caller-supplied'
+    assert row['config']['solver'] == ('deep' if deep else 'shallow')
+    replayed_means, replayed_stats = replay_exact_lead(row, bot._leaf)
+    assert replayed_means.tolist() == row['result']['means']
+    assert replayed_stats == row['result']['stats']
+    assert row['input']['baseline_index'] >= 0
+    assert row['baseline_played']
+
+
+def test_exact_lead_ignores_direct_solver_calls_and_restores_methods():
+    from shengji.train import pv_exact_endgame
+    from shengji.harvest.legal import enumerate_legal
+    from shengji.train.lead_root_capture import observe_exact_lead
+
+    bot, root, capture, _ = _observed_lead_bot(False)
+    actions = enumerate_legal(root, root.turn, cap=8).actions
+    worlds, _ = bot._worlds(root, root.turn, actions)
+    original_solver = pv_exact_endgame.exact_lead_means
+    original_method = bot.__class__._exact_lead_decision
+    with observe_exact_lead(bot, capture) as rows:
+        pv_exact_endgame.exact_lead_means(root, root.turn, actions[:1], worlds, bot._leaf, None,
+                                        max_nodes=1000)
+    assert rows == []
+    assert pv_exact_endgame.exact_lead_means is original_solver
+    assert '_exact_lead_decision' not in vars(bot)
+    assert bot.__class__._exact_lead_decision is original_method
+
+
+def test_exact_lead_exception_and_cross_observer_nesting_restore(monkeypatch):
+    from shengji.train import pv_exact_endgame
+    from shengji.train.lead_root_capture import observe_exact_follow, observe_exact_lead
+
+    bot, root, capture, anchor = _observed_lead_bot(False)
+    original = pv_exact_endgame.exact_lead_means
+
+    def fail(*args, **kwargs):
+        raise RuntimeError('lead fixture failure')
+
+    monkeypatch.setattr(pv_exact_endgame, 'exact_lead_means', fail)
+    with observe_exact_lead(bot, capture) as rows:
+        bot._search(root, root.turn, anchor, time.perf_counter())
+    assert rows[-1]['result'] == {'exception': 'RuntimeError'}
+    assert pv_exact_endgame.exact_lead_means is fail
+    monkeypatch.setattr(pv_exact_endgame, 'exact_lead_means', original)
+
+    with observe_exact_lead(bot, capture):
+        with pytest.raises(RuntimeError, match='nested exact-follow observer'):
+            with observe_exact_follow(bot, capture):
+                pass
+
+
+def test_exact_lead_baseline_override_is_not_required_in_ballot():
+    import numpy as np
+    from shengji.train.lead_root_capture import observe_exact_lead
+    from shengji.harvest.legal import enumerate_legal
+
+    bot, root, capture, _ = _observed_lead_bot()
+    actions = enumerate_legal(root, root.turn, cap=4000).actions
+    assert len(actions) >= 3
+    admitted = [list(a) for a in actions[:2]]
+    played = list(actions[2])
+    worlds, _ = bot._worlds(root, root.turn, admitted)
+    base = (np.zeros(2), 1, 1, played, 1)
+    with observe_exact_lead(bot, capture) as rows:
+        bot._exact_lead_decision(root, root.turn, admitted, worlds,
+                                 time.perf_counter(), lambda: None, np.zeros(2), base)
+    assert len(rows) == 1
+    assert rows[0]['input']['baseline_index'] == 1
+    assert rows[0]['input']['actual_action'] is None
+    assert rows[0]['baseline_played'] == played
+    assert played not in admitted

@@ -581,6 +581,22 @@ def _prefix_fixture():
     return rnd
 
 
+def test_prefix_registry_preserves_explicit_opt_in(pinned_production_package):
+    recipe = pv.pv_env_recipe(follow_env(pinned_production_package, 8))
+    default_entries = pv.pv_registry_entries(**recipe)
+    default_bot = next(iter(default_entries.values()))(seed=7)
+    assert default_bot.exact_follow_prefix_min_worlds == 0
+    entries = pv.pv_registry_entries(**recipe, exact_follow_prefix_min_worlds=1)
+    name, factory = next(iter(entries.items()))
+    assert name not in default_entries
+    assert '-xfp1' in name
+    bot = factory(seed=7)
+    assert bot.exact_follow_prefix_min_worlds == 1
+    assert copy.deepcopy(bot).exact_follow_prefix_min_worlds == 1
+    with pytest.raises(pv.PVSearchPolicyError):
+        pv.pv_registry_entries(**recipe, exact_follow_prefix_min_worlds=True)
+
+
 def test_prefix_real_eight_card_solver_matches_full_world_and_stops(monkeypatch):
     from shengji.train import pv_exact_follow as module
     hands = [[suit + rank for rank in ('3', '4', '5', '6') for _ in range(2)]

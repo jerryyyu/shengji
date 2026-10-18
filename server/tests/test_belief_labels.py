@@ -25,8 +25,8 @@ from shengji.rl.encode import CARD_INDEX
 from shengji.train import belief_labels as bl
 
 
-def _setup_for(deck, banker, declare):
-    base = {"trump_rank": "2", "banker": banker, "declarations": [], "trump_suit": None,
+def _setup_for(deck, banker, declare, trump_rank="2"):
+    base = {"trump_rank": trump_rank, "banker": banker, "declarations": [], "trump_suit": None,
             "trump_is_nt": False}
     rnd = round_from_setup(deck, base, stop_before_bury=True, check_trump=False)
     if declare:
@@ -34,7 +34,7 @@ def _setup_for(deck, banker, declare):
         # the banker's hand already holds the kitty here: declare only a DEALT card
         dealt = list((Counter(rnd.hands[banker]) - Counter(rnd.kitty)).elements())
         if rnd.declaration is None:
-            code = next((c for c in sorted(dealt) if c[1:] == "2" and c[0] in SUITS), None)
+            code = next((c for c in sorted(dealt) if c[1:] == trump_rank and c[0] in SUITS), None)
             if code is not None:
                 base["declarations"] = [{"seat": banker, "cards": [code]}]
                 rnd = round_from_setup(deck, base, stop_before_bury=True, check_trump=False)
@@ -56,14 +56,15 @@ def _throw_attempt(rnd, seat, rng):
     return list(rng.choice(options)) if options else None
 
 
-def synthetic_cluster(seed: int, *, throw_rate: float = 0.35, declare: bool = True):
+def synthetic_cluster(seed: int, *, throw_rate: float = 0.35, declare: bool = True,
+                      trump_rank: str = "2"):
     """One deal, two rounds (banker 0 then banker 1), records in shard order."""
-    deck = list(Round("2", 0, random.Random(seed)).deck)
+    deck = list(Round(trump_rank, 0, random.Random(seed)).deck)
     rng = random.Random(seed)
     bot = HeuristicBot()
     records = []
     for mirror, banker in enumerate((0, 1)):
-        setup = _setup_for(deck, banker, declare)
+        setup = _setup_for(deck, banker, declare, trump_rank)
         rnd = round_from_setup(deck, setup)
         prefix = []
         per_seat = {s: [] for s in range(4)}

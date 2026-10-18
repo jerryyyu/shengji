@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import time
 from pathlib import Path
 
@@ -611,7 +612,10 @@ def _prefix_collection():
         journal.extend([dict(kind='decision_start', decision_index=index, lead=False,
                              round=0, seat=1, game='1:0', trick=index, hand_size=8, max_hand_size=8),
                         dict(kind='decision', decision_index=index, round=0, seat=1, lead=False,
-                             played=row['played_after_decide'])])
+                             played=row['played_after_decide'],
+                             trace={'admitted__len': 1 if index == 3 else 2,
+                                    'work_complete': True,
+                                    'exact_follow_attempted': False})])
     abandoned = copy.deepcopy(row)
     abandoned.update(decision_index=2, trick=2)
     abandoned['decision']['exact_follow_abandoned'] = 'hard_budget'
@@ -633,6 +637,34 @@ def test_prefix_summary_separates_missing_abandoned_and_fallback(monkeypatch, se
                                     served_agrees=int(served), fallback_agrees=int(not served))
     assert result['served_agreement'] == (1 if served else None)
     assert result['unmeasured_fraction'] == 2 / 3
+    assert result['capture_on'] is True
+    assert result['engine'] == ('compiled' if os.environ.get('SHENGJI_FAST') == '1' else 'pure')
+    assert result['no_capture_by_cause'] == {'admitted__len <= 1': 1}
+    assert result['unpublished_by_cause'] == {'exact_follow_abandoned:hard_budget': 1}
+    assert any('capture-caused abandonment is not separable' in limit
+               for limit in result['limits'])
+    assert any('header does not record its engine' in limit for limit in result['limits'])
+
+
+@pytest.mark.parametrize('patch,cause', [
+    ({'exact_follow_abandoned': 'soft_budget'}, 'exact_follow_abandoned:soft_budget'),
+    ({'exact_follow_error': 'solver_error'}, 'exact_follow_error:solver_error'),
+    ({'work_complete': False}, 'work_complete:false'),
+    ({'exact_follow_attempted': False}, 'exact_follow_attempted:missing'),
+])
+def test_prefix_summary_unpublished_causes(monkeypatch, patch, cause):
+    from shengji.train import lead_root_capture as module
+    capture, journal = _prefix_collection()
+    capture[2]['decision'].pop('exact_follow_abandoned')
+    capture[2]['decision'].update(patch)
+    journal[-2]['trace']['admitted__len'] = 2
+    monkeypatch.setattr(module, 'evaluate_follow_prefix', lambda *a, **kw:
+                        dict(served=True, agrees_full=True))
+    result = module.summarize_follow_prefix_collection(capture, journal, budget_seconds=1)
+    assert result['unpublished_by_cause'] == {cause: 1}
+    assert result['no_capture_by_cause'] == {'other': 1}
+    assert sum(result['unpublished_by_cause'].values()) == result['counts']['unpublished']
+    assert sum(result['no_capture_by_cause'].values()) == result['counts']['no_capture']
 
 
 @pytest.mark.parametrize('bad', ['terminal', 'count', 'seed', 'identity', 'duplicate',

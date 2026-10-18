@@ -1,6 +1,7 @@
 """Historical collector replay plus tiny-package serving-factory integration."""
 import json
 import copy
+import hashlib
 import random
 from pathlib import Path
 
@@ -281,6 +282,15 @@ def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode,
                 summary = json.loads(summary_path.read_text())
                 assert summary['counts']['observed'] == summary['counts']['measured'] == 1
                 assert summary['rows'][0]['full_means'] == row['result']['scores']
+                assert summary['capture_on'] is True
+                assert summary['inputs']['capture'] == {
+                    'sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
+                    'bytes': output.stat().st_size,
+                }
+                assert summary['inputs']['journal'] == {
+                    'sha256': hashlib.sha256(journal_path.read_bytes()).hexdigest(),
+                    'bytes': journal_path.stat().st_size,
+                }
                 with pytest.raises(FileExistsError):
                     summarize(['missing', 'missing', str(summary_path), '--budget-seconds', '1'])
         if mode == 'fallback':

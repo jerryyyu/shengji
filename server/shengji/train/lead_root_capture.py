@@ -564,11 +564,17 @@ def summarize_follow_prefix_collection(capture, journal, *, budget_seconds,
         raise ValueError('empty requested follow stratum')
     counts = dict(observed=len(selected), no_capture=0, unpublished=0,
                   measured=0, served=0, fallback=0, served_agrees=0, fallback_agrees=0)
+    unpublished_by_cause = Counter()
+    no_capture_by_cause = Counter()
     results = []
     for index in selected:
         row = by_index.get(index)
         if row is None:
             counts['no_capture'] += 1
+            trace = finished[index].get('trace')
+            admitted_len = trace.get('admitted__len') if isinstance(trace, dict) else None
+            cause = 'admitted__len <= 1' if type(admitted_len) is int and admitted_len <= 1 else 'other'
+            no_capture_by_cause[cause] += 1
             continue
         decision = row.get('decision') or {}
         if (decision.get('work_complete') is not True
@@ -576,6 +582,17 @@ def summarize_follow_prefix_collection(capture, journal, *, budget_seconds,
                 or decision.get('exact_follow_abandoned') is not None
                 or decision.get('exact_follow_error') is not None):
             counts['unpublished'] += 1
+            abandoned = decision.get('exact_follow_abandoned')
+            error = decision.get('exact_follow_error')
+            if abandoned is not None:
+                cause = f'exact_follow_abandoned:{abandoned}'
+            elif error is not None:
+                cause = f'exact_follow_error:{error}'
+            elif decision.get('work_complete') is not True:
+                cause = 'work_complete:false'
+            else:
+                cause = 'exact_follow_attempted:missing'
+            unpublished_by_cause[cause] += 1
             continue
         result = evaluate_follow_prefix(row, budget_seconds=budget_seconds,
                                         min_worlds=min_worlds, time_scale=time_scale, clock=clock)
@@ -584,14 +601,21 @@ def summarize_follow_prefix_collection(capture, journal, *, budget_seconds,
         counts[group] += 1
         counts[group + '_agrees'] += int(result['agrees_full'])
         results.append(dict(decision_index=index, **result))
+    import os
     return dict(schema='exact-follow-prefix-summary-dev-v1', counts=counts, rows=results,
                 max_hand_size=max_hand_size,
                 budget_seconds=budget_seconds, min_worlds=min_worlds, time_scale=time_scale,
+                engine='compiled' if os.environ.get('SHENGJI_FAST') == '1' else 'pure',
+                capture_on=True,
+                no_capture_by_cause=dict(sorted(no_capture_by_cause.items())),
+                unpublished_by_cause=dict(sorted(unpublished_by_cause.items())),
                 served_fraction_observed=counts['served'] / counts['observed'],
                 served_agreement=(counts['served_agrees'] / counts['served'] if counts['served'] else None),
                 unmeasured_fraction=(counts['no_capture'] + counts['unpublished']) / counts['observed'],
                 limits=['Observed fixed-size follow calls, not solver eligibility or population prevalence.',
                         'Completion-conditioned full-world replay; missing/abandoned solves remain unmeasured.',
+                        'Capture runs inside the served stage budget; capture-caused abandonment is not separable (no per-row capture_seconds).',
+                        'The collection header does not record its engine; this summary records the reader engine.',
                         'Simulated stage timing only; no hard-expiry, Fly latency, true-deal or strength claim.'])
 
 

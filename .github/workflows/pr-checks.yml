@@ -438,7 +438,8 @@ jobs:
             tests/test_belief_eval.py \
             tests/test_belief_history.py \
             tests/test_world_weighting.py \
-            tests/test_belief_sampler.py
+            tests/test_belief_sampler.py \
+            tests/test_belief_seq_speed.py
 
   luna-profiles:
     needs: changes

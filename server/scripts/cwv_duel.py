@@ -103,6 +103,8 @@ CALIBRATION_SEED0 = 70_360_904
 DUEL_SEED0 = 70_260_904
 MATCH_BAND = (0.95, 1.05)
 SEAT_OFFSETS = (0, 500_000, 1_000_000, 1_500_000)
+ROUND_KINDS = ("first_round", "fixed_banker")
+FIXED_BANKER_RULE = "seed_mod_4"
 
 
 class CalibrationMismatch(RuntimeError):
@@ -276,9 +278,26 @@ def rank_for(plan, cluster: int) -> str | None:
     return None if plan is None else plan[cluster % len(plan)]
 
 
-def play_round_at(game: Game, policies: list, trump_rank: str) -> RoundLog:
-    """``env.play_round`` started through ``start_round_at`` (rank/no banker)."""
-    rnd = start_round_at(game, trump_rank, None)
+def validate_round_kind(round_kind: str, rank_spec: str | None = None) -> None:
+    """Validate the setup mode before a run creates output or deals a round."""
+    if round_kind not in ROUND_KINDS:
+        raise ValueError(f"unknown round kind {round_kind!r}; choose one of {ROUND_KINDS}")
+    if round_kind == "fixed_banker" and rank_plan(rank_spec) is None:
+        raise ValueError("fixed_banker requires explicit --trump-ranks (not canonical)")
+
+
+def play_round_at(game: Game, policies: list, trump_rank: str,
+                  initial_banker: int | None = None,
+                  round_kind: str = "first_round") -> RoundLog:
+    """Play an explicit-rank round, optionally with a fixed initial banker."""
+    validate_round_kind(round_kind, trump_rank)
+    if round_kind == "fixed_banker":
+        if type(initial_banker) is not int or initial_banker not in range(4):
+            raise ValueError("fixed_banker initial_banker must be a seat in 0..3")
+        banker = initial_banker
+    else:
+        banker = None
+    rnd = start_round_at(game, trump_rank, banker)
     while rnd.phase == "deal":
         seat, _, _ = rnd.deal_next()
         cards = policies[seat].decide_declare(rnd, seat)
@@ -358,15 +377,22 @@ def paired_bots(policy: str, opponent: str, seed: int, flip: int):
 
 
 def play_pair(policy: str, opponent: str, seed: int, flip: int, *,
-              trump_rank: str | None, keep_states: bool = False):
+              trump_rank: str | None, keep_states: bool = False,
+              round_kind: str = "first_round"):
     """One mirrored round; returns (log, arm bots, opp bots, timers)."""
+    validate_round_kind(round_kind, trump_rank)
     pol, arm, opp = paired_bots(policy, opponent, seed, flip)
     timers = [TimedPolicy(bot, keep_states=keep_states and bot in arm) for bot in pol]
     game = Game(random.Random(seed))
+    initial_banker = seed % 4 if round_kind == "fixed_banker" else None
     if trump_rank is None:
         log = play_round(game, timers)
-    else:
+    elif round_kind == "first_round":
+        # Preserve the legacy call shape for existing consumers and fixtures.
         log = play_round_at(game, timers, trump_rank)
+    else:
+        log = play_round_at(game, timers, trump_rank, initial_banker,
+                            round_kind=round_kind)
     return log, arm, opp, timers
 
 
@@ -791,7 +817,8 @@ def calibrate(args) -> dict:
 # -------------------------------------------------------------------- run
 
 def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
-            arm, opp, timers) -> dict:
+            arm, opp, timers, *, round_kind: str = "first_round",
+            initial_banker: int | None = None) -> dict:
     """evaluate.py's record plus role, timing and evaluator telemetry."""
     won = int(log.winner_team == (0 if flip == 0 else 1))
     arm_team = 0 if flip == 0 else 1
@@ -816,7 +843,7 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
             "depth_max_total": sum(getattr(b, "depth_max_total", 0) for b in bots),
         }
         (arm_counters if side == "arm" else opp_counters).update(extra)
-    return {
+    record = {
         "run": run_id, "label": label, "policy": policy, "seed": seed,
         "flip": flip, "won": won,
         "winner_team": int(log.winner_team), "level_change": int(log.level_change),
@@ -834,6 +861,12 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
         "arm_play_health": dict(sum((t.play_health for t in arm_timers), Counter())),
         "opp_play_health": dict(sum((t.play_health for t in opp_timers), Counter())),
     }
+    # Keep legacy first-round records byte-shape compatible.  Fixed-banker
+    # records carry the setup needed for a reader to reject mixed/drifted rows.
+    if round_kind == "fixed_banker":
+        record["round_kind"] = round_kind
+        record["initial_banker"] = initial_banker
+    return record
 
 
 def pair_key(record: dict) -> tuple:
@@ -843,6 +876,7 @@ def pair_key(record: dict) -> tuple:
 def read_shard(path: str) -> list[dict]:
     """Every complete record line of a shard file (a torn tail is ignored)."""
     records = []
+    observed_kind = None
     if not os.path.exists(path):
         return records
     with open(path) as fh:
@@ -853,10 +887,31 @@ def read_shard(path: str) -> list[dict]:
             if not line:
                 continue
             try:
-                records.append(json.loads(line))
+                record = json.loads(line)
             except json.JSONDecodeError:
                 break                      # a torn last line from a crash
+            validate_round_record(record)
+            kind = record.get("round_kind", "first_round")
+            if observed_kind is not None and kind != observed_kind:
+                raise ValueError("round_kind drift within shard")
+            observed_kind = kind
+            records.append(record)
     return records
+
+
+def validate_round_record(record: dict) -> None:
+    """Reject fixed-banker metadata drift while accepting old first-round rows."""
+    kind = record.get("round_kind", "first_round")
+    if kind not in ROUND_KINDS:
+        raise ValueError(f"invalid round_kind {kind!r}")
+    if kind == "fixed_banker":
+        banker = record.get("initial_banker")
+        if type(banker) is not int or banker not in range(4):
+            raise ValueError("fixed_banker record requires initial_banker in 0..3")
+        if type(record.get("seed")) is int and banker != record["seed"] % 4:
+            raise ValueError("fixed_banker initial_banker does not match deal seed")
+    elif "initial_banker" in record:
+        raise ValueError("first_round record cannot carry initial_banker")
 
 
 def valid_prefix_length(path: str) -> int:
@@ -909,12 +964,13 @@ class ShardSink:
 
 def play_shard(run_id: str, plan, clusters, seed0: int, rank_spec: str | None,
                opponent: str, *, progress: bool = False, sink=None,
-               done=frozenset()) -> list[dict]:
+               done=frozenset(), round_kind: str = "first_round") -> list[dict]:
     """All plan entries for these clusters, evaluate.py's pairing per entry.
 
     ``sink(record)`` publishes each completed pair as it completes; pairs
     whose key is in ``done`` are skipped (resume), never replayed.
     """
+    validate_round_kind(round_kind, rank_spec)
     ranks = rank_plan(rank_spec)
     records = []
     total = 2 * len(clusters) * len(plan)
@@ -926,8 +982,11 @@ def play_shard(run_id: str, plan, clusters, seed0: int, rank_spec: str | None,
                 if (label, seed, flip) in done:
                     continue
                 log, arm, opp, timers = play_pair(
-                    policy, opponent, seed, flip, trump_rank=rank_for(ranks, cluster))
-                record = _record(run_id, label, policy, seed, flip, log, arm, opp, timers)
+                    policy, opponent, seed, flip, trump_rank=rank_for(ranks, cluster),
+                    round_kind=round_kind)
+                record = _record(run_id, label, policy, seed, flip, log, arm, opp, timers,
+                                round_kind=round_kind,
+                                initial_banker=(seed % 4 if round_kind == "fixed_banker" else None))
                 record["opponent"] = opponent
                 if sink is not None:
                     sink(record)
@@ -960,12 +1019,16 @@ def _worker(payload: dict) -> dict:
     if payload.get("scaled_multipliers"):
         register_scaled_policies(payload["opponent"], payload["scaled_multipliers"])
     path = shard_path(payload["out"], payload["run_id"], payload["shard"])
+    expected_kind = payload.get("round_kind", "first_round")
     retained = [rec for rec in read_shard(path) if rec.get("run") == payload["run_id"]]
+    if any(rec.get("round_kind", "first_round") != expected_kind for rec in retained):
+        raise ValueError("retained shard round_kind differs from requested run")
     done = {pair_key(rec) for rec in retained}
     records = play_shard(payload["run_id"], payload["plan"], payload["clusters"],
                          payload["seed0"], payload["rank_spec"], payload["opponent"],
                          progress=payload.get("progress", False),
-                         sink=ShardSink(path), done=frozenset(done))
+                         sink=ShardSink(path), done=frozenset(done),
+                         round_kind=payload.get("round_kind", "first_round"))
     return {"records": records, "retained": retained}
 
 
@@ -1187,6 +1250,9 @@ def seed_window_for_run(args, run_id: str) -> dict:
 def run(args) -> dict:
     from shengji.ai.cwv_policy import file_sha256, load_cwv_checkpoint
 
+    round_kind = getattr(args, "round_kind", "first_round")
+    # Validate setup before registering a seed window or creating output.
+    validate_round_kind(round_kind, args.trump_ranks)
     git = git_identity()
     run_id = args.resume or f"cwv_{int(time.time())}_{os.getpid()}_{git['short']}"
     seed_window = seed_window_for_run(args, run_id)     # refuse before any deal
@@ -1258,6 +1324,9 @@ def run(args) -> dict:
         "calibration_identity": calibration["identity_sha256"],
         "checkpoint_sha256": sha,
     }
+    if round_kind == "fixed_banker":
+        configuration["round_kind"] = round_kind
+        configuration["initial_banker"] = FIXED_BANKER_RULE
     if args.resume:
         manifest_path = os.path.join(args.out, f"{run_id}.manifest.json")
         with open(manifest_path) as fh:
@@ -1297,6 +1366,9 @@ def run(args) -> dict:
         # deliberately replicates (--allow-seed-overlap), see shengji/seeds.py
         "seed_window": seed_window,
     }
+    if round_kind == "fixed_banker":
+        manifest["round_kind"] = round_kind
+        manifest["initial_banker"] = FIXED_BANKER_RULE
     manifest_path = os.path.join(args.out, f"{run_id}.manifest.json")
     if not args.resume:
         with open(manifest_path, "x") as fh:
@@ -1313,6 +1385,7 @@ def run(args) -> dict:
         "arm_args": arm_args,
         "clusters": chunk, "seed0": args.seed0,
         "rank_spec": rank_spec_label(plan_ranks) if plan_ranks else None,
+        "round_kind": round_kind,
         "opponent": args.opponent, "progress": index == 0,
         "scaled_multipliers": scaled_multipliers,
         "out": args.out, "shard": index,
@@ -1451,6 +1524,9 @@ def build_parser() -> argparse.ArgumentParser:
     duel.add_argument("--opponent", default=PRODUCTION)
     duel.add_argument("--bar", default="paired_utility > 0")
     duel.add_argument("--trump-ranks", default="canonical")
+    duel.add_argument("--round-kind", choices=ROUND_KINDS, default="first_round",
+                      help="first_round (legacy fresh deal) or fixed_banker (requires "
+                           "explicit --trump-ranks; banker is seed %% 4)")
     duel.add_argument("--lcb", type=float, default=0.0)
     duel.add_argument("--plies", type=int, default=0, choices=(0, 1, 2),
                       help="must equal the calibration's plies (0 one-ply; 1/2 two-ply)")

@@ -232,8 +232,9 @@ from shengji.ai.registry import make_bot as _real_make_bot  # noqa: E402
 from shengji.ai.env import play_round as real_play_round  # noqa: E402
 
 
+@pytest.mark.parametrize('round_kind', ['first_round', 'fixed_banker'])
 def test_pairs_are_published_as_they_complete_and_resume_never_replays(
-        duel, tmp_path, monkeypatch):
+        duel, tmp_path, monkeypatch, round_kind):
     """Fault injection: the process dies after two pairs; the two are on disk,
     a rerun under the same run id reads them back and plays only the rest."""
     calls = []
@@ -249,6 +250,9 @@ def test_pairs_are_published_as_they_complete_and_resume_never_replays(
                "run_id": "run-x", "plan": [("arm", "smart")], "clusters": [0, 1],
                "seed0": 700, "rank_spec": None, "opponent": "heuristic",
                "out": str(tmp_path), "shard": 0}
+    payload['round_kind'] = round_kind
+    if round_kind == 'fixed_banker':
+        payload['rank_spec'] = '2,A'
     monkeypatch.setattr(duel, "register_cwv_policies", lambda *a, **k: [])
     with pytest.raises(RuntimeError, match="simulated crash"):
         duel._worker(payload)
@@ -268,6 +272,9 @@ def test_pairs_are_published_as_they_complete_and_resume_never_replays(
     assert [duel.pair_key(r) for r in outcome["records"]] == [("arm", 701, 0), ("arm", 701, 1)]
     merged = duel.read_shard(shard)
     assert len(merged) == 4 and len({duel.pair_key(r) for r in merged}) == 4
+    other_kind = 'fixed_banker' if round_kind == 'first_round' else 'first_round'
+    with pytest.raises(ValueError, match='retained shard round_kind'):
+        duel._worker({**payload, 'round_kind': other_kind})
 
     # RED when the sink is dropped: nothing survives the crash
     calls.clear()
@@ -416,6 +423,94 @@ def test_explicit_rank_2_deals_are_the_canonical_deals(duel):
     assert duel.shards(5, 2) == [[0, 2, 4], [1, 3]]
 
 
+def test_fixed_banker_is_seed_stable_across_mirrors_and_preserves_deck(duel):
+    seed = 424_243
+    banker = seed % 4
+    first = duel.start_round_at(duel.Game(random.Random(seed)), "A", banker)
+    mirror = duel.start_round_at(duel.Game(random.Random(seed)), "A", banker)
+    assert first.banker == mirror.banker == banker
+    assert first.deck == mirror.deck
+
+    logs = [duel.play_pair("smart", "heuristic", seed, flip,
+                           trump_rank="A", round_kind="fixed_banker")[0]
+            for flip in (0, 1)]
+    assert [log.banker for log in logs] == [banker, banker]
+
+
+def test_fixed_banker_metadata_is_shard_stable_and_legacy_rows_unchanged(duel, tmp_path):
+    rows = duel.play_shard("fixed", [("candidate", "smart")], [0, 1], 700,
+                           "2,A", "heuristic", round_kind="fixed_banker")
+    assert [(row["seed"], row["flip"], row["round_kind"], row["initial_banker"])
+            for row in rows] == [
+                (700, 0, "fixed_banker", 0), (700, 1, "fixed_banker", 0),
+                (701, 0, "fixed_banker", 1), (701, 1, "fixed_banker", 1)]
+    path = str(tmp_path / "fixed.jsonl")
+    sink = duel.ShardSink(path)
+    for row in rows:
+        sink(row)
+    assert duel.read_shard(path) == rows
+
+    legacy = {"label": "candidate", "seed": 700, "flip": 0}
+    legacy_path = str(tmp_path / "legacy.jsonl")
+    duel.ShardSink(legacy_path)(legacy)
+    assert duel.read_shard(legacy_path) == [legacy]
+    with open(legacy_path, "a") as fh:
+        fh.write(json.dumps({**legacy, "round_kind": "fixed_banker",
+                             "initial_banker": 0}) + "\n")
+    with pytest.raises(ValueError, match="round_kind drift"):
+        duel.read_shard(legacy_path)
+
+
+def test_fixed_banker_cli_requires_explicit_rank_before_output(duel, tmp_path):
+    adapter = _load_script("pv_dev_duel")
+    control = {"SHENGJI_BOT": "unit-control", "recipe": "unit-control"}
+    candidate = {"SHENGJI_BOT": "unit-candidate", "recipe": "unit-candidate"}
+    out = tmp_path / "not-created"
+    with pytest.raises(ValueError, match="explicit"):
+        adapter.run(control, candidate, out=out, seed0=100, pairs=2,
+                    ranks="canonical", round_kind="fixed_banker")
+    assert not out.exists()
+
+
+def test_fixed_banker_reader_rejects_missing_or_drifted_metadata(tmp_path):
+    adapter = _load_script("pv_dev_duel")
+    meta = dict(schema="pv-dev-duel-v1", candidate="T", control="C",
+                seed0=100, cluster0=0, pairs=2, ranks=["2", "A"],
+                round_kind="fixed_banker", initial_banker=adapter.duel.FIXED_BANKER_RULE)
+    (tmp_path / "run.json").write_text(json.dumps(meta))
+    (tmp_path / "DONE").write_text("2 complete pairs\n")
+    rows = [dict(seed=100+i, flip=f, trump_rank=rank, policy="T", opponent="C",
+                 label="candidate", winner_team=f, level_change=1, won=1,
+                 level_utility=1, round_kind="fixed_banker", initial_banker=(100+i) % 4,
+                 arm_play_decisions=1, opp_play_decisions=1,
+                 arm_play_health=dict(decisions=1, pv_complete=1),
+                 opp_play_health=dict(decisions=1, pv_complete=1))
+            for i, rank in enumerate(meta["ranks"]) for f in (0, 1)]
+    path = tmp_path / "rounds.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    assert adapter.read(tmp_path, meta)["pairs"] == 2
+
+    legacy_meta = {key: value for key, value in meta.items()
+                   if key not in ("round_kind", "initial_banker")}
+    (tmp_path / "run.json").write_text(json.dumps(legacy_meta))
+    with pytest.raises(ValueError, match="round_kind metadata drift"):
+        adapter.read(tmp_path, legacy_meta)
+
+    (tmp_path / "run.json").write_text(json.dumps(meta))
+    missing = list(rows)
+    missing[0] = {key: value for key, value in missing[0].items()
+                  if key not in ("round_kind", "initial_banker")}
+    path.write_text("".join(json.dumps(row) + "\n" for row in missing))
+    with pytest.raises(ValueError, match="round_kind metadata drift"):
+        adapter.read(tmp_path, meta)
+
+    drift = list(rows)
+    drift[0]["initial_banker"] = 3
+    path.write_text("".join(json.dumps(row) + "\n" for row in drift))
+    with pytest.raises(ValueError, match="initial_banker"):
+        adapter.read(tmp_path, meta)
+
+
 def test_pv_health_reaches_persisted_mixed_rank_mirrors(duel, monkeypatch, tmp_path):
     class Bot:
         def __init__(self, candidate):
@@ -489,7 +584,9 @@ def test_timed_duel_forwards_every_public_play_to_all_seats(duel, rank):
     assert all(seen[-1] == 'round_end' for seen in observations)
 
 
-def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_path):
+@pytest.mark.parametrize('round_kind', ['first_round', 'fixed_banker'])
+def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_path,
+                                                               round_kind):
     from shengji.ai import registry
     from shengji.train import pv_search_policy as pv
 
@@ -508,12 +605,25 @@ def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_
     control = {'SHENGJI_BOT': 'unit-control', 'recipe': 'unit-control'}
     candidate = {'SHENGJI_BOT': 'unit-candidate', 'recipe': 'unit-candidate'}
     out = tmp_path / 'duel'
-    meta = adapter.run(control, candidate, out=out, seed0=100, pairs=2,
-                       cluster0=1, ranks='2,A')
+    control_path = tmp_path / 'control.json'
+    candidate_path = tmp_path / 'candidate.json'
+    control_path.write_text(json.dumps(control))
+    candidate_path.write_text(json.dumps(candidate))
+    adapter.main(['--control-env', str(control_path), '--candidate-env', str(candidate_path),
+                  '--out', str(out), '--seed0', '100', '--pairs', '2', '--cluster0', '1',
+                  '--ranks', '2,A', '--round-kind', round_kind])
+    meta = json.loads((out / 'run.json').read_text())
     rows = adapter.duel.read_shard(str(out / 'rounds.jsonl'))
     assert [(r['seed'], r['flip'], r['trump_rank']) for r in rows] == [
         (101, 0, 'A'), (101, 1, 'A'), (102, 0, '2'), (102, 1, '2')]
     assert all(r['policy'] == 'unit-candidate' for r in rows)
+    if round_kind == 'fixed_banker':
+        assert meta['initial_banker'] == adapter.duel.FIXED_BANKER_RULE
+        assert all(r['round_kind'] == round_kind
+                   and r['initial_banker'] == r['seed'] % 4 for r in rows)
+    else:
+        assert 'round_kind' not in meta
+        assert all('round_kind' not in r and 'initial_banker' not in r for r in rows)
     assert all(r['arm_play_health']['decisions'] == r['arm_play_decisions'] for r in rows)
     assert constructed[:2] == [('unit-control', 0), ('unit-candidate', 0)]
     assert (out / 'DONE').read_text() == '2 complete pairs\n'
@@ -524,7 +634,8 @@ def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_
     assert adapter.read(out, meta)['verdict'] == 'QUALITY_FAIL'
     prior = (out / 'rounds.jsonl').read_bytes()
     with pytest.raises(FileExistsError):
-        adapter.run(control, candidate, out=out, seed0=100, pairs=2, ranks='2,A')
+        adapter.run(control, candidate, out=out, seed0=100, pairs=2, ranks='2,A',
+                    round_kind=round_kind)
     assert (out / 'rounds.jsonl').read_bytes() == prior
     with pytest.raises(ValueError, match='derived PV recipe'):
         adapter.register_pair(control, {**candidate, 'SHENGJI_BOT': 'wrong'})
@@ -537,8 +648,35 @@ def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_
     monkeypatch.setattr(adapter.duel, 'play_shard', broken)
     with pytest.raises(RuntimeError, match='synthetic worker failure'):
         adapter.run(control, candidate, out=tmp_path / 'failed', seed0=200,
-                    pairs=1, ranks='A')
+                    pairs=1, ranks='A', round_kind=round_kind)
     assert not (tmp_path / 'failed' / 'DONE').exists()
+
+
+def test_fixed_banker_shard_assignment_is_stable_and_mirrors_share_deck(duel, monkeypatch):
+    seen = []
+    real_start = duel.start_round_at
+
+    def traced(game, rank, banker):
+        rnd = real_start(game, rank, banker)
+        seen.append((list(rnd.deck), rnd.banker))
+        return rnd
+
+    monkeypatch.setattr(duel, 'start_round_at', traced)
+    seed = 700
+    duel.play_pair('smart', 'heuristic', seed, 0, trump_rank='A',
+                   round_kind='fixed_banker')
+    duel.play_pair('smart', 'heuristic', seed, 1, trump_rank='A',
+                   round_kind='fixed_banker')
+    assert seen[0] == seen[1] and seen[0][1] == seed % 4
+
+    whole = duel.play_shard('stable', [('candidate', 'smart')], [0, 1], seed,
+                            '2,A', 'heuristic', round_kind='fixed_banker')
+    suffix = duel.play_shard('stable', [('candidate', 'smart')], [1], seed,
+                             '2,A', 'heuristic', round_kind='fixed_banker')
+    fields = lambda row: (row['seed'], row['flip'], row['trump_rank'],
+                          row['initial_banker'], row['round_kind'])
+    assert [fields(row) for row in suffix] == [fields(row) for row in whole
+                                                if row['seed'] == seed + 1]
 
 
 def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):

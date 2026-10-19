@@ -57,9 +57,12 @@ def capacity_summary(rows, play_wall_seconds):
                 play_wall_seconds=play_wall_seconds, sides=sides)
 
 
-def run(control, candidate, *, out, seed0, pairs, ranks, cluster0=0):
+def run(control, candidate, *, out, seed0, pairs, ranks, cluster0=0,
+        round_kind='first_round'):
     if pairs < 1 or seed0 < 0 or cluster0 < 0:
         raise ValueError('positive pairs and nonnegative seeds/cluster offset required')
+    # Reject an invalid setup before creating the output directory.
+    duel.validate_round_kind(round_kind, ranks)
     plan = duel.rank_plan(ranks)
     if not plan:
         raise ValueError('explicit nonempty trump ranks required')
@@ -69,13 +72,17 @@ def run(control, candidate, *, out, seed0, pairs, ranks, cluster0=0):
     meta = dict(schema='pv-dev-duel-v1', control=baseline, candidate=treatment,
                 control_env=control, candidate_env=candidate, seed0=seed0,
                 pairs=pairs, cluster0=cluster0, ranks=plan)
+    if round_kind == 'fixed_banker':
+        meta['round_kind'] = round_kind
+        meta['initial_banker'] = duel.FIXED_BANKER_RULE
     (out / 'run.json').write_text(json.dumps(meta, sort_keys=True, indent=2))
     sink = duel.ShardSink(str(out / 'rounds.jsonl'))
     started = time.perf_counter()
     # Global cluster indices preserve rank phase when a run is split into shards.
     rows = duel.play_shard('pv-dev', [('candidate', treatment)],
                            range(cluster0, cluster0 + pairs), seed0, ranks,
-                           baseline, sink=sink, progress=True)
+                           baseline, sink=sink, progress=True,
+                           round_kind=round_kind)
     if len(rows) != pairs * 2 or sink.written != pairs * 2:
         raise RuntimeError('incomplete shard; output preserved without DONE')
     with (out / 'health.json').open('x') as fh:
@@ -96,6 +103,13 @@ def read(out, expected):
     Confidence intervals cluster by deal, never by individual seat mirror.
     """
     out = Path(out)
+    expected_kind = expected.get('round_kind', 'first_round')
+    duel.validate_round_kind(expected_kind, ','.join(expected.get('ranks', [])))
+    if (expected_kind == 'fixed_banker'
+            and expected.get('initial_banker') != duel.FIXED_BANKER_RULE):
+        raise ValueError('fixed_banker header missing initial_banker rule')
+    if expected_kind == 'first_round' and 'initial_banker' in expected:
+        raise ValueError('first_round header cannot carry initial_banker')
     if (expected.get('schema') != 'pv-dev-duel-v1'
             or expected['control'] == expected['candidate'] or not expected['ranks']):
         raise ValueError('invalid expected plan')
@@ -119,6 +133,10 @@ def read(out, expected):
         if (row['policy'] != expected['candidate'] or row['label'] != 'candidate'
                 or row['opponent'] != expected['control']):
             raise ValueError('arm identity drift')
+        row_kind = row.get('round_kind', 'first_round')
+        duel.validate_round_record(row)
+        if row_kind != expected_kind:
+            raise ValueError('round_kind metadata drift')
         seen.add(key)
         won = int(row['winner_team'] == row['flip'])
         value = (1 if won else -1) * max(1, row['level_change'])
@@ -168,10 +186,11 @@ def main(argv=None):
     parser.add_argument('--pairs', required=True, type=int)
     parser.add_argument('--cluster0', default=0, type=int)
     parser.add_argument('--ranks', required=True)
+    parser.add_argument('--round-kind', choices=duel.ROUND_KINDS, default='first_round')
     args = parser.parse_args(argv)
     run(json.loads(args.control_env.read_text()), json.loads(args.candidate_env.read_text()),
         out=args.out, seed0=args.seed0, pairs=args.pairs, ranks=args.ranks,
-        cluster0=args.cluster0)
+        cluster0=args.cluster0, round_kind=args.round_kind)
 
 
 if __name__ == '__main__':

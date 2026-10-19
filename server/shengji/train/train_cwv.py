@@ -590,10 +590,7 @@ def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "c
 
 # -------------------------------------------------------------- evaluation
 
-# A long evaluation must remain observable without exposing anything about the
-# data being scored.  Keep this interval comfortably below the fleet's
-# bounded-wait ceiling; callers can still receive a final event immediately
-# when a pass finishes.
+# Cooperative updates occur between batches, not during a blocked model call.
 RUN_EVAL_PROGRESS_INTERVAL_SECS = 30.0
 
 
@@ -627,6 +624,7 @@ def _evaluate_phase(say: Callable[[str], None], phase: str):
         raise
     else:
         say(f"evaluate phase {phase}: done elapsed={time.perf_counter() - started:.1f}s")
+
 
 def _rps(prob: np.ndarray, target: np.ndarray) -> np.ndarray:
     cumulative = np.cumsum(prob, axis=1)[:, :-1]
@@ -3346,7 +3344,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
                              "cumulative fit/selection exposure (a warm-start ancestor saw "
                              "them): not held out; refusing")
         luna_blocks = luna_prepared.block_store
-        with _evaluate_phase(say, "candidate"):
+        with _evaluate_phase(say, "luna-candidate"):
             luna_pass = candidate_pass(
                 [(shard, None) for shard, _path in luna_blocks.entries],
                 score_fn=cwv_score_fn(model, dev), public_head=public_model, prior=prior,
@@ -3356,13 +3354,13 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
                       batch_size=batch_size, aux_head=aux_head,
                       progress=lambda event: _say_run_eval_progress(say, event,
                                                                     phase="luna-inference"))
-        with _evaluate_phase(say, "metrics"):
+        with _evaluate_phase(say, "luna-metrics"):
             luna_public, luna_check = public_comparison(luna_pass, public_info)
             final["luna"] = labelled("luna", full_metrics(
                 ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
                 public_decision=luna_public, public_note={**note, **luna_check}))
         final["luna"]["population"] = luna_population
-        with _evaluate_phase(say, "ranking"):
+        with _evaluate_phase(say, "luna-ranking"):
             ranking["luna"] = ranking_block(luna_pass, n_boot=n_boot, seed=int(config["seed"]))
         final["luna"]["ranking"] = ranking["luna"]
         if not bench_source:

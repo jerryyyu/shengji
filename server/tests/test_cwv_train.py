@@ -346,6 +346,38 @@ def test_run_eval_progress_is_bounded_and_outcome_blind(blocks, monkeypatch):
     assert set(events[-1]) == {"phase", "state", "elapsed_secs", "blocks", "rows"}
     assert not any(key in events[-1] for key in ("deal_key", "source_ref", "score", "metric"))
 
+    quiet = train_cwv.run_eval(
+        StubModel(), StubStore(), lambda block: np.ones(block.n, dtype=bool),
+        torch.device("cpu"), batch_size=17)
+    for key in result:
+        np.testing.assert_equal(result[key], quiet[key])
+
+    # A synthetic clock tests cadence without sleeping or scoring new data.
+    import itertools
+    ticks = itertools.count(0, 10)
+    with monkeypatch.context() as clock_patch:
+        clock_patch.setattr(train_cwv.time, "perf_counter", lambda: next(ticks))
+        periodic = []
+        train_cwv.run_eval(
+            StubModel(), StubStore(), lambda block: np.ones(block.n, dtype=bool),
+            torch.device("cpu"), batch_size=1, progress=periodic.append)
+    updates = [event for event in periodic if event["state"] == "progress"]
+    assert updates
+    elapsed = [0.0, *(event["elapsed_secs"] for event in updates)]
+    assert all(b - a >= 30 for a, b in zip(elapsed, elapsed[1:]))
+    assert [event["rows"] for event in periodic] == sorted(event["rows"] for event in periodic)
+
+    with monkeypatch.context() as assembly_patch:
+        def fail_assembly(*args, **kwargs):
+            raise MemoryError("synthetic assembly failure")
+        assembly_patch.setattr(train_cwv.np, "concatenate", fail_assembly)
+        assembly = []
+        with pytest.raises(MemoryError, match="synthetic assembly failure"):
+            train_cwv.run_eval(
+                StubModel(), StubStore(), lambda block: np.ones(block.n, dtype=bool),
+                torch.device("cpu"), batch_size=17, progress=assembly.append)
+        assert not any(event["state"] == "done" for event in assembly)
+
     empty = []
     train_cwv.run_eval(
         StubModel(), StubStore(), lambda block: np.zeros(block.n, dtype=bool),
@@ -363,6 +395,16 @@ def test_run_eval_progress_is_bounded_and_outcome_blind(blocks, monkeypatch):
             StubModel(), StubStore(), lambda block: np.ones(block.n, dtype=bool),
             torch.device("cpu"), batch_size=17, progress=failed.append)
     assert [event["state"] for event in failed] == ["start"]
+
+
+def test_evaluation_phase_failure_does_not_log_done():
+    lines = []
+    error = RuntimeError("private outcome must not be logged")
+    with pytest.raises(RuntimeError) as caught:
+        with train_cwv._evaluate_phase(lines.append, "metrics"):
+            raise error
+    assert caught.value is error
+    assert lines == ["evaluate phase metrics: start"]
 
 
 # 6 --------------------------------------------------------- training smoke
@@ -462,10 +504,22 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path, mo
     assert prediction.expected_signed_level == pytest.approx(level[0], abs=1e-5)
     assert predict_tensors(loaded, [row.tensors])[0].probability == prediction.probability
     # evaluate reproduces the checkpoint's TEST and Luna metrics
+    eval_logs = []
     ev = train_cwv.evaluate(checkpoint=str(out / "best.pt"), out=tmp_path / "e",
                             data=[str(store_dir)], eval_luna=str(luna_path), device="cpu",
                             n_boot=20, cache_dir=str(cache_dir), cache_workers=1,
-                            eval_workers=1, bench_batch=8, log=None)
+                            eval_workers=1, bench_batch=8, log=eval_logs.append)
+    phases = [line for line in eval_logs if line.startswith("evaluate phase ")]
+    expected = ["candidate", "inference", "metrics", "candidate-set", "search-facing",
+                "ranking", "luna-candidate", "luna-inference", "luna-metrics",
+                "luna-ranking", "holdouts", "benchmark"]
+    assert [line.split(":")[0].removeprefix("evaluate phase ")
+            for line in phases if line.endswith(": start")] == expected
+    for phase in expected:
+        assert sum(line.startswith(f"evaluate phase {phase}: done elapsed=")
+                   for line in phases) == 1
+    assert all(not any(word in line for word in ("loss=", "score=", "regret=", "accuracy="))
+               for line in phases)
     assert ev["final"]["test"]["value"]["model"] == test["value"]["model"]
     assert ev["final"]["luna"]["value"]["model"] == luna_block["value"]["model"]
     assert ev["final"]["test"]["ranking"]["scorers"]["cwv"]["top1"]["mean"] == \

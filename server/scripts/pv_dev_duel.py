@@ -165,7 +165,17 @@ def read(out, expected):
     issues = [f'{side}:{key}={counts[key]}' for side, counts in health.items()
               for key in ('pv_incomplete', 'pv_fallback', 'non_pv_record',
                           'lead_alias_refill_abandoned') if counts.get(key, 0)]
+    rank_groups = {}
+    for name, is_two in (('rank_2', True), ('rank_not_2', False)):
+        group = [scores[s] for s in scores if (by_rank[s] == '2') == is_two]
+        group_se = statistics.stdev(group) / math.sqrt(len(group)) if len(group) > 1 else None
+        group_mean = statistics.fmean(group) if group else None
+        rank_groups[name] = dict(
+            pairs=len(group), rounds=2*len(group), mean_levels_per_round=group_mean,
+            ci95_normal=([group_mean - 1.96*group_se, group_mean + 1.96*group_se]
+                         if group_se is not None else None))
     return dict(pairs=n, rounds=2*n, mean_levels_per_round=mean,
+                by_rank_group=rank_groups,
                 ci95_normal=ci, ci95_bootstrap=list(duel.bootstrap_ci(values)),
                 mde80=2.8*se, health={k: dict(v) for k, v in health.items()},
                 quality_issues=issues,

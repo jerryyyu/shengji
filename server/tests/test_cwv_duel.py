@@ -702,6 +702,8 @@ def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):
     assert result['pairs'] == 2 and result['rounds'] == 4
     assert result['mean_levels_per_round'] == 1
     assert result['by_rank']['A'] == dict(pairs=1, mean=1)
+    assert result['by_rank_group']['rank_2']['ci95_normal'] is None
+    assert result['by_rank_group']['rank_not_2']['ci95_normal'] is None
     assert result['verdict'] == 'POSITIVE'
     for change in ({'seed': 999}, {'flip': 1}, {'trump_rank': 'A'},
                    {'opponent': 'T'}, {'policy': 'C'}, {'level_utility': -1},
@@ -725,6 +727,49 @@ def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):
     path.write_bytes(path.read_bytes()[:-1])
     with pytest.raises(ValueError, match='torn'):
         adapter.read(tmp_path, meta)
+
+
+@pytest.mark.parametrize('ranks', [['2', 'A', '2', 'K'], ['A', 'K', 'A', 'K']])
+def test_pv_dev_rank_groups_cluster_mirrors_and_handle_absent_rank(tmp_path, ranks):
+    adapter = _load_script('pv_dev_duel')
+    meta = dict(schema='pv-dev-duel-v1', candidate='T', control='C',
+                seed0=100, cluster0=0, pairs=4, ranks=ranks)
+    (tmp_path / 'run.json').write_text(json.dumps(meta))
+    (tmp_path / 'DONE').write_text('4 complete pairs\n')
+    rows = []
+    for i, rank in enumerate(ranks):
+        for flip in (0, 1):
+            value = (1, 3, -1, 1)[i]
+            winner = flip if value > 0 else 1-flip
+            rows.append(dict(seed=100+i, flip=flip, trump_rank=rank,
+                             policy='T', opponent='C', label='candidate',
+                             winner_team=winner, level_change=abs(value),
+                             won=int(value > 0), level_utility=value,
+                             arm_play_decisions=1, opp_play_decisions=1,
+                             arm_play_health=dict(decisions=1, pv_complete=1),
+                             opp_play_health=dict(decisions=1, pv_complete=1)))
+    (tmp_path / 'rounds.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+    result = adapter.read(tmp_path, meta)
+    assert result['mean_levels_per_round'] == 1
+    groups = result['by_rank_group']
+    if '2' in ranks:
+        assert groups['rank_2'] == dict(pairs=2, rounds=4, mean_levels_per_round=0,
+                                      ci95_normal=[-1.96, 1.96])
+        assert groups['rank_not_2'] == dict(pairs=2, rounds=4, mean_levels_per_round=2,
+                                          ci95_normal=pytest.approx([0.04, 3.96]))
+    else:
+        assert groups['rank_2'] == dict(pairs=0, rounds=0, mean_levels_per_round=None,
+                                      ci95_normal=None)
+        assert groups['rank_not_2']['pairs'] == 4
+
+
+def test_full_rank_cycle_balances_fixed_bankers(duel):
+    from collections import Counter
+    ranks = duel.rank_plan('2,3,4,5,6,7,8,9,10,J,Q,K,A')
+    counts = Counter((duel.rank_for(ranks, i), (153060914+i) % 4)
+                     for i in range(624))
+    assert len(counts) == 52
+    assert set(counts.values()) == {12}
 
 
 def test_pv_capacity_projection_never_reads_outcomes():

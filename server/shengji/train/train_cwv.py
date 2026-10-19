@@ -590,6 +590,44 @@ def load_cwv_checkpoint(path: str | os.PathLike, device: torch.device | str = "c
 
 # -------------------------------------------------------------- evaluation
 
+# A long evaluation must remain observable without exposing anything about the
+# data being scored.  Keep this interval comfortably below the fleet's
+# bounded-wait ceiling; callers can still receive a final event immediately
+# when a pass finishes.
+RUN_EVAL_PROGRESS_INTERVAL_SECS = 30.0
+
+
+def _say_run_eval_progress(say: Callable[[str], None], event: Mapping[str, Any], *,
+                           phase: str | None = None) -> None:
+    """Render outcome-blind ``run_eval`` progress for the human log.
+
+    The event deliberately contains only phase, state, elapsed time, and
+    aggregate work counts.  In particular, it never carries scores, deal
+    identities, source references, or output paths.
+    """
+    state = event["state"]
+    phase = phase or str(event["phase"])
+    if state == "start":
+        say(f"evaluate phase {phase}: start")
+    else:
+        say(f"evaluate phase {phase}: {state} elapsed={event['elapsed_secs']:.1f}s "
+            f"blocks={event['blocks']} rows={event['rows']}")
+
+
+@contextlib.contextmanager
+def _evaluate_phase(say: Callable[[str], None], phase: str):
+    """Log an outcome-blind phase lifetime around a real consumer."""
+    started = time.perf_counter()
+    say(f"evaluate phase {phase}: start")
+    try:
+        yield
+    except BaseException:
+        # A failed phase must not be reported as successfully completed.  The
+        # original exception and traceback are intentionally preserved.
+        raise
+    else:
+        say(f"evaluate phase {phase}: done elapsed={time.perf_counter() - started:.1f}s")
+
 def _rps(prob: np.ndarray, target: np.ndarray) -> np.ndarray:
     cumulative = np.cumsum(prob, axis=1)[:, :-1]
     truth = (np.arange(OUTCOME_CLASSES - 1)[None, :] >= target[:, None]).astype(np.float64)
@@ -599,9 +637,17 @@ def _rps(prob: np.ndarray, target: np.ndarray) -> np.ndarray:
 @torch.no_grad()
 def run_eval(model: ValueNetwork, store: CwvBlockStore,
              mask_fn: Callable[[CwvBlock], np.ndarray], device: torch.device, *,
-             batch_size: int, aux_head: AuxPointsHead | None = None) -> dict[str, np.ndarray]:
+             batch_size: int, aux_head: AuxPointsHead | None = None,
+             progress: Callable[[Mapping[str, Any]], None] | None = None) -> dict[str, np.ndarray]:
     """Per-row predictions and losses over the selected rows."""
     model.eval()
+    started = time.perf_counter()
+    blocks = 0
+    rows = 0
+    next_progress = started + RUN_EVAL_PROGRESS_INTERVAL_SECS
+    if progress is not None:
+        progress({"phase": "inference", "state": "start", "elapsed_secs": 0.0,
+                  "blocks": 0, "rows": 0})
     keys = ("expected_level", "expected_pt0", "median_pt0", "ce", "rps", "target",
             "target_level", "utility", "ply", "role_attacker", "points_so_far",
             "attacker_points", "deal_key", "source_ref", "aux_pred", "has_search_means")
@@ -611,8 +657,15 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
     selects_any = getattr(mask_fn, "selects_any", None)
     skip = (lambda deal_keys: not selects_any(deal_keys)) if selects_any else None
     for block in store.iter_blocks(skip=skip):
+        blocks += 1
         sel = np.flatnonzero(mask_fn(block))
         if not sel.size:
+            if progress is not None:
+                now = time.perf_counter()
+                if now >= next_progress:
+                    progress({"phase": "inference", "state": "progress",
+                              "elapsed_secs": now - started, "blocks": blocks, "rows": rows})
+                    next_progress = now + RUN_EVAL_PROGRESS_INTERVAL_SECS
             continue
         for b0 in range(0, sel.size, batch_size):
             idx = sel[b0:b0 + batch_size]
@@ -642,9 +695,22 @@ def run_eval(model: ValueNetwork, store: CwvBlockStore,
             out["aux_pred"].append(np.full(len(idx), np.nan) if aux is None
                                    else aux.cpu().numpy().astype(np.float64) * 100.0)
             out["has_search_means"].append(block.has_search_means[idx])
+            rows += int(len(idx))
+            if progress is not None:
+                now = time.perf_counter()
+                if now >= next_progress:
+                    progress({"phase": "inference", "state": "progress",
+                              "elapsed_secs": now - started, "blocks": blocks, "rows": rows})
+                    next_progress = now + RUN_EVAL_PROGRESS_INTERVAL_SECS
     if not out["ce"]:
-        return {k: np.zeros(0) for k in keys}
-    return {k: np.concatenate(v) for k, v in out.items()}
+        result = {k: np.zeros(0) for k in keys}
+    else:
+        result = {k: np.concatenate(v) for k, v in out.items()}
+    if progress is not None:
+        progress({"phase": "inference", "state": "done",
+                  "elapsed_secs": time.perf_counter() - started,
+                  "blocks": blocks, "rows": rows})
+    return result
 
 
 def quick_metrics(ev: Mapping[str, np.ndarray]) -> dict:
@@ -1156,6 +1222,7 @@ def holdout_blocks(holdouts: Mapping[str, str], *, model: ValueNetwork,
                    residency: "Residency | None", population: Mapping[str, Any],
                    exposure: Mapping[str, Any], n_boot: int,
                    say: Callable[[str], None],
+                   progress: Callable[[Mapping[str, Any]], None] | None = None,
                    enc_version: int = ENC_VERSION) -> dict[str, dict]:
     """``search_facing_metrics`` on every labelled harvest holdout (module
     docstring): the labels' candidate set for the ranking, the record
@@ -1213,7 +1280,8 @@ def holdout_blocks(holdouts: Mapping[str, str], *, model: ValueNetwork,
                 raise TrainError(f"--eval-holdout {name}: encoded rows carry "
                                  f"{len(encoded - keys)} deal(s) the exposure check did not see")
             ev = run_eval(model, prepared.block_store, lambda b: np.ones(b.n, dtype=bool), dev,
-                          batch_size=batch_size, aux_head=aux_head)
+                          batch_size=batch_size, aux_head=aux_head,
+                          progress=progress)
             rows_block = {"n": int(ev["ce"].size), "population": pop,
                           "counts": prepared.counts, "cache": prepared.cache_files,
                           "materialized": str(materialized)}
@@ -3220,22 +3288,28 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
                       for i, (shard, _path) in enumerate(store.entries)]
         shard_keys = [(shard, keys) for shard, keys in shard_keys if keys]
         bench_source = shard_keys
-        pass_result = candidate_pass(
-            shard_keys, score_fn=cwv_score_fn(model, dev), public_head=public_model,
-            prior=prior, device=dev, workers=eval_workers, rank_limit=rank_limit,
-            history=history, progress=say, version=enc_version, cache_dir=cache,
-            compact_agreement=True)
-        ev = run_eval(model, store, mask_fn, dev, batch_size=batch_size, aux_head=aux_head)
-        data_public, data_check = public_comparison(pass_result, public_info)
-        metrics = full_metrics(ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
-                               public_decision=data_public,
-                               public_note={**note, **data_check})
-        cands = candidate_set_for(store, selected, cache,
-                                  n_records=int(config.get("val_rank_records",
-                                                           DEFAULTS["val_rank_records"])),
-                                  history=history, workers=eval_workers, label=split,
-                                  progress=say, version=enc_version)
-        metrics["search_facing"] = search_facing(model, ev, cands, dev, batch_size=batch_size)
+        with _evaluate_phase(say, "candidate"):
+            pass_result = candidate_pass(
+                shard_keys, score_fn=cwv_score_fn(model, dev), public_head=public_model,
+                prior=prior, device=dev, workers=eval_workers, rank_limit=rank_limit,
+                history=history, progress=say, version=enc_version, cache_dir=cache,
+                compact_agreement=True)
+        ev = run_eval(model, store, mask_fn, dev, batch_size=batch_size, aux_head=aux_head,
+                      progress=lambda event: _say_run_eval_progress(say, event))
+        with _evaluate_phase(say, "metrics"):
+            data_public, data_check = public_comparison(pass_result, public_info)
+            metrics = full_metrics(ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
+                                   public_decision=data_public,
+                                   public_note={**note, **data_check})
+        with _evaluate_phase(say, "candidate-set"):
+            cands = candidate_set_for(store, selected, cache,
+                                      n_records=int(config.get("val_rank_records",
+                                                               DEFAULTS["val_rank_records"])),
+                                      history=history, workers=eval_workers, label=split,
+                                      progress=say, version=enc_version)
+        with _evaluate_phase(say, "search-facing"):
+            metrics["search_facing"] = search_facing(model, ev, cands, dev,
+                                                      batch_size=batch_size)
         metrics["search_facing"]["candidate_set"] = (
             None if cands is None else {k: v for k, v in cands.meta.items() if k != "encoder"})
         if split == "all":
@@ -3245,7 +3319,8 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
             block = labelled(split, metrics)
         block["population"] = population_report(selected, population)
         block["population"]["exposure"] = exposure_report(selected, exposure)
-        ranking[split] = ranking_block(pass_result, n_boot=n_boot, seed=int(config["seed"]))
+        with _evaluate_phase(say, "ranking"):
+            ranking[split] = ranking_block(pass_result, n_boot=n_boot, seed=int(config["seed"]))
         block["ranking"] = ranking[split]
         final[split] = block
         data_receipt = [{**s.describe(), "cache": prepared.cache_files} for s in prepared.stores]
@@ -3271,19 +3346,24 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
                              "cumulative fit/selection exposure (a warm-start ancestor saw "
                              "them): not held out; refusing")
         luna_blocks = luna_prepared.block_store
-        luna_pass = candidate_pass(
-            [(shard, None) for shard, _path in luna_blocks.entries],
-            score_fn=cwv_score_fn(model, dev), public_head=public_model, prior=prior,
-            device=dev, workers=eval_workers, rank_limit=rank_limit, history=history,
-            progress=say, version=enc_version, compact_agreement=True)
+        with _evaluate_phase(say, "candidate"):
+            luna_pass = candidate_pass(
+                [(shard, None) for shard, _path in luna_blocks.entries],
+                score_fn=cwv_score_fn(model, dev), public_head=public_model, prior=prior,
+                device=dev, workers=eval_workers, rank_limit=rank_limit, history=history,
+                progress=say, version=enc_version, compact_agreement=True)
         ev = run_eval(model, luna_blocks, lambda b: np.ones(b.n, dtype=bool), dev,
-                      batch_size=batch_size, aux_head=aux_head)
-        luna_public, luna_check = public_comparison(luna_pass, public_info)
-        final["luna"] = labelled("luna", full_metrics(
-            ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
-            public_decision=luna_public, public_note={**note, **luna_check}))
+                      batch_size=batch_size, aux_head=aux_head,
+                      progress=lambda event: _say_run_eval_progress(say, event,
+                                                                    phase="luna-inference"))
+        with _evaluate_phase(say, "metrics"):
+            luna_public, luna_check = public_comparison(luna_pass, public_info)
+            final["luna"] = labelled("luna", full_metrics(
+                ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
+                public_decision=luna_public, public_note={**note, **luna_check}))
         final["luna"]["population"] = luna_population
-        ranking["luna"] = ranking_block(luna_pass, n_boot=n_boot, seed=int(config["seed"]))
+        with _evaluate_phase(say, "ranking"):
+            ranking["luna"] = ranking_block(luna_pass, n_boot=n_boot, seed=int(config["seed"]))
         final["luna"]["ranking"] = ranking["luna"]
         if not bench_source:
             bench_source = [(shard, None) for shard, _path in luna_blocks.entries]
@@ -3293,16 +3373,21 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
                         "shared_with_test": int(luna_population["in_test"]),
                         "population": luna_population,
                         "checked_against": dict(population["digest"])}
-    holdout_report = holdout_blocks(
-        holdouts, model=model, aux_head=aux_head, dev=dev, batch_size=batch_size,
-        history=history, seed=int(config["seed"]), cache=cache, workers=workers,
-        residency=residency, population=population, exposure=exposure, n_boot=n_boot,
-        say=say, enc_version=enc_version)
+    with _evaluate_phase(say, "holdouts"):
+        holdout_report = holdout_blocks(
+            holdouts, model=model, aux_head=aux_head, dev=dev, batch_size=batch_size,
+            history=history, seed=int(config["seed"]), cache=cache, workers=workers,
+            residency=residency, population=population, exposure=exposure, n_boot=n_boot,
+            say=say,
+            progress=lambda event: _say_run_eval_progress(say, event,
+                                                          phase="holdout-inference"),
+            enc_version=enc_version)
     if data:
         final[split]["search_facing"]["holdouts"] = holdout_report
-    bench = (bench_inference(model, bench_rows(bench_source, int(bench_batch),
-                                              version=enc_version))
-             if bench_source else None)
+    with _evaluate_phase(say, "benchmark"):
+        bench = (bench_inference(model, bench_rows(bench_source, int(bench_batch),
+                                                  version=enc_version))
+                 if bench_source else None)
     wall = round(time.perf_counter() - started, 3)
     headline = next((name for name in ("test", "novel", "luna")
                      if name in final and final[name].get("held_out")), None)

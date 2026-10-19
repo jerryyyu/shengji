@@ -319,6 +319,52 @@ def test_ranking_agreement_metric(records):
     assert summary["n"] == 2 and summary["top1"]["mean"] == pytest.approx(0.5)
 
 
+def test_run_eval_progress_is_bounded_and_outcome_blind(blocks, monkeypatch):
+    """Evaluation progress reports lifecycle and aggregate work only."""
+    events = []
+
+    class StubModel:
+        def eval(self):
+            return self
+
+    class StubStore:
+        def iter_blocks(self, *, skip=None):
+            for block in blocks[:1]:
+                if skip is None or not skip(block.deal_key):
+                    yield block
+
+    def fake_forward(_model, tensors, aux_head=None):
+        return torch.zeros((tensors["target"].shape[0], train_cwv.OUTCOME_CLASSES)), None
+
+    monkeypatch.setattr(train_cwv, "forward_batch", fake_forward)
+    result = train_cwv.run_eval(
+        StubModel(), StubStore(), lambda block: np.ones(block.n, dtype=bool),
+        torch.device("cpu"), batch_size=17, progress=events.append)
+    assert result["ce"].size == blocks[0].n
+    assert [event["state"] for event in events] == ["start", "done"]
+    assert events[-1]["blocks"] == 1 and events[-1]["rows"] == result["ce"].size
+    assert set(events[-1]) == {"phase", "state", "elapsed_secs", "blocks", "rows"}
+    assert not any(key in events[-1] for key in ("deal_key", "source_ref", "score", "metric"))
+
+    empty = []
+    train_cwv.run_eval(
+        StubModel(), StubStore(), lambda block: np.zeros(block.n, dtype=bool),
+        torch.device("cpu"), batch_size=17, progress=empty.append)
+    assert [event["state"] for event in empty] == ["start", "done"]
+    assert empty[-1]["rows"] == 0
+
+    def fail_forward(*_args, **_kwargs):
+        raise RuntimeError("synthetic inference failure")
+
+    monkeypatch.setattr(train_cwv, "forward_batch", fail_forward)
+    failed = []
+    with pytest.raises(RuntimeError, match="synthetic inference failure"):
+        train_cwv.run_eval(
+            StubModel(), StubStore(), lambda block: np.ones(block.n, dtype=bool),
+            torch.device("cpu"), batch_size=17, progress=failed.append)
+    assert [event["state"] for event in failed] == ["start"]
+
+
 # 6 --------------------------------------------------------- training smoke
 
 def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path, monkeypatch):

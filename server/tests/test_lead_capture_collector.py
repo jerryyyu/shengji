@@ -16,6 +16,46 @@ from shengji.train import pv_search_policy as pv
 from test_pv_search_serving import package  # noqa: F401
 
 
+def test_pool_saved_prefix_summaries_weights_counts_and_signed_gains(tmp_path):
+    from scripts.pool_follow_prefix_summaries import main, pool
+    def summary(token, observed, served, agrees, full, gain):
+        return dict(schema='exact-follow-prefix-summary-dev-v1', max_hand_size=8,
+                    budget_seconds=2.25, min_worlds=16, time_scale=2.45,
+                    engine='compiled', capture_on=True, true_deal=True,
+                    inputs={k: dict(sha256=token*64, bytes=100) for k in ('capture', 'journal')},
+                    counts=dict(observed=observed, measured=served, served=served,
+                                no_capture=observed-served, unpublished=0, fallback=0,
+                                served_agrees=agrees, fallback_agrees=0),
+                    full_gain_sum=full, prefix_gain_sum=gain)
+    a, b = summary('a', 10, 8, 8, 10, 8), summary('b', 90, 72, 36, -2, -4)
+    paths = []
+    for i, row in enumerate((a, b)):
+        path = tmp_path / f'{i}.json'
+        path.write_text(json.dumps(row))
+        paths.append(str(path))
+    out = tmp_path / 'pool.json'
+    main([str(out), *paths, '--expected-files', '2'])
+    result = json.loads(out.read_text())
+    assert result['served_fraction_observed'] == 0.8
+    assert result['served_agreement'] == 44/80
+    assert result['prefix_gain_ratio'] == 4/8
+    with pytest.raises(FileExistsError):
+        main([str(out), *paths, '--expected-files', '2'])
+    with pytest.raises(ValueError, match='missing or extra'):
+        pool([a], 2)
+    with pytest.raises(ValueError, match='duplicate'):
+        pool([a, a], 2)
+    for mutate in (lambda r: r.update(time_scale=1),
+                   lambda r: r['counts'].update(served=100),
+                   lambda r: r.update(full_gain_sum=float('nan'))):
+        bad = copy.deepcopy(b)
+        mutate(bad)
+        with pytest.raises(ValueError):
+            pool([a, bad], 2)
+    b['full_gain_sum'] = -10
+    assert pool([a, b], 2)['prefix_gain_ratio'] is None
+
+
 @pytest.mark.parametrize('mode', ['historical', 'served', 'fallback', 'served_round',
                                   'served_stop', 'served_error'])
 def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode):
@@ -303,6 +343,13 @@ def test_exact_stage_cli_writes_replay_and_terminal(tmp_path, monkeypatch, mode,
                 assert truth_summary['rows'][0]['truth_scores'] == list(truth.scores)
                 assert truth_summary['rows'][0]['selected'] == summary['rows'][0]['selected']
                 assert truth_summary['counts'] == summary['counts']
+                from scripts.pool_follow_prefix_summaries import main as pool_main
+                pooled_path = tmp_path / 'pooled.json'
+                pool_main([str(pooled_path), str(truth_path), '--expected-files', '1'])
+                pooled = json.loads(pooled_path.read_text())
+                assert pooled['counts'] == truth_summary['counts']
+                assert pooled['full_gain_sum'] == truth_summary['full_gain_sum']
+                assert pooled['prefix_gain_sum'] == truth_summary['prefix_gain_sum']
                 with pytest.raises(FileExistsError):
                     summarize(['missing', 'missing', str(summary_path), '--budget-seconds', '1'])
         if mode == 'fallback':

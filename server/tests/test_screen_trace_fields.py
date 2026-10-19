@@ -200,3 +200,82 @@ def test_exact_lead_real_decision_to_persisted_screen_trace(package, monkeypatch
         assert out['exact_lead_status'] == 'complete'
         assert out['exact_lead_base_selected_index'] == rec['exact_lead_base_selected_index']
         assert out['exact_lead_base_value_means'] == rec['exact_lead_base_value_means']
+    if abandon:
+        assert 'admitted' not in out and out['admitted__len'] == len(rec['admitted'])
+    else:
+        assert out['admitted'] == [list(a) for a in rec['admitted']]
+        assert len(out['admitted']) == len(out['value_means'])
+
+
+def _census_mean(row, action_field):
+    """The census resolution: the named action's position among the admitted
+    candidates (card multiset match) and its value mean, or None when the row
+    does not carry the admitted cards."""
+    admitted, means, cards = row.get('admitted'), row.get('value_means'), row.get(action_field)
+    if admitted is None or means is None or cards is None:
+        return None
+    key = sorted(cards.split(' '))
+    (pos,) = [i for i, a in enumerate(admitted) if sorted(a) == key]
+    return pos, means[pos]
+
+
+def _exact_record(status, n=8):
+    rec = _record()
+    rec['admitted'] = [['S2'], ['H3', 'H3'], ['SA', 'SK'], ['D4'],
+                       ['C5', 'C5', 'C6', 'C6'], ['HJ'], ['S10', 'S10'], ['BJ']][:n] \
+        + [['S9']] * max(0, n - 8)
+    rec['value_means'] = [0.1 * i for i in range(len(rec['admitted']))]
+    rec['exact_lead_status'] = status
+    rec['doomed_throw_reselect_from'] = 'SK SA'
+    return rec
+
+
+def test_complete_exact_lead_keeps_admitted_and_census_resolves_it():
+    rec = _exact_record('complete')
+    out = json.loads(json.dumps(_trace(rec)))
+    assert out['admitted'] == rec['admitted'] and out['admitted__len'] == 8
+    assert out['trace_dropped_fields'] == _trace(_record())['trace_dropped_fields'] - 1
+    assert _census_mean(out, 'doomed_throw_reselect_from') == (2, rec['value_means'][2])
+    tupled = _exact_record('complete')
+    tupled['admitted'] = [tuple(a) for a in tupled['admitted']]
+    assert _trace(tupled)['admitted'] == rec['admitted']          # JSON-safe lists
+
+
+@pytest.mark.parametrize('status', [None, 'ineligible', 'abandoned', 'skipped_budget',
+                                    'single_candidate'])
+def test_admitted_stays_a_length_off_complete_exact_leads(status):
+    rec = _exact_record(status)
+    if status is None:
+        del rec['exact_lead_status']
+    out = _trace(rec)
+    assert 'admitted' not in out and out['admitted__len'] == 8
+    assert _census_mean(out, 'doomed_throw_reselect_from') is None
+
+
+def test_admitted_over_the_list_bound_or_not_cards_stays_a_length():
+    big = _exact_record('complete', n=S.TRACE_LIST_MAX + 1)
+    out = _trace(big)
+    assert 'admitted' not in out and out['admitted__len'] == S.TRACE_LIST_MAX + 1
+    odd = _exact_record('complete')
+    odd['admitted'][0] = [{'card': 'S2'}]
+    assert 'admitted' not in _trace(odd)
+
+
+
+def test_reselect_on_a_complete_exact_lead_resolves_from_the_persisted_trace(package):
+    """The served exact-lead bot with the reselect rule on: the persisted row
+    places ``doomed_throw_reselect_from`` among the admitted candidates."""
+    from test_pv_finish_lead import root
+    from shengji.train import pv_search_policy as pv
+    path, sha = package
+    bot = pv.make_pv_search_bot(path, sha256=sha, seed=17, worlds=2, candidates=8,
+                                exact_lead_endgame=True, doomed_throw_reselect=True)
+    rnd = root(2)
+    policy = S.TimedPolicy(bot)
+    policy.decide_play(rnd, rnd.turn)
+    out = json.loads(json.dumps(policy.decisions[0]))
+    rec = bot.last_decision_record
+    assert out['exact_lead_status'] == 'complete'
+    pos, mean = _census_mean(out, 'doomed_throw_reselect_from')
+    assert sorted(rec['admitted'][pos]) == sorted(rec['doomed_throw_reselect_from'].split(' '))
+    assert mean == rec['value_means'][pos]

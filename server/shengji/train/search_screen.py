@@ -31,6 +31,10 @@ _SCALARS = (str, int, float, bool, type(None))
 TRACE_LIST_MAX = 16     # a numeric list up to this long is persisted whole
 
 
+def _card_list(x):
+    return isinstance(x, (list, tuple)) and all(isinstance(c, str) for c in x)
+
+
 def trace_fields(rec, skip=()):
     """The persisted form of a served bot's decision record (#679 B6).
 
@@ -43,6 +47,11 @@ def trace_fields(rec, skip=()):
       ``diversity_skipped``, ``tiebreak_near_set``, ``admitted_indices``);
       the bounded ``exact_lead_base_played`` string list is also retained so
       the reader can verify the final-action change instead of trusting a flag;
+    * on a decision whose ``exact_lead_status`` is ``"complete"``, ``admitted``
+      (the candidates' card lists, in ``value_means`` order) is kept whole when
+      it has at most ``TRACE_LIST_MAX`` entries of card strings, so a reader can
+      place a named action (e.g. ``doomed_throw_reselect_from``) among the
+      candidates and read its mean; elsewhere it stays a length only;
     * ``trace_dropped_fields`` counts the fields whose full value is NOT in the
       trace (long or non-numeric lists, kept as their length only; dicts and
       other objects).  It is always present, so 0 means "nothing lost", and a
@@ -50,6 +59,7 @@ def trace_fields(rec, skip=()):
 
     A summary key never overwrites a key the record itself carries."""
     out = {k: v for k, v in rec.items() if k not in skip and isinstance(v, _SCALARS)}
+    exact_complete = rec.get('exact_lead_status') == 'complete'
     dropped = 0
     for k, v in rec.items():
         if k in skip or isinstance(v, _SCALARS):
@@ -61,7 +71,11 @@ def trace_fields(rec, skip=()):
             if (len(v) <= TRACE_LIST_MAX and k not in out
                     and (all(isinstance(x, (int, float)) for x in v)
                          or (k == 'exact_lead_base_played'
-                             and all(isinstance(x, str) for x in v)))):
+                             and all(isinstance(x, str) for x in v))
+                         or (k == 'admitted' and exact_complete
+                             and all(_card_list(x) for x in v)))):
+                if k == 'admitted':
+                    v = [list(x) for x in v]
                 out[k] = list(v)
                 whole = True
         dropped += not whole

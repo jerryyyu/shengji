@@ -303,6 +303,20 @@ def test_alias_refill_integrated_served_decision():
     assert not any(k.startswith("lead_alias_refill") for k in before)
 
 
+def test_alias_refill_remains_active_above_exact_tail_with_guard():
+    rules = dict(RELEASE38_RULES, exact_lead_endgame=True, exact_deep_cards=7,
+                 doomed_throw_reselect=True, doomed_throw_reselect_exact_guard=True)
+    rnd = oxps()
+    assert max(map(len, rnd.hands)) > 7
+    _, before = decide(served(**rules), rnd)
+    played, after = decide(served(lead_alias_refill=True, **rules), rnd)
+    assert after["work_complete"] and played == after["played"]
+    assert after["lead_alias_refill_replacements"] > 0
+    assert len(after["admitted"]) == len(before["admitted"])
+    assert len(after["value_means"]) == len(after["admitted"])
+    assert not after["doomed_throw_reselect_exact_guarded"]
+
+
 def test_alias_refill_identity_and_env():
     from dataclasses import replace
 

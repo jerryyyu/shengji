@@ -268,7 +268,7 @@ def mean_of(rec, cards):
 
 
 def endgame_bot(monkeypatch, on, exact_means=EXACT_MEANS, base_means=BASE_MEANS, abandon=False,
-                deep=0, doomed=None):
+                deep=0, doomed=None, alias_refill=False):
     """A served bot at the xmtj endgame root with controlled base and exact
     means (by cards, or a function of the ballot) and a controlled doomed
     verdict: every multi-card lead is doomed with its first card forced."""
@@ -277,7 +277,7 @@ def endgame_bot(monkeypatch, on, exact_means=EXACT_MEANS, base_means=BASE_MEANS,
     rnd = root(cards)
     config = dict(worlds=2, candidates=8, cap=4000, doomed_throw_reselect=True,
                   doomed_throw_reselect_exact_guard=on, exact_lead_endgame=True,
-                  exact_deep_cards=deep)
+                  exact_deep_cards=deep, lead_alias_refill=alias_refill)
     bot = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
                          config=pv.PVSearchConfig(checkpoint_sha256="f" * 64, **config),
                          checkpoint="/dev/null", seed=7)
@@ -311,6 +311,27 @@ def test_root_ballot_is_the_documented_one(monkeypatch):
     _, rec = decide(bot, rnd)
     assert sorted(sorted(a) for a in rec["admitted"]) == [["D6"], sorted(THROW), ["LJ"]]
     assert [mean_of(rec, c.split()) for c in ("D6 LJ", "D6", "LJ")] == [1.5, 1.0, 0.5]
+
+
+@pytest.mark.parametrize("guard", [False, True])
+@pytest.mark.parametrize("abandon", [False, True])
+def test_alias_refill_preserves_exact_tail_ballot(monkeypatch, guard, abandon):
+    from shengji.train import lead_alias_refill
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("alias refill entered the exact-tail ballot")
+
+    monkeypatch.setattr(lead_alias_refill, "refill_indices", forbidden)
+    records = []
+    for enabled in (False, True):
+        bot, rnd = endgame_bot(monkeypatch, guard, deep=7, abandon=abandon,
+                              alias_refill=enabled)
+        _, record = decide(bot, rnd)
+        records.append(record)
+        assert not any(key.startswith("lead_alias_refill") for key in record)
+    for key in ("admitted", "admitted_indices", "value_means", "played",
+                "exact_lead_status", "doomed_throw_reselect_applied"):
+        assert records[0][key] == records[1][key]
 
 
 @pytest.mark.parametrize("on", [False, True])

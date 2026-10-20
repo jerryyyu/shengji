@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
+import { hapticTurn } from "../haptics";
 import { conn } from "../ws";
 import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
@@ -184,6 +185,11 @@ export default function Table({ state }: { state: GameState }) {
   const opponents = state.players.filter((p) => p.seat !== state.you);
   const myTurn = state.turn === state.you;
   const iAmBanker = me?.is_banker ?? false;
+
+  // The phone taps once when the turn arrives (native shell only; no-op on the web).
+  useEffect(() => {
+    if (myTurn && state.phase === "play") hapticTurn();
+  }, [myTurn, state.phase]);
 
   const selectable =
     (state.phase === "bury" && iAmBanker) || state.phase === "play";

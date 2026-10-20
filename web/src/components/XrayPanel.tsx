@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import type { GameState } from "../protocol";
+import { httpBase } from "../serverOrigin";
 import { SUIT_SYMBOL, isRedCode, shortLabel } from "./Card";
 
 interface XrayCandidate {
@@ -275,9 +276,9 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
   useEffect(() => {
     let cancelled = false;
     const token = localStorage.getItem("shengji.debug") ?? "";
-    // Same origin as the WS: the vite dev server proxies nothing, so target
-    // the backend port directly in dev.
-    const base = import.meta.env.DEV ? `http://${location.hostname}:8000` : "";
+    // Same server as the WS (serverOrigin.ts): the vite dev server proxies
+    // nothing, so dev targets the backend port directly.
+    const base = httpBase(import.meta.env, location);
     const url = `${base}/debug/xray?room=${encodeURIComponent(room)}&seat=${seat}&token=${encodeURIComponent(token)}`;
     fetch(url)
       .then((r) => r.json() as Promise<XrayResp>)

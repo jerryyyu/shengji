@@ -98,6 +98,7 @@ def test_fly_toml_carries_the_v92_candidate_env():
     assert "SHENGJI_PV_EXACT_LEAD_TIE_BASELINE" not in env
     assert "SHENGJI_PV_EXACT_LEAD_POLICY_FIRST" not in env
     assert "SHENGJI_PV_VALUE_DECLARE_SERVED_BURY" not in env
+    assert "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD" not in env
     # the combo runs inside release 45's unchanged budgets on the compiled engine
     assert env["SHENGJI_PV_SERVING_BUDGET_SECONDS"] == "3"
     assert env["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"] == "2"
@@ -205,3 +206,41 @@ def test_rollback_to_release45_is_the_env_without_the_twelve_combo_lines(pinned_
     assert (bot.world_history_legal, bot.belief_worlds, bot.belief_model) == (False, False, None)
     assert (bot.value_declare, bot.value_declare_every_first) == (True, False)
     assert (bot.worlds, bot.candidates, bot.bury_wide_value, bot.bury_wide_k) == (64, 8, True, 64)
+
+
+DTRX_FLAG = "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD"
+#: release 46 with the doomed-throw re-select's exact-stage guard on (token ``dtrx``
+#: after ``dtr``): a DEV arm, never the served name
+RELEASE46_DTRX = ("pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-ed7-xf7-"
+                  "xfcompactlevel-r42abaa1e-bury-hybrid-bwv-0b3219432da4")
+
+
+def test_dtrx_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_package,
+                                                                pinned_belief_package):
+    from shengji.train import pv_search_policy as pv
+
+    def built(**extra):
+        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+                                   "SHENGJI_PV_SHA256": PACKAGE_SHA,
+                                   "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
+        entries = pv.pv_registry_entries(**recipe)
+        name, = entries
+        return name, entries[name]
+
+    for off in ({}, {DTRX_FLAG: "0"}, {DTRX_FLAG: ""}):
+        name, factory = built(**off)
+        assert name == RELEASE46
+        bot = factory(seed=17)
+        assert bot.doomed_throw_reselect_exact_guard is False
+        assert "doomed_throw_reselect_exact_guard" not in vars(bot)
+        assert bot.config.doomed_throw_reselect_exact_guard is False
+    name, factory = built(**{DTRX_FLAG: "1"})
+    assert name == RELEASE46_DTRX
+    bot = factory(seed=17)
+    assert bot.doomed_throw_reselect_exact_guard is True and bot.doomed_throw_reselect is True
+    assert bot.config.doomed_throw_reselect_exact_guard is True
+    # the guard binds to the exact stage: release 45 (dtr, no exact stage) refuses it
+    with pytest.raises(pv.PVSearchPolicyError, match="requires doomed_throw_reselect and exact_lead_endgame"):
+        pv.pv_registry_entries(**pv.pv_env_recipe(
+            {**without_combo(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
+             "SHENGJI_PV_SHA256": PACKAGE_SHA, DTRX_FLAG: "1"}))

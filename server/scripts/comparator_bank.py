@@ -38,6 +38,7 @@ import argparse
 import datetime as _dt
 import hashlib
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -325,6 +326,37 @@ def admit_witness(witness: dict, expected: dict, *, bank_path: Path, expected_pa
         raise Refusal("the replay witness was not made for this bank and this expected identity")
     if witness.get("all_equal") is not True or not witness.get("clusters"):
         raise Refusal("the replay witness holds an unequal or empty replay; it waives nothing")
+    windows = {w["directory"]: w for w in load_bank(bank_path)["windows"]}
+    rows = witness["clusters"]
+    if not isinstance(rows, list):
+        raise Refusal("the replay witness clusters must be a list")
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("directory"), str):
+            raise Refusal("the replay witness has a malformed cluster row")
+        window = windows.get(row["directory"])
+        cluster = row.get("cluster")
+        if (window is None or type(cluster) is not int
+                or not 0 <= cluster < window["clusters"]
+                or type(row.get("seed0")) is not int or row["seed0"] != window["seed0"]):
+            raise Refusal("the replay witness cluster/seed does not belong to its bank window")
+        key = (row["directory"], cluster)
+        if key in seen:
+            raise Refusal("the replay witness repeats a cluster")
+        seen.add(key)
+        for field in ("bank", "replayed"):
+            payload = row.get(field)
+            if not isinstance(payload, list) or len(payload) != 2:
+                raise Refusal("the replay witness requires two mirror payloads")
+            for mirror, value in enumerate(payload):
+                if (not isinstance(value, list) or len(value) != 3
+                        or type(value[0]) is not int or value[0] != mirror
+                        or not isinstance(value[1], str) or len(value[1]) != 64
+                        or any(c not in "0123456789abcdef" for c in value[1])
+                        or type(value[2]) not in (int, float) or not math.isfinite(value[2])):
+                    raise Refusal("the replay witness has a malformed mirror payload")
+        if row.get("equal") is not True or row["bank"] != row["replayed"]:
+            raise Refusal("the replay witness contains unequal cluster payloads")
     deadline = expected.get("decision_deadline")
     if not isinstance(deadline, dict) or witness.get("deadline") != deadline:
         raise Refusal("the replay witness did not replay the frozen decision_deadline recipe; it waives nothing")

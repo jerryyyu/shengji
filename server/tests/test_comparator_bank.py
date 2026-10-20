@@ -189,12 +189,75 @@ def witness_for(path, out, expected, tree, directories, *, equal=True, deadline=
         "schema": bank.REPLAY_SCHEMA, "bank_sha256": bank.file_sha256(out), "expected_sha256": bank.file_sha256(expected),
         "tree_sha256": tree, "all_equal": equal, "deadline": deadline,
         "environment": frozen if environment is None else environment, "relocations": relocations or {},
-        "clusters": [{"directory": d, "cluster": 0, "equal": equal} for d in directories]}
+        "clusters": [{"directory": d, "seed0": json.loads((Path(d) / "config.json").read_text())["seed0"],
+                      "cluster": 0, "equal": equal,
+                      "bank": [[r["mirror"], r["history_sha256"], r["arm_utility"]]
+                               for r in json.loads((Path(d) / "cluster-00000.json").read_text())["records"]],
+                      "replayed": [[r["mirror"], r["history_sha256"], r["arm_utility"]]
+                                   for r in json.loads((Path(d) / "cluster-00000.json").read_text())["records"]]}
+                     for d in directories]}
     body.update(extra)
     for key in [k for k, v in body.items() if v == "ABSENT"]:
         del body[key]
     path.write_text(json.dumps(body))
     return path
+
+
+@pytest.mark.parametrize("damage", [
+    "false_equal", "missing_bank", "missing_replayed", "different_history",
+    "different_utility", "missing_mirror", "duplicate_mirror", "bad_hash",
+    "nan_utility", "bool_utility", "out_of_range", "negative_cluster",
+    "bool_cluster", "wrong_seed", "bool_seed", "unknown_directory",
+    "duplicate_cluster", "nonlist_clusters", "nonobject_row",
+])
+def test_witness_rows_are_validated_before_tree_waivers(built, tmp_path, damage):
+    out, windows = built
+    added = copy.deepcopy(IDENTITY)
+    added["config"]["new_rule"] = False
+    config = config_for(999, tree="t3", identity=added)
+    expected = expected_file(tmp_path / "expected.json", identity=added)
+    configs = configs_file(tmp_path / "configs.json", config)
+    witness = witness_for(tmp_path / "w.json", out, expected,
+                          bank.digest(config["source_sha256"]),
+                          [str(windows[0]), str(windows[2])])
+    assert check(out, expected, configs, seeds=(100, 300), witness=witness) == 0
+    data = json.loads(witness.read_text())
+    row = data["clusters"][0]
+    if damage == "false_equal":
+        row["equal"] = False
+    elif damage.startswith("missing_") and damage != "missing_mirror":
+        del row[damage.removeprefix("missing_")]
+    elif damage == "different_history":
+        row["replayed"][0][1] = "f" * 64
+    elif damage == "different_utility":
+        row["replayed"][0][2] += 1
+    elif damage in ("missing_mirror", "duplicate_mirror", "bad_hash",
+                    "nan_utility", "bool_utility"):
+        for field in ("bank", "replayed"):
+            if damage == "missing_mirror":
+                row[field].pop()
+            elif damage == "duplicate_mirror":
+                row[field][1][0] = 0
+            elif damage == "bad_hash":
+                row[field][0][1] = "z" * 64
+            else:
+                row[field][0][2] = float("nan") if damage == "nan_utility" else True
+    elif damage in ("out_of_range", "negative_cluster", "bool_cluster"):
+        row["cluster"] = {"out_of_range": CLUSTERS, "negative_cluster": -1,
+                          "bool_cluster": False}[damage]
+    elif damage in ("wrong_seed", "bool_seed"):
+        row["seed0"] = -1 if damage == "wrong_seed" else True
+    elif damage == "unknown_directory":
+        row["directory"] = "/not-a-bank-window"
+    elif damage == "duplicate_cluster":
+        data["clusters"].append(copy.deepcopy(row))
+    elif damage == "nonlist_clusters":
+        data["clusters"] = {"row": row}
+    else:
+        data["clusters"][0] = None
+    assert data["all_equal"] is True
+    witness.write_text(json.dumps(data))
+    assert check(out, expected, configs, seeds=(100, 300), witness=witness) == 1
 
 
 def test_replay_witness_waives_tree_drift_and_added_config_leaves_only(built, tmp_path, capsys):
@@ -263,6 +326,35 @@ def test_replay_witness_waives_tree_drift_and_added_config_leaves_only(built, tm
     witness2 = witness_for(tmp_path / "w5.json", out, expected2, lane_tree, [str(windows[0]), str(windows[2])])
     assert check(out, expected2, configs2, seeds=(100,), witness=witness2) == 1
     assert json.loads(capsys.readouterr().out)["refusals"][0]["kind"] == "identity drift"
+
+
+def test_produced_witness_reaches_check_with_synthetic_cluster(tmp_path, monkeypatch):
+    from shengji.ai import registry
+    from shengji.train import cwv_shortlist_screen as screen, search_screen
+
+    package = tmp_path / "package"
+    package.write_bytes(b"synthetic package")
+    env = {**ENV, "SHENGJI_PV_CKPT": str(package),
+           "SHENGJI_PV_SHA256": bank.file_sha256(package)}
+    config = config_for(100, env=env)
+    window = write_window(tmp_path, "window", config)
+    manifest = tmp_path / "bank.json"
+    assert bank.main(["build", "--out", str(manifest), "--window", str(window)]) == 0
+    expected = expected_file(tmp_path / "expected.json", env=env)
+    shard = json.loads((window / "cluster-00000.json").read_text())
+    shard["timings"] = [{"wall_secs": 0.0}]
+    monkeypatch.setattr(registry, "make_bot", lambda *a, **kw: object())
+    monkeypatch.setattr(screen, "_policy_identity", lambda bot: IDENTITY)
+    monkeypatch.setattr(screen, "run_cluster", lambda config, cluster: copy.deepcopy(shard))
+    tree = {"synthetic.py": "f" * 64}
+    monkeypatch.setattr(search_screen, "execution_source_identity", lambda root: tree)
+    monkeypatch.setattr(bank.os, "environ", dict(bank.os.environ))
+    witness = tmp_path / "witness.json"
+    assert bank.main(["replay", "--bank", str(manifest), "--expected", str(expected),
+                      "--out", str(witness), "--cluster", "0"]) == 0
+    config["source_sha256"] = tree
+    configs = configs_file(tmp_path / "configs.json", config)
+    assert check(manifest, expected, configs, seeds=(100,), witness=witness) == 0
 
 
 def test_check_refuses_an_expected_file_that_disagrees_with_the_frozen_config(built, tmp_path, capsys):

@@ -266,6 +266,173 @@ def _finite_or_none(value):
     return float(value) if math.isfinite(value) else None
 
 
+# -- the greedy trick finish: shared by the tree's ``trick-greedy`` continuation
+# and the served ``leaf_greedy_finish`` value leaf (`policy_value_search`) ------
+
+#: the work counters one greedy finish accumulates (the tree's record names)
+GREEDY_STATS = ("tree_policy_rows", "tree_forced_plays", "tree_value_batches", "tree_reply_plays",
+                "tree_reply_evaluations", "tree_reply_differs_heuristic",
+                "tree_reply_differs_policy")
+
+
+def greedy_stats() -> dict:
+    return {key: 0 for key in GREEDY_STATS}
+
+
+def trick_open(clone, target: int) -> bool:
+    """True while ``clone``'s current trick is unresolved: the round is in play
+    and its history is shorter than ``target`` (the root's history plus one)."""
+    return clone.phase == "play" and len(clone.history) < target
+
+
+def legal_replies(bot, clone, seat, cache):
+    """``(actions, scoring matrix)`` of the seat to act.  A follower: the
+    capped legal enumeration the admission scores (`enumerate_legal`'s
+    listing, ``bot.cap``) and the card multiplicities (score = summed
+    log-odds).  A leader: the single-component leads and their multiplicities
+    divided by the action length (score = mean log-odds).
+    The legal set is a function of the seat's hand and the trick's lead under
+    one trump ordering, so within a decision it is computed once per distinct
+    (hand, lead) -- contenders share worlds, hence most hands."""
+    from .policy_prior import CARD_INDEX, N_CARDS
+    plays = clone.trick.plays
+    key = (tuple(sorted(clone.hands[seat])), tuple(plays[0].cards) if plays else None)
+    hit = None if cache is None else cache.get(key)
+    if hit is None:
+        if plays:
+            # `enumerate_legal`'s own follow listing (its first ``cap`` actions),
+            # without its second pass that only counts them
+            legal = [list(a) for a in islice(
+                iter_follow_actions(list(clone.hands[seat]), plays[0].cards, clone.ordering),
+                bot.cap)]
+        else:
+            # a continuation LEAD (``cont == "policy"``): one component only
+            legal = single_component_leads(clone.hands[seat], clone.ordering)
+        if not legal:
+            raise PVSearchPolicyError("lookahead reached a seat with no legal action")
+        multiplicity = None
+        if len(legal) > 1:
+            multiplicity = np.zeros((len(legal), N_CARDS), dtype=np.float64)
+            np.add.at(multiplicity,
+                      ([i for i, action in enumerate(legal) for _ in action],
+                       [CARD_INDEX[card] for action in legal for card in action]), 1.0)
+            if not plays:
+                # leads differ in length: rank by the MEAN card log-odds
+                multiplicity /= multiplicity.sum(axis=1, keepdims=True)
+        hit = (legal, multiplicity)
+        if cache is not None:
+            cache[key] = hit
+    return hit
+
+
+def team_values(bot, leaves, seat, gate=None):
+    """Root-team (``seat``'s team) values of ``leaves``: ``(values, batches)``."""
+    values = np.empty(len(leaves), dtype=np.float64)
+    batches = 0
+    for start in range(0, len(leaves), bot.batch_size):
+        if gate is not None:
+            gate()
+        chunk = leaves[start:start + bot.batch_size]
+        scores = np.asarray(bot.evaluator.score(chunk, seat), dtype=np.float64)
+        if scores.shape != (len(chunk),) or not np.isfinite(scores).all():
+            raise ValueError("value evaluator requires one finite root-team score per leaf")
+        values[start:start + len(chunk)] = scores
+        batches += 1
+    return values, batches
+
+
+def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn):
+    """One reply ply of the greedy finish: every clone in ``active`` has the
+    SAME seat to act (turn order inside one trick is fixed); that seat plays
+    its highest-valued candidate in each clone (module docstring: the policy's
+    top-``keep`` follows plus the heuristic's, each heuristic-finished and
+    valued from the replying seat's team, under ``gate``).  ``version`` is the
+    policy rows' encoder version; ``legal_fn`` / ``values_fn`` are
+    `legal_replies` / `team_values` or the tree's hooks."""
+    from .policy_prior import N_CARDS, flat_input, root_tensors
+    seat = active[0].turn
+    if any(clone.turn != seat for clone in active):
+        raise PVSearchPolicyError("greedy ply: the clones disagree on the seat to act")
+    heuristic = default_finisher()
+    plans = [None] * len(active)       # (candidates in policy order [+ heuristic], heuristic)
+    rows, pending = [], []
+    for index, clone in enumerate(active):
+        if gate is not None and index and index % TREE_BUDGET_STRIDE == 0:
+            gate()
+        legal, scoring = legal_fn(clone, seat, cache)
+        if len(legal) == 1:
+            plans[index] = ([list(legal[0])], list(legal[0]))
+            continue
+        rows.append(flat_input(root_tensors(clone, seat, version), version))
+        pending.append((index, legal, scoring))
+    for start in range(0, len(rows), bot.batch_size):
+        if gate is not None:
+            gate()
+        chunk = np.stack(rows[start:start + bot.batch_size]).astype(np.float32)
+        logits = np.asarray(bot.predict(chunk), dtype=np.float64)
+        if logits.shape != (len(chunk), N_CARDS) or not np.isfinite(logits).all():
+            raise ValueError("policy requires finite rows x 54 log-odds")
+        for row, (index, legal, scoring) in zip(logits, pending[start:start + bot.batch_size]):
+            # the policy's top-R follows; a stable sort keeps enumeration order on ties
+            order = np.argsort(-(scoring @ row), kind="stable")[:keep]
+            candidates = [list(legal[int(i)]) for i in order]
+            follow = sorted(heuristic.decide_play(active[index], seat))
+            if follow not in candidates:
+                candidates.append(follow)
+            plans[index] = (candidates, follow)
+    stats["tree_policy_rows"] += len(rows)
+    stats["tree_forced_plays"] += len(active) - len(rows)
+    # every (clone, candidate): apply it, let the heuristic finish the trick,
+    # read the value head from the ACTING seat's team
+    leaves, owners = [], []
+    for index, (candidates, _follow) in enumerate(plans):
+        if len(candidates) == 1:
+            continue
+        if gate is not None and index and index % TREE_BUDGET_STRIDE == 0:
+            gate()
+        for k, candidate in enumerate(candidates):
+            child = child_position(active[index], seat, candidate)
+            finish_current_trick(child)
+            leaves.append(child)
+            owners.append((index, k))
+    best = [0] * len(active)
+    if leaves:
+        values, batches = values_fn(leaves, seat, gate)
+        stats["tree_value_batches"] += batches
+        stats["tree_reply_evaluations"] += len(leaves)
+        top = {}
+        for (index, k), value in zip(owners, values):
+            if index not in top or value > top[index]:     # first maximum: policy order
+                top[index], best[index] = value, k
+    for index, clone in enumerate(active):
+        candidates, follow = plans[index]
+        choice = candidates[best[index]]
+        stats["tree_reply_plays"] += 1
+        stats["tree_reply_differs_heuristic"] += choice != follow
+        stats["tree_reply_differs_policy"] += choice != candidates[0]
+        clone.play(seat, choice)
+
+
+def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=None) -> dict:
+    """Finish the CURRENT trick of every clone in ``clones`` (all at the same
+    ply) by greedy reply plies, never further; returns the `greedy_stats`
+    (accumulated into ``stats`` when given).  ``bot`` supplies the policy
+    (``predict``, rows encoded at ``version``), the value head (``evaluator``),
+    ``batch_size`` and ``cap``; ``gate`` is the deadline callback (None:
+    unbudgeted)."""
+    stats = greedy_stats() if stats is None else stats
+    cache = {}
+    active = [c for c in clones if trick_open(c, target)]
+    while active:
+        if gate is not None:
+            gate()
+        greedy_reply_ply(bot, active, gate, cache, stats, keep, version,
+                         lambda clone, seat, cache_: legal_replies(bot, clone, seat, cache_),
+                         lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_))
+        active = [c for c in active if trick_open(c, target)]
+    return stats
+
+
 class PVTreeMixin:
     """The tree on top of the served decision; composes with `PVSearchBot` and
     `PVSearchBuryBot` (first in the MRO).  It overrides only `_value_means`
@@ -456,43 +623,9 @@ class PVTreeMixin:
     # -- the lookahead ------------------------------------------------------------
 
     def _tree_legal(self, clone, seat, cache):
-        """``(actions, scoring matrix)`` of the seat to act.  A follower: the
-        capped legal enumeration the admission scores (`enumerate_legal`'s
-        listing, ``self.cap``) and the card multiplicities (score = summed
-        log-odds).  A leader: the single-component leads and their multiplicities
-        divided by the action length (score = mean log-odds).
-        The legal set is a function of the seat's hand and the trick's lead under
-        one trump ordering, so within a decision it is computed once per distinct
-        (hand, lead) -- contenders share worlds, hence most hands."""
-        from .policy_prior import CARD_INDEX, N_CARDS
-        plays = clone.trick.plays
-        key = (tuple(sorted(clone.hands[seat])), tuple(plays[0].cards) if plays else None)
-        hit = None if cache is None else cache.get(key)
-        if hit is None:
-            if plays:
-                # `enumerate_legal`'s own follow listing (its first ``cap`` actions),
-                # without its second pass that only counts them
-                legal = [list(a) for a in islice(
-                    iter_follow_actions(list(clone.hands[seat]), plays[0].cards, clone.ordering),
-                    self.cap)]
-            else:
-                # a continuation LEAD (``cont == "policy"``): one component only
-                legal = single_component_leads(clone.hands[seat], clone.ordering)
-            if not legal:
-                raise PVSearchPolicyError("lookahead reached a seat with no legal action")
-            multiplicity = None
-            if len(legal) > 1:
-                multiplicity = np.zeros((len(legal), N_CARDS), dtype=np.float64)
-                np.add.at(multiplicity,
-                          ([i for i, action in enumerate(legal) for _ in action],
-                           [CARD_INDEX[card] for action in legal for card in action]), 1.0)
-                if not plays:
-                    # leads differ in length: rank by the MEAN card log-odds
-                    multiplicity /= multiplicity.sum(axis=1, keepdims=True)
-            hit = (legal, multiplicity)
-            if cache is not None:
-                cache[key] = hit
-        return hit
+        """`legal_replies` (the instance method is the hook a diagnostic may
+        replace; the lookahead and the greedy ply call it through ``self``)."""
+        return legal_replies(self, clone, seat, cache)
 
     def _tree_top_action(self, clone, seat, row, cache=None):
         """The policy's action for ``seat`` under the card log-odds ``row``: the
@@ -559,108 +692,29 @@ class PVTreeMixin:
         return choices, len(rows)
 
     def _tree_values(self, leaves, seat, gate=None):
-        """Root-team (``seat``'s team) values of ``leaves``: ``(values, batches)``."""
-        values = np.empty(len(leaves), dtype=np.float64)
-        batches = 0
-        for start in range(0, len(leaves), self.batch_size):
-            if gate is not None:
-                gate()
-            chunk = leaves[start:start + self.batch_size]
-            scores = np.asarray(self.evaluator.score(chunk, seat), dtype=np.float64)
-            if scores.shape != (len(chunk),) or not np.isfinite(scores).all():
-                raise ValueError("value evaluator requires one finite root-team score per leaf")
-            values[start:start + len(chunk)] = scores
-            batches += 1
-        return values, batches
+        """`team_values` (the hook a diagnostic may replace)."""
+        return team_values(self, leaves, seat, gate)
 
     def _tree_greedy_ply(self, active, gate, cache, stats):
-        """One reply ply of ``trick-greedy``: every clone in ``active`` has the
-        SAME seat to act (turn order inside one trick is fixed); that seat plays
-        its highest-valued candidate in each clone (module docstring)."""
-        from .policy_prior import N_CARDS, flat_input, root_tensors
-        seat = active[0].turn
-        if any(clone.turn != seat for clone in active):
-            raise PVSearchPolicyError("greedy ply: the clones disagree on the seat to act")
-        heuristic = default_finisher()
-        keep = self.tree_config.reply_candidates
-        plans = [None] * len(active)       # (candidates in policy order [+ heuristic], heuristic)
-        rows, pending = [], []
-        for index, clone in enumerate(active):
-            if gate is not None and index and index % TREE_BUDGET_STRIDE == 0:
-                gate()
-            legal, scoring = self._tree_legal(clone, seat, cache)
-            if len(legal) == 1:
-                plans[index] = ([list(legal[0])], list(legal[0]))
-                continue
-            rows.append(flat_input(root_tensors(clone, seat, self.version), self.version))
-            pending.append((index, legal, scoring))
-        for start in range(0, len(rows), self.batch_size):
-            if gate is not None:
-                gate()
-            chunk = np.stack(rows[start:start + self.batch_size]).astype(np.float32)
-            logits = np.asarray(self.predict(chunk), dtype=np.float64)
-            if logits.shape != (len(chunk), N_CARDS) or not np.isfinite(logits).all():
-                raise ValueError("policy requires finite rows x 54 log-odds")
-            for row, (index, legal, scoring) in zip(logits, pending[start:start + self.batch_size]):
-                # the policy's top-R follows; a stable sort keeps enumeration order on ties
-                order = np.argsort(-(scoring @ row), kind="stable")[:keep]
-                candidates = [list(legal[int(i)]) for i in order]
-                follow = sorted(heuristic.decide_play(active[index], seat))
-                if follow not in candidates:
-                    candidates.append(follow)
-                plans[index] = (candidates, follow)
-        stats["tree_policy_rows"] += len(rows)
-        stats["tree_forced_plays"] += len(active) - len(rows)
-        # every (clone, candidate): apply it, let the heuristic finish the trick,
-        # read the value head from the ACTING seat's team
-        leaves, owners = [], []
-        for index, (candidates, _follow) in enumerate(plans):
-            if len(candidates) == 1:
-                continue
-            if gate is not None and index and index % TREE_BUDGET_STRIDE == 0:
-                gate()
-            for k, candidate in enumerate(candidates):
-                child = child_position(active[index], seat, candidate)
-                finish_current_trick(child)
-                leaves.append(child)
-                owners.append((index, k))
-        best = [0] * len(active)
-        if leaves:
-            values, batches = self._tree_values(leaves, seat, gate)
-            stats["tree_value_batches"] += batches
-            stats["tree_reply_evaluations"] += len(leaves)
-            top = {}
-            for (index, k), value in zip(owners, values):
-                if index not in top or value > top[index]:     # first maximum: policy order
-                    top[index], best[index] = value, k
-        for index, clone in enumerate(active):
-            candidates, follow = plans[index]
-            choice = candidates[best[index]]
-            stats["tree_reply_plays"] += 1
-            stats["tree_reply_differs_heuristic"] += choice != follow
-            stats["tree_reply_differs_policy"] += choice != candidates[0]
-            clone.play(seat, choice)
+        """One reply ply of ``trick-greedy`` (`greedy_reply_ply` with the tree's
+        R, through this instance's `_tree_legal` and `_tree_values` hooks)."""
+        greedy_reply_ply(self, active, gate, cache, stats, self.tree_config.reply_candidates,
+                         self.version, self._tree_legal, self._tree_values)
 
     def _tree_lookahead_greedy(self, rnd, seat, actions, worlds, gate=None):
         """`_tree_lookahead` for ``cont == "trick-greedy"``."""
         target = len(rnd.history) + 1
         clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
                   for hands, buried in worlds for action in actions]
-        stats = {"tree_policy_rows": 0, "tree_forced_plays": 0, "tree_multi_leads": 0,
-                 "tree_terminal_leaves": 0, "tree_value_batches": 0, "tree_reply_plays": 0,
-                 "tree_reply_evaluations": 0, "tree_reply_differs_heuristic": 0,
-                 "tree_reply_differs_policy": 0}
+        stats = {"tree_multi_leads": 0, "tree_terminal_leaves": 0, **greedy_stats()}
         cache = {}
 
-        def open_(clone):
-            return clone.phase == "play" and len(clone.history) < target
-
-        active = [c for c in clones if open_(c)]
+        active = [c for c in clones if trick_open(c, target)]
         while active:
             if gate is not None:
                 gate()
             self._tree_greedy_ply(active, gate, cache, stats)
-            active = [c for c in active if open_(c)]
+            active = [c for c in active if trick_open(c, target)]
         values, batches = self._tree_values(clones, seat, gate)
         stats["tree_value_batches"] += batches
         stats["tree_terminal_leaves"] = sum(c.phase == "round_end" for c in clones)

@@ -223,6 +223,43 @@ DEFAULT, and while off `_select` and the played action are exactly as before):
   selection) and ``doomed_throw_reselect_exact_floor_excluded`` (admitted
   candidates under the floor, 0 without one).
 
+Optional VALUE-LEAF rule (search audit F5 / E4, board S33; OFF BY DEFAULT, and
+while off every leaf the value head scores is `_leaf` exactly as before):
+
+* ``leaf_greedy_finish`` -- the leaf of (candidate, sampled world) that the
+  value pass scores is the afterstate with the CURRENT trick finished by the
+  tree's ``trick-greedy`` finisher instead of the heuristic: at each remaining
+  seat of the trick, in that world, the replying seat's candidates are the
+  package policy's top-`LEAF_GREEDY_REPLIES` (4) legal follows plus the
+  heuristic's follow; each candidate is applied, heuristic-finished and valued
+  by the value head from the REPLYING seat's team, and the seat plays the
+  best (first maximum: policy order).  Nothing after the current trick changes,
+  and the admission, the selection rules and the played action are what they
+  were, only on the leaves the value head is handed.  Evidence (E4, 747 served
+  probe states, true deal, served ballot): the heuristic finish's regret under
+  the served bots' own replies is 0.0312 levels per decision, the greedy
+  finish's 0.0174 (paired delta +0.0138 [+0.0046, +0.0231]); the policy's own
+  top follow as the finisher does not clear the bar (-0.0041).  COST: every
+  leaf needs about 1 + 3 seats x <= 5 reply evaluations of the value head
+  and up to 3 policy rows, so a W64 K8 decision does roughly 16x the leaf
+  value work; the finish runs under the serving deadline (``check_budget``
+  as the ply gate, strided as the tree's), and on expiry the value pass
+  fails as it always has (no partial result; the serving wrapper's fallback).
+  `_scored_leaf` is the ONE producer of a scored leaf: `_score_leaves` /
+  `_value_means` and the tie-break's `_trick_points` (which must price the
+  SAME leaf the value head scored) go through it; `_leaf` itself is
+  unchanged, so the exact lead stage, which solves from `_leaf`, is untouched.
+  The value pass finishes all K x W leaves at once (`_greedy_prefill`: the
+  replies batched across the clones, as the tree batches them) into a
+  per-decision cache keyed by (candidate, world index); a consumer asking
+  for a leaf outside the pass (another world set) gets one finished on its
+  own, counted in the record.  Not combined with the tree or the adaptive
+  worlds rule (refused by the recipe).  Record, only with the rule on:
+  ``leaf_greedy_finish_applied`` (a reply ply ran: the root seat was not
+  last to play), ``leaf_greedy_reply_plays``, ``leaf_greedy_reply_evaluations``
+  (value-head calls spent on replies), ``leaf_greedy_reply_differs_heuristic``,
+  ``leaf_greedy_policy_rows`` and ``leaf_greedy_uncached_leaves``.
+
 Optional ADMISSION exclusion (#676 online lead review, ranked fix 3 "LJ-into-
 unseen-BJ guard", board #707 S4 formerly A9; OFF BY DEFAULT, and while off the
 admitted indices, slot 0 and the record are exactly what they were):
@@ -301,6 +338,11 @@ DOOMED_THROW_RESELECT_DEFAULTS = dict(doomed_throw_reselect=False)
 #: `doomed_throw_reselect_exact_guard`: the re-selection's exact-mean floor on
 #: an exact-stage selection (module docstring); requires ``doomed_throw_reselect``
 DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS = dict(doomed_throw_reselect_exact_guard=False)
+#: `leaf_greedy_finish`: the optional value-leaf finisher (module docstring)
+LEAF_GREEDY_DEFAULTS = dict(leaf_greedy_finish=False)
+#: its R: a replying seat's candidates are the policy's top-R legal follows
+#: plus the heuristic's (the tree's ``trick-greedy`` default; E4's ``greedy4``)
+LEAF_GREEDY_REPLIES = 4
 #: the selection rules' per-decision records a re-selection overwrites; restored
 #: when the re-selection abandons itself on the budget
 _RESELECT_SELECTION_STATE = ("_tiebreak", "_lead_tiebreak")
@@ -400,6 +442,15 @@ def _budget_exceeded():
     return PVSearchBudgetExceeded
 
 
+def _greedy_state():
+    """`leaf_greedy_finish`'s fresh per-decision state: the finished-leaf cache
+    keyed by (candidate cards, world index), the finish's work counters (the
+    tree's `greedy_stats` names) and the count of leaves finished outside the
+    value pass."""
+    from .pv_tree_search import greedy_stats
+    return {'cache': {}, 'stats': greedy_stats(), 'uncached': 0}
+
+
 class PolicyValueBot(PolicyWorldBot):
     # class-level OFF defaults for the later optional rule, so a bare instance
     # built without __init__ (`eval.fixed_tape_policy.release38_admission`
@@ -409,6 +460,10 @@ class PolicyValueBot(PolicyWorldBot):
     doomed_throw_reselect = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     doomed_throw_reselect_exact_guard = \
         DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"]
+    leaf_greedy_finish = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"]
+    #: `leaf_greedy_finish`'s per-decision state (the finished-leaf cache and
+    #: the work counters); instance state of an ON bot only
+    _leaf_greedy = None
 
     def __init__(self, predict, *, evaluator, candidates=8, batch_size=128,
                  admission_diversity=ADMISSION_DEFAULTS["admission_diversity"],
@@ -427,6 +482,7 @@ class PolicyValueBot(PolicyWorldBot):
                  doomed_throw_reselect=DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                  doomed_throw_reselect_exact_guard=DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS[
                      "doomed_throw_reselect_exact_guard"],
+                 leaf_greedy_finish=LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -503,11 +559,73 @@ class PolicyValueBot(PolicyWorldBot):
         if doomed_throw_reselect_exact_guard:
             # instance state only when on: a flag-off bot's attributes are unchanged
             self.doomed_throw_reselect_exact_guard = True
+        if type(leaf_greedy_finish) is not bool:
+            raise ValueError('leaf_greedy_finish must be a bool')
+        if leaf_greedy_finish:
+            # instance state only when on, as the guard above
+            self.leaf_greedy_finish = True
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
 
+    # the optional value-leaf rule (module docstring)
+
+    def _scored_leaf(self, rnd, seat, hands, buried, action, world_index):
+        """The leaf the value head scores for (``action``, world
+        ``world_index``): `_leaf`, or with ``leaf_greedy_finish`` the
+        greedy-finished afterstate -- this decision's cached one from the
+        value pass (`_greedy_prefill`), else one finished on its own now."""
+        if not self.leaf_greedy_finish:
+            return self._leaf(rnd, seat, hands, buried, action, world_index)
+        state = self._leaf_greedy
+        if state is None:
+            state = self._leaf_greedy = _greedy_state()
+        key = (tuple(action), world_index)
+        leaf = state['cache'].get(key)
+        if leaf is None:
+            leaf = afterstate(rnd, seat, hands, buried, action, finish_trick=False)
+            self._greedy_finish([leaf], len(rnd.history) + 1, None, state['stats'])
+            state['cache'][key] = leaf
+            state['uncached'] += 1
+        return leaf
+
+    def _greedy_prefill(self, rnd, seat, actions, worlds, check_budget=None):
+        """``leaf_greedy_finish``: finish every (action, world) leaf of the value
+        pass at once, the replies batched across all the clones, under
+        ``check_budget`` (the ply gate), into this decision's cache."""
+        state = self._leaf_greedy = _greedy_state()
+        clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
+                  for hands, buried in worlds for action in actions]
+        self._greedy_finish(clones, len(rnd.history) + 1, check_budget, state['stats'])
+        leaves = iter(clones)
+        for world_index in range(len(worlds)):
+            for action in actions:
+                state['cache'][(tuple(action), world_index)] = next(leaves)
+
+    def _greedy_finish(self, clones, target, gate, stats):
+        # lazy: the tree module imports this module's served consumers.  The
+        # policy rows are encoded at the served bot's ``version``; the harness
+        # bot (no ``version``) encodes at `policy_prior.ENC_VERSION`, as `scores`
+        from .policy_prior import ENC_VERSION
+        from .pv_tree_search import greedy_finish_current_trick
+        greedy_finish_current_trick(self, clones, target, gate, LEAF_GREEDY_REPLIES,
+                                    getattr(self, 'version', ENC_VERSION), stats)
+
+    def _leaf_greedy_record(self):
+        if not self.leaf_greedy_finish:
+            return {}
+        state = self._leaf_greedy if self._leaf_greedy is not None else _greedy_state()
+        stats = state['stats']
+        return {'leaf_greedy_finish_applied': stats['tree_reply_plays'] > 0,
+                'leaf_greedy_reply_plays': int(stats['tree_reply_plays']),
+                'leaf_greedy_reply_evaluations': int(stats['tree_reply_evaluations']),
+                'leaf_greedy_reply_differs_heuristic': int(stats['tree_reply_differs_heuristic']),
+                'leaf_greedy_policy_rows': int(stats['tree_policy_rows']),
+                'leaf_greedy_uncached_leaves': int(state['uncached'])}
+
     def _value_means(self, rnd, seat, actions, worlds):
+        if self.leaf_greedy_finish:
+            self._greedy_prefill(rnd, seat, actions, worlds)
         sums = np.zeros(len(actions), dtype=np.float64)
         pending, indices = [], []
         batches = 0
@@ -526,7 +644,7 @@ class PolicyValueBot(PolicyWorldBot):
 
         for world_index, (hands, buried) in enumerate(worlds):
             for index, action in enumerate(actions):
-                pending.append(self._leaf(rnd, seat, hands, buried, action, world_index))
+                pending.append(self._scored_leaf(rnd, seat, hands, buried, action, world_index))
                 indices.append(index)
                 if len(pending) == self.batch_size:
                     flush()
@@ -779,9 +897,9 @@ class PolicyValueBot(PolicyWorldBot):
 
     def _trick_points(self, rnd, seat, hands, buried, action, world_index):
         """The points of ``action``'s trick as the engine resolves it under the
-        SAME leaf the value head scored (`_leaf`), signed for the root team:
-        + when the trick's winner is the root team, - when it is the other."""
-        leaf = self._leaf(rnd, seat, hands, buried, action, world_index)
+        SAME leaf the value head scored (`_scored_leaf`), signed for the root
+        team: + when the trick's winner is the root team, - when it is the other."""
+        leaf = self._scored_leaf(rnd, seat, hands, buried, action, world_index)
         trick = leaf.last_trick
         if len(leaf.history) != len(rnd.history) + 1 or trick is None or trick.winner is None:
             raise RuntimeError('tie-break leaf did not resolve exactly the current trick')
@@ -1090,6 +1208,8 @@ class PolicyValueBot(PolicyWorldBot):
 
     def decide_play(self, rnd, seat):
         self.last_decision_record = None
+        if self.leaf_greedy_finish:
+            self._leaf_greedy = None      # no leaf of an earlier decision is ever reused
         started = time.perf_counter()
         anchor = HeuristicBot().decide_play(rnd, seat)
         legal = enumerate_legal(rnd, seat, cap=self.cap, must_include=[anchor])
@@ -1119,5 +1239,6 @@ class PolicyValueBot(PolicyWorldBot):
             **self._tiebreak_record(),
             **self._lead_tiebreak_record(),
             **self._doomed_throw_record(),
+            **self._leaf_greedy_record(),
         }
         return played

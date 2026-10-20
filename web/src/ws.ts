@@ -3,25 +3,19 @@
 // "open"; whether and where to rejoin is decided by App via intent.ts.
 
 import type { ChatMsg, ClientMsg, ServerMsg } from "./protocol";
+import { wsUrl } from "./serverOrigin";
 
 export type ConnStatus = "connecting" | "open" | "closed";
 
 /**
- * Pick the WebSocket URL:
+ * The WebSocket URL (serverOrigin.ts):
  * - Vite dev server (`npm run dev`): the page is on :5173 but the backend is on
  *   :8000, so target it directly.
  * - Served by the game server itself (production build behind any host/TLS):
  *   connect same-origin, upgrading to wss when the page is https.
+ * - Built with VITE_SERVER_ORIGIN (the native shell): that server, always.
  */
-function wsUrl(): string {
-  if (import.meta.env.DEV) {
-    return `ws://${location.hostname}:8000/ws`;
-  }
-  const scheme = location.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${location.host}/ws`;
-}
-
-const WS_URL = wsUrl();
+const WS_URL = wsUrl(import.meta.env, location);
 
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";

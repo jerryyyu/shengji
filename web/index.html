@@ -7,6 +7,17 @@
     <!-- The table is always dark, independently of the OS appearance. -->
     <meta name="theme-color" content="#14171e" />
     <meta name="color-scheme" content="dark" />
+    <!-- Installable: the manifest for Add to Home Screen, and the Safari
+         equivalents (iOS reads apple-* before the manifest). Standalone mode
+         hides the browser chrome, so the layout's safe-area insets carry the
+         notch and home indicator. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
+    <meta name="application-name" content="Sheng Ji" />
+    <meta name="apple-mobile-web-app-title" content="Sheng Ji" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Sheng Ji 升级</title>
     <!-- Static first paint: shown until React mounts (and replaces #root's
          contents), so a slow phone network gets the title instead of a blank

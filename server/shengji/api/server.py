@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
 
@@ -122,6 +123,14 @@ LOG_DIR = Path(os.environ.get(
     "SHENGJI_LOG_DIR",
     Path(__file__).resolve().parents[3] / "logs" / "local"))
 app = FastAPI(title="shengji")
+
+#: page origins the native shell loads the web client from (Capacitor on iOS and
+#: Android). Browsers send no Origin on the same-origin web build, so this only
+#: unlocks plain GETs (health, the token-gated debug route) for the shell; the
+#: WebSocket endpoint checks no Origin and is outside CORS entirely.
+NATIVE_SHELL_ORIGINS = ("capacitor://localhost", "http://localhost")
+app.add_middleware(CORSMiddleware, allow_origins=list(NATIVE_SHELL_ORIGINS),
+                   allow_methods=["GET"], allow_headers=[], allow_credentials=False)
 
 rooms: dict[str, "Room"] = {}
 

@@ -1878,3 +1878,39 @@ def test_a_finished_game_start_records_the_deal_and_bot_tasks(client):
         assert room.task_exits.get("deal_task") == "returned"
         assert room.bot_task is not None
         assert srv.rooms[code] is room
+
+
+# Native shell origins: the Capacitor shell loads the client from
+# capacitor://localhost and talks to this same server; the web build is
+# same-origin and sends no Origin at all.
+
+@pytest.mark.parametrize("origin", ["capacitor://localhost", "http://localhost"])
+def test_a_native_shell_origin_may_read_plain_gets(client, origin):
+    response = client.get("/healthz", headers={"Origin": origin})
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_any_other_origin_gets_no_cors_grant(client):
+    response = client.get("/healthz", headers={"Origin": "https://evil.example"})
+    assert response.status_code == 200           # the route itself is public
+    assert "access-control-allow-origin" not in response.headers
+    assert client.get("/healthz").status_code == 200   # same-origin web build: no Origin
+
+
+def test_the_cors_grant_is_get_only(client):
+    preflight = client.options("/healthz", headers={
+        "Origin": "capacitor://localhost",
+        "Access-Control-Request-Method": "POST"})
+    assert preflight.status_code == 400
+    assert "POST" not in preflight.headers.get("access-control-allow-methods", "")
+
+
+def test_the_websocket_ignores_origin(client):
+    """The socket is outside CORS and checks no Origin: the shell's Origin and
+    a browser's same-origin connect identically."""
+    for headers in ({"Origin": "capacitor://localhost"}, {"Origin": "https://evil.example"}, {}):
+        with client.websocket_connect("/ws", headers=headers) as ws:
+            ws.send_json({"type": "create_room", "name": "A"})
+            assert _drain(ws, "room")["type"] == "room"

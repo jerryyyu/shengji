@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <!-- Launch screen: table dark edge to edge so the first frame matches the
+       page background, the card icon centred at a size that survives every
+       device crop (iOS shows the middle of this square). -->
+  <rect width="2732" height="2732" fill="#14171e"/>
+  <g transform="translate(1110 1110) scale(1)">
+    <rect x="146" y="96" width="220" height="320" rx="22" fill="#f6f1e4" stroke="#f2c14e" stroke-width="8"/>
+    <text x="256" y="318" font-family="PingFang SC, Hiragino Sans GB, Noto Sans CJK SC, sans-serif" font-size="170" font-weight="700" fill="#b4232c" text-anchor="middle">升</text>
+    <circle cx="184" cy="136" r="12" fill="#b4232c"/>
+    <circle cx="328" cy="376" r="12" fill="#b4232c"/>
+  </g>
+</svg>

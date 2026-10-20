@@ -705,7 +705,18 @@ def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):
     assert result['by_rank_group']['rank_2']['ci95_normal'] is None
     assert result['by_rank_group']['rank_not_2']['ci95_normal'] is None
     assert result['verdict'] == 'POSITIVE'
+    for key in ('seed0', 'cluster0', 'pairs'):
+        bad_meta = {**meta, key: float(meta[key])}
+        with pytest.raises(ValueError, match='integer'):
+            adapter.read(tmp_path, bad_meta)
+        (tmp_path / 'run.json').write_text(json.dumps(bad_meta))
+        with pytest.raises(ValueError, match='metadata'):
+            adapter.read(tmp_path, meta)
+        (tmp_path / 'run.json').write_text(json.dumps(meta))
     for change in ({'seed': 999}, {'flip': 1}, {'trump_rank': 'A'},
+                   {'seed': 100.0}, {'flip': False}, {'winner_team': False},
+                   {'won': True}, {'level_utility': True},
+                   {'arm_play_decisions': True},
                    {'opponent': 'T'}, {'policy': 'C'}, {'level_utility': -1},
                    {'winner_team': 1}, {'arm_play_decisions': 2}):
         bad = copy.deepcopy(rows)

@@ -103,6 +103,8 @@ def read(out, expected):
     Confidence intervals cluster by deal, never by individual seat mirror.
     """
     out = Path(out)
+    if any(type(expected.get(k)) is not int for k in ('seed0', 'cluster0', 'pairs')):
+        raise ValueError('expected schedule requires integer seeds and counts')
     expected_kind = expected.get('round_kind', 'first_round')
     duel.validate_round_kind(expected_kind, ','.join(expected.get('ranks', [])))
     if (expected_kind == 'fixed_banker'
@@ -113,7 +115,9 @@ def read(out, expected):
     if (expected.get('schema') != 'pv-dev-duel-v1'
             or expected['control'] == expected['candidate'] or not expected['ranks']):
         raise ValueError('invalid expected plan')
-    if json.loads((out / 'run.json').read_text()) != expected:
+    actual = json.loads((out / 'run.json').read_text())
+    if (any(type(actual.get(k)) is not int for k in ('seed0', 'cluster0', 'pairs'))
+            or actual != expected):
         raise ValueError('run metadata differs from expected plan')
     n = expected['pairs']
     if n < 2 or (out / 'DONE').read_text() != f'{n} complete pairs\n':
@@ -127,6 +131,10 @@ def read(out, expected):
               for i in range(start, start + n) for flip in (0, 1)}
     seen, health, scores, by_rank = set(), {'arm': Counter(), 'opp': Counter()}, {}, {}
     for row in rows:
+        if any(type(row.get(k)) is not int for k in (
+                'seed', 'flip', 'winner_team', 'won', 'level_change', 'level_utility',
+                'arm_play_decisions', 'opp_play_decisions')):
+            raise ValueError('round identity, scores and decision counts require integers')
         key = (row['seed'], row['flip'])
         if key in seen or key not in wanted or row['trump_rank'] != wanted[key]:
             raise ValueError('duplicate or unexpected seed/flip/rank')

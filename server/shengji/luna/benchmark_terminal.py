@@ -73,10 +73,14 @@ def _validate_row(row: object, *, key: str, seed: int, mode: str,
 def validate_scheduled_terminal(
         report: Mapping[str, Any], *, seeds: Sequence[int],
         failure_limit: int = 8,
-        retention_binding: Mapping[str, str] | None = None) -> dict[str, int | str]:
+        retention_binding: Mapping[str, str] | None = None,
+        information_modes: tuple[str, ...] = ("actor-only", "perfect")) -> dict[str, int | str]:
     """Validate one immutable, complete-or-bounded terminal Sol report."""
     if type(report) is not dict:
         raise ValueError("terminal report must be an object")
+    if information_modes not in (("actor-only", "perfect"), ("actor-only",), ("perfect",)):
+        raise ValueError("unsupported terminal information modes")
+    scheduled = 20 * len(information_modes)
     if type(failure_limit) is not int or isinstance(failure_limit, bool) \
             or failure_limit != 8:
         raise ValueError("terminal validation requires failure limit 8")
@@ -98,15 +102,15 @@ def validate_scheduled_terminal(
     if (config.get("failure_protocol") != PRESERVE_ILLEGAL
             or not _strict_equal(config.get("illegal_failure_limit"), failure_limit)
             or config.get("models") != ["sol"]
-            or config.get("information") != ["actor-only", "perfect"]
+            or config.get("information") != list(information_modes)
             or not _strict_equal(config.get("seeds"), expected_seeds)):
         raise ValueError("terminal report schedule configuration drift")
     mirrors = report.get("mirrors")
-    if type(mirrors) is not list or len(mirrors) != SCHEDULED:
-        raise ValueError("terminal report must contain exactly forty mirrors")
+    if type(mirrors) is not list or len(mirrors) != scheduled:
+        raise ValueError(f"terminal report must contain exactly {scheduled} mirrors")
     expected_keys = {
         f"sol-{mode}-seed{seed}-flip{flip}"
-        for mode in ("actor-only", "perfect")
+        for mode in information_modes
         for seed in expected_seeds for flip in (0, 1)}
     rows: dict[str, dict[str, Any]] = {}
     for row in mirrors:
@@ -121,7 +125,7 @@ def validate_scheduled_terminal(
 
     dispositions: list[str] = []
     ordered_rows: list[dict] = []
-    for mode in ("actor-only", "perfect"):
+    for mode in information_modes:
         for seed in expected_seeds:
             for flip in (0, 1):
                 key = f"sol-{mode}-seed{seed}-flip{flip}"
@@ -176,7 +180,7 @@ def validate_scheduled_terminal(
     return {"status": ("failure-limit" if failed == failure_limit
                         else "scheduled-terminal"),
             "completed": completed, "failed": failed,
-            "unattempted": unattempted, "scheduled": SCHEDULED}
+            "unattempted": unattempted, "scheduled": scheduled}
 
 
 __all__ = ["validate_scheduled_terminal"]

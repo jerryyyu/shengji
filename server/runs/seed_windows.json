@@ -3151,6 +3151,20 @@
       "host": "shengji-cloud",
       "git_head": null,
       "note": "s51d: S51 census FIXED-BANKER 2..A window, 104 clusters; one arm (release 46 as served) vs the common MC-LCB control; a census, not a screen. Launcher /root/claude_s51d_census_cloud.sh (sha256 227f103b...); reservation shengji-cloud:/root/claude_reservations/s51d.json. Status: CENSUS DONE 2026-10-20T02:18:41Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "dev-s52dev-184060910",
+      "purpose": "screen",
+      "seed0": 184060910,
+      "clusters": 624,
+      "span": [
+        184060910,
+        184061534
+      ],
+      "created_at": "2026-10-20T23:19:58Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s52dev: S52 lar DEV, 624 pairs: release 46 + lar vs release 46 as served, 624 seat-swapped pairs, fixed_banker, 13-rank cycle 2..A by global cluster index (cluster0 = 0), 12 deals per rank/banker cell (Codex 700/6261426275, 6295282054). Purpose dev, recorded as 'screen' (the schema's purposes are trajectory/screen/calibration/other; DEV blocks are registered as screen windows named dev-*). Reserved before launch, outcome-blind; not yet dealt. Host shengji-perf is the intended host (the S52 capacity run's); no launcher or host reservation exists yet. Cleared against this registry (PR #1122 head f84bd591), perf + cloud /root/claude_reservations, the pending v98comboc 180M and s33dev [182060910, +600) blocks, the fl-pilot and ~/.codex/tmp packets, and the SMV3 + JS-M1 deal-key exposure (fl-pilot/s52dev_seeds/handoff.md). Replaces the stale 153060914 proposal, which overlaps the exact8 windows (Codex 700/6295407344)."
     }
   ]
 }

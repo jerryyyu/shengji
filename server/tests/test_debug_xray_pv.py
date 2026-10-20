@@ -24,7 +24,7 @@ from shengji.api import debug
 from shengji.api.debug_play import MAX_CANDIDATES, PV_FALLBACK_SCHEMA, PV_SCHEMA, play_analysis
 from shengji.engine.game import Game
 from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA  # noqa: F401
-from test_release46_fly_config import pinned_belief_package  # noqa: F401
+from test_release47_fly_config import pinned_belief_package  # noqa: F401
 
 
 def _pv_record(**extra):

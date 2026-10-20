@@ -105,20 +105,38 @@ primary_region = 'ewr'
   # flags, the two BELIEF package lines, the six SHENGJI_PV_EXACT_* lines and
   # SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST) and restore the release-45 name:
   # RELEASE 45 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0'
+  # RELEASE 47 (prepared; deploy on Jerry's word after the v98comboc confirmation and the v99lat
+  # latency check): release 46 with two changes screened together as v98combo. BELIEF: the
+  # hidden hands are proposed by the S46 r3 belief package s46-e2-36e2024e (d192, served at its
+  # stored temperature) in place of S17's s17long-e2-763b5e05; same runtime, same fallback to
+  # the history-legal draw. DTRX (#1120): the doomed-throw re-select never overrides a complete
+  # exact lead stage; it re-selects only to a lead whose exact mean is not below the selected
+  # throw's. dtrx raises the bot's public failed-throw notices by about a third (v97dtrx). Play,
+  # bury and declaration budgets, package, worlds and candidates are release 46's. Evidence:
+  # v98combo (ten fresh first-round windows vs release 46 as served) +0.0232 [+0.0005, +0.0459]
+  # POSITIVE (#1075 issuecomment-6300257249); the confirmation and latency reads are recorded
+  # in DEPLOY.md. Rollback: delete the SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD line,
+  # restore the two release-46 belief lines and the release-46 name:
+  #   SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'
+  #   SHENGJI_PV_BELIEF_SHA256 = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'
+  # RELEASE 46 name: pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-ed7-xf7-xfcompactlevel-r8ef724b5-bury-hybrid-bwv-7cdf6f0d4232'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
   SHENGJI_PV_LEAD_ANCHOR = '1'
   SHENGJI_PV_DOOMED_THROW_RESELECT = '1'
+  # Release 47: the re-select's exact-stage guard (see the RELEASE 47 note above).
+  SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD = '1'
   SHENGJI_PV_VALUE_DECLARE = '1'
   # Release 46: the combo (see the RELEASE 46 note above). History-legal, belief-proposed
-  # play worlds; the belief package must be on the volume at this path with this sha256.
+  # play worlds; the belief package must be on the volume at this path with this sha256
+  # (release 47: the S46 r3 package).
   SHENGJI_PV_WORLD_HISTORY_LEGAL = '1'
   SHENGJI_PV_WORLD_HISTORY_DRAW = '1'
   SHENGJI_PV_BELIEF_WORLDS = '1'
-  SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'
-  SHENGJI_PV_BELIEF_SHA256 = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'
+  SHENGJI_PV_BELIEF_CKPT = '/data/models/s46-e2-36e2024e.npz'
+  SHENGJI_PV_BELIEF_SHA256 = '36e2024e36884906099727212ddd7f870ff39e961c42f58a9cf7eb445c65a3ac'
   # The exact endgame search at 7 cards. The compact-level solver is the compiled
   # _endgame_fast extension when SHENGJI_FAST=1 activated the engine (its pure-Python twin
   # otherwise, identical results, slower).

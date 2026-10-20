@@ -11,7 +11,7 @@ Release records through release 46 in full: [docs_archive/deploy-through-2026-10
 | served name | the `SHENGJI_BOT` value; the registry derives it from the `fly.toml` env, and `/healthz` reports it as `bot` |
 | play package | the NumPy value/policy net, `smv3out-491ee4bf.npz` |
 | prior | the JS-M1 package `js-m1-0d17fd03.npz`, kept under the `SHENGJI_CWV_PRIOR_*` keys |
-| belief package | the S17 hidden-hand model, `s17long-e2-763b5e05.npz` (release 46 on) |
+| belief package | the hidden-hand model: S17's `s17long-e2-763b5e05.npz` in release 46; S46 r3's `s46-e2-36e2024e.npz` in the prepared release 47 |
 | volume | the Fly volume mounted at `/data`; packages in `/data/models`, room logs in `/data/logs` |
 | image | `registry.fly.io/shengji:<image>`; Fly numbers each deploy `vNN` |
 | smoke | a run of the served bot through the server path (`_paced_bot_step` / `_commit_bot_turn`) |
@@ -113,6 +113,119 @@ POSITIVE; v93lat QUALIFIED; Jerry's word in session.
 Fly's shared CPU, any `cwv-bury-fallback-v1` or `pv-declare-serving-fallback-v1` record, and the `/healthz`
 `activity` counters (step 10 has not yet been recorded as read for release 46).
 
+## Release 47 (prepared, NOT deployed)
+
+Release 46 with two changes, screened together as **v98combo**. Draft PR; nothing is on the volume or deployed.
+
+| field | value |
+|---|---|
+| status | PENDING: v98comboc confirmation, v99lat latency/memory check, merged-tree smoke, Jerry's word |
+| board row | R47 on #1075 (release bar predeclared 2026-10-20T15:45Z, before the v98combo read) |
+| comparator | release 46 as served |
+
+Served name (the registry derives it from the edited `fly.toml` with the real packages; it equals v98combo's
+candidate name):
+
+```
+pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-ed7-xf7-xfcompactlevel-r8ef724b5-bury-hybrid-bwv-7cdf6f0d4232
+```
+
+### What changes
+
+| change | `fly.toml` | name token |
+|---|---|---|
+| belief package: S46 r3 (d192, 4 + 4 layers) replaces S17 e2, served at its stored temperature 1.0071 | `SHENGJI_PV_BELIEF_CKPT = '/data/models/s46-e2-36e2024e.npz'`, `SHENGJI_PV_BELIEF_SHA256 = '36e2024e36884906099727212ddd7f870ff39e961c42f58a9cf7eb445c65a3ac'` | none (the play digest moves) |
+| dtrx (#1120): the doomed-throw re-select never overrides a complete exact lead stage; it re-selects only to a lead whose exact mean is not below the selected throw's | `SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD = '1'` | `dtrx` |
+
+Every other line is release 46's: play package, prior, worlds, candidates, budgets, bury, declaration, exact stages.
+The belief runtime is unchanged (NumPy only), and so is its fallback to the history-legal draw.
+
+| package | path on the volume | sha256 | `serving-packages` asset |
+|---|---|---|---|
+| belief (new) | `/data/models/s46-e2-36e2024e.npz` | `36e2024e36884906099727212ddd7f870ff39e961c42f58a9cf7eb445c65a3ac` | `s46-e2-36e2024e.npz`, **not yet uploaded** |
+
+`server/tests/test_release47_fly_config.py` builds the served bot from this env on the pinned packages and plays one
+turn through the server path. It also builds the release-46 rollback on S17's package.
+`server/tests/test_bury_fly_config.py` pins the name chain 47 → 46 → 45 and the deeper rollbacks.
+
+### Evidence
+
+| read | result [95% CI] (levels/round, paired, 10 windows) | status | pointer |
+|---|---|---|---|
+| v98combo: the release-47 candidate vs release 46 as served | **+0.0232 [+0.0005, +0.0459]** (MDE80 0.0324) | POSITIVE | [#1075 issuecomment-6300257249](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6300257249) |
+| v98comboc: fresh-seed confirmation | — | PENDING | R47 |
+| v99lat: latency and memory vs release 46, v93lat's form | — | PENDING | R47 |
+
+- v98combo's predeclared descriptive splits: trump rank ≠ 2 +0.0419 [+0.0079, +0.0760]; rank 2 −0.0121
+  [−0.0475, +0.0232]. The strata differ in round kind and rank together, so no split identifies a rank effect.
+  Banker share is 58.5% on both arms.
+- Belief fallbacks 0 of 358,672 candidate search records. Exact abandons and timeouts were 0.1% of eligible
+  decisions on each arm.
+- Screen-host belief_ms p50 21.7 vs 14.2 ms (under 14 workers; not serving latency). S46 is a larger model than
+  S17 e2, so v99lat and the Fly check below own the latency question.
+- Single-change reads, listed beside v98combo and never pooled with it:
+  - the S46 r3 package alone: s46screen +0.0242 [+0.0035, +0.0448]
+    ([6251809698](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6251809698)) and s46c +0.0208
+    [−0.0008, +0.0424] INCONCLUSIVE ([6287342114](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6287342114));
+  - dtrx alone: v97dtrx +0.0064 [+0.0023, +0.0105]
+    ([6293426490](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6293426490)).
+- The effect is near the screen's resolution and below the board's +0.05 goal. The release bar on R47 requires
+  v98comboc's own lower bound above zero.
+
+### Release note: what a player will notice
+
+- **More failed throws.** When the exact lead stage selects a throw the engine will refuse, dtrx keeps it unless
+  another lead's exact mean is at least as high. The bot therefore shows about a third more public failed-throw
+  notices: v97dtrx counted 4,622 refused throws on
+  exact-stage leads against 3,479 for release 46, and v97dev counted 485 failed throws against 360. Each notice
+  names the attempted cards and the forced card for 8 plays, so the thrower's remaining attempted cards become
+  public. Release 42 had removed most of these notices; dtrx gives part of that back for its measured gain
+  against bots. Its effect on human opponents is not measured.
+- **Fallback recipe.** If Jerry weighs the notices over dtrx's gain, the belief-only candidate (S46 r3 without
+  dtrx) is the alternative. It is s46c's recipe and needs its own fresh confirmation.
+- **Belief package.** The S46 r3 package is trained on bot self-play, as S17's was. Watch the first human room's
+  belief and history fallback counts.
+
+### Deploy steps (release 47)
+
+The Release checklist below, with these substitutions:
+
+1. **Before merge:** upload `s46-e2-36e2024e.npz` as an asset of the `serving-packages` GitHub release (sha256
+   `36e2024e…5a3ac`). Until then the CI package-gate step fails at "Fetch the pinned belief package". The
+   rollback package `s17long-e2-763b5e05.npz` is already an asset there.
+2. **Review and CI:** Codex PASS at the exact head; every check green; REST squash merge at that sha.
+3. **Volume upload, before the deploy:**
+   1. `shasum -a 256 <local>/s46-e2-36e2024e.npz` must print `36e2024e36884906099727212ddd7f870ff39e961c42f58a9cf7eb445c65a3ac`.
+   2. `fly ssh sftp shell -a shengji`, then `put <local>/s46-e2-36e2024e.npz /data/models/s46-e2-36e2024e.npz`.
+   3. `fly ssh console -a shengji -C "sha256sum /data/models/s46-e2-36e2024e.npz"` must print the same sha256.
+   Keep `s17long-e2-763b5e05.npz` on the volume; the rollback reads it.
+4. **Merged-tree full-round smoke** (checklist step 3) with `--map /data/models/s46-e2-36e2024e.npz=<local>` in
+   place of the S17 map and `--receipt smoke47.jsonl`.
+5. **Evidence:** v98comboc with its own CI lower bound above zero; v99lat QUALIFIED.
+6. **Jerry's word, in session.**
+7. **Deploy** from a clean worktree at the merge commit at 0 rooms: `fly deploy --ha=false`.
+8. **After the deploy:** `/healthz` shows the name above. Run the in-machine line (checklist step 8) with
+   `/data/models/s46-e2-36e2024e.npz 36e2024e36884906099727212ddd7f870ff39e961c42f58a9cf7eb445c65a3ac`; it must
+   print `True compiled 36e2024e`. Then run the first-room reader with its triggers. Also report belief_ms p95 and
+   failed throws per round, as reported lines rather than triggers.
+9. **Records:** Releases table, Current production, and Rollback (to release 46).
+
+### Rollback to release 46
+
+Release 46: Fly v46, image `deployment-01M530R14ARM0669QNJBW2RGTG`, main `ab6fd1b2`. It reads
+`/data/models/s17long-e2-763b5e05.npz`, which stays on the volume.
+
+- **Option 1, redeploy the release-46 image** (no build):
+  `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:deployment-01M530R14ARM0669QNJBW2RGTG`
+- **Option 2, edit `fly.toml`:**
+  1. Delete the `SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD` line.
+  2. Restore `SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'` and
+     `SHENGJI_PV_BELIEF_SHA256 = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'`.
+  3. Set `SHENGJI_BOT` to the release-46 name kept in the comment above it.
+  4. Run `fly deploy --ha=false`.
+
+  `test_release47_fly_config.py` and `test_bury_fly_config.py` check that this env derives release 46's name.
+
 ## Rollback
 
 ### To release 45 (the rollback target)
@@ -169,8 +282,9 @@ and 42–46. Commands below are release 46's; substitute the new release's packa
 
 1. **Review and CI.** A non-author PASS on the release PR at its exact head, and all CI checks green. The
    package-gate step fetches the pinned packages from the `serving-packages` release, sha256-verifies them, and
-   runs `server/tests/test_release46_fly_config.py`, which builds the served bot from the `fly.toml` env through
-   the server path (name, every knob, belief model, compiled solver, one play with no fallback).
+   runs `server/tests/test_release47_fly_config.py` (release 46's `test_release46_fly_config.py` for the
+   rollback), which builds the served bot from the `fly.toml` env through the server path (name, every knob,
+   belief model, compiled solver, one play with no fallback).
    `server/tests/test_bury_fly_config.py` pins the served name.
 2. **Package upload, before the `fly.toml` switch.** The policy registers at server import and refuses a missing
    or mismatched package, so a deploy without it does not boot the served bot. The running machine does not read
@@ -267,6 +381,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
+| 47 | PENDING (draft) | S46 r3 belief package + `dtrx` | new belief package `36e2024e…` | draft | — |
 | 46 | 2026-10-16 14:49 | v92 combo: belief worlds, exact endgame at 7, `vdef` | new belief package `763b5e05…` | #1072 | `deployment-01M530R14ARM0669QNJBW2RGTG` (v46), main `ab6fd1b2` |
 | 45 | 2026-10-13 05:27 | wide value-only bury (`bwv`, K 64) | flag | #983 | `deployment-01M4T9AVEVK51WP2GG8J34NRC9` (v45), main `1ca97051` |
 | 44 | 2026-10-11 17:05 | value-guided trump declaration (`vd`) | flag | #963 | `deployment-01M4PC7724HSXC27PCEEREZWY4` (v44), main `8ac9543e` |

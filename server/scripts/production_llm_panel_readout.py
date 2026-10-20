@@ -36,6 +36,53 @@ class PanelReadoutError(ValueError):
     """The supplied panel is not an admitted producer-shaped panel."""
 
 
+def analyze_pt_report(report, expected_config, *, bootstrap_seed=BOOTSTRAP_SEED):
+    """Read one sealed release46/PT report against an outcome-blind config.
+
+    The caller owns seals, read reservation and the pre-run expected config.
+    This function never opens files or infers the expected plan from results.
+    """
+    from shengji.luna.benchmark_terminal import _strict_equal, validate_scheduled_terminal
+
+    if type(expected_config) is not dict or type(report) is not dict:
+        raise PanelReadoutError("PT report and expected config must be objects")
+    config = report.get("config")
+    if not _strict_equal(config, expected_config):
+        raise PanelReadoutError("PT config differs from the pre-run plan")
+    recipe = _mapping(config.get("baseline_recipe"), label="PT recipe")
+    if (recipe.get("benchmark_id") != "release46-pv"
+            or recipe.get("policy") != "release46-pv"
+            or recipe.get("play_only") is not True
+            or not isinstance(config.get("policy"), str) or not config["policy"]):
+        raise PanelReadoutError("PT report must bind the release46 play recipe")
+    try:
+        accounting = validate_scheduled_terminal(
+            report, seeds=config.get("seeds"), information_modes=("perfect",))
+    except (TypeError, ValueError) as exc:
+        raise PanelReadoutError(f"invalid PT terminal: {exc}") from exc
+    prepared = _mapping(config.get("prepared_roots_from"), label="PT root plan")
+    source, roots = prepared.get("result_sha256"), prepared.get("root_hashes")
+    hexchars = set("0123456789abcdef")
+    def digest(value):
+        return type(value) is str and len(value) == 64 and set(value) <= hexchars
+    if (not digest(source) or type(roots) is not dict
+            or set(roots) != {str(seed) for seed in config["seeds"]}
+            or not all(digest(value) for value in roots.values())):
+        raise PanelReadoutError("malformed PT root plan")
+    actual = _mapping(report.get("prepared_roots"), label="PT prepared roots")
+    if (not _strict_equal(report.get("roots"), roots)
+            or not _strict_equal(actual.get("root_hashes"), roots)
+            or actual.get("result_sha256") != source):
+        raise PanelReadoutError("PT root identity drift")
+    rows = [dict(row, _attempted=row.get("status") not in {"not_run", "setup_failed"})
+            for row in report["mirrors"]]
+    summary = _arm_report(rows, "perfect", bootstrap_seed=bootstrap_seed)
+    return {"schema": "release46-pt-sol-readout-v1", "policy": "release46-pv",
+            "information": "perfect", "accounting": accounting, "pt_sol": summary,
+            "quality": "PASS" if accounting["completed"] == 20 else "FAIL",
+            "claim": "card-play opponent diagnostic; not gain over release46"}
+
+
 def _bootstrap(values: Sequence[float], *, seed: int) -> list[float] | None:
     """Use the benchmark producer's fixed 2,000-resample percentile rule."""
     if len(values) < 2:

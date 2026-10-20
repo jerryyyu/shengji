@@ -22,6 +22,110 @@ ROOTS = {str(seed): f"{seed:064x}" for seed in SEEDS}
 SOURCE_SHA = "a" * 64
 
 
+def _pt_report(tmp_path):
+    from shengji.luna.benchmark_failure_protocol import summarize_scheduled
+    reports, _ = _stage1_reports(tmp_path, policies=("release46-pv",))
+    report = reports["release46-pv"]
+    report["config"]["information"] = ["perfect"]
+    report["config"]["baseline_recipe"]["play_only"] = True
+    report["mirrors"] = [row for row in report["mirrors"] if row["information"] == "perfect"]
+    report["scheduled_summary"] = summarize_scheduled(report["mirrors"])
+    return report
+
+
+def test_pt_only_report_scores_from_bot_perspective_by_deal(tmp_path):
+    import copy
+    report = _pt_report(tmp_path)
+    result = readout.analyze_pt_report(report, copy.deepcopy(report["config"]))
+    assert result["quality"] == "PASS"
+    assert result["accounting"]["completed"] == 20
+    assert result["pt_sol"]["paired_signed_levels"]["mean"] == 5.5
+    assert result["pt_sol"]["paired_signed_levels"]["count"] == 10
+
+
+def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from scripts import production_llm_panel as panel
+    from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
+    roots = tmp_path / "roots"
+    root_producer.prepare_roots(output=roots, seeds=SEEDS)
+    static = prepare_recipe("smart", {})
+    monkeypatch.setattr(panel, "prepare_recipe", lambda row, paths: replace(
+        static, identity=dict(static.identity, benchmark_id=row, policy=row)))
+
+    class FakeTransport:
+        def __init__(self, **kwargs):
+            self.calls = []
+
+        def __call__(self, packet):
+            return planner(packet)
+
+    runner = panel.run_benchmark
+    monkeypatch.setattr(panel, "run_benchmark", lambda **kw: runner(
+        **kw, transport_factory=FakeTransport))
+    options = dict(
+        row="release46-pv", model_paths={}, seeds=SEEDS, output=tmp_path / "out",
+        prepared_roots_from=roots,
+        prepared_roots_sha256=hashlib.sha256((roots / "result.json").read_bytes()).hexdigest(),
+        information="perfect", invalid_action_feedback=True,
+        classify_final_action_failures=True, failure_protocol=PRESERVE_ILLEGAL)
+    expected = json.loads(json.dumps(panel.run_row(**options)["config"]))
+    expected["run"] = True
+    panel.run_row(**options, run=True)
+    report = json.loads((tmp_path / "out" / "result.json").read_text())
+    assert report["config"] == expected
+    result = readout.analyze_pt_report(report, expected)
+    assert result["quality"] == "PASS"
+    assert result["accounting"]["completed"] == 20
+    assert result["pt_sol"]["complete_pairs"] == 10
+    assert {row["information"] for row in report["mirrors"]} == {"perfect"}
+
+
+@pytest.mark.parametrize("defect", [
+    "config", "bool_seed", "actor", "duplicate", "missing", "root", "nan", "summary"])
+def test_pt_only_report_refuses_drift(tmp_path, defect):
+    import copy
+    report = _pt_report(tmp_path)
+    expected = copy.deepcopy(report["config"])
+    if defect == "config":
+        report["config"]["policy"] = "other"
+    elif defect == "bool_seed":
+        report["mirrors"][0]["seed"] = False
+    elif defect == "actor":
+        report["mirrors"][0]["information"] = "actor-only"
+    elif defect == "duplicate":
+        report["mirrors"][-1] = copy.deepcopy(report["mirrors"][0])
+    elif defect == "missing":
+        report["mirrors"].pop()
+    elif defect == "root":
+        report["roots"] = dict(ROOTS, **{"0": "b"*64})
+    elif defect == "nan":
+        report["mirrors"][0]["signed_levels"] = float("nan")
+    elif defect == "summary":
+        report["scheduled_summary"] = {}
+    with pytest.raises(readout.PanelReadoutError):
+        readout.analyze_pt_report(report, expected)
+
+
+def test_pt_failure_limit_keeps_unattempted_slots_and_withholds_quality(tmp_path):
+    import copy
+    from test_benchmark_terminal import _row
+    from shengji.luna.benchmark_failure_protocol import summarize_scheduled
+    report = _pt_report(tmp_path)
+    expected = copy.deepcopy(report["config"])
+    report["mirrors"] = [
+        _row("perfect", seed, flip, "failed" if index < 8 else "pending")
+        for index, (seed, flip) in enumerate(
+            (seed, flip) for seed in SEEDS for flip in (0, 1))]
+    report["scheduled_summary"] = summarize_scheduled(report["mirrors"])
+    result = readout.analyze_pt_report(report, expected)
+    assert result["quality"] == "FAIL"
+    assert result["accounting"]["failed"] == 8
+    assert result["accounting"]["unattempted"] == 12
+    assert result["pt_sol"]["attempted_mirrors"] == 8
+    assert result["pt_sol"]["paired_signed_levels"]["mean"] is None
+
+
 def _report(tmp_path, benchmark_id, *, offset=0, failed=False, source=SOURCE_SHA,
             roots=None, omit_rollouts=False):
     roots = ROOTS if roots is None else roots

@@ -11,6 +11,41 @@ from shengji.luna.benchmark_failure_protocol import summarize_scheduled
 from shengji.luna.benchmark_panel_seals import ROWS
 
 
+@pytest.mark.parametrize("defect", ["exit", "config", "result", "schema", "path"])
+def test_pt_metadata_refuses_before_scientific_read(tmp_path, monkeypatch, defect):
+    from scripts import sealed_production_llm_panel_readout as reader
+    from test_sealed_readout_wrapper import write
+    config = write(tmp_path / "config.json", {"synthetic": True})
+    result = {"path": str(tmp_path / "result.json"), "sha256": "a" * 64}
+    terminal = dict(schema="release46-pt-sol-terminal-v1", row="release46-pv",
+                    status="exited", returncode=0,
+                    config_sha256=config["sha256"], result=result.copy())
+    if defect == "exit":
+        terminal["returncode"] = 1
+    elif defect == "config":
+        terminal["config_sha256"] = "b" * 64
+    elif defect == "result":
+        terminal["result"]["sha256"] = "b" * 64
+    elif defect == "schema":
+        terminal["schema"] = "actor-only"
+    else:
+        result["path"] = str(tmp_path / "elsewhere.json")
+        terminal["result"] = result.copy()
+    plan = write(tmp_path / "plan.json", {
+        "schema": "release46-pt-sol-seals-v1", "expected_config": config,
+        "terminal": write(tmp_path / "terminal.json", terminal), "result": result})
+    original = reader._metadata
+    opened = []
+    def metadata(ref, label):
+        opened.append(label)
+        assert label != "PT sealed result"
+        return original(ref, label)
+    monkeypatch.setattr(reader, "_metadata", metadata)
+    with pytest.raises(ValueError):
+        reader.read_sealed_pt(plan["path"], plan["sha256"])
+    assert "PT sealed result" not in opened
+
+
 @pytest.fixture
 def full_packet(packet):
     root, plan, docs, refs = packet

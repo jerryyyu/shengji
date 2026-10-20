@@ -3214,8 +3214,9 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: Sequence[str] | N
         if not selected:
             raise TrainError(f"--data {list(data)}: no deal of the checkpoint's {split!r} "
                              f"population is in this store ({match})")
-        selected_arr = np.asarray(sorted(selected), dtype=str)
-        mask_fn = lambda b: np.isin(b.deal_key, selected_arr)  # noqa: E731
+        # Carry the recorded-key skip protocol into run_eval, as training
+        # already does, so other splits need not be decoded to reject them.
+        mask_fn = SplitSelector(dict.fromkeys(selected, split), split)
         shard_keys = [(shard, [k for k in store.keys_of(i) if k in selected])
                       for i, (shard, _path) in enumerate(store.entries)]
         shard_keys = [(shard, keys) for shard, keys in shard_keys if keys]

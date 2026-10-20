@@ -215,6 +215,42 @@ RELEASE46_DTRX = ("pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtr
                   "xfcompactlevel-r42abaa1e-bury-hybrid-bwv-0b3219432da4")
 
 
+@pytest.mark.parametrize("guard", [False, True])
+def test_dev_registry_constructs_alias_candidate_from_served_packages(
+        pinned_production_package, pinned_belief_package, monkeypatch, guard):
+    from dataclasses import asdict
+    from scripts.pv_dev_duel import register_pair
+    from shengji.ai import registry
+    from shengji.train import pv_search_policy as pv
+
+    monkeypatch.setattr(registry, "REGISTRY", dict(registry.REGISTRY))
+    control = {**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+               "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package)}
+    candidate = {**control, "SHENGJI_PV_LEAD_ALIAS_REFILL": "1"}
+    if guard:
+        candidate[DTRX_FLAG] = "1"
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(candidate))
+    candidate["SHENGJI_BOT"], = entries
+    baseline, treatment = register_pair(control, candidate)
+    assert baseline == RELEASE46 and treatment != baseline
+    assert "-lar-" in treatment
+    assert ("-dtrx-" in treatment) == guard
+    bots = [registry.REGISTRY[name](seed=17) for name in (baseline, treatment)]
+    before, after = [asdict(bot.config) for bot in bots]
+    expected = {"lead_alias_refill"}
+    if guard:
+        expected.add("doomed_throw_reselect_exact_guard")
+    assert {key for key in before if before[key] != after[key]} == expected
+    for bot in bots:
+        assert bot.checkpoint_sha256 == PACKAGE_SHA
+        assert bot.belief_model.package_sha256 == BELIEF_SHA
+        assert bot.serving_budget_seconds == 3
+        assert bot.exact_deep_cards == bot.exact_follow_max_cards == 7
+        assert bot.doomed_throw_reselect is True
+    assert bots[0].lead_alias_refill is False
+    assert bots[1].lead_alias_refill is True
+
+
 def test_dtrx_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_package,
                                                                 pinned_belief_package):
     from shengji.train import pv_search_policy as pv

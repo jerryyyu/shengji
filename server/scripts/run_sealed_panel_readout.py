@@ -91,6 +91,7 @@ def run(invocation_path, invocation_sha256):
     require(spec['schema'] in ('sol-panel-read-invocation-v1',
                               'sol-stage1-read-invocation-v1',
                               'sol-stage2-read-invocation-v1',
+                              'release46-pt-sol-read-invocation-v1',
                               'sol-saved-feedback-panel-invocation-v1'), 'invocation schema mismatch')
     for key in ('manifest', 'plan'):
         require(set(spec[key]) == {'path', 'sha256'}, 'invalid reference')
@@ -100,7 +101,9 @@ def run(invocation_path, invocation_sha256):
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(source))
     from shengji.luna.benchmark_readout_receipt import run_once
-    if spec['schema'] == 'sol-stage1-read-invocation-v1':
+    if spec['schema'] == 'release46-pt-sol-read-invocation-v1':
+        from scripts.sealed_production_llm_panel_readout import read_sealed_pt as reader
+    elif spec['schema'] == 'sol-stage1-read-invocation-v1':
         from scripts.sealed_production_llm_panel_readout import read_sealed_stage1 as reader
     elif spec['schema'] == 'sol-stage2-read-invocation-v1':
         from scripts.sealed_production_llm_panel_readout import read_sealed_stage2 as reader

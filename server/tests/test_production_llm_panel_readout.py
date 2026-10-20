@@ -71,6 +71,8 @@ def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
         classify_final_action_failures=True, failure_protocol=PRESERVE_ILLEGAL)
     expected = json.loads(json.dumps(panel.run_row(**options)["config"]))
     expected["run"] = True
+    from test_sealed_readout_wrapper import write, assert_stage1_wrapper
+    config_ref = write(tmp_path / "expected.json", expected)
     panel.run_row(**options, run=True)
     report = json.loads((tmp_path / "out" / "result.json").read_text())
     assert report["config"] == expected
@@ -79,6 +81,17 @@ def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
     assert result["accounting"]["completed"] == 20
     assert result["pt_sol"]["complete_pairs"] == 10
     assert {row["information"] for row in report["mirrors"]} == {"perfect"}
+    result_ref = {"path": str(tmp_path / "out/result.json"),
+                  "sha256": hashlib.sha256((tmp_path / "out/result.json").read_bytes()).hexdigest()}
+    terminal_ref = write(tmp_path / "out/terminal.json", {
+        "schema": "release46-pt-sol-terminal-v1", "row": "release46-pv",
+        "status": "exited", "returncode": 0,
+        "config_sha256": config_ref["sha256"], "result": result_ref})
+    plan_ref = write(tmp_path / "pt-plan.json", {
+        "schema": "release46-pt-sol-seals-v1", "expected_config": config_ref,
+        "terminal": terminal_ref, "result": result_ref})
+    sealed = assert_stage1_wrapper(tmp_path, plan_ref, pt=True)
+    assert sealed["pt_sol"] == result["pt_sol"]
 
 
 @pytest.mark.parametrize("defect", [

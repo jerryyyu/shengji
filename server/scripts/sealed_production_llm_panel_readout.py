@@ -112,6 +112,29 @@ def read_sealed_stage1(plan_path, expected_sha256):
     return _read_sealed_stage(plan_path, expected_sha256, stage=1)
 
 
+def read_sealed_pt(plan_path, expected_sha256):
+    """Admit a single PT cell before opening its pinned scientific result."""
+    plan = _metadata({'path': str(plan_path), 'sha256': expected_sha256}, 'PT plan')
+    _require(set(plan) == {'schema', 'expected_config', 'terminal', 'result'}
+             and plan['schema'] == 'release46-pt-sol-seals-v1', 'invalid PT plan')
+    config = _metadata(plan['expected_config'], 'PT expected config')
+    terminal = _metadata(plan['terminal'], 'PT terminal')
+    _row_exit(terminal, 'release46-pv')
+    _require(terminal.get('schema') == 'release46-pt-sol-terminal-v1'
+             and terminal.get('config_sha256') == plan['expected_config']['sha256']
+             and _strict_equal(terminal.get('result'), plan['result']),
+             'PT terminal binding mismatch')
+    _at(plan['result'], Path(plan['terminal']['path']).parent / 'result.json')
+    report = _metadata(plan['result'], 'PT sealed result')
+    result = arithmetic.analyze_pt_report(report, config)
+    result['seals'] = dict(plan_sha256=expected_sha256,
+                          result_ref=plan['result'],
+                          expected_config_ref=plan['expected_config'],
+                          terminal_ref=plan['terminal'],
+                          metadata_and_content_validated=True)
+    return result
+
+
 def read_sealed_stage2(plan_path, expected_sha256):
     """Read the seven separately sealed feedback-ON rows, not an implicit panel."""
     return _read_sealed_stage(plan_path, expected_sha256, stage=2)

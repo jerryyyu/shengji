@@ -149,8 +149,9 @@ def test_served_bot_is_the_screened_combo_on_the_compiled_solver(pinned_producti
     assert session.backend == expected
 
 
+@pytest.mark.parametrize("candidate", ["served", "lar", "lar_dtrx"])
 def test_served_play_takes_the_belief_proposal_through_the_server_path(
-        pinned_production_package, pinned_belief_package, tmp_path, monkeypatch):
+        pinned_production_package, pinned_belief_package, tmp_path, monkeypatch, candidate):
     """One play by the served bot through ``_paced_bot_step`` / ``_commit_bot_turn``:
     the worlds are proposed by the real belief model with no fallback.
 
@@ -165,8 +166,21 @@ def test_served_play_takes_the_belief_proposal_through_the_server_path(
 
     monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
     _, name, factory = served_entries(pinned_production_package, pinned_belief_package)
+    if candidate != "served":
+        env = {**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+               "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package),
+               "SHENGJI_PV_LEAD_ALIAS_REFILL": "1"}
+        if candidate == "lar_dtrx":
+            env[DTRX_FLAG] = "1"
+        entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+        name, = entries
+        factory = entries[name]
     bot = factory(seed=7)
+    assert bot.serving_budget_seconds == 3
     rnd = _play_state()
+    if candidate != "served":
+        from test_pv_doomed_throw_swap import oxps
+        rnd = oxps()
     seat = rnd.turn
 
     async def scenario():
@@ -183,11 +197,23 @@ def test_served_play_takes_the_belief_proposal_through_the_server_path(
         record = copy.deepcopy(prepared.decision.snapshot.bot_copy.last_decision_record)
         assert srv._commit_bot_turn(room, prepared)
         assert len(rnd.hands[seat]) == len(before) - len(prepared.decision.cards)
+        assert room.bot.last_decision_record == record
+        assert room.bot.lead_alias_refill is (candidate != "served")
+        assert room.bot.doomed_throw_reselect_exact_guard is (candidate == "lar_dtrx")
+        assert sorted(prepared.decision.cards) == sorted(record["played"])
         return record
 
     record = asyncio.run(scenario())
     assert record["schema"] == pv.RECORD_SCHEMA and record["work_complete"]
-    assert name == RELEASE46
+    if candidate == "served":
+        assert name == RELEASE46
+    else:
+        assert "-lar-" in name
+        assert ("-dtrx-" in name) is (candidate == "lar_dtrx")
+        assert record["lead_alias_refill_examined"] > 0
+        assert record["lead_alias_refill_replacements"] > 0
+        assert not record.get("lead_alias_refill_abandoned")
+        assert len(record["admitted"]) == len(record["value_means"])
     assert record["worlds"] == 64
     assert record["belief_fallback"] == 0 and record["belief_proposed"] >= 64, {k: v for k, v in record.items() if k.startswith("belief") and k != "belief_snapshot"}
     assert record["belief_log"] == 1

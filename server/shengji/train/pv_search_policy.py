@@ -324,6 +324,21 @@ above; the ``aw`` name above; the ``awl`` name
 and every decision are unchanged.  No model call and no leaf rebuild beyond the
 selection rules' own is added.
 
+Its optional exact-stage guard, OFF BY DEFAULT:
+``SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD=1`` (token ``dtrx``, after ``dtr``;
+requires ``SHENGJI_PV_DOOMED_THROW_RESELECT=1`` and ``SHENGJI_PV_EXACT_LEAD_ENDGAME=1``,
+refused without either) -- the re-select never discards exact value: on the
+exact lead stage's selection over its exact means it may move only to a
+candidate whose exact mean is not below the selected candidate's (a tie by
+exact float equality keeps the re-select's benefit; definition, record and the
+skipped doomed test: `policy_value_search`).  The base pass and an ineligible,
+skipped or abandoned exact stage re-select exactly as ``dtr`` does.  ``0`` or
+``1`` only; on, it enters the recipe digest with ``doomed_throw_reselect_exact_rule``
+(`DOOMED_THROW_RESELECT_EXACT_RULE`) and adds ``-dtrx`` to the name.  Off, it
+is absent from the payload, so the release-46 name and every decision are
+unchanged.  It adds no work: it masks candidates the re-select would have
+tested and skips the doomed test when nothing could replace the selection.
+
 Optional declaration rule, OFF BY DEFAULT: ``SHENGJI_PV_VALUE_DECLARE=1`` --
 the trump declaration is chosen with the value head instead of the inherited
 heuristic count (`HeuristicBot.decide_declare`, unchanged and still computed
@@ -606,6 +621,7 @@ from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
 from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS,
                                   DOOMED_THROW_DEFAULTS, DOOMED_THROW_RESELECT_DEFAULTS,
+                                  DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS,
                                   LEAD_ANCHOR_DEFAULTS,
                                   LEAD_TIEBREAK_DEFAULTS, SMALL_JOKER_GUARD_DEFAULTS,
                                   TIEBREAK_DEFAULTS, PolicyValueBot, leading)
@@ -668,6 +684,16 @@ LEAD_TIEBREAK_RULE = {"LEAD_TIEBREAK_PRIOR": "lead_tiebreak_prior"}
 DOOMED_THROW_RULE = {"DOOMED_THROW_SWAP": "doomed_throw_swap"}
 #: the optional selection rule replacing it (`policy_value_search`; exclusive with it)
 DOOMED_THROW_RESELECT_RULE = {"DOOMED_THROW_RESELECT": "doomed_throw_reselect"}
+#: its exact-stage guard (`policy_value_search`; requires it and ``exact_lead_endgame``)
+DOOMED_THROW_RESELECT_EXACT_GUARD_RULE = {
+    "DOOMED_THROW_RESELECT_EXACT_GUARD": "doomed_throw_reselect_exact_guard"}
+#: the guard's recipe identity: on an exact-stage selection the re-select moves
+#: only to a candidate whose exact mean is not below the selected one's
+DOOMED_THROW_RESELECT_EXACT_RULE = "reselect-only-to-exact-mean-not-below-selected"
+_DOOMED_THROW_RESELECT_EXACT_GUARD_REQUIRES = (
+    "doomed_throw_reselect_exact_guard requires doomed_throw_reselect and exact_lead_endgame "
+    "(SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD=1 needs SHENGJI_PV_DOOMED_THROW_RESELECT=1 "
+    "and SHENGJI_PV_EXACT_LEAD_ENDGAME=1)")
 #: the optional single small-joker lead exclusion (`policy_value_search`, #707 S4)
 SMALL_JOKER_GUARD_RULE = {"SMALL_JOKER_GUARD": "small_joker_guard"}
 #: the optional unresolved-decision evidence rule (`PVSearchBot._adaptive_worlds_means`)
@@ -821,16 +847,17 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 #: name order (admission rules, the sampler rules, selection, width -- the
 #: multi-card-lead width and the exclusive all-leads width --, anchor, lead
 #: selection, played action, small-joker guard, adaptive worlds, its leads-only
-#: scope, the doomed-throw re-select, the value declaration, its first-round
-#: gate, the served bury in its worlds, its pass-conditioned worlds, its wait
-#: option, the model-free first-round declaration, the policy-played value leaf, the
-#: diagnostic oracle worlds):
-#: div, fs, rc, rcec, whl, whd, bw, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, vd, vdef,
-#: vdsb, vdpw, vdw, asap, lpft, orc
+#: scope, the doomed-throw re-select, its exact-stage guard, the value
+#: declaration, its first-round gate, the served bury in its worlds, its
+#: pass-conditioned worlds, its wait option, the model-free first-round
+#: declaration, the policy-played value leaf, the diagnostic oracle worlds):
+#: div, fs, rc, rcec, whl, whd, bw, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, dtrx,
+#: vd, vdef, vdsb, vdpw, vdw, asap, lpft, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
-              **DOOMED_THROW_RESELECT_RULE, **VALUE_DECLARE_RULE,
+              **DOOMED_THROW_RESELECT_RULE, **DOOMED_THROW_RESELECT_EXACT_GUARD_RULE,
+              **VALUE_DECLARE_RULE,
               **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
@@ -851,6 +878,7 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("adaptive_worlds", "aw"),
                                                    ("adaptive_worlds_leads", "awl"),
                                                    ("doomed_throw_reselect", "dtr"),
+                                                   ("doomed_throw_reselect_exact_guard", "dtrx"),
                                                    ("value_declare", "vd"),
                                                    ("value_declare_every_first", "vdef"),
                                                    ("value_declare_served_bury",
@@ -1080,6 +1108,9 @@ class PVSearchConfig:
     exact_follow_max_cards: int = 4
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
+    # its exact-stage guard (requires it and ``exact_lead_endgame``); the same contract
+    doomed_throw_reselect_exact_guard: bool = \
+        DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"]
     # the optional declaration rule and its two parameters; the same contract
     # (the parameters too are ABSENT from the payload while the rule is off)
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
@@ -1276,6 +1307,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         # the tree re-selects on its own Q matrix after `_select`
         raise PVSearchPolicyError("doomed_throw_reselect does not combine with the tree "
                                   "(SHENGJI_PV_DOOMED_THROW_RESELECT=1 with SHENGJI_PV_TREE_SIMS)")
+    if config.doomed_throw_reselect_exact_guard:
+        if not (config.doomed_throw_reselect and config.exact_lead_endgame):
+            raise PVSearchPolicyError(_DOOMED_THROW_RESELECT_EXACT_GUARD_REQUIRES)
+        payload["doomed_throw_reselect_exact_rule"] = DOOMED_THROW_RESELECT_EXACT_RULE
     if config.adaptive_worlds and config.adaptive_worlds_leads:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
     if config.oracle_worlds and (config.adaptive_worlds or config.adaptive_worlds_leads):
@@ -1551,7 +1586,8 @@ class PVSearchBot(PolicyValueBot):
                          lead_tiebreak_prior=config.lead_tiebreak_prior,
                          doomed_throw_swap=config.doomed_throw_swap,
                          small_joker_guard=config.small_joker_guard,
-                         doomed_throw_reselect=config.doomed_throw_reselect)
+                         doomed_throw_reselect=config.doomed_throw_reselect,
+                         doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard)
         self.version = int(version)
         self.config = config
         self.checkpoint = str(checkpoint)
@@ -1652,6 +1688,8 @@ class PVSearchBot(PolicyValueBot):
         self._wide_lead = None
         if config.doomed_throw_reselect and config.tree is not None:
             raise PVSearchPolicyError("doomed_throw_reselect does not combine with the tree")
+        if config.doomed_throw_reselect_exact_guard and not config.exact_lead_endgame:
+            raise PVSearchPolicyError(_DOOMED_THROW_RESELECT_EXACT_GUARD_REQUIRES)
         if type(config.value_declare) is not bool:
             raise PVSearchPolicyError("value_declare must be a bool")
         _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
@@ -2901,8 +2939,10 @@ class PVSearchBot(PolicyValueBot):
                 means, stats = exact_lead_means(rnd, seat, admitted, worlds, leaf_fn, stage.guard,
                                                max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
             stage.guard()
+            # ``exact=True``: the doomed-throw re-select's exact-stage guard
+            # (`policy_value_search`) floors its replacements at this selection's mean
             winner = self._select(rnd, seat, admitted, means, worlds=worlds,
-                                  check_budget=stage.guard, priors=priors)
+                                  check_budget=stage.guard, priors=priors, exact=True)
             played = self._swap_doomed_throw(rnd, seat, admitted[winner], worlds, stage.guard)
             stage.guard()
             if self.exact_lead_tie_baseline and not means[winner] > means[base[2]]:
@@ -3376,6 +3416,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_follow_solver: str = "reference",
                        exact_follow_max_cards: int = 4,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
+                       doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3448,6 +3489,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_follow_solver=exact_follow_solver,
                             exact_follow_max_cards=exact_follow_max_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
+                            doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -3563,6 +3605,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_follow_solver: str = "reference",
                         exact_follow_max_cards: int = 4,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
+                        doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3616,6 +3659,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_follow_solver=exact_follow_solver,
                             exact_follow_max_cards=exact_follow_max_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
+                            doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -3722,6 +3766,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_follow_solver=config.exact_follow_solver,
                                exact_follow_max_cards=config.exact_follow_max_cards,
                                doomed_throw_reselect=config.doomed_throw_reselect,
+                               doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
@@ -3756,7 +3801,9 @@ def pv_env_recipe(environ=None) -> dict:
     ``_REFUSAL_EVENT_COMPLETE`` / ``_WORLD_HISTORY_LEGAL`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_EXACT_LEAD_ENDGAME`` /
-    ``_EXACT_LEAD_TIE_BASELINE`` / ``_EXACT_LEAD_POLICY_FIRST`` / ``_DOOMED_THROW_RESELECT`` / ``_VALUE_DECLARE`` /
+    ``_EXACT_LEAD_TIE_BASELINE`` / ``_EXACT_LEAD_POLICY_FIRST`` / ``_DOOMED_THROW_RESELECT`` /
+    ``_DOOMED_THROW_RESELECT_EXACT_GUARD`` (needs ``_DOOMED_THROW_RESELECT=1`` and
+    ``_EXACT_LEAD_ENDGAME=1``) / ``_VALUE_DECLARE`` /
     ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``
     / ``_VALUE_DECLARE_WAIT`` / ``_DECLARE_ASAP_FIRST`` /
     ``_LEAF_POLICY_FIRST_TRICK``

@@ -198,6 +198,31 @@ DEFAULT, and while off `_select` and the played action are exactly as before):
   `optional_stage.OptionalStage`).  Not combined with the tree (refused by the recipe): the
   tree re-selects on its own Q matrix.
 
+* ``doomed_throw_reselect_exact_guard`` -- requires ``doomed_throw_reselect``
+  (and, in the served wrapper, ``exact_lead_endgame``; OFF BY DEFAULT, and
+  while off every re-selection is exactly the rule above).  When the exact
+  lead stage (`pv_search_policy.PVSearchBot._exact_lead_decision`) selects
+  over its EXACT means (`_select` with ``exact=True``), the re-selection may
+  move only to an admitted candidate whose exact mean is NOT BELOW the exact
+  stage's selection: ``_reselect_doomed_throw`` takes that mean as a FLOOR and
+  masks every candidate under it to ``-inf`` beside the excluded ones.  A
+  doomed throw's exact leaf already IS its forced component played, so the
+  throw's exact mean is attainable by playing it (the engine forces that
+  component); re-selecting to a candidate with a lower exact mean discards
+  that value for an exposure benefit the means never priced.  Candidates that
+  tie the floor keep the rule's benefit: a doomed throw tied by a non-alias
+  candidate still re-selects to it at no exact cost.  When no candidate at or
+  above the floor is left after the exclusions, the exact stage's selection
+  stands as selected (``played`` equals its cards, never the forced-component
+  fallback); when no OTHER candidate reaches the floor at all, the doomed
+  test is skipped (nothing could replace the selection, so no engine call is
+  spent).  The selection over the value head's means (the base pass, an
+  ineligible, skipped or abandoned exact stage) runs with no floor.  Record
+  fields, only with the guard on, on every re-selection:
+  ``doomed_throw_reselect_exact_guarded`` (the floor applied: an exact-stage
+  selection) and ``doomed_throw_reselect_exact_floor_excluded`` (admitted
+  candidates under the floor, 0 without one).
+
 Optional ADMISSION exclusion (#676 online lead review, ranked fix 3 "LJ-into-
 unseen-BJ guard", board #707 S4 formerly A9; OFF BY DEFAULT, and while off the
 admitted indices, slot 0 and the record are exactly what they were):
@@ -273,6 +298,9 @@ DOOMED_THROW_BUDGET_STRIDE = FORCED_BUDGET_STRIDE
 #: `doomed_throw_reselect`: the optional selection rule replacing the swap
 #: (module docstring); exclusive with ``doomed_throw_swap``
 DOOMED_THROW_RESELECT_DEFAULTS = dict(doomed_throw_reselect=False)
+#: `doomed_throw_reselect_exact_guard`: the re-selection's exact-mean floor on
+#: an exact-stage selection (module docstring); requires ``doomed_throw_reselect``
+DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS = dict(doomed_throw_reselect_exact_guard=False)
 #: the selection rules' per-decision records a re-selection overwrites; restored
 #: when the re-selection abandons itself on the budget
 _RESELECT_SELECTION_STATE = ("_tiebreak", "_lead_tiebreak")
@@ -379,6 +407,8 @@ class PolicyValueBot(PolicyWorldBot):
     small_joker_guard = SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"]
     _small_joker = None
     doomed_throw_reselect = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
+    doomed_throw_reselect_exact_guard = \
+        DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"]
 
     def __init__(self, predict, *, evaluator, candidates=8, batch_size=128,
                  admission_diversity=ADMISSION_DEFAULTS["admission_diversity"],
@@ -395,6 +425,8 @@ class PolicyValueBot(PolicyWorldBot):
                  doomed_throw_swap=DOOMED_THROW_DEFAULTS["doomed_throw_swap"],
                  small_joker_guard=SMALL_JOKER_GUARD_DEFAULTS["small_joker_guard"],
                  doomed_throw_reselect=DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
+                 doomed_throw_reselect_exact_guard=DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS[
+                     "doomed_throw_reselect_exact_guard"],
                  **kwargs):
         super().__init__(predict, **kwargs)
         if evaluator is None:
@@ -464,6 +496,13 @@ class PolicyValueBot(PolicyWorldBot):
         if doomed_throw_reselect and doomed_throw_swap:
             raise ValueError('doomed_throw_swap and doomed_throw_reselect are exclusive')
         self.doomed_throw_reselect = doomed_throw_reselect
+        if type(doomed_throw_reselect_exact_guard) is not bool:
+            raise ValueError('doomed_throw_reselect_exact_guard must be a bool')
+        if doomed_throw_reselect_exact_guard and not doomed_throw_reselect:
+            raise ValueError('doomed_throw_reselect_exact_guard requires doomed_throw_reselect')
+        if doomed_throw_reselect_exact_guard:
+            # instance state only when on: a flag-off bot's attributes are unchanged
+            self.doomed_throw_reselect_exact_guard = True
 
     def _leaf(self, rnd, seat, hands, buried, action, world_index):
         return afterstate(rnd, seat, hands, buried, action, finish_trick=True)
@@ -495,14 +534,19 @@ class PolicyValueBot(PolicyWorldBot):
         return sums / len(worlds), batches
 
     def _select(self, rnd, seat, admitted, means, worlds=None, check_budget=None,
-                priors=None):
+                priors=None, exact=False):
         """The admitted position to play.  ``priors`` are the admitted
         candidates' policy preference scores (the admission's ranking scores),
-        needed only by ``lead_tiebreak_prior``."""
+        needed only by ``lead_tiebreak_prior``.  ``exact`` says ``means`` are
+        an exact lead stage's: with ``doomed_throw_reselect_exact_guard`` on,
+        the re-selection then takes the selection's mean as its floor."""
         chosen = self._select_rules(rnd, seat, admitted, means, worlds, check_budget, priors)
         if self.doomed_throw_reselect:
+            floor = None
+            if exact and self.doomed_throw_reselect_exact_guard:
+                floor = float(means[chosen])
             chosen = self._reselect_doomed_throw(rnd, seat, admitted, means, worlds,
-                                                 check_budget, priors, chosen)
+                                                 check_budget, priors, chosen, floor=floor)
         return chosen
 
     def _select_rules(self, rnd, seat, admitted, means, worlds=None, check_budget=None,
@@ -642,10 +686,12 @@ class PolicyValueBot(PolicyWorldBot):
         return list(next(iter(variants)))
 
     def _reselect_doomed_throw(self, rnd, seat, admitted, means, worlds, check_budget,
-                               priors, chosen):
+                               priors, chosen, floor=None):
         """The module docstring's ``doomed_throw_reselect``: the admitted
         position to play given the selection rules' ``chosen``.  Sets
-        ``self._doomed_throw`` (the record fields) on every decision."""
+        ``self._doomed_throw`` (the record fields) on every decision.
+        ``floor`` (``doomed_throw_reselect_exact_guard`` on an exact-stage
+        selection) is the mean no replacement may fall below."""
         first = int(chosen)
         record = {'doomed_throw_reselect_applied': False,
                   'doomed_throw_reselect_from': _cards_text(admitted[first]),
@@ -654,6 +700,14 @@ class PolicyValueBot(PolicyWorldBot):
                   'doomed_throw_reselect_forced_excluded': 0,
                   'doomed_throw_reselect_fallback_forced': False}
         self._doomed_throw = record
+        if self.doomed_throw_reselect_exact_guard:
+            under = [] if floor is None else [i for i, m in enumerate(means) if m < floor]
+            record['doomed_throw_reselect_exact_guarded'] = floor is not None
+            record['doomed_throw_reselect_exact_floor_excluded'] = len(under)
+            if floor is not None and len(under) == len(admitted) - 1:
+                # no other candidate reaches the floor: nothing could replace
+                # the selection, so the doomed test is not spent
+                return first
         if not worlds or not leading(rnd):
             return first
         # the transaction (`optional_stage`): the selection rules' records are
@@ -685,6 +739,15 @@ class PolicyValueBot(PolicyWorldBot):
                     break
                 masked = np.array(means, dtype=np.float64)
                 masked[sorted(excluded)] = -np.inf
+                if floor is not None:
+                    masked[masked < floor] = -np.inf
+                    if not np.isfinite(masked).any():
+                        # every candidate at the floor is excluded: the exact
+                        # stage's selection stands, as selected, with the
+                        # selection rules' records of that first run
+                        stage.restore()
+                        current = first
+                        break
                 current = int(self._select_rules(rnd, seat, admitted, masked, worlds,
                                                  guard, priors))
                 stage.raise_if_tripped()

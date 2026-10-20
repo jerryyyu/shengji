@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import pytest
 from scripts import production_llm_panel as panel
 from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
+from test_release46_fly_config import (pinned_production_package, pinned_belief_package,
+                                     RELEASE46, BELIEF_SHA)  # noqa: F401
 
 FLAGS = ('capacity_retries', 'accept_recovered_reconnects',
          'invalid_action_feedback', 'classify_final_action_failures')
@@ -112,3 +114,29 @@ def test_bad_information_refuses_before_recipe(options, monkeypatch, information
     monkeypatch.setattr(panel, "prepare_recipe", lambda *a: pytest.fail("recipe reached"))
     with pytest.raises(ValueError, match="information"):
         panel.run_row(**options, information=information)
+
+
+def test_release46_pt_plan_binds_real_packages_without_provider_calls(
+        tmp_path, pinned_production_package, pinned_belief_package, monkeypatch):
+    import hashlib
+    from scripts.prepare_llm_panel_roots import prepare_roots
+
+    paths = {"smv3": pinned_production_package, "belief": pinned_belief_package}
+    monkeypatch.setenv("SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD", "1")
+    prepared = panel.prepare_recipe("release46-pv", paths)
+    assert prepared.policy == RELEASE46
+    bot = prepared.factory(seed=17)
+    assert bot.belief_model.package_sha256 == BELIEF_SHA
+    assert bot.doomed_throw_reselect_exact_guard is False
+    assert bot.serving_budget_seconds == 3
+    roots = tmp_path / "roots"
+    prepare_roots(output=roots, seeds=[12])
+    output = tmp_path / "out"
+    result = panel.run_row(
+        row="release46-pv", model_paths=paths, prepared_roots_from=roots,
+        prepared_roots_sha256=hashlib.sha256((roots / "result.json").read_bytes()).hexdigest(),
+        output=output, seeds=(12,), information="perfect")
+    assert result["mode"] == "dry-run"
+    assert result["planned_arms"] == ["sol-perfect"]
+    assert result["planned_mirrors"] == 2
+    assert not output.exists()

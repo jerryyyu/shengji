@@ -244,3 +244,35 @@ def test_dtrx_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_
         pv.pv_registry_entries(**pv.pv_env_recipe(
             {**without_combo(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
              "SHENGJI_PV_SHA256": PACKAGE_SHA, DTRX_FLAG: "1"}))
+
+
+LGF_FLAG = "SHENGJI_PV_LEAF_GREEDY_FINISH"
+
+
+def test_lgf_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_package,
+                                                               pinned_belief_package):
+    """Release 46 with the greedy-finished value leaf (token ``lgf`` after the
+    declaration tokens): a DEV arm, never the served name."""
+    from shengji.train import pv_search_policy as pv
+
+    def built(**extra):
+        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+                                   "SHENGJI_PV_SHA256": PACKAGE_SHA,
+                                   "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
+        entries = pv.pv_registry_entries(**recipe)
+        name, = entries
+        return name, entries[name]
+
+    for off in ({}, {LGF_FLAG: "0"}, {LGF_FLAG: ""}):
+        name, factory = built(**off)
+        assert name == RELEASE46
+        bot = factory(seed=17)
+        assert bot.leaf_greedy_finish is False
+        assert "leaf_greedy_finish" not in vars(bot) and "_leaf_greedy" not in vars(bot)
+        assert bot.config.leaf_greedy_finish is False
+    name, factory = built(**{LGF_FLAG: "1"})
+    assert name != RELEASE46 and "-vdef-lgf-ed7-" in name
+    assert name.split("-lgf-")[0] == RELEASE46.split("-ed7-")[0]
+    bot = factory(seed=17)
+    assert bot.leaf_greedy_finish is True and bot.config.leaf_greedy_finish is True
+    assert (bot.exact_lead_endgame, bot.tiebreak_points, bot.doomed_throw_reselect) == (True, True, True)

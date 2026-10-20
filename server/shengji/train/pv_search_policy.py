@@ -339,6 +339,17 @@ is absent from the payload, so the release-46 name and every decision are
 unchanged.  It adds no work: it masks candidates the re-select would have
 tested and skips the doomed test when nothing could replace the selection.
 
+Optional value-leaf rule, OFF BY DEFAULT: ``SHENGJI_PV_LEAF_GREEDY_FINISH=1``
+(token ``lgf``, after ``lpft``) -- the leaf the value head scores is the
+afterstate with the current trick finished by the tree's ``trick-greedy``
+finisher (R = `LEAF_GREEDY_REPLIES`) instead of the heuristic, in every
+sampled world; the admission, the selection rules, the exact stages and the
+played action are what they were (definition, cost and record:
+`policy_value_search`).  ``0`` or ``1`` only; on, it enters the recipe digest
+with ``leaf_finish`` (`LEAF_GREEDY_FINISH_RULE`) and adds ``-lgf`` to the name.
+Off, it is absent from the payload, so every existing name and every decision
+are unchanged.  Not combined with the tree or the adaptive worlds rule (refused).
+
 Optional declaration rule, OFF BY DEFAULT: ``SHENGJI_PV_VALUE_DECLARE=1`` --
 the trump declaration is chosen with the value head instead of the inherited
 heuristic count (`HeuristicBot.decide_declare`, unchanged and still computed
@@ -622,6 +633,7 @@ from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
 from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS,
                                   DOOMED_THROW_DEFAULTS, DOOMED_THROW_RESELECT_DEFAULTS,
                                   DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS,
+                                  LEAF_GREEDY_DEFAULTS, LEAF_GREEDY_REPLIES,
                                   LEAD_ANCHOR_DEFAULTS,
                                   LEAD_TIEBREAK_DEFAULTS, SMALL_JOKER_GUARD_DEFAULTS,
                                   TIEBREAK_DEFAULTS, PolicyValueBot, leading)
@@ -694,6 +706,16 @@ _DOOMED_THROW_RESELECT_EXACT_GUARD_REQUIRES = (
     "doomed_throw_reselect_exact_guard requires doomed_throw_reselect and exact_lead_endgame "
     "(SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD=1 needs SHENGJI_PV_DOOMED_THROW_RESELECT=1 "
     "and SHENGJI_PV_EXACT_LEAD_ENDGAME=1)")
+#: the optional value-leaf finisher (`policy_value_search`; refused with the tree or
+#: the adaptive worlds rule)
+LEAF_GREEDY_RULE = {"LEAF_GREEDY_FINISH": "leaf_greedy_finish"}
+#: its recipe identity: the scored leaf's current trick is finished by the greedy
+#: reply ply with the policy's top-R follows plus the heuristic's
+LEAF_GREEDY_FINISH_RULE = f"value-leaf-trick-greedy-r{LEAF_GREEDY_REPLIES}"
+_LEAF_GREEDY_EXCLUSIVE = (
+    "leaf_greedy_finish does not combine with the tree or adaptive_worlds "
+    "(SHENGJI_PV_LEAF_GREEDY_FINISH=1 with SHENGJI_PV_TREE_SIMS, SHENGJI_PV_ADAPTIVE_WORLDS "
+    "or SHENGJI_PV_ADAPTIVE_WORLDS_LEADS)")
 #: the optional single small-joker lead exclusion (`policy_value_search`, #707 S4)
 SMALL_JOKER_GUARD_RULE = {"SMALL_JOKER_GUARD": "small_joker_guard"}
 #: the optional unresolved-decision evidence rule (`PVSearchBot._adaptive_worlds_means`)
@@ -850,9 +872,10 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 #: scope, the doomed-throw re-select, its exact-stage guard, the value
 #: declaration, its first-round gate, the served bury in its worlds, its
 #: pass-conditioned worlds, its wait option, the model-free first-round
-#: declaration, the policy-played value leaf, the diagnostic oracle worlds):
+#: declaration, the policy-played value leaf, the greedy-finished value leaf,
+#: the diagnostic oracle worlds):
 #: div, fs, rc, rcec, whl, whd, bw, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, dtrx,
-#: vd, vdef, vdsb, vdpw, vdw, asap, lpft, orc
+#: vd, vdef, vdsb, vdpw, vdw, asap, lpft, lgf, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
@@ -860,7 +883,7 @@ RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_
               **VALUE_DECLARE_RULE,
               **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
-              **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE,
+              **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE, **LEAF_GREEDY_RULE,
               **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE,
               **EXACT_LEAD_VARIANT_RULES, **EXACT_FOLLOW_RULE}
 RULES = RULE_FLAGS
@@ -888,6 +911,7 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("value_declare_wait", declare_wait.TOKEN),
                                                    ("declare_asap_first", "asap"),
                                                    ("leaf_policy_first_trick", "lpft"),
+                                                   ("leaf_greedy_finish", "lgf"),
                                                    ("oracle_worlds", "orc"))
 ENV_PREFIX = "SHENGJI_PV_"
 _ORACLE_NOT_SERVED = ("oracle_worlds is a screen-harness diagnostic and is never served: "
@@ -1111,6 +1135,8 @@ class PVSearchConfig:
     # its exact-stage guard (requires it and ``exact_lead_endgame``); the same contract
     doomed_throw_reselect_exact_guard: bool = \
         DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"]
+    # the optional value-leaf finisher (refused with the tree or adaptive worlds); the same contract
+    leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"]
     # the optional declaration rule and its two parameters; the same contract
     # (the parameters too are ABSENT from the payload while the rule is off)
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
@@ -1311,6 +1337,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         if not (config.doomed_throw_reselect and config.exact_lead_endgame):
             raise PVSearchPolicyError(_DOOMED_THROW_RESELECT_EXACT_GUARD_REQUIRES)
         payload["doomed_throw_reselect_exact_rule"] = DOOMED_THROW_RESELECT_EXACT_RULE
+    if config.leaf_greedy_finish:
+        if config.tree is not None or config.adaptive_worlds or config.adaptive_worlds_leads:
+            raise PVSearchPolicyError(_LEAF_GREEDY_EXCLUSIVE)
+        payload["leaf_finish"] = LEAF_GREEDY_FINISH_RULE
     if config.adaptive_worlds and config.adaptive_worlds_leads:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
     if config.oracle_worlds and (config.adaptive_worlds or config.adaptive_worlds_leads):
@@ -1587,7 +1617,8 @@ class PVSearchBot(PolicyValueBot):
                          doomed_throw_swap=config.doomed_throw_swap,
                          small_joker_guard=config.small_joker_guard,
                          doomed_throw_reselect=config.doomed_throw_reselect,
-                         doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard)
+                         doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard,
+                         leaf_greedy_finish=config.leaf_greedy_finish)
         self.version = int(version)
         self.config = config
         self.checkpoint = str(checkpoint)
@@ -1690,6 +1721,9 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("doomed_throw_reselect does not combine with the tree")
         if config.doomed_throw_reselect_exact_guard and not config.exact_lead_endgame:
             raise PVSearchPolicyError(_DOOMED_THROW_RESELECT_EXACT_GUARD_REQUIRES)
+        if config.leaf_greedy_finish and (config.tree is not None or config.adaptive_worlds
+                                          or config.adaptive_worlds_leads):
+            raise PVSearchPolicyError(_LEAF_GREEDY_EXCLUSIVE)
         if type(config.value_declare) is not bool:
             raise PVSearchPolicyError("value_declare must be a bool")
         _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
@@ -2625,7 +2659,7 @@ class PVSearchBot(PolicyValueBot):
 
         for world_index, (hands, buried) in enumerate(worlds):
             for index, action in enumerate(actions):
-                pending.append(self._leaf(rnd, seat, hands, buried, action, world_index))
+                pending.append(self._scored_leaf(rnd, seat, hands, buried, action, world_index))
                 indices.append(index)
                 if cells is not None:
                     cells.append((world_index, index))
@@ -2635,6 +2669,10 @@ class PVSearchBot(PolicyValueBot):
         return sums, batches
 
     def _value_means(self, rnd, seat, actions, worlds, check_budget=None):
+        if self.leaf_greedy_finish:
+            # the optional value-leaf rule: every leaf of this pass finished at
+            # once, the replies batched, under the deadline (`policy_value_search`)
+            self._greedy_prefill(rnd, seat, actions, worlds, check_budget)
         sums, batches = self._score_leaves(rnd, seat, actions, worlds, check_budget)
         return sums / len(worlds), batches
 
@@ -2742,6 +2780,8 @@ class PVSearchBot(PolicyValueBot):
         return limit
 
     def _search(self, rnd, seat, anchor, started, check_budget=None):
+        if self.leaf_greedy_finish:
+            self._leaf_greedy = None      # no leaf of an earlier decision is ever reused
         legal = self._legal(rnd, seat, [anchor])
         actions = list(legal.actions)
         worlds, attempts = self._worlds(rnd, seat, check_budget)
@@ -2877,6 +2917,7 @@ class PVSearchBot(PolicyValueBot):
             **self._tiebreak_record(),
             **self._lead_tiebreak_record(),
             **self._doomed_throw_record(),
+            **self._leaf_greedy_record(),
             **self._adaptive_worlds_record(),
             **self._soft_oracle_record(),
             **(self._exact_lead if self.exact_lead_endgame else {}),
@@ -3417,6 +3458,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_follow_max_cards: int = 4,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
+                       leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3490,6 +3532,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_follow_max_cards=exact_follow_max_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
+                            leaf_greedy_finish=leaf_greedy_finish,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -3606,6 +3649,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_follow_max_cards: int = 4,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
+                        leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3660,6 +3704,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_follow_max_cards=exact_follow_max_cards,
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
+                            leaf_greedy_finish=leaf_greedy_finish,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -3767,6 +3812,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_follow_max_cards=config.exact_follow_max_cards,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard,
+                               leaf_greedy_finish=config.leaf_greedy_finish,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
@@ -3803,7 +3849,8 @@ def pv_env_recipe(environ=None) -> dict:
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_EXACT_LEAD_ENDGAME`` /
     ``_EXACT_LEAD_TIE_BASELINE`` / ``_EXACT_LEAD_POLICY_FIRST`` / ``_DOOMED_THROW_RESELECT`` /
     ``_DOOMED_THROW_RESELECT_EXACT_GUARD`` (needs ``_DOOMED_THROW_RESELECT=1`` and
-    ``_EXACT_LEAD_ENDGAME=1``) / ``_VALUE_DECLARE`` /
+    ``_EXACT_LEAD_ENDGAME=1``) / ``_LEAF_GREEDY_FINISH`` (refused with ``_TREE_SIMS``,
+    ``_ADAPTIVE_WORLDS`` or ``_ADAPTIVE_WORLDS_LEADS``) / ``_VALUE_DECLARE`` /
     ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``
     / ``_VALUE_DECLARE_WAIT`` / ``_DECLARE_ASAP_FIRST`` /
     ``_LEAF_POLICY_FIRST_TRICK``

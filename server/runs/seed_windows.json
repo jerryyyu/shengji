@@ -771,6 +771,2386 @@
       "host": "Jerrys-Mac-mini.local",
       "git_head": null,
       "note": "runPVS10r46: slice 10 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "screen-v96c14e11-138060910",
+      "purpose": "screen",
+      "seed0": 138060910,
+      "clusters": 520,
+      "span": [
+        138060910,
+        138061430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 1 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138160910",
+      "purpose": "screen",
+      "seed0": 138160910,
+      "clusters": 520,
+      "span": [
+        138160910,
+        138161430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 2 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138260910",
+      "purpose": "screen",
+      "seed0": 138260910,
+      "clusters": 520,
+      "span": [
+        138260910,
+        138261430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 3 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138360910",
+      "purpose": "screen",
+      "seed0": 138360910,
+      "clusters": 520,
+      "span": [
+        138360910,
+        138361430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 4 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138460910",
+      "purpose": "screen",
+      "seed0": 138460910,
+      "clusters": 520,
+      "span": [
+        138460910,
+        138461430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 5 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138560910",
+      "purpose": "screen",
+      "seed0": 138560910,
+      "clusters": 520,
+      "span": [
+        138560910,
+        138561430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 6 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138660910",
+      "purpose": "screen",
+      "seed0": 138660910,
+      "clusters": 520,
+      "span": [
+        138660910,
+        138661430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 7 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138760910",
+      "purpose": "screen",
+      "seed0": 138760910,
+      "clusters": 520,
+      "span": [
+        138760910,
+        138761430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 8 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138860910",
+      "purpose": "screen",
+      "seed0": 138860910,
+      "clusters": 520,
+      "span": [
+        138860910,
+        138861430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 9 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v96c14e11-138960910",
+      "purpose": "screen",
+      "seed0": 138960910,
+      "clusters": 520,
+      "span": [
+        138960910,
+        138961430
+      ],
+      "created_at": "2026-10-17T01:13:44Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "v96c14e11: window 10 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150060910",
+      "purpose": "screen",
+      "seed0": 150060910,
+      "clusters": 520,
+      "span": [
+        150060910,
+        150061430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 1 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150160910",
+      "purpose": "screen",
+      "seed0": 150160910,
+      "clusters": 520,
+      "span": [
+        150160910,
+        150161430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 2 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150260910",
+      "purpose": "screen",
+      "seed0": 150260910,
+      "clusters": 520,
+      "span": [
+        150260910,
+        150261430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 3 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150360910",
+      "purpose": "screen",
+      "seed0": 150360910,
+      "clusters": 520,
+      "span": [
+        150360910,
+        150361430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 4 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150460910",
+      "purpose": "screen",
+      "seed0": 150460910,
+      "clusters": 520,
+      "span": [
+        150460910,
+        150461430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 5 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150560910",
+      "purpose": "screen",
+      "seed0": 150560910,
+      "clusters": 520,
+      "span": [
+        150560910,
+        150561430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 6 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150660910",
+      "purpose": "screen",
+      "seed0": 150660910,
+      "clusters": 520,
+      "span": [
+        150660910,
+        150661430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 7 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150760910",
+      "purpose": "screen",
+      "seed0": 150760910,
+      "clusters": 520,
+      "span": [
+        150760910,
+        150761430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 8 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150860910",
+      "purpose": "screen",
+      "seed0": 150860910,
+      "clusters": 520,
+      "span": [
+        150860910,
+        150861430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 9 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s48screen-150960910",
+      "purpose": "screen",
+      "seed0": 150960910,
+      "clusters": 520,
+      "span": [
+        150960910,
+        150961430
+      ],
+      "created_at": "2026-10-17T19:49:23Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s48screen: window 10 of 10 (seeds 150060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the 8-card exact stages vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s48screen_screen_perf.sh (sha256 bd42395b694c46a6...); reservation shengji-perf:/root/claude_reservations/s48screen.json. Status: LANE DONE 2026-10-18T01:18:55Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156060910",
+      "purpose": "screen",
+      "seed0": 156060910,
+      "clusters": 520,
+      "span": [
+        156060910,
+        156061430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 1 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156160910",
+      "purpose": "screen",
+      "seed0": 156160910,
+      "clusters": 520,
+      "span": [
+        156160910,
+        156161430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 2 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156260910",
+      "purpose": "screen",
+      "seed0": 156260910,
+      "clusters": 520,
+      "span": [
+        156260910,
+        156261430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 3 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156360910",
+      "purpose": "screen",
+      "seed0": 156360910,
+      "clusters": 520,
+      "span": [
+        156360910,
+        156361430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 4 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156460910",
+      "purpose": "screen",
+      "seed0": 156460910,
+      "clusters": 520,
+      "span": [
+        156460910,
+        156461430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 5 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156560910",
+      "purpose": "screen",
+      "seed0": 156560910,
+      "clusters": 520,
+      "span": [
+        156560910,
+        156561430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 6 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156660910",
+      "purpose": "screen",
+      "seed0": 156660910,
+      "clusters": 520,
+      "span": [
+        156660910,
+        156661430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 7 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156760910",
+      "purpose": "screen",
+      "seed0": 156760910,
+      "clusters": 520,
+      "span": [
+        156760910,
+        156761430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 8 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156860910",
+      "purpose": "screen",
+      "seed0": 156860910,
+      "clusters": 520,
+      "span": [
+        156860910,
+        156861430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 9 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43screen-156960910",
+      "purpose": "screen",
+      "seed0": 156960910,
+      "clusters": 520,
+      "span": [
+        156960910,
+        156961430
+      ],
+      "created_at": "2026-10-18T07:49:11Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43screen: window 10 of 10 (seeds 156060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43screen_screen_perf.sh (sha256 46801e9ac7c81615...); reservation shengji-perf:/root/claude_reservations/s43screen.json. Status: LANE DONE 2026-10-18T12:40:30Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158060910",
+      "purpose": "screen",
+      "seed0": 158060910,
+      "clusters": 520,
+      "span": [
+        158060910,
+        158061430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 1 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158160910",
+      "purpose": "screen",
+      "seed0": 158160910,
+      "clusters": 520,
+      "span": [
+        158160910,
+        158161430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 2 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158260910",
+      "purpose": "screen",
+      "seed0": 158260910,
+      "clusters": 520,
+      "span": [
+        158260910,
+        158261430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 3 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158360910",
+      "purpose": "screen",
+      "seed0": 158360910,
+      "clusters": 520,
+      "span": [
+        158360910,
+        158361430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 4 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158460910",
+      "purpose": "screen",
+      "seed0": 158460910,
+      "clusters": 520,
+      "span": [
+        158460910,
+        158461430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 5 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158560910",
+      "purpose": "screen",
+      "seed0": 158560910,
+      "clusters": 520,
+      "span": [
+        158560910,
+        158561430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 6 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158660910",
+      "purpose": "screen",
+      "seed0": 158660910,
+      "clusters": 520,
+      "span": [
+        158660910,
+        158661430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 7 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158760910",
+      "purpose": "screen",
+      "seed0": 158760910,
+      "clusters": 520,
+      "span": [
+        158760910,
+        158761430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 8 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158860910",
+      "purpose": "screen",
+      "seed0": 158860910,
+      "clusters": 520,
+      "span": [
+        158860910,
+        158861430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 9 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46screen-158960910",
+      "purpose": "screen",
+      "seed0": 158960910,
+      "clusters": 520,
+      "span": [
+        158960910,
+        158961430
+      ],
+      "created_at": "2026-10-18T10:49:03Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46screen: window 10 of 10 (seeds 158060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46screen_screen_cloud.sh (sha256 e0be41ddaf260c3a...); reservation shengji-cloud:/root/claude_reservations/s46screen.json. Status: LANE DONE 2026-10-18T15:36:54Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162060910",
+      "purpose": "screen",
+      "seed0": 162060910,
+      "clusters": 520,
+      "span": [
+        162060910,
+        162061430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 1 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162160910",
+      "purpose": "screen",
+      "seed0": 162160910,
+      "clusters": 520,
+      "span": [
+        162160910,
+        162161430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 2 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162260910",
+      "purpose": "screen",
+      "seed0": 162260910,
+      "clusters": 520,
+      "span": [
+        162260910,
+        162261430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 3 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162360910",
+      "purpose": "screen",
+      "seed0": 162360910,
+      "clusters": 520,
+      "span": [
+        162360910,
+        162361430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 4 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162460910",
+      "purpose": "screen",
+      "seed0": 162460910,
+      "clusters": 520,
+      "span": [
+        162460910,
+        162461430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 5 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162560910",
+      "purpose": "screen",
+      "seed0": 162560910,
+      "clusters": 520,
+      "span": [
+        162560910,
+        162561430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 6 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162660910",
+      "purpose": "screen",
+      "seed0": 162660910,
+      "clusters": 520,
+      "span": [
+        162660910,
+        162661430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 7 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162760910",
+      "purpose": "screen",
+      "seed0": 162760910,
+      "clusters": 520,
+      "span": [
+        162760910,
+        162761430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 8 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162860910",
+      "purpose": "screen",
+      "seed0": 162860910,
+      "clusters": 520,
+      "span": [
+        162860910,
+        162861430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 9 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e20-162960910",
+      "purpose": "screen",
+      "seed0": 162960910,
+      "clusters": 520,
+      "span": [
+        162960910,
+        162961430
+      ],
+      "created_at": "2026-10-19T12:51:16Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e20: window 10 of 10 (seeds 162060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e20 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e20_screen_perf.sh (sha256 bc2cb897e5d74f38...); reservation shengji-perf:/root/claude_reservations/c15e20.json. Status: LANE DONE 2026-10-19T17:43:43Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164060910",
+      "purpose": "screen",
+      "seed0": 164060910,
+      "clusters": 520,
+      "span": [
+        164060910,
+        164061430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 1 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164160910",
+      "purpose": "screen",
+      "seed0": 164160910,
+      "clusters": 520,
+      "span": [
+        164160910,
+        164161430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 2 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164260910",
+      "purpose": "screen",
+      "seed0": 164260910,
+      "clusters": 520,
+      "span": [
+        164260910,
+        164261430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 3 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164360910",
+      "purpose": "screen",
+      "seed0": 164360910,
+      "clusters": 520,
+      "span": [
+        164360910,
+        164361430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 4 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164460910",
+      "purpose": "screen",
+      "seed0": 164460910,
+      "clusters": 520,
+      "span": [
+        164460910,
+        164461430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 5 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164560910",
+      "purpose": "screen",
+      "seed0": 164560910,
+      "clusters": 520,
+      "span": [
+        164560910,
+        164561430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 6 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164660910",
+      "purpose": "screen",
+      "seed0": 164660910,
+      "clusters": 520,
+      "span": [
+        164660910,
+        164661430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 7 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164760910",
+      "purpose": "screen",
+      "seed0": 164760910,
+      "clusters": 520,
+      "span": [
+        164760910,
+        164761430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 8 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164860910",
+      "purpose": "screen",
+      "seed0": 164860910,
+      "clusters": 520,
+      "span": [
+        164860910,
+        164861430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 9 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-c15e4-164960910",
+      "purpose": "screen",
+      "seed0": 164960910,
+      "clusters": 520,
+      "span": [
+        164960910,
+        164961430
+      ],
+      "created_at": "2026-10-19T12:51:56Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "c15e4: window 10 of 10 (seeds 164060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the C15 e4 play/value package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_c15e4_screen_perf.sh (sha256 0b4a5479e67c7a25...); reservation shengji-perf:/root/claude_reservations/c15e4.json. Status: LANE DONE 2026-10-19T22:34:44Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166060910",
+      "purpose": "screen",
+      "seed0": 166060910,
+      "clusters": 520,
+      "span": [
+        166060910,
+        166061430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 1 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166160910",
+      "purpose": "screen",
+      "seed0": 166160910,
+      "clusters": 520,
+      "span": [
+        166160910,
+        166161430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 2 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166260910",
+      "purpose": "screen",
+      "seed0": 166260910,
+      "clusters": 520,
+      "span": [
+        166260910,
+        166261430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 3 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166360910",
+      "purpose": "screen",
+      "seed0": 166360910,
+      "clusters": 520,
+      "span": [
+        166360910,
+        166361430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 4 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166460910",
+      "purpose": "screen",
+      "seed0": 166460910,
+      "clusters": 520,
+      "span": [
+        166460910,
+        166461430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 5 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166560910",
+      "purpose": "screen",
+      "seed0": 166560910,
+      "clusters": 520,
+      "span": [
+        166560910,
+        166561430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 6 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166660910",
+      "purpose": "screen",
+      "seed0": 166660910,
+      "clusters": 520,
+      "span": [
+        166660910,
+        166661430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 7 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166760910",
+      "purpose": "screen",
+      "seed0": 166760910,
+      "clusters": 520,
+      "span": [
+        166760910,
+        166761430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 8 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166860910",
+      "purpose": "screen",
+      "seed0": 166860910,
+      "clusters": 520,
+      "span": [
+        166860910,
+        166861430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 9 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s43t-166960910",
+      "purpose": "screen",
+      "seed0": 166960910,
+      "clusters": 520,
+      "span": [
+        166960910,
+        166961430
+      ],
+      "created_at": "2026-10-19T22:48:31Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s43t: window 10 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170060910",
+      "purpose": "screen",
+      "seed0": 170060910,
+      "clusters": 520,
+      "span": [
+        170060910,
+        170061430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 1 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170160910",
+      "purpose": "screen",
+      "seed0": 170160910,
+      "clusters": 520,
+      "span": [
+        170160910,
+        170161430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 2 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170260910",
+      "purpose": "screen",
+      "seed0": 170260910,
+      "clusters": 520,
+      "span": [
+        170260910,
+        170261430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 3 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170360910",
+      "purpose": "screen",
+      "seed0": 170360910,
+      "clusters": 520,
+      "span": [
+        170360910,
+        170361430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 4 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170460910",
+      "purpose": "screen",
+      "seed0": 170460910,
+      "clusters": 520,
+      "span": [
+        170460910,
+        170461430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 5 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170560910",
+      "purpose": "screen",
+      "seed0": 170560910,
+      "clusters": 520,
+      "span": [
+        170560910,
+        170561430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 6 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170660910",
+      "purpose": "screen",
+      "seed0": 170660910,
+      "clusters": 520,
+      "span": [
+        170660910,
+        170661430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 7 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170760910",
+      "purpose": "screen",
+      "seed0": 170760910,
+      "clusters": 520,
+      "span": [
+        170760910,
+        170761430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 8 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170860910",
+      "purpose": "screen",
+      "seed0": 170860910,
+      "clusters": 520,
+      "span": [
+        170860910,
+        170861430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 9 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46c-170960910",
+      "purpose": "screen",
+      "seed0": 170960910,
+      "clusters": 520,
+      "span": [
+        170960910,
+        170961430
+      ],
+      "created_at": "2026-10-20T03:48:50Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s46c: window 10 of 10 (seeds 170060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package (fresh-seed confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46c_screen_perf.sh (sha256 f776ffba3f0865db...); reservation shengji-perf:/root/claude_reservations/s46c.json. Status: LANE DONE 2026-10-20T08:57:01Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172060910",
+      "purpose": "screen",
+      "seed0": 172060910,
+      "clusters": 520,
+      "span": [
+        172060910,
+        172061430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 1 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172160910",
+      "purpose": "screen",
+      "seed0": 172160910,
+      "clusters": 520,
+      "span": [
+        172160910,
+        172161430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 2 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172260910",
+      "purpose": "screen",
+      "seed0": 172260910,
+      "clusters": 520,
+      "span": [
+        172260910,
+        172261430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 3 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172360910",
+      "purpose": "screen",
+      "seed0": 172360910,
+      "clusters": 520,
+      "span": [
+        172360910,
+        172361430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 4 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172460910",
+      "purpose": "screen",
+      "seed0": 172460910,
+      "clusters": 520,
+      "span": [
+        172460910,
+        172461430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 5 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172560910",
+      "purpose": "screen",
+      "seed0": 172560910,
+      "clusters": 520,
+      "span": [
+        172560910,
+        172561430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 6 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172660910",
+      "purpose": "screen",
+      "seed0": 172660910,
+      "clusters": 520,
+      "span": [
+        172660910,
+        172661430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 7 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172760910",
+      "purpose": "screen",
+      "seed0": 172760910,
+      "clusters": 520,
+      "span": [
+        172760910,
+        172761430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 8 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172860910",
+      "purpose": "screen",
+      "seed0": 172860910,
+      "clusters": 520,
+      "span": [
+        172860910,
+        172861430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 9 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-s46t-172960910",
+      "purpose": "screen",
+      "seed0": 172960910,
+      "clusters": 520,
+      "span": [
+        172960910,
+        172961430
+      ],
+      "created_at": "2026-10-20T05:51:13Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s46t: window 10 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174060910",
+      "purpose": "screen",
+      "seed0": 174060910,
+      "clusters": 520,
+      "span": [
+        174060910,
+        174061430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 1 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174160910",
+      "purpose": "screen",
+      "seed0": 174160910,
+      "clusters": 520,
+      "span": [
+        174160910,
+        174161430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 2 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174260910",
+      "purpose": "screen",
+      "seed0": 174260910,
+      "clusters": 520,
+      "span": [
+        174260910,
+        174261430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 3 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174360910",
+      "purpose": "screen",
+      "seed0": 174360910,
+      "clusters": 520,
+      "span": [
+        174360910,
+        174361430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 4 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174460910",
+      "purpose": "screen",
+      "seed0": 174460910,
+      "clusters": 520,
+      "span": [
+        174460910,
+        174461430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 5 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174560910",
+      "purpose": "screen",
+      "seed0": 174560910,
+      "clusters": 520,
+      "span": [
+        174560910,
+        174561430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 6 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174660910",
+      "purpose": "screen",
+      "seed0": 174660910,
+      "clusters": 520,
+      "span": [
+        174660910,
+        174661430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 7 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174760910",
+      "purpose": "screen",
+      "seed0": 174760910,
+      "clusters": 520,
+      "span": [
+        174760910,
+        174761430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 8 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174860910",
+      "purpose": "screen",
+      "seed0": 174860910,
+      "clusters": 520,
+      "span": [
+        174860910,
+        174861430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 9 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v97dtrx-174960910",
+      "purpose": "screen",
+      "seed0": 174960910,
+      "clusters": 520,
+      "span": [
+        174960910,
+        174961430
+      ],
+      "created_at": "2026-10-20T09:39:18Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dtrx: window 10 of 10 (seeds 174060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v97dtrx_screen_perf.sh (sha256 0d75dcec151714fb...); reservation shengji-perf:/root/claude_reservations/v97dtrx.json. Status: LANE DONE 2026-10-20T14:34:58Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178060910",
+      "purpose": "screen",
+      "seed0": 178060910,
+      "clusters": 520,
+      "span": [
+        178060910,
+        178061430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 1 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178160910",
+      "purpose": "screen",
+      "seed0": 178160910,
+      "clusters": 520,
+      "span": [
+        178160910,
+        178161430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 2 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178260910",
+      "purpose": "screen",
+      "seed0": 178260910,
+      "clusters": 520,
+      "span": [
+        178260910,
+        178261430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 3 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178360910",
+      "purpose": "screen",
+      "seed0": 178360910,
+      "clusters": 520,
+      "span": [
+        178360910,
+        178361430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 4 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178460910",
+      "purpose": "screen",
+      "seed0": 178460910,
+      "clusters": 520,
+      "span": [
+        178460910,
+        178461430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 5 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178560910",
+      "purpose": "screen",
+      "seed0": 178560910,
+      "clusters": 520,
+      "span": [
+        178560910,
+        178561430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 6 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178660910",
+      "purpose": "screen",
+      "seed0": 178660910,
+      "clusters": 520,
+      "span": [
+        178660910,
+        178661430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 7 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178760910",
+      "purpose": "screen",
+      "seed0": 178760910,
+      "clusters": 520,
+      "span": [
+        178760910,
+        178761430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 8 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178860910",
+      "purpose": "screen",
+      "seed0": 178860910,
+      "clusters": 520,
+      "span": [
+        178860910,
+        178861430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 9 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98combo-178960910",
+      "purpose": "screen",
+      "seed0": 178960910,
+      "clusters": 520,
+      "span": [
+        178960910,
+        178961430
+      ],
+      "created_at": "2026-10-20T14:51:53Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98combo: window 10 of 10 (seeds 178060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package + dtrx vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98combo_screen_perf.sh (sha256 8fcc5708803f95d9...); reservation shengji-perf:/root/claude_reservations/v98combo.json. Status: RUNNING at registration (window 178460910 started 2026-10-20T15:58:49Z). Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180060910",
+      "purpose": "screen",
+      "seed0": 180060910,
+      "clusters": 520,
+      "span": [
+        180060910,
+        180061430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 1 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180160910",
+      "purpose": "screen",
+      "seed0": 180160910,
+      "clusters": 520,
+      "span": [
+        180160910,
+        180161430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 2 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180260910",
+      "purpose": "screen",
+      "seed0": 180260910,
+      "clusters": 520,
+      "span": [
+        180260910,
+        180261430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 3 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180360910",
+      "purpose": "screen",
+      "seed0": 180360910,
+      "clusters": 520,
+      "span": [
+        180360910,
+        180361430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 4 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180460910",
+      "purpose": "screen",
+      "seed0": 180460910,
+      "clusters": 520,
+      "span": [
+        180460910,
+        180461430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 5 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180560910",
+      "purpose": "screen",
+      "seed0": 180560910,
+      "clusters": 520,
+      "span": [
+        180560910,
+        180561430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 6 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180660910",
+      "purpose": "screen",
+      "seed0": 180660910,
+      "clusters": 520,
+      "span": [
+        180660910,
+        180661430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 7 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180760910",
+      "purpose": "screen",
+      "seed0": 180760910,
+      "clusters": 520,
+      "span": [
+        180760910,
+        180761430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 8 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180860910",
+      "purpose": "screen",
+      "seed0": 180860910,
+      "clusters": 520,
+      "span": [
+        180860910,
+        180861430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 9 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "screen-v98comboc-180960910",
+      "purpose": "screen",
+      "seed0": 180960910,
+      "clusters": 520,
+      "span": [
+        180960910,
+        180961430
+      ],
+      "created_at": "2026-10-20T15:50:34Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v98comboc: window 10 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "dev-s35dev-140060910",
+      "purpose": "screen",
+      "seed0": 140060910,
+      "clusters": 200,
+      "span": [
+        140060910,
+        140061110
+      ],
+      "created_at": "2026-10-17T02:32:58Z",
+      "host": "shengji-perf",
+      "git_head": "6371a6ea0c5d5143711dd404fd337a2207a56597",
+      "note": "s35dev: S35 DEV duel, candidate (attach_hybrid) and release 46 on the same 200 deals [140060910, 140061110), seat-swapped. Launcher /root/codex-s35dev-reader/codex_s35dev_perf_ready_r2.sh (sha256 8b841673...; DEALS=200 SEED0=140060910); reservation shengji-perf:/root/claude_reservations/s35dev.json; source PR #1071 head 6371a6ea. Status: LANE DONE. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "panel-s47-142060910",
+      "purpose": "screen",
+      "seed0": 142060910,
+      "clusters": 10,
+      "span": [
+        142060910,
+        142060920
+      ],
+      "created_at": "2026-10-17T04:36:24Z",
+      "host": "shengji-perf",
+      "git_head": "b1031edf87e8f46518199523c16f41b67e6ac6b0",
+      "note": "s47: Sol actor panel, smv3-pv then release46-pv, each on deal seeds 142060910..142060919 x 2 roles vs actor-only Sol. Campaign /root/codex-s47-packet-b1031edf/campaign.json (sha256 4ba90b98...) seeds list; reservation shengji-perf:/root/claude_reservations/s47.json; source PR #1087 head b1031edf. Status: scheduled-terminal. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "dev-s35long-145060910",
+      "purpose": "screen",
+      "seed0": 145060910,
+      "clusters": 600,
+      "span": [
+        145060910,
+        145061510
+      ],
+      "created_at": "2026-10-17T15:31:45Z",
+      "host": "shengji-cloud",
+      "git_head": "756035a60c93f5b5ac08dfd4a1fa183a4d44d1a2",
+      "note": "s35long: S35 long DEV, attach_hybrid (30 s hybrid stage) vs release 46 as served, seat-swapped, 4 workers x 150 pairs. Launcher /root/codex_s35long_final.sh (sha256 2c7e0de9...); reservation shengji-cloud:/root/claude_reservations/s35long.json (intervals.deals / candidate_rng / baseline_rng); source PR #1071 head 756035a6. Status: LANE DONE 2026-10-17T17:24:20Z. This window: the 600 DEALS. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "rng-s35long-cand-145560910",
+      "purpose": "other",
+      "seed0": 145560910,
+      "clusters": 600,
+      "span": [
+        145560910,
+        145561510
+      ],
+      "created_at": "2026-10-17T15:31:45Z",
+      "host": "shengji-cloud",
+      "git_head": "756035a60c93f5b5ac08dfd4a1fa183a4d44d1a2",
+      "note": "s35long: S35 long DEV, attach_hybrid (30 s hybrid stage) vs release 46 as served, seat-swapped, 4 workers x 150 pairs. Launcher /root/codex_s35long_final.sh (sha256 2c7e0de9...); reservation shengji-cloud:/root/claude_reservations/s35long.json (intervals.deals / candidate_rng / baseline_rng); source PR #1071 head 756035a6. Status: LANE DONE 2026-10-17T17:24:20Z. This window: the candidate's bot RNG seeds (not deals), reserved with the lane. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "rng-s35long-base-146060910",
+      "purpose": "other",
+      "seed0": 146060910,
+      "clusters": 600,
+      "span": [
+        146060910,
+        146061510
+      ],
+      "created_at": "2026-10-17T15:31:45Z",
+      "host": "shengji-cloud",
+      "git_head": "756035a60c93f5b5ac08dfd4a1fa183a4d44d1a2",
+      "note": "s35long: S35 long DEV, attach_hybrid (30 s hybrid stage) vs release 46 as served, seat-swapped, 4 workers x 150 pairs. Launcher /root/codex_s35long_final.sh (sha256 2c7e0de9...); reservation shengji-cloud:/root/claude_reservations/s35long.json (intervals.deals / candidate_rng / baseline_rng); source PR #1071 head 756035a6. Status: LANE DONE 2026-10-17T17:24:20Z. This window: the first baseline bot RNG interval (not deals), reserved with the lane. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "rng-s35long-base-146560910",
+      "purpose": "other",
+      "seed0": 146560910,
+      "clusters": 600,
+      "span": [
+        146560910,
+        146561510
+      ],
+      "created_at": "2026-10-17T15:31:45Z",
+      "host": "shengji-cloud",
+      "git_head": "756035a60c93f5b5ac08dfd4a1fa183a4d44d1a2",
+      "note": "s35long: S35 long DEV, attach_hybrid (30 s hybrid stage) vs release 46 as served, seat-swapped, 4 workers x 150 pairs. Launcher /root/codex_s35long_final.sh (sha256 2c7e0de9...); reservation shengji-cloud:/root/claude_reservations/s35long.json (intervals.deals / candidate_rng / baseline_rng); source PR #1071 head 756035a6. Status: LANE DONE 2026-10-17T17:24:20Z. This window: the second baseline bot RNG interval (not deals), reserved with the lane. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "calibration-v97dev-smoke-175960000",
+      "purpose": "calibration",
+      "seed0": 175960000,
+      "clusters": 2,
+      "span": [
+        175960000,
+        175960002
+      ],
+      "created_at": "2026-10-20T08:08:43Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dev: the 2-deal harness smoke (175960000 first round, 175960001 fixed-banker rank 3 / banker 1), one worker, rc 0; seeds read from fl-pilot/v97dev/smoke/smoke.jsonl. Status: smoke done. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "dev-v97dev-176060910",
+      "purpose": "screen",
+      "seed0": 176060910,
+      "clusters": 600,
+      "span": [
+        176060910,
+        176061510
+      ],
+      "created_at": "2026-10-20T08:59:41Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "v97dev: DEV duel, defender release 46 as served vs exploiter release 46 + dtrx, 600 deals x 2 mirrors, paired and seat-swapped, r2 rank-mixed plan per deal index. Launcher /root/claude_v97dev_perf.sh (sha256 233ca5c6...; armed 2026-10-20T08:59:41Z; DEALS=600 SEED0=176060910 PLAN=r2); the sealed duel.jsonl holds exactly seeds 176060910..176061509 (1200 rows). Status: LANE DONE 2026-10-20T09:37:53Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "calibration-s33dev-smoke-181960000",
+      "purpose": "calibration",
+      "seed0": 181960000,
+      "clusters": 2,
+      "span": [
+        181960000,
+        181960002
+      ],
+      "created_at": "2026-10-20T16:04:20Z",
+      "host": "shengji-perf",
+      "git_head": null,
+      "note": "s33dev: the 2-deal harness smoke (181960000 banker 0, 181960001 banker 1), rc 0; seeds read from fl-pilot/s33dev/smoke/smoke.jsonl. The 600-deal s33dev block is NOT registered here: no launcher or reservation existed at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "other-s52cap-153060910",
+      "purpose": "other",
+      "seed0": 153060910,
+      "clusters": 4,
+      "span": [
+        153060910,
+        153060914
+      ],
+      "created_at": "2026-10-19T05:49:44Z",
+      "host": "shengji-perf",
+      "git_head": "be697d1f5c1066799d7771d4391f12e4bbc6e003",
+      "note": "s52cap: S52 capacity test, 4 seat-mirrored pairs on deals [153060910, 153060914), first round, trump ranks 2,4,8,A; release 46 + lead-alias refill vs release 46 as served. Launcher /root/claude_s52cap_perf.sh (sha256 fe81a5e7...); reservation shengji-perf:/root/claude_reservations/s52cap.json; tree be697d1f. Status: === s52cap DONE === 2026-10-19T05:50:57Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-153061000",
+      "purpose": "other",
+      "seed0": 153061000,
+      "clusters": 32,
+      "span": [
+        153061000,
+        153061032
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: S48 fresh 8-card exact-stage follow-only capture (self-play of four ed8/xf8 release-46 seats), the 32 INITIAL seeds 153061000..153061031, 4 rounds each; the later games are the exact8-capture-follow-* windows. Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Launcher /root/claude_exact8_perf.sh (sha256 439acd11...); reservation shengji-perf:/root/claude_reservations/exact8.json. Status: === exact8 DONE === 2026-10-20T09:24:15Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061000",
+      "purpose": "other",
+      "seed0": 153061000001,
+      "clusters": 3,
+      "span": [
+        153061000001,
+        153061000004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061000, Game(random.Random(1000*153061000 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061001",
+      "purpose": "other",
+      "seed0": 153061001001,
+      "clusters": 3,
+      "span": [
+        153061001001,
+        153061001004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061001, Game(random.Random(1000*153061001 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061002",
+      "purpose": "other",
+      "seed0": 153061002001,
+      "clusters": 3,
+      "span": [
+        153061002001,
+        153061002004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061002, Game(random.Random(1000*153061002 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061003",
+      "purpose": "other",
+      "seed0": 153061003001,
+      "clusters": 3,
+      "span": [
+        153061003001,
+        153061003004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061003, Game(random.Random(1000*153061003 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061004",
+      "purpose": "other",
+      "seed0": 153061004001,
+      "clusters": 3,
+      "span": [
+        153061004001,
+        153061004004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061004, Game(random.Random(1000*153061004 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061005",
+      "purpose": "other",
+      "seed0": 153061005001,
+      "clusters": 3,
+      "span": [
+        153061005001,
+        153061005004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061005, Game(random.Random(1000*153061005 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061006",
+      "purpose": "other",
+      "seed0": 153061006001,
+      "clusters": 3,
+      "span": [
+        153061006001,
+        153061006004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061006, Game(random.Random(1000*153061006 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061007",
+      "purpose": "other",
+      "seed0": 153061007001,
+      "clusters": 3,
+      "span": [
+        153061007001,
+        153061007004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061007, Game(random.Random(1000*153061007 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061008",
+      "purpose": "other",
+      "seed0": 153061008001,
+      "clusters": 3,
+      "span": [
+        153061008001,
+        153061008004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061008, Game(random.Random(1000*153061008 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061009",
+      "purpose": "other",
+      "seed0": 153061009001,
+      "clusters": 3,
+      "span": [
+        153061009001,
+        153061009004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061009, Game(random.Random(1000*153061009 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061010",
+      "purpose": "other",
+      "seed0": 153061010001,
+      "clusters": 3,
+      "span": [
+        153061010001,
+        153061010004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061010, Game(random.Random(1000*153061010 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061011",
+      "purpose": "other",
+      "seed0": 153061011001,
+      "clusters": 3,
+      "span": [
+        153061011001,
+        153061011004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061011, Game(random.Random(1000*153061011 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061012",
+      "purpose": "other",
+      "seed0": 153061012001,
+      "clusters": 3,
+      "span": [
+        153061012001,
+        153061012004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061012, Game(random.Random(1000*153061012 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061013",
+      "purpose": "other",
+      "seed0": 153061013001,
+      "clusters": 3,
+      "span": [
+        153061013001,
+        153061013004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061013, Game(random.Random(1000*153061013 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061014",
+      "purpose": "other",
+      "seed0": 153061014001,
+      "clusters": 3,
+      "span": [
+        153061014001,
+        153061014004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061014, Game(random.Random(1000*153061014 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061015",
+      "purpose": "other",
+      "seed0": 153061015001,
+      "clusters": 3,
+      "span": [
+        153061015001,
+        153061015004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061015, Game(random.Random(1000*153061015 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061016",
+      "purpose": "other",
+      "seed0": 153061016001,
+      "clusters": 3,
+      "span": [
+        153061016001,
+        153061016004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061016, Game(random.Random(1000*153061016 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061017",
+      "purpose": "other",
+      "seed0": 153061017001,
+      "clusters": 3,
+      "span": [
+        153061017001,
+        153061017004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061017, Game(random.Random(1000*153061017 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061018",
+      "purpose": "other",
+      "seed0": 153061018001,
+      "clusters": 3,
+      "span": [
+        153061018001,
+        153061018004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061018, Game(random.Random(1000*153061018 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061019",
+      "purpose": "other",
+      "seed0": 153061019001,
+      "clusters": 3,
+      "span": [
+        153061019001,
+        153061019004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061019, Game(random.Random(1000*153061019 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061020",
+      "purpose": "other",
+      "seed0": 153061020001,
+      "clusters": 3,
+      "span": [
+        153061020001,
+        153061020004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061020, Game(random.Random(1000*153061020 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061021",
+      "purpose": "other",
+      "seed0": 153061021001,
+      "clusters": 3,
+      "span": [
+        153061021001,
+        153061021004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061021, Game(random.Random(1000*153061021 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061022",
+      "purpose": "other",
+      "seed0": 153061022001,
+      "clusters": 3,
+      "span": [
+        153061022001,
+        153061022004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061022, Game(random.Random(1000*153061022 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061023",
+      "purpose": "other",
+      "seed0": 153061023001,
+      "clusters": 3,
+      "span": [
+        153061023001,
+        153061023004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061023, Game(random.Random(1000*153061023 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061024",
+      "purpose": "other",
+      "seed0": 153061024001,
+      "clusters": 3,
+      "span": [
+        153061024001,
+        153061024004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061024, Game(random.Random(1000*153061024 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061025",
+      "purpose": "other",
+      "seed0": 153061025001,
+      "clusters": 3,
+      "span": [
+        153061025001,
+        153061025004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061025, Game(random.Random(1000*153061025 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061026",
+      "purpose": "other",
+      "seed0": 153061026001,
+      "clusters": 3,
+      "span": [
+        153061026001,
+        153061026004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061026, Game(random.Random(1000*153061026 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061027",
+      "purpose": "other",
+      "seed0": 153061027001,
+      "clusters": 3,
+      "span": [
+        153061027001,
+        153061027004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061027, Game(random.Random(1000*153061027 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061028",
+      "purpose": "other",
+      "seed0": 153061028001,
+      "clusters": 3,
+      "span": [
+        153061028001,
+        153061028004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061028, Game(random.Random(1000*153061028 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061029",
+      "purpose": "other",
+      "seed0": 153061029001,
+      "clusters": 3,
+      "span": [
+        153061029001,
+        153061029004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061029, Game(random.Random(1000*153061029 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061030",
+      "purpose": "other",
+      "seed0": 153061030001,
+      "clusters": 3,
+      "span": [
+        153061030001,
+        153061030004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061030, Game(random.Random(1000*153061030 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8-capture-follow-153061031",
+      "purpose": "other",
+      "seed0": 153061031001,
+      "clusters": 3,
+      "span": [
+        153061031001,
+        153061031004
+      ],
+      "created_at": "2026-10-20T08:42:30Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8: the follow-on games of initial seed 153061031, Game(random.Random(1000*153061031 + r)) for r = 1, 2, 3 (reservation new_game_seeds). Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Reservation shengji-perf:/root/claude_reservations/exact8.json. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8reh-153061100",
+      "purpose": "other",
+      "seed0": 153061100,
+      "clusters": 1,
+      "span": [
+        153061100,
+        153061101
+      ],
+      "created_at": "2026-10-19T20:47:34Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8reh: Exact8 capture rehearsal, 1 initial seed, 1 round. Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Launcher /root/claude_exact8reh_perf.sh (sha256 fdf7d137...); reservation shengji-perf:/root/claude_reservations/exact8reh.json. Status: === exact8reh DONE === 2026-10-19T22:35:22Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8fx-153061101",
+      "purpose": "other",
+      "seed0": 153061101,
+      "clusters": 8,
+      "span": [
+        153061101,
+        153061109
+      ],
+      "created_at": "2026-10-20T03:03:19Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8fx: Exact8 fixture search over initial seeds 153061101..153061108, 1 round per seed, sequential, stopping at the first hit (hit_seed 153061101 per Codex 700/6295407344); all 8 reserved. Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Launcher /root/claude_exact8fx_perf.sh (sha256 bef74ebf...); reservation shengji-perf:/root/claude_reservations/exact8fx.json. Status: === exact8fx DONE === 2026-10-20T03:43:14Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "exact8reh3-153061101",
+      "purpose": "other",
+      "seed0": 153061101,
+      "clusters": 1,
+      "span": [
+        153061101,
+        153061102
+      ],
+      "created_at": "2026-10-20T03:45:49Z",
+      "host": "shengji-perf",
+      "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+      "note": "exact8reh3: INTENTIONAL REPLICATE of the exact8fx hit seed 153061101 (capture rehearsal on the fixture deal), 1 round. Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Launcher /root/claude_exact8reh3_perf.sh (sha256 b8909c54...); reservation shengji-perf:/root/claude_reservations/exact8reh3.json. Status: === exact8reh3 DONE === 2026-10-20T03:48:12Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "census-s51c-first-168060910",
+      "purpose": "other",
+      "seed0": 168060910,
+      "clusters": 91,
+      "span": [
+        168060910,
+        168061001
+      ],
+      "created_at": "2026-10-20T00:35:20Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s51c: S51 census FIRST-ROUND rank-2 window, 91 clusters; one arm (release 46 as served) vs the common MC-LCB control; a census, not a screen. Launcher /root/claude_s51c_census_cloud.sh (sha256 b4858fc7...); reservation shengji-cloud:/root/claude_reservations/s51c.json (clusters_per_seed). Status: ABORT 2026-10-20T00:39:52Z in this window (rc 0, unsealed, output preserved); s51d re-ran the census on fresh seeds. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "census-s51c-fixed-168160910",
+      "purpose": "other",
+      "seed0": 168160910,
+      "clusters": 104,
+      "span": [
+        168160910,
+        168161014
+      ],
+      "created_at": "2026-10-20T00:35:20Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s51c: S51 census FIXED-BANKER 2..A window, 104 clusters; one arm (release 46 as served) vs the common MC-LCB control; a census, not a screen. Launcher /root/claude_s51c_census_cloud.sh (sha256 b4858fc7...); reservation shengji-cloud:/root/claude_reservations/s51c.json. Status: reserved; the lane aborted in its first window before this one. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "census-s51d-first-168260910",
+      "purpose": "other",
+      "seed0": 168260910,
+      "clusters": 91,
+      "span": [
+        168260910,
+        168261001
+      ],
+      "created_at": "2026-10-20T02:11:09Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s51d: S51 census FIRST-ROUND rank-2 window, 91 clusters; one arm (release 46 as served) vs the common MC-LCB control; a census, not a screen. Launcher /root/claude_s51d_census_cloud.sh (sha256 227f103b...); reservation shengji-cloud:/root/claude_reservations/s51d.json. Status: CENSUS DONE 2026-10-20T02:18:41Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+    },
+    {
+      "name": "census-s51d-fixed-168360910",
+      "purpose": "other",
+      "seed0": 168360910,
+      "clusters": 104,
+      "span": [
+        168360910,
+        168361014
+      ],
+      "created_at": "2026-10-20T02:11:09Z",
+      "host": "shengji-cloud",
+      "git_head": null,
+      "note": "s51d: S51 census FIXED-BANKER 2..A window, 104 clusters; one arm (release 46 as served) vs the common MC-LCB control; a census, not a screen. Launcher /root/claude_s51d_census_cloud.sh (sha256 227f103b...); reservation shengji-cloud:/root/claude_reservations/s51d.json. Status: CENSUS DONE 2026-10-20T02:18:41Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
     }
   ]
 }

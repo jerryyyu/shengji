@@ -344,7 +344,7 @@ def exact_follow_summary(shards):
     """
     sides = {
         side: dict(total_traces=0, missing=0, invalid=0, attempted=0,
-                   complete=0, soft_budget=0, hard_budget=0, refusal=0,
+                   complete=0, prefix_complete=0, soft_budget=0, hard_budget=0, refusal=0,
                    other_error=0, applied=0, score_unavailable=0)
         for side in ('arm', 'baseline')
     }
@@ -379,6 +379,16 @@ def exact_follow_summary(shards):
                 abandoned = row.get('exact_follow_abandoned')
                 valid = valid and type(applied) is bool
                 valid = valid and 'exact_follow_abandoned' in row
+                prefix = row.get('exact_follow_prefix', False)
+                valid = valid and type(prefix) is bool
+                if prefix:
+                    minimum = row.get('exact_follow_prefix_min_worlds')
+                    requested = row.get('exact_follow_requested_worlds')
+                    valid = (valid and type(minimum) is int and type(requested) is int
+                             and 1 <= minimum <= requested)
+                elif any(key in row for key in ('exact_follow_completed_worlds',
+                         'exact_follow_prefix_min_worlds', 'exact_follow_requested_worlds')):
+                    valid = False
                 valid = valid and (
                     abandoned is None
                     or (type(abandoned) is str and abandoned in reasons)
@@ -394,13 +404,19 @@ def exact_follow_summary(shards):
                              and type(row.get('exact_follow_error')) is str
                              and bool(row.get('exact_follow_error'))
                              and 'exact_follow_worlds' not in row
+                             and 'exact_follow_completed_worlds' not in row
                              and 'exact_follow_nodes' not in row
                              and 'exact_follow_scores' not in row
                              and 'exact_follow_scores__len' not in row)
                     if not valid:
                         counts['invalid'] += 1
                         continue
-                    if abandoned in ('soft_budget', 'hard_budget'):
+                    if row.get('exact_follow_error') == 'ExactFollowPrefixShortfall':
+                        if prefix and abandoned == 'error':
+                            counts['soft_budget'] += 1
+                        else:
+                            counts['invalid'] += 1
+                    elif abandoned in ('soft_budget', 'hard_budget'):
                         counts[abandoned] += 1
                     else:
                         if row.get('exact_follow_error') == 'ExactFollowRefusal':
@@ -418,6 +434,10 @@ def exact_follow_summary(shards):
                 valid = (type(worlds) is int and worlds > 0
                          and type(nodes) is int and nodes >= 0
                          and row.get('exact_follow_error') is None)
+                if prefix:
+                    valid = (valid and minimum <= worlds <= requested
+                             and type(row.get('exact_follow_completed_worlds')) is int
+                             and row['exact_follow_completed_worlds'] == worlds)
                 if scores_present:
                     valid = valid and finite_score_list(scores) and len(scores) > 1
                     if score_len_present:
@@ -430,7 +450,7 @@ def exact_follow_summary(shards):
                 if not valid:
                     counts['invalid'] += 1
                     continue
-                counts['complete'] += 1
+                counts['prefix_complete' if prefix else 'complete'] += 1
                 counts['applied'] += int(applied)
                 if not scores_present:
                     counts['score_unavailable'] += 1

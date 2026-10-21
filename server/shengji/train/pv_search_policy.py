@@ -1181,6 +1181,9 @@ class PVSearchConfig:
     # `pv_exact_follow.SOLVERS`) and hand-card bound
     exact_follow_solver: str = "reference"
     exact_follow_max_cards: int = 4
+    # DEV-only bounded prefix of the exact follow stage; zero keeps the full
+    # stage unchanged and the field out of its recipe identity.
+    exact_follow_prefix_min_worlds: int = 0
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     # its exact-stage guard (requires it and ``exact_lead_endgame``); the same contract
@@ -1294,6 +1297,20 @@ def _check_exact_follow_params(config: PVSearchConfig) -> None:
             or type(config.exact_follow_max_cards) is not int
             or not 1 <= config.exact_follow_max_cards <= 8):
         raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")
+    if (isinstance(config.exact_follow_prefix_min_worlds, bool)
+            or type(config.exact_follow_prefix_min_worlds) is not int
+            or config.exact_follow_prefix_min_worlds < 0):
+        raise PVSearchPolicyError("exact_follow_prefix_min_worlds must be a non-negative int")
+    if config.exact_follow_prefix_min_worlds:
+        if not config.exact_follow:
+            raise PVSearchPolicyError(
+                "exact_follow_prefix_min_worlds needs exact_follow=True")
+        if config.exact_follow_max_cards != 8:
+            raise PVSearchPolicyError(
+                "exact_follow_prefix_min_worlds needs exact_follow_max_cards=8")
+        if config.exact_follow_prefix_min_worlds > config.worlds:
+            raise PVSearchPolicyError(
+                "exact_follow_prefix_min_worlds cannot exceed worlds")
 
 
 def recipe_payload(config: PVSearchConfig) -> dict:
@@ -1308,6 +1325,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload.pop("exact_follow_max_nodes", None)
         payload.pop("exact_follow_solver", None)
         payload.pop("exact_follow_max_cards", None)
+    if not config.exact_follow_prefix_min_worlds:
+        payload.pop("exact_follow_prefix_min_worlds", None)
     if config.tree is None:
         del payload["tree"]
     elif not isinstance(config.tree, PVTreeConfig):
@@ -1503,6 +1522,8 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
         rules += f"-xf{config.exact_follow_max_cards}"
         if config.exact_follow_solver != "reference":
             rules += f"-xf{config.exact_follow_solver.replace('-', '')}"
+        if config.exact_follow_prefix_min_worlds:
+            rules += f"-xfp{config.exact_follow_prefix_min_worlds}"
     rules += tree_token(config.tree)   # "" while the tree is off
     return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
             f"-r{recipe_digest(config)}")
@@ -1774,6 +1795,20 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")
         self.exact_follow_solver = config.exact_follow_solver
         self.exact_follow_max_cards = config.exact_follow_max_cards
+        if (isinstance(config.exact_follow_prefix_min_worlds, bool)
+                or type(config.exact_follow_prefix_min_worlds) is not int
+                or config.exact_follow_prefix_min_worlds < 0):
+            raise PVSearchPolicyError(
+                "exact_follow_prefix_min_worlds must be a non-negative int")
+        if config.exact_follow_prefix_min_worlds:
+            if not config.exact_follow or config.exact_follow_max_cards != 8:
+                raise PVSearchPolicyError(
+                    "exact_follow_prefix_min_worlds needs exact_follow=True and "
+                    "exact_follow_max_cards=8")
+            if config.exact_follow_prefix_min_worlds > config.worlds:
+                raise PVSearchPolicyError(
+                    "exact_follow_prefix_min_worlds cannot exceed worlds")
+        self.exact_follow_prefix_min_worlds = config.exact_follow_prefix_min_worlds
         if self.exact_follow and (config.tree is not None or config.adaptive_worlds
                                   or config.adaptive_worlds_leads):
             raise PVSearchPolicyError(
@@ -2931,26 +2966,44 @@ class PVSearchBot(PolicyValueBot):
         if self._exact_follow_eligible(rnd, admitted):
             # The normal PV result is complete before this optional stage starts.
             # Any refusal, budget expiry, or malformed world leaves it untouched.
-            from .pv_exact_follow import rerank_follow
+            from .pv_exact_follow import rerank_follow, rerank_follow_prefix
             baseline_winner, baseline_played = winner, list(played)
+            prefix_active = (self.exact_follow_prefix_min_worlds > 0
+                             and max(map(len, rnd.hands)) == 8)
             soft_deadline = None
             if self.serving_budget_seconds is not None:
                 soft_deadline = started + self.serving_budget_seconds * 0.8
+            # Prefix soft stopping belongs to the world helper.  Giving the
+            # OptionalStage that deadline would latch its expiry and reject a
+            # valid completed prefix; both variants retain the hard latch.
             stage = OptionalStage(
                 self, (), hard_check=check_budget,
-                budget_errors=PVSearchBudgetExceeded, soft_deadline=soft_deadline,
-                clock=time.perf_counter, soft_error=PVSearchBudgetExceeded,
+                budget_errors=PVSearchBudgetExceeded,
+                soft_deadline=None if prefix_active else soft_deadline,
+                clock=time.perf_counter,
+                soft_error=PVSearchBudgetExceeded,
                 final_check=check_budget)
             exact = None
             with stage:
                 if stage.guard is not None:
                     stage.guard()
-                exact = rerank_follow(
-                    rnd, seat, admitted, worlds, baseline_index=winner,
-                    max_nodes=self.exact_follow_max_nodes,
-                    max_hand_cards=self.exact_follow_max_cards,
-                    solver=self.exact_follow_solver,
-                    check_budget=stage.guard)
+                if prefix_active:
+                    exact = rerank_follow_prefix(
+                        rnd, seat, admitted, worlds, baseline_index=winner,
+                        max_nodes=self.exact_follow_max_nodes,
+                        max_hand_cards=self.exact_follow_max_cards,
+                        min_worlds=self.exact_follow_prefix_min_worlds,
+                        solver=self.exact_follow_solver,
+                        check_budget=stage.guard,
+                        soft_deadline=soft_deadline,
+                        clock=time.perf_counter)
+                else:
+                    exact = rerank_follow(
+                        rnd, seat, admitted, worlds, baseline_index=winner,
+                        max_nodes=self.exact_follow_max_nodes,
+                        max_hand_cards=self.exact_follow_max_cards,
+                        solver=self.exact_follow_solver,
+                        check_budget=stage.guard)
                 stage.raise_if_tripped()
                 changed = exact.winner != baseline_winner
                 if changed:
@@ -2964,6 +3017,10 @@ class PVSearchBot(PolicyValueBot):
                 exact_follow_record = {
                     "exact_follow_attempted": True,
                     "exact_follow_applied": False,
+                    **({"exact_follow_prefix": True,
+                        "exact_follow_requested_worlds": len(worlds),
+                        "exact_follow_prefix_min_worlds": self.exact_follow_prefix_min_worlds}
+                       if prefix_active else {}),
                     "exact_follow_abandoned": stage.reason,
                     "exact_follow_error": stage.error,
                 }
@@ -2971,8 +3028,14 @@ class PVSearchBot(PolicyValueBot):
                 exact_follow_record = {
                     "exact_follow_attempted": True,
                     "exact_follow_applied": exact.winner != baseline_winner,
+                    **({"exact_follow_prefix": True,
+                        "exact_follow_requested_worlds": len(worlds),
+                        "exact_follow_prefix_min_worlds": self.exact_follow_prefix_min_worlds}
+                       if prefix_active else {}),
                     "exact_follow_abandoned": None,
                     "exact_follow_worlds": exact.worlds,
+                    **({"exact_follow_completed_worlds": exact.worlds}
+                       if prefix_active else {}),
                     "exact_follow_nodes": exact.nodes,
                     "exact_follow_scores": list(exact.scores),
                 }
@@ -3581,6 +3644,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_follow_max_nodes: int = 250_000,
                        exact_follow_solver: str = "reference",
                        exact_follow_max_cards: int = 4,
+                       exact_follow_prefix_min_worlds: int = 0,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                        leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
@@ -3657,6 +3721,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_follow_max_nodes=exact_follow_max_nodes,
                             exact_follow_solver=exact_follow_solver,
                             exact_follow_max_cards=exact_follow_max_cards,
+                            exact_follow_prefix_min_worlds=exact_follow_prefix_min_worlds,
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             leaf_greedy_finish=leaf_greedy_finish,
@@ -3778,6 +3843,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_follow_max_nodes: int = 250_000,
                         exact_follow_solver: str = "reference",
                         exact_follow_max_cards: int = 4,
+                        exact_follow_prefix_min_worlds: int = 0,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                         leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
@@ -3835,6 +3901,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_follow_max_nodes=exact_follow_max_nodes,
                             exact_follow_solver=exact_follow_solver,
                             exact_follow_max_cards=exact_follow_max_cards,
+                            exact_follow_prefix_min_worlds=exact_follow_prefix_min_worlds,
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             leaf_greedy_finish=leaf_greedy_finish,
@@ -3949,6 +4016,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_follow_max_nodes=config.exact_follow_max_nodes,
                                exact_follow_solver=config.exact_follow_solver,
                                exact_follow_max_cards=config.exact_follow_max_cards,
+                               exact_follow_prefix_min_worlds=config.exact_follow_prefix_min_worlds,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard,
                                leaf_greedy_finish=config.leaf_greedy_finish,

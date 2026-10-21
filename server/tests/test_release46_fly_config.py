@@ -276,3 +276,36 @@ def test_lgf_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_p
     bot = factory(seed=17)
     assert bot.leaf_greedy_finish is True and bot.config.leaf_greedy_finish is True
     assert (bot.exact_lead_endgame, bot.tiebreak_points, bot.doomed_throw_reselect) == (True, True, True)
+
+
+BKC_FLAG = "SHENGJI_PV_BURY_KITTY_CHARGE"
+
+
+def test_bkc_off_keeps_the_served_name_and_on_adds_its_bury_token(pinned_production_package,
+                                                                   pinned_belief_package):
+    """Release 46 with the kitty charge on its wide bury (token ``bkc`` after
+    ``bwv`` in the bury segment; the play digest is untouched): a DEV arm,
+    never the served name."""
+    from shengji.train import pv_search_policy as pv
+
+    def built(**extra):
+        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+                                   "SHENGJI_PV_SHA256": PACKAGE_SHA,
+                                   "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
+        entries = pv.pv_registry_entries(**recipe)
+        name, = entries
+        return name, entries[name]
+
+    for off in ({}, {BKC_FLAG: "0"}, {BKC_FLAG: ""}):
+        name, factory = built(**off)
+        assert name == RELEASE46
+        bot = factory(seed=17)
+        assert bot.bury_kitty_charge is False and "bury_kitty_charge" not in vars(bot)
+        assert "kitty_charge" not in bot.bury_recipe_identity["wide_value"]
+    name, factory = built(**{BKC_FLAG: "1"})
+    play = RELEASE46[:RELEASE46.index("-bury-")]
+    assert name != RELEASE46 and name.startswith(play + "-bury-hybrid-bwv-bkc-")
+    bot = factory(seed=17)
+    assert bot.bury_kitty_charge is True and bot.bury_wide_value is True and bot.bury_wide_k == 64
+    assert bot.bury_recipe_identity["wide_value"]["kitty_charge"] == {
+        "p_attackers_last": 0.38, "multiplier": 3.0, "levels_per_point": 0.025}

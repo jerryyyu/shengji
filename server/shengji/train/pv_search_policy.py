@@ -371,8 +371,10 @@ where the bot is built; ``0`` or ``1`` only).  On the decisions the search
 completes, none changes the cards played, the sampler stream or (beyond
 the skipped pass's own fields) the record:
 ``SHENGJI_PV_ENCODE_PREFIX_CACHE=1`` encodes the value pass's leaves, the
-prior's root rows and, with ``lgf``, the greedy finish's reply valuations on
-the decision root's shared history prefix with one batched
+prior's root rows and, with ``lgf``, the greedy finish's reply valuations and
+reply policy rows (`pv_encode_prefix.fused_many`, `reply_rows`: the prefix
+laid down once per batch) on the decision root's shared history prefix with
+one batched
 validation (`pv_encode_prefix`; every tensor is the reference encoder's, byte
 for byte, and anything it does not cover takes the reference path), and
 ``SHENGJI_PV_SINGLE_CANDIDATE_FAST=1`` skips the value pass when the admission

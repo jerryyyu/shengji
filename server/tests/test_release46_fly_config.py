@@ -200,6 +200,9 @@ def test_served_play_takes_the_belief_proposal_through_the_server_path(
         assert room.bot.last_decision_record == record
         assert room.bot.lead_alias_refill is (candidate != "served")
         assert room.bot.doomed_throw_reselect_exact_guard is (candidate == "lar_dtrx")
+        assert room.bot.leaf_greedy_finish is False
+        assert "_leaf_greedy" not in vars(room.bot)
+        assert not any(key.startswith("leaf_greedy_") for key in record)
         assert sorted(prepared.decision.cards) == sorted(record["played"])
         return record
 
@@ -273,6 +276,7 @@ def test_dev_registry_constructs_alias_candidate_from_served_packages(
         assert bot.serving_budget_seconds == 3
         assert bot.exact_deep_cards == bot.exact_follow_max_cards == 7
         assert bot.doomed_throw_reselect is True
+        assert bot.leaf_greedy_finish is False
     assert bots[0].lead_alias_refill is False
     assert bots[1].lead_alias_refill is True
 

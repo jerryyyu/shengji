@@ -227,6 +227,78 @@ def test_depth_support_record_matches_descent_not_leaf_completion(finish):
     assert plain.last_decision_record["work"]["completed_tricks_histogram"] == histogram
 
 
+def test_two_trick_control_fixture_exposes_pair_ruff_cost():
+    """Artificial full-information witness, not a served-policy strength test.
+
+    Drawing one trump breaks the opponent's trump pair before cashing hearts.
+    Both first tricks give attackers zero points; the second exposes the cost.
+    """
+    import random
+    from collections import Counter
+
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.cards import Ordering, make_deck
+    from shengji.engine.round import Round, Trick
+
+    hands = [
+        ["SA", "HA", "HA", "HK", "HK", "D3", "C3", "S3"],
+        ["SQ", "H9", "H9", "D5", "D5", "C5", "C5", "S4"],
+        ["S2", "S2", "HQ", "HQ", "D6", "D6", "C6", "C6"],
+        ["S10", "S10", "H10", "H10", "D7", "D7", "C7", "C7"],
+    ]
+    assert not (Counter(c for hand in hands for c in hand) - Counter(make_deck()))
+    outcomes = {}
+    for lead in (("SA",), ("HA", "HA")):
+        rnd = Round("2", banker=0, rng=random.Random(0))
+        rnd.phase = "play"
+        rnd.ordering = Ordering("S", "2")
+        rnd.trump_suit = "S"
+        rnd.trump_is_nt = False
+        rnd.hands = copy.deepcopy(hands)
+        rnd.buried = []
+        rnd.attacker_points = 0
+        rnd.trick = Trick(leader=0)
+        rnd.turn = 0
+        assert min(map(len, rnd.hands)) == 8
+        ballot = {action_key(a) for a in MCBot(seed=0)._candidates(rnd, 0)}
+        assert {("SA",), ("HA", "HA")} <= ballot
+        reply = HeuristicBot()
+        boundaries = []
+        first_leaf = None
+        action = list(lead)
+        while rnd.phase == "play":
+            seat = rnd.turn
+            before = len(rnd.history)
+            rnd.play(seat, action)
+            # No refused throw may explain the contrast.
+            assert CWVPuctBot.accepted_play(rnd, seat) == action_key(action)
+            if len(rnd.history) != before:
+                boundaries.append((rnd.attacker_points, rnd.history[-1].winner,
+                                   copy.deepcopy(rnd.hands)))
+                if len(boundaries) == 1:
+                    first_leaf = cwv_puct.leaf_copy(rnd)
+            if rnd.phase == "play":
+                action = reply.decide_play(rnd, rnd.turn)
+        outcomes[lead] = boundaries, rnd.attacker_points
+        # Exercise the tree's real continuation consumer on the same leaf.
+        bot = _bot(_StubEvaluator(lambda p, s: 0), CWV_LEAF="playout",
+                   EXACT_ENDGAME=False)
+        leaf_hands = copy.deepcopy(first_leaf.hands)
+        value, exact = bot._playout(first_leaf, 0, None)
+        assert not exact
+        assert value == cwv_puct.playout_level(rnd.attacker_points, False)
+        assert first_leaf.hands == leaf_hands and len(first_leaf.history) == 1
+
+    draw, draw_final = outcomes[("SA",)]
+    cash, cash_final = outcomes[("HA", "HA")]
+    assert draw[0][0] == cash[0][0] == 0
+    assert draw[0][2][3].count("S10") == 1
+    assert cash[0][2][3].count("S10") == 2
+    assert (draw[1][0], draw[1][1]) == (0, 0)
+    assert (cash[1][0], cash[1][1]) == (50, 3)
+    assert (draw_final, cash_final) == (20, 55)
+
+
 def test_actions_illegal_in_the_current_world_are_never_selected(monkeypatch):
     rnd = _contested_state()
     seat = rnd.turn

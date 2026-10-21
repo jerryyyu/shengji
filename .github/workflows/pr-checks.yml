@@ -292,7 +292,7 @@ jobs:
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
           SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
           SHENGJI_PV_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/s17long-e2-763b5e05.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_release46_fly_config.py
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_release46_fly_config.py tests/test_pv_latency_switches_release46.py
 
   import-walk:
     needs: changes
@@ -412,6 +412,9 @@ jobs:
             tests/test_pv_doomed_throw_reselect_exact_guard.py \
             tests/test_pv_leaf_greedy_finish.py \
             tests/test_pv_leaf_greedy_finish_exact_skip.py \
+            tests/test_pv_encode_prefix.py \
+            tests/test_pv_single_candidate_fast.py \
+            tests/test_pv_exact_world_subset.py \
             tests/test_pv_value_declare.py \
             tests/test_pv_declare_first_round.py \
             tests/test_pv_declare_served_bury.py \

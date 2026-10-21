@@ -365,6 +365,35 @@ it enters the recipe digest with ``leaf_finish_exact_rule``
 gains ``leaf_greedy_finish_exact_skipped`` (only with the flag on).  Off, it is
 absent from the payload, so every existing name and every decision are unchanged.
 
+Two latency switches, OFF BY DEFAULT, that change no decision and so enter no
+name, payload or digest (like ``SHENGJI_PV_BELIEF_LOG`` they are read from the
+serving environment where the bot is built; ``0`` or ``1`` only):
+``SHENGJI_PV_ENCODE_PREFIX_CACHE=1`` encodes the value pass's leaves and the
+prior's root rows on the decision root's shared history prefix with one batched
+validation (`pv_encode_prefix`; every tensor is the reference encoder's, byte
+for byte, and anything it does not cover takes the reference path), and
+``SHENGJI_PV_SINGLE_CANDIDATE_FAST=1`` skips the value pass when the admission
+returns one candidate and no exact lead stage would start on it (no consumer
+reads that value: the selection of one is index 0).  The worlds are still
+drawn, so the sampler stream is unchanged, and the selection rules and the
+doomed-throw finalization still run on them; the record then says
+``single_candidate_fast`` with ``value_means`` ``[None]`` and zero value
+batches and evaluations.  It does not apply with ``lgf`` or an overridden
+value pass.
+
+The exact stages' world subset, OFF BY DEFAULT and a search-policy change
+where it applies: ``SHENGJI_PV_EXACT_WORLD_SUBSET=<n>`` (an int in [1, 512];
+unset, empty or ``0`` is off) has the exact lead and exact follow stages solve
+the first ``n`` sampled worlds in draw order, equally weighted, when more than
+``n`` are drawn (every admitted candidate on the same subset); the value pass,
+the selection rules and the doomed-throw test still read every world, and an
+abandoned stage keeps the complete baseline as before.  With ``n`` at least
+``SHENGJI_PV_WORLDS`` it is the same search and absent from the payload and
+the name; narrower, it needs an exact stage (refused otherwise), enters the
+payload as ``exact_world_subset`` and adds ``-exs<n>`` after the exact follow
+tokens, and the stage records gain ``exact_lead_subset_worlds`` /
+``exact_follow_subset_worlds``.
+
 Optional declaration rule, OFF BY DEFAULT: ``SHENGJI_PV_VALUE_DECLARE=1`` --
 the trump declaration is chosen with the value head instead of the inherited
 heuristic count (`HeuristicBot.decide_declare`, unchanged and still computed
@@ -1043,6 +1072,33 @@ def belief_log_enabled(environ=None) -> bool:
     return raw == "1"
 
 
+#: the exact stages' world subset (module docstring): its env, name token and the
+#: pinned selection and weighting it enters the payload with
+EXACT_WORLD_SUBSET_ENV = "EXACT_WORLD_SUBSET"
+EXACT_WORLD_SUBSET_TOKEN = "exs"
+EXACT_WORLD_SUBSET_RULE = {"selection": "first-n-in-draw-order", "weights": "uniform",
+                           "other_rules": "every-world"}
+_EXACT_WORLD_SUBSET_REQUIRES = (
+    "exact_world_subset narrower than worlds needs an exact stage "
+    "(SHENGJI_PV_EXACT_WORLD_SUBSET below SHENGJI_PV_WORLDS needs "
+    "SHENGJI_PV_EXACT_LEAD_ENDGAME=1 or SHENGJI_PV_EXACT_FOLLOW=1)")
+#: the two latency switches (module docstring): ``0`` or ``1``, unset (or empty) is off
+LATENCY_SWITCH_ENV = {"encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
+                      "single_candidate_fast": "SHENGJI_PV_SINGLE_CANDIDATE_FAST"}
+
+
+def latency_switches(environ=None) -> dict[str, bool]:
+    """Each latency switch as a bool; anything but ``0``/``1``/unset refuses."""
+    env = os.environ if environ is None else environ
+    out = {}
+    for attr, name in LATENCY_SWITCH_ENV.items():
+        raw = env.get(name)
+        if raw not in (None, "", "0", "1"):
+            raise PVSearchPolicyError(f"{name} must be 0 or 1, not {raw!r}")
+        out[attr] = raw == "1"
+    return out
+
+
 _DOOMED_THROW_EXCLUSIVE = ("doomed_throw_swap and doomed_throw_reselect are exclusive "
                            "(SHENGJI_PV_DOOMED_THROW_SWAP=1 with SHENGJI_PV_DOOMED_THROW_RESELECT=1)")
 #: the fallback record's ``error_message`` is the exception text cut to this
@@ -1181,6 +1237,9 @@ class PVSearchConfig:
     # `pv_exact_follow.SOLVERS`) and hand-card bound
     exact_follow_solver: str = "reference"
     exact_follow_max_cards: int = 4
+    # the exact stages' world subset (module docstring): 0 = every world; a
+    # subset at least ``worlds`` wide is the same search and ABSENT from the payload
+    exact_world_subset: int = 0
     # the optional selection rule replacing the swap (exclusive with it); the same contract
     doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"]
     # its exact-stage guard (requires it and ``exact_lead_endgame``); the same contract
@@ -1296,6 +1355,20 @@ def _check_exact_follow_params(config: PVSearchConfig) -> None:
         raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")
 
 
+def _check_exact_world_subset(config) -> int:
+    """The subset width the exact stages use, 0 when every world is used (off,
+    or a subset at least ``worlds`` wide); refuses a malformed width and an
+    active subset without an exact stage."""
+    n = config.exact_world_subset
+    if isinstance(n, bool) or type(n) is not int or not 0 <= n <= 512:
+        raise PVSearchPolicyError("exact_world_subset must be an int in [0, 512]")
+    if not n or n >= config.worlds:
+        return 0
+    if not (config.exact_lead_endgame or config.exact_follow):
+        raise PVSearchPolicyError(_EXACT_WORLD_SUBSET_REQUIRES)
+    return n
+
+
 def recipe_payload(config: PVSearchConfig) -> dict:
     """The digested recipe: every field, except that an optional rule that is
     OFF is omitted (the payload of the pre-rule recipe, byte for byte) and a
@@ -1308,6 +1381,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload.pop("exact_follow_max_nodes", None)
         payload.pop("exact_follow_solver", None)
         payload.pop("exact_follow_max_cards", None)
+    del payload["exact_world_subset"]
+    subset = _check_exact_world_subset(config)
+    if subset:
+        payload["exact_world_subset"] = {"worlds": subset, **EXACT_WORLD_SUBSET_RULE}
     if config.tree is None:
         del payload["tree"]
     elif not isinstance(config.tree, PVTreeConfig):
@@ -1503,6 +1580,9 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
         rules += f"-xf{config.exact_follow_max_cards}"
         if config.exact_follow_solver != "reference":
             rules += f"-xf{config.exact_follow_solver.replace('-', '')}"
+    subset = _check_exact_world_subset(config)
+    if subset:
+        rules += f"-{EXACT_WORLD_SUBSET_TOKEN}{subset}"
     rules += tree_token(config.tree)   # "" while the tree is off
     return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
             f"-r{recipe_digest(config)}")
@@ -1643,6 +1723,13 @@ class PVSearchBot(PolicyValueBot):
     #: the belief proposal's log (module docstring), ON by default; it is read
     #: only while ``belief_worlds`` is on and enters no name or digest
     belief_log = BELIEF_LOG_DEFAULT
+    #: the two latency switches (module docstring), OFF by default; like the
+    #: belief log they enter no name or digest, and neither changes a decision.
+    #: Instance state of an ON bot only.
+    encode_prefix_cache = False
+    single_candidate_fast = False
+    #: the exact stages' world subset (module docstring): 0 = every world
+    exact_world_subset = 0
     #: the diagnostic oracle (module docstring) and its harness hook: a callable
     #: ``(rnd, seat) -> (hands, buried)`` bound ONLY by `bind_oracle_deal` (the
     #: screen harness); None = unbound, and an oracle bot then refuses to play
@@ -1774,6 +1861,10 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")
         self.exact_follow_solver = config.exact_follow_solver
         self.exact_follow_max_cards = config.exact_follow_max_cards
+        subset = _check_exact_world_subset(config)
+        if subset:
+            # instance state only when active: an inactive bot's attributes are unchanged
+            self.exact_world_subset = subset
         if self.exact_follow and (config.tree is not None or config.adaptive_worlds
                                   or config.adaptive_worlds_leads):
             raise PVSearchPolicyError(
@@ -2567,9 +2658,14 @@ class PVSearchBot(PolicyValueBot):
         # lazy: policy_prior -> harvest.rebuild -> registry -> (env registration) -> this module
         # is a cycle when the rows extractor is imported first with SHENGJI_PV_* set
         from .policy_prior import CARD_INDEX, N_CARDS, flat_input, root_tensors
-        x = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat, self.version),
-                                 self.version)
-                      for hands, buried in worlds]).astype(np.float32)
+        if self.encode_prefix_cache:
+            # the same rows, the public block encoded once (`pv_encode_prefix`)
+            from .pv_encode_prefix import prior_rows
+            x = prior_rows(rnd, seat, worlds, self.version)
+        else:
+            x = np.stack([flat_input(root_tensors(root_clone(rnd, hands, buried), seat,
+                                                  self.version), self.version)
+                          for hands, buried in worlds]).astype(np.float32)
         logits = np.asarray(self.predict(x), dtype=np.float64)
         if logits.shape != (len(worlds), N_CARDS) or not np.isfinite(logits).all():
             raise ValueError("policy requires finite W x 54 log-odds")
@@ -2706,6 +2802,11 @@ class PVSearchBot(PolicyValueBot):
         pending, indices = [], []
         cells = [] if capture is not None else None
         batches = 0
+        prefix = None
+        if self.encode_prefix_cache:
+            # the same tensors, the root's history traversed once (`pv_encode_prefix`)
+            from .pv_encode_prefix import HistoryPrefix, score_leaves
+            prefix = HistoryPrefix.of(rnd)
 
         def flush():
             nonlocal batches
@@ -2713,7 +2814,11 @@ class PVSearchBot(PolicyValueBot):
                 return
             if check_budget is not None:
                 check_budget()
-            scores = np.asarray(self.evaluator.score(pending, seat), dtype=np.float64)
+            if prefix is None:
+                scores = self.evaluator.score(pending, seat)
+            else:
+                scores = score_leaves(self.evaluator, pending, seat, prefix)
+            scores = np.asarray(scores, dtype=np.float64)
             if scores.shape != (len(pending),) or not np.isfinite(scores).all():
                 raise ValueError("value evaluator requires one finite root-team score per leaf")
             np.add.at(sums, indices, scores)
@@ -2862,6 +2967,7 @@ class PVSearchBot(PolicyValueBot):
             self._leaf_greedy = None      # no leaf of an earlier decision is ever reused
         if self.leaf_greedy_finish_exact_skip:
             self._leaf_greedy_exact_skipped = False
+        single_fast = False
         legal = self._legal(rnd, seat, [anchor])
         actions = list(legal.actions)
         worlds, attempts = self._worlds(rnd, seat, check_budget)
@@ -2910,8 +3016,16 @@ class PVSearchBot(PolicyValueBot):
                 rnd, seat, admitted, worlds, started, check_budget,
                 [float(preferences[i]) for i in chosen])
         else:
-            means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
-            evaluations = len(worlds) * len(admitted)
+            single_fast = self._single_candidate_fast(rnd, admitted)
+            if single_fast:
+                # one admitted candidate: no consumer reads its value (the
+                # selection of one is index 0 and no exact stage starts), so
+                # the pass is skipped; the worlds, the sampler stream and the
+                # finalization below are unchanged
+                means, batches, evaluations = np.zeros(1, dtype=np.float64), 0, 0
+            else:
+                means, batches = self._value_means(rnd, seat, admitted, worlds, check_budget)
+                evaluations = len(worlds) * len(admitted)
             if check_budget is not None:
                 check_budget()   # pre-success: nothing past the deadline is published
             # the optional tie-break rebuilds leaves under the same deadline and, on
@@ -2942,11 +3056,12 @@ class PVSearchBot(PolicyValueBot):
                 clock=time.perf_counter, soft_error=PVSearchBudgetExceeded,
                 final_check=check_budget)
             exact = None
+            solved = self._exact_worlds(worlds)
             with stage:
                 if stage.guard is not None:
                     stage.guard()
                 exact = rerank_follow(
-                    rnd, seat, admitted, worlds, baseline_index=winner,
+                    rnd, seat, admitted, solved, baseline_index=winner,
                     max_nodes=self.exact_follow_max_nodes,
                     max_hand_cards=self.exact_follow_max_cards,
                     solver=self.exact_follow_solver,
@@ -2976,6 +3091,8 @@ class PVSearchBot(PolicyValueBot):
                     "exact_follow_nodes": exact.nodes,
                     "exact_follow_scores": list(exact.scores),
                 }
+            if solved is not worlds:
+                exact_follow_record["exact_follow_subset_worlds"] = len(solved)
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),
@@ -3008,7 +3125,30 @@ class PVSearchBot(PolicyValueBot):
             **(self._exact_lead if self.exact_lead_endgame else {}),
             **({} if exact_follow_record is None else exact_follow_record),
         }
+        if single_fast:
+            # nothing priced the one candidate: its value is unknown, not zero
+            self.last_decision_record.update(value_means=[None], single_candidate_fast=True)
         return list(played)
+
+    def _single_candidate_fast(self, rnd, admitted):
+        """``single_candidate_fast`` applies: on, one admitted candidate, the
+        served value pass (no subclass override, no greedy leaf whose record the
+        pass fills) and no exact lead stage that would start on it."""
+        return bool(self.single_candidate_fast and len(admitted) == 1
+                    and not self.leaf_greedy_finish
+                    and type(self)._value_means is PVSearchBot._value_means
+                    and type(self)._score_leaves is PVSearchBot._score_leaves
+                    and not (self.exact_lead_endgame
+                             and self._exact_lead_gate(rnd, admitted) is None))
+
+    def _exact_worlds(self, worlds):
+        """The worlds an exact stage solves: ``worlds`` itself, or with
+        ``exact_world_subset`` narrower than them its first ``exact_world_subset``
+        in draw order, equally weighted (module docstring)."""
+        n = self.exact_world_subset
+        if not n or len(worlds) <= n:
+            return worlds
+        return list(worlds[:n])
 
     def _exact_follow_eligible(self, rnd, admitted):
         """The exact follow stage's gate: on, a follow with more than one
@@ -3070,17 +3210,22 @@ class PVSearchBot(PolicyValueBot):
                 seed=f'elp|{self.seed}|{len(rnd.history)}|{seat}',
                 view_worlds=EXACT_LEAD_POLICY_LIMITS['view_worlds'])
         kept_index = None
+        # the solved worlds: every world, or the pinned subset (a prefix, so a
+        # world keeps its index); the selection rules below read every world
+        solved = self._exact_worlds(worlds)
+        if solved is not worlds:
+            state['exact_lead_subset_worlds'] = len(solved)
         with stage:
             leaf_fn = (self._leaf if policy_first is None
-                       else policy_first.leaf_fn(rnd, seat, admitted, worlds))
+                       else policy_first.leaf_fn(rnd, seat, admitted, solved))
             if deep:
                 # the deeper rule (module docstring)
                 from .pv_exact_deep import exact_root_means
                 means, stats = exact_root_means(
-                    rnd, seat, admitted, worlds, leaf_fn, stage.guard, max_hand_cards=max_cards,
+                    rnd, seat, admitted, solved, leaf_fn, stage.guard, max_hand_cards=max_cards,
                     max_nodes=self.exact_deep_max_nodes)
             else:
-                means, stats = exact_lead_means(rnd, seat, admitted, worlds, leaf_fn, stage.guard,
+                means, stats = exact_lead_means(rnd, seat, admitted, solved, leaf_fn, stage.guard,
                                                max_nodes=EXACT_LEAD_LIMITS['max_nodes'])
             stage.guard()
             # ``exact=True``: the doomed-throw re-select's exact-stage guard
@@ -3581,6 +3726,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_follow_max_nodes: int = 250_000,
                        exact_follow_solver: str = "reference",
                        exact_follow_max_cards: int = 4,
+                       exact_world_subset: int = 0,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                        leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
@@ -3657,6 +3803,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_follow_max_nodes=exact_follow_max_nodes,
                             exact_follow_solver=exact_follow_solver,
                             exact_follow_max_cards=exact_follow_max_cards,
+                            exact_world_subset=exact_world_subset,
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             leaf_greedy_finish=leaf_greedy_finish,
@@ -3733,6 +3880,11 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
         # environment: an instance attribute only when it differs from the default
         if belief_log_enabled() != BELIEF_LOG_DEFAULT:
             bot.belief_log = not BELIEF_LOG_DEFAULT
+    # the latency switches, read from the serving environment where the bot is
+    # built: instance attributes only when on
+    for attr, on in latency_switches().items():
+        if on:
+            setattr(bot, attr, True)
     if oracle_deal is not None:
         bot.bind_oracle_deal(oracle_deal)
     if name is not None:
@@ -3778,6 +3930,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_follow_max_nodes: int = 250_000,
                         exact_follow_solver: str = "reference",
                         exact_follow_max_cards: int = 4,
+                        exact_world_subset: int = 0,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                         leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
@@ -3835,6 +3988,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_follow_max_nodes=exact_follow_max_nodes,
                             exact_follow_solver=exact_follow_solver,
                             exact_follow_max_cards=exact_follow_max_cards,
+                            exact_world_subset=exact_world_subset,
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             leaf_greedy_finish=leaf_greedy_finish,
@@ -3949,6 +4103,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_follow_max_nodes=config.exact_follow_max_nodes,
                                exact_follow_solver=config.exact_follow_solver,
                                exact_follow_max_cards=config.exact_follow_max_cards,
+                               exact_world_subset=config.exact_world_subset,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard,
                                leaf_greedy_finish=config.leaf_greedy_finish,
@@ -4048,6 +4203,8 @@ def pv_env_recipe(environ=None) -> dict:
     # the belief log flag is no part of the recipe (no name or digest reads it);
     # a malformed value still refuses here, before any bot is built
     belief_log_enabled(env)
+    # nor are the latency switches; the same early refusal
+    latency_switches(env)
     for key in ("worlds", "candidates", "cap", "batch_size", "seed"):
         raw = env.get(ENV_PREFIX + key.upper())
         if raw not in (None, ""):
@@ -4110,6 +4267,14 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix}={raw!r}: {exc}") from None
         if value:
             recipe[key] = value
+    # the exact stages' world subset: unset, empty or 0 is off
+    raw = env.get(ENV_PREFIX + EXACT_WORLD_SUBSET_ENV)
+    if raw not in (None, "", "0"):
+        try:
+            recipe["exact_world_subset"] = int(raw)
+        except ValueError:
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{EXACT_WORLD_SUBSET_ENV} is not an int: {raw!r}") from None
     # the deeper exact rule's parameter: unset, empty or 0 is off
     for suffix, key in EXACT_DEEP_PARAM.items():
         raw = env.get(ENV_PREFIX + suffix)

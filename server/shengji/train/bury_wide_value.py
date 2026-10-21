@@ -61,6 +61,13 @@ fresh common worlds with deeper policy-played positions and may replace the
 argmax; its record key is ``two_stage``.  Off (``bury_two_stage`` None, the
 class default) the chooser is the code above, byte for byte.
 
+Optional kitty charge (``SHENGJI_PV_BURY_KITTY_CHARGE=1``, ``bury_kitty_charge``;
+only with the chooser on, exclusive with the second stage; bury-name token
+``bkc`` after ``bwv``/``bwv2``): the argmax is taken over the value means less
+each candidate kitty's expected bonus (`bury_kitty_charge.charged_choice`); its
+record key is ``kitty_charge``.  Off (``bury_kitty_charge`` False, the class
+default) the chooser is the code above, byte for byte.
+
 Off (the default) nothing here is called by a decision: the bot's
 `_decide_bury` is the mixin's, every name, digest and record are unchanged.
 """
@@ -76,6 +83,7 @@ import numpy as np
 
 from ..ai.registry import make_bot
 from ..engine.cards import TRUMP, points
+from .bury_kitty_charge import RECORD_KEY as KITTY_CHARGE_RECORD_KEY, charged_choice
 from .bury_two_stage import RECORD_KEY as TWO_STAGE_RECORD_KEY, run_stage_two
 from .cwv_bury import score_bury_candidates
 from .cwv_bury_policy import BuryPolicyError, _seed, _worlds
@@ -291,7 +299,11 @@ def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
     if not np.isfinite(values).all():
         raise BuryPolicyError("model bury values must be finite")
     means = np.mean(values, axis=0)
-    picked = min(range(len(candidates)), key=lambda i: (-float(means[i]), i))
+    kitty_charge = None
+    if bot.bury_kitty_charge:
+        picked, kitty_charge = charged_choice(candidates, means)
+    else:
+        picked = min(range(len(candidates)), key=lambda i: (-float(means[i]), i))
     model_counter_after = bot._counter(model_bot)
     if check_budget is not None:
         check_budget()
@@ -343,6 +355,8 @@ def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
             **counts,
         },
     }
+    if kitty_charge is not None:
+        bot.last_bury_record[KITTY_CHARGE_RECORD_KEY] = kitty_charge
     if two_stage is not None:
         # ``model_seconds`` stays stage 1's; ``wide_value.seconds`` and
         # ``elapsed_seconds`` include stage 2

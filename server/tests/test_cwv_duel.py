@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import os
@@ -530,7 +531,7 @@ def test_pv_health_reaches_persisted_mixed_rank_mirrors(duel, monkeypatch, tmp_p
             elif self.calls == 2:
                 self.last_decision_record = {
                     'schema': 'pv-search-decision-v1', 'work_complete': True,
-                    'lead_alias_refill_abandoned': True,
+                    'lead_alias_refill_abandoned': 'soft_budget',
                 }
             else:
                 self.last_decision_record = {
@@ -563,6 +564,60 @@ def test_pv_health_reaches_persisted_mixed_rank_mirrors(duel, monkeypatch, tmp_p
         }
         assert row['opp_play_health'] == {'decisions': 8, 'non_pv_record': 8}
         assert row['arm_play_decisions'] == row['arm_play_health']['decisions']
+
+
+@pytest.mark.parametrize('expiry', ['soft', 'hard'])
+def test_timed_policy_counts_actual_refill_abandonment(duel, monkeypatch, expiry):
+    """The persisted health counter accepts the producer's reason string."""
+    from shengji.train import lead_alias_refill as lar
+    from shengji.train.pv_search_policy import PVSearchBudgetExceeded
+    from test_pv_doomed_throw_swap import OTHER_C2_THROW, SEAT, THROW, oxps
+
+    rnd = oxps()
+    worlds = [(copy.deepcopy(rnd.hands), list(rnd.buried))]
+    monkeypatch.setattr(lar, 'MAX_SECONDS', -1 if expiry == 'soft' else 10)
+
+    def check_budget():
+        if expiry == 'hard':
+            raise PVSearchBudgetExceeded('injected')
+
+    _, refill_record = lar.refill_indices(
+        rnd, SEAT, [THROW, OTHER_C2_THROW], [3., 2.], [0, 1], worlds,
+        check_budget)
+    assert refill_record['lead_alias_refill_abandoned'] == f'{expiry}_budget'
+
+    class Bot:
+        last_decision_record = {
+            'schema': 'pv-search-decision-v1', 'work_complete': True,
+            **refill_record,
+        }
+
+        def decide_play(self, _rnd, _seat):
+            return ['C2']
+
+    timer = duel.TimedPolicy(Bot())
+    timer.decide_play(None, SEAT)
+    assert timer.play_health == {
+        'decisions': 1, 'pv_complete': 1,
+        'lead_alias_refill_abandoned': 1,
+        'lead_alias_refill_applied': 0,
+        'lead_alias_refill_replacements': 0,
+    }
+
+    # Carry the real producer record through the S52 reader's quality gate:
+    # an abandonment is a measured health failure, not a fabricated boolean.
+    adapter = _load_script('pv_dev_duel')
+    expected = dict(schema='pv-dev-duel-v1', candidate='T', control='C',
+                    seed0=100, cluster0=0, pairs=2, ranks=['2'])
+    rows = [dict(seed=seed, flip=flip, trump_rank='2', policy='T',
+                 opponent='C', label='candidate', winner_team=flip, won=1,
+                 level_change=1, level_utility=1, arm_play_decisions=1,
+                 opp_play_decisions=1, arm_play_health=dict(timer.play_health),
+                 opp_play_health=dict(decisions=1, pv_complete=1))
+            for seed in (100, 101) for flip in (0, 1)]
+    summary = adapter._summarize(rows, expected)
+    assert summary['verdict'] == 'QUALITY_FAIL'
+    assert summary['quality_issues'] == ['arm:lead_alias_refill_abandoned=4']
 
 
 @pytest.mark.parametrize('rank', [None, 'A'])

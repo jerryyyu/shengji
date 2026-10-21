@@ -354,7 +354,12 @@ class TimedPolicy:
             self.play_health["pv_complete" if record.get("work_complete") else "pv_incomplete"] += 1
             for key in ("lead_alias_refill_applied", "lead_alias_refill_abandoned",
                         "lead_alias_refill_replacements"):
-                self.play_health[key] += int(record.get(key, 0))
+                value = record.get(key, 0)
+                # Abandonment carries a reason string; replacements carry a
+                # numeric count.
+                self.play_health[key] += (int(bool(value)) if key !=
+                                          "lead_alias_refill_replacements"
+                                          else int(value))
         elif isinstance(record, dict) and record.get("schema") == "pv-search-fallback-v1":
             self.play_health["pv_fallback"] += 1
             reason = record.get("reason")

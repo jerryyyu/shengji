@@ -365,7 +365,8 @@ def _start_contained_process(command, *, cwd, env, log, python):
         os.close(read_fd)
 
 
-def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.executable):
+def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.executable,
+              total=40):
     start = time.monotonic()
     child, watchdog_fd = _start_contained_process(
         command, cwd=cwd, env=env, log=log, python=python)
@@ -381,7 +382,7 @@ def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.exe
             except subprocess.TimeoutExpired:
                 completed = len(list(output.glob("mirror-*.json"))) if output.exists() else 0
                 print(json.dumps({"event": "row-live", "row": row, "pid": child.pid,
-                                  "completed_attempts": completed, "total": 40,
+                                  "completed_attempts": completed, "total": total,
                                   "elapsed_seconds": time.monotonic() - start}), flush=True)
     finally:
         try:
@@ -401,6 +402,56 @@ def supervise(command, *, cwd, env, log, row, output, wall=43200, python=sys.exe
     return {"row": row, "pid": child.pid, "returncode": child.returncode,
             "status": "deadline" if timed_out else "exited",
             "elapsed_seconds": time.monotonic() - start}
+
+
+def supervise_pt(command, *, config_path, expected_sha256, cwd, env, output,
+                 wall, python=sys.executable):
+    """Run one admitted PT cell and bind its exit to the separate reader.
+
+    The caller owns command/source review, host admission and RELEASE. There
+    is no CLI, retry or automatic scoring. Result bytes are hashed, not parsed.
+    """
+    config_path, output = Path(config_path), Path(output)
+    stamp(config_path)
+    raw = config_path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise ValueError('PT pre-run config hash mismatch')
+    config = json.loads(raw)
+    if type(config) is not dict:
+        raise ValueError('PT config must be an object')
+    recipe = config.get('baseline_recipe', {})
+    seeds = config.get('seeds')
+    if (config.get('information') != ['perfect'] or config.get('run') is not True
+            or type(recipe) is not dict
+            or recipe.get('benchmark_id') != 'release46-pv'
+            or recipe.get('policy') != 'release46-pv'
+            or recipe.get('play_only') is not True
+            or type(seeds) is not list or len(seeds) != 10
+            or any(type(seed) is not int or seed < 0 for seed in seeds)
+            or len(set(seeds)) != 10):
+        raise ValueError('PT requires the ten-deal release46 perfect-information cell')
+    if type(wall) not in (int, float) or not 0 < wall < float('inf'):
+        raise ValueError('finite positive PT wall bound required')
+    output.mkdir(parents=True, exist_ok=False)
+    terminal = dict(schema='release46-pt-sol-terminal-v1', row='release46-pv',
+                    config_sha256=expected_sha256, status='failed', returncode=None)
+    try:
+        with (output / 'worker.log').open('x') as log:
+            terminal.update(supervise(command, cwd=cwd, env=env, log=log,
+                row='release46-pv', output=output, wall=wall, python=python, total=20))
+        if config_path.read_bytes() != raw:
+            raise ValueError('PT pre-run config changed during execution')
+        if terminal['status'] == 'exited' and terminal['returncode'] == 0:
+            result = output / 'result.json'
+            stamp(result)
+            terminal['result'] = dict(path=str(result.resolve()),
+                                     sha256=hashlib.sha256(result.read_bytes()).hexdigest())
+    except BaseException as exc:
+        terminal.update(status='failed', error_type=type(exc).__name__, error=str(exc))
+        raise
+    finally:
+        publish(output / 'terminal.json', terminal)
+    return terminal
 
 
 def run(config_path, expected, *, arm=False):

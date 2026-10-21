@@ -119,7 +119,7 @@ Release 46 with two changes, screened together as **v98combo**. Draft PR; nothin
 
 | field | value |
 |---|---|
-| status | PENDING: v98comboc confirmation, v99lat latency/memory check, merged-tree smoke, Jerry's word |
+| status | strength and latency gates passed; PENDING: package upload, merged-tree smoke, Jerry's word |
 | board row | R47 on #1075 (release bar predeclared 2026-10-20T15:45Z, before the v98combo read) |
 | comparator | release 46 as served |
 
@@ -153,8 +153,8 @@ turn through the server path. It also builds the release-46 rollback on S17's pa
 | read | result [95% CI] (levels/round, paired, 10 windows) | status | pointer |
 |---|---|---|---|
 | v98combo: the release-47 candidate vs release 46 as served | **+0.0232 [+0.0005, +0.0459]** (MDE80 0.0324) | POSITIVE | [#1075 issuecomment-6300257249](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6300257249) |
-| v98comboc: fresh-seed confirmation | — | PENDING | R47 |
-| v99lat: latency and memory vs release 46, v93lat's form | — | PENDING | R47 |
+| v98comboc: fresh-seed confirmation | **+0.0275 [+0.0095, +0.0455]** | POSITIVE | [#1075 issuecomment-6306223030](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6306223030) |
+| v99lat: latency and memory vs release 46, v93lat's form | play p95 0.189 s vs 0.183 s; peak +22 MiB; 0 fallbacks | QUALIFIED | [#1075 issuecomment-6301371025](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6301371025) |
 
 - v98combo's predeclared descriptive splits: trump rank ≠ 2 +0.0419 [+0.0079, +0.0760]; rank 2 −0.0121
   [−0.0475, +0.0232]. The strata differ in round kind and rank together, so no split identifies a rank effect.
@@ -169,8 +169,8 @@ turn through the server path. It also builds the release-46 rollback on S17's pa
     [−0.0008, +0.0424] INCONCLUSIVE ([6287342114](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6287342114));
   - dtrx alone: v97dtrx +0.0064 [+0.0023, +0.0105]
     ([6293426490](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6293426490)).
-- The effect is near the screen's resolution and below the board's +0.05 goal. The release bar on R47 requires
-  v98comboc's own lower bound above zero.
+- The effect is near the screen's resolution and below the board's +0.05 goal. v98comboc, on fresh seeds, has
+  its own lower bound above zero, as R47's bar requires.
 
 ### Release note: what a player will notice
 
@@ -201,7 +201,7 @@ The Release checklist below, with these substitutions:
    Keep `s17long-e2-763b5e05.npz` on the volume; the rollback reads it.
 4. **Merged-tree full-round smoke** (checklist step 3) with `--map /data/models/s46-e2-36e2024e.npz=<local>` in
    place of the S17 map and `--receipt smoke47.jsonl`.
-5. **Evidence:** v98comboc with its own CI lower bound above zero; v99lat QUALIFIED.
+5. **Evidence (met):** v98comboc +0.0275 [+0.0095, +0.0455]; v99lat QUALIFIED.
 6. **Jerry's word, in session.**
 7. **Deploy** from a clean worktree at the merge commit at 0 rooms: `fly deploy --ha=false`.
 8. **After the deploy:** `/healthz` shows the name above. Run the in-machine line (checklist step 8) with

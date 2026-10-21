@@ -114,6 +114,34 @@ def test_failed_mirror_is_persisted_and_not_counted_as_a_loss(tmp_path):
                for row in failed)
 
 
+@pytest.mark.parametrize("fails", [False, True])
+def test_budget_charges_every_new_transport_receipt_even_on_failure(fails):
+    class Provider:
+        calls = [{"usage": {"input_tokens": 100}}]
+
+        def __call__(self, packet):
+            self.calls.extend([
+                {"usage": {"input_tokens": 4, "output_tokens": 1}},
+                {"usage": {"input_tokens": 2, "output_tokens": 3}},
+            ])
+            if fails:
+                raise RuntimeError("transport failed after recording usage")
+            return packet
+
+    budget = benchmark._Budget(wall_seconds=60, token_limit=10)
+    provider = Provider()
+    planner = benchmark._BudgetedPlanner(provider, budget)
+    if fails:
+        with pytest.raises(RuntimeError, match="transport failed"):
+            planner({})
+    else:
+        assert planner({}) == {}
+    assert budget.tokens == 10
+    with pytest.raises(benchmark.BudgetStop, match="soft token threshold"):
+        planner({})
+    assert len(provider.calls) == 3
+
+
 def test_soft_token_budget_stops_new_mirrors_after_one_provider_call(tmp_path):
     output, config = wiring(tmp_path, seeds=[7, 11], token_limit=5, run=True)
     calls = []

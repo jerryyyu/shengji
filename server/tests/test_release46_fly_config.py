@@ -1,10 +1,12 @@
-"""Release 46: the shipping ``fly.toml`` serves the combo screened as v92combo45.
+"""Release 46, now the rollback of release 47: the combo screened as v92combo45.
 
 The combo is release 45 plus history-legal, belief-proposed play worlds (``-whl
 -whd -bw``, the S17 belief package), the exact endgame search at 7 cards (``-ele
 -ed7 -xf7 -xfcompactlevel``) and the value-guided declaration at every
-first-round chance (``-vdef``).  The served bot is built from the repo's
-``fly.toml`` environment exactly as the server builds it (``pv_env_recipe`` ->
+first-round chance (``-vdef``).  Release 47 changes the belief pair and adds the
+dtrx line, so release 46's env is the repo's ``fly.toml`` environment with that
+change undone (``release46_env``, the documented rollback).  The bot is built
+from it exactly as the server builds it (``pv_env_recipe`` ->
 ``pv_registry_entries`` -> the factory) on the hash-pinned production and belief
 packages, so the registry name, every combo knob, the bound belief model and the
 compact solver's backend are witnessed on this tree, and one served play goes
@@ -46,14 +48,26 @@ V92_CANDIDATE_ENV = {"SHENGJI_PV_WORLD_HISTORY_LEGAL": "1",
                      "SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS": "7",
                      "SHENGJI_PV_EXACT_FOLLOW_MAX_NODES": "50000000",
                      "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST": "1"}
-COMBO_KEYS = tuple(V92_CANDIDATE_ENV)
+DTRX_FLAG = "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD"
+#: every line production's env carries above release 45: release 46's twelve and
+#: release 47's dtrx line (release 47 changed the belief pair's values, not its keys)
+COMBO_KEYS = tuple(V92_CANDIDATE_ENV) + (DTRX_FLAG,)
 
 
 def without_combo(env: dict) -> dict:
-    """``env`` without the twelve release-46 lines: release 45's env when ``env`` is
-    production's (the documented rollback)."""
+    """``env`` without the lines above release 45: release 45's env when ``env`` is
+    production's or release 46's (the documented rollbacks)."""
     return {k: v for k, v in env.items() if k not in COMBO_KEYS}
-BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
+
+
+def release46_env(env: dict) -> dict:
+    """Production's env with release 47's rollback applied: the dtrx line removed,
+    the S17 belief pair and the release-46 name restored."""
+    env = {k: v for k, v in env.items() if k != DTRX_FLAG}
+    env.update(SHENGJI_PV_BELIEF_CKPT=BELIEF_VOLUME_PATH, SHENGJI_PV_BELIEF_SHA256=BELIEF_SHA,
+               SHENGJI_BOT=RELEASE46)
+    return env
+BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF46_PACKAGE_PATH")
 
 
 def fly_env() -> dict:
@@ -61,14 +75,14 @@ def fly_env() -> dict:
 
 
 @pytest.fixture(scope="module")
-def pinned_belief_package(pinned_production_package):
-    """The hash-pinned S17 belief package named by ``SHENGJI_PV_BELIEF_PACKAGE_PATH``
+def pinned_release46_belief_package(pinned_production_package):
+    """The hash-pinned S17 belief package named by ``SHENGJI_PV_BELIEF46_PACKAGE_PATH``
     (CI fetches it from the ``serving-packages`` release); missing FAILS under
     ``SHENGJI_REQUIRE_PV_PACKAGE=1``, like the production package."""
     if not BELIEF_PACKAGE:
         if REQUIRE_PACKAGE:
-            pytest.fail("SHENGJI_REQUIRE_PV_PACKAGE=1 but SHENGJI_PV_BELIEF_PACKAGE_PATH is unset")
-        pytest.skip("set SHENGJI_PV_BELIEF_PACKAGE_PATH (and SHENGJI_REQUIRE_PV_PACKAGE=1 in CI)")
+            pytest.fail("SHENGJI_REQUIRE_PV_PACKAGE=1 but SHENGJI_PV_BELIEF46_PACKAGE_PATH is unset")
+        pytest.skip("set SHENGJI_PV_BELIEF46_PACKAGE_PATH (and SHENGJI_REQUIRE_PV_PACKAGE=1 in CI)")
     path = Path(BELIEF_PACKAGE)
     if not path.exists():
         pytest.fail(f"pinned belief package is missing: {path}")
@@ -80,7 +94,7 @@ def pinned_belief_package(pinned_production_package):
 def served_entries(path, belief_path):
     from shengji.train import pv_search_policy as pv
 
-    env = fly_env()
+    env = release46_env(fly_env())
     recipe = pv.pv_env_recipe({**env, "SHENGJI_PV_CKPT": str(path),
                                "SHENGJI_PV_SHA256": PACKAGE_SHA,
                                "SHENGJI_PV_BELIEF_CKPT": str(belief_path)})
@@ -89,9 +103,9 @@ def served_entries(path, belief_path):
     return env, name, entries[name]
 
 
-def test_fly_toml_carries_the_v92_candidate_env():
-    env = fly_env()
-    assert {k: env[k] for k in COMBO_KEYS} == V92_CANDIDATE_ENV
+def test_release46_env_carries_the_v92_candidate_env():
+    env = release46_env(fly_env())
+    assert {k: env[k] for k in V92_CANDIDATE_ENV} == V92_CANDIDATE_ENV
     assert env["SHENGJI_BOT"] == RELEASE46
     # the belief log stays at its default (on); the screen did not set it either
     assert "SHENGJI_PV_BELIEF_LOG" not in env
@@ -109,12 +123,12 @@ def test_fly_toml_carries_the_v92_candidate_env():
     assert env["SHENGJI_PV_BELIEF_CKPT"] == BELIEF_VOLUME_PATH
 
 
-def test_served_bot_is_the_screened_combo_on_the_compiled_solver(pinned_production_package,
-                                                                  pinned_belief_package):
+def test_release46_bot_is_the_screened_combo_on_the_compiled_solver(pinned_production_package,
+                                                                  pinned_release46_belief_package):
     from shengji.ai.endgame_compact import CompactWorldSession, HAVE_FAST, default_backend
     from shengji.train.pv_search_policy import PVSearchBuryBot
 
-    env, name, factory = served_entries(pinned_production_package, pinned_belief_package)
+    env, name, factory = served_entries(pinned_production_package, pinned_release46_belief_package)
     assert name == env["SHENGJI_BOT"] == RELEASE46
     bot = factory(seed=17)
     assert isinstance(bot, PVSearchBuryBot) and bot.checkpoint_sha256 == PACKAGE_SHA
@@ -149,9 +163,9 @@ def test_served_bot_is_the_screened_combo_on_the_compiled_solver(pinned_producti
     assert session.backend == expected
 
 
-def test_served_play_takes_the_belief_proposal_through_the_server_path(
-        pinned_production_package, pinned_belief_package, tmp_path, monkeypatch):
-    """One play by the served bot through ``_paced_bot_step`` / ``_commit_bot_turn``:
+def test_release46_play_takes_the_belief_proposal_through_the_server_path(
+        pinned_production_package, pinned_release46_belief_package, tmp_path, monkeypatch):
+    """One play by the release-46 bot through ``_paced_bot_step`` / ``_commit_bot_turn``:
     the worlds are proposed by the real belief model with no fallback.
 
     The proposal's wall-clock preparation cap is lifted here so a slow or cold CI
@@ -164,7 +178,7 @@ def test_served_play_takes_the_belief_proposal_through_the_server_path(
     from shengji.train import pv_search_policy as pv
 
     monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
-    _, name, factory = served_entries(pinned_production_package, pinned_belief_package)
+    _, name, factory = served_entries(pinned_production_package, pinned_release46_belief_package)
     bot = factory(seed=7)
     rnd = _play_state()
     seat = rnd.turn
@@ -196,7 +210,7 @@ def test_served_play_takes_the_belief_proposal_through_the_server_path(
 def test_rollback_to_release45_is_the_env_without_the_twelve_combo_lines(pinned_production_package):
     from shengji.train import pv_search_policy as pv
 
-    env = without_combo(fly_env())
+    env = without_combo(release46_env(fly_env()))
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(
         {**env, "SHENGJI_PV_CKPT": str(pinned_production_package), "SHENGJI_PV_SHA256": PACKAGE_SHA}))
     name, = entries
@@ -208,7 +222,6 @@ def test_rollback_to_release45_is_the_env_without_the_twelve_combo_lines(pinned_
     assert (bot.worlds, bot.candidates, bot.bury_wide_value, bot.bury_wide_k) == (64, 8, True, 64)
 
 
-DTRX_FLAG = "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD"
 #: release 46 with the doomed-throw re-select's exact-stage guard on (token ``dtrx``
 #: after ``dtr``): a DEV arm, never the served name
 RELEASE46_DTRX = ("pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-ed7-xf7-"
@@ -216,13 +229,13 @@ RELEASE46_DTRX = ("pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtr
 
 
 def test_dtrx_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_package,
-                                                                pinned_belief_package):
+                                                                pinned_release46_belief_package):
     from shengji.train import pv_search_policy as pv
 
     def built(**extra):
-        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+        recipe = pv.pv_env_recipe({**release46_env(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
                                    "SHENGJI_PV_SHA256": PACKAGE_SHA,
-                                   "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
+                                   "SHENGJI_PV_BELIEF_CKPT": str(pinned_release46_belief_package), **extra})
         entries = pv.pv_registry_entries(**recipe)
         name, = entries
         return name, entries[name]

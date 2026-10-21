@@ -394,10 +394,10 @@ def test_cap_defaults_are_the_served_constants():
     assert not {'exact_lead_max_seconds', 'exact_deep_max_nodes'} & set(vars(policy))
 
 
-def test_release46_name_is_unchanged_at_the_default_caps(monkeypatch):
-    from test_release46_fly_config import RELEASE46
+def test_served_name_is_unchanged_at_the_default_caps(monkeypatch):
+    from test_release47_fly_config import RELEASE47
     for extra in ({}, {SECONDS: '', NODES: ''}, {SECONDS: '2.25', NODES: '50000000'}):
-        assert served_name(monkeypatch, **extra) == RELEASE46
+        assert served_name(monkeypatch, **extra) == RELEASE47
 
 
 def test_default_caps_leave_the_payload_byte_identical():
@@ -412,14 +412,14 @@ def test_default_caps_leave_the_payload_byte_identical():
 
 
 def test_lifted_caps_change_the_name_and_digest(monkeypatch):
-    from test_release46_fly_config import RELEASE46
+    from test_release47_fly_config import RELEASE47
     import re
-    base_digest, = re.findall(r'-r([0-9a-f]{8})-bury-', RELEASE46)
+    base_digest, = re.findall(r'-r([0-9a-f]{8})-bury-', RELEASE47)
     names = {}
     for extra in ({SECONDS: '600'}, {NODES: '1000000000'},
                   {SECONDS: '600', NODES: '1000000000'}, {SECONDS: '2.5'}):
         name = served_name(monkeypatch, **extra)
-        assert name != RELEASE46 and f'-r{base_digest}-' not in name
+        assert name != RELEASE47 and f'-r{base_digest}-' not in name
         names[tuple(sorted(extra.items()))] = name
     assert len(set(names.values())) == 4
     both = names[((NODES, '1000000000'), (SECONDS, '600'))]

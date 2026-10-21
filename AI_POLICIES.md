@@ -71,6 +71,7 @@ fixes. Row numbers are stable; other documents cite them.
 
 | row | rel. | change (token) | vs | result [95% CI] | status | reading | vs Sol, actor-only [95% CI] | vs PT-Sol [95% CI] | pointer |
 |---:|---:|---|---|---|---|---|---|---|---|
+| 16 | 47 | S46 r3 belief package (`36e2024e`, stored T) + doomed-throw exact guard (`dtrx`) | 46 | **+0.0232 [+0.0005, +0.0459]**; v98comboc **+0.0275 [+0.0095, +0.0455]** | POSITIVE; CONFIRMED (draft, not deployed) | Two changes at once, near screen resolution; dtrx raises public failed throws by about a third. | — | — | v98combo #1075 issuecomment-6300257249; v98comboc 6306223030 |
 | 15 | 46 | belief worlds (`whl whd bw`) + exact endgame D7/X7 (`ele ed7 xf7 xfcompactlevel`) + `vdef` | 45 | **+0.2167 [+0.1923, +0.2412]**; v92c **+0.2284 [+0.2046, +0.2521]** | POSITIVE, CONFIRMED | Three changes at once; the largest served gain. | **+0.55 [+0.25, +0.90]** S47 | — | v92combo45 #707 issuecomment-6216352632; v92c 6221702452 |
 | 14 | 45 | wide value-only bury, K=64 (`bwv`) | 44 | **+0.0488 [+0.0286, +0.0690]** | POSITIVE | One screen; width and chooser changed together. | — | — | v76bwv44 #707 issuecomment-6136852119 |
 | 13 | 44 | value-guided declaration (`vd`) | 43 | **+0.0497 [+0.0379, +0.0615]** first-round; **+0.0352 [+0.0233, +0.0471]** later-round | POSITIVE | First decision owned beyond card play; 20/20 windows positive. | — | — | v70vd43, v71vd43lr |

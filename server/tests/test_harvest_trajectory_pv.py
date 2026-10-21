@@ -99,8 +99,8 @@ def force_all_excluded_fallback(monkeypatch):
     seen = []                                   # per lead: (first selection's cards, the rule's record)
     original = PolicyValueBot._reselect_doomed_throw
 
-    def spy(self, rnd, seat, admitted, means, worlds, check_budget, priors, chosen):
-        out = original(self, rnd, seat, admitted, means, worlds, check_budget, priors, chosen)
+    def spy(self, rnd, seat, admitted, means, worlds, check_budget, priors, chosen, floor=None):
+        out = original(self, rnd, seat, admitted, means, worlds, check_budget, priors, chosen, floor=floor)
         if leading(rnd):
             seen.append((list(admitted[int(chosen)]), dict(self._doomed_throw)))
         return out

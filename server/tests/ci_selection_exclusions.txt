@@ -45,7 +45,6 @@ server/tests/test_harvest_pt1.py
 server/tests/test_harvest_report.py
 server/tests/test_harvest_room_log.py
 server/tests/test_harvest_schema.py
-server/tests/test_harvest_trajectory_pv.py
 server/tests/test_heuristic_follow_native.py
 server/tests/test_heuristic_lead_native.py
 server/tests/test_heuristic_lead_prefilter.py

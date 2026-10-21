@@ -17,8 +17,8 @@ import time
 import tomllib
 
 ROOT = Path(__file__).resolve().parent
-TREE = Path('/root/codex-s52dev-src-99661691')
-HEAD = '996616915d5a5d39833758d77964e37466e4ef41'
+TREE = Path('/root/codex-s52dev-src-01606729')
+HEAD = '01606729549bbb0b6ab89187a026edfac1b63276'
 HOST = 'ubuntu-32gb-hel1-2'
 OUT = ROOT / 'output'
 PV = Path('/root/models/smv3out-491ee4bf.npz')

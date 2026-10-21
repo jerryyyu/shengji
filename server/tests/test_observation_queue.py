@@ -215,6 +215,69 @@ def test_validate_rejects_arbitrary_done_suffixes(tmp_path: Path, suffix: str) -
         validate_queue_spec(spec)
 
 
+_MANIFEST = "ab" * 32
+_INTERIM_SUFFIX = (
+    "screen-a TWO-LOOK INTERIM END (predeclared two-look design: the five-seed interim read is "
+    f"this lane's result; seeds 6-10 not run); LANE ENDED AT INTERIM manifest={_MANIFEST}"
+)
+
+
+def _interim_ended(tmp_path: Path, extra: str = "") -> tuple[dict, dict[str, Path]]:
+    spec, paths = _queue_fixture(tmp_path)
+    spec["reservations"][0]["terminal_suffix"] = _INTERIM_SUFFIX
+    paths["screen-a.status"].write_text(
+        "2026-10-04T00:00:00Z started screen-a\n"
+        f"2026-10-04T00:00:01Z INTERIM SEALED seeds=1 2 3 4 5 manifest={_MANIFEST}; waiting\n"
+        f"{extra}"
+        f"2026-10-04T00:00:02Z INTERIM STOP {_MANIFEST}\n"
+        f"2026-10-04T00:00:03Z {_INTERIM_SUFFIX}\n"
+    )
+    return spec, paths
+
+
+def test_capture_accepts_a_two_look_lane_ended_at_the_interim(tmp_path: Path) -> None:
+    spec, _ = _interim_ended(tmp_path)
+
+    snapshot = capture_queue(spec, pid_alive=lambda _: False)
+
+    assert queue_unchanged(spec, snapshot) is True
+
+
+def test_capture_refuses_an_interim_end_after_an_abort(tmp_path: Path) -> None:
+    spec, _ = _interim_ended(
+        tmp_path, "2026-10-04T00:00:01Z ABORT: CMP-3 rc=1 sealed=no; no LANE DONE\n")
+
+    with pytest.raises(ValueError, match="refusal marker"):
+        capture_queue(spec, pid_alive=lambda _: False)
+
+
+def test_capture_refuses_an_interim_suffix_the_status_does_not_end_with(tmp_path: Path) -> None:
+    spec, _ = _interim_ended(tmp_path)
+    spec["reservations"][0]["terminal_suffix"] = _INTERIM_SUFFIX.replace(_MANIFEST, "cd" * 32)
+
+    with pytest.raises(ValueError, match="exactly one terminal line"):
+        capture_queue(spec, pid_alive=lambda _: False)
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        f"LANE ENDED AT INTERIM manifest={_MANIFEST}",
+        f"screen-b x; LANE ENDED AT INTERIM manifest={_MANIFEST}",
+        f"screen-a x; LANE ENDED AT INTERIM manifest={_MANIFEST[:-1]}",
+        f"screen-a x; LANE ENDED AT INTERIM manifest={_MANIFEST.upper()}",
+        f"screen-a x; LANE ENDED AT INTERIM manifest={_MANIFEST} trailing",
+        f"screen-a x; LANE STOPPED AT INTERIM manifest={_MANIFEST}",
+        f"screen-a x; LANE ENDED AT INTERIM manifest={_MANIFEST}\n",
+    ],
+)
+def test_validate_rejects_malformed_interim_suffixes(tmp_path: Path, suffix: str) -> None:
+    spec, _ = _queue_fixture(tmp_path)
+    spec["reservations"][0]["terminal_suffix"] = suffix
+    with pytest.raises(ValueError):
+        validate_queue_spec(spec)
+
+
 def test_guard_release_is_canonical_and_wrong_release_refused(tmp_path: Path) -> None:
     release = tmp_path / "RELEASE.json"
     write_exclusive_json(release, {"schema": "m9-release-v1", "ok": True})

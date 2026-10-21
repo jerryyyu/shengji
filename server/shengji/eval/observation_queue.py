@@ -45,6 +45,8 @@ _M9_COUNTS = {
 }
 _TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _RUNPVC_LANE = re.compile(r"^runPVC[1-9][0-9]*$")
+# A two-look screen lane that the interim decision ends: a sealed five-seed end, never a ten-seed LANE DONE.
+_INTERIM_END = r" .*; LANE ENDED AT INTERIM manifest=[0-9a-f]{64}"
 _LINE_BREAKS = "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"
 
 
@@ -101,6 +103,9 @@ def _valid_terminal_suffix(suffix: Any, lane: Any) -> bool:
         return False
     if suffix.endswith("LANE DONE"):
         return True
+    if (type(lane) is str and lane
+            and re.fullmatch(re.escape(lane) + _INTERIM_END, suffix) is not None):
+        return True
     return (type(lane) is str and _RUNPVC_LANE.fullmatch(lane) is not None
             and suffix == f"=== {lane} DONE ===")
 
@@ -151,7 +156,8 @@ def validate_queue_spec(spec: Any) -> dict[str, Any]:
             raise ValueError("pid must be a strict integer greater than one")
         if (not is_m9
                 and not _valid_terminal_suffix(entry["terminal_suffix"], entry["lane"])):
-            raise ValueError("terminal_suffix must end with LANE DONE or name a runPVC lane")
+            raise ValueError("terminal_suffix must end with LANE DONE or LANE ENDED AT INTERIM "
+                             "manifest=<sha256>, or name a runPVC lane")
     launcher_hashes: dict[str, str] = {}
     for entry in reservations:
         launcher = str(Path(entry["launcher"]))

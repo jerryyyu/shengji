@@ -309,3 +309,39 @@ def test_bkc_off_keeps_the_served_name_and_on_adds_its_bury_token(pinned_product
     assert bot.bury_kitty_charge is True and bot.bury_wide_value is True and bot.bury_wide_k == 64
     assert bot.bury_recipe_identity["wide_value"]["kitty_charge"] == {
         "p_attackers_last": 0.38, "multiplier": 3.0, "levels_per_point": 0.025}
+
+
+LGFX_FLAG = "SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP"
+
+
+def test_lgfx_off_keeps_the_lgf_name_and_on_adds_its_token(pinned_production_package,
+                                                            pinned_belief_package):
+    """Release 46 + ``lgf`` with its exact-stage yield (token ``lgfx`` after
+    ``lgf``): a DEV arm; without ``lgf`` it is refused."""
+    from shengji.train import pv_search_policy as pv
+
+    def built(**extra):
+        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+                                   "SHENGJI_PV_SHA256": PACKAGE_SHA,
+                                   "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
+        entries = pv.pv_registry_entries(**recipe)
+        name, = entries
+        return name, entries[name]
+
+    lgf_name, _ = built(**{LGF_FLAG: "1"})
+    for off in ({}, {LGFX_FLAG: "0"}, {LGFX_FLAG: ""}):
+        assert built(**off)[0] == RELEASE46
+        name, factory = built(**{LGF_FLAG: "1"}, **off)
+        assert name == lgf_name
+        bot = factory(seed=17)
+        assert bot.leaf_greedy_finish_exact_skip is False
+        assert "leaf_greedy_finish_exact_skip" not in vars(bot)
+        assert "_leaf_greedy_exact_skipped" not in vars(bot)
+    name, factory = built(**{LGF_FLAG: "1", LGFX_FLAG: "1"})
+    assert name not in (RELEASE46, lgf_name) and "-vdef-lgf-lgfx-ed7-" in name
+    assert name.split("-lgfx-")[0] == lgf_name.split("-ed7-")[0]
+    bot = factory(seed=17)
+    assert bot.leaf_greedy_finish_exact_skip is True and bot.leaf_greedy_finish is True
+    assert (bot.exact_lead_endgame, bot.exact_follow, bot.exact_deep_cards) == (True, True, 7)
+    with pytest.raises(pv.PVSearchPolicyError, match="requires leaf_greedy_finish"):
+        built(**{LGFX_FLAG: "1"})

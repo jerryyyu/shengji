@@ -411,6 +411,7 @@ jobs:
             tests/test_pv_doomed_throw_reselect.py \
             tests/test_pv_doomed_throw_reselect_exact_guard.py \
             tests/test_pv_leaf_greedy_finish.py \
+            tests/test_pv_leaf_greedy_finish_exact_skip.py \
             tests/test_pv_value_declare.py \
             tests/test_pv_declare_first_round.py \
             tests/test_pv_declare_served_bury.py \

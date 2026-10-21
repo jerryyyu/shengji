@@ -7,7 +7,9 @@ belong to the caller; invoking this command is an experiment launch.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import json
+import multiprocessing
 import os
 import math
 import statistics
@@ -103,6 +105,54 @@ def read(out, expected):
     Confidence intervals cluster by deal, never by individual seat mirror.
     """
     return _summarize(_load_shard(out, expected), expected)
+
+
+def _run_shard(payload):
+    return run(**payload)
+
+
+def run_shards(control, candidate, *, out, seed0, pairs, ranks, workers,
+               cluster0=0, round_kind='first_round'):
+    """Run disjoint contiguous shards without reading scientific outcomes.
+
+    The caller owns host admission, process-group lifetime and the wall cap.
+    No shard is retried or overwritten. A failure preserves all outputs and
+    leaves the parent without DONE; the separate reader consumes successful
+    shards against the independently supplied complete plan.
+    """
+    if (type(workers) is not int or workers < 1 or type(pairs) is not int
+            or pairs < 2 * workers or type(cluster0) is not int or cluster0 < 0
+            or type(seed0) is not int or seed0 < 0):
+        raise ValueError('nonnegative schedule and at least two pairs per worker required')
+    duel.validate_round_kind(round_kind, ranks)
+    if not duel.rank_plan(ranks):
+        raise ValueError('explicit nonempty trump ranks required')
+    register_pair(control, candidate)
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=False)
+    payloads = []
+    cursor = cluster0
+    for index in range(workers):
+        count = pairs // workers + int(index < pairs % workers)
+        payloads.append(dict(control=control, candidate=candidate,
+                             out=str(out / f'shard-{index:03d}'), seed0=seed0,
+                             pairs=count, ranks=ranks, cluster0=cursor,
+                             round_kind=round_kind))
+        cursor += count
+    with (out / 'shards.json').open('x') as fh:
+        json.dump(payloads, fh, sort_keys=True, indent=2)
+        fh.flush()
+        os.fsync(fh.fileno())
+    # Spawn keeps each registry and model cache local to its worker.
+    with ProcessPoolExecutor(max_workers=workers,
+                             mp_context=multiprocessing.get_context('spawn')) as pool:
+        futures = [pool.submit(_run_shard, payload) for payload in payloads]
+        metadata = [future.result() for future in futures]
+    with (out / 'DONE').open('x') as fh:
+        fh.write(f'{pairs} complete pairs in {workers} shards\n')
+        fh.flush()
+        os.fsync(fh.fileno())
+    return [(payload['out'], meta) for payload, meta in zip(payloads, metadata)]
 
 
 def read_shards(shards, expected):
@@ -246,10 +296,13 @@ def main(argv=None):
     parser.add_argument('--cluster0', default=0, type=int)
     parser.add_argument('--ranks', required=True)
     parser.add_argument('--round-kind', choices=duel.ROUND_KINDS, default='first_round')
+    parser.add_argument('--workers', type=int, help='run a bounded pool of contiguous shards')
     args = parser.parse_args(argv)
-    run(json.loads(args.control_env.read_text()), json.loads(args.candidate_env.read_text()),
+    runner = run if args.workers is None else run_shards
+    extra = {} if args.workers is None else dict(workers=args.workers)
+    runner(json.loads(args.control_env.read_text()), json.loads(args.candidate_env.read_text()),
         out=args.out, seed0=args.seed0, pairs=args.pairs, ranks=args.ranks,
-        cluster0=args.cluster0, round_kind=args.round_kind)
+        cluster0=args.cluster0, round_kind=args.round_kind, **extra)
 
 
 if __name__ == '__main__':

@@ -721,6 +721,67 @@ def test_pv_dev_shards_match_single_population_and_refuse_bad_partitions(tmp_pat
     a = persist('a', {**meta, 'pairs': 2}, records[:4])
     b = persist('b', {**meta, 'cluster0': 2, 'pairs': 4}, records[4:])
     assert adapter.read_shards([b, a], meta) == adapter.read(*whole)
+
+    from concurrent.futures import Future
+
+    class InlinePool:
+        def __init__(self, *, max_workers, mp_context):
+            assert max_workers == 2 and mp_context.get_start_method() == 'spawn'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def submit(self, function, payload):
+            future = Future()
+            try:
+                future.set_result(function(payload))
+            except Exception as exc:
+                future.set_exception(exc)
+            return future
+
+    def selected_play(_run, _arms, clusters, seed0, *args, sink, **kwargs):
+        selected = [r for r in records if r['seed'] - seed0 in clusters]
+        for row in selected:
+            sink(row)
+        return selected
+
+    monkeypatch.setattr(adapter, 'ProcessPoolExecutor', InlinePool)
+    monkeypatch.setattr(adapter.duel, 'play_shard', selected_play)
+    pool_args = dict(out=tmp_path / 'pool', seed0=100, pairs=6, workers=2,
+                     ranks='2,A', round_kind=round_kind)
+    parallel = adapter.run_shards(meta['control_env'], meta['candidate_env'], **pool_args)
+    assert adapter.read_shards(parallel, meta) == adapter.read(*whole)
+    plan = json.loads((pool_args['out'] / 'shards.json').read_text())
+    assert [(p['cluster0'], p['pairs']) for p in plan] == [(0, 3), (3, 3)]
+    control_file, candidate_file = tmp_path / 'control.json', tmp_path / 'candidate.json'
+    control_file.write_text(json.dumps(meta['control_env']))
+    candidate_file.write_text(json.dumps(meta['candidate_env']))
+    cli_out = tmp_path / 'cli-pool'
+    adapter.main(['--control-env', str(control_file), '--candidate-env', str(candidate_file),
+                  '--out', str(cli_out), '--seed0', '100', '--pairs', '6', '--workers', '2',
+                  '--ranks', '2,A', '--round-kind', round_kind])
+    cli_shards = [(cli_out / f'shard-{index:03d}', {**meta, 'cluster0': index * 3, 'pairs': 3})
+                  for index in range(2)]
+    assert adapter.read_shards(cli_shards, meta) == adapter.read(*whole)
+    with pytest.raises(FileExistsError):
+        adapter.run_shards(meta['control_env'], meta['candidate_env'], **pool_args)
+
+    def failed_play(*args, **kwargs):
+        if 3 in args[2]:
+            raise RuntimeError('injected shard failure')
+        return selected_play(*args, **kwargs)
+
+    monkeypatch.setattr(adapter.duel, 'play_shard', failed_play)
+    failed = {**pool_args, 'out': tmp_path / 'failed-pool'}
+    with pytest.raises(RuntimeError, match='injected shard failure'):
+        adapter.run_shards(meta['control_env'], meta['candidate_env'], **failed)
+    assert not (failed['out'] / 'DONE').exists()
+    assert (failed['out'] / 'shard-000' / 'DONE').exists()
+    assert (failed['out'] / 'shard-001' / 'run.json').exists()
+    assert not (failed['out'] / 'shard-001' / 'DONE').exists()
     for shards in ([a], [b], [a, a, b]):
         with pytest.raises(ValueError):
             adapter.read_shards(shards, meta)
@@ -736,6 +797,20 @@ def test_pv_dev_shards_match_single_population_and_refuse_bad_partitions(tmp_pat
     records[4]['arm_play_health'] = dict(decisions=1, pv_fallback=1)
     (b[0] / 'rounds.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in records[4:]))
     assert adapter.read_shards([a, b], meta)['verdict'] == 'QUALITY_FAIL'
+
+
+def test_pv_dev_worker_entrypoint_spawns_and_refuses_before_gameplay(tmp_path):
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+    from scripts.pv_dev_duel import _run_shard
+
+    payload = dict(control={}, candidate={}, out=str(tmp_path / 'absent'),
+                   seed0=0, pairs=0, ranks='2')
+    with ProcessPoolExecutor(max_workers=1,
+                             mp_context=multiprocessing.get_context('spawn')) as pool:
+        with pytest.raises(ValueError, match='positive pairs'):
+            pool.submit(_run_shard, payload).result(timeout=30)
+    assert not (tmp_path / 'absent').exists()
 
 
 def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):

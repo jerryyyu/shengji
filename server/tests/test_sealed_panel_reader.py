@@ -16,7 +16,7 @@ def test_pt_metadata_refuses_before_scientific_read(tmp_path, monkeypatch, defec
     from scripts import sealed_production_llm_panel_readout as reader
     from test_sealed_readout_wrapper import write
     config = write(tmp_path / "config.json", {"synthetic": True})
-    result = {"path": str(tmp_path / "result.json"), "sha256": "a" * 64}
+    result = {"path": str(tmp_path / "benchmark" / "result.json"), "sha256": "a" * 64}
     terminal = dict(schema="release46-pt-sol-terminal-v1", row="release46-pv",
                     status="exited", returncode=0,
                     config_sha256=config["sha256"], result=result.copy())
@@ -29,7 +29,9 @@ def test_pt_metadata_refuses_before_scientific_read(tmp_path, monkeypatch, defec
     elif defect == "schema":
         terminal["schema"] = "actor-only"
     else:
-        result["path"] = str(tmp_path / "elsewhere.json")
+        # PT results are nested below the fresh benchmark child; a root-level
+        # result must not be accepted as the sealed scientific output.
+        result["path"] = str(tmp_path / "result.json")
         terminal["result"] = result.copy()
     plan = write(tmp_path / "plan.json", {
         "schema": "release46-pt-sol-seals-v1", "expected_config": config,

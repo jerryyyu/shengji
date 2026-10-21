@@ -409,7 +409,9 @@ def supervise_pt(command, *, config_path, expected_sha256, cwd, env, output,
     """Run one admitted PT cell and bind its exit to the separate reader.
 
     The caller owns command/source review, host admission and RELEASE. There
-    is no CLI, retry or automatic scoring. Result bytes are hashed, not parsed.
+    is no CLI, retry or automatic scoring. The command writes its fresh
+    benchmark result below ``output/benchmark``; terminal and worker metadata
+    stay at the supervisor root. Result bytes are hashed, not parsed.
     """
     config_path, output = Path(config_path), Path(output)
     stamp(config_path)
@@ -433,16 +435,17 @@ def supervise_pt(command, *, config_path, expected_sha256, cwd, env, output,
     if type(wall) not in (int, float) or not 0 < wall < float('inf'):
         raise ValueError('finite positive PT wall bound required')
     output.mkdir(parents=True, exist_ok=False)
+    benchmark_output = output / 'benchmark'
     terminal = dict(schema='release46-pt-sol-terminal-v1', row='release46-pv',
                     config_sha256=expected_sha256, status='failed', returncode=None)
     try:
         with (output / 'worker.log').open('x') as log:
             terminal.update(supervise(command, cwd=cwd, env=env, log=log,
-                row='release46-pv', output=output, wall=wall, python=python, total=20))
+                row='release46-pv', output=benchmark_output, wall=wall, python=python, total=20))
         if config_path.read_bytes() != raw:
             raise ValueError('PT pre-run config changed during execution')
         if terminal['status'] == 'exited' and terminal['returncode'] == 0:
-            result = output / 'result.json'
+            result = benchmark_output / 'result.json'
             stamp(result)
             terminal['result'] = dict(path=str(result.resolve()),
                                      sha256=hashlib.sha256(result.read_bytes()).hexdigest())

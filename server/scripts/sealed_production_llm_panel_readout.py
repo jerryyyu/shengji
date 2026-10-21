@@ -124,7 +124,7 @@ def read_sealed_pt(plan_path, expected_sha256):
              and terminal.get('config_sha256') == plan['expected_config']['sha256']
              and _strict_equal(terminal.get('result'), plan['result']),
              'PT terminal binding mismatch')
-    _at(plan['result'], Path(plan['terminal']['path']).parent / 'result.json')
+    _at(plan['result'], Path(plan['terminal']['path']).parent / 'benchmark' / 'result.json')
     report = _metadata(plan['result'], 'PT sealed result')
     result = arithmetic.analyze_pt_report(report, config)
     result['seals'] = dict(plan_sha256=expected_sha256,

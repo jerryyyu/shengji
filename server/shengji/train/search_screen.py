@@ -7,6 +7,7 @@ coverage are separate measured facts, never inferred from equal N settings.
 from __future__ import annotations
 
 import argparse
+import copy
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from functools import lru_cache
 import hashlib
@@ -163,6 +164,12 @@ class TimedPolicy:
                     "leaf_tricks": learned.get("config", {}).get("leaf_tricks"),
                     "counts": learned.get("counts"),
                 })
+                work = rec.get("work", {})
+                if "root_world_support" in work:
+                    self.decisions[-1]["tree_support"] = {
+                        "root_world_support": copy.deepcopy(work["root_world_support"]),
+                        "completed_tricks_histogram": dict(work["completed_tricks_histogram"]),
+                    }
 
 
 @lru_cache(maxsize=1)

@@ -196,6 +196,37 @@ def _violations(bot, rnd, seat):
     return bad
 
 
+@pytest.mark.parametrize("finish", [False, True])
+def test_depth_support_record_matches_descent_not_leaf_completion(finish):
+    rnd = _contested_state()
+    attrs = dict(CWV_TRACE=True, CWV_SIMULATIONS=48, CWV_LEAF_FINISH_TRICK=finish)
+    traced = _bot(_StubEvaluator(lambda p, s: 0.25), **attrs)
+    picked = traced.decide_play(rnd, rnd.turn)
+    record = traced.last_decision_record
+    counts = [[0] * record["worlds"] for _ in record["candidates"]]
+    indices = {action_key(a): i for i, a in enumerate(record["candidates"])}
+    histogram = {}
+    for trace in traced.last_trace:
+        attempted = trace["moves"][0][2]
+        counts[indices[attempted]][trace["world"]] += 1
+        tricks = str(len(trace["leaf"].history) - len(rnd.history))
+        histogram[tricks] = histogram.get(tricks, 0) + 1
+    work = record["work"]
+    assert [r["visits"] for r in work["root_world_support"]] == counts
+    assert [action_key(r["cards"]) for r in work["root_world_support"]] == list(indices)
+    assert [sum(row) for row in counts] == record["visits"]
+    assert work["completed_tricks_histogram"] == histogram
+    assert sum(histogram.values()) == work["simulations"] == 48
+    assert all(sum(row[w] for row in counts) == 12 for w in range(record["worlds"]))
+    if finish:
+        assert any(len(t["boundary"].history) > len(t["leaf"].history)
+                   for t in traced.last_trace)
+    plain = _bot(_StubEvaluator(lambda p, s: 0.25), **{**attrs, "CWV_TRACE": False})
+    assert plain.decide_play(rnd, rnd.turn) == picked
+    assert plain.last_decision_record["work"]["root_world_support"] == work["root_world_support"]
+    assert plain.last_decision_record["work"]["completed_tricks_histogram"] == histogram
+
+
 def test_actions_illegal_in_the_current_world_are_never_selected(monkeypatch):
     rnd = _contested_state()
     seat = rnd.turn
@@ -357,6 +388,9 @@ def test_full_and_forced_throw_land_in_different_children(monkeypatch):
     assert accepted == outcomes and len(accepted) >= 2
     # one edge carries the attempted action's statistics ...
     assert root.edges[throw].N == len(worlds) * 2
+    support = bot.last_decision_record["work"]["root_world_support"]
+    row, = [r for r in support if action_key(r["cards"]) == throw]
+    assert row["visits"] == [2] * len(worlds)
     # ... and every accepted outcome is its OWN child state, each visited
     assert set(root.children) == outcomes
     assert sum(root.children[a].N for a in outcomes) == len(worlds) * 2

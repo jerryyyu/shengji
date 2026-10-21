@@ -365,9 +365,11 @@ it enters the recipe digest with ``leaf_finish_exact_rule``
 gains ``leaf_greedy_finish_exact_skipped`` (only with the flag on).  Off, it is
 absent from the payload, so every existing name and every decision are unchanged.
 
-Two latency switches, OFF BY DEFAULT, that change no decision and so enter no
-name, payload or digest (like ``SHENGJI_PV_BELIEF_LOG`` they are read from the
-serving environment where the bot is built; ``0`` or ``1`` only):
+Two latency switches, OFF BY DEFAULT, that enter no name, payload or digest
+(like ``SHENGJI_PV_BELIEF_LOG`` they are read from the serving environment
+where the bot is built; ``0`` or ``1`` only).  On the decisions the search
+completes, neither changes the cards played, the sampler stream or (beyond
+the skipped pass's own fields) the record:
 ``SHENGJI_PV_ENCODE_PREFIX_CACHE=1`` encodes the value pass's leaves and the
 prior's root rows on the decision root's shared history prefix with one batched
 validation (`pv_encode_prefix`; every tensor is the reference encoder's, byte
@@ -379,7 +381,12 @@ drawn, so the sampler stream is unchanged, and the selection rules and the
 doomed-throw finalization still run on them; the record then says
 ``single_candidate_fast`` with ``value_means`` ``[None]`` and zero value
 batches and evaluations.  It does not apply with ``lgf`` or an overridden
-value pass.
+value pass.  Two outcomes differ from the full pass: a one-candidate pass that
+would have run past the serving budget, or met a non-finite value score, falls
+back to the anchor without the switch and plays the selected candidate with
+it.  A consumer of every candidate's value (the trajectory harvest, the M9
+panel, the counterfactual value diagnostic) refuses the switch before it
+starts (`require_value_means`, `refuse_single_candidate_fast_env`).
 
 The exact stages' world subset, OFF BY DEFAULT and a search-policy change
 where it applies: ``SHENGJI_PV_EXACT_WORLD_SUBSET=<n>`` (an int in [1, 512];
@@ -1097,6 +1104,29 @@ def latency_switches(environ=None) -> dict[str, bool]:
             raise PVSearchPolicyError(f"{name} must be 0 or 1, not {raw!r}")
         out[attr] = raw == "1"
     return out
+
+
+def _single_candidate_refusal(consumer):
+    return PVSearchPolicyError(
+        f"{consumer} reads every admitted candidate's value, and "
+        f"{LATENCY_SWITCH_ENV['single_candidate_fast']}=1 leaves a one-candidate decision "
+        "unpriced; unset it for this run")
+
+
+def refuse_single_candidate_fast_env(consumer, environ=None) -> None:
+    """Refuse, before any work, a numeric-value consumer started with the
+    single-candidate switch in its environment (the factory would bind it)."""
+    if latency_switches(environ)["single_candidate_fast"]:
+        raise _single_candidate_refusal(consumer)
+
+
+def require_value_means(bot, consumer):
+    """``bot``, refused when its decision records may carry an unpriced
+    candidate (``single_candidate_fast`` on); a consumer of ``value_means``
+    never receives an unknown value in place of a number."""
+    if getattr(bot, "single_candidate_fast", False):
+        raise _single_candidate_refusal(consumer)
+    return bot
 
 
 _DOOMED_THROW_EXCLUSIVE = ("doomed_throw_swap and doomed_throw_reselect are exclusive "

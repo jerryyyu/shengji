@@ -789,6 +789,8 @@ class PVTrajectoryMixin:
     WIDEN: tuple[str, ...] = ()
 
     def _trajectory_init(self, explore_rng: random.Random, production_probe=None) -> None:
+        # every record's value_means become action values: no unpriced candidate
+        _require_value_means(self)
         self.explore_rng = explore_rng
         self.production_probe = None
         self.explore_opportunities = 0
@@ -909,6 +911,14 @@ def pv_trajectory_class(base_cls: type) -> type:
     return cls
 
 
+def _require_value_means(bot) -> None:
+    from ..train.pv_search_policy import PVSearchPolicyError, require_value_means
+    try:
+        require_value_means(bot, "the trajectory harvest")
+    except PVSearchPolicyError as exc:
+        raise TrajectoryError(str(exc)) from None
+
+
 def _is_pv_search(bot) -> bool:
     from ..train.pv_search_policy import PVSearchBot
     return isinstance(bot, PVSearchBot)
@@ -923,6 +933,11 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     is attached as ``production_probe``: ``production_ballot`` is its
     ``_candidates`` list, never the overridden class's (module docstring).
     """
+    from ..train.pv_search_policy import PVSearchPolicyError, refuse_single_candidate_fast_env
+    try:
+        refuse_single_candidate_fast_env("the trajectory harvest")
+    except PVSearchPolicyError as exc:
+        raise TrajectoryError(str(exc)) from None
     bot = make_bot(config["policy"], seed=seed)
     if _is_pv_search(bot):
         if config.get("knobs") or config.get("widen") or config.get("capture_full_legal_scores"):
@@ -1420,6 +1435,9 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dic
     played = indices.index(int(rec["selected_index"]))
     if action_key(admitted[played]) != action_key(rec["played"]):
         raise TrajectoryError("pv-search played_index does not map to the played cards")
+    if any(m is None for m in rec["value_means"]):
+        raise TrajectoryError("pv-search record has an unpriced candidate (single_candidate_fast); "
+                              "a harvest needs every admitted candidate's value")
     means = [float(m) for m in rec["value_means"]]
     if len(means) != k:
         raise TrajectoryError("value_means are not aligned with the ballot")

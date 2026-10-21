@@ -193,3 +193,84 @@ def test_the_switch_is_off_by_default_and_enters_no_name():
     off.decide_play(copy.deepcopy(rnd), rnd.turn)
     assert "single_candidate_fast" not in off.last_decision_record
     assert np.isfinite(off.last_decision_record["value_means"]).all()
+
+
+# ------------------------------------------------- (e) numeric-value consumers refuse the switch
+
+def _single_root(seed=17):
+    """The first decision of the seeded round the served admission narrows to one."""
+    probe = bot(False, SERVED_RULES)
+    rnd = _fresh_round(seed)
+    while rnd.phase == "play":
+        seat = rnd.turn
+        played = probe.decide_play(copy.deepcopy(rnd), seat)
+        if len(probe.last_decision_record["admitted"]) == 1:
+            return rnd, seat
+        rnd.play(seat, played)
+    raise AssertionError("no one-candidate decision")
+
+
+def test_the_trajectory_mixin_refuses_a_switched_bot():
+    import random
+    from shengji.harvest.trajectory import TrajectoryError, pv_trajectory_class
+    on = bot(True, SERVED_RULES)
+    on.__class__ = pv_trajectory_class(type(on))
+    with pytest.raises(TrajectoryError, match=FLAG):
+        on._trajectory_init(random.Random(0))
+
+
+def test_the_trajectory_harvest_refuses_an_inherited_switch_before_building(monkeypatch):
+    import random
+    from shengji.harvest import trajectory
+    built = []
+    monkeypatch.setattr(trajectory, "make_bot", lambda *a, **kw: built.append(a) or bot(True, SERVED_RULES))
+    monkeypatch.setenv(FLAG, "1")
+    with pytest.raises(trajectory.TrajectoryError, match=FLAG):
+        trajectory.make_trajectory_bot({"policy": "pv-search-x", "explore_rate": 0.0, "explore_k": 0,
+                                        "cap": 256}, seed=0, explore_rng=random.Random(0))
+    assert built == []
+
+
+def test_producer_to_consumer_without_the_switch_harvests_finite_means(monkeypatch):
+    """The real trajectory mixin over the served search on a one-candidate
+    decision: its record and captured ballot become finite action values; the
+    switched producer's record is refused by the consumer with a named error."""
+    import math
+    import random
+    from shengji.harvest import trajectory
+    monkeypatch.delenv(FLAG, raising=False)
+    monkeypatch.setattr(trajectory, "make_bot", lambda *a, **kw: bot(
+        pv.latency_switches()["single_candidate_fast"], SERVED_RULES))
+    harvest = trajectory.make_trajectory_bot({"policy": "pv-search-x", "explore_rate": 0.0,
+                                              "explore_k": 0, "cap": 256},
+                                             seed=0, explore_rng=random.Random(0))
+    rnd, seat = _single_root()
+    harvest.decide_play(copy.deepcopy(rnd), seat)
+    record = harvest.last_decision_record
+    assert len(record["admitted"]) == 1 and "single_candidate_fast" not in record
+    _, _, values = trajectory.pv_fields_from_record(record, harvest.last_ballot)
+    assert all(math.isfinite(m) for m in values["means"])
+    on = bot(True, SERVED_RULES)
+    on.decide_play(copy.deepcopy(rnd), seat)
+    assert on.last_decision_record["value_means"] == [None]
+    with pytest.raises(trajectory.TrajectoryError, match="unpriced"):
+        trajectory.pv_fields_from_record(on.last_decision_record, on.last_decision_record["admitted"])
+
+
+def test_the_value_diagnostic_and_the_m9_panel_refuse_the_switch(monkeypatch):
+    from shengji.eval import m9_panel_worker
+    from shengji.train import cf_value_diagnostic
+    rnd, seat = _single_root()
+    with pytest.raises(cf_value_diagnostic.AuditError, match=FLAG):
+        cf_value_diagnostic.admission_under(bot(True, SERVED_RULES), rnd, seat, [])
+    calls = []
+    monkeypatch.setenv(FLAG, "1")
+    with pytest.raises(ValueError, match=FLAG):
+        m9_panel_worker.collect_m9_panels({}, [], lambda seed: calls.append(seed),
+                                          on_panel=lambda panel: None)
+    assert calls == []
+    from shengji.eval.m9_panel_plan import _validated_ballot
+    on = bot(True, SERVED_RULES)
+    on.decide_play(copy.deepcopy(rnd), seat)
+    with pytest.raises(ValueError, match="finite"):
+        _validated_ballot(on.last_decision_record, "decision", 1)

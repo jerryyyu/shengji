@@ -182,6 +182,11 @@ def admission_under(bot, rnd, seat: int, worlds) -> dict[str, Any]:
     admitted set, ``_select`` -- with only ``_worlds`` substituted so the bot
     prices the shared draw instead of drawing its own.  Nothing about the
     admission rule lives in this module."""
+    from .pv_search_policy import PVSearchPolicyError, require_value_means
+    try:
+        require_value_means(bot, "the counterfactual value diagnostic")
+    except PVSearchPolicyError as exc:
+        raise AuditError(str(exc)) from None
     patched = lambda rnd_, seat_, check_budget=None: (list(worlds), len(worlds))  # noqa: E731
     bot.__dict__["_worlds"] = patched
     try:

@@ -62,6 +62,20 @@ def collect_m9_panels(saved_analysis, fixtures, bot_factory_for_seed, *,
     """
     if not callable(bot_factory_for_seed):
         raise ValueError("bot_factory_for_seed must be callable")
+    # the panel compares every admitted candidate's value_means
+    from ..train.pv_search_policy import (PVSearchPolicyError, refuse_single_candidate_fast_env,
+                                          require_value_means)
+    try:
+        refuse_single_candidate_fast_env("the M9 panel")
+    except PVSearchPolicyError as exc:
+        raise ValueError(str(exc)) from None
+    unchecked_factory = bot_factory_for_seed
+
+    def bot_factory_for_seed(seed):
+        try:
+            return require_value_means(unchecked_factory(seed), "the M9 panel")
+        except PVSearchPolicyError as exc:
+            raise ValueError(str(exc)) from None
     if not callable(on_panel):
         raise ValueError("on_panel callback is required")
     if on_collected is not None and not callable(on_collected):

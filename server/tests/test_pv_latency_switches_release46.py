@@ -98,3 +98,33 @@ def test_the_switches_leave_the_served_name_unchanged(monkeypatch, pinned_produc
                   {"SHENGJI_PV_EXACT_WORLD_SUBSET": "64"}):
         recipe = pv.pv_env_recipe({**base, **extra})
         assert list(pv.pv_registry_entries(**recipe)) == [RELEASE46]
+
+
+def test_the_harvest_refuses_the_inherited_switch_and_harvests_finite_means_without_it(
+        monkeypatch, pinned_production_package, pinned_belief_package):  # noqa: F811
+    """The real release-46 factory under the trajectory harvest: with the
+    switch inherited from the environment it refuses before building; without
+    it a one-candidate decision harvests a finite action value."""
+    import math
+    import random
+    from shengji.harvest import trajectory
+
+    env, name, factory = served_entries(pinned_production_package, pinned_belief_package)
+    monkeypatch.setattr(trajectory, "make_bot", lambda policy, seed: factory(seed=seed))
+    config = {"policy": name, "explore_rate": 0.0, "explore_k": 0, "cap": 256}
+    monkeypatch.setenv(SINGLE, "1")
+    with pytest.raises(trajectory.TrajectoryError, match=SINGLE):
+        trajectory.make_trajectory_bot(config, seed=17, explore_rng=random.Random(0))
+    monkeypatch.delenv(SINGLE)
+    harvest = trajectory.make_trajectory_bot(config, seed=17, explore_rng=random.Random(0))
+    rnd = _play_state(17)
+    singles = 0
+    while rnd.phase == "play" and singles < 2:
+        seat = rnd.turn
+        played = harvest.decide_play(copy.deepcopy(rnd), seat)
+        record = harvest.last_decision_record
+        _, _, values = trajectory.pv_fields_from_record(record, harvest.last_ballot)
+        assert all(math.isfinite(m) for m in values["means"])
+        singles += len(record["admitted"]) == 1
+        rnd.play(seat, played)
+    assert singles == 2

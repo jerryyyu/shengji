@@ -115,7 +115,12 @@ def load_audit(path: str, limit: int | None):
 
 
 def build_bots(args):
-    from shengji.train.pv_search_policy import make_pv_search_bot
+    from shengji.train.pv_search_policy import (PVSearchPolicyError, make_pv_search_bot,
+                                                refuse_single_candidate_fast_env)
+    try:
+        refuse_single_candidate_fast_env("the counterfactual value diagnostic")
+    except PVSearchPolicyError as exc:
+        raise SystemExit(str(exc)) from None
     bots, heads = {}, {}
     for name in HEADS:
         path = getattr(args, name)

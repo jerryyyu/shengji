@@ -41,7 +41,8 @@ from test_cwv_leaf_policy_first_trick import BURY, SMALL, CountingPredict
 from test_pv_admission_rules import names, production_package  # noqa: F401
 from test_pv_search_serving import package  # noqa: F401
 from test_pv_value_declare import NT_CASE, drive, state_at
-from test_release46_fly_config import RELEASE46, without_combo
+from test_release46_fly_config import without_combo
+from test_release47_fly_config import RELEASE47
 
 FLAG = "SHENGJI_PV_VALUE_DECLARE_SERVED_BURY"
 HEURISTIC = HeuristicBot()
@@ -59,9 +60,9 @@ def fly_env():
     import tomllib
     from pathlib import Path
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
-    # production is release 46 (release 45 + the combo); the release-45 base is the
-    # documented rollback, the env without the twelve combo lines
-    assert env["SHENGJI_BOT"] == RELEASE46
+    # production is release 47 (release 45 + the combo + the S46 r3 belief pair + dtrx);
+    # the release-45 base is the documented rollback, the env without the lines above it
+    assert env["SHENGJI_BOT"] == RELEASE47
     return without_combo(env)
 
 

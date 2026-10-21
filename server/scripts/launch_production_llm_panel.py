@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -31,6 +32,12 @@ STAGE1_ROWS = ("smv3-pv", "m1-prior")
 STAGE2_SCHEMA = "sol-feedback-on-stage2-v1"
 STAGE2_ROWS = ("smart", "mc-lcb", "soft-pv", "js-m1-shortlist",
                "w32-original", "mc-strong", "mc")
+PT_SCHEMA = "release46-pt-sol-campaign-v1"
+PT_ROWS = ("release46-pv",)
+PT_ROW_WALL_SECONDS = 21600
+PT_ROW_SOFT_TOKENS = 20000000
+PT_WALL_SECONDS = 21630
+PT_LOCK = Path("/root/.claude-host.lock")
 RECOVERY_MEMORY_WAIT = {"timeout_seconds": 1800, "poll_seconds": 60}
 def default_reservation_path(platform):
     # Linux Sol campaigns serialize with each other while leaving the screen
@@ -109,9 +116,11 @@ def validate(config_path, expected):
     schema = config.get("schema")
     recovery = schema == RECOVERY_SCHEMA
     stage1 = schema in (STAGE1_SCHEMA, STAGE2_SCHEMA)
+    pt = schema == PT_SCHEMA
     stage_rows = STAGE2_ROWS if schema == STAGE2_SCHEMA else STAGE1_ROWS
-    controlled = recovery or stage1
+    controlled = recovery or stage1 or pt
     retries = config.get("provider_capacity_retry_delays", [])
+    controls = config.get("recovery_controls")
     if controlled:
         recovery_control_args(config)
     if stage1 and config['recovery_controls'] != {
@@ -120,17 +129,46 @@ def validate(config_path, expected):
         raise ValueError('stage1 feedback/control recipe drift')
     expected_retries = (list(CAPACITY_RETRY_DELAYS)
                         if schema == "sol-nine-policy-campaign-v2" or
-                        (controlled and config['recovery_controls']['capacity_retries']) else [])
-    if (schema not in ("sol-nine-policy-campaign-v1", "sol-nine-policy-campaign-v2", RECOVERY_SCHEMA, STAGE1_SCHEMA, STAGE2_SCHEMA)
+                        (controlled and isinstance(controls, dict)
+                         and controls.get('capacity_retries') is True) else [])
+    expected_rows = list(PT_ROWS if pt else stage_rows if stage1
+                         else RECOVERY_ROWS if recovery else ROWS)
+    expected_wall = PT_ROW_WALL_SECONDS if pt else 43200
+    expected_tokens = PT_ROW_SOFT_TOKENS if pt else 45000000
+    if (schema not in ("sol-nine-policy-campaign-v1", "sol-nine-policy-campaign-v2", RECOVERY_SCHEMA, STAGE1_SCHEMA, STAGE2_SCHEMA, PT_SCHEMA)
             or type(retries) is not list
             or any(type(delay) is not int for delay in retries)
             or retries != expected_retries
-            or config.get("rows") != list(stage_rows if stage1 else RECOVERY_ROWS if recovery else ROWS)
-            or config.get("row_wall_seconds") != 43200
-            or config.get("row_soft_tokens") != 45000000
+            or config.get("rows") != expected_rows
+            or config.get("row_wall_seconds") != expected_wall
+            or config.get("row_soft_tokens") != expected_tokens
             or config.get("provider_call_seconds") != 300):
         raise ValueError("campaign recipe drift")
-    if stage1:
+    if pt:
+        if (config.get("information") != ["perfect"]
+                or config.get("recovery_controls") != {
+                    "capacity_retries": False,
+                    "accept_recovered_reconnects": False,
+                    "invalid_action_feedback": True,
+                    "classify_final_action_failures": True,
+                }
+                or config.get("failure_protocol") != PRESERVE_ILLEGAL
+                or type(config.get("illegal_failure_limit")) is not int
+                or config["illegal_failure_limit"] != 8
+                or any(key in config for key in ("retention", "memory_wait", "continuation"))):
+            raise ValueError("PT campaign recipe drift")
+        hostname = config.get("hostname")
+        if type(hostname) is not str or not hostname.strip():
+            raise ValueError("PT campaign hostname required")
+        expected_config = config.get("pt_expected_config")
+        if (type(expected_config) is not dict
+                or set(expected_config) != {"path", "sha256"}
+                or type(expected_config["path"]) is not str
+                or not Path(expected_config["path"]).is_absolute()
+                or type(expected_config["sha256"]) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", expected_config["sha256"]) is None):
+            raise ValueError("PT expected config must be an absolute regular path and SHA256")
+    elif stage1:
         if (config.get("failure_protocol") != PRESERVE_ILLEGAL
                 or type(config.get("illegal_failure_limit")) is not int
                 or config['illegal_failure_limit'] != 8
@@ -166,6 +204,21 @@ def validate(config_path, expected):
     if not isinstance(source_files, dict) or set(source_files) != set(inventory):
         raise ValueError("source inventory drift")
     stamps = StampSet()
+    if pt:
+        expected_path = Path(config["pt_expected_config"]["path"])
+        stamps[expected_path] = stamp(expected_path)
+        expected_raw = expected_path.read_bytes()
+        if hashlib.sha256(expected_raw).hexdigest() != config["pt_expected_config"]["sha256"]:
+            raise ValueError("PT expected config hash mismatch")
+        try:
+            expected_payload = json.loads(expected_raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("PT expected config must be valid JSON") from exc
+        if (type(expected_payload) is not dict
+                or type(expected_payload.get("seeds")) is not list
+                or any(type(seed) is not int for seed in expected_payload["seeds"])
+                or expected_payload["seeds"] != config.get("seeds")):
+            raise ValueError("PT expected config seeds mismatch")
     if recovery:
         retained = config["retention"]["m1-prior"]
         plan = Path(retained["plan"])
@@ -240,6 +293,17 @@ def _require_recovery_memory(stage: str) -> None:
             f"recovery memory headroom check failed before {stage}") from exc
     if safe is not True:
         raise ValueError(f"recovery memory headroom unsafe before {stage}")
+
+
+def _require_pt_memory(stage: str) -> None:
+    """Fail closed on the PT campaign's host memory admission check."""
+    try:
+        safe = benchmark_batch.assert_memory_headroom()
+    except BaseException as exc:
+        raise ValueError(
+            f"PT memory headroom check failed before {stage}") from exc
+    if safe is not True:
+        raise ValueError(f"PT memory headroom unsafe before {stage}")
 
 
 def _require_recovery_release(config_path, expected) -> None:
@@ -481,7 +545,8 @@ def _pt_adapter_command(*, python, model_assets, prepared_roots,
 
 def supervise_pt_adapter(*, config_path, expected_sha256, cwd, env, output,
                          wall, python=sys.executable, model_assets,
-                         prepared_roots, prepared_roots_sha256, codex_binary):
+                         prepared_roots, prepared_roots_sha256, codex_binary,
+                         before_dispatch=None):
     """Preflight and supervise the real release46 PT producer.
 
     The dry invocation exercises the same production parser and adapter as the
@@ -537,9 +602,68 @@ def supervise_pt_adapter(*, config_path, expected_sha256, cwd, env, output,
         raise ValueError("PT adapter dry preflight config drift")
 
     run_command = dry_command + ["--run"]
+    if before_dispatch is not None:
+        before_dispatch()
     return supervise_pt(run_command, config_path=config_path,
                         expected_sha256=expected_sha256, cwd=cwd, env=env,
                         output=output, wall=wall, python=python)
+
+
+def _clean_environment():
+    env = {k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_")}
+    env.pop("PYTHONPATH", None)
+    env.update(SHENGJI_FAST="1", PYTHONDONTWRITEBYTECODE="1", PYTHONUNBUFFERED="1")
+    for key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        env[key] = "1"
+    return env
+
+
+def _run_pt_campaign(config_path, expected, config, stamps, output, hold, *, arm):
+    """Admit and supervise the one-row PT campaign without scoring it."""
+    if not arm:
+        return {"status": "unarmed", "rows": 1, "rounds": 20}
+    if socket.gethostname() != config["hostname"]:
+        raise ValueError("PT hostname mismatch")
+    if os.nice(0) < 10:
+        raise ValueError("PT campaign requires nice >=10")
+    _require_pt_memory("reservation")
+    _require_recovery_release(config_path, expected)
+    fence(stamps)
+    expected_config = config["pt_expected_config"]
+    def before_dispatch():
+        if os.path.lexists(hold):
+            raise ValueError("HOLD before PT dispatch")
+        fence(stamps)
+        _require_pt_memory("dispatch")
+        _require_recovery_release(config_path, expected)
+        if os.path.lexists(hold):
+            raise ValueError("HOLD before PT dispatch")
+        fence(stamps)
+    with reservation(PT_LOCK, shared_host=True):
+        if os.path.lexists(hold):
+            raise ValueError("HOLD before PT preflight")
+        fence(stamps)
+        _require_pt_memory("preflight")
+        _require_recovery_release(config_path, expected)
+        result = supervise_pt_adapter(
+            config_path=expected_config["path"],
+            expected_sha256=expected_config["sha256"],
+            cwd=config["source_root"],
+            env=_clean_environment(),
+            output=output,
+            wall=PT_WALL_SECONDS,
+            python=config["python"],
+            model_assets=config["model_assets"],
+            prepared_roots=config["prepared_roots"],
+            prepared_roots_sha256=config["prepared_roots_sha256"],
+            codex_binary=config["codex_binary"],
+            before_dispatch=before_dispatch,
+        )
+        if (type(result) is not dict or result.get("status") != "exited"
+                or result.get("returncode") != 0):
+            raise ValueError("PT terminal failed; preserve partials")
+        return result
 
 
 def run(config_path, expected, *, arm=False):
@@ -556,6 +680,9 @@ def run(config_path, expected, *, arm=False):
     hold = config_path.parent / "HOLD"
     if os.path.lexists(hold) or os.path.lexists(output):
         raise ValueError("HOLD or existing campaign output; no retry")
+    if config.get("schema") == PT_SCHEMA:
+        return _run_pt_campaign(config_path, expected, config, stamps, output, hold,
+                                arm=arm)
     if not arm:
         return {"status": "unarmed", "rows": len(rows), "rounds": 40 * len(rows)}
     if os.nice(0) < 10:
@@ -563,12 +690,7 @@ def run(config_path, expected, *, arm=False):
     if controlled:
         _require_recovery_memory("reservation")
         _require_recovery_release(config_path, expected)
-    env = {k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_")}
-    env.pop("PYTHONPATH", None)
-    env.update(SHENGJI_FAST="1", PYTHONDONTWRITEBYTECODE="1", PYTHONUNBUFFERED="1")
-    for key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
-                "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
-        env[key] = "1"
+    env = _clean_environment()
     results = []
     terminal = {"status": "failed", "config_sha256": expected, "rows": results}
     with reservation(LOCK, shared_host=sys.platform == "linux"):

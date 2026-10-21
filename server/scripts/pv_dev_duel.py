@@ -102,6 +102,42 @@ def read(out, expected):
     ``expected`` is the pre-run metadata, not reconstructed from outcome files.
     Confidence intervals cluster by deal, never by individual seat mirror.
     """
+    return _summarize(_load_shard(out, expected), expected)
+
+
+def read_shards(shards, expected):
+    """Combine explicit (directory, pre-run plan) shards after seal checks.
+
+    Shard boundaries must partition the complete plan. Statistics cluster by
+    deal across the whole population, never by shard or individual mirror.
+    """
+    if any(type(expected.get(k)) is not int for k in ('seed0', 'cluster0', 'pairs')):
+        raise ValueError('expected schedule requires integer seeds and counts')
+    start = expected['cluster0']
+    stop = start + expected['pairs']
+    cursor, rows = start, []
+    for directory, plan in sorted(shards, key=lambda item: item[1]['cluster0']):
+        if any(type(plan.get(k)) is not int for k in ('cluster0', 'pairs')):
+            raise ValueError('shard schedule requires integers')
+        if (plan['cluster0'] != cursor or plan['pairs'] < 2
+                or cursor + plan['pairs'] > stop):
+            raise ValueError('shard schedules overlap or leave a gap')
+        if plan != {**expected, 'cluster0': cursor, 'pairs': plan['pairs']}:
+            raise ValueError('shard recipe differs from complete plan')
+        records = _load_shard(directory, plan)
+        wanted = {(expected['seed0'] + i, f)
+                  for i in range(cursor, cursor + plan['pairs']) for f in (0, 1)}
+        keys = [(r.get('seed'), r.get('flip')) for r in records]
+        if len(keys) != len(wanted) or set(keys) != wanted:
+            raise ValueError('shard records do not match their assigned schedule')
+        rows.extend(records)
+        cursor += plan['pairs']
+    if cursor != stop or not rows:
+        raise ValueError('shards do not cover the complete plan')
+    return _summarize(rows, expected)
+
+
+def _load_shard(out, expected):
     out = Path(out)
     if any(type(expected.get(k)) is not int for k in ('seed0', 'cluster0', 'pairs')):
         raise ValueError('expected schedule requires integer seeds and counts')
@@ -125,7 +161,12 @@ def read(out, expected):
     raw = (out / 'rounds.jsonl').read_bytes()
     if not raw.endswith(b'\n'):
         raise ValueError('torn completed shard')
-    rows = [json.loads(line) for line in raw.splitlines()]
+    return [json.loads(line) for line in raw.splitlines()]
+
+
+def _summarize(rows, expected):
+    n = expected['pairs']
+    expected_kind = expected.get('round_kind', 'first_round')
     start = expected['cluster0']
     wanted = {(expected['seed0'] + i, flip): expected['ranks'][i % len(expected['ranks'])]
               for i in range(start, start + n) for flip in (0, 1)}

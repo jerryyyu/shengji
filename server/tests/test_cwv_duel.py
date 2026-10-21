@@ -679,6 +679,65 @@ def test_fixed_banker_shard_assignment_is_stable_and_mirrors_share_deck(duel, mo
                                                 if row['seed'] == seed + 1]
 
 
+@pytest.mark.parametrize('round_kind', ['first_round', 'fixed_banker'])
+def test_pv_dev_shards_match_single_population_and_refuse_bad_partitions(tmp_path, monkeypatch, round_kind):
+    adapter = _load_script('pv_dev_duel')
+    meta = dict(schema='pv-dev-duel-v1', candidate='T', control='C',
+                seed0=100, cluster0=0, pairs=6, ranks=['2', 'A'],
+                control_env={'SHENGJI_BOT': 'C'}, candidate_env={'SHENGJI_BOT': 'T'})
+    if round_kind == 'fixed_banker':
+        meta.update(round_kind=round_kind, initial_banker=adapter.duel.FIXED_BANKER_RULE)
+    records = []
+    for i in range(6):
+        for flip in (0, 1):
+            win = i % 3 != 0
+            records.append(dict(seed=100+i, flip=flip, trump_rank=meta['ranks'][i % 2],
+                policy='T', opponent='C', label='candidate', winner_team=flip if win else 1-flip,
+                level_change=1, won=int(win), level_utility=1 if win else -1,
+                arm_play_decisions=1, opp_play_decisions=1,
+                arm_play_wall_secs=0.1, opp_play_wall_secs=0.1,
+                arm_play_max_secs=0.1, opp_play_max_secs=0.1,
+                arm_play_health=dict(decisions=1, pv_complete=1),
+                opp_play_health=dict(decisions=1, pv_complete=1)))
+            if round_kind == 'fixed_banker':
+                records[-1].update(round_kind=round_kind, initial_banker=(100+i) % 4)
+
+    monkeypatch.setattr(adapter, 'register_pair', lambda *_: ('C', 'T'))
+
+    def persist(name, plan, rows):
+        path = tmp_path / name
+        def play(*args, sink, **kwargs):
+            for row in rows:
+                sink(row)
+            return rows
+        monkeypatch.setattr(adapter.duel, 'play_shard', play)
+        adapter.run(plan['control_env'], plan['candidate_env'], out=path,
+                    seed0=plan['seed0'], pairs=plan['pairs'],
+                    cluster0=plan['cluster0'], ranks=','.join(plan['ranks']),
+                    round_kind=round_kind)
+        return path, plan
+
+    whole = persist('whole', meta, records)
+    a = persist('a', {**meta, 'pairs': 2}, records[:4])
+    b = persist('b', {**meta, 'cluster0': 2, 'pairs': 4}, records[4:])
+    assert adapter.read_shards([b, a], meta) == adapter.read(*whole)
+    for shards in ([a], [b], [a, a, b]):
+        with pytest.raises(ValueError):
+            adapter.read_shards(shards, meta)
+    with pytest.raises(ValueError, match='recipe'):
+        adapter.read_shards([a, (b[0], {**b[1], 'candidate': 'other'})], meta)
+    (b[0] / 'DONE').unlink()
+    with pytest.raises(FileNotFoundError):
+        adapter.read_shards([a, b], meta)
+    (b[0] / 'DONE').write_text('4 complete pairs\n')
+    (b[0] / 'rounds.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in records[:8]))
+    with pytest.raises(ValueError, match='assigned schedule'):
+        adapter.read_shards([a, b], meta)
+    records[4]['arm_play_health'] = dict(decisions=1, pv_fallback=1)
+    (b[0] / 'rounds.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in records[4:]))
+    assert adapter.read_shards([a, b], meta)['verdict'] == 'QUALITY_FAIL'
+
+
 def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):
     import copy
     adapter = _load_script('pv_dev_duel')

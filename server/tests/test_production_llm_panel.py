@@ -109,6 +109,43 @@ def test_pt_only_cli_reaches_real_adapter_without_actor_panel(monkeypatch):
     assert calls[0]["run"] is False
 
 
+def test_pt_cli_preserves_s47_resources_and_controls(monkeypatch):
+    monkeypatch.setattr(panel, 'prepare_recipe', lambda *a: SimpleNamespace(
+        identity={}, policy='synthetic'))
+    calls = []
+    monkeypatch.setattr(panel, 'run_benchmark', lambda **kw: calls.append(kw) or {})
+    panel.main(['--row', 'release46-pv', '--prepared-roots-from', '/synthetic/roots',
+        '--prepared-roots-sha256', 'a'*64, '--output', '/synthetic/out',
+        '--seeds', '12', '--information', 'perfect', '--resource-profile', 's47-pt',
+        '--invalid-action-feedback', '--classify-final-action-failures',
+        '--failure-protocol', PRESERVE_ILLEGAL])
+    assert calls[0]['wall_seconds'] == 21600.0
+    assert calls[0]['token_limit'] == 20000000
+    assert calls[0]['timeout_seconds'] == 300
+    assert calls[0]['information'] == ('perfect',)
+    assert calls[0]['invalid_action_feedback'] is True
+    assert calls[0]['classify_final_action_failures'] is True
+    assert calls[0]['failure_protocol'] == PRESERVE_ILLEGAL
+    assert calls[0]['illegal_failure_limit'] == 8
+    assert calls[0]['run'] is False
+    assert 'capacity_retries' not in calls[0]
+    assert 'accept_recovered_reconnects' not in calls[0]
+
+
+@pytest.mark.parametrize('delta', [
+    {'row': 'smart'}, {'information': 'both'}, {'capacity_retries': True},
+    {'accept_recovered_reconnects': True}, {'invalid_action_feedback': False},
+    {'classify_final_action_failures': False}, {'failure_protocol': 'fail-stop-v1'},
+])
+def test_pt_resource_profile_refuses_recipe_drift(options, monkeypatch, delta):
+    monkeypatch.setattr(panel, 'prepare_recipe', lambda *a: pytest.fail('recipe reached'))
+    options.update(row='release46-pv', information='perfect', resource_profile='s47-pt',
+                   invalid_action_feedback=True, classify_final_action_failures=True,
+                   failure_protocol=PRESERVE_ILLEGAL)
+    with pytest.raises(ValueError):
+        panel.run_row(**(options | delta))
+
+
 @pytest.mark.parametrize("information", ["unknown", "", None, ["perfect"], True])
 def test_bad_information_refuses_before_recipe(options, monkeypatch, information):
     monkeypatch.setattr(panel, "prepare_recipe", lambda *a: pytest.fail("recipe reached"))
@@ -135,8 +172,12 @@ def test_release46_pt_plan_binds_real_packages_without_provider_calls(
     result = panel.run_row(
         row="release46-pv", model_paths=paths, prepared_roots_from=roots,
         prepared_roots_sha256=hashlib.sha256((roots / "result.json").read_bytes()).hexdigest(),
-        output=output, seeds=(12,), information="perfect")
+        output=output, seeds=(12,), information="perfect", resource_profile='s47-pt',
+        invalid_action_feedback=True, classify_final_action_failures=True,
+        failure_protocol=PRESERVE_ILLEGAL)
     assert result["mode"] == "dry-run"
     assert result["planned_arms"] == ["sol-perfect"]
     assert result["planned_mirrors"] == 2
+    assert result['config']['wall_seconds'] == 21600.0
+    assert result['config']['soft_token_limit'] == 20000000
     assert not output.exists()

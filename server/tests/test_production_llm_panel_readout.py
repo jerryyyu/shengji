@@ -45,6 +45,7 @@ def test_pt_only_report_scores_from_bot_perspective_by_deal(tmp_path):
 
 def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
     from dataclasses import replace
+    from textwrap import dedent
     from scripts import production_llm_panel as panel
     from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
     roots = tmp_path / "roots"
@@ -52,7 +53,6 @@ def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
     static = prepare_recipe("smart", {})
     monkeypatch.setattr(panel, "prepare_recipe", lambda row, paths: replace(
         static, identity=dict(static.identity, benchmark_id=row, policy=row)))
-
     class FakeTransport:
         def __init__(self, **kwargs):
             self.calls = []
@@ -61,14 +61,15 @@ def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
             return planner(packet)
 
     runner = panel.run_benchmark
-    monkeypatch.setattr(panel, "run_benchmark", lambda **kw: runner(
-        **kw, transport_factory=FakeTransport))
+    monkeypatch.setattr(panel, "run_benchmark", lambda **kwargs: runner(
+        **kwargs, transport_factory=FakeTransport))
     options = dict(
         row="release46-pv", model_paths={}, seeds=SEEDS, output=tmp_path / "out",
         prepared_roots_from=roots,
         prepared_roots_sha256=hashlib.sha256((roots / "result.json").read_bytes()).hexdigest(),
         information="perfect", invalid_action_feedback=True,
-        classify_final_action_failures=True, failure_protocol=PRESERVE_ILLEGAL)
+        classify_final_action_failures=True, failure_protocol=PRESERVE_ILLEGAL,
+        resource_profile="s47-pt")
     expected = json.loads(json.dumps(panel.run_row(**options)["config"]))
     expected["run"] = True
     from test_sealed_readout_wrapper import write, assert_stage1_wrapper
@@ -85,14 +86,65 @@ def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
     import sys
     from scripts.launch_production_llm_panel import supervise_pt
     supervised = tmp_path / 'supervised'
-    # The child transports synthetic scheduler output; supervision is real.
-    command = [sys.executable, '-c',
-               'import shutil,sys; shutil.copyfile(sys.argv[1],sys.argv[2])',
-               str(tmp_path / 'out/result.json'), str(supervised / 'result.json')]
+    # The contained child runs the real producer with a synthetic transport;
+    # no copy-file fixture can accidentally hide a fresh-output refusal.
+    child = dedent('''
+        import json
+        import sys
+        from dataclasses import replace
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        from scripts import production_llm_panel as panel
+        from shengji.ai.heuristic import HeuristicBot
+        from shengji.engine.cards import Ordering
+        from shengji.luna.benchmark_failure_protocol import PRESERVE_ILLEGAL
+        from shengji.luna.benchmark_recipes import prepare_recipe
+
+        config = json.loads(Path(sys.argv[1]).read_text())
+        static = prepare_recipe("smart", {})
+        panel.prepare_recipe = lambda row, paths: replace(
+            static, identity=dict(static.identity, benchmark_id=row, policy=row))
+
+        class FakeTransport:
+            def __init__(self, **kwargs):
+                self.calls = []
+
+            def __call__(self, packet):
+                value = packet["observation"]
+                hands = [[] for _ in range(4)]
+                hands[value["seat"]] = value["own_hand"]
+                public = SimpleNamespace(
+                    hands=hands,
+                    trump_rank=value["trump_rank"],
+                    ordering=Ordering(value["trump_suit"], value["trump_rank"]),
+                    trick=SimpleNamespace(
+                        leader=value["current_trick"]["leader"],
+                        plays=[SimpleNamespace(**play)
+                               for play in value["current_trick"]["plays"]]))
+                return {"cards": HeuristicBot().decide_play(public, value["seat"]),
+                        "memory": ""}
+
+        runner = panel.run_benchmark
+        panel.run_benchmark = lambda **kwargs: runner(
+            **kwargs, transport_factory=FakeTransport)
+        panel.run_row(
+            row="release46-pv", model_paths={}, seeds=config["seeds"],
+            output=sys.argv[2], run=True,
+            prepared_roots_from=config["prepared_roots_from"]["path"],
+            prepared_roots_sha256=config["prepared_roots_from"]["result_sha256"],
+            information="perfect", invalid_action_feedback=True,
+            classify_final_action_failures=True,
+            failure_protocol=PRESERVE_ILLEGAL, resource_profile="s47-pt")
+    ''')
+    command = [sys.executable, '-c', child, config_ref['path'],
+               str(supervised / 'benchmark')]
     terminal = supervise_pt(command, config_path=config_ref['path'],
         expected_sha256=config_ref['sha256'], cwd=tmp_path, env=dict(os.environ),
         output=supervised, wall=30)
     assert terminal['status'] == 'exited' and terminal['returncode'] == 0
+    assert len(list((supervised / 'benchmark').glob('mirror-*.json'))) == 20
+    assert json.loads((supervised / 'benchmark' / 'config.json').read_text()) == expected
     result_ref = terminal['result']
     terminal_ref = dict(path=str(supervised / 'terminal.json'), sha256=hashlib.sha256(
         (supervised / 'terminal.json').read_bytes()).hexdigest())
@@ -100,7 +152,9 @@ def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
         "schema": "release46-pt-sol-seals-v1", "expected_config": config_ref,
         "terminal": terminal_ref, "result": result_ref})
     sealed = assert_stage1_wrapper(tmp_path, plan_ref, pt=True)
-    assert sealed["pt_sol"] == result["pt_sol"]
+    for key, value in result["pt_sol"].items():
+        if key != "latency":
+            assert sealed["pt_sol"][key] == value
     with pytest.raises(FileExistsError):
         supervise_pt(command, config_path=config_ref['path'],
             expected_sha256=config_ref['sha256'], cwd=tmp_path, env=dict(os.environ),

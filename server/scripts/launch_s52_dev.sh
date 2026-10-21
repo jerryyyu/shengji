@@ -22,15 +22,15 @@ for key in ${!SHENGJI_@}; do unset "$key"; done
 unset RUNPVC1_CONTAIN
 export SHENGJI_FAST=1 PYTHONDONTWRITEBYTECODE=1
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1
-R=/root/codex-s52dev-src-01606729; PY=/root/gen-hybrid/server/.venv/bin/python
-PIN_FULL=01606729549bbb0b6ab89187a026edfac1b63276
+R=/root/codex-s52dev-src-3464a1b1; PY=/root/gen-hybrid/server/.venv/bin/python
+PIN_FULL=3464a1b19451f5e9276e463f1b59894ad77b6909
 TREE_NATIVE='99472ae0396967ea02bc7fcb1d7c6bee5438a5549f7d3b405061862d3de4299a  server/shengji/engine/_fast.cpython-314-x86_64-linux-gnu.so
 52759fde0b3e0c080fce7db19180ee53ae1f1b77657143a3d2c88e8f9bef73ec  server/shengji/ai/_endgame_fast.cpython-314-x86_64-linux-gnu.so
 1da16497b194f965d9b0a289c3c6b00ddc346490a33f2c4d1da288058ad50606  server/shengji/ai/_cwv_math.cpython-314-x86_64-linux-gnu.so'
 RUN=s52dev
 LANE_DIR=/root/s52dev
 RUNNER=$LANE_DIR/run_s52_dev.py
-RUNNER_SHA=66329c29e72938393f36be5413c76fe4c64f4279adc3c6e548fdca6132e56a53
+RUNNER_SHA=265271e06fd00b6db36c216529c144101819685bf787d81c9325c73e905a24b5
 OUT=$LANE_DIR/output; S=/root/s52dev.status
 SEED0=184060910; PAIRS=624; WORKERS=14
 RELEASE=/root/claude_s52dev.RELEASE

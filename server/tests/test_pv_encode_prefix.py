@@ -408,7 +408,8 @@ def test_a_served_bot_decides_and_counts_exactly_as_off_over_seeded_rounds(versi
 
 def test_the_switch_is_off_by_default_and_enters_no_name(monkeypatch):
     assert pv.PVSearchBot.encode_prefix_cache is False
-    assert pv.latency_switches({}) == {"encode_prefix_cache": False, "single_candidate_fast": False}
+    assert pv.latency_switches({}) == {"encode_prefix_cache": False, "single_candidate_fast": False,
+                                       "leaf_greedy_stream": False}
     assert pv.latency_switches({FLAG: "1"})["encode_prefix_cache"] is True
     assert pv.latency_switches({FLAG: "0"})["encode_prefix_cache"] is False
     with pytest.raises(pv.PVSearchPolicyError, match=FLAG):

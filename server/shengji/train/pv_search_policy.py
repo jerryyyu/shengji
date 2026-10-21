@@ -365,13 +365,14 @@ it enters the recipe digest with ``leaf_finish_exact_rule``
 gains ``leaf_greedy_finish_exact_skipped`` (only with the flag on).  Off, it is
 absent from the payload, so every existing name and every decision are unchanged.
 
-Two latency switches, OFF BY DEFAULT, that enter no name, payload or digest
+Three latency switches, OFF BY DEFAULT, that enter no name, payload or digest
 (like ``SHENGJI_PV_BELIEF_LOG`` they are read from the serving environment
 where the bot is built; ``0`` or ``1`` only).  On the decisions the search
-completes, neither changes the cards played, the sampler stream or (beyond
+completes, none changes the cards played, the sampler stream or (beyond
 the skipped pass's own fields) the record:
-``SHENGJI_PV_ENCODE_PREFIX_CACHE=1`` encodes the value pass's leaves and the
-prior's root rows on the decision root's shared history prefix with one batched
+``SHENGJI_PV_ENCODE_PREFIX_CACHE=1`` encodes the value pass's leaves, the
+prior's root rows and, with ``lgf``, the greedy finish's reply valuations on
+the decision root's shared history prefix with one batched
 validation (`pv_encode_prefix`; every tensor is the reference encoder's, byte
 for byte, and anything it does not cover takes the reference path), and
 ``SHENGJI_PV_SINGLE_CANDIDATE_FAST=1`` skips the value pass when the admission
@@ -387,6 +388,13 @@ back to the anchor without the switch and plays the selected candidate with
 it.  A consumer of every candidate's value (the trajectory harvest, the M9
 panel, the counterfactual value diagnostic) refuses the switch before it
 starts (`require_value_means`, `refuse_single_candidate_fast_env`).
+``SHENGJI_PV_LEAF_GREEDY_STREAM=1`` bounds ``lgf``'s memory: the greedy
+finish's reply listings (up to ``cap`` follows per distinct hand and lead, each
+with a dense float64 scoring matrix) are held as int8 card indices for one ply
+at a time, and each scoring matrix is rebuilt by the same operations at its
+product and dropped (`pv_tree_search.legal_replies_compact`).  The plies, their
+batches, every score and every record field are the switch-off ones; without
+``lgf`` nothing reads it.
 
 The exact stages' world subset, OFF BY DEFAULT and a search-policy change
 where it applies: ``SHENGJI_PV_EXACT_WORLD_SUBSET=<n>`` (an int in [1, 512];
@@ -1089,9 +1097,10 @@ _EXACT_WORLD_SUBSET_REQUIRES = (
     "exact_world_subset narrower than worlds needs an exact stage "
     "(SHENGJI_PV_EXACT_WORLD_SUBSET below SHENGJI_PV_WORLDS needs "
     "SHENGJI_PV_EXACT_LEAD_ENDGAME=1 or SHENGJI_PV_EXACT_FOLLOW=1)")
-#: the two latency switches (module docstring): ``0`` or ``1``, unset (or empty) is off
+#: the latency switches (module docstring): ``0`` or ``1``, unset (or empty) is off
 LATENCY_SWITCH_ENV = {"encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
-                      "single_candidate_fast": "SHENGJI_PV_SINGLE_CANDIDATE_FAST"}
+                      "single_candidate_fast": "SHENGJI_PV_SINGLE_CANDIDATE_FAST",
+                      "leaf_greedy_stream": "SHENGJI_PV_LEAF_GREEDY_STREAM"}
 
 
 def latency_switches(environ=None) -> dict[str, bool]:
@@ -1753,8 +1762,9 @@ class PVSearchBot(PolicyValueBot):
     #: the belief proposal's log (module docstring), ON by default; it is read
     #: only while ``belief_worlds`` is on and enters no name or digest
     belief_log = BELIEF_LOG_DEFAULT
-    #: the two latency switches (module docstring), OFF by default; like the
-    #: belief log they enter no name or digest, and neither changes a decision.
+    #: the latency switches (module docstring), OFF by default; like the
+    #: belief log they enter no name or digest, and none changes a decision
+    #: (``leaf_greedy_stream`` is declared on `PolicyValueBot`).
     #: Instance state of an ON bot only.
     encode_prefix_cache = False
     single_candidate_fast = False

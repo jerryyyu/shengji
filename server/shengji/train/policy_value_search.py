@@ -253,8 +253,11 @@ while off every leaf the value head scores is `_leaf` exactly as before):
   replies batched across the clones, as the tree batches them) into a
   per-decision cache keyed by (candidate, world index); a consumer asking
   for a leaf outside the pass (another world set) gets one finished on its
-  own, counted in the record.  Not combined with the tree or the adaptive
-  worlds rule (refused by the recipe).  Record, only with the rule on:
+  own, counted in the record.  ``leaf_greedy_stream`` (a serving latency
+  switch, `pv_search_policy`) holds the finish's reply listings compactly, one
+  ply at a time; the plies and values are the same.  Not combined with the
+  tree or the adaptive worlds rule (refused by the recipe).  Record, only with
+  the rule on:
   ``leaf_greedy_finish_applied`` (a reply ply ran: the root seat was not
   last to play), ``leaf_greedy_reply_plays``, ``leaf_greedy_reply_evaluations``
   (value-head calls spent on replies), ``leaf_greedy_reply_differs_heuristic``,
@@ -464,6 +467,10 @@ class PolicyValueBot(PolicyWorldBot):
     #: `leaf_greedy_finish`'s per-decision state (the finished-leaf cache and
     #: the work counters); instance state of an ON bot only
     _leaf_greedy = None
+    #: hold the finish's reply listings compactly, one ply at a time
+    #: (`pv_tree_search.legal_replies_compact`); the same plays and values.
+    #: Instance state of an ON bot only
+    leaf_greedy_stream = False
 
     def __init__(self, predict, *, evaluator, candidates=8, batch_size=128,
                  admission_diversity=ADMISSION_DEFAULTS["admission_diversity"],
@@ -596,20 +603,29 @@ class PolicyValueBot(PolicyWorldBot):
         state = self._leaf_greedy = _greedy_state()
         clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
                   for hands, buried in worlds for action in actions]
-        self._greedy_finish(clones, len(rnd.history) + 1, check_budget, state['stats'])
+        prefix = None
+        if getattr(self, 'encode_prefix_cache', False):
+            # the reply leaves are clones of this root: its history encoded once
+            from .pv_encode_prefix import HistoryPrefix
+            prefix = HistoryPrefix.of(rnd)
+        self._greedy_finish(clones, len(rnd.history) + 1, check_budget, state['stats'], prefix)
         leaves = iter(clones)
         for world_index in range(len(worlds)):
             for action in actions:
                 state['cache'][(tuple(action), world_index)] = next(leaves)
 
-    def _greedy_finish(self, clones, target, gate, stats):
+    def _greedy_finish(self, clones, target, gate, stats, prefix=None):
         # lazy: the tree module imports this module's served consumers.  The
         # policy rows are encoded at the served bot's ``version``; the harness
         # bot (no ``version``) encodes at `policy_prior.ENC_VERSION`, as `scores`
         from .policy_prior import ENC_VERSION
         from .pv_tree_search import greedy_finish_current_trick
+        # the optional switches are passed only when on: the call is otherwise
+        # the switch-off one (tests replace this function with that signature)
+        options = {**({'compact': True} if self.leaf_greedy_stream else {}),
+                   **({'prefix': prefix} if prefix is not None else {})}
         greedy_finish_current_trick(self, clones, target, gate, LEAF_GREEDY_REPLIES,
-                                    getattr(self, 'version', ENC_VERSION), stats)
+                                    getattr(self, 'version', ENC_VERSION), stats, **options)
 
     def _leaf_greedy_record(self):
         if not self.leaf_greedy_finish:

@@ -1,5 +1,6 @@
 """Synthetic source qualification; never load a checkpoint or call a provider."""
 import hashlib
+import json
 
 import pytest
 
@@ -59,6 +60,117 @@ def test_model_recipe_exact_registration_without_loading(monkeypatch, policy, as
                             prior_sha256=recipes._SHAS[prior],
                             prior_threshold=1000, prior_top=256)
         assert args == expected
+
+
+def test_release46_recipe_uses_frozen_serving_inputs(monkeypatch):
+    from shengji.train import pv_search_policy
+
+    checked, calls = [], []
+    sentinel = object()
+
+    def asset(paths, key):
+        checked.append(key)
+        return "/synthetic/" + key, recipes._SHAS[key]
+
+    def register(**kwargs):
+        calls.append(kwargs)
+        return {"registered-r46": sentinel}
+
+    monkeypatch.setattr(recipes, "_asset", asset)
+    monkeypatch.setattr(pv_search_policy, "pv_registry_entries", register)
+    prepared = recipes.prepare_recipe("release46-pv", {})
+
+    assert checked == ["smv3", "belief"]
+    assert prepared.factory is sentinel
+    assert prepared.policy == "registered-r46"
+    expected = {
+        "checkpoint": "/synthetic/smv3",
+        "sha256": recipes._SHAS["smv3"],
+        "worlds": 64,
+        "candidates": 8,
+        "cap": 4000,
+        "batch_size": 128,
+        "serving_budget_seconds": 3.0,
+        "admission_diversity": True,
+        "refusal_constraints": True,
+        "tiebreak_points": True,
+        "lead_anchor": True,
+        "doomed_throw_reselect": True,
+        "value_declare": True,
+        "value_declare_every_first": True,
+        "world_history_legal": True,
+        "world_history_draw": True,
+        "belief_worlds": True,
+        "belief_checkpoint": "/synthetic/belief",
+        "belief_sha256": recipes._SHAS["belief"],
+        "exact_lead_endgame": True,
+        "exact_deep_cards": 7,
+        "exact_follow": True,
+        "exact_follow_solver": "compact-level",
+        "exact_follow_max_cards": 7,
+        "exact_follow_max_nodes": 50000000,
+        "bury_arm": "hybrid",
+        "bury_config": pv_search_policy.CWVBuryConfig(),
+        "bury_serving_budget_seconds": 2.0,
+        "bury_wide_value": True,
+        "bury_wide_k": 64,
+    }
+    assert calls == [expected]
+    assert prepared.identity["play_only"] is True
+    assert prepared.identity["belief_sha256"] == recipes._SHAS["belief"]
+
+
+def test_release46_registry_derives_name_without_loading_models(monkeypatch):
+    from shengji.train import pv_search_policy
+
+    paths = {"smv3": "/synthetic/smv3.npz", "belief": "/synthetic/belief.npz"}
+    digests = {paths["smv3"]: recipes._SHAS["smv3"],
+               paths["belief"]: recipes._SHAS["belief"]}
+    monkeypatch.setattr(recipes, "_asset",
+                        lambda _paths, key: (paths[key], recipes._SHAS[key]))
+    monkeypatch.setattr(pv_search_policy, "file_sha256",
+                        lambda path: digests[path])
+    from shengji.ai import cwv_policy
+    monkeypatch.setattr(cwv_policy, "file_sha256", lambda path: digests[path])
+
+    prepared = recipes.prepare_recipe("release46-pv", {})
+
+    assert prepared.policy == (
+        "pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-"
+        "xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0"
+    )
+    assert prepared.identity["policy"] == "release46-pv"
+
+
+def test_release46_run_row_dry_run_json_roundtrip(tmp_path, monkeypatch):
+    from scripts import production_llm_panel as panel
+    from scripts.prepare_llm_panel_roots import prepare_roots
+    from shengji.ai import cwv_policy
+    from shengji.train import pv_search_policy
+
+    paths = {"smv3": "/synthetic/smv3.npz", "belief": "/synthetic/belief.npz"}
+    digests = {paths["smv3"]: recipes._SHAS["smv3"],
+               paths["belief"]: recipes._SHAS["belief"]}
+    monkeypatch.setattr(recipes, "_asset",
+                        lambda _paths, key: (paths[key], recipes._SHAS[key]))
+    monkeypatch.setattr(pv_search_policy, "file_sha256",
+                        lambda path: digests[path])
+    monkeypatch.setattr(cwv_policy, "file_sha256", lambda path: digests[path])
+
+    roots = tmp_path / "roots"
+    prepare_roots(output=roots, seeds=[12])
+    roots_sha = hashlib.sha256((roots / "result.json").read_bytes()).hexdigest()
+    result = panel.run_row(
+        row="release46-pv", model_paths={}, prepared_roots_from=roots,
+        prepared_roots_sha256=roots_sha, output=tmp_path / "out", seeds=(12,),
+        actor_only=True)
+
+    assert result["mode"] == "dry-run"
+    assert result["config"]["baseline_recipe"]["bury_config"] == {
+        "max_candidates": 32, "model_worlds": 32, "selection_worlds": 32,
+        "alternatives": 4,
+    }
+    assert json.loads(json.dumps(result, sort_keys=True)) == result
 
 
 @pytest.mark.parametrize("kwargs", [{"js_prior_threshold": 999},

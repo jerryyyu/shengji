@@ -30,7 +30,7 @@ def test_independent_controls_and_fixed_recipe(options, monkeypatch, values):
     assert result['prepared_recipe'].identity['benchmark_id'] == 'smart'
 
 
-@pytest.mark.parametrize('flag', FLAGS + ('run',))
+@pytest.mark.parametrize('flag', FLAGS + ('run', 'actor_only'))
 def test_controls_refuse_truthy_nonbool_before_recipe(options, monkeypatch, flag):
     monkeypatch.setattr(panel, 'prepare_recipe', lambda *a: pytest.fail('recipe reached'))
     with pytest.raises(ValueError, match='bool'):
@@ -78,7 +78,8 @@ def test_invalid_contract_refuses_before_recipe(options, monkeypatch, extra, mat
         panel.run_row(**(options | extra))
 
 
-def test_real_runner_dry_run_no_output(tmp_path):
+@pytest.mark.parametrize('actor_only,mirrors', [(False, 4), (True, 2)])
+def test_real_runner_dry_run_no_output(tmp_path, actor_only, mirrors):
     from scripts.prepare_llm_panel_roots import prepare_roots
     import hashlib
     roots = tmp_path/'roots'
@@ -87,7 +88,51 @@ def test_real_runner_dry_run_no_output(tmp_path):
     result = panel.run_row(row='smart', model_paths={}, prepared_roots_from=roots,
                           prepared_roots_sha256=hashlib.sha256((roots/'result.json').read_bytes()).hexdigest(),
                           output=output, seeds=(12,), failure_protocol=PRESERVE_ILLEGAL,
-                          classify_final_action_failures=True, invalid_action_feedback=True)
+                          classify_final_action_failures=True, invalid_action_feedback=True,
+                          actor_only=actor_only)
     assert result['mode'] == 'dry-run'
-    assert result['planned_mirrors'] == 4
+    assert result['planned_mirrors'] == mirrors
     assert not output.exists()
+
+
+def test_actor_only_cli_reaches_actual_adapter(monkeypatch):
+    calls = []
+    monkeypatch.setattr(panel, 'run_benchmark', lambda **kw: calls.append(kw) or {})
+    panel.main(['--row', 'smart', '--prepared-roots-from', '/synthetic/roots',
+                '--prepared-roots-sha256', 'a'*64, '--output', '/synthetic/out',
+                '--seeds', '12', '--actor-only'])
+    assert calls[0]['information'] == ('actor-only',)
+    assert calls[0]['run'] is False
+
+
+@pytest.mark.parametrize('missing', ['wall_seconds', 'token_limit', 'timeout_seconds'])
+def test_actor_only_execution_cannot_inherit_limits(options, monkeypatch, missing):
+    limits = dict(wall_seconds=60.0, token_limit=1000, timeout_seconds=10)
+    limits.pop(missing)
+    monkeypatch.setattr(panel, 'prepare_recipe', lambda *a: pytest.fail('recipe reached'))
+    with pytest.raises(ValueError, match='explicit'):
+        panel.run_row(**options, actor_only=True, run=True, **limits)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('wall_seconds', float('nan')), ('wall_seconds', float('inf')),
+    ('wall_seconds', True), ('wall_seconds', 0), ('token_limit', True),
+    ('token_limit', 1.5), ('token_limit', -1), ('timeout_seconds', 0),
+    ('timeout_seconds', True), ('timeout_seconds', 0.5),
+])
+def test_invalid_explicit_limits_refuse_before_recipe(options, monkeypatch, field, value):
+    monkeypatch.setattr(panel, 'prepare_recipe', lambda *a: pytest.fail('recipe reached'))
+    with pytest.raises(ValueError, match='limits'):
+        panel.run_row(**options, **{field: value})
+
+
+def test_explicit_cli_limits_reach_runner_without_implied_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(panel, 'run_benchmark', lambda **kw: calls.append(kw) or {})
+    panel.main(['--row', 'smart', '--prepared-roots-from', '/synthetic/roots',
+                '--prepared-roots-sha256', 'a'*64, '--output', '/synthetic/out',
+                '--seeds', '12', '--actor-only', '--wall-seconds', '60',
+                '--soft-token-limit', '1000', '--timeout-seconds', '10'])
+    assert calls[0]['run'] is False
+    assert (calls[0]['wall_seconds'], calls[0]['token_limit'],
+            calls[0]['timeout_seconds']) == (60, 1000, 10)

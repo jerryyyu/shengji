@@ -1,9 +1,9 @@
 """Prefix-cached encoding of a served decision's value leaves and prior roots.
 
 ``SHENGJI_PV_ENCODE_PREFIX_CACHE=1`` (OFF by default; no name, payload or
-decision reads it) routes `PVSearchBot._score_leaves` and `PVSearchBot.scores`
-through this module.  Every tensor it returns is the reference encoder's
-tensor byte for byte:
+decision reads it) routes `PVSearchBot._score_leaves`, `PVSearchBot.scores`
+and the ``lgf`` greedy finish's reply plies through this module.  Every tensor
+it returns is the reference encoder's tensor byte for byte:
 
 * Value leaves.  Every leaf of one decision is a clone of the decision root,
   so its ``history`` starts with the root's ``history`` list of complete tricks
@@ -17,6 +17,15 @@ tensor byte for byte:
   prefix is applied in its original order, so the planes are the reference's.
   A leaf whose history does not extend the prefix by identity, or any state
   the fused builder would refuse, is encoded by the reference encoder.
+  `fused_many` builds a batch of such leaves at once: the prefix planes are
+  laid down for the whole batch, each row adds its suffix deltas and its world
+  planes (one plane per distinct hand), and the public block is assembled as
+  arrays; every entry is a sum of half copies or the fused builder's own
+  scalar expression, so the float32 casts see the same doubles.
+* Reply policy rows.  The ``lgf`` reply ply's clones extend the root's
+  history by identity too; `reply_rows` builds their
+  ``flat_input(root_tensors(...))`` rows from `fused_many`, whose static
+  tensor is the reference builder's for every state it covers.
 * Prior roots.  Every root clone of one decision shares the decision's
   history, current trick and acting seat's hand; only the hidden hands and the
   kitty differ, and the public block reads them only through hand lengths.  The
@@ -33,6 +42,7 @@ so a refusal is the reference's refusal, raised at the reference's row.
 from __future__ import annotations
 
 import time
+from collections import Counter, defaultdict
 from functools import partial
 
 import numpy as np
@@ -43,7 +53,7 @@ from ..engine.cards import Ordering
 from ..engine.round import Round, Trick, TrickPlay
 from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM, RANKS, SUITS, TRUMP
 from ..rl.encode_next_actor import next_actor_columns
-from ..rl.encode_versions import OBS_DIM_BY_VERSION
+from ..rl.encode_versions import OBS_DIM_BY_VERSION, trick_state
 from ..rl.public_history import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
 from ..rl.value_afterstate import (PUBLIC_DIM, WORLD_RECEIVERS, ValueAfterstateTensors,
                                    terminal_distribution)
@@ -234,6 +244,267 @@ class HistoryPrefix:
             return None
 
 
+#: the card at each `CARD_INDEX` position
+_CARDS = sorted(CARD_INDEX, key=CARD_INDEX.__getitem__)
+_UNSEEN = 8 * N_CARDS     # the v1 public unseen plane's offset
+_SUIT_ORDER = [*SUITS, TRUMP]
+
+
+def _trump_indices(ordering):
+    return np.asarray([i for i, card in enumerate(_CARDS) if ordering.eff_suit(card) == TRUMP],
+                      dtype=np.intp)
+
+
+def _v2_columns_fast(unseen_trump, rnd, seat):
+    """`cwv_static_encoding._v2_static_columns`' 29 columns, given the count
+    of trump copies in the fused unseen plane (an int, as the reference's
+    ``sum`` over ``unseen.elements()``): the same arithmetic in the same order."""
+    o = rnd.ordering
+    obs = []
+    winner, lead_suit, trick_pts = trick_state(rnd, seat)
+    winner_rel = [0.0] * 4
+    if winner is not None:
+        winner_rel[(winner - seat) % 4] = 1.0
+    obs += winner_rel
+    obs.append(1.0 if (winner is not None and winner != seat
+                       and (winner - seat) % 2 == 0) else 0.0)
+    obs.append(min(trick_pts, 80) / 80.0)
+    lead_onehot = [0.0] * 5
+    if lead_suit is not None:
+        lead_onehot[_SUIT_ORDER.index(lead_suit)] = 1.0
+    obs += lead_onehot
+    played_here = 0 if rnd.trick is None else len(rnd.trick.plays)
+    position = [0.0] * 4
+    position[min(played_here, 3)] = 1.0
+    obs += position
+    obs.append(len(rnd.trick.plays[0].cards) / 6.0
+               if (rnd.trick is not None and rnd.trick.plays) else 0.0)
+    pts_now = min(rnd.attacker_points, 200)
+    obs.append(max(-1.0, min(1.0, (pts_now - 80) / 80.0)))
+    band = [0.0] * 4
+    band[0 if pts_now < 40 else 1 if pts_now < 80 else 2 if pts_now < 120 else 3] = 1.0
+    obs += band
+    hand = rnd.hands[seat]
+    eff = [o.eff_suit(c) for c in hand]
+    for name in _SUIT_ORDER:
+        obs.append(eff.count(name) / 27.0)
+    obs.append(unseen_trump / 27.0)
+    counts = Counter(hand)
+    obs.append(sum(1 for v in counts.values() if v >= 2) / 13.0)
+    obs.append(len(hand) / 27.0)
+    return obs
+
+
+def _checked(rnd, seat):
+    """`HistoryPrefix.fused`'s state checks: True when it would read ``rnd``."""
+    if (type(rnd) is not Round or type(seat) is not int or not 0 <= seat < 4
+            or rnd.phase != "play" or type(rnd.ordering) is not Ordering
+            or type(rnd.history) is not list or type(rnd.hands) is not list
+            or len(rnd.hands) != 4 or type(rnd.buried) is not list
+            or type(rnd.banker) is not int or not 0 <= rnd.banker < 4
+            or type(rnd.attacker_points) is not int
+            or type(rnd.trump_is_nt) is not bool or rnd.trump_rank not in RANKS
+            or type(rnd.trick) is not Trick or type(rnd.trick.plays) is not list
+            or len(rnd.trick.plays) > 3):
+        return False
+    declaration = rnd.declaration
+    if declaration is not None:
+        if (type(declaration) is not dict
+                or type(declaration.get("seat")) is not int
+                or not 0 <= declaration["seat"] < 4
+                or type(declaration.get("cards")) is not list
+                or not declaration["cards"]
+                or any(type(card) is not str or card not in CARD_INDEX
+                       for card in declaration["cards"])):
+            return False
+    return True
+
+
+def fused_many(prefix, positions, seats, version):
+    """``[tensor or None]``: for each ``(positions[i], seats[i])`` the static
+    route's tensor at ``version`` that ``_widened(version, *prefix.fused(rnd,
+    seat), rnd, seat)`` builds, byte for byte, or None where ``fused`` returns
+    None.  The prefix planes are laid down once for the batch and each row
+    adds only its own suffix (the tricks after the prefix and the current
+    trick), its world planes and its seat projection; every value is a sum of
+    half copies or the reference's own scalar expression, so the float32
+    casts see the same doubles."""
+    n = len(positions)
+    out = [None] * n
+    if version not in VERSIONS or not n:
+        return out
+    ordering = prefix.ordering
+    eff_suit = ordering.eff_suit
+    keep = []
+    # a hand's half-copy plane, shared by the rows that hold the same cards
+    hand_planes, world_planes = {}, []
+    played_ix, trick_ix, phys_ix = ([], []), ([], []), ([], [])     # (flat cell, delta)
+    voids, events, tails = [], [], []
+    for i, (rnd, seat) in enumerate(zip(positions, seats)):
+        try:
+            if not _checked(rnd, seat):
+                continue
+            history = rnd.history
+            if rnd.ordering is not ordering or len(history) < len(prefix.tricks):
+                continue
+            if any(history[k] is not trick for k, trick in enumerate(prefix.tricks)):
+                continue
+            row = len(keep)
+            cells = []
+            for relative in range(WORLD_RECEIVERS):
+                cards = rnd.hands[(seat + relative) % 4] if relative < 4 else rnd.buried
+                if type(cards) is not list:
+                    raise TypeError
+                key = tuple(cards)
+                plane = hand_planes.get(key)
+                if plane is None:
+                    plane = np.zeros(N_CARDS, dtype=np.float64)
+                    for card in cards:
+                        if type(card) is not str:
+                            raise TypeError
+                        plane[CARD_INDEX[card]] += 0.5
+                    hand_planes[key] = plane
+                cells.append(plane)
+            played = [defaultdict(float) for _ in range(4)]
+            total = defaultdict(float)
+            physical = defaultdict(int)
+            row_voids = [set(suits) for suits in prefix.voids]
+            planes = [defaultdict(float) for _ in range(3)]
+            count = prefix.events
+            for trick in history[len(prefix.tricks):]:
+                if type(trick) is not Trick or type(trick.plays) is not list \
+                        or len(trick.plays) != 4:
+                    raise TypeError
+                got = _traverse(trick, eff_suit, played, total, physical, row_voids, None)
+                if got is None:
+                    raise TypeError
+                count += got
+            got = _traverse(rnd.trick, eff_suit, played, total, physical, row_voids, planes)
+            if got is None:
+                raise TypeError
+            count += got
+            if not 1 <= count <= HISTORY_MAX_EVENTS:
+                continue
+            root_is_attacker = rnd.is_attacker(seat)
+            tail = [0.0] * 5
+            if rnd.trump_is_nt:
+                tail[4] = 1.0
+            elif rnd.trump_suit in SUITS:
+                tail[SUITS.index(rnd.trump_suit)] = 1.0
+            rank_onehot = [0.0] * 13
+            rank_onehot[RANKS.index(rnd.trump_rank)] = 1.0
+            tail += rank_onehot
+            banker_rel = [0.0] * 4
+            banker_rel[(rnd.banker - seat) % 4] = 1.0
+            tail += banker_rel
+            tail += [min(rnd.attacker_points, 200) / 200.0,
+                     sum(len(hand) for hand in rnd.hands) / 100.0,
+                     float(root_is_attacker)]
+            for relative in range(4):
+                for suit in _SUIT_ORDER:
+                    tail.append(float(suit in row_voids[(seat + relative) % 4]))
+        except Exception:
+            continue
+        world_planes.extend(cells)
+        # each delta is a sum of half copies: added at once it is the same double
+        for who in range(4):
+            base = (row * 4 + who) * N_CARDS
+            for index, value in played[who].items():
+                played_ix[0].append(base + index); played_ix[1].append(value)
+        for position in range(3):
+            base = (row * 3 + position) * N_CARDS
+            for index, value in planes[position].items():
+                trick_ix[0].append(base + index); trick_ix[1].append(value)
+        base = row * N_CARDS
+        for index, value in physical.items():
+            phys_ix[0].append(base + index); phys_ix[1].append(value)
+        keep.append(i)
+        voids.append(row_voids)
+        events.append(count)
+        tails.append((tail, root_is_attacker))
+    if not keep:
+        return out
+    m = len(keep)
+    world = np.stack(world_planes).reshape(m, WORLD_RECEIVERS, N_CARDS)
+    played = np.broadcast_to(np.asarray(prefix.played, dtype=np.float64), (m, 4, N_CARDS)).copy()
+    if played_ix[0]:
+        np.add.at(played.reshape(-1), np.asarray(played_ix[0], np.intp),
+                  np.asarray(played_ix[1], np.float64))
+    trick_planes = np.zeros((m, 3, N_CARDS), dtype=np.float64)
+    if trick_ix[0]:
+        np.add.at(trick_planes.reshape(-1), np.asarray(trick_ix[0], np.intp),
+                  np.asarray(trick_ix[1], np.float64))
+    physical = np.broadcast_to(np.asarray(prefix.physical, dtype=np.int64), (m, N_CARDS)).copy()
+    physical += (world * 2).astype(np.int64).sum(axis=1)
+    if phys_ix[0]:
+        np.add.at(physical.reshape(-1), np.asarray(phys_ix[0], np.intp),
+                  np.asarray(phys_ix[1], np.int64))
+    complete = (physical == 2).all(axis=1)
+    # played_total is the sum of the four played planes (every play adds to both)
+    played_total = played.sum(axis=1)
+    seats_kept = np.asarray([seats[i] for i in keep], dtype=np.intp)
+    rotate = (seats_kept[:, None] + np.arange(4)[None, :]) % 4
+    played_rel = played[np.arange(m)[:, None], rotate]
+    own = world[:, 0]
+    unseen = np.maximum(0.0, 1.0 - played_total - own)
+    tail = np.asarray([t for t, _ in tails], dtype=np.float64)
+    v1 = np.concatenate([own, played_rel.reshape(m, -1), trick_planes.reshape(m, -1), unseen,
+                         tail], axis=1)
+    if v1.shape[1] != OBS_DIM:
+        return out
+    v1 = v1.astype(np.float32)
+    world32 = world.astype(np.float32)
+    trump = _trump_indices(ordering)
+    unseen_trump = (v1[:, _UNSEEN:_UNSEEN + N_CARDS][:, trump] * 2).astype(np.int64).sum(axis=1)
+    history = np.zeros((1, HISTORY_EVENT_DIM), dtype=np.float32)
+    flag = np.zeros(1, dtype=np.float32)
+    for row, i in enumerate(keep):
+        if not complete[row]:
+            continue
+        rnd, seat = positions[i], seats[i]
+        attacker = tails[row][1]
+        perspective = np.asarray([float(attacker), float(not attacker)], dtype=np.float32)
+        if version == 1:
+            out[i] = ValueAfterstateTensors(np.concatenate((v1[row], flag)), history,
+                                            world32[row], perspective)
+            continue
+        try:
+            columns = _v2_columns_fast(int(unseen_trump[row]), rnd, seat)
+            if version == 7:
+                columns = [*columns, *next_actor_columns(rnd, seat)]
+        except Exception:
+            continue
+        public = np.concatenate((v1[row], np.asarray(columns, dtype=np.float32), flag))
+        out[i] = ValueAfterstateTensorsV2(public, history, world32[row], perspective)
+    return out
+
+
+def reply_rows(clones, seat, version, prefix):
+    """The greedy reply ply's policy rows, ``flat_input(root_tensors(clone,
+    seat, version), version)`` for each clone, byte for byte: built by
+    `fused_many` on ``prefix`` (the decision root's), the reference for any
+    row it does not cover; one batched check stands for the reference's
+    per-row ``validate``, and any failure re-encodes the whole call by the
+    reference."""
+    from .policy_prior import flat_input, root_tensors
+
+    def reference():
+        return [flat_input(root_tensors(clone, seat, version), version) for clone in clones]
+
+    if prefix is None or version not in VERSIONS or not clones:
+        return reference()
+    try:
+        fast = fused_many(prefix, clones, [seat] * len(clones), version)
+        built = [t for t in fast if t is not None]
+        if not _valid_batch(built, version):
+            return reference()
+        return [flat_input(t, version) if t is not None
+                else flat_input(root_tensors(clone, seat, version), version)
+                for t, clone in zip(fast, clones)]
+    except Exception:
+        return reference()
+
+
 def _widened(version, public, world, perspective, rnd, seat):
     """The static route's tensor for a fused base: `tensors_from_round_static`'s
     v1 return, or `_widen_v2_static` / `_widen_v7_static` without ``validate``."""
@@ -295,12 +566,14 @@ def _plain_evaluator(evaluator) -> bool:
             and cls.score_many is CompleteWorldEvaluator.score_many)
 
 
-def encode_leaves(evaluator, positions, root_seat, prefix):
+def encode_leaves(evaluator, positions, root_seat, prefix, batched=True):
     """``(values, rows, pending, fast)`` for `score_leaves`: the terminal values
     filled in ``values``, the model rows in position order with their indices,
     and how many rows the prefix built; None when the call must take the
     reference path whole (an unsupported evaluator, encoder or seat, any
-    exception, a failed batch check)."""
+    exception, a failed batch check).  The prefix rows are built by
+    `fused_many`; ``batched=False`` builds each by `HistoryPrefix.fused`
+    instead (the same tensors; the tests' oracle)."""
     if prefix is None or not _plain_evaluator(evaluator) or type(root_seat) is not int \
             or not 0 <= root_seat < 4:
         return None
@@ -311,16 +584,23 @@ def encode_leaves(evaluator, positions, root_seat, prefix):
     try:
         values = np.empty(len(positions), dtype=np.float64)
         rows, pending, fast = [], [], []
+        live = [index for index, rnd in enumerate(positions) if rnd.phase != "round_end"]
+        built = fused_many(prefix, [positions[index] for index in live], [root_seat] * len(live),
+                           version) if batched else None
+        built = dict(zip(live, built)) if built is not None else None
         for index, rnd in enumerate(positions):
             if rnd.phase == "round_end":
                 values[index] = float(
                     terminal_distribution(rnd, root_seat) @ evaluator.support)
                 continue
-            parts = prefix.fused(rnd, root_seat)
-            if parts is None:
+            if built is not None:
+                row = built[index]
+            else:
+                parts = prefix.fused(rnd, root_seat)
+                row = None if parts is None else _widened(version, *parts, rnd, root_seat)
+            if row is None:
                 rows.append(reference(rnd, root_seat))
             else:
-                row = _widened(version, *parts, rnd, root_seat)
                 rows.append(row)
                 fast.append(row)
             pending.append(index)
@@ -331,7 +611,7 @@ def encode_leaves(evaluator, positions, root_seat, prefix):
     return values, rows, pending, len(fast)
 
 
-def score_leaves(evaluator, positions, root_seat, prefix):
+def score_leaves(evaluator, positions, root_seat, prefix, batched=True):
     """``evaluator.score(positions, root_seat)``, its leaves encoded on ``prefix``.
 
     The terminal rows, the row order, the forward pass and the evaluator's
@@ -339,7 +619,7 @@ def score_leaves(evaluator, positions, root_seat, prefix):
     """
     wall0, cpu0 = time.perf_counter(), time.process_time()
     n = len(positions)
-    encoded = encode_leaves(evaluator, positions, root_seat, prefix) if n else None
+    encoded = encode_leaves(evaluator, positions, root_seat, prefix, batched) if n else None
     if encoded is None:
         return evaluator.score(positions, root_seat)
     values, rows, pending, _ = encoded
@@ -403,5 +683,5 @@ def prior_rows(rnd, seat, worlds, version):
         return reference()
 
 
-__all__ = ["VERSIONS", "HistoryPrefix", "encode_leaves", "prior_rows", "score_leaves",
-           "static_version"]
+__all__ = ["VERSIONS", "HistoryPrefix", "encode_leaves", "fused_many", "prior_rows", "reply_rows",
+           "score_leaves", "static_version"]

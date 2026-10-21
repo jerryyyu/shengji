@@ -443,14 +443,17 @@ def team_values(bot, leaves, seat, gate=None, prefix=None):
     return values, batches
 
 
-def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn):
+def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn,
+                     rows_fn=None):
     """One reply ply of the greedy finish: every clone in ``active`` has the
     SAME seat to act (turn order inside one trick is fixed); that seat plays
     its highest-valued candidate in each clone (module docstring: the policy's
     top-``keep`` follows plus the heuristic's, each heuristic-finished and
     valued from the replying seat's team, under ``gate``).  ``version`` is the
     policy rows' encoder version; ``legal_fn`` / ``values_fn`` are
-    `legal_replies` / `team_values` or the tree's hooks."""
+    `legal_replies` / `team_values` or the tree's hooks.  ``rows_fn(clones,
+    seat)``, when given, builds the policy rows of the non-forced clones in
+    one call (`pv_encode_prefix.reply_rows`: the same rows)."""
     from .policy_prior import N_CARDS, flat_input, root_tensors
     seat = active[0].turn
     if any(clone.turn != seat for clone in active):
@@ -465,8 +468,11 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
         if len(legal) == 1:
             plans[index] = ([list(legal[0])], list(legal[0]))
             continue
-        rows.append(flat_input(root_tensors(clone, seat, version), version))
+        if rows_fn is None:
+            rows.append(flat_input(root_tensors(clone, seat, version), version))
         pending.append((index, legal, scoring))
+    if rows_fn is not None and pending:
+        rows = rows_fn([active[index] for index, _, _ in pending], seat)
     for start in range(0, len(rows), bot.batch_size):
         if gate is not None:
             gate()
@@ -527,10 +533,17 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
     ``compact`` holds the reply listings as `legal_replies_compact` does and
     keeps them for one ply only (a key is the acting seat's hand, so no later
     ply of the trick can hit it); the plies, their batches and every value are
-    the same.  ``prefix`` encodes the reply valuations on the decision root's
-    history (`team_values`)."""
+    the same.  ``prefix`` encodes the reply valuations (`team_values`) and the
+    reply policy rows (`pv_encode_prefix.reply_rows`) on the decision root's
+    history."""
     stats = greedy_stats() if stats is None else stats
     cache = {}
+    rows_fn = None
+    if prefix is not None:
+        from .pv_encode_prefix import reply_rows
+
+        def rows_fn(clones_, seat):
+            return reply_rows(clones_, seat, version, prefix)
     if compact:
         def legal_fn(clone, seat, cache_):
             return legal_replies_compact(bot, clone, seat, cache_, slot)
@@ -545,7 +558,8 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
             cache, slot = {}, _DenseSlot()
         greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn,
                          lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_,
-                                                                      prefix))
+                                                                      prefix),
+                         rows_fn)
         active = [c for c in active if trick_open(c, target)]
     return stats
 

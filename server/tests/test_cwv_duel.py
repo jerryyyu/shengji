@@ -813,6 +813,76 @@ def test_pv_dev_worker_entrypoint_spawns_and_refuses_before_gameplay(tmp_path):
     assert not (tmp_path / 'absent').exists()
 
 
+def test_s52_worker_uses_the_fixed_population_and_only_alias_recipe(monkeypatch):
+    from scripts import pv_dev_duel
+    runner = _load_script('run_s52_dev')
+    monkeypatch.setattr(runner, 'TREE', Path(__file__).resolve().parents[2])
+    control, candidate = runner.arms()
+    assert {k for k in candidate if candidate[k] != control.get(k)} == {
+        'SHENGJI_BOT', 'SHENGJI_PV_LEAD_ALIAS_REFILL'}
+    assert candidate['SHENGJI_PV_LEAD_ALIAS_REFILL'] == '1'
+    assert '-lar-' in candidate['SHENGJI_BOT'] and '-dtrx-' not in candidate['SHENGJI_BOT']
+    calls = []
+    monkeypatch.setattr(runner, 'verify_extensions', lambda **_: None)
+    monkeypatch.setattr(runner, 'arms', lambda: ('control', 'candidate'))
+    monkeypatch.setattr(pv_dev_duel, 'run_shards', lambda *a, **kw: calls.append((a, kw)))
+    runner.work()
+    assert calls == [(('control', 'candidate'), dict(out=runner.OUT,
+        seed0=184060910, pairs=624, ranks='2,3,4,5,6,7,8,9,10,J,Q,K,A',
+        cluster0=0, round_kind='fixed_banker', workers=14))]
+
+
+@pytest.mark.parametrize('valid_terminal', [True, False])
+def test_s52_supervised_terminal_uses_real_child_and_preserves_claim(
+        tmp_path, monkeypatch, capsys, valid_terminal):
+    import signal
+    runner = _load_script('run_s52_dev')
+    monkeypatch.setattr(runner, 'ROOT', tmp_path)
+    monkeypatch.setattr(runner, 'TREE', Path(__file__).resolve().parents[2])
+    monkeypatch.setattr(runner, 'OUT', tmp_path / 'output')
+    for key in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
+                'VECLIB_MAXIMUM_THREADS', 'SHENGJI_FAST', 'PYTHONDONTWRITEBYTECODE'):
+        monkeypatch.setenv(key, os.environ.get(key, ''))
+    monkeypatch.setattr(runner, 'preflight', lambda: None)
+    monkeypatch.setattr(runner, 'other_venv_pythons', lambda: [])
+    monkeypatch.setattr(runner.os, 'nice', lambda _: None)
+    # The child replaces games only; containment, exit checking and reporting are real.
+    (tmp_path / 'run_s52_dev.py').write_text('''
+import json
+from pathlib import Path
+def work():
+    out = Path('output')
+    out.mkdir()
+    for i in range(14):
+        shard = out / f'shard-{i:03d}'
+        shard.mkdir()
+        (shard / 'health.json').write_text(json.dumps({'synthetic': True}))
+    (out / 'DONE').write_text('624 complete pairs in 14 shards\\n')
+''')
+    if not valid_terminal:
+        child = tmp_path / 'run_s52_dev.py'
+        child.write_text(child.read_text().replace('624 complete pairs', '4 complete pairs'))
+    handlers = {sig: signal.getsignal(sig) for sig in (signal.SIGALRM, signal.SIGTERM, signal.SIGINT)}
+    try:
+        if valid_terminal:
+            runner.main()
+            terminal = json.loads(capsys.readouterr().out)
+            assert terminal['terminal'] == 'DEV DONE'
+            assert terminal['supervision']['returncode'] == 0
+            assert terminal['health'] == [{'synthetic': True}] * 14
+        else:
+            with pytest.raises(SystemExit, match='terminal does not match'):
+                runner.main()
+            assert capsys.readouterr().out == ''
+        assert (tmp_path / 'CLAIM').is_dir()
+        assert (tmp_path / 'worker.log').exists()
+        with pytest.raises(SystemExit, match='prior output/claim/worker log'):
+            runner.main()
+    finally:
+        for sig, handler in handlers.items():
+            signal.signal(sig, handler)
+
+
 def _synthetic_pv_worker(payload):
     """Exercise real worker persistence without loading models or playing games."""
     from scripts import pv_dev_duel as adapter

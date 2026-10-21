@@ -83,6 +83,24 @@ def supervised_work():
     return result
 
 
+def read_result():
+    """Read only after the named reader verifies terminal seals and ownership.
+
+    This is deliberately absent from the worker CLI and execution path, so a
+    successful run cannot automatically expose its scientific result.
+    """
+    sys.path.insert(0, str(TREE / 'server'))
+    from scripts.pv_dev_duel import read_pool
+    from scripts.cwv_duel import FIXED_BANKER_RULE
+    control, candidate = arms()
+    expected = dict(schema='pv-dev-duel-v1', control=control['SHENGJI_BOT'],
+                    candidate=candidate['SHENGJI_BOT'], control_env=control,
+                    candidate_env=candidate, seed0=184060910, pairs=624,
+                    cluster0=0, ranks='2,3,4,5,6,7,8,9,10,J,Q,K,A'.split(','),
+                    round_kind='fixed_banker', initial_banker=FIXED_BANKER_RULE)
+    return read_pool(OUT, expected, workers=14)
+
+
 def other_venv_pythons():
     census = subprocess.check_output(['ps', '-axo', 'pid=,args='], text=True)
     found = []

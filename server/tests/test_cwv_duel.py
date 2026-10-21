@@ -830,6 +830,20 @@ def test_s52_worker_uses_the_fixed_population_and_only_alias_recipe(monkeypatch)
     assert calls == [(('control', 'candidate'), dict(out=runner.OUT,
         seed0=184060910, pairs=624, ranks='2,3,4,5,6,7,8,9,10,J,Q,K,A',
         cluster0=0, round_kind='fixed_banker', workers=14))]
+    monkeypatch.setattr(runner, 'arms', lambda: (control, candidate))
+    reads = []
+    monkeypatch.setattr(pv_dev_duel, 'read_pool',
+                        lambda *a, **kw: reads.append((a, kw)))
+    runner.read_result()
+    (directory, expected), kwargs = reads[0]
+    assert directory == runner.OUT and kwargs == {'workers': 14}
+    for key in ('seed0', 'pairs', 'cluster0', 'round_kind'):
+        assert expected[key] == calls[0][1][key]
+    assert expected['ranks'] == calls[0][1]['ranks'].split(',')
+    assert expected['control_env'] == control
+    assert expected['candidate_env'] == candidate
+    assert expected['control'] == control['SHENGJI_BOT']
+    assert expected['candidate'] == candidate['SHENGJI_BOT']
 
 
 @pytest.mark.parametrize('valid_terminal', [True, False])
@@ -941,6 +955,19 @@ def test_pv_dev_real_pool_terminal_and_partial_failure(tmp_path, monkeypatch):
     assert result['verdict'] == 'POSITIVE' and result['quality_issues'] == []
     assert result['mean_levels_per_round'] == 1
     assert result == adapter.read_shards(list(reversed(shards)), expected)
+    assert result == adapter.read_pool(root, expected, workers=2)
+    with pytest.raises(ValueError, match='pool terminal'):
+        adapter.read_pool(root, expected, workers=3)
+    with pytest.raises(ValueError, match='invalid pool'):
+        adapter.read_pool(root, expected, workers=True)
+    # The caller's plan, not the pool's dispatch log, fixes the population.
+    (root / 'shards.json').write_text('[]')
+    assert result == adapter.read_pool(root, expected, workers=2)
+    done = root / 'shard-001' / 'DONE'
+    done.rename(done.with_name('saved-DONE'))
+    with pytest.raises(FileNotFoundError):
+        adapter.read_pool(root, expected, workers=2)
+    done.with_name('saved-DONE').rename(done)
     assert (root / 'DONE').read_text() == '7 complete pairs in 2 shards\n'
     for directory, _ in shards:
         assert int((Path(directory) / 'test-worker-pid').read_text()) != os.getpid()
@@ -948,6 +975,8 @@ def test_pv_dev_real_pool_terminal_and_partial_failure(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match='synthetic child failure'):
         adapter.run_shards(control, {**candidate, 'TEST_FAIL_AT': 8}, out=failed, **args)
     assert not (failed / 'DONE').exists()
+    with pytest.raises(FileNotFoundError):
+        adapter.read_pool(failed, expected, workers=2)
     assert (failed / 'shard-000' / 'DONE').exists()
     assert not (failed / 'shard-001' / 'DONE').exists()
     partial = (failed / 'shard-001' / 'rounds.jsonl').read_text().splitlines()

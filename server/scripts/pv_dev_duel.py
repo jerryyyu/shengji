@@ -155,6 +155,32 @@ def run_shards(control, candidate, *, out, seed0, pairs, ranks, workers,
     return [(payload['out'], meta) for payload, meta in zip(payloads, metadata)]
 
 
+def read_pool(out, expected, *, workers):
+    """Consume a completed pool against its independent pre-run population.
+
+    The caller must first verify seals and readout ownership. Directory names
+    and shard boundaries come from the supplied plan, not output metadata.
+    A parent terminal alone never substitutes for each shard's validation.
+    """
+    if (type(workers) is not int or workers < 1
+            or type(expected.get('pairs')) is not int
+            or expected['pairs'] < 2 * workers
+            or type(expected.get('cluster0')) is not int
+            or expected['cluster0'] < 0):
+        raise ValueError('invalid pool population or worker count')
+    out = Path(out)
+    pairs = expected['pairs']
+    if (out / 'DONE').read_text() != f'{pairs} complete pairs in {workers} shards\n':
+        raise ValueError('pool terminal differs from expected population')
+    shards, cursor = [], expected['cluster0']
+    for index in range(workers):
+        count = pairs // workers + int(index < pairs % workers)
+        shards.append((out / f'shard-{index:03d}',
+                       {**expected, 'cluster0': cursor, 'pairs': count}))
+        cursor += count
+    return read_shards(shards, expected)
+
+
 def read_shards(shards, expected):
     """Combine explicit (directory, pre-run plan) shards after seal checks.
 

@@ -81,17 +81,82 @@ def test_pt_real_scheduler_terminal_and_reader(tmp_path, monkeypatch):
     assert result["accounting"]["completed"] == 20
     assert result["pt_sol"]["complete_pairs"] == 10
     assert {row["information"] for row in report["mirrors"]} == {"perfect"}
-    result_ref = {"path": str(tmp_path / "out/result.json"),
-                  "sha256": hashlib.sha256((tmp_path / "out/result.json").read_bytes()).hexdigest()}
-    terminal_ref = write(tmp_path / "out/terminal.json", {
-        "schema": "release46-pt-sol-terminal-v1", "row": "release46-pv",
-        "status": "exited", "returncode": 0,
-        "config_sha256": config_ref["sha256"], "result": result_ref})
+    import os
+    import sys
+    from scripts.launch_production_llm_panel import supervise_pt
+    supervised = tmp_path / 'supervised'
+    # The child transports synthetic scheduler output; supervision is real.
+    command = [sys.executable, '-c',
+               'import shutil,sys; shutil.copyfile(sys.argv[1],sys.argv[2])',
+               str(tmp_path / 'out/result.json'), str(supervised / 'result.json')]
+    terminal = supervise_pt(command, config_path=config_ref['path'],
+        expected_sha256=config_ref['sha256'], cwd=tmp_path, env=dict(os.environ),
+        output=supervised, wall=30)
+    assert terminal['status'] == 'exited' and terminal['returncode'] == 0
+    result_ref = terminal['result']
+    terminal_ref = dict(path=str(supervised / 'terminal.json'), sha256=hashlib.sha256(
+        (supervised / 'terminal.json').read_bytes()).hexdigest())
     plan_ref = write(tmp_path / "pt-plan.json", {
         "schema": "release46-pt-sol-seals-v1", "expected_config": config_ref,
         "terminal": terminal_ref, "result": result_ref})
     sealed = assert_stage1_wrapper(tmp_path, plan_ref, pt=True)
     assert sealed["pt_sol"] == result["pt_sol"]
+    with pytest.raises(FileExistsError):
+        supervise_pt(command, config_path=config_ref['path'],
+            expected_sha256=config_ref['sha256'], cwd=tmp_path, env=dict(os.environ),
+            output=supervised, wall=30)
+
+
+@pytest.mark.parametrize('failure', ['nonzero', 'deadline', 'missing', 'config-drift'])
+def test_pt_supervisor_preserves_failed_terminal(tmp_path, failure):
+    import os
+    import sys
+    from scripts.launch_production_llm_panel import supervise_pt
+    config = _pt_report(tmp_path)['config']
+    config['run'] = True
+    path = tmp_path / 'expected.json'
+    path.write_text(json.dumps(config))
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    scripts = dict(nonzero='raise SystemExit(7)', deadline='import time; time.sleep(10)',
+                   missing='pass', **{'config-drift':
+                   'import pathlib,sys; pathlib.Path(sys.argv[1]).write_text("{}")'})
+    output = tmp_path / 'attempt'
+    def invoke():
+        return supervise_pt([sys.executable, '-c', scripts[failure], str(path)],
+            config_path=path, expected_sha256=sha, cwd=tmp_path, env=dict(os.environ),
+            output=output, wall=0.1 if failure == 'deadline' else 30)
+    if failure in ('missing', 'config-drift'):
+        with pytest.raises((FileNotFoundError, ValueError)):
+            invoke()
+    else:
+        invoke()
+    terminal = json.loads((output / 'terminal.json').read_text())
+    assert terminal['status'] in ('failed', 'deadline') or terminal['returncode'] == 7
+    assert 'result' not in terminal
+    assert (output / 'worker.log').exists()
+
+
+@pytest.mark.parametrize('defect', ['duplicate', 'boolean', 'mode', 'hash', 'wall'])
+def test_pt_supervisor_refuses_invalid_plan_before_output(tmp_path, defect):
+    from scripts.launch_production_llm_panel import supervise_pt
+    config = _pt_report(tmp_path)['config']
+    config['run'] = True
+    if defect == 'duplicate':
+        config['seeds'][-1] = config['seeds'][0]
+    elif defect == 'boolean':
+        config['seeds'][0] = False
+    elif defect == 'mode':
+        config['information'] = ['actor-only']
+    path = tmp_path / 'expected.json'
+    path.write_text(json.dumps(config))
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    output = tmp_path / 'never-started'
+    with pytest.raises(ValueError):
+        supervise_pt(['not-an-executable'], config_path=path,
+            expected_sha256='0'*64 if defect == 'hash' else sha,
+            cwd=tmp_path, env={}, output=output,
+            wall=float('nan') if defect == 'wall' else 30)
+    assert not output.exists()
 
 
 @pytest.mark.parametrize("defect", [

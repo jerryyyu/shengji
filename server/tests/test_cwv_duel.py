@@ -846,6 +846,46 @@ def test_s52_worker_uses_the_fixed_population_and_only_alias_recipe(monkeypatch)
     assert expected['candidate'] == candidate['SHENGJI_BOT']
 
 
+def test_s52_launcher_terminal_requires_every_shard(tmp_path):
+    import re
+    import subprocess
+    script = (Path(__file__).resolve().parents[1] / 'scripts' /
+              'launch_s52_dev.sh').read_text()
+    # The runner opens worker.log exclusively; the supervisor must not create it.
+    assert 'CHILD_LOG=$LANE_DIR/runner.log' in script
+    functions = '\n'.join(re.search(r'^' + name + r' \(\) \{\n.*?^}',
+                                    script, re.M | re.S).group()
+                          for name in ('all_shards_done', 'finish'))
+    out = tmp_path / 'output'
+    out.mkdir()
+    (out / 'DONE').write_text('624 complete pairs in 14 shards\n')
+    for i in range(14):
+        shard = out / f'shard-{i:03d}'
+        shard.mkdir()
+        (shard / 'DONE').write_text(f'{45 if i < 8 else 44} complete pairs\n')
+        (shard / 'health.json').write_text('{}')
+    log = tmp_path / 'runner.log'
+    log.write_text('{"terminal": "DEV DONE"}\n')
+
+    def finish(rc):
+        return subprocess.run(['bash', '-c',
+            'say () { echo "$*"; }\n' + functions + f'\nfinish {rc}',
+        ], env={**os.environ, 'OUT': str(out), 'CHILD_LOG': str(log),
+                'PAIRS': '624', 'WORKERS': '14', 'RUN': 'synthetic'},
+            capture_output=True, text=True)
+
+    valid = finish(0)
+    assert valid.returncode == 0 and '=== synthetic DONE ===' in valid.stdout
+    assert finish(7).returncode == 7
+    for path in (out / 'DONE', out / 'shard-013' / 'DONE',
+                 out / 'shard-013' / 'health.json', log):
+        saved = path.read_text()
+        path.write_text('')
+        invalid = finish(0)
+        assert invalid.returncode == 5 and '=== synthetic DONE ===' not in invalid.stdout
+        path.write_text(saved)
+
+
 @pytest.mark.parametrize('valid_terminal', [True, False])
 def test_s52_supervised_terminal_uses_real_child_and_preserves_claim(
         tmp_path, monkeypatch, capsys, valid_terminal):

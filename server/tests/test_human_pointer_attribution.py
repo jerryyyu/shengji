@@ -11,8 +11,9 @@ from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.round import Round, actual_play_after
 from shengji.harvest import human
 from shengji.harvest.common import InputRegistry, pseudonym
+from shengji.harvest.manifest import write_source
 from shengji.harvest.rebuild import engine_level_change, round_from_setup
-from shengji.harvest.room_log import extract_round, read_rounds
+from shengji.harvest.room_log import extract_round, extract_room_logs, read_rounds
 from shengji.harvest.schema import validate_record
 
 
@@ -157,3 +158,141 @@ def test_missing_or_nonboolean_bot_flag_is_rejected(tmp_path, kind, marker):
                        match=rf"{kind} pointer .*exactly false"):
         human.extract_human(human_dir=corpus, registry=InputRegistry(),
                             repo=tmp_path)
+
+
+def _play_events(events):
+    return [event for event in events if event["e"] == "play"]
+
+
+def _summary_for(tmp_path, events):
+    source = tmp_path / "logs" / "ROOM.jsonl"
+    source.parent.mkdir()
+    _write_jsonl(source, events)
+    result = extract_room_logs(files=[source], registry=InputRegistry(),
+                               repo=tmp_path)
+    assert result.counts["rounds"] == 1
+    assert len(result.extras["completed_rounds"]) == 1
+    return result, result.extras["completed_rounds"][0]
+
+
+def test_completed_round_summary_marks_all_bot_takeover_of_human_roster(tmp_path):
+    events = _completed_round()
+    for event in _play_events(events):
+        event["bot"] = True
+        event["decision"] = {"policy": "bot-a"}
+
+    result, summary = _summary_for(tmp_path, events)
+
+    assert summary["roster_human_seats"] == [0]
+    assert summary["roster_human_bot_activity_seats"] == [0]
+    assert summary["human_seats"] == []
+    assert summary["bot_seats"] == sorted({event["seat"] for event in events
+                                            if event["e"] == "play"})
+    assert summary["mixed_controller_seats"] == []
+    assert summary["unknown_seats"] == []
+    assert summary["bot_policies"] == {str(seat): ["bot-a"] for seat in range(4)}
+    assert summary["unknown_policy_count"] == {str(seat): 0 for seat in range(4)}
+    assert summary["unknown_policy_total"] == 0
+    assert summary["observational_only"] is True
+    assert summary["outcome"] == {
+        "attacker_points": result.public[0]["outcome"]["attacker_points"],
+        "winner_team": result.public[0]["outcome"]["winner_team"],
+        "level_change": result.public[0]["outcome"]["level_change"],
+    }
+
+
+def test_completed_round_summary_tracks_mixed_seat_and_policy_drift(tmp_path):
+    events = _completed_round()
+    plays = _play_events(events)
+    for event in plays:
+        event["bot"] = True
+        event["decision"] = {"policy": "bot-a"}
+    plays[0]["bot"] = False
+    plays[1]["decision"] = {"policy": "bot-b"}
+    plays[2]["decision"] = {}
+    plays[3]["decision"] = {"policy": "   "}
+    plays[4]["decision"] = {"policy": 7}
+
+    _, summary = _summary_for(tmp_path, events)
+
+    assert summary["mixed_controller_seats"] == [plays[0]["seat"]]
+    assert summary["human_seats"] == []
+    assert summary["bot_seats"] == sorted({event["seat"] for event in plays
+                                            if event["bot"] is True}
+                                           - {plays[0]["seat"]})
+    mixed_seat = str(plays[0]["seat"])
+    assert summary["seat_counts"][mixed_seat] == {
+        "human": sum(1 for event in plays
+                      if event["seat"] == plays[0]["seat"]
+                      and event["bot"] is False),
+        "bot": sum(1 for event in plays
+                    if event["seat"] == plays[0]["seat"]
+                    and event["bot"] is True),
+        "unknown": 0,
+    }
+    assert summary["bot_policies"][str(plays[0]["seat"])] == ["bot-a"]
+    assert summary["unknown_policy_total"] == 3
+    assert sum(summary["unknown_policy_count"].values()) == 3
+
+
+@pytest.mark.parametrize("marker", [0, "false", None, _MISSING])
+def test_completed_round_summary_treats_nonboolean_markers_as_unknown(tmp_path,
+                                                                       marker):
+    events = _completed_round()
+    plays = _play_events(events)
+    for event in plays:
+        event["bot"] = False
+    play = plays[0]
+    if marker is _MISSING:
+        play.pop("bot")
+    else:
+        play["bot"] = marker
+
+    _, summary = _summary_for(tmp_path, events)
+
+    seat = str(play["seat"])
+    assert summary["seat_counts"][seat] == {
+        "human": sum(1 for event in plays
+                      if event["seat"] == play["seat"]
+                      and event.get("bot") is False),
+        "bot": 0,
+        "unknown": 1,
+    }
+    assert play["seat"] not in summary["human_seats"]
+    assert play["seat"] in summary["unknown_seats"]
+
+
+def test_completed_round_summary_excludes_rejected_and_incomplete_rounds(tmp_path):
+    valid = _completed_round()
+    incomplete = _completed_round()
+    rejected = _completed_round()
+    for events, round_no in ((incomplete, 2), (rejected, 3)):
+        for event in events:
+            event["round"] = round_no
+    incomplete.pop()
+    rejected[-1]["attacker_points"] += 1
+    events = valid + incomplete + rejected
+
+    result, summary = _summary_for(tmp_path, events)
+
+    assert summary["round"] == 1
+    assert result.counts["rounds_incomplete"] == 1
+    assert result.counts["rounds_rejected"] == 1
+
+
+def test_completed_round_summary_is_written_to_room_log_sidecar(tmp_path):
+    events = _completed_round()
+    for event in _play_events(events):
+        event["bot"] = True
+        event["decision"] = {"policy": "bot-a"}
+    source = tmp_path / "logs" / "ROOM.jsonl"
+    source.parent.mkdir()
+    _write_jsonl(source, events)
+    result = extract_room_logs(files=[source], registry=InputRegistry(),
+                               repo=tmp_path)
+
+    sidecar = write_source(tmp_path / "out", result, cap=256)
+    raw = json.loads((tmp_path / "out" / "room-log.manifest.json").read_text())
+
+    assert raw["extras"]["completed_rounds"] == result.extras["completed_rounds"]
+    assert sidecar["extras"]["completed_rounds"][0]["observational_only"] is True

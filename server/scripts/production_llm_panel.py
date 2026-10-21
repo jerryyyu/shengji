@@ -18,7 +18,8 @@ def run_row(*, row, model_paths, prepared_roots_from, prepared_roots_sha256,
             output, seeds, run=False, codex_binary="codex", capacity_retries=False,
             accept_recovered_reconnects=False, invalid_action_feedback=False,
             classify_final_action_failures=False, failure_protocol=FAIL_STOP,
-            retention_plan=None, retention_plan_sha256=None, information="both"):
+            retention_plan=None, retention_plan_sha256=None, information="both",
+            resource_profile="panel"):
     modes = {"both": ("actor-only", "perfect"),
              "actor-only": ("actor-only",), "perfect": ("perfect",)}
     if not isinstance(information, str) or information not in modes:
@@ -39,6 +40,16 @@ def run_row(*, row, model_paths, prepared_roots_from, prepared_roots_sha256,
         raise ValueError("panel retention requires amended M1 row")
     if prepared_roots_from is None or prepared_roots_sha256 is None:
         raise ValueError("panel requires shared pinned roots")
+    if resource_profile not in ('panel', 's47-pt'):
+        raise ValueError('unknown resource profile')
+    if resource_profile == 's47-pt' and (
+            row != 'release46-pv' or information != 'perfect'
+            or capacity_retries or accept_recovered_reconnects
+            or not invalid_action_feedback or not classify_final_action_failures
+            or failure_protocol != PRESERVE_ILLEGAL or retention_plan is not None):
+        raise ValueError('s47-pt requires the fixed fresh PT feedback recipe')
+    wall_seconds, token_limit = ((21600.0, 20000000) if resource_profile == 's47-pt'
+                                 else (43200.0, 45000000))
     recipe = prepare_recipe(row, model_paths)
     options = {name: value for name, value in controls.items() if value}
     if failure_protocol == PRESERVE_ILLEGAL:
@@ -50,7 +61,7 @@ def run_row(*, row, model_paths, prepared_roots_from, prepared_roots_sha256,
         prepared_recipe=recipe, prepared_roots_from=prepared_roots_from,
         prepared_roots_sha256=prepared_roots_sha256, output=output, seeds=seeds,
         models=("sol",), information=modes[information],
-        wall_seconds=43200.0, token_limit=45000000, timeout_seconds=300,
+        wall_seconds=wall_seconds, token_limit=token_limit, timeout_seconds=300,
         run=run, codex_binary=codex_binary, **options)
 
 
@@ -66,6 +77,7 @@ def main(argv=None):
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--information", choices=("both", "actor-only", "perfect"),
                         default="both")
+    parser.add_argument("--resource-profile", choices=('panel', 's47-pt'), default='panel')
     parser.add_argument("--retry-provider-capacity", dest="capacity_retries", action="store_true")
     parser.add_argument("--accept-recovered-reconnects", action="store_true")
     parser.add_argument("--invalid-action-feedback", action="store_true")

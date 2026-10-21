@@ -325,15 +325,117 @@ def legal_replies(bot, clone, seat, cache):
     return hit
 
 
-def team_values(bot, leaves, seat, gate=None):
-    """Root-team (``seat``'s team) values of ``leaves``: ``(values, batches)``."""
+def _card_names():
+    from .policy_prior import CARD_INDEX
+    names = [None] * len(CARD_INDEX)
+    for card, index in CARD_INDEX.items():
+        names[index] = card
+    return names
+
+
+class CompactReplies:
+    """`legal_replies`' listing stored as int8 card indices in listing order:
+    ``len`` and ``[i]`` (a fresh card list, equal to the listing's ``i``-th
+    action) read as the listing does.  A capped follow listing holds up to
+    ``cap`` actions; as lists plus a dense float64 scoring matrix that is
+    about 2 MB per distinct (hand, lead), against a few tens of kB here."""
+
+    __slots__ = ("cards", "offsets", "leads")
+    _names = None
+
+    def __init__(self, legal, leads: bool):
+        from .policy_prior import CARD_INDEX
+        self.cards = np.fromiter((CARD_INDEX[card] for action in legal for card in action),
+                                 dtype=np.int8)
+        self.offsets = np.zeros(len(legal) + 1, dtype=np.int32)
+        np.cumsum([len(action) for action in legal], out=self.offsets[1:])
+        self.leads = leads
+
+    def __len__(self):
+        return len(self.offsets) - 1
+
+    def __getitem__(self, i):
+        names = CompactReplies._names
+        if names is None:
+            names = CompactReplies._names = _card_names()
+        return [names[j] for j in self.cards[self.offsets[i]:self.offsets[i + 1]].tolist()]
+
+    def multiplicity(self) -> np.ndarray:
+        """The matrix `legal_replies` builds for this listing, by the same
+        operations (integer counts accumulated into float64 zeros; leads
+        divided by their row sums), so its products are the same floats."""
+        from .policy_prior import N_CARDS
+        n = len(self)
+        multiplicity = np.zeros((n, N_CARDS), dtype=np.float64)
+        rows = np.repeat(np.arange(n), np.diff(self.offsets))
+        np.add.at(multiplicity, (rows, self.cards.astype(np.intp)), 1.0)
+        if self.leads:
+            multiplicity /= multiplicity.sum(axis=1, keepdims=True)
+        return multiplicity
+
+
+class _DenseSlot:
+    """The one materialized scoring matrix of a ply: clones of one world that
+    share a (hand, lead) are consecutive, so they reuse it."""
+
+    __slots__ = ("owner", "dense")
+
+    def __init__(self):
+        self.owner = self.dense = None
+
+
+class LazyScoring:
+    """``scoring @ row`` for a `CompactReplies`: the dense matrix is built at
+    the product and kept only in the ply's single `_DenseSlot`."""
+
+    __slots__ = ("replies", "slot")
+
+    def __init__(self, replies: CompactReplies, slot: _DenseSlot):
+        self.replies, self.slot = replies, slot
+
+    def __matmul__(self, row):
+        slot = self.slot
+        if slot.owner is not self:
+            slot.owner, slot.dense = None, None
+            slot.dense = self.replies.multiplicity()
+            slot.owner = self
+        return slot.dense @ row
+
+
+def legal_replies_compact(bot, clone, seat, cache, slot):
+    """`legal_replies` with the listing held as `CompactReplies` and the
+    scoring as `LazyScoring`: the same actions in the same order, the same
+    scores, without the per-key lists and dense matrix."""
+    plays = clone.trick.plays
+    key = (tuple(sorted(clone.hands[seat])), tuple(plays[0].cards) if plays else None)
+    hit = cache.get(key)
+    if hit is None:
+        legal, multiplicity = legal_replies(bot, clone, seat, None)
+        if multiplicity is None:
+            hit = (legal, None)
+        else:
+            replies = CompactReplies(legal, leads=not plays)
+            hit = (replies, LazyScoring(replies, slot))
+        cache[key] = hit
+    return hit
+
+
+def team_values(bot, leaves, seat, gate=None, prefix=None):
+    """Root-team (``seat``'s team) values of ``leaves``: ``(values, batches)``.
+    With ``prefix`` (a `pv_encode_prefix.HistoryPrefix` of the decision root)
+    each batch is encoded on it (`pv_encode_prefix.score_leaves`: the
+    reference's tensors, rows, forward pass and counters)."""
+    if prefix is not None:
+        from .pv_encode_prefix import score_leaves
     values = np.empty(len(leaves), dtype=np.float64)
     batches = 0
     for start in range(0, len(leaves), bot.batch_size):
         if gate is not None:
             gate()
         chunk = leaves[start:start + bot.batch_size]
-        scores = np.asarray(bot.evaluator.score(chunk, seat), dtype=np.float64)
+        scores = bot.evaluator.score(chunk, seat) if prefix is None \
+            else score_leaves(bot.evaluator, chunk, seat, prefix)
+        scores = np.asarray(scores, dtype=np.float64)
         if scores.shape != (len(chunk),) or not np.isfinite(scores).all():
             raise ValueError("value evaluator requires one finite root-team score per leaf")
         values[start:start + len(chunk)] = scores
@@ -413,22 +515,37 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
         clone.play(seat, choice)
 
 
-def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=None) -> dict:
+def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=None,
+                                compact=False, prefix=None) -> dict:
     """Finish the CURRENT trick of every clone in ``clones`` (all at the same
     ply) by greedy reply plies, never further; returns the `greedy_stats`
     (accumulated into ``stats`` when given).  ``bot`` supplies the policy
     (``predict``, rows encoded at ``version``), the value head (``evaluator``),
     ``batch_size`` and ``cap``; ``gate`` is the deadline callback (None:
-    unbudgeted)."""
+    unbudgeted).
+
+    ``compact`` holds the reply listings as `legal_replies_compact` does and
+    keeps them for one ply only (a key is the acting seat's hand, so no later
+    ply of the trick can hit it); the plies, their batches and every value are
+    the same.  ``prefix`` encodes the reply valuations on the decision root's
+    history (`team_values`)."""
     stats = greedy_stats() if stats is None else stats
     cache = {}
+    if compact:
+        def legal_fn(clone, seat, cache_):
+            return legal_replies_compact(bot, clone, seat, cache_, slot)
+    else:
+        def legal_fn(clone, seat, cache_):
+            return legal_replies(bot, clone, seat, cache_)
     active = [c for c in clones if trick_open(c, target)]
     while active:
         if gate is not None:
             gate()
-        greedy_reply_ply(bot, active, gate, cache, stats, keep, version,
-                         lambda clone, seat, cache_: legal_replies(bot, clone, seat, cache_),
-                         lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_))
+        if compact:
+            cache, slot = {}, _DenseSlot()
+        greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn,
+                         lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_,
+                                                                      prefix))
         active = [c for c in active if trick_open(c, target)]
     return stats
 

@@ -183,7 +183,8 @@ def test_the_switch_is_off_by_default_and_enters_no_name():
     assert pv.PVSearchBot.single_candidate_fast is False
     assert "single_candidate_fast" not in vars(bot(False, SERVED_RULES))
     assert pv.latency_switches({FLAG: "1"}) == {"encode_prefix_cache": False,
-                                                "single_candidate_fast": True}
+                                                "single_candidate_fast": True,
+                                                "leaf_greedy_stream": False}
     with pytest.raises(pv.PVSearchPolicyError, match=FLAG):
         pv.latency_switches({FLAG: "true"})
     env = {**R46_ENV, "SHENGJI_PV_CKPT": "/x.npz", "SHENGJI_PV_SHA256": "f" * 64}

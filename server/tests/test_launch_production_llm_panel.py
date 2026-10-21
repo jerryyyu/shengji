@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import socket
 import subprocess
 import sys
 import textwrap
@@ -53,6 +54,207 @@ def test_unarmed_run_validates_but_never_launches(tmp_path, monkeypatch):
     assert launcher.run(tmp_path / "campaign.json", "config-sha", arm=False) == {
         "status": "unarmed", "rows": 9, "rounds": 360,
     }
+
+
+def _pt_campaign_fixture(tmp_path: Path):
+    path, _unused, _source = _real_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    expected_config = tmp_path / "pt-game.json"
+    expected_config.write_text(json.dumps({
+        "run": True,
+        "policy": "release46-pv",
+        "seeds": list(range(10)),
+    }, sort_keys=True))
+    config.update(
+        schema=launcher.PT_SCHEMA,
+        rows=list(launcher.PT_ROWS),
+        row_wall_seconds=launcher.PT_ROW_WALL_SECONDS,
+        row_soft_tokens=launcher.PT_ROW_SOFT_TOKENS,
+        recovery_controls={
+            "capacity_retries": False,
+            "accept_recovered_reconnects": False,
+            "invalid_action_feedback": True,
+            "classify_final_action_failures": True,
+        },
+        failure_protocol=launcher.PRESERVE_ILLEGAL,
+        illegal_failure_limit=8,
+        information=["perfect"],
+        hostname=socket.gethostname(),
+        pt_expected_config={
+            "path": str(expected_config),
+            "sha256": hashlib.sha256(expected_config.read_bytes()).hexdigest(),
+        },
+        provider_capacity_retry_delays=[],
+    )
+    path.write_text(json.dumps(config, sort_keys=True))
+    return path, hashlib.sha256(path.read_bytes()).hexdigest(), config
+
+
+def test_pt_campaign_schema_binds_exact_recipe_and_expected_config(tmp_path):
+    path, digest, config = _pt_campaign_fixture(tmp_path)
+    actual, stamps = launcher.validate(path, digest)
+    assert actual["rows"] == ["release46-pv"]
+    assert actual["row_wall_seconds"] == 21600
+    assert actual["row_soft_tokens"] == 20000000
+    assert Path(config["pt_expected_config"]["path"]) in stamps
+
+    for mutation in (
+        lambda value: value.update(information=["private"]),
+        lambda value: value.update(continuation={}),
+        lambda value: value.update(hostname=""),
+        lambda value: value["pt_expected_config"].update(
+            sha256="0" * 64),
+    ):
+        mutated = json.loads(path.read_text())
+        mutation(mutated)
+        path.write_text(json.dumps(mutated, sort_keys=True))
+        with pytest.raises(ValueError):
+            launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
+        path.write_text(json.dumps(config, sort_keys=True))
+
+    expected_path = Path(config["pt_expected_config"]["path"])
+    for seeds in (list(range(1, 11)), [False, *range(1, 10)]):
+        expected_path.write_text(json.dumps({"seeds": seeds}, sort_keys=True))
+        config["pt_expected_config"]["sha256"] = hashlib.sha256(
+            expected_path.read_bytes()).hexdigest()
+        path.write_text(json.dumps(config, sort_keys=True))
+        with pytest.raises(ValueError, match="seeds mismatch"):
+            launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def test_pt_campaign_unarmed_is_one_cell_and_never_dispatches(tmp_path, monkeypatch):
+    path, digest, _config_value = _pt_campaign_fixture(tmp_path)
+    monkeypatch.setattr(launcher.subprocess, "run",
+                        lambda *args, **kwargs: pytest.fail("launched"))
+    assert launcher.run(path, digest) == {
+        "status": "unarmed", "rows": 1, "rounds": 20,
+    }
+
+
+def test_pt_campaign_rechecks_gates_and_dispatches_exact_adapter(tmp_path, monkeypatch):
+    path, digest, config = _pt_campaign_fixture(tmp_path)
+    lock = tmp_path / "pt-host-lock"
+    monkeypatch.setattr(launcher, "PT_LOCK", lock)
+    monkeypatch.setattr(launcher.os, "nice", lambda increment: 10)
+    monkeypatch.setattr(launcher, "_require_pt_memory", lambda stage: None)
+    monkeypatch.setattr(launcher, "_require_recovery_release", lambda *args: None)
+    monkeypatch.setattr(launcher, "fence", lambda stamps: None)
+    seen = {}
+
+    def fake_adapter(**kwargs):
+        assert not Path(kwargs["output"]).exists()
+        seen.update(kwargs)
+        return {"status": "exited", "returncode": 0}
+
+    monkeypatch.setattr(launcher, "supervise_pt_adapter", fake_adapter)
+    result = launcher.run(path, digest, arm=True)
+    assert result == {"status": "exited", "returncode": 0}
+    assert seen["config_path"] == config["pt_expected_config"]["path"]
+    assert seen["expected_sha256"] == config["pt_expected_config"]["sha256"]
+    assert seen["cwd"] == config["source_root"]
+    assert seen["output"] == Path(config["output"])
+    assert seen["wall"] == 21630
+    assert seen["python"] == config["python"]
+    assert seen["model_assets"] == config["model_assets"]
+    assert seen["prepared_roots"] == config["prepared_roots"]
+    assert seen["prepared_roots_sha256"] == config["prepared_roots_sha256"]
+    assert seen["codex_binary"] == config["codex_binary"]
+    assert not Path(config["output"]).exists()
+
+
+@pytest.mark.parametrize("gate", ["hostname", "nice", "memory", "release", "hold", "host", "fence"])
+def test_pt_campaign_refuses_admission_gates_before_adapter(tmp_path, monkeypatch, gate):
+    path, digest, config = _pt_campaign_fixture(tmp_path)
+    lock = tmp_path / "pt-host-lock"
+    monkeypatch.setattr(launcher, "PT_LOCK", lock)
+    monkeypatch.setattr(launcher.os, "nice", lambda increment: 10)
+    monkeypatch.setattr(launcher, "_require_pt_memory", lambda stage: None)
+    monkeypatch.setattr(launcher, "_require_recovery_release", lambda *args: None)
+    monkeypatch.setattr(launcher, "fence", lambda stamps: None)
+    monkeypatch.setattr(launcher, "supervise_pt_adapter",
+                        lambda **kwargs: pytest.fail("adapter dispatched"))
+    if gate == "hostname":
+        monkeypatch.setattr(launcher.socket, "gethostname", lambda: "wrong-host")
+    elif gate == "nice":
+        monkeypatch.setattr(launcher.os, "nice", lambda increment: 0)
+    elif gate == "memory":
+        monkeypatch.setattr(launcher, "_require_pt_memory",
+                            lambda stage: (_ for _ in ()).throw(ValueError("memory headroom")))
+    elif gate == "release":
+        monkeypatch.setattr(launcher, "_require_recovery_release",
+                            lambda *args: (_ for _ in ()).throw(ValueError("RELEASE")))
+    elif gate == "hold":
+        (tmp_path / "HOLD").touch()
+    elif gate == "host":
+        lock.mkdir()
+        (lock / "owner").write_text("peer-owned")
+    elif gate == "fence":
+        monkeypatch.setattr(
+            launcher, "fence",
+            lambda stamps: (_ for _ in ()).throw(ValueError("source fence")),
+        )
+    error = FileExistsError if gate == "host" else ValueError
+    match = ("host" if gate == "hostname" else "nice" if gate == "nice"
+             else "memory" if gate == "memory" else "RELEASE" if gate == "release"
+             else "HOLD" if gate == "hold" else "source fence" if gate == "fence"
+             else None)
+    with pytest.raises(error, match=match):
+        launcher.run(path, digest, arm=True)
+    assert not Path(config["output"]).exists()
+    if gate == "host":
+        assert (lock / "owner").read_text() == "peer-owned"
+    else:
+        assert not lock.exists()
+
+
+def test_pt_campaign_failure_preserves_terminal_and_partials(tmp_path, monkeypatch):
+    path, digest, config = _pt_campaign_fixture(tmp_path)
+    lock = tmp_path / "pt-host-lock"
+    monkeypatch.setattr(launcher, "PT_LOCK", lock)
+    monkeypatch.setattr(launcher.os, "nice", lambda increment: 10)
+    monkeypatch.setattr(launcher, "_require_pt_memory", lambda stage: None)
+    monkeypatch.setattr(launcher, "_require_recovery_release", lambda *args: None)
+    monkeypatch.setattr(launcher, "fence", lambda stamps: None)
+
+    def failed_adapter(**kwargs):
+        output = Path(kwargs["output"])
+        output.mkdir()
+        (output / "terminal.json").write_text(json.dumps({"status": "failed"}))
+        return {"status": "exited", "returncode": 23}
+
+    monkeypatch.setattr(launcher, "supervise_pt_adapter", failed_adapter)
+    with pytest.raises(ValueError, match="PT terminal failed"):
+        launcher.run(path, digest, arm=True)
+    assert (Path(config["output"]) / "terminal.json").read_text()
+
+
+@pytest.mark.parametrize("mutation", ["hold", "source", "release"])
+def test_pt_callback_rechecks_mutation_after_dry_preflight(tmp_path, monkeypatch, mutation):
+    path, digest, config = _pt_campaign_fixture(tmp_path)
+    source = Path(config["source_root"]) / "recipe.py"
+    lock = tmp_path / "pt-host-lock"
+    monkeypatch.setattr(launcher, "PT_LOCK", lock)
+    monkeypatch.setattr(launcher.os, "nice", lambda increment: 10)
+    monkeypatch.setattr(launcher, "_require_pt_memory", lambda stage: None)
+    monkeypatch.setattr(launcher, "_require_recovery_release", lambda *args: None)
+
+    def fake_adapter(**kwargs):
+        if mutation == "hold":
+            (tmp_path / "HOLD").touch()
+        elif mutation == "source":
+            source.write_text("recipe = 2\n")
+        elif mutation == "release":
+            monkeypatch.setattr(
+                launcher, "_require_recovery_release",
+                lambda *args: (_ for _ in ()).throw(ValueError("RELEASE drift")),
+            )
+        kwargs["before_dispatch"]()
+        pytest.fail("real supervisor dispatched")
+
+    monkeypatch.setattr(launcher, "supervise_pt_adapter", fake_adapter)
+    with pytest.raises(ValueError, match="HOLD|source|RELEASE"):
+        launcher.run(path, digest, arm=True)
+    assert not Path(config["output"]).exists()
 
 
 @pytest.mark.parametrize("marker", ["HOLD", "output"])
@@ -425,8 +627,10 @@ def test_pt_adapter_uses_real_parser_for_dry_preflight_and_supervised_command(
         return subprocess.CompletedProcess(command, 0, json.dumps(dry_report), "")
 
     supervised = {}
+    callback_seen = []
 
     def fake_supervise(command, **kwargs):
+        assert callback_seen == ["dry-complete"]
         supervised.update(command=command, kwargs=kwargs)
         return {"status": "exited", "returncode": 0}
 
@@ -436,7 +640,8 @@ def test_pt_adapter_uses_real_parser_for_dry_preflight_and_supervised_command(
         config_path=config_path, expected_sha256=expected, cwd=tmp_path,
         env={"PT": "1"}, output=output, wall=123, python="/python",
         model_assets=model_assets, prepared_roots=tmp_path / "roots",
-        prepared_roots_sha256="a" * 64, codex_binary=tmp_path / "codex")
+        prepared_roots_sha256="a" * 64, codex_binary=tmp_path / "codex",
+        before_dispatch=lambda: callback_seen.append("dry-complete"))
 
     assert result == {"status": "exited", "returncode": 0}
     assert captured == {

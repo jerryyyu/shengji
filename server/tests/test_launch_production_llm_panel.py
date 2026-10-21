@@ -382,6 +382,166 @@ def test_config_hash_drift_is_refused(tmp_path):
         launcher.validate(config_path, expected)
 
 
+def _pt_adapter_config(tmp_path):
+    path = tmp_path / "pt-config.json"
+    config = {"run": True, "seeds": list(range(10))}
+    path.write_text(json.dumps(config, sort_keys=True))
+    return path, hashlib.sha256(path.read_bytes()).hexdigest(), config
+
+
+def test_pt_adapter_uses_real_parser_for_dry_preflight_and_supervised_command(
+        tmp_path, monkeypatch):
+    """The adapter's producer command is parser-checked before supervision."""
+    config_path, expected, _frozen = _pt_adapter_config(tmp_path)
+    model_assets = tmp_path / "model-assets.json"
+    model_assets.write_text("{}")
+    output = tmp_path / "pt-output"
+    captured = {}
+    dry_report = {"mode": "dry-run", "planned_arms": ["sol-perfect"],
+                  "planned_mirrors": 20,
+                  "config": {"run": False, "seeds": list(range(10))}}
+
+    def fake_run(command, **kwargs):
+        assert command[-1] != "--run"
+        assert kwargs == {"cwd": tmp_path, "env": {"PT": "1"},
+                          "capture_output": True, "text": True,
+                          "timeout": 60, "check": False}
+        from scripts import production_llm_panel as panel
+        original = panel.run_row
+
+        def fake_row(**values):
+            captured.update(values)
+            return dry_report
+
+        monkeypatch.setattr(panel, "run_row", fake_row)
+        try:
+            from contextlib import redirect_stdout
+            import io
+            with redirect_stdout(io.StringIO()) as stream:
+                assert panel.main(command[4:]) == 0
+            assert json.loads(stream.getvalue()) == dry_report
+        finally:
+            monkeypatch.setattr(panel, "run_row", original)
+        return subprocess.CompletedProcess(command, 0, json.dumps(dry_report), "")
+
+    supervised = {}
+
+    def fake_supervise(command, **kwargs):
+        supervised.update(command=command, kwargs=kwargs)
+        return {"status": "exited", "returncode": 0}
+
+    monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+    monkeypatch.setattr(launcher, "supervise_pt", fake_supervise)
+    result = launcher.supervise_pt_adapter(
+        config_path=config_path, expected_sha256=expected, cwd=tmp_path,
+        env={"PT": "1"}, output=output, wall=123, python="/python",
+        model_assets=model_assets, prepared_roots=tmp_path / "roots",
+        prepared_roots_sha256="a" * 64, codex_binary=tmp_path / "codex")
+
+    assert result == {"status": "exited", "returncode": 0}
+    assert captured == {
+        "row": "release46-pv", "model_paths": {},
+        "prepared_roots_from": str(tmp_path / "roots"),
+        "prepared_roots_sha256": "a" * 64,
+        "output": str(output / "benchmark"), "seeds": tuple(range(10)),
+        "codex_binary": str(tmp_path / "codex"), "run": False,
+        "capacity_retries": False, "accept_recovered_reconnects": False,
+        "invalid_action_feedback": True,
+        "classify_final_action_failures": True,
+        "failure_protocol": "preserve-model-illegal-v1",
+        "retention_plan": None, "retention_plan_sha256": None,
+        "information": "perfect", "resource_profile": "s47-pt",
+    }
+    assert supervised["command"] == [
+        "/python", "-B", "-m", "scripts.production_llm_panel",
+        "--row", "release46-pv", "--model-assets", str(model_assets),
+        "--prepared-roots-from", str(tmp_path / "roots"),
+        "--prepared-roots-sha256", "a" * 64,
+        "--seeds", *map(str, range(10)),
+        "--output", str(output / "benchmark"),
+        "--codex-binary", str(tmp_path / "codex"),
+        "--information", "perfect", "--resource-profile", "s47-pt",
+        "--invalid-action-feedback", "--classify-final-action-failures",
+        "--failure-protocol", "preserve-model-illegal-v1", "--run",
+    ]
+    assert supervised["kwargs"] == {
+        "config_path": config_path, "expected_sha256": expected,
+        "cwd": tmp_path, "env": {"PT": "1"}, "output": output,
+        "wall": 123, "python": "/python",
+    }
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("defect", ["bool_seed", "run", "mode", "arms", "mirrors", "resources"])
+def test_pt_adapter_refuses_dry_config_drift_before_supervision(tmp_path, monkeypatch, defect):
+    config_path, expected, _ = _pt_adapter_config(tmp_path)
+    model_assets = tmp_path / "model-assets.json"
+    model_assets.write_text("{}")
+    report = {"mode": "dry-run", "planned_arms": ["sol-perfect"],
+              "planned_mirrors": 20,
+              "config": {"run": False, "seeds": list(range(10))}}
+    if defect == "bool_seed":
+        report["config"]["seeds"][0] = False
+    elif defect == "run":
+        report["config"]["run"] = True
+    elif defect == "resources":
+        report["config"]["token_limit"] = 45000000
+    elif defect == "mode":
+        report["mode"] = "run"
+    elif defect == "arms":
+        report["planned_arms"] = ["sol-actor-only", "sol-perfect"]
+    else:
+        report["planned_mirrors"] = 40
+    monkeypatch.setattr(
+        launcher.subprocess, "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, json.dumps(report), ""),
+    )
+    monkeypatch.setattr(launcher, "supervise_pt",
+                        lambda *args, **kwargs: pytest.fail("supervised"))
+    with pytest.raises(ValueError, match="drift"):
+        launcher.supervise_pt_adapter(
+            config_path=config_path, expected_sha256=expected, cwd=tmp_path,
+            env={}, output=tmp_path / "out", wall=30, python=sys.executable,
+            model_assets=model_assets, prepared_roots=tmp_path / "roots",
+            prepared_roots_sha256="a" * 64, codex_binary=tmp_path / "codex")
+    assert not (tmp_path / "out").exists()
+
+
+def test_pt_adapter_bad_hash_refuses_before_dry_parser_or_supervisor(tmp_path, monkeypatch):
+    config_path, _expected, _ = _pt_adapter_config(tmp_path)
+    monkeypatch.setattr(launcher.subprocess, "run",
+                        lambda *args, **kwargs: pytest.fail("dry parser"))
+    monkeypatch.setattr(launcher, "supervise_pt",
+                        lambda *args, **kwargs: pytest.fail("supervised"))
+    with pytest.raises(ValueError, match="config hash mismatch"):
+        launcher.supervise_pt_adapter(
+            config_path=config_path, expected_sha256="0" * 64, cwd=tmp_path,
+            env={}, output=tmp_path / "out", wall=30, python=sys.executable,
+            model_assets=tmp_path / "assets", prepared_roots=tmp_path / "roots",
+            prepared_roots_sha256="a" * 64, codex_binary=tmp_path / "codex")
+
+
+@pytest.mark.parametrize("mutation,match", [
+    (lambda config: config.update(run=False), "run=True"),
+    (lambda config: config["seeds"].__setitem__(0, -1), "distinct integer seeds"),
+])
+def test_pt_adapter_rejects_frozen_run_or_seed_contract_before_preflight(
+        tmp_path, monkeypatch, mutation, match):
+    config_path, _expected, config = _pt_adapter_config(tmp_path)
+    mutation(config)
+    config_path.write_text(json.dumps(config, sort_keys=True))
+    expected = hashlib.sha256(config_path.read_bytes()).hexdigest()
+    monkeypatch.setattr(launcher.subprocess, "run",
+                        lambda *args, **kwargs: pytest.fail("dry parser"))
+    with pytest.raises(ValueError, match=match):
+        launcher.supervise_pt_adapter(
+            config_path=config_path, expected_sha256=expected, cwd=tmp_path,
+            env={}, output=tmp_path / "out", wall=30, python=sys.executable,
+            model_assets=tmp_path / "assets", prepared_roots=tmp_path / "roots",
+            prepared_roots_sha256="a" * 64, codex_binary=tmp_path / "codex")
+
+
 @pytest.mark.parametrize("schema,delays,accepted", [
     ("sol-nine-policy-campaign-v1", [], True),
     ("sol-nine-policy-campaign-v1", [15, 30, 60], False),

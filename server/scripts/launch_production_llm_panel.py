@@ -457,6 +457,91 @@ def supervise_pt(command, *, config_path, expected_sha256, cwd, env, output,
     return terminal
 
 
+def _pt_adapter_command(*, python, model_assets, prepared_roots,
+                        prepared_roots_sha256, codex_binary, seeds, output):
+    """Build the fixed release46 PT adapter command.
+
+    Keeping this command construction in one place makes the preflight and
+    supervised invocation byte-for-byte equivalent apart from ``--run``.
+    The adapter's output is deliberately nested below the supervisor output;
+    the supervisor owns the parent directory and its terminal metadata.
+    """
+    command = [str(python), "-B", "-m", "scripts.production_llm_panel",
+               "--row", "release46-pv", "--model-assets", str(model_assets),
+               "--prepared-roots-from", str(prepared_roots),
+               "--prepared-roots-sha256", str(prepared_roots_sha256),
+               "--seeds", *(str(seed) for seed in seeds),
+               "--output", str(Path(output) / "benchmark"),
+               "--codex-binary", str(codex_binary),
+               "--information", "perfect", "--resource-profile", "s47-pt",
+               "--invalid-action-feedback", "--classify-final-action-failures",
+               "--failure-protocol", PRESERVE_ILLEGAL]
+    return command
+
+
+def supervise_pt_adapter(*, config_path, expected_sha256, cwd, env, output,
+                         wall, python=sys.executable, model_assets,
+                         prepared_roots, prepared_roots_sha256, codex_binary):
+    """Preflight and supervise the real release46 PT producer.
+
+    The dry invocation exercises the same production parser and adapter as the
+    child that will run games.  Its returned config is compared strictly with
+    the sealed config, allowing only the expected ``run`` transition.  This
+    is construction-only and creates no output or provider/gameplay calls.
+    The caller still owns source review, host admission and RELEASE.
+    """
+    config_path, output = Path(config_path), Path(output)
+    stamp(config_path)
+    raw = config_path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise ValueError("PT pre-run config hash mismatch")
+    try:
+        frozen_config = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("PT pre-run config must be valid JSON") from exc
+    if type(frozen_config) is not dict or frozen_config.get("run") is not True:
+        raise ValueError("PT pre-run config must bind run=True")
+    seeds = frozen_config.get("seeds")
+    if (type(seeds) is not list or len(seeds) != 10
+            or any(type(seed) is not int or seed < 0 for seed in seeds)
+            or len(set(seeds)) != 10):
+        raise ValueError("PT adapter requires ten distinct integer seeds")
+
+    dry_command = _pt_adapter_command(
+        python=python, model_assets=model_assets, prepared_roots=prepared_roots,
+        prepared_roots_sha256=prepared_roots_sha256, codex_binary=codex_binary,
+        seeds=seeds, output=output)
+    try:
+        dry = subprocess.run(dry_command, cwd=cwd, env=env,
+                             capture_output=True, text=True, timeout=60,
+                             check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("PT adapter dry preflight timed out") from exc
+    if dry.returncode != 0:
+        raise ValueError("PT adapter dry preflight failed")
+    try:
+        report = json.loads(dry.stdout)
+    except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("PT adapter dry preflight returned invalid JSON") from exc
+    if (type(report) is not dict or report.get("mode") != "dry-run"
+            or report.get("planned_arms") != ["sol-perfect"]
+            or type(report.get("planned_mirrors")) is not int
+            or report["planned_mirrors"] != 20
+            or type(report.get("config")) is not dict
+            or report["config"].get("run") is not False):
+        raise ValueError("PT adapter dry preflight recipe drift")
+    dry_config = dict(report["config"])
+    dry_config["run"] = True
+    from shengji.luna.benchmark_terminal import _strict_equal
+    if not _strict_equal(dry_config, frozen_config):
+        raise ValueError("PT adapter dry preflight config drift")
+
+    run_command = dry_command + ["--run"]
+    return supervise_pt(run_command, config_path=config_path,
+                        expected_sha256=expected_sha256, cwd=cwd, env=env,
+                        output=output, wall=wall, python=python)
+
+
 def run(config_path, expected, *, arm=False):
     config, stamps = validate(config_path, expected)
     if config.get("schema") == STAGE2_SCHEMA:

@@ -233,32 +233,17 @@ def test_two_trick_control_fixture_exposes_pair_ruff_cost():
     Drawing one trump breaks the opponent's trump pair before cashing hearts.
     Both first tricks give attackers zero points; the second exposes the cost.
     """
-    import random
     from collections import Counter
 
+    from game_state_helpers import pair_ruff_control_state
     from shengji.ai.heuristic import HeuristicBot
-    from shengji.engine.cards import Ordering, make_deck
-    from shengji.engine.round import Round, Trick
+    from shengji.engine.cards import make_deck
 
-    hands = [
-        ["SA", "HA", "HA", "HK", "HK", "D3", "C3", "S3"],
-        ["SQ", "H9", "H9", "D5", "D5", "C5", "C5", "S4"],
-        ["S2", "S2", "HQ", "HQ", "D6", "D6", "C6", "C6"],
-        ["S10", "S10", "H10", "H10", "D7", "D7", "C7", "C7"],
-    ]
+    hands = pair_ruff_control_state().hands
     assert not (Counter(c for hand in hands for c in hand) - Counter(make_deck()))
     outcomes = {}
     for lead in (("SA",), ("HA", "HA")):
-        rnd = Round("2", banker=0, rng=random.Random(0))
-        rnd.phase = "play"
-        rnd.ordering = Ordering("S", "2")
-        rnd.trump_suit = "S"
-        rnd.trump_is_nt = False
-        rnd.hands = copy.deepcopy(hands)
-        rnd.buried = []
-        rnd.attacker_points = 0
-        rnd.trick = Trick(leader=0)
-        rnd.turn = 0
+        rnd = pair_ruff_control_state()
         assert min(map(len, rnd.hands)) == 8
         ballot = {action_key(a) for a in MCBot(seed=0)._candidates(rnd, 0)}
         assert {("SA",), ("HA", "HA")} <= ballot

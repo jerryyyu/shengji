@@ -119,10 +119,10 @@ def test_names_do_not_read_the_flag(monkeypatch):
 
 @pytest.fixture(scope="module")
 def belief_package(tmp_path_factory):
-    """The S17 package when ``SHENGJI_PV_BELIEF_PACKAGE_PATH`` names it (sha
+    """The S17 package when ``SHENGJI_PV_BELIEF46_PACKAGE_PATH`` names it (sha
     pinned), else a seeded random-weight package of the same runtime (NumPy
     only: the draw, the log and the replay do not depend on what was learnt)."""
-    real = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
+    real = os.environ.get("SHENGJI_PV_BELIEF46_PACKAGE_PATH")
     if real:
         return {"path": real, "sha256": BELIEF_SHA}
     rng = np.random.default_rng(11)

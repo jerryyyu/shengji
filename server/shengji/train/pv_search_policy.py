@@ -365,6 +365,20 @@ it enters the recipe digest with ``leaf_finish_exact_rule``
 gains ``leaf_greedy_finish_exact_skipped`` (only with the flag on).  Off, it is
 absent from the payload, so every existing name and every decision are unchanged.
 
+Its optional deadline, OFF BY DEFAULT and a search-policy change where it
+fires: ``SHENGJI_PV_LEAF_GREEDY_DEADLINE=<seconds>`` (``leaf_greedy_deadline_ms``,
+whole ms in [1, 60000]; unset, empty or ``0`` is off; requires ``lgf``) -- the
+finish checks the decision's elapsed time (from the start the serving budget
+measures) before every ply, every value batch and every clone of a ply; once
+it has passed the deadline the finish stops and every leaf of the decision,
+for the value pass and the tie-break alike, is the plain heuristic leaf
+(`_leaf`, the flag-off leaf).  Where it does not fire the decision is the
+``lgf`` one.  The serving budget and the exact stages keep their own
+deadlines.  On, it enters the recipe digest as ``leaf_greedy_deadline``
+(`LEAF_GREEDY_DEADLINE_RULE_ID`) and adds ``-lgfd<ms>`` after ``lgf`` /
+``lgfx``; the record gains ``leaf_greedy_deadline_fired`` and
+``leaf_greedy_deadline_cut_leaves`` (only with it on).
+
 Three latency switches, OFF BY DEFAULT, that enter no name, payload or digest
 (like ``SHENGJI_PV_BELIEF_LOG`` they are read from the serving environment
 where the bot is built; ``0`` or ``1`` only).  On the decisions the search
@@ -797,6 +811,16 @@ LEAF_GREEDY_EXACT_SKIP_RULE = {"LEAF_GREEDY_FINISH_EXACT_SKIP": "leaf_greedy_fin
 LEAF_GREEDY_EXACT_SKIP_DEFAULTS = dict(leaf_greedy_finish_exact_skip=False)
 #: its recipe identity
 LEAF_GREEDY_EXACT_SKIP_RULE_ID = "heuristic-leaf-on-exact-eligible-decisions"
+#: ``SHENGJI_PV_LEAF_GREEDY_DEADLINE=<seconds>`` (``leaf_greedy_deadline_ms``,
+#: token ``lgfd<ms>`` after ``lgf``/``lgfx``): 0 is off
+LEAF_GREEDY_DEADLINE_ENV = "LEAF_GREEDY_DEADLINE"
+LEAF_GREEDY_DEADLINE_TOKEN = "lgfd"
+LEAF_GREEDY_DEADLINE_RULE_ID = "heuristic-leaves-once-the-decision-passes-the-deadline-in-the-finish"
+#: the deadline's range in ms
+LEAF_GREEDY_DEADLINE_MS_RANGE = (1, 60_000)
+_LEAF_GREEDY_DEADLINE_REQUIRES = (
+    "leaf_greedy_deadline_ms requires leaf_greedy_finish "
+    "(SHENGJI_PV_LEAF_GREEDY_DEADLINE needs SHENGJI_PV_LEAF_GREEDY_FINISH=1)")
 _LEAF_GREEDY_EXACT_SKIP_REQUIRES = (
     "leaf_greedy_finish_exact_skip requires leaf_greedy_finish and an exact stage "
     "(SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP=1 needs SHENGJI_PV_LEAF_GREEDY_FINISH=1 and "
@@ -1291,6 +1315,7 @@ class PVSearchConfig:
     # its exact-stage yield (requires it and an exact stage); the same contract
     leaf_greedy_finish_exact_skip: bool = \
         LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"]
+    leaf_greedy_deadline_ms: int = 0
     # the optional declaration rule and its two parameters; the same contract
     # (the parameters too are ABSENT from the payload while the rule is off)
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
@@ -1410,6 +1435,19 @@ def _check_exact_world_subset(config) -> int:
     return n
 
 
+def _check_leaf_greedy_deadline(config) -> int:
+    """The finish deadline in ms, 0 when off; refuses a malformed value and
+    one without ``leaf_greedy_finish``."""
+    ms = config.leaf_greedy_deadline_ms
+    lo, hi = LEAF_GREEDY_DEADLINE_MS_RANGE
+    if isinstance(ms, bool) or type(ms) is not int or not (ms == 0 or lo <= ms <= hi):
+        raise PVSearchPolicyError(
+            f"leaf_greedy_deadline_ms must be 0 (off) or an int in [{lo}, {hi}]")
+    if ms and not config.leaf_greedy_finish:
+        raise PVSearchPolicyError(_LEAF_GREEDY_DEADLINE_REQUIRES)
+    return ms
+
+
 def recipe_payload(config: PVSearchConfig) -> dict:
     """The digested recipe: every field, except that an optional rule that is
     OFF is omitted (the payload of the pre-rule recipe, byte for byte) and a
@@ -1518,6 +1556,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                 and (config.exact_lead_endgame or config.exact_follow)):
             raise PVSearchPolicyError(_LEAF_GREEDY_EXACT_SKIP_REQUIRES)
         payload["leaf_finish_exact_rule"] = LEAF_GREEDY_EXACT_SKIP_RULE_ID
+    deadline_ms = _check_leaf_greedy_deadline(config)
+    del payload["leaf_greedy_deadline_ms"]
+    if deadline_ms:
+        payload["leaf_greedy_deadline"] = {"ms": deadline_ms, "rule": LEAF_GREEDY_DEADLINE_RULE_ID}
     if config.adaptive_worlds and config.adaptive_worlds_leads:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
     if config.oracle_worlds and (config.adaptive_worlds or config.adaptive_worlds_leads):
@@ -1608,7 +1650,13 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     scorer swapped while the value evaluator stays fixed) the name also carries the
     prior's id, so the two identities can never be mistaken for one package."""
     prior = f"-prior-{prior8}" if prior8 else ""
-    rules = "".join(f"-{token}" for field, token in RULE_TOKENS if getattr(config, field))
+    tokens = [token for field, token in RULE_TOKENS if getattr(config, field)]
+    deadline_ms = _check_leaf_greedy_deadline(config)
+    if deadline_ms:
+        # right after the greedy leaf's own tokens
+        tokens.insert(tokens.index("lgfx" if "lgfx" in tokens else "lgf") + 1,
+                      f"{LEAF_GREEDY_DEADLINE_TOKEN}{deadline_ms}")
+    rules = "".join(f"-{token}" for token in tokens)
     # the soft oracle's token after the rule tokens; "" while off
     if config.exact_deep_cards:
         rules += f"-ed{config.exact_deep_cards}"
@@ -1752,6 +1800,8 @@ class PVSearchBot(PolicyValueBot):
     #: its per-decision flag (this decision's value pass scores `_leaf`) is
     #: instance state of an ON bot only
     leaf_greedy_finish_exact_skip = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"]
+    #: the finish deadline (module docstring), 0 = off; instance state of an ON bot only
+    leaf_greedy_deadline_ms = 0
     _leaf_greedy_exact_skipped = False
     #: the exact lead's two optional variants (module docstring): class-level OFF
     exact_lead_tie_baseline = False
@@ -1929,6 +1979,9 @@ class PVSearchBot(PolicyValueBot):
                 raise PVSearchPolicyError(_LEAF_GREEDY_EXACT_SKIP_REQUIRES)
             # instance state only when on: a flag-off bot's attributes are unchanged
             self.leaf_greedy_finish_exact_skip = True
+        deadline_ms = _check_leaf_greedy_deadline(config)
+        if deadline_ms:
+            self.leaf_greedy_deadline_ms = deadline_ms
         if type(config.value_declare) is not bool:
             raise PVSearchPolicyError("value_declare must be a bool")
         _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
@@ -3007,6 +3060,9 @@ class PVSearchBot(PolicyValueBot):
     def _search(self, rnd, seat, anchor, started, check_budget=None):
         if self.leaf_greedy_finish:
             self._leaf_greedy = None      # no leaf of an earlier decision is ever reused
+        if self.leaf_greedy_deadline_ms:
+            # measured from the decision's start, as the serving budget is
+            self._leaf_greedy_deadline_at = started + self.leaf_greedy_deadline_ms / 1000.0
         if self.leaf_greedy_finish_exact_skip:
             self._leaf_greedy_exact_skipped = False
         single_fast = False
@@ -3162,6 +3218,7 @@ class PVSearchBot(PolicyValueBot):
             **self._leaf_greedy_record(),
             **({"leaf_greedy_finish_exact_skipped": bool(self._leaf_greedy_exact_skipped)}
                if self.leaf_greedy_finish_exact_skip else {}),
+            **self._leaf_greedy_deadline_record(),
             **self._adaptive_worlds_record(),
             **self._soft_oracle_record(),
             **(self._exact_lead if self.exact_lead_endgame else {}),
@@ -3773,6 +3830,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                        leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                        leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
+                       leaf_greedy_deadline_ms: int = 0,
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3850,6 +3908,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             leaf_greedy_finish=leaf_greedy_finish,
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
+                            leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -3977,6 +4036,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                         leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                         leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
+                        leaf_greedy_deadline_ms: int = 0,
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -4035,6 +4095,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             leaf_greedy_finish=leaf_greedy_finish,
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
+                            leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -4150,6 +4211,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard,
                                leaf_greedy_finish=config.leaf_greedy_finish,
                                leaf_greedy_finish_exact_skip=config.leaf_greedy_finish_exact_skip,
+                               leaf_greedy_deadline_ms=config.leaf_greedy_deadline_ms,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
@@ -4309,6 +4371,23 @@ def pv_env_recipe(environ=None) -> dict:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix}={raw!r}: {exc}") from None
         if value:
             recipe[key] = value
+    # the greedy finish's deadline in seconds: unset, empty or 0 is off
+    raw = env.get(ENV_PREFIX + LEAF_GREEDY_DEADLINE_ENV)
+    if raw not in (None, "", "0"):
+        try:
+            seconds = float(raw)
+        except ValueError:
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{LEAF_GREEDY_DEADLINE_ENV} is not a number: {raw!r}") from None
+        ms = round(seconds * 1000) if math.isfinite(seconds) else None
+        if ms is None or abs(seconds * 1000 - ms) > 1e-6:
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{LEAF_GREEDY_DEADLINE_ENV} must be seconds in whole ms: {raw!r}")
+        recipe["leaf_greedy_deadline_ms"] = int(ms)
+        _check_leaf_greedy_deadline(PVSearchConfig(
+            checkpoint_sha256=recipe["sha256"],
+            leaf_greedy_finish=bool(recipe.get("leaf_greedy_finish", False)),
+            leaf_greedy_deadline_ms=int(ms)))
     # the exact stages' world subset: unset, empty or 0 is off
     raw = env.get(ENV_PREFIX + EXACT_WORLD_SUBSET_ENV)
     if raw not in (None, "", "0"):

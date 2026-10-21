@@ -813,6 +813,77 @@ def test_pv_dev_worker_entrypoint_spawns_and_refuses_before_gameplay(tmp_path):
     assert not (tmp_path / 'absent').exists()
 
 
+def _synthetic_pv_worker(payload):
+    """Exercise real worker persistence without loading models or playing games."""
+    from scripts import pv_dev_duel as adapter
+
+    def play(_run, _arms, clusters, seed0, ranks, baseline, *, sink, **kwargs):
+        records = []
+        for index in clusters:
+            for flip in (0, 1):
+                row = dict(seed=seed0 + index, flip=flip,
+                           trump_rank=adapter.duel.rank_plan(ranks)[index % 2],
+                           policy='T', opponent='C', label='candidate', winner_team=flip,
+                           level_change=1, won=1, level_utility=1,
+                           round_kind='fixed_banker', initial_banker=(seed0 + index) % 4,
+                           arm_play_decisions=1, opp_play_decisions=1,
+                           arm_play_wall_secs=0.1, opp_play_wall_secs=0.1,
+                           arm_play_max_secs=0.1, opp_play_max_secs=0.1,
+                           arm_play_health=dict(decisions=1, pv_complete=1),
+                           opp_play_health=dict(decisions=1, pv_complete=1))
+                sink(row)
+                records.append(row)
+                if index == payload['candidate'].get('TEST_FAIL_AT'):
+                    raise RuntimeError('synthetic child failure after persistence')
+        return records
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(adapter, 'register_pair', lambda *_: ('C', 'T'))
+        patch.setattr(adapter.duel, 'play_shard', play)
+        result = adapter._run_shard(payload)
+    (Path(payload['out']) / 'test-worker-pid').write_text(str(os.getpid()))
+    return result
+
+
+def test_pv_dev_real_pool_terminal_and_partial_failure(tmp_path, monkeypatch):
+    from concurrent.futures import ProcessPoolExecutor
+    from scripts import pv_dev_duel as adapter
+
+    class SyntheticPool(ProcessPoolExecutor):
+        def submit(self, function, payload):
+            assert function is adapter._run_shard
+            return super().submit(_synthetic_pv_worker, payload)
+
+    monkeypatch.setattr(adapter, 'ProcessPoolExecutor', SyntheticPool)
+    monkeypatch.setattr(adapter, 'register_pair', lambda *_: ('C', 'T'))
+    control, candidate = {'SHENGJI_BOT': 'C'}, {'SHENGJI_BOT': 'T'}
+    args = dict(seed0=100, cluster0=4, pairs=7, ranks='2,A', workers=2,
+                round_kind='fixed_banker')
+    root = tmp_path / 'complete'
+    shards = adapter.run_shards(control, candidate, out=root, **args)
+    expected = dict(schema='pv-dev-duel-v1', control='C', candidate='T',
+                    control_env=control, candidate_env=candidate, seed0=100,
+                    cluster0=4, pairs=7, ranks=['2', 'A'], round_kind='fixed_banker',
+                    initial_banker=adapter.duel.FIXED_BANKER_RULE)
+    assert [(meta['cluster0'], meta['pairs']) for _, meta in shards] == [(4, 4), (8, 3)]
+    result = adapter.read_shards(shards, expected)
+    assert result['pairs'] == 7 and result['rounds'] == 14
+    assert result['verdict'] == 'POSITIVE' and result['quality_issues'] == []
+    assert result['mean_levels_per_round'] == 1
+    assert result == adapter.read_shards(list(reversed(shards)), expected)
+    assert (root / 'DONE').read_text() == '7 complete pairs in 2 shards\n'
+    for directory, _ in shards:
+        assert int((Path(directory) / 'test-worker-pid').read_text()) != os.getpid()
+    failed = tmp_path / 'failed'
+    with pytest.raises(RuntimeError, match='synthetic child failure'):
+        adapter.run_shards(control, {**candidate, 'TEST_FAIL_AT': 8}, out=failed, **args)
+    assert not (failed / 'DONE').exists()
+    assert (failed / 'shard-000' / 'DONE').exists()
+    assert not (failed / 'shard-001' / 'DONE').exists()
+    partial = (failed / 'shard-001' / 'rounds.jsonl').read_text().splitlines()
+    assert len(partial) == 1 and json.loads(partial[0])['seed'] == 108
+
+
 def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):
     import copy
     adapter = _load_script('pv_dev_duel')

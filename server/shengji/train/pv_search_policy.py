@@ -350,6 +350,21 @@ with ``leaf_finish`` (`LEAF_GREEDY_FINISH_RULE`) and adds ``-lgf`` to the name.
 Off, it is absent from the payload, so every existing name and every decision
 are unchanged.  Not combined with the tree or the adaptive worlds rule (refused).
 
+Its optional exact-stage yield, OFF BY DEFAULT:
+``SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP=1`` (token ``lgfx``, after ``lgf``;
+requires ``SHENGJI_PV_LEAF_GREEDY_FINISH=1`` and an exact stage,
+``SHENGJI_PV_EXACT_LEAD_ENDGAME=1`` or ``SHENGJI_PV_EXACT_FOLLOW=1``, refused
+otherwise) -- on a decision an exact stage is eligible for (the stage's own
+gate, `PVSearchBot._exact_lead_gate` / `_exact_follow_eligible`, before any
+budget check) the value pass scores the plain heuristic leaf (`_leaf`), so the
+base pass costs what it does without ``lgf`` and the exact stage keeps its
+start share of the budget; on every other decision ``lgf`` applies unchanged.
+The tie-break prices the same leaf the pass scored.  ``0`` or ``1`` only; on,
+it enters the recipe digest with ``leaf_finish_exact_rule``
+(`LEAF_GREEDY_EXACT_SKIP_RULE_ID`) and adds ``-lgfx`` to the name; the record
+gains ``leaf_greedy_finish_exact_skipped`` (only with the flag on).  Off, it is
+absent from the payload, so every existing name and every decision are unchanged.
+
 Optional declaration rule, OFF BY DEFAULT: ``SHENGJI_PV_VALUE_DECLARE=1`` --
 the trump declaration is chosen with the value head instead of the inherited
 heuristic count (`HeuristicBot.decide_declare`, unchanged and still computed
@@ -716,6 +731,16 @@ _LEAF_GREEDY_EXCLUSIVE = (
     "leaf_greedy_finish does not combine with the tree or adaptive_worlds "
     "(SHENGJI_PV_LEAF_GREEDY_FINISH=1 with SHENGJI_PV_TREE_SIMS, SHENGJI_PV_ADAPTIVE_WORLDS "
     "or SHENGJI_PV_ADAPTIVE_WORLDS_LEADS)")
+#: its exact-stage yield (requires it and an exact stage): the plain leaf on a
+#: decision an exact stage is eligible for
+LEAF_GREEDY_EXACT_SKIP_RULE = {"LEAF_GREEDY_FINISH_EXACT_SKIP": "leaf_greedy_finish_exact_skip"}
+LEAF_GREEDY_EXACT_SKIP_DEFAULTS = dict(leaf_greedy_finish_exact_skip=False)
+#: its recipe identity
+LEAF_GREEDY_EXACT_SKIP_RULE_ID = "heuristic-leaf-on-exact-eligible-decisions"
+_LEAF_GREEDY_EXACT_SKIP_REQUIRES = (
+    "leaf_greedy_finish_exact_skip requires leaf_greedy_finish and an exact stage "
+    "(SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP=1 needs SHENGJI_PV_LEAF_GREEDY_FINISH=1 and "
+    "SHENGJI_PV_EXACT_LEAD_ENDGAME=1 or SHENGJI_PV_EXACT_FOLLOW=1)")
 #: the optional single small-joker lead exclusion (`policy_value_search`, #707 S4)
 SMALL_JOKER_GUARD_RULE = {"SMALL_JOKER_GUARD": "small_joker_guard"}
 #: the optional unresolved-decision evidence rule (`PVSearchBot._adaptive_worlds_means`)
@@ -873,9 +898,9 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 #: declaration, its first-round gate, the served bury in its worlds, its
 #: pass-conditioned worlds, its wait option, the model-free first-round
 #: declaration, the policy-played value leaf, the greedy-finished value leaf,
-#: the diagnostic oracle worlds):
+#: its exact-stage yield, the diagnostic oracle worlds):
 #: div, fs, rc, rcec, whl, whd, bw, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, dtrx,
-#: vd, vdef, vdsb, vdpw, vdw, asap, lpft, lgf, orc
+#: vd, vdef, vdsb, vdpw, vdw, asap, lpft, lgf, lgfx, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
@@ -884,6 +909,7 @@ RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_
               **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE, **LEAF_GREEDY_RULE,
+              **LEAF_GREEDY_EXACT_SKIP_RULE,
               **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE,
               **EXACT_LEAD_VARIANT_RULES, **EXACT_FOLLOW_RULE}
 RULES = RULE_FLAGS
@@ -912,6 +938,7 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("declare_asap_first", "asap"),
                                                    ("leaf_policy_first_trick", "lpft"),
                                                    ("leaf_greedy_finish", "lgf"),
+                                                   ("leaf_greedy_finish_exact_skip", "lgfx"),
                                                    ("oracle_worlds", "orc"))
 ENV_PREFIX = "SHENGJI_PV_"
 _ORACLE_NOT_SERVED = ("oracle_worlds is a screen-harness diagnostic and is never served: "
@@ -1137,6 +1164,9 @@ class PVSearchConfig:
         DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"]
     # the optional value-leaf finisher (refused with the tree or adaptive worlds); the same contract
     leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"]
+    # its exact-stage yield (requires it and an exact stage); the same contract
+    leaf_greedy_finish_exact_skip: bool = \
+        LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"]
     # the optional declaration rule and its two parameters; the same contract
     # (the parameters too are ABSENT from the payload while the rule is off)
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
@@ -1341,6 +1371,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         if config.tree is not None or config.adaptive_worlds or config.adaptive_worlds_leads:
             raise PVSearchPolicyError(_LEAF_GREEDY_EXCLUSIVE)
         payload["leaf_finish"] = LEAF_GREEDY_FINISH_RULE
+    if config.leaf_greedy_finish_exact_skip:
+        if not (config.leaf_greedy_finish
+                and (config.exact_lead_endgame or config.exact_follow)):
+            raise PVSearchPolicyError(_LEAF_GREEDY_EXACT_SKIP_REQUIRES)
+        payload["leaf_finish_exact_rule"] = LEAF_GREEDY_EXACT_SKIP_RULE_ID
     if config.adaptive_worlds and config.adaptive_worlds_leads:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
     if config.oracle_worlds and (config.adaptive_worlds or config.adaptive_worlds_leads):
@@ -1568,6 +1603,11 @@ class PVSearchBot(PolicyValueBot):
     value_declare_wait = VALUE_DECLARE_WAIT_DEFAULTS["value_declare_wait"]
     declare_asap_first = DECLARE_ASAP_DEFAULTS["declare_asap_first"]
     leaf_policy_first_trick = LEAF_POLICY_DEFAULTS["leaf_policy_first_trick"]
+    #: the greedy leaf's exact-stage yield (module docstring): class-level OFF;
+    #: its per-decision flag (this decision's value pass scores `_leaf`) is
+    #: instance state of an ON bot only
+    leaf_greedy_finish_exact_skip = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"]
+    _leaf_greedy_exact_skipped = False
     #: the exact lead's two optional variants (module docstring): class-level OFF
     exact_lead_tie_baseline = False
     exact_lead_policy_first = False
@@ -1724,6 +1764,14 @@ class PVSearchBot(PolicyValueBot):
         if config.leaf_greedy_finish and (config.tree is not None or config.adaptive_worlds
                                           or config.adaptive_worlds_leads):
             raise PVSearchPolicyError(_LEAF_GREEDY_EXCLUSIVE)
+        if type(config.leaf_greedy_finish_exact_skip) is not bool:
+            raise PVSearchPolicyError("leaf_greedy_finish_exact_skip must be a bool")
+        if config.leaf_greedy_finish_exact_skip:
+            if not (config.leaf_greedy_finish
+                    and (config.exact_lead_endgame or config.exact_follow)):
+                raise PVSearchPolicyError(_LEAF_GREEDY_EXACT_SKIP_REQUIRES)
+            # instance state only when on: a flag-off bot's attributes are unchanged
+            self.leaf_greedy_finish_exact_skip = True
         if type(config.value_declare) is not bool:
             raise PVSearchPolicyError("value_declare must be a bool")
         _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
@@ -2668,8 +2716,14 @@ class PVSearchBot(PolicyValueBot):
         flush()
         return sums, batches
 
+    def _scored_leaf(self, rnd, seat, hands, buried, action, world_index):
+        if self._leaf_greedy_exact_skipped:
+            # the greedy leaf's exact-stage yield (module docstring)
+            return self._leaf(rnd, seat, hands, buried, action, world_index)
+        return super()._scored_leaf(rnd, seat, hands, buried, action, world_index)
+
     def _value_means(self, rnd, seat, actions, worlds, check_budget=None):
-        if self.leaf_greedy_finish:
+        if self.leaf_greedy_finish and not self._leaf_greedy_exact_skipped:
             # the optional value-leaf rule: every leaf of this pass finished at
             # once, the replies batched, under the deadline (`policy_value_search`)
             self._greedy_prefill(rnd, seat, actions, worlds, check_budget)
@@ -2782,6 +2836,8 @@ class PVSearchBot(PolicyValueBot):
     def _search(self, rnd, seat, anchor, started, check_budget=None):
         if self.leaf_greedy_finish:
             self._leaf_greedy = None      # no leaf of an earlier decision is ever reused
+        if self.leaf_greedy_finish_exact_skip:
+            self._leaf_greedy_exact_skipped = False
         legal = self._legal(rnd, seat, [anchor])
         actions = list(legal.actions)
         worlds, attempts = self._worlds(rnd, seat, check_budget)
@@ -2814,6 +2870,11 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("admission exceeded the candidate budget",
                                       stage="admission_budget")
         admitted = [actions[i] for i in chosen]
+        if self.leaf_greedy_finish_exact_skip:
+            # decided before the value pass, from the exact stages' own gates
+            self._leaf_greedy_exact_skipped = (
+                (self.exact_lead_endgame and self._exact_lead_gate(rnd, admitted) is None)
+                or self._exact_follow_eligible(rnd, admitted))
         if self.adaptive_worlds_leads:
             # the leads-only scope: no rule state survives from an earlier lead
             self._adaptive_worlds = None
@@ -2843,9 +2904,7 @@ class PVSearchBot(PolicyValueBot):
                 [float(preferences[i]) for i in chosen],
                 (means, batches, winner, played, evaluations))
         exact_follow_record = None
-        if (self.exact_follow and len(admitted) > 1
-                and rnd.trick is not None and rnd.trick.plays
-                and max(map(len, rnd.hands)) <= self.exact_follow_max_cards):
+        if self._exact_follow_eligible(rnd, admitted):
             # The normal PV result is complete before this optional stage starts.
             # Any refusal, budget expiry, or malformed world leaves it untouched.
             from .pv_exact_follow import rerank_follow
@@ -2918,12 +2977,34 @@ class PVSearchBot(PolicyValueBot):
             **self._lead_tiebreak_record(),
             **self._doomed_throw_record(),
             **self._leaf_greedy_record(),
+            **({"leaf_greedy_finish_exact_skipped": bool(self._leaf_greedy_exact_skipped)}
+               if self.leaf_greedy_finish_exact_skip else {}),
             **self._adaptive_worlds_record(),
             **self._soft_oracle_record(),
             **(self._exact_lead if self.exact_lead_endgame else {}),
             **({} if exact_follow_record is None else exact_follow_record),
         }
         return list(played)
+
+    def _exact_follow_eligible(self, rnd, admitted):
+        """The exact follow stage's gate: on, a follow with more than one
+        admitted candidate and every hand within its card bound."""
+        return bool(self.exact_follow and len(admitted) > 1
+                    and rnd.trick is not None and rnd.trick.plays
+                    and max(map(len, rnd.hands)) <= self.exact_follow_max_cards)
+
+    def _exact_lead_gate(self, rnd, admitted):
+        """The exact lead stage's gate before its budget check: None when the
+        stage would start, else the status it records (``'ineligible'``: not a
+        lead or a hand above the card bound; ``'single_candidate'``: the deeper
+        rule with one admitted candidate, which an exact pass cannot change)."""
+        deep = self.exact_deep_cards
+        max_cards = deep or EXACT_LEAD_LIMITS['max_hand_cards']
+        if not leading(rnd) or max(map(len, rnd.hands)) > max_cards:
+            return 'ineligible'
+        if deep and len(admitted) == 1:
+            return 'single_candidate'
+        return None
 
     def _exact_lead_decision(self, rnd, seat, admitted, worlds, started, check_budget, priors, base):
         """Complete baseline first; replace only with a complete bounded exact pass.
@@ -2940,11 +3021,9 @@ class PVSearchBot(PolicyValueBot):
         max_cards = deep or EXACT_LEAD_LIMITS['max_hand_cards']
         if deep:
             state['exact_deep_cards'] = deep
-        if not leading(rnd) or max(map(len, rnd.hands)) > max_cards:
-            return base
-        if deep and len(admitted) == 1:
-            # one admitted candidate: an exact pass cannot change the decision
-            state['exact_lead_status'] = 'single_candidate'
+        gate = self._exact_lead_gate(rnd, admitted)
+        if gate is not None:
+            state['exact_lead_status'] = gate
             return base
         now = time.perf_counter()
         budget = self.serving_budget_seconds
@@ -3459,6 +3538,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                        leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
+                       leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3533,6 +3613,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             leaf_greedy_finish=leaf_greedy_finish,
+                            leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -3650,6 +3731,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
                         leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
+                        leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3705,6 +3787,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
                             leaf_greedy_finish=leaf_greedy_finish,
+                            leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -3813,6 +3896,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard,
                                leaf_greedy_finish=config.leaf_greedy_finish,
+                               leaf_greedy_finish_exact_skip=config.leaf_greedy_finish_exact_skip,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
@@ -3850,7 +3934,9 @@ def pv_env_recipe(environ=None) -> dict:
     ``_EXACT_LEAD_TIE_BASELINE`` / ``_EXACT_LEAD_POLICY_FIRST`` / ``_DOOMED_THROW_RESELECT`` /
     ``_DOOMED_THROW_RESELECT_EXACT_GUARD`` (needs ``_DOOMED_THROW_RESELECT=1`` and
     ``_EXACT_LEAD_ENDGAME=1``) / ``_LEAF_GREEDY_FINISH`` (refused with ``_TREE_SIMS``,
-    ``_ADAPTIVE_WORLDS`` or ``_ADAPTIVE_WORLDS_LEADS``) / ``_VALUE_DECLARE`` /
+    ``_ADAPTIVE_WORLDS`` or ``_ADAPTIVE_WORLDS_LEADS``) / ``_LEAF_GREEDY_FINISH_EXACT_SKIP``
+    (needs ``_LEAF_GREEDY_FINISH=1`` and ``_EXACT_LEAD_ENDGAME=1`` or ``_EXACT_FOLLOW=1``) /
+    ``_VALUE_DECLARE`` /
     ``_VALUE_DECLARE_EVERY_FIRST`` / ``_VALUE_DECLARE_SERVED_BURY`` / ``_VALUE_DECLARE_PASS_WORLDS``
     / ``_VALUE_DECLARE_WAIT`` / ``_DECLARE_ASAP_FIRST`` /
     ``_LEAF_POLICY_FIRST_TRICK``

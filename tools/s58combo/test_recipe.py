@@ -84,6 +84,45 @@ def test_actual_packages_reach_fresh_screen_and_deadline_child(monkeypatch):
     assert 'runtime_switches' not in comparator['identity']
 
 
+def test_half_budget_profile_reaches_actual_screen_children():
+    from recipe import half_budget_envs
+    from screen_probe import admit_pair
+
+    served = package_envs()
+    original = copy.deepcopy(served)
+    envs = half_budget_envs(served)
+    assert served == original
+    with pytest.raises(ValueError):
+        build_pair(envs)
+    with pytest.raises(ValueError):
+        build_pair(served, profile='half-budget-lgfd1000')
+    candidate, comparator = admit_pair(envs, profile='half-budget-lgfd1000')
+    assert 'lgfd1000' in candidate['name'] and 'lgfd' not in comparator['name']
+    for arm in (candidate, comparator):
+        assert arm['identity']['config']['serving_budget_seconds'] == 1.5
+        assert arm['identity']['bury_recipe_identity']['serving_budget_seconds'] == 1.0
+    assert candidate['identity']['config']['leaf_greedy_deadline_ms'] == 1000
+    assert comparator['identity']['config']['leaf_greedy_deadline_ms'] == 0
+    with pytest.raises(ValueError):
+        half_budget_envs(envs)
+
+
+@pytest.mark.parametrize('arm,key,value', [
+    (0, 'SHENGJI_PV_LEAF_GREEDY_DEADLINE', '0.75'),
+    (1, 'SHENGJI_PV_SERVING_BUDGET_SECONDS', '3'),
+    (0, 'SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS', '2'),
+    (1, 'SHENGJI_PV_ENCODE_PREFIX_CACHE', '1'),
+    (0, 'SHENGJI_PV_LEAF_GREEDY_STREAM', '0'),
+])
+def test_half_budget_profile_refuses_asymmetry_or_unreviewed_cutoff(arm, key, value):
+    from recipe import half_budget_envs
+
+    envs = half_budget_envs(package_envs())
+    envs[arm][key] = value
+    with pytest.raises(ValueError):
+        build_pair(envs, profile='half-budget-lgfd1000')
+
+
 @pytest.mark.parametrize("seed", [17, 23])
 def test_s58_stream_prefix_decision_parity(monkeypatch, seed):
     from shengji.ai import belief_numpy as bn

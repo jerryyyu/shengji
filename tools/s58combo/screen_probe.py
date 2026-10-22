@@ -9,12 +9,12 @@ import sys
 SERVER = Path(__file__).resolve().parents[2] / 'server'
 
 
-def admit_pair(envs):
+def admit_pair(envs, *, profile='served'):
     from recipe import build_pair
     from shengji.train.cwv_shortlist_screen import _policy_identity
 
     expected = [dict(name=name, identity=_policy_identity(bot))
-                for name, bot in build_pair(envs)]
+                for name, bot in build_pair(envs, profile=profile)]
     admitted = []
     for env, want in zip(envs, expected, strict=True):
         child_env = {k: v for k, v in os.environ.items()

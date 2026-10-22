@@ -204,7 +204,10 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     attempt cap).  ``stats`` then also carries ``draw_stopped``,
     ``drawn_worlds`` (the worlds accepted from ``draw``) and
     ``stopped_untested`` (those accepted untested after the stop).  Without it
-    the draw is unchanged."""
+    the draw is unchanged. This is a soft history-validation cutoff, not a
+    wall-time bound: refusal rejections can consume the remaining
+    ``n * SAMPLE_ATTEMPT_FACTOR`` proposal attempts and then production fill.
+    Proposal batch sizes belong to the proposal, not this loop."""
     from .cwv_policy import sample_worlds
     events = follow_events(rnd, seat)
     ordering = rnd.ordering

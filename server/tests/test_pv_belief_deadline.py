@@ -181,7 +181,7 @@ def test_a_slow_preparation_is_kept_only_with_the_deadline(monkeypatch):
     assert b == draw(bot(), now, seat)[0]
 
 
-def test_a_slow_model_is_bounded_by_the_deadline():
+def test_a_slow_model_triggers_the_history_cutoff():
     _, now, seat = fixture()
     clock = {"t": 0.0}
     on = bot(50, model=UniformBelief(delay=lambda: clock.__setitem__("t", clock["t"] + 0.2)))
@@ -236,3 +236,67 @@ def test_the_draw_stop_hook():
                                               stop=lambda: False)
     assert c == a and sc["draw_stopped"] is False and sc["stopped_untested"] == 0
     assert {k: v for k, v in sc.items() if k not in ("draw_stopped", "drawn_worlds", "stopped_untested")} == sa
+
+
+@pytest.mark.parametrize("fires", [False, True])
+def test_deadline_record_refuses_debug_replay_before_drawing(monkeypatch, fires):
+    import io
+    from test_pv_belief_log import belief_debug
+
+    _, now, seat = fixture()
+    producer = bot(150)
+    producer._belief_clock = FakeClock(1 if fires else 100_000)
+    producer.decide_play(copy.deepcopy(now), seat)
+    record = producer.last_decision_record
+    assert record["belief_deadline_fired"] == int(fires)
+    assert "belief_seed" in record
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("unsupported replay must refuse before constructing a proposal")
+
+    monkeypatch.setattr(bn, "BeliefProposal", forbidden)
+    with pytest.raises(belief_debug.BeliefDebugError, match="stop-attempt boundary"):
+        belief_debug.regenerate(producer.belief_model, now, seat, record, W)
+    output = io.StringIO()
+    with pytest.raises(belief_debug.BeliefDebugError, match="stop-attempt boundary"):
+        belief_debug.report(now, seat, record, model=producer.belief_model, out=output)
+    assert "regenerated:" not in output.getvalue()
+    assert "worlds vs truth:" not in output.getvalue()
+
+
+def test_default_off_draw_still_replays_exactly():
+    from test_pv_belief_log import belief_debug
+
+    _, now, seat = fixture()
+    producer = bot()
+    worlds, record = draw(producer, now, seat)
+    proposal, replayed, stats, fill = belief_debug.regenerate(
+        producer.belief_model, now, seat, record, W)
+    assert fill == 0 and replayed == worlds
+    assert all(belief_debug.replay_checks(record, proposal, stats).values())
+
+
+def test_stopped_history_check_can_exhaust_refusal_attempts(monkeypatch):
+    _, now, seat = fixture()
+    sampler = served(seed=11, world_history_legal=True).sampler
+    mem = Memory(now, seat, own_kitty=True)
+    calls = 0
+
+    def propose(rnd, acting, memory):
+        nonlocal calls
+        calls += 1
+        return sampler._sample_hands(rnd, acting, memory)
+
+    monkeypatch.setattr(HL, "pin_unplayed_attempt", lambda *args: 0)
+    monkeypatch.setattr(HL, "refusal_consistent", lambda *args: False)
+    worlds, attempts, stats = HL.sample_worlds_history_legal(
+        sampler, now, seat, W, (object(),), mem=mem, propose=propose,
+        stop=lambda: True)
+    assert len(worlds) == W
+    assert calls == W * sampler.SAMPLE_ATTEMPT_FACTOR
+    assert calls > W + 1
+    assert stats["refusal_rejections"] == calls
+    assert stats["draw_stopped"] and stats["drawn_worlds"] == 0
+    assert stats["stopped_untested"] == 0
+    assert stats["refusal_fallback_worlds"] == W
+    assert attempts > calls

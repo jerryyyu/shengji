@@ -136,6 +136,11 @@ def regenerate(model, rnd, seat: int, fields, worlds: int):
     from shengji.ai.history_legality import draw_constraints, sample_worlds_history_legal
     from shengji.ai.mcbot import MCBot
     from shengji.ai.memory import Memory
+    if "belief_deadline_fired" in fields:
+        raise BeliefDebugError(
+            "deadline-enabled belief replay is unsupported: the record lacks "
+            "a deterministic stop-attempt boundary; regenerated worlds would "
+            "not establish this decision's sample")
     refusals = refusals_of(fields)
     sampler = MCBot(seed=0)
     propose = bn.BeliefProposal(model, rnd, seat, refusals, seed=int(fields["belief_seed"]),

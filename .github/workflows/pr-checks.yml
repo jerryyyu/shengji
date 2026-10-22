@@ -416,6 +416,7 @@ jobs:
             tests/test_pv_lgf_reply_prefix.py \
             tests/test_pv_leaf_greedy_deadline.py \
             tests/test_pv_encode_prefix.py \
+            tests/test_pv_encode_batch_fast.py \
             tests/test_pv_single_candidate_fast.py \
             tests/test_pv_exact_world_subset.py \
             tests/test_pv_value_declare.py \

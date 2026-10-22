@@ -44,6 +44,7 @@ from __future__ import annotations
 import time
 from collections import Counter, defaultdict
 from functools import partial
+from operator import is_ as _is
 
 import numpy as np
 
@@ -52,7 +53,7 @@ from ..ai.cwv_static_encoding import _v2_static_columns, tensors_from_round_stat
 from ..engine.cards import Ordering
 from ..engine.round import Round, Trick, TrickPlay
 from ..rl.encode import CARD_INDEX, N_CARDS, OBS_DIM, RANKS, SUITS, TRUMP
-from ..rl.encode_next_actor import next_actor_columns
+from ..rl.encode_next_actor import next_actor_columns, next_actor_rel
 from ..rl.encode_versions import OBS_DIM_BY_VERSION, trick_state
 from ..rl.public_history import HISTORY_EVENT_DIM, HISTORY_MAX_EVENTS
 from ..rl.value_afterstate import (PUBLIC_DIM, WORLD_RECEIVERS, ValueAfterstateTensors,
@@ -100,9 +101,12 @@ def _traverse(trick, eff_suit, played, played_total, physical, voids, trick_plan
 class HistoryPrefix:
     """The fused traversal of one decision root's complete tricks."""
 
-    __slots__ = ("tricks", "ordering", "played", "played_total", "physical", "voids", "events")
+    __slots__ = ("tricks", "ordering", "played", "played_total", "physical", "voids", "events",
+                 "batched")
 
     def __init__(self, tricks, ordering, played, played_total, physical, voids, events):
+        #: build batches with `fused_many_batched` (the same tensors, less work per row)
+        self.batched = False
         self.tricks = tricks
         self.ordering = ordering
         self.played = played
@@ -112,9 +116,17 @@ class HistoryPrefix:
         self.events = events
 
     @classmethod
-    def of(cls, rnd):
+    def of(cls, rnd, batched=False):
         """The prefix of ``rnd.history``, or None where the fused builder would
-        refuse any state extending it (every leaf then takes the reference)."""
+        refuse any state extending it (every leaf then takes the reference).
+        ``batched`` routes its batches through `fused_many_batched`."""
+        prefix = cls._of(rnd)
+        if prefix is not None and batched:
+            prefix.batched = True
+        return prefix
+
+    @classmethod
+    def _of(cls, rnd):
         try:
             if type(rnd) is not Round or type(rnd.ordering) is not Ordering \
                     or type(rnd.history) is not list:
@@ -479,6 +491,231 @@ def fused_many(prefix, positions, seats, version):
     return out
 
 
+def _suit_masks(ordering):
+    """``(54, 5)`` float64: column ``k`` marks the cards whose effective suit
+    is ``_SUIT_ORDER[k]`` under ``ordering``."""
+    masks = np.zeros((N_CARDS, len(_SUIT_ORDER)), dtype=np.float64)
+    for index, card in enumerate(_CARDS):
+        masks[index, _SUIT_ORDER.index(ordering.eff_suit(card))] = 1.0
+    return masks
+
+
+def _tail_head(rnd, seat):
+    """The first 22 v1 tail entries (trump suit, trump rank, banker seat)."""
+    head = [0.0] * 5
+    if rnd.trump_is_nt:
+        head[4] = 1.0
+    elif rnd.trump_suit in SUITS:
+        head[SUITS.index(rnd.trump_suit)] = 1.0
+    rank_onehot = [0.0] * 13
+    rank_onehot[RANKS.index(rnd.trump_rank)] = 1.0
+    head += rank_onehot
+    banker_rel = [0.0] * 4
+    banker_rel[(rnd.banker - seat) % 4] = 1.0
+    head += banker_rel
+    return head
+
+
+def fused_many_batched(prefix, positions, seats, version):
+    """`fused_many`, byte for byte, with less work per row: the five world
+    planes are indexed from one array of the distinct hands, the trump, rank
+    and banker block of the tail is built once per (trump, banker, seat), and
+    the v2 and v7 columns are assembled as arrays.  The hand columns read the
+    acting seat's world plane: its effective-suit counts, its pairs (cells at
+    1.0) and its length are the integers the reference counts from the hand,
+    divided by the same constants, so the float32 casts see the same doubles.
+    A row is kept, refused (None) or skipped exactly where `fused_many` keeps,
+    refuses or skips it."""
+    n = len(positions)
+    out = [None] * n
+    if version not in VERSIONS or not n:
+        return out
+    ordering = prefix.ordering
+    eff_suit = ordering.eff_suit
+    tricks = prefix.tricks
+    depth = len(tricks)
+    keep = []
+    hand_ids, hand_cells = {}, []          # distinct hand -> id; its card indices
+    world_ids = []                          # WORLD_RECEIVERS ids per kept row
+    heads = {}
+    played_ix, trick_ix, phys_ix = ([], []), ([], []), ([], [])     # (flat cell, delta)
+    tails, attackers = [], []
+    for i, (rnd, seat) in enumerate(zip(positions, seats)):
+        try:
+            if not _checked(rnd, seat):
+                continue
+            history = rnd.history
+            if rnd.ordering is not ordering or len(history) < depth:
+                continue
+            # ``map`` stops at the prefix's end: the first ``depth`` tricks by identity
+            if not all(map(_is, history, tricks)):
+                continue
+            row = len(keep)
+            ids = []
+            for relative in range(WORLD_RECEIVERS):
+                cards = rnd.hands[(seat + relative) % 4] if relative < 4 else rnd.buried
+                if type(cards) is not list:
+                    raise TypeError
+                key = tuple(cards)
+                hand = hand_ids.get(key)
+                if hand is None:
+                    cells = []
+                    for card in cards:
+                        if type(card) is not str:
+                            raise TypeError
+                        cells.append(CARD_INDEX[card])
+                    hand = hand_ids[key] = len(hand_cells)
+                    hand_cells.append(cells)
+                ids.append(hand)
+            played = [defaultdict(float) for _ in range(4)]
+            total = defaultdict(float)
+            physical = defaultdict(int)
+            row_voids = [set(suits) for suits in prefix.voids]
+            planes = [defaultdict(float) for _ in range(3)]
+            count = prefix.events
+            for trick in history[depth:]:
+                if type(trick) is not Trick or type(trick.plays) is not list \
+                        or len(trick.plays) != 4:
+                    raise TypeError
+                got = _traverse(trick, eff_suit, played, total, physical, row_voids, None)
+                if got is None:
+                    raise TypeError
+                count += got
+            got = _traverse(rnd.trick, eff_suit, played, total, physical, row_voids, planes)
+            if got is None:
+                raise TypeError
+            count += got
+            if not 1 <= count <= HISTORY_MAX_EVENTS:
+                continue
+            root_is_attacker = rnd.is_attacker(seat)
+            if type(rnd.trump_suit) is str or rnd.trump_suit is None:
+                head_key = (rnd.trump_is_nt, rnd.trump_suit, rnd.trump_rank, rnd.banker, seat)
+                head = heads.get(head_key)
+                if head is None:
+                    head = heads[head_key] = _tail_head(rnd, seat)
+            else:
+                head = _tail_head(rnd, seat)
+            tail = [*head, min(rnd.attacker_points, 200) / 200.0,
+                    sum(len(hand) for hand in rnd.hands) / 100.0, float(root_is_attacker)]
+            for relative in range(4):
+                suits = row_voids[(seat + relative) % 4]
+                for suit in _SUIT_ORDER:
+                    tail.append(float(suit in suits))
+        except Exception:
+            continue
+        world_ids.append(ids)
+        # each delta is a sum of half copies: added at once it is the same double
+        for who in range(4):
+            base = (row * 4 + who) * N_CARDS
+            for index, value in played[who].items():
+                played_ix[0].append(base + index); played_ix[1].append(value)
+        for position in range(3):
+            base = (row * 3 + position) * N_CARDS
+            for index, value in planes[position].items():
+                trick_ix[0].append(base + index); trick_ix[1].append(value)
+        base = row * N_CARDS
+        for index, value in physical.items():
+            phys_ix[0].append(base + index); phys_ix[1].append(value)
+        keep.append(i)
+        tails.append(tail)
+        attackers.append(root_is_attacker)
+    if not keep:
+        return out
+    m = len(keep)
+    # every plane cell is a count of half copies: the reference's sums, exactly
+    distinct = np.zeros((len(hand_cells), N_CARDS), dtype=np.float64)
+    rows_of = [h for h, cells in enumerate(hand_cells) for _ in cells]
+    if rows_of:
+        np.add.at(distinct, (np.asarray(rows_of, np.intp),
+                             np.asarray([c for cells in hand_cells for c in cells], np.intp)), 0.5)
+    world = distinct[np.asarray(world_ids, dtype=np.intp)]          # (m, WORLD_RECEIVERS, 54)
+    played = np.broadcast_to(np.asarray(prefix.played, dtype=np.float64), (m, 4, N_CARDS)).copy()
+    if played_ix[0]:
+        np.add.at(played.reshape(-1), np.asarray(played_ix[0], np.intp),
+                  np.asarray(played_ix[1], np.float64))
+    trick_planes = np.zeros((m, 3, N_CARDS), dtype=np.float64)
+    if trick_ix[0]:
+        np.add.at(trick_planes.reshape(-1), np.asarray(trick_ix[0], np.intp),
+                  np.asarray(trick_ix[1], np.float64))
+    physical = np.broadcast_to(np.asarray(prefix.physical, dtype=np.int64), (m, N_CARDS)).copy()
+    physical += (world * 2).astype(np.int64).sum(axis=1)
+    if phys_ix[0]:
+        np.add.at(physical.reshape(-1), np.asarray(phys_ix[0], np.intp),
+                  np.asarray(phys_ix[1], np.int64))
+    complete = (physical == 2).all(axis=1)
+    played_total = played.sum(axis=1)
+    seats_kept = np.asarray([seats[i] for i in keep], dtype=np.intp)
+    rotate = (seats_kept[:, None] + np.arange(4)[None, :]) % 4
+    played_rel = played[np.arange(m)[:, None], rotate]
+    own = world[:, 0]
+    unseen = np.maximum(0.0, 1.0 - played_total - own)
+    v1 = np.concatenate([own, played_rel.reshape(m, -1), trick_planes.reshape(m, -1), unseen,
+                         np.asarray(tails, dtype=np.float64)], axis=1)
+    if v1.shape[1] != OBS_DIM:
+        return out
+    v1 = v1.astype(np.float32)
+    world32 = world.astype(np.float32)
+    flag = np.zeros((m, 1), dtype=np.float32)
+    attacker = np.asarray(attackers, dtype=bool)
+    perspective = np.stack([attacker, ~attacker], axis=1).astype(np.float32)
+    history = np.zeros((1, HISTORY_EVENT_DIM), dtype=np.float32)
+    if version == 1:
+        public = np.concatenate((v1, flag), axis=1)
+        for row, i in enumerate(keep):
+            if complete[row]:
+                out[i] = ValueAfterstateTensors(public[row], history, world32[row],
+                                                perspective[row])
+        return out
+    trump = _trump_indices(ordering)
+    unseen_trump = (v1[:, _UNSEEN:_UNSEEN + N_CARDS][:, trump] * 2).astype(np.int64).sum(axis=1)
+    # the per-row columns (the trick in progress, the score, the next actor);
+    # the hand columns follow as arrays
+    width = 21 + (4 if version == 7 else 0)
+    head_cols = np.zeros((m, width), dtype=np.float64)
+    ok = np.zeros(m, dtype=bool)
+    for row, i in enumerate(keep):
+        if not complete[row]:
+            continue
+        rnd, seat = positions[i], seats[i]
+        try:
+            cols = head_cols[row]
+            winner, lead_suit, trick_pts = trick_state(rnd, seat)
+            if winner is not None:
+                cols[(winner - seat) % 4] = 1.0
+                if winner != seat and (winner - seat) % 2 == 0:
+                    cols[4] = 1.0
+            cols[5] = min(trick_pts, 80) / 80.0
+            if lead_suit is not None:
+                cols[6 + _SUIT_ORDER.index(lead_suit)] = 1.0
+            played_here = 0 if rnd.trick is None else len(rnd.trick.plays)
+            cols[11 + min(played_here, 3)] = 1.0
+            if rnd.trick is not None and rnd.trick.plays:
+                cols[15] = len(rnd.trick.plays[0].cards) / 6.0
+            pts_now = min(rnd.attacker_points, 200)
+            cols[16] = max(-1.0, min(1.0, (pts_now - 80) / 80.0))
+            cols[17 + (0 if pts_now < 40 else 1 if pts_now < 80 else 2 if pts_now < 120
+                       else 3)] = 1.0
+            if version == 7:
+                rel = next_actor_rel(rnd, seat)
+                if rel is not None:
+                    cols[21 + rel] = 1.0
+        except Exception:
+            head_cols[row] = 0.0
+            continue
+        ok[row] = True
+    copies = own * 2                                     # exact small integers
+    suit_counts = copies @ _suit_masks(ordering)
+    hand_cols = np.concatenate((suit_counts / 27.0, (unseen_trump / 27.0)[:, None],
+                                ((own == 1.0).sum(axis=1) / 13.0)[:, None],
+                                (copies.sum(axis=1) / 27.0)[:, None]), axis=1)
+    columns = np.concatenate((head_cols[:, :21], hand_cols, head_cols[:, 21:]), axis=1)
+    public = np.concatenate((v1, columns.astype(np.float32), flag), axis=1)
+    for row, i in enumerate(keep):
+        if ok[row]:
+            out[i] = ValueAfterstateTensorsV2(public[row], history, world32[row], perspective[row])
+    return out
+
+
 def reply_rows(clones, seat, version, prefix):
     """The greedy reply ply's policy rows, ``flat_input(root_tensors(clone,
     seat, version), version)`` for each clone, byte for byte: built by
@@ -494,7 +731,8 @@ def reply_rows(clones, seat, version, prefix):
     if prefix is None or version not in VERSIONS or not clones:
         return reference()
     try:
-        fast = fused_many(prefix, clones, [seat] * len(clones), version)
+        build = fused_many_batched if prefix.batched else fused_many
+        fast = build(prefix, clones, [seat] * len(clones), version)
         built = [t for t in fast if t is not None]
         if not _valid_batch(built, version):
             return reference()
@@ -585,8 +823,9 @@ def encode_leaves(evaluator, positions, root_seat, prefix, batched=True):
         values = np.empty(len(positions), dtype=np.float64)
         rows, pending, fast = [], [], []
         live = [index for index, rnd in enumerate(positions) if rnd.phase != "round_end"]
-        built = fused_many(prefix, [positions[index] for index in live], [root_seat] * len(live),
-                           version) if batched else None
+        build = fused_many_batched if prefix.batched else fused_many
+        built = build(prefix, [positions[index] for index in live], [root_seat] * len(live),
+                      version) if batched else None
         built = dict(zip(live, built)) if built is not None else None
         for index, rnd in enumerate(positions):
             if rnd.phase == "round_end":
@@ -683,5 +922,5 @@ def prior_rows(rnd, seat, worlds, version):
         return reference()
 
 
-__all__ = ["VERSIONS", "HistoryPrefix", "encode_leaves", "fused_many", "prior_rows", "reply_rows",
-           "score_leaves", "static_version"]
+__all__ = ["VERSIONS", "HistoryPrefix", "encode_leaves", "fused_many", "fused_many_batched",
+           "prior_rows", "reply_rows", "score_leaves", "static_version"]

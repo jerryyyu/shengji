@@ -15,12 +15,14 @@ from shengji.luna.benchmark_transport import (CAPACITY_RETRY_DELAYS,
 from shengji.luna.transport import (CodexExecPlannerTransport, CodexTurnTransportError,
                                     CODE_MODE_DISABLED_DIAGNOSTIC,
                                     CodexProviderResourceError,
-                                    InvocationResult, _events_and_usage)
+                                    InvocationResult, MAX_TRACE_BYTES,
+                                    _events_and_usage)
 from test_luna_transport import trace
 from shengji.luna.canonical import canonical_json_bytes
 
 
 CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model."
+CAPACITY_429_MESSAGE = "exceeded retry limit, last status: 429 Too Many Requests"
 # Exact error-only projection from failed stage2 call-q6qgyx5z. No game content.
 PROVIDER_5XX_NOTICE = (
     "Reconnecting... 2/5 (unexpected status 503 Service Unavailable: An error "
@@ -224,15 +226,15 @@ def test_default_runner_uninstalled_venv_and_evidence_cwd(tmp_path, monkeypatch)
     assert not (workspace / "timeout.json").exists()
 
 
-def capacity_trace(*, malformed=False, tool=False):
+def capacity_trace(*, malformed=False, tool=False, message=CAPACITY_MESSAGE):
     rows = [
         {"type": "thread.started", "thread_id": "capacity"},
         {"type": "item.completed", "item": {
             "id": "diagnostic", "type": "error",
             "message": CODE_MODE_DISABLED_DIAGNOSTIC}},
         {"type": "turn.started"},
-        {"type": "error", "message": CAPACITY_MESSAGE},
-        {"type": "turn.failed", "error": {"message": CAPACITY_MESSAGE}},
+        {"type": "error", "message": message},
+        {"type": "turn.failed", "error": {"message": message}},
     ]
     if malformed:
         rows[-1]["error"]["extra"] = True
@@ -421,8 +423,10 @@ def test_final_message_mode_rejects_message_after_completion():
         _events_and_usage(raw, use_final_message=True)
 
 
+@pytest.mark.parametrize("capacity_message", [CAPACITY_MESSAGE, CAPACITY_429_MESSAGE])
 def test_capacity_retry_succeeds_with_identical_serialized_request(tmp_path,
-                                                                   monkeypatch):
+                                                                   monkeypatch,
+                                                                   capacity_message):
     clock = FakeRetryClock()
     monkeypatch.setattr(benchmark_transport, "time", clock)
     final = {"cards": ["C3"], "evaluations": None, "memory": "lead"}
@@ -433,7 +437,7 @@ def test_capacity_retry_succeeds_with_identical_serialized_request(tmp_path,
         prompts.append(prompt)
         schemas.append((workspace / "schema.json").read_bytes())
         if len(commands) == 1:
-            return InvocationResult(1, capacity_trace(), b"", 1)
+            return InvocationResult(1, capacity_trace(message=capacity_message), b"", 1)
         (workspace / "final.json").write_text(json.dumps(final))
         return InvocationResult(0, trace(final), b"", 1)
 
@@ -449,19 +453,21 @@ def test_capacity_retry_succeeds_with_identical_serialized_request(tmp_path,
     assert commands[0][commands[0].index("--output-schema") + 1] != \
         commands[1][commands[1].index("--output-schema") + 1]
     assert transport.calls[0]["error_type"] == "provider_capacity"
+    assert transport.calls[0]["capacity_message"] == capacity_message
     assert transport.calls[0]["attempt_ordinal"] == 1
     assert transport.calls[0]["backoff_planned"] is True
     assert clock.sleeps == [15]
 
 
-def test_capacity_retry_is_disabled_by_default(tmp_path, monkeypatch):
+@pytest.mark.parametrize("capacity_message", [CAPACITY_MESSAGE, CAPACITY_429_MESSAGE])
+def test_capacity_retry_is_disabled_by_default(tmp_path, monkeypatch, capacity_message):
     clock = FakeRetryClock()
     monkeypatch.setattr(benchmark_transport, "time", clock)
     calls = []
 
     def run(command, prompt, workspace, timeout):
         calls.append(workspace)
-        return InvocationResult(1, capacity_trace(), b"", 1)
+        return InvocationResult(1, capacity_trace(message=capacity_message), b"", 1)
 
     transport = BenchmarkTransport(
         evidence_root=tmp_path, codex_binary="/usr/bin/true",
@@ -485,14 +491,15 @@ def test_capacity_retry_schedule_is_exact(tmp_path, delays):
                            runtime_attestor=forbidden, run_command=forbidden)
 
 
-def test_capacity_retry_exhaustion_is_four_bounded_attempts(tmp_path, monkeypatch):
+@pytest.mark.parametrize("capacity_message", [CAPACITY_MESSAGE, CAPACITY_429_MESSAGE])
+def test_capacity_retry_exhaustion_is_four_bounded_attempts(tmp_path, monkeypatch, capacity_message):
     clock = FakeRetryClock()
     monkeypatch.setattr(benchmark_transport, "time", clock)
     calls = []
 
     def run(command, prompt, workspace, timeout):
         calls.append((workspace, timeout))
-        return InvocationResult(1, capacity_trace(), b"", 1)
+        return InvocationResult(1, capacity_trace(message=capacity_message), b"", 1)
 
     transport = BenchmarkTransport(
         evidence_root=tmp_path, codex_binary="/usr/bin/true", timeout_seconds=120,
@@ -508,15 +515,16 @@ def test_capacity_retry_exhaustion_is_four_bounded_attempts(tmp_path, monkeypatc
                for receipt in transport.calls)
 
 
+@pytest.mark.parametrize("capacity_message", [CAPACITY_MESSAGE, CAPACITY_429_MESSAGE])
 def test_capacity_retry_stops_before_backoff_when_deadline_is_insufficient(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, capacity_message):
     clock = FakeRetryClock()
     monkeypatch.setattr(benchmark_transport, "time", clock)
     calls = []
 
     def run(command, prompt, workspace, timeout):
         calls.append(timeout)
-        return InvocationResult(1, capacity_trace(), b"", 1)
+        return InvocationResult(1, capacity_trace(message=capacity_message), b"", 1)
 
     transport = BenchmarkTransport(
         evidence_root=tmp_path, codex_binary="/usr/bin/true", timeout_seconds=10,
@@ -533,7 +541,8 @@ def test_capacity_retry_stops_before_backoff_when_deadline_is_insufficient(
 
 
 @pytest.mark.parametrize("raw", [b"not-json\n", capacity_trace(malformed=True),
-                                  capacity_trace(tool=True)])
+                                  capacity_trace(tool=True), capacity_trace(message=[]),
+                                  capacity_trace() + b"x" * (MAX_TRACE_BYTES + 1)])
 def test_noncanonical_capacity_trace_never_retries(tmp_path, raw):
     calls = []
 
@@ -577,8 +586,9 @@ def test_retry_obeys_earlier_row_deadline(tmp_path, monkeypatch, late):
     assert clock.sleeps == []
 
 
-@pytest.mark.parametrize("kind", ["timeout", "signal", "generic", "final", "usage", "action"])
-def test_retry_does_not_hide_noncapacity_failures(tmp_path, kind):
+@pytest.mark.parametrize("capacity_message", [CAPACITY_MESSAGE, CAPACITY_429_MESSAGE])
+@pytest.mark.parametrize("kind", ["timeout", "signal", "generic", "final", "usage", "action", "mismatch", "tool"])
+def test_retry_does_not_hide_noncapacity_failures(tmp_path, kind, capacity_message):
     calls = []
 
     def run(command, prompt, workspace, timeout):
@@ -587,9 +597,13 @@ def test_retry_does_not_hide_noncapacity_failures(tmp_path, kind):
             raise CodexProviderResourceError("synthetic timeout")
         if kind == "final":
             (workspace / "final.json").write_text("{}")
-        raw = capacity_trace()
+        raw = capacity_trace(message=capacity_message, tool=kind == "tool")
         if kind == "generic":
-            raw = raw.replace(CAPACITY_MESSAGE.encode(), b"Authentication failed")
+            raw = raw.replace(capacity_message.encode(), b"Authentication failed")
+        if kind == "mismatch":
+            rows = [json.loads(line) for line in raw.splitlines()]
+            rows[-1]["error"]["message"] = "Authentication failed"
+            raw = b"\n".join(json.dumps(row).encode() for row in rows)
         if kind in ("usage", "action"):
             rows = [json.loads(line) for line in raw.splitlines()]
             if kind == "usage":

@@ -16,6 +16,8 @@ from .transport import (CodexExecPlannerTransport, CodexTurnTransportError,
 
 CAPACITY_RETRY_DELAYS = (15, 30, 60)
 _CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model."
+_CAPACITY_429_MESSAGE = "exceeded retry limit, last status: 429 Too Many Requests"
+_CAPACITY_MESSAGES = frozenset((_CAPACITY_MESSAGE, _CAPACITY_429_MESSAGE))
 _PROVIDER_5XX_RECONNECT = re.compile(
     r"Reconnecting\.\.\. ([1-5])/5 \(unexpected status (5[0-9]{2}) "
     r"[^\r\n]+\)")
@@ -163,32 +165,32 @@ class BenchmarkTransport(CodexExecPlannerTransport):
         return notices, usage
 
     @staticmethod
-    def _capacity_failure(result, final_path):
-        """Recognize only the provider's terminal, no-response capacity trace."""
+    def _capacity_message(result, final_path):
+        """Return the exact recognized terminal no-response capacity message."""
         if (type(result.returncode) is not int or result.returncode <= 0
                 or final_path.exists() or final_path.is_symlink()):
-            return False
+            return None
         raw = result.stdout
-        if type(raw) is not bytes or not raw:
-            return False
+        if type(raw) is not bytes or not raw or len(raw) > MAX_TRACE_BYTES:
+            return None
         rows = []
         try:
             for line in raw.splitlines():
                 if not line:
-                    return False
+                    return None
                 rows.append(_strict_json(line, "capacity JSONL event"))
         except CodexTurnTransportError:
-            return False
+            return None
         if not all(type(row) is dict for row in rows):
-            return False
+            return None
         if len(rows) not in (4, 5):
-            return False
+            return None
         cursor = 0
         thread = rows[cursor]
         if (set(thread) != {"type", "thread_id"}
                 or thread.get("type") != "thread.started"
                 or type(thread.get("thread_id")) is not str):
-            return False
+            return None
         cursor += 1
         if cursor < len(rows) and rows[cursor].get("type") == "item.completed":
             warning = rows[cursor]
@@ -198,23 +200,32 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                     or type(item.get("id")) is not str
                     or item.get("type") != "error"
                     or item.get("message") != CODE_MODE_DISABLED_DIAGNOSTIC):
-                return False
+                return None
             cursor += 1
         if cursor + 3 != len(rows):
-            return False
+            return None
         if rows[cursor] != {"type": "turn.started"}:
-            return False
+            return None
         error = rows[cursor + 1]
+        message = error.get("message")
         if (set(error) != {"type", "message"}
                 or error.get("type") != "error"
-                or error.get("message") != _CAPACITY_MESSAGE):
-            return False
+                or type(message) is not str
+                or message not in _CAPACITY_MESSAGES):
+            return None
         failed = rows[cursor + 2]
-        return (set(failed) == {"type", "error"}
-                and failed.get("type") == "turn.failed"
-                and type(failed.get("error")) is dict
-                and set(failed["error"]) == {"message"}
-                and failed["error"].get("message") == _CAPACITY_MESSAGE)
+        if (set(failed) != {"type", "error"}
+                or failed.get("type") != "turn.failed"
+                or type(failed.get("error")) is not dict
+                or set(failed["error"]) != {"message"}
+                or failed["error"].get("message") != message):
+            return None
+        return message
+
+    @staticmethod
+    def _capacity_failure(result, final_path):
+        """Recognize only the provider's terminal, no-response capacity trace."""
+        return BenchmarkTransport._capacity_message(result, final_path) is not None
 
     @staticmethod
     def _deadline_remaining(logical_deadline, row_deadline):
@@ -295,7 +306,9 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                             "Codex game deadline exceeded after dispatch")
                 else:
                     self._check_dispatch_deadline(deadline)
-                capacity = retry_delays and self._capacity_failure(result, final_path)
+                capacity_message = (retry_delays and
+                                    self._capacity_message(result, final_path))
+                capacity = bool(capacity_message)
                 reconnect = (self._provider_5xx_reconnect(
                                  result, final_path,
                                  websocket=not self.accept_recovered_reconnects)
@@ -311,7 +324,7 @@ class BenchmarkTransport(CodexExecPlannerTransport):
                                   "provider_5xx" if only_5xx else "provider_reconnect")
                     receipt.update(error_type=error_type, error=error_type)
                     if capacity:
-                        receipt["capacity_message"] = _CAPACITY_MESSAGE
+                        receipt["capacity_message"] = capacity_message
                     elif only_5xx:
                         receipt["discarded_provider_5xx_notices"], receipt["usage"] = reconnect
                     else:

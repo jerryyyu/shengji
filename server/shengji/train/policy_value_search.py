@@ -445,13 +445,18 @@ def _budget_exceeded():
     return PVSearchBudgetExceeded
 
 
+class LeafGreedyDeadline(Exception):
+    """`leaf_greedy_deadline_ms`: the decision passed the deadline inside the
+    greedy finish (internal; caught by `_greedy_prefill`)."""
+
+
 def _greedy_state():
     """`leaf_greedy_finish`'s fresh per-decision state: the finished-leaf cache
     keyed by (candidate cards, world index), the finish's work counters (the
     tree's `greedy_stats` names) and the count of leaves finished outside the
     value pass."""
     from .pv_tree_search import greedy_stats
-    return {'cache': {}, 'stats': greedy_stats(), 'uncached': 0}
+    return {'cache': {}, 'stats': greedy_stats(), 'uncached': 0, 'deadline_cut': 0}
 
 
 class PolicyValueBot(PolicyWorldBot):
@@ -471,6 +476,9 @@ class PolicyValueBot(PolicyWorldBot):
     #: (`pv_tree_search.legal_replies_compact`); the same plays and values.
     #: Instance state of an ON bot only
     leaf_greedy_stream = False
+    #: `leaf_greedy_deadline_ms`'s absolute deadline for the current decision
+    #: (``time.perf_counter`` seconds), set by the served bot; None = no deadline
+    _leaf_greedy_deadline_at = None
 
     def __init__(self, predict, *, evaluator, candidates=8, batch_size=128,
                  admission_diversity=ADMISSION_DEFAULTS["admission_diversity"],
@@ -587,6 +595,9 @@ class PolicyValueBot(PolicyWorldBot):
         state = self._leaf_greedy
         if state is None:
             state = self._leaf_greedy = _greedy_state()
+        if state['deadline_cut']:
+            # the finish passed its deadline: every leaf of the decision is `_leaf`
+            return self._leaf(rnd, seat, hands, buried, action, world_index)
         key = (tuple(action), world_index)
         leaf = state['cache'].get(key)
         if leaf is None:
@@ -608,13 +619,25 @@ class PolicyValueBot(PolicyWorldBot):
             # the reply leaves are clones of this root: its history encoded once
             from .pv_encode_prefix import HistoryPrefix
             prefix = HistoryPrefix.of(rnd)
-        self._greedy_finish(clones, len(rnd.history) + 1, check_budget, state['stats'], prefix)
+        guard = None
+        deadline = self._leaf_greedy_deadline_at
+        if deadline is not None:
+            def guard():
+                if time.perf_counter() >= deadline:
+                    raise LeafGreedyDeadline
+        try:
+            self._greedy_finish(clones, len(rnd.history) + 1, check_budget, state['stats'],
+                                prefix, guard)
+        except LeafGreedyDeadline:
+            # the remaining work is dropped whole: every leaf takes `_leaf`
+            state['deadline_cut'] = len(clones)
+            return
         leaves = iter(clones)
         for world_index in range(len(worlds)):
             for action in actions:
                 state['cache'][(tuple(action), world_index)] = next(leaves)
 
-    def _greedy_finish(self, clones, target, gate, stats, prefix=None):
+    def _greedy_finish(self, clones, target, gate, stats, prefix=None, guard=None):
         # lazy: the tree module imports this module's served consumers.  The
         # policy rows are encoded at the served bot's ``version``; the harness
         # bot (no ``version``) encodes at `policy_prior.ENC_VERSION`, as `scores`
@@ -623,9 +646,17 @@ class PolicyValueBot(PolicyWorldBot):
         # the optional switches are passed only when on: the call is otherwise
         # the switch-off one (tests replace this function with that signature)
         options = {**({'compact': True} if self.leaf_greedy_stream else {}),
-                   **({'prefix': prefix} if prefix is not None else {})}
+                   **({'prefix': prefix} if prefix is not None else {}),
+                   **({'guard': guard} if guard is not None else {})}
         greedy_finish_current_trick(self, clones, target, gate, LEAF_GREEDY_REPLIES,
                                     getattr(self, 'version', ENC_VERSION), stats, **options)
+
+    def _leaf_greedy_deadline_record(self):
+        if not getattr(self, 'leaf_greedy_deadline_ms', 0):
+            return {}
+        state = self._leaf_greedy if self._leaf_greedy is not None else _greedy_state()
+        return {'leaf_greedy_deadline_fired': state['deadline_cut'] > 0,
+                'leaf_greedy_deadline_cut_leaves': int(state['deadline_cut'])}
 
     def _leaf_greedy_record(self):
         if not self.leaf_greedy_finish:

@@ -444,7 +444,7 @@ def team_values(bot, leaves, seat, gate=None, prefix=None):
 
 
 def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn,
-                     rows_fn=None):
+                     rows_fn=None, guard=None):
     """One reply ply of the greedy finish: every clone in ``active`` has the
     SAME seat to act (turn order inside one trick is fixed); that seat plays
     its highest-valued candidate in each clone (module docstring: the policy's
@@ -453,7 +453,9 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
     policy rows' encoder version; ``legal_fn`` / ``values_fn`` are
     `legal_replies` / `team_values` or the tree's hooks.  ``rows_fn(clones,
     seat)``, when given, builds the policy rows of the non-forced clones in
-    one call (`pv_encode_prefix.reply_rows`: the same rows)."""
+    one call (`pv_encode_prefix.reply_rows`: the same rows).  ``guard``, when
+    given, is called before every clone's listing and child expansion (the
+    served finish's deadline; it raises to stop the ply)."""
     from .policy_prior import N_CARDS, flat_input, root_tensors
     seat = active[0].turn
     if any(clone.turn != seat for clone in active):
@@ -464,6 +466,8 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
     for index, clone in enumerate(active):
         if gate is not None and index and index % TREE_BUDGET_STRIDE == 0:
             gate()
+        if guard is not None:
+            guard()
         legal, scoring = legal_fn(clone, seat, cache)
         if len(legal) == 1:
             plans[index] = ([list(legal[0])], list(legal[0]))
@@ -498,6 +502,8 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
             continue
         if gate is not None and index and index % TREE_BUDGET_STRIDE == 0:
             gate()
+        if guard is not None:
+            guard()
         for k, candidate in enumerate(candidates):
             child = child_position(active[index], seat, candidate)
             finish_current_trick(child)
@@ -522,7 +528,7 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
 
 
 def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=None,
-                                compact=False, prefix=None) -> dict:
+                                compact=False, prefix=None, guard=None) -> dict:
     """Finish the CURRENT trick of every clone in ``clones`` (all at the same
     ply) by greedy reply plies, never further; returns the `greedy_stats`
     (accumulated into ``stats`` when given).  ``bot`` supplies the policy
@@ -535,7 +541,8 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
     ply of the trick can hit it); the plies, their batches and every value are
     the same.  ``prefix`` encodes the reply valuations (`team_values`) and the
     reply policy rows (`pv_encode_prefix.reply_rows`) on the decision root's
-    history."""
+    history.  ``guard`` (the served finish's deadline) is called before each
+    ply, each value batch and every clone of a ply; it raises to stop."""
     stats = greedy_stats() if stats is None else stats
     cache = {}
     rows_fn = None
@@ -550,16 +557,23 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
     else:
         def legal_fn(clone, seat, cache_):
             return legal_replies(bot, clone, seat, cache_)
+    ply_gate = gate
+    if guard is not None:
+        # the deadline is checked wherever the budget is, and before the budget
+        def ply_gate():
+            guard()
+            if gate is not None:
+                gate()
     active = [c for c in clones if trick_open(c, target)]
     while active:
-        if gate is not None:
-            gate()
+        if ply_gate is not None:
+            ply_gate()
         if compact:
             cache, slot = {}, _DenseSlot()
-        greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn,
+        greedy_reply_ply(bot, active, ply_gate, cache, stats, keep, version, legal_fn,
                          lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_,
                                                                       prefix),
-                         rows_fn)
+                         rows_fn, guard)
         active = [c for c in active if trick_open(c, target)]
     return stats
 

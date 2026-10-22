@@ -56,7 +56,7 @@ def test_unarmed_run_validates_but_never_launches(tmp_path, monkeypatch):
     }
 
 
-def _pt_campaign_fixture(tmp_path: Path):
+def _pt_campaign_fixture(tmp_path: Path, *, capacity_retries=False):
     path, _unused, _source = _real_validation_fixture(tmp_path)
     config = json.loads(path.read_text())
     expected_config = tmp_path / "pt-game.json"
@@ -64,6 +64,8 @@ def _pt_campaign_fixture(tmp_path: Path):
         "run": True,
         "policy": "release46-pv",
         "seeds": list(range(10)),
+        "provider_capacity_retry_delays":
+        [15, 30, 60] if capacity_retries else [],
     }, sort_keys=True))
     config.update(
         schema=launcher.PT_SCHEMA,
@@ -71,7 +73,7 @@ def _pt_campaign_fixture(tmp_path: Path):
         row_wall_seconds=launcher.PT_ROW_WALL_SECONDS,
         row_soft_tokens=launcher.PT_ROW_SOFT_TOKENS,
         recovery_controls={
-            "capacity_retries": False,
+            "capacity_retries": capacity_retries,
             "accept_recovered_reconnects": False,
             "invalid_action_feedback": True,
             "classify_final_action_failures": True,
@@ -84,7 +86,7 @@ def _pt_campaign_fixture(tmp_path: Path):
             "path": str(expected_config),
             "sha256": hashlib.sha256(expected_config.read_bytes()).hexdigest(),
         },
-        provider_capacity_retry_delays=[],
+        provider_capacity_retry_delays=[15, 30, 60] if capacity_retries else [],
     )
     path.write_text(json.dumps(config, sort_keys=True))
     return path, hashlib.sha256(path.read_bytes()).hexdigest(), config
@@ -120,6 +122,39 @@ def test_pt_campaign_schema_binds_exact_recipe_and_expected_config(tmp_path):
         path.write_text(json.dumps(config, sort_keys=True))
         with pytest.raises(ValueError, match="seeds mismatch"):
             launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def test_pt_campaign_accepts_bounded_capacity_retry_recipe(tmp_path):
+    path, digest, config = _pt_campaign_fixture(tmp_path, capacity_retries=True)
+    actual, _stamps = launcher.validate(path, digest)
+    assert actual["recovery_controls"]["capacity_retries"] is True
+    assert config["provider_capacity_retry_delays"] == [15, 30, 60]
+
+
+def test_pt_campaign_binds_capacity_retry_to_expected_config(tmp_path):
+    path, digest, config = _pt_campaign_fixture(tmp_path, capacity_retries=True)
+    expected_path = Path(config["pt_expected_config"]["path"])
+    expected_path.write_text(json.dumps({"run": True, "seeds": list(range(10))},
+                                        sort_keys=True))
+    config["pt_expected_config"]["sha256"] = hashlib.sha256(
+        expected_path.read_bytes()).hexdigest()
+    path.write_text(json.dumps(config, sort_keys=True))
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="capacity retry mismatch"):
+        launcher.validate(path, digest)
+
+    inverse_root = tmp_path / "inverse"
+    inverse_root.mkdir()
+    path, _digest, config = _pt_campaign_fixture(inverse_root)
+    expected_path = Path(config["pt_expected_config"]["path"])
+    expected_path.write_text(json.dumps({
+        "run": True, "seeds": list(range(10)),
+        "provider_capacity_retry_delays": [15, 30, 60]}, sort_keys=True))
+    config["pt_expected_config"]["sha256"] = hashlib.sha256(
+        expected_path.read_bytes()).hexdigest()
+    path.write_text(json.dumps(config, sort_keys=True))
+    with pytest.raises(ValueError, match="capacity retry mismatch"):
+        launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
 
 
 def test_pt_campaign_unarmed_is_one_cell_and_never_dispatches(tmp_path, monkeypatch):
@@ -584,27 +619,34 @@ def test_config_hash_drift_is_refused(tmp_path):
         launcher.validate(config_path, expected)
 
 
-def _pt_adapter_config(tmp_path):
+def _pt_adapter_config(tmp_path, *, capacity_retries=False):
     path = tmp_path / "pt-config.json"
-    config = {"run": True, "seeds": list(range(10))}
+    config = {"run": True, "seeds": list(range(10)),
+              "provider_capacity_retry_delays":
+              [15, 30, 60] if capacity_retries else []}
     path.write_text(json.dumps(config, sort_keys=True))
     return path, hashlib.sha256(path.read_bytes()).hexdigest(), config
 
 
+@pytest.mark.parametrize("capacity_retries", [False, True])
 def test_pt_adapter_uses_real_parser_for_dry_preflight_and_supervised_command(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, capacity_retries):
     """The adapter's producer command is parser-checked before supervision."""
-    config_path, expected, _frozen = _pt_adapter_config(tmp_path)
+    config_path, expected, _frozen = _pt_adapter_config(
+        tmp_path, capacity_retries=capacity_retries)
     model_assets = tmp_path / "model-assets.json"
     model_assets.write_text("{}")
     output = tmp_path / "pt-output"
     captured = {}
+    retry_delays = [15, 30, 60] if capacity_retries else []
     dry_report = {"mode": "dry-run", "planned_arms": ["sol-perfect"],
                   "planned_mirrors": 20,
-                  "config": {"run": False, "seeds": list(range(10))}}
+                  "config": {"run": False, "seeds": list(range(10)),
+                             "provider_capacity_retry_delays": retry_delays}}
 
     def fake_run(command, **kwargs):
         assert command[-1] != "--run"
+        assert ("--retry-provider-capacity" in command) is capacity_retries
         assert kwargs == {"cwd": tmp_path, "env": {"PT": "1"},
                           "capture_output": True, "text": True,
                           "timeout": 60, "check": False}
@@ -650,14 +692,14 @@ def test_pt_adapter_uses_real_parser_for_dry_preflight_and_supervised_command(
         "prepared_roots_sha256": "a" * 64,
         "output": str(output / "benchmark"), "seeds": tuple(range(10)),
         "codex_binary": str(tmp_path / "codex"), "run": False,
-        "capacity_retries": False, "accept_recovered_reconnects": False,
+        "capacity_retries": capacity_retries, "accept_recovered_reconnects": False,
         "invalid_action_feedback": True,
         "classify_final_action_failures": True,
         "failure_protocol": "preserve-model-illegal-v1",
         "retention_plan": None, "retention_plan_sha256": None,
         "information": "perfect", "resource_profile": "s47-pt",
     }
-    assert supervised["command"] == [
+    expected_command = [
         "/python", "-B", "-m", "scripts.production_llm_panel",
         "--row", "release46-pv", "--model-assets", str(model_assets),
         "--prepared-roots-from", str(tmp_path / "roots"),
@@ -667,8 +709,11 @@ def test_pt_adapter_uses_real_parser_for_dry_preflight_and_supervised_command(
         "--codex-binary", str(tmp_path / "codex"),
         "--information", "perfect", "--resource-profile", "s47-pt",
         "--invalid-action-feedback", "--classify-final-action-failures",
-        "--failure-protocol", "preserve-model-illegal-v1", "--run",
-    ]
+        "--failure-protocol", "preserve-model-illegal-v1"]
+    if capacity_retries:
+        expected_command.append("--retry-provider-capacity")
+    expected_command.append("--run")
+    assert supervised["command"] == expected_command
     assert supervised["kwargs"] == {
         "config_path": config_path, "expected_sha256": expected,
         "cwd": tmp_path, "env": {"PT": "1"}, "output": output,
@@ -725,6 +770,25 @@ def test_pt_adapter_bad_hash_refuses_before_dry_parser_or_supervisor(tmp_path, m
             env={}, output=tmp_path / "out", wall=30, python=sys.executable,
             model_assets=tmp_path / "assets", prepared_roots=tmp_path / "roots",
             prepared_roots_sha256="a" * 64, codex_binary=tmp_path / "codex")
+
+
+@pytest.mark.parametrize("delays", [None, {}, [15, 30, 600],
+                                     [15.0, 30, 60], [True, 30, 60]])
+def test_pt_adapter_rejects_invalid_capacity_retry_schedule_before_dry(
+        tmp_path, monkeypatch, delays):
+    config_path, _expected, config = _pt_adapter_config(tmp_path)
+    config["provider_capacity_retry_delays"] = delays
+    config_path.write_text(json.dumps(config, sort_keys=True))
+    expected = hashlib.sha256(config_path.read_bytes()).hexdigest()
+    monkeypatch.setattr(launcher.subprocess, "run",
+                        lambda *args, **kwargs: pytest.fail("dry parser"))
+    with pytest.raises(ValueError, match="capacity retry declaration"):
+        launcher.supervise_pt_adapter(
+            config_path=config_path, expected_sha256=expected, cwd=tmp_path,
+            env={}, output=tmp_path / "out", wall=30, python=sys.executable,
+            model_assets=tmp_path / "assets", prepared_roots=tmp_path / "roots",
+            prepared_roots_sha256="a" * 64, codex_binary=tmp_path / "codex")
+    assert not (tmp_path / "out").exists()
 
 
 @pytest.mark.parametrize("mutation,match", [

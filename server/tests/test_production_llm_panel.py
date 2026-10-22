@@ -133,7 +133,7 @@ def test_pt_cli_preserves_s47_resources_and_controls(monkeypatch):
 
 
 @pytest.mark.parametrize('delta', [
-    {'row': 'smart'}, {'information': 'both'}, {'capacity_retries': True},
+    {'row': 'smart'}, {'information': 'both'},
     {'accept_recovered_reconnects': True}, {'invalid_action_feedback': False},
     {'classify_final_action_failures': False}, {'failure_protocol': 'fail-stop-v1'},
 ])
@@ -153,8 +153,10 @@ def test_bad_information_refuses_before_recipe(options, monkeypatch, information
         panel.run_row(**options, information=information)
 
 
+@pytest.mark.parametrize("capacity_retries", [False, True])
 def test_release46_pt_plan_binds_real_packages_without_provider_calls(
-        tmp_path, pinned_production_package, pinned_belief_package, monkeypatch):
+        tmp_path, pinned_production_package, pinned_belief_package, monkeypatch,
+        capacity_retries):
     import hashlib
     from scripts.prepare_llm_panel_roots import prepare_roots
 
@@ -173,6 +175,7 @@ def test_release46_pt_plan_binds_real_packages_without_provider_calls(
         row="release46-pv", model_paths=paths, prepared_roots_from=roots,
         prepared_roots_sha256=hashlib.sha256((roots / "result.json").read_bytes()).hexdigest(),
         output=output, seeds=(12,), information="perfect", resource_profile='s47-pt',
+        capacity_retries=capacity_retries,
         invalid_action_feedback=True, classify_final_action_failures=True,
         failure_protocol=PRESERVE_ILLEGAL)
     assert result["mode"] == "dry-run"
@@ -180,4 +183,6 @@ def test_release46_pt_plan_binds_real_packages_without_provider_calls(
     assert result["planned_mirrors"] == 2
     assert result['config']['wall_seconds'] == 21600.0
     assert result['config']['soft_token_limit'] == 20000000
+    assert result['config'].get('provider_capacity_retry_delays', []) == (
+        [15, 30, 60] if capacity_retries else [])
     assert not output.exists()

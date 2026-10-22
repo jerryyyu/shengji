@@ -44,7 +44,7 @@ def run_row(*, row, model_paths, prepared_roots_from, prepared_roots_sha256,
         raise ValueError('unknown resource profile')
     if resource_profile == 's47-pt' and (
             row != 'release46-pv' or information != 'perfect'
-            or capacity_retries or accept_recovered_reconnects
+            or accept_recovered_reconnects
             or not invalid_action_feedback or not classify_final_action_failures
             or failure_protocol != PRESERVE_ILLEGAL or retention_plan is not None):
         raise ValueError('s47-pt requires the fixed fresh PT feedback recipe')

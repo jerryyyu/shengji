@@ -58,6 +58,16 @@ CONTROL_FLAGS = {
 }
 
 
+def _pt_capacity_retry_enabled(delays):
+    """Validate the frozen PT retry declaration and derive its CLI toggle."""
+    if (type(delays) is not list
+            or any(type(delay) is not int or isinstance(delay, bool)
+                   for delay in delays)
+            or delays not in ([], list(CAPACITY_RETRY_DELAYS))):
+        raise ValueError('PT capacity retry declaration drift')
+    return delays == list(CAPACITY_RETRY_DELAYS)
+
+
 def recovery_control_args(config):
     controls = config.get('recovery_controls')
     if (type(controls) is not dict or set(controls) != set(CONTROL_FLAGS)
@@ -146,12 +156,9 @@ def validate(config_path, expected):
         raise ValueError("campaign recipe drift")
     if pt:
         if (config.get("information") != ["perfect"]
-                or config.get("recovery_controls") != {
-                    "capacity_retries": False,
-                    "accept_recovered_reconnects": False,
-                    "invalid_action_feedback": True,
-                    "classify_final_action_failures": True,
-                }
+                or controls["accept_recovered_reconnects"] is not False
+                or controls["invalid_action_feedback"] is not True
+                or controls["classify_final_action_failures"] is not True
                 or config.get("failure_protocol") != PRESERVE_ILLEGAL
                 or type(config.get("illegal_failure_limit")) is not int
                 or config["illegal_failure_limit"] != 8
@@ -219,6 +226,11 @@ def validate(config_path, expected):
                 or any(type(seed) is not int for seed in expected_payload["seeds"])
                 or expected_payload["seeds"] != config.get("seeds")):
             raise ValueError("PT expected config seeds mismatch")
+        expected_retry_delays = expected_payload.get(
+            "provider_capacity_retry_delays", [])
+        _pt_capacity_retry_enabled(expected_retry_delays)
+        if expected_retry_delays != retries:
+            raise ValueError("PT expected config capacity retry mismatch")
     if recovery:
         retained = config["retention"]["m1-prior"]
         plan = Path(retained["plan"])
@@ -522,7 +534,8 @@ def supervise_pt(command, *, config_path, expected_sha256, cwd, env, output,
 
 
 def _pt_adapter_command(*, python, model_assets, prepared_roots,
-                        prepared_roots_sha256, codex_binary, seeds, output):
+                        prepared_roots_sha256, codex_binary, seeds, output,
+                        provider_capacity_retry_delays):
     """Build the fixed release46 PT adapter command.
 
     Keeping this command construction in one place makes the preflight and
@@ -540,6 +553,8 @@ def _pt_adapter_command(*, python, model_assets, prepared_roots,
                "--information", "perfect", "--resource-profile", "s47-pt",
                "--invalid-action-feedback", "--classify-final-action-failures",
                "--failure-protocol", PRESERVE_ILLEGAL]
+    if _pt_capacity_retry_enabled(provider_capacity_retry_delays):
+        command.append("--retry-provider-capacity")
     return command
 
 
@@ -566,6 +581,9 @@ def supervise_pt_adapter(*, config_path, expected_sha256, cwd, env, output,
         raise ValueError("PT pre-run config must be valid JSON") from exc
     if type(frozen_config) is not dict or frozen_config.get("run") is not True:
         raise ValueError("PT pre-run config must bind run=True")
+    provider_capacity_retry_delays = frozen_config.get(
+        "provider_capacity_retry_delays", [])
+    _pt_capacity_retry_enabled(provider_capacity_retry_delays)
     seeds = frozen_config.get("seeds")
     if (type(seeds) is not list or len(seeds) != 10
             or any(type(seed) is not int or seed < 0 for seed in seeds)
@@ -575,7 +593,8 @@ def supervise_pt_adapter(*, config_path, expected_sha256, cwd, env, output,
     dry_command = _pt_adapter_command(
         python=python, model_assets=model_assets, prepared_roots=prepared_roots,
         prepared_roots_sha256=prepared_roots_sha256, codex_binary=codex_binary,
-        seeds=seeds, output=output)
+        seeds=seeds, output=output,
+        provider_capacity_retry_delays=provider_capacity_retry_delays)
     try:
         dry = subprocess.run(dry_command, cwd=cwd, env=env,
                              capture_output=True, text=True, timeout=60,

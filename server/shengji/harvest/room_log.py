@@ -301,6 +301,80 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
     return records, counts
 
 
+def _completed_round_summary(ref: str, round_no: int, events: list[dict],
+                             records: list[dict]) -> dict[str, Any]:
+    """Summarize observed play controllers after a round has replayed."""
+    seats = {
+        seat: {"human": 0, "bot": 0, "unknown": 0}
+        for seat in range(4)
+    }
+    bot_policies = {seat: set() for seat in range(4)}
+    unknown_policy_count = {seat: 0 for seat in range(4)}
+    for event in events:
+        if event.get("e") != "play":
+            continue
+        seat = int(event["seat"])
+        marker = event.get("bot")
+        if marker is False:
+            controller = "human"
+        elif marker is True:
+            controller = "bot"
+            decision = event.get("decision")
+            policy = decision.get("policy") if isinstance(decision, dict) else None
+            if not isinstance(policy, str) or not policy.strip():
+                unknown_policy_count[seat] += 1
+            else:
+                bot_policies[seat].add(policy)
+        else:
+            controller = "unknown"
+        seats[seat][controller] += 1
+
+    human_seats = sorted(seat for seat, counts in seats.items()
+                         if counts["human"] and not counts["bot"]
+                         and not counts["unknown"])
+    bot_seats = sorted(seat for seat, counts in seats.items()
+                       if counts["bot"] and not counts["human"]
+                       and not counts["unknown"])
+    mixed_seats = sorted(seat for seat, counts in seats.items()
+                         if counts["human"] and counts["bot"])
+    unknown_seats = sorted(seat for seat, counts in seats.items()
+                           if counts["unknown"])
+    start = next(event for event in events if event.get("e") == "round_start")
+    roster_human_seats = sorted(
+        int(player["seat"]) for player in start.get("players", [])
+        if player.get("is_bot") is False)
+    roster_human_bot_activity_seats = [
+        seat for seat in roster_human_seats if seats[seat]["bot"]
+    ]
+
+    if not records or not isinstance(records[0].get("outcome"), dict):
+        raise RoomLogError("round outcome missing after replay")
+    first_outcome = records[0]["outcome"]
+    outcome = {key: first_outcome[key]
+               for key in ("attacker_points", "winner_team", "level_change")}
+    return {
+        "source_ref": ref,
+        "round": round_no,
+        "seat_counts": {str(seat): seats[seat] for seat in range(4)},
+        "bot_policies": {str(seat): sorted(bot_policies[seat])
+                          for seat in range(4)},
+        "unknown_policy_count": {
+            str(seat): unknown_policy_count[seat] for seat in range(4)},
+        "unknown_policy_total": sum(unknown_policy_count.values()),
+        "human_seats": human_seats,
+        "bot_seats": bot_seats,
+        "mixed_controller_seats": mixed_seats,
+        "unknown_seats": unknown_seats,
+        "roster_human_seats": roster_human_seats,
+        "roster_human_bot_activity_seats": roster_human_bot_activity_seats,
+        "outcome": outcome,
+        "observational_only": True,
+        "controller_observation": (
+            "human is the exact bot=false play flag; it is not a verified "
+            "participant identity"),
+    }
+
+
 def iter_round_events(files: Sequence[Path], registry: InputRegistry,
                       repo: Path = REPO) -> Iterator[tuple[str, int, list[dict], int, str | None]]:
     for path in files:
@@ -310,6 +384,59 @@ def iter_round_events(files: Sequence[Path], registry: InputRegistry,
             yield log_ref(path, repo), round_no, rounds[round_no], bad, fallback
 
 
+def _human_team_report(rounds: list[dict]) -> dict:
+    """Count only observed full-team matchups, without inferring identity."""
+    policies: dict[str, dict] = {}
+    excluded: dict[str, int] = defaultdict(int)
+    for row in rounds:
+        humans = set(row["human_seats"])
+        bots = set(row["bot_seats"])
+        if row["unknown_seats"]:
+            reason = "unknown_controller"
+        elif row["mixed_controller_seats"]:
+            reason = "mixed_controller"
+        elif bots == {0, 1, 2, 3}:
+            reason = "all_bot"
+        elif humans not in ({0, 2}, {1, 3}) or bots != set(range(4)) - humans:
+            reason = "not_full_opposing_teams"
+        else:
+            identities = {policy for seat in bots
+                          for policy in row["bot_policies"][str(seat)]}
+            if any(row["unknown_policy_count"][str(seat)] for seat in bots):
+                reason = "unknown_bot_policy"
+            elif len(identities) != 1:
+                reason = "mixed_bot_policy"
+            else:
+                policy = identities.pop()
+                bucket = policies.setdefault(policy, {
+                    "rounds": 0, "bot_wins": 0, "human_flag_wins": 0,
+                    "bot_signed_levels": 0,
+                })
+                bot_win = row["outcome"]["winner_team"] == min(bots) % 2
+                bucket["rounds"] += 1
+                bucket["bot_wins" if bot_win else "human_flag_wins"] += 1
+                bucket["bot_signed_levels"] += (
+                    1 if bot_win else -1) * row["outcome"]["level_change"]
+                continue
+        excluded[reason] += 1
+    for bucket in policies.values():
+        bucket["bot_win_rate"] = bucket["bot_wins"] / bucket["rounds"]
+        bucket["bot_levels_per_round"] = bucket["bot_signed_levels"] / bucket["rounds"]
+    return {
+        "schema": "observed-human-team-report-v1",
+        "completed_rounds": len(rounds),
+        "eligible_rounds": sum(bucket["rounds"] for bucket in policies.values()),
+        "excluded_rounds": dict(sorted(excluded.items())),
+        "by_observed_policy": dict(sorted(policies.items())),
+        "observational_only": True,
+        "interpretation": (
+            "Descriptive full-team play-controller matchups, not verified humans "
+            "or causal strength. Policies are exact observed identities, not "
+            "inferred releases. Rounds may share players/games; no independent "
+            "sample or confidence-interval claim. Levels retain zero outcomes."),
+    }
+
+
 def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 256,
                       registry: InputRegistry | None = None,
                       repo: Path = REPO,
@@ -317,6 +444,7 @@ def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 
     registry = registry or InputRegistry()
     files = list(files) if files is not None else log_files(repo)
     result = ExtractResult("room-log")
+    result.extras["completed_rounds"] = []
     totals = {"files": len(files), "rounds_seen": 0, "rounds": 0,
               "rounds_incomplete": 0, "rounds_rejected": 0, "decisions": 0,
               "plays": 0, "decision_blobs": 0, "human_plays": 0,
@@ -352,11 +480,15 @@ def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 
             if key in bucket:
                 bucket[key] += value
         totals["decisions"] += counts["plays"]
+        result.extras["completed_rounds"].append(
+            _completed_round_summary(ref, round_no, events, records))
         for record in records:
             result.add(record, None)
     result.counts = totals
     result.extras["rejections"] = dict(sorted(rejections.items()))
     result.extras["per_directory"] = {k: per_dir[k] for k in sorted(per_dir)}
+    result.extras["human_team_report"] = _human_team_report(
+        result.extras["completed_rounds"])
     result.inputs = registry.rows()
     result.notes.append("decisions = play records; bury records are counted "
                         "separately (decision_kind = 'bury')")

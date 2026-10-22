@@ -90,6 +90,9 @@ def test_interrupted_attempt_recovers_without_clobbering_prior_files(tmp_path):
     text = (root / "claude_s61dev_screen.status.attempt-2").read_text()
     assert text.count("DEV start:") == 1
     assert text.count("DEV END rc=0") == 1
+    import re
+    end = next(line for line in text.splitlines() if " DEV END " in line)
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z s61dev DEV END rc=0 wall_s=[0-9]+(\.[0-9]+)? maxrss_kb=[0-9]+", end)
     assert text.count("LANE DONE") == 1
     assert (out / "SHA256SUMS.attempt-2").exists()
     assert (out / "SHA256SUMS").read_bytes() == old_files["SHA256SUMS"]

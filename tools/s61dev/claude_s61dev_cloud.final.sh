@@ -349,7 +349,7 @@ run_dev () {
   RUN_PGID=
   wall=$(awk -v a="$t0" -v b="$t1" 'BEGIN{printf "%.1f", b-a}')
   rss=$(sed -n 's/.*Maximum resident set size (kbytes): //p' "$DUEL_TIME" 2>/dev/null)
-  say "$LANE DEV END rc=$rc wall_s=$wall maxrss_kb=${rss:-?}$( { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; } && echo " (KILLED: rc $rc = the $KILL_AFTER s hard stop; process group swept)")${ATTEMPT_TAG:+ attempt=$ATTEMPT_ID}"
+  say "$LANE DEV END rc=$rc wall_s=$wall maxrss_kb=${rss:-?}$( { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; } && echo " (KILLED: rc $rc = the $KILL_AFTER s hard stop; process group swept)")"
   RUN_RC=$rc; RUN_WALL=$wall; RUN_RSS=${rss:-}
 }
 

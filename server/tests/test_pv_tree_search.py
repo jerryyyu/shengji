@@ -1122,6 +1122,53 @@ def test_trick_mode_d_is_policy_finish_minus_heuristic_finish():
     assert same > 0 and differ > 0
 
 
+def test_paired_two_trick_consumer_detects_control_cost_without_forcing_override():
+    """Fixed worlds and replies isolate horizon, not model or belief quality."""
+    from game_state_helpers import pair_ruff_control_state
+
+    rnd = pair_ruff_control_state()
+    other = copy.deepcopy(rnd.hands)
+    other[1].remove("S4")
+    other[1].append("S10")
+    other[3].remove("S10")
+    other[3].append("S4")
+    worlds = [(rnd.hands, rnd.buried), (other, rnd.buried)]
+    original_worlds = copy.deepcopy(worlds)
+    actions = [["SA"], ["HA", "HA"]]
+    original = copy.deepcopy(rnd.hands)
+
+    class BankedPoints:
+        def __init__(self):
+            self.leaves = []
+
+        def score(self, leaves, seat):
+            self.leaves.extend(leaves)
+            return np.array([r.attacker_points * (1 if r.is_attacker(seat) else -1)
+                             for r in leaves], dtype=float)
+
+    matrices = {}
+    for cont, depth in (("trick", 1), ("trick-next-heuristic", 2)):
+        evaluator = BankedPoints()
+        bot = bot_of(PVTreeConfig(sims=4, cont=cont), evaluator=evaluator)
+        reply = HeuristicBot()
+        bot._tree_policy_choices = lambda clones, gate, cache: (
+            [reply.decide_play(c, c.turn) for c in clones], 0)
+        matrix, _ = bot._tree_lookahead(rnd, 0, actions, worlds)
+        assert matrix.shape == (2, 2)
+        assert all(len(leaf.history) == depth for leaf in evaluator.leaves)
+        reversed_matrix, _ = bot._tree_lookahead(rnd, 0, actions[::-1], worlds[::-1])
+        np.testing.assert_array_equal(reversed_matrix, matrix[::-1, ::-1])
+        matrices[cont] = matrix
+    np.testing.assert_array_equal(matrices["trick"], [[0, 0], [0, 0]])
+    np.testing.assert_array_equal(matrices["trick-next-heuristic"], [[0, -50], [0, 0]])
+    assert rnd.hands == original and len(rnd.history) == 0 and not rnd.trick.plays
+    assert worlds == original_worlds
+    correction = matrices["trick-next-heuristic"] - matrices["trick"]
+    gate = tree.depth_override(correction, 0, 1, zmin=1.96)
+    assert gate["delta"] == 25 and gate["se"] == 25 and gate["z"] == 1
+    assert not gate["override"]
+
+
 @pytest.mark.parametrize("cont", ["policy", "trick-next-heuristic"])
 def test_terminal_leaves_stop_the_lookahead_and_reach_the_evaluator_as_round_end(cont):
     rnd = endgame(2); seat = rnd.turn

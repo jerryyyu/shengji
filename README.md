@@ -41,16 +41,22 @@ Rule tokens used in the figures and tables:
 
 **Served results** (signed levels per round, 95% CI; indirect contrasts through a common MC-LCB control):
 
-| change | against | result | reading |
-|---|---|---|---|
-| the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) |
-| wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) |
-| value-guided declaration (release 44) | release 43 | +0.0497 [+0.0379, +0.0615] first-round; +0.0352 [+0.0233, +0.0471] later-round | POSITIVE in both populations, ten windows each (v70vd43, v71vd43lr) |
-| doomed-throw swap / re-select (releases 42, 43) | release 38 / 42 | interval spans zero | correctness fixes, no strength claim |
-| div + rc + tb | release 36 | +0.0461 [+0.0242, +0.0681] | CONFIRMED, ten fresh windows (#676) |
-| + la | div + rc + tb | +0.0106 [+0.0006, +0.0205] | POSITIVE incremental (not a confirmation): small, ten windows, lower bound near zero (#676) |
-| SMV3 outcome head (release 36) | release 30 | +0.0393 [+0.0033, +0.0752] | predeclared confirmation (#663) |
-| policy/value search (release 29) | release 28 | +0.049 [+0.003, +0.095] | five windows; card play +0.086 [+0.042, +0.131] |
+| change | against | result | reading | vs Sol, actor-only | vs PT-Sol |
+|---|---|---|---|---|---|
+| the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) | +0.55 [+0.25, +0.90] (S47) | pending (S47-PT) |
+| wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) | — | — |
+| value-guided declaration (release 44) | release 43 | +0.0497 [+0.0379, +0.0615] first-round; +0.0352 [+0.0233, +0.0471] later-round | POSITIVE in both populations, ten windows each (v70vd43, v71vd43lr) | — | — |
+| doomed-throw swap / re-select (releases 42, 43) | release 38 / 42 | interval spans zero | correctness fixes, no strength claim | — | — |
+| div + rc + tb | release 36 | +0.0461 [+0.0242, +0.0681] | CONFIRMED, ten fresh windows (#676) | — | — |
+| + la | div + rc + tb | +0.0106 [+0.0006, +0.0205] | POSITIVE incremental (not a confirmation): small, ten windows, lower bound near zero (#676) | — | — |
+| SMV3 outcome head (release 36) | release 30 | +0.0393 [+0.0033, +0.0752] | predeclared confirmation (#663) | +0.45 [0.00, +0.80] (#355); 0.00 [−0.40, +0.35] (S47) | +0.30 [−0.20, +0.80] (#355) |
+| policy/value search (release 29) | release 28 | +0.049 [+0.003, +0.095] | five windows; card play +0.086 [+0.042, +0.131] | +0.50 [+0.15, +0.90] (#355) | +0.45 [−0.10, +0.95] (#355) |
+
+The two Sol columns come from a separate instrument. The release's recipe plays card play only against the GPT-5.6
+Sol LLM opponent, on 10 deals × 2 mirrored roles. Actor-only Sol sees one seat's hand; PT-Sol sees every hand. Each
+cell is bot minus Sol in signed levels per round, with a deal-cluster 95% CI. These numbers are not on the screen
+scale and do not rank the releases
+([details](AI_POLICIES.md#the-ladder-every-production-change-and-what-it-measured)).
 
 The exact contract, the caveats on these reads, what was tried and not taken, and every earlier release:
 [AI_POLICIES.md](AI_POLICIES.md#production-contract) and its

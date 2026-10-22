@@ -384,6 +384,59 @@ def iter_round_events(files: Sequence[Path], registry: InputRegistry,
             yield log_ref(path, repo), round_no, rounds[round_no], bad, fallback
 
 
+def _human_team_report(rounds: list[dict]) -> dict:
+    """Count only observed full-team matchups, without inferring identity."""
+    policies: dict[str, dict] = {}
+    excluded: dict[str, int] = defaultdict(int)
+    for row in rounds:
+        humans = set(row["human_seats"])
+        bots = set(row["bot_seats"])
+        if row["unknown_seats"]:
+            reason = "unknown_controller"
+        elif row["mixed_controller_seats"]:
+            reason = "mixed_controller"
+        elif bots == {0, 1, 2, 3}:
+            reason = "all_bot"
+        elif humans not in ({0, 2}, {1, 3}) or bots != set(range(4)) - humans:
+            reason = "not_full_opposing_teams"
+        else:
+            identities = {policy for seat in bots
+                          for policy in row["bot_policies"][str(seat)]}
+            if any(row["unknown_policy_count"][str(seat)] for seat in bots):
+                reason = "unknown_bot_policy"
+            elif len(identities) != 1:
+                reason = "mixed_bot_policy"
+            else:
+                policy = identities.pop()
+                bucket = policies.setdefault(policy, {
+                    "rounds": 0, "bot_wins": 0, "human_flag_wins": 0,
+                    "bot_signed_levels": 0,
+                })
+                bot_win = row["outcome"]["winner_team"] == min(bots) % 2
+                bucket["rounds"] += 1
+                bucket["bot_wins" if bot_win else "human_flag_wins"] += 1
+                bucket["bot_signed_levels"] += (
+                    1 if bot_win else -1) * row["outcome"]["level_change"]
+                continue
+        excluded[reason] += 1
+    for bucket in policies.values():
+        bucket["bot_win_rate"] = bucket["bot_wins"] / bucket["rounds"]
+        bucket["bot_levels_per_round"] = bucket["bot_signed_levels"] / bucket["rounds"]
+    return {
+        "schema": "observed-human-team-report-v1",
+        "completed_rounds": len(rounds),
+        "eligible_rounds": sum(bucket["rounds"] for bucket in policies.values()),
+        "excluded_rounds": dict(sorted(excluded.items())),
+        "by_observed_policy": dict(sorted(policies.items())),
+        "observational_only": True,
+        "interpretation": (
+            "Descriptive full-team play-controller matchups, not verified humans "
+            "or causal strength. Policies are exact observed identities, not "
+            "inferred releases. Rounds may share players/games; no independent "
+            "sample or confidence-interval claim. Levels retain zero outcomes."),
+    }
+
+
 def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 256,
                       registry: InputRegistry | None = None,
                       repo: Path = REPO,
@@ -434,6 +487,8 @@ def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 
     result.counts = totals
     result.extras["rejections"] = dict(sorted(rejections.items()))
     result.extras["per_directory"] = {k: per_dir[k] for k in sorted(per_dir)}
+    result.extras["human_team_report"] = _human_team_report(
+        result.extras["completed_rounds"])
     result.inputs = registry.rows()
     result.notes.append("decisions = play records; bury records are counted "
                         "separately (decision_kind = 'bury')")

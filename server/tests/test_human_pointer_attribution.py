@@ -11,7 +11,7 @@ from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.round import Round, actual_play_after
 from shengji.harvest import human
 from shengji.harvest.common import InputRegistry, pseudonym
-from shengji.harvest.manifest import write_source
+from shengji.harvest.manifest import build_manifest, write_source
 from shengji.harvest.rebuild import engine_level_change, round_from_setup
 from shengji.harvest.room_log import extract_round, extract_room_logs, read_rounds
 from shengji.harvest.schema import validate_record
@@ -296,3 +296,85 @@ def test_completed_round_summary_is_written_to_room_log_sidecar(tmp_path):
 
     assert raw["extras"]["completed_rounds"] == result.extras["completed_rounds"]
     assert sidecar["extras"]["completed_rounds"][0]["observational_only"] is True
+    report = raw["extras"]["human_team_report"]
+    assert report["completed_rounds"] == 1
+    assert report["eligible_rounds"] == 0
+    assert report["excluded_rounds"] == {"all_bot": 1}
+    assert report["by_observed_policy"] == {}
+
+
+@pytest.mark.parametrize("human_team", [0, 1])
+def test_full_team_metric_reaches_serialized_manifest(tmp_path, human_team):
+    events = _completed_round()
+    for event in _play_events(events):
+        event["bot"] = event["seat"] % 2 != human_team
+        event["decision"] = {"policy": "observed-policy"}
+    result, summary = _summary_for(tmp_path, events)
+    write_source(tmp_path / "out", result, cap=256)
+    raw = json.loads((tmp_path / "out" / "room-log.manifest.json").read_text())
+    report = raw["extras"]["human_team_report"]
+    bot_win = summary["outcome"]["winner_team"] != human_team
+    levels = summary["outcome"]["level_change"] * (1 if bot_win else -1)
+    assert report["eligible_rounds"] == report["completed_rounds"] == 1
+    assert report["excluded_rounds"] == {}
+    assert report["by_observed_policy"] == {"observed-policy": {
+        "rounds": 1, "bot_wins": int(bot_win),
+        "human_flag_wins": int(not bot_win), "bot_signed_levels": levels,
+        "bot_win_rate": float(bot_win), "bot_levels_per_round": float(levels),
+    }}
+    assert report["observational_only"] is True
+    manifest = build_manifest(tmp_path / "out")
+    assert manifest["sources"]["room-log"]["extras"]["human_team_report"] == report
+
+
+@pytest.mark.parametrize("fault,reason", [
+    ("takeover", "mixed_controller"),
+    ("unknown_controller", "unknown_controller"),
+    ("mixed_team", "not_full_opposing_teams"),
+    ("policy_drift", "mixed_bot_policy"),
+    ("missing_policy", "unknown_bot_policy"),
+])
+def test_team_metric_excludes_ambiguous_matchups(tmp_path, fault, reason):
+    events = _completed_round()
+    plays = _play_events(events)
+    for event in plays:
+        event["bot"] = event["seat"] % 2 == 1
+        event["decision"] = {"policy": "observed-policy"}
+    human_play = next(event for event in plays if event["seat"] % 2 == 0)
+    bot_play = next(event for event in plays if event["seat"] % 2 == 1)
+    if fault == "takeover":
+        human_play["bot"] = True
+    elif fault == "unknown_controller":
+        human_play["bot"] = 0
+    elif fault == "mixed_team":
+        for event in plays:
+            event["bot"] = event["seat"] in (2, 3)
+    elif fault == "policy_drift":
+        bot_play["decision"]["policy"] = "different-policy"
+    elif fault == "missing_policy":
+        bot_play["decision"] = {}
+    result, _ = _summary_for(tmp_path, events)
+    report = result.extras["human_team_report"]
+    assert report["eligible_rounds"] == 0
+    assert report["excluded_rounds"] == {reason: 1}
+    assert report["by_observed_policy"] == {}
+
+
+def test_team_metric_preserves_zero_levels_and_policy_populations():
+    from shengji.harvest.room_log import _human_team_report
+
+    def row(policy, winner, levels):
+        return {
+            "human_seats": [0, 2], "bot_seats": [1, 3],
+            "unknown_seats": [], "mixed_controller_seats": [],
+            "bot_policies": {"1": [policy], "3": [policy]},
+            "unknown_policy_count": {"1": 0, "3": 0},
+            "outcome": {"winner_team": winner, "level_change": levels},
+        }
+
+    report = _human_team_report([row("a", 1, 0), row("a", 0, 2), row("b", 1, 3)])
+    assert report["eligible_rounds"] == 3
+    assert report["by_observed_policy"]["a"]["bot_win_rate"] == 0.5
+    assert report["by_observed_policy"]["a"]["bot_signed_levels"] == -2
+    assert report["by_observed_policy"]["a"]["bot_levels_per_round"] == -1
+    assert report["by_observed_policy"]["b"]["bot_levels_per_round"] == 3

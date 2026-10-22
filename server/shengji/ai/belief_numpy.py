@@ -425,11 +425,13 @@ class BeliefProposal:
     ``batch`` at a time and handed out one per call.  Every world places each
     unknown copy on a receiver the public facts allow, fills every receiver to
     its size, keeps the public pins with their holders and the actor's own
-    burial when it is known.  Errors propagate: the caller falls back."""
+    burial when it is known.  Errors propagate: the caller falls back.
+    ``prep_limit=False`` keeps a preparation slower than ``PREP_SECONDS`` (a
+    caller with its own deadline uses the finished marginals)."""
 
     def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
                  seed: int, batch: int, forbidden: Mapping | None = None,
-                 check_budget=None):
+                 check_budget=None, prep_limit: bool = True):
         from ..train.belief_seq import project_sizes
         import time
         t0 = time.perf_counter()
@@ -459,7 +461,7 @@ class BeliefProposal:
         self.queue: list = []
         self.drawn = 0
         self.prep_seconds = time.perf_counter() - t0
-        if self.prep_seconds > PREP_SECONDS:
+        if prep_limit and self.prep_seconds > PREP_SECONDS:
             raise BeliefNumpyError(f"belief preparation took {self.prep_seconds:.3f}s")
 
     def _refill(self) -> None:

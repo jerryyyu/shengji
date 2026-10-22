@@ -185,6 +185,26 @@ their summary (``belief_entropy_bits``, ``belief_top_mass``,
 digest, draw or decision depends on it (`scripts/belief_debug.py` replays a
 logged decision's worlds).
 
+Its deadline, OFF BY DEFAULT and a sampling change where it fires:
+``SHENGJI_PV_BELIEF_DEADLINE_MS=<ms>`` (``belief_deadline_ms``, whole ms in
+[1, 60000]; unset, empty or ``0`` is off; requires ``bw``) -- the belief path's
+own clock starts when the decision's world draw does, and it replaces the
+preparation limit: a finished proposal is kept however long its preparation
+took (on a throttled CPU the limit's fallback, a history-legal production
+draw, is the slowest way to make the worlds: its draws cost more per world
+than the proposal's).  Checked before every attempt, once the clock is past
+the deadline the history test's budget counts as spent: the history-legal
+worlds already accepted are kept and the remaining worlds are proposals
+accepted without the history test (still refusal-tested), exactly as after the
+test's attempt budget; the plain production fill still comes only after the
+attempt cap.  Other belief errors fall back as before.  Where it does not
+fire and the preparation is within the limit, the worlds are the ``bw`` ones.
+On, it enters the recipe digest as ``belief_deadline``
+(`BELIEF_DEADLINE_RULE_ID`) and adds ``-bwd<ms>`` right after ``-bw``; the
+record gains ``belief_deadline_fired``,
+``belief_worlds_from_proposal``, ``belief_deadline_untested_worlds`` and,
+when the proposal was built, ``belief_prep_ms`` (only with it on).
+
 Optional admission width rule (#676 C), OFF BY DEFAULT: ``SHENGJI_PV_ADAPTIVE_K=1``
 admits ``candidates_lead_multi`` (16) instead of ``candidates`` (8) when the seat
 is leading and the scored legal set holds a multi-card action -- the K=8 ballot
@@ -1103,6 +1123,15 @@ _BELIEF_REQUIRES = ("belief_worlds requires world_history_legal and world_histor
                     "belief proposal plugs into the history-legal draw and honours its draw-time "
                     "constraints (SHENGJI_PV_BELIEF_WORLDS=1 needs SHENGJI_PV_WORLD_HISTORY_LEGAL=1 "
                     "and SHENGJI_PV_WORLD_HISTORY_DRAW=1)")
+#: ``SHENGJI_PV_BELIEF_DEADLINE_MS=<ms>`` (``belief_deadline_ms``, token
+#: ``bwd<ms>`` after ``bw``): 0 is off
+BELIEF_DEADLINE_ENV = "BELIEF_DEADLINE_MS"
+BELIEF_DEADLINE_TOKEN = "bwd"
+BELIEF_DEADLINE_RULE_ID = "untested-proposals-once-the-belief-path-passes-the-deadline"
+#: the deadline's range in ms
+BELIEF_DEADLINE_MS_RANGE = (1, 60_000)
+_BELIEF_DEADLINE_REQUIRES = ("belief_deadline_ms requires belief_worlds "
+                             "(SHENGJI_PV_BELIEF_DEADLINE_MS needs SHENGJI_PV_BELIEF_WORLDS=1)")
 #: the belief proposal's log flag: ``0`` or ``1``, unset (or empty) is the default
 BELIEF_LOG_ENV = "SHENGJI_PV_BELIEF_LOG"
 BELIEF_LOG_DEFAULT = True
@@ -1272,6 +1301,8 @@ class PVSearchConfig:
     world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"]
     # the S17 belief proposal inside that test (requires it); the same contract
     belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"]
+    # its time cap in ms (requires it); 0 = off and ABSENT from the payload
+    belief_deadline_ms: int = 0
     # the optional selection rule (#676 E); the same contract
     tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
     # the optional admission width rule (#676 C); the same contract
@@ -1455,6 +1486,19 @@ def _check_leaf_greedy_deadline(config) -> int:
     return ms
 
 
+def _check_belief_deadline(config) -> int:
+    """The belief deadline in ms, 0 when off; refuses a malformed value and
+    one without ``belief_worlds``."""
+    ms = config.belief_deadline_ms
+    lo, hi = BELIEF_DEADLINE_MS_RANGE
+    if isinstance(ms, bool) or type(ms) is not int or not (ms == 0 or lo <= ms <= hi):
+        raise PVSearchPolicyError(
+            f"belief_deadline_ms must be 0 (off) or an int in [{lo}, {hi}]")
+    if ms and not config.belief_worlds:
+        raise PVSearchPolicyError(_BELIEF_DEADLINE_REQUIRES)
+    return ms
+
+
 def recipe_payload(config: PVSearchConfig) -> dict:
     """The digested recipe: every field, except that an optional rule that is
     OFF is omitted (the payload of the pre-rule recipe, byte for byte) and a
@@ -1494,6 +1538,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                                             "fallback": "history-legal-production-draw"}
     elif belief_sha is not None:
         raise PVSearchPolicyError("belief_sha256 needs belief_worlds (SHENGJI_PV_BELIEF_WORLDS=1)")
+    belief_deadline_ms = _check_belief_deadline(config)
+    del payload["belief_deadline_ms"]
+    if belief_deadline_ms:
+        payload["belief_deadline"] = {"ms": belief_deadline_ms, "rule": BELIEF_DEADLINE_RULE_ID}
     if config.refusal_event_complete and not config.refusal_constraints:
         raise PVSearchPolicyError("refusal_event_complete requires refusal_constraints "
                                   "(SHENGJI_PV_REFUSAL_EVENT_COMPLETE=1 needs "
@@ -1663,6 +1711,9 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
         # right after the greedy leaf's own tokens
         tokens.insert(tokens.index("lgfx" if "lgfx" in tokens else "lgf") + 1,
                       f"{LEAF_GREEDY_DEADLINE_TOKEN}{deadline_ms}")
+    belief_deadline_ms = _check_belief_deadline(config)
+    if belief_deadline_ms:
+        tokens.insert(tokens.index("bw") + 1, f"{BELIEF_DEADLINE_TOKEN}{belief_deadline_ms}")
     rules = "".join(f"-{token}" for token in tokens)
     # the soft oracle's token after the rule tokens; "" while off
     if config.exact_deep_cards:
@@ -1821,6 +1872,10 @@ class PVSearchBot(PolicyValueBot):
     #: the belief proposal's log (module docstring), ON by default; it is read
     #: only while ``belief_worlds`` is on and enters no name or digest
     belief_log = BELIEF_LOG_DEFAULT
+    #: the belief deadline (module docstring), 0 = off; instance state of an ON
+    #: bot only.  ``_belief_clock`` is the clock it reads.
+    belief_deadline_ms = 0
+    _belief_clock = staticmethod(time.perf_counter)
     #: the latency switches (module docstring), OFF by default; like the
     #: belief log they enter no name or digest, and none changes a decision
     #: (``leaf_greedy_stream`` is declared on `PolicyValueBot`).
@@ -1899,6 +1954,9 @@ class PVSearchBot(PolicyValueBot):
         self.belief_worlds = bool(config.belief_worlds)
         if self.belief_worlds and not (self.world_history_legal and self.world_history_draw):
             raise PVSearchPolicyError(_BELIEF_REQUIRES)
+        belief_deadline_ms = _check_belief_deadline(config)
+        if belief_deadline_ms:
+            self.belief_deadline_ms = belief_deadline_ms
         self.belief_model = None
         for key in ("adaptive_worlds", "adaptive_worlds_leads"):
             if type(getattr(config, key)) is not bool:
@@ -2833,9 +2891,25 @@ class PVSearchBot(PolicyValueBot):
         budget -- no package, a featurizer or model failure, a preparation over
         ``BELIEF_PREP_SECONDS``, an infeasible state -- falls back to the
         history-legal production draw for this decision, recorded as
-        ``belief_fallback`` with the error's type."""
+        ``belief_fallback`` with the error's type.
+
+        With ``belief_deadline_ms`` on, the belief path's own clock starts
+        here and replaces the preparation limit: a finished proposal is never
+        discarded for its preparation time, because the fallback's production
+        draw costs more per world than the proposal does.  Once the clock
+        passes the deadline the history-legal worlds already accepted are kept
+        and the rest are proposals accepted without the history test, as after
+        the test's attempt budget."""
         from ..ai.belief_numpy import BeliefNumpyError, BeliefProposal, log_fields
         t0 = time.perf_counter()
+        deadline_ms = getattr(self, "belief_deadline_ms", 0)
+        stop = None
+        if deadline_ms:
+            clock = self._belief_clock
+            deadline_at = clock() + deadline_ms / 1000.0
+
+            def stop():
+                return clock() >= deadline_at
         seed = None
         try:
             if check_budget is not None:
@@ -2848,10 +2922,16 @@ class PVSearchBot(PolicyValueBot):
             seed = self.sampler.rng.getrandbits(63)
             propose = BeliefProposal(self.belief_model, rnd, seat, refusals,
                                      seed=seed, batch=self.worlds,
-                                     forbidden=constraints, check_budget=check_budget)
+                                     forbidden=constraints, check_budget=check_budget,
+                                     prep_limit=stop is None)
             worlds, attempts, stats = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
-                check_budget=check_budget, propose=propose, constrain=True)
+                check_budget=check_budget, propose=propose, constrain=True, stop=stop)
+            if stop is not None:
+                stats["belief_deadline_fired"] = int(stats.pop("draw_stopped"))
+                stats["belief_worlds_from_proposal"] = int(stats.pop("drawn_worlds"))
+                stats["belief_deadline_untested_worlds"] = int(stats.pop("stopped_untested"))
+                stats["belief_prep_ms"] = round(1e3 * propose.prep_seconds, 3)
             stats.update(history_draw_constraints=len(constraints),
                          history_draw_forbidden=sum(sum(c.values()) for c in constraints.values()),
                          belief_fallback=0, belief_proposed=int(propose.drawn),
@@ -2875,6 +2955,9 @@ class PVSearchBot(PolicyValueBot):
             stats.update(belief_fallback=1, belief_proposed=0,
                          belief_ms=round(1e3 * (time.perf_counter() - t0), 3),
                          belief_error=type(exc).__name__)
+            if stop is not None:
+                stats.update(belief_deadline_fired=0, belief_worlds_from_proposal=0,
+                             belief_deadline_untested_worlds=0)
             if self.belief_log and seed is not None:
                 stats.update(self._belief_log_seed(seed, refusals))
             return worlds, attempts, stats
@@ -3518,6 +3601,9 @@ class PVSearchBot(PolicyValueBot):
                 out.update(history_draw_constraints=0, history_draw_forbidden=0)
         if getattr(self, "belief_worlds", False):
             out.update(belief_fallback=0, belief_proposed=0, belief_ms=0.0)
+            if getattr(self, "belief_deadline_ms", 0):
+                out.update(belief_deadline_fired=0, belief_worlds_from_proposal=0,
+                           belief_deadline_untested_worlds=0)
             if self.belief_log:
                 out["belief_log"] = 1
         if not out:
@@ -3839,6 +3925,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                        leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                        leaf_greedy_deadline_ms: int = 0,
+                       belief_deadline_ms: int = 0,
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3917,6 +4004,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             leaf_greedy_finish=leaf_greedy_finish,
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
+                            belief_deadline_ms=belief_deadline_ms,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -4045,6 +4133,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                         leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                         leaf_greedy_deadline_ms: int = 0,
+                        belief_deadline_ms: int = 0,
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -4104,6 +4193,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             leaf_greedy_finish=leaf_greedy_finish,
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
+                            belief_deadline_ms=belief_deadline_ms,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -4220,6 +4310,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                leaf_greedy_finish=config.leaf_greedy_finish,
                                leaf_greedy_finish_exact_skip=config.leaf_greedy_finish_exact_skip,
                                leaf_greedy_deadline_ms=config.leaf_greedy_deadline_ms,
+                               belief_deadline_ms=config.belief_deadline_ms,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
@@ -4396,6 +4487,17 @@ def pv_env_recipe(environ=None) -> dict:
             checkpoint_sha256=recipe["sha256"],
             leaf_greedy_finish=bool(recipe.get("leaf_greedy_finish", False)),
             leaf_greedy_deadline_ms=int(ms)))
+    # the belief path's deadline in whole ms: unset, empty or 0 is off
+    raw = env.get(ENV_PREFIX + BELIEF_DEADLINE_ENV)
+    if raw not in (None, "", "0"):
+        if not (raw.isascii() and raw.isdigit()):
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{BELIEF_DEADLINE_ENV} must be whole ms: {raw!r}")
+        recipe["belief_deadline_ms"] = int(raw)
+        _check_belief_deadline(PVSearchConfig(
+            checkpoint_sha256=recipe["sha256"],
+            belief_worlds=bool(recipe.get("belief_worlds", False)),
+            belief_deadline_ms=int(raw)))
     # the exact stages' world subset: unset, empty or 0 is off
     raw = env.get(ENV_PREFIX + EXACT_WORLD_SUBSET_ENV)
     if raw not in (None, "", "0"):

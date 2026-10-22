@@ -174,7 +174,7 @@ def constrained_draw(bot, constraints):
 
 
 def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem,
-                                check_budget=None, propose=None, constrain=False):
+                                check_budget=None, propose=None, constrain=False, stop=None):
     """``n`` worlds by production's draw, each history-legal while the history
     test's attempt budget lasts and consistent with every refusal in
     ``refusals`` (`ai.refusal`, the same test and pinning as
@@ -195,7 +195,16 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     ``constrain=True`` (and no ``propose``) draws through `constrained_draw`
     with `draw_constraints`; the history test still runs on every world.  A
     proposal passed as ``propose`` is responsible for its own constraints
-    (`draw_constraints` is the list to honour)."""
+    (`draw_constraints` is the list to honour).
+
+    ``stop() -> bool``, when given, is asked before every attempt until it
+    returns True; from then on the history test's budget is spent: the worlds
+    accepted so far are kept and later draws are accepted untested, as after
+    ``history_cap`` (still refusal-tested, the plain fill still after the
+    attempt cap).  ``stats`` then also carries ``draw_stopped``,
+    ``drawn_worlds`` (the worlds accepted from ``draw``) and
+    ``stopped_untested`` (those accepted untested after the stop).  Without it
+    the draw is unchanged."""
     from .cwv_policy import sample_worlds
     events = follow_events(rnd, seat)
     ordering = rnd.ordering
@@ -216,9 +225,15 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
         draw = bot._sample_hands
     cap = n * bot.SAMPLE_ATTEMPT_FACTOR
     history_cap = n * HISTORY_ATTEMPT_FACTOR if events else 0
+    stopped = False
+    kept = 0
     while len(worlds) < n and attempts < cap:
         if check_budget is not None:
             check_budget()
+        if stop is not None and not stopped and stop():
+            stopped = True
+            kept = len(worlds)
+            history_cap = min(history_cap, attempts)
         attempts += 1
         sampled = draw(rnd, seat, mem)
         if sampled is None:
@@ -237,6 +252,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
         elif events:
             unchecked += 1
         worlds.append((world, sorted(buried)))
+    drawn = len(worlds)
     fill = 0
     if len(worlds) < n:
         extra, more = sample_worlds(bot, rnd, seat, n - len(worlds), mem=mem,
@@ -255,4 +271,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     if refusals:
         stats.update(refusal_observations=len(refusals), refusal_rejections=refusal_rejected,
                      refusal_fallback_worlds=fill, refusal_pinned_codes=pinned)
+    if stop is not None:
+        stats.update(draw_stopped=stopped, drawn_worlds=drawn,
+                     stopped_untested=drawn - kept if stopped else 0)
     return worlds, attempts, stats

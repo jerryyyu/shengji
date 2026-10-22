@@ -34,6 +34,8 @@ def test_env_delta_is_only_the_requested_combo():
     original = base()
     candidate, comparator = arm_envs(original, "play", "old", "new")
     assert original == base()
+    assert all(key.startswith('SHENGJI_PV_') for key in candidate)
+    assert all(key.startswith('SHENGJI_PV_') for key in comparator)
     assert {k for k in candidate if candidate[k] != comparator.get(k)} == {
         *FLAGS, "SHENGJI_PV_BELIEF_CKPT", "SHENGJI_PV_BELIEF_SHA256"}
 
@@ -57,6 +59,29 @@ def test_cost_switches_are_arm_local_and_not_inherited(monkeypatch):
     assert candidate.encode_prefix_cache and candidate.leaf_greedy_stream
     assert not candidate.single_candidate_fast and not candidate.encode_batch_fast
     assert not any(getattr(comparator, attr) for attr in pv.LATENCY_SWITCH_ENV)
+
+
+def test_actual_packages_reach_fresh_screen_and_deadline_child(monkeypatch):
+    from screen_probe import admit_pair
+    from recipe import S58_SHA, OLD_SHA, CONTROL_NAME
+    from shengji.train import pv_search_policy as pv
+
+    for key in pv.LATENCY_SWITCH_ENV.values():
+        monkeypatch.setenv(key, '1')
+    monkeypatch.setenv('SHENGJI_PV_ORACLE_WORLDS', '1')
+    envs = package_envs()
+    envs[0].update(SHENGJI_PV_ENCODE_PREFIX_CACHE='1',
+                   SHENGJI_PV_LEAF_GREEDY_STREAM='1')
+    original = copy.deepcopy(envs)
+    ambient = dict(os.environ)
+    candidate, comparator = admit_pair(envs)
+    assert envs == original and dict(os.environ) == ambient
+    assert candidate['identity']['config']['belief_sha256'] == S58_SHA
+    assert comparator['identity']['config']['belief_sha256'] == OLD_SHA
+    assert comparator['name'] == CONTROL_NAME
+    assert candidate['identity']['runtime_switches'] == {
+        'encode_prefix_cache': True, 'leaf_greedy_stream': True}
+    assert 'runtime_switches' not in comparator['identity']
 
 
 @pytest.mark.parametrize("seed", [17, 23])

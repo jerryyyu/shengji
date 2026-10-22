@@ -34,7 +34,10 @@ def arm_envs(base, play_package, old_belief, new_belief):
         raise ValueError("base is not the expected release-46 recipe")
     if any(base.get(key, "0") not in ("0", "") for key in FLAGS):
         raise ValueError("comparator already carries a treatment flag")
-    comparator = {**base, "SHENGJI_PV_CKPT": str(play_package),
+    # A screen registers only its explicit PV arm; serving-only registrations
+    # may reference other packages that are not part of this screen's inputs.
+    pv_base = {key: value for key, value in base.items() if key.startswith('SHENGJI_PV_')}
+    comparator = {**pv_base, "SHENGJI_PV_CKPT": str(play_package),
                   "SHENGJI_PV_BELIEF_CKPT": str(old_belief)}
     candidate = {**comparator, **FLAGS, "SHENGJI_PV_BELIEF_CKPT": str(new_belief),
                  "SHENGJI_PV_BELIEF_SHA256": S58_SHA}

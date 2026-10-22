@@ -84,9 +84,9 @@ def test_actual_packages_reach_fresh_screen_and_deadline_child(monkeypatch):
     assert 'runtime_switches' not in comparator['identity']
 
 
-def test_half_budget_profile_reaches_actual_screen_children():
+def test_half_budget_profile_reaches_actual_screen_children(tmp_path):
     from recipe import half_budget_envs
-    from screen_probe import admit_pair
+    from window_plan import build_plan
 
     served = package_envs()
     original = copy.deepcopy(served)
@@ -96,7 +96,12 @@ def test_half_budget_profile_reaches_actual_screen_children():
         build_pair(envs)
     with pytest.raises(ValueError):
         build_pair(served, profile='half-budget-lgfd1000')
-    candidate, comparator = admit_pair(envs, profile='half-budget-lgfd1000')
+    output = tmp_path / 'not-launched'
+    plan = build_plan(envs, [i * 1000 for i in range(10)], output)
+    candidate, comparator = plan['arms']['candidate'], plan['arms']['comparator']
+    assert plan['dispatch_authorized'] is False and not output.exists()
+    assert len(plan['windows']) == 20
+    assert candidate['environment'] == envs[0] and comparator['environment'] == envs[1]
     assert 'lgfd1000' in candidate['name'] and 'lgfd' not in comparator['name']
     for arm in (candidate, comparator):
         assert arm['identity']['config']['serving_budget_seconds'] == 1.5

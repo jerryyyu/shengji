@@ -618,7 +618,7 @@ class PolicyValueBot(PolicyWorldBot):
         if getattr(self, 'encode_prefix_cache', False):
             # the reply leaves are clones of this root: its history encoded once
             from .pv_encode_prefix import HistoryPrefix
-            prefix = HistoryPrefix.of(rnd)
+            prefix = HistoryPrefix.of(rnd, batched=getattr(self, 'encode_batch_fast', False))
         guard = None
         deadline = self._leaf_greedy_deadline_at
         if deadline is not None:

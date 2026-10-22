@@ -379,7 +379,7 @@ deadlines.  On, it enters the recipe digest as ``leaf_greedy_deadline``
 ``lgfx``; the record gains ``leaf_greedy_deadline_fired`` and
 ``leaf_greedy_deadline_cut_leaves`` (only with it on).
 
-Three latency switches, OFF BY DEFAULT, that enter no name, payload or digest
+Four latency switches, OFF BY DEFAULT, that enter no name, payload or digest
 (like ``SHENGJI_PV_BELIEF_LOG`` they are read from the serving environment
 where the bot is built; ``0`` or ``1`` only).  On the decisions the search
 completes, none changes the cards played, the sampler stream or (beyond
@@ -411,6 +411,12 @@ at a time, and each scoring matrix is rebuilt by the same operations at its
 product and dropped (`pv_tree_search.legal_replies_compact`).  The plies, their
 batches, every score and every record field are the switch-off ones; without
 ``lgf`` nothing reads it.
+``SHENGJI_PV_ENCODE_BATCH_FAST=1`` builds the prefix-cached batches (the value
+pass's leaves and ``lgf``'s reply valuations and reply policy rows) with
+`pv_encode_prefix.fused_many_batched`: the same tensors byte for byte and the
+same rows kept or refused, with the world planes indexed from the distinct
+hands and the v2/v7 columns assembled as arrays.  Without
+``SHENGJI_PV_ENCODE_PREFIX_CACHE=1`` nothing reads it.
 
 The exact stages' world subset, OFF BY DEFAULT and a search-policy change
 where it applies: ``SHENGJI_PV_EXACT_WORLD_SUBSET=<n>`` (an int in [1, 512];
@@ -1126,7 +1132,8 @@ _EXACT_WORLD_SUBSET_REQUIRES = (
 #: the latency switches (module docstring): ``0`` or ``1``, unset (or empty) is off
 LATENCY_SWITCH_ENV = {"encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
                       "single_candidate_fast": "SHENGJI_PV_SINGLE_CANDIDATE_FAST",
-                      "leaf_greedy_stream": "SHENGJI_PV_LEAF_GREEDY_STREAM"}
+                      "leaf_greedy_stream": "SHENGJI_PV_LEAF_GREEDY_STREAM",
+                      "encode_batch_fast": "SHENGJI_PV_ENCODE_BATCH_FAST"}
 
 
 def latency_switches(environ=None) -> dict[str, bool]:
@@ -1819,6 +1826,7 @@ class PVSearchBot(PolicyValueBot):
     #: (``leaf_greedy_stream`` is declared on `PolicyValueBot`).
     #: Instance state of an ON bot only.
     encode_prefix_cache = False
+    encode_batch_fast = False
     single_candidate_fast = False
     #: the exact stages' world subset (module docstring): 0 = every world
     exact_world_subset = 0
@@ -2901,7 +2909,7 @@ class PVSearchBot(PolicyValueBot):
         if self.encode_prefix_cache:
             # the same tensors, the root's history traversed once (`pv_encode_prefix`)
             from .pv_encode_prefix import HistoryPrefix, score_leaves
-            prefix = HistoryPrefix.of(rnd)
+            prefix = HistoryPrefix.of(rnd, batched=self.encode_batch_fast)
 
         def flush():
             nonlocal batches

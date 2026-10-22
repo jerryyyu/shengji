@@ -1,5 +1,7 @@
 """Build the S58 full-combo screen arms without changing serving defaults."""
 from dataclasses import asdict
+import os
+from unittest.mock import patch
 
 from shengji.train import pv_search_policy as pv
 
@@ -40,12 +42,20 @@ def arm_envs(base, play_package, old_belief, new_belief):
 
 
 def build_pair(envs, seed=17):
-    """Construct through the actual registry and refuse unintended config drift."""
+    """Single-threaded admission: bind factory-only flags separately for each arm."""
     built = []
     for env in envs:
         entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
         (name, factory), = entries.items()
-        bot = factory(seed=seed)
+        # These switches are read by the factory, not captured in its recipe.
+        switches = pv.latency_switches(env)
+        factory_env = {key: "1" if switches[attr] else "0"
+                       for attr, key in pv.LATENCY_SWITCH_ENV.items()}
+        factory_env["SHENGJI_PV_BELIEF_LOG"] = env.get("SHENGJI_PV_BELIEF_LOG", "1")
+        with patch.dict(os.environ, factory_env):
+            bot = factory(seed=seed)
+        if any(getattr(bot, attr) != on for attr, on in switches.items()):
+            raise ValueError("factory did not bind the arm-local cost switches")
         built.append((name, bot))
     if built[1][0] != CONTROL_NAME:
         raise ValueError("comparator is not release 46 as served")

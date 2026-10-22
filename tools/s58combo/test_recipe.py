@@ -43,6 +43,68 @@ def package_envs():
                     os.environ["COMBO_OLD_BELIEF"], os.environ["COMBO_NEW_BELIEF"])
 
 
+def test_cost_switches_are_arm_local_and_not_inherited(monkeypatch):
+    from shengji.train import pv_search_policy as pv
+
+    envs = package_envs()
+    for key in pv.LATENCY_SWITCH_ENV.values():
+        monkeypatch.setenv(key, "1")
+    envs[0]["SHENGJI_PV_ENCODE_PREFIX_CACHE"] = "1"
+    envs[0]["SHENGJI_PV_LEAF_GREEDY_STREAM"] = "1"
+    before = dict(os.environ)
+    (_, candidate), (_, comparator) = build_pair(envs)
+    assert dict(os.environ) == before
+    assert candidate.encode_prefix_cache and candidate.leaf_greedy_stream
+    assert not candidate.single_candidate_fast and not candidate.encode_batch_fast
+    assert not any(getattr(comparator, attr) for attr in pv.LATENCY_SWITCH_ENV)
+
+
+@pytest.mark.parametrize("seed", [17, 23])
+def test_s58_stream_prefix_decision_parity(monkeypatch, seed):
+    from shengji.ai import belief_numpy as bn
+    from shengji.ai.env import prepare_round
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.game import Game
+
+    plain_envs = package_envs()
+    optimized_envs = copy.deepcopy(plain_envs)
+    optimized_envs[0].update(SHENGJI_PV_ENCODE_PREFIX_CACHE="1",
+                             SHENGJI_PV_LEAF_GREEDY_STREAM="1")
+    (plain_name, plain), _ = build_pair(plain_envs, seed=seed)
+    (fast_name, fast), (_, control) = build_pair(optimized_envs, seed=seed)
+    assert plain_name == fast_name
+    assert not control.encode_prefix_cache and not control.leaf_greedy_stream
+    assert fast.encode_prefix_cache and fast.leaf_greedy_stream
+    plain.serving_budget_seconds = fast.serving_budget_seconds = 600
+    monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
+    helper = HeuristicBot()
+    rnd = prepare_round(Game(random.Random(seed)), [helper for _ in range(4)])
+    seen = set()
+    applied = 0
+    while rnd.phase == "play":
+        size = max(map(len, rnd.hands))
+        position = len(rnd.trick.plays)
+        phase = "early" if size > 7 else "exact" if size <= 3 else None
+        key = (phase, position)
+        if phase and key not in seen:
+            seat = rnd.turn
+            a = plain.decide_play(copy.deepcopy(rnd), seat)
+            b = fast.decide_play(copy.deepcopy(rnd), seat)
+            ra, rb = plain.last_decision_record, fast.last_decision_record
+            comparable = lambda record: {k: v for k, v in record.items()
+                                         if not k.endswith("seconds") and not k.endswith("_ms")}
+            assert a == b and comparable(ra) == comparable(rb), (seed, key)
+            assert plain.sampler.rng.getstate() == fast.sampler.rng.getstate()
+            assert ra["work_complete"] and ra["belief_fallback"] == 0
+            assert ra["leaf_greedy_finish_exact_skipped"] == (phase == "exact")
+            applied += bool(ra["leaf_greedy_finish_applied"])
+            seen.add(key)
+        rnd.play(rnd.turn, helper.decide_play(rnd, rnd.turn))
+    assert seen == {(phase, pos) for phase in ("early", "exact") for pos in range(4)}
+    assert applied >= 2
+    print(f"\nS58 stream+prefix seed={seed}: {len(seen)} matched decisions, lgf applied={applied}")
+
+
 def test_wrong_belief_bytes_are_refused():
     from shengji.train.pv_search_policy import PVSearchPolicyError
 
@@ -61,7 +123,8 @@ def test_shared_policy_drift_is_not_hidden_by_matching_deltas():
 
 
 @pytest.mark.parametrize("exact_tail", [False, True])
-def test_real_combo_reaches_server_commit_and_trace(tmp_path, monkeypatch, exact_tail):
+@pytest.mark.parametrize("optimized", [False, True])
+def test_real_combo_reaches_server_commit_and_trace(tmp_path, monkeypatch, exact_tail, optimized):
     from shengji.ai import belief_numpy as bn
     from shengji.ai.env import prepare_round
     from shengji.ai.heuristic import HeuristicBot
@@ -72,10 +135,15 @@ def test_real_combo_reaches_server_commit_and_trace(tmp_path, monkeypatch, exact
         if key.startswith("SHENGJI_PV_"):
             monkeypatch.delenv(key)
     envs = package_envs()
+    if optimized:
+        envs[0].update(SHENGJI_PV_ENCODE_PREFIX_CACHE="1",
+                       SHENGJI_PV_LEAF_GREEDY_STREAM="1")
     (name, bot), (control_name, control) = build_pair(envs)
     assert "-lgf-lgfx-" in name and "-dtrx-" in name
     assert control_name == base()["SHENGJI_BOT"]
     assert not control.leaf_greedy_finish
+    assert bot.encode_prefix_cache == bot.leaf_greedy_stream == optimized
+    assert not control.encode_prefix_cache and not control.leaf_greedy_stream
     # Correctness only: timing cannot substitute a fallback for the tested path.
     bot.serving_budget_seconds = 600
     monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)

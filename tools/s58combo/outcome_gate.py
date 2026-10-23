@@ -4,6 +4,7 @@ from paired_result import paired_result
 from decision_gate import check_decisions
 from exact_gate import check_exact
 from bury_gate import check_optional_stages
+from greedy_gate import check_greedy
 import validity
 
 
@@ -53,7 +54,10 @@ def outcome_checked_result(plan, expected_configs, configs, shards):
     optional_check = check_optional_stages(plan, shards)
     if optional_check['verdict'] != 'VALID':
         return dict(status='OPTIONAL_STAGE_INVALID', optional_check=optional_check)
+    greedy_check = check_greedy(plan, shards)
+    if greedy_check['verdict'] != 'VALID':
+        return dict(status='GREEDY_INVALID', greedy_check=greedy_check)
     return dict(status='STAGE_OUTCOME_CHECKED_ONLY', outcome_check=outcome_check, decision_check=decision_check,
-                exact_check=exact_check, optional_check=optional_check,
-                pending=['sealed input binding', 'treatment activation and recipe-specific telemetry'],
+                exact_check=exact_check, optional_check=optional_check, greedy_check=greedy_check,
+                pending=['sealed input binding', 'dtrx activation and remaining recipe-specific telemetry'],
                 estimate=paired_result(plan['windows'], records))

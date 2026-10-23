@@ -330,6 +330,8 @@ def test_real_combo_reaches_server_commit_and_trace(tmp_path, monkeypatch, exact
     record = asyncio.run(scenario())
     assert record["work_complete"] and record["worlds"] == 64
     assert record["belief_fallback"] == 0 and record["belief_proposed"] >= 64
+    from greedy_gate import greedy_shape
+    assert greedy_shape(record, True) == ("skipped" if exact_tail else "applied")
     assert record["leaf_greedy_finish_exact_skipped"] == exact_tail
     if not exact_tail:
         assert record["leaf_greedy_finish_applied"]

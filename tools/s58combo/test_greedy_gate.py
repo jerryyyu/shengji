@@ -69,7 +69,7 @@ def test_contamination_blocks_real_consumer_estimation(monkeypatch):
     plan, shards = packet()
     shards['comparator'][0]['decision_traces'][0]['decisions'][0][SKIP] = False
     monkeypatch.setattr(consumer, 'admit_records', lambda *a: {})
-    for name in ('check_outcomes', 'check_decisions', 'check_exact', 'check_optional_stages'):
+    for name in ('check_outcomes', 'check_decisions', 'check_exact', 'check_optional_stages', 'check_dtrx'):
         monkeypatch.setattr(consumer, name, lambda *a: dict(verdict='VALID'))
     monkeypatch.setattr(consumer, 'paired_result', lambda *a: pytest.fail('invalid greedy treatment reached estimator'))
     assert consumer.outcome_checked_result(plan, {}, {}, shards)['status'] == 'GREEDY_INVALID'
@@ -89,7 +89,7 @@ def test_valid_treatment_reaches_estimator_after_prior_gates(monkeypatch):
     import outcome_gate as consumer
     plan, shards = packet()
     monkeypatch.setattr(consumer, 'admit_records', lambda *a: {})
-    for name in ('check_outcomes', 'check_decisions', 'check_exact', 'check_optional_stages'):
+    for name in ('check_outcomes', 'check_decisions', 'check_exact', 'check_optional_stages', 'check_dtrx'):
         monkeypatch.setattr(consumer, name, lambda *a: dict(verdict='VALID'))
     calls = []
     monkeypatch.setattr(consumer, 'paired_result', lambda *a: calls.append(a) or {'fixture': True})

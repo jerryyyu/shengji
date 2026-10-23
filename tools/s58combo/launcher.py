@@ -180,6 +180,19 @@ def _validate_window(target: Path, expected: dict):
         raise LaunchRefused("window cluster inventory is incomplete or has extras")
 
 
+def seal_window(target: Path, expected: dict, seal_path: Path) -> str:
+    """Bind completed producer bytes without parsing scientific outcomes."""
+    _validate_window(target, expected)
+    paths = [target / name for name in ('config.json', 'summary.json')]
+    paths += [target / f'cluster-{i:05}.json' for i in range(520)]
+    files = {path.name: dict(size=path.stat().st_size, sha256=_sha(path)) for path in paths}
+    seal = dict(schema='s58combo-window-seal-v1', output=str(target.resolve()), files=files)
+    with seal_path.open('x', encoding='utf-8') as stream:
+        json.dump(seal, stream, sort_keys=True)
+        stream.write('\n')
+    return _sha(seal_path)
+
+
 def run_plan(plan: dict, expected: dict, *, source: Path, output: Path,
              release: Path, launcher: Path, packet_sha: str | None = None,
              runner_sha: str | None = None, runner_file: Path | None = None,
@@ -229,6 +242,7 @@ def run_plan(plan: dict, expected: dict, *, source: Path, output: Path,
         # dispatch failure.
         output.mkdir(parents=False)
         owns_output = True
+        (output / "seals").mkdir()
         (output / "reservation.json").write_text(json.dumps({
             "schema": "s58combo-reservation-v1", "packet_sha256": digest,
             "status": "READOUT_HOLD", "created_at": time.time()}, sort_keys=True) + "\n", encoding="utf-8")
@@ -261,9 +275,11 @@ def run_plan(plan: dict, expected: dict, *, source: Path, output: Path,
                 (output / "terminal.json").write_text(json.dumps({"status": "ABORT", "results": results}, sort_keys=True) + "\n", encoding="utf-8")
                 terminal_written = True
                 raise LaunchRefused(f"window failed: {target} rc={proc.returncode}")
-            _validate_window(target, expected[window["output"]])
+            seal_path = output / "seals" / f"{target.name}.json"
+            results[-1]["seal_sha256"] = seal_window(target, expected[window["output"]], seal_path)
         (output / "terminal.json").write_text(json.dumps({"status": "LANE_DONE", "results": results,
-                                                            "readout": "HOLD"}, sort_keys=True) + "\n", encoding="utf-8")
+                                                            "readout": "HOLD", "packet_sha256": digest,
+                                                            "reservation_sha256": _sha(output / "reservation.json")}, sort_keys=True) + "\n", encoding="utf-8")
         terminal_written = True
         return {"status": "LANE_DONE", "packet_sha256": digest, "windows": len(results), "readout": "HOLD"}
     except BaseException:

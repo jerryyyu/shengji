@@ -69,6 +69,8 @@ def _clean_env(arm: dict, source: Path) -> dict:
 
 
 def _assert_plan(plan: dict, expected: dict, source: Path, output: Path) -> None:
+    if plan.get("python_executable") != sys.executable:
+        raise LaunchRefused("interpreter differs from frozen packet")
     if plan.get("schema") != "s58combo-unarmed-window-plan-v1":
         raise LaunchRefused("unexpected plan schema")
     if plan.get("dispatch_authorized") is not True:

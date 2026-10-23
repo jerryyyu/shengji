@@ -14,7 +14,7 @@ from launcher import LaunchRefused, _sha, packet_digest, render_wrapper, run_pla
 def packet(tmp_path):
     root = tmp_path / "out"
     outputs = [str(root / f"w{i}-{i}") for i in range(20)]
-    plan = dict(schema="s58combo-unarmed-window-plan-v1", dispatch_authorized=True,
+    plan = dict(python_executable=sys.executable, schema="s58combo-unarmed-window-plan-v1", dispatch_authorized=True,
                 source_head=None, host_identity={"hostname": socket.gethostname()},
                 host_lock=str(tmp_path / "lock"), hold="None", legacy_locks=[],
                 arms={"candidate": {"environment": {"SHENGJI_TEST_PIN": "candidate", "SHENGJI_FAST": "0"}},

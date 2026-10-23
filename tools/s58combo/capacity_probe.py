@@ -89,6 +89,8 @@ def run_rehearsal(plan: dict, *, source: Path, output: Path,
     failure record.  The function is intentionally not called by tests.
     """
     source, output, host_lock = Path(source), Path(output), Path(host_lock)
+    if plan.get("python_executable") != os.sys.executable:
+        raise LaunchRefused("capacity interpreter mismatch")
     if socket.gethostname() != plan.get("host_identity", {}).get("hostname"):
         raise LaunchRefused("capacity host identity mismatch")
     if output.exists():
@@ -221,6 +223,12 @@ def run_rehearsal(plan: dict, *, source: Path, output: Path,
             if not config_path.is_file() or config_path.is_symlink():
                 raise LaunchRefused(f"capacity config missing: {command['side']}")
             config = json.loads(config_path.read_text())
+            runtime_env = {k: v for k, v in env.items()
+                           if k.startswith('SHENGJI_') or k in (
+                               'OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
+                               'VECLIB_MAXIMUM_THREADS', 'MKL_NUM_THREADS')}
+            if config.get('runtime', {}).get('environment') != runtime_env:
+                raise LaunchRefused('capacity runtime environment mismatch')
             arm = plan["arms"][command["side"]]
             expected_config = {
                 "arm_policy": arm["name"],

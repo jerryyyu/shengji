@@ -37,7 +37,7 @@ def freeze(source, packet, output, play, old, new):
         if len(matches) != 1:
             raise ValueError('compiled extension inventory mismatch')
         artifacts += matches
-    plan.update(source_head=head, source_path=str(source), host_identity={'hostname': socket.gethostname()},
+    plan.update(python_executable=sys.executable, source_head=head, source_path=str(source), host_identity={'hostname': socket.gethostname()},
                 host_lock='/root/.claude-host.lock', hold=str(packet / 'HOLD'),
                 legacy_locks=['/root/.claude-screen.lock', '/root/.claude-datagen.lock'],
                 artifact_sha256={str(p): _sha(p) for p in artifacts},

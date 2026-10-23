@@ -12,7 +12,7 @@ from shengji.train.screen_deadline import RECIPE
 
 
 def plan():
-    return {"host_identity": {"hostname": socket.gethostname()},
+    return {"python_executable": subprocess.sys.executable, "host_identity": {"hostname": socket.gethostname()},
             "source_head": None,
             "arms": {"candidate": {"name": "candidate", "identity": {"arm": "candidate"}, "environment": {"SHENGJI_FAST": "0"}},
                      "comparator": {"name": "comparator", "identity": {"arm": "comparator"}, "environment": {"SHENGJI_FAST": "0"}}}}
@@ -37,13 +37,15 @@ def git_source(tmp_path, plan_value):
     return source
 
 
-def fake_runner(wrong_identity=False, live_child=False):
+def fake_runner(wrong_identity=False, live_child=False, wrong_runtime=False):
     identity = "'wrong'" if wrong_identity else "arm"
     code = ("import json,os,sys; a=sys.argv; root=a[a.index('--out')+1]; "
             "name=a[a.index('--name')+1]; seed=a[a.index('--seeds')+1]; kind=a[a.index('--round-kind')+1]; "
             "p=os.path.join(root,name+'-'+seed); os.makedirs(p); "
             "arm=a[a.index('--arm-policy')+1]; ranks=['2'] if kind=='first' else '2,3,4,5,6,7,8,9,10,J,Q,K,A'.split(','); "
             "cfg={'arm_policy':arm,'arm_policy_identity':{'arm':" + identity + "},'seed0':int(seed),'clusters':14,'trump_ranks':ranks,'round_kind':kind,'decision_deadline':{'seconds':300.0,'version':'spawn-total-play-v1','fallback':'SmartBot-v1','rng_recovery':'rollback-uncommitted-play'}}; "
+            "cfg['runtime']={'environment':{k:v for k,v in os.environ.items() if k.startswith('SHENGJI_') or k in ('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','VECLIB_MAXIMUM_THREADS','MKL_NUM_THREADS')}}; "
+            + ("cfg['runtime']['environment']['SHENGJI_FAST']='wrong'; " if wrong_runtime else "") +
             "json.dump(cfg,open(os.path.join(p,'config.json'),'w')); "
             "json.dump({'complete':True,'completed_clusters':14,'requested_clusters':14,");
     code += "'problems':[],'refused':[],'config':cfg},open(os.path.join(p,'summary.json'),'w'));"
@@ -124,3 +126,16 @@ def test_live_child_preserves_typed_terminal_and_lock(tmp_path):
     os.killpg(data["child_pid"], signal.SIGTERM)
     (tmp_path / "lock" / "owner").unlink()
     (tmp_path / "lock").rmdir()
+
+
+def test_runtime_environment_mismatch_refused(tmp_path):
+    frozen = plan(); source = git_source(tmp_path, frozen)
+    with pytest.raises(LaunchRefused, match='runtime environment mismatch'):
+        run_rehearsal(frozen, source=source, output=tmp_path / 'run',
+                      host_lock=tmp_path / 'lock', runner=fake_runner(wrong_runtime=True))
+
+
+def test_interpreter_mismatch_refused(tmp_path):
+    frozen = plan(); frozen['python_executable'] = '/another/python'
+    with pytest.raises(LaunchRefused, match='interpreter mismatch'):
+        run_rehearsal(frozen, source=tmp_path, output=tmp_path/'out', host_lock=tmp_path/'lock')

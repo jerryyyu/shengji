@@ -1,0 +1,66 @@
+"""Exercise sealed producer output through one-shot saved-result publication."""
+import json
+from pathlib import Path
+
+import pytest
+import launcher
+import readout
+from test_sealed_input import completed
+
+
+@pytest.fixture
+def invocation(completed, monkeypatch):
+    plan, expected, pins = completed
+    root = pins['root']
+    plan_path, expected_path = root / 'plan.json', root / 'expected.json'
+    plan_path.write_text(json.dumps(plan))
+    expected_path.write_text(json.dumps(expected))
+    monkeypatch.setattr(readout.subprocess, 'check_output',
+                        lambda argv, **kw: 'a' * 40 if 'rev-parse' in argv else '')
+    args = dict(source=Path(readout.__file__).resolve().parents[2], source_head='a' * 40,
+                plan_path=plan_path, expected_path=expected_path,
+                packet_sha=launcher.packet_digest(plan, expected), root=root,
+                terminal_sha=pins['terminal_sha'], reader_sha=launcher._sha(Path(readout.__file__)),
+                result_path=root / 'readout.json')
+    return args
+
+
+def test_sealed_producer_to_saved_result_once(invocation, monkeypatch):
+    import outcome_gate
+    args = invocation
+    (args['root'] / 'READOUT_HOLD').unlink()
+    def consume(plan, expected, configs, shards):
+        assert configs == expected
+        assert sum(map(len, shards.values())) == 10400
+        return dict(status='STAGE_OUTCOME_CHECKED_ONLY', pending=['sealed input binding', 'review'])
+    monkeypatch.setattr(outcome_gate, 'outcome_checked_result', consume)
+    result = readout.read_once(**args)
+    assert result['pending'] == ['review']
+    saved = args['result_path'].read_bytes()
+    assert json.loads(saved) == result
+    with pytest.raises(FileExistsError):
+        readout.read_once(**args)
+    assert args['result_path'].read_bytes() == saved
+
+
+@pytest.mark.parametrize('defect', ['hold', 'packet', 'reader', 'source'])
+def test_refusal_before_consumption(invocation, defect):
+    args = invocation
+    if defect != 'hold':
+        (args['root'] / 'READOUT_HOLD').unlink()
+        args[{'packet': 'packet_sha', 'reader': 'reader_sha', 'source': 'source_head'}[defect]] = '0' * 64
+    with pytest.raises(ValueError):
+        readout.read_once(**args)
+    assert not args['result_path'].exists()
+    assert not (args['root'] / 'READOUT_CONSUMED.json').exists()
+
+
+def test_failure_is_saved_without_retry(invocation):
+    args = invocation
+    (args['root'] / 'READOUT_HOLD').unlink()
+    args['terminal_sha'] = '0' * 64
+    result = readout.read_once(**args)
+    assert result['status'] == 'READOUT_FAILED'
+    assert json.loads(args['result_path'].read_text()) == result
+    with pytest.raises(FileExistsError):
+        readout.read_once(**args)

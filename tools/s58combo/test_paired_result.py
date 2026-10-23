@@ -75,8 +75,23 @@ def test_refuses_partial_or_mismatched_producer_records(tmp_path, defect):
         rows[1] = copy.deepcopy(rows[0])
     else:
         key, value = {'seed': ('seed', -1), 'rank': ('trump_rank', 'A'),
-                      'banker': ('banker', 3), 'suit': ('trump_suit', 'H'),
+                      'banker': ('banker', 3), 'suit': ('trump_suit', 'invalid'),
                       'nan': ('arm_utility', float('nan'))}[defect]
         rows[0][key] = value
     with pytest.raises(ValueError):
         paired_result(windows, records)
+
+
+def test_policy_mediated_declarations_do_not_break_seed_pairing(tmp_path):
+    windows, records = fixture(tmp_path)
+    for w in windows:
+        for row in records[w['output']]:
+            row['arm_utility'] = 2 + row['cluster'] % 2 if w['side'] == 'candidate' else -1
+    original = paired_result(windows, records)
+    for w in windows:
+        for row in records[w['output']]:
+            row['trump_suit'] = 'H' if row['mirror'] == 0 else 'NT'
+            if w['round_kind'] == 'first':
+                row['banker'] = (row['cluster'] + row['mirror'] +
+                                 int(w['side'] == 'candidate')) % 4
+    assert paired_result(windows, records) == original

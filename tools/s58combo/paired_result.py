@@ -23,7 +23,6 @@ def paired_result(windows, records):
         if len(rows) != CLUSTERS * 2:
             raise ValueError('incomplete mirrored window')
         seen = set()
-        identities = {}
         ranks = window['ranks'].split(',')
         for row in rows:
             cluster, mirror = row['cluster'], row['mirror']
@@ -38,24 +37,24 @@ def paired_result(windows, records):
                 raise ValueError('deal schedule drift')
             if window['round_kind'] == 'fixed_banker' and row['banker'] != cluster % 4:
                 raise ValueError('fixed banker drift')
-            identity = (row['trump_rank'], row['banker'], row['trump_suit'])
-            if identities.setdefault(cluster, identity) != identity:
-                raise ValueError('mirror deal identity drift')
+            if (type(row['banker']) is not int or not 0 <= row['banker'] < 4
+                    or row['trump_suit'] not in ('S', 'H', 'D', 'C', 'NT')):
+                raise ValueError('invalid declaration outcome')
             utility = row['arm_utility']
             if type(utility) not in (int, float) or not math.isfinite(utility):
                 raise ValueError('invalid utility')
             side[key] = (window['round_kind'], row['trump_rank'], utility,
-                         window['seed'], row['banker'], row['trump_suit'])
+                         window['seed'])
     candidate, comparator = sides['candidate'], sides['comparator']
     if len(candidate) != 10400 or candidate.keys() != comparator.keys():
         raise ValueError('unmatched candidate/comparator deals')
     deltas = {}
     populations = {}
     window_seeds = {}
-    for key, (kind, rank, value, window_seed, banker, suit) in candidate.items():
-        other_kind, other_rank, other_value, other_window, other_banker, other_suit = comparator[key]
-        if (kind, rank, window_seed, banker, suit) != (
-                other_kind, other_rank, other_window, other_banker, other_suit):
+    for key, (kind, rank, value, window_seed) in candidate.items():
+        other_kind, other_rank, other_value, other_window = comparator[key]
+        # Declaration outcomes are treatment-mediated, not randomization keys.
+        if (kind, rank, window_seed) != (other_kind, other_rank, other_window):
             raise ValueError('paired population drift')
         deltas.setdefault(key[0], []).append((value - other_value) / 2)
         populations[key[0]] = (kind, rank)

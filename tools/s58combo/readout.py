@@ -26,6 +26,8 @@ def read_once(*, source, source_head, plan_path, expected_path, packet_sha,
     expected = json.loads(Path(expected_path).read_text())
     if packet_digest(plan, expected) != packet_sha:
         raise ValueError('reviewed packet drift')
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError('readout root must be an existing unaliased directory')
     if result_path.parent.resolve() != root.resolve():
         raise ValueError('saved result must reside in reserved output')
     if (root / 'READOUT_HOLD').exists():
@@ -58,7 +60,7 @@ def main():
         parser.add_argument('--' + field, required=True)
     result = read_once(**vars(parser.parse_args()))
     print(json.dumps({'status': result['status'], 'saved': True}))
-    return int(result['status'] == 'READOUT_FAILED')
+    return int(result['status'] not in ('STAGE_OUTCOME_CHECKED_ONLY', 'SCREEN_VALID'))
 
 
 if __name__ == '__main__':

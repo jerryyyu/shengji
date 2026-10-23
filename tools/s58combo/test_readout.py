@@ -64,3 +64,26 @@ def test_failure_is_saved_without_retry(invocation):
     assert json.loads(args['result_path'].read_text()) == result
     with pytest.raises(FileExistsError):
         readout.read_once(**args)
+
+
+def test_aliased_root_refused_before_publication(invocation):
+    args = invocation
+    (args['root'] / 'READOUT_HOLD').unlink()
+    alias = args['root'].with_name('alias')
+    alias.symlink_to(args['root'], target_is_directory=True)
+    args.update(root=alias, result_path=alias / 'readout.json')
+    with pytest.raises(ValueError, match='unaliased'):
+        readout.read_once(**args)
+    assert not args['result_path'].exists()
+    assert not (args['root'] / 'READOUT_CONSUMED.json').exists()
+
+
+@pytest.mark.parametrize('status', ['READOUT_FAILED', 'OUTCOME_INVALID', 'DECISION_INVALID',
+    'EXACT_INVALID', 'OPTIONAL_STAGE_INVALID', 'GREEDY_INVALID', 'DTRX_INVALID'])
+def test_cli_invalid_results_exit_nonzero(monkeypatch, status):
+    flags = ('source', 'source-head', 'plan-path', 'expected-path', 'packet-sha',
+             'root', 'terminal-sha', 'reader-sha', 'result-path')
+    monkeypatch.setattr(readout.sys, 'argv', ['readout.py',
+        *[part for flag in flags for part in ('--' + flag, 'unused')]])
+    monkeypatch.setattr(readout, 'read_once', lambda **kwargs: dict(status=status))
+    assert readout.main() == 1

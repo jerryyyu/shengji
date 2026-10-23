@@ -61,3 +61,24 @@ def test_sealed_loader_feeds_existing_scientific_consumer(completed, monkeypatch
     monkeypatch.setattr(outcome_gate, 'outcome_checked_result', consumer)
     result = sealed_outcome_checked_result(plan, expected, **pins)
     assert seen == [10400] and result['pending'] == ['scientific review']
+
+
+def test_unused_summary_is_hash_checked_as_opaque_bytes(completed):
+    plan, expected, pins = completed
+    root = pins['root']
+    (root / 'READOUT_HOLD').unlink()
+    target = Path(plan['windows'][0]['output'])
+    (target / 'summary.json').write_bytes(b'opaque producer summary')
+    seal = root / 'seals' / (target.name + '.json')
+    contents = json.loads(seal.read_text())
+    contents['files']['summary.json'] = dict(
+        sha256=launcher._sha(target / 'summary.json'),
+        size=(target / 'summary.json').stat().st_size)
+    seal.write_text(json.dumps(contents))
+    terminal_path = root / 'terminal.json'
+    terminal = json.loads(terminal_path.read_text())
+    terminal['results'][0]['seal_sha256'] = launcher._sha(seal)
+    terminal_path.write_text(json.dumps(terminal))
+    pins['terminal_sha'] = launcher._sha(terminal_path)
+    configs, shards = load_inputs(plan, expected, **pins)
+    assert configs == expected and sum(map(len, shards.values())) == 10400

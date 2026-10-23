@@ -60,7 +60,7 @@ def main():
         parser.add_argument('--' + field, required=True)
     result = read_once(**vars(parser.parse_args()))
     print(json.dumps({'status': result['status'], 'saved': True}))
-    return int(result['status'] not in ('STAGE_OUTCOME_CHECKED_ONLY', 'SCREEN_VALID'))
+    return int(result['status'] != 'SCREEN_VALID')
 
 
 if __name__ == '__main__':

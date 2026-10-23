@@ -78,7 +78,7 @@ def test_aliased_root_refused_before_publication(invocation):
     assert not (args['root'] / 'READOUT_CONSUMED.json').exists()
 
 
-@pytest.mark.parametrize('status', ['READOUT_FAILED', 'OUTCOME_INVALID', 'DECISION_INVALID',
+@pytest.mark.parametrize('status', ['STAGE_OUTCOME_CHECKED_ONLY', 'READOUT_FAILED', 'OUTCOME_INVALID', 'DECISION_INVALID',
     'EXACT_INVALID', 'OPTIONAL_STAGE_INVALID', 'GREEDY_INVALID', 'DTRX_INVALID'])
 def test_cli_invalid_results_exit_nonzero(monkeypatch, status):
     flags = ('source', 'source-head', 'plan-path', 'expected-path', 'packet-sha',

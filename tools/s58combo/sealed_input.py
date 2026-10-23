@@ -6,13 +6,17 @@ from pathlib import Path
 from launcher import packet_digest
 
 
-def _bound_json(path, sha):
+def _bound_bytes(path, sha):
     if not path.is_file() or path.is_symlink():
         raise ValueError('missing or symlinked sealed file')
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != sha:
         raise ValueError('sealed bytes changed')
-    return json.loads(data)
+    return data
+
+
+def _bound_json(path, sha):
+    return json.loads(_bound_bytes(path, sha))
 
 
 def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, owner):
@@ -69,7 +73,9 @@ def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, 
                 raise ValueError('readout HOLD appeared')
             if path.stat().st_size != pin['size']:
                 raise ValueError('sealed file size changed')
-            values[name] = _bound_json(path, pin['sha256'])
+            data = _bound_bytes(path, pin['sha256'])
+            if name != 'summary.json':
+                values[name] = json.loads(data)
         configs[output] = values['config.json']
         if configs[output] != expected[output]:
             raise ValueError('sealed config mismatch')

@@ -128,3 +128,23 @@ def test_streaming_reads_each_producer_shard_only_once(completed, monkeypatch):
     finally:
         spool.close()
     assert not spool.directory.exists()
+
+
+@pytest.mark.parametrize('failure', [False, True])
+def test_streaming_cache_cleanup_after_consumer(completed, monkeypatch, failure):
+    import outcome_gate
+    from sealed_input import sealed_outcome_checked_result
+    plan, expected, pins = completed
+    (pins['root'] / 'READOUT_HOLD').unlink()
+    def consume(*args):
+        assert list(pins['root'].glob('s58-shards-*'))
+        if failure:
+            raise ValueError('synthetic gate failure')
+        return dict(status='OUTCOME_INVALID')
+    monkeypatch.setattr(outcome_gate, 'outcome_checked_result', consume)
+    if failure:
+        with pytest.raises(ValueError, match='gate'):
+            sealed_outcome_checked_result(plan, expected, **pins, streaming=True)
+    else:
+        assert sealed_outcome_checked_result(plan, expected, **pins, streaming=True)['status'] == 'OUTCOME_INVALID'
+    assert not list(pins['root'].glob('s58-shards-*'))

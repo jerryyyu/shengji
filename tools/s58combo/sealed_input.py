@@ -63,16 +63,16 @@ def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, 
     resources = check_resources(seals, streaming=streaming, root=root)
     if preflight_only:
         return resources
-    if before_consume is not None:
-        before_consume()
-    # Exclusive claim precedes the first scientific shard read.
-    with (root / 'READOUT_CONSUMED.json').open('x') as stream:
-        json.dump(dict(owner=owner, reader=str(reader_path), reader_sha256=reader_sha,
-                       terminal_sha256=terminal_sha), stream)
     from shard_store import ShardStore
     configs = {}
     shards = ShardStore(list(seals), root) if streaming else {}
     try:
+        if before_consume is not None:
+            before_consume()
+        # Exclusive claim precedes the first scientific shard read.
+        with (root / 'READOUT_CONSUMED.json').open('x') as stream:
+            json.dump(dict(owner=owner, reader=str(reader_path), reader_sha256=reader_sha,
+                           terminal_sha256=terminal_sha), stream)
         for output, seal in seals.items():
             target = Path(output)
             values = {}

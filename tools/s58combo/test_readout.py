@@ -134,3 +134,17 @@ def test_real_read_once_saves_valid_screen(invocation, monkeypatch):
     result = readout.read_once(**args)
     assert result['status'] == 'SCREEN_VALID'
     assert json.loads(args['result_path'].read_text()) == result
+
+
+def test_spool_creation_failure_preserves_one_shot(invocation, monkeypatch):
+    import shard_store
+    args = invocation
+    (args['root'] / 'READOUT_HOLD').unlink()
+    def fail(*args, **kwargs):
+        raise OSError('synthetic spool creation failure')
+    monkeypatch.setattr(shard_store.sqlite3, 'connect', fail)
+    with pytest.raises(OSError, match='spool'):
+        readout.read_once(**args)
+    assert not args['result_path'].exists()
+    assert not (args['root'] / 'READOUT_CONSUMED.json').exists()
+    assert not list(args['root'].glob('s58-shards-*'))

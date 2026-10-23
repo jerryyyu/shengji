@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from launcher import packet_digest
+from resource_gate import check_resources
 
 
 def _bound_bytes(path, sha):
@@ -19,12 +20,12 @@ def _bound_json(path, sha):
     return json.loads(_bound_bytes(path, sha))
 
 
-def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, owner):
+def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, owner, preflight_only=False):
     """Caller supplies independently reviewed terminal and reader pins.
 
-    No CLI is exposed. A future reviewed readout entrypoint must establish its
-    named authority before calling; neither these arguments nor HOLD removal
-    grant authority. A consumed marker deliberately survives any failure.
+    The reviewed entrypoint must establish named authority before calling;
+    neither these arguments nor HOLD removal grant authority. Metadata-only
+    preflight does not consume the read. The consumed marker survives failures.
     """
     root, reader_path = Path(root), Path(reader_path)
     if owner != 'codex' or not reader_path.is_absolute() or reader_path.is_symlink():
@@ -59,6 +60,9 @@ def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, 
         if actual - {'.screen.lock'} != names:
             raise ValueError('output inventory mismatch')
         seals[result['output']] = seal
+    resources = check_resources(seals)
+    if preflight_only:
+        return resources
     # Exclusive claim precedes the first scientific shard read.
     with (root / 'READOUT_CONSUMED.json').open('x') as stream:
         json.dump(dict(owner=owner, reader=str(reader_path), reader_sha256=reader_sha,
@@ -88,7 +92,12 @@ def sealed_outcome_checked_result(plan, expected, **pins):
     from outcome_gate import outcome_checked_result
     configs, shards = load_inputs(plan, expected, **pins)
     result = outcome_checked_result(plan, expected, configs, shards)
-    if 'pending' in result:
+    if (result.get('status') == 'STAGE_OUTCOME_CHECKED_ONLY'
+            and result.get('pending') == ['sealed input binding',
+                'final recipe telemetry and full reader battery review']):
+        result['status'] = 'SCREEN_VALID'
+        del result['pending']
+    elif 'pending' in result:
         result['pending'] = [item for item in result['pending'] if item != 'sealed input binding']
     result['terminal_sha256'] = pins['terminal_sha']
     return result

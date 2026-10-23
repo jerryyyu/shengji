@@ -55,10 +55,12 @@ def test_refusal_before_consumption(invocation, defect):
     assert not (args['root'] / 'READOUT_CONSUMED.json').exists()
 
 
-def test_failure_is_saved_without_retry(invocation):
+def test_failure_is_saved_without_retry(invocation, monkeypatch):
     args = invocation
     (args['root'] / 'READOUT_HOLD').unlink()
-    args['terminal_sha'] = '0' * 64
+    def fail(*args, **kwargs):
+        raise ValueError('synthetic consumer failure')
+    monkeypatch.setattr(readout, 'sealed_outcome_checked_result', fail)
     result = readout.read_once(**args)
     assert result['status'] == 'READOUT_FAILED'
     assert json.loads(args['result_path'].read_text()) == result
@@ -87,3 +89,23 @@ def test_cli_invalid_results_exit_nonzero(monkeypatch, status):
         *[part for flag in flags for part in ('--' + flag, 'unused')]])
     monkeypatch.setattr(readout, 'read_once', lambda **kwargs: dict(status=status))
     assert readout.main() == 1
+
+
+def test_memory_refusal_leaves_no_saved_result_or_consumption(invocation, monkeypatch):
+    import resource_gate
+    args = invocation
+    (args['root'] / 'READOUT_HOLD').unlink()
+    monkeypatch.setattr(resource_gate, 'available_memory', lambda: 0)
+    with pytest.raises(ValueError, match='memory'):
+        readout.read_once(**args)
+    assert not args['result_path'].exists()
+    assert not (args['root'] / 'READOUT_CONSUMED.json').exists()
+
+
+def test_cli_only_valid_screen_exits_zero(monkeypatch):
+    flags = ('source', 'source-head', 'plan-path', 'expected-path', 'packet-sha',
+             'root', 'terminal-sha', 'reader-sha', 'result-path')
+    monkeypatch.setattr(readout.sys, 'argv', ['readout.py',
+        *[part for flag in flags for part in ('--' + flag, 'unused')]])
+    monkeypatch.setattr(readout, 'read_once', lambda **kwargs: dict(status='SCREEN_VALID'))
+    assert readout.main() == 0

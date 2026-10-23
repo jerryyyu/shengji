@@ -7,7 +7,9 @@ from sealed_input import load_inputs
 
 
 @pytest.fixture
-def completed(tmp_path):
+def completed(tmp_path, monkeypatch):
+    import resource_gate
+    monkeypatch.setattr(resource_gate, "available_memory", lambda: 128 * 1024**3)
     plan, expected = packet(tmp_path)
     file = Path(launcher.__file__)
     launch, token = release(tmp_path, plan, expected, file)
@@ -82,3 +84,25 @@ def test_unused_summary_is_hash_checked_as_opaque_bytes(completed):
     pins['terminal_sha'] = launcher._sha(terminal_path)
     configs, shards = load_inputs(plan, expected, **pins)
     assert configs == expected and sum(map(len, shards.values())) == 10400
+
+
+def test_resource_refusal_preserves_one_shot(completed, monkeypatch):
+    import resource_gate
+    plan, expected, pins = completed
+    (pins['root'] / 'READOUT_HOLD').unlink()
+    monkeypatch.setattr(resource_gate, 'available_memory', lambda: 0)
+    with pytest.raises(ValueError, match='memory'):
+        load_inputs(plan, expected, **pins)
+    assert not (pins['root'] / 'READOUT_CONSUMED.json').exists()
+
+
+def test_sealed_valid_result_final_transition(completed, monkeypatch):
+    import outcome_gate
+    from sealed_input import sealed_outcome_checked_result
+    plan, expected, pins = completed
+    (pins['root'] / 'READOUT_HOLD').unlink()
+    monkeypatch.setattr(outcome_gate, 'outcome_checked_result', lambda *args: dict(
+        status='STAGE_OUTCOME_CHECKED_ONLY', pending=['sealed input binding',
+        'final recipe telemetry and full reader battery review'], estimate={'synthetic': True}))
+    result = sealed_outcome_checked_result(plan, expected, **pins)
+    assert result['status'] == 'SCREEN_VALID' and 'pending' not in result

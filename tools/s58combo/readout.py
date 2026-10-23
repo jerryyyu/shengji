@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "server"))
 
 from launcher import _sha, packet_digest
-from sealed_input import sealed_outcome_checked_result
+from sealed_input import load_inputs, sealed_outcome_checked_result
 
 
 def read_once(*, source, source_head, plan_path, expected_path, packet_sha,
@@ -32,6 +32,8 @@ def read_once(*, source, source_head, plan_path, expected_path, packet_sha,
         raise ValueError('saved result must reside in reserved output')
     if (root / 'READOUT_HOLD').exists():
         raise ValueError('readout HOLD')
+    load_inputs(plan, expected, root=root, terminal_sha=terminal_sha,
+                reader_path=reader, reader_sha=reader_sha, owner='codex', preflight_only=True)
     # Reserve publication before consuming sealed data; never overwrite evidence.
     with result_path.open('x') as stream:
         json.dump(dict(status='READING', source_head=head), stream)

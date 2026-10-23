@@ -11,7 +11,7 @@ import tomllib
 from launcher import _sha, _require_clean_source, packet_digest, render_wrapper
 
 
-def freeze(source, packet, output, play, old, new):
+def freeze(source, packet, output, play, old, new, clearance):
     source, packet, output = map(lambda p: Path(p).resolve(), (source, packet, output))
     if packet.exists() or output.exists():
         raise ValueError('packet and output must be new paths')
@@ -31,13 +31,24 @@ def freeze(source, packet, output, play, old, new):
     envs[0].update(SHENGJI_PV_ENCODE_PREFIX_CACHE='1', SHENGJI_PV_LEAF_GREEDY_STREAM='1')
     plan = build_plan(envs, [230060910 + i * 100000 for i in range(10)], output,
                       profile='served', workers=14)
-    artifacts = [Path(p).resolve() for p in (play, old, new, sys.executable)]
+    clearance = Path(clearance).resolve()
+    evidence = [clearance / name for name in ('composite.json', 'seed_clear_smV3_reused.txt',
+                'seed_clear_jsm1_reused.txt', 'corpus_local.txt', 'reservations_perf.txt', 'reservations_cloud.txt')]
+    composite = json.loads(evidence[0].read_text())
+    if (composite.get('status') != 'PASS' or composite.get('overlaps') != 0
+            or composite.get('registry_clear') is not True
+            or composite['windows'] != [{'seed0': 230060910 + i * 100000, 'clusters': 520} for i in range(10)]):
+        raise ValueError('clearance composite mismatch')
+    for name, digest in composite['inputs'].items():
+        if Path(name).name != name or _sha(clearance / name) != digest:
+            raise ValueError('clearance input changed')
+    artifacts = evidence + [Path(p).resolve() for p in (play, old, new, sys.executable)]
     for pattern in ('shengji/engine/_fast*.so', 'shengji/ai/_cwv_math*.so', 'shengji/ai/_endgame_fast*.so'):
         matches = list((source / 'server').glob(pattern))
         if len(matches) != 1:
             raise ValueError('compiled extension inventory mismatch')
         artifacts += matches
-    plan.update(python_executable=sys.executable, source_head=head, source_path=str(source), host_identity={'hostname': socket.gethostname()},
+    plan.update(clearance_evidence={str(p): _sha(p) for p in evidence}, python_executable=sys.executable, source_head=head, source_path=str(source), host_identity={'hostname': socket.gethostname()},
                 host_lock='/root/.claude-host.lock', hold=str(packet / 'HOLD'),
                 legacy_locks=['/root/.claude-screen.lock', '/root/.claude-datagen.lock'],
                 artifact_sha256={str(p): _sha(p) for p in artifacts},
@@ -96,6 +107,6 @@ print(json.dumps(result,sort_keys=True),flush=True)
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
-    for name in ('source', 'packet', 'output', 'play', 'old', 'new'):
+    for name in ('source', 'packet', 'output', 'play', 'old', 'new', 'clearance'):
         p.add_argument('--' + name, required=True, type=Path)
     print(json.dumps(freeze(**vars(p.parse_args())), sort_keys=True))

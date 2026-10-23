@@ -3,6 +3,7 @@ from admission import admit_records
 from paired_result import paired_result
 from decision_gate import check_decisions
 from exact_gate import check_exact
+from bury_gate import check_optional_stages
 import validity
 
 
@@ -49,6 +50,10 @@ def outcome_checked_result(plan, expected_configs, configs, shards):
     exact_check = check_exact(plan, shards)
     if exact_check['verdict'] != 'VALID':
         return dict(status='EXACT_INVALID', exact_check=exact_check)
+    optional_check = check_optional_stages(plan, shards)
+    if optional_check['verdict'] != 'VALID':
+        return dict(status='OPTIONAL_STAGE_INVALID', optional_check=optional_check)
     return dict(status='STAGE_OUTCOME_CHECKED_ONLY', outcome_check=outcome_check, decision_check=decision_check,
-                exact_check=exact_check, pending=['sealed input binding'],
+                exact_check=exact_check, optional_check=optional_check,
+                pending=['sealed input binding', 'treatment activation and recipe-specific telemetry'],
                 estimate=paired_result(plan['windows'], records))

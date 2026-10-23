@@ -90,7 +90,7 @@ def check_decisions(plan, shards):
                                     if isinstance(rec, dict) else rec)
             if seen != expected or not expected:
                 reasons.append(f'{arm}: incomplete play coverage')
-    ceilings = dict(play_fallback=0, belief_fallback=.01, bury_fallback=None, declare_abandon=None)
+    ceilings = dict(play_fallback=0, belief_fallback=.01)
     checks = [dict(check='committed_play_coverage', verdict='SCREEN_INVALID' if reasons else 'VALID', reasons=reasons[:20]),
               validity.arm_fault_ceilings(counts, ceilings, arms=arms, tier='SCREEN'),
               validity.worlds_delivered(worlds, expected_worlds, tier='SCREEN'),

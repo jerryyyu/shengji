@@ -165,13 +165,12 @@ def _validate_window(target: Path, expected: dict):
     try:
         if json.loads(config.read_text(encoding="utf-8")) != expected:
             raise LaunchRefused("window config drift")
-        value = json.loads(summary.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise LaunchRefused("window completion metadata missing") from exc
-    if (value.get("complete") is not True or value.get("completed_clusters") != 520
-            or value.get("requested_clusters") != 520 or value.get("problems") not in (None, [], {})
-            or value.get("refused") not in (None, [], {}) or value.get("config") != expected):
-        raise LaunchRefused("window completion metadata is not complete")
+    # The pinned queue refuses rc0 without complete metadata. Its summary
+    # also contains outcomes, so the supervisor only seals those bytes.
+    if not summary.is_file() or summary.is_symlink():
+        raise LaunchRefused("window summary missing or symlinked")
     wanted = [f"cluster-{i:05}.json" for i in range(520)]
     entries = list(target.iterdir())
     allowed = {"config.json", "summary.json", ".screen.lock", *wanted}

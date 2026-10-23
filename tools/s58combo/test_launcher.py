@@ -298,3 +298,15 @@ def test_dispatch_environment_keeps_pinned_engine_despite_parent(tmp_path, monke
 def test_dispatch_refuses_unpinned_engine(tmp_path):
     with pytest.raises(LaunchRefused, match='explicit engine'):
         implementation._clean_env({'environment': {}}, tmp_path)
+
+
+def test_supervisor_seals_summary_without_parsing_outcomes(tmp_path):
+    target = tmp_path / 'window'; target.mkdir()
+    (target / 'config.json').write_text('{}')
+    (target / 'summary.json').write_text('opaque score-bearing producer bytes')
+    for index in range(520):
+        (target / f'cluster-{index:05}.json').write_text('{}')
+    seal_path = tmp_path / 'seal.json'
+    digest = implementation.seal_window(target, {}, seal_path)
+    assert digest == _sha(seal_path)
+    assert json.loads(seal_path.read_text())['files']['summary.json']['sha256'] == _sha(target / 'summary.json')

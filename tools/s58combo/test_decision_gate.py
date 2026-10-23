@@ -194,3 +194,67 @@ def test_real_value_declare_through_wrapper_and_admission():
     assert check_decisions(plan, shards)['verdict'] == 'VALID'
     shards['comparator'][0]['decision_traces'][0]['declare_decisions'][0]['changed'] = True
     assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'
+
+
+@pytest.mark.parametrize('arm', ['candidate', 'comparator'])
+def test_actual_policy_fallback_causes_survive_saved_result(monkeypatch, arm):
+    import json
+    import outcome_gate as gate
+    from test_outcome_gate import row
+    from shengji.ai.env import prepare_round
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.game import Game
+    from shengji.train.search_screen import TimedPolicy
+    from shengji.train.pv_search_policy import PVSearchBudgetExceeded
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'server' / 'tests'))
+    from test_cwv_leaf_policy_first_trick import served
+
+    def expired(*args):
+        raise PVSearchBudgetExceeded('test expiry')
+
+    def broken(*args):
+        exc = ValueError('private error text must not enter aggregate')
+        exc.stage = 'leaf'
+        raise exc
+
+    rnd = prepare_round(Game(random.Random(17)), [HeuristicBot() for _ in range(4)])
+    bots = [TimedPolicy(served(budget=30)) for _ in range(4)]
+    for seat, bot in enumerate(bots):
+        monkeypatch.setattr(bot.bot, '_search', expired if seat % 2 == 0 else broken)
+    history = []
+    for _ in range(4):
+        seat = rnd.turn
+        cards = bots[seat].decide_play(rnd, seat)
+        rnd.play(seat, cards)
+        history.append([seat, cards])
+    plan, shards = inputs()
+    for record in shards[arm][0]['records']:
+        record['committed_history'] = history
+    for trace in shards[arm][0]['decision_traces']:
+        trace['decisions'] = bots[trace['decisions'][0]['seat']].decisions
+    monkeypatch.setattr(gate, 'admit_records', lambda *args: {'synthetic': [row(80)]})
+    monkeypatch.setattr(gate, 'paired_result', lambda *args: pytest.fail('invalid screen estimated'))
+    result = json.loads(json.dumps(gate.outcome_checked_result(plan, {}, {}, shards)))
+    assert result['status'] == 'DECISION_INVALID' and 'estimate' not in result
+    diag = result['decision_check']['fallback_diagnostics'][arm]
+    assert diag == dict(causes=[
+        dict(reason='budget', error_class='PVSearchBudgetExceeded', error_stage='unspecified', count=2),
+        dict(reason='search-error', error_class='ValueError', error_stage='leaf', count=2)], overflow=0)
+    assert 'private error text' not in json.dumps(result)
+
+
+def test_fallback_diagnostics_bound_cardinality_and_preserve_counts():
+    plan, shards = inputs()
+    for arm in shards:
+        shards[arm] = [copy.deepcopy(shards[arm][0]) for _ in range(40)]
+        for index, shard in enumerate(shards[arm]):
+            for trace in shard['decision_traces']:
+                trace['decisions'][0].update(schema='pv-search-fallback-v1',
+                    reason='search-error', error_class=f'Error{index}', error_stage=['invalid'])
+    result = check_decisions(plan, shards)
+    for arm in shards:
+        diag = result['fallback_diagnostics'][arm]
+        assert len(diag['causes']) == 32 and diag['overflow'] == 32
+        assert sum(c['count'] for c in diag['causes']) + diag['overflow'] == 160
+        assert all(c['error_stage'] == 'invalid' for c in diag['causes'])
+    assert result['verdict'] == 'SCREEN_INVALID'

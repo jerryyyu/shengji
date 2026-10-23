@@ -3,9 +3,19 @@ import validity
 from declaration_gate import valid_declaration
 
 
+def _cause_label(value):
+    if value is None:
+        return 'unspecified'
+    if not isinstance(value, str) or not value or len(value) > 96:
+        return 'invalid'
+    return value if all(c.isalnum() or c in '._-' for c in value) else 'invalid'
+
+
 def check_decisions(plan, shards):
     arms = ('candidate', 'comparator')
     counts = {a: dict(decisions=0, play_fallback=0, search=0, belief_fallback=0) for a in arms}
+    causes = {a: {} for a in arms}
+    overflow = {a: 0 for a in arms}
     worlds, declares, reasons = [], [], []
     expected_worlds = {a: plan['arms'][a]['identity']['config']['worlds'] for a in arms}
     declare_worlds = {a: plan['arms'][a]['identity']['config']['value_declare_worlds'] for a in arms}
@@ -61,6 +71,12 @@ def check_decisions(plan, shards):
                     worlds.append((arm, status, rec.get('worlds')))
                     if status == 'fallback':
                         counts[arm]['play_fallback'] += 1
+                        cause = tuple(_cause_label(rec.get(field)) for field in
+                                      ('reason', 'error_class', 'error_stage'))
+                        if cause in causes[arm] or len(causes[arm]) < 32:
+                            causes[arm][cause] = causes[arm].get(cause, 0) + 1
+                        else:
+                            overflow[arm] += 1
                     elif status == 'search':
                         counts[arm]['search'] += 1
                         fallback = rec.get('belief_fallback')
@@ -95,4 +111,8 @@ def check_decisions(plan, shards):
               validity.arm_fault_ceilings(counts, ceilings, arms=arms, tier='SCREEN'),
               validity.worlds_delivered(worlds, expected_worlds, tier='SCREEN'),
               validity.completion_shape(declares, expected_worlds_by_arm=declare_worlds, tier='SCREEN')]
-    return dict(validity.combine(checks, tier='SCREEN'), counts=counts, ceilings=ceilings)
+    diagnostics = {arm: dict(causes=[dict(reason=k[0], error_class=k[1],
+                        error_stage=k[2], count=v) for k, v in sorted(causes[arm].items())],
+                        overflow=overflow[arm]) for arm in arms}
+    return dict(validity.combine(checks, tier='SCREEN'), counts=counts, ceilings=ceilings,
+                fallback_diagnostics=diagnostics)

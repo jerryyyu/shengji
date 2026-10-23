@@ -20,7 +20,7 @@ def _bound_json(path, sha):
     return json.loads(_bound_bytes(path, sha))
 
 
-def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, owner, preflight_only=False, before_consume=None):
+def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, owner, preflight_only=False, before_consume=None, streaming=False):
     """Caller supplies independently reviewed terminal and reader pins.
 
     The reviewed entrypoint must establish named authority before calling;
@@ -60,7 +60,7 @@ def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, 
         if actual - {'.screen.lock'} != names:
             raise ValueError('output inventory mismatch')
         seals[result['output']] = seal
-    resources = check_resources(seals)
+    resources = check_resources(seals, streaming=streaming, root=root)
     if preflight_only:
         return resources
     if before_consume is not None:
@@ -69,31 +69,47 @@ def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, 
     with (root / 'READOUT_CONSUMED.json').open('x') as stream:
         json.dump(dict(owner=owner, reader=str(reader_path), reader_sha256=reader_sha,
                        terminal_sha256=terminal_sha), stream)
-    configs, shards = {}, {}
-    for output, seal in seals.items():
-        target = Path(output)
-        values = {}
-        for name, pin in seal['files'].items():
-            path = target / name
-            if (root / 'READOUT_HOLD').exists():
-                raise ValueError('readout HOLD appeared')
-            if path.stat().st_size != pin['size']:
-                raise ValueError('sealed file size changed')
-            data = _bound_bytes(path, pin['sha256'])
-            if name != 'summary.json':
-                values[name] = json.loads(data)
-        configs[output] = values['config.json']
-        if configs[output] != expected[output]:
-            raise ValueError('sealed config mismatch')
-        shards[output] = [values[f'cluster-{i:05}.json'] for i in range(520)]
-    return configs, shards
+    from shard_store import ShardStore
+    configs = {}
+    shards = ShardStore(list(seals), root) if streaming else {}
+    try:
+        for output, seal in seals.items():
+            target = Path(output)
+            values = {}
+            for name, pin in seal['files'].items():
+                path = target / name
+                if (root / 'READOUT_HOLD').exists():
+                    raise ValueError('readout HOLD appeared')
+                if path.stat().st_size != pin['size']:
+                    raise ValueError('sealed file size changed')
+                data = _bound_bytes(path, pin['sha256'])
+                if name == 'summary.json':
+                    continue
+                if streaming and name.startswith('cluster-'):
+                    shards.add(output, int(name[8:13]), data)
+                else:
+                    values[name] = json.loads(data)
+            configs[output] = values['config.json']
+            if configs[output] != expected[output]:
+                raise ValueError('sealed config mismatch')
+            if not streaming:
+                shards[output] = [values[f'cluster-{i:05}.json'] for i in range(520)]
+        return configs, shards
+    except BaseException:
+        if streaming:
+            shards.close()
+        raise
 
 
 def sealed_outcome_checked_result(plan, expected, **pins):
     """Feed only hash-bound inputs to the existing scientific validity gates."""
     from outcome_gate import outcome_checked_result
     configs, shards = load_inputs(plan, expected, **pins)
-    result = outcome_checked_result(plan, expected, configs, shards)
+    try:
+        result = outcome_checked_result(plan, expected, configs, shards)
+    finally:
+        if pins.get("streaming"):
+            shards.close()
     if (result.get('status') == 'STAGE_OUTCOME_CHECKED_ONLY'
             and result.get('pending') == ['sealed input binding',
                 'final recipe telemetry and full reader battery review']):

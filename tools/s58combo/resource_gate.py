@@ -1,5 +1,6 @@
 """Conservative admission before a one-shot in-memory JSON read."""
 from pathlib import Path
+import shutil
 
 # JSON object expansion and analysis scratch space need separate headroom.
 EXPANSION_FACTOR = 16
@@ -16,8 +17,9 @@ def available_memory():
     return int(values['MemAvailable'].split()[0]) * 1024
 
 
-def check_resources(seals, *, available=None):
+def check_resources(seals, *, available=None, streaming=False, root=None):
     total = 0
+    largest = 0
     for seal in seals.values():
         for name, pin in seal['files'].items():
             size = pin.get('size')
@@ -26,10 +28,14 @@ def check_resources(seals, *, available=None):
             if size > MAX_FILE_BYTES:
                 raise ValueError('sealed file exceeds reader size limit')
             total += size
+            largest = max(largest, size)
     if total > MAX_INPUT_BYTES:
         raise ValueError('sealed input exceeds reader aggregate limit')
     available = available_memory() if available is None else available
-    required = total * EXPANSION_FACTOR + RESERVE_BYTES
+    required = (largest if streaming else total) * EXPANSION_FACTOR + RESERVE_BYTES
+    if streaming:
+        if root is None or shutil.disk_usage(root).free < total * 2 + 128 * 1024**2:
+            raise ValueError("insufficient reader spool disk space")
     if type(available) is not int or available < required:
         raise ValueError(f'insufficient reader memory: need {required}, available {available}')
     return dict(input_bytes=total, required_memory_bytes=required, available_memory_bytes=available)

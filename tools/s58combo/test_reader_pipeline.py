@@ -195,3 +195,20 @@ def test_full_pipeline_refuses_invalid_arm_before_estimator(tmp_path, side, kind
     result = outcome_checked_result(plan, expected, configs, shards)
     assert result['status'] in ('DECISION_INVALID', 'OUTCOME_INVALID')
     assert 'estimate' not in result
+
+
+@pytest.mark.parametrize('invalid', [False, True])
+def test_disk_spool_matches_in_memory_scientific_path(tmp_path, invalid):
+    import json
+    from shard_store import ShardStore
+    plan, expected, configs, shards = _valid_packet(tmp_path)
+    if invalid:
+        output = plan['windows'][-1]['output']
+        shards[output][0]['decision_traces'][0]['decisions'][0]['worlds'] = 63
+    ordinary = outcome_checked_result(plan, expected, configs, shards)
+    with ShardStore(list(shards), tmp_path) as spool:
+        for output, values in shards.items():
+            for shard in values:
+                spool.add(output, shard['cluster'], json.dumps(shard).encode())
+        assert outcome_checked_result(plan, expected, configs, spool) == ordinary
+    assert not spool.directory.exists()

@@ -106,3 +106,25 @@ def test_sealed_valid_result_final_transition(completed, monkeypatch):
         'final recipe telemetry and full reader battery review'], estimate={'synthetic': True}))
     result = sealed_outcome_checked_result(plan, expected, **pins)
     assert result['status'] == 'SCREEN_VALID' and 'pending' not in result
+
+
+def test_streaming_reads_each_producer_shard_only_once(completed, monkeypatch):
+    import sealed_input
+    plan, expected, pins = completed
+    (pins['root'] / 'READOUT_HOLD').unlink()
+    reads = {}
+    original = sealed_input._bound_bytes
+    def counted(path, sha):
+        if path.name.startswith('cluster-'):
+            reads[str(path)] = reads.get(str(path), 0) + 1
+        return original(path, sha)
+    monkeypatch.setattr(sealed_input, '_bound_bytes', counted)
+    configs, spool = load_inputs(plan, expected, **pins, streaming=True)
+    try:
+        assert configs == expected
+        for _ in range(2):
+            assert sum(sum(1 for shard in spool[key]) for key in spool) == 10400
+        assert len(reads) == 10400 and set(reads.values()) == {1}
+    finally:
+        spool.close()
+    assert not spool.directory.exists()

@@ -33,7 +33,7 @@ def read_once(*, source, source_head, plan_path, expected_path, packet_sha,
     if (root / 'READOUT_HOLD').exists():
         raise ValueError('readout HOLD')
     load_inputs(plan, expected, root=root, terminal_sha=terminal_sha,
-                reader_path=reader, reader_sha=reader_sha, owner='codex', preflight_only=True)
+                reader_path=reader, reader_sha=reader_sha, owner='codex', preflight_only=True, streaming=True)
     reserved = False
     def reserve_result():
         nonlocal reserved
@@ -45,7 +45,7 @@ def read_once(*, source, source_head, plan_path, expected_path, packet_sha,
     try:
         result = sealed_outcome_checked_result(plan, expected, root=root,
             terminal_sha=terminal_sha, reader_path=reader, reader_sha=reader_sha,
-            owner='codex', before_consume=reserve_result)
+            owner='codex', before_consume=reserve_result, streaming=True)
     except Exception as exc:
         if not reserved:
             raise

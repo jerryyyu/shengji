@@ -36,9 +36,12 @@ def admit_records(plan, expected_configs, configs, shards):
             if (type(cluster) is not int or not 0 <= cluster < CLUSTERS
                     or cluster in by_cluster):
                 raise ValueError('duplicate or invalid shard cluster')
-            by_cluster[cluster] = validate_shard(shard, config, cluster)
+            validated = validate_shard(shard, config, cluster)
+            by_cluster[cluster] = [{key: value for key, value in row.items()
+                                    if key != 'committed_history'}
+                                   for row in validated['records']]
         if len(by_cluster) != CLUSTERS:
             raise ValueError('incomplete shard window')
         records[output] = [row for cluster in range(CLUSTERS)
-                           for row in by_cluster[cluster]['records']]
+                           for row in by_cluster[cluster]]
     return records

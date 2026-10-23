@@ -31,7 +31,7 @@ def test_sealed_producer_to_saved_result_once(invocation, monkeypatch):
     (args['root'] / 'READOUT_HOLD').unlink()
     def consume(plan, expected, configs, shards):
         assert configs == expected
-        assert sum(map(len, shards.values())) == 10400
+        assert sum(sum(1 for _ in values) for values in shards.values()) == 10400
         return dict(status='STAGE_OUTCOME_CHECKED_ONLY', pending=['sealed input binding', 'review'])
     monkeypatch.setattr(outcome_gate, 'outcome_checked_result', consume)
     result = readout.read_once(**args)

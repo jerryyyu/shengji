@@ -34,8 +34,9 @@ def test_env_delta_is_only_the_requested_combo():
     original = base()
     candidate, comparator = arm_envs(original, "play", "old", "new")
     assert original == base()
-    assert all(key.startswith('SHENGJI_PV_') for key in candidate)
-    assert all(key.startswith('SHENGJI_PV_') for key in comparator)
+    assert all(key.startswith('SHENGJI_PV_') or key == 'SHENGJI_REQUIRE_VOIDS' for key in candidate)
+    assert all(key.startswith('SHENGJI_PV_') or key == 'SHENGJI_REQUIRE_VOIDS' for key in comparator)
+    assert candidate['SHENGJI_REQUIRE_VOIDS'] == comparator['SHENGJI_REQUIRE_VOIDS'] == '1'
     assert {k for k in candidate if candidate[k] != comparator.get(k)} == {
         *FLAGS, "SHENGJI_PV_BELIEF_CKPT", "SHENGJI_PV_BELIEF_SHA256"}
 
@@ -132,6 +133,43 @@ def test_served_plan_reaches_actual_children_without_cutoff(tmp_path):
         assert arm['identity']['config']['serving_budget_seconds'] == 3
         assert arm['identity']['bury_recipe_identity']['serving_budget_seconds'] == 2
         assert arm['identity']['config']['leaf_greedy_deadline_ms'] == 0
+
+
+@pytest.mark.parametrize('profile', ['served', 'half-budget-lgfd1000'])
+def test_real_queue_configs_reach_reader_admission(tmp_path, profile):
+    from recipe import half_budget_envs
+    from window_plan import build_plan
+    from config_probe import probe_configs
+    from admission import admit_records
+    from shengji.train.cwv_shortlist_screen import _recipe
+
+    envs = package_envs()
+    if profile != 'served':
+        envs = half_budget_envs(envs)
+    root = tmp_path / 'must-not-be-created'
+    plan = build_plan(envs, [i * 1000 for i in range(10)], root, profile=profile)
+    configs = probe_configs(plan)
+    assert len(configs) == 20 and not root.exists()
+    shards = {}
+    for output, config in configs.items():
+        assert 'baseline' not in config
+        shards[output] = []
+        for c in range(520):
+            rank = config['trump_ranks'][c % len(config['trump_ranks'])]
+            rows = [dict(cluster=c, mirror=m, seed=config['seed0'] + c,
+                         trump_rank=rank, trump_suit='S', banker=c % 4,
+                         arm='policy', arm_utility=c % 2) for m in (0, 1)]
+            shards[output].append(dict(schema='cwv-shortlist-shard-v1', cluster=c,
+                                       seed=config['seed0'] + c, rank=rank,
+                                       recipe=_recipe(config), records=rows))
+    records = admit_records(plan, copy.deepcopy(configs), configs, shards)
+    assert sum(map(len, records.values())) == 20800
+    assert not root.exists()
+    if profile == 'served':
+        del plan['arms']['candidate']['environment']['SHENGJI_REQUIRE_VOIDS']
+        with pytest.raises(ValueError, match='SHENGJI_REQUIRE_VOIDS=1 is required'):
+            probe_configs(plan)
+        assert not root.exists()
 
 
 @pytest.mark.parametrize('arm,key', [

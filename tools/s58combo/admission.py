@@ -23,10 +23,11 @@ def admit_records(plan, expected_configs, configs, shards):
             raise ValueError('frozen config drift')
         arm = plan['arms'][window['side']]
         expected = dict(arm='policy', arm_policy=arm['name'],
-                        arm_policy_identity=arm['identity'], baseline='production',
+                        arm_policy_identity=arm['identity'],
                         clusters=CLUSTERS, seed0=window['seed'],
                         trump_ranks=window['ranks'].split(','), decision_deadline=DEADLINE_RECIPE)
         if (any(config.get(k) != v for k, v in expected.items())
+                or config.get('baseline', 'production') != 'production'
                 or config.get('round_kind', 'first') != window['round_kind']):
             raise ValueError('plan/config drift')
         by_cluster = {}

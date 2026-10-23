@@ -13,6 +13,44 @@ from test_pv_search_serving import package  # noqa: F401
 SCALARS = (str, int, float, bool, type(None))
 
 
+@pytest.mark.parametrize('admitted,receipt', [(False, False), (True, True), (True, False), (False, True)])
+def test_declare_coverage_is_independent_of_receipt(admitted, receipt):
+    class Bot:
+        value_declare = True
+
+        def declare_gate(self, rnd, seat, final=False):
+            return None, admitted
+
+        def decide_declare(self, rnd, seat, final=False):
+            self.last_declare_record = {'schema': 'value'} if receipt else None
+            return None
+
+    policy = S.TimedPolicy(Bot())
+    if admitted != receipt:
+        with pytest.raises(ValueError, match='serving gate'):
+            policy.decide_declare(None, 0)
+    else:
+        policy.decide_declare(None, 0)
+    fields = S.declare_trace_fields(policy)
+    assert fields['declare_coverage'] == dict(calls=1, expected=int(admitted))
+    assert len(fields.get('declare_decisions', [])) == int(receipt)
+
+
+def test_declare_coverage_preserves_cancellation():
+    class Bot:
+        value_declare = True
+        last_declare_record = None
+
+        def declare_gate(self, rnd, seat, final=False):
+            return None, True
+
+        def decide_declare(self, rnd, seat, final=False):
+            raise KeyboardInterrupt('cancel')
+
+    with pytest.raises(KeyboardInterrupt, match='cancel'):
+        S.TimedPolicy(Bot()).decide_declare(None, 0)
+
+
 def _old_play_trace(seat, trick, rec):
     """The pre-B6 reduction, verbatim: what every existing reader was written against."""
     return {"seat": seat, "trick": trick, "played": rec.get("played"),

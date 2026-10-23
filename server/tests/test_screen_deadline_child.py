@@ -51,6 +51,31 @@ def probe_factory(mode):
     return S.CwvTimedPolicy(ResetProbe(mode))
 
 
+def declare_coverage_factory():
+    from test_cwv_leaf_policy_first_trick import served
+    return S.CwvTimedPolicy(served(value_declare=True, value_declare_worlds=2))
+
+
+def test_declare_coverage_survives_child_and_shard_serialization():
+    from test_pv_declare_first_round import fresh, drive
+    from shengji.train.search_screen import declare_trace_fields
+    session = DeadlineSession(declare_coverage_factory)
+    try:
+        policy = session.register()
+        assert declare_trace_fields(policy)['declare_coverage'] == dict(calls=0, expected=0)
+        drive(fresh(5, True), policy)
+        fields = declare_trace_fields(policy)
+        assert fields['declare_coverage']['calls'] == 104
+        assert fields['declare_coverage']['expected'] == len(fields['declare_decisions']) > 0
+        local = declare_coverage_factory()
+        drive(fresh(5, True), local)
+        assert fields['declare_coverage'] == declare_trace_fields(local)['declare_coverage']
+        assert [{k: v for k, v in r.items() if k != 'seconds'} for r in fields['declare_decisions']] == [
+            {k: v for k, v in r.items() if k != 'seconds'} for r in local.declare_decisions]
+    finally:
+        session.close()
+
+
 class Witness(type(make_bot("mc-s0-report-lcb"))):
     """Cheap plays that record which process built the bot and its first draw."""
 

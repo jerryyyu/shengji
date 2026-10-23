@@ -27,7 +27,7 @@ from .cwv_wide_tail import CWVWideTailBot, CWVWideTailConfig
 from .cwv_prior_admission import CWVPriorAdmissionBot, CWVPriorAdmissionConfig
 from .leaf_screen import _game_factory_for, parse_trump_ranks
 from .search_screen import (
-    TimedPolicy, _publish, _run_pending, bind_output_config,
+    TimedPolicy, declare_trace_fields, _publish, _run_pending, bind_output_config,
     execution_source_identity, exact_follow_summary, exact_lead_summary,
 )
 from .screen_deadline import DeadlineSession, RECIPE as DEADLINE_RECIPE, latency_summary, validate_deadline
@@ -839,10 +839,7 @@ def run_cluster(config, cluster):
             "decision_traces": [{"mirror": i // 4, "side": side,
                                  "decisions": policy.decisions,
                                  "bury_decisions": getattr(policy, "bury_decisions", []),
-                                 # only a policy that published declare records
-                                 # (pv-search ``value_declare``) carries the key
-                                 **({"declare_decisions": policy.__dict__["declare_decisions"]}
-                                    if policy.__dict__.get("declare_decisions") else {})}
+                                 **declare_trace_fields(policy)}
                                 for i, (side, policy) in enumerate(traced)],
             # only a shadowed window carries the key, so every other shard is unchanged
             **({"shadow": shadows} if shadow is not None else {}),

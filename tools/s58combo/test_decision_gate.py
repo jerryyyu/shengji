@@ -30,7 +30,7 @@ def inputs():
                 shard['decision_traces'].append(dict(side='arm', mirror=m,
                     decisions=[dict(seat=seat, trick=0, schema='pv-search-decision-v1',
                                     worlds=64, belief_fallback=0)],
-                    declare_decisions=[declaration()]))
+                    declare_decisions=[declaration()], declare_coverage=dict(calls=1, expected=1)))
         shards[arm] = [shard]
     return plan, shards
 
@@ -39,6 +39,31 @@ def test_valid_decisions_on_both_arms():
     result = check_decisions(*inputs())
     assert result['verdict'] == 'VALID'
     assert result['counts']['candidate'] == result['counts']['comparator']
+
+
+@pytest.mark.parametrize('arm', ['candidate', 'comparator'])
+@pytest.mark.parametrize('defect', ['missing_witness', 'missing_record', 'duplicate_record', 'bad_count'])
+def test_declare_coverage_refuses_loss_on_either_arm(arm, defect):
+    plan, shards = inputs()
+    trace = shards[arm][0]['decision_traces'][0]
+    if defect == 'missing_witness':
+        del trace['declare_coverage']
+    elif defect == 'missing_record':
+        del trace['declare_decisions']
+    elif defect == 'duplicate_record':
+        trace['declare_decisions'].append(declaration())
+    else:
+        trace['declare_coverage']['calls'] = True
+    assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'
+
+
+def test_no_admitted_calls_is_explicitly_valid():
+    plan, shards = inputs()
+    for arm in shards.values():
+        for trace in arm[0]['decision_traces']:
+            del trace['declare_decisions']
+            trace['declare_coverage'] = dict(calls=26, expected=0)
+    assert check_decisions(plan, shards)['verdict'] == 'VALID'
 
 
 def test_actual_trace_wrapper_matches_committed_play_keys():
@@ -110,7 +135,7 @@ def test_symmetric_adversarial_refusals(arm, defect):
     assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'
 
 
-@pytest.mark.parametrize('defect', ['worlds', 'declare_schema'])
+@pytest.mark.parametrize('defect', ['worlds', 'declare_schema', 'declare_coverage'])
 def test_valid_outcomes_cannot_bypass_invalid_decisions(monkeypatch, defect):
     import outcome_gate as gate
     from test_outcome_gate import row
@@ -118,8 +143,10 @@ def test_valid_outcomes_cannot_bypass_invalid_decisions(monkeypatch, defect):
     trace = shards['comparator'][0]['decision_traces'][0]
     if defect == 'worlds':
         trace['decisions'][0]['worlds'] = 1
-    else:
+    elif defect == 'declare_schema':
         trace['declare_decisions'][0]['schema'] = 'unknown'
+    else:
+        del trace['declare_coverage']
     monkeypatch.setattr(gate, 'admit_records', lambda *args: {'synthetic': [row(80)]})
     def forbidden(*args):
         pytest.fail('estimator reached despite invalid comparator')
@@ -154,7 +181,7 @@ def test_invalid_declaration_trace_refuses(defect):
 def test_real_value_declare_through_wrapper_and_admission():
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'server' / 'tests'))
     from test_cwv_leaf_policy_first_trick import served, CountingPredict, NTEvaluator, drive_declare, fresh_deal
-    from shengji.train.search_screen import TimedPolicy
+    from shengji.train.search_screen import TimedPolicy, declare_trace_fields
     policy = TimedPolicy(served(CountingPredict(), NTEvaluator(), value_declare=True,
                                 value_declare_worlds=2))
     drive_declare(fresh_deal(5, True), policy)
@@ -163,7 +190,7 @@ def test_real_value_declare_through_wrapper_and_admission():
     for arm in plan['arms']:
         plan['arms'][arm]['identity']['config']['value_declare_worlds'] = 2
         for trace in shards[arm][0]['decision_traces']:
-            trace['declare_decisions'] = copy.deepcopy(policy.declare_decisions)
+            trace.update(copy.deepcopy(declare_trace_fields(policy)))
     assert check_decisions(plan, shards)['verdict'] == 'VALID'
     shards['comparator'][0]['decision_traces'][0]['declare_decisions'][0]['changed'] = True
     assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'

@@ -84,12 +84,27 @@ def trace_fields(rec, skip=()):
     return out
 
 
+def declare_trace_fields(policy):
+    """Persist receipts and independent gate counts through local or child policies."""
+    fields = {}
+    records = vars(policy).get("declare_decisions", [])
+    if records:
+        fields["declare_decisions"] = records
+    calls = getattr(policy, "declare_calls", None)
+    if calls is not None:
+        fields["declare_coverage"] = {"calls": calls,
+                                      "expected": policy.declare_expected}
+    return fields
+
+
 class TimedPolicy:
     def __init__(self, bot):
         self.bot = bot
         self.decision_cpu_seconds = self.decision_wall_seconds = 0.0
         self.decisions = []
         self.bury_decisions = []        # bury receipts, apart from the play traces
+        if getattr(bot, "value_declare", False):
+            self.declare_calls = self.declare_expected = 0
 
     def __getattr__(self, name):
         return getattr(self.bot, name)
@@ -100,14 +115,22 @@ class TimedPolicy:
         only on the calls its gate admits) leaves its scalar receipt in
         ``declare_decisions``, created on the first one, so a screen without
         the rule carries no new key."""
+        admitted = None
+        if "declare_calls" in vars(self):
+            _, admitted = self.bot.declare_gate(rnd, seat, final=final)
+            self.declare_calls += 1
+            self.declare_expected += int(admitted)
         try:
-            return self.bot.decide_declare(rnd, seat, final=final)
+            result = self.bot.decide_declare(rnd, seat, final=final)
         finally:
             rec = getattr(self.bot, "last_declare_record", None)
             if rec:
                 self.__dict__.setdefault("declare_decisions", []).append({
                     "seat": seat, "phase": "declare", **trace_fields(rec),
                 })
+        if admitted is not None and bool(rec) != admitted:
+            raise ValueError("value-declare receipt disagrees with serving gate")
+        return result
 
     def decide_bury(self, rnd, seat):
         """Bury through the wrapped bot; a bot that publishes a bury record (the served

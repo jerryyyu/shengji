@@ -50,5 +50,5 @@ def outcome_checked_result(plan, expected_configs, configs, shards):
     if exact_check['verdict'] != 'VALID':
         return dict(status='EXACT_INVALID', exact_check=exact_check)
     return dict(status='STAGE_OUTCOME_CHECKED_ONLY', outcome_check=outcome_check, decision_check=decision_check,
-                exact_check=exact_check, pending=['sealed input binding', 'declaration coverage'],
+                exact_check=exact_check, pending=['sealed input binding'],
                 estimate=paired_result(plan['windows'], records))

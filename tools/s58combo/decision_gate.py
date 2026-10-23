@@ -69,6 +69,14 @@ def check_decisions(plan, shards):
                         else:
                             counts[arm]['belief_fallback'] += fallback
                 declarations = trace.get('declare_decisions', [])
+                coverage = trace.get('declare_coverage')
+                if (not isinstance(coverage, dict)
+                        or type(coverage.get('calls')) is not int
+                        or type(coverage.get('expected')) is not int
+                        or not 0 <= coverage['expected'] <= coverage['calls']
+                        or not isinstance(declarations, list)
+                        or coverage['expected'] != len(declarations)):
+                    reasons.append(f'{arm}: missing or inconsistent declaration coverage')
                 if (not isinstance(declarations, list)
                         or 'declare_decisions' in trace and not declarations):
                     reasons.append(f'{arm}: malformed declarations')

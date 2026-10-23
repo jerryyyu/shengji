@@ -14,7 +14,7 @@ def check_decisions(plan, shards):
             expected, seen = set(), set()
             for row in shard['records']:
                 history = row.get('committed_history')
-                if not isinstance(history, list) or not history:
+                if not isinstance(history, list) or not history or len(history) % 4:
                     reasons.append(f'{arm}: missing committed history')
                     continue
                 for index, play in enumerate(history):
@@ -23,7 +23,12 @@ def check_decisions(plan, shards):
                         reasons.append(f'{arm}: malformed committed play')
                         continue
                     if play[0] % 2 == row['mirror']:
-                        expected.add((row['mirror'], index, play[0]))
+                        expected.add((row['mirror'], index // 4, play[0]))
+                for start in range(0, len(history), 4):
+                    trick = history[start:start + 4]
+                    if not all(isinstance(p, list) and len(p) == 2 and type(p[0]) is int
+                               for p in trick) or {p[0] for p in trick} != {0, 1, 2, 3}:
+                        reasons.append(f'{arm}: malformed committed trick')
             traces = shard.get('decision_traces')
             if not isinstance(traces, list):
                 reasons.append(f'{arm}: missing decision traces')

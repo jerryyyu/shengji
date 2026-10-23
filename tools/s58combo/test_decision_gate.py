@@ -2,7 +2,7 @@
 import copy
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+import random
 
 import pytest
 
@@ -21,7 +21,7 @@ def inputs():
         for m in (0, 1):
             for seat in range(m, 4, 2):
                 shard['decision_traces'].append(dict(side='arm', mirror=m,
-                    decisions=[dict(seat=seat, trick=seat, schema='pv-search-decision-v1',
+                    decisions=[dict(seat=seat, trick=0, schema='pv-search-decision-v1',
                                     worlds=64, belief_fallback=0)],
                     declare_decisions=[dict(evaluated=True, worlds=64, worlds_completed=64)]))
         shards[arm] = [shard]
@@ -35,21 +35,49 @@ def test_valid_decisions_on_both_arms():
 
 
 def test_actual_trace_wrapper_matches_committed_play_keys():
+    from shengji.ai.env import prepare_round
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.game import Game
     from shengji.train.search_screen import TimedPolicy
 
-    class Bot:
+    class Bot(HeuristicBot):
         def decide_play(self, rnd, seat):
+            played = super().decide_play(rnd, seat)
             self.last_decision_record = dict(schema='pv-search-decision-v1', worlds=64,
-                                             belief_fallback=0, played=['C7'])
-            return ['C7']
+                                             belief_fallback=0, played=played)
+            return played
+    helper = HeuristicBot()
+    rnd = prepare_round(Game(random.Random(17)), [helper for _ in range(4)])
+    bots = [TimedPolicy(Bot()) for _ in range(4)]
+    history = []
+    while len(rnd.history) < 3:
+        seat = rnd.turn
+        played = bots[seat].decide_play(rnd, seat)
+        rnd.play(seat, played)
+        history.append([seat, list(played)])
+    assert len(history) == 12
+    assert all([r['trick'] for r in bot.decisions] == [0, 1, 2] for bot in bots)
     plan, shards = inputs()
     for per_arm in shards.values():
+        for row in per_arm[0]['records']:
+            row['committed_history'] = copy.deepcopy(history)
         for trace in per_arm[0]['decision_traces']:
             seat = trace['decisions'][0]['seat']
-            bot = TimedPolicy(Bot())
-            bot.decide_play(SimpleNamespace(history=[None] * seat), seat)
-            trace['decisions'] = bot.decisions
+            trace['decisions'] = copy.deepcopy(bots[seat].decisions)
     assert check_decisions(plan, shards)['verdict'] == 'VALID'
+
+
+@pytest.mark.parametrize('defect', ['partial_trick', 'duplicate_seat', 'play_index'])
+def test_rejects_malformed_trick_coverage(defect):
+    plan, shards = inputs()
+    shard = shards['comparator'][0]
+    if defect == 'partial_trick':
+        shard['records'][0]['committed_history'].pop()
+    elif defect == 'duplicate_seat':
+        shard['records'][0]['committed_history'][1][0] = 0
+    else:
+        shard['decision_traces'][1]['decisions'][0]['trick'] = 2
+    assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'
 
 
 @pytest.mark.parametrize('arm', ['candidate', 'comparator'])

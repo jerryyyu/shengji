@@ -20,7 +20,7 @@ def _bound_json(path, sha):
     return json.loads(_bound_bytes(path, sha))
 
 
-def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, owner, preflight_only=False):
+def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, owner, preflight_only=False, before_consume=None):
     """Caller supplies independently reviewed terminal and reader pins.
 
     The reviewed entrypoint must establish named authority before calling;
@@ -63,6 +63,8 @@ def load_inputs(plan, expected, *, root, terminal_sha, reader_path, reader_sha, 
     resources = check_resources(seals)
     if preflight_only:
         return resources
+    if before_consume is not None:
+        before_consume()
     # Exclusive claim precedes the first scientific shard read.
     with (root / 'READOUT_CONSUMED.json').open('x') as stream:
         json.dump(dict(owner=owner, reader=str(reader_path), reader_sha256=reader_sha,

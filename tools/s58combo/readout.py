@@ -34,15 +34,21 @@ def read_once(*, source, source_head, plan_path, expected_path, packet_sha,
         raise ValueError('readout HOLD')
     load_inputs(plan, expected, root=root, terminal_sha=terminal_sha,
                 reader_path=reader, reader_sha=reader_sha, owner='codex', preflight_only=True)
-    # Reserve publication before consuming sealed data; never overwrite evidence.
-    with result_path.open('x') as stream:
-        json.dump(dict(status='READING', source_head=head), stream)
-        stream.flush()
-        os.fsync(stream.fileno())
+    reserved = False
+    def reserve_result():
+        nonlocal reserved
+        with result_path.open('x') as stream:
+            json.dump(dict(status='READING', source_head=head), stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        reserved = True
     try:
         result = sealed_outcome_checked_result(plan, expected, root=root,
-            terminal_sha=terminal_sha, reader_path=reader, reader_sha=reader_sha, owner='codex')
+            terminal_sha=terminal_sha, reader_path=reader, reader_sha=reader_sha,
+            owner='codex', before_consume=reserve_result)
     except Exception as exc:
+        if not reserved:
+            raise
         result = dict(status='READOUT_FAILED', error_type=type(exc).__name__, error=str(exc))
     result.update(reader_source_head=head, reader_sha256=reader_sha, packet_sha256=packet_sha)
     temporary = result_path.with_name(result_path.name + '.pending')

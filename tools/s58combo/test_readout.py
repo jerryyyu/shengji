@@ -59,6 +59,7 @@ def test_failure_is_saved_without_retry(invocation, monkeypatch):
     args = invocation
     (args['root'] / 'READOUT_HOLD').unlink()
     def fail(*args, **kwargs):
+        kwargs['before_consume']()
         raise ValueError('synthetic consumer failure')
     monkeypatch.setattr(readout, 'sealed_outcome_checked_result', fail)
     result = readout.read_once(**args)
@@ -109,3 +110,27 @@ def test_cli_only_valid_screen_exits_zero(monkeypatch):
         *[part for flag in flags for part in ('--' + flag, 'unused')]])
     monkeypatch.setattr(readout, 'read_once', lambda **kwargs: dict(status='SCREEN_VALID'))
     assert readout.main() == 0
+
+
+def test_memory_drops_between_preflights_preserves_read(invocation, monkeypatch):
+    import resource_gate
+    args = invocation
+    (args['root'] / 'READOUT_HOLD').unlink()
+    available = iter([128 * 1024**3, 0])
+    monkeypatch.setattr(resource_gate, 'available_memory', lambda: next(available))
+    with pytest.raises(ValueError, match='memory'):
+        readout.read_once(**args)
+    assert not args['result_path'].exists()
+    assert not (args['root'] / 'READOUT_CONSUMED.json').exists()
+
+
+def test_real_read_once_saves_valid_screen(invocation, monkeypatch):
+    import outcome_gate
+    args = invocation
+    (args['root'] / 'READOUT_HOLD').unlink()
+    monkeypatch.setattr(outcome_gate, 'outcome_checked_result', lambda *args: dict(
+        status='STAGE_OUTCOME_CHECKED_ONLY', pending=['sealed input binding',
+        'final recipe telemetry and full reader battery review']))
+    result = readout.read_once(**args)
+    assert result['status'] == 'SCREEN_VALID'
+    assert json.loads(args['result_path'].read_text()) == result

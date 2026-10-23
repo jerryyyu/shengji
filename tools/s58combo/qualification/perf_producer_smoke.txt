@@ -1,0 +1,27 @@
+checkout source: /root/codex-s58combo-0909728a/server
+engine mode: compiled
+.....                                                                    [100%]
+5 passed, 24 deselected in 4.76s
+	Command being timed: "/root/gen-hybrid/server/.venv/bin/python server/scripts/test_checkout.py --engine compiled -- -q ../tools/s58combo/test_recipe.py -k real_combo_reaches_server_commit_and_trace or served_plan_reaches_actual_children"
+	User time (seconds): 4.70
+	System time (seconds): 0.51
+	Percent of CPU this job got: 101%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:05.14
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 160432
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 135565
+	Voluntary context switches: 174
+	Involuntary context switches: 44
+	Swaps: 0
+	File system inputs: 944
+	File system outputs: 6632
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

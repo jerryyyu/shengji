@@ -1,6 +1,7 @@
 """Engine-outcome checks before the in-memory paired estimator; no raw IO."""
 from admission import admit_records
 from paired_result import paired_result
+from decision_gate import check_decisions
 import validity
 
 
@@ -34,13 +35,16 @@ def check_outcomes(records):
 def outcome_checked_result(plan, expected_configs, configs, shards):
     """Reject impossible outcomes before estimation, after recipe admission.
 
-    The caller still owes sealed-input binding and decision-level validity.
-    Passing round-outcome checks alone is not a valid-screen verdict.
+    The caller still owes sealed-input binding and the remaining stage gates.
+    Passing these checks alone is not a valid-screen verdict.
     """
     records = admit_records(plan, expected_configs, configs, shards)
     outcome_check = check_outcomes(records)
     if outcome_check['verdict'] != 'VALID':
         return dict(status='OUTCOME_INVALID', outcome_check=outcome_check)
-    return dict(status='OUTCOME_CHECKED_ONLY', outcome_check=outcome_check,
-                pending=['sealed input binding', 'decision-level validity'],
+    decision_check = check_decisions(plan, shards)
+    if decision_check['verdict'] != 'VALID':
+        return dict(status='DECISION_INVALID', outcome_check=outcome_check, decision_check=decision_check)
+    return dict(status='DECISION_OUTCOME_CHECKED_ONLY', outcome_check=outcome_check, decision_check=decision_check,
+                pending=['sealed input binding', 'declaration coverage', 'exact-stage eligibility/abandon gates'],
                 estimate=paired_result(plan['windows'], records))

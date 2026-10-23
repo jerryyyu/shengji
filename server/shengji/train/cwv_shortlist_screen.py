@@ -860,7 +860,11 @@ def run_cluster(config, cluster):
 
 
 def reopen_shard(path, config, cluster):
-    shard = json.loads(path.read_text())
+    return validate_shard(json.loads(path.read_text()), config, cluster)
+
+
+def validate_shard(shard, config, cluster):
+    """Apply the producer's resume contract to an already-loaded shard."""
     rows = shard.get("records", [])
     seed = config["seed0"] + cluster
     rank = rank_for(config, cluster)

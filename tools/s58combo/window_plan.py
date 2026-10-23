@@ -35,12 +35,14 @@ def queue_windows(arms, seeds, output, *, workers=14):
     return windows
 
 
-def build_plan(envs, seeds, output, *, profile='half-budget-lgfd1000', workers=14):
+def build_plan(envs, seeds, output, *, profile, workers=14):
     """Bind actual packages/worker identities before producing queue arguments."""
     # Reject malformed schedules before package loading or child construction.
     queue_windows([{'name': 'candidate'}, {'name': 'comparator'}], seeds, output, workers=workers)
     arms = admit_pair(envs, profile=profile)
     return dict(schema='s58combo-unarmed-window-plan-v1', profile=profile,
+                comparator_is_served_recipe=(profile == 'served'),
+                host_equivalence_established=False,
                 module='shengji.train.cwv_screen_queue',
                 arms={side: dict(**arm, environment=dict(env))
                       for side, arm, env in zip(('candidate', 'comparator'), arms, envs, strict=True)},

@@ -97,14 +97,16 @@ def build_pair(envs, seed=17, *, profile='served'):
         if (bot.worlds, bot.candidates, bot.serving_budget_seconds,
                 bot.bury_serving_budget_seconds) != (64, 8, 1.5 if half else 3.0, 1.0 if half else 2.0):
             raise ValueError('screen budget/profile drift')
+    expected_switches = {'encode_prefix_cache', 'leaf_greedy_stream'}
+    for index, (_, bot) in enumerate(built):
+        actual = {attr for attr in pv.LATENCY_SWITCH_ENV if getattr(bot, attr)}
+        allowed = [set(), expected_switches] if index == 0 and not half else [
+            expected_switches if index == 0 else set()]
+        if actual not in allowed:
+            raise ValueError('screen runtime switches drift')
     if half:
         if (candidate['leaf_greedy_deadline_ms'], comparator['leaf_greedy_deadline_ms']) != (1000, 0):
             raise ValueError('half-budget finish deadline drift')
-        expected_switches = {'encode_prefix_cache', 'leaf_greedy_stream'}
-        for index, (_, bot) in enumerate(built):
-            actual = {attr for attr in pv.LATENCY_SWITCH_ENV if getattr(bot, attr)}
-            if actual != (expected_switches if index == 0 else set()):
-                raise ValueError('half-budget runtime switches drift')
     model = built[0][1].belief_model
     if model.package_sha256 != S58_SHA or abs(model.temperature - 1.0129481491372179) > 1e-12:
         raise ValueError("S58 package or stored temperature drift")

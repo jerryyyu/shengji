@@ -97,7 +97,10 @@ def test_half_budget_profile_reaches_actual_screen_children(tmp_path):
     with pytest.raises(ValueError):
         build_pair(served, profile='half-budget-lgfd1000')
     output = tmp_path / 'not-launched'
-    plan = build_plan(envs, [i * 1000 for i in range(10)], output)
+    plan = build_plan(envs, [i * 1000 for i in range(10)], output,
+                      profile='half-budget-lgfd1000')
+    assert not plan['comparator_is_served_recipe']
+    assert not plan['host_equivalence_established']
     candidate, comparator = plan['arms']['candidate'], plan['arms']['comparator']
     assert plan['dispatch_authorized'] is False and not output.exists()
     assert len(plan['windows']) == 20
@@ -110,6 +113,39 @@ def test_half_budget_profile_reaches_actual_screen_children(tmp_path):
     assert comparator['identity']['config']['leaf_greedy_deadline_ms'] == 0
     with pytest.raises(ValueError):
         half_budget_envs(envs)
+
+
+def test_served_plan_reaches_actual_children_without_cutoff(tmp_path):
+    from recipe import CONTROL_NAME
+    from window_plan import build_plan
+
+    envs = package_envs()
+    envs[0].update(SHENGJI_PV_ENCODE_PREFIX_CACHE='1',
+                   SHENGJI_PV_LEAF_GREEDY_STREAM='1')
+    with pytest.raises(TypeError, match='profile'):
+        build_plan(envs, [i * 1000 for i in range(10)], tmp_path)
+    plan = build_plan(envs, [i * 1000 for i in range(10)], tmp_path, profile='served')
+    assert plan['comparator_is_served_recipe']
+    assert not plan['host_equivalence_established'] and not plan['dispatch_authorized']
+    assert plan['arms']['comparator']['name'] == CONTROL_NAME
+    for arm in plan['arms'].values():
+        assert arm['identity']['config']['serving_budget_seconds'] == 3
+        assert arm['identity']['bury_recipe_identity']['serving_budget_seconds'] == 2
+        assert arm['identity']['config']['leaf_greedy_deadline_ms'] == 0
+
+
+@pytest.mark.parametrize('arm,key', [
+    (1, 'SHENGJI_PV_ENCODE_PREFIX_CACHE'),
+    (1, 'SHENGJI_PV_LEAF_GREEDY_STREAM'),
+    (1, 'SHENGJI_PV_SINGLE_CANDIDATE_FAST'),
+    (0, 'SHENGJI_PV_SINGLE_CANDIDATE_FAST'),
+    (0, 'SHENGJI_PV_ENCODE_PREFIX_CACHE'),
+])
+def test_served_profile_refuses_runtime_treatment_drift(arm, key):
+    envs = package_envs()
+    envs[arm][key] = '1'
+    with pytest.raises(ValueError, match='runtime switches drift'):
+        build_pair(envs)
 
 
 @pytest.mark.parametrize('arm,key,value', [

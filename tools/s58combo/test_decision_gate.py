@@ -10,6 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from decision_gate import check_decisions
 
 
+def declaration():
+    return dict(schema='pv-value-declare-decision-v1', evaluated=True, changed=False,
+                final=False, fallback_reason=None, seconds=.1, worlds=64, worlds_completed=64,
+                leaf_first_trick='heuristic', leaf_first_trick_fallbacks=0,
+                cards_dealt=80, played='PASS', heuristic='PASS')
+
+
 def inputs():
     plan = dict(arms={a: {'identity': {'config': dict(worlds=64, value_declare_worlds=64)}}
                      for a in ('candidate', 'comparator')}, windows=[])
@@ -23,7 +30,7 @@ def inputs():
                 shard['decision_traces'].append(dict(side='arm', mirror=m,
                     decisions=[dict(seat=seat, trick=0, schema='pv-search-decision-v1',
                                     worlds=64, belief_fallback=0)],
-                    declare_decisions=[dict(evaluated=True, worlds=64, worlds_completed=64)]))
+                    declare_decisions=[declaration()]))
         shards[arm] = [shard]
     return plan, shards
 
@@ -103,14 +110,60 @@ def test_symmetric_adversarial_refusals(arm, defect):
     assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'
 
 
-def test_valid_outcomes_cannot_bypass_invalid_decisions(monkeypatch):
+@pytest.mark.parametrize('defect', ['worlds', 'declare_schema'])
+def test_valid_outcomes_cannot_bypass_invalid_decisions(monkeypatch, defect):
     import outcome_gate as gate
     from test_outcome_gate import row
     plan, shards = inputs()
-    shards['comparator'][0]['decision_traces'][0]['decisions'][0]['worlds'] = 1
+    trace = shards['comparator'][0]['decision_traces'][0]
+    if defect == 'worlds':
+        trace['decisions'][0]['worlds'] = 1
+    else:
+        trace['declare_decisions'][0]['schema'] = 'unknown'
     monkeypatch.setattr(gate, 'admit_records', lambda *args: {'synthetic': [row(80)]})
     def forbidden(*args):
         pytest.fail('estimator reached despite invalid comparator')
     monkeypatch.setattr(gate, 'paired_result', forbidden)
     result = gate.outcome_checked_result(plan, {}, {}, shards)
     assert result['status'] == 'DECISION_INVALID' and 'estimate' not in result
+
+
+@pytest.mark.parametrize('arm', ['candidate', 'comparator'])
+@pytest.mark.parametrize('patch', [dict(schema='unknown'), dict(evaluated=1),
+    dict(fallback_reason='hard_budget'), dict(seconds=float('nan')), dict(worlds=True),
+    dict(leaf_first_trick_fallbacks=1), dict(cards_dealt=101), dict(played='C2'),
+    dict(evaluated=False, fallback_reason='error', changed=True, played='C2')])
+def test_malformed_declaration_refuses_on_either_arm(arm, patch):
+    plan, shards = inputs()
+    shards[arm][0]['decision_traces'][0]['declare_decisions'][0].update(patch)
+    assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'
+
+
+@pytest.mark.parametrize('defect', ['empty', 'baseline'])
+def test_invalid_declaration_trace_refuses(defect):
+    plan, shards = inputs()
+    trace = shards['comparator'][0]['decision_traces'][0]
+    if defect == 'empty':
+        trace['declare_decisions'] = []
+    else:
+        shards['comparator'][0]['decision_traces'].append(
+            dict(side='baseline', declare_decisions=[declaration()]))
+    assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'
+
+
+def test_real_value_declare_through_wrapper_and_admission():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'server' / 'tests'))
+    from test_cwv_leaf_policy_first_trick import served, CountingPredict, NTEvaluator, drive_declare, fresh_deal
+    from shengji.train.search_screen import TimedPolicy
+    policy = TimedPolicy(served(CountingPredict(), NTEvaluator(), value_declare=True,
+                                value_declare_worlds=2))
+    drive_declare(fresh_deal(5, True), policy)
+    assert policy.declare_decisions
+    plan, shards = inputs()
+    for arm in plan['arms']:
+        plan['arms'][arm]['identity']['config']['value_declare_worlds'] = 2
+        for trace in shards[arm][0]['decision_traces']:
+            trace['declare_decisions'] = copy.deepcopy(policy.declare_decisions)
+    assert check_decisions(plan, shards)['verdict'] == 'VALID'
+    shards['comparator'][0]['decision_traces'][0]['declare_decisions'][0]['changed'] = True
+    assert check_decisions(plan, shards)['verdict'] == 'SCREEN_INVALID'

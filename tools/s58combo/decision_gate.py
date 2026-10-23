@@ -1,5 +1,6 @@
 """Symmetric play coverage, delivered-world and declaration completion checks."""
 import validity
+from declaration_gate import valid_declaration
 
 
 def check_decisions(plan, shards):
@@ -38,6 +39,8 @@ def check_decisions(plan, shards):
                     reasons.append(f'{arm}: malformed trace')
                     continue
                 if trace['side'] != 'arm':
+                    if 'declare_decisions' in trace:
+                        reasons.append(f'{arm}: baseline carries value-declare receipts')
                     continue
                 decisions = trace.get('decisions')
                 if not isinstance(decisions, list):
@@ -66,10 +69,14 @@ def check_decisions(plan, shards):
                         else:
                             counts[arm]['belief_fallback'] += fallback
                 declarations = trace.get('declare_decisions', [])
-                if not isinstance(declarations, list):
+                if (not isinstance(declarations, list)
+                        or 'declare_decisions' in trace and not declarations):
                     reasons.append(f'{arm}: malformed declarations')
                     continue
                 for rec in declarations:
+                    if not valid_declaration(rec):
+                        reasons.append(f'{arm}: invalid value-declare receipt')
+                        continue
                     declares.append(dict(arm=arm, evaluated=rec.get('evaluated'),
                                          worlds=rec.get('worlds'), completed=rec.get('worlds_completed'))
                                     if isinstance(rec, dict) else rec)

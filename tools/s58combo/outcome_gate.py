@@ -2,6 +2,7 @@
 from admission import admit_records
 from paired_result import paired_result
 from decision_gate import check_decisions
+from exact_gate import check_exact
 import validity
 
 
@@ -45,6 +46,9 @@ def outcome_checked_result(plan, expected_configs, configs, shards):
     decision_check = check_decisions(plan, shards)
     if decision_check['verdict'] != 'VALID':
         return dict(status='DECISION_INVALID', outcome_check=outcome_check, decision_check=decision_check)
-    return dict(status='DECISION_OUTCOME_CHECKED_ONLY', outcome_check=outcome_check, decision_check=decision_check,
-                pending=['sealed input binding', 'declaration coverage', 'exact-stage eligibility/abandon gates'],
+    exact_check = check_exact(plan, shards)
+    if exact_check['verdict'] != 'VALID':
+        return dict(status='EXACT_INVALID', exact_check=exact_check)
+    return dict(status='STAGE_OUTCOME_CHECKED_ONLY', outcome_check=outcome_check, decision_check=decision_check,
+                exact_check=exact_check, pending=['sealed input binding', 'declaration coverage'],
                 estimate=paired_result(plan['windows'], records))

@@ -58,6 +58,8 @@ exec %s -I -B "$4" --packet "$1" --expected "$2" --release "$3" \
 
 
 def _clean_env(arm: dict, source: Path) -> dict:
+    if arm.get("environment", {}).get("SHENGJI_FAST") not in ("0", "1"):
+        raise LaunchRefused("explicit engine mode SHENGJI_FAST=0 or 1 required")
     env = {key: value for key, value in os.environ.items()
            if not key.startswith("SHENGJI_") and key not in ("PYTHONPATH", "PYTHONHOME")}
     env.update(arm.get("environment", {}))

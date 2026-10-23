@@ -17,8 +17,8 @@ def packet(tmp_path):
     plan = dict(schema="s58combo-unarmed-window-plan-v1", dispatch_authorized=True,
                 source_head=None, host_identity={"hostname": socket.gethostname()},
                 host_lock=str(tmp_path / "lock"), hold="None", legacy_locks=[],
-                arms={"candidate": {"environment": {"SHENGJI_TEST_PIN": "candidate"}},
-                      "comparator": {"environment": {"SHENGJI_TEST_PIN": "comparator"}}},
+                arms={"candidate": {"environment": {"SHENGJI_TEST_PIN": "candidate", "SHENGJI_FAST": "0"}},
+                      "comparator": {"environment": {"SHENGJI_TEST_PIN": "comparator", "SHENGJI_FAST": "0"}}},
                 windows=[dict(output=out, side="candidate" if i < 10 else "comparator",
                               seed=i, argv=["--out", str(root), "--name", f"w{i}", "--seeds", str(i)])
                           for i, out in enumerate(outputs)])
@@ -282,3 +282,19 @@ def test_output_reservation_race_preserves_foreign_output(tmp_path, monkeypatch)
                  host_lock=tmp_path / 'lock', runner=runner())
     assert (output / 'terminal.json').read_text() == 'foreign terminal'
     assert not (tmp_path / 'lock').exists()
+
+
+@pytest.mark.parametrize('mode', ['0', '1'])
+def test_dispatch_environment_keeps_pinned_engine_despite_parent(tmp_path, monkeypatch, mode):
+    monkeypatch.setenv('SHENGJI_FAST', '0' if mode == '1' else '1')
+    monkeypatch.setenv('SHENGJI_UNRELATED', 'leak')
+    env = implementation._clean_env({'environment': {'SHENGJI_FAST': mode}}, tmp_path)
+    result = subprocess.run([sys.executable, '-c',
+        'import os; print(os.environ["SHENGJI_FAST"]); assert "SHENGJI_UNRELATED" not in os.environ'],
+        env=env, capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == mode
+
+
+def test_dispatch_refuses_unpinned_engine(tmp_path):
+    with pytest.raises(LaunchRefused, match='explicit engine'):
+        implementation._clean_env({'environment': {}}, tmp_path)

@@ -105,7 +105,8 @@ def test_half_budget_profile_reaches_actual_screen_children(tmp_path):
     candidate, comparator = plan['arms']['candidate'], plan['arms']['comparator']
     assert plan['dispatch_authorized'] is False and not output.exists()
     assert len(plan['windows']) == 20
-    assert candidate['environment'] == envs[0] and comparator['environment'] == envs[1]
+    for arm, env in zip((candidate, comparator), envs):
+        assert arm['environment'] == {**env, 'SHENGJI_FAST': os.environ.get('SHENGJI_FAST', '0')}
     assert 'lgfd1000' in candidate['name'] and 'lgfd' not in comparator['name']
     for arm in (candidate, comparator):
         assert arm['identity']['config']['serving_budget_seconds'] == 1.5
@@ -136,7 +137,7 @@ def test_served_plan_reaches_actual_children_without_cutoff(tmp_path):
 
 
 @pytest.mark.parametrize('profile', ['served', 'half-budget-lgfd1000'])
-def test_real_queue_configs_reach_reader_admission(tmp_path, profile):
+def test_real_queue_configs_reach_reader_admission(tmp_path, profile, monkeypatch):
     from recipe import half_budget_envs
     from window_plan import build_plan
     from config_probe import probe_configs
@@ -148,7 +149,20 @@ def test_real_queue_configs_reach_reader_admission(tmp_path, profile):
         envs = half_budget_envs(envs)
     root = tmp_path / 'must-not-be-created'
     plan = build_plan(envs, [i * 1000 for i in range(10)], root, profile=profile)
-    configs = probe_configs(plan)
+    import config_probe
+    mode = os.environ.get('SHENGJI_FAST', '0')
+    assert all(arm['environment']['SHENGJI_FAST'] == mode for arm in plan['arms'].values())
+    original_run = config_probe.subprocess.run
+    seen = []
+    def checked_run(*args, **kwargs):
+        seen.append(kwargs['env']['SHENGJI_FAST'])
+        assert kwargs['env']['SHENGJI_FAST'] == mode
+        return original_run(*args, **kwargs)
+    with monkeypatch.context() as context:
+        context.setenv('SHENGJI_FAST', '0' if mode == '1' else '1')
+        context.setattr(config_probe.subprocess, 'run', checked_run)
+        configs = probe_configs(plan)
+    assert seen == [mode, mode]
     assert len(configs) == 20 and not root.exists()
     shards = {}
     for output, config in configs.items():

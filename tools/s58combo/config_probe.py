@@ -2,7 +2,6 @@
 import contextlib
 import io
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -14,12 +13,8 @@ SERVER = Path(__file__).resolve().parents[2] / 'server'
 def probe_configs(plan):
     configs = {}
     for side, arm in plan['arms'].items():
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith('SHENGJI_') and k != 'PYTHONPATH'}
-        env.update(arm['environment'])
-        env['PYTHONPATH'] = str(SERVER)
-        if os.environ.get('SHENGJI_FAST') == '1':
-            env['SHENGJI_FAST'] = '1'
+        from launcher import _clean_env
+        env = _clean_env(arm, SERVER.parent)
         windows = [w for w in plan['windows'] if w['side'] == side]
         result = subprocess.run([sys.executable, '-B', str(Path(__file__).resolve()), '--probe'],
                                 input=json.dumps(windows), text=True, capture_output=True,

@@ -17,13 +17,9 @@ def admit_pair(envs, *, profile='served'):
                 for name, bot in build_pair(envs, profile=profile)]
     admitted = []
     for env, want in zip(envs, expected, strict=True):
-        child_env = {k: v for k, v in os.environ.items()
-                     if not k.startswith('SHENGJI_') and k != 'PYTHONPATH'}
-        child_env.update(env)
-        child_env['PYTHONPATH'] = str(SERVER)
-        # Preserve the authenticated engine mode selected by test_checkout.
-        if os.environ.get('SHENGJI_FAST') == '1':
-            child_env['SHENGJI_FAST'] = '1'
+        from launcher import _clean_env
+        explicit = {**env, 'SHENGJI_FAST': env.get('SHENGJI_FAST', os.environ.get('SHENGJI_FAST', '0'))}
+        child_env = _clean_env({'environment': explicit}, SERVER.parent)
         result = subprocess.run(
             [sys.executable, '-B', str(Path(__file__).resolve()), '--worker-probe'],
             input=json.dumps(want), text=True, capture_output=True, check=False,

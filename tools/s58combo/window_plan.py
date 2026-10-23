@@ -1,4 +1,5 @@
 """Construct an unarmed command plan for the existing screen queue; never dispatch."""
+import os
 from pathlib import Path
 
 from screen_probe import admit_pair
@@ -39,6 +40,12 @@ def build_plan(envs, seeds, output, *, profile, workers=14):
     """Bind actual packages/worker identities before producing queue arguments."""
     # Reject malformed schedules before package loading or child construction.
     queue_windows([{'name': 'candidate'}, {'name': 'comparator'}], seeds, output, workers=workers)
+    engine = os.environ.get("SHENGJI_FAST", "0")
+    if engine not in ("0", "1"):
+        raise ValueError("invalid engine mode")
+    envs = tuple({**env, "SHENGJI_FAST": env.get("SHENGJI_FAST", engine)} for env in envs)
+    if any(env["SHENGJI_FAST"] != engine for env in envs):
+        raise ValueError("arm engine mode differs from admitting process")
     arms = admit_pair(envs, profile=profile)
     return dict(schema='s58combo-unarmed-window-plan-v1', profile=profile,
                 comparator_is_served_recipe=(profile == 'served'),

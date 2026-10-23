@@ -1,7 +1,9 @@
 """In-memory matched-deal reduction; no filesystem or sealed-output access."""
 import math
 
-from shengji.oracle.screen import cluster_bootstrap
+import numpy as np
+
+from shengji.eval.paired_window_stats import pool_windows
 from window_plan import CLUSTERS
 
 
@@ -21,6 +23,7 @@ def paired_result(windows, records):
         if len(rows) != CLUSTERS * 2:
             raise ValueError('incomplete mirrored window')
         seen = set()
+        identities = {}
         ranks = window['ranks'].split(',')
         for row in rows:
             cluster, mirror = row['cluster'], row['mirror']
@@ -35,22 +38,40 @@ def paired_result(windows, records):
                 raise ValueError('deal schedule drift')
             if window['round_kind'] == 'fixed_banker' and row['banker'] != cluster % 4:
                 raise ValueError('fixed banker drift')
+            identity = (row['trump_rank'], row['banker'], row['trump_suit'])
+            if identities.setdefault(cluster, identity) != identity:
+                raise ValueError('mirror deal identity drift')
             utility = row['arm_utility']
             if type(utility) not in (int, float) or not math.isfinite(utility):
                 raise ValueError('invalid utility')
-            side[key] = (window['round_kind'], row['trump_rank'], utility)
+            side[key] = (window['round_kind'], row['trump_rank'], utility,
+                         window['seed'], row['banker'], row['trump_suit'])
     candidate, comparator = sides['candidate'], sides['comparator']
     if len(candidate) != 10400 or candidate.keys() != comparator.keys():
         raise ValueError('unmatched candidate/comparator deals')
     deltas = {}
     populations = {}
-    for key, (kind, rank, value) in candidate.items():
-        other_kind, other_rank, other_value = comparator[key]
-        if (kind, rank) != (other_kind, other_rank):
+    window_seeds = {}
+    for key, (kind, rank, value, window_seed, banker, suit) in candidate.items():
+        other_kind, other_rank, other_value, other_window, other_banker, other_suit = comparator[key]
+        if (kind, rank, window_seed, banker, suit) != (
+                other_kind, other_rank, other_window, other_banker, other_suit):
             raise ValueError('paired population drift')
         deltas.setdefault(key[0], []).append((value - other_value) / 2)
         populations[key[0]] = (kind, rank)
-    values = [sum(deltas[seed]) for seed in sorted(deltas)]
+        window_seeds[key[0]] = window_seed
+    window_stats = []
+    for window_seed in sorted(set(window_seeds.values())):
+        values = np.array([sum(deltas[seed]) for seed in sorted(deltas)
+                           if window_seeds[seed] == window_seed])
+        if len(values) != CLUSTERS:
+            raise ValueError('incomplete paired window')
+        rng = np.random.default_rng(20260909)
+        bootstrap = values[rng.integers(0, len(values), size=(4000, len(values)))].mean(axis=1)
+        window_stats.append(dict(seed=window_seed, clusters=len(values),
+                                 delta=float(values.mean()), se=float(bootstrap.std(ddof=1))))
+    pooled = pool_windows([w['delta'] for w in window_stats],
+                          [w['se'] for w in window_stats], estimator='dl')
     splits = {}
     for label, predicate in (
             ('rank2', lambda kind, rank: rank == '2'),
@@ -60,9 +81,10 @@ def paired_result(windows, records):
         selected = [sum(deltas[seed]) for seed in sorted(deltas)
                     if predicate(*populations[seed])]
         splits[label] = dict(clusters=len(selected), mean=sum(selected) / len(selected))
-    return dict(schema='s58combo-paired-reduction-v1',
-                candidate_minus_comparator_levels_per_round=cluster_bootstrap(
-                    values, replicates=1000, seed=17),
+    return dict(schema='s58combo-paired-reduction-v2',
+                estimator='dl', bootstrap_replicates=4000, bootstrap_seed=20260909,
+                windows=window_stats,
+                candidate_minus_comparator_levels_per_round=pooled,
                 mirrored_rounds=len(candidate),
                 descriptive_splits=splits,
                 claim='paired common-control contrast; not head-to-head or deployment evidence')

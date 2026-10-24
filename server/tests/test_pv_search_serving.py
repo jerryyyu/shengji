@@ -96,6 +96,42 @@ def test_singleton_candidate_loads_package_and_keeps_bury_consumer(package):
     rnd.play(rnd.turn, action)
 
 
+def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_path, monkeypatch):
+    import hashlib
+    import pathlib
+    import tomllib
+    from shengji.eval.singleton_challenger import candidate_from_env
+    path, sha = package
+    env = tomllib.loads((pathlib.Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    belief = tmp_path / 'belief.npz'
+    belief.write_bytes(b'synthetic belief binding')
+    env.update(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
+               SHENGJI_PV_BELIEF_CKPT=str(belief),
+               SHENGJI_PV_BELIEF_SHA256=hashlib.sha256(belief.read_bytes()).hexdigest())
+    sentinel = object()
+    monkeypatch.setattr(pv, '_load_belief', lambda *args: sentinel)
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+    baseline_name, = entries
+    env['SHENGJI_BOT'] = baseline_name
+    expected_switches = pv.latency_switches(env)
+    for attr, key in pv.LATENCY_SWITCH_ENV.items():
+        monkeypatch.setenv(key, str(int(not expected_switches[attr])))
+    candidate = candidate_from_env(env, seed=19)
+    control = entries[baseline_name](seed=19)
+    assert candidate.config == control.config
+    assert candidate.policy_name == baseline_name + '-sc8'
+    assert candidate.belief_model is sentinel
+    assert candidate.worlds == 64 and candidate.candidates == 8
+    assert candidate.serving_budget_seconds == 3.0
+    assert candidate.leaf_greedy_finish and candidate.leaf_greedy_finish_exact_skip
+    assert candidate.bury_wide_value
+    for attr, enabled in expected_switches.items():
+        assert getattr(candidate, attr) is enabled
+    env['SHENGJI_BOT'] = 'wrong-baseline'
+    with pytest.raises(ValueError, match='does not match'):
+        candidate_from_env(env)
+
+
 @pytest.fixture
 def registered(package):
     path, sha = package
@@ -182,14 +218,19 @@ def test_wrapper_decision_equals_the_screened_harness(package):
 
 # ------------------------------------------------ the server snapshot path
 
-def test_wrapper_survives_server_snapshot_and_commit(package, tmp_path):
+@pytest.mark.parametrize('challenger', [False, True])
+def test_wrapper_survives_server_snapshot_and_commit(package, tmp_path, challenger):
     """Release-25 lesson: the server deep-copies the whole bot before any search.
     The wrapper's predictor is a module-level object, so the copy holds a working
     model, the live RNG is untouched, the numpy model-serving branch is taken,
     and the decision commits."""
     path, sha = package
-    bot = pv.make_pv_search_bot(path, sha256=sha, seed=23, serving_budget_seconds=30, **SMALL)
-    bot.policy_name = "pv-search-test"
+    from shengji.eval.singleton_challenger import load_singleton_challenger
+    def build():
+        recipe = dict(checkpoint=path, sha256=sha, seed=23, serving_budget_seconds=30,
+                      name='pv-search-test', **SMALL)
+        return load_singleton_challenger(**recipe) if challenger else pv.make_pv_search_bot(**recipe)
+    bot = build()
 
     async def scenario():
         rnd = _play_state()
@@ -204,7 +245,7 @@ def test_wrapper_survives_server_snapshot_and_commit(package, tmp_path):
         room.log_event = lambda kind, **data: events.append(kind)
         seat = rnd.turn
         before = bot.sampler.rng.getstate()
-        direct = pv.make_pv_search_bot(path, sha256=sha, seed=23, serving_budget_seconds=30, **SMALL)
+        direct = build()
         expected = direct.decide_play(copy.deepcopy(rnd), seat)
         prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
         assert prepared is not None and room.bot is bot
@@ -218,6 +259,7 @@ def test_wrapper_survives_server_snapshot_and_commit(package, tmp_path):
         hand_before = len(rnd.hands[seat])
         assert srv._commit_bot_turn(room, prepared)
         assert len(rnd.hands[seat]) == hand_before - len(expected)   # the cards left the live hand
+        assert not srv._commit_bot_turn(room, prepared)
 
     asyncio.run(scenario())
 

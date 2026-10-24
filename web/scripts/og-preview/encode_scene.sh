@@ -11,10 +11,16 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-WORK="${WORK:-/tmp/og-scene}"
 OUT="${OUT:-$ROOT/web/public/og}"
-
-rm -rf "$WORK"
+# The frames go to a directory this run creates: a supplied WORK must not exist
+# yet, so an existing directory (or a concurrent run's) is never overwritten or
+# removed.  The directory is kept, since it holds the review contact sheet.
+if [ -n "${WORK:-}" ]; then
+  mkdir "$WORK"
+else
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/og-scene.XXXXXX")"
+fi
+echo "frames and contact sheet in $WORK"
 node "$HERE/render.mjs" --out "$WORK" --fps 60
 mkdir -p "$OUT"
 ffmpeg -v error -y -framerate 60 -i "$WORK/f%05d.png" \

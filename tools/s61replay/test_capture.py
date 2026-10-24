@@ -166,3 +166,25 @@ def test_fallback_root_never_reaches_continuation():
     with pytest.raises(ValueError, match='complete served ballot'):
         capture_lead(bot, root)
     assert '_worlds' not in vars(bot)
+
+
+@pytest.mark.parametrize('fault', ['belief_fallback', 'missing_belief', 'short_worlds'])
+def test_capture_refuses_degraded_sampling(fault):
+    root, _ = fixture()
+    bot = make_bot()
+    decide = bot.decide_play
+    def degraded(*args):
+        cards = decide(*args)
+        if fault == 'short_worlds':
+            bot.worlds += 1
+        else:
+            bot.belief_worlds = True
+            if fault == 'missing_belief':
+                bot.last_decision_record.pop('belief_fallback', None)
+            else:
+                bot.last_decision_record['belief_fallback'] = 1
+        return cards
+    bot.decide_play = degraded
+    with pytest.raises(ValueError, match='complete served ballot'):
+        capture_lead(bot, root)
+    assert '_worlds' not in vars(bot)

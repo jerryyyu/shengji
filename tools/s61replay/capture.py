@@ -36,6 +36,9 @@ def capture_lead(bot, root):
     if (len(calls) != 1 or not calls[0] or not isinstance(rec, dict)
             or rec.get('schema') != 'pv-search-decision-v1' or rec.get('work_complete') is not True
             or rec.get('fallback_reason')
+            or rec.get('belief_fallback', 0)
+            or (getattr(bot, 'belief_worlds', False) and rec.get('belief_fallback') != 0)
+            or len(calls[0]) != bot.worlds
             or rec.get('worlds') != len(calls[0]) or not rec.get('admitted')):
         raise ValueError('missing complete served ballot or single world population')
     worlds = []

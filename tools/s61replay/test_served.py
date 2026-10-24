@@ -75,3 +75,18 @@ def test_prefix_replays_seed_and_policy_calls_before_capture():
     row['dtrace'][next(i for i,e in enumerate(row['dtrace']) if e[0]=='B')][5] = ['SJ']
     with pytest.raises(ValueError, match='prefix decision drift'):
         replay_served_prefix(row, make, seat=2)
+
+
+@pytest.mark.parametrize('change', [
+    {'belief_fallback': 1}, {'belief_fallback': None}, {'worlds': 1},
+])
+def test_reply_refuses_degraded_sampling_before_continuation(change):
+    root, _ = fixture()
+    record = dict(schema='pv-search-decision-v1', work_complete=True,
+                  fallback_reason=None, belief_fallback=0, worlds=2)
+    record.update(change)
+    bot = SimpleNamespace(decide_play=lambda *a: ['D4'],
+                          last_decision_record=record, worlds=2, belief_worlds=True)
+    reply = reply_factory(lambda **kwargs: bot)(random.Random(1))
+    with pytest.raises(ValueError, match='complete served'):
+        reply(root, root.turn)

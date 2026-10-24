@@ -15,7 +15,11 @@ def reply_factory(make_bot):
             if (not isinstance(record, dict)
                     or record.get('schema') != 'pv-search-decision-v1'
                     or record.get('work_complete') is not True
-                    or record.get('fallback_reason')):
+                    or record.get('fallback_reason')
+                    or record.get('belief_fallback', 0)
+                    or (getattr(bot, 'belief_worlds', False)
+                        and record.get('belief_fallback') != 0)
+                    or record.get('worlds') != bot.worlds):
                 raise ValueError('reply lacks complete served decision evidence')
             return dict(cards=list(cards), fallback=False)
         return reply

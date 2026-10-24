@@ -52,6 +52,14 @@ html {
   -webkit-text-size-adjust: 100%; /* avoid landscape-only font inflation */
 }
 
+/* At the table the page ground is the felt's edge colour: a phone browser
+   paints it in the landscape notch strips beside the page, so they read as
+   felt instead of dark bars */
+html:has(.table-screen),
+html:has(.table-screen) body {
+  background: var(--felt-3);
+}
+
 html,
 body {
   overscroll-behavior: none; /* the game owns its inner scrolling surfaces */
@@ -2071,12 +2079,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     display: none;
   }
 
-  /* your turn also draws a gold hairline over the fan; a background, so the
-     hand's box (and --hand-h) does not change */
-  .phase-play .you-tagline.on-turn ~ .hand {
-    background: linear-gradient(90deg, transparent, var(--gold) 20%, var(--gold) 80%, transparent) top / 100% 1.5px no-repeat;
-  }
-
   /* --- Action bar: one button; a disabled Clear is not information --- */
   .action-bar .btn.subtle:disabled {
     display: none;
@@ -2141,15 +2143,38 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     transform: none;
   }
 
+  /* In play the pill and Play sit at the centre of the trick cross, the one
+     spot no card ever occupies (your own slot can still hold the finished
+     trick while your next turn starts). The you-area spans the felt, as the
+     trick area's frame does, and lets clicks through except on its controls. */
+  .phase-play .you-area {
+    top: 0;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+
+  .phase-play .you-area > * {
+    pointer-events: auto;
+  }
+
   .phase-play .you-tagline,
   .phase-play .action-bar {
-    align-self: flex-end;
-    margin-right: calc(8px + env(safe-area-inset-right, 0px));
-    max-width: calc(50% - var(--trick-half) - 16px);
+    position: absolute;
+    left: 50%;
+    z-index: 3;
+    margin: 0;
+  }
+
+  .phase-play .you-tagline {
+    top: calc((var(--trick-top) + 100% - var(--hand-h)) / 2 - 17px);
+    transform: translate(-50%, -50%);
   }
 
   .phase-play .action-bar {
-    justify-content: flex-end;
+    top: calc((var(--trick-top) + 100% - var(--hand-h)) / 2 + 15px);
+    transform: translate(-50%, -50%);
+    justify-content: center;
+    flex-wrap: nowrap;
   }
 
   /* "Waiting for Bot 1" repeats what the glowing seat already says */

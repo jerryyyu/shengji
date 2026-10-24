@@ -61,10 +61,12 @@ describe("short landscape table layout", () => {
     expect(trick.width).toBe("calc(var(--trick-half) * 2)");
   });
 
-  it("keeps the turn pill and action buttons beside the trick box in play only", () => {
+  it("centres the turn pill and action buttons in the trick cross in play only", () => {
     const cluster = rule(block, ".phase-play .you-tagline, .phase-play .action-bar");
-    expect(cluster["align-self"]).toBe("flex-end");
-    expect(cluster["max-width"]).toBe("calc(50% - var(--trick-half) - 16px)");
+    expect(cluster.position).toBe("absolute");
+    expect(cluster.left).toBe("50%");
+    expect(rule(block, ".phase-play .action-bar")["justify-content"]).toBe("center");
+    expect(rule(block, ".phase-play .you-area")["pointer-events"]).toBe("none");
     // Unscoped, the side column also squeezed the declare buttons into a tall
     // stack over the HUD and the right seat (Codex HOLD on #829).
     expect(rule(block, ".you-tagline, .action-bar")).toEqual({});

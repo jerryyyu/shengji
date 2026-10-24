@@ -19,7 +19,7 @@ def branch_action(root, cards):
                         failed_throw=Counter(cards) != Counter(accepted))
 
 
-def replay_root(row, play_index):
+def replay_root(row, play_index, *, on_decision=None):
     """Return the pre-decision state and checked attempted/accepted action witness."""
     if type(play_index) is not int or play_index < 0:
         raise ValueError('invalid play index')
@@ -47,6 +47,8 @@ def replay_root(row, play_index):
                 or not isinstance(entry[5], list)
                 or any(type(card) is not str for card in entry[5])):
             raise ValueError('decision trace disagrees with replay context')
+        if on_decision is not None:
+            on_decision(phase, deepcopy(rnd), seat, list(entry[5]))
         return entry[5]
 
     while rnd.phase == 'deal':

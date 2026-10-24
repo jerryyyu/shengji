@@ -12,13 +12,13 @@ from shengji.engine.round import actual_play_after
 from shengji.train.cwv_shortlist_screen import _game_factory_for
 
 
-def recording(kind):
+def recording(kind, bot=None):
     fixed = 2 if kind == 'fixed_banker' else None
     rank = '5' if fixed is not None else '2'
     game = (Game(random.Random(19)) if fixed is None
             else _game_factory_for(rank, fixed)(random.Random(19)))
     rnd = game.start_round()
-    bot = HeuristicBot()
+    bot = bot if bot is not None else HeuristicBot()
     trace, history, snapshots = [], [], []
     def note(phase, seat, cards, trick=None, lead=None):
         trace.append([phase, seat, trick, lead, len(rnd.hands[seat]), sorted(cards or [])])

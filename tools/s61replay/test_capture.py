@@ -129,3 +129,26 @@ def test_release46_package_capture(monkeypatch):
         served_ballot=captured['served_ballot'])
     assert seen == [2, 2]
     assert all(row['worlds'][0]['completed_tricks'] == 2 for row in result['actions'])
+
+    from served import replay_served_prefix
+    from test_replay import recording
+    from shengji.ai.heuristic import HeuristicBot
+    original = factory_(seed=19 * 16 + 2 + 7)
+    heuristic = HeuristicBot()
+    class PrefixBots:
+        def decide_declare(self, state, seat, final=False):
+            bot = original if seat == 2 else heuristic
+            return bot.decide_declare(state, seat, final=final)
+        def decide_bury(self, state, seat):
+            return (original if seat == 2 else heuristic).decide_bury(state, seat)
+        def decide_play(self, state, seat):
+            # The fixture records subsequent plays without advancing original.
+            return heuristic.decide_play(state, seat)
+    row, _ = recording('fixed_banker', PrefixBots())
+    restored, restored_root, witness = replay_served_prefix(row, factory_, seat=2)
+    assert restored.sampler.rng.getstate() == original.sampler.rng.getstate()
+    fresh = factory_(seed=19 * 16 + 2 + 7)
+    assert restored.sampler.rng.getstate() == fresh.sampler.rng.getstate()
+    assert restored.decide_play(deepcopy(restored_root), 2) == original.decide_play(deepcopy(restored_root), 2)
+    assert restored.last_decision_record['admitted'] == original.last_decision_record['admitted']
+    assert restored.last_decision_record['value_means'] == original.last_decision_record['value_means']

@@ -49,3 +49,29 @@ def test_reply_refuses_fallback():
     reply = reply_factory(lambda **kwargs: bot)(random.Random(1))
     with pytest.raises(ValueError, match='complete served'):
         reply(deepcopy(root), root.turn)
+
+
+def test_prefix_replays_seed_and_policy_calls_before_capture():
+    from shengji.ai.heuristic import HeuristicBot
+    from served import replay_served_prefix
+    from test_replay import recording
+    row, _ = recording('fixed_banker')
+    seeds, calls = [], []
+    class Bot(HeuristicBot):
+        def decide_declare(self, state, seat, final=False):
+            calls.append('F' if final else 'D')
+            return super().decide_declare(state, seat, final=final)
+        def decide_bury(self, state, seat):
+            calls.append('B')
+            return super().decide_bury(state, seat)
+    def make(seed):
+        seeds.append(seed)
+        return Bot()
+    bot, root, witness = replay_served_prefix(row, make, seat=2)
+    assert seeds == [19 * 16 + 2 + 7]
+    assert calls == ['D'] * 25 + ['F', 'B']
+    assert witness['prefix_policy_calls'] == calls
+    assert root.turn == 2 and not root.history
+    row['dtrace'][next(i for i,e in enumerate(row['dtrace']) if e[0]=='B')][5] = ['SJ']
+    with pytest.raises(ValueError, match='prefix decision drift'):
+        replay_served_prefix(row, make, seat=2)

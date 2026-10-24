@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { GameState, Notice, Phase } from "../protocol";
+import { RANKS } from "../protocol";
+import { DUR, prefersReducedMotion } from "../motion";
+import { useCountUp } from "../useCountUp";
 import { conn } from "../ws";
 import { SUIT_SYMBOL, shortLabel } from "./Card";
 import MuteButton from "./MuteButton";
@@ -107,7 +110,46 @@ function NoticeBanner({ notice, state }: { notice: Notice; state: GameState }) {
   );
 }
 
+/** Index of a level in RANKS, so a level can roll like a number. */
+function rankIndex(level: string): number {
+  const i = (RANKS as readonly string[]).indexOf(level);
+  return i < 0 ? 0 : i;
+}
+
+/** A team's level. It rolls up through the ranks it passes and pulses gold
+ *  when the team climbs (or wins a game); a reset to a lower level snaps. */
+function LevelChip({ team, level, gamesWon }: { team: 0 | 1; level: string; gamesWon: number }) {
+  const idx = rankIndex(level);
+  const shownIdx = Math.round(useCountUp(idx, { snapDown: true }));
+  // An unknown level string is shown verbatim rather than rolled.
+  const shown = (RANKS as readonly string[]).includes(level) ? RANKS[shownIdx] : level;
+  const [pulse, setPulse] = useState(0);
+  const prev = useRef({ idx, gamesWon });
+  useEffect(() => {
+    const climbed = idx > prev.current.idx || gamesWon > prev.current.gamesWon;
+    prev.current = { idx, gamesWon };
+    if (!climbed || prefersReducedMotion()) return;
+    setPulse((n) => n + 1);
+    const t = window.setTimeout(() => setPulse(0), DUR.pulse);
+    return () => window.clearTimeout(t);
+  }, [idx, gamesWon]);
+  return (
+    <span className={`chip level-chip team${team}${pulse ? " level-up" : ""}`}
+          key={pulse ? `pulse${pulse}` : "idle"}
+          title={team === 0 ? "Team seats 0 & 2" : "Team seats 1 & 3"}>
+      <span className={`team-dot t${team}`} />
+      Lv <span className="level-value">{shown}</span>
+      {gamesWon ? (
+        <span className="games-won" title="Games won">
+          ★{gamesWon}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export default function Hud({ state }: { state: GameState }) {
+  const shownPoints = Math.round(useCountUp(state.attacker_points, { snapDown: true }));
   // Tapping the room chip mid-game copies a full invite link, so you can
   // pull someone into a game already in progress — they land on a bot's
   // seat.
@@ -144,31 +186,15 @@ export default function Hud({ state }: { state: GameState }) {
         </div>
 
         <div className="hud-group">
-          <span className="chip level-chip team0" title="Team seats 0 & 2">
-            <span className="team-dot t0" />
-            Lv {state.levels[0]}
-            {state.games_won[0] ? (
-              <span className="games-won" title="Games won">
-                ★{state.games_won[0]}
-              </span>
-            ) : null}
-          </span>
+          <LevelChip team={0} level={state.levels[0]} gamesWon={state.games_won[0]} />
           <TrumpChip state={state} />
-          <span className="chip level-chip team1" title="Team seats 1 & 3">
-            <span className="team-dot t1" />
-            Lv {state.levels[1]}
-            {state.games_won[1] ? (
-              <span className="games-won" title="Games won">
-                ★{state.games_won[1]}
-              </span>
-            ) : null}
-          </span>
+          <LevelChip team={1} level={state.levels[1]} gamesWon={state.games_won[1]} />
         </div>
 
         <div className="hud-group">
           <span className="chip points-chip" title="Points captured by the attacking team">
             {/* keyed so a new score is a new box: WebKit would keep the old width */}
-            <span className="points-big" key={state.attacker_points}>{state.attacker_points}</span>
+            <span className="points-big" key={shownPoints}>{shownPoints}</span>
             <span className="points-target">/ 80</span>
             {/* the phone draws progress to 80 as a bar under the number; hidden on desktop */}
             <span

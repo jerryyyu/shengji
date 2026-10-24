@@ -17,6 +17,17 @@
   --card-black: #23252e;
   --danger: #e05563;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Motion tokens, mirrored by DUR and EASE in src/motion.ts. */
+  --dur-fast: 120ms;
+  --dur-lift: 400ms;
+  --dur-flight: 340ms;
+  --dur-reflow: 280ms;
+  --dur-sweep: 400ms;
+  --dur-count: 500ms;
+  --dur-pulse: 900ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -112,7 +123,7 @@ textarea:focus-visible {
   font-weight: 600;
   font-size: 14px;
   letter-spacing: 0.02em;
-  transition: background 150ms ease, transform 120ms var(--ease-out), box-shadow 150ms ease;
+  transition: background 150ms ease, transform var(--dur-fast) var(--ease-out), box-shadow 150ms ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -733,6 +744,23 @@ textarea:focus-visible {
   border-color: rgba(255, 157, 77, 0.45);
 }
 
+.level-value,
+.points-big {
+  font-variant-numeric: tabular-nums;
+}
+
+.level-chip.level-up {
+  animation: level-pulse var(--dur-pulse) var(--ease-out-expo);
+}
+
+@keyframes level-pulse {
+  25% {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px var(--gold-soft), 0 0 16px rgba(242, 193, 78, 0.55);
+    color: var(--gold);
+  }
+}
+
 .trump-chip {
   border-color: var(--gold-soft);
   font-size: 15px;
@@ -1043,14 +1071,8 @@ textarea:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  animation: play-in 0.25s ease-out;
-}
-
-@keyframes play-in {
-  from {
-    opacity: 0;
-    transform: scale(0.85) translateY(8px);
-  }
+  /* Flight in and sweep out are Web Animations on `transform` (see
+     TrickArea); seat placement uses `translate`, so the two compose. */
 }
 
 .trick-play.pos-bottom {
@@ -1088,6 +1110,27 @@ textarea:focus-visible {
 
 .trick-play.winner .trick-cards .card {
   box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(242, 193, 78, 0.65);
+}
+
+.trick-play.winner .trick-cards {
+  animation: win-lift var(--dur-lift) var(--ease-back) both;
+}
+
+.trick-play.winner .win-tag {
+  animation: chip-pop 350ms var(--ease-back) 80ms both;
+}
+
+@keyframes win-lift {
+  to {
+    transform: translateY(-10px) scale(1.06);
+  }
+}
+
+@keyframes chip-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
 }
 
 .trick-tag {
@@ -1215,7 +1258,7 @@ textarea:focus-visible {
 }
 
 .hand .card {
-  transition: transform 0.12s ease-out, box-shadow 0.12s;
+  transition: transform var(--dur-fast) ease-out, box-shadow var(--dur-fast);
 }
 
 /* Hover-lift is a mouse nicety only — tap/click alone selects on touch. */
@@ -2517,6 +2560,7 @@ button.room-chip:focus-visible::after { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .hud-message { animation: none; }
   .modal, .modal-backdrop, .hud-notice, .trick-play, .rotate-icon { animation: none; }
+  .trick-play.winner .trick-cards, .trick-play.winner .win-tag, .level-chip.level-up { animation: none; }
   .hand .card, .btn, .seat-option { transition: none; }
   .btn:active:not(:disabled), .seat-option:active:not(:disabled) { transform: none; }
   /* Preserve the toast's dismissal timing, without its slide-in movement. */

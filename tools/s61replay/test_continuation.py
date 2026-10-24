@@ -24,8 +24,8 @@ def factory(rng):
     return reply
 
 
-def endpoint(state, team):
-    return state.attacker_points * (1 if team != state.banker % 2 else -1)
+def endpoint(state, seat):
+    return state.attacker_points * (1 if seat % 2 != state.banker % 2 else -1)
 
 
 def run(root, actions, **patch):
@@ -49,7 +49,9 @@ def test_replay_root_to_paired_completed_endpoints(tricks):
         return endpoint(state, team)
     result = run(root, actions, tricks=tricks, reply_factory=replies, evaluate=evaluate)
     assert root.hands == hands and len(root.history) == 0
-    assert len(calls) == 4 and {n for n, team in calls} == {tricks}
+    assert len(calls) == 4 and {n for n, seat in calls} == {tricks}
+    assert {seat for n, seat in calls} == {root.turn}
+    assert result['perspective_seat'] == root.turn
     assert starts[:2] == starts[2:]
     assert [a['in_served_ballot'] for a in result['actions']] == [True, False]
     for action in result['actions']:

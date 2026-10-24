@@ -19,7 +19,8 @@ def compare_continuations(worlds, weights, actions, *, tricks, reply_factory, ev
     """Compare actions with shared world weights and independently seeded replies.
 
     Reply callbacks return cards and an explicit fallback boolean. Endpoint
-    values are supplied by a separate evaluator in the root mover's team frame.
+    values are supplied by a separate evaluator given the original root seat,
+    in that seat's team frame.
     This diagnostic does not establish optimality or authorize a run.
     """
     if type(tricks) is not int or tricks not in (2, 3):
@@ -44,7 +45,8 @@ def compare_continuations(worlds, weights, actions, *, tricks, reply_factory, ev
         if (world.phase != 'play' or world.trick is None or world.trick.plays
                 or max(map(len, world.hands)) <= 7 or _public_root(world) != _public_root(first)):
             raise ValueError('worlds must share one public lead root above exact coverage')
-    team = first.turn % 2
+    root_seat = first.turn
+    team = root_seat % 2
     reports = []
     for action in actions:
         values, witnesses = [], []
@@ -65,7 +67,7 @@ def compare_continuations(worlds, weights, actions, *, tricks, reply_factory, ev
             completed = len(state.history) - start
             if completed < tricks and state.phase == 'play':
                 raise ValueError('incomplete continuation')
-            value = evaluate(deepcopy(state), team)
+            value = evaluate(deepcopy(state), root_seat)
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError('invalid endpoint value')
             values.append(value)
@@ -78,6 +80,6 @@ def compare_continuations(worlds, weights, actions, *, tricks, reply_factory, ev
     for report in reports:
         report['delta_from_first'] = report['weighted_value'] - baseline
     return dict(schema='s61-paired-continuation-v1', tricks=tricks, weights=list(weights),
-                seed=seed, perspective_team=team, reply_identity=reply_identity,
+                seed=seed, perspective_team=team, perspective_seat=root_seat, reply_identity=reply_identity,
                 evaluator_identity=evaluator_identity, actions=reports,
                 claim='diagnostic endpoint contrast, not gameplay strength or optimality')

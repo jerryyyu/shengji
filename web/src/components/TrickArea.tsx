@@ -37,21 +37,27 @@ function toBox(r: DOMRect): Box {
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 
-/** Screen box for a seat: an opponent's card stack, or your name line. */
+/** The element's box, or null when it is not drawn (e.g. hidden by a
+ *  phone layout), so a flight never starts from the viewport corner. */
+function drawnBox(el: Element | null | undefined): Box | null {
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 || r.height > 0 ? toBox(r) : null;
+}
+
+/** Screen box for a seat: an opponent's card stack (or its panel where the
+ *  stack is hidden), or your hand (or your name line). */
 function seatBox(root: Element | null, pos: SidePos): { box: Box; cardW: number } | null {
   const felt = root?.closest(".felt") ?? root?.parentElement ?? null;
   if (!felt) return null;
-  if (pos === "bottom") {
-    const el = felt.querySelector(".you-area .hand") ?? felt.querySelector(".you-tagline");
-    if (!el) return null;
-    const card = el.querySelector(".card");
-    return { box: toBox(el.getBoundingClientRect()), cardW: card?.getBoundingClientRect().width ?? 0 };
+  const candidates = pos === "bottom"
+    ? [felt.querySelector(".you-area .hand"), felt.querySelector(".you-tagline")]
+    : [felt.querySelector(`.opponent.pos-${pos} .back-stack`), felt.querySelector(`.opponent.pos-${pos}`)];
+  for (const el of candidates) {
+    const box = drawnBox(el);
+    if (box) return { box, cardW: drawnBox(el?.querySelector(".card"))?.width ?? 0 };
   }
-  const opp = felt.querySelector(`.opponent.pos-${pos}`);
-  const el = opp?.querySelector(".back-stack") ?? opp;
-  if (!el) return null;
-  const card = el.querySelector(".card");
-  return { box: toBox(el.getBoundingClientRect()), cardW: card?.getBoundingClientRect().width ?? 0 };
+  return null;
 }
 
 /** Box around the hand cards that just became `codes`, from the hand's

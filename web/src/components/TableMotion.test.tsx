@@ -11,6 +11,7 @@ import Table from "./Table";
 
 interface Call { el: HTMLElement; frames: Keyframe[]; opts: KeyframeAnimationOptions; anim: { cancel: ReturnType<typeof vi.fn> } }
 let calls: Call[] = [];
+let hideStacks = false;
 
 function box(left: number, top: number, width = 50, height = 70): DOMRect {
   return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} } as DOMRect;
@@ -23,6 +24,7 @@ function fakeRect(this: Element): DOMRect {
   const slot = el.closest(".hand-slot");
   if (slot) return box([...slot.parentElement!.children].indexOf(slot) * 30, 500);
   if (el.classList.contains("hand")) return box(0, 480, 600, 100);
+  if (hideStacks && el.closest(".back-stack")) return box(0, 0, 0, 0);
   const opp = el.closest(".opponent");
   if (opp) {
     const pos = /pos-(\w+)/.exec(opp.className)![1];
@@ -87,6 +89,7 @@ function reduceMotion() {
 
 beforeEach(() => {
   calls = [];
+  hideStacks = false;
   vi.useFakeTimers();
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(fakeRect);
   (HTMLElement.prototype as unknown as { animate: unknown }).animate = function (this: HTMLElement, frames: Keyframe[], opts: KeyframeAnimationOptions) {
@@ -117,6 +120,15 @@ describe("play flight", () => {
     // the top seat's stack is at (300, 0); the top trick slot at (200, 100)
     expect(f.frames[0].transform).toMatch(/^translate\(100px, -100px\) rotate\(3deg\)/);
     expect(f.frames[f.frames.length - 1].transform).toBe("none");
+    view.unmount();
+  });
+
+  it("starts from the seat panel where a phone layout hides the card stack", () => {
+    hideStacks = true;
+    const view = renderTable(makeState({ trick: trick(1, [[1, "S2"]]) }));
+    view.rerender(makeState({ trick: trick(1, [[1, "S2"], [2, "H3"]]) }));
+    // the panel shares the stack's stubbed box; a hidden stack would give (0, 0)
+    expect(flights()[0].frames[0].transform).toMatch(/^translate\(100px, -100px\)/);
     view.unmount();
   });
 

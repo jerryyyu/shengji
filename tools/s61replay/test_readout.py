@@ -57,3 +57,11 @@ def test_failure_preserves_claim_and_refuses_retry(tmp_path):
     assert (kwargs['output'] / 'consumed.json').exists()
     assert not (kwargs['output'] / 'prefix.json').exists()
     with pytest.raises(FileExistsError): extract_once(data, **kwargs)
+
+
+def test_entrypoint_bootstraps_its_source_without_pythonpath(tmp_path):
+    import subprocess
+    command = [sys.executable, '-I', str(Path(__file__).with_name('readout.py')), '--help']
+    result = subprocess.run(command, cwd=tmp_path, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert '--reader-head' in result.stdout and '--source-sha' in result.stdout

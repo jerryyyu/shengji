@@ -71,6 +71,31 @@ def _play_state(seed: int = 625091990):
 SMALL = dict(worlds=3, candidates=4, cap=400, batch_size=16)
 
 
+def test_singleton_candidate_loads_package_and_keeps_bury_consumer(package):
+    from shengji.eval.singleton_challenger import load_singleton_challenger
+    path, sha = package
+    recipe = dict(checkpoint=path, sha256=sha, **SMALL, bury_arm='hybrid',
+                  leaf_greedy_finish=True, serving_budget_seconds=3.0)
+    bot = load_singleton_challenger(name='test-baseline', **recipe)
+    control = pv.make_pv_search_bot(**recipe)
+    assert isinstance(bot, pv.PVSearchBuryBot)
+    assert bot.policy_name == 'test-baseline-sc8'
+    assert bot.config == control.config
+    rnd = _play_state()
+    bury_root = copy.deepcopy(rnd)
+    bury_root.hands[bury_root.banker].extend(bury_root.buried)
+    bury_root.buried = []
+    bury_root.phase = 'bury'
+    assert bot.decide_bury(copy.deepcopy(bury_root), bury_root.banker) == control.decide_bury(
+        copy.deepcopy(bury_root), bury_root.banker)
+    action = bot.decide_play(rnd, rnd.turn)
+    record = bot.last_decision_record
+    assert record['schema'] == pv.RECORD_SCHEMA and record['work_complete']
+    assert record['worlds'] == SMALL['worlds']
+    assert len(record['admitted']) == SMALL['candidates']
+    rnd.play(rnd.turn, action)
+
+
 @pytest.fixture
 def registered(package):
     path, sha = package

@@ -105,20 +105,50 @@ primary_region = 'ewr'
   # flags, the two BELIEF package lines, the six SHENGJI_PV_EXACT_* lines and
   # SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST) and restore the release-45 name:
   # RELEASE 45 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0'
+  # RELEASE 48 (prepared, NOT deployed; deploy only after its cloud screen and fresh-seed
+  # confirmation read POSITIVE, the latency packet passes and Jerry's word stands): release 46
+  # with three changes screened together as the guarded R48 cloud screen. BELIEF: the hidden
+  # hands are proposed by the S58 belief package s58-e6-42444515 (served at its stored
+  # temperature) in place of S17's s17long-e2-763b5e05; same runtime, same fallback to the
+  # history-legal draw. DTRX (#1120): the doomed-throw re-select never overrides a complete
+  # exact lead stage. LGF (S33, #1135-#1137): the value leaf is the afterstate with the current
+  # trick finished greedily (-lgf), except on decisions an exact stage is eligible for (-lgfx),
+  # and once a decision passes 2 s the finish stops and every leaf is the plain heuristic one
+  # (-lgfd2000). Three latency switches (no name, payload or digest; the cards played are the
+  # switch-off ones) keep lgf inside the serving budget. Play, bury and declaration budgets,
+  # package, worlds and candidates are release 46's. Evidence: PENDING (DEPLOY.md, Release 48).
+  # Rollback: delete the seven SHENGJI_PV_* lines marked "Release 48" below, restore the two
+  # release-46 belief lines and the release-46 name:
+  #   SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'
+  #   SHENGJI_PV_BELIEF_SHA256 = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'
+  # RELEASE 46 name: pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
   SHENGJI_PV_LEAD_ANCHOR = '1'
   SHENGJI_PV_DOOMED_THROW_RESELECT = '1'
+  # Release 48: the re-select's exact-stage guard (dtrx).
+  SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD = '1'
   SHENGJI_PV_VALUE_DECLARE = '1'
+  # Release 48: the greedy-finished value leaf, its exact-stage yield and its 2 s deadline
+  # (lgf, lgfx, lgfd2000).
+  SHENGJI_PV_LEAF_GREEDY_FINISH = '1'
+  SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP = '1'
+  SHENGJI_PV_LEAF_GREEDY_DEADLINE = '2'
+  # Release 48: latency switches, read where the bot is built; /healthz reports them under
+  # pv_search.latency_switches.
+  SHENGJI_PV_ENCODE_PREFIX_CACHE = '1'
+  SHENGJI_PV_LEAF_GREEDY_STREAM = '1'
+  SHENGJI_PV_ENCODE_BATCH_FAST = '1'
   # Release 46: the combo (see the RELEASE 46 note above). History-legal, belief-proposed
-  # play worlds; the belief package must be on the volume at this path with this sha256.
+  # play worlds; the belief package must be on the volume at this path with this sha256
+  # (release 48: the S58 package).
   SHENGJI_PV_WORLD_HISTORY_LEGAL = '1'
   SHENGJI_PV_WORLD_HISTORY_DRAW = '1'
   SHENGJI_PV_BELIEF_WORLDS = '1'
-  SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'
-  SHENGJI_PV_BELIEF_SHA256 = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'
+  SHENGJI_PV_BELIEF_CKPT = '/data/models/s58-e6-42444515.npz'
+  SHENGJI_PV_BELIEF_SHA256 = '424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e'
   # The exact endgame search at 7 cards. The compact-level solver is the compiled
   # _endgame_fast extension when SHENGJI_FAST=1 activated the engine (its pure-Python twin
   # otherwise, identical results, slower).

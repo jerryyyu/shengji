@@ -11,7 +11,7 @@ Release records through release 46 in full: [docs_archive/deploy-through-2026-10
 | served name | the `SHENGJI_BOT` value; the registry derives it from the `fly.toml` env, and `/healthz` reports it as `bot` |
 | play package | the NumPy value/policy net, `smv3out-491ee4bf.npz` |
 | prior | the JS-M1 package `js-m1-0d17fd03.npz`, kept under the `SHENGJI_CWV_PRIOR_*` keys |
-| belief package | the S17 hidden-hand model, `s17long-e2-763b5e05.npz` (release 46 on) |
+| belief package | the hidden-hand model: S17's `s17long-e2-763b5e05.npz` in release 46; S58's `s58-e6-42444515.npz` in the prepared release 48 |
 | volume | the Fly volume mounted at `/data`; packages in `/data/models`, room logs in `/data/logs` |
 | image | `registry.fly.io/shengji:<image>`; Fly numbers each deploy `vNN` |
 | smoke | a run of the served bot through the server path (`_paced_bot_step` / `_commit_bot_turn`) |
@@ -113,6 +113,114 @@ POSITIVE; v93lat QUALIFIED; Jerry's word in session.
 Fly's shared CPU, any `cwv-bury-fallback-v1` or `pv-declare-serving-fallback-v1` record, and the `/healthz`
 `activity` counters (step 10 has not yet been recorded as read for release 46).
 
+## Release 48 (prepared, NOT deployed)
+
+Release 46 with three changes, screened together as the guarded R48 cloud screen (candidate vs release 46 as
+served). Draft PR; nothing is on the volume or deployed. It must not merge before the cloud screen and its
+fresh-seed confirmation read VALID and POSITIVE, the latency packet passes, and Jerry's deploy word stands.
+
+| field | value |
+|---|---|
+| status | PENDING: cloud screen readout, fresh-seed confirmation, latency packet, volume upload, merged-tree smoke, Jerry's word |
+| board row | R48 on #1075 |
+| comparator | release 46 as served |
+
+Served name (the registry derives it from the edited `fly.toml` with the real packages; it equals the screen
+plan's `arms.candidate.name`):
+
+```
+pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a
+```
+
+### What changes
+
+| change | `fly.toml` | name token |
+|---|---|---|
+| belief package: S58 (d192, 4 + 4 layers) replaces S17 e2, served at its stored temperature 1.0129 | `SHENGJI_PV_BELIEF_CKPT = '/data/models/s58-e6-42444515.npz'`, `SHENGJI_PV_BELIEF_SHA256 = '424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e'` | none (the play digest moves) |
+| dtrx (#1120): the doomed-throw re-select never overrides a complete exact lead stage | `SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD = '1'` | `dtrx` |
+| greedy-finished value leaf (S33) | `SHENGJI_PV_LEAF_GREEDY_FINISH = '1'` | `lgf` |
+| its exact-stage yield: the plain leaf on decisions an exact stage is eligible for | `SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP = '1'` | `lgfx` |
+| its deadline: past 2 s into a decision the finish stops and every leaf is the plain one | `SHENGJI_PV_LEAF_GREEDY_DEADLINE = '2'` | `lgfd2000` |
+| latency switches (no name, payload or digest; the cards played are the switch-off ones) | `SHENGJI_PV_ENCODE_PREFIX_CACHE = '1'`, `SHENGJI_PV_LEAF_GREEDY_STREAM = '1'`, `SHENGJI_PV_ENCODE_BATCH_FAST = '1'` | none |
+
+Every other line is release 46's: play package, prior, worlds, candidates, budgets, bury, declaration, exact
+stages. No bury, Exact8 or width change. The belief runtime is unchanged (NumPy only), and so is its fallback to
+the history-legal draw. The latency switches are read from the process environment where the bot is built, so
+`/healthz` reports them as `pv_search.latency_switches`.
+
+| package | path on the volume | sha256 | `serving-packages` asset |
+|---|---|---|---|
+| belief (new) | `/data/models/s58-e6-42444515.npz` | `424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e` | `s58-e6-42444515.npz` (uploaded) |
+
+`server/tests/test_release48_fly_config.py` builds the served bot from this env on the pinned packages, with the
+env exported into the process as Fly does, and plays one turn through the server path. It also builds the
+release-46 rollback on S17's package. `server/tests/test_bury_fly_config.py` pins the name chain 48 → 46 → 45 and
+the deeper rollbacks.
+
+### Evidence
+
+PENDING. No R48 result exists yet. The unguarded S58 combo (without the deadline and the latency switches) read
+INVALID on play budget fallbacks ([readout](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6376318200));
+the deadline and switches are that read's repair. The guarded cloud screen, its fresh-seed confirmation and the
+latency packet are recorded here and in `AI_POLICIES.md` when they are read.
+
+### Release note: what a player will notice
+
+- **More failed throws.** dtrx keeps an exact-stage throw the engine will refuse unless another lead's exact
+  mean is at least as high, so the bot shows more public failed-throw notices than release 46 (R47's v97dtrx
+  measured about a third more). Its effect on human opponents is not measured.
+- **Belief package.** S58 is trained on bot self-play plus a small human-log stream. Watch the first human
+  room's belief and history fallback counts.
+
+### Deploy steps (release 48)
+
+The Release checklist below, with these substitutions:
+
+1. **Before merge:** the `serving-packages` asset `s58-e6-42444515.npz` is uploaded (sha256 `42444515…2a259e`);
+   the CI package-gate step fetches it as "Fetch the pinned release-48 belief package" and keeps fetching S17
+   for the rollback test.
+2. **Evidence:** the guarded cloud screen VALID and POSITIVE (CI lower > 0) vs release 46 as served, a fresh-seed
+   confirmation with its own CI lower > 0, and the latency packet PASS.
+3. **Review and CI:** Codex PASS at the exact head; every check green; REST squash merge at that sha.
+4. **Volume upload, before the deploy:**
+   1. `shasum -a 256 <local>/s58-e6-42444515.npz` must print `424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e`.
+   2. `fly ssh sftp shell -a shengji`, then `put <local>/s58-e6-42444515.npz /data/models/s58-e6-42444515.npz`.
+   3. `fly ssh console -a shengji -C "sha256sum /data/models/s58-e6-42444515.npz"` must print the same sha256.
+   Keep `s17long-e2-763b5e05.npz` on the volume; the rollback reads it.
+5. **Merged-tree full-round smoke** (checklist step 3) with `--map /data/models/s58-e6-42444515.npz=<local>` in
+   place of the S17 map and `--receipt smoke48.jsonl`. The smoke builds the bot with the `fly.toml` env in the
+   process environment; its `bot` line must show `latency_switches` with `encode_prefix_cache`,
+   `leaf_greedy_stream` and `encode_batch_fast` true and `single_candidate_fast` false.
+6. **Jerry's word, in session.**
+7. **Deploy** from a clean worktree at the merge commit at 0 rooms: `fly deploy --ha=false`.
+8. **After the deploy:**
+   1. `/healthz` shows the name above and `pv_search.latency_switches`
+      `{"encode_prefix_cache": true, "single_candidate_fast": false, "leaf_greedy_stream": true, "encode_batch_fast": true}`.
+   2. Run the in-machine line (checklist step 8) with
+      `/data/models/s58-e6-42444515.npz 424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e`; it must
+      print `True compiled 42444515`.
+   3. Run the first-room reader with its triggers. Also report belief_ms p95, failed throws per round and the
+      count of records with `leaf_greedy_deadline_fired` true, as reported lines rather than triggers.
+9. **Records:** Releases table, Current production, and Rollback (to release 46).
+
+### Rollback to release 46
+
+Release 46: Fly v46, image `deployment-01M530R14ARM0669QNJBW2RGTG`, main `ab6fd1b2`. It reads
+`/data/models/s17long-e2-763b5e05.npz`, which stays on the volume.
+
+- **Option 1, redeploy the release-46 image** (no build):
+  `flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:deployment-01M530R14ARM0669QNJBW2RGTG`
+- **Option 2, edit `fly.toml`:**
+  1. Delete the seven lines release 48 added: `SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD`,
+     `SHENGJI_PV_LEAF_GREEDY_FINISH`, `SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP`, `SHENGJI_PV_LEAF_GREEDY_DEADLINE`,
+     `SHENGJI_PV_ENCODE_PREFIX_CACHE`, `SHENGJI_PV_LEAF_GREEDY_STREAM`, `SHENGJI_PV_ENCODE_BATCH_FAST`.
+  2. Restore `SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'` and
+     `SHENGJI_PV_BELIEF_SHA256 = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'`.
+  3. Set `SHENGJI_BOT` to the release-46 name kept in the comment above it.
+  4. Run `fly deploy --ha=false`; `/healthz` must show the release-46 name and every latency switch false.
+
+  `test_release48_fly_config.py` and `test_bury_fly_config.py` check that this env derives release 46's name.
+
 ## Rollback
 
 ### To release 45 (the rollback target)
@@ -169,8 +277,9 @@ and 42–46. Commands below are release 46's; substitute the new release's packa
 
 1. **Review and CI.** A non-author PASS on the release PR at its exact head, and all CI checks green. The
    package-gate step fetches the pinned packages from the `serving-packages` release, sha256-verifies them, and
-   runs `server/tests/test_release46_fly_config.py`, which builds the served bot from the `fly.toml` env through
-   the server path (name, every knob, belief model, compiled solver, one play with no fallback).
+   runs `server/tests/test_release48_fly_config.py` (release 46's `test_release46_fly_config.py` for the
+   rollback), which builds the served bot from the `fly.toml` env through the server path (name, every knob,
+   belief model, compiled solver, latency switches, one play with no fallback).
    `server/tests/test_bury_fly_config.py` pins the served name.
 2. **Package upload, before the `fly.toml` switch.** The policy registers at server import and refuses a missing
    or mismatched package, so a deploy without it does not boot the served bot. The running machine does not read
@@ -200,8 +309,9 @@ and 42–46. Commands below are release 46's; substitute the new release's packa
 **After the deploy**
 
 7. **`/healthz`.** `bot` is the new served name, `fast: true`, `pv_search.sha256` `491ee4bf…`, `prior`
-   `0d17fd03…`, `budget_seconds "3"`, `bury_arm hybrid`, `bury_budget_seconds "2"`. `/healthz` does not report
-   the belief package; the bot registering at all shows its sha matched.
+   `0d17fd03…`, `budget_seconds "3"`, `bury_arm hybrid`, `bury_budget_seconds "2"`, and `latency_switches` as
+   the release's `fly.toml` sets them. `/healthz` does not report the belief package; the bot registering at all
+   shows its sha matched.
 8. **In-machine compiled/belief check** (read-only, same image and interpreter as the server):
    ```
    fly ssh console -a shengji -C "sh -c 'cd /app/server && SHENGJI_FAST=1 .venv/bin/python -c \"import sys; from shengji.ai.endgame_compact import HAVE_FAST, default_backend; from shengji.ai.belief_numpy import load_belief_numpy; m = load_belief_numpy(sys.argv[1], sys.argv[2]); print(HAVE_FAST, default_backend(), m.package_sha256[:8])\" /data/models/s17long-e2-763b5e05.npz 763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'"
@@ -267,6 +377,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
+| 48 | PENDING (draft) | S58 belief package + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches | new belief package `42444515…` | draft | — |
 | 46 | 2026-10-16 14:49 | v92 combo: belief worlds, exact endgame at 7, `vdef` | new belief package `763b5e05…` | #1072 | `deployment-01M530R14ARM0669QNJBW2RGTG` (v46), main `ab6fd1b2` |
 | 45 | 2026-10-13 05:27 | wide value-only bury (`bwv`, K 64) | flag | #983 | `deployment-01M4T9AVEVK51WP2GG8J34NRC9` (v45), main `1ca97051` |
 | 44 | 2026-10-11 17:05 | value-guided trump declaration (`vd`) | flag | #963 | `deployment-01M4PC7724HSXC27PCEEREZWY4` (v44), main `8ac9543e` |

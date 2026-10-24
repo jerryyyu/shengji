@@ -204,6 +204,7 @@ jobs:
           tests/test_mc_benchmark_normalization.py
           tests/test_bury_fly_config.py
           tests/test_release46_fly_config.py
+          tests/test_release48_fly_config.py
           tests/test_check_ci_test_selection.py
           tests/test_check_comment_provenance.py
           tests/test_check_doc_claims.py
@@ -286,13 +287,25 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 3 -o /tmp/shengji-packages/s17long-e2-763b5e05.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/s17long-e2-763b5e05.npz" | sha256sum -c -
+      # Release 48's belief package (S58); the S17 package above stays for the release-46
+      # rollback, which is built on real bytes too.
+      - name: Fetch the pinned release-48 belief package
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/s58-e6-42444515.npz
+          PACKAGE_SHA256: 424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/s58-e6-42444515.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/s58-e6-42444515.npz" | sha256sum -c -
       - name: Load the production package on this tree
         env:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
           SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
           SHENGJI_PV_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/s17long-e2-763b5e05.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_release46_fly_config.py tests/test_pv_latency_switches_release46.py tests/test_pv_leaf_greedy_stream.py
+          SHENGJI_PV_BELIEF48_PACKAGE_PATH: /tmp/shengji-packages/s58-e6-42444515.npz
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_release46_fly_config.py tests/test_release48_fly_config.py tests/test_pv_latency_switches_release46.py tests/test_pv_leaf_greedy_stream.py
 
   import-walk:
     needs: changes

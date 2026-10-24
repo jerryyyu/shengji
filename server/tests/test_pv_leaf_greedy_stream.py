@@ -33,7 +33,7 @@ from test_pv_doomed_throw_reselect import HashNoiseEvaluator, throw_loving_score
 from test_pv_leaf_greedy_finish import LEAF_KEYS, LGF_ENV, R46_RULES, leaf_bot
 from test_pv_search_serving import _play_state
 from test_pv_small_joker_lead import _fresh_round
-from test_release46_fly_config import PACKAGE_SHA, fly_env, pinned_belief_package  # noqa: F401
+from test_release46_fly_config import PACKAGE_SHA, fly_env, pinned_belief_package, release46_env  # noqa: F401
 
 STREAM = "SHENGJI_PV_LEAF_GREEDY_STREAM"
 PREFIX = "SHENGJI_PV_ENCODE_PREFIX_CACHE"
@@ -202,7 +202,7 @@ def test_the_switched_r47_lgf_bot_decides_exactly_as_the_plain_one(
     two seeded heuristic-played rounds, seed 17 on the even tricks and seed 23
     on the odd ones, the trick position rotating: hand sizes from 25 cards
     down and every position in the trick."""
-    env = {**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+    env = {**release46_env(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
            "SHENGJI_PV_SHA256": PACKAGE_SHA, "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package),
            "SHENGJI_PV_SERVING_BUDGET_SECONDS": "600",
            "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD": "1",

@@ -415,7 +415,7 @@ def run(env: dict[str, str], *, rounds: int, plays: int, first_seed: int, receip
             expected["budget_seconds"] = float(env["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"])
             write({"kind": "header", "schema": SCHEMA, "expected": expected, "logs_dir": str(logs_dir),
                    "argv": sys.argv})
-            from scripts.cwv_serving_smoke import build_production_bot, file_sha256
+            from scripts.cwv_serving_smoke import bot_latency_switches, build_production_bot, file_sha256
             from shengji.api import server as srv
             from shengji.engine import combos, fast
 
@@ -426,6 +426,7 @@ def run(env: dict[str, str], *, rounds: int, plays: int, first_seed: int, receip
                         "bot_bury_wide_value": getattr(bot, "bury_wide_value", None),
                         "bot_bury_wide_k": getattr(bot, "bury_wide_k", None),
                         "bot_bury_wide_swaps": getattr(bot, "bury_wide_swaps", None),
+                        "latency_switches": bot_latency_switches(bot),
                         "compiled_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
                         "files": {k: {"path": v, "sha256": file_sha256(v)} for k, v in env.items()
                                   if k.endswith("_CKPT")}}

@@ -74,13 +74,16 @@ def _pv_search_health() -> dict | None:
         return None
     try:
         from ..ai.cwv_policy import file_sha256
-        from ..train.pv_search_policy import DEFAULTS
+        from ..train.pv_search_policy import DEFAULTS, latency_switches
         return {"sha256": file_sha256(path),
                 "worlds": int(os.environ.get("SHENGJI_PV_WORLDS", DEFAULTS["worlds"])),
                 "candidates": int(os.environ.get("SHENGJI_PV_CANDIDATES", DEFAULTS["candidates"])),
                 "budget_seconds": os.environ.get("SHENGJI_PV_SERVING_BUDGET_SECONDS"),
                 "bury_arm": os.environ.get("SHENGJI_PV_BURY_ARM") or "heuristic",
-                "bury_budget_seconds": os.environ.get("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS")}
+                "bury_budget_seconds": os.environ.get("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"),
+                # read from the same process environment the bot factory reads them from;
+                # they enter no name, so this is where a deploy shows them
+                "latency_switches": latency_switches()}
     except Exception as exc:                # noqa: BLE001 - health must answer
         return {"error": f"{type(exc).__name__}: {exc}"}
 

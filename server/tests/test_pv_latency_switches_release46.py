@@ -89,9 +89,9 @@ def test_the_switched_release46_bot_decides_exactly_as_the_plain_one(
 def test_the_switches_leave_the_served_name_unchanged(monkeypatch, pinned_production_package,
                                                       pinned_belief_package):  # noqa: F811
     from shengji.train import pv_search_policy as pv
-    from test_release46_fly_config import PACKAGE_SHA, fly_env
+    from test_release46_fly_config import PACKAGE_SHA, fly_env, release46_env
 
-    base = {**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+    base = {**release46_env(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
             "SHENGJI_PV_SHA256": PACKAGE_SHA,
             "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package)}
     for extra in ({}, {PREFIX: "1"}, {SINGLE: "1"}, {PREFIX: "1", SINGLE: "1"},

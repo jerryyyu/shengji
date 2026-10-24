@@ -1,10 +1,13 @@
-"""Release 46: the shipping ``fly.toml`` serves the combo screened as v92combo45.
+"""Release 46, the rollback of release 48: the combo screened as v92combo45.
 
 The combo is release 45 plus history-legal, belief-proposed play worlds (``-whl
 -whd -bw``, the S17 belief package), the exact endgame search at 7 cards (``-ele
 -ed7 -xf7 -xfcompactlevel``) and the value-guided declaration at every
-first-round chance (``-vdef``).  The served bot is built from the repo's
-``fly.toml`` environment exactly as the server builds it (``pv_env_recipe`` ->
+first-round chance (``-vdef``).  Release 48 changes the belief pair and adds
+seven lines (``RELEASE48_ADDED_KEYS``), so release 46's env is the repo's
+``fly.toml`` environment with that change undone (``release46_env``, the
+documented rollback).  The bot is built from it exactly as the server builds it
+(``pv_env_recipe`` ->
 ``pv_registry_entries`` -> the factory) on the hash-pinned production and belief
 packages, so the registry name, every combo knob, the bound belief model and the
 compact solver's backend are witnessed on this tree, and one served play goes
@@ -46,25 +49,50 @@ V92_CANDIDATE_ENV = {"SHENGJI_PV_WORLD_HISTORY_LEGAL": "1",
                      "SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS": "7",
                      "SHENGJI_PV_EXACT_FOLLOW_MAX_NODES": "50000000",
                      "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST": "1"}
-COMBO_KEYS = tuple(V92_CANDIDATE_ENV)
+DTRX_FLAG = "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD"
+#: the lines release 48 adds above release 46 (it also changes the belief pair's values,
+#: not its keys): dtrx, the guarded greedy finish and its three latency switches
+RELEASE48_ADDED_KEYS = (DTRX_FLAG,
+                        "SHENGJI_PV_LEAF_GREEDY_FINISH",
+                        "SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP",
+                        "SHENGJI_PV_LEAF_GREEDY_DEADLINE",
+                        "SHENGJI_PV_ENCODE_PREFIX_CACHE",
+                        "SHENGJI_PV_LEAF_GREEDY_STREAM",
+                        "SHENGJI_PV_ENCODE_BATCH_FAST")
+#: every line production's env carries above release 45: release 46's twelve and
+#: release 48's seven
+COMBO_KEYS = tuple(V92_CANDIDATE_ENV) + RELEASE48_ADDED_KEYS
 
 
 def without_combo(env: dict) -> dict:
-    """``env`` without the twelve release-46 lines: release 45's env when ``env`` is
-    production's (the documented rollback)."""
+    """``env`` without the lines above release 45: release 45's env when ``env`` is
+    production's or release 46's (the documented rollbacks)."""
     return {k: v for k, v in env.items() if k not in COMBO_KEYS}
+
+
+def release46_env(env: dict) -> dict:
+    """Production's env with release 48's rollback applied: its seven added lines
+    removed, the S17 belief pair and the release-46 name restored."""
+    env = {k: v for k, v in env.items() if k not in RELEASE48_ADDED_KEYS}
+    env.update(SHENGJI_PV_BELIEF_CKPT=BELIEF_VOLUME_PATH, SHENGJI_PV_BELIEF_SHA256=BELIEF_SHA,
+               SHENGJI_BOT=RELEASE46)
+    return env
+
+
 BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
 
 
 def fly_env() -> dict:
+    """The repo's ``fly.toml`` ``[env]`` as written (production's, release 48)."""
     return tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
 
 
 @pytest.fixture(scope="module")
 def pinned_belief_package(pinned_production_package):
-    """The hash-pinned S17 belief package named by ``SHENGJI_PV_BELIEF_PACKAGE_PATH``
-    (CI fetches it from the ``serving-packages`` release); missing FAILS under
-    ``SHENGJI_REQUIRE_PV_PACKAGE=1``, like the production package."""
+    """The hash-pinned S17 belief package (release 46's) named by
+    ``SHENGJI_PV_BELIEF_PACKAGE_PATH`` (CI fetches it from the ``serving-packages``
+    release); missing FAILS under ``SHENGJI_REQUIRE_PV_PACKAGE=1``, like the
+    production package."""
     if not BELIEF_PACKAGE:
         if REQUIRE_PACKAGE:
             pytest.fail("SHENGJI_REQUIRE_PV_PACKAGE=1 but SHENGJI_PV_BELIEF_PACKAGE_PATH is unset")
@@ -80,7 +108,7 @@ def pinned_belief_package(pinned_production_package):
 def served_entries(path, belief_path):
     from shengji.train import pv_search_policy as pv
 
-    env = fly_env()
+    env = release46_env(fly_env())
     recipe = pv.pv_env_recipe({**env, "SHENGJI_PV_CKPT": str(path),
                                "SHENGJI_PV_SHA256": PACKAGE_SHA,
                                "SHENGJI_PV_BELIEF_CKPT": str(belief_path)})
@@ -89,9 +117,10 @@ def served_entries(path, belief_path):
     return env, name, entries[name]
 
 
-def test_fly_toml_carries_the_v92_candidate_env():
-    env = fly_env()
-    assert {k: env[k] for k in COMBO_KEYS} == V92_CANDIDATE_ENV
+def test_release46_env_carries_the_v92_candidate_env():
+    env = release46_env(fly_env())
+    assert {k: env[k] for k in V92_CANDIDATE_ENV} == V92_CANDIDATE_ENV
+    assert not set(RELEASE48_ADDED_KEYS) & set(env)
     assert env["SHENGJI_BOT"] == RELEASE46
     # the belief log stays at its default (on); the screen did not set it either
     assert "SHENGJI_PV_BELIEF_LOG" not in env
@@ -196,7 +225,7 @@ def test_served_play_takes_the_belief_proposal_through_the_server_path(
 def test_rollback_to_release45_is_the_env_without_the_twelve_combo_lines(pinned_production_package):
     from shengji.train import pv_search_policy as pv
 
-    env = without_combo(fly_env())
+    env = without_combo(release46_env(fly_env()))
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(
         {**env, "SHENGJI_PV_CKPT": str(pinned_production_package), "SHENGJI_PV_SHA256": PACKAGE_SHA}))
     name, = entries
@@ -208,7 +237,6 @@ def test_rollback_to_release45_is_the_env_without_the_twelve_combo_lines(pinned_
     assert (bot.worlds, bot.candidates, bot.bury_wide_value, bot.bury_wide_k) == (64, 8, True, 64)
 
 
-DTRX_FLAG = "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD"
 #: release 46 with the doomed-throw re-select's exact-stage guard on (token ``dtrx``
 #: after ``dtr``): a DEV arm, never the served name
 RELEASE46_DTRX = ("pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-ed7-xf7-"
@@ -220,7 +248,7 @@ def test_dtrx_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_
     from shengji.train import pv_search_policy as pv
 
     def built(**extra):
-        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+        recipe = pv.pv_env_recipe({**release46_env(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
                                    "SHENGJI_PV_SHA256": PACKAGE_SHA,
                                    "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
         entries = pv.pv_registry_entries(**recipe)
@@ -242,7 +270,7 @@ def test_dtrx_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_
     # the guard binds to the exact stage: release 45 (dtr, no exact stage) refuses it
     with pytest.raises(pv.PVSearchPolicyError, match="requires doomed_throw_reselect and exact_lead_endgame"):
         pv.pv_registry_entries(**pv.pv_env_recipe(
-            {**without_combo(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
+            {**without_combo(release46_env(fly_env())), "SHENGJI_PV_CKPT": str(pinned_production_package),
              "SHENGJI_PV_SHA256": PACKAGE_SHA, DTRX_FLAG: "1"}))
 
 
@@ -256,7 +284,7 @@ def test_lgf_off_keeps_the_served_name_and_on_adds_its_token(pinned_production_p
     from shengji.train import pv_search_policy as pv
 
     def built(**extra):
-        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+        recipe = pv.pv_env_recipe({**release46_env(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
                                    "SHENGJI_PV_SHA256": PACKAGE_SHA,
                                    "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
         entries = pv.pv_registry_entries(**recipe)
@@ -289,7 +317,7 @@ def test_bkc_off_keeps_the_served_name_and_on_adds_its_bury_token(pinned_product
     from shengji.train import pv_search_policy as pv
 
     def built(**extra):
-        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+        recipe = pv.pv_env_recipe({**release46_env(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
                                    "SHENGJI_PV_SHA256": PACKAGE_SHA,
                                    "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
         entries = pv.pv_registry_entries(**recipe)
@@ -321,7 +349,7 @@ def test_lgfx_off_keeps_the_lgf_name_and_on_adds_its_token(pinned_production_pac
     from shengji.train import pv_search_policy as pv
 
     def built(**extra):
-        recipe = pv.pv_env_recipe({**fly_env(), "SHENGJI_PV_CKPT": str(pinned_production_package),
+        recipe = pv.pv_env_recipe({**release46_env(fly_env()), "SHENGJI_PV_CKPT": str(pinned_production_package),
                                    "SHENGJI_PV_SHA256": PACKAGE_SHA,
                                    "SHENGJI_PV_BELIEF_CKPT": str(pinned_belief_package), **extra})
         entries = pv.pv_registry_entries(**recipe)

@@ -24,7 +24,7 @@ from shengji.api import debug
 from shengji.api.debug_play import MAX_CANDIDATES, PV_FALLBACK_SCHEMA, PV_SCHEMA, play_analysis
 from shengji.engine.game import Game
 from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA  # noqa: F401
-from test_release46_fly_config import pinned_belief_package  # noqa: F401
+from test_release48_fly_config import pinned_release48_belief_package  # noqa: F401
 
 
 def _pv_record(**extra):
@@ -293,11 +293,11 @@ def _play_state(seed: int = 73):
     return rnd
 
 
-def test_production_overlay_explains_a_served_play_decision(pinned_production_package, pinned_belief_package):
+def test_production_overlay_explains_a_served_play_decision(pinned_production_package, pinned_release48_belief_package):
     """The overlay on the served recipe: every admitted candidate carries the
     value head's level, the chosen row is marked, the model identity is the
     package's.  Fails, never skips, under SHENGJI_REQUIRE_PV_PACKAGE=1."""
-    name, factory = _served_entries(pinned_production_package, pinned_belief_package)
+    name, factory = _served_entries(pinned_production_package, pinned_release48_belief_package)
     bot = factory(seed=17)
     rnd = _play_state()
     out = debug._xray(rnd, rnd.turn, bot)
@@ -320,10 +320,10 @@ def test_production_overlay_explains_a_served_play_decision(pinned_production_pa
     assert info["search_seconds"] > 0 and info["work_complete"] is True
 
 
-def test_production_overlay_explains_a_served_declaration(pinned_production_package, pinned_belief_package):
+def test_production_overlay_explains_a_served_declaration(pinned_production_package, pinned_release48_belief_package):
     """The value declaration (release 44+) in the grace window: the record's
     outcomes and means reach the view, the chosen cards are the record's."""
-    _, factory = _served_entries(pinned_production_package, pinned_belief_package)
+    _, factory = _served_entries(pinned_production_package, pinned_release48_belief_package)
     bot = factory(seed=17)
     assert bot.value_declare is True
     rnd = _dealt_round()
@@ -341,14 +341,14 @@ def test_production_overlay_explains_a_served_declaration(pinned_production_pack
     assert rnd.declaration is None
 
 
-def test_production_overlay_keeps_the_panel_fixtures_shape(pinned_production_package, pinned_belief_package):
+def test_production_overlay_keeps_the_panel_fixtures_shape(pinned_production_package, pinned_release48_belief_package):
     """The panel's captured responses (`web/src/components/xray-*.fixture.json`)
     name the fields the served producer writes today; a renamed or dropped
     field fails here before the browser shows 'unavailable'."""
     components = Path(__file__).resolve().parents[2] / "web" / "src" / "components"
     play = json.loads((components / "xray-pv-search.fixture.json").read_text())
     declare = json.loads((components / "xray-declare.fixture.json").read_text())
-    _, factory = _served_entries(pinned_production_package, pinned_belief_package)
+    _, factory = _served_entries(pinned_production_package, pinned_release48_belief_package)
     bot = factory(seed=17)
     rnd = _play_state()
     out = debug._xray(rnd, rnd.turn, bot)

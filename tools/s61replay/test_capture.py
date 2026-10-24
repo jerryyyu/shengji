@@ -108,3 +108,24 @@ def test_release46_package_capture(monkeypatch):
     for key in ('admitted', 'value_means', 'selected_index'):
         assert captured['served_record'][key] == plain.last_decision_record[key]
     assert bot.sampler.rng.getstate() == plain.sampler.rng.getstate()
+
+    from served import reply_factory, endpoint_evaluator
+    from continuation import compare_continuations
+    alternative = next([card] for card in root.hands[root.turn] if [card] != captured['played'])
+    evaluator_bot = factory_(seed=42)
+    evaluate = endpoint_evaluator(evaluator_bot)
+    seen = []
+    def checked_endpoint(state, root_seat):
+        assert root_seat == root.turn == 2
+        assert len(state.history) == 2
+        value = evaluate(state, root_seat)
+        assert value == float(evaluator_bot.evaluator.score([state], root_seat)[0])
+        seen.append(root_seat)
+        return value
+    result = compare_continuations(captured['worlds'][:1], [1.],
+        [captured['played'], alternative], tricks=2,
+        reply_factory=reply_factory(factory_), evaluate=checked_endpoint, seed=51,
+        reply_identity=name, evaluator_identity=name,
+        served_ballot=captured['served_ballot'])
+    assert seen == [2, 2]
+    assert all(row['worlds'][0]['completed_tricks'] == 2 for row in result['actions'])

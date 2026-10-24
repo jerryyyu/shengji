@@ -114,9 +114,10 @@ primary_region = 'ewr'
   # exact lead stage. LGF (S33, #1135-#1137): the value leaf is the afterstate with the current
   # trick finished greedily (-lgf), except on decisions an exact stage is eligible for (-lgfx),
   # and once a decision passes 2 s the finish stops and every leaf is the plain heuristic one
-  # (-lgfd2000). Three latency switches (no name, payload or digest; the cards played are the
-  # switch-off ones) keep lgf inside the serving budget. Play, bury and declaration budgets,
-  # package, worlds and candidates are release 46's. Evidence: PENDING (DEPLOY.md, Release 48).
+  # (-lgfd2000). Three latency switches (no name, payload or digest; on completed decisions the
+  # cards played are the switch-off ones) cut lgf's encoding and memory cost. Play, bury and
+  # declaration budgets, package, worlds and candidates are release 46's. Evidence: PENDING
+  # (DEPLOY.md, Release 48).
   # Rollback: delete the seven SHENGJI_PV_* lines marked "Release 48" below, restore the two
   # release-46 belief lines and the release-46 name:
   #   SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'

@@ -141,7 +141,7 @@ pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-
 | greedy-finished value leaf (S33) | `SHENGJI_PV_LEAF_GREEDY_FINISH = '1'` | `lgf` |
 | its exact-stage yield: the plain leaf on decisions an exact stage is eligible for | `SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP = '1'` | `lgfx` |
 | its deadline: past 2 s into a decision the finish stops and every leaf is the plain one | `SHENGJI_PV_LEAF_GREEDY_DEADLINE = '2'` | `lgfd2000` |
-| latency switches (no name, payload or digest; the cards played are the switch-off ones) | `SHENGJI_PV_ENCODE_PREFIX_CACHE = '1'`, `SHENGJI_PV_LEAF_GREEDY_STREAM = '1'`, `SHENGJI_PV_ENCODE_BATCH_FAST = '1'` | none |
+| latency switches (no name, payload or digest; on completed decisions the cards played are the switch-off ones) | `SHENGJI_PV_ENCODE_PREFIX_CACHE = '1'`, `SHENGJI_PV_LEAF_GREEDY_STREAM = '1'`, `SHENGJI_PV_ENCODE_BATCH_FAST = '1'` | none |
 
 Every other line is release 46's: play package, prior, worlds, candidates, budgets, bury, declaration, exact
 stages. No bury, Exact8 or width change. The belief runtime is unchanged (NumPy only), and so is its fallback to

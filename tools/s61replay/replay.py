@@ -64,11 +64,14 @@ def replay_root(row, play_index, *, on_decision=None):
     if rnd.banker != row['banker'] or (rnd.trump_suit or 'NT') != row['trump']:
         raise ValueError('declaration outcome drift')
     buried = take('B', rnd.banker)
-    if Counter(buried) != Counter(row['buried']):
+    if 'buried' in row and (not isinstance(row['buried'], list)
+                            or Counter(buried) != Counter(row['buried'])):
         raise ValueError('burial drift')
     rnd.bury(rnd.banker, buried)
-    history = row['history']
-    if play_index >= len(history):
+    history = row.get('history')
+    if 'history' in row and not isinstance(history, list):
+        raise ValueError('invalid committed history')
+    if history is not None and play_index >= len(history):
         raise ValueError('target outside committed history')
     failed = []
     for index in range(play_index + 1):
@@ -78,11 +81,16 @@ def replay_root(row, play_index, *, on_decision=None):
         lead = rnd.trick is not None and not rnd.trick.plays
         attempted = take('P', seat, len(rnd.history), lead)
         branch, witness = branch_action(rnd, attempted)
-        committed = history[index]
-        if (not isinstance(committed, list) or len(committed) != 2
-                or committed[0] != seat or not isinstance(committed[1], list)
-                or Counter(committed[1]) != Counter(witness['accepted'])):
-            raise ValueError('committed play drift')
+        if history is not None:
+            committed = history[index]
+            if (not isinstance(committed, list) or len(committed) != 2
+                    or committed[0] != seat or not isinstance(committed[1], list)
+                    or Counter(committed[1]) != Counter(witness['accepted'])):
+                raise ValueError('committed play drift')
+        witness['accepted_evidence'] = ('logged_and_replayed' if history is not None
+                                        else 'engine_derived_from_attempt')
+        witness['burial_evidence'] = ('logged_and_replayed' if 'buried' in row
+                                      else 'decision_trace')
         if index == play_index:
             return rnd, dict(witness, play_index=index, prior_failed_throws=failed)
         if witness['failed_throw']:

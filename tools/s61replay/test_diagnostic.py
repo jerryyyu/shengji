@@ -41,8 +41,13 @@ def bound_fixture():
     return locator, rows
 
 
-def test_extracted_pair_to_served_paired_continuation():
+@pytest.mark.parametrize('logged_history', [True, False])
+def test_extracted_pair_to_served_paired_continuation(logged_history):
     locator, rows = bound_fixture()
+    if not logged_history:
+        for row in rows:
+            row.pop('history')
+            row.pop('buried')
     before = deepcopy(rows)
     encoded = []
     for row in reversed(rows):

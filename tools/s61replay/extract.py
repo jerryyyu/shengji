@@ -8,7 +8,7 @@ LOCATOR = dict(seed=218060912, kind='fixed_banker', rank='4', index=105,
                phase='P', seat=2, trick=0, lead=True, hand=25,
                release46_action=['D4', 'D4'], exploiter_action=['H10'])
 FIELDS = ('seed', 'round_kind', 'trump_rank', 'planned_banker', 'banker',
-          'trump', 'buried', 'mirror')
+          'trump', 'mirror')
 
 
 def project_pair(rows, locator=LOCATOR):
@@ -25,7 +25,7 @@ def project_pair(rows, locator=LOCATOR):
                 or type(row.get('mirror')) is not int):
             raise ValueError('record outside named extraction')
         trace, history = row.get('dtrace'), row.get('history')
-        if not isinstance(trace, list) or not isinstance(history, list):
+        if not isinstance(trace, list) or ('history' in row and not isinstance(history, list)):
             raise ValueError('missing replay evidence')
         index = locator['index']
         prefix = trace[:index + 1]
@@ -34,11 +34,14 @@ def project_pair(rows, locator=LOCATOR):
         if any(not isinstance(entry, list) or len(entry) != 6 for entry in prefix):
             raise ValueError('invalid decision prefix')
         plays = sum(entry[0] == 'P' for entry in prefix)
-        if len(history) < plays:
+        if history is not None and len(history) < plays:
             raise ValueError('incomplete accepted-play prefix')
         item = {key: deepcopy(row[key]) for key in FIELDS}
         item['dtrace'] = deepcopy(prefix)
-        item['history'] = deepcopy(history[:plays])
+        if history is not None:
+            item['history'] = deepcopy(history[:plays])
+        if 'buried' in row:
+            item['buried'] = deepcopy(row['buried'])
         projected.append(item)
     _, witness = bind_locator(locator, projected)
     return dict(schema='s61-same-root-prefix-v1', locator=deepcopy(locator),

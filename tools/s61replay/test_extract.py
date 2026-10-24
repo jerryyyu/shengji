@@ -34,3 +34,26 @@ def test_projection_refuses_identity_and_consumer_drift(defect):
     else: rows.pop()
     with pytest.raises(ValueError):
         project_pair(rows, locator)
+
+
+def test_no_history_producer_shape_derives_witness_without_inventing_logs():
+    locator, rows, original = fixture()
+    for row in rows:
+        del row['history']
+        del row['buried']
+    result = project_pair(rows, locator)
+    root, witness = bind_locator(result['locator'], result['rows'])
+    assert root.hands == original.hands and root.buried == original.buried
+    assert all('history' not in row and 'buried' not in row for row in result['rows'])
+    for policy in ('release46', 'exploiter'):
+        assert witness[policy]['accepted_evidence'] == 'engine_derived_from_attempt'
+        assert witness[policy]['burial_evidence'] == 'decision_trace'
+    assert witness == result['witness']
+
+
+@pytest.mark.parametrize('field', ['history', 'buried'])
+def test_present_invalid_evidence_is_not_treated_as_absent(field):
+    locator, rows, _ = fixture()
+    rows[0][field] = None
+    with pytest.raises(ValueError):
+        project_pair(rows, locator)

@@ -2066,9 +2066,25 @@ from .debug import register_debug  # noqa: E402
 register_debug(app, rooms)
 
 # ------------------------------------------------------------------ static
+class WebFiles(StaticFiles):
+    """The built page. Vite names every file under assets/ by its content
+    hash, so those may be cached forever; everything else (index.html, the
+    icons, the og/ preview) keeps its name across deploys, so a browser
+    re-checks it each load and picks up a new deploy at once instead of
+    holding the old page, which points at the old assets."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if path.startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 dist = Path(__file__).resolve().parents[3] / "web" / "dist"
 if dist.is_dir():
-    app.mount("/", StaticFiles(directory=dist, html=True), name="web")
+    app.mount("/", WebFiles(directory=dist, html=True), name="web")
 
 
 def main() -> None:

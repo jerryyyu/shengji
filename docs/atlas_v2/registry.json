@@ -409,8 +409,8 @@
   },
   {
    "release": 46,
-   "status": "production",
-   "since": "2026-10-16 14:49 ET",
+   "status": "superseded",
+   "since": "2026-10-16 14:49 ET \u2192 2026-10-24 10:18 ET",
    "bot": "pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0",
    "head": "3e89e86f",
    "package": "smv3out-491ee4bf.npz (sha256 491ee4bf…), release 36's gen-5 SMV3 OUTCOME head, unchanged; prior js-m1-0d17fd03.npz unchanged; NEW belief package s17long-e2-763b5e05.npz (sha256 763b5e05…), the S17 hidden-hand model",
@@ -459,6 +459,60 @@
     "v93lat's timings are one pinned perf core and one room; Fly's shared CPU is slower and was not barred there, so the live rooms' whole-decision p95, exact abandons and any pv-search-fallback-v1 / cwv-bury-fallback-v1 / pv-declare-serving-fallback-v1 record are the watch list",
     "comparator for NEW screens: release 46 as served (Jerry, in-session 2026-10-16: 'compare new screens to release 46', #707 issuecomment-6223485189); confirmations keep their parent's comparator (v92c keeps release 45)",
     "rollback: redeploy the release-45 image deployment-01M4T9AVEVK51WP2GG8J34NRC9, or delete the twelve release-46 fly.toml lines, restore the release-45 SHENGJI_BOT kept as a comment and redeploy; the belief package may stay on the volume"
+   ]
+  },
+  {
+   "release": 48,
+   "status": "production",
+   "since": "2026-10-24 10:18 ET",
+   "bot": "pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a",
+   "head": "3e89e86f",
+   "package": "smv3out-491ee4bf.npz (sha256 491ee4bf\u2026), unchanged; prior js-m1-0d17fd03.npz unchanged; NEW belief package s58-e6-42444515.npz (sha256 42444515\u2026), the S58 hidden-hand model (d192, 4 + 4 layers, stored temperature 1.0129)",
+   "oneline": "Release 46 + S58 belief, dtrx and the guarded greedy finish (lgf lgfx lgfd2000). Vs release 46: +0.0765, confirmed +0.0843.",
+   "recipe": "release 46 exactly (package, prior, W64/K8 search with div + rc + tb + la + dtr, vd, vdef, bwv K=64, whl / whd / bw, D7 + X7 on the compact-level solver, 3 s play / 2 s bury budgets), with the belief package switched to s58-e6-42444515 and seven fly.toml lines added: SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD=1 (dtrx: the doomed-throw re-select never overrides a complete exact lead stage); SHENGJI_PV_LEAF_GREEDY_FINISH=1, SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP=1, SHENGJI_PV_LEAF_GREEDY_DEADLINE=2 (lgf lgfx lgfd2000: each candidate's trick is finished with greedy replies before the value pass, except where an exact stage is eligible, and the finish stops past 2 s into a decision); SHENGJI_PV_ENCODE_PREFIX_CACHE=1, SHENGJI_PV_LEAF_GREEDY_STREAM=1, SHENGJI_PV_ENCODE_BATCH_FAST=1 (latency switches, no name token). Built from main f14ace15 (#1147). Jerry: conditional 'deploy R48 if its screen is good', then 'Let's deploy' after v105lat.",
+   "evidence": [
+    {
+     "what": "r48cloud: the guarded R48 combo vs release 46 as served, each vs the common MC-LCB control, ten 520-cluster rank-mixed windows (cloud, seeds 231060910..231960910 step 100000), POSITIVE, 0 play and 0 belief fallbacks (#1075 issuecomment-6383298163)",
+     "point": 0.076497,
+     "lo": 0.057149,
+     "hi": 0.095845,
+     "ref": "r48cloud"
+    },
+    {
+     "what": "r48confirm: fresh-seed confirmation of r48cloud, ten rank-mixed windows (perf, seeds 232060910..232960910 step 100000), POSITIVE, judged alone (#1075 issuecomment-6384251320)",
+     "point": 0.0843278,
+     "lo": 0.0575125,
+     "hi": 0.1111431,
+     "ref": "r48confirm"
+    },
+    {
+     "what": "v105lat latency and peak-memory release gate, QUALIFIED (bars B1-B9 PASS): the exact R48 recipe vs release 46 through the real server path, one pinned cloud core, one room, ABBA 4 x 100 full rounds; candidate play wall p50/p95/p99/max 0.098/0.566/0.746/2.408 s over 12,692 plays (release 46 0.096/0.155/0.319/2.407 s over 12,868); 0 budget fallbacks, 0 plays at 3 s; exact abandons 2 of 2,920 (release 46 1 of 2,837); 0 belief fallbacks over 12,692; lgfd fired on 14 of 12,692 decisions; peak RSS +26,792 kB vs release 46 (#1075 issuecomment-6384912469; archive ~/shengji-archive/2026-09-13/readouts/v105lat/)",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "v105lat"
+    },
+    {
+     "what": "merged-tree full-round smoke (10 rounds, server path): validator PASS, bot.files S58 42444515 / play 491ee4bf / prior 0d17fd03 and the latency switches as set; 692 plays, 0 abandons, 0 fallbacks, decision p95 0.256 s, max 1.62 s; 1 belief fallback, play 1 of the first room (cold preparation 823 ms, the documented boot case)",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "DEPLOY.md"
+    },
+    {
+     "what": "/healthz after deploy: bot = the name above, fast true, pv_search.sha256 491ee4bf\u2026, prior 0d17fd03\u2026, budget 3, bury hybrid at 2, latency_switches as set; in-machine line 'True compiled 42444515'; first live room UBWB PARTIAL (stopped after 3 tricks, 12 plays): 0 fallbacks, 0 belief fallbacks, decision p95 1.35 s, max 1.47 s, belief_ms p95 39 ms; no rollback trigger",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "14:18Z"
+    }
+   ],
+   "caveats": [
+    "image deployment-01M5Q4ACYEJ901SQB3BNMPC55A (Fly version 47), main f14ace15 (#1147, squash; Codex PASS at 0c1e9965); machine 48e7e35a9597e8, 0 rooms at deploy; deployed 2026-10-24 14:18Z on Jerry's in-session word (#1075 issuecomment-6385303349)",
+    "four changes in one treatment: the screens measure the combination; attribution among S58, dtrx and the greedy finish and any additivity claim are not made (v103s58 read S58 + dtrx alone at +0.0331)",
+    "v105lat's timings are one pinned cloud core and one room; the first live room was partial (12 plays) at decision p95 1.35 s, near the 1.5 s trigger, so a complete first room on Fly's shared CPU is still the watch item",
+    "comparator for NEW screens: release 48 as served (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'); r48cloud and r48confirm keep release 46",
+    "rollback: redeploy the release-46 image deployment-01M530R14ARM0669QNJBW2RGTG, or delete the seven release-48 fly.toml lines, restore the S17 belief keys and the release-46 SHENGJI_BOT kept as a comment and redeploy; S17 stays on the volume"
    ]
   }
  ],
@@ -2661,6 +2715,112 @@
    "takeaway": "Inconclusive, tightly bounded (about +/-0.01); failed throws -64%. Deploy-eligible (not noninferiority); deploy is Jerry's decision.",
    "note": "SEALED 10-06; readout (Claude, one pass) #707 issuecomment-6026001554; digests #707 issuecomment-6025987774; Codex PASS #707 issuecomment-6019124692. Paired -0.000150 [-0.010232,+0.009931], SE 0.005144, MDE80 0.014411, tau 0.006349, Q 10.62, I2 15.2%; INCONCLUSIVE (interval spans zero): not a negative result, not equivalence. deploy_gate DEPLOY-ELIGIBLE: not statistically demonstrated negative under the declared gate (CI upper >= 0); harm remains compatible with an inconclusive interval; NOT noninferiority; deploy remains Jerry's decision via DEPLOY.md gates; this read authorizes nothing. No further extension (predeclared confirmation design); strength verdict withheld pending health and provenance review. Window deltas -0.0058, -0.0231, -0.0077, +0.0029, +0.0067, +0.0192, +0.0250, -0.0038, +0.0058, -0.0231. Descriptive own-arm levels vs MC-LCB: candidate 0.2363 [0.2186,0.2541], release 38 0.2365 [0.2189,0.2541] (not the paired primary). Mechanism (descriptive): failed bot throws 12,239 -> 4,402 (-64%), 33.58 -> 12.07 per 1000 aligned arm plays; rounds with at least one failed throw 62.6% -> 35.1%; swap applied 8,018 times; 10,400 aligned rounds per arm; no swap fields in the comparator. Health: 1,458,680 expected play calls all recorded, zero coverage failures, zero outer timeouts, zero PV fallbacks; MC-LCB receipts unclassified by the PV health reader. Context (separate contrast, separate seeds, not pooled): v53dts five-window exploratory -0.0113 inconclusive. Reader sha256 3eb5eaffa7d200dbaa5eea856f13a82ef7088581d481f9451d569800de6c1da9; result sha256 656f0f258844eb6470c762b9328f76ee2627d5ea47f1d5bbb3ba16a8a115a9a7; launcher sha256 2a27105a74c66376ba621b4e7c8c60be3138135023b96be07943503e566d16e5; predeclaration (r2) sha256 db8ede450798242f97de97c65fc281896a57dd4f15a9c21711029bfd69994ec4; SHA256SUMS f1cf27fdaf9b754cbee1750062481c03ad1e57de3a61ae96b436f96da985c2d2. Archived ~/shengji-archive/2026-09-13/readouts/v57dts-throwfix-confirm-r38/.",
    "ref": "https://github.com/jerryyyu/shengji/issues/707#issuecomment-6026001554"
+  },
+  {
+   "id": "v100lgf",
+   "date": "2026-10-21",
+   "status": "sealed",
+   "box": "perf",
+   "title": "R47 + lgf + lgfx (unguarded greedy finish) vs r46",
+   "candidate": "The R47 candidate (release 46 with the S46 r3 belief package s46-e2-36e2024e and dtrx) plus the greedy-finished value leaf lgf (#1123) and its exact-stage yield lgfx, with no finish deadline and no latency switches; every other release-46 key on both arms (smv3out-491ee4bf, div, rc, tb, la, dtr, vd, the wide value-only bury at K=64, whl / whd / bw, D7 + X7 on the compact-level solver, vdef). Perf.",
+   "comparator": "release 46 as served",
+   "vs": 46,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; rank-mixed r2 round plan: 4 first-round windows at trump rank 2 and 6 fixed-banker (later-round) windows at trump ranks 2..A (44.6% of clusters at rank 2); verdict by CI bounds, judged alone, never pooled",
+   "seeds": "210060910 210160910 210260910 210360910 210460910 210560910 210660910 210760910 210860910 210960910 (perf)",
+   "confidence": 0.95,
+   "point": 0.0668,
+   "lo": 0.047,
+   "hi": 0.0866,
+   "takeaway": "+0.0668 [+0.0470, +0.0866], POSITIVE, but 441 candidate play fallbacks (descriptive in this read): the deadline lgfd2000 was added for R48.",
+   "note": "SEALED 10-21; readout (Claude, one pass of readout.sh in host mode, integrity PASS) #1075 issuecomment-6318933202; terminal digest #1075 issuecomment-6318890801. Validity VALID (arm_fault_ceilings, worlds_delivered, completion_shape, outcome_consistency, engine_level_rule); play fallbacks were descriptive in this packet: candidate 441 of 357,869 search records, comparator 0. Rank split (descriptive): rank 2 +0.0509 [+0.0205, +0.0813], rank != 2 +0.0774 [+0.0514, +0.1034]. Context for R48, not a release candidate as read. Archive ~/shengji-archive/2026-09-13/readouts/v100lgf/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6318933202"
+  },
+  {
+   "id": "v103s58",
+   "date": "2026-10-22",
+   "status": "sealed",
+   "box": "perf",
+   "title": "S58 belief + dtrx vs r46",
+   "candidate": "Release 46 with the S58 belief package (s58-e6-42444515, sha256 42444515..., at its stored temperature) AND dtrx (SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD=1); no greedy finish, no latency switches; every other release-46 key on both arms (smv3out-491ee4bf, div, rc, tb, la, dtr, vd, the wide value-only bury at K=64, whl / whd / bw, D7 + X7 on the compact-level solver, vdef). Perf.",
+   "comparator": "release 46 as served",
+   "vs": 46,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; rank-mixed r2 round plan: 4 first-round windows at trump rank 2 and 6 fixed-banker (later-round) windows at trump ranks 2..A (44.6% of clusters at rank 2); verdict by CI bounds, judged alone, never pooled",
+   "seeds": "214060910 214160910 214260910 214360910 214460910 214560910 214660910 214760910 214860910 214960910 (perf)",
+   "confidence": 0.95,
+   "point": 0.0331,
+   "lo": 0.0145,
+   "hi": 0.0516,
+   "takeaway": "+0.0331 [+0.0145, +0.0516], POSITIVE: S58 + dtrx alone, the base R48 adds the guarded greedy finish to.",
+   "note": "SEALED 10-22; readout (Claude, one pass of readout.sh in host mode, integrity PASS) #1075 issuecomment-6341841485; terminal digest #1075 issuecomment-6341775527. Validity VALID, 0 play fallbacks on both arms (the play gate requires 0). MDE80 0.0265. Rank split (descriptive, never a gate): rank 2 +0.0169 [-0.0101, +0.0439], rank != 2 +0.0466 [+0.0214, +0.0717]. Archive ~/shengji-archive/2026-09-13/readouts/v103s58/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6341841485"
+  },
+  {
+   "id": "s61dev",
+   "date": "2026-10-22",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "S61 exploiter head-to-head DEV duel vs r46",
+   "candidate": "The S61 exploiter (Exact8-class exploiter arm; exact stages at max hand 8) played head to head against release 46 as served, seat-swapped, with loss attribution by decision class, trick and rank group. Cloud, tier-i DEV duel.",
+   "comparator": "release 46 as served (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0), head to head",
+   "vs": 46,
+   "vs_group": "release 46 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "600 seat-swapped deal pairs from 218060910 (r2 plan per deal), exploiter vs release 46 head to head; paired level utility, deal bootstrap 95% CI (10000 reps); predeclared read: EXPLOITER_AHEAD iff CI lower > 0, DEFENDER_AHEAD iff CI upper < 0, else NO_RESOLVED_GAP",
+   "seeds": "218060910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.1308,
+   "lo": 0.0908,
+   "hi": 0.1708,
+   "takeaway": "Exploiter ahead of release 46 by +0.1308 [+0.0908, +0.1708] head to head; losses concentrate in leads and follows of tricks 1-5.",
+   "note": "SEALED 10-22 (15:53:49Z LANE DONE, rc 0); one-shot read #1075 issuecomment-6346198782; terminal digest #1075 issuecomment-6346167011. VALID on both arms; EXPLOITER_AHEAD; ATTRIBUTION_OK (600 deals diverged). Points +4.64 [+3.16, +6.09]. Class x trick: lead tricks 1-5 +0.0842, follow tricks 1-5 +0.0467. Faults: exploiter play fallbacks 21 of 38,674 vs 0; belief fallbacks 0 vs 0. A head-to-head red-team read of release 46's gaps, not a served-bot screen and not a release candidate. Archive ~/shengji-archive/2026-09-13/readouts/s61dev/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6346198782"
+  },
+  {
+   "id": "r48cloud",
+   "date": "2026-10-24",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "R48 guarded combo (S58 + dtrx + lgf lgfx lgfd2000) vs r46",
+   "candidate": "Release 46 with the S58 belief package (SHENGJI_PV_BELIEF_CKPT / SHENGJI_PV_BELIEF_SHA256 = s58-e6-42444515, sha256 42444515..., d192 with 4 + 4 layers, at its stored temperature 1.0129) AND dtrx (SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD=1, #1120) AND the guarded greedy finish (SHENGJI_PV_LEAF_GREEDY_FINISH=1, _EXACT_SKIP=1, SHENGJI_PV_LEAF_GREEDY_DEADLINE=2: lgf lgfx lgfd2000) AND the latency switches SHENGJI_PV_ENCODE_PREFIX_CACHE / SHENGJI_PV_LEAF_GREEDY_STREAM / SHENGJI_PV_ENCODE_BATCH_FAST = 1 (no name token), served as pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a; comparator pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0 (release 46 as served, the S17 e2 belief package 763b5e05, every R48 key unset); every other release-46 key on both arms (smv3out-491ee4bf, div, rc, tb, la, dtr, vd, the wide value-only bury at K=64, whl / whd / bw, D7 + X7 on the compact-level solver, vdef). The release-48 recipe as deployed (#1147). Cloud.",
+   "comparator": "release 46 as served",
+   "vs": 46,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; rank-mixed r2 round plan: 4 first-round windows at trump rank 2 and 6 fixed-banker (later-round) windows at trump ranks 2..A (44.6% of clusters at rank 2); verdict by CI bounds, judged alone, never pooled",
+   "seeds": "231060910 231160910 231260910 231360910 231460910 231560910 231660910 231760910 231860910 231960910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.076497,
+   "lo": 0.057149,
+   "hi": 0.095845,
+   "takeaway": "+0.0765 [+0.0571, +0.0958], POSITIVE, every window positive, 0 play and 0 belief fallbacks; deployed as release 48.",
+   "note": "SEALED 10-24; one-shot read #1075 issuecomment-6383298163 (reader 599e0390, schema s58combo-paired-reduction-v2, DL estimator, I2 0, tau 0). Validity VALID (committed_play_coverage, arm_fault_ceilings, worlds_delivered, completion_shape; dtrx, exact, greedy, optional and outcome checks VALID): candidate 357,790 and comparator 358,112 search decisions, 0 play and 0 belief fallbacks on both arms. Greedy finish applied 213,792 times, 312 deadline-fired records, 85,196 exact skips. Splits (descriptive): rank 2 +0.0884, rank != 2 +0.0661, first-round +0.0846, fixed-banker +0.0704. The combined recipe: no attribution among S58, dtrx and the greedy finish. Repairs the INVALID unguarded S58 combo (#1075 issuecomment-6376318200). Archive ~/shengji-archive/2026-09-13/readouts/r48cloud/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6383298163"
+  },
+  {
+   "id": "r48confirm",
+   "date": "2026-10-24",
+   "status": "sealed",
+   "box": "perf",
+   "title": "R48 fresh-seed confirmation (r48confirm) vs r46",
+   "candidate": "Release 46 with the S58 belief package (SHENGJI_PV_BELIEF_CKPT / SHENGJI_PV_BELIEF_SHA256 = s58-e6-42444515, sha256 42444515..., d192 with 4 + 4 layers, at its stored temperature 1.0129) AND dtrx (SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD=1, #1120) AND the guarded greedy finish (SHENGJI_PV_LEAF_GREEDY_FINISH=1, _EXACT_SKIP=1, SHENGJI_PV_LEAF_GREEDY_DEADLINE=2: lgf lgfx lgfd2000) AND the latency switches SHENGJI_PV_ENCODE_PREFIX_CACHE / SHENGJI_PV_LEAF_GREEDY_STREAM / SHENGJI_PV_ENCODE_BATCH_FAST = 1 (no name token), served as pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a; comparator pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0 (release 46 as served, the S17 e2 belief package 763b5e05, every R48 key unset); every other release-46 key on both arms (smv3out-491ee4bf, div, rc, tb, la, dtr, vd, the wide value-only bury at K=64, whl / whd / bw, D7 + X7 on the compact-level solver, vdef). The release-48 recipe as deployed (#1147). The fresh-seed confirmation of r48cloud. Perf.",
+   "comparator": "release 46 as served",
+   "vs": 46,
+   "form": "served bot",
+   "instrument_kind": "windows",
+   "instrument": "ten 520-cluster mirrored windows (5,200 paired clusters), each arm vs the common MC-LCB control per window (not head-to-head); paired read; capped 300 s play; rank-mixed r2 round plan: 4 first-round windows at trump rank 2 and 6 fixed-banker (later-round) windows at trump ranks 2..A (44.6% of clusters at rank 2); predeclared fresh-seed confirmation of r48cloud; verdict by CI bounds, judged alone, never pooled",
+   "seeds": "232060910 232160910 232260910 232360910 232460910 232560910 232660910 232760910 232860910 232960910 (perf)",
+   "confidence": 0.95,
+   "point": 0.0843278,
+   "lo": 0.0575125,
+   "hi": 0.1111431,
+   "takeaway": "Confirmation +0.0843 [+0.0575, +0.1111], POSITIVE, every window positive, 0 fallbacks; release 48 deployed 10-24.",
+   "note": "SEALED 10-24; one-shot read #1075 issuecomment-6384251320 (reader 599e0390, DL estimator, I2 46.6%, tau 0.0295). Validity VALID: candidate 358,110 and comparator 358,750 play decisions, 0 play and 0 belief fallbacks; 0 bury fallbacks and declare abandons on both arms. Greedy finish applied 213,979 times, 375 deadline-fired records, 85,160 exact skips. Splits (descriptive): rank 2 +0.0909, rank != 2 +0.0792, first-round +0.0901, fixed-banker +0.0806. Judged alone, not pooled with r48cloud. Archive ~/shengji-archive/2026-09-13/readouts/r48confirm/.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384251320"
   }
  ],
  "context_screens": [
@@ -3129,8 +3289,8 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 46,
+  "release": 48,
   "status": "confirmed",
-  "note": "New screens compare against release 46 as served (Jerry, in-session 2026-10-16: 'compare new screens to release 46', #707 issuecomment-6223485189). Confirmations keep their parent's comparator (v92c keeps release 45); earlier rows keep their declared comparator."
+  "note": "New screens compare against release 48 as served (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'). Before that release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  }
 }

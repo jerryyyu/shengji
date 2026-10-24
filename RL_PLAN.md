@@ -1,6 +1,6 @@
 # Learning and search research plan
 
-As of 2026-10-16. Production is release 46; new screens compare against release 46 as served.
+As of 2026-10-24. Production is release 48; new screens compare against release 48 as served (Jerry 2026-10-24).
 
 This file owns the research architecture, the estimands, the process rules for compute and measurement, and the
 lessons that shape planned work. Everything else lives on its canonical surface:
@@ -41,12 +41,14 @@ beat the served bot on fresh mirrored whole games with one learned model that ke
 data, with production's latency tail bounded. The standing goal is +0.05 levels/round over the served release
 (Jerry 2026-10-15; board #1075).
 
-- **Production:** release 46, deployed 2026-10-16 14:49 ET: release 45 plus the v92 combo (S17 belief worlds,
-  D7 + X7, `vdef`). Release 45 (2026-10-13 05:27 ET) is the rollback. Exact contract: `AI_POLICIES.md`
+- **Production:** release 48, deployed 2026-10-24 10:18 ET: release 46 with the S58 belief package, `dtrx` and
+  the guarded greedy finish (`lgf lgfx lgfd2000`), vs release 46 +0.0765, confirmed +0.0843 (`AI_POLICIES.md`
+  row 17). Release 46 (2026-10-16 14:49 ET; release 45 plus the v92 combo) is the rollback. Exact contract: `AI_POLICIES.md`
   "Production contract".
-- **Comparator:** new screens compare against release 46 as served (Jerry 2026-10-16, recorded on #1075).
-  Confirmations keep their parent's comparator; historical reads keep their original labels. The previous
-  comparator was release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693).
+- **Comparator:** new screens compare against release 48 as served (Jerry 2026-10-24, in session: "Yes screens
+  should compare vs our prod policy of r48"). Confirmations keep their parent's comparator; historical reads keep
+  their original labels. The previous comparators were release 46 (Jerry 2026-10-16, recorded on #1075) and
+  release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693).
 
 | evidence label | supports |
 |---|---|

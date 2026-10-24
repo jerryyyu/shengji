@@ -38,7 +38,8 @@ fi
 absent "$HOLD" || refuse HOLD
 absent /root/.claude-screen.lock || refuse legacy-screen
 absent /root/.claude-datagen.lock || refuse data-generation
-grep -q 'h1a .*LANE DONE' /root/claude_h1a_screen.status || refuse predecessor-not-done
+grep -Eq '^[0-9TZ:-]+ h1a DEV output sealed \(.*\); LANE DONE$' /root/claude_h1a_screen.status \
+  && ! grep -Eq ' (ABORT|REFUSING): ' /root/claude_h1a_screen.status || refuse predecessor-not-done
 if pgrep -f '[s]earch_audit_probe_v5.py' >/dev/null; then refuse live-probe; fi
 [ -f "$RELEASE" ] && [ ! -L "$RELEASE" ] || refuse RELEASE
 [ "$(tr -d '\n ' < "$RELEASE")" = "$SELF_SHA" ] || refuse release-sha

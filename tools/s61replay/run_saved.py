@@ -23,9 +23,9 @@ def checked_bytes(path, expected_sha, limit):
 
 
 def run_saved(prefix_path, prefix_sha, output, make_bot, *, policy_identity, seed,
-              locator=None):
+              locator=None, admission_only=False):
     """Validate the saved projection before policy calls; never open raw duel data."""
-    from diagnostic import diagnose_pair
+    from diagnostic import diagnose_pair, diagnose_admission
     from extract import LOCATOR
     locator = LOCATOR if locator is None else locator
     output = Path(output)
@@ -36,8 +36,11 @@ def run_saved(prefix_path, prefix_sha, output, make_bot, *, policy_identity, see
     if (not isinstance(prefix, dict) or prefix.get('schema') != 's61-same-root-prefix-v1'
             or prefix.get('locator') != locator):
         raise ValueError('saved prefix identity mismatch')
-    result = diagnose_pair(prefix['rows'], make_bot, policy_identity=policy_identity,
-                           seed=seed, tricks=2, locator=locator)
+    if type(admission_only) is not bool:
+        raise ValueError('admission_only must be boolean')
+    diagnose = diagnose_admission if admission_only else diagnose_pair
+    result = diagnose(prefix['rows'], make_bot, policy_identity=policy_identity,
+                      seed=seed, locator=locator)
     result['input_sha256'] = prefix_sha
     encoded = json.dumps(result, sort_keys=True, allow_nan=False) + '\n'
     with output.open('x') as stream:
@@ -53,6 +56,7 @@ def main():
                  'play-package', 'belief-package', 'policy-identity'):
         parser.add_argument('--' + name, required=True)
     parser.add_argument('--seed', type=int, required=True)
+    parser.add_argument('--admission-only', action='store_true')
     args = parser.parse_args()
     env = tomllib.loads(checked_bytes(args.recipe, args.recipe_sha, 128 * 1024).decode())['env']
     env = {k: str(v) for k, v in env.items() if k.startswith('SHENGJI_PV_')}
@@ -73,7 +77,8 @@ def main():
     if probe.worlds != 64 or not probe.belief_worlds or probe.serving_budget_seconds != 3:
         raise ValueError('requires belief-enabled W64 served-budget policy')
     run_saved(args.prefix, args.prefix_sha, args.output, factory,
-              policy_identity=args.policy_identity, seed=args.seed)
+              policy_identity=args.policy_identity, seed=args.seed,
+              admission_only=args.admission_only)
     print(json.dumps(dict(status='DIAGNOSTIC_SAVED', output=args.output)))
 
 

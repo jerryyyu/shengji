@@ -9,6 +9,7 @@ import numpy as np
 
 from shengji.train.policy_value_search import PolicyValueBot, leading
 from shengji.train.pv_search_policy import PVSearchBot, PVSearchBuryBot, make_pv_search_bot
+from shengji.train import pv_search_policy as pv
 
 
 class _SingletonChallenger:
@@ -102,3 +103,31 @@ def load_singleton_challenger(*, name, **recipe):
         cls = SingletonChallengerBuryBot if 'bury_arm' in kwargs else SingletonChallengerBot
         return cls(*args, **kwargs)
     return make_pv_search_bot(**recipe, name=name + '-sc8', bot_factory=factory)
+
+
+def candidate_from_env(environ, *, seed=0):
+    """Bind the research candidate to a verified baseline serving recipe.
+
+    The registry derives the baseline identity, including the bury recipe.
+    Explicit latency/log switches overwrite ambient construction settings so
+    a caller cannot silently lose the supplied recipe's serving optimizations.
+    No global registry or process environment is modified.
+    """
+    env = dict(environ)
+    expected = env.get('SHENGJI_BOT')
+    if not expected:
+        raise ValueError('a named baseline SHENGJI_BOT is required')
+    switches = pv.latency_switches(env)
+    belief_log = pv.belief_log_enabled(env)
+    def factory(*args, **kwargs):
+        cls = SingletonChallengerBuryBot if 'bury_arm' in kwargs else SingletonChallengerBot
+        return cls(*args, **kwargs)
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env), bot_factory=factory)
+    if list(entries) != [expected]:
+        raise ValueError('baseline recipe does not match SHENGJI_BOT')
+    bot = entries[expected](seed=seed)
+    for attr, enabled in switches.items():
+        setattr(bot, attr, enabled)
+    bot.belief_log = belief_log
+    bot.policy_name = expected + '-sc8'
+    return bot

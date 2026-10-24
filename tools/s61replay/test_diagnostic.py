@@ -1,5 +1,7 @@
 from copy import deepcopy
 import json
+import hashlib
+import io
 from pathlib import Path
 import sys
 
@@ -13,6 +15,7 @@ from shengji.ai.heuristic import HeuristicBot
 from replay import branch_action
 from served import replay_served_prefix
 from capture import capture_lead
+from selector import select_pair
 
 
 def factory(*, seed):
@@ -41,7 +44,18 @@ def bound_fixture():
 def test_extracted_pair_to_served_paired_continuation():
     locator, rows = bound_fixture()
     before = deepcopy(rows)
-    result = diagnose_pair(rows, factory, policy_identity='synthetic-flat-pv',
+    encoded = []
+    for row in reversed(rows):
+        record = dict(arm='combo', seed=row['seed'], mirror=row['mirror'])
+        record.update(row)
+        record['outcome'] = 'MUST_NOT_REACH_DIAGNOSTIC'
+        encoded.append(json.dumps(record).encode() + b'\n')
+    encoded.insert(1, b'{"arm": "combo", "seed": 888, "mirror": 0, UNREAD_OUTCOME\n')
+    raw = b''.join(encoded)
+    selected = select_pair(io.BytesIO(raw), hashlib.sha256(raw).hexdigest(),
+                           locator=locator, expected_rows=3)
+    assert all('outcome' not in row for row in selected['rows'])
+    result = diagnose_pair(selected['rows'], factory, policy_identity='synthetic-flat-pv',
                            seed=51, locator=locator)
     assert rows == before
     contrast = result['continuation']

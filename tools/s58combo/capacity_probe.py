@@ -24,10 +24,6 @@ WORKERS = 14
 CLUSTERS = 14
 MAX_RSS_KIB = 24 * 1024 * 1024
 REHEARSAL_SEEDS = (701_001, 801_001, 901_001, 1_001_001)
-FORBIDDEN_SCREEN_BASE = 230_060_910
-SCREEN_WINDOWS = tuple((FORBIDDEN_SCREEN_BASE + index * 100_000,
-                        FORBIDDEN_SCREEN_BASE + index * 100_000 + CLUSTERS)
-                       for index in range(10))
 
 
 def build_rehearsal_commands(plan: dict, *, output: Path,
@@ -48,8 +44,22 @@ def build_rehearsal_commands(plan: dict, *, output: Path,
     ordered = sorted(seeds)
     if any(right < left + CLUSTERS for left, right in zip(ordered, ordered[1:])):
         raise ValueError("capacity seed windows overlap")
+    windows = plan.get('windows')
+    if not isinstance(windows, list) or len(windows) != 20:
+        raise ValueError('complete screen window inventory required')
+    intervals = []
+    for window in windows:
+        argv = window.get('argv', [])
+        try:
+            count = int(argv[argv.index('--clusters') + 1])
+            start = window['seed']
+        except (ValueError, IndexError, KeyError, TypeError):
+            raise ValueError('invalid screen interval') from None
+        if type(start) is not int or start < 0 or count != 520:
+            raise ValueError('invalid screen interval')
+        intervals.append((start, start + count))
     if any(seed < end and seed + CLUSTERS > start
-           for seed in seeds for start, end in SCREEN_WINDOWS):
+           for seed in seeds for start, end in intervals):
         raise ValueError("rehearsal seed overlaps proposed screen interval")
     root = Path(output).resolve()
     arms = plan.get("arms")

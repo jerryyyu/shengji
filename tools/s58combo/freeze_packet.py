@@ -11,7 +11,7 @@ import tomllib
 from launcher import _sha, _require_clean_source, packet_digest, render_wrapper
 
 
-def freeze(source, packet, output, play, old, new, clearance):
+def freeze(source, packet, output, play, old, new, clearance, *, seeds, profile):
     source, packet, output = map(lambda p: Path(p).resolve(), (source, packet, output))
     if packet.exists() or output.exists():
         raise ValueError('packet and output must be new paths')
@@ -19,7 +19,7 @@ def freeze(source, packet, output, play, old, new, clearance):
         raise ValueError('compiled admission required')
     head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     _require_clean_source(source, head)
-    from recipe import arm_envs
+    from recipe import arm_envs, guarded_served_envs
     from window_plan import build_plan
     from config_probe import probe_configs
     from shengji.engine import fast
@@ -28,16 +28,20 @@ def freeze(source, packet, output, play, old, new, clearance):
         raise ValueError('compiled engine unavailable')
     base = tomllib.loads((source / 'fly.toml').read_text())['env']
     envs = arm_envs(base, play, old, new)
-    envs[0].update(SHENGJI_PV_ENCODE_PREFIX_CACHE='1', SHENGJI_PV_LEAF_GREEDY_STREAM='1')
-    plan = build_plan(envs, [230060910 + i * 100000 for i in range(10)], output,
-                      profile='served', workers=14)
+    if profile == 'served-lgfd2000':
+        envs = guarded_served_envs(envs)
+    elif profile == 'served':
+        envs[0].update(SHENGJI_PV_ENCODE_PREFIX_CACHE='1', SHENGJI_PV_LEAF_GREEDY_STREAM='1')
+    else:
+        raise ValueError('unsupported frozen screen profile')
+    plan = build_plan(envs, seeds, output, profile=profile, workers=14)
     clearance = Path(clearance).resolve()
     evidence = [clearance / name for name in ('composite.json', 'seed_clear_smV3_reused.txt',
                 'seed_clear_jsm1_reused.txt', 'corpus_local.txt', 'reservations_perf.txt', 'reservations_cloud.txt')]
     composite = json.loads(evidence[0].read_text())
     if (composite.get('status') != 'PASS' or composite.get('overlaps') != 0
             or composite.get('registry_clear') is not True
-            or composite['windows'] != [{'seed0': 230060910 + i * 100000, 'clusters': 520} for i in range(10)]):
+            or composite['windows'] != [{'seed0': seed, 'clusters': 520} for seed in seeds]):
         raise ValueError('clearance composite mismatch')
     for name, digest in composite['inputs'].items():
         if Path(name).name != name or _sha(clearance / name) != digest:
@@ -109,4 +113,6 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     for name in ('source', 'packet', 'output', 'play', 'old', 'new', 'clearance'):
         p.add_argument('--' + name, required=True, type=Path)
+    p.add_argument('--seeds', required=True, nargs=10, type=int)
+    p.add_argument('--profile', required=True, choices=('served', 'served-lgfd2000'))
     print(json.dumps(freeze(**vars(p.parse_args())), sort_keys=True))

@@ -14,6 +14,8 @@ from shengji.train.screen_deadline import RECIPE
 def plan():
     return {"python_executable": subprocess.sys.executable, "host_identity": {"hostname": socket.gethostname()},
             "source_head": None,
+            "windows": [dict(seed=230060910 + i * 100000, argv=['--clusters', '520'])
+                        for _ in range(2) for i in range(10)],
             "arms": {"candidate": {"name": "candidate", "identity": {"arm": "candidate"}, "environment": {"SHENGJI_FAST": "0"}},
                      "comparator": {"name": "comparator", "identity": {"arm": "comparator"}, "environment": {"SHENGJI_FAST": "0"}}}}
 
@@ -139,3 +141,20 @@ def test_interpreter_mismatch_refused(tmp_path):
     frozen = plan(); frozen['python_executable'] = '/another/python'
     with pytest.raises(LaunchRefused, match='interpreter mismatch'):
         run_rehearsal(frozen, source=tmp_path, output=tmp_path/'out', host_lock=tmp_path/'lock')
+
+
+@pytest.mark.parametrize('offset', [0, 14, 519, -13])
+def test_rehearsal_rejects_entire_requested_window(tmp_path, offset):
+    value = plan()
+    for window in value['windows']:
+        window['seed'] += 10_000_000
+    with pytest.raises(ValueError, match='overlaps'):
+        build_rehearsal_commands(value, output=tmp_path/'out',
+            seeds=(240060910 + offset, 901001, 1001001, 1101001))
+
+
+def test_rehearsal_requires_full_plan(tmp_path):
+    value = plan()
+    del value['windows']
+    with pytest.raises(ValueError, match='inventory'):
+        build_rehearsal_commands(value, output=tmp_path/'out')

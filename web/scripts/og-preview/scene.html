@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sheng Ji preview scene</title>
+<meta name="viewport" content="width=1200, height=630">
+<!-- The game's own stylesheet: card faces, backs, felt and colour tokens are the app's. -->
+<link rel="stylesheet" href="../../src/index.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"
+        integrity="sha384-g4NTh/Iv5PPU4xPyhEWqPcwtNXOvdaDI8LLnyYfyNZOjKJeYQyjzQ9X5275eBjpt"
+        crossorigin="anonymous"></script>
+<style>
+  html, body { width: 1200px; height: 630px; overflow: hidden; background: var(--chrome); }
+  .stage {
+    position: relative; width: 1200px; height: 630px; overflow: hidden; --cw: 104px;
+    background: radial-gradient(ellipse 130% 100% at 50% 30%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+    box-shadow: inset 0 0 160px rgba(0, 0, 0, 0.5);
+    perspective: 1600px;
+  }
+  /* Every moving thing is a 0x0 anchor positioned by GSAP x/y at its centre. */
+  .anchor { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-style: preserve-3d; }
+  .flip { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+  .flip .card { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
+                backface-visibility: hidden; -webkit-backface-visibility: hidden;
+                box-shadow: 0 12px 26px rgba(0, 0, 0, 0.36), 0 2px 6px rgba(0, 0, 0, 0.3); }
+  .flip .card.back { transform: translate(-50%, -50%) rotateY(180deg); }
+  .flip.win .card:not(.back) { box-shadow: 0 0 0 3px var(--gold), 0 0 30px rgba(242, 193, 78, 0.7), 0 16px 30px rgba(0, 0, 0, 0.4); }
+  .pile .card { position: absolute; left: 0; top: 0; transform-origin: 50% 50%;
+                box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35); }
+  .wins { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); font-size: 13px; font-weight: 800;
+          letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 12px; border-radius: 999px;
+          background: var(--gold); color: #201703; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<script>
+// Pure gameplay: three tricks played onto the felt from the four seats, each
+// resolved to its winner, ending on the empty table of frame 0 so the clip
+// loops. One paused master timeline; the renderer seeks it frame by frame
+// (window.seekScene), so every frame is deterministic.
+const stage = document.getElementById("stage");
+const SUIT = { S: "♠", H: "♥", D: "♦", C: "♣" };
+
+// Card face markup as rendered by web/src/components/Card.tsx.
+function cardHTML(code) {
+  if (code === "BJ" || code === "LJ") {
+    const red = code === "BJ";
+    return `<div class="card joker ${red ? "red" : "black"}"><span class="joker-text">JOKER</span><span class="joker-star">${red ? "★" : "☆"}</span></div>`;
+  }
+  const suit = code[0], rank = code.slice(1), sym = SUIT[suit];
+  const corner = (pos) => `<span class="corner ${pos}"><span class="corner-rank">${rank}</span><span class="corner-suit">${sym}</span></span>`;
+  return `<div class="card ${suit === "H" || suit === "D" ? "red" : "black"}">${corner("tl")}<span class="pip">${sym}</span>${corner("br")}</div>`;
+}
+
+// Seats: where each hand sits (partly off the edge) and where its plays land.
+const SEATS = {
+  bottom: { pile: { x: 600, y: 668, r: 0 },   play: { x: 600, y: 410, r: -2 } },
+  left:   { pile: { x: -34, y: 315, r: 90 },  play: { x: 428, y: 318, r: -5 } },
+  top:    { pile: { x: 600, y: -38, r: 180 }, play: { x: 600, y: 222, r: 3 } },
+  right:  { pile: { x: 1234, y: 315, r: -90 }, play: { x: 772, y: 318, r: 5 } },
+};
+const PAIR_GAP = 58;
+
+// Face-down hands, fanned, at each seat; each fan hangs "up" from its anchor
+// and the anchor's rotation turns it to face the table.
+for (const [name, s] of Object.entries(SEATS)) {
+  const pile = document.createElement("div");
+  pile.className = "anchor pile";
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement("div");
+    c.className = "card back";
+    const a = (i - (n - 1) / 2) * 5;
+    c.style.transform = `translate(-50%, -100%) rotate(${a}deg) translateY(-6px)`;
+    c.style.transformOrigin = "50% 160%";
+    pile.appendChild(c);
+  }
+  stage.appendChild(pile);
+  gsap.set(pile, { x: s.pile.x, y: s.pile.y, rotation: s.pile.r, scale: 0.82 });
+}
+
+function makeCard(code) {
+  const a = document.createElement("div");
+  a.className = "anchor";
+  const f = document.createElement("div");
+  f.className = "flip";
+  f.innerHTML = cardHTML(code) + `<div class="card back"></div>`;
+  a.appendChild(f);
+  stage.appendChild(a);
+  return { anchor: a, flip: f };
+}
+
+const tl = gsap.timeline({ paused: true });
+const FLIGHT = 0.46;
+const STEP = 0.28;
+
+// play(seat, codes, at): the seat's cards leave its hand face down, flip face
+// up along an arc and land on the felt.
+function play(seat, codes, at) {
+  const s = SEATS[seat];
+  const made = codes.map((code, i) => {
+    const m = makeCard(code);
+    const off = (i - (codes.length - 1) / 2) * PAIR_GAP;
+    const rad = (s.play.r * Math.PI) / 180;
+    const tx = s.play.x + off * Math.cos(rad), ty = s.play.y + off * Math.sin(rad);
+    gsap.set(m.anchor, { x: s.pile.x, y: s.pile.y, autoAlpha: 0 });
+    gsap.set(m.flip, { rotationY: 180, rotation: s.pile.r * 0.25 + (i ? 8 : -8), scale: 1.12 });
+    const t = at + i * 0.06;
+    tl.set(m.anchor, { autoAlpha: 1 }, t)
+      .to(m.anchor, { x: tx, duration: FLIGHT, ease: "power3.out" }, t)
+      .to(m.anchor, { y: ty, duration: FLIGHT, ease: "expo.out" }, t)
+      .to(m.flip, { rotationY: 0, rotation: s.play.r + (i ? 3 : 0), scale: 1, duration: FLIGHT, ease: "power2.out" }, t);
+    m.home = { x: tx, y: ty };
+    return m;
+  });
+  return made;
+}
+
+// resolve(winner, plays, at): the winning play lifts and glows, the WINS chip
+// pops, then all cards gather on the winner and slide off toward its hand.
+function resolve(winnerSeat, plays, at) {
+  const win = plays[winnerSeat];
+  const all = Object.values(plays).flat();
+  const chip = document.createElement("div");
+  chip.className = "wins";
+  chip.textContent = "Wins";
+  stage.appendChild(chip);
+  const w = SEATS[winnerSeat];
+  const last = win[win.length - 1].home;
+  gsap.set(chip, { x: last.x + 34, y: last.y + 92, autoAlpha: 0, scale: 0.5 });
+  win.forEach((m) => tl.set(m.flip, { className: "flip win" }, at).set(m.anchor, { zIndex: 5 }, at));
+  tl.to(win.map((m) => m.flip), { y: -14, scale: 1.07, duration: 0.4, ease: "back.out(2.4)" }, at)
+    .to(chip, { autoAlpha: 1, scale: 1, duration: 0.35, ease: "back.out(2.6)" }, at + 0.08);
+  const sweep = at + 0.8;
+  const gx = w.play.x, gy = w.play.y;
+  tl.to(chip, { autoAlpha: 0, scale: 0.7, duration: 0.2, ease: "power2.in" }, sweep)
+    .to(all.map((m) => m.anchor), { x: gx, y: gy, duration: 0.32, ease: "power3.inOut", stagger: 0.025 }, sweep)
+    .to(all.map((m) => m.flip), { y: 0, rotation: w.play.r, scale: 0.96, duration: 0.32, ease: "power3.inOut" }, sweep)
+    .to(all.map((m) => m.anchor), { x: w.pile.x, y: w.pile.y, autoAlpha: 0, duration: 0.38, ease: "power2.in" }, sweep + 0.36);
+  return sweep + 0.74;
+}
+
+// trick(lead seat order, plays, winner, start) -> end time.
+function trick(order, cards, winner, start) {
+  const plays = {};
+  order.forEach((seat, i) => { plays[seat] = play(seat, cards[seat], start + i * STEP); });
+  const landed = start + (order.length - 1) * STEP + FLIGHT + 0.08;
+  resolved.push(landed);
+  return resolve(winner, plays, landed);
+}
+
+const resolved = [];
+let t = 0.15;
+// 1. Singles: the ace takes it.
+t = trick(["top", "right", "bottom", "left"],
+          { top: ["C10"], right: ["CK"], bottom: ["CA"], left: ["C7"] }, "bottom", t);
+// 2. Pairs: the pair of kings beats the queens.
+t = trick(["bottom", "left", "top", "right"],
+          { bottom: ["HQ", "HQ"], left: ["H5", "H8"], top: ["HK", "HK"], right: ["H3", "H9"] }, "top", t + 0.05);
+// 3. A void left seat trumps the ace with the big joker.
+t = trick(["top", "right", "bottom", "left"],
+          { top: ["SA"], right: ["S4"], bottom: ["S9"], left: ["BJ"] }, "left", t + 0.05);
+
+const DURATION = Math.round((t + 0.2) * 60) / 60;
+tl.set({}, {}, DURATION);
+window.sceneDuration = DURATION;
+window.seekScene = (sec) => { tl.seek(sec, false); };
+// The poster: the third trick fully on the table, the joker glowing.
+window.posterTime = resolved[2] + 0.6;
+if (!/render/.test(location.hash)) { tl.repeat(-1); tl.play(); }
+</script>
+</body>
+</html>

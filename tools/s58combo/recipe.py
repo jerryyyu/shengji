@@ -61,11 +61,29 @@ def half_budget_envs(envs):
     return tuple(out)
 
 
+def guarded_served_envs(envs):
+    """Bound candidate greedy finishing while retaining both served budgets."""
+    if len(envs) != 2:
+        raise ValueError('exactly two arms required')
+    for env in envs:
+        if (env.get('SHENGJI_PV_SERVING_BUDGET_SECONDS') != '3'
+                or env.get('SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS') != '2'
+                or env.get('SHENGJI_PV_LEAF_GREEDY_DEADLINE', '0') != '0'):
+            raise ValueError('guarded profile requires unmodified served budgets')
+    candidate, comparator = map(dict, envs)
+    candidate.update(SHENGJI_PV_LEAF_GREEDY_DEADLINE='2',
+                     SHENGJI_PV_ENCODE_PREFIX_CACHE='1',
+                     SHENGJI_PV_LEAF_GREEDY_STREAM='1',
+                     SHENGJI_PV_ENCODE_BATCH_FAST='1')
+    return candidate, comparator
+
+
 def build_pair(envs, seed=17, *, profile='served'):
     """Single-threaded admission: bind factory-only flags separately for each arm."""
-    if profile not in ('served', 'half-budget-lgfd1000'):
+    if profile not in ('served', 'half-budget-lgfd1000', 'served-lgfd2000'):
         raise ValueError('unknown screen profile')
     half = profile == 'half-budget-lgfd1000'
+    guarded = profile == 'served-lgfd2000'
     if len(envs) != 2:
         raise ValueError('exactly two arms required')
     built = []
@@ -91,22 +109,26 @@ def build_pair(envs, seed=17, *, profile='served'):
         raise ValueError("comparator is not release 46 as served")
     candidate, comparator = [asdict(bot.config) for _, bot in built]
     delta = {key for key in candidate if candidate[key] != comparator[key]}
-    if delta != DIFFERENCES | ({'leaf_greedy_deadline_ms'} if half else set()):
+    if delta != DIFFERENCES | ({'leaf_greedy_deadline_ms'} if half or guarded else set()):
         raise ValueError(f"unexpected arm config delta: {sorted(delta)}")
     for _, bot in built:
         if (bot.worlds, bot.candidates, bot.serving_budget_seconds,
                 bot.bury_serving_budget_seconds) != (64, 8, 1.5 if half else 3.0, 1.0 if half else 2.0):
             raise ValueError('screen budget/profile drift')
     expected_switches = {'encode_prefix_cache', 'leaf_greedy_stream'}
+    if guarded:
+        expected_switches.add('encode_batch_fast')
     for index, (_, bot) in enumerate(built):
         actual = {attr for attr in pv.LATENCY_SWITCH_ENV if getattr(bot, attr)}
-        allowed = [set(), expected_switches] if index == 0 and not half else [
+        allowed = [set(), expected_switches] if index == 0 and not half and not guarded else [
             expected_switches if index == 0 else set()]
         if actual not in allowed:
             raise ValueError('screen runtime switches drift')
     if half:
         if (candidate['leaf_greedy_deadline_ms'], comparator['leaf_greedy_deadline_ms']) != (1000, 0):
             raise ValueError('half-budget finish deadline drift')
+    if guarded and (candidate['leaf_greedy_deadline_ms'], comparator['leaf_greedy_deadline_ms']) != (2000, 0):
+        raise ValueError('served finish deadline drift')
     model = built[0][1].belief_model
     if model.package_sha256 != S58_SHA or abs(model.temperature - 1.0129481491372179) > 1e-12:
         raise ValueError("S58 package or stored temperature drift")

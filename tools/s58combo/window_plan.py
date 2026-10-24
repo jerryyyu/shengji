@@ -48,7 +48,7 @@ def build_plan(envs, seeds, output, *, profile, workers=14):
         raise ValueError("arm engine mode differs from admitting process")
     arms = admit_pair(envs, profile=profile)
     return dict(schema='s58combo-unarmed-window-plan-v1', profile=profile,
-                comparator_is_served_recipe=(profile == 'served'),
+                comparator_is_served_recipe=(profile in ('served', 'served-lgfd2000')),
                 host_equivalence_established=False,
                 module='shengji.train.cwv_screen_queue',
                 arms={side: dict(**arm, environment=dict(env))

@@ -136,7 +136,7 @@ def test_served_plan_reaches_actual_children_without_cutoff(tmp_path):
         assert arm['identity']['config']['leaf_greedy_deadline_ms'] == 0
 
 
-@pytest.mark.parametrize('profile', ['served', 'half-budget-lgfd1000'])
+@pytest.mark.parametrize('profile', ['served', 'half-budget-lgfd1000', 'served-lgfd2000'])
 def test_real_queue_configs_reach_reader_admission(tmp_path, profile, monkeypatch):
     from recipe import half_budget_envs
     from window_plan import build_plan
@@ -145,8 +145,11 @@ def test_real_queue_configs_reach_reader_admission(tmp_path, profile, monkeypatc
     from shengji.train.cwv_shortlist_screen import _recipe
 
     envs = package_envs()
-    if profile != 'served':
+    if profile == 'half-budget-lgfd1000':
         envs = half_budget_envs(envs)
+    elif profile == 'served-lgfd2000':
+        from recipe import guarded_served_envs
+        envs = guarded_served_envs(envs)
     root = tmp_path / 'must-not-be-created'
     plan = build_plan(envs, [i * 1000 for i in range(10)], root, profile=profile)
     import config_probe
@@ -342,3 +345,33 @@ def test_real_combo_reaches_server_commit_and_trace(tmp_path, monkeypatch, exact
         assert not record["leaf_greedy_finish_applied"]
         assert record["leaf_greedy_reply_plays"] == 0
     print(f"\n{name}: real S58 proposal -> greedy leaf -> server commit PASS")
+
+
+def test_guarded_served_profile_binds_guard_and_preserves_comparator(tmp_path):
+    from recipe import guarded_served_envs, CONTROL_NAME
+    from window_plan import build_plan
+    envs = package_envs()
+    original = copy.deepcopy(envs)
+    guarded = guarded_served_envs(envs)
+    assert envs == original and guarded[1] == original[1]
+    with pytest.raises(ValueError):
+        build_pair(guarded)
+    plan = build_plan(guarded, [i * 1000 for i in range(10)], tmp_path / 'unlaunched',
+                      profile='served-lgfd2000')
+    assert plan['comparator_is_served_recipe'] and not plan['dispatch_authorized']
+    candidate, comparator = plan['arms']['candidate'], plan['arms']['comparator']
+    assert 'lgfd2000' in candidate['name'] and comparator['name'] == CONTROL_NAME
+    assert candidate['identity']['config']['leaf_greedy_deadline_ms'] == 2000
+    assert comparator['identity']['config']['leaf_greedy_deadline_ms'] == 0
+    assert candidate['identity']['runtime_switches'] == {
+        'encode_prefix_cache': True, 'leaf_greedy_stream': True, 'encode_batch_fast': True}
+    for arm in (candidate, comparator):
+        assert arm['identity']['config']['serving_budget_seconds'] == 3
+        assert arm['identity']['bury_recipe_identity']['serving_budget_seconds'] == 2
+    for key, value in [('SHENGJI_PV_LEAF_GREEDY_DEADLINE', '1'),
+                       ('SHENGJI_PV_ENCODE_BATCH_FAST', '0'),
+                       ('SHENGJI_PV_SERVING_BUDGET_SECONDS', '1.5')]:
+        altered = copy.deepcopy(guarded)
+        altered[0][key] = value
+        with pytest.raises(ValueError):
+            build_pair(altered, profile='served-lgfd2000')

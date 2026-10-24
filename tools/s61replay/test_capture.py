@@ -74,3 +74,37 @@ def test_unsupported_world_populations_refused(flag):
     setattr(bot, flag, True)
     with pytest.raises(ValueError, match='world population'):
         capture_lead(bot, root)
+
+
+def test_release46_package_capture(monkeypatch):
+    import os
+    import tomllib
+    from shengji.train import pv_search_policy as pv
+    play = os.environ.get('REPLAY_PLAY_PACKAGE')
+    belief = os.environ.get('REPLAY_BELIEF_PACKAGE')
+    if not play and not belief:
+        pytest.skip('explicit release46 package paths required')
+    assert play and belief
+    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env = {key: value for key, value in env.items() if key.startswith('SHENGJI_PV_')}
+    env.update(SHENGJI_PV_CKPT=play, SHENGJI_PV_BELIEF_CKPT=belief)
+    for key in tuple(os.environ):
+        if key.startswith('SHENGJI_'):
+            monkeypatch.delenv(key)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+    (name, factory_), = entries.items()
+    assert name == ('pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-'
+                    'xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0')
+    root, _ = fixture()
+    bot, plain = factory_(seed=41), factory_(seed=41)
+    assert bot.belief_worlds and bot.worlds == 64 and bot.serving_budget_seconds == 3
+    captured = capture_lead(bot, root)
+    assert captured['played'] == plain.decide_play(deepcopy(root), root.turn)
+    assert len(captured['worlds']) == 64
+    assert captured['weights'] == [1 / 64] * 64
+    assert plain.last_decision_record['schema'] == 'pv-search-decision-v1'
+    for key in ('admitted', 'value_means', 'selected_index'):
+        assert captured['served_record'][key] == plain.last_decision_record[key]
+    assert bot.sampler.rng.getstate() == plain.sampler.rng.getstate()

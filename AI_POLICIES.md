@@ -1,10 +1,11 @@
 # AI policy ledger
 
-Last reconciled: **2026-10-16**.
+Last reconciled: **2026-10-24**.
 
-**Production is release 46** (live 2026-10-16 14:49 ET, Fly v46): release 45 plus the v92 combo. Release 45 is the
-rollback. **New screens compare against release 46 as served** (Jerry, in session 2026-10-16: "compare new
-screens to release 46", #707 issuecomment-6223485189; before that release 45, 2026-10-13). Confirmations keep their
+**Production is release 48** (live 2026-10-24 10:18 ET, Fly v47): release 46 with the S58 belief package, `dtrx`
+and the guarded greedy finish (ladder row 17). Release 46 is the rollback. **New screens compare against release 46
+as served** (Jerry, in session 2026-10-16: "compare new screens to release 46", #707 issuecomment-6223485189; before
+that release 45, 2026-10-13) until Jerry confirms the move to release 48 (#1075 issuecomment-6385303349). Confirmations keep their
 parent's comparator; screens already read keep their declared comparator.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
@@ -15,21 +16,21 @@ long-form text this file carried until 2026-10-16 is verbatim in
 
 ## Production contract
 
-Release 46 is the `pv-search` policy/value search, W64/K8, no playouts. Rule tokens (and the release that added
+Release 48 is the `pv-search` policy/value search, W64/K8, no playouts. Rule tokens (and the release that added
 each) are in parentheses; rules are off by default in source and on in production (#676).
 
 | phase | stage | budget and fallback |
 |---|---|---|
 | declare | The heuristic proposes. At every first-round chance with an option (`vdef`, 46), else where the heuristic would declare or in the grace window, the value head scores each legal declaration plus PASS over 64 sampled completions (heuristic bury and first trick inside) and replaces the heuristic only when beaten (`vd`, 44; #952, #959, #958, #965). | Off the event loop on copies, applied only if the round is unchanged; heuristic on expiry or error; a human's declaration wins any race. |
 | bury | 64 candidates (the hybrid ballot plus the incumbent's single-card swaps), chosen by the value head's mean over the arm's model worlds; no MC stage (`bwv` K=64, 45; #974). | 2 s; heuristic fallback. |
-| play: worlds | 64 worlds, history-legal (`whl`), drawn under the pair obligation (`whd`), hidden hands proposed by the S17 belief model (`bw`) (46); this round's refused throws stay refusable with the same forced component (`rc`, 38; #689). | A belief error, including preparation over 0.25 s, falls back for that decision to the history-legal draw and is recorded. |
+| play: worlds | 64 worlds, history-legal (`whl`), drawn under the pair obligation (`whd`), hidden hands proposed by the S58 belief model (`bw`, 46; S58 since 48); this round's refused throws stay refusable with the same forced component (`rc`, 38; #689). | A belief error, including preparation over 0.25 s, falls back for that decision to the history-legal draw and is recorded. |
 | play: admit | Policy head admits 8: at most 2 per structural key, near-duplicates skipped, back-fill (`div`, 38; #680); on a lead whose heuristic anchor is a non-trump single that is not the top live card, slot 0 is the highest plain pair/tractor, else the policy's top action (`la`, 38; #694). | 3 s per play; on expiry, the heuristic anchor. |
-| play: price | Value head prices each afterstate in each world; within 0.02 level of the best mean, most root-team points from the current trick wins (`tb`, 38; #682). | |
-| play: doomed throw | A lead the engine refuses in every world with the same forced component is excluded with that component; the bot re-selects (`dtr`, 43; #946, replacing 42's swap `dts`, #830). | Abandonment keeps the first selection; all excluded plays the forced component. |
+| play: price | Value head prices each afterstate in each world, after finishing the trick with greedy replies (`lgf`, 48), except on decisions an exact stage is eligible for (`lgfx`, 48); within 0.02 level of the best mean, most root-team points from the current trick wins (`tb`, 38; #682). | Past 2 s into a decision the greedy finish stops and the remaining leaves are plain (`lgfd2000`, 48). |
+| play: doomed throw | A lead the engine refuses in every world with the same forced component is excluded with that component; the bot re-selects (`dtr`, 43; #946, replacing 42's swap `dts`, #830); the re-select never overrides a complete exact lead stage (`dtrx`, 48; #1120). | Abandonment keeps the first selection; all excluded plays the forced component. |
 | play: ≤ 7 cards | Lead with > 1 candidate: exact level-mode minimax per world after the first-trick leaf (`ele`, `ed7`). Follow: exact re-rank on the compiled compact-level solver, 50M nodes (`xf7`, `xfcompactlevel`) (46; #1066). | Inside the 3 s; expiry or error keeps the baseline choice. |
 
 **Packages:** play/value `smv3out-491ee4bf` (gen-5 SMV3 outcome head, since release 36); prior keys JS-M1 `0d17fd03`
-(since 28); belief NumPy `s17long-e2-763b5e05`, sha-pinned, loaded once per process. **Logging:** the belief log is on
+(since 28); belief NumPy `s58-e6-42444515` (since 48, at its stored temperature 1.0129; release 46 served `s17long-e2-763b5e05`), sha-pinned, loaded once per process. **Latency switches** (48): prefix-cached and batched encoding and a streamed greedy finish, no name token; on completed decisions the cards played are the switch-off ones. **Logging:** the belief log is on
 by default (#1068): each play record carries `belief_seed` and a marginal snapshot; no decision depends on it.
 
 Served name, package SHA256s, `fly.toml`, deploy record and rollback: `DEPLOY.md` "Current production" and the
@@ -71,7 +72,7 @@ fixes. Row numbers are stable; other documents cite them.
 
 | row | rel. | change (token) | vs | result [95% CI] | status | reading | vs Sol, actor-only [95% CI] | vs PT-Sol [95% CI] | pointer |
 |---:|---:|---|---|---|---|---|---|---|---|
-| 17 | 48 | S58 belief package (`42444515`, stored T) + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches | 46 | pending screen | PENDING (draft, not deployed) | No result yet; the guarded cloud screen, its fresh-seed confirmation and the latency packet are pending. | — | — | R48 on #1075; DEPLOY.md Release 48 |
+| 17 | 48 | S58 belief package (`42444515`, stored T) + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches | 46 | **+0.0765 [+0.0571, +0.0958]**; r48confirm **+0.0843 [+0.0575, +0.1111]** | POSITIVE, CONFIRMED | Four changes screened as one recipe (no per-change attribution); 0 play and 0 belief fallbacks on both reads; v105lat QUALIFIED (play p95 0.566 s). | — | — | r48cloud #1075 issuecomment-6383298163; r48confirm 6384251320; v105lat 6384912469 |
 | 15 | 46 | belief worlds (`whl whd bw`) + exact endgame D7/X7 (`ele ed7 xf7 xfcompactlevel`) + `vdef` | 45 | **+0.2167 [+0.1923, +0.2412]**; v92c **+0.2284 [+0.2046, +0.2521]** | POSITIVE, CONFIRMED | Three changes at once; the largest served gain. | **+0.55 [+0.25, +0.90]** S47 | — | v92combo45 #707 issuecomment-6216352632; v92c 6221702452 |
 | 14 | 45 | wide value-only bury, K=64 (`bwv`) | 44 | **+0.0488 [+0.0286, +0.0690]** | POSITIVE | One screen; width and chooser changed together. | — | — | v76bwv44 #707 issuecomment-6136852119 |
 | 13 | 44 | value-guided declaration (`vd`) | 43 | **+0.0497 [+0.0379, +0.0615]** first-round; **+0.0352 [+0.0233, +0.0471]** later-round | POSITIVE | First decision owned beyond card play; 20/20 windows positive. | — | — | v70vd43, v71vd43lr |

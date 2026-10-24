@@ -9,8 +9,9 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 46** (since 2026-10-16 14:49 ET), the combo: belief-model worlds + exact endgame at
-7 cards + every-chance first-round value declaration, on release 45. Release 45 is the SMV3
+**Live: release 48** (since 2026-10-24 10:18 ET): release 46 with the S58 belief package, dtrx and the
+guarded greedy-finished value leaf (lgf, lgfx, lgfd2000). Release 46 is the combo: belief-model worlds + exact
+endgame at 7 cards + every-chance first-round value declaration, on release 45. Release 45 is the SMV3
 outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds,
 8 candidates) with five search rules (div, rc, tb, la, dtr), the value-guided trump declaration
 (release 44) and the wide value-only bury (release 45). The model owns declaration, bury and card
@@ -33,9 +34,11 @@ Rule tokens used in the figures and tables:
 - **vd**: value-guided trump declaration
 - **vdef**: in round 1, consult the value head at every declare chance
 - **whl / whd**: sampled worlds must be consistent with every earlier follow (history-legal)
-- **bw**: hidden hands proposed by the S17 belief model
+- **bw**: hidden hands proposed by the belief model (S17 in release 46, S58 since release 48)
 - **ele / ed7 / xf7**: exact endgame search for leads and follows at ≤7 cards
 - **bwv**: wide value-only bury (64 candidate kitties)
+- **dtrx**: dtr never overrides a complete exact lead stage (release 48)
+- **lgf / lgfx / lgfd2000**: finish the trick with greedy replies before the value pass; skip it where an exact stage is eligible; stop it past 2 s (release 48)
 
 <img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Separate contrasts through a common MC-LCB control; not additive." width="100%">
 
@@ -43,7 +46,7 @@ Rule tokens used in the figures and tables:
 
 | change | against | result | reading | vs Sol, actor-only | vs PT-Sol |
 |---|---|---|---|---|---|
-| S58 belief + dtrx + guarded greedy finish (release 48, draft) | release 46 | pending screen | PENDING: not yet screened as served, not deployed | — | — |
+| S58 belief + dtrx + guarded greedy finish (release 48) | release 46 | +0.0765 [+0.0571, +0.0958]; confirmation +0.0843 [+0.0575, +0.1111] | POSITIVE and CONFIRMED (r48cloud, r48confirm) | — | — |
 | the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) | +0.55 [+0.25, +0.90] (S47) | pending (S47-PT) |
 | wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) | — | — |
 | value-guided declaration (release 44) | release 43 | +0.0497 [+0.0379, +0.0615] first-round; +0.0352 [+0.0233, +0.0471] later-round | POSITIVE in both populations, ten windows each (v70vd43, v71vd43lr) | — | — |

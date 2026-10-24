@@ -97,3 +97,65 @@ def test_valid_treatment_reaches_estimator_after_prior_gates(monkeypatch):
     assert len(calls) == 1 and result['estimate'] == {'fixture': True}
     assert result['greedy_check']['verdict'] == 'VALID'
     assert result['status'] == 'STAGE_OUTCOME_CHECKED_ONLY'
+
+
+@pytest.mark.parametrize('stage', ['before', 'rows', 'between'])
+def test_real_cut_receipts_reach_greedy_consumer(stage, monkeypatch):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'server/tests'))
+    from test_pv_leaf_greedy_finish import leaf_bot, R46_RULES
+    from test_pv_doomed_throw_reselect import HashNoiseEvaluator, throw_loving_scores
+    from test_pv_small_joker_lead import _fresh_round
+    from shengji.train.policy_value_search import LeafGreedyDeadline
+    bot = leaf_bot(HashNoiseEvaluator(), worlds=2, leaf_greedy_deadline_ms=2000,
+                   leaf_greedy_finish_exact_skip=True, **R46_RULES)
+    bot.scores = throw_loving_scores
+    finish = bot._greedy_finish
+    def forced(clones, target, gate, stats, prefix=None, guard=None):
+        def cut():
+            if (stage == 'before'
+                    or stage == 'rows' and stats['tree_policy_rows'] > 0
+                    or stage == 'between' and stats['tree_reply_plays'] > 0):
+                raise LeafGreedyDeadline
+        return finish(clones, target, gate, stats, prefix, cut)
+    monkeypatch.setattr(bot, '_greedy_finish', forced)
+    rnd = _fresh_round(707014)
+    bot.decide_play(rnd, rnd.turn)
+    rec = bot.last_decision_record
+    assert rec['schema'] == 'pv-search-decision-v1' and rec['work_complete']
+    assert rec['leaf_greedy_deadline_fired'] and not bot._leaf_greedy['cache']
+    if stage == 'rows':
+        assert rec[FIELDS[4]] > 0 and rec[FIELDS[2]] == 0
+    if stage == 'between':
+        assert rec[FIELDS[1]] > 0
+    assert greedy_shape(rec, True, True) == 'deadline_fired'
+    plan, shards = packet()
+    plan['arms']['candidate']['identity']['config']['leaf_greedy_deadline_ms'] = 2000
+    records = shards['candidate'][0]['decision_traces'][0]['decisions']
+    for old in records:
+        old.update(leaf_greedy_deadline_fired=False, leaf_greedy_deadline_cut_leaves=0)
+    records.append(rec)
+    result = check_greedy(plan, shards)
+    assert result['verdict'] == 'VALID', result
+    assert result['counts']['candidate']['deadline_fired'] == 1
+    assert result['counts']['candidate']['applied'] == 1
+
+
+@pytest.mark.parametrize('enabled', [False, True])
+def test_deadline_fields_require_enabled_recipe(enabled):
+    rec = record() if enabled else dict(schema='pv-search-decision-v1')
+    rec.update(leaf_greedy_deadline_fired=False, leaf_greedy_deadline_cut_leaves=0)
+    with pytest.raises(ValueError):
+        greedy_shape(rec, enabled)
+
+
+@pytest.mark.parametrize('key,value', [('leaf_greedy_deadline_fired', 1),
+    ('leaf_greedy_deadline_cut_leaves', True), ('leaf_greedy_deadline_cut_leaves', 0),
+    (FIELDS[0], False), (FIELDS[2], 100), (FIELDS[4], 100), (FIELDS[5], 1), (SKIP, True)])
+def test_cut_corruption_refused(key, value):
+    rec = record()
+    rec.update(leaf_greedy_deadline_fired=True, leaf_greedy_deadline_cut_leaves=4)
+    rec[key] = value
+    with pytest.raises(ValueError):
+        greedy_shape(rec, True, True)

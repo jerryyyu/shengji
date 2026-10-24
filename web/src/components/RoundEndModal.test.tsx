@@ -92,6 +92,14 @@ describe("round end modal", () => {
     expect(text).toContain("Games won");
   });
 
+  it("titles the round with the winners and a plural verb, colour prefix separable", () => {
+    renderModal(makeResult({ winner_team: 1 }));
+    const h2 = host.querySelector("h2")!;
+    expect(h2.textContent).toBe("Orange team · Robin & Ada win the round");
+    // phones hide the prefix; what remains still reads as a sentence
+    expect(h2.querySelector(".title-team")!.textContent).toBe("Orange team · ");
+  });
+
   it("does not show a tally on an ordinary round", () => {
     expect(renderModal(makeResult())).not.toContain("Games won");
   });

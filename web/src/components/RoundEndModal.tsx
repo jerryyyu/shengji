@@ -13,12 +13,27 @@ interface RoundEndModalProps {
  *  makes you work out who that was, and "you" should be obvious. */
 function teamName(team: 0 | 1, state?: GameState): string {
   const colour = team === 0 ? "Blue" : "Orange";
-  if (!state) return `${colour} team`;
-  const members = state.players
+  const members = teamMembers(team, state);
+  return members ? `${colour} team (${members})` : `${colour} team`;
+}
+
+/** "You & Bot 2": the team's players, you first; empty when unknown. */
+function teamMembers(team: 0 | 1, state?: GameState): string {
+  if (!state) return "";
+  return state.players
     .filter((p) => p.team === team)
-    .sort((a, b) => a.seat - b.seat)
-    .map((p) => (p.seat === state.you ? `${p.name} (you)` : p.name));
-  return members.length ? `${colour} team — ${members.join(" & ")}` : `${colour} team`;
+    .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat)
+    .map((p) => (p.seat === state.you ? "You" : p.name))
+    .join(" & ");
+}
+
+/** "Blue team · You & Bot 2 win the round"; the members take a plural verb,
+ *  and phones drop the colour prefix (the title is already in team colour). */
+function TeamTitle({ team, state, what }: { team: 0 | 1; state: GameState; what: string }) {
+  const colour = team === 0 ? "Blue" : "Orange";
+  const members = teamMembers(team, state);
+  if (!members) return <>{colour} team wins {what}</>;
+  return <><span className="title-team">{colour} team · </span>{members} win {what}</>;
 }
 
 /** Card points: 5s are worth 5, 10s and kings 10, everything else 0. */
@@ -52,7 +67,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
         <div className="panel modal victory">
           <div className="victory-crown">👑</div>
           <h2 id={titleId} tabIndex={-1} className={`victory-title team${result.winner_team}`}>
-            {teamName(result.winner_team, state)} wins the game!
+            <TeamTitle team={result.winner_team} state={state} what="the game!" />
           </h2>
           <p className="victory-sub">
             Final levels — Blue: {result.new_levels[0]} · Orange: {result.new_levels[1]}
@@ -71,7 +86,9 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
   return (
     <ResultDialog titleId={titleId}>
       <div className="panel modal">
-        <h2 id={titleId} tabIndex={-1} className={`modal-title team${result.winner_team}`}>{teamName(result.winner_team, state)} wins the round</h2>
+        <h2 id={titleId} tabIndex={-1} className={`modal-title team${result.winner_team}`}>
+          <TeamTitle team={result.winner_team} state={state} what="the round" />
+        </h2>
 
         {result.kitty_cards.length > 0 && (
           <div className="kitty-reveal">

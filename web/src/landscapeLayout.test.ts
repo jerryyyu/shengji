@@ -92,7 +92,69 @@ describe("short landscape table layout", () => {
     expect(notice.width).toBe("calc(50% - var(--trick-half) - 16px)");
   });
 
-  it("lays the points chip out as wrapping flex, not a grid", () => {
-    expect(rule(block, ".points-chip").display).toBe("flex");
+  it("lays the points chip out as one flex row, not a grid, the level strip's height", () => {
+    const chip = rule(block, ".points-chip");
+    expect(chip.display).toBe("flex");
+    expect(chip["flex-wrap"]).toBe("nowrap");
+    expect(chip["align-items"]).toBe("center");
+    expect(chip.height).toBe("26px");
+    expect(rule(block, ".hud-bar .hud-group:nth-child(2)").height).toBe("26px");
+    // the bar rides in the padding instead of taking a second line
+    expect(rule(block, ".points-chip .points-bar").position).toBe("absolute");
+  });
+
+  it("floats the HUD over the felt instead of drawing a top bar", () => {
+    const hud = rule(block, ".hud");
+    expect(hud.position).toBe("absolute");
+    expect(hud.background).toBe("none");
+    expect(hud["pointer-events"]).toBe("none");
+    expect(rule(block, ".hud-bar > .hud-group, .hud-notice")["pointer-events"]).toBe("auto");
+    // the empty first group would take a space-between slot
+    expect(rule(block, ".hud-bar > .hud-group:first-child").display).toBe("none");
+    expect(rule(block, ".hud-message").position).toBe("fixed");
+    expect(rule(block, ".hud-message").bottom).toBe("calc(var(--hand-h) + 6px)");
+  });
+
+  it("draws the menu button small but keeps a 44px hit area past the coarse-pointer rule", () => {
+    const btn = rule(block, ".hud-bar .hud-more-btn");
+    expect(btn.height).toBe("26px");
+    expect(btn["min-height"]).toBe("26px");
+    const hit = rule(block, ".hud-bar .hud-more-btn::after");
+    const [top, h, bottom] = hit.inset.split(" ").map((x) => -px(x));
+    expect(26 + top + bottom).toBeGreaterThanOrEqual(44);
+    expect(px(btn["min-width"]) + 2 * h).toBeGreaterThanOrEqual(44);
+    expect(px(rule(block, ".action-bar .btn")["min-height"])).toBeGreaterThanOrEqual(44);
+  });
+
+  it("keeps trick tags out of the slot box so the cross stays centred", () => {
+    expect(rule(block, ".trick-play").gap).toBe("0");
+    expect(rule(block, ".trick-tag").position).toBe("absolute");
+    expect(rule(block, ".trick-play.pos-top .trick-tag, .trick-play.pos-bottom .trick-tag").left).toBe("100%");
+  });
+
+  it("hides the bot's status text visually but keeps it for screen readers", () => {
+    const t = rule(block, ".opponent .thinking");
+    expect(t.display).toBeUndefined();
+    expect(t["clip-path"]).toBe("inset(50%)");
+    expect(rule(block, ".phase-play .action-hint").display).toBe("none");
+  });
+
+  it("keeps the round-end button on screen and the phone text sizes in force", () => {
+    const btn = rule(block, ".modal > .btn.big");
+    expect(btn.position).toBe("sticky");
+    expect(btn.bottom).toBe("0");
+    expect(px(btn["min-height"])).toBeGreaterThanOrEqual(44);
+    expect(rule(block, ".result-verdict").display).toBe("none");
+    // the rem text sizes come later in the file at one class of specificity
+    expect(rule(block, ".result-grid .result-label")["font-size"]).toBe("12px");
+    expect(css.lastIndexOf(".result-label, .ready-status { font-size: 0.875rem; }")).toBeGreaterThan(css.indexOf("@media (max-height: 500px)"));
+  });
+});
+
+describe("portrait phones", () => {
+  it("takes the table out of layout so the rotate hint centres", () => {
+    const start = css.indexOf("@media (orientation: portrait) and (max-width: 600px)");
+    const body = css.slice(start, css.indexOf("\n}\n", start));
+    expect(rule(body + "}", ".table-screen").display).toBe("none");
   });
 });

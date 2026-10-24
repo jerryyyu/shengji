@@ -1112,6 +1112,10 @@ textarea:focus-visible {
   box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(242, 193, 78, 0.65);
 }
 
+.trump-none-short { display: none; }
+
+h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a control */
+
 .trick-play.winner .trick-cards {
   animation: win-lift var(--dur-lift) var(--ease-back) both;
 }
@@ -1548,10 +1552,42 @@ dialog.modal-backdrop::backdrop { background: transparent; }
    page scrolling. Desktop rules above are untouched. */
 
 @media (max-height: 500px) {
-  /* --- HUD: single thin bar, essentials only --- */
+  /* --- HUD: no bar; two corner clusters float over the felt, which takes the
+     whole height. Levels and trump top-left, points and the menu top-right;
+     the top seat keeps the top centre. --- */
   .hud {
-    padding: calc(3px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-right)) 2px calc(10px + env(safe-area-inset-left));
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    background: none;
+    border-bottom: 0;
+    pointer-events: none;     /* only the chips themselves take taps */
+    padding: calc(4px + env(safe-area-inset-top, 0px)) calc(4px + env(safe-area-inset-right, 0px)) 0 calc(4px + env(safe-area-inset-left, 0px));
   }
+
+  .hud-bar {
+    align-items: flex-start;
+  }
+
+  /* room and phase chips are hidden below, so this group is empty; left in, it
+     takes a space-between slot and pushes the levels off the corner */
+  .hud-bar > .hud-group:first-child {
+    display: none;
+  }
+
+  .hud-bar > .hud-group,
+  .hud-notice {
+    pointer-events: auto;
+  }
+
+  .hud-bar .hud-group:last-child {
+    gap: 4px;
+  }
+
+  .trump-none-long { display: none; }
+  .trump-none-short { display: inline; }
 
   .room-chip,
   .phase-chip {
@@ -1644,7 +1680,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .opponent.pos-top {
-    top: 4px;
+    top: calc(4px + env(safe-area-inset-top, 0px));
   }
 
   .opponent.pos-left {
@@ -1672,8 +1708,36 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin-left: -12px;
   }
 
+  /* Tags sit outside the slot's box, so a LEAD or WINS chip never widens or
+     lifts the cards: the four plays stay on an exact cross, and flights land
+     on the cards themselves. Side and top tags hang below; your slot, at the
+     bottom edge of the box, wears its tag beside the cards. */
+  .trick-play {
+    gap: 0;
+  }
+
   .trick-tag {
-    min-height: 12px;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    translate: -50% 0;
+    margin-top: 2px;
+    min-height: 0;
+    white-space: nowrap;
+  }
+
+  .trick-play.pos-top .trick-tag,
+  .trick-play.pos-bottom .trick-tag {
+    top: 50%;
+    left: 100%;
+    translate: 4px -50%;
+    margin: 0;
+  }
+
+  /* the top slot sits just under the top seat's label: the winner grows in
+     place instead of lifting into it */
+  .trick-play.winner .trick-cards {
+    animation-name: win-grow;
   }
 
   .lead-tag,
@@ -1707,7 +1771,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .action-bar .btn {
-    min-height: 40px; /* touch target */
+    min-height: 44px; /* touch target */
     padding: 6px 14px;
     font-size: 13px;
   }
@@ -1821,6 +1885,28 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 11px;
   }
 
+  /* A bot's turn shows as its seat breathing gold, not a sentence on the felt
+     (the text doubled the seat's width into the trick). The status text stays
+     in the accessibility tree as a visually hidden live region. */
+  .opponent .thinking {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .opponent.on-turn::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: 0 0 12px 3px var(--gold-soft);
+    animation: thinking-pulse 1.1s ease-in-out infinite alternate;
+  }
+
   /* left/right seats sit at the table edge, level with the trick's side slots */
   .opponent.pos-left,
   .opponent.pos-right {
@@ -1830,7 +1916,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* --- HUD: the three team/trump chips read as ONE strip --- */
   .hud-bar .hud-group:nth-child(2) {
     gap: 0;
-    background: rgba(8, 20, 14, 0.7);
+    height: 26px;
+    background: rgba(8, 20, 14, 0.72);
     border-radius: 999px;
     padding: 0 4px;
   }
@@ -1856,8 +1943,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     position: relative;
   }
 
-  .hud-more-btn {
-    min-width: 30px;
+  /* drawn 26px tall to match the chips; ::after keeps a 44px hit area. The
+     extra class outranks the coarse-pointer 44px minimum later in the file. */
+  .hud-bar .hud-more-btn {
+    position: relative;
+    height: 26px;
+    min-width: 32px;
     min-height: 26px;
     padding: 0 8px;
     border-radius: 999px;
@@ -1869,6 +1960,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     letter-spacing: 0.08em;
     line-height: 1;
     cursor: pointer;
+  }
+
+  /* the button sits 4px from the top edge, so the extra height goes below it
+     and the whole 44px stays on screen */
+  .hud-bar .hud-more-btn::after {
+    content: "";
+    position: absolute;
+    inset: -4px -6px -14px;
   }
 
   .hud-more-btn[aria-expanded="true"] {
@@ -1886,7 +1985,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     padding: 5px;
     border-radius: 12px;
     border: 1px solid var(--panel-edge);
-    background: rgba(10, 12, 17, 0.96);
+    background: #0a0c11;       /* opaque: cards under a translucent menu read as menu rows */
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
   }
 
@@ -1915,19 +2014,21 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .hud-menu-row.leave.armed { color: var(--gold); }
   .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 
-  /* points read as a bar under the number: number and target side by side, the
-     bar on a full line of its own; the chip stays the level strip's height. */
+  /* One row, exactly the level strip's height: number and target centred, the
+     progress bar riding in the bottom padding. */
   .points-chip {
-    /* Wrapping flex, not a grid: iOS WebKit keeps a grid's first column at the
-       width of "0" when the score becomes "10", so the digits run into the "/". */
+    /* Flex, not a grid: iOS WebKit keeps a grid's first column at the width of
+       "0" when the score becomes "10", so the digits run into the "/". */
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     column-gap: 5px;
-    row-gap: 2px;
-    align-items: baseline;
-    border-radius: 10px;
-    padding: 2px 9px 4px;
-    line-height: 1.1;
+    align-items: center;
+    position: relative;
+    height: 26px;
+    border-radius: 999px;
+    padding: 0 9px;
+    line-height: 1;
+    background: rgba(8, 20, 14, 0.72);
   }
 
   .points-big {
@@ -1935,12 +2036,15 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .points-chip .points-bar {
-    flex: 0 0 100%;
+    position: absolute;
+    left: 9px;
+    right: 9px;
+    bottom: 3px;
+    height: 2px;
   }
 
   .points-bar {
     display: block;
-    height: 3px;
     border-radius: 2px;
     background: rgba(0, 0, 0, 0.4);
     overflow: hidden;
@@ -1962,28 +2066,35 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     display: flex;
   }
 
+  /* the pill says YOUR TURN; your name on it is always you */
+  .phase-play .you-tagline .you-name {
+    display: none;
+  }
+
+  /* your turn also draws a gold hairline over the fan; a background, so the
+     hand's box (and --hand-h) does not change */
+  .phase-play .you-tagline.on-turn ~ .hand {
+    background: linear-gradient(90deg, transparent, var(--gold) 20%, var(--gold) 80%, transparent) top / 100% 1.5px no-repeat;
+  }
+
   /* --- Action bar: one button; a disabled Clear is not information --- */
   .action-bar .btn.subtle:disabled {
     display: none;
   }
 
-  /* --- Messages pass over the felt instead of holding a line in the chrome --- */
-  .hud {
-    position: relative;
-  }
-
+  /* --- Messages pass in the bottom-left corner, where the notice floats --- */
   .hud-message {
-    position: absolute;
-    left: 50%;
-    top: 100%;
-    transform: translateX(-50%);
-    margin-top: 6px;
+    position: fixed;
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    bottom: calc(var(--hand-h) + 6px);
+    max-width: calc(50% - var(--trick-half) - 16px);
+    margin: 0;
     padding: 4px 12px;
-    border-radius: 999px;
+    border-radius: 12px;
     background: rgba(8, 20, 14, 0.8);
-    white-space: nowrap;
     z-index: 11;
-    animation: hud-message-pass 3.2s ease forwards;
+    pointer-events: none;
+    animation: hud-message-pass-corner 3.2s ease forwards;
   }
 
   /* ============ Short landscape: the trick owns the middle ============
@@ -2002,6 +2113,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        - the failed-throw notice floats in the bottom-left corner instead of
          taking a row of height from the felt. */
   .table-screen {
+    position: relative;         /* the floating HUD's frame */
     /* fan padding 16 + card 58 * 7/5 + 4, plus you-area padding 4 */
     --hand-h: calc(105.2px + env(safe-area-inset-bottom, 0px));
     --trick-top: 34px;          /* under the top seat's one-line label */
@@ -2040,8 +2152,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     justify-content: flex-end;
   }
 
+  /* "Waiting for Bot 1" repeats what the glowing seat already says */
   .phase-play .action-hint {
-    text-align: right;
+    display: none;
   }
 
   /* Setup phases: one row of controls above the hand. Declare options can
@@ -2159,37 +2272,74 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 11px;
   }
 
-  /* --- Round end modal: scrollable inside, fits 360px tall --- */
+  /* --- Round end: a compact card; Next round always on screen --- */
   .modal {
-    padding: 14px 20px;
-    gap: 10px;
+    width: min(380px, 100%);
+    padding: 12px 16px 0;
+    gap: 8px;
     max-height: 100%;
     overflow-y: auto;
   }
 
   .modal-title {
-    font-size: 17px;
+    font-size: 15px;
   }
 
+  .modal-title .title-team {
+    display: none;
+  }
+
+  .kitty-reveal {
+    gap: 4px;
+  }
+
+  .kitty-reveal-label {
+    font-size: 9px;
+  }
+
+  /* No column gap: the Total divider runs across the whole row. */
   .result-grid {
-    padding: 8px 14px;
-    gap: 4px 18px;
+    padding: 6px 12px;
+    gap: 2px 0;
   }
 
-  .result-label {
+  /* `.result-grid` in front outranks the rem text sizes at the end of the file */
+  .result-grid .result-label {
     font-size: 12px;
+    line-height: 1.35;
   }
 
-  .result-value {
+  .result-grid .result-value {
     font-size: 13px;
+    line-height: 1.35;
+    padding-left: 12px;
+  }
+
+  .result-grid .result-label.total,
+  .result-grid .result-value.total {
+    padding-top: 4px;
+  }
+
+  /* the grid already says it */
+  .result-verdict {
+    display: none;
   }
 
   .kitty-cards {
-    --cw: 32px;
+    --cw: 26px;
   }
 
   .kitty-cards .card + .card {
-    margin-left: -10px;
+    margin-left: -6px;
+  }
+
+  .modal > .btn.big {
+    position: sticky;
+    bottom: 0;
+    min-height: 44px;
+    padding: 8px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 -10px 12px var(--panel);
   }
 
   .victory-crown {
@@ -2212,6 +2362,21 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .reconnect-banner {
     top: 40px;
+  }
+}
+
+/* The phone message's pass, from the bottom-left corner (see the short
+   landscape block); kept out of that block so it stays plain rules. */
+@keyframes hud-message-pass-corner {
+  0% { opacity: 0; transform: translateY(4px); }
+  10% { opacity: 1; transform: none; }
+  80% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+@keyframes win-grow {
+  to {
+    transform: scale(1.06);
   }
 }
 
@@ -2253,6 +2418,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 @media (orientation: portrait) and (max-width: 600px) {
   .rotate-hint {
     display: flex;
+  }
+
+  /* the table's no-wrap HUD widened the layout viewport, which put the fixed
+     hint off-screen; out of layout, the hint centres */
+  .table-screen {
+    display: none;
   }
 }
 
@@ -2561,6 +2732,7 @@ button.room-chip:focus-visible::after { opacity: 1; }
   .hud-message { animation: none; }
   .modal, .modal-backdrop, .hud-notice, .trick-play, .rotate-icon { animation: none; }
   .trick-play.winner .trick-cards, .trick-play.winner .win-tag, .level-chip.level-up { animation: none; }
+  .opponent.on-turn::after { animation: none; }
   .hand .card, .btn, .seat-option { transition: none; }
   .btn:active:not(:disabled), .seat-option:active:not(:disabled) { transform: none; }
   /* Preserve the toast's dismissal timing, without its slide-in movement. */

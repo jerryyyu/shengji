@@ -19,7 +19,14 @@ const PHASE_LABEL: Record<Phase, string> = {
 
 function TrumpChip({ state }: { state: GameState }) {
   const trump = state.trump;
-  if (!trump) return <span className="chip trump-chip none">No trump yet</span>;
+  if (!trump) {
+    return (
+      <span className="chip trump-chip none">
+        <span className="trump-none-long">No trump yet</span>
+        <span className="trump-none-short">Trump ?</span>
+      </span>
+    );
+  }
   if (trump.suit === "NT" || trump.suit === null) {
     return (
       <span className="chip trump-chip">

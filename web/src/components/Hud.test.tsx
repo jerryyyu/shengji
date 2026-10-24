@@ -1,6 +1,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { DUR } from "../motion";
 import type { GameState, Notice, StatePlayer } from "../protocol";
 import Hud from "./Hud";
 
@@ -146,13 +147,78 @@ describe("points chip", () => {
   it("renders a new score box when the score changes", () => {
     // iOS WebKit kept the old box's width when "0" became "10", so the digits ran
     // into the "/ 80" (Jerry, 2026-10-05). A fresh element forces a fresh layout.
-    const view = render(makeState({ attacker_points: 0 }));
-    const before = view.host.querySelector(".points-big");
-    expect(before!.textContent).toBe("0");
-    view.rerender(makeState({ attacker_points: 10 }));
-    const after = view.host.querySelector(".points-big");
-    expect(after!.textContent).toBe("10");
-    expect(after).not.toBe(before);
-    view.unmount();
+    vi.useFakeTimers();
+    try {
+      const view = render(makeState({ attacker_points: 0 }));
+      const before = view.host.querySelector(".points-big");
+      expect(before!.textContent).toBe("0");
+      view.rerender(makeState({ attacker_points: 10 }));
+      act(() => { vi.advanceTimersByTime(DUR.count + 100); });
+      const after = view.host.querySelector(".points-big");
+      expect(after!.textContent).toBe("10");
+      expect(after).not.toBe(before);
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rolls up to a new score and snaps down to a new round's zero", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(makeState({ attacker_points: 0 }));
+      view.rerender(makeState({ attacker_points: 40 }));
+      act(() => { vi.advanceTimersByTime(DUR.count / 4); });
+      const mid = Number(view.host.querySelector(".points-big")!.textContent);
+      expect(mid).toBeGreaterThan(0);
+      expect(mid).toBeLessThan(40);
+      // the meter reports the real score while the number rolls
+      expect(view.host.querySelector(".points-bar")!.getAttribute("aria-valuenow")).toBe("40");
+      act(() => { vi.advanceTimersByTime(DUR.count); });
+      expect(view.host.querySelector(".points-big")!.textContent).toBe("40");
+      view.rerender(makeState({ attacker_points: 0 }));
+      expect(view.host.querySelector(".points-big")!.textContent).toBe("0");
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("level chip", () => {
+  it("rolls through the ranks and pulses gold on a climb", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(makeState({ levels: ["2", "2"] }));
+      const chip = () => view.host.querySelector(".level-chip.team0")!;
+      expect(chip().textContent).toContain("Lv 2");
+      expect(chip().classList.contains("level-up")).toBe(false);
+      view.rerender(makeState({ levels: ["5", "2"] }));
+      expect(chip().classList.contains("level-up")).toBe(true);
+      expect(view.host.querySelector(".level-chip.team1")!.classList.contains("level-up")).toBe(false);
+      act(() => { vi.advanceTimersByTime(DUR.count + 50); });
+      expect(chip().textContent).toContain("Lv 5");
+      act(() => { vi.advanceTimersByTime(DUR.pulse); });
+      expect(chip().classList.contains("level-up")).toBe(false);
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows the new level at once under reduced motion", () => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+    try {
+      const view = render(makeState({ levels: ["2", "2"], attacker_points: 0 }));
+      view.rerender(makeState({ levels: ["K", "2"], attacker_points: 35 }));
+      const chip = view.host.querySelector(".level-chip.team0")!;
+      expect(chip.textContent).toContain("Lv K");
+      expect(chip.classList.contains("level-up")).toBe(false);
+      expect(view.host.querySelector(".points-big")!.textContent).toBe("35");
+      view.unmount();
+    } finally {
+      window.matchMedia = mm;
+    }
   });
 });

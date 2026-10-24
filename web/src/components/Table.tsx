@@ -4,6 +4,8 @@ import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../
 import { conn } from "../ws";
 import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
+import type { HandRects } from "./Hand";
+import { DUR } from "../motion";
 import Hud from "./Hud";
 import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
@@ -11,6 +13,9 @@ import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
 
 const LAST_TRICK_MS = 1500;
+// The sweep ends a little before the finished trick is replaced, so the
+// table never waits on it.
+const SWEEP_AFTER_MS = LAST_TRICK_MS - DUR.sweep - 40;
 
 function declareLabel(ids: number[], hand: HandCard[]): string {
   const codes = ids.map((id) => hand.find((c) => c.id === id)?.code ?? "?");
@@ -131,8 +136,8 @@ export default function Table({ state }: { state: GameState }) {
   }), []);
   const chatOpenRef = useRef(false);
   useEffect(() => { chatOpenRef.current = chatOpen; if (chatOpen) setUnread(0); }, [chatOpen]);
-  const prevStateRef = useRef<GameState | null>(null);
-  const lastTrickTimer = useRef<number | null>(null);
+  const [prevState, setPrevState] = useState(state);
+  const handRects = useRef<HandRects>(new Map());
 
   // Prune selection to ids still in hand (clears selection after successful actions).
   useEffect(() => {
@@ -143,30 +148,24 @@ export default function Table({ state }: { state: GameState }) {
     });
   }, [state.hand]);
 
-  // When the trick resets and last_trick changed, linger on the finished trick briefly.
-  useEffect(() => {
-    const prev = prevStateRef.current;
-    prevStateRef.current = state;
-    if (!prev) return;
-    const prevPlays = prev.trick?.plays.length ?? 0;
+  // When the trick resets and last_trick changed, linger on the finished trick
+  // briefly. Derived during render, so the frame that delivers the reset
+  // already shows the finished trick instead of an empty table.
+  if (prevState !== state) {
+    setPrevState(state);
+    const prevPlays = prevState.trick?.plays.length ?? 0;
     const nowPlays = state.trick?.plays.length ?? 0;
-    const lastChanged = JSON.stringify(prev.last_trick) !== JSON.stringify(state.last_trick);
+    const lastChanged = JSON.stringify(prevState.last_trick) !== JSON.stringify(state.last_trick);
     if (state.last_trick && lastChanged && nowPlays < prevPlays) {
       setShownLastTrick(state.last_trick);
-      if (lastTrickTimer.current !== null) window.clearTimeout(lastTrickTimer.current);
-      lastTrickTimer.current = window.setTimeout(() => {
-        lastTrickTimer.current = null;
-        setShownLastTrick(null);
-      }, LAST_TRICK_MS);
     }
-  }, [state]);
+  }
 
-  useEffect(
-    () => () => {
-      if (lastTrickTimer.current !== null) window.clearTimeout(lastTrickTimer.current);
-    },
-    []
-  );
+  useEffect(() => {
+    if (shownLastTrick === null) return;
+    const timer = window.setTimeout(() => setShownLastTrick(null), LAST_TRICK_MS);
+    return () => window.clearTimeout(timer);
+  }, [shownLastTrick]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -292,6 +291,8 @@ export default function Table({ state }: { state: GameState }) {
           trick={trickToShow}
           winner={showingLast && shownLastTrick ? shownLastTrick.winner : null}
           declaration={showingLast ? null : declaration}
+          handRects={handRects}
+          sweepAfterMs={showingLast ? SWEEP_AFTER_MS : null}
         />
 
         <div className="you-area">
@@ -304,7 +305,8 @@ export default function Table({ state }: { state: GameState }) {
             ) : null}
           </div>
           <div className="action-bar">{actionBar}</div>
-          <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle} />
+          <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
+                rects={handRects} />
         </div>
       </div>
 

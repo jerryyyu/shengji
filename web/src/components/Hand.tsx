@@ -1,6 +1,19 @@
-import { memo } from "react";
+import { memo, useEffect, useLayoutEffect, useRef } from "react";
+import type { RefObject } from "react";
 import type { HandCard } from "../protocol";
+import type { Box } from "../motion";
+import { DUR, EASE, canAnimate, currentTranslate } from "../motion";
 import Card from "./Card";
+
+/** Last drawn position of each hand card, by card id. A card that has just
+ *  left the hand keeps its entry, marked `departed`, through one more commit
+ *  so the trick area can fly a play out from exactly where its cards were. */
+export interface HandRect {
+  code: string;
+  card: Box;
+  departed: boolean;
+}
+export type HandRects = Map<number, HandRect>;
 
 interface HandProps {
   hand: HandCard[];
@@ -9,6 +22,8 @@ interface HandProps {
   selectable: boolean;
   /** Must be stable across renders (Table passes a useCallback). */
   onToggle: (id: number) => void;
+  /** Filled with card positions for the trick area's play flights. */
+  rects?: RefObject<HandRects>;
 }
 
 interface SlotProps {
@@ -23,16 +38,108 @@ interface SlotProps {
  *  changed, not all 25. */
 const HandSlot = memo(function HandSlot({ id, code, selected, onToggle }: SlotProps) {
   return (
-    <div className="hand-slot">
+    <div className="hand-slot" data-id={id}>
       <Card code={code} selected={selected} onClick={onToggle ? () => onToggle(id) : undefined} />
     </div>
   );
 });
 
-export default function Hand({ hand, selected, selectable, onToggle }: HandProps) {
-  if (hand.length === 0) return null;
+function toBox(r: DOMRect): Box {
+  return { left: r.left, top: r.top, width: r.width, height: r.height };
+}
+
+/** Record where each card is drawn; selection lifts and reflow are included. */
+function recordCards(el: HTMLElement | null, reg: HandRects | undefined, codes: Map<number, string>) {
+  if (!el || !reg) return;
+  for (const slot of el.querySelectorAll<HTMLElement>(".hand-slot")) {
+    const id = Number(slot.dataset.id);
+    const card = slot.querySelector(".card");
+    const code = codes.get(id);
+    if (card && code) reg.set(id, { code, card: toBox(card.getBoundingClientRect()), departed: false });
+  }
+}
+
+/** Slot x within the hand, without any running reflow transform. */
+function measureLayout(el: HTMLElement | null): Map<number, number> {
+  const next = new Map<number, number>();
+  if (!el) return next;
+  const base = el.getBoundingClientRect().left - el.scrollLeft;
+  for (const slot of el.querySelectorAll<HTMLElement>(".hand-slot")) {
+    next.set(Number(slot.dataset.id),
+      slot.getBoundingClientRect().left - base - currentTranslate(slot).dx);
+  }
+  return next;
+}
+
+export default function Hand({ hand, selected, selectable, onToggle, rects }: HandProps) {
+  const handRef = useRef<HTMLDivElement>(null);
+  // Slot x within the hand, without any running reflow transform: the FLIP
+  // "first" position for the next commit.
+  const layoutX = useRef(new Map<number, number>());
+  const anims = useRef(new Map<number, Animation>());
+  const codes = useRef(new Map<number, string>());
+  codes.current = new Map(hand.map((c) => [c.id, c.code]));
+  const empty = hand.length === 0;
+
+  useLayoutEffect(() => {
+    const el = handRef.current;
+    const prev = layoutX.current;
+    const next = measureLayout(el);
+    layoutX.current = next;
+    if (el && prev.size > 0) {
+      // FLIP: start each moved slot where it was drawn, then glide to its new
+      // place. A slot already gliding starts from its current offset, so a
+      // new state mid-glide never jumps.
+      for (const slot of el.querySelectorAll<HTMLElement>(".hand-slot")) {
+        const id = Number(slot.dataset.id);
+        const was = prev.get(id);
+        const now = next.get(id);
+        if (was === undefined || now === undefined || !canAnimate(slot)) continue;
+        const dx = was + currentTranslate(slot).dx - now;
+        if (Math.abs(dx) < 0.5) continue;
+        anims.current.get(id)?.cancel();
+        const a = slot.animate(
+          [{ transform: `translateX(${Math.round(dx * 100) / 100}px)` }, { transform: "none" }],
+          { duration: DUR.reflow, easing: EASE.outExpo });
+        anims.current.set(id, a);
+        a.onfinish = () => { if (anims.current.get(id) === a) anims.current.delete(id); };
+      }
+    }
+    for (const id of [...anims.current.keys()]) {
+      if (!next.has(id)) anims.current.delete(id);
+    }
+    const reg = rects?.current;
+    if (reg) {
+      for (const [id, r] of [...reg]) {
+        if (codes.current.has(id)) continue;
+        if (r.departed) reg.delete(id);
+        else r.departed = true;
+      }
+    }
+    recordCards(el, reg, codes.current);
+  });
+
+  // Viewport moves (scroll, resize) and finished selection lifts change where
+  // cards are drawn without a commit; refresh both maps without animating.
+  useEffect(() => {
+    const el = handRef.current;
+    const refresh = () => {
+      layoutX.current = measureLayout(el);
+      recordCards(el, rects?.current, codes.current);
+    };
+    window.addEventListener("resize", refresh);
+    window.addEventListener("scroll", refresh, true);
+    el?.addEventListener("transitionend", refresh);
+    return () => {
+      window.removeEventListener("resize", refresh);
+      window.removeEventListener("scroll", refresh, true);
+      el?.removeEventListener("transitionend", refresh);
+    };
+  }, [empty, rects]);
+
+  if (empty) return null;
   return (
-    <div className={`hand${selectable ? " selectable" : ""}`}>
+    <div className={`hand${selectable ? " selectable" : ""}`} ref={handRef}>
       {hand.map((c) => (
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
                   onToggle={selectable ? onToggle : undefined} />

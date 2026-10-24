@@ -58,7 +58,13 @@ def process_env(env: dict[str, str]):
     name).  The overlay is scoped to the build so the deploy env does not leak
     into later imports in the same process (or its subprocesses).
     """
-    saved = {key: os.environ.get(key) for key in env}
+    from shengji.train.pv_search_policy import BELIEF_LOG_ENV, LATENCY_SWITCH_ENV
+    # name-invisible build-time keys the env leaves out are cleared, so an
+    # ambient shell value cannot build a different bot under the same name
+    scoped = set(env) | set(LATENCY_SWITCH_ENV.values()) | {BELIEF_LOG_ENV}
+    saved = {key: os.environ.get(key) for key in scoped}
+    for key in scoped - set(env):
+        os.environ.pop(key, None)
     os.environ.update({key: str(value) for key, value in env.items()})
     try:
         yield

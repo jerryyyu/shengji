@@ -132,6 +132,72 @@ def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_
         candidate_from_env(env)
 
 
+def test_singleton_qualifier_runs_actual_server_path(package):
+    from scripts.qualify_singleton_challenger import fixture, qualify_one
+    from shengji.eval.singleton_challenger import load_singleton_challenger
+    path, sha = package
+    bot = load_singleton_challenger(name='pv-search-test', checkpoint=path, sha256=sha,
+                                   **SMALL, leaf_greedy_finish=True, serving_budget_seconds=3)
+    root = fixture('4', 2, 625091990)
+    before = copy.deepcopy(root.hands)
+    row = asyncio.run(qualify_one(root, bot))
+    assert row['healthy'] and row['worlds'] == SMALL['worlds']
+    assert row['attempted'] and row['accepted']
+    assert row['seconds'] >= 0 and root.hands == before
+
+
+@pytest.mark.parametrize('fault', ['belief', 'worlds', 'incomplete', 'schema'])
+def test_singleton_qualifier_refuses_unhealthy_producer(package, monkeypatch, fault):
+    from scripts.qualify_singleton_challenger import fixture, qualify_one
+    path, sha = package
+    bot = pv.make_pv_search_bot(path, sha256=sha, **SMALL, name='pv-search-test')
+    prepare = srv._paced_bot_step
+    async def inject(*args, **kwargs):
+        prepared = await prepare(*args, **kwargs)
+        rec = prepared.decision.snapshot.bot_copy.last_decision_record
+        if fault == 'belief':
+            bot.belief_worlds = True
+            rec['belief_fallback'] = 1
+        elif fault == 'worlds':
+            rec['worlds'] = 1
+        elif fault == 'incomplete':
+            rec['work_complete'] = False
+        else:
+            rec['schema'] = pv.FALLBACK_SCHEMA
+        return prepared
+    monkeypatch.setattr(srv, '_paced_bot_step', inject)
+    row = asyncio.run(qualify_one(fixture('4', 2, 625091990), bot))
+    assert not row['healthy']
+
+
+@pytest.mark.parametrize('bad_arm', [None, 'baseline', 'candidate'])
+def test_singleton_qualifier_stops_on_either_arm_and_preserves_rows(tmp_path, monkeypatch, bad_arm):
+    import json
+    from types import SimpleNamespace
+    from scripts import qualify_singleton_challenger as q
+    def bot(arm):
+        return SimpleNamespace(arm=arm, worlds=64, candidates=8, serving_budget_seconds=3)
+    monkeypatch.setattr(q.pv, 'pv_env_recipe', lambda env: {})
+    monkeypatch.setattr(q.pv, 'pv_registry_entries', lambda **kwargs: {'baseline': lambda **kw: bot('baseline')})
+    monkeypatch.setattr(q, 'candidate_from_env', lambda *args, **kwargs: bot('candidate'))
+    monkeypatch.setattr(q, 'fixture', lambda *args: object())
+    async def decision(root, actor):
+        return dict(healthy=actor.arm != bad_arm, seconds=1.0)
+    monkeypatch.setattr(q, 'qualify_one', decision)
+    out = tmp_path / 'rows.jsonl'
+    with out.open('x') as dest:
+        rc = asyncio.run(q.qualify({'SHENGJI_BOT': 'baseline'}, dest))
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    if bad_arm is None:
+        assert rc == 0 and len(rows) == 105
+        assert rows[-1]['passed'] and rows[-1]['calls'] == {'baseline': 52, 'candidate': 52}
+        assert [r['arm'] for r in rows[:4]] == ['baseline', 'candidate', 'candidate', 'baseline']
+    else:
+        assert rc == 1 and len(rows) == (1 if bad_arm == 'baseline' else 2)
+        assert rows[-1]['arm'] == bad_arm and not rows[-1]['healthy']
+        assert all(row['kind'] == 'decision' for row in rows)
+
+
 @pytest.fixture
 def registered(package):
     path, sha = package

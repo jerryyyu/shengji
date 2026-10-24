@@ -152,3 +152,17 @@ def test_release46_package_capture(monkeypatch):
     assert restored.decide_play(deepcopy(restored_root), 2) == original.decide_play(deepcopy(restored_root), 2)
     assert restored.last_decision_record['admitted'] == original.last_decision_record['admitted']
     assert restored.last_decision_record['value_means'] == original.last_decision_record['value_means']
+
+
+def test_fallback_root_never_reaches_continuation():
+    root, _ = fixture()
+    bot = make_bot()
+    decide = bot.decide_play
+    def fallback_with_complete_record(*args):
+        cards = decide(*args)
+        bot.last_decision_record['fallback_reason'] = 'PVSearchBudgetExceeded'
+        return cards
+    bot.decide_play = fallback_with_complete_record
+    with pytest.raises(ValueError, match='complete served ballot'):
+        capture_lead(bot, root)
+    assert '_worlds' not in vars(bot)

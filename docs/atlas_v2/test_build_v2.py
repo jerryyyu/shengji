@@ -325,21 +325,20 @@ def test_production_and_screen_comparator_are_separate_and_a_pending_comparator_
     b = _load()
     reg = json.loads((Path(b.__file__).parent / "registry.json").read_text())
     assert b.production_release(reg) == 48 == b.PROD
-    # Release 48 is production while new screens stay on release 46 as served until Jerry confirms the move, so the
-    # comparator is pending and differs from production.  Every earlier band is a closed comparator: release 45
-    # (v92combo45/v92c, the record of how 46 was chosen), release 44 (v75/v76, how 45 was chosen), release 43
-    # (v70/v71) and release 42.
-    assert reg["screen_comparator"]["status"] == "pending" and b.comparator_release(reg) == 46 == b.CMP
-    assert "Production is release 48" in b.page and "pending" in b.page
+    # Release 48 (2026-10-24): new screens compare against release 48 as served (Jerry confirmed at its deploy), so
+    # the comparator equals production.  Every earlier band is a closed comparator: release 46 (r48cloud/r48confirm,
+    # the record of how 48 was chosen), release 45 (v92combo45/v92c, how 46 was chosen), release 44 (v75/v76, how 45
+    # was chosen), release 43 (v70/v71) and release 42.
+    assert reg["screen_comparator"]["status"] == "confirmed" and b.comparator_release(reg) == 48 == b.CMP
     page = b.page                                                 # a fresh in-memory build; the HTML is untracked
     i = page.index("Green clears zero"); chart = page[i:page.index("</p>", i)]
-    assert "release 46 first" in chart
-    assert "read against <b>release 46 as served</b>" in page
-    assert all(s["vs"] == 46 for s in b.SCREENS_NOW) and {42, 43, 44, 45} <= set(b.EARLIER_RELEASES)
-    for rel in (42, 43, 44, 45):
+    assert "release 48 first" in chart
+    assert "read against <b>release 48 as served</b>" in page and "Production is release" not in page
+    assert all(s["vs"] == 48 for s in b.SCREENS_NOW) and {42, 43, 44, 45, 46} <= set(b.EARLIER_RELEASES)
+    for rel in (42, 43, 44, 45, 46):
         band = [c for c in b.COMPARATORS if c["release"] == rel and c["group"] is None][0]
         assert band["label"] == f"release {rel} as served · closed comparator"
-    assert not any("current production" in c["label"] for c in b.COMPARATORS if c["release"] != 46)
+    assert not any("current production" in c["label"] for c in b.COMPARATORS if c["release"] != 48)
     assert {s["id"] for s in [c for c in b.COMPARATORS if c["release"] == 44][0]["items"]} == {"v75lpft44", "v76bwv44"}
     # Pending: rebuild a copy with the switch pending -- new screens stay on 38 and the page says so.
     pend = copy.deepcopy(reg)

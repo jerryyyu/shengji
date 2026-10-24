@@ -32,7 +32,7 @@ Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 | source | main `f14ace152b5491be53b5a1088728f47f6755f393` (#1147; Codex PASS at `0c1e9965`) |
 | evidence | `AI_POLICIES.md` ladder row 17 (r48cloud, confirmed r48confirm, latency v105lat QUALIFIED) |
 | deploy record | [#1075 issuecomment-6385303349](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6385303349) |
-| comparator | release 46 as served until Jerry confirms the move to release 48[^cmp] |
+| comparator | new screens compare against release 48 as served (Jerry 2026-10-24)[^cmp] |
 
 Served name:
 
@@ -455,9 +455,8 @@ Policy cost, not the rules engine, sets CPU capacity.
 - Load-test the chosen policy and room mix before advertising capacity. Memory per room is small; more than one
   process would need external state and room-affinity routing.
 
-[^cmp]: Jerry, in session 2026-10-16: "compare new screens to release 46" (#707 issuecomment-6223485189). The release-48
-    deploy record proposes moving the comparator to release 48, pending Jerry's confirmation. Before release 46,
-    release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693). Confirmations keep their parent's comparator.
+[^cmp]: Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48". Before that, release 46
+    (Jerry 2026-10-16, #707 issuecomment-6223485189), and before that release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693). Confirmations keep their parent's comparator.
 [^belief]: Registration refuses a missing or mismatched belief file, so a served bot at all means the sha matched;
     the in-machine line (Release checklist, step 8) prints its first eight hex digits.
 [^fast]: Its `ls` fails the build if a `.so` is missing; `.dockerignore` keeps a local Darwin `_endgame_fast*.so`

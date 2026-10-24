@@ -3,10 +3,9 @@
 Last reconciled: **2026-10-24**.
 
 **Production is release 48** (live 2026-10-24 10:18 ET, Fly v47): release 46 with the S58 belief package, `dtrx`
-and the guarded greedy finish (ladder row 17). Release 46 is the rollback. **New screens compare against release 46
-as served** (Jerry, in session 2026-10-16: "compare new screens to release 46", #707 issuecomment-6223485189; before
-that release 45, 2026-10-13) until Jerry confirms the move to release 48 (#1075 issuecomment-6385303349). Confirmations keep their
-parent's comparator; screens already read keep their declared comparator.
+and the guarded greedy finish (ladder row 17). Release 46 is the rollback. **New screens compare against release 48
+as served** (Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48"; before that
+release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator; screens already read keep their declared comparator.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The

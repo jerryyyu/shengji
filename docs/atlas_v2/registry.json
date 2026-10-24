@@ -511,7 +511,7 @@
     "image deployment-01M5Q4ACYEJ901SQB3BNMPC55A (Fly version 47), main f14ace15 (#1147, squash; Codex PASS at 0c1e9965); machine 48e7e35a9597e8, 0 rooms at deploy; deployed 2026-10-24 14:18Z on Jerry's in-session word (#1075 issuecomment-6385303349)",
     "four changes in one treatment: the screens measure the combination; attribution among S58, dtrx and the greedy finish and any additivity claim are not made (v103s58 read S58 + dtrx alone at +0.0331)",
     "v105lat's timings are one pinned cloud core and one room; the first live room was partial (12 plays) at decision p95 1.35 s, near the 1.5 s trigger, so a complete first room on Fly's shared CPU is still the watch item",
-    "comparator for NEW screens: release 46 as served until Jerry confirms the move to release 48 proposed in the deploy record",
+    "comparator for NEW screens: release 48 as served (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'); r48cloud and r48confirm keep release 46",
     "rollback: redeploy the release-46 image deployment-01M530R14ARM0669QNJBW2RGTG, or delete the seven release-48 fly.toml lines, restore the S17 belief keys and the release-46 SHENGJI_BOT kept as a comment and redeploy; S17 stays on the volume"
    ]
   }
@@ -3289,8 +3289,8 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 46,
-  "status": "pending",
-  "note": "Release 48 is production since 2026-10-24 10:18 ET. New screens compare against release 46 as served (Jerry, in-session 2026-10-16: 'compare new screens to release 46', #707 issuecomment-6223485189) until Jerry confirms the move to release 48 proposed in the deploy record (#1075 issuecomment-6385303349). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
+  "release": 48,
+  "status": "confirmed",
+  "note": "New screens compare against release 48 as served (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'). Before that release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  }
 }

@@ -43,6 +43,7 @@ Rule tokens used in the figures and tables:
 
 | change | against | result | reading | vs Sol, actor-only | vs PT-Sol |
 |---|---|---|---|---|---|
+| S58 belief + dtrx + guarded greedy finish (release 48, draft) | release 46 | pending screen | PENDING: not yet screened as served, not deployed | — | — |
 | the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) | +0.55 [+0.25, +0.90] (S47) | pending (S47-PT) |
 | wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) | — | — |
 | value-guided declaration (release 44) | release 43 | +0.0497 [+0.0379, +0.0615] first-round; +0.0352 [+0.0233, +0.0471] later-round | POSITIVE in both populations, ten windows each (v70vd43, v71vd43lr) | — | — |

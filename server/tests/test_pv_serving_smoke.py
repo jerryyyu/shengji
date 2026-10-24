@@ -52,3 +52,77 @@ def test_pv_search_env_with_the_wrong_sha_is_refused_before_play(package, clean_
     env["SHENGJI_PV_SHA256"] = "0" * 64
     with pytest.raises(pv.PVSearchPolicyError, match="on disk"):
         build_production_bot(env)
+
+
+SWITCHES = {"encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
+            "leaf_greedy_stream": "SHENGJI_PV_LEAF_GREEDY_STREAM",
+            "encode_batch_fast": "SHENGJI_PV_ENCODE_BATCH_FAST"}
+
+
+def test_the_smoke_builds_with_the_fly_env_in_the_process_environment(package, clean_registry,
+                                                                      monkeypatch):
+    """The latency switches are read from the process environment where the bot is
+    built (they enter no name), so the smoke must build with fly.toml's [env]
+    exported as the server boots with it, and restore the environment after."""
+    import os
+
+    path, sha = package
+    for key in pv.LATENCY_SWITCH_ENV.values():
+        monkeypatch.delenv(key, raising=False)
+    env, name = _env(path, sha, **{key: "1" for key in SWITCHES.values()})
+    _, plain = build_production_bot(_env(path, sha)[0])
+    assert not set(SWITCHES) & set(vars(plain))
+    built_name, bot = build_production_bot(env)
+    assert built_name == name
+    for attr in SWITCHES:
+        assert vars(bot)[attr] is True
+    assert bot.single_candidate_fast is False
+    # the overlay is scoped to the build
+    assert not set(SWITCHES.values()) & set(os.environ)
+    assert os.environ.get("SHENGJI_PV_CKPT") != path
+    receipt = run_smoke(env, turns=4)
+    assert receipt["passed"] is True
+    assert receipt["latency_switches"] == {"encode_prefix_cache": True, "single_candidate_fast": False,
+                                           "leaf_greedy_stream": True, "encode_batch_fast": True}
+
+
+def test_an_ambient_switch_absent_from_the_fly_env_does_not_reach_the_bot(package, clean_registry,
+                                                                         monkeypatch):
+    """A latency switch set in the invoking shell but absent from fly.toml's [env]
+    enters no name, so the smoke would build a different bot under the expected
+    name; the build scope clears it, then restores the shell's value."""
+    import os
+
+    path, sha = package
+    for key in pv.LATENCY_SWITCH_ENV.values():
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("SHENGJI_PV_SINGLE_CANDIDATE_FAST", "1")
+    monkeypatch.setenv(pv.BELIEF_LOG_ENV, "1")
+    env, name = _env(path, sha, **{key: "1" for key in SWITCHES.values()})
+    assert "SHENGJI_PV_SINGLE_CANDIDATE_FAST" not in env
+    built_name, bot = build_production_bot(env)
+    assert built_name == name
+    assert bot.single_candidate_fast is False
+    for attr in SWITCHES:
+        assert vars(bot)[attr] is True
+    assert os.environ["SHENGJI_PV_SINGLE_CANDIDATE_FAST"] == "1"
+    assert os.environ[pv.BELIEF_LOG_ENV] == "1"
+
+
+def test_the_build_scope_restores_the_shell_after_an_error(monkeypatch):
+    """The scope restores every key it touched when the build raises."""
+    import os
+
+    from scripts.cwv_serving_smoke import process_env
+
+    monkeypatch.setenv("SHENGJI_PV_SINGLE_CANDIDATE_FAST", "1")
+    monkeypatch.delenv("SHENGJI_PV_ENCODE_PREFIX_CACHE", raising=False)
+    try:
+        with process_env({"SHENGJI_PV_ENCODE_PREFIX_CACHE": "1"}):
+            assert "SHENGJI_PV_SINGLE_CANDIDATE_FAST" not in os.environ
+            assert os.environ["SHENGJI_PV_ENCODE_PREFIX_CACHE"] == "1"
+            raise RuntimeError("build failed")
+    except RuntimeError:
+        pass
+    assert os.environ["SHENGJI_PV_SINGLE_CANDIDATE_FAST"] == "1"
+    assert "SHENGJI_PV_ENCODE_PREFIX_CACHE" not in os.environ

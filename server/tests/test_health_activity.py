@@ -178,3 +178,30 @@ def test_errno_without_a_platform_name_is_reported_as_its_number():
     failure = activity.health()["last_record_failure"]
     assert failure["errno"] is None and failure["errno_name"] is None
     assert activity.record_write_failures == 2
+
+
+LATENCY_SWITCHES = ("SHENGJI_PV_ENCODE_PREFIX_CACHE", "SHENGJI_PV_SINGLE_CANDIDATE_FAST",
+                    "SHENGJI_PV_LEAF_GREEDY_STREAM", "SHENGJI_PV_ENCODE_BATCH_FAST")
+
+
+def test_healthz_reports_the_latency_switches_from_the_process_environment(
+        client, tmp_path, monkeypatch):
+    """The latency switches enter no served name, so ``/healthz`` shows them under
+    ``pv_search``, read from the process environment the bot factory reads."""
+    package = tmp_path / "package.npz"
+    package.write_bytes(b"stand-in")
+    monkeypatch.setenv("SHENGJI_PV_CKPT", str(package))
+    for key in LATENCY_SWITCHES:
+        monkeypatch.delenv(key, raising=False)
+    health = client.get("/healthz").json()["pv_search"]
+    assert health["latency_switches"] == {"encode_prefix_cache": False, "single_candidate_fast": False,
+                                          "leaf_greedy_stream": False, "encode_batch_fast": False}
+    for key in ("SHENGJI_PV_ENCODE_PREFIX_CACHE", "SHENGJI_PV_LEAF_GREEDY_STREAM",
+                "SHENGJI_PV_ENCODE_BATCH_FAST"):
+        monkeypatch.setenv(key, "1")
+    health = client.get("/healthz").json()["pv_search"]
+    assert health["latency_switches"] == {"encode_prefix_cache": True, "single_candidate_fast": False,
+                                          "leaf_greedy_stream": True, "encode_batch_fast": True}
+    # a malformed switch is reported, not raised: health must answer
+    monkeypatch.setenv("SHENGJI_PV_ENCODE_BATCH_FAST", "yes")
+    assert "must be 0 or 1" in client.get("/healthz").json()["pv_search"]["error"]

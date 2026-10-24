@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import hashlib
 import json
+import os
 import random
 import sys
 import time
@@ -46,14 +48,46 @@ def env_from_fly_toml(path, mappings: dict[str, str]) -> dict[str, str]:
     return env
 
 
+@contextlib.contextmanager
+def process_env(env: dict[str, str]):
+    """``env`` exported into ``os.environ`` for the duration, then restored.
+
+    The server process boots with fly.toml's ``[env]`` in its environment, and
+    some switches are read from there where the bot is built rather than from
+    the recipe (the pv-search latency switches and belief log flag enter no
+    name).  The overlay is scoped to the build so the deploy env does not leak
+    into later imports in the same process (or its subprocesses).
+    """
+    from shengji.train.pv_search_policy import BELIEF_LOG_ENV, LATENCY_SWITCH_ENV
+    # name-invisible build-time keys the env leaves out are cleared, so an
+    # ambient shell value cannot build a different bot under the same name
+    scoped = set(env) | set(LATENCY_SWITCH_ENV.values()) | {BELIEF_LOG_ENV}
+    saved = {key: os.environ.get(key) for key in scoped}
+    for key in scoped - set(env):
+        os.environ.pop(key, None)
+    os.environ.update({key: str(value) for key, value in env.items()})
+    try:
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def build_production_bot(env: dict[str, str]):
     """Register exactly what the server registers from this env and build SHENGJI_BOT.
 
-    The registration is done EXPLICITLY from the parsed env rather than by
-    exporting it into ``os.environ``: the server registers at import from the
-    process environment, and exporting here would leak the deploy env into
-    every later import in the same process (and its subprocesses).
+    The registration is done EXPLICITLY from the parsed env, and the bot is
+    built with that env in the process environment (`process_env`), as the
+    server builds it, so the switches read at build time are fly.toml's.
     """
+    with process_env(env):
+        return _build_production_bot(env)
+
+
+def _build_production_bot(env: dict[str, str]):
     from shengji.ai import registry
     from shengji.train.cwv_bury_policy import bury_env_recipe
     from shengji.train.cwv_shortlist import shortlist_env_recipe
@@ -74,6 +108,17 @@ def build_production_bot(env: dict[str, str]):
     if name not in registry.REGISTRY:
         raise SystemExit(f"SHENGJI_BOT {name!r} is not registered by this env: the server would not boot with it")
     return name, registry.make_bot(name, seed=13)
+
+
+def bot_latency_switches(bot) -> dict[str, bool] | None:
+    """The pv-search latency switches the built bot carries; ``None`` off that mode."""
+    try:
+        from shengji.train.pv_search_policy import LATENCY_SWITCH_ENV, PVSearchBot
+    except ImportError:
+        return None
+    if not isinstance(bot, PVSearchBot):
+        return None
+    return {attr: bool(getattr(bot, attr, False)) for attr in LATENCY_SWITCH_ENV}
 
 
 def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91) -> dict:
@@ -101,6 +146,7 @@ def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91) -> d
     room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
     room._kitty_given = True
     receipt = {"schema": SCHEMA, "policy": name, "bot_class": type(bot).__name__,
+               "latency_switches": bot_latency_switches(bot),
                "files": {k: {"path": v, "sha256": file_sha256(v)} for k, v in env.items()
                          if k.endswith("_CKPT")},
                "turns": [], "passed": False}
@@ -149,6 +195,9 @@ def main(argv=None) -> int:
     walls = ", ".join(f"{t['phase']}:{t['seconds']}s" for t in receipt["turns"])
     print(f"{'PASS' if receipt['passed'] else 'FAIL'}: {receipt['policy']} ({receipt['bot_class']}) "
           f"{len(receipt['turns'])} server turns [{walls}]")
+    if receipt.get("latency_switches") is not None:
+        on = sorted(k for k, v in receipt["latency_switches"].items() if v)
+        print(f"latency switches on: {', '.join(on) or 'none'}")
     return 0 if receipt["passed"] else 1
 
 

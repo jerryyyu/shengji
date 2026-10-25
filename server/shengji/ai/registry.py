@@ -928,7 +928,7 @@ def _register_pv_search_from_env() -> None:
     if raw not in ("", "0", "1"):
         raise ValueError("SHENGJI_PV_SINGLETON_CHALLENGER must be 0 or 1")
     if raw == "1":
-        from ..eval.singleton_challenger import singleton_registry_entries
+        from ..train.pv_search_policy import singleton_registry_entries
         REGISTRY.update(singleton_registry_entries(checkpoint=checkpoint, **recipe))
 
 

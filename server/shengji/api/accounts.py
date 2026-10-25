@@ -484,7 +484,8 @@ async def websocket_user(ws: WebSocket) -> dict | None:
     No cookie means no database access at all: a guest's handshake is
     unchanged. A storage error is logged and read as a guest, never a
     refused game."""
-    token = ws.cookies.get(COOKIE)
+    cookies = getattr(ws, "cookies", None) or {}   # a socket without a cookie jar is a guest
+    token = cookies.get(COOKIE)
     if not token:
         return None
     try:

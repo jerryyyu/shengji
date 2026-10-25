@@ -4,10 +4,10 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import HudMenu from "./HudMenu";
 import MuteButton from "./MuteButton";
 import { isMuted, setMuted } from "../audio";
+import { auth } from "../auth";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
-import { auth } from "../auth";
 
 beforeAll(() => {
   class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
@@ -87,6 +87,27 @@ describe("the phone overflow menu (#651)", () => {
   });
 });
 
+describe("a signed-in player's rows", () => {
+  it("shows the account name with Edit name, then Sign out; Edit name opens the form in place", async () => {
+    auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" });
+    const v = render();
+    act(() => btn(v.host).click());
+    const text = rows(v.host).map((r) => r.textContent);
+    expect(text[3]).toContain("Cap"); expect(text[3]).toContain("Edit name");
+    expect(text[4]).toContain("Sign out");
+    expect(text[5]).toContain("Leave game");
+    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
+    expect(v.host.querySelector(".hud-menu")).not.toBeNull();     // the menu stays open
+    const input = v.host.querySelector<HTMLInputElement>(".hud-menu-edit .name-edit-input")!;
+    expect(input.value).toBe("Cap");
+    act(() => v.host.querySelector<HTMLButtonElement>(".name-edit-cancel")!.click());
+    expect(v.host.querySelector(".name-edit")).toBeNull();
+    expect(rows(v.host)[3].textContent).toContain("Edit name");
+    v.unmount();
+    auth.reset();
+  });
+});
+
 describe("mute state is shared between controls (Codex, #653)", () => {
   it("toggling the HUD chip updates the menu's Sound row, and vice versa", () => {
     setMuted(false);
@@ -115,9 +136,9 @@ describe("the account row (optional sign-in)", () => {
     const v = render();
     act(() => btn(v.host).click());
     expect(rows(v.host).some((r) => r.textContent?.includes("Sign out"))).toBe(false);
-    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null }));
+    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
     const row = () => rows(v.host).find((r) => r.textContent?.includes("Sign out")) as HTMLButtonElement;
-    expect(row().textContent).toContain("Jerry Yu");
+    expect(rows(v.host).find((r) => r.textContent?.includes("Edit name"))?.textContent).toContain("Jerry");
     globalThis.fetch = vi.fn(async () => ({ status: 500, json: async () => ({}) })) as unknown as typeof fetch;
     await act(async () => { row().click(); });
     expect(v.host.querySelector(".hud-menu")).not.toBeNull();   // still open

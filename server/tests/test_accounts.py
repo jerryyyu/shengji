@@ -310,7 +310,8 @@ def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, 
     resp = _login(client, _sign(private_pem, _claims(nonce="n-1")), nonce="n-1")
     assert resp.status_code == 200
     assert resp.json() == {"name": "Jerry Yu", "email": "jerry@example.com",
-                           "picture": "https://img.example/jy.png"}
+                           "picture": "https://img.example/jy.png",
+                           "display_name": None, "name_shown": "Jerry"}
     cookie = resp.headers["set-cookie"]
     assert cookie.startswith("sj_session=")
     low = cookie.lower()
@@ -324,7 +325,7 @@ def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, 
         users = db.execute("SELECT google_sub, email, name FROM users").fetchall()
     assert rows == [(accounts_on._hash_token(token),)]
     assert users == [("10987654321", "jerry@example.com", "Jerry Yu")]
-    assert accounts_on.STORE.schema_version() == 1
+    assert accounts_on.STORE.schema_version() == 2
 
     # The cookie is Secure, so httpx's jar withholds it from the http test
     # origin; the browser sends it, and here the header is passed by hand.
@@ -519,3 +520,204 @@ def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socke
         assert _drain(c, "state", tries=60)["you"] == 0
         assert seat.user_id is None and srv.rooms[code].seats[0] is seat
         assert len(srv.rooms[code].seats) == 4
+
+
+# ----------------------------------------------------------- display name
+V1_SCHEMA = """
+CREATE TABLE schema_version (version INTEGER NOT NULL);
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    google_sub TEXT NOT NULL UNIQUE,
+    email TEXT,
+    name TEXT,
+    picture TEXT,
+    created_at INTEGER NOT NULL,
+    last_login_at INTEGER NOT NULL
+);
+CREATE TABLE sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+CREATE INDEX sessions_user ON sessions(user_id);
+CREATE INDEX sessions_expires ON sessions(expires_at);
+INSERT INTO schema_version(version) VALUES (1);
+INSERT INTO users(google_sub, email, name, picture, created_at, last_login_at)
+    VALUES ('sub-v1', 'old@example.com', 'Old Timer', NULL, 1, 1);
+"""
+
+
+def _columns(path, table):
+    with accounts_sqlite(path) as db:
+        return [row[1] for row in db.execute(f"PRAGMA table_info({table})")]
+
+
+def accounts_sqlite(path):
+    import sqlite3
+    from contextlib import closing
+
+    return closing(sqlite3.connect(path))
+
+
+def test_a_v1_database_upgrades_to_v2_once_and_keeps_its_rows(accounts_on, tmp_path):
+    """The version-1 layout is written by hand here (the first entry of
+    ``SCHEMA`` is that layout, so the two must agree) and then opened by the
+    current store, which must add the column, keep the row, and leave a
+    second open with nothing to do."""
+    path = tmp_path / "old" / "accounts.sqlite3"
+    path.parent.mkdir()
+    with accounts_sqlite(path) as db:
+        db.executescript(V1_SCHEMA)
+    assert "display_name" not in _columns(path, "users")
+    # The hand-written v1 matches SCHEMA[0]: a fresh store built from SCHEMA[0]
+    # alone has the same user columns.
+    fresh = tmp_path / "fresh.sqlite3"
+    with accounts_sqlite(fresh) as db:
+        for statement in filter(None, (s.strip() for s in accounts_on.SCHEMA[0].split(";"))):
+            db.execute(statement)
+    assert _columns(fresh, "users") == _columns(path, "users")
+
+    store = accounts_on.Store(path)
+    assert store.schema_version() == 2
+    assert "display_name" in _columns(path, "users")
+    row = store.user(1)
+    assert row["name"] == "Old Timer" and row["display_name"] is None
+    assert accounts_on.effective_name(row) == "Old"
+    # Re-opening (a new Store on the same file) is a no-op, and the migration
+    # step itself tolerates a re-run on an already-migrated table.
+    again = accounts_on.Store(path)
+    assert again.schema_version() == 2
+    with accounts_sqlite(path) as db:
+        db.row_factory = accounts_on.sqlite3.Row
+        accounts_on._migrate_v2(db)
+    assert _columns(path, "users").count("display_name") == 1
+    # A brand-new database lands at v2 directly.
+    assert accounts_on.STORE.schema_version() == 2
+    assert "display_name" in _columns(accounts_on.STORE.path, "users")
+
+
+@pytest.mark.parametrize("raw, stored", [
+    ("Jerry", "Jerry"),
+    ("  Jerry   Yu  ", "Jerry Yu"),
+    ("小明", "小明"),
+    ("José Ñandú", "José Ñandú"),
+    ("a　b", "a b"),                 # ideographic space collapses too
+    ("x" * 20, "x" * 20),
+    ("Robot", "Robot"),                   # only a whole-word bot is reserved
+    ("Botany", "Botany"),
+    ("Bot 1 fan", "Bot 1 fan"),
+])
+def test_display_names_are_normalised_and_accepted(accounts_on, raw, stored):
+    assert accounts_on.validate_display_name(raw) == stored
+
+
+@pytest.mark.parametrize("raw, reason", [
+    ("", "empty"),
+    ("   ", "empty"),
+    ("　", "empty"),
+    ("x" * 21, "too_long"),
+    ("  " + "y" * 21 + "  ", "too_long"),
+    ("a\nb", "control_chars"),
+    ("a\rb", "control_chars"),
+    ("tab\there", "control_chars"),
+    ("nul\x00", "control_chars"),
+    ("esc\x1b[31m", "control_chars"),
+    (" line", "control_chars"),
+    ("bot", "reserved"),
+    ("BOT", "reserved"),
+    ("Bot 1", "reserved"),
+    ("bot3", "reserved"),
+    ("  Bot   2  ", "reserved"),
+    ("System", "reserved"),
+    ("ADMIN", "reserved"),
+    ("dealer", "reserved"),
+    (None, "not_a_string"),
+    (42, "not_a_string"),
+])
+def test_bad_display_names_are_refused_with_a_reason(accounts_on, raw, reason):
+    with pytest.raises(accounts_on.DisplayNameError) as info:
+        accounts_on.validate_display_name(raw)
+    assert info.value.reason == reason
+
+
+def test_the_blocklist_hook_refuses_with_not_allowed(accounts_on, monkeypatch):
+    monkeypatch.setattr(accounts_on, "DISPLAY_NAME_BLOCKLIST", lambda name: "rude" in name.lower())
+    assert accounts_on.validate_display_name("Polite") == "Polite"
+    with pytest.raises(accounts_on.DisplayNameError) as info:
+        accounts_on.validate_display_name("Rude One")
+    assert info.value.reason == "not_allowed"
+
+
+def test_patch_me_sets_clears_and_refuses_display_names(accounts_on, keypair, client):
+    private_pem, _ = keypair
+    # Unauthenticated: 401, and nothing stored.
+    assert client.patch("/api/me", json={"display_name": "Nobody"}).status_code == 401
+    cookie = _session_cookie(accounts_on, client, private_pem)
+    session = {"cookie": cookie}
+
+    resp = client.patch("/api/me", json={"display_name": "  Captain   Yu "}, headers=session)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["display_name"] == "Captain Yu" and body["name_shown"] == "Captain Yu"
+    assert body["name"] == "Jerry Yu"               # the Google profile is untouched
+    me = client.get("/api/me", headers=session).json()
+    assert me["display_name"] == "Captain Yu" and me["name_shown"] == "Captain Yu"
+    assert accounts_on.STORE.user(1)["display_name"] == "Captain Yu"
+
+    for bad, reason in [("x" * 21, "too_long"), ("", "empty"), ("a\nb", "control_chars"),
+                        ("Bot 2", "reserved"), ("system", "reserved")]:
+        resp = client.patch("/api/me", json={"display_name": bad}, headers=session)
+        assert resp.status_code == 400, bad
+        assert resp.json()["detail"] == reason
+    # A refusal leaves the stored name alone.
+    assert client.get("/api/me", headers=session).json()["name_shown"] == "Captain Yu"
+    # A non-string body is a validation error, not a server error.
+    assert client.patch("/api/me", json={"display_name": 7}, headers=session).status_code == 422
+
+    # null clears it: back to the Google first name.
+    resp = client.patch("/api/me", json={"display_name": None}, headers=session)
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] is None and resp.json()["name_shown"] == "Jerry"
+    # A later login refreshes the profile but never touches the chosen name.
+    client.patch("/api/me", json={"display_name": "Cap"}, headers=session)
+    accounts_on.LIMITER.reset()    # the edits above spent the shared per-IP budget
+    assert _login(client, _sign(private_pem, _claims(name="Jerome Yu"))).status_code == 200
+    assert client.get("/api/me", headers=session).json() == {
+        "name": "Jerome Yu", "email": "jerry@example.com", "picture": "https://img.example/jy.png",
+        "display_name": "Cap", "name_shown": "Cap"}
+
+
+def test_patch_me_is_rate_limited_per_ip(accounts_on, keypair, client, monkeypatch):
+    private_pem, _ = keypair
+    cookie = _session_cookie(accounts_on, client, private_pem)
+    session = {"cookie": cookie}
+    monkeypatch.setattr(accounts_on, "LIMITER", accounts_on.RateLimiter(limit=2, window=60))
+    assert client.patch("/api/me", json={"display_name": "A"}, headers=session).status_code == 200
+    assert client.patch("/api/me", json={"display_name": "B"}, headers=session).status_code == 200
+    assert client.patch("/api/me", json={"display_name": "C"}, headers=session).status_code == 429
+    assert accounts_on.STORE.user(1)["display_name"] == "B"
+
+
+def test_a_chosen_display_name_is_the_room_default_but_a_typed_name_wins(accounts_on, keypair, client):
+    from shengji.api import server as srv
+
+    private_pem, _ = keypair
+    cookie = _session_cookie(accounts_on, client, private_pem)
+    assert client.patch("/api/me", json={"display_name": "Captain"},
+                        headers={"cookie": cookie}).status_code == 200
+    with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
+        a.send_json({"type": "create_room"})           # no name typed
+        room = _drain(a, "room")
+        assert room["players"][0]["name"] == "Captain"
+        assert srv.rooms[room["room"]].seats[0].user_id == 1
+        with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
+            b.send_json({"type": "join_room", "room": room["room"], "name": "JY"})
+            joined = _drain(b, "room")
+            names = {p["seat"]: p["name"] for p in joined["players"]}
+            assert names[1] == "JY"
+        with client.websocket_connect("/ws", headers={"cookie": cookie}) as c:
+            c.send_json({"type": "join_room", "room": room["room"], "name": ""})
+            joined = _drain(c, "room")
+            names = {p["seat"]: p["name"] for p in joined["players"]}
+            assert names[2] == "Captain"

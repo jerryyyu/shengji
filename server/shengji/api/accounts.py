@@ -30,6 +30,7 @@ import secrets
 import sqlite3
 import threading
 import time
+import unicodedata
 import urllib.request
 from collections import deque
 from contextlib import closing
@@ -56,6 +57,23 @@ CLOCK_SKEW_SECONDS = 10
 RATE_LIMIT = 10
 RATE_WINDOW = 60.0
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# A chosen display name: 1..20 characters after trimming and collapsing
+# whitespace runs; any script, no control characters, no line breaks.
+DISPLAY_NAME_MAX = 20
+# Names a player may not take because the server or the game uses them: the
+# bots are seated as "Bot N" (server.py), the chat's system line speaks as
+# the system, and the rest read as staff. Compared case-insensitively on the
+# normalised name.
+RESERVED_NAMES = frozenset({"bot", "system", "admin", "dealer", "moderator", "server"})
+BOT_NAME_RE = re.compile(r"^bot\s*\d*$")
+# Unicode categories a display name may not contain: control characters
+# (which includes every line break), surrogates, private use, and the line
+# and paragraph separators.
+_FORBIDDEN_CATEGORIES = frozenset({"Cc", "Cs", "Co", "Zl", "Zp"})
+# Hook for a profanity or block-list check: a callable taking the normalised
+# name and returning True when it must be refused (reason ``not_allowed``).
+# None means no such filter is installed.
+DISPLAY_NAME_BLOCKLIST: Callable[[str], bool] | None = None
 
 
 class AuthError(Exception):
@@ -65,6 +83,47 @@ class AuthError(Exception):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
+
+
+class DisplayNameError(ValueError):
+    """A display name the server will not store; ``reason`` is one of
+    ``empty``, ``too_long``, ``control_chars``, ``reserved``, ``not_allowed``
+    or ``not_a_string``, safe to return to the browser."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def normalise_display_name(raw: str) -> str:
+    """Trim and collapse every whitespace run to one space."""
+    return " ".join(raw.split())
+
+
+def validate_display_name(raw: Any) -> str:
+    """The stored form of a requested display name, or ``DisplayNameError``.
+
+    Order: a string; no forbidden character anywhere in the raw text (a line
+    break is refused, not collapsed away); then trimmed and whitespace-
+    collapsed; 1..``DISPLAY_NAME_MAX`` characters; not a reserved or bot-like
+    name; and not refused by ``DISPLAY_NAME_BLOCKLIST`` when one is set."""
+    if not isinstance(raw, str):
+        raise DisplayNameError("not_a_string")
+    if len(raw) > 1000:
+        raise DisplayNameError("too_long")
+    if any(unicodedata.category(ch) in _FORBIDDEN_CATEGORIES for ch in raw):
+        raise DisplayNameError("control_chars")
+    name = normalise_display_name(raw)
+    if not name:
+        raise DisplayNameError("empty")
+    if len(name) > DISPLAY_NAME_MAX:
+        raise DisplayNameError("too_long")
+    folded = name.casefold()
+    if folded in RESERVED_NAMES or BOT_NAME_RE.match(folded):
+        raise DisplayNameError("reserved")
+    if DISPLAY_NAME_BLOCKLIST is not None and DISPLAY_NAME_BLOCKLIST(name):
+        raise DisplayNameError("not_allowed")
+    return name
 
 
 # ----------------------------------------------------------------- config
@@ -93,7 +152,22 @@ def db_path() -> Path:
 
 
 # ------------------------------------------------------------------ store
-SCHEMA: list[str] = [
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    """``ALTER TABLE ADD COLUMN`` is not idempotent in SQLite; checking the
+    table first lets a migration re-run (an interrupted first run, a
+    database whose version row was lost) without failing."""
+    present = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in present:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+def _migrate_v2(conn: sqlite3.Connection) -> None:
+    _add_column_if_missing(conn, "users", "display_name", "TEXT NULL")
+
+
+# Each entry is one version: SQL statements separated by ';', or a callable
+# taking the connection. Entry i brings the database to version i + 1.
+SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     # version 1
     """
     CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -115,6 +189,9 @@ SCHEMA: list[str] = [
     CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at);
     """,
+    # version 2: a player-chosen display name; NULL means "use the Google
+    # first name".
+    _migrate_v2,
 ]
 
 
@@ -162,8 +239,12 @@ class Store:
                     row = conn.execute("SELECT MAX(version) AS v FROM schema_version").fetchone()
                     version = int(row["v"] or 0)
                 for i in range(version, len(SCHEMA)):
-                    for statement in filter(None, (s.strip() for s in SCHEMA[i].split(";"))):
-                        conn.execute(statement)
+                    step = SCHEMA[i]
+                    if callable(step):
+                        step(conn)
+                    else:
+                        for statement in filter(None, (s.strip() for s in step.split(";"))):
+                            conn.execute(statement)
                     conn.execute("DELETE FROM schema_version")
                     conn.execute("INSERT INTO schema_version(version) VALUES (?)", (i + 1,))
                 conn.execute("COMMIT")
@@ -211,6 +292,15 @@ class Store:
 
     def user(self, user_id: int) -> dict | None:
         with closing(self._open()) as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def set_display_name(self, user_id: int, name: str | None) -> dict | None:
+        """Store an already-validated display name (None clears it back to
+        the Google first name); returns the updated row, or None for an
+        unknown user."""
+        with closing(self._open()) as conn:
+            conn.execute("UPDATE users SET display_name = ? WHERE id = ?", (name, user_id))
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             return dict(row) if row else None
 
@@ -458,16 +548,30 @@ class GoogleLogin(BaseModel):
     nonce: str | None = None
 
 
-def public_user(row: Mapping[str, Any]) -> dict:
-    return {"name": row.get("name") or "", "email": row.get("email") or "",
-            "picture": row.get("picture")}
+class DisplayNamePatch(BaseModel):
+    display_name: str | None = None
 
 
 def first_name(name: str | None) -> str:
-    """The display-name default for a signed-in player who typed none."""
+    """The default for a player who chose no display name: the first word of
+    the Google name."""
     if not name:
         return ""
-    return name.strip().split()[0][:20] if name.strip() else ""
+    return name.strip().split()[0][:DISPLAY_NAME_MAX] if name.strip() else ""
+
+
+def effective_name(row: Mapping[str, Any]) -> str:
+    """What a signed-in player is called when they type no name in the
+    room: the chosen display name, else the Google first name."""
+    return row.get("display_name") or first_name(row.get("name"))
+
+
+def public_user(row: Mapping[str, Any]) -> dict:
+    """The ``/api/me`` payload: the Google profile, the chosen display name
+    (null when none) and ``name_shown``, the effective name."""
+    return {"name": row.get("name") or "", "email": row.get("email") or "",
+            "picture": row.get("picture"), "display_name": row.get("display_name"),
+            "name_shown": effective_name(row)}
 
 
 def _cookie_secure(request: Request) -> bool:
@@ -515,6 +619,28 @@ async def me(request: Request) -> dict:
     if user is None:
         raise HTTPException(status_code=401, detail="Not signed in.")
     return public_user(user)
+
+
+@router.patch("/me")
+async def patch_me(body: DisplayNamePatch, request: Request) -> dict:
+    """Set (or, with null, clear) the display name. Shares the sign-in
+    endpoint's per-IP budget: an anonymous caller spends a session lookup
+    here, and a signed-in one a write."""
+    if not LIMITER.allow(client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many changes; try again in a minute.")
+    user = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in.")
+    name: str | None = None
+    if body.display_name is not None:
+        try:
+            name = validate_display_name(body.display_name)
+        except DisplayNameError as exc:
+            raise HTTPException(status_code=400, detail=exc.reason) from exc
+    updated = await STORE.run(STORE.set_display_name, user["id"], name)
+    if updated is None:
+        raise HTTPException(status_code=401, detail="Not signed in.")
+    return public_user(updated)
 
 
 @router.post("/auth/logout")

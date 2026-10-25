@@ -563,10 +563,45 @@ textarea:focus-visible {
   white-space: nowrap;
   font-weight: 600;
 }
-.account-signout { padding: 4px 10px; font-size: 13px; }
 .account-chip-wrap { display: flex; flex-direction: column; gap: 6px; }
 .account-error { font-size: 13px; }
-.hud-menu-row.account .account-avatar { width: 20px; height: 20px; }
+.account-signout, .account-edit { padding: 4px 10px; font-size: 13px; }
+.account-block { display: flex; flex-direction: column; gap: 8px; }
+/* The display-name editor (NameEditForm): one input, Save / Cancel, a
+   message line. The same form sits in the lobby chip and the phone menu. */
+.name-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.name-edit-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #10131a;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 9px 12px;
+  font: inherit;
+}
+.name-edit-input:focus { border-color: var(--team0); outline: none; }
+.name-edit-actions { display: flex; gap: 8px; }
+.name-edit-actions .btn { padding: 6px 12px; font-size: 13px; }
+.name-edit-error, .save-name-error { color: #f0a0aa; font-size: 12px; }
+.save-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: left;
+}
+.save-name-row input { accent-color: var(--gold); }
+.hud-menu-row.account-edit .account-avatar { width: 20px; height: 20px; }
+.hud-menu-row.hud-menu-edit { display: block; cursor: default; min-width: 220px; }
+.hud-menu-row.hud-menu-edit .name-edit-input { font-size: 14px; }
 .hud-menu-account-name {
   flex: 1;
   min-width: 0;
@@ -2072,7 +2107,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .hud-menu-row[aria-disabled="true"] { cursor: default; }
   @media (hover: hover) and (pointer: fine) {
-    .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
+    .hud-menu-row:not([aria-disabled="true"]):not(.hud-menu-edit):hover { background: rgba(255, 255, 255, 0.06); }
   }
   .hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
   .hud-menu-row.leave.armed { color: var(--gold); }

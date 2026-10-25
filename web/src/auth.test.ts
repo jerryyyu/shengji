@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  auth, fetchAuthConfig, fetchMe, firstName, loadGis, loginWithGoogle, logout, newNonce,
+  auth, checkDisplayName, effectiveName, fetchAuthConfig, fetchMe, firstName, loadGis, loginWithGoogle,
+  logout, NameRejected, newNonce, updateDisplayName,
 } from "./auth";
 
 const { reconnect } = vi.hoisted(() => ({ reconnect: vi.fn() }));
@@ -64,12 +65,20 @@ describe("the API wrappers", () => {
     routes.set("GET /api/me", { status: 401, body: { detail: "Not signed in." } });
     expect(await fetchMe()).toBeNull();
     routes.set("GET /api/me", { status: 200, body: { name: "Jerry Yu", email: "j@x", picture: null } });
-    expect(await fetchMe()).toEqual({ name: "Jerry Yu", email: "j@x", picture: null });
+    // an older server (no display-name fields) still yields a complete user
+    expect(await fetchMe()).toEqual({
+      name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
+    });
+    routes.set("GET /api/me", { status: 200, body: {
+      name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" } });
+    expect(await fetchMe()).toMatchObject({ display_name: "Cap", name_shown: "Cap" });
     expect(calls.every((c) => c.init?.credentials === "same-origin")).toBe(true);
   });
   it("login posts JSON with the credential and nonce; a refusal throws its detail", async () => {
-    routes.set("POST /api/auth/google", { status: 200, body: { name: "J", email: "j@x", picture: "p" } });
-    expect(await loginWithGoogle("tok", "n1")).toEqual({ name: "J", email: "j@x", picture: "p" });
+    routes.set("POST /api/auth/google", { status: 200, body: {
+      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J" } });
+    expect(await loginWithGoogle("tok", "n1")).toEqual({
+      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J" });
     const post = calls.find((c) => c.init?.method === "POST")!;
     expect(JSON.parse(post.init!.body as string)).toEqual({ credential: "tok", nonce: "n1" });
     expect((post.init!.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
@@ -77,6 +86,59 @@ describe("the API wrappers", () => {
     await expect(loginWithGoogle("tok", "n1")).rejects.toThrow("bad_audience");
     routes.set("POST /api/auth/google", { status: 404 });
     await expect(loginWithGoogle("tok", "n1")).rejects.toThrow("404");
+  });
+});
+
+describe("display names", () => {
+  it("checkDisplayName mirrors the server's rules", () => {
+    expect(checkDisplayName("  Jerry   Yu ")).toEqual({ ok: true, value: "Jerry Yu" });
+    expect(checkDisplayName("小明")).toEqual({ ok: true, value: "小明" });
+    expect(checkDisplayName("Robot")).toEqual({ ok: true, value: "Robot" });
+    const reason = (s: string) => { const c = checkDisplayName(s); return c.ok ? "ok" : c.reason; };
+    expect(reason("")).toBe("empty");
+    expect(reason("   ")).toBe("empty");
+    expect(reason("x".repeat(21))).toBe("too_long");
+    expect(reason("a\nb")).toBe("control_chars");
+    expect(reason("a\tb")).toBe("control_chars");
+    expect(reason("Bot 1")).toBe("reserved");
+    expect(reason("BOT")).toBe("reserved");
+    expect(reason("System")).toBe("reserved");
+    expect(reason("admin")).toBe("reserved");
+    expect(reason("dealer")).toBe("reserved");
+    const c = checkDisplayName("Bot 1");
+    expect(!c.ok && c.message).toContain("reserved");
+  });
+  it("effectiveName prefers name_shown, then the first name", () => {
+    expect(effectiveName(null)).toBe("");
+    expect(effectiveName({ name: "Jerry Yu", email: "", picture: null, display_name: "Cap", name_shown: "Cap" })).toBe("Cap");
+    expect(effectiveName({ name: "Jerry Yu", email: "", picture: null, display_name: null, name_shown: "" })).toBe("Jerry");
+  });
+  it("updateDisplayName PATCHes JSON; a 400 rejects with the reason's message; updated() notifies", async () => {
+    const user = { name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" };
+    routes.set("PATCH /api/me", { status: 200, body: user });
+    expect(await updateDisplayName("Cap")).toEqual(user);
+    const patch = calls.find((c) => c.init?.method === "PATCH")!;
+    expect(JSON.parse(patch.init!.body as string)).toEqual({ display_name: "Cap" });
+    expect(patch.init?.credentials).toBe("same-origin");
+    routes.set("PATCH /api/me", { status: 400, body: { detail: "reserved" } });
+    const err = await updateDisplayName("Bot 1").catch((e: Error) => e);
+    expect(err).toBeInstanceOf(NameRejected);
+    expect((err as NameRejected).reason).toBe("reserved");
+    expect((err as Error).message).toContain("reserved for bots");
+    routes.set("PATCH /api/me", { status: 401 });
+    await expect(updateDisplayName("X")).rejects.toThrow("401");
+    // clearing sends null
+    routes.set("PATCH /api/me", { status: 200, body: { ...user, display_name: null, name_shown: "Jerry" } });
+    await updateDisplayName(null);
+    const last = calls.filter((c) => c.init?.method === "PATCH").at(-1)!;
+    expect(JSON.parse(last.init!.body as string)).toEqual({ display_name: null });
+
+    const seen: (string | null)[] = [];
+    auth.signedIn({ ...user, display_name: null, name_shown: "Jerry" });
+    const unsub = auth.subscribe((s) => seen.push(s.user?.name_shown ?? null));
+    auth.updated(user);
+    expect(seen).toEqual(["Jerry", "Cap"]);
+    unsub();
   });
 });
 
@@ -99,7 +161,7 @@ describe("the auth store", () => {
     const unsub = auth.subscribe((s) => seen.push(s.status));
     await auth.init();
     expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
-    auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null });
+    auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" });
     expect(auth.state.status).toBe("in");
     // the open socket carried the guest handshake: it is replaced
     expect(reconnect).toHaveBeenCalledTimes(1);
@@ -123,7 +185,7 @@ describe("the auth store", () => {
 
 describe("sign-out honesty (Codex review1155 P2)", () => {
   it("does not report signed out when revocation failed with a 500", async () => {
-    auth.signedIn({ name: "Jerry", email: "j@example.test", picture: null });
+    auth.signedIn({ name: "Jerry", email: "j@example.test", picture: null, display_name: null, name_shown: "Jerry" });
     reconnect.mockClear();
     routes.set("POST /api/auth/logout", { status: 500, body: { detail: "database unavailable" } });
     await expect(auth.signOut()).rejects.toThrow("Sign-out failed (500)");
@@ -137,7 +199,7 @@ describe("sign-out honesty (Codex review1155 P2)", () => {
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
   it("a network failure keeps the signed-in state and names the retry", async () => {
-    auth.signedIn({ name: "Jerry", email: "j@example.test", picture: null });
+    auth.signedIn({ name: "Jerry", email: "j@example.test", picture: null, display_name: null, name_shown: "Jerry" });
     reconnect.mockClear();
     globalThis.fetch = vi.fn(async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
     await expect(auth.signOut()).rejects.toThrow("no connection");

@@ -1671,10 +1671,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
     my_gen = 0              # connection generation this socket owns
     # Optional sign-in, read once from the handshake cookie (a guest has none).
     # The only things it changes: the seat remembers the account, and a player
-    # who typed no name is called by their first name instead of "Player".
+    # who typed no name is called by their account name (the display name
+    # they chose, else their first name) instead of "Player".
     user = await accounts.websocket_user(ws)
     user_id = user["id"] if user else None
-    default_name = accounts.first_name(user["name"]) if user else ""
+    default_name = accounts.effective_name(user) if user else ""
 
     def player_name(raw: Any) -> str:
         return str(raw or default_name or "Player")

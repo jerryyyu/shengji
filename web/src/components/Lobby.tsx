@@ -4,7 +4,8 @@ import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
 import { createRoomPayload } from "../testPolicy";
 import { needsSeatPicker } from "../seatPicker";
-import { firstName, useAuth } from "../auth";
+import { auth, checkDisplayName, effectiveName, updateDisplayName, useAuth } from "../auth";
+import { getNameSource, setNameSource } from "../nameSource";
 import AccountChip from "./AccountChip";
 import GoogleSignIn from "./GoogleSignIn";
 
@@ -24,12 +25,45 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
 export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [name, setName] = useState(getSavedName());
   const account = useAuth();
-  // A signed-in player who never typed a name is called by their first name;
-  // a name they did type (or saved earlier) is theirs and is left alone.
+  const signedIn = account.status === "in" && account.user ? account.user : null;
+  const accountName = effectiveName(signedIn);
+  // A signed-in player who never typed a name is called by their account
+  // name (chosen display name, else first name); a name they did type (or
+  // saved earlier as typed) is theirs and is left alone. When the account
+  // name itself changes (the edit form, here or in-game before this mount),
+  // a field still showing the old one follows it: either the name shown by
+  // the previous render, or the saved name when it was itself an account
+  // default rather than a typed one.
+  const shownBefore = useRef("");
   useEffect(() => {
-    if (account.status !== "in" || !account.user) return;
-    setName((current) => (current.trim() ? current : firstName(account.user?.name)));
-  }, [account.status, account.user]);
+    if (!signedIn) return;
+    setName((current) => {
+      const trimmed = current.trim();
+      if (!trimmed || trimmed === shownBefore.current) return accountName;
+      if (getNameSource() === "account" && trimmed === getSavedName().trim()) return accountName;
+      return current;
+    });
+    shownBefore.current = accountName;
+  }, [signedIn, accountName]);
+  // Save the room name with where it came from, so a later rename knows
+  // whether the saved name was the account's default or the player's choice.
+  const rememberName = useCallback((trimmed: string) => {
+    saveName(trimmed);
+    setNameSource(signedIn && trimmed === accountName ? "account" : "typed");
+  }, [signedIn, accountName]);
+  // A typed name that differs from the account's can be kept as the account
+  // name too: off by default, one PATCH on create/join when ticked.
+  const [saveAsMine, setSaveAsMine] = useState(false);
+  const typedDiffers = signedIn !== null && name.trim().length > 0 && name.trim() !== accountName;
+  const saveCheck = typedDiffers && saveAsMine ? checkDisplayName(name) : null;
+  const saveDisplayName = useCallback(() => {
+    if (!signedIn || !saveAsMine) return;
+    const check = checkDisplayName(name);
+    if (!check.ok || check.value === accountName) return;
+    updateDisplayName(check.value)
+      .then((next) => auth.updated(next))
+      .catch(() => { /* the room keeps the typed name; the account keeps its old one */ });
+  }, [signedIn, saveAsMine, name, accountName]);
   // The query gate is captured at mount. clearInvite() removes the URL query
   // after an action, but must not make an already-open test control disappear.
   const [testControlsVisible] = useState(
@@ -52,13 +86,14 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const joinSeat = useCallback((seat: number | undefined, code?: string) => {
     const target = (code ?? roomCode).trim().toUpperCase();
     const trimmed = name.trim();
-    saveName(trimmed);
+    rememberName(trimmed);
+    saveDisplayName();
     clearInvite();
     setSeatChoice(null);
     const token = getResumeToken();
     conn.send({ type: "join_room", room: target, name: trimmed, seat,
                 ...(token ? { token } : {}) });
-  }, [name, roomCode]);
+  }, [name, roomCode, saveDisplayName, rememberName]);
 
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
     const m = msg;
@@ -93,7 +128,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     const trimmed = name.trim();
     const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
     if (!payload) return;
-    saveName(trimmed);
+    rememberName(trimmed);
+    saveDisplayName();
     clearInvite();
     clearSavedRoom(); // don't auto-rejoin an old room while creating a new one
     conn.send(payload);
@@ -101,10 +137,11 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
   const playBots = () => {
     if (status !== "open" || !testReady) return;
-    const trimmed = name.trim() || "Player";
+    const trimmed = name.trim() || accountName || "Player";
     const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
     if (!payload) return;
-    saveName(trimmed);
+    rememberName(trimmed);
+    saveDisplayName();
     clearSavedRoom();
     onArmAutoFill();
     conn.send(payload);
@@ -142,6 +179,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     if (invitedName && invitedName.trim()) {
       autoJoined.current = true;
       saveName(invitedName.trim());
+      setNameSource("typed");     // a link-supplied name is someone's explicit choice
       clearInvite();
       conn.send({ type: "join_room", room: invited.toUpperCase(),
                   name: invitedName.trim() });
@@ -219,6 +257,19 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             onChange={(e) => setName(e.target.value)}
           />
         </label>
+        {typedDiffers ? (
+          <label className="save-name-row">
+            <input
+              type="checkbox"
+              checked={saveAsMine}
+              onChange={(e) => setSaveAsMine(e.target.checked)}
+            />
+            <span>Save as my name</span>
+            {saveCheck && !saveCheck.ok ? (
+              <span className="save-name-error" role="alert">{saveCheck.message}</span>
+            ) : null}
+          </label>
+        ) : null}
 
         {testControlsVisible ? (
           <div className="experimental-controls">

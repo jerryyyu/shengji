@@ -63,7 +63,7 @@ it("sign-in from the lobby replaces the socket; nothing is resent", async () => 
   const first = FakeWS.all[0];
   act(() => first.onopen?.());
   expect(first.sent).toEqual([]);
-  act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null }));
+  act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
   expect(first.readyState).toBe(3);
   act(() => { vi.advanceTimersByTime(0); });
   expect(FakeWS.all).toHaveLength(2);
@@ -81,7 +81,7 @@ it("sign-in and sign-out mid-game rejoin the same seat with the resume token", a
   act(() => first.onopen?.());
   expect(first.sent).toEqual([{ type: "join_room", room: "ABCD", name: "Me", token: "tok-1" }]);
 
-  act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null }));
+  act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
   act(() => { vi.advanceTimersByTime(0); });
   const second = FakeWS.all[1];
   expect(second).toBeTruthy();

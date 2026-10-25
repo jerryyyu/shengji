@@ -195,6 +195,12 @@ primary_region = 'ewr'
   # Python if the .so is missing, so this is safe to set unconditionally.
   SHENGJI_FAST = '1'
   SHENGJI_LOG_DIR = '/data/logs'
+  # Accounts database (optional Google sign-in, docs/accounts.md) lives on the volume.
+  SHENGJI_DATA_DIR = '/data'
+  # Optional Google sign-in: the public OAuth client id (type Web) from the Google
+  # Cloud console. Unset = the feature is off (no button, /api/auth/google is 404).
+  # No client secret is used anywhere.
+  GOOGLE_CLIENT_ID = '804081879262-h9te26ulofdij1nqrr7urbjec6vsbfes.apps.googleusercontent.com'
   # Optional creator-authenticated engineering rooms use separate excluded
   # logs; ordinary rooms already use W32 without an access code.
   SHENGJI_W32_TEST_ROOMS = '0'

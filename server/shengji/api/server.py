@@ -29,6 +29,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
+from . import accounts
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
@@ -233,6 +234,10 @@ class Seat:
     # Assigned only by a future reviewed HUMAN-C1 ingress.  It is server-only;
     # ordinary rooms and client state never use or expose it.
     evaluation_participant_id: str | None = None
+    # The signed-in account (accounts.users.id) whose cookie the socket that
+    # took this seat carried; None for a guest. Server-only: it enters no
+    # state frame, no log record and no game decision.
+    user_id: int | None = None
 
 
 @dataclass
@@ -1664,6 +1669,16 @@ async def ws_endpoint(ws: WebSocket) -> None:
     room: Room | None = None
     me: Seat | None = None  # seat OBJECT — indexes shift when lobby seats leave
     my_gen = 0              # connection generation this socket owns
+    # Optional sign-in, read once from the handshake cookie (a guest has none).
+    # The only things it changes: the seat remembers the account, and a player
+    # who typed no name is called by their first name instead of "Player".
+    user = await accounts.websocket_user(ws)
+    user_id = user["id"] if user else None
+    default_name = accounts.first_name(user["name"]) if user else ""
+
+    def player_name(raw: Any) -> str:
+        return str(raw or default_name or "Player")
+
     try:
         while True:
             try:
@@ -1707,7 +1722,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     # resume token, so a creator had no identity and an
                     # overlapping refresh appended them as a SECOND seat
                     # (Codex, 2026-08-04).
-                    me = Seat(name=str(msg.get("name") or "Player"))
+                    me = Seat(name=player_name(msg.get("name")), user_id=user_id)
                     room.seats.append(me)
                     my_gen = _attach(room, me, ws)
                     await broadcast(room)
@@ -1755,7 +1770,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                         "message": "Room not found."})
                         continue
                     async with target.lock:
-                        name = str(msg.get("name") or "Player")
+                        name = player_name(msg.get("name"))
                         # Match on a normalised name: an exact-only match
                         # locked people out of their own seat whenever they
                         # came back on another device or retyped their name
@@ -1782,8 +1797,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             by_name = reclaim is not None
                         if reclaim is not None:
                             me = reclaim
+                            # The seat's account follows the socket that now
+                            # owns it: a sign-in reconnect brings one, a
+                            # sign-out reconnect (or a guest's by-name
+                            # re-entry) brings none and clears it.
+                            me.user_id = user_id
                         elif len(target.seats) < 4 and target.game is None:
-                            me = Seat(name=name)
+                            me = Seat(name=name, user_id=user_id)
                             target.seats.append(me)
                         else:
                             # Take over a BOT's seat, mid-game if need be —
@@ -1863,6 +1883,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             me.token = secrets.token_urlsafe(12)
                             me.is_bot = False
                             me.name = name
+                            me.user_id = user_id
                             target.log_event("seat_claimed", seat=pick,
                                              name=name, bot=False)
                             claimed_from_bot = True
@@ -2055,6 +2076,8 @@ async def healthz() -> dict:
             # prior must show its SHA256 here, and a rollback must show null.
             "prior": _prior_health(),
             "pv_search": _pv_search_health(),
+            # Whether optional Google sign-in is configured (GOOGLE_CLIENT_ID).
+            "accounts": accounts.health(),
             # Since this process started: rooms, games, records on disk and
             # record write failures, so a quiet week and a silent log failure
             # read differently without opening the volume.
@@ -2064,6 +2087,9 @@ async def healthz() -> dict:
 from .debug import register_debug  # noqa: E402
 
 register_debug(app, rooms)
+# /api/auth/*, /api/me: registered before the static mount so the catch-all
+# page handler never shadows them.
+accounts.register_accounts(app)
 
 # ------------------------------------------------------------------ static
 class WebFiles(StaticFiles):

@@ -309,3 +309,39 @@ describe("leaveToLobby (Back to lobby without a page reload)", () => {
     expect(got).toEqual(["left", "room"]);
   });
 });
+
+describe("reconnect(): the identity lives on the handshake", () => {
+  it("closes the live socket and opens a new one at once, without the failure backoff", async () => {
+    vi.useFakeTimers();
+    const { conn } = await load();
+    conn.start();
+    const first = FakeWS.last!;
+    first.onopen?.();
+    expect(conn.status).toBe("open");
+    const before = FakeWS.count;
+    conn.reconnect();
+    expect(first.readyState).toBe(3);
+    expect(conn.status).toBe("closed");
+    vi.advanceTimersByTime(0);
+    expect(FakeWS.count).toBe(before + 1);        // immediately, not after 500 ms
+    const second = FakeWS.last!;
+    expect(second).not.toBe(first);
+    second.onopen?.();
+    expect(conn.status).toBe("open");
+    expect(second.sent).toEqual([]);              // the lobby has nothing to resend
+    // a later unplanned drop still backs off
+    const b2 = FakeWS.count;
+    second.close();
+    vi.advanceTimersByTime(0);
+    expect(FakeWS.count).toBe(b2);
+    vi.advanceTimersByTime(1000);
+    expect(FakeWS.count).toBe(b2 + 1);
+    vi.useRealTimers();
+  });
+  it("is a no-op before start()", async () => {
+    const { conn } = await load();
+    const before = FakeWS.count;
+    conn.reconnect();
+    expect(FakeWS.count).toBe(before);
+  });
+});

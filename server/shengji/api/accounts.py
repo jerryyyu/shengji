@@ -263,14 +263,32 @@ STORE = Store()
 class GoogleCerts:
     """Google's current signing certificates, cached until their
     ``Cache-Control: max-age`` runs out (an hour when the header is missing).
-    A fetch failure keeps serving the last good set rather than failing every
-    login while Google is briefly unreachable."""
 
-    def __init__(self, fetch: Callable[[], tuple[dict, float]] | None = None):
+    Refreshes are SINGLE-FLIGHT and BOUNDED: one fetch at a time, run outside
+    the lock so other threads keep serving the cached set; a forced refresh
+    (an unknown ``kid``, which any anonymous caller can present) happens at
+    most once per ``REFRESH_COOLDOWN`` seconds, and after a failure the next
+    attempt waits ``FAIL_BACKOFF`` doubling up to ``FAIL_BACKOFF_MAX``. A
+    failure keeps serving the last good set. Legitimate key rotation still
+    works: the first unknown kid after rotation triggers the one refresh.
+    """
+
+    REFRESH_COOLDOWN = 60.0
+    FAIL_BACKOFF = 30.0
+    FAIL_BACKOFF_MAX = 600.0
+    COLD_WAIT = 10.0
+
+    def __init__(self, fetch: Callable[[], tuple[dict, float]] | None = None,
+                 clock: Callable[[], float] | None = None):
         self._fetch = fetch or self._fetch_http
+        self._clock = clock or time.time
         self._certs: dict[str, str] = {}
         self._expires = 0.0
-        self._lock = threading.Lock()
+        self._next_refresh = 0.0       # no refresh before this instant
+        self._fail_backoff = self.FAIL_BACKOFF
+        self._refreshing = False
+        self._cond = threading.Condition(threading.Lock())
+        self.fetches = 0
 
     @staticmethod
     def _fetch_http() -> tuple[dict, float]:
@@ -286,24 +304,53 @@ class GoogleCerts:
         return body, ttl
 
     def get(self, force: bool = False) -> dict[str, str]:
-        now = time.time()
-        with self._lock:
-            if self._certs and not force and now < self._expires:
-                return self._certs
-            try:
-                certs, ttl = self._fetch()
-            except Exception as exc:          # noqa: BLE001 - keep the last good set
+        """The cached set, refreshed when expired or when ``force`` asks and
+        the cooldown allows. Returns the (possibly stale) cached set whenever
+        another thread is already refreshing or the bound says no; raises
+        ``certs_unavailable`` only when there is no set at all."""
+        with self._cond:
+            now = self._clock()
+            stale = not self._certs or now >= self._expires
+            wanted = stale or force
+            allowed = now >= self._next_refresh
+            if not wanted or not allowed or self._refreshing:
+                if self._certs:
+                    return self._certs
+                if self._refreshing:
+                    # cold start under contention: wait for the one in flight
+                    self._cond.wait_for(lambda: not self._refreshing, timeout=self.COLD_WAIT)
+                    if self._certs:
+                        return self._certs
+                raise AuthError("certs_unavailable")
+            self._refreshing = True
+        try:
+            certs, ttl = self._fetch()
+        except Exception as exc:          # noqa: BLE001 - keep the last good set
+            with self._cond:
+                now = self._clock()
+                self._next_refresh = now + self._fail_backoff
+                self._fail_backoff = min(self._fail_backoff * 2, self.FAIL_BACKOFF_MAX)
+                self._refreshing = False
+                self._cond.notify_all()
                 if self._certs:
                     log.warning("google certs refresh failed (%s); using cached set",
                                 type(exc).__name__)
                     return self._certs
-                raise AuthError("certs_unavailable") from exc
+            raise AuthError("certs_unavailable") from exc
+        with self._cond:
+            now = self._clock()
+            self.fetches += 1
             self._certs, self._expires = dict(certs), now + max(60.0, ttl)
+            self._next_refresh = now + self.REFRESH_COOLDOWN
+            self._fail_backoff = self.FAIL_BACKOFF
+            self._refreshing = False
+            self._cond.notify_all()
             return self._certs
 
     def reset(self) -> None:
-        with self._lock:
-            self._certs, self._expires = {}, 0.0
+        with self._cond:
+            self._certs, self._expires, self._next_refresh = {}, 0.0, 0.0
+            self._fail_backoff = self.FAIL_BACKOFF
 
 
 CERTS = GoogleCerts()
@@ -321,8 +368,8 @@ def verify_google_id_token(token: str, audience: str,
     """Verify a Google ID token and return its claims, or raise ``AuthError``.
 
     Checks, in order: a well-formed RS256 JWT whose ``kid`` names one of
-    Google's current certificates (refetched once on a miss, for key
-    rotation); the signature; ``aud`` equal to our client id; ``iat``/``exp``
+    Google's current certificates (a miss asks for one bounded refresh, for
+    key rotation; see ``GoogleCerts``); the signature; ``aud`` equal to our client id; ``iat``/``exp``
     within the clock skew; ``iss`` one of Google's two issuers; a ``sub``; and
     ``email_verified`` true."""
     from google.auth import exceptions as google_exceptions

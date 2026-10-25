@@ -1,8 +1,10 @@
 # Accounts: optional Google sign-in
 
-Guest play is unchanged. Signing in is optional and, until `GOOGLE_CLIENT_ID`
-is set on the server, the feature does not exist: no button, no script from
-Google, `POST /api/auth/google` answers 404.
+Guest play is unchanged. Signing in is optional. `fly.toml` sets
+`GOOGLE_CLIENT_ID` (the public OAuth client id), so sign-in is ON in
+production from the deploy that carries it; with the variable unset or blank
+the feature does not exist: no button, no script from Google,
+`POST /api/auth/google` answers 404.
 
 ## Flow
 
@@ -15,10 +17,15 @@ Google, `POST /api/auth/google` answers 404.
    `{"credential": <jwt>, "nonce": <nonce>}` as JSON to `POST /api/auth/google`.
 4. The server (`server/shengji/api/accounts.py`) verifies, with `google-auth`:
    the RS256 signature against Google's current certificates
-   (`https://www.googleapis.com/oauth2/v1/certs`, cached per its `max-age`,
-   refetched once on an unknown `kid`); `aud` == the client id; `exp`/`iat`
-   (10 s skew); `iss` in {`accounts.google.com`, `https://accounts.google.com`};
-   a `sub`; `email_verified`; and the `nonce` claim == the posted nonce.
+   (`https://www.googleapis.com/oauth2/v1/certs`, cached per its `max-age`;
+   an unknown `kid` asks for ONE bounded refresh: single-flight, fetched
+   outside the lock, at most once per 60 s, failures backing off 30 s
+   doubling to 10 min while the last good set keeps serving, so a flood of
+   bogus kids cannot make the server download certificates per request and
+   a real key rotation is still picked up); `aud` == the client id;
+   `exp`/`iat` (10 s skew); `iss` in {`accounts.google.com`,
+   `https://accounts.google.com`}; a `sub`; `email_verified`; and, when the
+   body carries a `nonce`, the token's `nonce` claim must equal it.
 5. On success it upserts the user, mints a session (32 random bytes), stores
    only its SHA-256, and sets the cookie `sj_session`: HttpOnly, SameSite=Lax,
    Secure (except on localhost), 30 days. The response is `{name, email, picture}`.
@@ -29,20 +36,34 @@ Google, `POST /api/auth/google` answers 404.
    (`Seat.user_id`, server-only; it enters no state frame, log record or game
    decision), and a player who typed no name is called by their Google first
    name instead of "Player". Nothing about game logic or the bots changes.
+8. Because identity is read on the handshake, a sign-in or a confirmed
+   sign-out while the page is open REPLACES the socket (`conn.reconnect()` in
+   `web/src/ws.ts`, called from `auth.ts`): the ordinary reconnect path then
+   runs, so in the lobby nothing is resent, and a player in a room rejoins
+   their own seat with the saved resume token (the seat is held for them, as
+   on any reconnect). The seat's `user_id` follows the socket that reclaims
+   it: a sign-in sets it, an account switch replaces it, a sign-out clears it.
+   Sign-out is only reported when the server confirmed it (HTTP 200); a 5xx
+   or a network failure keeps the signed-in state and shows a retryable error,
+   because the HttpOnly cookie is then still live.
 
 Security notes: the client id is public; there is no client secret anywhere.
 Tokens are never logged (refusals carry only a short reason code). The login
 endpoint is rate-limited in memory per client IP (10/min; Fly's
 `Fly-Client-IP` header names the client). CSRF: Lax cookies plus a JSON POST
 (a cross-site form cannot send it; no CORS headers are emitted, so a
-cross-origin fetch is refused by the browser) plus the nonce. In dev, Vite
-proxies `/api` to `:8000` so the page and the API share one origin.
+cross-origin fetch is refused by the browser). The nonce is a consistency
+check, not server-enforced replay binding: the page generates it, hands it
+to Google and posts it with the token, so the server can only confirm the
+two agree (it is optional server-side). Replay is bounded by the token's
+own `exp` and by the fact that a token names one Google account. In dev,
+Vite proxies `/api` to `:8000` so the page and the API share one origin.
 
 ## Configuration
 
 | variable | meaning |
 |---|---|
-| `GOOGLE_CLIENT_ID` | the OAuth client id (type Web). Unset or empty = feature off. `fly.toml` carries a commented placeholder. |
+| `GOOGLE_CLIENT_ID` | the public OAuth client id (type Web). `fly.toml` sets it, so production has sign-in on. Unset or empty = feature off. |
 | `SHENGJI_DATA_DIR` | where `accounts.sqlite3` lives. `fly.toml` sets `/data` (the volume). Unset: `/data` if it exists, else the dev tree's `logs/local/`. Tests set a temp dir. |
 
 `/healthz` shows `"accounts": {"google_sign_in": true|false}`.
@@ -82,8 +103,7 @@ re-login; until then a lost volume costs each player one click.
    (Google wants both localhost forms). No redirect URIs (the button uses the
    popup flow).
 3. Copy the client id (`….apps.googleusercontent.com`); the client secret is
-   not used. Set it on Fly: `fly secrets set GOOGLE_CLIENT_ID=…` (or uncomment
-   the `fly.toml` line and deploy). Locally: `GOOGLE_CLIENT_ID=… uv run
-   shengji-server` with `npm run dev` on :5173.
+   not used. It is set in `fly.toml` (done). Locally: `GOOGLE_CLIENT_ID=… uv
+   run shengji-server` with `npm run dev` on :5173.
 4. Verify: `/healthz` shows `google_sign_in: true`, the lobby shows the
    button, and `/api/me` answers 200 after signing in.

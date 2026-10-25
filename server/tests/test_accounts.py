@@ -122,7 +122,21 @@ def test_a_token_signed_by_another_key_or_mangled_is_refused(accounts_on, keypai
         assert info.value.reason == "malformed"
 
 
-def test_an_unknown_kid_refetches_the_certs_once_then_refuses(accounts_on, keypair):
+def _clock(start=1_000_000.0):
+    state = {"t": start}
+
+    def now():
+        return state["t"]
+
+    def advance(seconds):
+        state["t"] += seconds
+
+    return now, advance
+
+
+def test_unknown_kids_do_not_repeat_network_fetches(accounts_on, keypair):
+    """Codex's review1155 reproducer: a warm cache plus three untrusted kids
+    is at most ONE forced refresh, not one download per request."""
     private_pem, public_pem = keypair
     calls = []
 
@@ -132,14 +146,92 @@ def test_an_unknown_kid_refetches_the_certs_once_then_refuses(accounts_on, keypa
 
     certs = accounts_on.GoogleCerts(fetch=fetch)
     certs.get()
-    assert calls == [1]
-    with pytest.raises(accounts_on.AuthError):
-        accounts_on.verify_google_id_token(_sign(private_pem, _claims(), kid="rotated"), CLIENT_ID, certs)
-    assert calls == [1, 1]   # one forced refresh for the miss, no loop
+    for i in range(3):
+        with pytest.raises(accounts_on.AuthError):
+            accounts_on.verify_google_id_token(
+                _sign(private_pem, _claims(), kid=f"unknown-{i}"), CLIENT_ID, certs)
+    # the warm-up download started the cooldown, so the three misses buy no download
+    assert len(calls) <= 2 and len(calls) == 1
 
 
-def test_certs_are_cached_until_their_max_age_and_survive_a_failed_refresh(accounts_on, keypair):
+def test_key_rotation_still_works_after_the_cooldown(accounts_on, keypair, other_keypair):
+    """A new Google key: the first unknown kid refreshes; a flood of unknown kids
+    inside the cooldown does not; after the cooldown the rotated key is picked up."""
+    from cryptography.hazmat.primitives import serialization
+
+    private_pem, public_pem = keypair
+    other_private = other_keypair
+    other_public = serialization.load_pem_private_key(other_private.encode(), None).public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    now, advance = _clock()
+    published = {KID: public_pem}
+    calls = []
+
+    def fetch():
+        calls.append(1)
+        return (dict(published), 3600.0)
+
+    certs = accounts_on.GoogleCerts(fetch=fetch, clock=now)
+    accounts_on.verify_google_id_token(_sign(private_pem, _claims()), CLIENT_ID, certs)
+    assert len(calls) == 1
+    for i in range(5):                        # scanning kids inside the cooldown
+        with pytest.raises(accounts_on.AuthError):
+            accounts_on.verify_google_id_token(_sign(private_pem, _claims(), kid=f"x{i}"), CLIENT_ID, certs)
+    assert len(calls) == 1                    # the warm-up fetch set the cooldown; no extra download
+    advance(accounts_on.GoogleCerts.REFRESH_COOLDOWN + 1)
+    published["rotated"] = other_public       # Google rotates
+    claims = accounts_on.verify_google_id_token(_sign(other_private, _claims(), kid="rotated"), CLIENT_ID, certs)
+    assert claims["sub"] == "10987654321" and len(calls) == 2
+    # the known key keeps verifying without any fetch
+    accounts_on.verify_google_id_token(_sign(private_pem, _claims()), CLIENT_ID, certs)
+    assert len(calls) == 2
+
+
+def test_concurrent_unknown_kids_share_one_refresh_and_never_block_on_the_lock(accounts_on, keypair):
+    import threading
+
+    private_pem, public_pem = keypair
+    now, advance = _clock()
+    calls = []
+    gate = threading.Event()
+
+    def fetch():
+        calls.append(1)
+        if len(calls) > 1:
+            gate.wait(5)                      # the forced refresh is SLOW
+        return ({KID: public_pem}, 3600.0)
+
+    certs = accounts_on.GoogleCerts(fetch=fetch, clock=now)
+    certs.get()
+    advance(accounts_on.GoogleCerts.REFRESH_COOLDOWN + 1)
+    results, errors = [], []
+
+    def attempt(i):
+        try:
+            accounts_on.verify_google_id_token(_sign(private_pem, _claims(), kid=f"u{i}"), CLIENT_ID, certs)
+        except accounts_on.AuthError as exc:
+            errors.append(exc.reason)
+        results.append(i)
+
+    threads = [threading.Thread(target=attempt, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    # While one thread sits in the slow fetch, everyone else is served from the cache.
+    deadline = time.time() + 3
+    while len(results) < 7 and time.time() < deadline:
+        time.sleep(0.01)
+    assert len(results) == 7
+    assert accounts_on.verify_google_id_token(_sign(private_pem, _claims()), CLIENT_ID, certs)["sub"]
+    gate.set()
+    for t in threads:
+        t.join(5)
+    assert len(results) == 8 and len(calls) == 2
+    assert set(errors) == {"bad_signature"}   # unknown kids: refused, never a 5xx
+
+
+def test_failed_refreshes_back_off_and_keep_the_last_good_set(accounts_on, keypair):
     _, public_pem = keypair
+    now, advance = _clock()
     state = {"fail": False, "calls": 0}
 
     def fetch():
@@ -148,16 +240,63 @@ def test_certs_are_cached_until_their_max_age_and_survive_a_failed_refresh(accou
             raise OSError("google unreachable")
         return ({KID: public_pem}, 60.0)
 
-    certs = accounts_on.GoogleCerts(fetch=fetch)
+    G = accounts_on.GoogleCerts
+    certs = G(fetch=fetch, clock=now)
     assert certs.get() == {KID: public_pem}
     certs.get()
     assert state["calls"] == 1
+    advance(61)                               # max-age passed: a plain get refreshes
     state["fail"] = True
-    assert certs.get(force=True) == {KID: public_pem}   # stale set beats no set
-    certs.reset()
+    assert certs.get() == {KID: public_pem}   # stale set beats no set
+    assert state["calls"] == 2
+    certs.get(force=True); certs.get(force=True)
+    assert state["calls"] == 2                # inside the failure backoff: no attempt
+    advance(G.FAIL_BACKOFF + 1)
+    certs.get(force=True)
+    assert state["calls"] == 3                # one attempt, fails, backoff doubles
+    advance(G.FAIL_BACKOFF + 1)
+    certs.get(force=True)
+    assert state["calls"] == 3
+    advance(G.FAIL_BACKOFF + 1)
+    certs.get(force=True)
+    assert state["calls"] == 4
+    state["fail"] = False
+    advance(4 * G.FAIL_BACKOFF + 1)
+    assert certs.get(force=True) == {KID: public_pem} and state["calls"] == 5
+    assert certs._fail_backoff == G.FAIL_BACKOFF   # success resets the backoff
+    # cold start with Google down: an error, bounded by the same backoff
+    cold = G(fetch=fetch, clock=now)
+    state["fail"] = True
     with pytest.raises(accounts_on.AuthError) as info:
-        certs.get()
+        cold.get()
     assert info.value.reason == "certs_unavailable"
+    with pytest.raises(accounts_on.AuthError):
+        cold.get()
+    assert state["calls"] == 6                # the second cold call did not hit the network
+
+
+def test_cold_start_under_contention_waits_for_the_one_fetch(accounts_on, keypair):
+    import threading
+
+    _, public_pem = keypair
+    calls = []
+    gate = threading.Event()
+
+    def fetch():
+        calls.append(1)
+        gate.wait(5)
+        return ({KID: public_pem}, 3600.0)
+
+    certs = accounts_on.GoogleCerts(fetch=fetch)
+    got = []
+    threads = [threading.Thread(target=lambda: got.append(certs.get())) for _ in range(4)]
+    for t in threads:
+        t.start()
+    time.sleep(0.05)
+    gate.set()
+    for t in threads:
+        t.join(5)
+    assert len(calls) == 1 and len(got) == 4 and all(g == {KID: public_pem} for g in got)
 
 
 # -------------------------------------------------------------- HTTP flow
@@ -318,3 +457,65 @@ def test_first_name_default():
     assert first_name("  Yu  ") == "Yu"
     assert first_name("") == "" and first_name(None) == ""
     assert len(first_name("x" * 40)) == 20
+
+
+# ------------------------------------------- auth transitions and the socket
+def test_page_open_then_login_then_create_room_binds_the_account(accounts_on, keypair, client):
+    """Codex's review1155 flow: the lobby socket is open BEFORE sign-in. The
+    client reconnects after a successful login (ws.ts), so the create_room
+    travels on a cookie-carrying socket and the seat gets the account."""
+    from shengji.api import server as srv
+
+    private_pem, _ = keypair
+    with client.websocket_connect("/ws") as guest:        # page open, no account
+        cookie = _session_cookie(accounts_on, client, private_pem)
+        # the stale socket keeps its handshake identity until it is replaced
+        guest.send_json({"type": "peek_room", "room": "NONE"})
+        assert _drain(guest, "error")["code"] == "room_not_found"
+    with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:   # the reconnect
+        a.send_json({"type": "create_room", "name": "Jerry"})
+        room = _drain(a, "room")
+        assert srv.rooms[room["room"]].seats[0].user_id == 1
+        # and a join from another freshly signed-in device
+        with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
+            b.send_json({"type": "join_room", "room": room["room"], "name": "Phone"})
+            _drain(b, "room")
+            assert srv.rooms[room["room"]].seats[1].user_id == 1
+
+
+def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socket(
+        accounts_on, keypair, client):
+    from shengji.api import server as srv
+    from tests.test_server_ws import _room_with_bots
+
+    private_pem, _ = keypair
+    with client.websocket_connect("/ws") as guest:
+        code = _room_with_bots(guest)
+        # the resume token the client saved from its first frame (ws.ts)
+        token = srv.rooms[code].seats[0].token
+        guest.send_json({"type": "start_game"})
+        _drain(guest, "state", tries=60)
+        seat = srv.rooms[code].seats[0]
+        assert seat.user_id is None
+
+    # Sign in: the client reconnects and resumes the saved room with its token.
+    cookie = _session_cookie(accounts_on, client, private_pem)
+    with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
+        a.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
+        st = _drain(a, "state", tries=60)
+        assert st["you"] == 0 and srv.rooms[code].seats[0] is seat
+        assert seat.user_id == 1 and seat.connected
+
+    # Switch accounts: a different Google sub, same seat, new identity.
+    cookie2 = _session_cookie(accounts_on, client, private_pem, sub="222", email="other@example.com")
+    with client.websocket_connect("/ws", headers={"cookie": cookie2}) as b:
+        b.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
+        assert _drain(b, "state", tries=60)["you"] == 0
+        assert seat.user_id == 2 and srv.rooms[code].seats[0] is seat
+
+    # Sign out: the reconnect carries no cookie; the seat stays, the account clears.
+    with client.websocket_connect("/ws") as c:
+        c.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
+        assert _drain(c, "state", tries=60)["you"] == 0
+        assert seat.user_id is None and srv.rooms[code].seats[0] is seat
+        assert len(srv.rooms[code].seats) == 4

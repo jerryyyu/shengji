@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  auth, fetchAuthConfig, fetchMe, firstName, loadGis, loginWithGoogle, newNonce,
+  auth, fetchAuthConfig, fetchMe, firstName, loadGis, loginWithGoogle, logout, newNonce,
 } from "./auth";
+
+const { reconnect } = vi.hoisted(() => ({ reconnect: vi.fn() }));
+vi.mock("./ws", () => ({ conn: { reconnect } }));
 
 type Route = { status: number; body?: unknown };
 const routes = new Map<string, Route>();
@@ -25,6 +28,7 @@ function mockFetch() {
 beforeEach(() => {
   routes.clear();
   calls.length = 0;
+  reconnect.mockClear();
   auth.reset();
   mockFetch();
   delete window.google;
@@ -97,9 +101,12 @@ describe("the auth store", () => {
     expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
     auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null });
     expect(auth.state.status).toBe("in");
+    // the open socket carried the guest handshake: it is replaced
+    expect(reconnect).toHaveBeenCalledTimes(1);
     routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
     await auth.signOut();
     expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
+    expect(reconnect).toHaveBeenCalledTimes(2);   // and again, so the seat drops the account
     expect(seen).toEqual(["loading", "out", "in", "out"]);
     unsub();
     await auth.init();                       // idempotent
@@ -111,6 +118,32 @@ describe("the auth store", () => {
     await auth.init();
     expect(auth.state.status).toBe("in");
     expect(auth.state.user?.name).toBe("Jerry Yu");
+  });
+});
+
+describe("sign-out honesty (Codex review1155 P2)", () => {
+  it("does not report signed out when revocation failed with a 500", async () => {
+    auth.signedIn({ name: "Jerry", email: "j@example.test", picture: null });
+    reconnect.mockClear();
+    routes.set("POST /api/auth/logout", { status: 500, body: { detail: "database unavailable" } });
+    await expect(auth.signOut()).rejects.toThrow("Sign-out failed (500)");
+    expect(auth.state.status).toBe("in");
+    expect(auth.state.user?.name).toBe("Jerry");
+    expect(reconnect).not.toHaveBeenCalled();
+    // a retry that succeeds completes the sign-out
+    routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
+    await auth.signOut();
+    expect(auth.state.status).toBe("out");
+    expect(reconnect).toHaveBeenCalledTimes(1);
+  });
+  it("a network failure keeps the signed-in state and names the retry", async () => {
+    auth.signedIn({ name: "Jerry", email: "j@example.test", picture: null });
+    reconnect.mockClear();
+    globalThis.fetch = vi.fn(async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
+    await expect(auth.signOut()).rejects.toThrow("no connection");
+    await expect(logout()).rejects.toThrow("Try again");
+    expect(auth.state.status).toBe("in");
+    expect(reconnect).not.toHaveBeenCalled();
   });
 });
 

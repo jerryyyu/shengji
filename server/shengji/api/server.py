@@ -1797,8 +1797,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             by_name = reclaim is not None
                         if reclaim is not None:
                             me = reclaim
-                            if user_id is not None:
-                                me.user_id = user_id
+                            # The seat's account follows the socket that now
+                            # owns it: a sign-in reconnect brings one, a
+                            # sign-out reconnect (or a guest's by-name
+                            # re-entry) brings none and clears it.
+                            me.user_id = user_id
                         elif len(target.seats) < 4 and target.game is None:
                             me = Seat(name=name, user_id=user_id)
                             target.seats.append(me)

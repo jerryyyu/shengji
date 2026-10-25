@@ -564,6 +564,8 @@ textarea:focus-visible {
   font-weight: 600;
 }
 .account-signout { padding: 4px 10px; font-size: 13px; }
+.account-chip-wrap { display: flex; flex-direction: column; gap: 6px; }
+.account-error { font-size: 13px; }
 .hud-menu-row.account .account-avatar { width: 20px; height: 20px; }
 .hud-menu-account-name {
   flex: 1;

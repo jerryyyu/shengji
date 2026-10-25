@@ -5,6 +5,7 @@
 // sends on its own, to `/api/*` and on the `/ws` handshake alike.
 
 import { useEffect, useState } from "react";
+import { conn } from "./ws";
 
 export interface AuthUser {
   name: string;
@@ -77,8 +78,17 @@ export async function loginWithGoogle(credential: string, nonce: string): Promis
   return { name: body.name, email: body.email, picture: body.picture ?? null };
 }
 
+/** Revoke the session. Resolves only when the server confirmed it; a 5xx or
+ *  a network failure throws, because the HttpOnly cookie is then still live
+ *  and the page must not claim otherwise. */
 export async function logout(): Promise<void> {
-  await api("/api/auth/logout", { method: "POST" });
+  let status: number;
+  try {
+    ({ status } = await api("/api/auth/logout", { method: "POST" }));
+  } catch {
+    throw new Error("Sign-out failed: no connection. Try again.");
+  }
+  if (status !== 200) throw new Error(`Sign-out failed (${status}). Try again.`);
 }
 
 /** The display-name default for a signed-in player who typed none. */
@@ -163,21 +173,25 @@ class AuthStore {
     }
   }
 
+  /** A login the server confirmed (the cookie is set). The open socket
+   *  still carries the guest handshake, so it is replaced. */
   signedIn(user: AuthUser): void {
     this.set({ status: "in", user });
+    conn.reconnect();
   }
 
+  /** Sign out. Rejects, keeping the signed-in state, when the server did not
+   *  confirm the revocation; the caller shows the error and may retry. On
+   *  success the socket is replaced so the seat stops carrying the account. */
   async signOut(): Promise<void> {
+    await logout();
     try {
-      await logout();
-    } finally {
-      try {
-        window.google?.accounts?.id?.disableAutoSelect();
-      } catch {
-        /* GIS not loaded */
-      }
-      this.set({ status: "out", user: null });
+      window.google?.accounts?.id?.disableAutoSelect();
+    } catch {
+      /* GIS not loaded */
     }
+    this.set({ status: "out", user: null });
+    conn.reconnect();
   }
 
   /** Test seam: forget everything, as a fresh page would. */

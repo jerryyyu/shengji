@@ -6,7 +6,7 @@ import type { AuthState } from "../auth";
 const { sent, authState, signOut, gis } = vi.hoisted(() => ({
   sent: [] as unknown[],
   authState: { current: { status: "loading", clientId: null, user: null } as AuthState },
-  signOut: vi.fn(),
+  signOut: vi.fn(() => Promise.resolve()),
   gis: { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect: vi.fn() },
 }));
 vi.mock("../ws", () => ({
@@ -15,6 +15,7 @@ vi.mock("../ws", () => ({
   saveName: (n: string) => localStorage.setItem("shengji.name", n),
   getResumeToken: () => null,
   clearSavedRoom: () => {},
+  reconnect: () => {},
 }));
 
 vi.mock("../auth", async (importOriginal) => {
@@ -100,6 +101,22 @@ describe("the lobby with sign-in ON", () => {
     expect(nameInput().value).toBe("Jerry");
     act(() => chip.querySelector<HTMLButtonElement>(".account-signout")!.click());
     expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("a sign-out the server refused keeps the chip and shows a retryable error", async () => {
+    authState.current = {
+      status: "in", clientId: "cid.apps",
+      user: { name: "Jerry Yu", email: "jerry@example.com", picture: null },
+    };
+    signOut.mockImplementationOnce(() => Promise.reject(new Error("Sign-out failed (500). Try again.")));
+    await render();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".account-signout")!.click(); });
+    expect(host.querySelector(".account-chip")).not.toBeNull();
+    expect(host.querySelector(".account-error")?.textContent).toContain("Try again");
+    expect(host.querySelector<HTMLButtonElement>(".account-signout")!.disabled).toBe(false);
+    await act(async () => { host.querySelector<HTMLButtonElement>(".account-signout")!.click(); });
+    expect(signOut).toHaveBeenCalledTimes(2);
+    expect(host.querySelector(".account-error")).toBeNull();
   });
 
   it("signed in with a saved name keeps that name", async () => {

@@ -6,7 +6,8 @@ import MuteButton from "./MuteButton";
 import { isMuted, setMuted } from "../audio";
 
 const sent: unknown[] = [];
-vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); } } }));
+vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
+import { auth } from "../auth";
 
 beforeAll(() => {
   class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
@@ -105,5 +106,28 @@ describe("mute state is shared between controls (Codex, #653)", () => {
     expect(isMuted()).toBe(false);
     expect(chip().textContent).toBe("🔊");            // ...the chip follows, and it was ONE tap
     act(() => root.unmount());
+  });
+});
+
+describe("the account row (optional sign-in)", () => {
+  it("is absent for a guest, and when signed in a refused sign-out keeps the menu open to retry", async () => {
+    auth.reset();
+    const v = render();
+    act(() => btn(v.host).click());
+    expect(rows(v.host).some((r) => r.textContent?.includes("Sign out"))).toBe(false);
+    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null }));
+    const row = () => rows(v.host).find((r) => r.textContent?.includes("Sign out")) as HTMLButtonElement;
+    expect(row().textContent).toContain("Jerry Yu");
+    globalThis.fetch = vi.fn(async () => ({ status: 500, json: async () => ({}) })) as unknown as typeof fetch;
+    await act(async () => { row().click(); });
+    expect(v.host.querySelector(".hud-menu")).not.toBeNull();   // still open
+    expect(row().textContent).toContain("Sign out failed, retry");
+    expect(auth.state.status).toBe("in");
+    globalThis.fetch = vi.fn(async () => ({ status: 200, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
+    await act(async () => { row().click(); });
+    expect(v.host.querySelector(".hud-menu")).toBeNull();
+    expect(auth.state.status).toBe("out");
+    v.unmount();
+    auth.reset();
   });
 });

@@ -15,6 +15,7 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   const [armed, setArmed] = useState(false);
   const [copied, setCopied] = useState(false);
   const account = useAuth();
+  const [signOutError, setSignOutError] = useState(false);
   const timer = useRef<number | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -84,12 +85,16 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
           </button>
           {account.status === "in" && account.user ? (
             <button className="hud-menu-row account" role="menuitem"
-                    onClick={() => { close(); void auth.signOut(); }}>
+                    onClick={() => {
+                      // the menu stays open until the server confirms, so a
+                      // failed sign-out is visible and one tap retries it
+                      auth.signOut().then(close).catch(() => setSignOutError(true));
+                    }}>
               {account.user.picture
                 ? <img className="account-avatar" src={account.user.picture} alt="" referrerPolicy="no-referrer" />
                 : null}
               <span className="hud-menu-account-name">{account.user.name || account.user.email}</span>
-              <span className="hud-menu-k">Sign out</span>
+              <span className="hud-menu-k">{signOutError ? "Sign out failed, retry" : "Sign out"}</span>
             </button>
           ) : null}
           <button className={`hud-menu-row leave${armed ? " armed" : ""}`} role="menuitem" onClick={leave}>

@@ -86,6 +86,9 @@ class Connection {
   private backoff = 500;
   private reconnectTimer: number | null = null;
   private started = false;
+  /** The next reconnect is deliberate (a sign-in or sign-out): open it at
+   *  once instead of after the failure backoff. */
+  private immediate = false;
 
   /** Chat buffered since the last room change. */
   chatHistory(): ChatMsg[] {
@@ -136,6 +139,30 @@ class Connection {
     }
     this.clearChat();
     this.emit({ type: "left" });
+  }
+
+  /** Replace the socket: the server reads who we are (the session cookie)
+   *  only on the handshake, so after a sign-in or sign-out the identity
+   *  moves to the connection by opening a new one. Everything else is the
+   *  ordinary reconnect path: App decides from the saved room and resume
+   *  token whether to rejoin, and a seat mid-game is reclaimed by its
+   *  token, so the player keeps it. Safe to call in any state. */
+  reconnect(): void {
+    if (!this.started) return;
+    this.immediate = true;
+    const ws = this.ws;
+    if (ws) {
+      ws.close();     // onclose -> scheduleReconnect (immediately, see above)
+      if (this.ws === ws) {   // a fake or half-open socket that never fired onclose
+        this.ws = null;
+        this.setStatus("closed");
+        this.scheduleReconnect();
+      }
+    } else if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      this.scheduleReconnect();
+    }
   }
 
   private endLeave(): void {
@@ -258,7 +285,8 @@ class Connection {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer !== null) return;
-    const delay = this.backoff;
+    const delay = this.immediate ? 0 : this.backoff;
+    this.immediate = false;
     this.backoff = Math.min(this.backoff * 2, 8000);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;

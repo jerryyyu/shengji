@@ -5,6 +5,7 @@ import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "..
 import { createRoomPayload } from "../testPolicy";
 import { needsSeatPicker } from "../seatPicker";
 import { auth, checkDisplayName, effectiveName, updateDisplayName, useAuth } from "../auth";
+import { getNameSource, setNameSource } from "../nameSource";
 import AccountChip from "./AccountChip";
 import GoogleSignIn from "./GoogleSignIn";
 
@@ -28,17 +29,27 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const accountName = effectiveName(signedIn);
   // A signed-in player who never typed a name is called by their account
   // name (chosen display name, else first name); a name they did type (or
-  // saved earlier) is theirs and is left alone. When the account name itself
-  // changes (the edit form), a field still showing the old one follows it.
+  // saved earlier as typed) is theirs and is left alone. When the account
+  // name itself changes (the edit form, here or in-game before this mount),
+  // a field still showing the old one follows it: either the name shown by
+  // the previous render, or the saved name when it was itself an account
+  // default rather than a typed one.
   const shownBefore = useRef("");
   useEffect(() => {
     if (!signedIn) return;
     setName((current) => {
       const trimmed = current.trim();
       if (!trimmed || trimmed === shownBefore.current) return accountName;
+      if (getNameSource() === "account" && trimmed === getSavedName().trim()) return accountName;
       return current;
     });
     shownBefore.current = accountName;
+  }, [signedIn, accountName]);
+  // Save the room name with where it came from, so a later rename knows
+  // whether the saved name was the account's default or the player's choice.
+  const rememberName = useCallback((trimmed: string) => {
+    saveName(trimmed);
+    setNameSource(signedIn && trimmed === accountName ? "account" : "typed");
   }, [signedIn, accountName]);
   // A typed name that differs from the account's can be kept as the account
   // name too: off by default, one PATCH on create/join when ticked.
@@ -75,14 +86,14 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const joinSeat = useCallback((seat: number | undefined, code?: string) => {
     const target = (code ?? roomCode).trim().toUpperCase();
     const trimmed = name.trim();
-    saveName(trimmed);
+    rememberName(trimmed);
     saveDisplayName();
     clearInvite();
     setSeatChoice(null);
     const token = getResumeToken();
     conn.send({ type: "join_room", room: target, name: trimmed, seat,
                 ...(token ? { token } : {}) });
-  }, [name, roomCode, saveDisplayName]);
+  }, [name, roomCode, saveDisplayName, rememberName]);
 
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
     const m = msg;
@@ -117,7 +128,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     const trimmed = name.trim();
     const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
     if (!payload) return;
-    saveName(trimmed);
+    rememberName(trimmed);
     saveDisplayName();
     clearInvite();
     clearSavedRoom(); // don't auto-rejoin an old room while creating a new one
@@ -129,7 +140,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     const trimmed = name.trim() || accountName || "Player";
     const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
     if (!payload) return;
-    saveName(trimmed);
+    rememberName(trimmed);
     saveDisplayName();
     clearSavedRoom();
     onArmAutoFill();
@@ -168,6 +179,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     if (invitedName && invitedName.trim()) {
       autoJoined.current = true;
       saveName(invitedName.trim());
+      setNameSource("typed");     // a link-supplied name is someone's explicit choice
       clearInvite();
       conn.send({ type: "join_room", room: invited.toUpperCase(),
                   name: invitedName.trim() });

@@ -234,3 +234,72 @@ describe("the display name in the lobby", () => {
     expect(host.querySelector(".account-edit")).toBeNull();
   });
 });
+
+describe("a saved account default follows a rename; a typed name does not (review1157)", () => {
+  const CAPTAIN = { ...JERRY, display_name: "Captain", name_shown: "Captain" };
+  const createBtn = () => Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Create room")!;
+  const remount = async () => {
+    act(() => root.unmount());
+    host.remove();
+    sent.length = 0;
+    await render();
+  };
+
+  it("in-game edit: the auto-filled name was saved, then renamed while the lobby was unmounted", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+    await render();
+    act(() => createBtn().click());
+    expect(localStorage.getItem("shengji.name")).toBe("Jerry");
+    expect(localStorage.getItem("shengji.nameSource")).toBe("account");
+    authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };   // edited from the phone menu
+    await remount();
+    expect(nameInput().value).toBe("Captain");
+    act(() => createBtn().click());
+    expect((sent[0] as { name: string }).name).toBe("Captain");
+    expect(localStorage.getItem("shengji.name")).toBe("Captain");
+  });
+
+  it("reload: a saved account default meets a renamed account on first paint", async () => {
+    localStorage.setItem("shengji.name", "Jerry");
+    localStorage.setItem("shengji.nameSource", "account");
+    authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
+    await render();
+    expect(nameInput().value).toBe("Captain");
+    expect(saveRow()).toBeNull();
+    act(() => createBtn().click());
+    expect((sent[0] as { name: string }).name).toBe("Captain");
+  });
+
+  it("a typed room name survives a rename, in-game and on reload", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+    await render();
+    type(nameInput(), "Ace");
+    act(() => createBtn().click());
+    expect(localStorage.getItem("shengji.nameSource")).toBe("typed");
+    authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
+    await remount();
+    expect(nameInput().value).toBe("Ace");
+    act(() => createBtn().click());
+    expect((sent[0] as { name: string }).name).toBe("Ace");
+    expect(saveRow()).not.toBeNull();            // offered, not forced
+    expect(saveRow()!.checked).toBe(false);
+  });
+
+  it("a saved name without a marker (pre-marker save) is treated as typed", async () => {
+    localStorage.setItem("shengji.name", "Jerry");
+    authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
+    await render();
+    expect(nameInput().value).toBe("Jerry");
+  });
+
+  it("a guest is unaffected", async () => {
+    localStorage.setItem("shengji.name", "Ace");
+    localStorage.setItem("shengji.nameSource", "account");   // even a stale marker
+    authState.current = { status: "off", clientId: null, user: null };
+    await render();
+    expect(nameInput().value).toBe("Ace");
+    act(() => createBtn().click());
+    expect((sent[0] as { name: string }).name).toBe("Ace");
+    expect(localStorage.getItem("shengji.nameSource")).toBe("typed");
+  });
+});

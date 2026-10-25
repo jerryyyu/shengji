@@ -2170,11 +2170,21 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     transform: translate(-50%, -50%);
   }
 
+  /* Play sits just above the hand, in thumb reach. That is your own trick
+     slot, which is empty on your turn except while the finished trick
+     lingers before you lead; the buttons step aside for that moment. */
   .phase-play .action-bar {
-    top: calc((var(--trick-top) + 100% - var(--hand-h)) / 2 + 15px);
-    transform: translate(-50%, -50%);
+    top: auto;
+    bottom: calc(var(--hand-h) + 6px);
+    transform: translateX(-50%);
     justify-content: center;
     flex-wrap: nowrap;
+    transition: opacity 160ms ease;
+  }
+
+  .phase-play.showing-last .action-bar {
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* "Waiting for Bot 1" repeats what the glowing seat already says */

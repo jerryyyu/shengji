@@ -147,6 +147,40 @@ describe("play flight", () => {
   });
 });
 
+describe("deal arrival", () => {
+  const arrivals = () => reflows().filter((c) => c.opts.fill === "backwards");
+
+  it("flies each dealt card from the table into its slot", () => {
+    const view = renderTable(makeState({ phase: "deal", hand: [] }));
+    view.rerender(makeState({ phase: "deal", hand: HAND.slice(0, 1) }));
+    expect(arrivals()).toHaveLength(1);
+    // the stubbed trick area's centre is (0, 0); slot 0 is drawn at (0, 500), 50x70
+    expect(arrivals()[0].frames[0].transform).toBe("translate(-25px, -535px) scale(0.6)");
+    expect(arrivals()[0].frames[0].opacity).toBe(0);
+    expect(arrivals()[0].frames[1]).toEqual({ transform: "none", opacity: 1 });
+    view.rerender(makeState({ phase: "deal", hand: HAND.slice(0, 2) }));
+    expect(arrivals()).toHaveLength(2);
+    expect(arrivals()[1].el.dataset.id).toBe("1");
+    view.unmount();
+  });
+
+  it("staggers a kitty's worth arriving together and leaves a loaded hand alone", () => {
+    const view = renderTable(makeState({ phase: "bury", hand: HAND.slice(0, 1) }));
+    expect(arrivals()).toHaveLength(0);   // a page loading mid-round does not fly its cards in
+    view.rerender(makeState({ phase: "bury", hand: HAND }));
+    expect(arrivals().map((c) => c.opts.delay)).toEqual([0, 40, 80, 120]);
+    view.unmount();
+  });
+
+  it("does not fly cards under reduced motion", () => {
+    reduceMotion();
+    const view = renderTable(makeState({ phase: "deal", hand: [] }));
+    view.rerender(makeState({ phase: "deal", hand: HAND.slice(0, 1) }));
+    expect(arrivals()).toHaveLength(0);
+    view.unmount();
+  });
+});
+
 describe("trick sweep", () => {
   const four: [number, string][] = [[1, "S2"], [2, "S9"], [3, "SA"], [0, "S5"]];
   const last: LastTrick = { ...trick(1, four), winner: 3, points: 0 };

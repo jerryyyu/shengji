@@ -5,6 +5,7 @@ import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, resetAnnouncer } from "./audio";
+import { auth } from "./auth";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
 import Table from "./components/Table";
@@ -113,6 +114,7 @@ export default function App() {
       }
     });
     conn.start();
+    void auth.init();   // one config + me round trip; a server without sign-in answers "off"
     return () => {
       unsubStatus();
       unsubMsg();

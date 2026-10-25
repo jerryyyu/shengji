@@ -1,6 +1,6 @@
 # Sheng Ji WebSocket Protocol (v1)
 
-Single WebSocket endpoint: `ws://localhost:8000/ws`. All messages are JSON objects with a `type` field. The server is authoritative: after any change it broadcasts a full personalized `state` to every player. The client renders state; it never computes rules.
+Single WebSocket endpoint: `ws://localhost:8000/ws`. All messages are JSON objects with a `type` field. The handshake may carry the optional `sj_session` cookie (docs/accounts.md): the server then remembers the account on the seat and, when `name` is empty, uses the account's first name; the wire protocol itself is unchanged. The server is authoritative: after any change it broadcasts a full personalized `state` to every player. The client renders state; it never computes rules.
 
 ## Card codes
 

@@ -519,6 +519,60 @@ textarea:focus-visible {
   text-align: center;
 }
 
+/* Optional Google sign-in (auth.ts): the button slot and the signed-in chip
+   sit inside the lobby panel, so phones get no extra bar. */
+.google-signin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+.google-signin-slot { display: flex; justify-content: center; min-height: 40px; }
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 999px;
+  background: rgba(16, 19, 26, 0.5);
+  text-align: left;
+}
+.account-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex: none;
+  object-fit: cover;
+  background: #2a3140;
+}
+.account-avatar-blank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 14px;
+}
+.account-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.account-signout { padding: 4px 10px; font-size: 13px; }
+.hud-menu-row.account .account-avatar { width: 20px; height: 20px; }
+.hud-menu-account-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lobby-error {
   background: #3a1e24;
   border: 1px solid var(--danger);

@@ -4,6 +4,9 @@ import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
 import { createRoomPayload } from "../testPolicy";
 import { needsSeatPicker } from "../seatPicker";
+import { firstName, useAuth } from "../auth";
+import AccountChip from "./AccountChip";
+import GoogleSignIn from "./GoogleSignIn";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -20,6 +23,13 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
 
 export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [name, setName] = useState(getSavedName());
+  const account = useAuth();
+  // A signed-in player who never typed a name is called by their first name;
+  // a name they did type (or saved earlier) is theirs and is left alone.
+  useEffect(() => {
+    if (account.status !== "in" || !account.user) return;
+    setName((current) => (current.trim() ? current : firstName(account.user?.name)));
+  }, [account.status, account.user]);
   // The query gate is captured at mount. clearInvite() removes the URL query
   // after an action, but must not make an already-open test control disappear.
   const [testControlsVisible] = useState(
@@ -190,6 +200,12 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
         <p className="game-subtitle">Tractor · two decks · first to Ace</p>
+
+        {account.status === "in" && account.user ? (
+          <AccountChip user={account.user} />
+        ) : account.status === "out" && account.clientId ? (
+          <GoogleSignIn clientId={account.clientId} />
+        ) : null}
 
         <label className="field">
           <span className="field-label">Your name</span>

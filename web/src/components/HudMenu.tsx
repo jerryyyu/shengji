@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMuted } from "../useMuted";
 import { conn } from "../ws";
+import { auth, useAuth } from "../auth";
 
 /** The phone's `…` overflow: kitty count, sound, invite link and leave —
  * none of them a mid-trick decision, so on a small screen they share one
@@ -13,6 +14,7 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   const [muted, toggleSound] = useMuted();
   const [armed, setArmed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const account = useAuth();
   const timer = useRef<number | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -80,6 +82,16 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
           <button className="hud-menu-row" role="menuitem" onClick={copyInvite}>
             <span>{copied ? "Link copied" : "Copy invite link"}</span>
           </button>
+          {account.status === "in" && account.user ? (
+            <button className="hud-menu-row account" role="menuitem"
+                    onClick={() => { close(); void auth.signOut(); }}>
+              {account.user.picture
+                ? <img className="account-avatar" src={account.user.picture} alt="" referrerPolicy="no-referrer" />
+                : null}
+              <span className="hud-menu-account-name">{account.user.name || account.user.email}</span>
+              <span className="hud-menu-k">Sign out</span>
+            </button>
+          ) : null}
           <button className={`hud-menu-row leave${armed ? " armed" : ""}`} role="menuitem" onClick={leave}>
             <span>{armed ? "Leave game?" : "Leave game…"}</span>
           </button>

@@ -140,8 +140,8 @@ def singleton_registry_entries(**recipe):
         return cls(*args, **kwargs)
     entries = pv.pv_registry_entries(**recipe, bot_factory=factory)
     def named(make, name):
-        def build(seed=0):
-            bot = make(seed=seed)
+        def build(**kwargs):
+            bot = make(**kwargs)
             bot.policy_name = name
             return bot
         return build

@@ -464,7 +464,7 @@ def test_singleton_opt_in_registry_survives_fresh_process(package):
     env = {k: v for k, v in os.environ.items() if not k.startswith('SHENGJI_PV_')}
     env.update(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
                SHENGJI_PV_WORLDS='3', SHENGJI_PV_CANDIDATES='4',
-               SHENGJI_PV_CAP='400', SHENGJI_PV_BATCH_SIZE='16',
+               SHENGJI_PV_CAP='400', SHENGJI_PV_BATCH_SIZE='16', SHENGJI_PV_SEED='79',
                SHENGJI_PV_BURY_ARM='hybrid', SHENGJI_PV_SERVING_BUDGET_SECONDS='3')
     code = textwrap.dedent('''
         import asyncio, copy, json, os
@@ -478,6 +478,14 @@ def test_singleton_opt_in_registry_survives_fresh_process(package):
         assert (name in registry.REGISTRY) == enabled
         assert base in registry.REGISTRY
         if enabled:
+            default_bot = registry.make_bot(name)
+            seeded_bot = registry.make_bot(name, seed=79)
+            assert default_bot.sampler.rng.getstate() == seeded_bot.sampler.rng.getstate()
+            from shengji.api.server import Room
+            os.environ['SHENGJI_BOT'] = name
+            room = Room(code='SC8TEST', bot_seed=19)
+            assert room.bot.policy_name == name
+            assert room.bot.sampler.rng.getstate() == registry.make_bot(name, seed=19).sampler.rng.getstate()
             os.environ['SHENGJI_BOT'] = base
             reference = candidate_from_env(os.environ, seed=19)
             bot = registry.make_bot(name, seed=19)

@@ -452,3 +452,52 @@ def test_served_bots_pickle_and_behave_identically_after_unpickling(package):
     model = pickle.loads(pickle.dumps(bot.evaluator.model)) if hasattr(bot.evaluator, "model") else None
     if model is not None:
         assert all(not a.flags.writeable for a in model._weights.values())
+
+
+def test_singleton_opt_in_registry_survives_fresh_process(package):
+    import json
+    import os
+    import subprocess
+    import sys
+    import textwrap
+    path, sha = package
+    env = {k: v for k, v in os.environ.items() if not k.startswith('SHENGJI_PV_')}
+    env.update(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
+               SHENGJI_PV_WORLDS='3', SHENGJI_PV_CANDIDATES='4',
+               SHENGJI_PV_CAP='400', SHENGJI_PV_BATCH_SIZE='16',
+               SHENGJI_PV_BURY_ARM='hybrid', SHENGJI_PV_SERVING_BUDGET_SECONDS='3')
+    code = textwrap.dedent('''
+        import asyncio, copy, json, os
+        from shengji.ai import registry
+        from shengji.train import pv_search_policy as pv
+        from shengji.eval.singleton_challenger import candidate_from_env
+        from scripts.qualify_singleton_challenger import fixture, qualify_one
+        base, = pv.pv_registry_entries(**pv.pv_env_recipe())
+        name = base + '-sc8'
+        enabled = os.environ.get('SHENGJI_PV_SINGLETON_CHALLENGER') == '1'
+        assert (name in registry.REGISTRY) == enabled
+        assert base in registry.REGISTRY
+        if enabled:
+            os.environ['SHENGJI_BOT'] = base
+            reference = candidate_from_env(os.environ, seed=19)
+            bot = registry.make_bot(name, seed=19)
+            assert bot.policy_name == name and bot.config == reference.config
+            assert isinstance(bot, pv.PVSearchBuryBot)
+            root = fixture(rank='2', banker=0, seed=625091990)
+            a = bot.decide_play(copy.deepcopy(root), root.turn)
+            b = reference.decide_play(copy.deepcopy(root), root.turn)
+            assert a == b
+            for key in ('admitted', 'value_means', 'selected_index', 'singleton_challenger_applied'):
+                assert bot.last_decision_record[key] == reference.last_decision_record[key]
+            row = asyncio.run(qualify_one(root, registry.make_bot(name, seed=19)))
+            assert row['healthy'], row
+        print(json.dumps({'enabled': enabled}))
+    ''')
+    for value in ('0', '1', 'bogus'):
+        result = subprocess.run([sys.executable, '-c', code], env={**env, 'SHENGJI_PV_SINGLETON_CHALLENGER': value},
+                                capture_output=True, text=True, timeout=60)
+        if value == 'bogus':
+            assert result.returncode != 0 and 'must be 0 or 1' in result.stderr
+        else:
+            assert result.returncode == 0, result.stderr
+            assert json.loads(result.stdout)['enabled'] == (value == '1')

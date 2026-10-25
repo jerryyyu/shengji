@@ -131,3 +131,18 @@ def candidate_from_env(environ, *, seed=0):
     bot.belief_log = belief_log
     bot.policy_name = expected + '-sc8'
     return bot
+
+
+def singleton_registry_entries(**recipe):
+    """Register the same candidate under a distinct opt-in name, keeping the base available."""
+    def factory(*args, **kwargs):
+        cls = SingletonChallengerBuryBot if 'bury_arm' in kwargs else SingletonChallengerBot
+        return cls(*args, **kwargs)
+    entries = pv.pv_registry_entries(**recipe, bot_factory=factory)
+    def named(make, name):
+        def build(seed=0):
+            bot = make(seed=seed)
+            bot.policy_name = name
+            return bot
+        return build
+    return {name + '-sc8': named(make, name + '-sc8') for name, make in entries.items()}

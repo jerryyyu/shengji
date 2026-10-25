@@ -454,7 +454,9 @@ def test_served_bots_pickle_and_behave_identically_after_unpickling(package):
         assert all(not a.flags.writeable for a in model._weights.values())
 
 
-def test_singleton_opt_in_registry_survives_fresh_process(package):
+@pytest.mark.parametrize("first_import", ["shengji.ai.registry", "shengji.train.pv_search_policy",
+                                         "shengji.eval.singleton_challenger", "shengji.api.server"])
+def test_singleton_opt_in_registry_survives_fresh_process(package, first_import):
     import json
     import os
     import subprocess
@@ -502,7 +504,7 @@ def test_singleton_opt_in_registry_survives_fresh_process(package):
         print(json.dumps({'enabled': enabled}))
     ''')
     for value in ('0', '1', 'bogus'):
-        result = subprocess.run([sys.executable, '-c', code], env={**env, 'SHENGJI_PV_SINGLETON_CHALLENGER': value},
+        result = subprocess.run([sys.executable, '-c', 'import ' + first_import + '\n' + code], env={**env, 'SHENGJI_PV_SINGLETON_CHALLENGER': value},
                                 capture_output=True, text=True, timeout=60)
         if value == 'bogus':
             assert result.returncode != 0 and 'must be 0 or 1' in result.stderr

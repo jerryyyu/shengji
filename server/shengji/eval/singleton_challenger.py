@@ -1,4 +1,4 @@
-"""Exploratory fixed-width lead admission; not a serving registry recipe.
+"""Fixed-width lead admission shared by diagnostic and opt-in serving consumers.
 
 Up to eight existing belief worlds price the ballot and omitted singletons
 with heuristic-finished leaves. A singleton must beat the entire ballot on
@@ -7,8 +7,8 @@ reducer still choose the move; the proxy never selects the played action.
 """
 import numpy as np
 
-from shengji.train.policy_value_search import PolicyValueBot, leading
 from shengji.train.pv_search_policy import PVSearchBot, PVSearchBuryBot, make_pv_search_bot
+from shengji.train.policy_value_search import PolicyValueBot, leading
 from shengji.train import pv_search_policy as pv
 
 
@@ -131,18 +131,3 @@ def candidate_from_env(environ, *, seed=0):
     bot.belief_log = belief_log
     bot.policy_name = expected + '-sc8'
     return bot
-
-
-def singleton_registry_entries(**recipe):
-    """Register the same candidate under a distinct opt-in name, keeping the base available."""
-    def factory(*args, **kwargs):
-        cls = SingletonChallengerBuryBot if 'bury_arm' in kwargs else SingletonChallengerBot
-        return cls(*args, **kwargs)
-    entries = pv.pv_registry_entries(**recipe, bot_factory=factory)
-    def named(make, name):
-        def build(**kwargs):
-            bot = make(**kwargs)
-            bot.policy_name = name
-            return bot
-        return build
-    return {name + '-sc8': named(make, name + '-sc8') for name, make in entries.items()}

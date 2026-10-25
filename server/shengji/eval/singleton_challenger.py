@@ -22,13 +22,17 @@ class _SingletonChallenger:
         self.policy_name = 'research-singleton-challenger-sc8'
         self._singleton_probe = {}
 
+    def _omitted(self, rnd, actions, preferences, chosen):
+        """Indices of the omitted candidates the probe prices: the legal singletons."""
+        return [i for i, action in enumerate(actions)
+                if len(action) == 1 and i not in chosen and np.isfinite(preferences[i])]
+
     def _admit(self, rnd, seat, actions, preferences, anchor_index):
         chosen = super()._admit(rnd, seat, actions, preferences, anchor_index)
         self._singleton_probe = {'singleton_challenger_applied': False}
         if not leading(rnd) or max(map(len, rnd.hands)) <= 7 or len(chosen) < 2:
             return chosen
-        omitted = [i for i, action in enumerate(actions)
-                   if len(action) == 1 and i not in chosen and np.isfinite(preferences[i])]
+        omitted = self._omitted(rnd, actions, preferences, chosen)
         if not omitted:
             return chosen
         worlds, check_budget = self._admission_context
@@ -92,21 +96,23 @@ class SingletonChallengerBuryBot(_SingletonChallenger, PVSearchBuryBot):
     """The same lead candidate preserving the production bury consumer."""
 
 
-def load_singleton_challenger(*, name, **recipe):
-    """Load a named baseline recipe through the production package loader.
-
-    The caller supplies the baseline identity and its full recipe, including
-    belief and bury packages. This entry point adds a distinct research name;
-    it does not register a serving flag or mutate an existing bot.
-    """
+def challenger_factory(play_cls, bury_cls):
+    """A ``bot_factory`` choosing the bury-consumer class when the recipe has a bury arm."""
     def factory(*args, **kwargs):
-        cls = SingletonChallengerBuryBot if 'bury_arm' in kwargs else SingletonChallengerBot
+        cls = bury_cls if 'bury_arm' in kwargs else play_cls
         return cls(*args, **kwargs)
-    return make_pv_search_bot(**recipe, name=name + '-sc8', bot_factory=factory)
+    return factory
 
 
-def candidate_from_env(environ, *, seed=0):
-    """Bind the research candidate to a verified baseline serving recipe.
+def load_challenger(*, name, suffix, play_cls, bury_cls, **recipe):
+    """Load a named baseline recipe through the production package loader as a
+    research candidate class with a distinct name (``name + suffix``)."""
+    return make_pv_search_bot(**recipe, name=name + suffix,
+                              bot_factory=challenger_factory(play_cls, bury_cls))
+
+
+def challenger_from_env(environ, *, suffix, play_cls, bury_cls, seed=0):
+    """Bind a research candidate class to a verified baseline serving recipe.
 
     The registry derives the baseline identity, including the bury recipe.
     Explicit latency/log switches overwrite ambient construction settings so
@@ -119,15 +125,30 @@ def candidate_from_env(environ, *, seed=0):
         raise ValueError('a named baseline SHENGJI_BOT is required')
     switches = pv.latency_switches(env)
     belief_log = pv.belief_log_enabled(env)
-    def factory(*args, **kwargs):
-        cls = SingletonChallengerBuryBot if 'bury_arm' in kwargs else SingletonChallengerBot
-        return cls(*args, **kwargs)
-    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env), bot_factory=factory)
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env),
+                                     bot_factory=challenger_factory(play_cls, bury_cls))
     if list(entries) != [expected]:
         raise ValueError('baseline recipe does not match SHENGJI_BOT')
     bot = entries[expected](seed=seed)
     for attr, enabled in switches.items():
         setattr(bot, attr, enabled)
     bot.belief_log = belief_log
-    bot.policy_name = expected + '-sc8'
+    bot.policy_name = expected + suffix
     return bot
+
+
+def load_singleton_challenger(*, name, **recipe):
+    """Load a named baseline recipe through the production package loader.
+
+    The caller supplies the baseline identity and its full recipe, including
+    belief and bury packages. This entry point adds a distinct research name;
+    it does not register a serving flag or mutate an existing bot.
+    """
+    return load_challenger(name=name, suffix='-sc8', play_cls=SingletonChallengerBot,
+                           bury_cls=SingletonChallengerBuryBot, **recipe)
+
+
+def candidate_from_env(environ, *, seed=0):
+    """The singleton challenger bound to the verified baseline serving recipe."""
+    return challenger_from_env(environ, suffix='-sc8', play_cls=SingletonChallengerBot,
+                               bury_cls=SingletonChallengerBuryBot, seed=seed)

@@ -23,6 +23,7 @@ import pytest
 
 from shengji.harvest.legal import enumerate_legal, forced_lead, resolve_lead
 from shengji.engine.combos import decompose
+from shengji.engine.game import Game
 from shengji.train import policy_value_search as module
 from shengji.train import pv_search_policy as pv
 from shengji.train.policy_value_search import PolicyValueBot, structure_key
@@ -850,3 +851,199 @@ def test_singleton_probe_invalid_values_fail_closed(bad):
     candidate.evaluator = InvalidEvaluator()
     with pytest.raises(ValueError, match='finite root-team'):
         candidate.decide_play(copy.deepcopy(rnd), rnd.turn)
+
+
+def _state_seed(seed):
+    rnd = Game(random.Random(seed)).start_round(); h = module.HeuristicBot()
+    while rnd.phase == 'deal':
+        s, _, _ = rnd.deal_next(); c = h.decide_declare(rnd, s)
+        if c: rnd.declare(s, c)
+    for s in range(4):
+        c = h.decide_declare(rnd, s, final=True)
+        if c: rnd.declare(s, c)
+    rnd.finalize_declare(); rnd.bury(rnd.banker, h.decide_bury(rnd, rnd.banker))
+    return rnd
+
+
+#: a dealt state whose leader holds omitted tractors (seed 14: two omitted tractors; `state()` has omitted pairs only)
+TRACTOR_SEED = 14
+
+
+def _pair_candidate(rnd, kind, *, greedy=False, budget=None):
+    """(sc8p candidate, served control, an omitted lead of `kind`) on `rnd`; the control's ballot defines "omitted"."""
+    from shengji.eval.pair_challenger import PairChallengerBot, lead_kind
+    config = pv.PVSearchConfig(checkpoint_sha256='f' * 64, worlds=8, candidates=8,
+                              cap=4000, batch_size=128, admission_diversity=True,
+                              leaf_greedy_finish=greedy, serving_budget_seconds=budget)
+    kwargs = dict(evaluator=ZeroEvaluator(), version=2, config=config, checkpoint='/dev/null', seed=17)
+    candidate = PairChallengerBot(predict, **kwargs)
+    control = pv.PVSearchBot(predict, **kwargs)
+    control.decide_play(copy.deepcopy(rnd), rnd.turn)
+    ballot = {tuple(sorted(a)) for a in control.last_decision_record['admitted']}
+    actions = enumerate_legal(rnd, rnd.turn, cap=4000).actions
+    target = kind and next(a for a in actions if tuple(sorted(a)) not in ballot and lead_kind(a, rnd.ordering) == kind)
+    return candidate, control, target
+
+
+def _removed_is(original, seat, target):
+    class TargetEvaluator(ZeroEvaluator):
+        def score(self, leaves, acting):
+            return np.array([float(original - Counter(leaf.hands[seat]) == Counter(target)) for leaf in leaves])
+    return TargetEvaluator()
+
+
+def test_lead_kind_follows_the_engine_decomposition():
+    from shengji.eval.pair_challenger import lead_kind
+    rnd = _state_seed(TRACTOR_SEED)
+    actions = enumerate_legal(rnd, rnd.turn, cap=4000).actions
+    for a in actions:
+        kind = lead_kind(a, rnd.ordering)
+        comps = decompose(list(a), rnd.ordering).components
+        assert kind == (comps[0].kind if len(comps) == 1 else 'throw')
+    kinds = Counter(lead_kind(a, rnd.ordering) for a in actions)
+    assert kinds['pair'] and kinds['tractor'] and kinds['throw'] and kinds['single']
+
+
+@pytest.mark.parametrize('kind,seed,greedy', [('pair', 625091990, False), ('pair', 625091990, True),
+                                              ('tractor', TRACTOR_SEED, False), ('tractor', TRACTOR_SEED, True)])
+def test_pair_challenger_reaches_full_world_scoring_and_real_reducer(kind, seed, greedy):
+    rnd = _state_seed(seed); seat = rnd.turn
+    candidate, control, target = _pair_candidate(rnd, kind, greedy=greedy)
+    candidate.evaluator = _removed_is(Counter(rnd.hands[seat]), seat, target)
+    seen = []
+    value_means = candidate._value_means
+    def observe(root, actor, admitted, worlds, check_budget=None):
+        seen.append((copy.deepcopy(admitted), len(worlds)))
+        return value_means(root, actor, admitted, worlds, check_budget)
+    candidate._value_means = observe
+    before = copy.deepcopy(rnd.hands)
+    played = candidate.decide_play(copy.deepcopy(rnd), seat)
+    record = candidate.last_decision_record
+    assert record['schema'] == pv.RECORD_SCHEMA and record['work_complete']
+    assert record['singleton_challenger_applied'] and record['challenger_added_kind'] == kind
+    assert sorted(record['singleton_challenger_added']) == sorted(target)
+    assert record['admitted'][:-1] == control.last_decision_record['admitted'][:-1]
+    assert len(record['admitted']) == 8 and sorted(played) == sorted(target)
+    assert seen == [(record['admitted'], 8)]
+    assert record['worlds'] == 8 and record['singleton_probe_worlds'] == 8
+    pool = record['challenger_pool']
+    assert set(pool) == {'single', 'pair', 'tractor'} and pool[kind] >= 1
+    assert record['singleton_probe_evaluations'] == 8 * (8 + sum(pool.values()))
+    assert candidate.sampler.rng.getstate() == control.sampler.rng.getstate()
+    assert rnd.hands == before
+    if greedy:
+        assert record['leaf_greedy_finish_applied']
+
+
+def test_pair_challenger_never_admits_a_throw():
+    from shengji.eval.pair_challenger import lead_kind
+    rnd = state(); seat = rnd.turn
+    candidate, control, throw = _pair_candidate(rnd, 'throw')
+    candidate.evaluator = _removed_is(Counter(rnd.hands[seat]), seat, throw)
+    played = candidate.decide_play(copy.deepcopy(rnd), seat)
+    record = candidate.last_decision_record
+    assert not record['singleton_challenger_applied']
+    assert record['admitted'] == control.last_decision_record['admitted']
+    assert played == control.last_decision_record['played']
+    assert 'throw' not in record['challenger_pool']
+    actions = enumerate_legal(rnd, seat, cap=4000).actions
+    ballot = {tuple(sorted(a)) for a in control.last_decision_record['admitted']}
+    omitted = Counter(lead_kind(a, rnd.ordering) for a in actions if tuple(sorted(a)) not in ballot)
+    assert record['challenger_pool'] == {k: omitted[k] for k in ('single', 'pair', 'tractor')}
+    assert omitted['throw'] > 0
+    assert record['singleton_probe_evaluations'] == 8 * (8 + sum(record['challenger_pool'].values()))
+
+
+def test_pair_challenger_matches_singleton_challenger_when_a_single_wins():
+    rnd = state(); seat = rnd.turn
+    sc8, control, single = _singleton_candidate(rnd)
+    sc8p, _, _ = _pair_candidate(rnd, 'pair')
+    for bot in (sc8, sc8p):
+        bot.evaluator = _removed_is(Counter(rnd.hands[seat]), seat, single)
+    played8 = sc8.decide_play(copy.deepcopy(rnd), seat)
+    played8p = sc8p.decide_play(copy.deepcopy(rnd), seat)
+    r8, r8p = sc8.last_decision_record, sc8p.last_decision_record
+    assert r8['singleton_challenger_applied'] and r8p['singleton_challenger_applied']
+    assert r8p['challenger_added_kind'] == 'single'
+    assert played8p == played8 == list(single)
+    assert r8p['admitted'] == r8['admitted'] and r8p['value_means'] == r8['value_means']
+    assert r8p['singleton_challenger_removed'] == r8['singleton_challenger_removed']
+    assert r8p['singleton_probe_evaluations'] > r8['singleton_probe_evaluations']
+    assert r8p['challenger_pool']['single'] == r8['singleton_probe_evaluations'] // 8 - 8
+
+
+def test_pair_challenger_tie_and_follow_preserve_original_ballot():
+    rnd = state()
+    for follow in (False, True):
+        if follow:
+            rnd.play(rnd.turn, module.HeuristicBot().decide_play(rnd, rnd.turn))
+        candidate, control, _ = _pair_candidate(rnd, None if follow else 'pair')
+        played = candidate.decide_play(copy.deepcopy(rnd), rnd.turn)
+        record = candidate.last_decision_record
+        assert not record['singleton_challenger_applied']
+        assert record['admitted'] == control.last_decision_record['admitted']
+        assert played == control.last_decision_record['played']
+        if follow:
+            assert 'singleton_probe_evaluations' not in record and 'challenger_pool' not in record
+        else:
+            assert record['singleton_probe_margin'] == 0.0 and record['challenger_pool']['pair'] >= 1
+
+
+def test_pair_challenger_proposal_does_not_override_full_value_ranking():
+    rnd = state(); seat = rnd.turn
+    candidate, control, target = _pair_candidate(rnd, 'pair', greedy=True)
+    original = Counter(rnd.hands[seat])
+    phase = {'full': False}
+    class DisagreeingEvaluator(ZeroEvaluator):
+        def score(self, leaves, acting):
+            sign = -1.0 if phase['full'] else 1.0
+            return np.array([sign * (original - Counter(leaf.hands[seat]) == Counter(target)) for leaf in leaves])
+    candidate.evaluator = DisagreeingEvaluator()
+    value_means = candidate._value_means
+    def full_pass(*args, **kwargs):
+        phase['full'] = True
+        return value_means(*args, **kwargs)
+    candidate._value_means = full_pass
+    action = candidate.decide_play(copy.deepcopy(rnd), seat)
+    rec = candidate.last_decision_record
+    assert rec['singleton_challenger_applied'] and rec['challenger_added_kind'] == 'pair'
+    assert sorted(action) != sorted(target)
+    assert rec['value_means'][-1] < max(rec['value_means'][:-1])
+
+
+def test_pair_challenger_deadline_restores_sampler_and_uses_served_fallback(monkeypatch):
+    rnd = state(); seat = rnd.turn
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+    candidate, _, _ = _pair_candidate(rnd, 'pair', budget=1.0)
+    class SlowEvaluator(ZeroEvaluator):
+        def score(self, leaves, acting):
+            clock[0] += 2.0
+            return super().score(leaves, acting)
+    candidate.evaluator = SlowEvaluator()
+    before = candidate.sampler.rng.getstate()
+    played = candidate.decide_play(copy.deepcopy(rnd), seat)
+    assert played == module.HeuristicBot().decide_play(rnd, seat)
+    assert candidate.last_decision_record['schema'] == pv.FALLBACK_SCHEMA
+    assert candidate.last_decision_record['reason'] == 'budget'
+    assert candidate.sampler.rng.getstate() == before
+
+
+@pytest.mark.parametrize('bad', [float('nan'), float('inf')])
+def test_pair_challenger_invalid_values_fail_closed(bad):
+    rnd = state()
+    candidate, _, _ = _pair_candidate(rnd, 'pair')
+    class InvalidEvaluator(ZeroEvaluator):
+        def score(self, leaves, seat):
+            return np.full(len(leaves), bad)
+    candidate.evaluator = InvalidEvaluator()
+    with pytest.raises(ValueError, match='finite root-team'):
+        candidate.decide_play(copy.deepcopy(rnd), rnd.turn)
+
+
+def test_pair_challenger_refuses_forced_extras_and_guard():
+    from shengji.eval.pair_challenger import PairChallengerBot
+    for rules in (dict(admit_forced_single=True), dict(small_joker_guard=True)):
+        config = pv.PVSearchConfig(checkpoint_sha256='f' * 64, worlds=8, candidates=8, cap=4000, batch_size=128, **rules)
+        with pytest.raises(ValueError, match='no forced extras'):
+            PairChallengerBot(predict, evaluator=ZeroEvaluator(), version=2, config=config, checkpoint='/dev/null', seed=17)

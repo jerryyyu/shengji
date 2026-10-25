@@ -71,15 +71,23 @@ def _play_state(seed: int = 625091990):
 SMALL = dict(worlds=3, candidates=4, cap=400, batch_size=16)
 
 
-def test_singleton_candidate_loads_package_and_keeps_bury_consumer(package):
-    from shengji.eval.singleton_challenger import load_singleton_challenger
+def _challenger_loaders():
+    from shengji.eval.pair_challenger import load_pair_challenger, pair_candidate_from_env
+    from shengji.eval.singleton_challenger import candidate_from_env, load_singleton_challenger
+    return [pytest.param((load_singleton_challenger, candidate_from_env, '-sc8'), id='sc8'),
+            pytest.param((load_pair_challenger, pair_candidate_from_env, '-sc8p'), id='sc8p')]
+
+
+@pytest.mark.parametrize('challenger', _challenger_loaders())
+def test_singleton_candidate_loads_package_and_keeps_bury_consumer(package, challenger):
+    load_challenger, _, suffix = challenger
     path, sha = package
     recipe = dict(checkpoint=path, sha256=sha, **SMALL, bury_arm='hybrid',
                   leaf_greedy_finish=True, serving_budget_seconds=3.0)
-    bot = load_singleton_challenger(name='test-baseline', **recipe)
+    bot = load_challenger(name='test-baseline', **recipe)
     control = pv.make_pv_search_bot(**recipe)
     assert isinstance(bot, pv.PVSearchBuryBot)
-    assert bot.policy_name == 'test-baseline-sc8'
+    assert bot.policy_name == 'test-baseline' + suffix
     assert bot.config == control.config
     rnd = _play_state()
     bury_root = copy.deepcopy(rnd)
@@ -96,11 +104,12 @@ def test_singleton_candidate_loads_package_and_keeps_bury_consumer(package):
     rnd.play(rnd.turn, action)
 
 
-def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_path, monkeypatch):
+@pytest.mark.parametrize('challenger', _challenger_loaders())
+def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_path, monkeypatch, challenger):
     import hashlib
     import pathlib
     import tomllib
-    from shengji.eval.singleton_challenger import candidate_from_env
+    _, candidate_from_env, suffix = challenger
     path, sha = package
     env = tomllib.loads((pathlib.Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
     belief = tmp_path / 'belief.npz'
@@ -119,7 +128,7 @@ def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_
     candidate = candidate_from_env(env, seed=19)
     control = entries[baseline_name](seed=19)
     assert candidate.config == control.config
-    assert candidate.policy_name == baseline_name + '-sc8'
+    assert candidate.policy_name == baseline_name + suffix
     assert candidate.belief_model is sentinel
     assert candidate.worlds == 64 and candidate.candidates == 8
     assert candidate.serving_budget_seconds == 3.0

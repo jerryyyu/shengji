@@ -16,7 +16,8 @@ Changed:
      (EXPLOITER_BUDGET_S: b 3.0, a 1.5) reported as the share of its decisions past it (descriptive);
   5. bind(): the DEV start line form of this launcher ('(exploiter env: <words>; defender at served budgets and widths)');
   6. the schema names, the candidate text and the canonical lines;
-  7. main(): after both arms, the descriptive comparison lines through compare_runs.versus_earlier_run (arm a vs arm b; arm b vs s66b's
+  7. sc8_gate's finiteness test of the probe margin as math.isfinite (the lint's nan-idiom rule; the same accepted set);
+  8. main(): after both arms, the descriptive comparison lines through compare_runs.versus_earlier_run (arm a vs arm b; arm b vs s66b's
      sealed sc8-alone read), each audited by audit_comparison_lines, and the predeclared power note; never a condition.
 Usage: python3 make_s68dev_read.py   (refuses to overwrite)"""
 import hashlib
@@ -203,6 +204,9 @@ def main(argv):
 
 
 ''')
+sub('or isinstance(margin, bool) or not isinstance(margin, (int, float)) or margin != margin or margin in (float("inf"), float("-inf")) \\',
+    'or isinstance(margin, bool) or not isinstance(margin, (int, float)) or not math.isfinite(margin) \\')
+sub("import hashlib\nimport importlib.util\nimport json\n", "import hashlib\nimport importlib.util\nimport json\nimport math\n")
 code = "\n".join(l for l in s.split("\n") if not l.lstrip().startswith("#"))
 for tok in ("s66b_read", "/root/claude-sc8-src", "eb0975da0d47", "vol-dev-claude-s66b", "claude_s66b_screen", "make_s66b.py", "'sc8': {'seed0'"):
     assert tok not in code, tok

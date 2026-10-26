@@ -115,8 +115,21 @@ whatever happens.
 
 ## Host estimate
 
-See `rehearsal/host/rehearsal_summary.json`, which records the bounded perf rehearsal of the exact child form (filled after the
-rehearsal; written before any lane deal). The per-arm stop `KILL_AFTER` must cover the projected per-arm wall.
+The bounded perf rehearsal (2026-10-26 13:08–13:13Z; not a lane deal; the throwaway block) ran the final launcher `2adc5531`'s exact child
+form for both arms. Details are in `rehearsal/host/rehearsal_summary.json`, `rehearsal/rehearsal_read.txt` and `rehearsal/host/rehearse.log`.
+
+| | arm b | arm a |
+|---|---|---|
+| wall, 56 deals | 134.7 s (2.41 s/deal) | 176.2 s (3.15 s/deal) |
+| projected full arm | about 9,430 s | about 12,330 s |
+| peak group RSS | 1.83 GB | 1.99 GB |
+| validity | VALID | VALID |
+| play / belief / bury fallbacks, declare abandons | 0 | 0 |
+| exploiter decide_play max | 2.19 s | 1.33 s (p99 1.15 s, inside its own 1.5 s budget) |
+
+- The lane total is about 6.1 h plus checks. `KILL_AFTER` 30,000 s per arm is 2.4× arm a's projection.
+- The rehearsal's 3,720 exploiter decisions in arm a never reached 1.5 s. The full arm makes about 70× as many. A single budget expiry
+  makes arm a DEV_INVALID, as predeclared above.
 
 ## Reading
 

@@ -1,0 +1,2 @@
+NOTE   claude_s68dev_perf.final.sh: no *_PY='...' blocks
+check_py_blocks: 0 ok, 0 broken

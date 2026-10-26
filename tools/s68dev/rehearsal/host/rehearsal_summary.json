@@ -1,0 +1,16 @@
+{
+ "schema": "lane-host-rehearsal-summary-v1",
+ "host": "shengji-perf",
+ "workers": 14,
+ "deals": 56,
+ "wall_s": 176.2,
+ "s_per_deal": 3.1464,
+ "full_run_deals": 3920,
+ "projected_full_wall_s": 12334.0,
+ "cap_s": 30000,
+ "peak_rss_kb": 1994104,
+ "terminal_line": "REHEARSAL DONE rc=0",
+ "cleanup": "2026-10-26T13:13:15Z group 1731011 live members after exit: ''; any process still in group: ''",
+ "log": "rehearse.log",
+ "note": "Both arms of the final launcher 2adc5531 ran the exact child form on the throwaway block 243570000+56 (14 workers, r2). The summary scope is ONE arm (KILL_AFTER is per arm) and uses the slower arm a (W96/K12, half budget): 176.2 s / 56 deals; arm b: 134.7 s (2.405 s/deal, projected 9,429 s), peak group RSS 1,828,520 kB. Projected lane total ~21,800 s (~6.0 h) + checks. rehearsal_read.txt (the final reader's analyze on both arms): VALID both, 0 play / belief / bury fallbacks, 0 declare abandons; arm a exploiter decide_play max 1.331 s (own budget 1.5 s), p99 1.148 s; arm b max 2.193 s."
+}

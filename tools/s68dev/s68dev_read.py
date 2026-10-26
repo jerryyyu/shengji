@@ -40,6 +40,7 @@ runs, not a paired test), the power note.  Never a release, deploy, Fly-latency 
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import re
 import sys
@@ -391,7 +392,7 @@ def sc8_gate(by):
                     refuse(f"sc8 no-probe entry: {w} is {p!r} (applied / probe_worlds / margin / chosen must be off)")
                 continue
             if type(evals) is not int or evals <= 0 or not lead or h[MAXH] <= 7 or pw != PROBE_WORLDS \
-                    or isinstance(margin, bool) or not isinstance(margin, (int, float)) or margin != margin or margin in (float("inf"), float("-inf")) \
+                    or isinstance(margin, bool) or not isinstance(margin, (int, float)) or not math.isfinite(margin) \
                     or applied is not (margin > 0) or type(chosen) is not bool or (chosen and not applied):
                 refuse(f"sc8 probe entry: {w} is {p!r} at max hand {h[MAXH]} (a probe needs a lead at max hand > 7, {PROBE_WORLDS} probe worlds, a finite margin, applied iff margin > 0, chosen only when applied)")
             t["probed"] += 1; g["probed"] += 1

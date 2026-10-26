@@ -1,0 +1,16 @@
+2026-10-26T13:08:01Z rehearsal start: launcher 2adc553142760d6edc107f626a003e87aa7efa95921e8d3c4438a16ea308c67c guards (placeholder, tree, packages, toml, compiled, names, mem)
+2026-10-26T13:08:02Z names: defender pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a | exploiters b SingletonChallengerBuryBot ry-hybrid-bwv-9125072c7686-sc8 diff ['belief_capacity'] time [3.0, 2000, 2.0]; a SingletonChallengerBuryBot ry-hybrid-bwv-533c84747dc9-sc8 diff ['belief_capacity', 'candidates', 'leaf_greedy_deadline_ms', 'serving_budget_seconds', 'worlds'] time [1.5, 1000, 1.0] | candidate module 90e53155 | switches on both sides (3 of 3, single off) | same S58 on both | defender 3 s / lgfd 2000 / bury 2 s / W 64 / K 8, plain draw | bwc on the exploiter only | plan head [('first', '2', None), ('fixed_banker', '3', 1), ('fixed_banker', '4', 2), ('first', '2', None)]
+2026-10-26T13:08:02Z guards ok; MemAvailable 30611812 kB; nproc 16; load 0.06 0.08 0.03
+2026-10-26T13:08:02Z child start b: exploiter env S66_EXPLOITER=sc8 SHENGJI_PV_BELIEF_CAPACITY=1; seed0 243570000 deals 56 workers 14 plan r2; KILL 3600 s backstop 3610 s
+2026-10-26T13:08:02Z child b pid/pgid 1730260; watchdog 1730266
+2026-10-26T13:10:17Z child b END rc=0 wall_s=134.7 maxrss_kb(time -v, largest single process)=157416
+2026-10-26T13:10:17Z peak group RSS kB / members (b): 1828520 18 over 66 samples
+2026-10-26T13:10:17Z group 1730260 live members after exit: ''; any process still in group: ''
+2026-10-26T13:10:17Z rows b 112 (expect 112); stdout tail: identity [exb ybrid-bwv-9125072c7686-sc8] n=  56 levels/round +0.0357 [-0.1071, +0.1786]  pts +2.01 [-2.59, +6.52]  fired-deals 0 fires {'declare': 0, 'bury': 0, 'play': 0} banker 0.500
+2026-10-26T13:10:17Z child start a: exploiter env S66_EXPLOITER=sc8 SHENGJI_PV_BELIEF_CAPACITY=1 SHENGJI_PV_WORLDS=96 SHENGJI_PV_CANDIDATES=12 SHENGJI_PV_SERVING_BUDGET_SECONDS=1.5 SHENGJI_PV_LEAF_GREEDY_DEADLINE=1 SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS=1; seed0 243570000 deals 56 workers 14 plan r2; KILL 3600 s backstop 3610 s
+2026-10-26T13:10:17Z child a pid/pgid 1731011; watchdog 1731017
+2026-10-26T13:13:15Z child a END rc=0 wall_s=176.2 maxrss_kb(time -v, largest single process)=167556
+2026-10-26T13:13:15Z peak group RSS kB / members (a): 1994104 18 over 87 samples
+2026-10-26T13:13:15Z group 1731011 live members after exit: ''; any process still in group: ''
+2026-10-26T13:13:15Z rows a 112 (expect 112); stdout tail: identity [exb ybrid-bwv-533c84747dc9-sc8] n=  56 levels/round -0.1071 [-0.2054, -0.0089]  pts -2.54 [-5.98, +1.12]  fired-deals 0 fires {'declare': 0, 'bury': 0, 'play': 0} banker 0.500
+2026-10-26T13:13:15Z REHEARSAL DONE rc=0

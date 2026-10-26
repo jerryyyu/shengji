@@ -307,7 +307,7 @@ jobs:
           SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
           SHENGJI_PV_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/s17long-e2-763b5e05.npz
           SHENGJI_PV_BELIEF48_PACKAGE_PATH: /tmp/shengji-packages/s58-e6-42444515.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_pv_belief_capacity_release48.py tests/test_release46_fly_config.py tests/test_release48_fly_config.py tests/test_pv_latency_switches_release46.py tests/test_pv_leaf_greedy_stream.py
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_pv_belief_capacity_release48.py tests/test_pv_leaf_greedy_top_release48.py tests/test_release46_fly_config.py tests/test_release48_fly_config.py tests/test_pv_latency_switches_release46.py tests/test_pv_leaf_greedy_stream.py
 
   import-walk:
     needs: changes
@@ -431,6 +431,7 @@ jobs:
             tests/test_pv_leaf_greedy_stream.py \
             tests/test_pv_lgf_reply_prefix.py \
             tests/test_pv_leaf_greedy_deadline.py \
+            tests/test_pv_leaf_greedy_top.py \
             tests/test_pv_encode_prefix.py \
             tests/test_pv_encode_batch_fast.py \
             tests/test_pv_single_candidate_fast.py \

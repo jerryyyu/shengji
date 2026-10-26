@@ -12,7 +12,8 @@ PASS the harness and hypotheses shas are s67c's final launcher's (2bc24cee), unc
 PASS ADAPTER_SHA is s66b's s66_sc8_adapter.py (80e0e7f8), the packet's copy
 PASS CAND_SHA is sha256(git show 8b6ead10:server/shengji/eval/singleton_challenger.py)
 PASS the local candidate worktree's singleton_challenger.py has CAND_SHA
-PASS the candidate worktree is at the tree head 8b6ead10, which contains #1156's 39d514cc, claude/s68-bwc and main d33bfd70
+PASS the candidate worktree is at the tree head 8b6ead10, which contains #1156's 39d514cc, the bwc commit 64159b86 and main d33bfd70
+PASS the bwc PR's current head (origin/claude/s68-bwc) has the same server/shengji and fly.toml as 64159b86 (its later commits are tests / CI only)
 PASS the harness, hypotheses and adapter are pinned in /root/claude-s68dev/ and check_toml guards the shared directory
 PASS each arm's env starts with the adapter's SENTINEL (S66_EXPLOITER=sc8) and carries bwc; run_dev passes the arm's words (one eargs expansion)
 PASS 14 workers, plan r2, DEALS 3920 = 14 x 280, stop / backstop 30000 / 30010

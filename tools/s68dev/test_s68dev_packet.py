@@ -94,8 +94,10 @@ check(v['CAND_REL'] == 'server/shengji/eval/singleton_challenger.py' and v['CAND
 check(sha(os.path.join(WT, v['CAND_REL'])) == v['CAND_SHA'], "the local candidate worktree's singleton_challenger.py has CAND_SHA")
 wt_head = subprocess.run(['git', '-C', WT, 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True).stdout.strip()
 anc = lambda c: subprocess.run(['git', '-C', REPO, 'merge-base', '--is-ancestor', c, v['TREE_HEAD_FULL']]).returncode == 0
-check(wt_head == v['TREE_HEAD_FULL'] and anc('39d514cc260d34b68c6ffb6949ed3d4d769e6d54') and anc('origin/claude/s68-bwc') and anc('d33bfd70bb2f434368b7e83cdb5732cc791bd0ab'),
-      f"the candidate worktree is at the tree head {wt_head[:8]}, which contains #1156's 39d514cc, claude/s68-bwc and main d33bfd70")
+check(wt_head == v['TREE_HEAD_FULL'] and anc('39d514cc260d34b68c6ffb6949ed3d4d769e6d54') and anc('64159b86b562cca6bc7fbbcb13d6d022f80a0131') and anc('d33bfd70bb2f434368b7e83cdb5732cc791bd0ab'),
+      f"the candidate worktree is at the tree head {wt_head[:8]}, which contains #1156's 39d514cc, the bwc commit 64159b86 and main d33bfd70")
+bwc_same = subprocess.run(['git', '-C', REPO, 'diff', '--quiet', '64159b86b562cca6bc7fbbcb13d6d022f80a0131', 'origin/claude/s68-bwc', '--', 'server/shengji', 'fly.toml']).returncode == 0
+check(bwc_same, "the bwc PR's current head (origin/claude/s68-bwc) has the same server/shengji and fly.toml as 64159b86 (its later commits are tests / CI only)")
 check(v['DUEL'] == '/root/claude-s68dev/exploit_duel_s61.py' and v['HYP'] == '/root/claude-s68dev/hypotheses.py' and v['ADAPTER'] == '/root/claude-s68dev/s66_sc8_adapter.py'
       and '[ "$(dirname "$DUEL")" = "$(dirname "$ADAPTER")" ] && [ "$(dirname "$HYP")" = "$(dirname "$ADAPTER")" ] || die' in lt,
       "the harness, hypotheses and adapter are pinned in /root/claude-s68dev/ and check_toml guards the shared directory")

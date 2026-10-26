@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.test_server_ws import _drain, _room_with_bots, client  # noqa: F401
+from native_switches import NATIVE_OFF
 
 ISO_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 ZERO = {"rooms_created": 0, "games_started": 0, "rounds_recorded": 0,
@@ -181,7 +182,10 @@ def test_errno_without_a_platform_name_is_reported_as_its_number():
 
 
 LATENCY_SWITCHES = ("SHENGJI_PV_ENCODE_PREFIX_CACHE", "SHENGJI_PV_SINGLE_CANDIDATE_FAST",
-                    "SHENGJI_PV_LEAF_GREEDY_STREAM", "SHENGJI_PV_ENCODE_BATCH_FAST")
+                    "SHENGJI_PV_LEAF_GREEDY_STREAM", "SHENGJI_PV_ENCODE_BATCH_FAST",
+                    "SHENGJI_PV_LEGAL_NATIVE", "SHENGJI_PV_ENCODE_NATIVE",
+                    "SHENGJI_PV_LEAF_CACHE_RELEASE", "SHENGJI_PV_LEAF_CLONE_FAST",
+                    "SHENGJI_PV_LEAF_TRICK_CACHE")
 
 
 def test_healthz_reports_the_latency_switches_from_the_process_environment(
@@ -195,13 +199,13 @@ def test_healthz_reports_the_latency_switches_from_the_process_environment(
         monkeypatch.delenv(key, raising=False)
     health = client.get("/healthz").json()["pv_search"]
     assert health["latency_switches"] == {"encode_prefix_cache": False, "single_candidate_fast": False,
-                                          "leaf_greedy_stream": False, "encode_batch_fast": False}
+                                          "leaf_greedy_stream": False, "encode_batch_fast": False, **NATIVE_OFF}
     for key in ("SHENGJI_PV_ENCODE_PREFIX_CACHE", "SHENGJI_PV_LEAF_GREEDY_STREAM",
                 "SHENGJI_PV_ENCODE_BATCH_FAST"):
         monkeypatch.setenv(key, "1")
     health = client.get("/healthz").json()["pv_search"]
     assert health["latency_switches"] == {"encode_prefix_cache": True, "single_candidate_fast": False,
-                                          "leaf_greedy_stream": True, "encode_batch_fast": True}
+                                          "leaf_greedy_stream": True, "encode_batch_fast": True, **NATIVE_OFF}
     # a malformed switch is reported, not raised: health must answer
     monkeypatch.setenv("SHENGJI_PV_ENCODE_BATCH_FAST", "yes")
     assert "must be 0 or 1" in client.get("/healthz").json()["pv_search"]["error"]

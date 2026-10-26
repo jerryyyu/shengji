@@ -145,9 +145,12 @@ from itertools import islice
 import numpy as np
 
 from ..ai.cwv_policy import afterstate, child_position, default_finisher, finish_current_trick
+from ..engine import round as engine_round
+from ..engine.round import Round, Trick, TrickPlay
 from ..engine.combos import find_tractor_runs
 from ..harvest.legal import (MAX_TRACTOR, _follow_case, _lead_groups, count_multiset_subsets,
                              iter_follow_actions)
+from . import pv_native
 from .pv_search_policy import PVSearchBot, PVSearchBuryBot, PVSearchPolicyError
 from .pv_tree_config import PVTreeConfig
 
@@ -351,6 +354,14 @@ class CompactReplies:
         np.cumsum([len(action) for action in legal], out=self.offsets[1:])
         self.leads = leads
 
+    @classmethod
+    def from_arrays(cls, cards, offsets, leads: bool):
+        """The listing whose int8 ``cards`` and int32 ``offsets`` are given
+        (`pv_native.follow_listing`'s output: the arrays ``__init__`` builds)."""
+        replies = cls.__new__(cls)
+        replies.cards, replies.offsets, replies.leads = cards, offsets, leads
+        return replies
+
     def __len__(self):
         return len(self.offsets) - 1
 
@@ -402,22 +413,143 @@ class LazyScoring:
         return slot.dense @ row
 
 
-def legal_replies_compact(bot, clone, seat, cache, slot):
+def legal_replies_compact(bot, clone, seat, cache, slot, native=False):
     """`legal_replies` with the listing held as `CompactReplies` and the
     scoring as `LazyScoring`: the same actions in the same order, the same
-    scores, without the per-key lists and dense matrix."""
+    scores, without the per-key lists and dense matrix.  ``native`` builds a
+    follow listing with `pv_native.follow_listing` (the same actions; the
+    Python listing where the compiled module is absent)."""
     plays = clone.trick.plays
     key = (tuple(sorted(clone.hands[seat])), tuple(plays[0].cards) if plays else None)
     hit = cache.get(key)
     if hit is None:
-        legal, multiplicity = legal_replies(bot, clone, seat, None)
-        if multiplicity is None:
-            hit = (legal, None)
+        listing = None
+        if native and plays:
+            listing = pv_native.follow_listing(list(clone.hands[seat]), plays[0].cards, clone.ordering,
+                                     bot.cap)
+        if listing is not None:
+            cards, offsets = listing
+            if len(offsets) < 2:
+                raise PVSearchPolicyError("lookahead reached a seat with no legal action")
+            replies = CompactReplies.from_arrays(cards, offsets, leads=False)
+            if len(replies) == 1:
+                hit = ([replies[0]], None)
+            else:
+                hit = (replies, LazyScoring(replies, slot))
         else:
-            replies = CompactReplies(legal, leads=not plays)
-            hit = (replies, LazyScoring(replies, slot))
+            legal, multiplicity = legal_replies(bot, clone, seat, None)
+            if multiplicity is None:
+                hit = (legal, None)
+            else:
+                replies = CompactReplies(legal, leads=not plays)
+                hit = (replies, LazyScoring(replies, slot))
         cache[key] = hit
     return hit
+
+
+_ROUND_DEFAULT_COPY = None
+
+
+def _round_default_copy() -> bool:
+    """True when ``copy.copy`` of a `Round` is ``Round.__new__(Round)`` with
+    the original's ``__dict__`` (the default reduce protocol, nothing
+    overriding it): `shallow_round` is then ``copy.copy``."""
+    global _ROUND_DEFAULT_COPY
+    if _ROUND_DEFAULT_COPY is None:
+        import copy
+        import copyreg
+        _ROUND_DEFAULT_COPY = bool(
+            Round.__new__ is object.__new__ and Round.__reduce_ex__ is object.__reduce_ex__
+            and Round.__reduce__ is object.__reduce__ and Round.__getstate__ is object.__getstate__
+            and getattr(Round, "__copy__", None) is None and not hasattr(Round, "__setstate__")
+            and not any("__slots__" in vars(k) for k in Round.__mro__[:-1])
+            and Round not in copyreg.dispatch_table
+            and Round not in getattr(copy, "_copy_dispatch", {}))
+    return _ROUND_DEFAULT_COPY
+
+
+def shallow_round(rnd):
+    """``copy.copy(rnd)``: for an exact `Round` under the default protocol the
+    same new object built without the reduce machinery, else ``copy.copy``."""
+    if type(rnd) is Round and (_ROUND_DEFAULT_COPY or _round_default_copy()):
+        clone = object.__new__(Round)
+        clone.__dict__.update(rnd.__dict__)
+        return clone
+    import copy
+    return copy.copy(rnd)
+
+
+def child_position_fast(clone, seat, cards):
+    """`cwv_policy.child_position` with `shallow_round` for its ``copy.copy``:
+    the same child, attribute for attribute."""
+    child = shallow_round(clone)
+    child.hands = [list(hand) for hand in clone.hands]
+    child.buried = list(clone.buried)
+    assert clone.trick is not None
+    child.trick = Trick(
+        leader=clone.trick.leader,
+        plays=[TrickPlay(p.seat, list(p.cards)) for p in clone.trick.plays])
+    child.trick.running_points = clone.trick.running_points
+    child.trick.incumbent = clone.trick.incumbent
+    child.history = list(clone.history)
+    child.last_trick = clone.last_trick
+    child.message = None
+    child._trusted_rollout = True
+    child._determinized_world = True
+    child.play(seat, list(cards))
+    return child
+
+
+def afterstate_fast(rnd, seat, hands, buried, candidate):
+    """`cwv_policy.afterstate` (no lead validation context, no finish) with
+    `shallow_round` for its ``copy.copy``: the same clone, attribute for
+    attribute."""
+    clone = shallow_round(rnd)
+    clone.hands = [list(hand) for hand in hands]
+    clone.buried = list(buried)
+    assert rnd.trick is not None
+    clone.trick = Trick(
+        leader=rnd.trick.leader,
+        plays=[TrickPlay(p.seat, list(p.cards)) for p in rnd.trick.plays])
+    clone.history = list(rnd.history)
+    clone.last_trick = rnd.last_trick
+    clone.message = None
+    clone._trusted_rollout = True
+    clone._determinized_world = True
+    clone.play(seat, list(candidate))
+    return clone
+
+
+def seed_trick_caches(clone) -> None:
+    """Give a trusted clone whose open trick carries no caches the incumbent
+    and running points `Round.play` keeps inside the trusted rollout, as if
+    every play of the trick had been made there: the lead's uniform suit and
+    top level, folded over the later plays by ``beats`` exactly as
+    `Round.play` and `Round._resolve_trick` fold them, and the trick's points.
+    A trick whose lead has no uniform suit keeps no incumbent, as there.  The
+    engine's functions are `engine.round`'s own (the compiled ones when
+    ``SHENGJI_FAST`` routed them)."""
+    trick = clone.trick
+    if (getattr(clone, "_trusted_rollout", False) is not True or trick is None
+            or not trick.plays or trick.incumbent is not None
+            or trick.running_points is not None):
+        return
+    ordering = clone.ordering
+    plays = trick.plays
+    lead = plays[0].cards
+    running = engine_round.total_points(lead)
+    suit = engine_round.uniform_suit(lead, ordering)
+    incumbent = None
+    if suit is not None:
+        incumbent = (plays[0].seat, suit, engine_round.decompose(lead, ordering).top_level())
+    for play in plays[1:]:
+        running += engine_round.total_points(play.cards)
+        if incumbent is not None:
+            won, top = engine_round.beats(play.cards, lead, incumbent[1], incumbent[2], ordering)
+            if won:
+                incumbent = (play.seat, ordering.eff_suit(play.cards[0]), top)
+    trick.running_points = running
+    trick.incumbent = incumbent
 
 
 def team_values(bot, leaves, seat, gate=None, prefix=None):
@@ -444,7 +576,7 @@ def team_values(bot, leaves, seat, gate=None, prefix=None):
 
 
 def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn,
-                     rows_fn=None, guard=None):
+                     rows_fn=None, guard=None, child_fn=child_position):
     """One reply ply of the greedy finish: every clone in ``active`` has the
     SAME seat to act (turn order inside one trick is fixed); that seat plays
     its highest-valued candidate in each clone (module docstring: the policy's
@@ -455,7 +587,8 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
     seat)``, when given, builds the policy rows of the non-forced clones in
     one call (`pv_encode_prefix.reply_rows`: the same rows).  ``guard``, when
     given, is called before every clone's listing and child expansion (the
-    served finish's deadline; it raises to stop the ply)."""
+    served finish's deadline; it raises to stop the ply).  ``child_fn`` builds
+    each (clone, candidate) child (`child_position` or `child_position_fast`)."""
     from .policy_prior import N_CARDS, flat_input, root_tensors
     seat = active[0].turn
     if any(clone.turn != seat for clone in active):
@@ -505,7 +638,7 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
         if guard is not None:
             guard()
         for k, candidate in enumerate(candidates):
-            child = child_position(active[index], seat, candidate)
+            child = child_fn(active[index], seat, candidate)
             finish_current_trick(child)
             leaves.append(child)
             owners.append((index, k))
@@ -528,7 +661,8 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
 
 
 def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=None,
-                                compact=False, prefix=None, guard=None) -> dict:
+                                compact=False, prefix=None, guard=None, native=False,
+                                fast_clone=False) -> dict:
     """Finish the CURRENT trick of every clone in ``clones`` (all at the same
     ply) by greedy reply plies, never further; returns the `greedy_stats`
     (accumulated into ``stats`` when given).  ``bot`` supplies the policy
@@ -539,7 +673,9 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
     ``compact`` holds the reply listings as `legal_replies_compact` does and
     keeps them for one ply only (a key is the acting seat's hand, so no later
     ply of the trick can hit it); the plies, their batches and every value are
-    the same.  ``prefix`` encodes the reply valuations (`team_values`) and the
+    the same.  ``native`` (with ``compact``) builds the follow listings with
+    `pv_native.follow_listing`: the same listings.  ``fast_clone`` builds the
+    reply children with `child_position_fast`: the same children.  ``prefix`` encodes the reply valuations (`team_values`) and the
     reply policy rows (`pv_encode_prefix.reply_rows`) on the decision root's
     history.  ``guard`` (the served finish's deadline) is called before each
     ply, each value batch and every clone of a ply; it raises to stop."""
@@ -553,7 +689,7 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
             return reply_rows(clones_, seat, version, prefix)
     if compact:
         def legal_fn(clone, seat, cache_):
-            return legal_replies_compact(bot, clone, seat, cache_, slot)
+            return legal_replies_compact(bot, clone, seat, cache_, slot, native)
     else:
         def legal_fn(clone, seat, cache_):
             return legal_replies(bot, clone, seat, cache_)
@@ -573,7 +709,7 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
         greedy_reply_ply(bot, active, ply_gate, cache, stats, keep, version, legal_fn,
                          lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_,
                                                                       prefix),
-                         rows_fn, guard)
+                         rows_fn, guard, child_position_fast if fast_clone else child_position)
         active = [c for c in active if trick_open(c, target)]
     return stats
 

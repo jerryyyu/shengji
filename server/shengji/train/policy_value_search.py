@@ -612,13 +612,25 @@ class PolicyValueBot(PolicyWorldBot):
         pass at once, the replies batched across all the clones, under
         ``check_budget`` (the ply gate), into this decision's cache."""
         state = self._leaf_greedy = _greedy_state()
-        clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
-                  for hands, buried in worlds for action in actions]
+        if getattr(self, 'leaf_clone_fast', False):
+            # the same clones without ``copy.copy``'s reduce machinery
+            from .pv_tree_search import afterstate_fast
+            clones = [afterstate_fast(rnd, seat, hands, buried, action)
+                      for hands, buried in worlds for action in actions]
+        else:
+            clones = [afterstate(rnd, seat, hands, buried, action, finish_trick=False)
+                      for hands, buried in worlds for action in actions]
+        if getattr(self, 'leaf_trick_cache', False):
+            # a follow root's clones carry the trusted trick caches a lead's do
+            from .pv_tree_search import seed_trick_caches
+            for clone in clones:
+                seed_trick_caches(clone)
         prefix = None
         if getattr(self, 'encode_prefix_cache', False):
             # the reply leaves are clones of this root: its history encoded once
             from .pv_encode_prefix import HistoryPrefix
-            prefix = HistoryPrefix.of(rnd, batched=getattr(self, 'encode_batch_fast', False))
+            prefix = HistoryPrefix.of(rnd, batched=getattr(self, 'encode_batch_fast', False),
+                                      native=getattr(self, 'encode_native', False))
         guard = None
         deadline = self._leaf_greedy_deadline_at
         if deadline is not None:
@@ -646,6 +658,9 @@ class PolicyValueBot(PolicyWorldBot):
         # the optional switches are passed only when on: the call is otherwise
         # the switch-off one (tests replace this function with that signature)
         options = {**({'compact': True} if self.leaf_greedy_stream else {}),
+                   **({'native': True} if self.leaf_greedy_stream
+                      and getattr(self, 'legal_native', False) else {}),
+                   **({'fast_clone': True} if getattr(self, 'leaf_clone_fast', False) else {}),
                    **({'prefix': prefix} if prefix is not None else {}),
                    **({'guard': guard} if guard is not None else {})}
         greedy_finish_current_trick(self, clones, target, gate, LEAF_GREEDY_REPLIES,

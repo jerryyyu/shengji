@@ -102,11 +102,13 @@ class HistoryPrefix:
     """The fused traversal of one decision root's complete tricks."""
 
     __slots__ = ("tricks", "ordering", "played", "played_total", "physical", "voids", "events",
-                 "batched")
+                 "batched", "native")
 
     def __init__(self, tricks, ordering, played, played_total, physical, voids, events):
         #: build batches with `fused_many_batched` (the same tensors, less work per row)
         self.batched = False
+        #: build batches with `fused_many_native`: None (off) or its kernel arguments
+        self.native = None
         self.tricks = tricks
         self.ordering = ordering
         self.played = played
@@ -116,13 +118,16 @@ class HistoryPrefix:
         self.events = events
 
     @classmethod
-    def of(cls, rnd, batched=False):
+    def of(cls, rnd, batched=False, native=False):
         """The prefix of ``rnd.history``, or None where the fused builder would
         refuse any state extending it (every leaf then takes the reference).
-        ``batched`` routes its batches through `fused_many_batched`."""
+        ``batched`` routes its batches through `fused_many_batched`;
+        ``native`` (with ``batched``) through `fused_many_native`."""
         prefix = cls._of(rnd)
         if prefix is not None and batched:
             prefix.batched = True
+            if native:
+                prefix.native = _native_arguments(prefix)
         return prefix
 
     @classmethod
@@ -716,6 +721,94 @@ def fused_many_batched(prefix, positions, seats, version):
     return out
 
 
+def _native_arguments(prefix):
+    """The prefix as `_pv_fast.encode_static_batch`'s arguments, or None
+    (no compiled module, or an ordering whose suits the kernel cannot number):
+    the batches then take `fused_many_batched`."""
+    from .pv_native import _pv_fast
+    if _pv_fast is None:
+        return None
+    try:
+        ordering = prefix.ordering
+        suits = [ordering.eff_suit(card) for card in _CARDS]
+        if any(suit not in _SUIT_ORDER for suit in suits):
+            return None
+        voids = np.zeros(4, dtype=np.uint32)
+        for seat, held in enumerate(prefix.voids):
+            for k, suit in enumerate(_SUIT_ORDER):
+                if suit in held:
+                    voids[seat] |= np.uint32(1 << k)
+        return (np.ascontiguousarray(prefix.played, dtype=np.float64),
+                np.ascontiguousarray(prefix.physical, dtype=np.int_), voids,
+                np.asarray([_SUIT_ORDER.index(suit) for suit in suits], dtype=np.int8),
+                np.asarray([suit == TRUMP for suit in suits], dtype=np.uint8),
+                {suit: k for k, suit in enumerate(_SUIT_ORDER)})
+    except Exception:
+        return None
+
+
+def native_arrays(prefix, positions, seats, version):
+    """``(public, world, perspective)``: the stacked fields of the rows
+    `fused_many_batched` builds when it keeps every row, built by the compiled
+    `_pv_fast.encode_static_batch`; None where the kernel declines (a row the
+    batched builder would skip or refuse, any kernel error) or ``prefix`` has
+    no native arguments."""
+    arguments = prefix.native
+    if arguments is None or version not in VERSIONS or not len(positions):
+        return None
+    from .pv_native import _pv_fast
+    played, physical, voids, suit_of, is_trump, suit_index = arguments
+    try:
+        return _pv_fast.encode_static_batch(
+            prefix.tricks, prefix.ordering, played, physical, voids, prefix.events,
+            list(positions), list(seats), version, CARD_INDEX, suit_of, is_trump,
+            (Round, Trick, TrickPlay, Ordering), _checked, trick_state, SUITS, RANKS, suit_index,
+            HISTORY_MAX_EVENTS)
+    except Exception:
+        return None
+
+
+def fused_many_native(prefix, positions, seats, version):
+    """`fused_many_batched`, byte for byte: the rows of `native_arrays`, or
+    `fused_many_batched`'s own where it declines."""
+    built = native_arrays(prefix, positions, seats, version)
+    if built is None:
+        return fused_many_batched(prefix, positions, seats, version)
+    public, world, perspective = built
+    history = np.zeros((1, HISTORY_EVENT_DIM), dtype=np.float32)
+    kind = ValueAfterstateTensors if version == 1 else ValueAfterstateTensorsV2
+    return [kind(public[row], history, world[row], perspective[row])
+            for row in range(len(positions))]
+
+
+class StackedRows:
+    """The model rows of a batch held as its stacked ``(public, world,
+    perspective)`` arrays: what ``np.stack`` over the rows' fields gives, for
+    the evaluator's stacked forward (`NumpyCompleteWorldEvaluator.probabilities_stacked`)."""
+
+    __slots__ = ("arrays",)
+
+    def __init__(self, public, world, perspective):
+        self.arrays = (public, world, perspective)
+
+    def __len__(self):
+        return self.arrays[0].shape[0]
+
+
+def _stacked_evaluator(evaluator) -> bool:
+    """The served NumPy evaluator, whose ``probabilities`` stacks each chunk's
+    fields and runs `probabilities_stacked`'s forward on them."""
+    from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+    return type(evaluator) is NumpyCompleteWorldEvaluator
+
+
+def _builder(prefix):
+    """The batch builder ``prefix`` selects."""
+    if prefix.native is not None:
+        return fused_many_native
+    return fused_many_batched if prefix.batched else fused_many
+
+
 def reply_rows(clones, seat, version, prefix):
     """The greedy reply ply's policy rows, ``flat_input(root_tensors(clone,
     seat, version), version)`` for each clone, byte for byte: built by
@@ -731,7 +824,19 @@ def reply_rows(clones, seat, version, prefix):
     if prefix is None or version not in VERSIONS or not clones:
         return reference()
     try:
-        build = fused_many_batched if prefix.batched else fused_many
+        build = _builder(prefix)
+        if prefix.native is not None:
+            built = native_arrays(prefix, clones, [seat] * len(clones), version)
+            if built is not None and _valid_stacked(*built, version):
+                from .policy_prior import input_dim
+                public, world, perspective = built
+                # flat_input of each row: its fields concatenated, as float32
+                flat = np.concatenate((public, world.reshape(len(clones), -1), perspective),
+                                      axis=1).astype(np.float32)
+                if flat.shape[1] == input_dim(version):
+                    return list(flat)
+            # the kernel declined: the batched builder's rows
+            build = fused_many_batched
         fast = build(prefix, clones, [seat] * len(clones), version)
         built = [t for t in fast if t is not None]
         if not _valid_batch(built, version):
@@ -770,6 +875,11 @@ def _valid_batch(rows, version) -> bool:
         perspective = np.stack([row.perspective for row in rows])
     except ValueError:      # rows of different shapes
         return False
+    return _valid_stacked(public, world, perspective, version)
+
+
+def _valid_stacked(public, world, perspective, version) -> bool:
+    """`_valid_batch`'s check on the rows' stacked fields."""
     widths = PUBLIC_DIM if version == 1 else None
     if public.dtype != np.float32 or world.dtype != np.float32 \
             or perspective.dtype != np.float32:
@@ -823,7 +933,19 @@ def encode_leaves(evaluator, positions, root_seat, prefix, batched=True):
         values = np.empty(len(positions), dtype=np.float64)
         rows, pending, fast = [], [], []
         live = [index for index, rnd in enumerate(positions) if rnd.phase != "round_end"]
-        build = fused_many_batched if prefix.batched else fused_many
+        build = _builder(prefix)
+        if batched and live and prefix.native is not None and _stacked_evaluator(evaluator):
+            stacked = native_arrays(prefix, [positions[index] for index in live],
+                                    [root_seat] * len(live), version)
+            if stacked is not None and _valid_stacked(*stacked, version):
+                for index, rnd in enumerate(positions):
+                    if rnd.phase == "round_end":
+                        values[index] = float(
+                            terminal_distribution(rnd, root_seat) @ evaluator.support)
+                return values, StackedRows(*stacked), live, len(live)
+            if stacked is None:
+                # the kernel declined: the batched builder's rows
+                build = fused_many_batched
         built = build(prefix, [positions[index] for index in live], [root_seat] * len(live),
                       version) if batched else None
         built = dict(zip(live, built)) if built is not None else None
@@ -862,7 +984,9 @@ def score_leaves(evaluator, positions, root_seat, prefix, batched=True):
     if encoded is None:
         return evaluator.score(positions, root_seat)
     values, rows, pending, _ = encoded
-    if rows:
+    if type(rows) is StackedRows:
+        values[pending] = evaluator.probabilities_stacked(*rows.arrays) @ evaluator.support
+    elif rows:
         values[pending] = evaluator.probabilities(rows) @ evaluator.support
     evaluator.calls += 1
     evaluator.positions += n
@@ -923,4 +1047,4 @@ def prior_rows(rnd, seat, worlds, version):
 
 
 __all__ = ["VERSIONS", "HistoryPrefix", "encode_leaves", "fused_many", "fused_many_batched",
-           "prior_rows", "reply_rows", "score_leaves", "static_version"]
+           "fused_many_native", "native_arrays", "prior_rows", "reply_rows", "score_leaves", "static_version"]

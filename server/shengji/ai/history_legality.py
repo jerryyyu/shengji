@@ -174,7 +174,8 @@ def constrained_draw(bot, constraints):
 
 
 def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem,
-                                check_budget=None, propose=None, constrain=False):
+                                check_budget=None, propose=None, constrain=False,
+                                complete=None):
     """``n`` worlds by production's draw, each history-legal while the history
     test's attempt budget lasts and consistent with every refusal in
     ``refusals`` (`ai.refusal`, the same test and pinning as
@@ -195,7 +196,10 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     ``constrain=True`` (and no ``propose``) draws through `constrained_draw`
     with `draw_constraints`; the history test still runs on every world.  A
     proposal passed as ``propose`` is responsible for its own constraints
-    (`draw_constraints` is the list to honour)."""
+    (`draw_constraints` is the list to honour).
+
+    ``complete``, when given, stands for ``bot._complete_determinized_hands``
+    (`train.pv_native.world_completion`: the same hands and refusals)."""
     from .cwv_policy import sample_worlds
     events = follow_events(rnd, seat)
     ordering = rnd.ordering
@@ -224,7 +228,8 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
         if sampled is None:
             continue
         hands, buried = sampled
-        world = bot._complete_determinized_hands(rnd, seat, hands, buried=buried)
+        world = (bot._complete_determinized_hands if complete is None else complete)(
+            rnd, seat, hands, buried=buried)
         if refusals and not all(refusal_consistent(rnd, world, r) for r in refusals):
             refusal_rejected += 1
             continue

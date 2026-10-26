@@ -1,0 +1,161 @@
+"""Compiled hot paths of the served search, behind latency switches.
+
+``SHENGJI_PV_LEGAL_NATIVE=1`` (OFF by default; no name, payload or decision
+reads it) builds the ``lgf`` greedy finish's follow listings
+(`pv_tree_search.legal_replies_compact`) with the compiled
+`_pv_fast.subset_listing`: the actions of
+``islice(harvest.legal.iter_follow_actions(hand, lead, ordering), cap)`` in
+the same order, stored as `pv_tree_search.CompactReplies` stores them, without
+a Python tuple per action.  The follow case (in-suit, short, void) is
+`harvest.legal._follow_case`'s own; the in-suit rows are kept by the same
+``validate_follow`` (the module attribute at call time, so the compiled engine
+validator when ``SHENGJI_FAST`` routed it) refusing with the same
+``IllegalPlay``.  Without the compiled module every call returns None and the
+caller takes the Python reference.
+
+``SHENGJI_PV_WORLD_FAST=1`` (OFF by default; no name or payload reads it)
+speeds up the belief-proposed world draw: the proposal's copy loop
+(`train.belief_seq.sample_worlds`) runs as the compiled `_pv_fast.belief_draw`
+on the same generator, called at the same points (`belief_sample_worlds`), and
+the history-legal draw completes each world against the decision's played
+cards and deck counted once (`world_completion`) instead of once per world.
+The worlds, the generator's state and every refusal are the reference's.
+"""
+from __future__ import annotations
+
+from collections import Counter
+
+from ..harvest import legal as harvest_legal
+
+try:
+    from . import _pv_fast
+except ImportError:      # not built: every caller keeps its Python reference
+    _pv_fast = None
+
+HAVE_NATIVE = _pv_fast is not None
+
+_TABLES = None
+
+
+def _tables():
+    """``(card index, global sort rank, index -> card)``: the listing's card
+    numbering (`policy_prior.CARD_INDEX`, as `CompactReplies`) and the string
+    order ``sorted`` gives the codes."""
+    global _TABLES
+    if _TABLES is None:
+        from .policy_prior import CARD_INDEX
+        rank = {code: i for i, code in enumerate(sorted(CARD_INDEX))}
+        names = [None] * len(CARD_INDEX)
+        for code, index in CARD_INDEX.items():
+            names[index] = code
+        _TABLES = (dict(CARD_INDEX), rank, names)
+    return _TABLES
+
+
+def follow_listing(hand, lead, ordering, cap):
+    """``(cards, offsets)`` (int8 card indices, int32 row offsets) of the
+    first ``cap`` actions of ``iter_follow_actions(hand, lead, ordering)``
+    (every action when ``cap`` is None), or None without the compiled
+    module.  Raises what the reference raises on the same inputs."""
+    if _pv_fast is None:
+        return None
+    case, h_suit, off, n = harvest_legal._follow_case(hand, lead, ordering)
+    card_index, rank, names = _tables()
+    limit = (1 << 30) if cap is None else int(cap)
+    if case == "in-suit":
+        counts = Counter(h_suit)
+        codes = sorted(counts)
+        validate = (harvest_legal.validate_follow, harvest_legal.IllegalPlay, hand, lead,
+                    ordering, names)
+        return _pv_fast.subset_listing(codes, [counts[c] for c in codes], n, limit, card_index,
+                                       rank, None, validate)
+    counts = Counter(off)
+    codes = sorted(counts)
+    return _pv_fast.subset_listing(codes, [counts[c] for c in codes], n - len(h_suit), limit,
+                                   card_index, rank, list(h_suit), None)
+
+
+def belief_sample_worlds(P, n_c, M, sizes, W, rng):
+    """`belief_seq.sample_worlds(P, n_c, M, sizes, W, rng)`: its prologue
+    here, its copy loop compiled; None (the generator untouched) without the
+    compiled module or for arrays the kernel does not take."""
+    import numpy as np
+    from .belief_seq import N_CARDS, N_RECV, BeliefSeqError
+    if _pv_fast is None:
+        return None
+    P = np.asarray(P)
+    M = np.asarray(M)
+    sizes = np.asarray(sizes)
+    n_c = np.asarray(n_c)
+    if (P.dtype != np.float64 or P.shape != (N_CARDS, N_RECV) or M.dtype != np.bool_
+            or M.shape != (N_CARDS, N_RECV) or sizes.shape != (N_RECV,)
+            or n_c.shape != (N_CARDS,) or type(W) is not int or W < 0):
+        return None
+    if not np.isfinite(P).all() or (P < 0).any():
+        raise BeliefSeqError("world probabilities must be finite and nonnegative")
+    copies = np.repeat(np.arange(N_CARDS), n_c.astype(np.int64))
+    copies = copies[rng.permutation(len(copies))]
+    types = (M[copies] * (1 << np.arange(N_RECV))).sum(-1)
+    tc = np.bincount(types, minlength=16).astype(np.int64)
+    return _pv_fast.belief_draw(np.ascontiguousarray(P), np.ascontiguousarray(M).view(np.uint8),
+                                np.ascontiguousarray(copies, dtype=np.int64),
+                                np.ascontiguousarray(types, dtype=np.int64), tc,
+                                np.ascontiguousarray(sizes, dtype=np.int64), W, rng,
+                                BeliefSeqError)
+
+
+def world_completion(bot, rnd, seat):
+    """``bot._complete_determinized_hands`` for draws at ``(rnd, seat)``, the
+    cards already played and the deck counted once: the same hands, the same
+    refusals with the same messages.  None when ``bot`` overrides the method
+    (the caller keeps it)."""
+    from collections import Counter as _Counter
+    from ..ai.mcbot import DeterminizationContractError, MCBot
+    if getattr(type(bot), "_complete_determinized_hands", None) is not \
+            MCBot._complete_determinized_hands:
+        return None
+    expected = {other for other in range(4) if other != seat}
+    played = []
+    for trick in rnd.history:
+        for play in trick.plays:
+            played.extend(play.cards)
+    if rnd.trick is not None:
+        for play in rnd.trick.plays:
+            played.extend(play.cards)
+    seen = _Counter(played)
+    deck = _Counter(rnd.deck)
+    own = sorted(rnd.hands[seat])
+    lengths = {other: len(rnd.hands[other]) for other in expected}
+
+    def complete(rnd_, seat_, sampled, *, buried):
+        if rnd_ is not rnd or seat_ != seat:
+            return bot._complete_determinized_hands(rnd_, seat_, sampled, buried=buried)
+        if set(sampled) != expected:
+            raise DeterminizationContractError(
+                f"sampled hand keys {sorted(sampled)} != opponents "
+                f"{sorted(expected)}")
+        for other in expected:
+            if len(sampled[other]) != lengths[other]:
+                raise DeterminizationContractError(
+                    f"sampled seat {other} has {len(sampled[other])} cards, "
+                    f"expected {lengths[other]}")
+        hands = [list(own) if current == seat else sorted(sampled[current])
+                 for current in range(4)]
+        observed = _Counter(seen)
+        observed.update(buried)
+        for hand in hands:
+            observed.update(hand)
+        # both counters hold positive counts only (counted, never subtracted),
+        # where Counter equality is dict equality
+        if dict.__ne__(observed, deck):
+            missing = deck - observed
+            extra = observed - deck
+            raise DeterminizationContractError(
+                "sampled world violates card conservation: "
+                f"missing={dict(sorted(missing.items()))}, "
+                f"extra={dict(sorted(extra.items()))}")
+        return hands
+    return complete
+
+
+__all__ = ["HAVE_NATIVE", "belief_sample_worlds", "follow_listing", "world_completion"]

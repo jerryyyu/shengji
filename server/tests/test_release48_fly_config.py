@@ -33,6 +33,7 @@ from test_pv_search_serving import _play_state
 from test_release46_fly_config import (BELIEF_SHA as RELEASE46_BELIEF_SHA, DTRX_FLAG, RELEASE46,
                                        RELEASE48_ADDED_KEYS, V92_CANDIDATE_ENV, fly_env,
                                        pinned_belief_package, release46_env)  # noqa: F401
+from native_switches import NATIVE_OFF
 
 #: the candidate name of the guarded R48 cloud screen (arms.candidate.name of its plan)
 RELEASE48 = ("pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-"
@@ -177,7 +178,7 @@ def test_latency_switches_are_on_through_the_process_environment(
     assert not {"encode_prefix_cache", "leaf_greedy_stream", "encode_batch_fast"} & set(vars(plain))
     apply_to_process(monkeypatch, env)
     assert pv.latency_switches() == {"encode_prefix_cache": True, "single_candidate_fast": False,
-                                     "leaf_greedy_stream": True, "encode_batch_fast": True}
+                                     "leaf_greedy_stream": True, "encode_batch_fast": True, **NATIVE_OFF}
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(dict(os.environ)))
     name, = entries
     assert name == RELEASE48
@@ -248,11 +249,11 @@ def test_healthz_reports_the_latency_switches(pinned_production_package, monkeyp
     off = srv._pv_search_health()
     assert off["sha256"] == PACKAGE_SHA
     assert off["latency_switches"] == {"encode_prefix_cache": False, "single_candidate_fast": False,
-                                       "leaf_greedy_stream": False, "encode_batch_fast": False}
+                                       "leaf_greedy_stream": False, "encode_batch_fast": False, **NATIVE_OFF}
     apply_to_process(monkeypatch, {k: fly_env()[k] for k in LATENCY_KEYS.values()})
     assert srv._pv_search_health()["latency_switches"] == {
         "encode_prefix_cache": True, "single_candidate_fast": False,
-        "leaf_greedy_stream": True, "encode_batch_fast": True}
+        "leaf_greedy_stream": True, "encode_batch_fast": True, **NATIVE_OFF}
 
 
 def test_rollback_to_release46_restores_the_belief_pair_and_drops_the_r48_lines(

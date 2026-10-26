@@ -390,6 +390,34 @@ deadlines.  On, it enters the recipe digest as ``leaf_greedy_deadline``
 ``lgfx``; the record gains ``leaf_greedy_deadline_fired`` and
 ``leaf_greedy_deadline_cut_leaves`` (only with it on).
 
+Its optional top-m restriction, OFF BY DEFAULT and a search-policy change
+where it applies: ``SHENGJI_PV_LEAF_GREEDY_TOP=<m>`` (``leaf_greedy_top``, an
+int in [1, 64]; unset, empty or ``0`` is off; requires ``lgf``) -- on a
+decision whose value pass would finish leaves greedily and that admits more
+than ``m`` candidates, every admitted candidate is first scored on the plain
+heuristic leaf (`_leaf`, the flag-off leaf, on the same worlds); only the
+``m`` best by that plain mean (lowest admitted position on a tie) are then
+greedy-finished and scored on the ``lgf`` leaf.  The selection rules see one
+mean per admitted candidate: the ``lgf`` mean for the ``m`` kept ones, and
+for each pruned one its plain mean less ``LEAF_GREEDY_TOP_OFFSET`` (a finite
+offset far outside the value head's range, so a pruned candidate ranks below
+every kept one and the pruned keep their plain order among themselves).
+A pruned candidate's leaf is the plain leaf everywhere in the decision (the
+tie-break prices it on that leaf).  With ``m`` at least the admitted count, or
+where ``lgf`` does not run (``lgfx``, a passed deadline), the decision is the
+``lgf`` one.  On, it enters the recipe digest as ``leaf_greedy_top`` and adds
+``-lgft<m>`` after the greedy leaf's tokens (``lgf``, ``lgfx``, ``lgfd<ms>``);
+the record gains ``leaf_greedy_top_applied``, ``leaf_greedy_top_kept``
+(admitted positions) and ``leaf_greedy_top_plain_means`` (only with it on).
+Off, every existing name, digest and decision is unchanged.
+
+The lead admission width of ``wide_lead_admission`` (`PVSearchBot` docstring):
+``SHENGJI_PV_WIDE_LEAD_K=<k>`` (``wide_lead_k``, an int in [9, 64], default
+``WIDE_LEAD_K`` = 32; refused without ``SHENGJI_PV_WIDE_LEAD_ADMISSION=1``).
+At the default nothing changes (the payload already names 32 and the token is
+``-wla``); another width replaces it in the payload and the token becomes
+``-wla<k>``.
+
 Four latency switches, OFF BY DEFAULT, that enter no name, payload or digest
 (like ``SHENGJI_PV_BELIEF_LOG`` they are read from the serving environment
 where the bot is built; ``0`` or ``1`` only).  On the decisions the search
@@ -838,6 +866,18 @@ LEAF_GREEDY_DEADLINE_TOKEN = "lgfd"
 LEAF_GREEDY_DEADLINE_RULE_ID = "heuristic-leaves-once-the-decision-passes-the-deadline-in-the-finish"
 #: the deadline's range in ms
 LEAF_GREEDY_DEADLINE_MS_RANGE = (1, 60_000)
+#: ``SHENGJI_PV_LEAF_GREEDY_TOP=<m>`` (``leaf_greedy_top``, token ``lgft<m>``
+#: after the greedy leaf's tokens): 0 is off
+LEAF_GREEDY_TOP_ENV = "LEAF_GREEDY_TOP"
+LEAF_GREEDY_TOP_TOKEN = "lgft"
+LEAF_GREEDY_TOP_RULE_ID = "lgf-on-plain-leaf-top-m-pruned-ranked-by-plain-mean-below-kept"
+LEAF_GREEDY_TOP_RANGE = (1, 64)
+#: subtracted from a pruned candidate's plain mean: the head's means are signed
+#: levels a few units wide, so every pruned candidate ranks below every kept one
+LEAF_GREEDY_TOP_OFFSET = 1000.0
+_LEAF_GREEDY_TOP_REQUIRES = (
+    "leaf_greedy_top requires leaf_greedy_finish "
+    "(SHENGJI_PV_LEAF_GREEDY_TOP needs SHENGJI_PV_LEAF_GREEDY_FINISH=1)")
 _LEAF_GREEDY_DEADLINE_REQUIRES = (
     "leaf_greedy_deadline_ms requires leaf_greedy_finish "
     "(SHENGJI_PV_LEAF_GREEDY_DEADLINE needs SHENGJI_PV_LEAF_GREEDY_FINISH=1)")
@@ -857,6 +897,9 @@ WIDE_LEAD_RULE = {"WIDE_LEAD_ADMISSION": "wide_lead_admission"}
 WIDE_LEAD_DEFAULTS = dict(wide_lead_admission=False)
 #: `wide_lead_admission`: the policy admission width on every lead (served K is 8)
 WIDE_LEAD_K = 32
+#: ``SHENGJI_PV_WIDE_LEAD_K=<k>`` (``wide_lead_k``; needs ``wide_lead_admission``)
+WIDE_LEAD_K_ENV = "WIDE_LEAD_K"
+WIDE_LEAD_K_RANGE = (9, 64)
 FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
 EXACT_FOLLOW_RULE = {"EXACT_FOLLOW": "exact_follow"}
@@ -1308,6 +1351,8 @@ class PVSearchConfig:
     adaptive_worlds_leads: bool = ADAPTIVE_WORLDS_DEFAULTS["adaptive_worlds_leads"]
     # the optional lead admission width (exclusive with ``adaptive_k``); the same contract
     wide_lead_admission: bool = WIDE_LEAD_DEFAULTS["wide_lead_admission"]
+    # its width (module docstring); the default is the payload's long-standing 32
+    wide_lead_k: int = WIDE_LEAD_K
     finish_lead_admission: bool = False
     exact_lead_endgame: bool = False
     # its two optional variants (module docstring); each requires it
@@ -1341,6 +1386,8 @@ class PVSearchConfig:
     leaf_greedy_finish_exact_skip: bool = \
         LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"]
     leaf_greedy_deadline_ms: int = 0
+    # its top-m restriction (module docstring): 0 is off and ABSENT from the payload
+    leaf_greedy_top: int = 0
     # the optional declaration rule and its two parameters; the same contract
     # (the parameters too are ABSENT from the payload while the rule is off)
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
@@ -1460,6 +1507,31 @@ def _check_exact_world_subset(config) -> int:
     return n
 
 
+def _check_leaf_greedy_top(config) -> int:
+    """The top-m width, 0 when off; refuses a malformed value and one without
+    ``leaf_greedy_finish``."""
+    m = config.leaf_greedy_top
+    lo, hi = LEAF_GREEDY_TOP_RANGE
+    if isinstance(m, bool) or type(m) is not int or not (m == 0 or lo <= m <= hi):
+        raise PVSearchPolicyError(f"leaf_greedy_top must be 0 (off) or an int in [{lo}, {hi}]")
+    if m and not config.leaf_greedy_finish:
+        raise PVSearchPolicyError(_LEAF_GREEDY_TOP_REQUIRES)
+    return m
+
+
+def _check_wide_lead_k(config) -> int:
+    """The lead admission width; refuses a malformed value and a non-default
+    one without ``wide_lead_admission``."""
+    k = config.wide_lead_k
+    lo, hi = WIDE_LEAD_K_RANGE
+    if isinstance(k, bool) or type(k) is not int or not lo <= k <= hi:
+        raise PVSearchPolicyError(f"wide_lead_k must be an int in [{lo}, {hi}]")
+    if k != WIDE_LEAD_K and not config.wide_lead_admission:
+        raise PVSearchPolicyError("wide_lead_k needs wide_lead_admission "
+                                  "(SHENGJI_PV_WIDE_LEAD_K needs SHENGJI_PV_WIDE_LEAD_ADMISSION=1)")
+    return k
+
+
 def _check_leaf_greedy_deadline(config) -> int:
     """The finish deadline in ms, 0 when off; refuses a malformed value and
     one without ``leaf_greedy_finish``."""
@@ -1531,7 +1603,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     if config.wide_lead_admission:
         if config.adaptive_k:
             raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
-        payload["wide_lead_k"] = WIDE_LEAD_K
+        payload["wide_lead_k"] = _check_wide_lead_k(config)
+    else:
+        _check_wide_lead_k(config)
+        del payload["wide_lead_k"]
     if config.exact_lead_endgame:
         if (config.tree is not None or config.adaptive_worlds or config.adaptive_worlds_leads
                 or config.oracle_worlds or config.oracle_mix_k or config.oracle_pin_q):
@@ -1587,6 +1662,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload["leaf_finish_exact_rule"] = LEAF_GREEDY_EXACT_SKIP_RULE_ID
     deadline_ms = _check_leaf_greedy_deadline(config)
     del payload["leaf_greedy_deadline_ms"]
+    top = _check_leaf_greedy_top(config)
+    del payload["leaf_greedy_top"]
+    if top:
+        payload["leaf_greedy_top"] = {"m": top, "rule": LEAF_GREEDY_TOP_RULE_ID,
+                                      "offset": LEAF_GREEDY_TOP_OFFSET}
     if deadline_ms:
         payload["leaf_greedy_deadline"] = {"ms": deadline_ms, "rule": LEAF_GREEDY_DEADLINE_RULE_ID}
     if config.adaptive_worlds and config.adaptive_worlds_leads:
@@ -1685,6 +1765,14 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
         # right after the greedy leaf's own tokens
         tokens.insert(tokens.index("lgfx" if "lgfx" in tokens else "lgf") + 1,
                       f"{LEAF_GREEDY_DEADLINE_TOKEN}{deadline_ms}")
+    top = _check_leaf_greedy_top(config)
+    if top:
+        # right after the greedy leaf's own tokens, the deadline included
+        last = max(i for i, t in enumerate(tokens)
+                   if t in ("lgf", "lgfx") or t.startswith(LEAF_GREEDY_DEADLINE_TOKEN))
+        tokens.insert(last + 1, f"{LEAF_GREEDY_TOP_TOKEN}{top}")
+    if config.wide_lead_admission and _check_wide_lead_k(config) != WIDE_LEAD_K:
+        tokens[tokens.index("wla")] = f"wla{config.wide_lead_k}"
     rules = "".join(f"-{token}" for token in tokens)
     # the soft oracle's token after the rule tokens; "" while off
     if config.exact_deep_cards:
@@ -1832,6 +1920,15 @@ class PVSearchBot(PolicyValueBot):
     #: the finish deadline (module docstring), 0 = off; instance state of an ON bot only
     leaf_greedy_deadline_ms = 0
     _leaf_greedy_exact_skipped = False
+    #: the finish's top-m restriction (module docstring), 0 = off; instance state
+    #: of an ON bot only, as is its per-decision record and pruned-leaf set
+    leaf_greedy_top = 0
+    _leaf_greedy_top = None
+    _leaf_greedy_pruned = frozenset()
+    _leaf_greedy_plain_pass = False
+    #: the lead admission width of ``wide_lead_admission``; instance state only
+    #: when it differs from the default
+    wide_lead_k = WIDE_LEAD_K
     #: the exact lead's two optional variants (module docstring): class-level OFF
     exact_lead_tie_baseline = False
     exact_lead_policy_first = False
@@ -1942,6 +2039,8 @@ class PVSearchBot(PolicyValueBot):
         if config.wide_lead_admission and config.adaptive_k:
             raise PVSearchPolicyError(_WIDE_LEAD_EXCLUSIVE)
         self.wide_lead_admission = config.wide_lead_admission
+        if _check_wide_lead_k(config) != WIDE_LEAD_K:
+            self.wide_lead_k = config.wide_lead_k
         if type(config.finish_lead_admission) is not bool:
             raise PVSearchPolicyError('finish_lead_admission must be a bool')
         if config.finish_lead_admission and config.tree is not None:
@@ -2016,6 +2115,9 @@ class PVSearchBot(PolicyValueBot):
         deadline_ms = _check_leaf_greedy_deadline(config)
         if deadline_ms:
             self.leaf_greedy_deadline_ms = deadline_ms
+        top = _check_leaf_greedy_top(config)
+        if top:
+            self.leaf_greedy_top = top
         if type(config.value_declare) is not bool:
             raise PVSearchPolicyError("value_declare must be a bool")
         _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
@@ -2976,18 +3078,54 @@ class PVSearchBot(PolicyValueBot):
         return sums, batches
 
     def _scored_leaf(self, rnd, seat, hands, buried, action, world_index):
-        if self._leaf_greedy_exact_skipped:
-            # the greedy leaf's exact-stage yield (module docstring)
+        if self._leaf_greedy_exact_skipped or self._leaf_greedy_plain_pass \
+                or tuple(action) in self._leaf_greedy_pruned:
+            # the greedy leaf's exact-stage yield, the top-m rule's plain pass
+            # and its pruned candidates (module docstring)
             return self._leaf(rnd, seat, hands, buried, action, world_index)
         return super()._scored_leaf(rnd, seat, hands, buried, action, world_index)
 
     def _value_means(self, rnd, seat, actions, worlds, check_budget=None):
         if self.leaf_greedy_finish and not self._leaf_greedy_exact_skipped:
+            if self.leaf_greedy_top and len(actions) > self.leaf_greedy_top:
+                return self._value_means_top(rnd, seat, actions, worlds, check_budget)
             # the optional value-leaf rule: every leaf of this pass finished at
             # once, the replies batched, under the deadline (`policy_value_search`)
             self._greedy_prefill(rnd, seat, actions, worlds, check_budget)
         sums, batches = self._score_leaves(rnd, seat, actions, worlds, check_budget)
         return sums / len(worlds), batches
+
+    def _value_means_top(self, rnd, seat, actions, worlds, check_budget=None):
+        """``leaf_greedy_top`` (module docstring): every candidate on the plain
+        leaf, then the ``m`` best of them on the greedy-finished leaf; one mean
+        per candidate, the pruned ones ranked below every kept one."""
+        self._leaf_greedy_plain_pass = True
+        try:
+            plain_sums, plain_batches = self._score_leaves(rnd, seat, actions, worlds, check_budget)
+        finally:
+            self._leaf_greedy_plain_pass = False
+        plain = plain_sums / len(worlds)
+        order = sorted(range(len(actions)), key=lambda i: (-plain[i], i))
+        kept = sorted(order[:self.leaf_greedy_top])
+        kept_set = set(kept)
+        self._leaf_greedy_pruned = frozenset(tuple(actions[i]) for i in range(len(actions))
+                                             if i not in kept_set)
+        kept_actions = [actions[i] for i in kept]
+        self._greedy_prefill(rnd, seat, kept_actions, worlds, check_budget)
+        sums, batches = self._score_leaves(rnd, seat, kept_actions, worlds, check_budget)
+        means = plain - LEAF_GREEDY_TOP_OFFSET
+        means[kept] = sums / len(worlds)
+        self._leaf_greedy_top = {"leaf_greedy_top_applied": True,
+                                 "leaf_greedy_top_kept": [int(i) for i in kept],
+                                 "leaf_greedy_top_plain_means": [float(v) for v in plain]}
+        return means, plain_batches + batches
+
+    def _leaf_greedy_top_record(self):
+        if not self.leaf_greedy_top:
+            return {}
+        return dict(self._leaf_greedy_top or {"leaf_greedy_top_applied": False,
+                                              "leaf_greedy_top_kept": None,
+                                              "leaf_greedy_top_plain_means": None})
 
     def value_matrix(self, rnd, seat, actions, worlds, check_budget=None):
         """``(matrix, sums, batches)`` for the exploitability probe (#625).
@@ -3065,7 +3203,7 @@ class PVSearchBot(PolicyValueBot):
         reaches the same anchor, diversity and forced-extra code as served."""
         if not self.wide_lead_admission or not leading(rnd):
             return super()._admission_k(rnd, actions, preferences)
-        k = max(self.candidates, WIDE_LEAD_K)
+        k = max(self.candidates, self.wide_lead_k)
         self._wide_lead = {"wide_lead_admission_k": int(k),
                            "wide_lead_admission_applied": k > self.candidates}
         return k, k > self.candidates
@@ -3089,7 +3227,7 @@ class PVSearchBot(PolicyValueBot):
         accepts: the harness's bound, and ``WIDE_LEAD_K`` on a wide lead."""
         limit = max(self.candidates, self.candidates_lead_multi)
         if self.wide_lead_admission and leading(rnd):
-            limit = max(limit, WIDE_LEAD_K)
+            limit = max(limit, self.wide_lead_k)
         return limit
 
     def _search(self, rnd, seat, anchor, started, check_budget=None):
@@ -3100,6 +3238,10 @@ class PVSearchBot(PolicyValueBot):
             self._leaf_greedy_deadline_at = started + self.leaf_greedy_deadline_ms / 1000.0
         if self.leaf_greedy_finish_exact_skip:
             self._leaf_greedy_exact_skipped = False
+        if self.leaf_greedy_top:
+            # no pruning of an earlier decision survives into this one
+            self._leaf_greedy_top = None
+            self._leaf_greedy_pruned = frozenset()
         single_fast = False
         legal = self._legal(rnd, seat, [anchor])
         actions = list(legal.actions)
@@ -3254,6 +3396,7 @@ class PVSearchBot(PolicyValueBot):
             **({"leaf_greedy_finish_exact_skipped": bool(self._leaf_greedy_exact_skipped)}
                if self.leaf_greedy_finish_exact_skip else {}),
             **self._leaf_greedy_deadline_record(),
+            **self._leaf_greedy_top_record(),
             **self._adaptive_worlds_record(),
             **self._soft_oracle_record(),
             **(self._exact_lead if self.exact_lead_endgame else {}),
@@ -3867,6 +4010,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                        leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                        leaf_greedy_deadline_ms: int = 0,
+                       leaf_greedy_top: int = 0,
+                       wide_lead_k: int = WIDE_LEAD_K,
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -3946,6 +4091,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             leaf_greedy_finish=leaf_greedy_finish,
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
+                            leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -4075,6 +4221,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                         leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                         leaf_greedy_deadline_ms: int = 0,
+                        leaf_greedy_top: int = 0,
+                        wide_lead_k: int = WIDE_LEAD_K,
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -4135,6 +4283,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             leaf_greedy_finish=leaf_greedy_finish,
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
+                            leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -4252,6 +4401,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                leaf_greedy_finish=config.leaf_greedy_finish,
                                leaf_greedy_finish_exact_skip=config.leaf_greedy_finish_exact_skip,
                                leaf_greedy_deadline_ms=config.leaf_greedy_deadline_ms,
+                               leaf_greedy_top=config.leaf_greedy_top,
+                               wide_lead_k=config.wide_lead_k,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
@@ -4429,6 +4580,23 @@ def pv_env_recipe(environ=None) -> dict:
             checkpoint_sha256=recipe["sha256"],
             leaf_greedy_finish=bool(recipe.get("leaf_greedy_finish", False)),
             leaf_greedy_deadline_ms=int(ms)))
+    # the finish's top-m restriction (unset, empty or 0 is off) and the lead
+    # admission width (unset or empty is the default); each needs its rule
+    for suffix, key, needs, needs_env in (
+            (LEAF_GREEDY_TOP_ENV, "leaf_greedy_top", "leaf_greedy_finish", "LEAF_GREEDY_FINISH"),
+            (WIDE_LEAD_K_ENV, "wide_lead_k", "wide_lead_admission", "WIDE_LEAD_ADMISSION")):
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, "") or (raw == "0" and key == "leaf_greedy_top"):
+            continue
+        if not recipe.get(needs):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} needs {ENV_PREFIX}{needs_env}=1")
+        try:
+            value = int(raw)
+        except ValueError:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not an int: {raw!r}") from None
+        probe = PVSearchConfig(checkpoint_sha256=recipe["sha256"], **{needs: True, key: value})
+        (_check_leaf_greedy_top if key == "leaf_greedy_top" else _check_wide_lead_k)(probe)
+        recipe[key] = value
     # the exact stages' world subset: unset, empty or 0 is off
     raw = env.get(ENV_PREFIX + EXACT_WORLD_SUBSET_ENV)
     if raw not in (None, "", "0"):

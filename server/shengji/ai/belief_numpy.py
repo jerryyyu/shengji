@@ -386,6 +386,11 @@ def decision_inputs(rnd, seat: int, refusals: Sequence[Any] = (), mem=None) -> d
 #: the proposal's identity in a recipe: the marginals, projected to the receiver
 #: sizes, drawn copy by copy under Hall's condition (sizes, voids, pins exact)
 PROPOSAL = "s17-marginals-sinkhorn-hall-v1"
+#: the same proposal with the capacity-aware draw
+#: (`train.belief_seq.sample_worlds_capacity`): each copy's receiver weights
+#: are scaled by open slots over expected remaining demand, so a receiver its
+#: likely copies under-fill is not filled at the end with whatever is left
+PROPOSAL_CAPACITY = "s17-marginals-sinkhorn-hall-capacity-v1"
 #: the per-decision preparation (featurize + forward + projection) must finish
 #: within this many seconds, else the caller falls back to its own draw
 PREP_SECONDS = 0.25
@@ -425,11 +430,13 @@ class BeliefProposal:
     ``batch`` at a time and handed out one per call.  Every world places each
     unknown copy on a receiver the public facts allow, fills every receiver to
     its size, keeps the public pins with their holders and the actor's own
-    burial when it is known.  Errors propagate: the caller falls back."""
+    burial when it is known.  ``capacity`` selects the capacity-aware draw
+    (``PROPOSAL_CAPACITY``); off, the draw is ``PROPOSAL``'s, unchanged.
+    Errors propagate: the caller falls back."""
 
     def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
                  seed: int, batch: int, forbidden: Mapping | None = None,
-                 check_budget=None):
+                 check_budget=None, capacity: bool = False):
         from ..train.belief_seq import project_sizes
         import time
         t0 = time.perf_counter()
@@ -456,6 +463,7 @@ class BeliefProposal:
         self.kitty_hidden = bool(self.inp["M"][:, 3].any()) or int(self.inp["sizes"][3]) > 0
         self.rng = np.random.default_rng(int(seed))
         self.batch = int(batch)
+        self.capacity = bool(capacity)
         self.queue: list = []
         self.drawn = 0
         self.prep_seconds = time.perf_counter() - t0
@@ -463,9 +471,10 @@ class BeliefProposal:
             raise BeliefNumpyError(f"belief preparation took {self.prep_seconds:.3f}s")
 
     def _refill(self) -> None:
-        from ..train.belief_seq import sample_worlds
+        from ..train.belief_seq import sample_worlds, sample_worlds_capacity
         inp, rnd, seat = self.inp, self.rnd, self.seat
-        W = sample_worlds(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
+        draw = sample_worlds_capacity if self.capacity else sample_worlds
+        W = draw(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
         codes = _codes()
         idx = np.arange(N_CARDS)
         K = inp["K"]

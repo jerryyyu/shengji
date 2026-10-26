@@ -26,8 +26,10 @@ export default function GoogleSignIn({ clientId }: { clientId: string }) {
           },
         });
         slot.current.replaceChildren();
+        // Full width of the lobby column, as the other buttons are; GIS caps the width at 400px.
+        const width = Math.min(400, Math.max(200, Math.round(slot.current.getBoundingClientRect().width)));
         gis.renderButton(slot.current, {
-          theme: "filled_black", size: "medium", shape: "pill", text: "signin_with", logo_alignment: "left",
+          theme: "filled_black", size: "large", shape: "pill", text: "continue_with", logo_alignment: "center", width,
         });
       })
       .catch((e: Error) => {

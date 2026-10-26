@@ -241,8 +241,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
         {account.status === "in" && account.user ? (
           <AccountChip user={account.user} />
-        ) : account.status === "out" && account.clientId ? (
-          <GoogleSignIn clientId={account.clientId} />
         ) : null}
 
         <label className="field">
@@ -336,6 +334,15 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         </div>
 
         {error ? <div className="lobby-error">{error}</div> : null}
+
+        {account.status === "out" && account.clientId ? (
+          <>
+            <div className="divider">
+              <span>or</span>
+            </div>
+            <GoogleSignIn clientId={account.clientId} />
+          </>
+        ) : null}
 
         <div className={`conn-status ${status}`}>
           <span className="conn-dot" />

@@ -528,7 +528,17 @@ textarea:focus-visible {
   gap: 8px;
   min-height: 40px;
 }
-.google-signin-slot { display: flex; justify-content: center; min-height: 40px; }
+/* GIS draws its button in an iframe; under the page's dark color-scheme the
+   browser paints that iframe's canvas opaque white, the box around the pill.
+   A light scheme on the slot keeps the iframe's canvas transparent. */
+.google-signin-slot {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  color-scheme: light;
+}
+.google-signin-slot iframe { background: transparent; }
 .account-chip {
   display: flex;
   align-items: center;

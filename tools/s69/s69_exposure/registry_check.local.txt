@@ -1,0 +1,10 @@
+# s69 registry check, 2026-10-26T12:44:36Z; tree /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam at d33bfd70bb2f434368b7e83cdb5732cc791bd0ab (origin/main d33bfd70bb2f434368b7e83cdb5732cc791bd0ab); registry server/runs/seed_windows.json 7923c65da653c62a; seed_windows.py 89f17a98d937e4ce; Python 3.14.3
+check --purpose screen lane 311060910 600: rc=0 [311060910, 311061510) is disjoint from every registered window
+check --purpose screen rehearsal 311960000 36: rc=0 [311960000, 311960036) is disjoint from every registered window
+check --purpose screen smoke 311970000 4: rc=0 [311970000, 311970004) is disjoint from every registered window
+check --purpose other lane 311060910 600: rc=0 [311060910, 311061510) is disjoint from every registered window
+check --purpose other rehearsal 311960000 36: rc=0 [311960000, 311960036) is disjoint from every registered window
+check --purpose other smoke 311970000 4: rc=0 [311970000, 311970004) is disjoint from every registered window
+positive control, the registered runPVS1r46 block [61740910, 61756910) (expect REFUSED, rc 2): rc=2 [61740910, 61756910) overlaps 1 registered window(s): runPVS1r46 (trajectory, seed0 61740910, 16000 clusters, span [61740910, 61756910)) shares 16000 deal seed(s) [61740910, 61756910) REFUSED for a sc
+reported (registration state): S61 [218060910, +600): rc=0 [218060910, 218061510) is disjoint from every registered window 
+reported (registration state): M27-h1a-r3 [272170910, +600): rc=0 [272170910, 272171510) is disjoint from every registered window 

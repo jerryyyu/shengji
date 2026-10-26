@@ -1,0 +1,26 @@
+validity VALID []
+exploiter {'decisions': 286, 'search': 286, 'fallback': 0, 'belief_fallback': 0, 'd8_lead': 5, 'd8_lead_complete': 5, 'd8_follow_attempted': 9, 'd8_follow_complete': 9, 'decide_play_p50_p95_p99_max': [0.2904, 5.76215, 7.56392999999999, 11.0773], 'buries': 4, 'bury_fallback': 0, 'declares': 9, 'declare_abandoned': 0}
+defender {'decisions': 286, 'search': 286, 'fallback': 0, 'belief_fallback': 0, 'decide_play_p50_p95_p99_max': [0.07385, 0.3826, 0.4304699999999986, 0.8084], 'buries': 4, 'bury_fallback': 0, 'declares': 9, 'declare_abandoned': 0}
+attribution ATTRIBUTION_OK [('follow | tricks 1-5 | first round (rank 2)', 2), ('lead | tricks 1-5 | fixed 2-6', 2)]
+   s69 DEV head-to-head (paired, seat-swapped, r2 plan per deal, 4 deals from 311970000): the S69 exploiter minus R48 as served = +0.5000 levels/round, 95% CI [+0.1250, +0.8750] (deal bootstrap 10000); points +16.25 [+1.88,
+   Read (predeclared): validity VALID on both arms; EXPLOITER_AHEAD iff CI lower > 0, DEFENDER_AHEAD iff CI upper < 0, else NO_RESOLVED_GAP.  Verdict EXPLOITER_AHEAD.  Attribution ATTRIBUTION_OK (4 deals diverged, 0 never d
+   Top-3 loss cells (R48's largest losses; class | trick | rank group, levels/round): lead | tricks 1-5 | fixed 2-6: +0.3750 [+0.0000, +0.7500] (2 deals, won 2 lost 0); follow | tricks 1-5 | first round (rank 2): +0.1250 [+
+   Flag (contribution >= +0.020, each a candidate row): [class_trick_rank] follow | tricks 1-5 | first round (rank 2) +0.1250 [+0.0000, +0.3750]; [class_trick_rank] lead | tricks 1-5 | fixed 2-6 +0.3750 [+0.0000, +0.7500]; 
+   Class x trick (contributions): lead | tricks 1-5 +0.3750, follow | tricks 1-5 +0.1250.  Top-3 gain cells (R48 ahead): none negative.
+   Top decile (1 deals, margin >= 1.0): contribution +0.2500; by class x trick {'lead | tricks 1-5': 1}.
+   Split (descriptive): first-round deals [0.25, 0.0, 0.5], fixed-banker deals [0.75, 0.5, 1.0]; exploiter games as banker [2.0, 2.0, 2.0], as attacker [-1.0, -1.75, -0.25].
+   Faults per arm (validity inputs): play fallbacks exploiter 0 of 286 vs defender 0 of 286; belief fallbacks 0 of 286 vs 0 of 286; bury fallbacks 0 of 4 vs 0 of 4; declare abandons 0 of 9 vs 0 of 9; search records off the 
+   Exact stages at max hand 8 (exploiter; reported): leads 5 (single-candidate 0), complete 5 (100.0% of eligible), abandoned 0, skipped_budget 0; follows attempted 9, complete 9 (100.0%), abandoned 0; reasons: none. <= 7-c
+   Latency on the duel host under its workers (not serving latency): decide_play p50 / p95 / p99 / max exploiter [0.2904, 5.76215, 7.56392999999999, 11.0773] vs defender [0.07385, 0.3826, 0.4304699999999986, 0.8084]; bury s
+   DEV tier i evidence for the S69 row only: not a strength claim for any servable candidate (the exploiter is R48 at a lifted budget on the duel host and is not servable); no release, deploy, latency or memory claim; the a
+   head-to-head levels/round (S61: its exploiter vs release 46, other deals; SE = 95% CI width / 3.92), S69 vs S61: +0.5000 (SE 0.1913) vs +0.1308 (SE 0.0204); difference +0.3692, independent-runs SE 0.1924, normal-approx 9
+   cell contribution [follow], S69 vs S61: +0.1250 (SE 0.0957) vs +0.0467 (SE 0.0113); difference +0.0783, independent-runs SE 0.0963, normal-approx 95% interval [-0.1105, +0.2671] (independent runs, not a paired test; an i
+   cell contribution [lead], S69 vs S61: +0.3750 (SE 0.1913) vs +0.0842 (SE 0.0176); difference +0.2908, independent-runs SE 0.1921, normal-approx 95% interval [-0.0858, +0.6674] (independent runs, not a paired test; an int
+   cell contribution [follow | tricks 1-5 | first round (rank 2)], S69 vs S61: +0.1250 (SE 0.0957) vs +0.0200 (SE 0.0074); difference +0.1050, independent-runs SE 0.0960, normal-approx 95% interval [-0.0831, +0.2931] (indep
+   cell contribution [follow | tricks 1-5 | fixed 2-6], S69 vs S61: +0.0000 (SE 0.0000) vs +0.0092 (SE 0.0045); difference -0.0092, independent-runs SE 0.0045, normal-approx 95% interval [-0.0179, -0.0004] (independent runs
+   cell contribution [follow | tricks 1-5 | fixed 7-10], S69 vs S61: +0.0000 (SE 0.0000) vs +0.0158 (SE 0.0053); difference -0.0158, independent-runs SE 0.0053, normal-approx 95% interval [-0.0263, -0.0054] (independent run
+   cell contribution [follow | tricks 1-5 | fixed J-A], S69 vs S61: +0.0000 (SE 0.0000) vs +0.0017 (SE 0.0047); difference -0.0017, independent-runs SE 0.0047, normal-approx 95% interval [-0.0108, +0.0075] (independent runs
+   cell contribution [lead | tricks 1-5 | first round (rank 2)], S69 vs S61: +0.0000 (SE 0.0000) vs +0.0217 (SE 0.0121); difference -0.0217, independent-runs SE 0.0121, normal-approx 95% interval [-0.0454, +0.0021] (indepen
+   cell contribution [lead | tricks 1-5 | fixed 2-6], S69 vs S61: +0.3750 (SE 0.1913) vs +0.0317 (SE 0.0081); difference +0.3433, independent-runs SE 0.1915, normal-approx 95% interval [-0.0320, +0.7187] (independent runs, 
+   cell contribution [lead | tricks 1-5 | fixed 7-10], S69 vs S61: +0.0000 (SE 0.0000) vs +0.0092 (SE 0.0060); difference -0.0092, independent-runs SE 0.0060, normal-approx 95% interval [-0.0208, +0.0025] (independent runs,
+   cell contribution [lead | tricks 1-5 | fixed J-A], S69 vs S61: +0.0000 (SE 0.0000) vs +0.0217 (SE 0.0079); difference -0.0217, independent-runs SE 0.0079, normal-approx 95% interval [-0.0371, -0.0063] (independent runs, 

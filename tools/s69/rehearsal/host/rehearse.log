@@ -1,0 +1,8 @@
+2026-10-26T13:03:51Z s69 REHEARSAL armed (pid 115434, launcher /root/claude_s69_cloud.sh sha256 e3c25940c56dc989ab5c1a17eb0f8e3e29f8f2768cf040a6cc3ea2b5676a95a5): non-scientific window 311960000+36, out /root/vol-rehearsal-claude-s69-r2-20261026, stop 5400 s; no RELEASE involved
+2026-10-26T13:03:51Z s69 holds the host lock (pid 115434)
+2026-10-26T13:03:52Z s69 REHEARSAL start: defender pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a (R48 as served) vs exploiter pv-search-491ee4bf-w256-k32-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-ed8-els9000-edn200000000-xf8-xfcompactlevel-r9779eb5a-bury-hybrid-bwv-80b4500430de (SHENGJI_PV_WORLDS=256 SHENGJI_PV_CANDIDATES=32 SHENGJI_PV_EXACT_DEEP_CARDS=8 SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 SHENGJI_PV_SERVING_BUDGET_SECONDS=60 SHENGJI_PV_LEAF_GREEDY_DEADLINE=); deals 36 seed0 311960000 plan r2; workers 12; group KILL at 5400 s (backstop 5410 s); group RSS sampler pid 115493
+2026-10-26T13:03:52Z s69 run pid/pgid 115499 (setsid; timeout KILL at 5400 s; backstop watchdog pid 115506 at 5410 s)
+2026-10-26T13:12:35Z s69 DEV END rc=0 wall_s=523.1 maxrss_kb=490312
+2026-10-26T13:12:35Z s69 REHEARSAL peak process-group RSS 3996948 kB (5 s samples); largest single process (time -v) 490312 kB
+2026-10-26T13:12:35Z s69 REHEARSAL cleanup: no process names /root/vol-rehearsal-claude-s69-r2-20261026/duel.jsonl; run group reaped (run_child's sweep found no live member)
+2026-10-26T13:12:35Z s69 REHEARSAL DONE rc=0 wall_s=523.1 deals=36 workers=12

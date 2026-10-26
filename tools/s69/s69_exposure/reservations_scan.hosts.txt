@@ -1,0 +1,12 @@
+== shengji-cloud 2026-10-26T12:36:06Z
+records 91 seed spans 445
+highest 8 spans: [(202610030664, 202610031183, 'L1-full519', 'l1-fresh519-20261004-v1.json'), (202610030664, 202610031183, 'L1-full519', 'l1-full519-v1-20261003.json'), (202610030664, 202610031183, 'L1-support-census519', 'l1-support-census519-20261004.json'), (202610030665, 202610030677, 'L1-timing12', 'l1-timing12-v3-20261003.json'), (202610030665, 202610031184, 'L1-full519', 'l1-fresh519-20261004-v1.json'), (202610030665, 202610031184, 'L1-full519', 'l1-full519-v1-20261003.json'), (202610030665, 202610031184, 'L1-support-census519', 'l1-support-census519-20261004.json'), (202610040700, 202610040703, 'S3-fixed3', 's3-fixed3-20261004-v1.json')]
+overlaps with s69 windows: []
+names with an s69-band token: []
+done
+== shengji-perf 2026-10-26T12:36:08Z
+records 65 seed spans 2546
+highest 8 spans: [(9186519000755325488, 9186519000755325489, 'v48bury-perf', 'v48bury-perf.json'), (9196461126568136587, 9196461126568136588, 'v48bury-perf', 'v48bury-perf.json'), (9203143760471603455, 9203143760471603456, 'v48bury-perf', 'v48bury-perf.json'), (9204711869658675645, 9204711869658675646, 'v48bury-perf', 'v48bury-perf.json'), (9205663184686453799, 9205663184686453800, 'v48bury-perf', 'v48bury-perf.json'), (9210018760706230162, 9210018760706230163, 'v48bury-perf', 'v48bury-perf.json'), (9218718125668260401, 9218718125668260402, 'v48bury-perf', 'v48bury-perf.json'), (9222912392692550110, 9222912392692550111, 'v48bury-perf', 'v48bury-perf.json')]
+overlaps with s69 windows: []
+names with an s69-band token: []
+done

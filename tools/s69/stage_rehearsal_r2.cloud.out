@@ -1,0 +1,4 @@
+targets clear (5 paths): /root/claude-s69/rehearse_s69_cloud.r2.sh /root/claude-s69/STAGED.rehearsal-r2.sha256 /root/claude_s69_rehearsal_r2.status /root/vol-rehearsal-claude-s69-r2-20261026 /root/claude_s69_rehearsal_r2.peak_rss_kb
+/root/claude-s69/rehearse_s69_cloud.r2.sh: OK
+STAGED ok (rehearsal-r2 phase): 1 file verified on the host, read-only
+NEXT, ON cloud: nohup setsid bash /root/claude-s69/rehearse_s69_cloud.r2.sh e3c25940c56dc989ab5c1a17eb0f8e3e29f8f2768cf040a6cc3ea2b5676a95a5

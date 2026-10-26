@@ -1,0 +1,7 @@
+targets clear (9 paths): /root/claude_s69_cloud.sh /root/claude-s69 /root/claude_s69_screen.status /root/claude_s69.RELEASE /root/claude_s69.HOLD /root/vol-dev-claude-s69-r48-20261026 /root/claude_s69_rehearsal.status /root/vol-rehearsal-claude-s69-20261026 /root/claude_s69_rehearsal.peak_rss_kb
+/root/claude-s69/exploit_duel_s61.py: OK
+/root/claude-s69/hypotheses.py: OK
+/root/claude-s69/rehearse_s69_cloud.sh: OK
+/root/claude_s69_cloud.sh: OK
+STAGED ok (lane phase): 4 files verified on the host, read-only
+NEXT, ON cloud: DRYRUN=1 bash /root/claude_s69_cloud.sh (rc 0 and the names: line); the rehearsal: nohup setsid bash /root/claude-s69/rehearse_s69_cloud.sh e3c25940c56dc989ab5c1a17eb0f8e3e29f8f2768cf040a6cc3ea2b5676a95a5

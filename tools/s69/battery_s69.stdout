@@ -1,0 +1,36 @@
+adversarial-battery-v1  tier DEV  ceilings (the reader's BAR) play 0% / belief 0% / bury 1% / declare 1% on every arm; play worlds {'ex': 256, 'r45': 64}
+reader   /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/s69_read.py  sha256 18bdcd6a9ea31bcb2d03ccfb899d5559fdb3ae211dd89ae3af3855818518295c  (invoke module)
+fixture  /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/test_s69_read.py  sha256 577197ed7987acb895ffdb635fbee9ba009104b6c6d5e13fdd4e1f740254a133  (generator above '# ---- T1 ----', seed 7, engine-consistent outcomes)
+battery  /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/adversarial_battery.py  sha256 0b490be037091a9de707b272ca4f009f61d3f08f648cd6f3b3921f1e340108a9
+validity /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/validity.py  sha256 ba84c408c3b96fbe7834184df09a48dc66b3a1c492913c8f1462d36825ea1920
+adapter  /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/battery_s69_adapter.py  sha256 3fadbe7e0ff4358343672f61f99e273fa6fff68e4259a02d9bcfe53c3499d895  (DuelAdapter + the dispatch binding + the reader's ceilings)
+ #  case                                            want    reader outcome  guard         result  injected / detail
+ 1  clean fixture                                   ACCEPT  NO_RESOLVED_GA  VALID         PASS    unchanged
+ 2  all exploiter plays fallback                    REJECT  REFUSED         DEV_INVALID   PASS    60000 of 60000 decisions
+ 3  all defender plays fallback                     REJECT  DEV_INVALID     DEV_INVALID   PASS    60000 of 60000 decisions
+ 4  exploiter play fallbacks over ceiling by one    REJECT  DEV_INVALID     DEV_INVALID   PASS    1 of 60000
+ 5  exploiter play fallbacks at ceiling             ACCEPT  NO_RESOLVED_GA  VALID         PASS    0 of 60000
+ 6  exploiter belief fallbacks over ceiling by one  REJECT  DEV_INVALID     DEV_INVALID   PASS    1 of 60000
+ 7  exploiter belief fallbacks at ceiling           ACCEPT  NO_RESOLVED_GA  VALID         PASS    0 of 60000
+ 8  exploiter bury fallbacks over ceiling by one    REJECT  DEV_INVALID     DEV_INVALID   PASS    7 of 600
+ 9  exploiter bury fallbacks at ceiling             ACCEPT  NO_RESOLVED_GA  VALID         PASS    6 of 600
+10  exploiter declare abandons over ceiling by one  REJECT  DEV_INVALID     DEV_INVALID   PASS    25 of 2404
+11  exploiter declare abandons at ceiling           ACCEPT  NO_RESOLVED_GA  VALID         PASS    24 of 2404
+12  defender play fallbacks over ceiling by one     REJECT  DEV_INVALID     DEV_INVALID   PASS    1 of 60000
+13  defender play fallbacks at ceiling              ACCEPT  NO_RESOLVED_GA  VALID         PASS    0 of 60000
+14  defender belief fallbacks over ceiling by one   REJECT  DEV_INVALID     DEV_INVALID   PASS    1 of 60000
+15  defender belief fallbacks at ceiling            ACCEPT  NO_RESOLVED_GA  VALID         PASS    0 of 60000
+16  defender bury fallbacks over ceiling by one     REJECT  DEV_INVALID     DEV_INVALID   PASS    7 of 600
+17  defender bury fallbacks at ceiling              ACCEPT  NO_RESOLVED_GA  VALID         PASS    6 of 600
+18  defender declare abandons over ceiling by one   REJECT  DEV_INVALID     DEV_INVALID   PASS    24 of 2388
+19  defender declare abandons at ceiling            ACCEPT  NO_RESOLVED_GA  VALID         PASS    23 of 2388
+20  exploiter wrong world count on one record       REJECT  DEV_INVALID     DEV_INVALID   PASS    one ex search record reports 64 worlds, configured 256
+21  defender wrong world count on one record        REJECT  DEV_INVALID     DEV_INVALID   PASS    one r45 search record reports 256 worlds, configured 64
+22  exploiter evaluated declare short of worlds     REJECT  REFUSED         DEV_INVALID   PASS    one evaluated ex declare with 0 of 64 worlds completed
+23  defender evaluated declare short of worlds      REJECT  REFUSED         DEV_INVALID   PASS    one evaluated r45 declare with 0 of 64 worlds completed
+24  impossible score row                            REJECT  DEV_INVALID     DEV_INVALID   PASS    seed 311060910 mirror 0: attacker_points 0 < kitty_bonus 30
+25  duplicate seed                                  REJECT  REFUSED         -             PASS    seed 311060911 mirror 1 twice
+26  missing seed                                    REJECT  REFUSED         -             PASS    seed 311061210 (both mirrors) removed
+27  truncated last row                              REJECT  REFUSED         -             PASS    last line cut
+28  ABORT terminal                                  REJECT  REFUSED         -             PASS    ABORT line, no LANE DONE
+BATTERY PASS: 28 of 28 applicable cases pass

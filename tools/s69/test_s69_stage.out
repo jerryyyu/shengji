@@ -1,0 +1,8 @@
+PASS stage command rc 0 into the temp host layout
+PASS DUEL = /root/claude-s69/exploit_duel_s61.py is the staged copy at its pinned sha b15d292f564f, in /root/claude-s69
+PASS HYP = /root/claude-s69/hypotheses.py is the staged copy at its pinned sha 4365a15d6c86, in /root/claude-s69
+PASS the COPIED adapter --help runs rc 0 from the staged dir
+PASS launcher preflight through the COPIED adapter rc 0: preflight ok: names: defender pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw- ... | imports ok: ['compare_runs', 'reader_li
+PASS negative control: without hypotheses.py the copied adapter --help exits 1
+ALL PASS
+rc=0

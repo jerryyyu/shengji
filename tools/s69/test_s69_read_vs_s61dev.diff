@@ -1,0 +1,213 @@
+--- test_s61dev_read.base.py	2026-10-26 08:46:02
++++ test_s69_read.py	2026-10-26 08:49:25
+@@ -1,5 +1,7 @@
+ #!/usr/bin/env python3
+-"""s61dev reader end-to-end check on SYNTHETIC rows (no deal is played).  A generator writes duel.jsonl rows in exploit_duel_s61.py's record
++"""s69 reader end-to-end check on SYNTHETIC rows (no deal is played); test_s61dev_read.py (the S61 reader's Codex-PASSed e2e test) with the
++binding (reader_lib.bind_inputs over a temp dispatch layout: root/duel.jsonl + root/SHA256SUMS, the status, the reservation), the zero play /
++belief fallback ceilings and the versus-S61 lines changed.  Original text:  A generator writes duel.jsonl rows in exploit_duel_s61.py's record
+ form for 600 deals x 2 mirrors: s60dev's dhist (19 fields; exact_deep_cards 8 on the exploiter, 7 on the defender; the side's play worlds),
+ declare_recs / bury_rec at the side's world counts, engine-consistent round results (validity.engine_level_outcome), and a dtrace of 100
+ deal-time declare calls, 4 final calls, the bury and 25 single-card tricks.  The two mirrors' traces agree up to one divergent entry per
+@@ -12,7 +14,7 @@
+       (2 cards chosen, 1 played) accepted.
+   T3  refusals: the binding (ABORT line, no terminal, DEV END rc=1, a wrong exploiter in the start line, SHA256SUMS mismatch; a matching
+       SHA256SUMS accepted), the trace form and its reconciliations, the divergence form, and s60dev's integrity and row-schema cases.
+-  usage: cd /private/tmp && nice -n 15 python3 test_s61dev_read.py <s61dev_read.py>
++  usage: cd /private/tmp && nice -n 15 python3 test_s69_read.py <s69_read.py>
+ """
+ import copy
+ import hashlib
+@@ -24,18 +26,19 @@
+ from pathlib import Path
+ 
+ READER = Path(sys.argv[1]).resolve()
+-spec = importlib.util.spec_from_file_location('s61dev_read', READER); rd = importlib.util.module_from_spec(spec); spec.loader.exec_module(rd)
++spec = importlib.util.spec_from_file_location('s69_read', READER); rd = importlib.util.module_from_spec(spec); spec.loader.exec_module(rd)
+ va = rd.va
+ SEED0, DEALS = rd.SEED0, rd.DEALS
+-TS0 = '2026-10-22T01:00:00Z'
++TS0 = '2026-10-26T01:00:00Z'
+ 
+ 
+-def status_text(*, cand=None, rc=0, terminal=True, abort=False):
+-    lines = [f'{TS0} s61dev armed (pid 4242, launcher sha256 {"0" * 64})',
+-             f'{TS0} s61dev DEV start: defender {rd.R46} (release 46 as served) vs exploiter {cand or rd.CAND} (S61 exploiter: ...); deals {DEALS} seed0 {SEED0}',
+-             f'{TS0} s61dev DEV END rc={rc} wall_s=5000.0 maxrss_kb=1000000']
++def status_text(*, cand=None, rc=0, terminal=True, abort=False, start=None):
++    lines = [f'{TS0} s69 armed (pid 4242, launcher sha256 {"0" * 64})',
++             f'{TS0} ' + (start if start is not None else rd.START.replace(rd.CAND, cand or rd.CAND)),
++             f'{TS0} s69 run pid/pgid 4243 (setsid; timeout KILL at 28800 s; backstop watchdog pid 4250 at 28810 s)',
++             f'{TS0} s69 DEV END rc={rc} wall_s=5000.0 maxrss_kb=1000000']
+     if abort:
+-        lines.append(f'{TS0} ABORT: s61dev run group 4242 exited rc 1; no LANE DONE')
++        lines.append(f'{TS0} ABORT: s69 run group 4242 exited rc 1; no LANE DONE')
+     if terminal:
+         lines.append(f'{TS0} {rd.TERMINAL}')
+     return '\n'.join(lines) + '\n'
+@@ -136,7 +139,7 @@
+         r = dict(arm='identity', seed=seed, mirror=m, ex_team=m, round_kind=kind, trump_rank=rank, planned_banker=planned, banker=b,
+                  ex_role='banker' if b % 2 == m else 'attacker', trump='S', declaration=None, declares=declares,
+                  failed_throws=[[0, t[105][1], t[105][1] % 2 == m]] if failed_first else [],
+-                 fired={'declare': 0, 'bury': 0, 'play': 0}, hyp={}, play_secs=9.0, defender=rd.R46, exploiter_base=rd.CAND,
++                 fired={'declare': 0, 'bury': 0, 'play': 0}, hyp={}, play_secs=9.0, defender=rd.R48, exploiter_base=rd.CAND,
+                  dsecs=secs, dhist=hist, declare_recs={s: [declare_rec(rng, s) for _ in range(rng.randint(1, 3))] for s in ('ex', 'r45')},
+                  bury_rec=bury_rec(rng, bside), dtrace=t)
+         r.update(outcome(rng, b, m, Ls[m]))
+@@ -185,14 +188,27 @@
+     print(('PASS' if ok else 'FAIL'), label, str(detail)[:300]); fails += int(not ok)
+ 
+ 
+-def run(rs, status=None, sums=None):
+-    with tempfile.TemporaryDirectory(prefix='s61dev-e2e-', dir='/private/tmp') as tmp:
+-        p = write(rs, tmp)
+-        sp = Path(tmp) / 'lane.status'; sp.write_text(status if status is not None else status_text())
+-        kw = {}
+-        if sums is not None:
+-            q = Path(tmp) / 'SHA256SUMS'; q.write_text(sums(hashlib.sha256(Path(p).read_bytes()).hexdigest())); kw['sums'] = str(q)
+-        return rd.analyze(p, status=str(sp), **kw)
++LAUNCHER_SHA = 'a' * 64
++
++
++def run(rs, status=None, sums=None, reservation=None, mutate=None, s61_reference=None):
++    """A temp dispatch layout (root/duel.jsonl, root/SHA256SUMS as the launcher seals it, the status, the reservation) and a trusted
++    mapping naming it; mutate(paths, trusted) may substitute any of them before the read."""
++    with tempfile.TemporaryDirectory(prefix='s69-e2e-', dir='/private/tmp') as tmp:
++        tmp = str(Path(tmp).resolve())
++        root = Path(tmp) / 'vol-dev-claude-s69-r48-20261026'; root.mkdir()
++        p = write(rs, root)
++        (root / 'fly.toml').write_text('# fixture\n')
++        h = hashlib.sha256(Path(p).read_bytes()).hexdigest()
++        (root / 'SHA256SUMS').write_text(sums(h) if sums is not None else f'{"1" * 64}  ./fly.toml\n{h}  ./duel.jsonl\n')
++        sp = Path(tmp) / 'claude_s69_screen.status'; sp.write_text(status if status is not None else status_text())
++        rp = Path(tmp) / 's69.json'
++        trusted = dict(rd.TRUSTED, launcher_sha256=LAUNCHER_SHA, root=str(root), status=str(sp), reservation=str(rp))
++        rp.write_text(json.dumps(reservation if reservation is not None else dict(schema='claude-reservation-v1', lane='s69', launcher_sha256=LAUNCHER_SHA, status=str(sp), output_root=str(root), host='shengji-cloud', reader='Claude')))
++        paths = dict(root=str(root), status=str(sp), reservation=str(rp))
++        if mutate is not None:
++            mutate(paths, trusted, Path(tmp))
++        return rd.analyze(paths['root'], status=paths['status'], reservation=paths['reservation'], trusted=trusted, s61_reference=s61_reference)
+ 
+ 
+ def refused(label, want, rs, **kw):
+@@ -220,7 +236,7 @@
+     want_cls[{'D': 'declare', 'F': 'declare', 'B': 'bury'}.get(e[0]) or ('lead' if e[3] else 'follow')] += 1
+ check('T1 the class counts equal an independent recount of the first divergences', {c['cell']: c['deals'] for c in at['tables']['class']} == want_cls, want_cls)
+ check('T1 the top decile holds ceil(N/10) deals and 20 listed wins with both actions', at['top_decile']['deals'] == 60 and len(at['top_decile']['largest_wins']) == 20
+-      and all(w['exploiter_action'] != w['release46_action'] for w in at['top_decile']['largest_wins'] if w['diverged']))
++      and all(w['exploiter_action'] != w['r48_action'] for w in at['top_decile']['largest_wins'] if w['diverged']))
+ cl = out['canonical_lines']
+ check('T1 canonical lines carry the numbers, the verdict and the attribution', any(f'{m:+.4f}' in l for l in cl) and any('Verdict EXPLOITER_AHEAD' in l for l in cl) and any(l.startswith('Top-3 loss cells') for l in cl), cl[:2])
+ for l in cl:
+@@ -240,7 +256,13 @@
+     h[0] = '-fallback-v1'; h[1:8] = [None] * 7; h[10:19] = [None] * 9
+ for side, who in (('ex', 'exploiter'), ('r45', 'defender')):
+     rs = rows(); to_fallback(rs[10]['dhist'][side][3])
+-    o = run(rs); check(f'T2 one {who} play fallback (<= 0.1%) -> still read, reported', o['bar']['verdict'] == 'EXPLOITER_AHEAD' and o['exploiter' if side == 'ex' else 'defender']['fallback'] == 1, o['bar']['reasons'])
++    o = run(rs); check(f'T2 ONE {who} play fallback (ceiling 0) -> DEV_INVALID naming the {who}, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None
++                       and any(f"arm '{side}' play_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
++    rs = rows(); h = next(h for h in rs[10]['dhist'][side] if h[0] == '-decision-v1'); h[4], h[7] = 1, 'BeliefNumpyError'
++    o = run(rs); check(f'T2 ONE {who} belief fallback (ceiling 0) -> DEV_INVALID naming the {who}', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None
++                       and any(f"arm '{side}' belief_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
++    rs = rows(); r = next(r for r in rs if r['bury_rec'][0] == side); b = r['bury_rec']; r['bury_rec'] = [side, 'cwv-bury-fallback-v1', 'budget', b[3], None, b[5]]
++    o = run(rs); check(f'T2 one {who} bury fallback (<= 1%) -> still read, reported', o['bar']['verdict'] == 'EXPLOITER_AHEAD' and o['exploiter' if side == 'ex' else 'defender']['bury_fallback'] == 1, o['bar']['reasons'])
+     rs = rows()
+     for r in rs[:200]:
+         to_fallback(r['dhist'][side][1])
+@@ -274,7 +296,7 @@
+       not (finding_keys & o['attribution'].keys()) and o['levels'] is not None and o['points'] is not None
+       and o['attribution']['not_diverged_nonzero'] == 1 and o['bar']['flags'] == [], o['attribution'])
+ check('T2 ATTRIBUTION_INVALID suppresses rendered attribution findings but keeps the read diagnostic',
+-      any(l.startswith('s61dev DEV head-to-head') for l in o['canonical_lines'])
++      any(l.startswith('s69 DEV head-to-head') for l in o['canonical_lines'])
+       and any('Attribution ATTRIBUTION_INVALID' in l for l in o['canonical_lines'])
+       and not any(any(fragment in l for fragment in finding_lines) for l in o['canonical_lines']), o['canonical_lines'])
+ o = run(rows(undiverged={7: 0, 9: 0}))
+@@ -287,9 +309,9 @@
+ refused('T3 an ABORT line in the status refused', 'terminal: the lane failed', rs, status=status_text(abort=True))
+ refused('T3 no terminal line refused', 'exact terminal lines', rs, status=status_text(terminal=False))
+ refused('T3 DEV END rc=1 refused', 'status: need one DEV start line', rs, status=status_text(rc=1))
+-refused('T3 a start line naming another exploiter refused', 'status: need one DEV start line', rs, status=status_text(cand=rd.R46))
++refused('T3 a start line naming another exploiter refused', 'status: need one DEV start line', rs, status=status_text(cand=rd.R48))
+ refused('T3 a SHA256SUMS whose duel.jsonl line differs refused', 'SHA256SUMS', rs, sums=lambda h: f'{"0" * 64}  ./duel.jsonl\n')
+-o = run(rs, sums=lambda h: f'{"1" * 64}  ./fly.toml\n{h}  ./duel.jsonl\n'); check('T3 a matching SHA256SUMS accepted and recorded', o['binding']['sums_sha256'] is not None and o['input_sha256'] == o['binding']['input_sha256'])
++o = run(rs, sums=lambda h: f'{"1" * 64}  ./fly.toml\n{h}  ./duel.jsonl\n'); check('T3 a matching SHA256SUMS accepted and recorded', o['binding']['sums_sha256'] is not None and o['input_sha256'] == o['binding']['input_sha256'] and o['binding']['binding']['mode'] == 'host')
+ rs = rows(); del rs[4]['dtrace']; refused('T3 a row without dtrace refused', 'dtrace form', rs)
+ rs = rows(); rs[4]['dtrace'][3] = rs[4]['dtrace'][3][:5]; refused('T3 a 5-field trace entry refused', 'dtrace entry form', rs)
+ rs = rows(); rs[4]['dtrace'][110][5] = ['Z9', 'A1']; refused('T3 unsorted cards refused', 'dtrace entry form', rs)
+@@ -313,7 +335,7 @@
+ rs[2 * i + 1]['dtrace'][41][4] = 24
+ refused('T3 a first divergence that differs in state, not only in cards, refused', 'divergence form', rs)
+ rs = rows(); rs[7]['defender'] = rd.CAND; refused('T3 a wrong defender name refused', 'defender', rs)
+-rs = rows(); rs[7]['exploiter_base'] = rd.R46; refused('T3 a wrong exploiter name refused', 'the S61 exploiter', rs)
++rs = rows(); rs[7]['exploiter_base'] = rd.R48; refused('T3 a wrong exploiter name refused', 'the S69 exploiter', rs)
+ rs = rows(); rs.append(copy.deepcopy(rs[3])); refused('T3 a duplicate row refused', 'duplicate row', rs)
+ rs = rows(); del rs[7]; refused('T3 a missing mirror refused', 'deals:', rs)
+ rs = rows(); rs[2]['dhist']['ex'][0][10] = 7; refused('T3 an exploiter search decision with exact_deep_cards 7 refused', 'field 10=7 fails one_of(8,)', rs)
+@@ -322,5 +344,66 @@
+ o = run(rows())
+ check("T3 control: the unchanged fixture reads T1's verdict and numbers", o['bar']['verdict'] == out['bar']['verdict'] and o['levels'] == out['levels'] and o['attribution']['tables'] == out['attribution']['tables'])
+ check("T3 control: valid structured and rendered output remains unchanged", o['attribution'] == out['attribution'] and o['bar'] == out['bar'] and o['canonical_lines'] == out['canonical_lines'])
++# ---- T4: the S69 changes (binding over the dispatch layout; the versus-S61 lines) ----
++def refused_m(label, want, mutate, rs=None, **kw):
++    try:
++        run(rs if rs is not None else rows(), mutate=mutate, **kw)
++    except SystemExit as e:
++        check(label, str(e).startswith('REFUSING: ') and want in str(e), str(e)[:200])
++    else:
++        check(label, False, 'read accepted')
++def m_root_copy(paths, trusted, tmp):
++    import shutil
++    other = tmp / 'copy-root'; shutil.copytree(paths['root'], other); paths['root'] = str(other)
++refused_m('T4 an identical copy of the output root elsewhere refused by bind_inputs', 'input binding', m_root_copy)
++def m_status_sub(paths, trusted, tmp):
++    q = tmp / 'other.status'; q.write_text(Path(paths['status']).read_text()); paths['status'] = str(q)
++refused_m('T4 a substituted status (same bytes, other path) refused by bind_inputs', 'input binding', m_status_sub)
++refused_m('T4 a reservation naming another launcher sha refused', 'input binding: the reservation does not bind', None,
++          reservation=dict(lane='s69', launcher_sha256='b' * 64, status='x', output_root='y'))
++def m_relative(paths, trusted, tmp):
++    paths['root'] = paths['root'] + '/../' + Path(paths['root']).name
++refused_m('T4 a non-canonical root path refused', 'input binding', m_relative)
++def m_extra_sums(paths, trusted, tmp):
++    (Path(paths['root']) / 'SHA256SUMS').unlink()
++refused_m('T4 an output root without SHA256SUMS refused', 'SHA256SUMS missing', m_extra_sums)
++refused('T4 a start line with another seed0 refused (the exact launcher text)', 'status: need one DEV start line', rows(), status=status_text(start=rd.START.replace(f'seed0 {SEED0}', f'seed0 {SEED0 + 1}')))
++refused('T4 a start line with another stop refused', 'status: need one DEV start line', rows(), status=status_text(start=rd.START.replace('KILL at 28800', 'KILL at 99999')))
++st2 = status_text().replace(f'{TS0} s69 DEV END', f'{TS0} ' + rd.START + f'\n{TS0} s69 DEV END')
++refused('T4 two DEV start lines refused', 'status: need one DEV start line', rows(), status=st2)
++st3 = status_text().replace(f'{TS0} {rd.TERMINAL}', f'{TS0} {rd.TERMINAL}\n{TS0} s69 an extra line')
++refused('T4 a line after the terminal refused (NO_TAIL)', 'terminal', rows(), status=st3)
++cmp = [l for l in out['canonical_lines'] if ' vs S61: ' in l]
++n_cells = len(set(c['cell'] for c in out['attribution']['tables']['class_trick_rank']) | set(rd.load_s61_reference()['tables']['class_trick_rank']))
++check('T4 versus-S61 lines: the head-to-head, the class marginals and every class x trick x rank cell of either run, each with the difference, the independent-runs SE, the 95% interval and the caveat',
++      len(cmp) == 1 + len(set(c['cell'] for c in out['attribution']['tables']['class']) | set(rd.load_s61_reference()['tables']['class'])) + n_cells
++      and all(rd.cr.CAVEAT in l and 'independent-runs SE' in l and '95% interval' in l for l in cmp) and out['versus_s61']['caveat'] == rd.cr.CAVEAT, (len(cmp), cmp[:2]))
++h2h = out['versus_s61']['rows'][0]; ref = rd.load_s61_reference()
++se_now = (out['levels'][2] - out['levels'][1]) / (2 * rd.cr.Z95); se_then = (ref['levels'][2] - ref['levels'][1]) / (2 * rd.cr.Z95)
++check('T4 the head-to-head comparison row: difference = S69 mean - S61 mean, SE = hypot of the CI-derived SEs',
++      abs(h2h['diff'] - (out['levels'][0] - ref['levels'][0])) < 1e-12 and abs(h2h['se'] - (se_now ** 2 + se_then ** 2) ** 0.5) < 1e-12, h2h)
++check('T4 every canonical line passes compare_runs.audit_comparison_lines (no equality wording; every S61 line built by versus_earlier_run)',
++      rd.cr.audit_comparison_lines(out['canonical_lines'], earlier_names=('S61',)) == len(cmp))
++try:
++    rd.cr.audit_comparison_lines(out['canonical_lines'] + ['S61 and S69 are equal'], earlier_names=('S61',))
++except rd.cr.CompareRefusal:
++    check('T4 negative control: an equality line naming S61 is refused by the audit', True)
++else:
++    check('T4 negative control: an equality line naming S61 is refused by the audit', False)
++with tempfile.TemporaryDirectory(prefix='s69-ref-', dir='/private/tmp') as tmp:
++    bad = Path(tmp) / 's61_reference.json'; bad.write_text(Path(rd.__file__).with_name('s61_reference.json').read_text().replace('0.13083333333333333', '0.2'))
++    try:
++        run(rows(), s61_reference=str(bad))
++    except SystemExit as e:
++        check('T4 a drifted S61 reference refused (pinned sha256)', 's61_reference.json drift' in str(e), str(e)[:160])
++    else:
++        check('T4 a drifted S61 reference refused (pinned sha256)', False, 'accepted')
++o = run(rows(undiverged={7: 1}))
++check('T4 ATTRIBUTION_INVALID: no versus-S61 line (the comparison needs the cell tables)', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']))
++rs = rows(); to_fallback(rs[10]['dhist']['ex'][3]); o = run(rs)
++check('T4 DEV_INVALID: no versus-S61 line and no outcome', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']) and o['levels'] is None)
++for l in cmp[:3]:
++    print('  ', l[:300])
++
+ print('ALL PASS' if not fails else f'{fails} FAILED')
+ sys.exit(int(bool(fails)))

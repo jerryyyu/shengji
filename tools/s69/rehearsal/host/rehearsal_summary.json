@@ -1,0 +1,16 @@
+{
+ "schema": "lane-host-rehearsal-summary-v1",
+ "host": "shengji-cloud",
+ "workers": 12,
+ "deals": 36,
+ "wall_s": 523.1,
+ "s_per_deal": 14.531,
+ "full_run_deals": 600,
+ "projected_full_wall_s": 10897.9,
+ "cap_s": 28800,
+ "peak_rss_kb": 3996948,
+ "terminal_line": "s69 REHEARSAL DONE rc=0 wall_s=523.1 deals=36 workers=12",
+ "cleanup": "s69 REHEARSAL cleanup: no process names /root/vol-rehearsal-claude-s69-r2-20261026/duel.jsonl; run group reaped (run_child's sweep found no live member)",
+ "log": "rehearse.log",
+ "note": "the lane child form (run_child of launcher e3c25940) on the throwaway window 311960000+36; projection = s/deal x 600 x 1.25 (straggler margin; the stop 28800 s is 2.6x it); largest single process (time -v) 490312 kB; validity on these rows VALID; play fallbacks ex 0 / def 0, belief fallbacks ex 0 / def 0, bury fallbacks ex 0 / def 0, declare abandons ex 0 / def 0; decide_play max ex 48.0005 s (p50/p95/p99 [0.3899, 8.5527, 11.095473999999966]) / def 2.4003 s; exploiter 8-card exact leads 24/31 complete, follows 51/52; bury s max ex 0.4076 / def 0.4056; declare s max ex 0.0991 / def 0.0985"
+}

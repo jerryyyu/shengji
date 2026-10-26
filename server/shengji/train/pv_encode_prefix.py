@@ -126,7 +126,7 @@ class HistoryPrefix:
         prefix = cls._of(rnd)
         if prefix is not None and batched:
             prefix.batched = True
-            if native:
+            if native and _reference_builders():
                 prefix.native = _native_arguments(prefix)
         return prefix
 
@@ -754,8 +754,7 @@ def native_arrays(prefix, positions, seats, version):
     batched builder would skip or refuse, any kernel error) or ``prefix`` has
     no native arguments."""
     arguments = prefix.native
-    if arguments is None or version not in VERSIONS or not len(positions) \
-            or not _reference_builders():
+    if arguments is None or version not in VERSIONS or not len(positions):
         return None
     from .pv_native import _pv_fast
     played, physical, voids, suit_of, is_trump, suit_index = arguments
@@ -770,10 +769,12 @@ def native_arrays(prefix, positions, seats, version):
 
 
 def _reference_builders() -> bool:
-    """This module's names still bind the batched builder and the helpers the
-    kernel stands for (a replacement keeps the replacement)."""
+    """The batched builder and the helpers the kernel stands for are the
+    objects captured at import, intact (`pv_native.ReferenceSnapshot`), and
+    this module's names bind those very objects."""
     names = globals()
-    return all(names.get(name) is fn for name, fn in _KERNEL_REFERENCES.items())
+    return _KERNEL_SNAPSHOT is not None and _KERNEL_SNAPSHOT.intact(
+        *(names.get(name) for name in _KERNEL_NAMES))
 
 
 def fused_many_native(prefix, positions, seats, version):
@@ -807,9 +808,11 @@ def _stacked_evaluator(evaluator) -> bool:
     """The served NumPy evaluator, whose ``probabilities`` stacks each chunk's
     fields and runs `probabilities_stacked`'s forward on them."""
     from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
-    # an instance-level ``probabilities`` is the evaluator's forward: kept
+    # a replaced forward (on the class or the instance) is the one kept
     return (type(evaluator) is NumpyCompleteWorldEvaluator
-            and "probabilities" not in vars(evaluator))
+            and "probabilities" not in vars(evaluator)
+            and _FORWARD_SNAPSHOT is not None
+            and _FORWARD_SNAPSHOT.intact(NumpyCompleteWorldEvaluator.probabilities))
 
 
 def _builder(prefix):
@@ -1056,11 +1059,25 @@ def prior_rows(rnd, seat, worlds, version):
         return reference()
 
 
-#: the functions `_pv_fast.encode_static_batch` reproduces, as defined here
-_KERNEL_REFERENCES = {"fused_many_batched": fused_many_batched, "_checked": _checked,
-                      "_traverse": _traverse, "_tail_head": _tail_head,
-                      "_trump_indices": _trump_indices, "_suit_masks": _suit_masks,
-                      "next_actor_rel": next_actor_rel, "trick_state": trick_state}
+#: the functions `_pv_fast.encode_static_batch` reproduces, and the rows
+#: forward `NumpyCompleteWorldEvaluator.probabilities_stacked` stands for,
+#: frozen at import
+_KERNEL_NAMES = ("fused_many_batched", "_checked", "_traverse", "_tail_head", "_trump_indices",
+                 "_suit_masks", "next_actor_rel", "trick_state")
+
+
+def _snapshots():
+    try:
+        from .pv_native import ReferenceSnapshot
+        from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+        names = globals()
+        return (ReferenceSnapshot(*(names[name] for name in _KERNEL_NAMES)),
+                ReferenceSnapshot(NumpyCompleteWorldEvaluator.probabilities))
+    except Exception:
+        return None, None
+
+
+_KERNEL_SNAPSHOT, _FORWARD_SNAPSHOT = _snapshots()
 
 __all__ = ["VERSIONS", "HistoryPrefix", "encode_leaves", "fused_many", "fused_many_batched",
            "fused_many_native", "native_arrays", "prior_rows", "reply_rows", "score_leaves", "static_version"]

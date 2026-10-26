@@ -25,7 +25,9 @@ from __future__ import annotations
 
 from collections import Counter
 
+from ..ai.mcbot import MCBot
 from ..harvest import legal as harvest_legal
+from . import belief_seq
 
 try:
     from . import _pv_fast
@@ -39,6 +41,94 @@ HAVE_NATIVE = _pv_fast is not None
 #: replaced
 _REFERENCE_MULTISET_SUBSETS = harvest_legal.multiset_subsets
 _REFERENCE_ITER_FOLLOW = harvest_legal.iter_follow_actions
+#: the reference function objects the world switch stands for, as imported;
+#: only the identical objects take the fast paths
+_REFERENCE_BELIEF_DRAW = belief_seq.sample_worlds
+_REFERENCE_COMPLETION = MCBot._complete_determinized_hands
+
+class ReferenceSnapshot:
+    """The Python references a fast path stands for, frozen at import: each
+    function object, its code, defaults and globals dict, and every global its
+    code (nested code included) reads, by identity, with a copy of each
+    container's content.  `intact` is True only while every one of them is
+    the very object captured, holding the content captured; a fast path that
+    cannot establish that declines and the reference runs."""
+
+    _CONTAINERS = (dict, list, set, frozenset, tuple, bytearray)
+
+    def __init__(self, *functions):
+        import numpy as np
+        self._np = np
+        self.entries = []
+        for fn in functions:
+            raw = getattr(fn, "__func__", fn)
+            namespace = raw.__globals__
+            self.entries.append((raw, raw.__code__, raw.__defaults__, raw.__kwdefaults__,
+                                 namespace, self._frozen(raw.__defaults__),
+                                 self._frozen(raw.__kwdefaults__),
+                                 [(name, namespace[name], self._frozen(namespace[name]))
+                                  for name in sorted(self._names(raw.__code__))
+                                  if name in namespace]))
+
+    @staticmethod
+    def _names(code):
+        names = set(code.co_names)
+        for const in code.co_consts:
+            if hasattr(const, "co_names"):
+                names |= ReferenceSnapshot._names(const)
+        return names
+
+    def _frozen(self, value):
+        if isinstance(value, self._np.ndarray):
+            return value.copy()
+        if isinstance(value, self._CONTAINERS):
+            import copy
+            try:
+                return copy.deepcopy(value)
+            except Exception:
+                return None
+        return None
+
+    def _same(self, value, frozen):
+        if frozen is None:
+            return True
+        if isinstance(frozen, self._np.ndarray):
+            return (isinstance(value, self._np.ndarray) and value.dtype == frozen.dtype
+                    and value.shape == frozen.shape and bool((value == frozen).all()))
+        try:
+            return type(value) is type(frozen) and bool(value == frozen)
+        except Exception:
+            return False
+
+    def intact(self, *functions) -> bool:
+        """Every captured reference unchanged, and ``functions`` (the objects
+        the caller is about to treat as the references) are those objects."""
+        try:
+            captured = [entry[0] for entry in self.entries]
+            if any(not any(getattr(fn, "__func__", fn) is c for c in captured)
+                   for fn in functions):
+                return False
+            for (fn, code, defaults, kwdefaults, namespace, frozen_defaults, frozen_kw,
+                 bindings) in self.entries:
+                if (fn.__code__ is not code or fn.__defaults__ is not defaults
+                        or fn.__kwdefaults__ is not kwdefaults or fn.__globals__ is not namespace
+                        or not self._same(defaults, frozen_defaults)
+                        or not self._same(kwdefaults, frozen_kw)):
+                    return False
+                for name, value, frozen in bindings:
+                    if namespace.get(name, _MISSING) is not value or not self._same(value, frozen):
+                        return False
+            return True
+        except Exception:
+            return False
+
+
+_MISSING = object()
+
+_LISTING_REFERENCES = ReferenceSnapshot(harvest_legal.multiset_subsets,
+                                        harvest_legal.iter_follow_actions)
+_DRAW_REFERENCES = ReferenceSnapshot(belief_seq.sample_worlds)
+_COMPLETION_REFERENCES = ReferenceSnapshot(MCBot._complete_determinized_hands)
 
 _TABLES = None
 
@@ -56,6 +146,17 @@ def _tables():
             names[index] = code
         _TABLES = (dict(CARD_INDEX), rank, names)
     return _TABLES
+
+
+def listing_intact() -> bool:
+    """The listing kernel's references (`harvest.legal`'s enumeration and the
+    card numbering `CompactReplies` reads) are the ones captured: checked once
+    per greedy finish by the caller, which otherwise keeps the Python listing."""
+    from . import policy_prior
+    tables = _tables()
+    return (_pv_fast is not None and _LISTING_REFERENCES.intact(
+                harvest_legal.multiset_subsets, harvest_legal.iter_follow_actions)
+            and policy_prior.CARD_INDEX == tables[0])
 
 
 def follow_listing(hand, lead, ordering, cap):
@@ -83,13 +184,10 @@ def follow_listing(hand, lead, ordering, cap):
 
 
 def is_reference_belief_draw(draw) -> bool:
-    """``draw`` is `belief_seq.sample_worlds` itself (code defined in that
-    module under that name), not a replacement installed over the module
-    attribute; the compiled draw stands only for the reference."""
-    from . import belief_seq
-    code = getattr(draw, "__code__", None)
-    return (code is not None and code.co_name == "sample_worlds"
-            and code.co_filename == getattr(belief_seq, "__file__", None))
+    """``draw`` is the `belief_seq.sample_worlds` function object this module
+    imported, by identity, with its code, defaults and the globals it reads
+    unchanged: any other object, whatever its code or name, keeps its own draw."""
+    return draw is _REFERENCE_BELIEF_DRAW and _DRAW_REFERENCES.intact(draw)
 
 
 def belief_sample_worlds(P, n_c, M, sizes, W, rng):
@@ -126,12 +224,14 @@ def world_completion(bot, rnd, seat):
     cards already played and the deck counted once: the same hands, the same
     refusals with the same messages.  None when ``bot`` overrides the method
     (the caller keeps it): the method ``bot`` resolves, on its class or on
-    the instance, must be `MCBot`'s own bound to ``bot``."""
+    the instance, must be the `MCBot` function this module imported, bound to
+    ``bot``."""
     from collections import Counter as _Counter
-    from ..ai.mcbot import DeterminizationContractError, MCBot
+    from ..ai.mcbot import DeterminizationContractError
     method = getattr(bot, "_complete_determinized_hands", None)
-    if (getattr(method, "__func__", None) is not MCBot._complete_determinized_hands
-            or getattr(method, "__self__", None) is not bot):
+    if (getattr(method, "__func__", None) is not _REFERENCE_COMPLETION
+            or getattr(method, "__self__", None) is not bot
+            or not _COMPLETION_REFERENCES.intact(method)):
         return None
     expected = {other for other in range(4) if other != seat}
     played = []
@@ -177,5 +277,6 @@ def world_completion(bot, rnd, seat):
     return complete
 
 
-__all__ = ["HAVE_NATIVE", "belief_sample_worlds", "follow_listing", "is_reference_belief_draw",
+__all__ = ["HAVE_NATIVE", "ReferenceSnapshot", "belief_sample_worlds", "follow_listing",
+           "listing_intact", "is_reference_belief_draw",
            "world_completion"]

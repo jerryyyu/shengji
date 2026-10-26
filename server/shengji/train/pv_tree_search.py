@@ -154,11 +154,18 @@ from . import pv_native
 from .pv_search_policy import PVSearchBot, PVSearchBuryBot, PVSearchPolicyError
 from .pv_tree_config import PVTreeConfig
 
-#: the reference functions the fast clones and the native listing stand for,
-#: as imported: each fast path runs only while this module's name still binds
-#: its reference (a replacement keeps the replacement)
-_REFERENCE_AFTERSTATE = afterstate
-_REFERENCE_CHILD_POSITION = child_position
+#: the references the fast clones stand for, frozen at import
+#: (`pv_native.ReferenceSnapshot`): the fast twins run only while they are
+#: intact and the names in use are those very objects
+import copy as _copy_module  # noqa: E402
+_CLONE_REFERENCES = pv_native.ReferenceSnapshot(afterstate, child_position, _copy_module.copy)
+
+
+def clone_references_intact(*functions) -> bool:
+    """`afterstate`, `child_position` and ``copy.copy`` as captured, and
+    ``functions`` (the names the caller resolves) are those objects."""
+    return (_copy_module.copy is _CLONE_REFERENCES.entries[2][0]
+            and _CLONE_REFERENCES.intact(*functions))
 
 #: the stop-fraction deadline is also checked every this-many clones inside a ply
 TREE_BUDGET_STRIDE = 16
@@ -334,9 +341,6 @@ def legal_replies(bot, clone, seat, cache):
     return hit
 
 
-_REFERENCE_LEGAL_REPLIES = legal_replies
-
-
 def _card_names():
     from .policy_prior import CARD_INDEX
     names = [None] * len(CARD_INDEX)
@@ -394,6 +398,10 @@ class CompactReplies:
         return multiplicity
 
 
+_LISTING_REFERENCES = pv_native.ReferenceSnapshot(legal_replies, CompactReplies.__init__,
+                                                  CompactReplies.multiplicity)
+
+
 class _DenseSlot:
     """The one materialized scoring matrix of a ply: clones of one world that
     share a (hand, lead) are consecutive, so they reuse it."""
@@ -433,7 +441,7 @@ def legal_replies_compact(bot, clone, seat, cache, slot, native=False):
     hit = cache.get(key)
     if hit is None:
         listing = None
-        if native and plays and legal_replies is _REFERENCE_LEGAL_REPLIES:
+        if native and plays:
             listing = pv_native.follow_listing(list(clone.hands[seat]), plays[0].cards, clone.ordering,
                                      bot.cap)
         if listing is not None:
@@ -456,33 +464,35 @@ def legal_replies_compact(bot, clone, seat, cache, slot, native=False):
     return hit
 
 
-_ROUND_DEFAULT_COPY = None
+_COPY_HOOKS = ("__copy__", "__reduce_ex__", "__reduce__", "__getstate__", "__setstate__",
+               "__slots__", "__new__")
 
 
-def _round_default_copy() -> bool:
-    """True when ``copy.copy`` of a `Round` is ``Round.__new__(Round)`` with
-    the original's ``__dict__`` (the default reduce protocol, nothing
-    overriding it): `shallow_round` is then ``copy.copy``."""
-    global _ROUND_DEFAULT_COPY
-    if _ROUND_DEFAULT_COPY is None:
-        import copy
-        import copyreg
-        _ROUND_DEFAULT_COPY = bool(
-            Round.__new__ is object.__new__ and Round.__reduce_ex__ is object.__reduce_ex__
-            and Round.__reduce__ is object.__reduce__ and Round.__getstate__ is object.__getstate__
-            and getattr(Round, "__copy__", None) is None and not hasattr(Round, "__setstate__")
-            and not any("__slots__" in vars(k) for k in Round.__mro__[:-1])
-            and Round not in copyreg.dispatch_table
-            and Round not in getattr(copy, "_copy_dispatch", {}))
-    return _ROUND_DEFAULT_COPY
+def _round_default_copy(rnd) -> bool:
+    """True when ``copy.copy(rnd)`` is ``Round.__new__(Round)`` with ``rnd``'s
+    ``__dict__``: an exact `Round` (whose only base is ``object``) with no
+    copy hook on the class or the instance and no ``copyreg`` reducer.
+    Checked on every call, against the objects themselves."""
+    import copy
+    import copyreg
+    if type(rnd) is not Round or Round.__bases__ != (object,):
+        return False
+    names = Round.__dict__
+    if any(hook in names for hook in _COPY_HOOKS):
+        return False
+    # copy.copy reads __reduce_ex__ / __reduce__ through the instance
+    held = rnd.__dict__
+    if "__reduce_ex__" in held or "__reduce__" in held:
+        return False
+    return Round not in copyreg.dispatch_table \
+        and Round not in getattr(copy, "_copy_dispatch", {})
 
 
 def shallow_round(rnd):
-    """``copy.copy(rnd)``: for an exact `Round` under the default protocol the
-    same new object built without the reduce machinery, else ``copy.copy``."""
-    # copy.copy reads __reduce_ex__ / __reduce__ through the instance
-    if (type(rnd) is Round and (_ROUND_DEFAULT_COPY or _round_default_copy())
-            and "__reduce_ex__" not in rnd.__dict__ and "__reduce__" not in rnd.__dict__):
+    """``copy.copy(rnd)``: under the default protocol (`_round_default_copy`)
+    the same new object built without the reduce machinery, else
+    ``copy.copy``."""
+    if _round_default_copy(rnd):
         clone = object.__new__(Round)
         clone.__dict__.update(rnd.__dict__)
         return clone
@@ -698,6 +708,10 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
 
         def rows_fn(clones_, seat):
             return reply_rows(clones_, seat, version, prefix)
+    # the native listing stands for this module's Python listing: decided
+    # once per finish, from the references as they are now
+    native = bool(native and compact and _LISTING_REFERENCES.intact(legal_replies)
+                  and pv_native.listing_intact())
     if compact:
         def legal_fn(clone, seat, cache_):
             return legal_replies_compact(bot, clone, seat, cache_, slot, native)
@@ -711,6 +725,8 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
             guard()
             if gate is not None:
                 gate()
+    child_fn = (child_position_fast if fast_clone and clone_references_intact(child_position)
+                else child_position)
     active = [c for c in clones if trick_open(c, target)]
     while active:
         if ply_gate is not None:
@@ -720,9 +736,7 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
         greedy_reply_ply(bot, active, ply_gate, cache, stats, keep, version, legal_fn,
                          lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_,
                                                                       prefix),
-                         rows_fn, guard,
-                         child_position_fast if fast_clone
-                         and child_position is _REFERENCE_CHILD_POSITION else child_position)
+                         rows_fn, guard, child_fn)
         active = [c for c in active if trick_open(c, target)]
     return stats
 

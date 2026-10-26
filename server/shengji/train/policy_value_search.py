@@ -616,7 +616,7 @@ class PolicyValueBot(PolicyWorldBot):
         if getattr(self, 'leaf_clone_fast', False):
             from . import pv_tree_search
             # only while this module still binds the reference ``afterstate``
-            fast_clones = afterstate is pv_tree_search._REFERENCE_AFTERSTATE
+            fast_clones = pv_tree_search.clone_references_intact(afterstate)
         if fast_clones:
             # the same clones without ``copy.copy``'s reduce machinery
             from .pv_tree_search import afterstate_fast

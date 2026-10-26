@@ -533,8 +533,11 @@ def test_the_shallow_copy_falls_back_off_the_default_protocol(monkeypatch):
     assert pts.shallow_round(other) == "copied" and calls
     clone = pts.shallow_round(rnd)
     assert clone is not rnd and type(clone) is Round and vars(clone) == vars(rnd)
-    monkeypatch.setattr(pts, "_ROUND_DEFAULT_COPY", False)
-    assert vars(pts.shallow_round(rnd)) == vars(rnd)
+    # a copy hook installed on the class itself is honoured on the next call
+    hooks = []
+    monkeypatch.setattr(Round, "__copy__", lambda self: hooks.append(1) or "class-hook",
+                        raising=False)
+    assert pts.shallow_round(rnd) == "class-hook" and hooks
 
 
 from shengji.ai.heuristic import HeuristicBot  # noqa: E402
@@ -820,3 +823,132 @@ def test_the_world_switch_is_off_by_default_and_enters_no_name():
     assert pv.LATENCY_SWITCH_ENV["world_fast"] == "SHENGJI_PV_WORLD_FAST"
     assert pv.latency_switches({"SHENGJI_PV_WORLD_FAST": "1"})["world_fast"] is True
     assert pv.pv_env_recipe({**env, "SHENGJI_PV_WORLD_FAST": "1"}) == pv.pv_env_recipe(env)
+
+
+
+# ------------------------------------------------- (n) references by identity
+
+def _hall_state():
+    """Two hidden copies: card 0 may go to receiver 0 or 1, card 1 only to
+    receiver 0, one slot each.  Hall's condition forbids card 0 on receiver 0
+    whenever it is placed first; the reference always completes the world."""
+    M = np.zeros((54, 4), bool)
+    M[0, 0] = M[0, 1] = True
+    M[1, 0] = True
+    n_c = np.zeros(54, np.int64)
+    n_c[0] = n_c[1] = 1
+    P = np.zeros((54, 4))
+    P[0] = [1.0, 1e-6, 0.0, 0.0]
+    P[1] = [1.0, 0.0, 0.0, 0.0]
+    return P, n_c, M, np.asarray([1, 1, 0, 0])
+
+
+def _same_code_new_globals():
+    """`belief_seq.sample_worlds`'s own code object over globals whose Hall
+    table is zeroed: the same name, file and code, a different function."""
+    import types
+    original = belief_seq.sample_worlds
+    namespace = dict(original.__globals__)
+    namespace["_SUB_OF"] = np.zeros_like(namespace["_SUB_OF"])
+    return types.FunctionType(original.__code__, namespace, original.__name__,
+                              original.__defaults__, original.__closure__)
+
+
+def test_a_same_code_draw_with_other_globals_is_not_the_reference():
+    P, n_c, M, sizes = _hall_state()
+    replacement = _same_code_new_globals()
+    raised = 0
+    for seed in range(16):
+        world = belief_seq.sample_worlds(P, n_c, M, sizes, 1, np.random.default_rng(seed))
+        assert world[0, 0].tolist() == [0, 1, 0, 0] and world[0, 1].tolist() == [1, 0, 0, 0]
+        try:
+            replacement(P, n_c, M, sizes, 1, np.random.default_rng(seed))
+        except belief_seq.BeliefSeqError:
+            raised += 1
+    assert raised > 0                     # the replacement really differs
+    assert replacement.__code__ is belief_seq.sample_worlds.__code__
+    assert pv_native.is_reference_belief_draw(belief_seq.sample_worlds)
+    assert not pv_native.is_reference_belief_draw(replacement)
+
+
+def test_the_proposal_runs_a_replaced_draw_with_world_fast_on(monkeypatch):
+    """The served consumer (`BeliefProposal._refill` with ``native``): the
+    replacement installed over the module attribute is what draws, refusal
+    included; the reference draw gives the switch-off worlds."""
+    from shengji.ai.belief_numpy import BeliefProposal
+    P, n_c, M, sizes = _hall_state()
+
+    def proposal(seed):
+        prop = BeliefProposal.__new__(BeliefProposal)
+        prop.inp = {"n_c": n_c, "sizes": sizes, "K": np.zeros((54, 3), np.int64), "M": M}
+        prop.rnd, prop.seat, prop.Q, prop.M = _fresh_round(707_001), 0, P, M
+        prop.kitty_hidden, prop.rng, prop.batch = False, np.random.default_rng(seed), 1
+        prop.capacity, prop.native, prop.queue, prop.drawn = False, True, [], 0
+        return prop
+    for seed in range(16):
+        plain, fast = proposal(seed), proposal(seed)
+        plain.native = False
+        plain._refill()
+        fast._refill()
+        assert plain.queue == fast.queue
+        assert plain.rng.bit_generator.state == fast.rng.bit_generator.state
+    monkeypatch.setattr(belief_seq, "sample_worlds", _same_code_new_globals())
+    outcomes = set()
+    for seed in range(16):
+        try:
+            proposal(seed)._refill()
+            outcomes.add("world")
+        except belief_seq.BeliefSeqError:
+            outcomes.add("refused")
+    assert "refused" in outcomes
+
+
+def test_reference_snapshots_decline_mutated_globals_and_functions(monkeypatch):
+    """A global a reference reads, replaced or mutated in place, a reassigned
+    code object or defaults: the snapshot is no longer intact."""
+    snapshot = pv_native.ReferenceSnapshot(belief_seq.sample_worlds)
+    assert snapshot.intact(belief_seq.sample_worlds)
+    table = belief_seq._SUB_OF
+    saved = table.copy()
+    table[0, 0] = not table[0, 0]
+    try:
+        assert not snapshot.intact()
+    finally:
+        table[...] = saved
+    assert snapshot.intact()
+    monkeypatch.setattr(belief_seq, "_SUBSETS", belief_seq._SUBSETS.copy())
+    assert not snapshot.intact()
+    monkeypatch.undo()
+    assert snapshot.intact()
+    def probe(x, n=1):
+        return x + n
+    probe_snapshot = pv_native.ReferenceSnapshot(probe)
+    assert probe_snapshot.intact(probe)
+    probe.__defaults__ = (2,)
+    assert not probe_snapshot.intact()
+    probe.__defaults__ = (1,)
+    probe.__code__ = (lambda x, n=1: x - n).__code__
+    assert not probe_snapshot.intact()
+    # every switch's own guard
+    import copy as copy_module
+    assert pts.clone_references_intact(pts.child_position)
+    monkeypatch.setattr(copy_module, "copy", lambda x: copy_module._reconstruct)
+    assert not pts.clone_references_intact(pts.child_position)
+    monkeypatch.undo()
+    assert pv_native.listing_intact() == pv_native.HAVE_NATIVE
+    from shengji.train import policy_prior
+    monkeypatch.setitem(policy_prior.CARD_INDEX, "S2", policy_prior.CARD_INDEX["S2"] + 1)
+    assert not pv_native.listing_intact()
+    monkeypatch.undo()
+    assert pv_native.listing_intact() == pv_native.HAVE_NATIVE
+    monkeypatch.setattr(pe, "_SUIT_ORDER", list(pe._SUIT_ORDER))
+    assert not pe._reference_builders()
+    monkeypatch.undo()
+    assert pe._reference_builders()
+    from shengji.ai.mcbot import MCBot
+    bot = MCBot(seed=1)
+    rnd = _fresh_round(707_001)
+    assert pv_native.world_completion(bot, rnd, rnd.turn) is not None
+    monkeypatch.setattr(MCBot, "_complete_determinized_hands",
+                        lambda self, *a, **k: [["CLASS-OVERRIDE"]])
+    assert pv_native.world_completion(bot, rnd, rnd.turn) is None

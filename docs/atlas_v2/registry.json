@@ -2859,6 +2859,24 @@
    "ref": "row 51",
    "instrument_kind": "windows",
    "confidence": 0.95
+  },
+  {
+   "id": "s47pt-missing-panel",
+   "date": "2026-10-26",
+   "status": "sealed",
+   "title": "S47-PT INCOMPLETE: perfect-information Sol, 3/10 pairs",
+   "candidate": "Release 46 card-play policy",
+   "comparator": "Perfect-information Sol, shared pre-buried roots",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3 completed seat-swapped deal pairs of 10 scheduled; conditional 2000-resample deal-cluster bootstrap; missingness may be informative",
+   "confidence": 0.95,
+   "point": 0.3333333333333333,
+   "lo": 0.0,
+   "hi": 1.0,
+   "takeaway": "INCOMPLETE: +0.3333 [0,+1] conditional on three completed pairs; no full-panel or R48 improvement claim.",
+   "note": "6 complete mirrors, 1 adjudicated missing, 13 unattempted; no retained model failures. Completed pair seeds142060910-142060912; failed seed142060913 flip0 stopped the producer, excluding whole deals142060913-142060919. Only complete pairs enter the mean; no orphan scoring, imputation or forfeit. No superiority/equivalence, attainable-strength ceiling or gain against currently served R48. No recovery/extension. Reader595bfb52, exact-source PASS6405141043, one-shot rc0. Archive ~/shengji-archive/2026-09-13/readouts/s47pt-missing-panel/, result SHA c544eb3a3ef15520431d77444ff7e9f877be0d55e6388ceb78db80f842588a57.",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1087#issuecomment-6405714289"
   }
  ],
  "models": [

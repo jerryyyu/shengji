@@ -1,0 +1,30 @@
+2026-10-26T02:53:33Z build /root/claude-sc8p-src-8a50fe8a: HEAD=8a50fe8a4a2b1b3b4142693fb4c0298920a2de4f origin=https://github.com/jerryyyu/shengji.git (unmerged branch head, ALLOW_UNMERGED=1)
+2026-10-26T02:53:36Z WARNING: 8a50fe8a4a2b1b3b4142693fb4c0298920a2de4f is not on origin/main (ALLOW_UNMERGED=1)
+2026-10-26T02:53:36Z checked out 8a50fe8a (Research: pair/tractor challenger (sc8p) over the singleton challenger's pool); head written to /root/claude-sc8p-src-8a50fe8a.head
+Compiling shengji/engine/_fast.pyx because it changed.
+Compiling shengji/ai/_cwv_math.pyx because it changed.
+Compiling shengji/ai/_endgame_fast.pyx because it changed.
+[1/3] Cythonizing shengji/ai/_cwv_math.pyx
+[2/3] Cythonizing shengji/ai/_endgame_fast.pyx
+[3/3] Cythonizing shengji/engine/_fast.pyx
+running build_ext
+building 'shengji.engine._fast' extension
+creating build/temp.linux-x86_64-cpython-314/shengji/engine
+x86_64-linux-gnu-gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O2 -Wall -fPIC -I/root/gen-hybrid/server/.venv/include -I/usr/include/python3.14 -c shengji/engine/_fast.c -o build/temp.linux-x86_64-cpython-314/shengji/engine/_fast.o
+creating build/lib.linux-x86_64-cpython-314/shengji/engine
+x86_64-linux-gnu-gcc -shared -Wl,-O1 -Wl,-Bsymbolic-functions -Wl,-Bsymbolic-functions -Wl,--package-metadata=%7B%22type%22:%22deb%22%2C%22os%22:%22ubuntu%22%2C%22name%22:%22python3.14%22%2C%22version%22:%223.14.4-1ubuntu0.2%22%2C%22architecture%22:%22amd64%22%7D -Wl,-z,relro -g -fwrapv -O2 build/temp.linux-x86_64-cpython-314/shengji/engine/_fast.o -L/usr/lib/x86_64-linux-gnu -o build/lib.linux-x86_64-cpython-314/shengji/engine/_fast.cpython-314-x86_64-linux-gnu.so
+building 'shengji.ai._cwv_math' extension
+creating build/temp.linux-x86_64-cpython-314/shengji/ai
+x86_64-linux-gnu-gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O2 -Wall -fPIC -I/root/gen-hybrid/server/.venv/include -I/usr/include/python3.14 -c shengji/ai/_cwv_math.c -o build/temp.linux-x86_64-cpython-314/shengji/ai/_cwv_math.o
+creating build/lib.linux-x86_64-cpython-314/shengji/ai
+x86_64-linux-gnu-gcc -shared -Wl,-O1 -Wl,-Bsymbolic-functions -Wl,-Bsymbolic-functions -Wl,--package-metadata=%7B%22type%22:%22deb%22%2C%22os%22:%22ubuntu%22%2C%22name%22:%22python3.14%22%2C%22version%22:%223.14.4-1ubuntu0.2%22%2C%22architecture%22:%22amd64%22%7D -Wl,-z,relro -g -fwrapv -O2 build/temp.linux-x86_64-cpython-314/shengji/ai/_cwv_math.o -L/usr/lib/x86_64-linux-gnu -o build/lib.linux-x86_64-cpython-314/shengji/ai/_cwv_math.cpython-314-x86_64-linux-gnu.so
+building 'shengji.ai._endgame_fast' extension
+x86_64-linux-gnu-gcc -fno-strict-overflow -Wsign-compare -DNDEBUG -g -O2 -Wall -fPIC -I/root/gen-hybrid/server/.venv/include -I/usr/include/python3.14 -c shengji/ai/_endgame_fast.c -o build/temp.linux-x86_64-cpython-314/shengji/ai/_endgame_fast.o
+x86_64-linux-gnu-gcc -shared -Wl,-O1 -Wl,-Bsymbolic-functions -Wl,-Bsymbolic-functions -Wl,--package-metadata=%7B%22type%22:%22deb%22%2C%22os%22:%22ubuntu%22%2C%22name%22:%22python3.14%22%2C%22version%22:%223.14.4-1ubuntu0.2%22%2C%22architecture%22:%22amd64%22%7D -Wl,-z,relro -g -fwrapv -O2 build/temp.linux-x86_64-cpython-314/shengji/ai/_endgame_fast.o -L/usr/lib/x86_64-linux-gnu -o build/lib.linux-x86_64-cpython-314/shengji/ai/_endgame_fast.cpython-314-x86_64-linux-gnu.so
+copying build/lib.linux-x86_64-cpython-314/shengji/engine/_fast.cpython-314-x86_64-linux-gnu.so -> shengji/engine
+copying build/lib.linux-x86_64-cpython-314/shengji/ai/_cwv_math.cpython-314-x86_64-linux-gnu.so -> shengji/ai
+copying build/lib.linux-x86_64-cpython-314/shengji/ai/_endgame_fast.cpython-314-x86_64-linux-gnu.so -> shengji/ai
+2026-10-26T02:53:50Z ext engine/_fast be28d90ed7aa636e9b5acb228770efd494e602efa5d649fdd14ff0d60fb05ac1
+2026-10-26T02:53:50Z ext ai/_cwv_math 2ba7539cf1e50cf11a2a9992e50747f1bea8d4818e37c121d43b97487cf22036
+2026-10-26T02:53:50Z ext ai/_endgame_fast eb0b3869d105cdcf48913b0354306c5709efb8daa11d610c2e5abb6b337bfd0a
+BUILD_RC=0

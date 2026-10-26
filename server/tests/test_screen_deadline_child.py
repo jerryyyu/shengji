@@ -249,7 +249,11 @@ def test_a_post_round_validation_failure_also_closes_the_child(monkeypatch, work
 
 
 def test_a_stuck_child_falls_back_per_cluster_exactly_as_the_owned_child(monkeypatch, worker_state):
-    recipe = dict(RECIPE, seconds=2)
+    # Each expiry kills the child, and the next play respawns it on that play's
+    # clock (spawn-total-play-v1). The budget must cover a cold respawn on a
+    # contended runner, or the expiry's phase reads startup-or-transfer in one
+    # mode and enumeration in the other; it must stay under the 10 s block.
+    recipe = dict(RECIPE, seconds=5)
     monkeypatch.setattr(S, "DEADLINE_RECIPE", recipe)
     monkeypatch.setattr(S, "_deadline_side", blocked_factory)
     owned = cfg("identity", decision_deadline=recipe)

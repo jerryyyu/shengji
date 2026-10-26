@@ -1,0 +1,41 @@
+launcher under test: claude_s68dev_perf.final.sh sha256 2adc553142760d6edc107f626a003e87aa7efa95921e8d3c4438a16ea308c67c
+PASS reservation launcher_sha256 == sha256(claude_s68dev_perf.final.sh) = 2adc553142760d6edc107f626a003e87aa7efa95921e8d3c4438a16ea308c67c
+PASS reservation reader Claude, host perf, path
+PASS reservation lane / output_root / status / release / hold equal the launcher's (s68dev, /root/vol-dev-claude-s68dev-r48-20261026)
+PASS reservation tree / head equal the launcher's (/root/claude-s68-src-8b6ead10 @ 8b6ead10)
+PASS reservation arms (b, a), seeds, count and per-arm spec equal arm_spec / arm_env / DEALS
+PASS reservation launcher_state matches the file under test: final (pins filled; this sha256 is the RELEASE token)
+PASS the launcher's arms equal s68dev_spec.ARMS (the one source)
+PASS DUEL_SHA is the packet's exploit_duel_s61.py (b15d292f)
+PASS HYP_SHA is the packet's hypotheses.py (4365a15d)
+PASS the harness and hypotheses shas are s67c's final launcher's (2bc24cee), unchanged
+PASS ADAPTER_SHA is s66b's s66_sc8_adapter.py (80e0e7f8), the packet's copy
+PASS CAND_SHA is sha256(git show 8b6ead10:server/shengji/eval/singleton_challenger.py)
+PASS the local candidate worktree's singleton_challenger.py has CAND_SHA
+PASS the candidate worktree is at the tree head 8b6ead10, which contains #1156's 39d514cc, claude/s68-bwc and main d33bfd70
+PASS the harness, hypotheses and adapter are pinned in /root/claude-s68dev/ and check_toml guards the shared directory
+PASS each arm's env starts with the adapter's SENTINEL (S66_EXPLOITER=sc8) and carries bwc; run_dev passes the arm's words (one eargs expansion)
+PASS 14 workers, plan r2, DEALS 3920 = 14 x 280, stop / backstop 30000 / 30010
+PASS the s68dev blocks are disjoint from each other and from s67c / s66b / s66dev (no overlap)
+PASS the rehearsal script plays the declared throwaway block 243570000 +56
+PASS FLY_SHA is sha256(fly.toml at 8b6ead10)
+PASS reader DEF_NAME == launcher COMBO_NAME == fly.toml SHENGJI_BOT at the tree head
+PASS reader ARM_ORDER / ARM_SPEC (seed0, exploiter, env) == the launcher's ARMS / arm_spec / arm_env; DEALS
+PASS reader TERMINAL is the launcher's final say
+PASS the DEV start text is shared by the launcher's say, the reader's bind regex and the fixture
+PASS reader per-arm play worlds {'b': {'ex': 64, 'r45': 64}, 'a': {'ex': 96, 'r45': 64}} and exploiter budgets {'b': 3.0, 'a': 1.5} follow the arms' env
+PASS reader: the +0.030 bar with CI lower > 0, zero play / belief ceilings, every exploiter decision <= 3 s on the 0.1 ms bin's upper bound
+PASS reader PINNED == the packet's reader_lib copies == fl-pilot/reader_lib's row_schema / validity / reader_lib / compare_runs
+PASS reader TRUSTED / TREE == the launcher's paths and tree
+PASS reader's s66b reference is the s66b readout (descriptive)
+PASS power note: SE 0.00625; P(PASS) {0.024: 0.1685320465672921, 0.03: 0.5, 0.036: 0.8314679534327079}
+PASS the comparison lines go through compare_runs (a vs b, b vs s66b) and carry its caveat
+PASS the final reader differs from the draft in the TRUSTED_LAUNCHER_SHA256 line only and names the final launcher's sha256
+PASS the final launcher differs from the draft in the pin line only (line 52), three distinct 64-hex pins
+PASS pin rehearsal: make_s68dev_final.py changes the pin line only (line 52)
+PASS make_s68dev_final.py refuses a build log without BUILD_RC=0
+PASS stage_s68dev.sh passes the paths as bash -s positional arguments and refuses an existing or symlinked target and a vacuous check
+PASS stage_s68dev.sh stages 8 tree-phase files (adapter, harness, hypotheses, four reader helpers incl. compare_runs, the build script) and the reservation, sha-verified, read-only
+PASS the EXECUTED staged-layout test is ALL PASS and no older than the test
+ALL PASS
+rc=0

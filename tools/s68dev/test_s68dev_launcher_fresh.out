@@ -1,0 +1,7 @@
+launcher 5c7156208fda7da66eedae089443217d6f2187f4937775601f81f7ef0edb8daa
+PASS run_dev b refuses an existing arm dir (rc 3), contents unchanged: REFUSING: DEV output for b already exists in /private/tmp/s68devfresh.24pW/out/b
+PASS run_dev a refuses an existing arm dir (rc 3), contents unchanged: REFUSING: DEV output for a already exists in /private/tmp/s68devfresh.24pW/out/a
+PASS main flow: output-root refusal (line 457) before mkdir (line 458) and the first run_dev (line 469)
+PASS no recovery or resume mode in the launcher (fresh runs only)
+ALL PASS
+rc=0

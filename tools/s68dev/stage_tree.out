@@ -1,0 +1,14 @@
+targets clear (6 paths): /root/claude_build_s68_perf.sh /root/claude-s68-src-8b6ead10 /root/claude-s68-src-8b6ead10.head /root/claude-s68-src-8b6ead10.clone-in-progress /root/claude-s68-src-8b6ead10-build.log /root/claude-s68dev
+/root/claude-s68dev/s66_sc8_adapter.py: OK
+/root/claude-s68dev/exploit_duel_s61.py: OK
+/root/claude-s68dev/hypotheses.py: OK
+/root/claude-s68dev/row_schema.py: OK
+/root/claude-s68dev/validity.py: OK
+/root/claude-s68dev/reader_lib.py: OK
+/root/claude-s68dev/compare_runs.py: OK
+/root/claude_build_s68_perf.sh: OK
+STAGED ok (tree phase): 8 files verified on the host, read-only
+NEXT, ON perf (detached, nice 19; clones https://github.com/jerryyyu/shengji.git at 8b6ead10 into /root/claude-s68-src-8b6ead10 and builds the three extensions):
+  HEAD=8b6ead101108fac9aaf9a7c81026fd04f89e6bc7 ALLOW_UNMERGED=1 DRYRUN=1 bash /root/claude_build_s68_perf.sh
+  HEAD=8b6ead101108fac9aaf9a7c81026fd04f89e6bc7 ALLOW_UNMERGED=1 nohup nice -n 19 bash /root/claude_build_s68_perf.sh > /root/claude-s68-src-8b6ead10-build.nohup 2>&1 &
+rc=0

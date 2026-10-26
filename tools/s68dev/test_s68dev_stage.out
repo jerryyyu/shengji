@@ -1,0 +1,9 @@
+PASS stage command rc 0 into the temp host layout
+PASS DUEL = /root/claude-s68dev/exploit_duel_s61.py is the staged copy at its pinned sha b15d292f564f, in /root/claude-s68dev
+PASS HYP = /root/claude-s68dev/hypotheses.py is the staged copy at its pinned sha 4365a15d6c86, in /root/claude-s68dev
+PASS ADAPTER = /root/claude-s68dev/s66_sc8_adapter.py is the staged copy at its pinned sha 80e0e7f8b8e5, in /root/claude-s68dev
+PASS the COPIED adapter --help runs rc 0 from the staged dir
+PASS launcher preflight through the COPIED adapter rc 0: rc=0
+PASS negative control: without exploit_duel_s61.py the copied adapter --help exits 1
+ALL PASS
+rc=0

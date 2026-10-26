@@ -1,0 +1,477 @@
+#!/usr/bin/env python3
+"""s66b reader end-to-end check on SYNTHETIC rows (no deal is played).  s66b: the two at-the-bar T2 cases are N-aware (see the comment there).  Derived (sed s66dev->s66b) from s66dev's test_s66dev_read.py a3683ac0; the fixture takes its count, seed block, lane and TRUSTED from the s66b reader
+(the generator above its T1 marker is s61dev's, with exact_deep_cards 7 on BOTH sides and R48's names): the arm sc8's seed block and
+exploiter (R48 + '-sc8'), search records at 64 play worlds on both sides, the adapter's 'sc8' probe entries beside each exploiter decision,
+the perf status in the s66b launcher's form (the S17 adoption, DEV start / END with the sentinel, the terminal and the S17 handoff tail),
+and an optional noise-free form.  Each deal's mirrors diverge once (declare / bury / a play) unless listed undiverged; each deal's margin is
+(L0 + L1) / 2 with L1 = -L0 + delta.
+  T1  the clean file at +0.06: DEV_PASS, validity VALID (five checks incl. latency_inside_budget), the canonical lines, the play-time
+      ratio, the time_use shares (2 / 2.5 / 3 s), the swap rate reconciled with the fixture's probe entries, latency_vs_r48; the lane read.
+  T2  the bar: effect 0 -> DEV_FAIL; +0.015 with noise (CI spans 0) -> DEV_FAIL; +0.015 noise-free (mean at the bar, CI lower > 0) ->
+      DEV_PASS; +0.010 noise-free (CI lower > 0, mean below the bar) -> DEV_FAIL; ONE play fallback or ONE belief fallback on either side ->
+      DEV_INVALID (zero ceilings); bury / declare / worlds / outcome faults -> DEV_INVALID; a search record at 128 or 32 play worlds on
+      either side -> DEV_INVALID; ONE exploiter decision past 3.0 s -> DEV_INVALID (latency_inside_budget), at exactly 3.0 s accepted, a
+      defender decision at 3.5 s accepted; an undiverged deal with a nonzero margin -> DEV_INVALID (paired premise); undiverged deals at 0
+      accepted; a failed throw accepted.
+  T3  refusals: the status binding (ABORT, no terminal, DEV END rc=1, no DEV END line, a start line naming the defender as the exploiter,
+      a start line with another sentinel value, SHA256SUMS mismatch; a matching SHA256SUMS and the S17 paused tail accepted), an unknown
+      arm, exact cap 8 on the exploiter, the trace / divergence forms, the names, duplicates and missing rows, and the sc8 form / contents.
+  T4  the input binding (r2): the lane read through analyze_lane on a host-shaped layout bound to TRUSTED passes and opens the rows only
+      after bind_lane; a wrong root / status / reservation path, a reservation naming another launcher sha or lane, an armed line naming
+      another sha or tree, two armed lines, the draft reader's TO_BE_PINNED, symlinked root / status / reservation and a missing SHA256SUMS
+      all refuse BEFORE any raw read (a tripwire on read() and on every open of duel.jsonl); analyze without a bind_lane record refuses.
+      The latency ceiling is judged on the 0.1 ms bin's upper bound: an actual 3.00004 s recorded as 3.0 is DEV_INVALID, 2.9999 passes.
+  usage: cd /private/tmp && nice -n 15 python3 test_s66b_read.py <s66b_read.py>
+"""
+import copy
+import hashlib
+import importlib.util
+import json
+import random
+import sys
+import tempfile
+from pathlib import Path
+
+READER = Path(sys.argv[1]).resolve()
+spec = importlib.util.spec_from_file_location('s66b_read', READER); rd = importlib.util.module_from_spec(spec); spec.loader.exec_module(rd)
+va = rd.va
+ARM = 'sc8'   # the fixture's (only) arm: R48 + the singleton challenger vs R48, 64 play worlds on both sides; the battery reads this arm
+SEED0, DEALS = rd.ARM_SPEC[ARM]['seed0'], rd.DEALS
+CAND = rd.ARM_SPEC[ARM]['cand']
+PW = dict(rd.PLAY_WORLDS)   # the play worlds each side's search records report (64 / 64)
+FAKE_SHA = 'ab' * 32   # the fixture's stand-in for the final launcher's sha256 (TRUSTED_LAUNCHER_SHA256 is TO_BE_PINNED in the draft reader)
+START = '(S66_EXPLOITER=sc8: the singleton challenger, PR #1153 at eb0975da; served budgets and widths on both sides)'   # the launcher's DEV start text after the exploiter name
+TS0 = '2026-10-22T01:00:00Z'
+
+
+def status_text(*, cand=None, rc=0, terminal=True, abort=False, drop_end=None, tail=None, start=START, launcher_sha=FAKE_SHA, tree=rd.TREE, head=rd.TREE_HEAD):
+    """the perf launcher's status: armed, the S17 adoption line, per arm (ARM_ORDER) its DEV start and DEV END lines, the SHA256SUMS line,
+    the terminal; tail='paused' appends the S17 handoff line the launcher's EXIT trap writes"""
+    tok = '1522662 s35reh ' + 'a' * 64 + ' 2026-10-16T20:32:03Z nonce=' + '0' * 32
+    lines = [f'{TS0} s66b armed (pid 4242, launcher sha256 {launcher_sha}): tree {tree} {head}; waiting for the RELEASE token /root/claude_s66b.RELEASE, then the S17 pause and the host lock',
+             f"{TS0} s66b: adopting the paused S17 from s65dev (handoff /root/claude-s17-handoff.s65dev, its status shows a terminal line; request token '{tok}', mtime_ns 1760646723000000000); no new request written; owner now: "]
+    for arm in rd.ARM_ORDER:
+        a = rd.ARM_SPEC[arm]
+        c = (cand or CAND) if arm == ARM else a['cand']
+        lines.append(f'{TS0} s66b DEV start {arm}: defender {rd.DEF_NAME} (R48 as served) vs exploiter {c} {start}; deals {DEALS} seed0 {a["seed0"]} plan r2, paired and seat-swapped; workers 14; group KILL at 5400 s (backstop 5410 s)')
+        if drop_end != arm:
+            lines.append(f'{TS0} s66b DEV END {arm} rc={rc if arm == ARM else 0} wall_s=5000.0 maxrss_kb=1000000')
+    if abort:
+        lines.append(f'{TS0} ABORT: s66b run group 4242 exited rc 1; no LANE DONE')
+    if terminal:
+        lines.append(f'{TS0} {rd.TERMINAL}')
+        if tail == 'paused':
+            lines.append(f"{TS0} s66b: S17 left PAUSED by s66b (request token '{tok}', still this lane's; terminal: {TS0} {rd.TERMINAL}; handoff /root/claude-s17-handoff.s66b); resume by hand when the perf queue is empty: touch /root/claude-s17-resume.ok")
+    return '\n'.join(lines) + '\n'
+
+
+def decision(rng, side, maxh, lead, abandon_rate=0.1):
+    """one dhist entry (19 fields) + its seconds: s60dev's fixture form"""
+    secs = round(rng.uniform(0.05, 0.25), 4)
+    cap = 7   # s63dev: both sides are R48 (ed7 / xf7)
+    lst, lar, lch, xfa, xfb, xfc = 'ineligible', None, False, None, None, None
+    if maxh <= cap:
+        if lead:
+            if rng.random() < abandon_rate:
+                lst, lar = 'abandoned', 'soft_budget'
+            else:
+                lst, lch = 'complete', rng.random() < 0.3
+        else:
+            xfa = True
+            if rng.random() < abandon_rate:
+                xfb, xfc = 'soft_budget', False
+            else:
+                xfb, xfc = None, rng.random() < 0.2
+    return ['-decision-v1', 0, 0, 64, 0, 12.5, 60, None, maxh, lead, cap, lst, lar, lch, xfa, xfb, xfc, secs, PW[side]], secs
+
+
+def probe_entry(rng, h, probe_rate=0.7):
+    """the adapter's [lead, applied, evaluations, probe_worlds, margin, chosen] for one exploiter dhist entry (a search record): a probe on
+    probe_rate of the leads at max hand > 7, margin uniform on [-0.5, 0.4] (applied iff > 0), chosen on about half the entries"""
+    lead = h[9]
+    if not lead or h[8] <= 7 or rng.random() >= probe_rate:
+        return [lead, False, None, None, None, False]
+    margin = round(rng.uniform(-0.5, 0.4), 4) or 0.0001
+    applied = margin > 0
+    return [lead, applied, 8 * rng.randint(10, 30), 8, margin, applied and rng.random() < 0.5]
+
+
+def declare_rec(rng, side):
+    w = rd.DECLARE_WORLDS[side]
+    secs = round(rng.uniform(0.02, 0.3), 4)
+    return ['pv-value-declare-decision-v1', None, True, w, w, secs, secs]
+
+
+def bury_rec(rng, side):
+    return [side, 'cwv-bury-policy-v1', None, rng.randint(19, rd.BURY_K[side]), rd.BURY_WORLDS[side], round(rng.uniform(0.2, 3.0), 4)]
+
+
+def outcome(rng, banker, ex_team, L):
+    """an engine-consistent round result in which the exploiter team's level change is L"""
+    bt = banker % 2
+    if L > 0:
+        winner, lc = ex_team, L
+    elif L < 0:
+        winner, lc = 1 - ex_team, -L
+    else:
+        winner, lc = 1 - bt, 0
+    if winner != bt:
+        ap = 80 + 40 * lc + 5 * rng.randint(0, min(7, (200 - 80 - 40 * lc) // 5))
+    else:
+        ap = 0 if lc == 3 else 5 * (rng.randint(1, 7) if lc == 2 else rng.randint(8, 15))
+    assert va.engine_level_outcome(ap, banker) == (winner, lc), (ap, banker, winner, lc)
+    ex_attacks = ex_team != bt
+    return dict(attacker_points=ap, kitty_points=0, kitty_bonus=0, last_trick_winner=banker, winner_team=winner, level_change=lc,
+                ex_levels=lc if winner == ex_team else -lc, ex_attacker_points_signed=ap if ex_attacks else -ap)
+
+
+def base_trace(rng, banker, failed_first=False):
+    """D x100, F x4, B, then 25 single-card tricks (failed_first: the first lead chooses 2 cards and plays 1)"""
+    t = [['D', k % 4, None, None, k // 4 + 1, ['S2'] if k == 41 else []] for k in range(100)]
+    t += [['F', s, None, None, 25, []] for s in range(4)]
+    t.append(['B', banker, None, None, 33, sorted(f'K{j}' for j in range(8))])
+    leader = rng.randint(0, 3)
+    for trick in range(25):
+        for pos in range(4):
+            seat = (leader + pos) % 4
+            cards = [f'{"HDCS"[seat]}{trick:02d}']
+            if failed_first and trick == 0 and pos == 0:
+                cards = sorted(cards + ['XJ'])
+            t.append(['P', seat, trick, pos == 0, 25 - trick, cards])
+        leader = rng.randint(0, 3)
+    return t
+
+
+def deal_rows(rng, seed, delta, div, failed_first=False):
+    """both mirrors of one deal; div: None (no divergence) or (phase, play index)"""
+    kind, rank, planned = rd.round_plan(seed - SEED0)
+    b = planned if planned is not None else rng.randint(0, 3)
+    t0 = base_trace(rng, b, failed_first)
+    t1 = copy.deepcopy(t0)
+    if div is not None:
+        ph, p = div
+        i = 41 if ph == 'D' else (104 if ph == 'B' else 105 + p)
+        if ph == 'D':
+            t1[i][5] = []
+        elif ph == 'B':
+            t1[i][5] = sorted([f'K{j}' for j in range(7)] + ['KX'])
+        else:
+            t1[i][5] = [t1[i][5][0] + 'x'] if len(t1[i][5]) == 1 else t1[i][5][:1]
+    a = rng.choice([-1, 1])
+    Ls = (a, max(-3, min(3, -a + delta)))
+    out = []
+    for m, t in ((0, t0), (1, t1)):
+        plays = t[105:]
+        hist, secs, probes = {'ex': [], 'r45': []}, {'ex': [], 'r45': []}, []
+        for e in plays:
+            side = 'ex' if e[1] % 2 == m else 'r45'
+            h, sec = decision(rng, side, e[4], e[3]); hist[side].append(h); secs[side].append(sec)
+            if side == 'ex':
+                probes.append(probe_entry(rng, h))
+        declares = [[e[1], list(e[5]), 42, e[0] == 'F'] for e in t[:104] if e[5]]
+        bside = 'ex' if b % 2 == m else 'r45'
+        r = dict(arm='identity', seed=seed, mirror=m, ex_team=m, round_kind=kind, trump_rank=rank, planned_banker=planned, banker=b,
+                 ex_role='banker' if b % 2 == m else 'attacker', trump='S', declaration=None, declares=declares,
+                 failed_throws=[[0, t[105][1], t[105][1] % 2 == m]] if failed_first else [],
+                 fired={'declare': 0, 'bury': 0, 'play': 0}, hyp={}, play_secs=9.0, defender=rd.DEF_NAME, exploiter_base=CAND,
+                 dsecs=secs, dhist=hist, declare_recs={s: [declare_rec(rng, s) for _ in range(rng.randint(1, 3))] for s in ('ex', 'r45')},
+                 bury_rec=bury_rec(rng, bside), dtrace=t, sc8={'ex': probes})
+        r.update(outcome(rng, b, m, Ls[m]))
+        out.append(r)
+    return out
+
+
+def rows(effect=0.06, seed=7, plant=0.0, undiverged=(), failed_first=(), noise=True):
+    """600 deals x 2 mirrors.  plant: a loss cell of this contribution on 'follow | tricks 16+ | first round (rank 2)'.  undiverged:
+    {deal index: delta} deals whose mirrors never diverge (their delta is forced).  failed_first: deal indices with a failed first lead."""
+    rng = random.Random(seed)
+    n_eff = round(2 * abs(effect) * DEALS)
+    eff_idx = set(rng.sample(range(DEALS), n_eff))
+    firsts = [i for i in range(DEALS) if rd.round_plan(i)[0] == 'first' and i not in eff_idx]
+    plant_idx = set(firsts[:round(2 * plant * DEALS)])
+    order = rng.sample(range(DEALS), DEALS)
+    noise_of = {i: (1 if k < DEALS // 10 else (-1 if k < DEALS // 5 else 0)) for k, i in enumerate(order)}   # balanced: 60 deals +1, 60 deals -1
+    out = []
+    for i in range(DEALS):
+        noise_i = noise_of[i] if noise else 0
+        delta = noise_i + ((1 if effect > 0 else -1) if i in eff_idx else 0)
+        if i in plant_idx:
+            delta, div = 1, ('P', 4 * 20 + 1)          # a follow in trick 21
+        elif i in undiverged:
+            delta, div = undiverged[i], None
+        else:
+            u = rng.random()
+            div = ('D', None) if u < 0.1 else (('B', None) if u < 0.2 else ('P', rng.randint(0, 99)))
+            if div[0] == 'P' and rd.round_plan(i)[0] == 'first' and div[1] >= 60 and div[1] % 4:
+                div = ('P', div[1] - 60)                 # keep the planted cell clean of unplanted first-round late follows
+        out += deal_rows(rng, SEED0 + i, delta, div, failed_first=i in failed_first)
+    return out
+
+
+def write(rs, tmp, name='duel.jsonl'):
+    p = Path(tmp) / name
+    with open(p, 'w') as fh:
+        for r in rs:
+            fh.write(json.dumps(r) + '\n')
+    return str(p)
+
+
+fails = 0
+def check(label, ok, detail=''):
+    global fails
+    print(('PASS' if ok else 'FAIL'), label, str(detail)[:300]); fails += int(not ok)
+
+
+def run(rs, status=None, sums=None, arm=None):
+    with tempfile.TemporaryDirectory(prefix='s66b-e2e-', dir='/private/tmp') as tmp:
+        (Path(tmp) / ARM).mkdir(); p = write(rs, tmp, name=f'{ARM}/duel.jsonl')
+        sp = Path(tmp) / 'lane.status'; sp.write_text(status if status is not None else status_text())
+        kw = {}
+        if sums is not None:
+            q = Path(tmp) / 'SHA256SUMS'; q.write_text(sums(hashlib.sha256(Path(p).read_bytes()).hexdigest())); kw['sums'] = str(q)
+        return rd.analyze(p, arm=arm or ARM, status=str(sp), binding=rd.SYNTHETIC, **kw)
+
+
+def refused(label, want, rs, **kw):
+    try:
+        run(rs, **kw)
+    except SystemExit as e:
+        check(label, str(e).startswith('REFUSING: ') and want in str(e), str(e)[:200])
+    else:
+        check(label, False, 'read accepted')
+
+
+# ---- T1 ----
+base = rows()
+out = run(base)
+m, lo, hi = out['levels']
+check('T1 clean read: DEV_PASS at a +0.06 synthetic effect, validity VALID (five checks incl. latency_inside_budget), 600 deals', out['bar']['verdict'] == 'DEV_PASS' and out['validity']['verdict'] == 'VALID' and out['validity']['checks'] == ['arm_fault_ceilings', 'worlds_delivered', 'completion_shape', 'outcome_consistency', 'latency_inside_budget'] and out['deals'] == DEALS and abs(m - 0.06) < 0.02 and lo > 0, f'{m:+.4f} [{lo:+.4f}, {hi:+.4f}] {out["validity"]["checks"]}')
+sp = out['split_descriptive']
+check('T1 the rank split partitions the deals (trump rank 2 vs != 2) and both are reported', sp['deals_rank_2'] == sum(1 for i in range(DEALS) if rd.round_plan(i)[1] == '2') and sp['trump_rank_2'] is not None and sp['trump_rank_not_2'] is not None, sp['deals_rank_2'])
+check('T1 belief_ms reported on both sides', out['exploiter']['belief_ms_p50_p95_p99_max'][0] == 12.5 and out['defender']['belief_ms_p50_p95_p99_max'][3] == 12.5)
+check('T1 every deal diverged (first-divergence table sums to N, no never)', sum(out['first_divergence'].values()) == DEALS and '(never)' not in out['first_divergence'], out['first_divergence'])
+cl = out['canonical_lines']
+pt = out['play_time']
+check('T1 the play-time ratio arm / defender is reported (sum and p50 / p95 / p99) and matches the fixture seconds', pt['ratio_sum'] is not None and len(pt['ratio_p50_p95_p99']) == 3 and abs(pt['ratio_sum'] - pt['ex_sum_s'] / pt['def_sum_s']) < 1e-12 and any('Play time arm / defender' in l for l in cl), pt)
+tu = out['time_use']
+check('T1 time_use (shares of decisions past 2 / 2.5 / 3 s per side) is reported and consistent with the fixture seconds (all below 0.25 s -> 0.0; decisions = the dsecs count)', set(tu) == {'ex', 'r45'} and all(tu[sd][f'share_gt{t}s'] == 0.0 for sd in tu for t in (2, 2.5, 3)) and tu['ex']['decisions'] == out['exploiter']['decisions'] and tu['r45']['decisions'] == out['defender']['decisions'] and any('Latency vs R48 (descriptive, duel host)' in l for l in cl), tu)
+sw = out['swap_rate']
+pe = [p for r in base for p in r['sc8']['ex']]
+want = dict(leads=sum(p[0] for p in pe), probed=sum(p[2] is not None for p in pe), entered=sum(bool(p[1]) for p in pe), chosen=sum(bool(p[5]) for p in pe))
+check('T1 swap rate reconciled with the fixture probe entries (leads / probed / entered / chosen) and its rates; the canonical line carries it', all(sw[k] == want[k] for k in want) and 0 < sw['probed'] and 0 < sw['entered'] < sw['probed'] and 0 < sw['chosen'] < sw['entered'] and abs(sw['entered_per_probe'] - sw['entered'] / sw['probed']) < 1e-12 and abs(sw['chosen_per_lead'] - sw['chosen'] / sw['leads']) < 1e-12 and sum(g['probed'] for g in sw['by_rank_group'].values()) == sw['probed'] and any('Swap rate (descriptive)' in l and f"ENTERED the ballot {sw['entered']} times" in l for l in cl), {k: sw[k] for k in want})
+lv = out['latency_vs_r48']
+check('T1 latency_vs_r48 reported (ratios p50 / p95 / p99 / max, the exploiter max over the 3 s budget, probed-lead vs defender-lead quantiles) and the latency check detail', len(lv['ratio_p50_p95_p99_max']) == 4 and all(x is not None for x in lv['ratio_p50_p95_p99_max']) and lv['budget_seconds'] == 3.0 and 0 < lv['exploiter_max_over_budget'] < 0.1 and len(lv['probed_lead_p50_p95_p99_max']) == 4 and len(lv['defender_lead_gt7_p50_p95_p99_max']) == 4 and out['validity']['detail']['latency_inside_budget']['over'] == 0 and out['validity']['detail']['latency_inside_budget']['decisions'] == out['exploiter']['decisions'], lv)
+check('T1 canonical lines carry the arm, the candidate, the numbers and the verdict', any(f'{m:+.4f}' in l and "[sc8] R48 + the singleton challenger (PR #1153 at eb0975da, '-sc8'; no knob changed) vs R48 as served" in l for l in cl) and any('Verdict DEV_PASS' in l and 'inside the 3 s budget' in l for l in cl), cl[:1])
+for l in cl:
+    print('  ', l[:260])
+with tempfile.TemporaryDirectory(prefix='s66b-lane-', dir='/private/tmp') as tmp:
+    sums = []
+    for arm in rd.ARM_ORDER:
+        a = rd.ARM_SPEC[arm]
+        rs_ = [dict(copy.deepcopy(r), seed=r['seed'] - SEED0 + a['seed0'], exploiter_base=a['cand']) for r in base]
+        (Path(tmp) / arm).mkdir(); p = write(rs_, tmp, name=f'{arm}/duel.jsonl')
+        sums.append(f'{hashlib.sha256(Path(p).read_bytes()).hexdigest()}  ./{arm}/duel.jsonl')
+    (Path(tmp) / 'SHA256SUMS').write_text('\n'.join(sums) + '\n')
+    (Path(tmp) / 'lane.status').write_text(status_text(tail='paused'))
+    def host_layout(tmp, *, sha=FAKE_SHA, res_sha=None, res_lane='s66b', status=None):
+        """a host-shaped layout under tmp: <tmp>/root (the duel rows + SHA256SUMS), the status and the reservation beside it, and the TRUSTED dict naming exactly those paths"""
+        rootd = Path(tmp) / 'root'; rootd.mkdir(exist_ok=True)
+        for arm in rd.ARM_ORDER:
+            (rootd / arm).mkdir(exist_ok=True); (rootd / arm / 'duel.jsonl').write_bytes((Path(tmp) / arm / 'duel.jsonl').read_bytes())
+        (rootd / 'SHA256SUMS').write_bytes((Path(tmp) / 'SHA256SUMS').read_bytes())
+        st = Path(tmp) / 'claude_s66b_screen.status'; st.write_text(status if status is not None else status_text(tail='paused', launcher_sha=sha))
+        rdir = Path(tmp) / 'claude_reservations'; rdir.mkdir(exist_ok=True); rv = rdir / 's66b.json'
+        rv.write_text(json.dumps(dict(schema='claude-reservation-v1', lane=res_lane, launcher_sha256=res_sha or sha, status=str(st.resolve()), output_root=str(rootd.resolve()), reader='Claude')) + '\n')
+        trusted = dict(lane='s66b', launcher_sha256=sha, host='shengji-perf', root=str(rootd.resolve()), status=str(st.resolve()), reservation=str(rv.resolve()))
+        return str(rootd.resolve()), str(st.resolve()), str(rv.resolve()), trusted
+    root_, st_, rv_, trusted_ = host_layout(tmp)
+    lane = rd.analyze_lane(root_, st_, rv_, trusted=trusted_)
+check('T1 the lane read through analyze_lane (bound: canonical paths equal to TRUSTED, the reservation naming the lane / launcher sha / status / root, the armed line naming the sha and tree): the one arm, the same synthetic result, the binding recorded', sorted(lane) == sorted(rd.ARM_ORDER)
+      and all(lane[a]['bar']['verdict'] == 'DEV_PASS' and lane[a]['seeds'][0] == rd.ARM_SPEC[a]['seed0'] and lane[a]['levels'] == out['levels'] and lane[a]['input_binding']['mode'] == 'host' and lane[a]['input_binding']['armed_lines'] == 1 and lane[a]['input_binding']['trusted']['launcher_sha256'] == FAKE_SHA for a in lane), {a: (lane[a]['bar']['verdict'], lane[a]['input_binding']['mode']) for a in lane})
+check('T1 the synthetic route records that it is not a lane read', out['input_binding']['mode'] == 'synthetic' and 'NOT a lane read' in out['input_binding']['note'], out['input_binding'])
+
+# ---- T2: the bar and validity ----
+o = run(rows(effect=0.0)); check('T2 effect 0 -> DEV_FAIL', o['bar']['verdict'] == 'DEV_FAIL', o['levels'])
+# s66b: at N = 3920 the fixture cannot place the mean exactly at +0.015 (2 x 0.015 x 3920 = 117.6 deals) and its +-1 noise on 20% of deals
+# no longer spans 0 at that mean, so the two s66dev cases become: the verdict follows the CI condition at an effect near the bar, and the
+# inclusive bar is checked directly on the reader's rule with a stubbed bootstrap (the same code path, the mean exactly at the bar)
+o = run(rows(effect=0.015)); check('T2 +0.015 with noise at N 3920 (mean 0.01505): the verdict follows the CI condition exactly', o['bar']['verdict'] == ('DEV_PASS' if o['levels'][1] > 0 and o['levels'][0] >= 0.015 else 'DEV_FAIL') and abs(o['levels'][0] - 0.015) < 1 / (2 * DEALS), o['levels'])
+_boot = rd.boot
+rd.boot = lambda x, reps=rd.BOOT_REPS, seed=rd.BOOT_SEED: [0.015, 0.0001, 0.0299] if len(x) == DEALS else _boot(x, reps, seed)
+o = run(rows(effect=0.015, noise=False)); check('T2 the mean exactly at +0.015 with CI lower > 0 -> DEV_PASS (the bar is inclusive; stubbed bootstrap on the deal series)', o['bar']['verdict'] == 'DEV_PASS' and o['levels'] == [0.015, 0.0001, 0.0299], o['levels'])
+rd.boot = lambda x, reps=rd.BOOT_REPS, seed=rd.BOOT_SEED: [0.0149999, 0.0001, 0.0299] if len(x) == DEALS else _boot(x, reps, seed)
+o = run(rows(effect=0.015, noise=False)); check('T2 the mean a hair below +0.015 with CI lower > 0 -> DEV_FAIL', o['bar']['verdict'] == 'DEV_FAIL' and o['levels'][0] == 0.0149999, o['levels'])
+rd.boot = lambda x, reps=rd.BOOT_REPS, seed=rd.BOOT_SEED: [0.02, 0.0, 0.04] if len(x) == DEALS else _boot(x, reps, seed)
+o = run(rows(effect=0.015, noise=False)); check('T2 CI lower exactly 0 -> DEV_FAIL (lower must be > 0)', o['bar']['verdict'] == 'DEV_FAIL', o['levels'])
+rd.boot = _boot
+o = run(rows(effect=0.010, noise=False)); check('T2 +0.010 noise-free (CI lower > 0, mean below +0.015) -> DEV_FAIL', o['bar']['verdict'] == 'DEV_FAIL' and o['levels'][1] > 0, o['levels'])
+
+def to_fallback(h):
+    h[0] = '-fallback-v1'; h[1:8] = [None] * 7; h[10:19] = [None] * 9
+def to_fallback_ex(r, i):
+    """a fallback record on the exploiter side carries no probe field: the adapter writes [lead, None x5]"""
+    to_fallback(r['dhist']['ex'][i]); r['sc8']['ex'][i] = [r['dhist']['ex'][i][9], None, None, None, None, None]
+for side, who in (('ex', 'exploiter'), ('r45', 'defender')):
+    rs = rows(); to_fallback(rs[10]['dhist'][side][3]) if side == 'r45' else to_fallback_ex(rs[10], 3)
+    o = run(rs); check(f'T2 ONE {who} play fallback -> DEV_INVALID (zero ceiling), no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any(f"arm '{side}' play_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+    rs = rows(); h = next(h for h in rs[10]['dhist'][side] if h[0] == '-decision-v1'); h[4], h[7] = 1, 'BeliefNumpyError'
+    o = run(rs); check(f'T2 ONE {who} belief fallback -> DEV_INVALID (zero ceiling)', o['bar']['verdict'] == 'DEV_INVALID' and any(f"arm '{side}' belief_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+    rs = rows()
+    for r in rs:
+        if r['bury_rec'][0] == side:
+            b = r['bury_rec']; r['bury_rec'] = [side, 'cwv-bury-fallback-v1', 'budget', b[3], None, b[5]]
+    o = run(rs); check(f'T2 every {who} bury a fallback -> DEV_INVALID', o['bar']['verdict'] == 'DEV_INVALID' and any(f"arm '{side}' bury_fallback" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+    rs = rows()
+    for r in rs:
+        for d in r['declare_recs'][side]:
+            d[1], d[2] = 'hard_budget', False
+    o = run(rs); check(f'T2 every {who} declare abandoned -> DEV_INVALID', o['bar']['verdict'] == 'DEV_INVALID' and any(f"arm '{side}' declare_abandon" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+    rs = rows(); h = next(h for h in rs[5]['dhist'][side] if h[0] == '-decision-v1'); h[18] = 128
+    o = run(rs); check(f"T2 one {who} search record at 128 play worlds (both sides are configured at 64) -> DEV_INVALID", o['bar']['verdict'] == 'DEV_INVALID' and any('worlds_delivered' in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+    rs = rows(); h = next(h for h in rs[5]['dhist'][side] if h[0] == '-decision-v1'); h[18] = 32
+    o = run(rs); check(f'T2 one {who} search record at 32 play worlds -> DEV_INVALID', o['bar']['verdict'] == 'DEV_INVALID' and any('worlds_delivered' in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+rs = rows(); rs[11]['dsecs']['ex'][2] = 3.0001
+o = run(rs); check('T2 ONE exploiter decide_play recorded 3.0001 s -> DEV_INVALID by latency_inside_budget, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any('latency_inside_budget' in x and 'recorded 3.0001 s' in x and '> the served budget 3 s' in x for x in o['bar']['reasons']) and o['validity']['detail']['latency_inside_budget']['over'] == 1, o['bar']['reasons'][:2])
+rs = rows(); rs[11]['dsecs']['ex'][2] = round(3.00004, 4)   # the producer's 4-decimal rounding records an actual 3.00004 s as 3.0
+o = run(rs); check('T2 an actual 3.00004 s, recorded as 3.0 by the producer (0.1 ms bins) -> DEV_INVALID (the bin [2.99995, 3.00005] is judged on its upper bound), no outcome', rs[11]['dsecs']['ex'][2] == 3.0 and o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any('recorded 3.0000 s (bin up to 3.00005 s)' in x for x in o['bar']['reasons']) and o['validity']['detail']['latency_inside_budget']['rule'] == 'recorded + 0.00005 <= budget' and o['validity']['detail']['latency_inside_budget']['resolution_seconds'] == 0.0001, o['bar']['reasons'][:1])
+rs = rows(); rs[11]['dsecs']['ex'][2] = 2.9999
+o = run(rs); check('T2 an exploiter decide_play recorded 2.9999 s accepted (the last bin inside the budget)', o['bar']['verdict'] == 'DEV_PASS' and o['validity']['detail']['latency_inside_budget']['max_seconds'] == 2.9999 and o['validity']['detail']['latency_inside_budget']['over'] == 0, o['validity']['detail']['latency_inside_budget'])
+rs = rows(); rs[11]['dsecs']['r45'][2] = 3.5
+o = run(rs); check('T2 a DEFENDER decide_play at 3.5 s accepted (the ceiling is the exploiter\'s; reported in the latency line)', o['bar']['verdict'] == 'DEV_PASS' and o['defender']['decide_play_p50_p95_p99_max'][3] == 3.5 and o['time_use']['r45']['share_gt3s'] > 0, o['time_use']['r45'])
+rs = rows(); r = next(r for r in rs if r['level_change'] >= 1); r['attacker_points'] = 0 if r['winner_team'] != r['banker'] % 2 else 195; r['ex_attacker_points_signed'] = r['attacker_points'] * (1 if r['ex_team'] != r['banker'] % 2 else -1)
+o = run(rs); check('T2 an impossible score row -> DEV_INVALID by outcome_consistency', o['bar']['verdict'] == 'DEV_INVALID' and any('outcome_consistency' in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+o = run(rows(undiverged={7: 1}))
+check('T2 an undiverged deal with a nonzero margin -> DEV_INVALID by the paired premise, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any('paired premise: 1 deals' in x and str(SEED0 + 7) in x for x in o['bar']['reasons']), o['bar']['reasons'])
+o = run(rows(undiverged={7: 0, 9: 0}))
+check('T2 undiverged deals at margin 0 accepted, counted', o['bar']['verdict'] == 'DEV_PASS' and o['validity']['paired_premise'] == {'undiverged': 2, 'undiverged_nonzero': 0} and o['first_divergence'].get('(never)') == 2, o['validity']['paired_premise'])
+o = run(rows(failed_first=(3, 4)))
+check('T2 a failed throw (2 cards chosen, 1 played) accepted, counted per side', o['bar']['verdict'] == 'DEV_PASS' and o['exploiter']['failed_throws'] + o['defender']['failed_throws'] == 4, o['bar']['verdict'])
+
+# ---- T3: refusals ----
+rs = rows()
+refused('T3 an ABORT line in the status refused', 'terminal: the lane failed', rs, status=status_text(abort=True))
+refused('T3 no terminal line refused', 'exact terminal lines', rs, status=status_text(terminal=False))
+refused('T3 DEV END rc=1 for the arm refused', 'status: need, for arm sc8', rs, status=status_text(rc=1))
+refused('T3 no DEV END line at all refused', 'status: need, for arm sc8', rs, status=status_text(drop_end='sc8'))
+refused("T3 a start line naming the DEFENDER as the exploiter refused", 'status: need, for arm sc8', rs, status=status_text(cand=rd.DEF_NAME))
+refused("T3 a start line with another sentinel value (S66_EXPLOITER=sc9) refused", 'status: need, for arm sc8', rs, status=status_text(start=START.replace('=sc8', '=sc9')))
+o = run(rs, status=status_text(tail='paused')); check('T3 the S17 paused tail after the terminal accepted', o['binding']['tail'] == ['paused'] and o['bar']['verdict'] == 'DEV_PASS', o['binding']['tail'])
+refused('T3 a SHA256SUMS whose ./sc8/duel.jsonl line differs refused', 'SHA256SUMS', rs, sums=lambda h: f'{"0" * 64}  ./sc8/duel.jsonl\n{h}  ./fly.toml\n')
+o = run(rs, sums=lambda h: f'{"1" * 64}  ./fly.toml\n{h}  ./sc8/duel.jsonl\n'); check('T3 a matching SHA256SUMS accepted and recorded', o['binding']['sums_sha256'] is not None and o['input_sha256'] == o['binding']['input_sha256'])
+refused('T3 an unknown arm refused', 'is not one of', rs, arm='w256k8')
+rs2 = rows(); rs2[0]['exploiter_base'] = rd.DEF_NAME; refused("T3 a row whose exploiter is the defender (R48 as served) refused", "is not this arm's exploiter", rs2)
+rs = rows(); rs[2]['dhist']['ex'][0][10] = 8; refused('T3 an exploiter search decision with exact_deep_cards 8 refused', 'field 10=8 fails one_of(7,)', rs)
+rs = rows(); del rs[4]['dtrace']; refused('T3 a row without dtrace refused', 'dtrace form', rs)
+rs = rows(); del rs[4]['dtrace'][50]; refused('T3 99 deal-time declare calls refused', 'dtrace order', rs)
+rs = rows(); rs[4]['dtrace'][109][4] = 25; refused('T3 a hand that did not fall by the cards played refused', 'dtrace hand', rs)
+rs = rows(); h = rs[4]['dhist']['ex'][0]; h[9] = not h[9]; refused('T3 a dhist lead flag disagreeing with the trace refused', 'dtrace vs dhist', rs)
+rs = rows()
+i = next(i for i in range(DEALS) if rs[2 * i]['dtrace'][41] != rs[2 * i + 1]['dtrace'][41])
+rs[2 * i + 1]['dtrace'][41][4] = 24
+refused('T3 a first divergence that differs in state, not only in cards, refused', 'divergence form', rs)
+rs = rows(); rs[7]['defender'] = CAND; refused('T3 a wrong defender name refused', 'is not R48 as served', rs)
+rs = rows(); rs[7]['exploiter_base'] = rd.ARM_SPEC['sc8']['cand'][:-1] + 'x'; refused("T3 an exploiter name off by one character refused", "is not this arm's exploiter", rs)
+rs = rows(); rs[7]['exploiter_base'] = rd.ARM_SPEC['sc8']['cand'][:-4]; refused("T3 the exploiter name without its '-sc8' suffix (plain R48) refused", "is not this arm's exploiter", rs)
+rs = rows(); rs.append(copy.deepcopy(rs[3])); refused('T3 a duplicate row refused', 'duplicate row', rs)
+rs = rows(); del rs[7]; refused('T3 a missing mirror refused', 'deals:', rs)
+rs = rows(); r = next(r for r in rs if r['bury_rec'][0] == 'ex'); r['bury_rec'][4] = 128; refused('T3 an exploiter bury record off its configured worlds refused', 'row schema: ex bury_rec', rs)
+# the adapter's sc8 key: form, then contents against dhist
+rs = rows(); del rs[4]['sc8']; refused('T3 a row without the sc8 key refused', 'sc8 form', rs)
+rs = rows(); rs[4]['sc8']['ex'].pop(); refused('T3 an sc8 list one entry short of the exploiter decisions refused', 'sc8 form', rs)
+rs = rows(); rs[4]['sc8']['ex'][0] = rs[4]['sc8']['ex'][0][:5]; refused('T3 a 5-field sc8 entry refused', 'sc8 form', rs)
+rs = rows(); rs[4]['sc8']['r45'] = []; refused('T3 an sc8 dict with a defender list refused (the probe runs on the exploiter side only)', 'sc8 form', rs)
+rs = rows(); p = rs[4]['sc8']['ex'][0]; p[0] = not p[0]; refused('T3 an sc8 lead flag disagreeing with dhist refused', 'sc8 lead flag', rs)
+rs = rows(); to_fallback(rs[10]['dhist']['ex'][3]); rs[10]['sc8']['ex'][3] = [rs[10]['dhist']['ex'][3][9], None, None, None, None, None]
+o = run(rs); check('T3 control: a fallback record with an all-None sc8 entry is the expected pairing (the fallback itself then makes the read DEV_INVALID)', o['bar']['verdict'] == 'DEV_INVALID' and any('play_fallback: 1 of' in x for x in o['bar']['reasons']) and not any('sc8' in x for x in o['bar']['reasons']), o['bar']['reasons'][:1])
+rs = rows(); to_fallback(rs[10]['dhist']['ex'][3]); rs[10]['sc8']['ex'][3] = [rs[10]['dhist']['ex'][3][9], False, None, None, None, False]; refused('T3 probe fields (applied False) on a FALLBACK record refused', 'sc8 on a fallback record', rs)
+def first_probe(rs):
+    for r in rs:
+        for i, p in enumerate(r['sc8']['ex']):
+            if p[2] is not None:
+                return r, i
+rs = rows(); r, i = first_probe(rs); j = next(j for j, h in enumerate(r['dhist']['ex']) if not h[9]); r['sc8']['ex'][j] = [False] + r['sc8']['ex'][i][1:]; refused('T3 a probe on a FOLLOW refused', 'sc8 probe entry', rs)
+rs = rows(); r, i = first_probe(rs); j = next(j for j, h in enumerate(r['dhist']['ex']) if h[9] and h[8] <= 7); r['sc8']['ex'][j] = [True] + r['sc8']['ex'][i][1:]; refused('T3 a probe on a lead at max hand <= 7 refused', 'sc8 probe entry', rs)
+rs = rows(); r, i = first_probe(rs); r['sc8']['ex'][i][3] = 7; refused('T3 a probe with 7 probe worlds refused', 'sc8 probe entry', rs)
+rs = rows(); r, i = first_probe(rs); r['sc8']['ex'][i][1] = not r['sc8']['ex'][i][1]; refused("T3 applied disagreeing with the margin's sign refused", 'sc8 probe entry', rs)
+rs = rows(); r, i = next((r, i) for r in rs for i, p in enumerate(r['sc8']['ex']) if p[2] is not None and not p[1]); r['sc8']['ex'][i][5] = True; refused('T3 chosen without applied refused', 'sc8 probe entry', rs)
+rs = rows(); r, i = first_probe(rs); r['sc8']['ex'][i][2] = 0; refused('T3 a probe with 0 evaluations refused', 'sc8 probe entry', rs)
+rs = rows(); r, i = first_probe(rs); r['sc8']['ex'][i][4] = float('nan'); refused('T3 a NaN margin refused', 'sc8 probe entry', rs)
+rs = rows(); j = next(j for r in rs for j, p in enumerate(r['sc8']['ex']) if p[2] is None); rs[0]['sc8']['ex'][j] = [rs[0]['sc8']['ex'][j][0], 1, None, None, None, False]; refused('T3 a non-bool applied (1) on a search record refused', 'sc8 applied', rs)
+rs = rows(); j = next(j for j, p in enumerate(rs[0]['sc8']['ex']) if p[2] is None); rs[0]['sc8']['ex'][j][1] = True; refused('T3 applied True without a probe refused', 'sc8 no-probe entry', rs)
+o = run(rows())
+check("T3 control: the unchanged fixture reads T1's verdict and numbers", o['bar']['verdict'] == out['bar']['verdict'] and o['levels'] == out['levels'])
+
+# ---- T4: the input binding (analyze_lane -> bind_lane before any raw read) ----
+import builtins, os
+opened = []
+def trip_open(path, *a, **k):
+    opened.append(os.fspath(path)); return builtins.open(path, *a, **k)
+def trip_read(*a, **k):
+    raise AssertionError('TRIPWIRE: read() called before the binding passed')
+def bound_refused(label, want, root, status, reservation, trusted, **kw):
+    """analyze_lane must refuse with `want`, open no duel.jsonl and never reach read()"""
+    opened.clear(); saved = rd.read; rd.read, rd.open = trip_read, trip_open
+    try:
+        rd.analyze_lane(root, status, reservation, trusted=trusted, **kw)
+    except SystemExit as e:
+        check(label, str(e).startswith('REFUSING: ') and want in str(e) and not any(x.endswith('duel.jsonl') for x in opened), f'{str(e)[:160]} | opened {[os.path.basename(x) for x in opened]}')
+    except AssertionError as e:
+        check(label, False, str(e))
+    else:
+        check(label, False, 'read accepted')
+    finally:
+        rd.read = saved; del rd.open
+with tempfile.TemporaryDirectory(prefix='s66b-bind-', dir='/private/tmp') as tmp:
+    for arm in rd.ARM_ORDER:
+        (Path(tmp) / arm).mkdir(); p = write(base, tmp, name=f'{arm}/duel.jsonl')
+    (Path(tmp) / 'SHA256SUMS').write_text(f'{hashlib.sha256(Path(p).read_bytes()).hexdigest()}  ./sc8/duel.jsonl\n')
+    root_, st_, rv_, trusted_ = host_layout(tmp)
+    opened.clear(); rd.open = trip_open
+    try:
+        lane = rd.analyze_lane(root_, st_, rv_, trusted=trusted_)
+    finally:
+        del rd.open
+    check('T4 the bound lane read passes; the rows are opened only after bind_lane (the status and reservation first)', lane['sc8']['bar']['verdict'] == 'DEV_PASS' and opened and opened[0].endswith('claude_s66b_screen.status') and any(x.endswith('duel.jsonl') for x in opened), [os.path.basename(x) for x in opened][:4])
+    other = Path(tmp) / 'other_root'; other.mkdir(); (other / 'sc8').mkdir(); (other / 'sc8' / 'duel.jsonl').write_bytes(Path(p).read_bytes()); (other / 'SHA256SUMS').write_bytes((Path(root_) / 'SHA256SUMS').read_bytes())
+    bound_refused('T4 a wrong root (a self-consistent sibling tree) refused before any raw read', 'host-mode root not the reserved dispatch path', str(other.resolve()), st_, rv_, trusted_)
+    st2 = Path(tmp) / 'other.status'; st2.write_bytes(Path(st_).read_bytes())
+    bound_refused('T4 a wrong status path refused before any raw read', 'host-mode status not the reserved dispatch path', root_, str(st2.resolve()), rv_, trusted_)
+    rv2 = Path(tmp) / 'claude_reservations' / 'other.json'; rv2.write_bytes(Path(rv_).read_bytes())
+    bound_refused('T4 a wrong reservation path refused before any raw read', 'host-mode reservation not the reserved dispatch path', root_, st_, str(rv2.resolve()), trusted_)
+    j = json.loads(Path(rv_).read_text()); j['launcher_sha256'] = 'cd' * 32; Path(rv_).write_text(json.dumps(j) + '\n')
+    bound_refused('T4 a reservation naming another launcher sha256 refused before any raw read', 'the reservation does not bind this lane (launcher_sha256 differ', root_, st_, rv_, trusted_)
+    j['launcher_sha256'] = FAKE_SHA; j['lane'] = 's65dev'; Path(rv_).write_text(json.dumps(j) + '\n')
+    bound_refused("T4 a reservation naming another lane refused before any raw read", 'the reservation does not bind this lane (lane differ', root_, st_, rv_, trusted_)
+    j['lane'] = 's66b'; Path(rv_).write_text(json.dumps(j) + '\n')
+    Path(st_).write_text(status_text(tail='paused', launcher_sha='ef' * 32))
+    bound_refused('T4 an armed status line naming another launcher sha256 refused before any raw read', 'armed lines naming the trusted launcher sha256', root_, st_, rv_, trusted_)
+    Path(st_).write_text(status_text(tail='paused', tree='/root/claude-main-55', head='0c1e9965d2bba674eb8dd589365776ae94a3f1c8'))
+    bound_refused('T4 an armed status line naming another tree (the R48 tree) refused before any raw read', 'armed lines naming the trusted launcher sha256', root_, st_, rv_, trusted_)
+    Path(st_).write_text(status_text(tail='paused') + status_text(tail=None, terminal=False).splitlines()[0] + '\n')
+    bound_refused('T4 two armed lines refused', 'armed lines naming the trusted launcher sha256', root_, st_, rv_, trusted_)
+    Path(st_).write_text(status_text(tail='paused'))
+    bound_refused('T4 the draft reader (TRUSTED_LAUNCHER_SHA256 = TO_BE_PINNED) refuses every lane read', 'not pinned (TO_BE_PINNED', root_, st_, rv_, dict(trusted_, launcher_sha256='TO_BE_PINNED'))
+    bound_refused('T4 the module TRUSTED is the draft (TO_BE_PINNED): the default trusted refuses', 'not pinned (TO_BE_PINNED', root_, st_, rv_, rd.TRUSTED) if rd.TRUSTED['launcher_sha256'] == 'TO_BE_PINNED' else check('T4 the module TRUSTED is pinned (the final reader)', True)
+    link = Path(tmp) / 'root_link'; os.symlink(root_, link)
+    bound_refused('T4 a symlinked root refused', 'is not canonical', str(link), st_, rv_, dict(trusted_, root=str(link)))
+    slink = Path(tmp) / 'status_link'; os.symlink(st_, slink)
+    bound_refused('T4 a symlinked status refused', 'is not canonical', root_, str(slink), rv_, dict(trusted_, status=str(slink)))
+    rlink = Path(tmp) / 'claude_reservations' / 'res_link.json'; os.symlink(rv_, rlink)
+    bound_refused('T4 a symlinked reservation refused', 'is not canonical', root_, st_, str(rlink), dict(trusted_, reservation=str(rlink)))
+    os.rename(Path(root_) / 'SHA256SUMS', Path(root_) / 'SHA256SUMS.moved')
+    bound_refused('T4 a root without SHA256SUMS refused before any raw read', 'SHA256SUMS', root_, st_, rv_, trusted_)
+    os.rename(Path(root_) / 'SHA256SUMS.moved', Path(root_) / 'SHA256SUMS')
+    try:
+        rd.analyze(str(Path(root_) / 'sc8' / 'duel.jsonl'), arm='sc8', status=st_, sums=str(Path(root_) / 'SHA256SUMS'), binding=dict(mode='host', lane='s65dev'))
+    except SystemExit as e:
+        check('T4 analyze with a binding record of another lane refused', 'without a bind_lane record' in str(e), str(e)[:120])
+    else:
+        check('T4 analyze with a binding record of another lane refused', False, 'accepted')
+    try:
+        rd.analyze(str(Path(root_) / 'sc8' / 'duel.jsonl'), arm='sc8', status=st_, sums=str(Path(root_) / 'SHA256SUMS'), binding=None)
+    except SystemExit as e:
+        check('T4 analyze without a binding refused', 'without a bind_lane record' in str(e), str(e)[:120])
+    else:
+        check('T4 analyze without a binding refused', False, 'accepted')
+print('ALL PASS' if not fails else f'{fails} FAILED')
+sys.exit(int(bool(fails)))

@@ -1,0 +1,8 @@
+# s68dev registry check, 2026-10-26T13:01:40Z; tree /Users/jerryyu/Projects/shengji-wt/claude-s68-combo at 15bcbd7998ed654a8b2c91fe93804faaf21a1422 (origin/main d33bfd70bb2f434368b7e83cdb5732cc791bd0ab), dirty entries outside tools/s68dev + PROGRESS.md: 1; registry server/runs/seed_windows.json 7923c65da653c62a; seed_windows.py 89f17a98d937e4ce
+check arm-b 243660910 3920: rc=0 [243660910, 243664830) is disjoint from every registered window
+check arm-a 244060910 3920: rc=0 [244060910, 244064830) is disjoint from every registered window
+check rehearsal 243570000 56: rc=0 [243570000, 243570056) is disjoint from every registered window
+positive control, the registered M17 block [61740910, 61900910) (expect REFUSED, rc 2): rc=2 [61740910, 61900910) overlaps 10 registered window(s): runPVS1r46 (trajectory, seed0 61740910, 16000 clusters, span [61740910, 61756910)) shares 16000 deal seed(s) [61740910, 61756910) runPVS2r46 (tra
+reported (registration state of the windows the packet names): S67c [243260910, +3920): rc=0 [243260910, 243264830) is disjoint from every registered window 
+reported (registration state of the windows the packet names): S66b [242860910, +3920): rc=0 [242860910, 242864830) is disjoint from every registered window 
+reported (registration state of the windows the packet names): S64-span [242060910, +100600): rc=0 [242060910, 242161510) is disjoint from every registered window 

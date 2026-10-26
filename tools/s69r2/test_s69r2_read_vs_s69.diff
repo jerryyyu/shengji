@@ -1,0 +1,157 @@
+--- ../s69/test_s69_read.py	2026-10-26 09:50:55
++++ test_s69r2_read.py	2026-10-26 13:00:52
+@@ -1,5 +1,7 @@
+ #!/usr/bin/env python3
+-"""s69 reader end-to-end check on SYNTHETIC rows (no deal is played); test_s61dev_read.py (the S61 reader's Codex-PASSed e2e test) with the
++"""s69r2 reader end-to-end check (= test_s69_read.py r3, with the lane s69r2 and its seeds, and the zero play-fallback cases replaced by
++the common-ceiling cases: T2c, S68's symmetry fixture).  s69's text follows.
++s69 reader end-to-end check on SYNTHETIC rows (no deal is played); test_s61dev_read.py (the S61 reader's Codex-PASSed e2e test) with the
+ binding (reader_lib.bind_inputs over a temp dispatch layout: root/duel.jsonl + root/SHA256SUMS, the status, the reservation), the zero play /
+ belief fallback ceilings and the versus-S61 lines changed.  Original text:  A generator writes duel.jsonl rows in exploit_duel_s61.py's record
+ form for 600 deals x 2 mirrors: s60dev's dhist (19 fields; exact_deep_cards 8 on the exploiter, 7 on the defender; the side's play worlds),
+@@ -14,7 +16,7 @@
+       (2 cards chosen, 1 played) accepted.
+   T3  refusals: the binding (ABORT line, no terminal, DEV END rc=1, a wrong exploiter in the start line, SHA256SUMS mismatch; a matching
+       SHA256SUMS accepted), the trace form and its reconciliations, the divergence form, and s60dev's integrity and row-schema cases.
+-  usage: cd /private/tmp && nice -n 15 python3 test_s69_read.py <s69_read.py>
++  usage: cd /private/tmp && nice -n 15 python3 test_s69r2_read.py <s69r2_read.py>
+ """
+ import copy
+ import hashlib
+@@ -26,19 +28,19 @@
+ from pathlib import Path
+ 
+ READER = Path(sys.argv[1]).resolve()
+-spec = importlib.util.spec_from_file_location('s69_read', READER); rd = importlib.util.module_from_spec(spec); spec.loader.exec_module(rd)
++spec = importlib.util.spec_from_file_location('s69r2_read', READER); rd = importlib.util.module_from_spec(spec); spec.loader.exec_module(rd)
+ va = rd.va
+ SEED0, DEALS = rd.SEED0, rd.DEALS
+ TS0 = '2026-10-26T01:00:00Z'
+ 
+ 
+ def status_text(*, cand=None, rc=0, terminal=True, abort=False, start=None):
+-    lines = [f'{TS0} s69 armed (pid 4242, launcher sha256 {"0" * 64})',
++    lines = [f'{TS0} s69r2 armed (pid 4242, launcher sha256 {"0" * 64})',
+              f'{TS0} ' + (start if start is not None else rd.START.replace(rd.CAND, cand or rd.CAND)),
+-             f'{TS0} s69 run pid/pgid 4243 (setsid; timeout KILL at 28800 s; backstop watchdog pid 4250 at 28810 s)',
+-             f'{TS0} s69 DEV END rc={rc} wall_s=5000.0 maxrss_kb=1000000']
++             f'{TS0} s69r2 run pid/pgid 4243 (setsid; timeout KILL at 28800 s; backstop watchdog pid 4250 at 28810 s)',
++             f'{TS0} s69r2 DEV END rc={rc} wall_s=5000.0 maxrss_kb=1000000']
+     if abort:
+-        lines.append(f'{TS0} ABORT: s69 run group 4242 exited rc 1; no LANE DONE')
++        lines.append(f'{TS0} ABORT: s69r2 run group 4242 exited rc 1; no LANE DONE')
+     if terminal:
+         lines.append(f'{TS0} {rd.TERMINAL}')
+     return '\n'.join(lines) + '\n'
+@@ -200,15 +202,15 @@
+     mapping naming it; mutate(paths, trusted) may substitute any of them before the read."""
+     with tempfile.TemporaryDirectory(prefix='s69-e2e-', dir='/private/tmp') as tmp:
+         tmp = str(Path(tmp).resolve())
+-        root = Path(tmp) / 'vol-dev-claude-s69-r48-20261026'; root.mkdir()
++        root = Path(tmp) / 'vol-dev-claude-s69r2-r48-20261026'; root.mkdir()
+         p = write(rs, root)
+         (root / 'fly.toml').write_text('# fixture\n')
+         h = hashlib.sha256(Path(p).read_bytes()).hexdigest()
+         (root / 'SHA256SUMS').write_text(sums(h) if sums is not None else f'{"1" * 64}  ./fly.toml\n{h}  ./duel.jsonl\n')
+-        sp = Path(tmp) / 'claude_s69_screen.status'; sp.write_text(status if status is not None else status_text())
+-        rp = Path(tmp) / 's69.json'
++        sp = Path(tmp) / 'claude_s69r2_screen.status'; sp.write_text(status if status is not None else status_text())
++        rp = Path(tmp) / 's69r2.json'
+         trusted = dict(rd.TRUSTED, launcher_sha256=LAUNCHER_SHA, root=str(root), status=str(sp), reservation=str(rp))
+-        rp.write_text(json.dumps(reservation if reservation is not None else dict(schema='claude-reservation-v1', lane='s69', launcher_sha256=LAUNCHER_SHA, status=str(sp), output_root=str(root), host='shengji-cloud', reader='Claude')))
++        rp.write_text(json.dumps(reservation if reservation is not None else dict(schema='claude-reservation-v1', lane='s69r2', launcher_sha256=LAUNCHER_SHA, status=str(sp), output_root=str(root), host='shengji-cloud', reader='Claude')))
+         paths = dict(root=str(root), status=str(sp), reservation=str(rp))
+         if mutate is not None:
+             mutate(paths, trusted, Path(tmp))
+@@ -259,9 +261,6 @@
+ def to_fallback(h):
+     h[0] = '-fallback-v1'; h[1:8] = [None] * 7; h[10:19] = [None] * 9
+ for side, who in (('ex', 'exploiter'), ('r45', 'defender')):
+-    rs = rows(); to_fallback(rs[10]['dhist'][side][3])
+-    o = run(rs); check(f'T2 ONE {who} play fallback (ceiling 0) -> DEV_INVALID naming the {who}, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None
+-                       and any(f"arm '{side}' play_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+     rs = rows(); h = next(h for h in rs[10]['dhist'][side] if h[0] == '-decision-v1'); h[4], h[7] = 1, 'BeliefNumpyError'
+     o = run(rs); check(f'T2 ONE {who} belief fallback (ceiling 0) -> DEV_INVALID naming the {who}', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None
+                        and any(f"arm '{side}' belief_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+@@ -289,6 +288,40 @@
+     o = run(rs); check(f'T2 every {who} declare abandoned -> DEV_INVALID', o['bar']['verdict'] == 'DEV_INVALID' and any(f"arm '{side}' declare_abandon" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+     rs = rows(); h = next(h for h in rs[5]['dhist'][side] if h[0] == '-decision-v1'); h[18] = rd.PLAY_WORLDS['r45' if side == 'ex' else 'ex']
+     o = run(rs); check(f'T2 one {who} search record off its play worlds -> DEV_INVALID', o['bar']['verdict'] == 'DEV_INVALID' and any('worlds_delivered' in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
++# ---- T2c (s69r2): ONE common play-fallback ceiling, 0.1% of a side's decisions, the same on the exploiter and the defender (S68's symmetry fixture) ----
++def side_fallbacks(rs, side, k):
++    """k play fallbacks on `side`, spread over its search records"""
++    sites = [(r, i) for r in rs for i, h in enumerate(r['dhist'][side]) if h[0] == '-decision-v1']
++    for j in range(k):
++        r, i = sites[(j * len(sites)) // max(k, 1)]
++        to_fallback(r['dhist'][side][i])
++    return rs
++base_rows = rows()
++n_dec = {side: sum(len(r['dhist'][side]) for r in base_rows) for side in ('ex', 'r45')}
++ceil = rd.BAR['ceilings']['play_fallback']
++check('T2c one play-fallback ceiling for both sides (one BAR mapping: play 0.1%, belief 0, bury / declare 1%)', rd.BAR['ceilings'] == dict(play_fallback=0.001, belief_fallback=0, bury_fallback=0.01, declare_abandon=0.01), rd.BAR['ceilings'])
++sym = {}
++for side in ('ex', 'r45'):
++    cap = int(ceil * n_dec[side])
++    for k in (cap, cap + 1):
++        rs = side_fallbacks(copy.deepcopy(base_rows), side, k)
++        o = run(rs)
++        sym[(side, k - cap)] = o['validity']['verdict']
++        pf = o['play_fallbacks'][side]
++        if k == cap:
++            check(f'T2c symmetry: {side} at the cap ({k} of {n_dec[side]}) -> VALID, the outcome computed with those decisions in it; count, rate and cap reported',
++                  o['validity']['verdict'] == 'VALID' and o['levels'] is not None and o['deals'] == DEALS and pf['fallbacks'] == k and pf['allowed'] == cap
++                  and abs(pf['rate'] - k / n_dec[side]) < 1e-15 and pf['in_outcome'] is True and o[('exploiter' if side == 'ex' else 'defender')]['fallback'] == k, pf)
++        else:
++            check(f'T2c symmetry: {side} one above the cap ({k} of {n_dec[side]}) -> DEV_INVALID, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None
++                  and any(f"arm '{side}' play_fallback: {k} of {n_dec[side]}" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
++check('T2c symmetry: the same count gets the same verdict on the exploiter and the defender (cap -> VALID, cap + 1 -> DEV_INVALID)',
++      n_dec['ex'] == n_dec['r45'] and sym[('ex', 0)] == sym[('r45', 0)] == 'VALID' and sym[('ex', 1)] == sym[('r45', 1)] == 'DEV_INVALID', (sym, n_dec))
++rs = side_fallbacks(copy.deepcopy(base_rows), 'ex', 5)
++o = run(rs); check("T2c S69's actual fault pattern (5 exploiter play fallbacks, 0 defender) -> VALID under the common ceiling, outcome computed",
++                   o['validity']['verdict'] == 'VALID' and o['levels'] is not None and o['play_fallbacks']['ex']['fallbacks'] == 5 and o['play_fallbacks']['r45']['fallbacks'] == 0, o['play_fallbacks'])
++rs = side_fallbacks(side_fallbacks(copy.deepcopy(base_rows), 'ex', int(ceil * n_dec['ex'])), 'r45', int(ceil * n_dec['r45']))
++o = run(rs); check('T2c both sides at the cap at once -> VALID (the ceiling is per side, not pooled)', o['validity']['verdict'] == 'VALID' and o['levels'] is not None, o['bar']['reasons'][:2])
+ rs = rows(); r = next(r for r in rs if r['level_change'] >= 1); r['attacker_points'] = 0 if r['winner_team'] != r['banker'] % 2 else 195; r['ex_attacker_points_signed'] = r['attacker_points'] * (1 if r['ex_team'] != r['banker'] % 2 else -1)
+ o = run(rs); check('T2 an impossible score row (the winner disagrees with the points) -> DEV_INVALID by outcome_consistency', o['bar']['verdict'] == 'DEV_INVALID' and any('outcome_consistency' in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+ o = run(rows(undiverged={7: 1}))
+@@ -300,7 +333,7 @@
+       not (finding_keys & o['attribution'].keys()) and o['levels'] is not None and o['points'] is not None
+       and o['attribution']['not_diverged_nonzero'] == 1 and o['bar']['flags'] == [], o['attribution'])
+ check('T2 ATTRIBUTION_INVALID suppresses rendered attribution findings but keeps the read diagnostic',
+-      any(l.startswith('s69 DEV head-to-head') for l in o['canonical_lines'])
++      any(l.startswith('s69r2 DEV head-to-head') for l in o['canonical_lines'])
+       and any('Attribution ATTRIBUTION_INVALID' in l for l in o['canonical_lines'])
+       and not any(any(fragment in l for fragment in finding_lines) for l in o['canonical_lines']), o['canonical_lines'])
+ o = run(rows(undiverged={7: 0, 9: 0}))
+@@ -364,7 +397,7 @@
+     q = tmp / 'other.status'; q.write_text(Path(paths['status']).read_text()); paths['status'] = str(q)
+ refused_m('T4 a substituted status (same bytes, other path) refused by bind_inputs', 'input binding', m_status_sub)
+ refused_m('T4 a reservation naming another launcher sha refused', 'input binding: the reservation does not bind', None,
+-          reservation=dict(lane='s69', launcher_sha256='b' * 64, status='x', output_root='y'))
++          reservation=dict(lane='s69r2', launcher_sha256='b' * 64, status='x', output_root='y'))
+ def m_relative(paths, trusted, tmp):
+     paths['root'] = paths['root'] + '/../' + Path(paths['root']).name
+ refused_m('T4 a non-canonical root path refused', 'input binding', m_relative)
+@@ -373,9 +406,9 @@
+ refused_m('T4 an output root without SHA256SUMS refused', 'SHA256SUMS missing', m_extra_sums)
+ refused('T4 a start line with another seed0 refused (the exact launcher text)', 'status: need one DEV start line', rows(), status=status_text(start=rd.START.replace(f'seed0 {SEED0}', f'seed0 {SEED0 + 1}')))
+ refused('T4 a start line with another stop refused', 'status: need one DEV start line', rows(), status=status_text(start=rd.START.replace('KILL at 28800', 'KILL at 99999')))
+-st2 = status_text().replace(f'{TS0} s69 DEV END', f'{TS0} ' + rd.START + f'\n{TS0} s69 DEV END')
++st2 = status_text().replace(f'{TS0} s69r2 DEV END', f'{TS0} ' + rd.START + f'\n{TS0} s69r2 DEV END')
+ refused('T4 two DEV start lines refused', 'status: need one DEV start line', rows(), status=st2)
+-st3 = status_text().replace(f'{TS0} {rd.TERMINAL}', f'{TS0} {rd.TERMINAL}\n{TS0} s69 an extra line')
++st3 = status_text().replace(f'{TS0} {rd.TERMINAL}', f'{TS0} {rd.TERMINAL}\n{TS0} s69r2 an extra line')
+ refused('T4 a line after the terminal refused (NO_TAIL)', 'terminal', rows(), status=st3)
+ cmp = [l for l in out['canonical_lines'] if ' vs S61: ' in l]
+ n_cells = len(set(c['cell'] for c in out['attribution']['tables']['class_trick_rank']) | set(rd.load_s61_reference()['tables']['class_trick_rank']))
+@@ -404,8 +437,8 @@
+         check('T4 a drifted S61 reference refused (pinned sha256)', False, 'accepted')
+ o = run(rows(undiverged={7: 1}))
+ check('T4 ATTRIBUTION_INVALID: no versus-S61 line (the comparison needs the cell tables)', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']))
+-rs = rows(); to_fallback(rs[10]['dhist']['ex'][3]); o = run(rs)
+-check('T4 DEV_INVALID: no versus-S61 line and no outcome', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']) and o['levels'] is None)
++rs = rows(); h = next(h for h in rs[10]['dhist']['ex'] if h[0] == '-decision-v1'); h[4], h[7] = 1, 'BeliefNumpyError'; o = run(rs)
++check('T4 DEV_INVALID (one belief fallback): no versus-S61 line and no outcome', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']) and o['levels'] is None)
+ rs = rows(); del rs[4]['history']; refused('T5 a row without history (the producer ran without --history) refused', 'history form', rs)
+ rs = rows(); rs[4]['history'].pop(); refused('T5 a history one play short of the trace refused', 'history length', rs)
+ rs = rows(); rs[4]['history'][7][0] = (rs[4]['history'][7][0] + 1) % 4; refused('T5 a history play by another seat refused', 'history play', rs)

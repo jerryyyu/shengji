@@ -1,0 +1,7 @@
+# s69r2 seed clearance, 2026-10-26T16:59:20Z; tree /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam at 90bb8974e75bc9358a540dbff8bd76a0268c6115; SMV3 3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8; JS-M1 copy a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38
+### (lane-s69r2) clear 312060910 600 --checkpoint SMV3 --follow-init --allow-unresolved --purpose screen
+CLEAR -- 1 window(s) x 600 = 600 deals (600 keys) vs 1 checkpoint(s) / 2 lineage node(s): 0 overlap(s), registry clear, control 0/64 from 44260910, 60/64 from 23260910, 0/64 from 61260910, 56/64 from 22260910; UNRESOLVED (allowed): /Users/jerryyu/.claude/jobs/68f9c8bd/tmp/train-out/cwv/JS-M1-policy-w0.2-full/best.pt, /Users/jerryyu/.claude/jobs/68f9c8bd/tmp/train-out/cwv/JS-M1-policy-w0.2-full/best.pt
+rc=0
+### (lane-s69r2) clear 312060910 600 --checkpoint JS-M1 copy --follow-init --purpose screen
+CLEAR -- 1 window(s) x 600 = 600 deals (600 keys) vs 1 checkpoint(s) / 1 lineage node(s): 0 overlap(s), registry clear, control 62/64 from 20260905
+rc=0

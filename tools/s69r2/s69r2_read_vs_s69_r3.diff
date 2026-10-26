@@ -1,0 +1,137 @@
+--- ../s69/s69_read.py	2026-10-26 09:54:53
++++ s69r2_read.py	2026-10-26 13:00:13
+@@ -1,16 +1,21 @@
+ #!/usr/bin/env python3
+-"""s69 DEV head-to-head reader (board #1075 row S69: where does R48 lose now?  The S61 design re-run against R48): paired, seat-swapped,
++"""s69r2 DEV head-to-head reader (board #1075 row S69, revision r2 on fresh seeds: S69 read DEV_INVALID on 5 of 38,796 exploiter play
++fallbacks against its zero ceiling, #1075 6422101463).  = s69's r3 reader (49b42345: binding, trace, the --history multiset gate,
++attribution, versus-S61) with the lane s69r2, its seeds and dispatch paths, and ONE common play-fallback ceiling of 0.1% of each side's
++decisions, the same for the exploiter and the defender (S68's policy, Codex PASS 1075/6421822839); belief fallbacks stay at zero; fallback
++decisions stay in the outcome (no row or decision is dropped).  s69's text follows.
++s69 DEV head-to-head reader (board #1075 row S69: where does R48 lose now?  The S61 design re-run against R48): paired, seat-swapped,
+ the S69 exploiter (R48 at the M27 expert budget: play worlds 256, admission K 32, exact caps 8 / 8, exact-lead deadline 9 s, exact node
+ caps 2e8, play budget 60 s, no lgfd; everything else R48's, the latency switches on both sides) at the exploiter seats vs R48 as served
+ (fly.toml at d33bfd70) at the defender seats, on the r2 rank-mixed plan per deal, 600 deals from 311060910.  s61dev_read.py (476ea123, the
+ Codex-PASSed S61 reader) with the arms, the binding, the zero play / belief fallback ceilings and the S61 comparison lines changed; the
+ read is predeclare_s69.md's, evaluated as written there.
+ 
+-  python3 s69_read_r3.py <output root> <lane status> <reservation> <out.json>      (host mode: the three paths must be TRUSTED's)
++  python3 s69r2_read.py <output root> <lane status> <reservation> <out.json>      (host mode: the three paths must be TRUSTED's)
+   python3 s69_read.py --check-imports                                            (loads the pinned helpers beside this file; no input)
+ 
+ BINDING (refuses, first): reader_lib.bind_inputs (the root, status and reservation are the reserved dispatch paths; the reservation names
+-this lane, its launcher sha256, status and output root); the status has exactly one terminal line '<stamp> s69 DEV output sealed; rc/status
++this lane, its launcher sha256, status and output root); the status has exactly one terminal line '<stamp> s69r2 DEV output sealed; rc/status
+ only (strength qualification is reader-owned); LANE DONE' and no ABORT: / REFUSING: line (reader_lib.terminal_line, NO_TAIL: cloud has no
+ S17 handshake), exactly one DEV start line (the launcher's exact text: both pinned names, the nine overrides, deals, seed0, plan, workers,
+ stop) and one 'DEV END rc=0' line before it; <root>/duel.jsonl's sha256 equals its './duel.jsonl' line in <root>/SHA256SUMS.
+@@ -19,8 +24,8 @@
+ reconciliations, no defender 8-card stage, at least one complete exploiter 8-card lead and follow, the declare / bury producer shapes at
+ 64 / 32 / K <= 64 on both sides), plus the decision trace (trace_gate), the play history (history_gate: --history's buried / history / failed_detail on every row,
+ reconciled with the trace as card multisets, failed_detail entry by entry) and the first-divergence form (the same state, two policies).
+-VALIDITY (validity.py on BOTH arms, before any outcome; a failure -> DEV_INVALID and no outcome): arm_fault_ceilings (ZERO play fallbacks
+-and ZERO belief fallbacks on each side; bury fallbacks <= 1% of the side's buries; declare abandons <= 1% of its declare evaluations; one
++VALIDITY (validity.py on BOTH arms, before any outcome; a failure -> DEV_INVALID and no outcome): arm_fault_ceilings (s69r2: play fallbacks <= 0.1%
++of each side's decisions, ONE ceiling for both sides; ZERO belief fallbacks on each side; bury fallbacks <= 1% of the side's buries; declare abandons <= 1% of its declare evaluations; one
+ ceilings mapping for both arms), worlds_delivered (every search record reports the side's play worlds: 256 exploiter / 64 defender),
+ completion_shape (an evaluated declare completed its 64 worlds), outcome_consistency (every row obeys the engine's level rule).
+ THE READ (predeclared, descriptive; never a release, deploy or strength claim for any servable candidate; the exploiter is not servable):
+@@ -64,7 +69,7 @@
+             raw = path.read_bytes()
+             if hashlib.sha256(raw).hexdigest() != PINNED[name]:
+                 raise SystemExit(f"REFUSING: {name} source drift at {path} (expected {PINNED[name]})")
+-            spec = importlib.util.spec_from_loader(f"s69_{name}", loader=None)
++            spec = importlib.util.spec_from_loader(f"s69r2_{name}", loader=None)
+             module = importlib.util.module_from_spec(spec)
+             exec(compile(raw, str(path), "exec"), module.__dict__)
+             return module
+@@ -79,19 +84,21 @@
+ R48 = "pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a"   # R48 as served: fly.toml SHENGJI_BOT at d33bfd70, the DEFENDER seats
+ CAND = "pv-search-491ee4bf-w256-k32-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-ed8-els9000-edn200000000-xf8-xfcompactlevel-r9779eb5a-bury-hybrid-bwv-80b4500430de"   # the S69 exploiter (name_probe.out; re-derived on the host by check_names)
+ EX_ENV = "SHENGJI_PV_WORLDS=256 SHENGJI_PV_CANDIDATES=32 SHENGJI_PV_EXACT_DEEP_CARDS=8 SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 SHENGJI_PV_SERVING_BUDGET_SECONDS=60 SHENGJI_PV_LEAF_GREEDY_DEADLINE="   # the launcher's EX_ENV
+-SEED0, DEALS, WORKERS, KILL_AFTER, BACKSTOP = 311060910, 600, 12, 28800, 28810
+-LANE = "s69"
+-TRUSTED = dict(lane=LANE, launcher_sha256="726a8af097551ff77b996e741ce070605bf50838b4d045f72fc6cab8b9cac802", host="shengji-cloud",
+-               root="/root/vol-dev-claude-s69-r48-20261026", status="/root/claude_s69_screen.status",
+-               reservation="/root/claude_reservations/s69_r2.json")   # the launcher's OUT and S, its reservation; launcher_sha256 = the RELEASE token
+-TERMINAL = "s69 DEV output sealed; rc/status only (strength qualification is reader-owned); LANE DONE"   # the launcher's final say, minus the stamp
++SEED0, DEALS, WORKERS, KILL_AFTER, BACKSTOP = 312060910, 600, 12, 28800, 28810
++LANE = "s69r2"
++TRUSTED = dict(lane=LANE, launcher_sha256="72e13ca8e7d69b34b866ac463846c1f2b14632983c32e038c469ce8ae0fdb59e", host="shengji-cloud",
++               root="/root/vol-dev-claude-s69r2-r48-20261026", status="/root/claude_s69r2_screen.status",
++               reservation="/root/claude_reservations/s69r2.json")   # the launcher's OUT and S, its reservation; launcher_sha256 = the RELEASE token
++TERMINAL = "s69r2 DEV output sealed; rc/status only (strength qualification is reader-owned); LANE DONE"   # the launcher's final say, minus the stamp
+ START = (f"{LANE} DEV start: defender {R48} (R48 as served) vs exploiter {CAND} (S69 exploiter: {EX_ENV}); deals {DEALS} seed0 {SEED0} plan r2, "
+          f"paired and seat-swapped, play histories kept (--history); workers {WORKERS}; group KILL at {KILL_AFTER} s (backstop {BACKSTOP} s)")   # the launcher's DEV start say, minus the stamp
+ RANKS13 = ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
+ FIRST_INDICES = (0, 3, 5, 8)
+-#: the predeclared read: head-to-head words by the CI; the loss-cell flag; the validity ceilings (ONE mapping, on BOTH arms: zero play and belief fallbacks)
++#: the predeclared read: head-to-head words by the CI; the loss-cell flag; the validity ceilings, ONE mapping for both sides (s69r2: play
++#: fallbacks <= 0.1% of that side's decisions, the same for the exploiter and the defender; zero belief fallbacks).  The fallback record
++#: cannot tell a deadline expiry from another search error, so the ceiling covers every play fallback; fallback decisions stay in the outcome
+ BAR = dict(ahead_ci_lower_above=0.0, behind_ci_upper_below=0.0, flag_min_contribution=0.020, top_k=3, top_decile_share=0.10, top_deals_listed=20,
+-           ceilings=dict(play_fallback=0, belief_fallback=0, bury_fallback=0.01, declare_abandon=0.01))
++           ceilings=dict(play_fallback=0.001, belief_fallback=0, bury_fallback=0.01, declare_abandon=0.01))
+ ARMS = ("ex", "r45")   # the harness's side keys: "ex" = the exploiter seats, "r45" = the defender seats (R48 as served here)
+ #: the side recipes' world counts (both sides R48's declare and bury knobs; the exploiter widens play worlds x4): value-declare worlds and wide-bury value worlds
+ DECLARE_WORLDS = {"ex": 64, "r45": 64}
+@@ -685,7 +692,7 @@
+     seeds = sorted({s for s, _ in by})
+     lv = np.array([(by[(s, 0)]["ex_levels"] + by[(s, 1)]["ex_levels"]) / 2 for s in seeds])
+     pt = np.array([(by[(s, 0)]["ex_attacker_points_signed"] + by[(s, 1)]["ex_attacker_points_signed"]) / 2 for s in seeds])
+-    out = dict(schema="s69-dev-h2h-read-v1", pinned=PINNED, s61_reference_sha256=S61_REFERENCE_SHA256, lane=LANE, deals=len(seeds), rows=rows, seeds=[seeds[0], seeds[-1]],
++    out = dict(schema="s69r2-dev-h2h-read-v1", pinned=PINNED, s61_reference_sha256=S61_REFERENCE_SHA256, lane=LANE, deals=len(seeds), rows=rows, seeds=[seeds[0], seeds[-1]],
+                defender=R48, exploiter_base=CAND, plan="r2 per deal (index % 10 in {0, 3, 5, 8} first round at rank 2; else fixed banker, rank RANKS13[index % 13], banker index % 4)",
+                input_sha256=hashlib.sha256(open(path, "rb").read()).hexdigest(), binding=bound, bootstrap=dict(reps=BOOT_REPS, seed=BOOT_SEED, unit="deal (mean of its two mirrors)"))
+     # validity on BOTH arms, before any outcome (reader_lib/validity.py)
+@@ -703,6 +710,10 @@
+               va.outcome_consistency([(k, r) for k, r in sorted(by.items())], tier="DEV", require=req)]
+     v = va.combine(checks, tier="DEV")
+     out["validity"] = dict(verdict=v["verdict"], reasons=v["reasons"], checks=v["checks"], detail={c["check"]: c["detail"] for c in checks})
++    out["play_fallbacks"] = {side: dict(fallbacks=counts[side]["play_fallback"], decisions=counts[side]["decisions"],
++                                        rate=(counts[side]["play_fallback"] / counts[side]["decisions"]) if counts[side]["decisions"] else None,
++                                        ceiling=BAR["ceilings"]["play_fallback"], allowed=int(BAR["ceilings"]["play_fallback"] * counts[side]["decisions"]),
++                                        in_outcome=True) for side in ARMS}
+     # reported per side (never a condition): s60dev's tallies and latency
+     q4 = lambda a: [pct(a, 50), pct(a, 95), pct(a, 99), max(a) if a else None]
+     lat = {}
+@@ -730,7 +741,7 @@
+     pc = lambda x: "n/a" if x is None else f"{100 * x:.1f}%"
+     ar = ", ".join(f"{k} {v_}" for k, v_ in sorted(ex["abandon_reasons"].items())) or "none"
+     lines_common = [
+-        f"Faults per arm (validity inputs): play fallbacks exploiter {e['fallback']} of {e['decisions']} vs defender {d['fallback']} of {d['decisions']}; belief fallbacks {e['belief_fallback']} of {e['search']} vs {d['belief_fallback']} of {d['search']}; bury fallbacks {e['bury_fallback']} of {e['buries']} vs {d['bury_fallback']} of {d['buries']}; declare abandons {e['declare_abandoned']} of {e['declares']} vs {d['declare_abandoned']} of {d['declares']}; search records off the side's play worlds ({PLAY_WORLDS['ex']} / {PLAY_WORLDS['r45']}) {e['play_worlds_mismatch']} vs {d['play_worlds_mismatch']}.",
++        f"Faults per arm (validity inputs): play fallbacks exploiter {e['fallback']} of {e['decisions']} ({100 * e['fallback'] / e['decisions']:.4f}%) vs defender {d['fallback']} of {d['decisions']} ({100 * d['fallback'] / d['decisions']:.4f}%) (one common ceiling {100 * BAR['ceilings']['play_fallback']:g}% of each side's decisions; fallback decisions counted in the outcome); belief fallbacks {e['belief_fallback']} of {e['search']} vs {d['belief_fallback']} of {d['search']}; bury fallbacks {e['bury_fallback']} of {e['buries']} vs {d['bury_fallback']} of {d['buries']}; declare abandons {e['declare_abandoned']} of {e['declares']} vs {d['declare_abandoned']} of {d['declares']}; search records off the side's play worlds ({PLAY_WORLDS['ex']} / {PLAY_WORLDS['r45']}) {e['play_worlds_mismatch']} vs {d['play_worlds_mismatch']}.",
+         f"Exact stages at max hand 8 (exploiter; reported): leads {ex['d8_lead']} (single-candidate {ex['d8_lead_single_candidate']}), complete {ex['d8_lead_complete']} ({pc(e['exact8_rates']['lead_complete_share'])} of eligible), abandoned {ex['d8_lead_abandoned']}, skipped_budget {ex['d8_lead_skipped_budget']}; follows attempted {ex['d8_follow_attempted']}, complete {ex['d8_follow_complete']} ({pc(e['exact8_rates']['follow_complete_share'])}), abandoned {ex['d8_follow_abandoned']}; reasons: {ar}. <= 7-card lead not complete / follow abandoned: exploiter {ex['le7_lead_not_complete']} / {ex['le7_follow_abandoned']}, defender {df['le7_lead_not_complete']} / {df['le7_follow_abandoned']}.",
+         f"Latency on the duel host under its workers (not serving latency): decide_play p50 / p95 / p99 / max exploiter {e['decide_play_p50_p95_p99_max']} vs defender {d['decide_play_p50_p95_p99_max']}; bury s p50 / p99 / max {e['bury_seconds_p50_p99_max']} vs {d['bury_seconds_p50_p99_max']}; declare s {e['declare_seconds_p50_p99_max']} vs {d['declare_seconds_p50_p99_max']}; failed throws exploiter {failed['ex']} vs defender {failed['r45']}.",
+         "DEV tier i evidence for the S69 row only: not a strength claim for any servable candidate (the exploiter is R48 at a lifted budget on the duel host and is not servable); no release, deploy, latency or memory claim; the attribution credits each deal's whole margin to its first divergent decision (a locator, not a causal decomposition), and the top-3 cells are chosen by their point estimates (their CIs are not selection-adjusted).",
+@@ -739,7 +750,7 @@
+         out["levels"] = out["points"] = out["attribution"] = None
+         out["bar"] = dict(BAR, verdict="DEV_INVALID", reasons=v["reasons"], attribution_status=None, flags=[])
+         out["canonical_lines"] = [
+-            f"s69 DEV head-to-head ({len(seeds)} deals from {seeds[0]}): DEV_INVALID, no outcome computed. Validity (validity.py, both arms): {'; '.join(v['reasons'][:6])}.",
++            f"s69r2 DEV head-to-head ({len(seeds)} deals from {seeds[0]}): DEV_INVALID, no outcome computed. Validity (validity.py, both arms): {'; '.join(v['reasons'][:6])}.",
+         ] + lines_common
+         return out
+     # the outcome: the head-to-head margin, then the attribution
+@@ -767,8 +778,8 @@
+     out["bar"] = dict(BAR, verdict=verdict, reasons=[], attribution_status=status_a, flags=[])
+     if bad:
+         out["canonical_lines"] = [
+-            f"s69 DEV head-to-head (paired, seat-swapped, r2 plan per deal, {len(seeds)} deals from {seeds[0]}): the S69 exploiter minus R48 as served = {m:+.4f} levels/round, 95% CI [{lo:+.4f}, {hi:+.4f}] (deal bootstrap {BOOT_REPS}); points {out['points'][0]:+.2f} [{out['points'][1]:+.2f}, {out['points'][2]:+.2f}]; nonzero share {out['nonzero_share']:.3f}.",
+-            f"Read (predeclared): validity VALID on both arms; EXPLOITER_AHEAD iff CI lower > 0, DEFENDER_AHEAD iff CI upper < 0, else NO_RESOLVED_GAP.  Verdict {verdict}.  Attribution {status_a} ({out['attribution']['deals_diverged']} deals diverged, {len(undiverged)} never diverged, {len(bad)} of those with a nonzero margin); attribution findings suppressed.",
++            f"s69r2 DEV head-to-head (paired, seat-swapped, r2 plan per deal, {len(seeds)} deals from {seeds[0]}): the S69 exploiter minus R48 as served = {m:+.4f} levels/round, 95% CI [{lo:+.4f}, {hi:+.4f}] (deal bootstrap {BOOT_REPS}); points {out['points'][0]:+.2f} [{out['points'][1]:+.2f}, {out['points'][2]:+.2f}]; nonzero share {out['nonzero_share']:.3f}.",
++            f"Read (predeclared): validity VALID on both arms (play fallbacks within the common 0.1% ceiling: exploiter {e['fallback']}, defender {d['fallback']}); EXPLOITER_AHEAD iff CI lower > 0, DEFENDER_AHEAD iff CI upper < 0, else NO_RESOLVED_GAP.  Verdict {verdict}.  Attribution {status_a} ({out['attribution']['deals_diverged']} deals diverged, {len(undiverged)} never diverged, {len(bad)} of those with a nonzero margin); attribution findings suppressed.",
+             f"Split (descriptive): first-round deals {out['split_descriptive']['first_round']}, fixed-banker deals {out['split_descriptive']['fixed_banker']}; exploiter games as banker {out['games_banker']['mean']}, as attacker {out['games_attacker']['mean']}.",
+         ] + lines_common
+         return out
+@@ -785,8 +796,8 @@
+     ct = ", ".join(f"{c['cell']} {c['contribution']:+.4f}" for c in sorted(tables["class_trick"], key=lambda c: -c["contribution"]))
+     td = out["attribution"]["top_decile"]
+     out["canonical_lines"] = [
+-        f"s69 DEV head-to-head (paired, seat-swapped, r2 plan per deal, {len(seeds)} deals from {seeds[0]}): the S69 exploiter minus R48 as served = {m:+.4f} levels/round, 95% CI [{lo:+.4f}, {hi:+.4f}] (deal bootstrap {BOOT_REPS}); points {out['points'][0]:+.2f} [{out['points'][1]:+.2f}, {out['points'][2]:+.2f}]; nonzero share {out['nonzero_share']:.3f}.",
+-        f"Read (predeclared): validity VALID on both arms; EXPLOITER_AHEAD iff CI lower > 0, DEFENDER_AHEAD iff CI upper < 0, else NO_RESOLVED_GAP.  Verdict {verdict}.  Attribution {status_a} ({out['attribution']['deals_diverged']} deals diverged, {len(undiverged)} never diverged, {len(bad)} of those with a nonzero margin; cells sum {total:+.4f}).",
++        f"s69r2 DEV head-to-head (paired, seat-swapped, r2 plan per deal, {len(seeds)} deals from {seeds[0]}): the S69 exploiter minus R48 as served = {m:+.4f} levels/round, 95% CI [{lo:+.4f}, {hi:+.4f}] (deal bootstrap {BOOT_REPS}); points {out['points'][0]:+.2f} [{out['points'][1]:+.2f}, {out['points'][2]:+.2f}]; nonzero share {out['nonzero_share']:.3f}.",
++        f"Read (predeclared): validity VALID on both arms (play fallbacks within the common 0.1% ceiling: exploiter {e['fallback']}, defender {d['fallback']}); EXPLOITER_AHEAD iff CI lower > 0, DEFENDER_AHEAD iff CI upper < 0, else NO_RESOLVED_GAP.  Verdict {verdict}.  Attribution {status_a} ({out['attribution']['deals_diverged']} deals diverged, {len(undiverged)} never diverged, {len(bad)} of those with a nonzero margin; cells sum {total:+.4f}).",
+         "Top-3 loss cells (R48's largest losses; class | trick | rank group, levels/round): " + ("; ".join(fmt(c) for c in losses) or "none positive") + ".",
+         f"Flag (contribution >= {BAR['flag_min_contribution']:+.3f}, each a candidate row): " + ("; ".join(f"[{f_['level']}] {f_['cell']} {f_['contribution']:+.4f} [{f_['ci'][0]:+.4f}, {f_['ci'][1]:+.4f}]{' resolved' if f_['resolved'] else ''}" for f_ in flags) or "none") + ".",
+         f"Class x trick (contributions): {ct}.  Top-3 gain cells (R48 ahead): " + ("; ".join(fmt(c) for c in gains) or "none negative") + ".",

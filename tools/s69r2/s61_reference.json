@@ -1,0 +1,125 @@
+{
+ "deals": 600,
+ "levels": [
+  0.13083333333333333,
+  0.09083333333333334,
+  0.17083333333333334
+ ],
+ "schema": "s69-s61-reference-v1",
+ "seeds": [
+  218060910,
+  218061509
+ ],
+ "source": {
+  "lane": "s61dev",
+  "launcher_sha256": "fd6f3005a932dfe76bc82ad57781c6beaf3cf5c4e2ed58f394d917768981aa19",
+  "path": "/Users/jerryyu/shengji-archive/2026-09-13/readouts/s61dev/result.json",
+  "reader_sha256": "476ea123db53d42fd2e1df37e79fde89b18e2e2a45c290e15be4ca9db8c00d67",
+  "sha256": "4dd5300ec6edbe72d146d729fb6c6571cfb71f7017898a5bfe09a4e93b5e3e41",
+  "verdict": "EXPLOITER_AHEAD"
+ },
+ "tables": {
+  "class": {
+   "follow": {
+    "ci": [
+     0.025,
+     0.06916666666666667
+    ],
+    "contribution": 0.04666666666666667,
+    "deals": 176
+   },
+   "lead": {
+    "ci": [
+     0.049166666666666664,
+     0.11833333333333333
+    ],
+    "contribution": 0.08416666666666667,
+    "deals": 424
+   }
+  },
+  "class_trick": {
+   "follow | tricks 1-5": {
+    "ci": [
+     0.025,
+     0.06916666666666667
+    ],
+    "contribution": 0.04666666666666667,
+    "deals": 176
+   },
+   "lead | tricks 1-5": {
+    "ci": [
+     0.049166666666666664,
+     0.11833333333333333
+    ],
+    "contribution": 0.08416666666666667,
+    "deals": 424
+   }
+  },
+  "class_trick_rank": {
+   "follow | tricks 1-5 | first round (rank 2)": {
+    "ci": [
+     0.005833333333333334,
+     0.035
+    ],
+    "contribution": 0.02,
+    "deals": 71
+   },
+   "follow | tricks 1-5 | fixed 2-6": {
+    "ci": [
+     0.0008333333333333334,
+     0.018333333333333333
+    ],
+    "contribution": 0.009166666666666667,
+    "deals": 36
+   },
+   "follow | tricks 1-5 | fixed 7-10": {
+    "ci": [
+     0.005833333333333334,
+     0.02666666666666667
+    ],
+    "contribution": 0.015833333333333335,
+    "deals": 37
+   },
+   "follow | tricks 1-5 | fixed J-A": {
+    "ci": [
+     -0.0075,
+     0.010833333333333334
+    ],
+    "contribution": 0.0016666666666666668,
+    "deals": 32
+   },
+   "lead | tricks 1-5 | first round (rank 2)": {
+    "ci": [
+     -0.0025,
+     0.04502083333333303
+    ],
+    "contribution": 0.021666666666666667,
+    "deals": 169
+   },
+   "lead | tricks 1-5 | fixed 2-6": {
+    "ci": [
+     0.015833333333333335,
+     0.0475
+    ],
+    "contribution": 0.03166666666666667,
+    "deals": 103
+   },
+   "lead | tricks 1-5 | fixed 7-10": {
+    "ci": [
+     -0.0025,
+     0.020833333333333332
+    ],
+    "contribution": 0.009166666666666667,
+    "deals": 73
+   },
+   "lead | tricks 1-5 | fixed J-A": {
+    "ci": [
+     0.006666666666666667,
+     0.0375
+    ],
+    "contribution": 0.021666666666666667,
+    "deals": 79
+   }
+  }
+ }
+}

@@ -1,0 +1,10 @@
+2026-10-26T14:49:49Z s69 armed (pid 123294, launcher sha256 726a8af097551ff77b996e741ce070605bf50838b4d045f72fc6cab8b9cac802): tree /root/claude-main-56 d33bfd70bb2f434368b7e83cdb5732cc791bd0ab; waiting for the RELEASE token /root/claude_s69.RELEASE, then the host lock
+2026-10-26T14:51:49Z s69: RELEASE verified; contending for the host lock
+2026-10-26T14:51:49Z s69 holds the host lock (pid 123294)
+2026-10-26T14:51:49Z s69 legacy peers clear; marker /root/.claude-screen.lock taken
+2026-10-26T14:51:49Z s69 start head=d33bfd70: recipe 6e93682f0ac83118a78e55c787aaeacdbac34086e17c33c4b652dbab8ff8b5ee
+2026-10-26T14:51:50Z s69 DEV start: defender pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a (R48 as served) vs exploiter pv-search-491ee4bf-w256-k32-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-ed8-els9000-edn200000000-xf8-xfcompactlevel-r9779eb5a-bury-hybrid-bwv-80b4500430de (S69 exploiter: SHENGJI_PV_WORLDS=256 SHENGJI_PV_CANDIDATES=32 SHENGJI_PV_EXACT_DEEP_CARDS=8 SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 SHENGJI_PV_SERVING_BUDGET_SECONDS=60 SHENGJI_PV_LEAF_GREEDY_DEADLINE=); deals 600 seed0 311060910 plan r2, paired and seat-swapped, play histories kept (--history); workers 12; group KILL at 28800 s (backstop 28810 s)
+2026-10-26T14:51:50Z s69 run pid/pgid 124115 (setsid; timeout KILL at 28800 s; backstop watchdog pid 124129 at 28810 s)
+2026-10-26T16:55:51Z s69 DEV END rc=0 wall_s=7440.9 maxrss_kb=947860
+2026-10-26T16:55:51Z s69 SHA256SUMS 78bb5a1c119ed40c048f0541deec283e527aa14bd9d8a0c725136b7d766b55f2 (7 files)
+2026-10-26T16:55:51Z s69 DEV output sealed; rc/status only (strength qualification is reader-owned); LANE DONE

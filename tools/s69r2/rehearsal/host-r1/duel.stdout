@@ -1,0 +1,5 @@
+identity: 72 mirrors to play (0 deals done)
+identity: 10/36 work items 186s
+identity: 20/36 work items 296s
+identity: 30/36 work items 447s
+identity [exb ry-hybrid-bwv-80b4500430de] n=  36 levels/round +0.0278 [-0.0972, +0.1389]  pts +2.15 [-1.60, +5.70]  fired-deals 0 fires {'declare': 0, 'bury': 0, 'play': 0} banker 0.500

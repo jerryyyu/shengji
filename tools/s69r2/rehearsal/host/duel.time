@@ -1,0 +1,23 @@
+	Command being timed: "/root/gen-hybrid/server/.venv/bin/python -B /root/claude-s69/exploit_duel_s61.py --arm identity --seed0 311960000 --deals 12 --workers 12 --round-plan r2 --history --out /root/vol-rehearsal-claude-s69-r3-20261026/duel.jsonl --exploiter-env SHENGJI_PV_WORLDS=256 --exploiter-env SHENGJI_PV_CANDIDATES=32 --exploiter-env SHENGJI_PV_EXACT_DEEP_CARDS=8 --exploiter-env SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 --exploiter-env SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 --exploiter-env SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 --exploiter-env SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 --exploiter-env SHENGJI_PV_SERVING_BUDGET_SECONDS=60 --exploiter-env SHENGJI_PV_LEAF_GREEDY_DEADLINE="
+	User time (seconds): 1825.44
+	System time (seconds): 25.24
+	Percent of CPU this job got: 867%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:33.29
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 494656
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 12256924
+	Voluntary context switches: 250
+	Involuntary context switches: 4480
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 920
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

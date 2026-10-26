@@ -1,0 +1,85 @@
+--- ../s69/stage_s69.sh	2026-10-26 09:54:49
++++ stage_s69r2.sh	2026-10-26 13:07:39
+@@ -1,23 +1,13 @@
+ #!/bin/bash
+-# s69 staging, revision r2 (run on THIS Mac), in two phases.  Every staged FILE must be absent on the host or already a regular file with
+-# exactly the bytes being staged (verified by sha256 ON the host; such a file is left as it is and reported "identical"); a target that
+-# exists with other bytes, or as a symlink or a non-file, refuses before anything is copied.  Every RUN path (status, RELEASE, HOLD, output
+-# roots) must be absent.  Copies are verified with sha256sum -c ON cloud and made read-only.  Nothing is ever overwritten or removed.  It
+-# does not build, arm, DRYRUN or release anything.  The tree /root/claude-main-56 is built separately (claude_build_main56_cloud.sh).
+-#
+-#   bash stage_s69.sh lane <expected sha256 of claude_s69_cloud.sh>
+-#       the launcher -> $ROOT/claude_s69_r2_cloud.sh; the harness + hypotheses (the launcher's DUEL / HYP, at their pinned shas) and the
+-#       --history re-rehearsal wrapper -> $ROOT/claude-s69/ (exploit_duel_s61.py, hypotheses.py, rehearse_s69_cloud.r3.sh).
+-#   bash stage_s69.sh reader <expected sha256 of claude_s69_cloud.sh>
+-#       the reader (its TRUSTED launcher sha = that sha) -> $ROOT/claude-s69/s69_read_r3.py; its pinned helpers (reader_lib, validity,
+-#       row_schema, compare_runs) and the S61 reference beside it; the reservation (naming that sha) -> $ROOT/claude_reservations/s69_r2.json.
+-#
+-# r2 (2026-10-26): r1 staged the r1 launcher (e3c25940, no --history) as $ROOT/claude_s69_cloud.sh and its reader / reservation as
+-# s69_read.py / s69.json; those stay on the host untouched (never armed).  r2 stages under new names and accepts the unchanged files r1
+-# already staged (the harness, hypotheses, the helpers, the S61 reference) as identical.  r1's script: superseded-r1/stage_s69.sh.
+-# r3 (2026-10-26, Codex HOLD 1075/6417632636, reader-only): the repaired reader is staged as $ROOT/claude-s69/s69_read_r3.py (r2's
+-# s69_read_r2.py stays on the host, read-only, unused); the launcher, harness, helpers and reservation are unchanged (identical).
+-# The host checks run with `bash -s -- <args>` and the script on stdin, so the arguments are the remote shell's positional arguments.
++# s69r2 staging (run on THIS Mac) = s69's r3 staging (identical-or-absent files, absent run paths, sha256sum -c on the host, read-only;
++# nothing ever overwritten or removed) with the s69r2 names, in two phases:
++#   bash stage_s69r2.sh lane <expected sha256 of claude_s69r2_cloud.sh>
++#       the launcher -> $ROOT/claude_s69r2_cloud.sh; the harness + hypotheses (its DUEL / HYP pins) -> $ROOT/claude-s69/ (already staged
++#       there for s69, read-only: accepted as identical).  No rehearsal wrapper: the child form is s69's, byte for byte.
++#   bash stage_s69r2.sh reader <expected sha256 of claude_s69r2_cloud.sh>
++#       the reader (TRUSTED launcher sha = that sha) -> $ROOT/claude-s69/s69r2_read.py beside the pinned helpers and the S61 reference
++#       (already staged, identical); the reservation -> $ROOT/claude_reservations/s69r2.json.
++# s69's files on the host (its launchers, readers, reservations, sealed output) are left untouched.
+ # Test hooks: S69_SSH / S69_SCP (default ssh / scp) and S69_ROOT (default /root) -- never set in production use.
+ set -u
+ H=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || { echo "REFUSING: cannot resolve the packet dir"; exit 3; }; HOST=shengji-cloud
+@@ -61,33 +51,32 @@
+   "$SCP" -q "$M" "$HOST:$ROOT/claude-s69/STAGED.$label.sha256" || exit 3
+   "$SSH" "$HOST" "sha256sum -c $ROOT/claude-s69/STAGED.$label.sha256 && chmod a-w $(cut -d' ' -f3 "$M" | tr '\n' ' ') $ROOT/claude-s69/STAGED.$label.sha256 && echo \"STAGED ok ($label): \$(wc -l < $ROOT/claude-s69/STAGED.$label.sha256) files verified on the host, read-only\"" || exit 3
+ }
+-[[ "$WANT" =~ ^[0-9a-f]{64}$ ]] || { echo "usage: bash stage_s69.sh lane|reader <sha256 of claude_s69_cloud.sh>"; exit 3; }
+-[ -f "$H/claude_s69_cloud.sh" ] && [ "$(sha "$H/claude_s69_cloud.sh")" = "$WANT" ] || { echo "REFUSING: claude_s69_cloud.sh missing or not $WANT"; exit 3; }
+-grep -q "TO_BE_PINNED;" "$H/claude_s69_cloud.sh" && { echo "REFUSING: the launcher still holds a TO_BE_PINNED pin"; exit 3; }
+-pin () { sed -n "s/^.*$1=\/root\/claude-s69\/\([^;]*\); $1_SHA=\([0-9a-f]\{64\}\).*/\1 \2/p" "$H/claude_s69_cloud.sh"; }
++[[ "$WANT" =~ ^[0-9a-f]{64}$ ]] || { echo "usage: bash stage_s69r2.sh lane|reader <sha256 of claude_s69r2_cloud.sh>"; exit 3; }
++[ -f "$H/claude_s69r2_cloud.sh" ] && [ "$(sha "$H/claude_s69r2_cloud.sh")" = "$WANT" ] || { echo "REFUSING: claude_s69r2_cloud.sh missing or not $WANT"; exit 3; }
++grep -q "TO_BE_PINNED;" "$H/claude_s69r2_cloud.sh" && { echo "REFUSING: the launcher still holds a TO_BE_PINNED pin"; exit 3; }
++pin () { sed -n "s/^.*$1=\/root\/claude-s69\/\([^;]*\); $1_SHA=\([0-9a-f]\{64\}\).*/\1 \2/p" "$H/claude_s69r2_cloud.sh"; }
+ case "$PHASE" in
+   lane)
+     read -r dname dsha <<< "$(pin DUEL)"; read -r hname hsha <<< "$(pin HYP)"
+     [ "$dname" = exploit_duel_s61.py ] && [ "$(sha "$H/$dname")" = "$dsha" ] || { echo "REFUSING: the launcher's DUEL pin ($dname $dsha) is not $H/exploit_duel_s61.py's sha"; exit 3; }
+     [ "$hname" = hypotheses.py ] && [ "$(sha "$H/$hname")" = "$hsha" ] || { echo "REFUSING: the launcher's HYP pin ($hname $hsha) is not $H/hypotheses.py's sha"; exit 3; }
+-    refuse_targets "$ROOT/claude_s69_screen.status" "$ROOT/claude_s69.RELEASE" "$ROOT/claude_s69.HOLD" "$ROOT/vol-dev-claude-s69-r48-20261026" \
+-      "$ROOT/claude_s69_rehearsal_r3.status" "$ROOT/vol-rehearsal-claude-s69-r3-20261026" "$ROOT/claude_s69_rehearsal_r3.peak_rss_kb" "$ROOT/claude-s69/STAGED.lane-r2.sha256"
++    refuse_targets "$ROOT/claude_s69r2_screen.status" "$ROOT/claude_s69r2.RELEASE" "$ROOT/claude_s69r2.HOLD" "$ROOT/vol-dev-claude-s69r2-r48-20261026" "$ROOT/claude-s69/STAGED.s69r2-lane.sha256"
+     "$SSH" "$HOST" mkdir -p "$ROOT/claude-s69" || exit 3
+-    stage_files lane-r2 "$H/claude_s69_cloud.sh" "$ROOT/claude_s69_r2_cloud.sh" "$H/exploit_duel_s61.py" "$ROOT/claude-s69/exploit_duel_s61.py" \
+-      "$H/hypotheses.py" "$ROOT/claude-s69/hypotheses.py" "$H/rehearse_s69_cloud.sh" "$ROOT/claude-s69/rehearse_s69_cloud.r3.sh"
+-    echo "NEXT, ON cloud: DRYRUN=1 bash $ROOT/claude_s69_r2_cloud.sh (rc 0 and the names: line); the --history re-rehearsal: nohup setsid bash $ROOT/claude-s69/rehearse_s69_cloud.r3.sh $WANT"
++    stage_files s69r2-lane "$H/claude_s69r2_cloud.sh" "$ROOT/claude_s69r2_cloud.sh" "$H/exploit_duel_s61.py" "$ROOT/claude-s69/exploit_duel_s61.py" \
++      "$H/hypotheses.py" "$ROOT/claude-s69/hypotheses.py"
++    echo "NEXT, ON cloud: DRYRUN=1 bash $ROOT/claude_s69r2_cloud.sh (rc 0 and the names: line)"
+     ;;
+   reader)
+-    grep -q "^TRUSTED = dict(lane=LANE, launcher_sha256=\"$WANT\"" "$H/s69_read.py" || { echo "REFUSING: s69_read.py's TRUSTED launcher_sha256 is not $WANT"; exit 3; }
+-    grep -q 'reservation="/root/claude_reservations/s69_r2.json")' "$H/s69_read.py" || { echo "REFUSING: s69_read.py's TRUSTED reservation is not s69_r2.json"; exit 3; }
+-    python3 -c "import json,sys; r=json.load(open('$H/reservation_s69.json')); sys.exit(0 if r['launcher_sha256']=='$WANT' and r['lane']=='s69' and r['reader']=='Claude' and r['reservation_path']=='/root/claude_reservations/s69_r2.json' else 3)" || { echo "REFUSING: reservation_s69.json does not name $WANT / s69_r2.json with reader Claude (run make_reservation.py --force and test_s69_packet.py)"; exit 3; }
++    grep -q "^TRUSTED = dict(lane=LANE, launcher_sha256=\"$WANT\"" "$H/s69r2_read.py" || { echo "REFUSING: s69r2_read.py's TRUSTED launcher_sha256 is not $WANT"; exit 3; }
++    grep -q 'reservation="/root/claude_reservations/s69r2.json")' "$H/s69r2_read.py" || { echo "REFUSING: s69r2_read.py's TRUSTED reservation is not s69r2.json"; exit 3; }
++    python3 -c "import json,sys; r=json.load(open('$H/reservation_s69r2.json')); sys.exit(0 if r['launcher_sha256']=='$WANT' and r['lane']=='s69r2' and r['reader']=='Claude' and r['reservation_path']=='/root/claude_reservations/s69r2.json' else 3)" || { echo "REFUSING: reservation_s69r2.json does not name $WANT / s69r2.json with reader Claude (run make_reservation.py --force and test_s69r2_packet.py)"; exit 3; }
+     "$SSH" "$HOST" test -d "$ROOT/claude-s69" || { echo "REFUSING: $ROOT/claude-s69 is not staged (run the lane phase first)"; exit 3; }
+-    refuse_targets "$ROOT/claude-s69/STAGED.reader-r3.sha256"
++    refuse_targets "$ROOT/claude-s69/STAGED.s69r2-reader.sha256"
+     "$SSH" "$HOST" mkdir -p "$ROOT/claude_reservations" || exit 3
+-    stage_files reader-r3 "$H/s69_read.py" "$ROOT/claude-s69/s69_read_r3.py" "$H/reader_lib.py" "$ROOT/claude-s69/reader_lib.py" \
++    stage_files s69r2-reader "$H/s69r2_read.py" "$ROOT/claude-s69/s69r2_read.py" "$H/reader_lib.py" "$ROOT/claude-s69/reader_lib.py" \
+       "$H/validity.py" "$ROOT/claude-s69/validity.py" "$H/row_schema.py" "$ROOT/claude-s69/row_schema.py" "$H/compare_runs.py" "$ROOT/claude-s69/compare_runs.py" \
+-      "$H/s61_reference.json" "$ROOT/claude-s69/s61_reference.json" "$H/reservation_s69.json" "$ROOT/claude_reservations/s69_r2.json"
+-    echo "NEXT, ON cloud: $ROOT/gen-hybrid/server/.venv/bin/python -B $ROOT/claude-s69/s69_read_r3.py --check-imports"
++      "$H/s61_reference.json" "$ROOT/claude-s69/s61_reference.json" "$H/reservation_s69r2.json" "$ROOT/claude_reservations/s69r2.json"
++    echo "NEXT, ON cloud: $ROOT/gen-hybrid/server/.venv/bin/python -B $ROOT/claude-s69/s69r2_read.py --check-imports"
+     ;;
+-  *) echo "usage: bash stage_s69.sh lane|reader <sha256 of claude_s69_cloud.sh>"; exit 3;;
++  *) echo "usage: bash stage_s69r2.sh lane|reader <sha256 of claude_s69r2_cloud.sh>"; exit 3;;
+ esac

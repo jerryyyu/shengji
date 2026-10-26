@@ -1,0 +1,18 @@
+{
+ "lane": "s69",
+ "verdicts": {
+  "s69": "DEV_INVALID"
+ },
+ "means": {
+  "s69": "none computed (5 of 38,796 exploiter play fallbacks > 0 ceiling)"
+ },
+ "launcher_sha256": "726a8af097551ff77b996e741ce070605bf50838b4d045f72fc6cab8b9cac802",
+ "reader_sha256": "49b423457b22647cdcd737d73ed93df7d60d14cdba221f27fa7c2991ad78533b",
+ "result_sha256": "2c9e468dd5fbfa6cfee84e4183b4ff8d1de1c5b775118ed0bc54dceaed053370",
+ "host_sums_sha256": "78bb5a1c119ed40c048f0541deec283e527aa14bd9d8a0c725136b7d766b55f2",
+ "authorization": "Jerry 2026-10-26 in session ('The combo and red team sound good to test')",
+ "review": "Codex PASS 1075/6419002592 (+ safety 166ec70f review)",
+ "release": "2026-10-26T14:49Z cloud (digest 1075/6419031956)",
+ "terminal_digest": "1075/6422076244",
+ "read_by": "Claude, once, on cloud against the sealed reserved output"
+}

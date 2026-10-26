@@ -1,0 +1,56 @@
+--- ../s69/claude_s69_cloud.sh	2026-10-26 09:18:47
++++ claude_s69r2_cloud.sh	2026-10-26 12:59:42
+@@ -1,11 +1,16 @@
+ #!/bin/bash
++# s69r2: S69 r2, a fresh-seed re-run of the S69 DEV head-to-head (lane s69 read DEV_INVALID: 5 of 38,796 exploiter play fallbacks against
++# its zero ceiling; #1075 6422101463).  Identical to s69's launcher 726a8af0 except the lane name s69r2 (status / RELEASE / HOLD / output
++# root), the fresh seed block 312060910..312061509 and these header lines; the child form (run_child) is byte-identical, so s69's host
++# rehearsal and its full 600-deal run cover it.  The read's change (one common 0.1% play-fallback ceiling) lives in the reader.
++# --- s69's header, unchanged below ---
+ # s69: the DEV head-to-head of board row S69 (#1075: where does R48 lose now?  S61 ran against release 46, whose top loss cells R48 has
+ # since absorbed): the S61 design re-run against R48.  PAIRED, SEAT-SWAPPED: the EXPLOITER seats = R48 at the M27 expert budget (play worlds
+ # 64 -> 256, admission K 8 -> 32, exact caps 7/7 -> 8/8, exact-lead deadline 2.25 -> 9 s, exact node caps 5e7 -> 2e8, play budget 3 -> 60 s,
+ # no lgfd: SHENGJI_PV_LEAF_GREEDY_DEADLINE removed) vs the DEFENDER seats = R48 as served (fly.toml SHENGJI_BOT at d33bfd70 = origin/main).
+ # Everything else is R48's on BOTH sides: S58 at its stored temperature, dtrx, lgf, lgfx, the declare and bury knobs (bury budget 2 s), and
+ # the three fly.toml latency switches (the harness's served_env exports fly.toml's SHENGJI_* keys; the bot factory binds the switches for
+-# every bot).  The r2 rank-mixed plan per deal, 600 fresh deals 311060910..311061509, both sides from the cloud tree /root/claude-main-56.
++# every bot).  The r2 rank-mixed plan per deal, 600 fresh deals (s69r2: 312060910..312061509), both sides from the cloud tree /root/claude-main-56.
+ # Revision r2 (2026-10-26, before any lane deal): the child also runs with --history (every row keeps buried / history / failed_detail),
+ # so S69's top cells can feed same-root replay fixtures (S61's extraction was refused because its producer ran without it); staged as
+ # /root/claude_s69_r2_cloud.sh (r1 e3c25940, staged as /root/claude_s69_cloud.sh, is superseded and never armed).
+@@ -18,14 +23,14 @@
+ # child launch is factored into run_child so the host rehearsal (rehearse_s69_cloud.sh) runs the same bytes.  FRESH runs only: an existing
+ # output root refuses; reopening an interrupted run through the producer's resume binding is a separate, separately authorized step.
+ # Dispatch requires the exact launcher SHA in a Claude-owned RELEASE, no HOLD, and exclusive host ownership.  This file grants no authority.
+-#   Usage ON shengji-cloud:  DRYRUN=1 bash /root/claude_s69_r2_cloud.sh
+-#     nohup setsid bash /root/claude_s69_r2_cloud.sh > /root/claude_s69_r2_cloud.nohup 2>&1 < /dev/null &      (arms; waits for the RELEASE)
+-#     then the RELEASE (Claude, after Codex's PASS): printf '%s\n' <this file's sha256> > /root/claude_s69.RELEASE
++#   Usage ON shengji-cloud:  DRYRUN=1 bash /root/claude_s69r2_cloud.sh
++#     nohup setsid bash /root/claude_s69r2_cloud.sh > /root/claude_s69r2_cloud.nohup 2>&1 < /dev/null &      (arms; waits for the RELEASE)
++#     then the RELEASE (Claude, after Codex's PASS): printf '%s\n' <this file's sha256> > /root/claude_s69r2.RELEASE
+ 
+ set -u
+ 
+ 
+-LANE=s69
++LANE=s69r2
+ LANE_ROOT=${LANE_ROOT:-/root}
+ SELF=$(readlink -f "${BASH_SOURCE[0]}"); SELF_SHA=$(sha256sum "$SELF" | cut -d" " -f1)   # lint-ok: both checked on the next line (non-empty path, 64-hex sha) before any use
+ [ -n "$SELF" ] && [ "${#SELF_SHA}" -eq 64 ] || { echo "REFUSING: cannot resolve or hash this launcher ('$SELF' '$SELF_SHA')"; exit 3; }
+@@ -33,14 +38,14 @@
+ TIME_BIN=${TIME_BIN:-/usr/bin/time}
+ TREE_HEAD_FULL=d33bfd70bb2f434368b7e83cdb5732cc791bd0ab; R=${R:-/root/claude-main-56}
+ EXT_ENGINE_SHA=e3b22690f0f19c4445bdadafb2ef8dee2ddfc5ce22844784366e0baaaa6b6820; EXT_CWV_SHA=325d607f313d097e0bdbeccb23f8e639cec62e9cf643735c1af83b22a28178e8; EXT_ENDGAME_SHA=776988da54e7bab940cfbafe64ea432232422dca995fd6a2d4f18d6c01fc8b55   # the three compiled extensions of the cloud build of d33bfd70 in $R (claude_build_main56_cloud.sh, BUILD_RC=0, 2026-10-26)
+-OUT=${OUT:-/root/vol-dev-claude-s69-r48-20261026}
++OUT=${OUT:-/root/vol-dev-claude-s69r2-r48-20261026}
+ S=$LANE_ROOT/claude_${LANE}_screen.status
+ RELEASE=$LANE_ROOT/claude_${LANE}.RELEASE; HOLD=$LANE_ROOT/claude_${LANE}.HOLD
+ HOSTLOCK=$LANE_ROOT/.claude-host.lock; LEGACY=$LANE_ROOT/.claude-screen.lock; DATAGEN=$LANE_ROOT/.claude-datagen.lock
+ WAIT_CEILING=${WAIT_CEILING:-108000}
+ LANE_SLEEP=${LANE_SLEEP:-120}
+ LEGACY_PS_RE=${LEGACY_PS_RE:-"cwv_screen[_]queue|shengji.harvest.trajector[y]|policy_world[_]duel|policy_abc[_]launche[r]"}
+-DEALS=600; SEED0=311060910; WORKERS=12; PLAN=r2; KILL_AFTER=28800; BACKSTOP=28810; MEM_MIN_KB=12582912   # 600 deals x 2 mirrors on the r2 rank-mixed plan per deal; the stop covers >= 2x the rehearsal projection (predeclare_s69.md); no predecessor gate (host-lock order)
++DEALS=600; SEED0=312060910; WORKERS=12; PLAN=r2; KILL_AFTER=28800; BACKSTOP=28810; MEM_MIN_KB=12582912   # 600 deals x 2 mirrors on the r2 rank-mixed plan per deal; the stop covers >= 2x the rehearsal projection (predeclare_s69.md); no predecessor gate (host-lock order)
+ COMBO_NAME=pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a   # R48 as served = fly.toml SHENGJI_BOT on the tree: the DEFENDER seats
+ CAND_NAME=pv-search-491ee4bf-w256-k32-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-ed8-els9000-edn200000000-xf8-xfcompactlevel-r9779eb5a-bury-hybrid-bwv-80b4500430de   # the S69 exploiter: the EXPLOITER seats; derived from fly.toml + EX_ENV (name_probe.py -> name_probe.out) and re-derived by check_names
+ EX_ENV="SHENGJI_PV_WORLDS=256 SHENGJI_PV_CANDIDATES=32 SHENGJI_PV_EXACT_DEEP_CARDS=8 SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 SHENGJI_PV_SERVING_BUDGET_SECONDS=60 SHENGJI_PV_LEAF_GREEDY_DEADLINE="   # the nine exploiter overrides (nine --exploiter-env arguments; an empty value removes the key: no lgfd)

@@ -1,0 +1,3 @@
+imports ok: ['compare_runs', 'reader_lib', 'row_schema', 'validity'] at their pinned sha256 from /root/claude-s69; s61_reference 5d567cebea8c (8 S61 cells)
+rc=0
+staged s69r2 reader on the r3 --history rehearsal rows (non-lane, unbound): validity VALID | play_fallbacks {'ex': (0, 776, 0), 'r45': (0, 776, 0)} | attribution ATTRIBUTION_OK

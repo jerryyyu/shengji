@@ -1,0 +1,9 @@
+run paths clear (5 paths): /root/claude_s69r2_screen.status /root/claude_s69r2.RELEASE /root/claude_s69r2.HOLD /root/vol-dev-claude-s69r2-r48-20261026 /root/claude-s69/STAGED.s69r2-lane.sha256
+copy /root/claude_s69r2_cloud.sh
+identical /root/claude-s69/exploit_duel_s61.py
+identical /root/claude-s69/hypotheses.py
+/root/claude_s69r2_cloud.sh: OK
+/root/claude-s69/exploit_duel_s61.py: OK
+/root/claude-s69/hypotheses.py: OK
+STAGED ok (s69r2-lane): 3 files verified on the host, read-only
+NEXT, ON cloud: DRYRUN=1 bash /root/claude_s69r2_cloud.sh (rc 0 and the names: line)

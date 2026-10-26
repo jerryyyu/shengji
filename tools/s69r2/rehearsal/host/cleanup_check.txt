@@ -1,0 +1,4 @@
+host lock absent
+legacy marker absent
+live processes of the duel / its workers / the wrapper: 0
+2026-10-26T13:33:34Z

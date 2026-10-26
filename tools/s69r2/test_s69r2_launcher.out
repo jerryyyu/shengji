@@ -1,0 +1,25 @@
+launcher 72e13ca8e7d69b34b866ac463846c1f2b14632983c32e038c469ce8ae0fdb59e; s69 launcher 726a8af097551ff77b996e741ce070605bf50838b4d045f72fc6cab8b9cac802
+PASS run_dev refuses a planted duel.jsonl (rc 3), the child never starts, the file unchanged
+PASS run_dev refuses a planted duel.stdout (rc 3), the child never starts, the file unchanged
+PASS hold_guard refuses a HOLD file (rc 3)
+PASS hold_guard refuses a dangling HOLD symlink (rc 3)
+PASS release_ok refuses an absent RELEASE
+PASS release_ok refuses a wrong-sha RELEASE
+PASS release_ok refuses a symlinked RELEASE even with the right sha
+PASS release_ok accepts the launcher's own sha256
+PASS predispatch_guard refuses a RELEASE removed before dispatch
+PASS take_host_lock takes the mkdir lock with an owner line; release_locks removes it
+PASS release_locks keeps a lock whose owner is another pid
+PASS main flow: output-root refusal (line 318) before the status (line 319), mkdir (line 333) and run_dev (line 341)
+PASS no recovery or resume mode in the launcher (fresh runs only)
+PASS run_child's nine --exploiter-env arguments are EX_ENV's words in order
+PASS the DEV start line run_dev says is the reader's START (exact text)
+PASS stage lane: an already-staged identical harness is accepted as identical and not copied again; the other files copied and verified
+PASS stage lane: a target with other bytes refuses (rc 3) before any copy, left unchanged
+PASS stage lane: an existing run path (status) refuses before any copy
+PASS run_child passes --history to the producer
+PASS the s69 reference copy is the reviewed launcher 726a8af0
+PASS run_child is byte-identical to s69's (the rehearsed and fully run child form)
+PASS the only non-comment changes vs s69's launcher are LANE, OUT and SEED0
+ALL PASS
+rc=0

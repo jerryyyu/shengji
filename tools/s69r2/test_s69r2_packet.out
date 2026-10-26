@@ -1,0 +1,18 @@
+PASS the launcher runs the producer with --history (r2) 
+PASS reservation = the launcher (sha, lane, OUT, S, RELEASE, SEED0, DEALS) with reader Claude, path s69r2.json, the consumed s69 block named {'authority_ref': 'https://github.com/jerryyyu/shengji/issues/1075 (board row S69, revision r2 = lane s69r2 after s69 read DEV_INVALID (1075/6422101463); Jerry 2026-10-26 in Claude\'s session: "The combo and red team sound good to test" -- 
+PASS the reader's TRUSTED = the launcher's sha / OUT / S and the reservation path; host shengji-cloud {'lane': 's69r2', 'launcher_sha256': '72e13ca8e7d69b34b866ac463846c1f2b14632983c32e038c469ce8ae0fdb59e', 'host': 'shengji-cloud', 'root': '/root/vol-dev-claude-s69r2-r48-20261026', 'status': '/root/claude_s69r2_screen.status', 'reservation'
+PASS the reader's names, EX_ENV, seed0, deals, workers and stop = the launcher's 
+PASS DUEL / HYP pins = the packet files (staged to /root/claude-s69/) ('b15d292f564f2643e35d50e07584cecab839b1e61f9890bc31dc8363f495ceec', '4365a15d6c868263eaa64fca0038168342f2ebd96689da36f46be4e2082e49ce')
+PASS the reader's PINNED shas = the packet helper copies = fl-pilot/reader_lib's files ({'row_schema': 'b7fe41d3e00049cf361ba0be4a750e0978417a5cf454eec1e8d611a05ba086df', 'validity': 'ba84c408c3b96fbe7834184df09a48dc66b3a1c492913c8f1462d36825ea1920', 'reader_lib': '9c7ea58bddf5d7fe5515a50a3239e0ea7d0b0defe4dcb315ebb50b719dea2
+PASS the battery and the validity copy = fl-pilot/reader_lib 
+PASS the S61 reference: its sha is the reader's S61_REFERENCE_SHA256; its source is the archived S61 result.json at the receipt's result_sha256 ({'lane': 's61dev', 'launcher_sha256': 'fd6f3005a932dfe76bc82ad57781c6beaf3cf5c4e2ed58f394d917768981aa19', 'path': '/Users/jerryyu/shengji-archive/2026-09-13/readouts/s61dev/result.json', 'reader_sha256': '476ea123db53d42fd2e1df37e79fde89b1
+PASS the s69r2 block is disjoint from the consumed s69 block and s69's rehearsal / smoke windows [(312060910, 600), (311060910, 600), (311960000, 36), (311970000, 4)]
+PASS the ceilings: ONE mapping, play 0.1% / belief 0 / bury 1% / declare 1% {'play_fallback': 0.001, 'belief_fallback': 0, 'bury_fallback': 0.01, 'declare_abandon': 0.01}
+PASS the tree head is on origin/main and its fly.toml is the launcher's FLY_SHA serving COMBO_NAME (0, 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a')
+PASS test_s69r2_stage.out: a passing saved run, newer than test_s69r2_stage.sh rc=0
+PASS test_s69r2_read.out: a passing saved run, newer than test_s69r2_read.py rc=0
+PASS test_s69r2_launcher.out: a passing saved run, newer than test_s69r2_launcher.sh rc=0
+PASS battery_s69r2.out: a passing saved run, newer than battery_s69r2_adapter.py BATTERY PASS: 28 of 28 applicable cases pass
+PASS the battery ran on the reader and fixture as they are now (its header shas) 
+ALL PASS
+rc=0

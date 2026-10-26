@@ -19,8 +19,8 @@ PASS the rehearsal wrapper references no RELEASE file (it is not the lane)
 PASS the rehearsal does not redefine run_child, dev_checks, check_names or verify_tree
 PASS the rehearsal assigns only its window / paths / stop / wait knobs, the launcher's own run state, and its LAUNCHER / WANT / PEAK / SAMPLER: BACKSTOP= DEALS= KILL_AFTER= LANE_FUNCTIONS_ONLY= LANE_SLEEP= LAUNCHER= OUT= PEAK= RUN_RC= RUN_RSS= RUN_WALL= S= SAMPLER= SEED0= STATUS_OWNED= WAIT_CEILING= WAIT_START= WANT= 
 PASS r2 cleanup check: nothing alive -> empty (no self-match)
-PASS negative control: r1's cleanup check matches its own awk (the r1 refusal, reproduced: '[41089]')
-PASS r2 cleanup check finds a live process holding '--out <OUT>/duel.jsonl' (pid 41097)
+PASS negative control: r1's cleanup check matches its own awk (the r1 refusal, reproduced: '[48676]')
+PASS r2 cleanup check finds a live process holding '--out <OUT>/duel.jsonl' (pid 48684)
 PASS stage lane: an already-staged identical harness is accepted as identical and not copied again; the other files copied and verified
 PASS stage lane: a target with other bytes refuses (rc 3) before any copy, left unchanged
 PASS stage lane: an existing run path (status) refuses before any copy

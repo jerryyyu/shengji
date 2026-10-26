@@ -414,6 +414,43 @@ rs = rows(); rs[4]['buried'] = rs[4]['buried'][:7] + ['QQ']; refused('T5 buried 
 rs = rows(failed_first=(3,)); rs[6]['failed_detail'] = []; refused('T5 a failed throw missing from failed_detail refused', 'history failed_detail', rs)
 rs = rows(failed_first=(3,)); rs[6]['history'][0][1] = list(rs[6]['dtrace'][105][5]); refused('T5 a failed throw whose history plays every chosen card refused', 'history play', rs)
 o = run(rows(failed_first=(3, 4))); check('T5 failed throws with a consistent history / failed_detail accepted', o['bar']['verdict'] == 'EXPLOITER_AHEAD', o['bar']['verdict'])
+# ---- T6 (r3): failed_detail reconciled entry by entry; card multiplicity (Codex HOLD 1075/6417632636) ----
+def fd_rows():
+    return rows(failed_first=(3,))           # deal 3 (rows 6, 7): its first lead chooses 2 cards and plays 1
+rs = fd_rows(); rs[6]['failed_detail'][0][1:] = [3, ['SA'], ['HK']]
+refused('T6 the HOLD repro: failed_detail seat / attempted / actual replaced by [3, [SA], [HK]] refused', 'history failed_detail', rs)
+rs = fd_rows(); f = rs[6]['failed_detail'][0]; f[1] = (f[1] + 1) % 4
+refused('T6 a failed_detail seat other than the trace seat refused', 'seat', rs)
+rs = fd_rows(); f = rs[6]['failed_detail'][0]; f[2] = f[2][:1] + ['ZZ']
+refused('T6 failed_detail attempted cards other than the trace chosen cards refused', 'attempted', rs)
+rs = fd_rows(); f = rs[6]['failed_detail'][0]; f[2] = f[2] + f[2][:1]
+refused('T6 failed_detail attempted with one card duplicated (multiplicity) refused', 'attempted', rs)
+rs = fd_rows(); f = rs[6]['failed_detail'][0]; f[3] = [c for c in f[2] if c not in f[3]][:1]
+refused('T6 failed_detail actual cards other than history refused', 'actual', rs)
+rs = fd_rows(); f = rs[6]['failed_detail'][0]; f[0] = 5
+refused('T6 a failed_detail index that is not a failed throw refused', 'not a failed throw', rs)
+rs = fd_rows(); rs[6]['failed_detail'].append(copy.deepcopy(rs[6]['failed_detail'][0]))
+refused('T6 a repeated failed_detail entry refused', 'repeated', rs)
+rs = fd_rows(); rs[6]['failed_detail'][0] = rs[6]['failed_detail'][0][:3]
+refused('T6 a 3-field failed_detail entry refused', 'is not [play index, seat, attempted, actual]', rs)
+i = next(i for i in range(DEALS) if i != 3 and base[2 * i]['dtrace'][105] == base[2 * i + 1]['dtrace'][105])
+def set_failed(rs, i, chosen, actual, detail_actual=None):
+    """deal i's first lead (play 0, both mirrors) becomes a failed throw: chosen cards in the trace, actual cards in history / failed_detail"""
+    for m in (0, 1):
+        r = rs[2 * i + m]; e = r['dtrace'][105]; e[5] = sorted(chosen); seat = e[1]
+        r['history'][0] = [seat, list(actual)]
+        r['failed_detail'] = [[0, seat, list(chosen), list(actual if detail_actual is None else detail_actual)]]
+        r['failed_throws'] = [[0, seat, seat % 2 == m]]
+rs = rows(); set_failed(rs, i, ['C3', 'C4', 'C5'], ['C3', 'C3'])
+refused('T6 history actual [C3, C3] from attempted [C3, C4, C5] refused (set membership would accept: multiplicity)', 'history play', rs)
+rs = rows(); set_failed(rs, i, ['C3', 'C4', 'C5'], ['C3', 'C4'], detail_actual=['C3', 'C3'])
+refused('T6 failed_detail actual [C3, C3] against history [C3, C4] refused (multiplicity)', 'actual', rs)
+rs = rows(); set_failed(rs, i, ['C3', 'C3', 'C4'], ['C3', 'C3', 'C4'])
+refused('T6 a failed throw whose actual cards equal all attempted cards refused (strict)', 'history play', rs)
+rs = rows(); set_failed(rs, i, ['C3', 'C3', 'C4'], ['C3', 'C3'])
+o = run(rs); check('T6 a valid duplicate-card failed throw (attempted [C3, C3, C4], actual [C3, C3]) accepted', o['bar']['verdict'] == 'EXPLOITER_AHEAD' and o['validity']['verdict'] == 'VALID', o['bar']['verdict'])
+rs = rows(); rs[4]['buried'] = rs[4]['buried'][:7] + rs[4]['buried'][:1]
+refused('T6 buried with one card twice in place of another refused (multiset)', 'history buried', rs)
 for l in cmp[:3]:
     print('  ', l[:300])
 

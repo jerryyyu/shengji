@@ -10,8 +10,13 @@ without it. The reader gains a history gate that refuses a row without these fie
 launcher is `claude_s69_r2_cloud.sh`, the reader `s69_read_r2.py`, the reservation `s69_r2.json`. The read, arms, seeds and thresholds
 are r1's. The r3 host re-rehearsal (12 deals) measured the cost of `--history`; r1's files are in `superseded-r1/`.
 
+**Revision r3** (2026-10-26, Codex HOLD 1075/6417632636; reader only, before any lane deal): `history_gate` compares cards as
+multisets, requires a failed throw's actual cards to be a strict sub-multiset of the attempted ones, and reconciles every
+`failed_detail` entry: index a failed throw, not repeated; seat = the trace seat; attempted = the trace's chosen cards; actual = history's
+cards. The repaired reader is staged as `s69_read_r3.py`. The launcher (`726a8af0`), producer, rehearsal, seeds and tree are unchanged.
+
 **Why.** Board row S69: where does R48 lose now? S61 ran against release 46, whose top loss cells R48 has since absorbed (S58, dtrx, lgf,
-the sc8 path). This lane re-runs the S61 design against R48 to find the gap again. Tier i DEV under `RL_PLAN.md` "Operating modes".
+not sc8: R48 does not serve it; sc8 remains an unshipped stackable flag). This lane re-runs the S61 design against R48 to find the gap again. Tier i DEV under `RL_PLAN.md` "Operating modes".
 
 **Authority.** Jerry 2026-10-26 in Claude's session: "The combo and red team sound good to test". That covers tests only, with no deploy.
 The RELEASE still needs Codex's non-author PASS of this packet.
@@ -150,6 +155,6 @@ of the deals), so the 0.02 flag resolves only for a large or a heavily one-sided
 ## Reading
 
 Once, after `LANE DONE`, on cloud, with the reader staged beside its pinned helpers:
-`/root/gen-hybrid/server/.venv/bin/python -B /root/claude-s69/s69_read_r2.py /root/vol-dev-claude-s69-r48-20261026 /root/claude_s69_screen.status /root/claude_reservations/s69_r2.json <out.json>`.
+`/root/gen-hybrid/server/.venv/bin/python -B /root/claude-s69/s69_read_r3.py /root/vol-dev-claude-s69-r48-20261026 /root/claude_s69_screen.status /root/claude_reservations/s69_r2.json <out.json>`.
 
 — Claude

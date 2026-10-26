@@ -1,0 +1,91 @@
+--- superseded-r1/s69_read.r2.py	2026-10-26 09:50:16
++++ s69_read.py	2026-10-26 09:54:53
+@@ -6,7 +6,7 @@
+ Codex-PASSed S61 reader) with the arms, the binding, the zero play / belief fallback ceilings and the S61 comparison lines changed; the
+ read is predeclare_s69.md's, evaluated as written there.
+ 
+-  python3 s69_read_r2.py <output root> <lane status> <reservation> <out.json>      (host mode: the three paths must be TRUSTED's)
++  python3 s69_read_r3.py <output root> <lane status> <reservation> <out.json>      (host mode: the three paths must be TRUSTED's)
+   python3 s69_read.py --check-imports                                            (loads the pinned helpers beside this file; no input)
+ 
+ BINDING (refuses, first): reader_lib.bind_inputs (the root, status and reservation are the reserved dispatch paths; the reservation names
+@@ -18,7 +18,7 @@
+ r2 plan per deal, the 19-field dhist and its row schema on both sides with exact_deep_cards 8 on the exploiter and 7 on the defender, the
+ reconciliations, no defender 8-card stage, at least one complete exploiter 8-card lead and follow, the declare / bury producer shapes at
+ 64 / 32 / K <= 64 on both sides), plus the decision trace (trace_gate), the play history (history_gate: --history's buried / history / failed_detail on every row,
+-reconciled with the trace) and the first-divergence form (the same state, two policies).
++reconciled with the trace as card multisets, failed_detail entry by entry) and the first-divergence form (the same state, two policies).
+ VALIDITY (validity.py on BOTH arms, before any outcome; a failure -> DEV_INVALID and no outcome): arm_fault_ceilings (ZERO play fallbacks
+ and ZERO belief fallbacks on each side; bury fallbacks <= 1% of the side's buries; declare abandons <= 1% of its declare evaluations; one
+ ceilings mapping for both arms), worlds_delivered (every search record reports the side's play worlds: 256 exploiter / 64 defender),
+@@ -45,6 +45,7 @@
+ import json
+ import re
+ import sys
++from collections import Counter
+ from pathlib import Path
+ 
+ import numpy as np
+@@ -437,30 +438,53 @@
+             if len(mine) != len(hist) or any(h[LEAD] is not e[3] or not (type(h[MAXH]) is int and h[MAXH] >= e[4]) for e, h in zip(mine, hist)):
+                 refuse(f"dtrace vs dhist: {w} side {side} ({len(mine)} plays vs {len(hist)} dhist entries, or a lead flag / hand disagrees)")
+         history_gate(r, w, bury, plays, failed)
++
++
++def _strict_submultiset(sub, whole):
++    """sub is a non-empty multiset strictly inside whole: every card at most as often as in whole, and fewer cards in total."""
++    cs, cw = Counter(sub), Counter(whole)
++    return 0 < len(sub) < len(whole) and all(cs[c] <= cw[c] for c in cs)
+ 
+ 
+ def history_gate(r, w, bury, plays, failed):
+     """s69 runs the producer with --history (the same-root replay fixtures need it; S61's extraction was refused without it): every row
+-    carries buried (the banker's 8 buried cards = the trace's bury entry), history ([seat, cards actually played] per play, one per trace
+-    play, the same seat; the same cards, or for a failed throw (failed_throws) a proper subset of the chosen cards) and failed_detail
+-    ([play index, seat, chosen, actual] for exactly the failed throws).  Anything else refuses."""
++    carries buried (the banker's 8 buried cards = the trace's bury entry, as a multiset), history ([seat, cards actually played] per play,
++    one per trace play, the same seat; the same MULTISET of cards, or for a failed throw (failed_throws) a strict sub-multiset of the chosen
++    cards) and failed_detail ([play index, seat, attempted, actual], exactly one entry per failed throw: the index a failed play, the seat
++    the trace's seat at that play, attempted = the trace's chosen cards and actual = history's cards at that play, each as a multiset).
++    Card multiplicity counts throughout (two decks: a card can appear twice).  Anything else refuses."""
+     b, hist, fd = r.get("buried"), r.get("history"), r.get("failed_detail")
+     if not (isinstance(b, list) and isinstance(hist, list) and isinstance(fd, list)):
+         refuse(f"history form: {w} (buried / history / failed_detail missing: the producer ran without --history)")
+-    if sorted(b) != bury[5]:
+-        refuse(f"history buried: {w} buried {sorted(b)!r:.120} differs from the trace's bury {bury[5]!r:.120}")
++    if not all(type(c) is str for c in b) or Counter(b) != Counter(bury[5]):
++        refuse(f"history buried: {w} buried {sorted(map(str, b))!r:.120} differs from the trace's bury {bury[5]!r:.120}")
+     if len(hist) != len(plays):
+         refuse(f"history length: {w} {len(hist)} history entries vs {len(plays)} trace plays")
+     for k, (h, e) in enumerate(zip(hist, plays)):
+         ok = isinstance(h, list) and len(h) == 2 and h[0] == e[1] and isinstance(h[1], list) and all(type(c) is str for c in h[1])
+         if ok and k not in failed:
+-            ok = sorted(h[1]) == e[5]
++            ok = Counter(h[1]) == Counter(e[5])
+         elif ok:
+-            ok = 0 < len(h[1]) < len(e[5]) and set(h[1]) <= set(e[5])
++            ok = _strict_submultiset(h[1], e[5])
+         if not ok:
+             refuse(f"history play: {w} play {k}: history {h!r:.120} vs trace {e[:2] + e[5:]!r:.120}")
+-    if sorted(f[0] for f in fd if isinstance(f, list) and len(f) == 4) != sorted(failed) or len(fd) != len(failed):
+-        refuse(f"history failed_detail: {w} lists {[f[0] if isinstance(f, list) and f else f for f in fd]!r:.120}, failed_throws {sorted(failed)!r}")
++    seen = set()
++    for f in fd:
++        if not (isinstance(f, list) and len(f) == 4 and type(f[0]) is int and isinstance(f[2], list) and isinstance(f[3], list)
++                and all(type(c) is str for c in f[2] + f[3])):
++            refuse(f"history failed_detail: {w} entry {f!r:.120} is not [play index, seat, attempted, actual]")
++        k, seat, att, act = f
++        if k in seen or k not in failed:
++            refuse(f"history failed_detail: {w} entry index {k} is {'repeated' if k in seen else 'not a failed throw'} (failed_throws {sorted(failed)!r})")
++        seen.add(k)
++        if seat != plays[k][1]:
++            refuse(f"history failed_detail: {w} play {k}: seat {seat!r}, the trace's seat {plays[k][1]}")
++        if Counter(att) != Counter(plays[k][5]):
++            refuse(f"history failed_detail: {w} play {k}: attempted {att!r:.80} is not the trace's chosen {plays[k][5]!r:.80}")
++        if Counter(act) != Counter(hist[k][1]) or not _strict_submultiset(act, att):
++            refuse(f"history failed_detail: {w} play {k}: actual {act!r:.80} is not history's {hist[k][1]!r:.80} or not a strict sub-multiset of attempted")
++    if seen != set(failed):
++        refuse(f"history failed_detail: {w} covers {sorted(seen)!r}, failed_throws {sorted(failed)!r}")
+ 
+ 
+ def first_divergence(t0, t1, where):

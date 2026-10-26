@@ -1,0 +1,34 @@
+--- superseded-r1/stage_s69.r2.sh	2026-10-26 09:54:49
++++ stage_s69.sh	2026-10-26 09:54:49
+@@ -9,12 +9,14 @@
+ #       the launcher -> $ROOT/claude_s69_r2_cloud.sh; the harness + hypotheses (the launcher's DUEL / HYP, at their pinned shas) and the
+ #       --history re-rehearsal wrapper -> $ROOT/claude-s69/ (exploit_duel_s61.py, hypotheses.py, rehearse_s69_cloud.r3.sh).
+ #   bash stage_s69.sh reader <expected sha256 of claude_s69_cloud.sh>
+-#       the reader (its TRUSTED launcher sha = that sha) -> $ROOT/claude-s69/s69_read_r2.py; its pinned helpers (reader_lib, validity,
++#       the reader (its TRUSTED launcher sha = that sha) -> $ROOT/claude-s69/s69_read_r3.py; its pinned helpers (reader_lib, validity,
+ #       row_schema, compare_runs) and the S61 reference beside it; the reservation (naming that sha) -> $ROOT/claude_reservations/s69_r2.json.
+ #
+ # r2 (2026-10-26): r1 staged the r1 launcher (e3c25940, no --history) as $ROOT/claude_s69_cloud.sh and its reader / reservation as
+ # s69_read.py / s69.json; those stay on the host untouched (never armed).  r2 stages under new names and accepts the unchanged files r1
+ # already staged (the harness, hypotheses, the helpers, the S61 reference) as identical.  r1's script: superseded-r1/stage_s69.sh.
++# r3 (2026-10-26, Codex HOLD 1075/6417632636, reader-only): the repaired reader is staged as $ROOT/claude-s69/s69_read_r3.py (r2's
++# s69_read_r2.py stays on the host, read-only, unused); the launcher, harness, helpers and reservation are unchanged (identical).
+ # The host checks run with `bash -s -- <args>` and the script on stdin, so the arguments are the remote shell's positional arguments.
+ # Test hooks: S69_SSH / S69_SCP (default ssh / scp) and S69_ROOT (default /root) -- never set in production use.
+ set -u
+@@ -80,12 +82,12 @@
+     grep -q 'reservation="/root/claude_reservations/s69_r2.json")' "$H/s69_read.py" || { echo "REFUSING: s69_read.py's TRUSTED reservation is not s69_r2.json"; exit 3; }
+     python3 -c "import json,sys; r=json.load(open('$H/reservation_s69.json')); sys.exit(0 if r['launcher_sha256']=='$WANT' and r['lane']=='s69' and r['reader']=='Claude' and r['reservation_path']=='/root/claude_reservations/s69_r2.json' else 3)" || { echo "REFUSING: reservation_s69.json does not name $WANT / s69_r2.json with reader Claude (run make_reservation.py --force and test_s69_packet.py)"; exit 3; }
+     "$SSH" "$HOST" test -d "$ROOT/claude-s69" || { echo "REFUSING: $ROOT/claude-s69 is not staged (run the lane phase first)"; exit 3; }
+-    refuse_targets "$ROOT/claude-s69/STAGED.reader-r2.sha256"
++    refuse_targets "$ROOT/claude-s69/STAGED.reader-r3.sha256"
+     "$SSH" "$HOST" mkdir -p "$ROOT/claude_reservations" || exit 3
+-    stage_files reader-r2 "$H/s69_read.py" "$ROOT/claude-s69/s69_read_r2.py" "$H/reader_lib.py" "$ROOT/claude-s69/reader_lib.py" \
++    stage_files reader-r3 "$H/s69_read.py" "$ROOT/claude-s69/s69_read_r3.py" "$H/reader_lib.py" "$ROOT/claude-s69/reader_lib.py" \
+       "$H/validity.py" "$ROOT/claude-s69/validity.py" "$H/row_schema.py" "$ROOT/claude-s69/row_schema.py" "$H/compare_runs.py" "$ROOT/claude-s69/compare_runs.py" \
+       "$H/s61_reference.json" "$ROOT/claude-s69/s61_reference.json" "$H/reservation_s69.json" "$ROOT/claude_reservations/s69_r2.json"
+-    echo "NEXT, ON cloud: $ROOT/gen-hybrid/server/.venv/bin/python -B $ROOT/claude-s69/s69_read_r2.py --check-imports"
++    echo "NEXT, ON cloud: $ROOT/gen-hybrid/server/.venv/bin/python -B $ROOT/claude-s69/s69_read_r3.py --check-imports"
+     ;;
+   *) echo "usage: bash stage_s69.sh lane|reader <sha256 of claude_s69_cloud.sh>"; exit 3;;
+ esac

@@ -87,3 +87,63 @@ def test_release48_lgft3_wla32_plays_a_lead_through_the_server_path(
     assert record["leaf_greedy_top_applied"] is True and len(record["leaf_greedy_top_kept"]) == 3
     assert record["admitted_indices"].index(record["selected_index"]) in record["leaf_greedy_top_kept"] \
         or record.get("doomed_throw_reselect_applied") or record.get("exact_lead_status") == "complete"
+
+
+def test_wide_top_finish_keeps_its_server_decision_with_native_paths(
+        pinned_production_package, pinned_release48_belief_package, tmp_path, monkeypatch):
+    import random
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from shengji.train import pv_search_policy as pv
+    from test_pv_native_release48 import NATIVE_SWITCHES, _comparable, _counters
+    from shengji.train import pv_native
+    from test_release48_fly_config import apply_to_process, local_env
+    from test_pv_search_serving import _play_state
+
+    monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
+    assert pv_native.HAVE_NATIVE, "native integration requires the compiled kernels"
+    native_encodes = []
+    encode = pv_native._pv_fast.encode_static_batch
+
+    def counted_encode(*args, **kwargs):
+        native_encodes.append(1)
+        return encode(*args, **kwargs)
+
+    monkeypatch.setattr(pv_native._pv_fast, "encode_static_batch", counted_encode)
+    for width in (24, 32):
+        env = {**fly_env(), TOP: "3", WLA: "1", K: str(width)}
+        apply_to_process(monkeypatch, local_env(
+            pinned_production_package, pinned_release48_belief_package, env))
+        results = []
+        for native in (False, True):
+            flags = {pv.LATENCY_SWITCH_ENV[attr]: str(int(native)) for attr in NATIVE_SWITCHES}
+            for key, value in flags.items():
+                monkeypatch.setenv(key, value)
+            _, name, factory = served_entries(
+                pinned_production_package, pinned_release48_belief_package, {**env, **flags})
+            bot = factory(seed=7)
+            assert all(getattr(bot, attr) is native for attr in NATIVE_SWITCHES)
+            bot.leaf_greedy_deadline_ms = 0
+            bot.serving_budget_seconds = None
+            rnd = _play_state()
+            game = Game(random.Random(0))
+            game.round = rnd
+            room = srv.Room(code="TOPN", game=game, bot=bot,
+                            seats=[srv.Seat(str(s), is_bot=True) for s in range(4)], log_dir=tmp_path)
+            room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+            room._kitty_given = True
+            room.log_event = lambda kind, **data: None
+            before = len(native_encodes)
+            decision = srv._compute_bot_turn(srv._snapshot_bot_turn(room, rnd.turn, "bot"))
+            assert (len(native_encodes) > before) is native
+            searched = decision.snapshot.bot_copy
+            record = searched.last_decision_record
+            assert record["leaf_greedy_top_applied"] and record["wide_lead_admission_k"] == width
+            assert record["work_complete"] and record["worlds"] == 64
+            assert not record.get("leaf_greedy_deadline_fired")
+            results.append((name, list(decision.cards), _comparable(record),
+                            searched.sampler.rng.getstate(), _counters(searched.evaluator)))
+            prepared = srv._PreparedBotTurn(decision=decision, compute_seconds=0.0,
+                                            pacing_seconds=0.0, turn_seconds=0.0)
+            assert srv._commit_bot_turn(room, prepared)
+        assert results[0] == results[1], width

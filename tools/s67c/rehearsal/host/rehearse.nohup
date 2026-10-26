@@ -1,0 +1,11 @@
+2026-10-26T02:55:27Z rehearsal start: launcher 2bc24cee41dd186e169e71cfe8463f2340280f0f8b6946d81833a51e924c5461 guards (placeholder, tree, packages, toml, compiled, names, mem)
+2026-10-26T02:55:28Z names: defender pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a | exploiter sc8p PairChallengerBuryBot d6dd3d2b02a-sc8p diff [] | candidate module 785c7f72 + base c0b07645 | switches on both sides (3 of 3, single off) | same S58 on both | 3 s / lgfd 2000 / W 64 / K 8, bury 2 s, hybrid, exact-lead cap 2.25 s on both | config diff empty | plan head [('first', '2', None), ('fixed_banker', '3', 1), ('fixed_banker', '4', 2), ('first', '2', None)]
+2026-10-26T02:55:28Z guards ok; MemAvailable 30587356 kB; nproc 16; load 0.12 0.10 0.04
+2026-10-26T02:55:28Z child start: seed0 243170000 deals 56 workers 14 plan r2; KILL 1800 s backstop 1810 s
+2026-10-26T02:55:28Z child pid/pgid 1713086; watchdog 1713092
+/root/claude-s67c-reh-20261026/rehearse_s67c.sh: line 48: /root/claude-s67c-reh-20261026/sc8p/duel.jsonl: No such file or directory
+2026-10-26T02:57:43Z child END rc=0 wall_s=133.9 maxrss_kb(time -v, largest single process)=153720
+2026-10-26T02:57:43Z peak group RSS kB / members: 1808308 18 over 66 samples
+2026-10-26T02:57:43Z group 1713086 live members after exit: ''; any process still in group: ''
+2026-10-26T02:57:43Z rows 112 (expect 112); stdout tail: identity [exb brid-bwv-cd6dd3d2b02a-sc8p] n=  56 levels/round -0.0089 [-0.1429, +0.1161]  pts -0.18 [-4.55, +3.88]  fired-deals 0 fires {'declare': 0, 'bury': 0, 'play': 0} banker 0.500
+2026-10-26T02:57:43Z REHEARSAL DONE rc=0

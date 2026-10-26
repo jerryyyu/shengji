@@ -1,0 +1,6 @@
+rows 112, deals 56 (seeds 243170000..243170055)
+validity VALID reasons [] checks ['arm_fault_ceilings', 'worlds_delivered', 'completion_shape', 'outcome_consistency', 'latency_inside_budget']
+decisions ex 3710 / def 3710; play fallbacks 0 / 0; belief fallbacks 0 / 0; worlds mismatches 0 / 0
+decide_play s p50/p95/p99/max ex [0.09, 0.684, 0.87, 2.067] def [0.092, 0.655, 0.822, 2.078]
+latency check {'budget_seconds': 3.0, 'resolution_seconds': 0.0001, 'rule': 'recorded + 0.00005 <= budget', 'decisions': 3710, 'over': 0, 'max_seconds': 2.0675}; exploiter max / budget 0.689; share past 2/2.5/3 s ex [0.0019, 0.0, 0.0] def [0.0022, 0.0, 0.0]
+belief_ms p50/p95/p99/max ex [19.7, 28.8, 40.6, 83.6] def [19.6, 29.2, 43.0, 92.3]

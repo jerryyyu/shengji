@@ -1,0 +1,7 @@
+targets clear (8 paths): /root/claude_s67c_perf.sh /root/claude_s67c_screen.status /root/claude_s67c.RELEASE /root/claude_s67c.HOLD /root/vol-dev-claude-s67c-r48-20261026 /root/claude_reservations/s67c.json /root/claude-s67c/s67c_read.py /root/claude-s67c/STAGED.lane.sha256
+/root/claude_s67c_perf.sh: OK
+/root/claude-s67c/s67c_read.py: OK
+/root/claude_reservations/s67c.json: OK
+STAGED ok (lane phase): 3 files verified on the host, read-only
+NEXT, ON perf: DRYRUN=1 bash /root/claude_s67c_perf.sh   (rc 0 and the names: line), then arm, then Claude's RELEASE (noclobber) after recomputing the sha on perf
+rc=0

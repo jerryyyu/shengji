@@ -1,0 +1,12 @@
+targets clear (6 paths): /root/claude_build_sc8p_perf.sh /root/claude-sc8p-src-8a50fe8a /root/claude-sc8p-src-8a50fe8a.head /root/claude-sc8p-src-8a50fe8a.clone-in-progress /root/claude-sc8p-src-8a50fe8a-build.log /root/claude-s67c
+/root/claude-s67c/s67_sc8p_adapter.py: OK
+/root/claude-s67c/exploit_duel_s61.py: OK
+/root/claude-s67c/hypotheses.py: OK
+/root/claude-s67c/row_schema.py: OK
+/root/claude-s67c/validity.py: OK
+/root/claude-s67c/reader_lib.py: OK
+/root/claude_build_sc8p_perf.sh: OK
+STAGED ok (tree phase): 7 files verified on the host, read-only
+NEXT, ON perf (detached, nice 19; clones https://github.com/jerryyyu/shengji.git at 8a50fe8a into /root/claude-sc8p-src-8a50fe8a and builds the three extensions):
+  HEAD=8a50fe8a4a2b1b3b4142693fb4c0298920a2de4f ALLOW_UNMERGED=1 DRYRUN=1 bash /root/claude_build_sc8p_perf.sh
+  HEAD=8a50fe8a4a2b1b3b4142693fb4c0298920a2de4f ALLOW_UNMERGED=1 nohup nice -n 19 bash /root/claude_build_sc8p_perf.sh > /root/claude-sc8p-src-8a50fe8a-build.nohup 2>&1 &

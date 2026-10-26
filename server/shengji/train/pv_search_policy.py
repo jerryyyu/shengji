@@ -403,9 +403,11 @@ for each pruned one its plain mean less ``LEAF_GREEDY_TOP_OFFSET`` (a finite
 offset far outside the value head's range, so a pruned candidate ranks below
 every kept one and the pruned keep their plain order among themselves).
 A pruned candidate's leaf is the plain leaf everywhere in the decision (the
-tie-break prices it on that leaf).  With ``m`` at least the admitted count, or
-where ``lgf`` does not run (``lgfx``, a passed deadline), the decision is the
-``lgf`` one.  On, it enters the recipe digest as ``leaf_greedy_top`` and adds
+tie-break prices it on that leaf).  With ``m`` at least the admitted count the
+decision is the ``lgf`` one; where ``lgf`` does not run (``lgfx``) or the finish
+passes its deadline, every leaf is the plain one, nothing is pruned and the
+decision is the plain one.  `value_matrix` returns the same accumulator, so its
+``sums / W`` are the served means.  On, it enters the recipe digest as ``leaf_greedy_top`` and adds
 ``-lgft<m>`` after the greedy leaf's tokens (``lgf``, ``lgfx``, ``lgfd<ms>``);
 the record gains ``leaf_greedy_top_applied``, ``leaf_greedy_top_kept``
 (admitted positions) and ``leaf_greedy_top_plain_means`` (only with it on).
@@ -3086,39 +3088,64 @@ class PVSearchBot(PolicyValueBot):
         return super()._scored_leaf(rnd, seat, hands, buried, action, world_index)
 
     def _value_means(self, rnd, seat, actions, worlds, check_budget=None):
+        if self._leaf_greedy_top_applies(actions):
+            sums, batches = self._leaf_greedy_top_sums(rnd, seat, actions, worlds, check_budget)
+            return sums / len(worlds), batches
         if self.leaf_greedy_finish and not self._leaf_greedy_exact_skipped:
-            if self.leaf_greedy_top and len(actions) > self.leaf_greedy_top:
-                return self._value_means_top(rnd, seat, actions, worlds, check_budget)
             # the optional value-leaf rule: every leaf of this pass finished at
             # once, the replies batched, under the deadline (`policy_value_search`)
             self._greedy_prefill(rnd, seat, actions, worlds, check_budget)
         sums, batches = self._score_leaves(rnd, seat, actions, worlds, check_budget)
         return sums / len(worlds), batches
 
-    def _value_means_top(self, rnd, seat, actions, worlds, check_budget=None):
-        """``leaf_greedy_top`` (module docstring): every candidate on the plain
-        leaf, then the ``m`` best of them on the greedy-finished leaf; one mean
-        per candidate, the pruned ones ranked below every kept one."""
+    def _leaf_greedy_top_applies(self, actions):
+        """``leaf_greedy_top`` restricts this pass: the greedy leaf would run and
+        more than ``m`` candidates are priced."""
+        return bool(self.leaf_greedy_top and self.leaf_greedy_finish
+                    and not self._leaf_greedy_exact_skipped and len(actions) > self.leaf_greedy_top)
+
+    def _leaf_greedy_top_sums(self, rnd, seat, actions, worlds, check_budget=None, capture=None):
+        """``leaf_greedy_top`` (module docstring): ``(sums, batches)``, the ONE
+        accumulator both the value pass (``sums / W``) and `value_matrix` return.
+        Every candidate on the plain leaf, then the ``m`` best of them on the
+        greedy-finished leaf; a pruned candidate's sum is its plain sum less
+        ``W * LEAF_GREEDY_TOP_OFFSET``.  When the finish yields to its deadline
+        every leaf is the plain one, nothing is pruned and the plain sums are
+        returned: the decision is the plain decision.  ``capture`` (a W x K
+        matrix) receives the same cells, offset included."""
+        n = len(worlds)
         self._leaf_greedy_plain_pass = True
         try:
-            plain_sums, plain_batches = self._score_leaves(rnd, seat, actions, worlds, check_budget)
+            plain_sums, plain_batches = self._score_leaves(rnd, seat, actions, worlds, check_budget,
+                                                           capture=capture)
         finally:
             self._leaf_greedy_plain_pass = False
-        plain = plain_sums / len(worlds)
+        plain = plain_sums / n
         order = sorted(range(len(actions)), key=lambda i: (-plain[i], i))
         kept = sorted(order[:self.leaf_greedy_top])
         kept_set = set(kept)
-        self._leaf_greedy_pruned = frozenset(tuple(actions[i]) for i in range(len(actions))
-                                             if i not in kept_set)
+        pruned = [i for i in range(len(actions)) if i not in kept_set]
+        self._leaf_greedy_pruned = frozenset(tuple(actions[i]) for i in pruned)
         kept_actions = [actions[i] for i in kept]
+        record = {"leaf_greedy_top_applied": True, "leaf_greedy_top_kept": [int(i) for i in kept],
+                  "leaf_greedy_top_plain_means": [float(v) for v in plain]}
         self._greedy_prefill(rnd, seat, kept_actions, worlds, check_budget)
-        sums, batches = self._score_leaves(rnd, seat, kept_actions, worlds, check_budget)
-        means = plain - LEAF_GREEDY_TOP_OFFSET
-        means[kept] = sums / len(worlds)
-        self._leaf_greedy_top = {"leaf_greedy_top_applied": True,
-                                 "leaf_greedy_top_kept": [int(i) for i in kept],
-                                 "leaf_greedy_top_plain_means": [float(v) for v in plain]}
-        return means, plain_batches + batches
+        if self._leaf_greedy is not None and self._leaf_greedy["deadline_cut"]:
+            # the finish passed its deadline: every leaf is plain, so is the decision
+            self._leaf_greedy_pruned = frozenset()
+            record.update(leaf_greedy_top_applied=False, leaf_greedy_top_kept=None)
+            self._leaf_greedy_top = record
+            return plain_sums, plain_batches
+        sub = None if capture is None else np.full((n, len(kept)), np.nan, dtype=np.float64)
+        kept_sums, batches = self._score_leaves(rnd, seat, kept_actions, worlds, check_budget,
+                                                capture=sub)
+        sums = plain_sums - LEAF_GREEDY_TOP_OFFSET * n
+        sums[kept] = kept_sums
+        if capture is not None:
+            capture[:, pruned] -= LEAF_GREEDY_TOP_OFFSET
+            capture[:, kept] = sub
+        self._leaf_greedy_top = record
+        return sums, plain_batches + batches
 
     def _leaf_greedy_top_record(self):
         if not self.leaf_greedy_top:
@@ -3139,8 +3166,13 @@ class PVSearchBot(PolicyValueBot):
         Nothing calls this on a served path.
         """
         matrix = np.full((len(worlds), len(actions)), np.nan, dtype=np.float64)
-        sums, batches = self._score_leaves(rnd, seat, actions, worlds, check_budget,
-                                           capture=matrix)
+        if self._leaf_greedy_top_applies(actions):
+            # the restricted pass's own accumulator: ``sums / W`` is the served means
+            sums, batches = self._leaf_greedy_top_sums(rnd, seat, actions, worlds, check_budget,
+                                                       capture=matrix)
+        else:
+            sums, batches = self._score_leaves(rnd, seat, actions, worlds, check_budget,
+                                               capture=matrix)
         if not np.isfinite(matrix).all():
             raise PVSearchPolicyError("value matrix has unfilled cells", stage="value_matrix_unfilled")
         return matrix, sums, batches

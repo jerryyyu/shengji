@@ -102,7 +102,7 @@ def test_the_plain_pass_is_the_lgf_off_value_pass_and_only_the_kept_are_finished
         order = sorted(range(len(plain)), key=lambda i: (-plain[i], i))
         assert set(kept) == set(order[:3])
         pruned = [i for i in range(len(plain)) if i not in kept]
-        assert np.array_equal(means[pruned], plain[pruned] - pv.LEAF_GREEDY_TOP_OFFSET)
+        assert np.allclose(means[pruned], plain[pruned] - pv.LEAF_GREEDY_TOP_OFFSET, rtol=0, atol=1e-9)
         assert means[kept].min() > means[pruned].max()
         assert rt["leaf_greedy_uncached_leaves"] == 0
         position = rt["admitted_indices"].index(rt["selected_index"])
@@ -148,17 +148,29 @@ def test_m_one_plays_the_plain_argmax_unless_a_reselect_moved_it():
     assert seen["checked"] > 20
 
 
-def test_a_passed_deadline_leaves_every_leaf_plain():
+def test_a_passed_deadline_is_the_plain_decision():
+    """Choice and record parity with the lgf-off bot wherever the finish passed
+    its deadline: the same cards, value means and selection, nothing pruned."""
     evaluator = HashNoiseEvaluator()
     seen = {"fired": 0}
 
     def check(a, b, off, top, rnd):
         ro, rt = off.last_decision_record, top.last_decision_record
-        if rt.get("leaf_greedy_deadline_fired") and rt["leaf_greedy_top_applied"]:
-            means = np.asarray(rt["value_means"])
-            kept = rt["leaf_greedy_top_kept"]
-            assert list(means[kept]) == [ro["value_means"][i] for i in kept]
-            seen["fired"] += 1
+        if not rt.get("leaf_greedy_deadline_fired"):
+            return
+        assert a == b
+        assert rt["value_means"] == ro["value_means"]
+        assert rt["selected_index"] == ro["selected_index"] and rt["admitted"] == ro["admitted"]
+        assert rt["leaf_greedy_top_applied"] is False and rt["leaf_greedy_top_kept"] is None
+        assert top._leaf_greedy_pruned == frozenset()
+        if rt["leaf_greedy_top_plain_means"] is not None:
+            # a ballot wider than m: the restricted pass ran its plain pass and yielded
+            # (a complete exact lead stage records its exact means instead)
+            want = ro.get("exact_lead_base_value_means", ro["value_means"]) \
+                if ro.get("exact_lead_status") == "complete" else ro["value_means"]
+            assert rt["leaf_greedy_top_plain_means"] == want
+            seen["yielded"] = seen.get("yielded", 0) + 1
+        seen["fired"] += 1
 
     def expired(seed):
         bot = leaf_bot(evaluator, worlds=8, seed=seed, leaf_greedy_top=3,
@@ -173,7 +185,77 @@ def test_a_passed_deadline_leaves_every_leaf_plain():
 
     _paired_rounds(lambda s: leaf_bot(evaluator, worlds=8, seed=s, on=False, **R46_RULES),
                    expired, check)
-    assert seen["fired"] > 10
+    assert seen["fired"] > 10 and seen.get("yielded", 0) > 5
+
+
+def _four_singletons():
+    rnd = _fresh_round(707014)
+    seat = rnd.turn
+    actions = [[c] for c in dict.fromkeys(rnd.hands[seat])][:4]
+    assert len(actions) == 4
+    return rnd, seat, actions, [([list(h) for h in rnd.hands], list(rnd.buried))]
+
+
+def test_an_expired_finish_keeps_the_plain_near_tie_choice():
+    """Four singletons, one world, a zero evaluator (every mean ties), the lead
+    prior rule: the plain means select the highest prior, position 3; an expired
+    finish must not prune position 3 away."""
+    rnd, seat, actions, worlds = _four_singletons()
+    bot = leaf_bot(worlds=1, leaf_greedy_top=3, leaf_greedy_deadline_ms=1, lead_tiebreak_prior=True)
+    bot._leaf_greedy_deadline_at = float("-inf")
+    means, _ = bot._value_means(rnd, seat, actions, worlds)
+    assert bot._leaf_greedy["deadline_cut"] == 3
+    plain = np.asarray(bot._leaf_greedy_top["leaf_greedy_top_plain_means"])
+    assert np.array_equal(means, plain)
+    priors = np.arange(4, dtype=float)
+    assert bot._select(rnd, seat, actions, means, worlds, priors=priors) == \
+        bot._select(rnd, seat, actions, plain, worlds, priors=priors) == 3
+
+
+def test_value_matrix_is_the_served_accumulator_under_top_m():
+    rnd, seat, actions, worlds = _four_singletons()
+    served = leaf_bot(worlds=1, leaf_greedy_top=3)
+    means, _ = served._value_means(rnd, seat, actions, worlds)
+    assert served._leaf_greedy_top["leaf_greedy_top_applied"] is True
+    probe = leaf_bot(worlds=1, leaf_greedy_top=3)
+    matrix, sums, _ = probe.value_matrix(rnd, seat, actions, worlds)
+    assert np.array_equal(means, sums / len(worlds))
+    assert np.allclose(matrix.mean(axis=0), means, rtol=0, atol=1e-9)
+    kept = served._leaf_greedy_top["leaf_greedy_top_kept"]
+    assert probe._leaf_greedy_top["leaf_greedy_top_kept"] == kept
+
+
+def test_value_matrix_matches_the_served_means_over_self_play():
+    """Every pruned decision of seeded self-play: a fresh probe's value matrix on
+    the decision's admitted ballot and worlds reduces to the served means."""
+    evaluator = HashNoiseEvaluator()
+    seen = {"pruned": 0}
+    rnd = _fresh_round(707_014)
+    bots = [leaf_bot(evaluator, worlds=8, seed=100 + s, leaf_greedy_top=3, **R46_RULES) for s in range(4)]
+    worlds_seen = {}
+    for bot in bots:
+        bot.scores = throw_loving_scores
+        draw = bot._worlds
+
+        def keep(rnd_, seat_, check_budget=None, _d=draw, _b=bot):
+            out = _d(rnd_, seat_, check_budget)
+            worlds_seen[id(_b)] = out[0]
+            return out
+        bot._worlds = keep
+    while rnd.phase == "play" and seen["pruned"] < 15:
+        seat = rnd.turn
+        bot = bots[seat]
+        snap = copy.deepcopy(rnd)
+        cards = bot.decide_play(copy.deepcopy(rnd), seat)
+        rec = bot.last_decision_record
+        if rec.get("leaf_greedy_top_applied") and rec.get("exact_lead_status") != "complete":
+            probe = leaf_bot(evaluator, worlds=8, leaf_greedy_top=3, **R46_RULES)
+            _, sums, _ = probe.value_matrix(snap, seat, [list(a) for a in rec["admitted"]],
+                                            worlds_seen[id(bot)])
+            assert list(sums / 8) == rec["value_means"]
+            seen["pruned"] += 1
+        rnd.play(seat, cards)
+    assert seen["pruned"] >= 10
 
 
 def test_a_pruned_decision_completes_under_the_serving_budget():

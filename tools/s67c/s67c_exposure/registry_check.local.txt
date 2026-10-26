@@ -1,0 +1,8 @@
+# s67c registry check, 2026-10-26T00:24:11Z; tree /Users/jerryyu/Projects/shengji-wt/claude-s67c-screen at abf653f84738857a09b853c03103f8b6276470fa (origin/main abf653f84738857a09b853c03103f8b6276470fa), dirty entries outside tools/s67c: 1; registry server/runs/seed_windows.json 7923c65da653c62a; seed_windows.py 89f17a98d937e4ce; Python 3.14.3
+check sc8p 243260910 3920: rc=0 [243260910, 243264830) is disjoint from every registered window
+positive control, the registered M17 block [61740910, 61900910) (expect REFUSED, rc 2): rc=2 [61740910, 61900910) overlaps 10 registered window(s): runPVS1r46 (trajectory, seed0 61740910, 16000 clusters, span [61740910, 61756910)) shares 16000 deal seed(s) [61740910, 61756910) runPVS2r46 (tra
+reported (registration state of the windows the packet names): S66b [242860910, +3920): rc=0 [242860910, 242864830) is disjoint from every registered window 
+reported (registration state of the windows the packet names): S66 [242560910, +600): rc=0 [242560910, 242561510) is disjoint from every registered window 
+reported (registration state of the windows the packet names): v106sc8-span [250060910, +901000): rc=0 [250060910, 250961910) is disjoint from every registered window 
+reported (registration state of the windows the packet names): S65 [242260910, +600): rc=0 [242260910, 242261510) is disjoint from every registered window 
+reported (registration state of the windows the packet names): S64-span [242060910, +100600): rc=0 [242060910, 242161510) is disjoint from every registered window 

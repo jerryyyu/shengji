@@ -1,0 +1,6 @@
+launcher fd3451ca845f734afb93363bcc9298652317fc631823a48c1a2835473b2132f7
+PASS run_dev sc8p refuses an existing arm dir (rc 3), contents unchanged: REFUSING: DEV output for sc8p already exists in /private/tmp/s67cfresh.0SrQ/out/sc8p
+PASS main flow: output-root refusal (line 428) before mkdir (line 429) and the first run_dev (line 440)
+PASS no recovery or resume mode in the launcher (fresh runs only)
+ALL PASS
+rc=0

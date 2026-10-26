@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Generate claude_s67c_perf.sh (the S67c DRAFT launcher: ONE fresh-only, powered, paired seat-swapped DEV of R48 + the pair / tractor
+challenger '-sc8p' vs R48 as served, 3,920 deals on perf) from s66b's reviewed FINAL launcher (src_claude_s66b_perf.final.sh aa078dde, the
+launcher that ran s66b on perf 2026-10-25, LANE DONE, DEV_PASS) by asserted edits.  The launcher is a DRAFT: its three extension pins are
+TO_BE_PINNED until the perf build of /root/claude-sc8p-src-8a50fe8a (claude_build_sc8p_perf.sh); make_s67c_final.py fills them from the
+build log and pins the reader's TRUSTED_LAUNCHER_SHA256 to the final launcher's sha256 (the RELEASE token).  Unchanged: the harness
+(b15d292f) and hypotheses bytes and pins, fly.toml's bytes (1fcb2fbf,
+identical at eb0975da and 8a50fe8a), the packages, every guard, wait, lock, S17 handshake, cleanup block and the child form, 14 workers,
+the r2 plan, DEALS 3920, KILL 18000 / BACKSTOP 18010.  Changed:
+  1. a banner; LANE=s67c; TREE_HEAD_FULL / R (8a50fe8a, /root/claude-sc8p-src-8a50fe8a); the EXT_* pin line (TO_BE_PINNED x3);
+     OUT /root/vol-dev-claude-s67c-r48-20261026 (status / RELEASE / HOLD / S17 handoff derive from LANE); the DEALS line's comment;
+  2. ARMS="sc8p"; arm_spec: the one arm sc8p, seed0 243260910, exploiter name fly.toml's SHENGJI_BOT + '-sc8p';
+  3. ADAPTER /root/claude-s67c/s67_sc8p_adapter.py (sha of the packet's adapter); CAND_REL / CAND_SHA = pair_challenger.py at 8a50fe8a;
+     a new BASE_REL / BASE_SHA = singleton_challenger.py at 8a50fe8a (the candidate's base class), checked by check_toml and check_names;
+     DUEL / HYP moved to /root/claude-s67c/ (same shas), BESIDE the adapter, which imports both from its own directory
+     (HERE.with_name('exploit_duel_s61.py'); the harness's 'import hypotheses' through the adapter's sys.path entry), and a new check_toml
+     guard that both sit in the adapter's directory (answers Codex 1075/6405786268: s66b's paths left the staged adapter unable to load);
+  4. check_names: the adapter's module name, the candidate path (pair_challenger.py) and base pin, the sentinel value sc8p, the suffix
+     '-sc8p', the exploiter class PairChallengerBuryBot; the placeholder_guard text; the DEV start text; --exploiter-env S66_EXPLOITER=sc8p;
+     the DRYRUN arm line.
+Usage: python3 make_s67c.py   (refuses to overwrite)"""
+import hashlib
+from pathlib import Path
+H = Path(__file__).resolve().parent
+sha = lambda b: hashlib.sha256(b).hexdigest()
+SEED0, DEALS = 243260910, 3920
+HEAD = "8a50fe8a4a2b1b3b4142693fb4c0298920a2de4f"
+R = "/root/claude-sc8p-src-8a50fe8a"
+OUT = "/root/vol-dev-claude-s67c-r48-20261026"
+R48 = "pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a"
+CAND_SHA = "785c7f722d88ed9860da6da6311d92b92eba8652342c9601c4954eed2464a86e"   # git show 8a50fe8a:server/shengji/eval/pair_challenger.py
+BASE_SHA = "c0b0764599c100fd3c26c568c00f0be453a60100bd1bb63557293875dbf74558"   # git show 8a50fe8a:server/shengji/eval/singleton_challenger.py
+ADAPTER_SHA = sha((H / "s67_sc8p_adapter.py").read_bytes())
+START_OLD = "(S66_EXPLOITER=sc8: the singleton challenger, PR #1153 at eb0975da; served budgets and widths on both sides)"
+START_NEW = "(S66_EXPLOITER=sc8p: the pair/tractor challenger, claude/s67-pair-challenger at 8a50fe8a; served budgets and widths on both sides)"
+
+src = (H / "src_claude_s66b_perf.final.sh").read_text()
+assert sha(src.encode()) == "aa078dde97b88f5c490d8cae4beb9b32cd2be02837fa19fb1d5f0ef6264f4eb2", sha(src.encode())
+s = src
+n = 0
+
+
+def sub(old, new, count=1):
+    global s, n
+    assert s.count(old) == count, (s.count(old), old[:140])
+    s = s.replace(old, new)
+    n += 1
+
+
+def cut(start, end, new):
+    """replace s[start:end) where start / end are unique markers (end excluded)"""
+    global s, n
+    assert s.count(start) == 1 and s.count(end) == 1, (start[:60], end[:60])
+    a0, a1 = s.index(start), s.index(end)
+    assert a0 < a1
+    s = s[:a0] + new + s[a1:]
+    n += 1
+
+
+cut("# s66b: the POWERED RERUN of s66dev", "# s66dev: the DEV head-to-head of board row S66",
+    f'''# s67c: board row S67c (Jerry 2026-10-25 in session: "What about trying all the non throws, I don't think win is enough to deploy"): ONE
+# powered, fresh-only, paired seat-swapped DEV of R48 + the PAIR / TRACTOR challenger (-sc8p: the S66 singleton challenger's fixed-width
+# lead probe with the omitted pool widened to every one-component pair or tractor, throws excluded; server/shengji/eval/pair_challenger.py
+# at {HEAD[:8]}, branch claude/s67-pair-challenger = PR #1153's eb0975da + one commit) vs R48 as served, {DEALS} deals ({SEED0}..), the same
+# count, workers, plan, stops and bar as s66b (aa078dde, LANE DONE on perf 2026-10-25T09:11:02Z: +0.0165 [+0.0042, +0.0287], DEV_PASS).
+# ONE look; the bar on this run alone; the comparison with s66b is descriptive.  Generated by make_s67c.py from s66b's final launcher:
+# LANE, the tree head / path, the extension pins (unpinned until the perf build; make_s67c_final.py), OUT, the arm (sc8p, its seed0 and
+# name), the adapter, the candidate pins (pair_challenger.py + its base singleton_challenger.py), check_names' candidate asserts and the
+# sentinel value changed; the harness and hypotheses (same shas) sit BESIDE the adapter in /root/claude-s67c/, where it imports them.
+# s66b's and s66dev's headers follow.
+# s66b: the POWERED RERUN of s66dev (board row S66b): the SAME candidate, adapter, harness, tree and extension pins as s66dev's final
+# launcher, on a FRESH seed block of 3920 deals (242860910..); ONE look, fresh-only.
+''')
+sub("LANE=s66b\n", "LANE=s67c\n")
+sub("DUEL=/root/claude-s66dev/exploit_duel_s61.py; DUEL_SHA=", "DUEL=/root/claude-s67c/exploit_duel_s61.py; DUEL_SHA=")
+sub("HYP=/root/claude-s66dev/hypotheses.py; HYP_SHA=", "HYP=/root/claude-s67c/hypotheses.py; HYP_SHA=")
+sub('''  [ -f "$HYP" ] && [ ! -L "$HYP" ] && [ "$(sha256sum "$HYP" | cut -d" " -f1)" = "$HYP_SHA" ] || die "$HYP missing, symlinked or not its pinned sha256 $HYP_SHA"
+''', '''  [ -f "$HYP" ] && [ ! -L "$HYP" ] && [ "$(sha256sum "$HYP" | cut -d" " -f1)" = "$HYP_SHA" ] || die "$HYP missing, symlinked or not its pinned sha256 $HYP_SHA"
+  [ "$(dirname "$DUEL")" = "$(dirname "$ADAPTER")" ] && [ "$(dirname "$HYP")" = "$(dirname "$ADAPTER")" ] || die "the harness $DUEL and hypotheses $HYP must sit beside the adapter $ADAPTER (it imports both from its own directory)"
+''')
+sub("TREE_HEAD_FULL=eb0975da0d47271c3bac5c23b1cb004e21819220; R=${R:-/root/claude-sc8-src-eb0975da}\n",
+    f"TREE_HEAD_FULL={HEAD}; R=${{R:-{R}}}\n")
+cut("EXT_ENGINE_SHA=dd87f317", "OUT=${OUT:-",
+    "EXT_ENGINE_SHA=TO_BE_PINNED; EXT_CWV_SHA=TO_BE_PINNED; EXT_ENDGAME_SHA=TO_BE_PINNED   # the three compiled extensions claude_build_sc8p_perf.sh builds in $R ON PERF (BUILD_RC=0): filled by make_s67c_final.py from the build log's three 'ext <module> <sha256>' lines; placeholder_guard refuses until then\n")
+sub("OUT=${OUT:-/root/vol-dev-claude-s66b-r48-20261025}\n", f"OUT=${{OUT:-{OUT}}}\n")
+sub("     # fly.toml at eb0975da (byte-identical to 0c1e9965's and main's:", "     # fly.toml at 8a50fe8a (byte-identical to eb0975da's and 0c1e9965's; main's since bb6dd97b adds only GOOGLE_CLIENT_ID / SHENGJI_DATA_DIR lines, SHENGJI_BOT unchanged:")
+cut("DEALS=3920; WORKERS=14;", 'ARMS="sc8"',
+    f"DEALS={DEALS}; WORKERS=14; PLAN=r2; KILL_AFTER=18000; BACKSTOP=18010; MEM_MIN_KB=8388608   # {DEALS} deals x 2 mirrors on the r2 rank-mixed plan per deal (= 14 x 280 = 392 plan cycles: exactly 40% first-round deals); s66b measured 8,473.6 s for 3,920 deals of the singleton challenger on perf (maxrss 973 MB); the pair / tractor pool added +3 ms per probed lead offline (s67off); the stop is 2.1x; no predecessor gate (host-lock order)\n")
+sub('ARMS="sc8"   # one arm, read alone (s66b_read.py)', 'ARMS="sc8p"   # one arm, read alone (s67c_read.py)')
+sub("(fly.toml's SHENGJI_BOT + '-sc8'; name_probe.out; re-derived on the host by check_names through the adapter)",
+    "(fly.toml's SHENGJI_BOT + '-sc8p'; smoke/smoke_read.txt; re-derived on the host by check_names through the adapter)")
+sub(f'    sc8) echo "242860910 {R48}-sc8";;', f'    sc8p) echo "{SEED0} {R48}-sc8p";;')
+cut("ADAPTER=/root/claude-s66dev/s66_sc8_adapter.py;", "CAND_REL=",
+    f"ADAPTER=/root/claude-s67c/s67_sc8p_adapter.py; ADAPTER_SHA={ADAPTER_SHA}   # the child: loads $DUEL verbatim, builds the exploiter through the tree's pair_candidate_from_env for the sentinel S66_EXPLOITER=sc8p, attaches the probe fields ('sc8p', 9 per decision) to each row\n")
+cut("CAND_REL=server/shengji/eval/singleton_challenger.py;", "# volume path = perf path = sha256",
+    f"CAND_REL=server/shengji/eval/pair_challenger.py; CAND_SHA={CAND_SHA}   # the candidate module IN THE TREE (claude/s67-pair-challenger at {HEAD[:8]}), pinned: the adapter imports it from $R/server\n"
+    f"BASE_REL=server/shengji/eval/singleton_challenger.py; BASE_SHA={BASE_SHA}   # the candidate's base class module IN THE TREE (the singleton probe, the loader and the env binding; at {HEAD[:8]}, refactored from eb0975da's), pinned\n")
+sub("build /root/claude-sc8-src-eb0975da at $TREE_HEAD_FULL (claude_build_sc8_perf.sh) and pin its three extensions first (make_s66dev_final.py)",
+    f"build {R} at $TREE_HEAD_FULL (claude_build_sc8p_perf.sh) and pin its three extensions first (make_s67c_final.py)")
+sub('''  [ -f "$R/$CAND_REL" ] && [ ! -L "$R/$CAND_REL" ] && [ "$(sha256sum "$R/$CAND_REL" | cut -d" " -f1)" = "$CAND_SHA" ] || die "candidate module $R/$CAND_REL missing, symlinked or not its pinned sha256 $CAND_SHA"
+''', '''  [ -f "$R/$CAND_REL" ] && [ ! -L "$R/$CAND_REL" ] && [ "$(sha256sum "$R/$CAND_REL" | cut -d" " -f1)" = "$CAND_SHA" ] || die "candidate module $R/$CAND_REL missing, symlinked or not its pinned sha256 $CAND_SHA"
+  [ -f "$R/$BASE_REL" ] && [ ! -L "$R/$BASE_REL" ] && [ "$(sha256sum "$R/$BASE_REL" | cut -d" " -f1)" = "$BASE_SHA" ] || die "candidate base module $R/$BASE_REL missing, symlinked or not its pinned sha256 $BASE_SHA"
+''')
+sub('''    "$PY" -B - "$ADAPTER" "$COMBO_NAME" "$E2PATH" "$specs" "$CAND_SHA" <<'PY'
+import dataclasses, hashlib, importlib.util, os, sys
+adapter, r48, e2, specs, cand_sha = sys.argv[1:6]
+sys.path.insert(0, adapter.rsplit('/', 1)[0])
+spec = importlib.util.spec_from_file_location('s66_sc8_adapter', adapter); A = importlib.util.module_from_spec(spec); spec.loader.exec_module(A)
+''', '''    "$PY" -B - "$ADAPTER" "$COMBO_NAME" "$E2PATH" "$specs" "$CAND_SHA" "$BASE_SHA" <<'PY'
+import dataclasses, hashlib, importlib.util, os, sys
+adapter, r48, e2, specs, cand_sha, base_sha = sys.argv[1:7]
+sys.path.insert(0, adapter.rsplit('/', 1)[0])
+spec = importlib.util.spec_from_file_location('s67_sc8p_adapter', adapter); A = importlib.util.module_from_spec(spec); spec.loader.exec_module(A)
+''')
+sub('''assert hashlib.sha256(open(A.CANDIDATE_PATH, 'rb').read()).hexdigest() == cand_sha and str(A.CANDIDATE_PATH).endswith('/server/shengji/eval/singleton_challenger.py'), ('the candidate module the adapter imported', str(A.CANDIDATE_PATH))
+''', '''assert hashlib.sha256(open(A.CANDIDATE_PATH, 'rb').read()).hexdigest() == cand_sha and str(A.CANDIDATE_PATH).endswith('/server/shengji/eval/pair_challenger.py'), ('the candidate module the adapter imported', str(A.CANDIDATE_PATH))
+assert hashlib.sha256(open(A.BASE_PATH, 'rb').read()).hexdigest() == base_sha and str(A.BASE_PATH).endswith('/server/shengji/eval/singleton_challenger.py') and A.BASE_PATH.parent == A.CANDIDATE_PATH.parent, ('the candidate base module the adapter imported', str(A.BASE_PATH))
+assert A.SENTINEL == ('S66_EXPLOITER', 'sc8p') and A.SUFFIX == '-sc8p', (A.SENTINEL, A.SUFFIX)
+''')
+sub("    eenv = m._parse_env(['S66_EXPLOITER=sc8'])   # the arm's ONE --exploiter-env argument, parsed as the harness parses it",
+    "    eenv = m._parse_env(['S66_EXPLOITER=sc8p'])   # the arm's ONE --exploiter-env argument, parsed as the harness parses it")
+sub("    assert en == nm == dn + '-sc8' and eb.policy_name == en, (arm, 'exploiter name', en, eb.policy_name)",
+    "    assert en == nm == dn + '-sc8p' and eb.policy_name == en, (arm, 'exploiter name', en, eb.policy_name)")
+sub("    assert type(eb).__name__ == 'SingletonChallengerBuryBot' and isinstance(eb, type(db)), (arm, 'exploiter class', type(eb).__name__)",
+    "    assert type(eb).__name__ == 'PairChallengerBuryBot' and isinstance(eb, type(db)) and '_SingletonChallenger' in [c.__name__ for c in type(eb).__mro__], (arm, 'exploiter class', type(eb).__name__)")
+sub("print('names: defender', dn, '| exploiter', '; '.join(seen), '| candidate module', cand_sha[:8], '|",
+    "print('names: defender', dn, '| exploiter', '; '.join(seen), '| candidate module', cand_sha[:8], '+ base', base_sha[:8], '|")
+sub(f"vs exploiter $nm {START_OLD}; deals ", f"vs exploiter $nm {START_NEW}; deals ")
+sub('      --exploiter-env "S66_EXPLOITER=sc8" \\\n', '      --exploiter-env "S66_EXPLOITER=sc8p" \\\n')
+sub('echo "DRYRUN ok (perf): arm $arm S66_EXPLOITER=sc8 seed0 $s0 exploiter $nm"', 'echo "DRYRUN ok (perf): arm $arm S66_EXPLOITER=sc8p seed0 $s0 exploiter $nm"')
+code = "\n".join(l.split("   #")[0] for l in s.split("\n") if not l.lstrip().startswith("#"))   # code only: comment lines and trailing comments dropped
+for tok in ("LANE=s66b", "242860910", "s66b-r48", "eb0975da", "claude-sc8-src", "s66_sc8_adapter", "S66_EXPLOITER=sc8'", 'S66_EXPLOITER=sc8"', "S66_EXPLOITER=sc8 ", "'-sc8'", "-sc8\";;", "SingletonChallengerBuryBot'"):
+    assert tok not in code, tok
+assert code.count("/root/claude-s66dev/") == 0 and code.count("/root/claude-s67c/") == 3 and code.count("TO_BE_PINNED") == 5   # the pin line (3) + the guard's case pattern and message
+assert code.count("S66_EXPLOITER=sc8p") == 4 and code.count("PairChallengerBuryBot") == 1 and code.count("$BASE_SHA") == 3   # the sentinel: check_names, the DEV start say, --exploiter-env, the DRYRUN line
+assert s.count("TO_BE_PINNED") == 6   # + the s66dev header's mention; make_s67c_final.py asserts the count drops by exactly three
+launcher = s
+LSHA = sha(launcher.encode())
+(H / "claude_s67c_perf.sh").open("x").write(launcher)
+print("claude_s67c_perf.sh sha256", LSHA, f"(DRAFT from s66b final aa078dde: {n} asserted edits; extension pins TO_BE_PINNED until the perf build; adapter {ADAPTER_SHA[:12]})")

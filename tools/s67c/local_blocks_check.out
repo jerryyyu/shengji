@@ -1,0 +1,4 @@
+launcher fd3451ca845f734afb93363bcc9298652317fc631823a48c1a2835473b2132f7
+block sha256 5df5f06b2d32a7b3eda481f45b78a4e03ff09a8262989f556b01208ee84f2482 (46 lines)
+names: defender pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a | exploiter sc8p PairChallengerBuryBot d6dd3d2b02a-sc8p diff [] | candidate module 785c7f72 + base c0b07645 | switches on both sides (3 of 3, single off) | same S58 on both | 3 s / lgfd 2000 / W 64 / K 8, bury 2 s, hybrid, exact-lead cap 2.25 s on both | config diff empty | plan head [('first', '2', None), ('fixed_banker', '3', 1), ('fixed_banker', '4', 2), ('first', '2', None)]
+rc=0

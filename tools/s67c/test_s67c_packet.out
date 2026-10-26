@@ -1,0 +1,46 @@
+launcher under test: claude_s67c_perf.sh sha256 fd3451ca845f734afb93363bcc9298652317fc631823a48c1a2835473b2132f7
+PASS reservation launcher_sha256 == sha256(claude_s67c_perf.sh) = fd3451ca845f734afb93363bcc9298652317fc631823a48c1a2835473b2132f7
+PASS reservation reader is Claude
+PASS reservation lane / output_root / status / release / hold equal the launcher's (s67c, /root/vol-dev-claude-s67c-r48-20261026, /root/claude_s67c_screen.status)
+PASS reservation tree / head equal the launcher's (/root/claude-sc8p-src-8a50fe8a @ 8a50fe8a)
+PASS reservation seed0 / count / arms / exploiter equal arm_spec and DEALS (243260910, 3920, sc8p)
+PASS reservation path and host
+PASS reservation launcher_state matches the file under test: draft (extension pins TO_BE_PINNED; regenerate after make_s67c_final.py)
+PASS TREE_HEAD_FULL is 8a50fe8a4a2b1b3b4142693fb4c0298920a2de4f
+PASS DUEL_SHA is the packet's exploit_duel_s61.py (b15d292f, the reviewed producer)
+PASS HYP_SHA is the packet's hypotheses.py (4365a15d)
+PASS the harness and hypotheses shas are s66b's final launcher's (aa078dde), unchanged
+PASS ADAPTER_SHA is the packet's s67_sc8p_adapter.py (9bf5f0c3)
+PASS CAND_SHA is sha256(git show 8a50fe8a:server/shengji/eval/pair_challenger.py) = 785c7f72
+PASS the local 8a50fe8a worktree's pair_challenger.py has CAND_SHA
+PASS BASE_SHA is sha256(git show 8a50fe8a:server/shengji/eval/singleton_challenger.py) = c0b07645
+PASS the local 8a50fe8a worktree's singleton_challenger.py has BASE_SHA
+PASS the local worktree /Users/jerryyu/Projects/shengji-wt/claude-s67 is at the tree head (8a50fe8a)
+PASS the harness, hypotheses and adapter are all pinned in /root/claude-s67c/, where the adapter imports them (HERE.with_name), and check_toml guards the shared directory
+PASS the adapter's SENTINEL is the launcher's one --exploiter-env argument (S66_EXPLOITER=sc8p)
+PASS 14 workers, plan r2, DEALS 3920 = 14 x 280, stop / backstop 18000 / 18010 (s66b's)
+PASS the s67c block and smoke are disjoint from s66dev / s66b blocks, smoke and bench (no overlap)
+PASS FLY_SHA is sha256(fly.toml at 8a50fe8a)
+PASS reader DEF_NAME == launcher COMBO_NAME == fly.toml SHENGJI_BOT at the tree head
+PASS reader ARM_SPEC (seed0, exploiter = SHENGJI_BOT + '-sc8p') == arm_spec; reader DEALS == DEALS
+PASS reader TERMINAL is the launcher's final say
+PASS the DEV start text is shared by the launcher's say, the reader's bind regex and the fixture
+PASS reader: 64 / 64 worlds, 3 s latency ceiling, the +0.015 bar with CI lower > 0, zero play / belief ceilings
+PASS reader PINNED == the packet's reader_lib copies == fl-pilot/reader_lib's row_schema / validity / reader_lib
+PASS reader TRUSTED lane / root / status / reservation / host == the launcher's LANE / OUT / S and the reservation path
+PASS reader TREE / TREE_HEAD == the launcher's R / TREE_HEAD_FULL (the armed line binds them)
+PASS reader latency ceiling on the 0.1 ms bin's upper bound (HALF_BIN 0.00005)
+PASS reader KINDS (single / pair / tractor, + throw on a played lead) are pair_challenger.py's POOL_KINDS and lead_kind names at the tree head
+PASS reader's s66b reference is the s66b readout (+0.0165 [+0.0042, +0.0287], 3,920 deals, 1075/6395802322): descriptive only
+PASS power note: SE 0.00625 from s66b's half-width; PASS at a true +0.017 = 0.626
+PASS draft: the reader's TRUSTED launcher sha256 is TO_BE_PINNED and no final reader exists yet
+PASS pin rehearsal: the pinned reader differs from the draft in the TRUSTED_LAUNCHER_SHA256 line only, naming the rehearsal launcher's sha256 (line 107)
+PASS the EXECUTED staging test (test_s67c_stage.sh: ssh-joining shim; absent / existing / symlink; no scp on refusal; both phases; the staged layout from the copied bytes: pins, adapter --help, check_names through the copied adapter; the r1 layout's FileNotFoundError) is ALL PASS
+PASS draft: the three pins are TO_BE_PINNED (the perf build has not run)
+PASS pin rehearsal: make_s67c_final.py changes the pin line only (line 50); the guard's and header's mentions remain
+PASS make_s67c_final.py refuses a build log without BUILD_RC=0
+PASS stage_s67c.sh passes the paths as bash -s positional arguments with the script on stdin, refuses an existing (-e) or symlinked (-L) target and a vacuous check
+PASS stage_s67c.sh copies the reservation, verifies every copy by sha256 on the host and makes it read-only
+PASS stage_s67c.sh's tree phase stages the adapter WITH the harness and hypotheses into /root/claude-s67c/ (7 files with the build script and helpers) and consumes nothing from claude-s66dev/
+ALL PASS
+rc=0

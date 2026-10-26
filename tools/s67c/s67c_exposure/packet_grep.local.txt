@@ -1,0 +1,6 @@
+# s67c packet grep 2026-10-26T00:43:08Z: packet files under fl-pilot (*.sh *.py *.json *.md *.txt) and the main checkout's server/runs + top-level docs: tokens 2431xxxxx / 2432xxxxx bounded by a non-alphanumeric, non-'.' character
+/Users/jerryyu/Projects/shengji/server/runs/logs/codex_hourly_review.log: 243278106,
+/Users/jerryyu/Projects/shengji/server/runs/logs/codex_hourly_review.log: 243136981
+/Users/jerryyu/Projects/shengji/server/runs/logs/codex_hourly_review.log: 243293921 
+--- (end)
+# reading: the three hits are numbers inside production decision-log JSON (codex_hourly_review.log quotes served game logs), not deal-seed records; none falls in the lane block [243260910, 243264830) or the smoke [243160000, 243160002); no packet under fl-pilot names a token in the band

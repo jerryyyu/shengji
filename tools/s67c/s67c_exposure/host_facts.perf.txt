@@ -1,0 +1,24 @@
+# s67c host facts (read-only) 2026-10-26T00:49:02Z
+/root/claude-s66dev/exploit_duel_s61.py: OK
+/root/claude-s66dev/hypotheses.py: OK
+harness_rc=0
+absent /root/claude_build_sc8p_perf.sh
+absent /root/claude-sc8p-src-8a50fe8a
+absent /root/claude-s67c
+absent /root/claude_s67c_perf.sh
+absent /root/claude_s67c_screen.status
+absent /root/claude_s67c.RELEASE
+absent /root/claude_s67c.HOLD
+absent /root/vol-dev-claude-s67c-r48-20261026
+absent /root/claude_reservations/s67c.json
+absent /root/.claude-host.lock
+MemAvailable:   30672996 kB
+16
+2026-10-25T09:11:02Z s66b: S17 left PAUSED by s66b (request token '1522662 s35reh ab9d1c13073e748ff0a2b57000cb3062c406b2
+lane: s66b
+pid: 2084166
+launcher_sha256: aa078dde97b88f5c490d8cae4beb9b32cd2be02837fa19fb1d5f0ef6264f4eb2
+token: 1522662 s35reh ab9d1c13073e748ff0a2b57000cb3062c406b2203357e61c1f22e0c2cb44b100 2026-10-16T20:32:03Z nonce=85c7338ebf10e0f613697fd4f1e8e887
+request_mtime_ns: 1792182723438367259
+request_a
+fatal: git cat-file: could not get object info

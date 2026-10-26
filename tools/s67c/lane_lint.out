@@ -1,0 +1,6 @@
+claude_s67c_perf.sh:46: unchecked-subst: WAIVED (both checked on the next line (non-empty path, 64-hex sha) before any use): SELF_SHA=$(sha256sum ...) is never checked and an empty value compares equal to another empty expansion
+    SELF=$(readlink -f "${BASH_SOURCE[0]}"); SELF_SHA=$(sha256sum "$SELF" | cut -d" " -f1)
+claude_s67c_perf.sh:229: unchecked-subst: WAIVED (the length test refuses an empty or partial hash before the comparison): got=$(sha256sum ...) is never checked and an empty value compares equal to another empty expansion
+    got=$(sha256sum "$local" | cut -d" " -f1); [ "${#got}" -eq 64 ] && [ "$got" = "$sha" ] || die "package $local sha256 $got, expected $sha"
+lane_lint: 0 finding(s), 2 waived, 1 file(s) with hits
+rc=0

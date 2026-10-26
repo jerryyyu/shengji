@@ -1,0 +1,3 @@
+NOTE   claude_s67c_perf.sh: no *_PY='...' blocks
+check_py_blocks: 0 ok, 0 broken
+rc=0

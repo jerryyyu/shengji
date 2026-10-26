@@ -1,0 +1,14 @@
+PASS two absent paths -> rc 0, the host saw 2 paths
+PASS an existing regular file -> rc 3 REFUSING
+PASS a dangling symlink -> rc 3 REFUSING
+PASS zero paths -> rc 3 (a vacuous check is refused)
+PASS phase tree with /claude-s67c present -> rc 3, no scp, no build script copied
+PASS phase lane with a dangling RELEASE symlink present -> rc 3, no scp
+PASS phase lane with a wrong expected sha -> rc 3 before any host contact
+PASS phase tree on a clean host: targets clear, mkdir, 3 scp calls, 'STAGED ok (tree phase): 7 files' (sha256sum -c on the copies), read-only
+PASS the launcher's DUEL / HYP / ADAPTER (/root/claude-s67c/exploit_duel_s61.py, /root/claude-s67c/hypotheses.py, /root/claude-s67c/s67_sc8p_adapter.py) are the staged copies at their pinned shas, all in /root/claude-s67c
+PASS the COPIED adapter --help runs rc 0 from the staged dir (imports the copied harness and hypotheses)
+PASS the launcher's check_names block (byte for byte) runs rc 0 through the COPIED adapter: exploiter sc8p PairChallengerBuryBot d6dd3d2b02a-sc8p diff [] 
+PASS r1 layout (harness only in the sibling claude-s66dev/) reproduces 6405786268: the adapter --help exits 1 with FileNotFoundError for claude-s67c/exploit_duel_s61.py
+ALL PASS
+rc=0

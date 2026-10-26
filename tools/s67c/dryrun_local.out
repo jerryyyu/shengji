@@ -1,0 +1,2 @@
+REFUSING: placeholder pins remain (EXT_* = TO_BE_PINNED): build /root/claude-sc8p-src-8a50fe8a at 8a50fe8a4a2b1b3b4142693fb4c0298920a2de4f (claude_build_sc8p_perf.sh) and pin its three extensions first (make_s67c_final.py)
+rc=3

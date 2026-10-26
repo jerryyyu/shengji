@@ -1,0 +1,2 @@
+test_s67c_read.py sha256 6a4d918dd9178e2640a0f162c8b572b56ab6d8599a47e62e74d5bded7bed4656 (from s66b's test_s66b_read.py 53e1efec: 49 asserted edits)
+# regenerated 2026-10-26T01:24:06Z in a temp copy of this folder: make_s67c.py, make_s67c_read.py and make_s67c_tests.py reproduce claude_s67c_perf.sh, s67c_read.py and test_s67c_read.py byte for byte (cmp)

@@ -1,0 +1,2 @@
+[243160000, 243160002) is disjoint from every registered window
+smoke window check rc=0

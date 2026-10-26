@@ -6,7 +6,7 @@ caps 2e8, play budget 60 s, no lgfd; everything else R48's, the latency switches
 Codex-PASSed S61 reader) with the arms, the binding, the zero play / belief fallback ceilings and the S61 comparison lines changed; the
 read is predeclare_s69.md's, evaluated as written there.
 
-  python3 s69_read.py <output root> <lane status> <reservation> <out.json>      (host mode: the three paths must be TRUSTED's)
+  python3 s69_read_r2.py <output root> <lane status> <reservation> <out.json>      (host mode: the three paths must be TRUSTED's)
   python3 s69_read.py --check-imports                                            (loads the pinned helpers beside this file; no input)
 
 BINDING (refuses, first): reader_lib.bind_inputs (the root, status and reservation are the reserved dispatch paths; the reservation names
@@ -17,7 +17,8 @@ stop) and one 'DEV END rc=0' line before it; <root>/duel.jsonl's sha256 equals i
 INTEGRITY (refuses; no number is written): s61dev's (arm identity, no override fired, the pinned names, exactly DEALS seeds x 2 mirrors, the
 r2 plan per deal, the 19-field dhist and its row schema on both sides with exact_deep_cards 8 on the exploiter and 7 on the defender, the
 reconciliations, no defender 8-card stage, at least one complete exploiter 8-card lead and follow, the declare / bury producer shapes at
-64 / 32 / K <= 64 on both sides), plus the decision trace (trace_gate) and the first-divergence form (the same state, two policies).
+64 / 32 / K <= 64 on both sides), plus the decision trace (trace_gate), the play history (history_gate: --history's buried / history / failed_detail on every row,
+reconciled with the trace) and the first-divergence form (the same state, two policies).
 VALIDITY (validity.py on BOTH arms, before any outcome; a failure -> DEV_INVALID and no outcome): arm_fault_ceilings (ZERO play fallbacks
 and ZERO belief fallbacks on each side; bury fallbacks <= 1% of the side's buries; declare abandons <= 1% of its declare evaluations; one
 ceilings mapping for both arms), worlds_delivered (every search record reports the side's play worlds: 256 exploiter / 64 defender),
@@ -79,12 +80,12 @@ CAND = "pv-search-491ee4bf-w256-k32-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef
 EX_ENV = "SHENGJI_PV_WORLDS=256 SHENGJI_PV_CANDIDATES=32 SHENGJI_PV_EXACT_DEEP_CARDS=8 SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 SHENGJI_PV_SERVING_BUDGET_SECONDS=60 SHENGJI_PV_LEAF_GREEDY_DEADLINE="   # the launcher's EX_ENV
 SEED0, DEALS, WORKERS, KILL_AFTER, BACKSTOP = 311060910, 600, 12, 28800, 28810
 LANE = "s69"
-TRUSTED = dict(lane=LANE, launcher_sha256="e3c25940c56dc989ab5c1a17eb0f8e3e29f8f2768cf040a6cc3ea2b5676a95a5", host="shengji-cloud",
+TRUSTED = dict(lane=LANE, launcher_sha256="726a8af097551ff77b996e741ce070605bf50838b4d045f72fc6cab8b9cac802", host="shengji-cloud",
                root="/root/vol-dev-claude-s69-r48-20261026", status="/root/claude_s69_screen.status",
-               reservation="/root/claude_reservations/s69.json")   # the launcher's OUT and S, its reservation; launcher_sha256 = the RELEASE token
+               reservation="/root/claude_reservations/s69_r2.json")   # the launcher's OUT and S, its reservation; launcher_sha256 = the RELEASE token
 TERMINAL = "s69 DEV output sealed; rc/status only (strength qualification is reader-owned); LANE DONE"   # the launcher's final say, minus the stamp
 START = (f"{LANE} DEV start: defender {R48} (R48 as served) vs exploiter {CAND} (S69 exploiter: {EX_ENV}); deals {DEALS} seed0 {SEED0} plan r2, "
-         f"paired and seat-swapped; workers {WORKERS}; group KILL at {KILL_AFTER} s (backstop {BACKSTOP} s)")   # the launcher's DEV start say, minus the stamp
+         f"paired and seat-swapped, play histories kept (--history); workers {WORKERS}; group KILL at {KILL_AFTER} s (backstop {BACKSTOP} s)")   # the launcher's DEV start say, minus the stamp
 RANKS13 = ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
 FIRST_INDICES = (0, 3, 5, 8)
 #: the predeclared read: head-to-head words by the CI; the loss-cell flag; the validity ceilings (ONE mapping, on BOTH arms: zero play and belief fallbacks)
@@ -435,6 +436,31 @@ def trace_gate(by):
             hist = r["dhist"][side]
             if len(mine) != len(hist) or any(h[LEAD] is not e[3] or not (type(h[MAXH]) is int and h[MAXH] >= e[4]) for e, h in zip(mine, hist)):
                 refuse(f"dtrace vs dhist: {w} side {side} ({len(mine)} plays vs {len(hist)} dhist entries, or a lead flag / hand disagrees)")
+        history_gate(r, w, bury, plays, failed)
+
+
+def history_gate(r, w, bury, plays, failed):
+    """s69 runs the producer with --history (the same-root replay fixtures need it; S61's extraction was refused without it): every row
+    carries buried (the banker's 8 buried cards = the trace's bury entry), history ([seat, cards actually played] per play, one per trace
+    play, the same seat; the same cards, or for a failed throw (failed_throws) a proper subset of the chosen cards) and failed_detail
+    ([play index, seat, chosen, actual] for exactly the failed throws).  Anything else refuses."""
+    b, hist, fd = r.get("buried"), r.get("history"), r.get("failed_detail")
+    if not (isinstance(b, list) and isinstance(hist, list) and isinstance(fd, list)):
+        refuse(f"history form: {w} (buried / history / failed_detail missing: the producer ran without --history)")
+    if sorted(b) != bury[5]:
+        refuse(f"history buried: {w} buried {sorted(b)!r:.120} differs from the trace's bury {bury[5]!r:.120}")
+    if len(hist) != len(plays):
+        refuse(f"history length: {w} {len(hist)} history entries vs {len(plays)} trace plays")
+    for k, (h, e) in enumerate(zip(hist, plays)):
+        ok = isinstance(h, list) and len(h) == 2 and h[0] == e[1] and isinstance(h[1], list) and all(type(c) is str for c in h[1])
+        if ok and k not in failed:
+            ok = sorted(h[1]) == e[5]
+        elif ok:
+            ok = 0 < len(h[1]) < len(e[5]) and set(h[1]) <= set(e[5])
+        if not ok:
+            refuse(f"history play: {w} play {k}: history {h!r:.120} vs trace {e[:2] + e[5:]!r:.120}")
+    if sorted(f[0] for f in fd if isinstance(f, list) and len(f) == 4) != sorted(failed) or len(fd) != len(failed):
+        refuse(f"history failed_detail: {w} lists {[f[0] if isinstance(f, list) and f else f for f in fd]!r:.120}, failed_throws {sorted(failed)!r}")
 
 
 def first_divergence(t0, t1, where):

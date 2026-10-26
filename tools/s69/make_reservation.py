@@ -33,9 +33,10 @@ def main(argv=None):
     m = re.search(r'^SEED0=(\d+); DEALS=(\d+);', reh, re.M)
     assert m, 'rehearse_s69_cloud.sh: no SEED0= / DEALS= line'
     rec = {'schema': 'claude-reservation-v1', 'lane': v['LANE'], 'launcher_sha256': sha, 'host': 'shengji-cloud',
-           'output_root': v['OUT'], 'status': v['S'], 'release': v['RELEASE'], 'reservation_path': f"/root/claude_reservations/{v['LANE']}.json",
+           'output_root': v['OUT'], 'status': v['S'], 'release': v['RELEASE'], 'reservation_path': f"/root/claude_reservations/{v['LANE']}_r2.json", 'revision': 'r2',
            'seed0': int(v['SEED0']), 'count': int(v['DEALS']), 'reader': 'Claude', 'authority_ref': AUTHORITY,
-           'auxiliary_windows': [{'purpose': 'host rehearsal (non-scientific)', 'seed0': int(m.group(1)), 'count': int(m.group(2))},
+           'auxiliary_windows': [{'purpose': 'host rehearsal r1/r2 (non-scientific)', 'seed0': 311960000, 'count': 36},
+                                 {'purpose': 'host rehearsal r3, --history (non-scientific)', 'seed0': int(m.group(1)), 'count': int(m.group(2))},
                                  {'purpose': 'local smoke (non-scientific)', 'seed0': 311970000, 'count': 4}]}
     if os.path.exists(OUT) and '--force' not in argv:
         raise SystemExit(f'REFUSING: {OUT} exists (pass --force to regenerate from the current launcher)')

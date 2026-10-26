@@ -1,0 +1,50 @@
+--- superseded-r1/claude_s69_cloud.sh	2026-10-26 09:18:47
++++ claude_s69_cloud.sh	2026-10-26 09:18:47
+@@ -6,6 +6,9 @@
+ # Everything else is R48's on BOTH sides: S58 at its stored temperature, dtrx, lgf, lgfx, the declare and bury knobs (bury budget 2 s), and
+ # the three fly.toml latency switches (the harness's served_env exports fly.toml's SHENGJI_* keys; the bot factory binds the switches for
+ # every bot).  The r2 rank-mixed plan per deal, 600 fresh deals 311060910..311061509, both sides from the cloud tree /root/claude-main-56.
++# Revision r2 (2026-10-26, before any lane deal): the child also runs with --history (every row keeps buried / history / failed_detail),
++# so S69's top cells can feed same-root replay fixtures (S61's extraction was refused because its producer ran without it); staged as
++# /root/claude_s69_r2_cloud.sh (r1 e3c25940, staged as /root/claude_s69_cloud.sh, is superseded and never armed).
+ # WHAT RUNS.  One child: /root/claude-s69/exploit_duel_s61.py (the reviewed resumable S61 producer, verbatim, b15d292f; sha-pinned below
+ # with hypotheses.py), --arm identity, 12 workers, a KILL_AFTER-second hard stop and a BACKSTOP-second watchdog.  Every deal is played
+ # twice with the teams swapped; per-(deal, seat) seeds do not depend on the arm or the mirror.  Child output is sealed for the separate
+@@ -15,8 +18,8 @@
+ # child launch is factored into run_child so the host rehearsal (rehearse_s69_cloud.sh) runs the same bytes.  FRESH runs only: an existing
+ # output root refuses; reopening an interrupted run through the producer's resume binding is a separate, separately authorized step.
+ # Dispatch requires the exact launcher SHA in a Claude-owned RELEASE, no HOLD, and exclusive host ownership.  This file grants no authority.
+-#   Usage ON shengji-cloud:  DRYRUN=1 bash /root/claude_s69_cloud.sh
+-#     nohup setsid bash /root/claude_s69_cloud.sh > /root/claude_s69_cloud.nohup 2>&1 < /dev/null &      (arms; waits for the RELEASE)
++#   Usage ON shengji-cloud:  DRYRUN=1 bash /root/claude_s69_r2_cloud.sh
++#     nohup setsid bash /root/claude_s69_r2_cloud.sh > /root/claude_s69_r2_cloud.nohup 2>&1 < /dev/null &      (arms; waits for the RELEASE)
+ #     then the RELEASE (Claude, after Codex's PASS): printf '%s\n' <this file's sha256> > /root/claude_s69.RELEASE
+ 
+ set -u
+@@ -260,7 +263,7 @@
+       NUMEXPR_NUM_THREADS=1 PYTHONPATH="$R/server" \
+       FIND_GAPS_SERVER="$R/server" FIND_GAPS_PKG=/root/models/smv3out-491ee4bf.npz FIND_GAPS_PATH_MAP="$PATH_MAP" \
+       timeout --signal=KILL "$KILL_AFTER" "$TIME_BIN" -v -o "$OUT/duel.time" \
+-      "$PY" -B "$DUEL" --arm identity --seed0 "$SEED0" --deals "$DEALS" --workers "$WORKERS" --round-plan "$PLAN" --out "$OUT/duel.jsonl" \
++      "$PY" -B "$DUEL" --arm identity --seed0 "$SEED0" --deals "$DEALS" --workers "$WORKERS" --round-plan "$PLAN" --history --out "$OUT/duel.jsonl" \
+       --exploiter-env SHENGJI_PV_WORLDS=256 --exploiter-env SHENGJI_PV_CANDIDATES=32 --exploiter-env SHENGJI_PV_EXACT_DEEP_CARDS=8 --exploiter-env SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 --exploiter-env SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 --exploiter-env SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 --exploiter-env SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 --exploiter-env SHENGJI_PV_SERVING_BUDGET_SECONDS=60 --exploiter-env SHENGJI_PV_LEAF_GREEDY_DEADLINE= \
+       > "$OUT/duel.stdout" 2> "$OUT/duel.stderr" < /dev/null ) &
+   pid=$!; RUN_PGID=$pid
+@@ -288,7 +291,7 @@
+   FIRST_DISPATCH_DONE=1
+   [ ! -e "$OUT/duel.jsonl" ] && [ ! -e "$OUT/duel.stdout" ] || die "DEV output already exists in $OUT"
+   install_lane_traps
+-  say "$LANE DEV start: defender $COMBO_NAME (R48 as served) vs exploiter $CAND_NAME (S69 exploiter: $EX_ENV); deals $DEALS seed0 $SEED0 plan $PLAN, paired and seat-swapped; workers $WORKERS; group KILL at $KILL_AFTER s (backstop $BACKSTOP s)"
++  say "$LANE DEV start: defender $COMBO_NAME (R48 as served) vs exploiter $CAND_NAME (S69 exploiter: $EX_ENV); deals $DEALS seed0 $SEED0 plan $PLAN, paired and seat-swapped, play histories kept (--history); workers $WORKERS; group KILL at $KILL_AFTER s (backstop $BACKSTOP s)"
+   run_child
+ }
+ 
+@@ -302,7 +305,7 @@
+     NAMES_LINE=$(check_names) || exit 3
+     echo "DRYRUN ok (cloud): launcher sha256 $SELF_SHA; tree $R = $(git -C $R rev-parse HEAD) clean, built, compiled backend, extensions pinned ${EXT_ENGINE_SHA:0:8} / ${EXT_CWV_SHA:0:8} / ${EXT_ENDGAME_SHA:0:8}; no predecessor gate (host-lock order)"
+     echo "DRYRUN ok (cloud): fly.toml sha256 $FLY_SHA serves $COMBO_NAME; harness $DUEL sha256 $DUEL_SHA + $HYP sha256 $HYP_SHA; packages sha-verified; $NAMES_LINE"
+-    echo "DRYRUN ok (cloud): $WORKERS workers, deals $DEALS seed0 $SEED0 plan $PLAN (paired, seat-swapped; exploiter = S69 exploiter: $EX_ENV, defender = R48 as served), setsid + timeout --signal=KILL $KILL_AFTER (backstop $BACKSTOP); out $OUT ($([ -e $OUT ] && echo PRESENT || echo absent)); MemAvailable $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) kB (need $MEM_MIN_KB)"
++    echo "DRYRUN ok (cloud): $WORKERS workers, deals $DEALS seed0 $SEED0 plan $PLAN (paired, seat-swapped, --history; exploiter = S69 exploiter: $EX_ENV, defender = R48 as served), setsid + timeout --signal=KILL $KILL_AFTER (backstop $BACKSTOP); out $OUT ($([ -e $OUT ] && echo PRESENT || echo absent)); MemAvailable $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) kB (need $MEM_MIN_KB)"
+     echo "DRYRUN ok (cloud): host lock $([ -e $HOSTLOCK ] && echo "PRESENT ($(cat $HOSTLOCK/owner 2>/dev/null))" || echo absent); RELEASE $([ -e $RELEASE ] && echo PRESENT || echo absent); HOLD $([ -e $HOLD ] && echo PRESENT || echo absent); status $([ -e $S ] && echo PRESENT || echo absent)"
+     exit 0
+   fi

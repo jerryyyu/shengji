@@ -1,1 +1,2 @@
-host read of the r2 rehearsal rows (staged reader, cloud python; non-lane rows, bound=None): validity VALID [] | attribution ATTRIBUTION_OK | canonical lines 22 | versus-S61 lines 11
+host read of the r3 (--history) rehearsal rows (staged reader s69_read_r2.py, cloud python; non-lane rows, bound=None): validity VALID [] | attribution ATTRIBUTION_OK | canonical lines 22 | versus-S61 lines 11
+negative control: the r2 rehearsal rows (launcher r1, no --history) refused: REFUSING: history form: seed 311960000 mirror 0 (buried / history / failed_detail missing: the producer ran without --history)

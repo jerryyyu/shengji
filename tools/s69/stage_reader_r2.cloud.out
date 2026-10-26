@@ -1,0 +1,17 @@
+run paths clear (1 paths): /root/claude-s69/STAGED.reader-r2.sha256
+copy /root/claude-s69/s69_read_r2.py
+identical /root/claude-s69/reader_lib.py
+identical /root/claude-s69/validity.py
+identical /root/claude-s69/row_schema.py
+identical /root/claude-s69/compare_runs.py
+identical /root/claude-s69/s61_reference.json
+copy /root/claude_reservations/s69_r2.json
+/root/claude-s69/s69_read_r2.py: OK
+/root/claude-s69/reader_lib.py: OK
+/root/claude-s69/validity.py: OK
+/root/claude-s69/row_schema.py: OK
+/root/claude-s69/compare_runs.py: OK
+/root/claude-s69/s61_reference.json: OK
+/root/claude_reservations/s69_r2.json: OK
+STAGED ok (reader-r2): 7 files verified on the host, read-only
+NEXT, ON cloud: /root/gen-hybrid/server/.venv/bin/python -B /root/claude-s69/s69_read_r2.py --check-imports

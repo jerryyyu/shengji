@@ -4,6 +4,12 @@ Written 2026-10-26 (UTC) by Claude, before any s69 lane deal is played and befor
 smoke (4 deals, 311970000–311970003) and the host rehearsal (36 deals, 311960000–311960035), both throwaway windows. The reader
 (`s69_read.py`) evaluates the read exactly as written here.
 
+**Revision r2** (2026-10-26, still before any lane deal): the producer runs with `--history`, so every row keeps `buried`, `history`
+and `failed_detail`, and S69's top cells can feed same-root replay fixtures. S61's extraction was refused because its producer ran
+without it. The reader gains a history gate that refuses a row without these fields or with fields inconsistent with the trace. The
+launcher is `claude_s69_r2_cloud.sh`, the reader `s69_read_r2.py`, the reservation `s69_r2.json`. The read, arms, seeds and thresholds
+are r1's. The r3 host re-rehearsal (12 deals) measured the cost of `--history`; r1's files are in `superseded-r1/`.
+
 **Why.** Board row S69: where does R48 lose now? S61 ran against release 46, whose top loss cells R48 has since absorbed (S58, dtrx, lgf,
 the sc8 path). This lane re-runs the S61 design against R48 to find the gap again. Tier i DEV under `RL_PLAN.md` "Operating modes".
 
@@ -56,7 +62,7 @@ nine fields. It also asserts, on both sides: the three fly.toml latency switches
 
 | | |
 |---|---|
-| harness | `exploit_duel_s61.py` (`b15d292f…`, the reviewed resumable S61 producer, verbatim; the same bytes as s63dev–s66dev), `hypotheses.py` (`4365a15d…`), `--arm identity` |
+| harness | `exploit_duel_s61.py` (`b15d292f…`, the reviewed resumable S61 producer, verbatim; the same bytes as s63dev–s66dev), `hypotheses.py` (`4365a15d…`), `--arm identity`, **`--history`** (r2) |
 | pairing | Every deal is played twice with the teams swapped. The per-(deal, seat) seeds do not depend on the arm or the mirror. |
 | tree | `/root/claude-main-56` = origin/main `d33bfd70`, a fresh cloud build (`claude_build_main56_cloud.sh`, BUILD_RC=0). Its extensions are pinned in the launcher (`e3b22690` / `325d607f` / `776988da`). |
 | deals | **600**, seeds `311060910 … 311061509`, the r2 rank-mixed plan per deal (index % 10 ∈ {0,3,5,8}: first round at rank 2; otherwise a fixed banker at rank `RANKS13[index % 13]`), 12 workers |
@@ -76,7 +82,9 @@ nine fields. It also asserts, on both sides: the three fly.toml latency switches
   - the 19-field dhist row schema on both sides, with exact_deep_cards 8 on the exploiter and 7 on the defender;
   - the reconciliations, no defender 8-card exact stage, and at least one complete exploiter 8-card lead and follow;
   - declare / bury shapes at 64 / 32 / K ≤ 64 on both sides;
-  - the decision trace (`trace_gate`), and the first divergence differing in cards only.
+  - the decision trace (`trace_gate`), and the first divergence differing in cards only;
+  - (r2) the play history (`history_gate`): `buried` equals the trace's bury; one `history` entry per trace play by the same seat, with
+    the same cards (or, for a failed throw, a proper subset of the chosen ones); `failed_detail` covers exactly the failed throws.
 - **V, validity, on BOTH arms, before any outcome.**
   - `arm_fault_ceilings` with the one mapping above (play 0, belief 0, bury 1%, declare 1%);
   - `worlds_delivered`: every search record reports the side's play worlds, 256 on the exploiter and 64 on the defender;
@@ -142,6 +150,6 @@ of the deals), so the 0.02 flag resolves only for a large or a heavily one-sided
 ## Reading
 
 Once, after `LANE DONE`, on cloud, with the reader staged beside its pinned helpers:
-`/root/gen-hybrid/server/.venv/bin/python -B /root/claude-s69/s69_read.py /root/vol-dev-claude-s69-r48-20261026 /root/claude_s69_screen.status /root/claude_reservations/s69.json <out.json>`.
+`/root/gen-hybrid/server/.venv/bin/python -B /root/claude-s69/s69_read_r2.py /root/vol-dev-claude-s69-r48-20261026 /root/claude_s69_screen.status /root/claude_reservations/s69_r2.json <out.json>`.
 
 — Claude

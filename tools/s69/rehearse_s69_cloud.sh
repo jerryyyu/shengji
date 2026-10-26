@@ -2,17 +2,19 @@
 # s69 HOST REHEARSAL (non-scientific): runs the lane's OWN child form on shengji-cloud -- the staged launcher's run_child, byte for byte
 # (setsid process group, timeout --signal=KILL, /usr/bin/time -v, all 12 workers, the nine --exploiter-env arguments, both arms as the lane
 # builds them) -- after the lane's own dev_checks (packages, fly.toml + harness pins, compiled backend, check_names, MemAvailable) and under
-# the shared mkdir host lock + legacy marker, on the throwaway window 311960000..311960035 (36 deals; not the lane's seeds), into its own
+# the shared mkdir host lock + legacy marker, on the throwaway window 311960000..311960035 (r2: 36 deals; r3: the first 12; not the lane's seeds), into its own
 # output root.  It needs and writes no RELEASE: it is not the lane.  It refuses on a HOLD for the lane, an existing output / status, a
 # launcher whose sha256 is not the one passed, or a busy host (the host-lock wait is bounded at 300 s).  A background sampler records the
 # PEAK RSS of the child's whole process group every 5 s.  Terminal line: '<stamp> s69 REHEARSAL DONE rc=0 ...' (no LANE DONE).
 # r2 (2026-10-26): r1's post-run cleanup check matched its own awk command line (the awk argv held the "--out <OUT>/duel.jsonl" text it
 # searched for), so r1 REFUSED after a clean run; r2 passes the two halves of the pattern separately, so no process but the child's can hold
 # it contiguously, and uses r2 paths.  r1 is kept in superseded-r1/ and its host output in rehearsal/host-r1/.
+# r3 (2026-10-26): the --history re-rehearsal of launcher r2 (/root/claude_s69_r2_cloud.sh): the same child form on 12 of the rehearsal
+# window's throwaway deals (311960000..311960011), to measure the output-size and wall impact of --history against r2's 36-deal run; r3 paths.
 #   Usage ON shengji-cloud (detached):
-#     nohup setsid bash /root/claude-s69/rehearse_s69_cloud.r2.sh <sha256 of /root/claude_s69_cloud.sh> > /root/claude_s69_rehearsal_r2.nohup 2>&1 < /dev/null &
+#     nohup setsid bash /root/claude-s69/rehearse_s69_cloud.r3.sh <sha256 of /root/claude_s69_r2_cloud.sh> > /root/claude_s69_rehearsal_r3.nohup 2>&1 < /dev/null &
 set -u
-LAUNCHER=${REHEARSAL_LAUNCHER:-/root/claude_s69_cloud.sh}
+LAUNCHER=${REHEARSAL_LAUNCHER:-/root/claude_s69_r2_cloud.sh}
 WANT=${1:-}
 [[ "$WANT" =~ ^[0-9a-f]{64}$ ]] || { echo "REFUSING: pass the expected sha256 of $LAUNCHER"; exit 3; }
 [ -f "$LAUNCHER" ] && [ ! -L "$LAUNCHER" ] && [ "$(sha256sum "$LAUNCHER" | cut -d' ' -f1)" = "$WANT" ] || { echo "REFUSING: $LAUNCHER missing, symlinked or not $WANT"; exit 3; }
@@ -21,10 +23,10 @@ source "$LAUNCHER" || { echo "REFUSING: could not source $LAUNCHER"; exit 3; }
 unset LANE_FUNCTIONS_ONLY
 [ "$SELF_SHA" = "$WANT" ] || { echo "REFUSING: the sourced launcher hashed itself as $SELF_SHA, not $WANT"; exit 3; }
 # the rehearsal's own window, output root, status and stop (everything else is the lane's)
-OUT=$LANE_ROOT/vol-rehearsal-claude-s69-r2-20261026
-S=$LANE_ROOT/claude_s69_rehearsal_r2.status
-PEAK=$LANE_ROOT/claude_s69_rehearsal_r2.peak_rss_kb
-SEED0=311960000; DEALS=36; KILL_AFTER=5400; BACKSTOP=5410
+OUT=$LANE_ROOT/vol-rehearsal-claude-s69-r3-20261026
+S=$LANE_ROOT/claude_s69_rehearsal_r3.status
+PEAK=$LANE_ROOT/claude_s69_rehearsal_r3.peak_rss_kb
+SEED0=311960000; DEALS=12; KILL_AFTER=5400; BACKSTOP=5410
 WAIT_CEILING=300; LANE_SLEEP=10
 placeholder_guard
 verify_tree

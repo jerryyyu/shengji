@@ -2,71 +2,45 @@
  "attribution_status": "ATTRIBUTION_OK",
  "defender": {
   "belief_fallback": 0,
-  "buries": 36,
   "bury_fallback": 0,
-  "bury_seconds_p50_p99_max": [
-   0.37305,
-   0.40458500000000003,
-   0.4056
-  ],
   "decide_play_p50_p95_p99_max": [
-   0.08285000000000001,
-   0.592445,
-   0.927729999999999,
+   0.079,
+   0.5646249999999999,
+   0.839825,
    2.4003
   ],
-  "decisions": 2312,
+  "decisions": 776,
   "declare_abandoned": 0,
-  "declare_seconds_p50_p99_max": [
-   0.04215,
-   0.08563599999999995,
-   0.0985
-  ],
-  "declares": 108,
-  "failed_throws": 24,
-  "fallback": 0,
-  "search": 2312
+  "fallback": 0
  },
  "exploiter": {
   "belief_fallback": 0,
-  "buries": 36,
   "bury_fallback": 0,
-  "bury_seconds_p50_p99_max": [
-   0.37145,
-   0.40704,
-   0.4076
-  ],
-  "d8_follow_abandoned": 1,
-  "d8_follow_attempted": 52,
-  "d8_follow_complete": 51,
-  "d8_lead": 31,
-  "d8_lead_abandoned": 7,
-  "d8_lead_complete": 24,
-  "decide_play_maxhand8_p50_p95_p99_max": [
-   2.94035,
-   14.733550000000001,
-   43.823444999999985,
-   48.0005
-  ],
+  "d8_follow_attempted": 18,
+  "d8_follow_complete": 17,
+  "d8_lead": 11,
+  "d8_lead_complete": 8,
   "decide_play_p50_p95_p99_max": [
-   0.3899,
-   8.5527,
-   11.095473999999966,
-   48.0005
+   0.3672,
+   8.6401,
+   14.971475,
+   48.0037
   ],
-  "decisions": 2312,
+  "decisions": 776,
   "declare_abandoned": 0,
-  "declare_seconds_p50_p99_max": [
-   0.04245,
-   0.09345799999999993,
-   0.0991
-  ],
-  "declares": 108,
-  "failed_throws": 32,
-  "fallback": 0,
-  "search": 2312
+  "fallback": 0
  },
- "rows_sha256": "b5ad05798df987f475847cbf0ec8fcc97caffddb9b6cc830a6ff51161a4f9337",
+ "history_impact": {
+  "bytes_per_row_added": 1187.375,
+  "bytes_r2_same_deals": 384618,
+  "bytes_r3_history": 413115,
+  "deals": 12,
+  "decide_play_seconds_r2_same_deals": 1820.4127,
+  "decide_play_seconds_r3": 1829.6659,
+  "projected_full_run_bytes": 20655750.0,
+  "ratio": 1.074091696176466
+ },
+ "rows_sha256": "aa6306cd29f1c911f70daffc6fa75cbdf065702bf34a1f41edf7ad43e014d0f4",
  "validity": {
   "checks": [
    "arm_fault_ceilings",
@@ -89,42 +63,42 @@
     "counts": {
      "ex/belief_fallback": [
       0,
-      2312,
+      776,
       0.0
      ],
      "ex/bury_fallback": [
       0,
-      36,
+      12,
       0.01
      ],
      "ex/declare_abandon": [
       0,
-      108,
+      44,
       0.01
      ],
      "ex/play_fallback": [
       0,
-      2312,
+      776,
       0.0
      ],
      "r45/belief_fallback": [
       0,
-      2312,
+      776,
       0.0
      ],
      "r45/bury_fallback": [
       0,
-      36,
+      12,
       0.01
      ],
      "r45/declare_abandon": [
       0,
-      108,
+      44,
       0.01
      ],
      "r45/play_fallback": [
       0,
-      2312,
+      776,
       0.0
      ]
     },
@@ -132,8 +106,8 @@
    },
    "completion_shape": {
     "abandoned": 0,
-    "evaluated": 216,
-    "records": 216
+    "evaluated": 88,
+    "records": 88
    },
    "outcome_consistency": {
     "inconsistent": 0,
@@ -150,7 +124,7 @@
      "ex_attacker_points_signed",
      "ex_role"
     ],
-    "rows": 72
+    "rows": 24
    },
    "worlds_delivered": {
     "expected": {
@@ -161,10 +135,10 @@
      "ex": 0,
      "r45": 0
     },
-    "records": 4624,
+    "records": 1552,
     "search": {
-     "ex": 2312,
-     "r45": 2312
+     "ex": 776,
+     "r45": 776
     }
    }
   },

@@ -1,4 +1,4 @@
-launcher e3c25940c56dc989ab5c1a17eb0f8e3e29f8f2768cf040a6cc3ea2b5676a95a5; rehearsal 23cc183e46f447aed8e36e742f4162bedb4c30163bf8a887c00c8239d5cad0ac
+launcher 726a8af097551ff77b996e741ce070605bf50838b4d045f72fc6cab8b9cac802; rehearsal 836bed10055324d0abb2fa87b97a884c88d4ff4c0cbae5e039384972547e5299
 PASS run_dev refuses a planted duel.jsonl (rc 3), the child never starts, the file unchanged
 PASS run_dev refuses a planted duel.stdout (rc 3), the child never starts, the file unchanged
 PASS hold_guard refuses a HOLD file (rc 3)
@@ -10,7 +10,7 @@ PASS release_ok accepts the launcher's own sha256
 PASS predispatch_guard refuses a RELEASE removed before dispatch
 PASS take_host_lock takes the mkdir lock with an owner line; release_locks removes it
 PASS release_locks keeps a lock whose owner is another pid
-PASS main flow: output-root refusal (line 310) before the status (line 311), mkdir (line 325) and run_dev (line 333)
+PASS main flow: output-root refusal (line 313) before the status (line 314), mkdir (line 328) and run_dev (line 336)
 PASS no recovery or resume mode in the launcher (fresh runs only)
 PASS run_child's nine --exploiter-env arguments are EX_ENV's words in order
 PASS the DEV start line run_dev says is the reader's START (exact text)
@@ -19,7 +19,11 @@ PASS the rehearsal wrapper references no RELEASE file (it is not the lane)
 PASS the rehearsal does not redefine run_child, dev_checks, check_names or verify_tree
 PASS the rehearsal assigns only its window / paths / stop / wait knobs, the launcher's own run state, and its LAUNCHER / WANT / PEAK / SAMPLER: BACKSTOP= DEALS= KILL_AFTER= LANE_FUNCTIONS_ONLY= LANE_SLEEP= LAUNCHER= OUT= PEAK= RUN_RC= RUN_RSS= RUN_WALL= S= SAMPLER= SEED0= STATUS_OWNED= WAIT_CEILING= WAIT_START= WANT= 
 PASS r2 cleanup check: nothing alive -> empty (no self-match)
-PASS negative control: r1's cleanup check matches its own awk (the r1 refusal, reproduced: '[29570]')
-PASS r2 cleanup check finds a live process holding '--out <OUT>/duel.jsonl' (pid 29578)
+PASS negative control: r1's cleanup check matches its own awk (the r1 refusal, reproduced: '[41089]')
+PASS r2 cleanup check finds a live process holding '--out <OUT>/duel.jsonl' (pid 41097)
+PASS stage lane: an already-staged identical harness is accepted as identical and not copied again; the other files copied and verified
+PASS stage lane: a target with other bytes refuses (rc 3) before any copy, left unchanged
+PASS stage lane: an existing run path (status) refuses before any copy
+PASS run_child passes --history to the producer
 ALL PASS
 rc=0

@@ -1,21 +1,2 @@
 imports ok: ['compare_runs', 'reader_lib', 'row_schema', 'validity'] at their pinned sha256 from /root/claude-s69; s61_reference 5d567cebea8c (8 S61 cells)
 rc=0
--r--r--r-- 1 root root 789 Oct 26 13:04 /root/claude_reservations/s69.json
-
-/root/claude-s69/:
-total 324
-drwxr-xr-x   2 root root   4096 Oct 26 13:04 .
-drwx------ 322 root root 118784 Oct 26 13:04 ..
--r--------   1 root root    397 Oct 26 12:52 STAGED.lane.sha256
--r--------   1 root root    686 Oct 26 13:04 STAGED.reader.sha256
--r--------   1 root root    108 Oct 26 13:03 STAGED.rehearsal-r2.sha256
--r--r--r--   1 root root   5160 Oct 26 13:04 compare_runs.py
--r--r--r--   1 root root  28905 Oct 26 12:52 exploit_duel_s61.py
--r--r--r--   1 root root  16359 Oct 26 12:52 hypotheses.py
--r--r--r--   1 root root  19389 Oct 26 13:04 reader_lib.py
--r--r--r--   1 root root   5145 Oct 26 13:03 rehearse_s69_cloud.r2.sh
--r--r--r--   1 root root   4637 Oct 26 12:52 rehearse_s69_cloud.sh
--r--r--r--   1 root root   9636 Oct 26 13:04 row_schema.py
--r--r--r--   1 root root   2589 Oct 26 13:04 s61_reference.json
--r--r--r--   1 root root  59320 Oct 26 13:04 s69_read.py
--r--r--r--   1 root root  19964 Oct 26 13:04 validity.py

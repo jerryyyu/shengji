@@ -1,0 +1,1 @@
+host read of the r2 rehearsal rows (staged reader, cloud python; non-lane rows, bound=None): validity VALID [] | attribution ATTRIBUTION_OK | canonical lines 22 | versus-S61 lines 11

@@ -143,6 +143,10 @@ def deal_rows(rng, seed, delta, div, failed_first=False):
                  dsecs=secs, dhist=hist, declare_recs={s: [declare_rec(rng, s) for _ in range(rng.randint(1, 3))] for s in ('ex', 'r45')},
                  bury_rec=bury_rec(rng, bside), dtrace=t)
         r.update(outcome(rng, b, m, Ls[m]))
+        # --history's fields (s69 r2): the buried cards, [seat, cards actually played] per play (a failed first lead plays 1 of its 2), failed_detail
+        r['buried'] = list(t[104][5])
+        r['history'] = [[e[1], e[5][:1] if (failed_first and k == 0) else list(e[5])] for k, e in enumerate(plays)]
+        r['failed_detail'] = [[0, plays[0][1], list(plays[0][5]), plays[0][5][:1]]] if failed_first else []
         out.append(r)
     return out
 
@@ -402,6 +406,14 @@ o = run(rows(undiverged={7: 1}))
 check('T4 ATTRIBUTION_INVALID: no versus-S61 line (the comparison needs the cell tables)', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']))
 rs = rows(); to_fallback(rs[10]['dhist']['ex'][3]); o = run(rs)
 check('T4 DEV_INVALID: no versus-S61 line and no outcome', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']) and o['levels'] is None)
+rs = rows(); del rs[4]['history']; refused('T5 a row without history (the producer ran without --history) refused', 'history form', rs)
+rs = rows(); rs[4]['history'].pop(); refused('T5 a history one play short of the trace refused', 'history length', rs)
+rs = rows(); rs[4]['history'][7][0] = (rs[4]['history'][7][0] + 1) % 4; refused('T5 a history play by another seat refused', 'history play', rs)
+rs = rows(); rs[4]['history'][7][1] = ['ZZ']; refused('T5 a history play with other cards refused', 'history play', rs)
+rs = rows(); rs[4]['buried'] = rs[4]['buried'][:7] + ['QQ']; refused('T5 buried cards differing from the trace bury refused', 'history buried', rs)
+rs = rows(failed_first=(3,)); rs[6]['failed_detail'] = []; refused('T5 a failed throw missing from failed_detail refused', 'history failed_detail', rs)
+rs = rows(failed_first=(3,)); rs[6]['history'][0][1] = list(rs[6]['dtrace'][105][5]); refused('T5 a failed throw whose history plays every chosen card refused', 'history play', rs)
+o = run(rows(failed_first=(3, 4))); check('T5 failed throws with a consistent history / failed_detail accepted', o['bar']['verdict'] == 'EXPLOITER_AHEAD', o['bar']['verdict'])
 for l in cmp[:3]:
     print('  ', l[:300])
 

@@ -46,14 +46,16 @@ def launcher_vars(names):
 L = os.path.join(H, 'claude_s69_cloud.sh')
 v = launcher_vars(['LANE', 'OUT', 'S', 'RELEASE', 'SEED0', 'DEALS', 'WORKERS', 'KILL_AFTER', 'BACKSTOP', 'COMBO_NAME', 'CAND_NAME', 'EX_ENV', 'DUEL', 'DUEL_SHA',
                    'HYP', 'HYP_SHA', 'TREE_HEAD_FULL', 'FLY_SHA', 'R'])
+check('the launcher runs the producer with --history (r2)', '--round-plan "$PLAN" --history --out' in open(L).read())
 lsha = sha(L)
 res = json.load(open(os.path.join(H, 'reservation_s69.json')))
 reh = open(os.path.join(H, 'rehearse_s69_cloud.sh')).read()
 m = re.search(r'^SEED0=(\d+); DEALS=(\d+);', reh, re.M)
 check('reservation = the launcher (sha, lane, OUT, S, RELEASE, SEED0, DEALS) with reader Claude and the rehearsal window read from the wrapper',
       res['launcher_sha256'] == lsha and res['lane'] == v['LANE'] == 's69' and res['output_root'] == v['OUT'] and res['status'] == v['S'] and res['release'] == v['RELEASE']
-      and res['seed0'] == int(v['SEED0']) and res['count'] == int(v['DEALS']) and res['reader'] == 'Claude' and res['reservation_path'] == '/root/claude_reservations/s69.json'
-      and m and res['auxiliary_windows'][0]['seed0'] == int(m.group(1)) and res['auxiliary_windows'][0]['count'] == int(m.group(2)), res)
+      and res['seed0'] == int(v['SEED0']) and res['count'] == int(v['DEALS']) and res['reader'] == 'Claude' and res['reservation_path'] == '/root/claude_reservations/s69_r2.json' and res['revision'] == 'r2'
+      and m and res['auxiliary_windows'][1]['seed0'] == int(m.group(1)) and res['auxiliary_windows'][1]['count'] == int(m.group(2))
+      and res['auxiliary_windows'][0] == {'purpose': 'host rehearsal r1/r2 (non-scientific)', 'seed0': 311960000, 'count': 36}, res)
 spec = importlib.util.spec_from_file_location('s69_read', os.path.join(H, 's69_read.py')); rd = importlib.util.module_from_spec(spec); spec.loader.exec_module(rd)
 check("the reader's TRUSTED = the launcher's sha / OUT / S and the reservation path; host shengji-cloud",
       rd.TRUSTED == dict(lane='s69', launcher_sha256=lsha, host='shengji-cloud', root=v['OUT'], status=v['S'], reservation=res['reservation_path']), rd.TRUSTED)
@@ -73,7 +75,8 @@ rec = json.load(open(S61_RECEIPT))
 check("the S61 reference: its sha is the reader's S61_REFERENCE_SHA256; its source is the archived S61 result.json at the receipt's result_sha256",
       sha(os.path.join(H, 's61_reference.json')) == rd.S61_REFERENCE_SHA256 and ref['source']['sha256'] == sha(S61_RESULT) == rec['result_sha256']
       and ref['levels'] == json.load(open(S61_RESULT))['levels'], (ref['source'], rec['result_sha256']))
-wins = [(int(v['SEED0']), int(v['DEALS'])), (int(m.group(1)), int(m.group(2))), (311970000, 4)]
+wins = [(int(v['SEED0']), int(v['DEALS'])), (311960000, 36), (311970000, 4)]   # r3's 12 deals lie inside the 36-deal rehearsal window
+check('the r3 rehearsal window lies inside the r1/r2 rehearsal window', 311960000 <= int(m.group(1)) and int(m.group(1)) + int(m.group(2)) <= 311960036, m.groups())
 check('the lane, rehearsal and smoke windows are pairwise disjoint', all(a + n <= b or b + k <= a for i, (a, n) in enumerate(wins) for (b, k) in wins[i + 1:]), wins)
 fly = subprocess.run(['git', '-C', REPO, 'show', f"{v['TREE_HEAD_FULL']}:fly.toml"], capture_output=True, check=True).stdout
 main = subprocess.run(['git', '-C', REPO, 'merge-base', '--is-ancestor', v['TREE_HEAD_FULL'], 'origin/main'], capture_output=True).returncode

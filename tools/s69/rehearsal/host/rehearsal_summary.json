@@ -2,15 +2,15 @@
  "schema": "lane-host-rehearsal-summary-v1",
  "host": "shengji-cloud",
  "workers": 12,
- "deals": 36,
- "wall_s": 523.1,
- "s_per_deal": 14.531,
+ "deals": 12,
+ "wall_s": 213.4,
+ "s_per_deal": 17.783,
  "full_run_deals": 600,
- "projected_full_wall_s": 10897.9,
+ "projected_full_wall_s": 13337.5,
  "cap_s": 28800,
- "peak_rss_kb": 3996948,
- "terminal_line": "s69 REHEARSAL DONE rc=0 wall_s=523.1 deals=36 workers=12",
- "cleanup": "s69 REHEARSAL cleanup: no process names /root/vol-rehearsal-claude-s69-r2-20261026/duel.jsonl; run group reaped (run_child's sweep found no live member)",
+ "peak_rss_kb": 3577076,
+ "terminal_line": "s69 REHEARSAL DONE rc=0 wall_s=213.4 deals=12 workers=12",
+ "cleanup": "s69 REHEARSAL cleanup: no process names /root/vol-rehearsal-claude-s69-r3-20261026/duel.jsonl; run group reaped (run_child's sweep found no live member)",
  "log": "rehearse.log",
- "note": "the lane child form (run_child of launcher e3c25940) on the throwaway window 311960000+36; projection = s/deal x 600 x 1.25 (straggler margin; the stop 28800 s is 2.6x it); largest single process (time -v) 490312 kB; validity on these rows VALID; play fallbacks ex 0 / def 0, belief fallbacks ex 0 / def 0, bury fallbacks ex 0 / def 0, declare abandons ex 0 / def 0; decide_play max ex 48.0005 s (p50/p95/p99 [0.3899, 8.5527, 11.095473999999966]) / def 2.4003 s; exploiter 8-card exact leads 24/31 complete, follows 51/52; bury s max ex 0.4076 / def 0.4056; declare s max ex 0.0991 / def 0.0985"
+ "note": "r3 = the --history re-rehearsal of launcher r2 726a8af0 (run_child with --history) on 311960000+12; projection = max(r3 17.78, r2 14.53 s/deal) x 600 x 1.25 (the stop 28800 s is 2.2x it). --history impact on the SAME 12 deals vs r2 (no --history, host-r2/): duel.jsonl 413,115 vs 384,618 bytes (x1.074, +1,187 bytes/row; full run ~20.7 MB vs ~19.2 MB); summed decide_play seconds 1829.7 vs 1820.4 (x1.005; the history list is appended per play, no search change); wall r3 213.4 s for 12 deals vs r2 523.1 s for 36. Validity on r3 rows VALID (history gate passed); play fallbacks ex 0 / def 0, belief ex 0 / def 0; decide_play max ex 48.0037 s / def 2.4003 s; largest single process 494656 kB"
 }

@@ -1,5 +1,5 @@
 --- test_s61dev_read.base.py	2026-10-26 08:46:02
-+++ test_s69_read.py	2026-10-26 08:49:25
++++ test_s69_read.py	2026-10-26 09:20:32
 @@ -1,5 +1,7 @@
  #!/usr/bin/env python3
 -"""s61dev reader end-to-end check on SYNTHETIC rows (no deal is played).  A generator writes duel.jsonl rows in exploit_duel_s61.py's record
@@ -45,7 +45,7 @@
      if terminal:
          lines.append(f'{TS0} {rd.TERMINAL}')
      return '\n'.join(lines) + '\n'
-@@ -136,7 +139,7 @@
+@@ -136,10 +139,14 @@
          r = dict(arm='identity', seed=seed, mirror=m, ex_team=m, round_kind=kind, trump_rank=rank, planned_banker=planned, banker=b,
                   ex_role='banker' if b % 2 == m else 'attacker', trump='S', declaration=None, declares=declares,
                   failed_throws=[[0, t[105][1], t[105][1] % 2 == m]] if failed_first else [],
@@ -54,7 +54,14 @@
                   dsecs=secs, dhist=hist, declare_recs={s: [declare_rec(rng, s) for _ in range(rng.randint(1, 3))] for s in ('ex', 'r45')},
                   bury_rec=bury_rec(rng, bside), dtrace=t)
          r.update(outcome(rng, b, m, Ls[m]))
-@@ -185,14 +188,27 @@
++        # --history's fields (s69 r2): the buried cards, [seat, cards actually played] per play (a failed first lead plays 1 of its 2), failed_detail
++        r['buried'] = list(t[104][5])
++        r['history'] = [[e[1], e[5][:1] if (failed_first and k == 0) else list(e[5])] for k, e in enumerate(plays)]
++        r['failed_detail'] = [[0, plays[0][1], list(plays[0][5]), plays[0][5][:1]]] if failed_first else []
+         out.append(r)
+     return out
+ 
+@@ -185,14 +192,27 @@
      print(('PASS' if ok else 'FAIL'), label, str(detail)[:300]); fails += int(not ok)
  
  
@@ -90,7 +97,7 @@
  
  
  def refused(label, want, rs, **kw):
-@@ -220,7 +236,7 @@
+@@ -220,7 +240,7 @@
      want_cls[{'D': 'declare', 'F': 'declare', 'B': 'bury'}.get(e[0]) or ('lead' if e[3] else 'follow')] += 1
  check('T1 the class counts equal an independent recount of the first divergences', {c['cell']: c['deals'] for c in at['tables']['class']} == want_cls, want_cls)
  check('T1 the top decile holds ceil(N/10) deals and 20 listed wins with both actions', at['top_decile']['deals'] == 60 and len(at['top_decile']['largest_wins']) == 20
@@ -99,7 +106,7 @@
  cl = out['canonical_lines']
  check('T1 canonical lines carry the numbers, the verdict and the attribution', any(f'{m:+.4f}' in l for l in cl) and any('Verdict EXPLOITER_AHEAD' in l for l in cl) and any(l.startswith('Top-3 loss cells') for l in cl), cl[:2])
  for l in cl:
-@@ -240,7 +256,13 @@
+@@ -240,7 +260,13 @@
      h[0] = '-fallback-v1'; h[1:8] = [None] * 7; h[10:19] = [None] * 9
  for side, who in (('ex', 'exploiter'), ('r45', 'defender')):
      rs = rows(); to_fallback(rs[10]['dhist'][side][3])
@@ -114,7 +121,7 @@
      rs = rows()
      for r in rs[:200]:
          to_fallback(r['dhist'][side][1])
-@@ -274,7 +296,7 @@
+@@ -274,7 +300,7 @@
        not (finding_keys & o['attribution'].keys()) and o['levels'] is not None and o['points'] is not None
        and o['attribution']['not_diverged_nonzero'] == 1 and o['bar']['flags'] == [], o['attribution'])
  check('T2 ATTRIBUTION_INVALID suppresses rendered attribution findings but keeps the read diagnostic',
@@ -123,7 +130,7 @@
        and any('Attribution ATTRIBUTION_INVALID' in l for l in o['canonical_lines'])
        and not any(any(fragment in l for fragment in finding_lines) for l in o['canonical_lines']), o['canonical_lines'])
  o = run(rows(undiverged={7: 0, 9: 0}))
-@@ -287,9 +309,9 @@
+@@ -287,9 +313,9 @@
  refused('T3 an ABORT line in the status refused', 'terminal: the lane failed', rs, status=status_text(abort=True))
  refused('T3 no terminal line refused', 'exact terminal lines', rs, status=status_text(terminal=False))
  refused('T3 DEV END rc=1 refused', 'status: need one DEV start line', rs, status=status_text(rc=1))
@@ -135,7 +142,7 @@
  rs = rows(); del rs[4]['dtrace']; refused('T3 a row without dtrace refused', 'dtrace form', rs)
  rs = rows(); rs[4]['dtrace'][3] = rs[4]['dtrace'][3][:5]; refused('T3 a 5-field trace entry refused', 'dtrace entry form', rs)
  rs = rows(); rs[4]['dtrace'][110][5] = ['Z9', 'A1']; refused('T3 unsorted cards refused', 'dtrace entry form', rs)
-@@ -313,7 +335,7 @@
+@@ -313,7 +339,7 @@
  rs[2 * i + 1]['dtrace'][41][4] = 24
  refused('T3 a first divergence that differs in state, not only in cards, refused', 'divergence form', rs)
  rs = rows(); rs[7]['defender'] = rd.CAND; refused('T3 a wrong defender name refused', 'defender', rs)
@@ -144,7 +151,7 @@
  rs = rows(); rs.append(copy.deepcopy(rs[3])); refused('T3 a duplicate row refused', 'duplicate row', rs)
  rs = rows(); del rs[7]; refused('T3 a missing mirror refused', 'deals:', rs)
  rs = rows(); rs[2]['dhist']['ex'][0][10] = 7; refused('T3 an exploiter search decision with exact_deep_cards 7 refused', 'field 10=7 fails one_of(8,)', rs)
-@@ -322,5 +344,66 @@
+@@ -322,5 +348,74 @@
  o = run(rows())
  check("T3 control: the unchanged fixture reads T1's verdict and numbers", o['bar']['verdict'] == out['bar']['verdict'] and o['levels'] == out['levels'] and o['attribution']['tables'] == out['attribution']['tables'])
  check("T3 control: valid structured and rendered output remains unchanged", o['attribution'] == out['attribution'] and o['bar'] == out['bar'] and o['canonical_lines'] == out['canonical_lines'])
@@ -206,6 +213,14 @@
 +check('T4 ATTRIBUTION_INVALID: no versus-S61 line (the comparison needs the cell tables)', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']))
 +rs = rows(); to_fallback(rs[10]['dhist']['ex'][3]); o = run(rs)
 +check('T4 DEV_INVALID: no versus-S61 line and no outcome', 'versus_s61' not in o and not any(' vs S61: ' in l for l in o['canonical_lines']) and o['levels'] is None)
++rs = rows(); del rs[4]['history']; refused('T5 a row without history (the producer ran without --history) refused', 'history form', rs)
++rs = rows(); rs[4]['history'].pop(); refused('T5 a history one play short of the trace refused', 'history length', rs)
++rs = rows(); rs[4]['history'][7][0] = (rs[4]['history'][7][0] + 1) % 4; refused('T5 a history play by another seat refused', 'history play', rs)
++rs = rows(); rs[4]['history'][7][1] = ['ZZ']; refused('T5 a history play with other cards refused', 'history play', rs)
++rs = rows(); rs[4]['buried'] = rs[4]['buried'][:7] + ['QQ']; refused('T5 buried cards differing from the trace bury refused', 'history buried', rs)
++rs = rows(failed_first=(3,)); rs[6]['failed_detail'] = []; refused('T5 a failed throw missing from failed_detail refused', 'history failed_detail', rs)
++rs = rows(failed_first=(3,)); rs[6]['history'][0][1] = list(rs[6]['dtrace'][105][5]); refused('T5 a failed throw whose history plays every chosen card refused', 'history play', rs)
++o = run(rows(failed_first=(3, 4))); check('T5 failed throws with a consistent history / failed_detail accepted', o['bar']['verdict'] == 'EXPLOITER_AHEAD', o['bar']['verdict'])
 +for l in cmp[:3]:
 +    print('  ', l[:300])
 +

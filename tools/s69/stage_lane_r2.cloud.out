@@ -1,0 +1,11 @@
+run paths clear (8 paths): /root/claude_s69_screen.status /root/claude_s69.RELEASE /root/claude_s69.HOLD /root/vol-dev-claude-s69-r48-20261026 /root/claude_s69_rehearsal_r3.status /root/vol-rehearsal-claude-s69-r3-20261026 /root/claude_s69_rehearsal_r3.peak_rss_kb /root/claude-s69/STAGED.lane-r2.sha256
+copy /root/claude_s69_r2_cloud.sh
+identical /root/claude-s69/exploit_duel_s61.py
+identical /root/claude-s69/hypotheses.py
+copy /root/claude-s69/rehearse_s69_cloud.r3.sh
+/root/claude_s69_r2_cloud.sh: OK
+/root/claude-s69/exploit_duel_s61.py: OK
+/root/claude-s69/hypotheses.py: OK
+/root/claude-s69/rehearse_s69_cloud.r3.sh: OK
+STAGED ok (lane-r2): 4 files verified on the host, read-only
+NEXT, ON cloud: DRYRUN=1 bash /root/claude_s69_r2_cloud.sh (rc 0 and the names: line); the --history re-rehearsal: nohup setsid bash /root/claude-s69/rehearse_s69_cloud.r3.sh 726a8af097551ff77b996e741ce070605bf50838b4d045f72fc6cab8b9cac802

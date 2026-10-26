@@ -1,6 +1,6 @@
 adversarial-battery-v1  tier DEV  ceilings (the reader's BAR) play 0% / belief 0% / bury 1% / declare 1% on every arm; play worlds {'ex': 256, 'r45': 64}
-reader   /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/s69_read.py  sha256 18bdcd6a9ea31bcb2d03ccfb899d5559fdb3ae211dd89ae3af3855818518295c  (invoke module)
-fixture  /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/test_s69_read.py  sha256 577197ed7987acb895ffdb635fbee9ba009104b6c6d5e13fdd4e1f740254a133  (generator above '# ---- T1 ----', seed 7, engine-consistent outcomes)
+reader   /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/s69_read.py  sha256 cdda6d4efe6baab4bd71d91b5a02d8ea6cac8391c1c44a6cdae4d01ad8b4fa19  (invoke module)
+fixture  /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/test_s69_read.py  sha256 f36e3a8742ff77ee5db291a3cf17fdda948a1debe2ddbefeeb2c86aaf1ea99a6  (generator above '# ---- T1 ----', seed 7, engine-consistent outcomes)
 battery  /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/adversarial_battery.py  sha256 0b490be037091a9de707b272ca4f009f61d3f08f648cd6f3b3921f1e340108a9
 validity /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/validity.py  sha256 ba84c408c3b96fbe7834184df09a48dc66b3a1c492913c8f1462d36825ea1920
 adapter  /Users/jerryyu/Projects/shengji-wt/claude-s69-redteam/tools/s69/battery_s69_adapter.py  sha256 3fadbe7e0ff4358343672f61f99e273fa6fff68e4259a02d9bcfe53c3499d895  (DuelAdapter + the dispatch binding + the reader's ceilings)

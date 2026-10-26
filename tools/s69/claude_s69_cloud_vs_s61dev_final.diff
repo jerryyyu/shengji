@@ -1,6 +1,6 @@
 --- /Users/jerryyu/Projects/shengji-wt/codex-s61-repair/tools/s61dev/claude_s61dev_cloud.final.sh	2026-10-22 09:38:40
-+++ claude_s69_cloud.sh	2026-10-26 08:40:32
-@@ -1,78 +1,60 @@
++++ claude_s69_cloud.sh	2026-10-26 09:18:47
+@@ -1,78 +1,63 @@
  #!/bin/bash
 -# s61dev: the DEV head-to-head of board row S61 (#1075: screens measure each arm against a common control, which averages away the gaps a
 -# seat-swapped opponent hunting release 46's weaknesses would find): PAIRED, SEAT-SWAPPED, the S61 exploiter = release 46 + the R48 keys
@@ -30,6 +30,9 @@
 +# Everything else is R48's on BOTH sides: S58 at its stored temperature, dtrx, lgf, lgfx, the declare and bury knobs (bury budget 2 s), and
 +# the three fly.toml latency switches (the harness's served_env exports fly.toml's SHENGJI_* keys; the bot factory binds the switches for
 +# every bot).  The r2 rank-mixed plan per deal, 600 fresh deals 311060910..311061509, both sides from the cloud tree /root/claude-main-56.
++# Revision r2 (2026-10-26, before any lane deal): the child also runs with --history (every row keeps buried / history / failed_detail),
++# so S69's top cells can feed same-root replay fixtures (S61's extraction was refused because its producer ran without it); staged as
++# /root/claude_s69_r2_cloud.sh (r1 e3c25940, staged as /root/claude_s69_cloud.sh, is superseded and never armed).
 +# WHAT RUNS.  One child: /root/claude-s69/exploit_duel_s61.py (the reviewed resumable S61 producer, verbatim, b15d292f; sha-pinned below
 +# with hypotheses.py), --arm identity, 12 workers, a KILL_AFTER-second hard stop and a BACKSTOP-second watchdog.  Every deal is played
 +# twice with the teams swapped; per-(deal, seat) seeds do not depend on the arm or the mirror.  Child output is sealed for the separate
@@ -39,8 +42,8 @@
 +# child launch is factored into run_child so the host rehearsal (rehearse_s69_cloud.sh) runs the same bytes.  FRESH runs only: an existing
 +# output root refuses; reopening an interrupted run through the producer's resume binding is a separate, separately authorized step.
 +# Dispatch requires the exact launcher SHA in a Claude-owned RELEASE, no HOLD, and exclusive host ownership.  This file grants no authority.
-+#   Usage ON shengji-cloud:  DRYRUN=1 bash /root/claude_s69_cloud.sh
-+#     nohup setsid bash /root/claude_s69_cloud.sh > /root/claude_s69_cloud.nohup 2>&1 < /dev/null &      (arms; waits for the RELEASE)
++#   Usage ON shengji-cloud:  DRYRUN=1 bash /root/claude_s69_r2_cloud.sh
++#     nohup setsid bash /root/claude_s69_r2_cloud.sh > /root/claude_s69_r2_cloud.nohup 2>&1 < /dev/null &      (arms; waits for the RELEASE)
 +#     then the RELEASE (Claude, after Codex's PASS): printf '%s\n' <this file's sha256> > /root/claude_s69.RELEASE
  
  set -u
@@ -116,7 +119,7 @@
    done
  }
  say () { if [ "$STATUS_OWNED" -eq 1 ]; then echo "$(date -u +%FT%TZ) $*" >> "$S"; else echo "$(date -u +%FT%TZ) $*"; fi; }
-@@ -163,45 +145,57 @@
+@@ -163,45 +148,57 @@
      [ -f "$local" ] && [ ! -L "$local" ] || die "package $local missing or symlinked"
      got=$(sha256sum "$local" | cut -d" " -f1); [ "${#got}" -eq 64 ] && [ "$got" = "$sha" ] || die "package $local sha256 $got, expected $sha"   # lint-ok: the length test refuses an empty or partial hash before the comparison
    done <<< "$PKGS"
@@ -195,7 +198,7 @@
  }
  check_compiled () {
    ( cd "$R/server" && SHENGJI_FAST=1 PYTHONPATH="$R/server" "$PY" -B -c "
-@@ -219,60 +213,6 @@
+@@ -219,60 +216,6 @@
      json.dump({"fly_toml": fly, "map": pairs}, fh, sort_keys=True)
      fh.write("\n")' "$OUT/fly.toml" "$PKGS" "$OUT/recipe.json"
  }
@@ -256,7 +259,7 @@
  # OUTPUT CONTRACT.  The DEV wrapper seals child output and process metadata only.
  # It never parses duel.jsonl or stdout: terminal status and rc are evidence for the
  # separate reviewed reader/qualifier, not a strength qualification.
-@@ -284,9 +224,6 @@
+@@ -284,9 +227,6 @@
  #   (HOST_OWNED/LEGACY_OWNED cleared, so release_locks does not remove them) and the status says so: overlap is worse than a
  #   stuck lock.  Only this lane's own group and watchdog are signalled.
  RUN_PGID=; RUN_WD=; ABORT_SAID=0
@@ -266,7 +269,7 @@
  run_group_live () { ps -eo pgid=,pid=,stat= | awk -v g="$1" '$1 == g && $3 !~ /^Z/ {print $2}' | tr "\n" " "; }
  stop_watchdog () { [ -n "$RUN_WD" ] || return 0; kill "$RUN_WD" 2>/dev/null; wait "$RUN_WD" 2>/dev/null; RUN_WD=; }
  run_cleanup () {
-@@ -315,23 +252,17 @@
+@@ -315,23 +255,17 @@
    exit "$2"
  }
  install_lane_traps () { trap 'lane_signal TERM 143' TERM; trap 'lane_signal INT 130' INT; trap 'lane_signal HUP 129' HUP; trap lane_exit_s35 EXIT; }
@@ -287,16 +290,17 @@
        NUMEXPR_NUM_THREADS=1 PYTHONPATH="$R/server" \
        FIND_GAPS_SERVER="$R/server" FIND_GAPS_PKG=/root/models/smv3out-491ee4bf.npz FIND_GAPS_PATH_MAP="$PATH_MAP" \
 -      timeout --signal=KILL "$KILL_AFTER" "$TIME_BIN" -v -o "$DUEL_TIME" \
-+      timeout --signal=KILL "$KILL_AFTER" "$TIME_BIN" -v -o "$OUT/duel.time" \
-       "$PY" -B "$DUEL" --arm identity --seed0 "$SEED0" --deals "$DEALS" --workers "$WORKERS" --round-plan "$PLAN" --out "$OUT/duel.jsonl" \
+-      "$PY" -B "$DUEL" --arm identity --seed0 "$SEED0" --deals "$DEALS" --workers "$WORKERS" --round-plan "$PLAN" --out "$OUT/duel.jsonl" \
 -      --exploiter-env SHENGJI_PV_WORLDS=256 --exploiter-env SHENGJI_PV_CANDIDATES=32 --exploiter-env SHENGJI_PV_EXACT_DEEP_CARDS=8 --exploiter-env SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 --exploiter-env SHENGJI_PV_SERVING_BUDGET_SECONDS=48 --exploiter-env SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 --exploiter-env SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 --exploiter-env SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 --exploiter-env SHENGJI_PV_BELIEF_CKPT=/root/s46r3/pkg/s46-e2-36e2024e.npz --exploiter-env SHENGJI_PV_BELIEF_SHA256=36e2024e36884906099727212ddd7f870ff39e961c42f58a9cf7eb445c65a3ac --exploiter-env SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD=1 --exploiter-env SHENGJI_PV_LEAF_GREEDY_FINISH=1 --exploiter-env SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP=1 --exploiter-env SHENGJI_PV_ENCODE_PREFIX_CACHE=1 --exploiter-env SHENGJI_PV_LEAF_GREEDY_STREAM=1 \
 -      > "$DUEL_STDOUT" 2> "$DUEL_STDERR" < /dev/null ) &
++      timeout --signal=KILL "$KILL_AFTER" "$TIME_BIN" -v -o "$OUT/duel.time" \
++      "$PY" -B "$DUEL" --arm identity --seed0 "$SEED0" --deals "$DEALS" --workers "$WORKERS" --round-plan "$PLAN" --history --out "$OUT/duel.jsonl" \
 +      --exploiter-env SHENGJI_PV_WORLDS=256 --exploiter-env SHENGJI_PV_CANDIDATES=32 --exploiter-env SHENGJI_PV_EXACT_DEEP_CARDS=8 --exploiter-env SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8 --exploiter-env SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=9.0 --exploiter-env SHENGJI_PV_EXACT_DEEP_MAX_NODES=200000000 --exploiter-env SHENGJI_PV_EXACT_FOLLOW_MAX_NODES=200000000 --exploiter-env SHENGJI_PV_SERVING_BUDGET_SECONDS=60 --exploiter-env SHENGJI_PV_LEAF_GREEDY_DEADLINE= \
 +      > "$OUT/duel.stdout" 2> "$OUT/duel.stderr" < /dev/null ) &
    pid=$!; RUN_PGID=$pid
    pg=; for i in 1 2 3 4 5 6 7 8 9 10; do pg=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d " "); [ "$pg" = "$pid" ] && break; sleep 0.5; done
    if [ "$pg" != "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-@@ -348,36 +279,39 @@
+@@ -348,36 +282,39 @@
    [ -z "$live" ] || die "run group $pid still has live members ($live) after the sweep"   # EXIT -> run_cleanup keeps the lock if so
    RUN_PGID=
    wall=$(awk -v a="$t0" -v b="$t1" 'BEGIN{printf "%.1f", b-a}')
@@ -310,7 +314,7 @@
 +  FIRST_DISPATCH_DONE=1
 +  [ ! -e "$OUT/duel.jsonl" ] && [ ! -e "$OUT/duel.stdout" ] || die "DEV output already exists in $OUT"
 +  install_lane_traps
-+  say "$LANE DEV start: defender $COMBO_NAME (R48 as served) vs exploiter $CAND_NAME (S69 exploiter: $EX_ENV); deals $DEALS seed0 $SEED0 plan $PLAN, paired and seat-swapped; workers $WORKERS; group KILL at $KILL_AFTER s (backstop $BACKSTOP s)"
++  say "$LANE DEV start: defender $COMBO_NAME (R48 as served) vs exploiter $CAND_NAME (S69 exploiter: $EX_ENV); deals $DEALS seed0 $SEED0 plan $PLAN, paired and seat-swapped, play histories kept (--history); workers $WORKERS; group KILL at $KILL_AFTER s (backstop $BACKSTOP s)"
 +  run_child
 +}
  
@@ -328,7 +332,7 @@
 -    echo "DRYRUN ok (cloud): $WORKERS workers, deals $DEALS seed0 $SEED0 plan $PLAN (paired, seat-swapped; exploiter = S61 exploiter: $EX_ENV, defender = release 46 as served), setsid + timeout --signal=KILL $KILL_AFTER (backstop $BACKSTOP); out $OUT ($([ -e $OUT ] && echo PRESENT || echo absent)); MemAvailable $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) kB (need $MEM_MIN_KB)"
 -    echo "DRYRUN ok (cloud): mode $([ "$RECOVERY" -eq 1 ] && echo "recovery attempt $ATTEMPT_ID" || echo fresh); host lock $([ -e $HOSTLOCK ] && echo "PRESENT ($(cat $HOSTLOCK/owner 2>/dev/null))" || echo absent); RELEASE $([ -e $RELEASE ] && echo PRESENT || echo absent); HOLD $([ -e $HOLD ] && echo PRESENT || echo absent); status $([ -e $S ] && echo PRESENT || echo absent)"
 +    echo "DRYRUN ok (cloud): fly.toml sha256 $FLY_SHA serves $COMBO_NAME; harness $DUEL sha256 $DUEL_SHA + $HYP sha256 $HYP_SHA; packages sha-verified; $NAMES_LINE"
-+    echo "DRYRUN ok (cloud): $WORKERS workers, deals $DEALS seed0 $SEED0 plan $PLAN (paired, seat-swapped; exploiter = S69 exploiter: $EX_ENV, defender = R48 as served), setsid + timeout --signal=KILL $KILL_AFTER (backstop $BACKSTOP); out $OUT ($([ -e $OUT ] && echo PRESENT || echo absent)); MemAvailable $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) kB (need $MEM_MIN_KB)"
++    echo "DRYRUN ok (cloud): $WORKERS workers, deals $DEALS seed0 $SEED0 plan $PLAN (paired, seat-swapped, --history; exploiter = S69 exploiter: $EX_ENV, defender = R48 as served), setsid + timeout --signal=KILL $KILL_AFTER (backstop $BACKSTOP); out $OUT ($([ -e $OUT ] && echo PRESENT || echo absent)); MemAvailable $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) kB (need $MEM_MIN_KB)"
 +    echo "DRYRUN ok (cloud): host lock $([ -e $HOSTLOCK ] && echo "PRESENT ($(cat $HOSTLOCK/owner 2>/dev/null))" || echo absent); RELEASE $([ -e $RELEASE ] && echo PRESENT || echo absent); HOLD $([ -e $HOLD ] && echo PRESENT || echo absent); status $([ -e $S ] && echo PRESENT || echo absent)"
      exit 0
    fi
@@ -347,7 +351,7 @@
    WAIT_START=$SECONDS
    wait_release
    say "$LANE: RELEASE verified; contending for the host lock"
-@@ -387,23 +321,18 @@
+@@ -387,23 +324,18 @@
    say "$LANE legacy peers clear; marker $LEGACY taken"
    install_lane_traps   # take_host_lock installed `trap lane_exit EXIT`; compose run_cleanup in front of it
    predispatch_guard

@@ -1,0 +1,174 @@
+{
+ "attribution_status": "ATTRIBUTION_OK",
+ "defender": {
+  "belief_fallback": 0,
+  "buries": 36,
+  "bury_fallback": 0,
+  "bury_seconds_p50_p99_max": [
+   0.37305,
+   0.40458500000000003,
+   0.4056
+  ],
+  "decide_play_p50_p95_p99_max": [
+   0.08285000000000001,
+   0.592445,
+   0.927729999999999,
+   2.4003
+  ],
+  "decisions": 2312,
+  "declare_abandoned": 0,
+  "declare_seconds_p50_p99_max": [
+   0.04215,
+   0.08563599999999995,
+   0.0985
+  ],
+  "declares": 108,
+  "failed_throws": 24,
+  "fallback": 0,
+  "search": 2312
+ },
+ "exploiter": {
+  "belief_fallback": 0,
+  "buries": 36,
+  "bury_fallback": 0,
+  "bury_seconds_p50_p99_max": [
+   0.37145,
+   0.40704,
+   0.4076
+  ],
+  "d8_follow_abandoned": 1,
+  "d8_follow_attempted": 52,
+  "d8_follow_complete": 51,
+  "d8_lead": 31,
+  "d8_lead_abandoned": 7,
+  "d8_lead_complete": 24,
+  "decide_play_maxhand8_p50_p95_p99_max": [
+   2.94035,
+   14.733550000000001,
+   43.823444999999985,
+   48.0005
+  ],
+  "decide_play_p50_p95_p99_max": [
+   0.3899,
+   8.5527,
+   11.095473999999966,
+   48.0005
+  ],
+  "decisions": 2312,
+  "declare_abandoned": 0,
+  "declare_seconds_p50_p99_max": [
+   0.04245,
+   0.09345799999999993,
+   0.0991
+  ],
+  "declares": 108,
+  "failed_throws": 32,
+  "fallback": 0,
+  "search": 2312
+ },
+ "rows_sha256": "b5ad05798df987f475847cbf0ec8fcc97caffddb9b6cc830a6ff51161a4f9337",
+ "validity": {
+  "checks": [
+   "arm_fault_ceilings",
+   "worlds_delivered",
+   "completion_shape",
+   "outcome_consistency"
+  ],
+  "detail": {
+   "arm_fault_ceilings": {
+    "arms": [
+     "ex",
+     "r45"
+    ],
+    "ceilings": {
+     "belief_fallback": 0.0,
+     "bury_fallback": 0.01,
+     "declare_abandon": 0.01,
+     "play_fallback": 0.0
+    },
+    "counts": {
+     "ex/belief_fallback": [
+      0,
+      2312,
+      0.0
+     ],
+     "ex/bury_fallback": [
+      0,
+      36,
+      0.01
+     ],
+     "ex/declare_abandon": [
+      0,
+      108,
+      0.01
+     ],
+     "ex/play_fallback": [
+      0,
+      2312,
+      0.0
+     ],
+     "r45/belief_fallback": [
+      0,
+      2312,
+      0.0
+     ],
+     "r45/bury_fallback": [
+      0,
+      36,
+      0.01
+     ],
+     "r45/declare_abandon": [
+      0,
+      108,
+      0.01
+     ],
+     "r45/play_fallback": [
+      0,
+      2312,
+      0.0
+     ]
+    },
+    "not_applicable": []
+   },
+   "completion_shape": {
+    "abandoned": 0,
+    "evaluated": 216,
+    "records": 216
+   },
+   "outcome_consistency": {
+    "inconsistent": 0,
+    "required": [
+     "banker",
+     "attacker_points",
+     "kitty_bonus",
+     "winner_team",
+     "level_change",
+     "kitty_points",
+     "last_trick_winner",
+     "ex_team",
+     "ex_levels",
+     "ex_attacker_points_signed",
+     "ex_role"
+    ],
+    "rows": 72
+   },
+   "worlds_delivered": {
+    "expected": {
+     "ex": 256,
+     "r45": 64
+    },
+    "off_worlds": {
+     "ex": 0,
+     "r45": 0
+    },
+    "records": 4624,
+    "search": {
+     "ex": 2312,
+     "r45": 2312
+    }
+   }
+  },
+  "reasons": [],
+  "verdict": "VALID"
+ }
+}

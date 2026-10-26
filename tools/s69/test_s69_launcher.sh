@@ -93,5 +93,27 @@ sleep 1
 got3=$(bash -c "$r2"$'\n'"echo \"[\$left]\"")
 kill "$DECOY" 2>/dev/null; wait "$DECOY" 2>/dev/null
 grep -q "\[$DECOY \]" <<< "$got3" && pass "r2 cleanup check finds a live process holding '--out <OUT>/duel.jsonl' (pid $DECOY)" || fail "r2 check missed the decoy ($DECOY): '$got3'"
+# 8. stage_s69.sh r2 semantics through ssh / scp shims on a temp host: a target already holding the SAME bytes is accepted as identical
+#    and left as it is; a target with OTHER bytes refuses before any copy; an existing run path (a status) refuses before any copy
+SH=$T/stagebin; mkdir -p "$SH"
+printf '#!/bin/bash\nshift\nexec bash -c "$*"\n' > "$SH/ssh"
+printf '#!/bin/bash\nargs=(); for a in "$@"; do [ "$a" = -q ] || args+=("$a"); done; n=${#args[@]}; d=${args[$((n-1))]}; d=${d#*:}; echo "scp $d" >> %q; exec cp "${args[@]:0:$((n-1))}" "$d"\n' "$T/scp.log" > "$SH/scp"
+chmod +x "$SH/ssh" "$SH/scp"
+LS=$(shasum -a 256 "$L" | cut -c1-64)
+stage () { PATH="$SH:$PATH" S69_ROOT="$1" S69_SSH=ssh S69_SCP=scp bash "$H/stage_s69.sh" "$2" "$LS" 2>&1; }
+HR=$T/hostA; mkdir -p "$HR/claude-s69"; cp "$H/exploit_duel_s61.py" "$HR/claude-s69/"; chmod a-w "$HR/claude-s69/exploit_duel_s61.py"; : > "$T/scp.log"
+out=$(stage "$HR" lane); rc=$?
+if [ "$rc" -eq 0 ] && grep -q "identical $HR/claude-s69/exploit_duel_s61.py" <<< "$out" && ! grep -q "exploit_duel_s61.py" "$T/scp.log" && grep -qE "STAGED ok \(lane-r2\): +4 files" <<< "$out"; then
+  pass "stage lane: an already-staged identical harness is accepted as identical and not copied again; the other files copied and verified"
+else fail "stage lane identical rc=$rc $(tail -3 <<< "$out")"; fi
+HR=$T/hostB; mkdir -p "$HR/claude-s69"; echo different > "$HR/claude-s69/hypotheses.py"; : > "$T/scp.log"
+out=$(stage "$HR" lane); rc=$?
+[ "$rc" -eq 3 ] && grep -q "REFUSING: $HR/claude-s69/hypotheses.py exists on the host with other bytes" <<< "$out" && [ ! -s "$T/scp.log" ] && [ "$(cat "$HR/claude-s69/hypotheses.py")" = different ] \
+  && pass "stage lane: a target with other bytes refuses (rc 3) before any copy, left unchanged" || fail "stage lane differ rc=$rc $(tail -3 <<< "$out")"
+HR=$T/hostC; mkdir -p "$HR"; touch "$HR/claude_s69_screen.status"; : > "$T/scp.log"
+out=$(stage "$HR" lane); rc=$?
+[ "$rc" -eq 3 ] && grep -q "REFUSING: $HR/claude_s69_screen.status exists" <<< "$out" && [ ! -s "$T/scp.log" ] && pass "stage lane: an existing run path (status) refuses before any copy" || fail "stage lane run path rc=$rc $(tail -3 <<< "$out")"
+# 9. the child runs with --history (r2), and the reader's START names it
+awk '/^run_child \(\) \{/,/^\}/' "$L" | grep -q -- '--round-plan "$PLAN" --history --out' && pass "run_child passes --history to the producer" || fail "run_child has no --history"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || echo "$fails FAILED"
 exit "$fails"

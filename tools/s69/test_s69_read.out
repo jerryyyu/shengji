@@ -88,7 +88,7 @@ PASS T3 an ABORT line in the status refused REFUSING: terminal: the lane failed 
 PASS T3 no terminal line refused REFUSING: terminal: 0 exact terminal lines (need exactly one)
 PASS T3 DEV END rc=1 refused REFUSING: status: need one DEV start line (the launcher's exact text), then one 'DEV END rc=0' line, before the terminal line (found starts [1], ends [], terminal 4)
 PASS T3 a start line naming another exploiter refused REFUSING: status: need one DEV start line (the launcher's exact text), then one 'DEV END rc=0' line, before the terminal line (found starts [], ends [3], terminal 4)
-PASS T3 a SHA256SUMS whose duel.jsonl line differs refused REFUSING: SHA256SUMS: the input's sha256 46f14ec64279188e5ea39696d4f4afe482fc4dfbe703f3c43f294e2e0b149bea is not the lane's single './duel.jsonl' entry ([['00000000000000000000000000000000000000000000
+PASS T3 a SHA256SUMS whose duel.jsonl line differs refused REFUSING: SHA256SUMS: the input's sha256 52e9cfbf4b0bd075fa76464dfc933e8ffa8d8f5886e18629b2dbdef8028af95e is not the lane's single './duel.jsonl' entry ([['00000000000000000000000000000000000000000000
 PASS T3 a matching SHA256SUMS accepted and recorded 
 PASS T3 a row without dtrace refused REFUSING: dtrace form: seed 311060912 mirror 0
 PASS T3 a 5-field trace entry refused REFUSING: dtrace entry form: seed 311060912 mirror 0 index 3: ['D', 3, None, None, 1]
@@ -118,11 +118,11 @@ PASS T3 an exploiter bury record off its configured worlds refused REFUSING: row
 PASS T3 an evaluated exploiter declare with 0 worlds completed refused REFUSING: row schema: ex declare_recs: 1 of 2383 row(s) match no declared producer shape (first [((311060911, 1, 0), {'declare/evaluated': 'field 4=0 fails one_of(64,)', 'declare/abandoned': "field 1=
 PASS T3 control: the unchanged fixture reads T1's verdict and numbers 
 PASS T3 control: valid structured and rendered output remains unchanged 
-PASS T4 an identical copy of the output root elsewhere refused by bind_inputs REFUSING: input binding: host-mode root not the reserved dispatch path(s) {'root': '/private/tmp/s69-e2e-e50rf5mh/vol-dev-claude-s69-r48-20261026'} (an archive copy needs the host manifest)
-PASS T4 a substituted status (same bytes, other path) refused by bind_inputs REFUSING: input binding: host-mode status not the reserved dispatch path(s) {'status': '/private/tmp/s69-e2e-askrw2ej/claude_s69_screen.status'} (an archive copy needs the host manifest)
+PASS T4 an identical copy of the output root elsewhere refused by bind_inputs REFUSING: input binding: host-mode root not the reserved dispatch path(s) {'root': '/private/tmp/s69-e2e-ri19txd1/vol-dev-claude-s69-r48-20261026'} (an archive copy needs the host manifest)
+PASS T4 a substituted status (same bytes, other path) refused by bind_inputs REFUSING: input binding: host-mode status not the reserved dispatch path(s) {'status': '/private/tmp/s69-e2e-i6sd1tib/claude_s69_screen.status'} (an archive copy needs the host manifest)
 PASS T4 a reservation naming another launcher sha refused REFUSING: input binding: the reservation does not bind this lane (launcher_sha256, output_root, status differ from trusted)
-PASS T4 a non-canonical root path refused REFUSING: input binding: root '/private/tmp/s69-e2e-l4x4t8ue/vol-dev-claude-s69-r48-20261026/../vol-dev-claude-s69-r48-20261026' is not canonical (a symlink component, or a relative part)
-PASS T4 an output root without SHA256SUMS refused REFUSING: output root /private/tmp/s69-e2e-rcez5ks9/vol-dev-claude-s69-r48-20261026: duel.jsonl or SHA256SUMS missing or not a regular file
+PASS T4 a non-canonical root path refused REFUSING: input binding: root '/private/tmp/s69-e2e-lp06hffg/vol-dev-claude-s69-r48-20261026/../vol-dev-claude-s69-r48-20261026' is not canonical (a symlink component, or a relative part)
+PASS T4 an output root without SHA256SUMS refused REFUSING: output root /private/tmp/s69-e2e-g1jeyhn0/vol-dev-claude-s69-r48-20261026: duel.jsonl or SHA256SUMS missing or not a regular file
 PASS T4 a start line with another seed0 refused (the exact launcher text) REFUSING: status: need one DEV start line (the launcher's exact text), then one 'DEV END rc=0' line, before the terminal line (found starts [], ends [3], terminal 4)
 PASS T4 a start line with another stop refused REFUSING: status: need one DEV start line (the launcher's exact text), then one 'DEV END rc=0' line, before the terminal line (found starts [], ends [3], terminal 4)
 PASS T4 two DEV start lines refused REFUSING: status: need one DEV start line (the launcher's exact text), then one 'DEV END rc=0' line, before the terminal line (found starts [1, 3], ends [4], terminal 5)
@@ -131,9 +131,17 @@ PASS T4 versus-S61 lines: the head-to-head, the class marginals and every class 
 PASS T4 the head-to-head comparison row: difference = S69 mean - S61 mean, SE = hypot of the CI-derived SEs {'quantity': 'head-to-head levels/round (S61: its exploiter vs release 46, other deals; SE = 95% CI width / 3.92)', 's69': 0.06, 's69_ci': [0.0375, 0.0825], 's61': 0.13083333333333333, 's61_ci': [0.09083333333333334, 0.17083333333333334], 'diff': -0.07083333333333333, 'se': 0.023415685052745754, 'lo
 PASS T4 every canonical line passes compare_runs.audit_comparison_lines (no equality wording; every S61 line built by versus_earlier_run) 
 PASS T4 negative control: an equality line naming S61 is refused by the audit 
-PASS T4 a drifted S61 reference refused (pinned sha256) REFUSING: s61_reference.json drift at /private/tmp/s69-ref-3x73v22m/s61_reference.json (expected 5d567cebea8c292710978d66aad423173fc3108ad169d7bef5229fb8810b451
+PASS T4 a drifted S61 reference refused (pinned sha256) REFUSING: s61_reference.json drift at /private/tmp/s69-ref-4d4chgs9/s61_reference.json (expected 5d567cebea8c292710978d66aad423173fc3108ad169d7bef5229fb8810b451
 PASS T4 ATTRIBUTION_INVALID: no versus-S61 line (the comparison needs the cell tables) 
 PASS T4 DEV_INVALID: no versus-S61 line and no outcome 
+PASS T5 a row without history (the producer ran without --history) refused REFUSING: history form: seed 311060912 mirror 0 (buried / history / failed_detail missing: the producer ran without --history)
+PASS T5 a history one play short of the trace refused REFUSING: history length: seed 311060912 mirror 0 99 history entries vs 100 trace plays
+PASS T5 a history play by another seat refused REFUSING: history play: seed 311060912 mirror 0 play 7: history [3, ['C01']] vs trace ['P', 2, ['C01']]
+PASS T5 a history play with other cards refused REFUSING: history play: seed 311060912 mirror 0 play 7: history [2, ['ZZ']] vs trace ['P', 2, ['C01']]
+PASS T5 buried cards differing from the trace bury refused REFUSING: history buried: seed 311060912 mirror 0 buried ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'QQ'] differs from the trace's bury ['K0', 'K1', 'K2', 'K3', 'K4', 'K5', 'K6', 'K7']
+PASS T5 a failed throw missing from failed_detail refused REFUSING: history failed_detail: seed 311060913 mirror 0 lists [], failed_throws [0]
+PASS T5 a failed throw whose history plays every chosen card refused REFUSING: history play: seed 311060913 mirror 0 play 0: history [1, ['D00', 'XJ']] vs trace ['P', 1, ['D00', 'XJ']]
+PASS T5 failed throws with a consistent history / failed_detail accepted EXPLOITER_AHEAD
    head-to-head levels/round (S61: its exploiter vs release 46, other deals; SE = 95% CI width / 3.92), S69 vs S61: +0.0600 (SE 0.0115) vs +0.1308 (SE 0.0204); difference -0.0708, independent-runs SE 0.0234, normal-approx 95% interval [-0.1167, -0.0249] (independent runs, not a paired test; an interval
    cell contribution [bury], S69 vs S61: +0.0075 (SE 0.0040) vs +0.0000 (SE 0.0000); difference +0.0075, independent-runs SE 0.0040, normal-approx 95% interval [-0.0004, +0.0154] (independent runs, not a paired test; an interval covering 0 does not show equality) [absent in S61: S61 side taken as 0 wit
    cell contribution [declare], S69 vs S61: +0.0008 (SE 0.0038) vs +0.0000 (SE 0.0000); difference +0.0008, independent-runs SE 0.0038, normal-approx 95% interval [-0.0067, +0.0083] (independent runs, not a paired test; an interval covering 0 does not show equality) [absent in S61: S61 side taken as 0 

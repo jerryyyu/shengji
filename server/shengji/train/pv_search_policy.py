@@ -3079,7 +3079,7 @@ class PVSearchBot(PolicyValueBot):
 
     def _scored_leaf(self, rnd, seat, hands, buried, action, world_index):
         if self._leaf_greedy_exact_skipped or self._leaf_greedy_plain_pass \
-                or tuple(action) in self._leaf_greedy_pruned:
+                or (self._leaf_greedy_pruned and tuple(action) in self._leaf_greedy_pruned):
             # the greedy leaf's exact-stage yield, the top-m rule's plain pass
             # and its pruned candidates (module docstring)
             return self._leaf(rnd, seat, hands, buried, action, world_index)

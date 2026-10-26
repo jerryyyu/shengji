@@ -81,6 +81,14 @@ Client → server messages worth knowing:
 7. **The chat launcher appears only with more than one human** — solo-vs-bots
    should not show a chat button.
 
+## Screenshots
+
+`npm run capture:lobby -- --out lobby.png` starts the game server and Vite,
+screenshots the lobby at phone size (390x844 at 3x, dark; `--light`,
+`--width`, `--height`, `--scale`, `--no-google`, `--no-servers`) and stops both
+servers. It needs `uv` and a Playwright Chromium (`CHROMIUM_PATH`, or
+`npx playwright install chromium`). Details are in `scripts/capture_lobby.mjs`.
+
 ## Testing
 
 `npm test` runs the Vitest + React Testing Library suite (`*.test.ts(x)` next

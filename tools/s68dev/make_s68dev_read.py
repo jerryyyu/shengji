@@ -16,6 +16,8 @@ Changed:
      (EXPLOITER_BUDGET_S: b 3.0, a 1.5) reported as the share of its decisions past it (descriptive);
   5. bind(): the DEV start line form of this launcher ('(exploiter env: <words>; defender at served budgets and widths)');
   6. the schema names, the candidate text and the canonical lines;
+  6b. play fallbacks per side (play_fallback_allowance): the defender and arm b's exploiter at zero, arm a's exploiter at most 0.1% of its
+     decisions (counted in the outcome; count and rate reported); arm_fault_ceilings keeps the other kinds;
   7. sc8_gate's finiteness test of the probe margin as math.isfinite (the lint's nan-idiom rule; the same accepted set);
   8. main(): after both arms, the descriptive comparison lines through compare_runs.versus_earlier_run (arm a vs arm b; arm b vs s66b's
      sealed sc8-alone read), each audited by audit_comparison_lines, and the predeclared power note; never a condition.
@@ -80,8 +82,10 @@ INTEGRITY (refuses; no number is written): s66b's, per arm: identity, no overrid
 from the arm's seed0, the r2 plan per deal, the 19-field dhist and its row schema on both sides with exact_deep_cards 7 on BOTH, the
 reconciliations, no 8-card exact stage on either side, the declare / bury producer shapes at 64 / 32 / K <= 64 on both sides, the decision
 trace and the first-divergence form, and the adapter's 'sc8' probe entries (sc8_gate).
-VALIDITY (per arm, on BOTH sides, before any outcome; a failure -> DEV_INVALID and no outcome): arm_fault_ceilings with ZERO play fallbacks
-and ZERO belief fallbacks (bury fallbacks <= 1% of buries, declare abandons <= 1% of declare evaluations), worlds_delivered (every search
+VALIDITY (per arm, on BOTH sides, before any outcome; a failure -> DEV_INVALID and no outcome): arm_fault_ceilings with ZERO belief
+fallbacks (bury fallbacks <= 1% of buries, declare abandons <= 1% of declare evaluations); play_fallback_allowance: ZERO play fallbacks for
+the defender and for arm b's exploiter, and for arm a's exploiter at most 0.1% of its decisions (its half-budget expiries; Fly would serve
+the same heuristic anchor, so those decisions stay in the outcome and their count and rate are reported); worlds_delivered (every search
 record reports the arm's play worlds: b 64 / 64, a 96 exploiter / 64 defender), completion_shape, outcome_consistency, latency_inside_budget
 (every EXPLOITER decide_play <= 3.0 s on the duel host, both arms); plus the paired premise.
 THE READ (predeclared, per arm, each alone): the paired mean (levels/round; per deal the mean exploiter-signed level change over its two
@@ -207,6 +211,36 @@ def main(argv):
 sub('or isinstance(margin, bool) or not isinstance(margin, (int, float)) or margin != margin or margin in (float("inf"), float("-inf")) \\',
     'or isinstance(margin, bool) or not isinstance(margin, (int, float)) or not math.isfinite(margin) \\')
 sub("import hashlib\nimport importlib.util\nimport json\n", "import hashlib\nimport importlib.util\nimport json\nimport math\n")
+sub("""BUDGET_S = 3.0   # the predeclared ceiling""", """#: the exploiter's play-fallback allowance per arm (share of its decisions): arm a's half-budget expiries are the recipe's own serving
+#: behaviour (Fly would serve the same heuristic anchor), so up to 0.1% are allowed and stay in the outcome; arm b and the defender stay at zero
+PLAY_FALLBACK_ALLOWANCE = {"b": 0.0, "a": 0.001}
+BUDGET_S = 3.0   # the predeclared ceiling""")
+sub("""def latency_inside_budget(by, budget=BUDGET_S):""", """def play_fallback_allowance(counts, arm):
+    \"\"\"Play fallbacks, per side: the exploiter at most PLAY_FALLBACK_ALLOWANCE[arm] of its decisions (arm a: 0.1%), the defender at
+    BAR's play_fallback ceiling (zero).  validity.arm_fault_ceilings once per side (each its own single-arm mapping), merged into one
+    guard result; arm_fault_ceilings over both sides then judges the other fault kinds with play_fallback not applicable.\"\"\"
+    share = PLAY_FALLBACK_ALLOWANCE[arm]
+    exv = va.arm_fault_ceilings({"ex": counts.get("ex")}, {"play_fallback": share}, arms=("ex",), tier="DEV")
+    dfv = va.arm_fault_ceilings({"r45": counts.get("r45")}, {"play_fallback": BAR["ceilings"]["play_fallback"]}, arms=("r45",), tier="DEV")
+    reasons = list(exv["reasons"]) + list(dfv["reasons"])
+    rate = lambda c: (c["play_fallback"] / c["decisions"]) if isinstance(c, dict) and c.get("decisions") else None
+    return dict(check="play_fallback_allowance", verdict=va.VALID if exv["verdict"] == va.VALID and dfv["verdict"] == va.VALID else va.invalid_verdict("DEV"),
+                reasons=reasons, n_reasons=len(reasons),
+                detail=dict(exploiter_share=share, defender_share=BAR["ceilings"]["play_fallback"],
+                            exploiter=dict(fallbacks=counts["ex"]["play_fallback"], decisions=counts["ex"]["decisions"], rate=rate(counts["ex"]), allowed=int(share * counts["ex"]["decisions"])),
+                            defender=dict(fallbacks=counts["r45"]["play_fallback"], decisions=counts["r45"]["decisions"], rate=rate(counts["r45"])),
+                            ex=exv["detail"], r45=dfv["detail"]))
+
+
+def latency_inside_budget(by, budget=BUDGET_S):""")
+sub("""    checks = [va.arm_fault_ceilings(counts, BAR["ceilings"], arms=ARMS, tier="DEV"),
+""", """    checks = [va.arm_fault_ceilings(counts, dict(BAR["ceilings"], play_fallback=None), arms=ARMS, tier="DEV"),
+              play_fallback_allowance(counts, arm),
+""")
+sub("""        f"[{arm}] Faults (validity inputs, both sides): play fallbacks exploiter {e['fallback']} of {e['decisions']} vs defender {d['fallback']} of {d['decisions']};""",
+    """        f"[{arm}] Faults (validity inputs, both sides): play fallbacks exploiter {e['fallback']} of {e['decisions']} ({100 * e['fallback'] / e['decisions']:.4f}%; allowed {100 * PLAY_FALLBACK_ALLOWANCE[arm]:g}% = {int(PLAY_FALLBACK_ALLOWANCE[arm] * e['decisions'])}, counted in the outcome) vs defender {d['fallback']} of {d['decisions']} (allowed 0);""")
+sub("""validity VALID on both sides (zero play / belief fallbacks, {pw['ex']} / {pw['r45']} worlds,""",
+    """validity VALID on both sides (zero belief fallbacks; play fallbacks: defender 0, exploiter {e['fallback']} of {e['decisions']} within its {100 * PLAY_FALLBACK_ALLOWANCE[arm]:g}% allowance; {pw['ex']} / {pw['r45']} worlds,""")
 code = "\n".join(l for l in s.split("\n") if not l.lstrip().startswith("#"))
 for tok in ("s66b_read", "/root/claude-sc8-src", "eb0975da0d47", "vol-dev-claude-s66b", "claude_s66b_screen", "make_s66b.py", "'sc8': {'seed0'"):
     assert tok not in code, tok

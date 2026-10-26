@@ -137,6 +137,9 @@ check(rd.PLAY_WORLDS == {a: {'ex': int(envd[a].get('SHENGJI_PV_WORLDS', 64)), 'r
       f"reader per-arm play worlds {rd.PLAY_WORLDS} and exploiter budgets {rd.EXPLOITER_BUDGET_S} follow the arms' env")
 check(rd.BUDGET_S == 3.0 and rd.BAR['pass_min_mean'] == 0.030 and rd.BAR['pass_ci_lower_above'] == 0.0 and rd.BAR['ceilings']['play_fallback'] == 0 and rd.BAR['ceilings']['belief_fallback'] == 0
       and rd.HALF_BIN == 0.00005 and 'x + HALF_BIN > budget' in rsrc, "reader: the +0.030 bar with CI lower > 0, zero play / belief ceilings, every exploiter decision <= 3 s on the 0.1 ms bin's upper bound")
+check(rd.PLAY_FALLBACK_ALLOWANCE == {'b': 0.0, 'a': 0.001} and "play_fallback_allowance(counts, arm)" in rsrc and 'dict(BAR["ceilings"], play_fallback=None)' in rsrc
+      and 'at most 0.1% of its' in open(os.path.join(HERE, 'predeclare_s68dev.md')).read(),
+      "reader: arm a's exploiter play-fallback allowance 0.1%, arm b 0 (defender at BAR's zero); arm_fault_ceilings judges the other kinds; the predeclare states it")
 check(all(sha(os.path.join(LIB, f'{k}.py')) == sha(os.path.join(FL_LIB, f'{k}.py')) == rd.PINNED[k] for k in ('row_schema', 'validity', 'reader_lib', 'compare_runs')),
       "reader PINNED == the packet's reader_lib copies == fl-pilot/reader_lib's row_schema / validity / reader_lib / compare_runs")
 check(rd.TRUSTED['lane'] == v['LANE'] and rd.TRUSTED['root'] == v['OUT'] and rd.TRUSTED['status'] == v['S'] and rd.TRUSTED['reservation'] == res['reservation_path'] and rd.TRUSTED['host'] == 'shengji-perf'

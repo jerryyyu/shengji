@@ -115,6 +115,45 @@ sub("other = Path(tmp) / 'other_root'; other.mkdir(); (other / 'sc8').mkdir(); (
     "other = Path(tmp) / 'other_root'; other.mkdir()\n    for arm in rd.ARM_ORDER:\n        (other / arm).mkdir(); (other / arm / 'duel.jsonl').write_bytes((Path(root_) / arm / 'duel.jsonl').read_bytes())\n   ")
 sub("    j['lane'] = 's66b'; Path(rv_).write_text(json.dumps(j) + '\\n')", "    j['lane'] = 's68dev'; Path(rv_).write_text(json.dumps(j) + '\\n')")
 sub("rd.analyze(str(Path(root_) / 'sc8' / 'duel.jsonl'), arm='sc8',", "rd.analyze(str(Path(root_) / ARM / 'duel.jsonl'), arm=ARM,", count=2)
+# the play-fallback allowance (arm a's exploiter at most 0.1% of its decisions; arm b and the defender at zero)
+sub("check('T1 clean read: DEV_PASS at a +0.06 synthetic effect, validity VALID (five checks incl. latency_inside_budget), 600 deals', out['bar']['verdict'] == 'DEV_PASS' and out['validity']['verdict'] == 'VALID' and out['validity']['checks'] == ['arm_fault_ceilings', 'worlds_delivered',",
+    "check('T1 clean read: DEV_PASS at a +0.06 synthetic effect, validity VALID (six checks incl. play_fallback_allowance and latency_inside_budget), 600 deals', out['bar']['verdict'] == 'DEV_PASS' and out['validity']['verdict'] == 'VALID' and out['validity']['checks'] == ['arm_fault_ceilings', 'play_fallback_allowance', 'worlds_delivered',")
+sub("""    o = run(rs); check(f'T2 ONE {who} play fallback -> DEV_INVALID (zero ceiling), no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any(f"arm '{side}' play_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])""",
+    """    o = run(rs)
+    if side == 'ex' and rd.PLAY_FALLBACK_ALLOWANCE[ARM] > 0:
+        check(f'T2 ONE {who} play fallback in arm {ARM} (allowance {rd.PLAY_FALLBACK_ALLOWANCE[ARM]:g}) -> accepted, counted and reported', o['bar']['verdict'] == 'DEV_PASS' and o['validity']['detail']['play_fallback_allowance']['exploiter']['fallbacks'] == 1 and o['exploiter']['fallback'] == 1 and any('play fallbacks exploiter 1 of' in l for l in o['canonical_lines']), o['validity']['detail']['play_fallback_allowance']['exploiter'])
+    else:
+        check(f'T2 ONE {who} play fallback -> DEV_INVALID (zero ceiling), no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any(f"arm '{side}' play_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])""")
+sub("""rs = rows(); rs[11]['dsecs']['ex'][2] = 3.0001""", """def ex_fallbacks(k):
+    \"\"\"rows with k exploiter play fallbacks, spread over the rows (search records only), each with its all-None sc8 entry\"\"\"
+    rs = rows()
+    sites = [(r, i) for r in rs for i, h in enumerate(r['dhist']['ex']) if h[0] == '-decision-v1']
+    for j in range(k):
+        r, i = sites[(j * len(sites)) // max(k, 1)]
+        to_fallback_ex(r, i)
+    return rs
+share = rd.PLAY_FALLBACK_ALLOWANCE[ARM]
+n_dec = sum(len(r['dhist']['ex']) for r in rows())
+cap = int(share * n_dec)
+if share > 0:
+    for k, ok in ((cap - 1, True), (cap, True), (cap + 1, False)):
+        o = run(ex_fallbacks(k))
+        pa = o['validity']['detail']['play_fallback_allowance']['exploiter']
+        if ok:
+            check(f'T2 arm {ARM}: {k} exploiter play fallbacks (cap {cap} = {share:g} x {n_dec}) -> accepted; the fallback decisions stay in the outcome; count and rate reported', o['bar']['verdict'] == 'DEV_PASS' and o['levels'] is not None and pa['fallbacks'] == k and abs(pa['rate'] - k / n_dec) < 1e-15 and pa['allowed'] == cap and o['validity']['verdict'] == 'VALID', pa)
+        else:
+            check(f'T2 arm {ARM}: {k} exploiter play fallbacks, one above the cap {cap} -> DEV_INVALID, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any(f"arm 'ex' play_fallback: {k} of {n_dec}" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+    rs = ex_fallbacks(cap); to_fallback(next(h for h in rs[20]['dhist']['r45'] if h[0] == '-decision-v1'))
+    o = run(rs); check(f'T2 arm {ARM}: the exploiter at its cap plus ONE defender play fallback -> DEV_INVALID (the defender stays at zero)', o['bar']['verdict'] == 'DEV_INVALID' and any("arm 'r45' play_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+else:
+    check(f'T2 arm {ARM}: no play-fallback allowance (zero, the T2 one-fallback case above)', cap == 0 and rd.PLAY_FALLBACK_ALLOWANCE == {'b': 0.0, 'a': 0.001}, rd.PLAY_FALLBACK_ALLOWANCE)
+rs = rows(); rs[11]['dsecs']['ex'][2] = 3.0001""")
+sub("""o = run(rs); check('T3 control: a fallback record with an all-None sc8 entry is the expected pairing (the fallback itself then makes the read DEV_INVALID)', o['bar']['verdict'] == 'DEV_INVALID' and any('play_fallback: 1 of' in x for x in o['bar']['reasons']) and not any('sc8' in x for x in o['bar']['reasons']), o['bar']['reasons'][:1])""",
+    """o = run(rs)
+if rd.PLAY_FALLBACK_ALLOWANCE[ARM] > 0:
+    check(f'T3 control: a fallback record with an all-None sc8 entry is the expected pairing (arm {ARM}: one exploiter fallback is inside its allowance, so the read stands)', o['bar']['verdict'] == 'DEV_PASS' and o['exploiter']['fallback'] == 1 and not any('sc8' in x for x in o['bar']['reasons']), o['bar']['reasons'][:1])
+else:
+    check('T3 control: a fallback record with an all-None sc8 entry is the expected pairing (the fallback itself then makes the read DEV_INVALID)', o['bar']['verdict'] == 'DEV_INVALID' and any('play_fallback: 1 of' in x for x in o['bar']['reasons']) and not any('sc8' in x for x in o['bar']['reasons']), o['bar']['reasons'][:1])""")
 code = "\n".join(l for l in s.split("\n") if not l.lstrip().startswith("#"))
 for tok in ("'s66b'", "s66b_read'", "claude_s66b", "arm='sc8'", "ARM_SPEC['sc8']", "./sc8/"):
     assert tok not in code, tok

@@ -1,4 +1,4 @@
-PASS T1 clean read: DEV_PASS at a +0.06 synthetic effect, validity VALID (five checks incl. latency_inside_budget), 600 deals +0.0599 [+0.0514, +0.0686] ['arm_fault_ceilings', 'worlds_delivered', 'completion_shape', 'outcome_consistency', 'latency_inside_budget']
+PASS T1 clean read: DEV_PASS at a +0.06 synthetic effect, validity VALID (six checks incl. play_fallback_allowance and latency_inside_budget), 600 deals +0.0599 [+0.0514, +0.0686] ['arm_fault_ceilings', 'play_fallback_allowance', 'worlds_delivered', 'completion_shape', 'outcome_consistency', 'latency_inside_budget']
 PASS T1 the rank split partitions the deals (trump rank 2 vs != 2) and both are reported 1748
 PASS T1 belief_ms reported on both sides 
 PASS T1 every deal diverged (first-divergence table sums to N, no never) {'bury | pre-play': 395, 'declare | pre-play': 391, 'follow | tricks 1-5': 657, 'follow | tricks 11-15': 462, 'follow | tricks 16+': 576, 'follow | tricks 6-10': 663, 'lead | tricks 1-5': 135, 'lead | tricks 11-15': 155, 'lead | tricks 16+': 313, 'lead | tricks 6-10': 173}
@@ -8,9 +8,9 @@ PASS T1 swap rate reconciled with the fixture probe entries (leads / probed / en
 PASS T1 latency_vs_r48 reported (ratios p50 / p95 / p99 / max, the exploiter max over the 3 s budget, probed-lead vs defender-lead quantiles) and the latency check detail {'ratio_p50_p95_p99_max': [1.0, 1.0, 0.9995969367190649, 1.0], 'exploiter_max_over_budget': 0.08333333333333333, 'budget_seconds': 3.0, 'probed_lead_p50_p95_p99_max': [0.1497, 0.2398, 0.2478, 0.25], 'entered_lead_p50_p95_p99_max': [0.1499, 0.2399, 0.24787599999999985, 0.25], 'defender_lead_gt7_p50_p
 PASS T1 canonical lines carry the arm, the candidate, the numbers and the verdict ['s68dev [b] R48 + sc8 + bwc at the served budgets vs R48 as served (3 s / lgfd 2000, W 64 K 8), paired, seat-swapped, r2 plan per deal, 3920 deals from 243660910: +0.0599 levels/round, 95% CI [+0.0514, +0.0686] (deal bootstrap 10000, seed 1); points +2.23 [+1.80, +2.65]; nonzero share 0.279.']
    s68dev [b] R48 + sc8 + bwc at the served budgets vs R48 as served (3 s / lgfd 2000, W 64 K 8), paired, seat-swapped, r2 plan per deal, 3920 deals from 243660910: +0.0599 levels/round, 95% CI [+0.0514, +0.0686] (deal bootstrap 10000, seed 1); points +2.23 [+1.8
-   [b] Read (predeclared): validity VALID on both sides (zero play / belief fallbacks, 64 / 64 worlds, every exploiter decision inside 3 s, the paired premise); DEV_PASS iff mean >= +0.030 and CI lower > 0.  Verdict DEV_PASS.  (This arm alone, one look; a PASS le
+   [b] Read (predeclared): validity VALID on both sides (zero belief fallbacks; play fallbacks: defender 0, exploiter 0 of 392000 within its 0% allowance; 64 / 64 worlds, every exploiter decision inside 3 s, the paired premise); DEV_PASS iff mean >= +0.030 and CI
    [b] Split (descriptive): trump rank 2 (1748 deals) +0.0592 [+0.0463, +0.0724], rank != 2 +0.0605 [+0.0488, +0.0723]; first round +0.0558 [+0.0421, +0.0698], fixed banker +0.0627 [+0.0514, +0.0738]; exploiter games as banker +0.0811 [+0.0469, +0.1140], as attac
-   [b] Faults (validity inputs, both sides): play fallbacks exploiter 0 of 392000 vs defender 0 of 392000; belief fallbacks 0 of 392000 vs 0 of 392000; bury fallbacks 0 of 3920 vs 0 of 3920; declare abandons 0 of 15669 vs 0 of 15610; search records off their play
+   [b] Faults (validity inputs, both sides): play fallbacks exploiter 0 of 392000 (0.0000%; allowed 0% = 0, counted in the outcome) vs defender 0 of 392000 (allowed 0); belief fallbacks 0 of 392000 vs 0 of 392000; bury fallbacks 0 of 3920 vs 0 of 3920; declare ab
    [b] Latency on the duel host under its workers (not serving latency): belief_ms p50 / p95 / p99 / max exploiter [12.5, 12.5, 12.5, 12.5] vs defender [12.5, 12.5, 12.5, 12.5]; decide_play s [0.15, 0.24, 0.248, 0.25] vs [0.15, 0.24, 0.2481, 0.25]; bury s p50 / p
    [b] Play time arm / defender (descriptive, duel host): sum 1.000 (exploiter 58798 s vs defender 58823 s); p50 / p95 / p99 ratios [1.0, 1.0, 1.0].
    [b] Swap rate (descriptive): leads 98000 (at max hand > 7: 70560); probed 49486; a singleton ENTERED the ballot 21925 times (44.3% of probes, 22.4% of leads) and was CHOSEN 11003 times (50.2% of entries, 11.2% of leads); evaluations per probe p50 / max [160.0,
@@ -24,18 +24,19 @@ PASS T2 the mean exactly at +0.030 with CI lower > 0 -> DEV_PASS (the bar is inc
 PASS T2 the mean a hair below +0.030 with CI lower > 0 -> DEV_FAIL [0.0299999, 0.0001, 0.0599]
 PASS T2 CI lower exactly 0 -> DEV_FAIL (lower must be > 0) [0.04, 0.0, 0.08]
 PASS T2 +0.025 noise-free (CI lower > 0, mean below +0.030) -> DEV_FAIL [0.025, 0.021683673469387755, 0.02844387755102041]
-PASS T2 ONE exploiter play fallback -> DEV_INVALID (zero ceiling), no outcome ["arm_fault_ceilings: arm 'ex' play_fallback: 1 of 392000 decisions (0.000%) > ceiling 0% (at most 0 allowed)"]
+PASS T2 ONE exploiter play fallback -> DEV_INVALID (zero ceiling), no outcome ["play_fallback_allowance: arm 'ex' play_fallback: 1 of 392000 decisions (0.000%) > ceiling 0% (at most 0 allowed)"]
 PASS T2 ONE exploiter belief fallback -> DEV_INVALID (zero ceiling) ["arm_fault_ceilings: arm 'ex' belief_fallback: 1 of 392000 search (0.000%) > ceiling 0% (at most 0 allowed)"]
 PASS T2 every exploiter bury a fallback -> DEV_INVALID ["arm_fault_ceilings: arm 'ex' bury_fallback: 3920 of 3920 buries (100.000%) > ceiling 1% (at most 39 allowed)"]
 PASS T2 every exploiter declare abandoned -> DEV_INVALID ["arm_fault_ceilings: arm 'ex' declare_abandon: 15669 of 15669 declares (100.000%) > ceiling 1% (at most 156 allowed)"]
 PASS T2 one exploiter search record at 128 play worlds (configured 64) -> DEV_INVALID ["worlds_delivered: arm 'ex' record (243660912, 1, 0): a search record reports 128 worlds, configured 64"]
 PASS T2 one exploiter search record at 32 play worlds -> DEV_INVALID ["worlds_delivered: arm 'ex' record (243660912, 1, 0): a search record reports 32 worlds, configured 64"]
-PASS T2 ONE defender play fallback -> DEV_INVALID (zero ceiling), no outcome ["arm_fault_ceilings: arm 'r45' play_fallback: 1 of 392000 decisions (0.000%) > ceiling 0% (at most 0 allowed)"]
+PASS T2 ONE defender play fallback -> DEV_INVALID (zero ceiling), no outcome ["play_fallback_allowance: arm 'r45' play_fallback: 1 of 392000 decisions (0.000%) > ceiling 0% (at most 0 allowed)"]
 PASS T2 ONE defender belief fallback -> DEV_INVALID (zero ceiling) ["arm_fault_ceilings: arm 'r45' belief_fallback: 1 of 392000 search (0.000%) > ceiling 0% (at most 0 allowed)"]
 PASS T2 every defender bury a fallback -> DEV_INVALID ["arm_fault_ceilings: arm 'r45' bury_fallback: 3920 of 3920 buries (100.000%) > ceiling 1% (at most 39 allowed)"]
 PASS T2 every defender declare abandoned -> DEV_INVALID ["arm_fault_ceilings: arm 'r45' declare_abandon: 15610 of 15610 declares (100.000%) > ceiling 1% (at most 156 allowed)"]
 PASS T2 one defender search record at 128 play worlds (configured 64) -> DEV_INVALID ["worlds_delivered: arm 'r45' record (243660912, 1, 0): a search record reports 128 worlds, configured 64"]
 PASS T2 one defender search record at 32 play worlds -> DEV_INVALID ["worlds_delivered: arm 'r45' record (243660912, 1, 0): a search record reports 32 worlds, configured 64"]
+PASS T2 arm b: no play-fallback allowance (zero, the T2 one-fallback case above) {'b': 0.0, 'a': 0.001}
 PASS T2 ONE exploiter decide_play recorded 3.0001 s -> DEV_INVALID by latency_inside_budget, no outcome ['latency_inside_budget: exploiter decision (243660915, 1) #2: decide_play recorded 3.0001 s (bin up to 3.00015 s) > the served budget 3 s']
 PASS T2 an actual 3.00004 s, recorded as 3.0 by the producer (0.1 ms bins) -> DEV_INVALID (the bin [2.99995, 3.00005] is judged on its upper bound), no outcome ['latency_inside_budget: exploiter decision (243660915, 1) #2: decide_play recorded 3.0000 s (bin up to 3.00005 s) > the served budget 3 s']
 PASS T2 an exploiter decide_play recorded 2.9999 s accepted (the last bin inside the budget) {'budget_seconds': 3.0, 'resolution_seconds': 0.0001, 'rule': 'recorded + 0.00005 <= budget', 'decisions': 392000, 'over': 0, 'max_seconds': 2.9999}
@@ -72,7 +73,7 @@ PASS T3 an sc8 list one entry short of the exploiter decisions refused REFUSING:
 PASS T3 a 5-field sc8 entry refused REFUSING: sc8 form: seed 243660912 mirror 0 (one 6-field probe entry per exploiter decision expected)
 PASS T3 an sc8 dict with a defender list refused (the probe runs on the exploiter side only) REFUSING: sc8 form: seed 243660912 mirror 0 (one 6-field probe entry per exploiter decision expected)
 PASS T3 an sc8 lead flag disagreeing with dhist refused REFUSING: sc8 lead flag: seed 243660912 mirror 0 ex decision 0 records False, dhist True
-PASS T3 control: a fallback record with an all-None sc8 entry is the expected pairing (the fallback itself then makes the read DEV_INVALID) ["arm_fault_ceilings: arm 'ex' play_fallback: 1 of 392000 decisions (0.000%) > ceiling 0% (at most 0 allowed)"]
+PASS T3 control: a fallback record with an all-None sc8 entry is the expected pairing (the fallback itself then makes the read DEV_INVALID) ["play_fallback_allowance: arm 'ex' play_fallback: 1 of 392000 decisions (0.000%) > ceiling 0% (at most 0 allowed)"]
 PASS T3 probe fields (applied False) on a FALLBACK record refused REFUSING: sc8 on a fallback record: seed 243660915 mirror 0 ex decision 3 carries probe fields [False, False, None, None, None, False]
 PASS T3 a probe on a FOLLOW refused REFUSING: sc8 probe entry: seed 243660910 mirror 0 ex decision 1 is [False, False, 240, 8, -0.3994, False] at max hand 25 (a probe needs a lead at max hand > 7, 8 probe worlds, a finite margin, applie
 PASS T3 a probe on a lead at max hand <= 7 refused REFUSING: sc8 probe entry: seed 243660910 mirror 0 ex decision 36 is [True, False, 240, 8, -0.3994, False] at max hand 7 (a probe needs a lead at max hand > 7, 8 probe worlds, a finite margin, applied
@@ -85,9 +86,9 @@ PASS T3 a non-bool applied (1) on a search record refused REFUSING: sc8 applied:
 PASS T3 applied True without a probe refused REFUSING: sc8 no-probe entry: seed 243660910 mirror 0 ex decision 0 is [True, True, None, None, None, False] (applied / probe_worlds / margin / chosen must be off)
 PASS T3 control: the unchanged fixture reads T1's verdict and numbers 
 PASS T4 the bound lane read passes; the rows are opened only after bind_lane (the status and reservation first) ['claude_s68dev_screen.status', 'claude_s68dev_screen.status', 'duel.jsonl', 'SHA256SUMS']
-PASS T4 a wrong root (a self-consistent sibling tree) refused before any raw read REFUSING: input binding: host-mode root not the reserved dispatch path(s) {'root': '/private/tmp/s68dev-bind-5xjry8o7/root'} (an archive copy needs the host man | opened []
-PASS T4 a wrong status path refused before any raw read REFUSING: input binding: host-mode status not the reserved dispatch path(s) {'status': '/private/tmp/s68dev-bind-5xjry8o7/claude_s68dev_screen.status'} (an arch | opened []
-PASS T4 a wrong reservation path refused before any raw read REFUSING: input binding: host-mode reservation not the reserved dispatch path(s) {'reservation': '/private/tmp/s68dev-bind-5xjry8o7/claude_reservations/s68dev.j | opened []
+PASS T4 a wrong root (a self-consistent sibling tree) refused before any raw read REFUSING: input binding: host-mode root not the reserved dispatch path(s) {'root': '/private/tmp/s68dev-bind-z6vt47le/root'} (an archive copy needs the host man | opened []
+PASS T4 a wrong status path refused before any raw read REFUSING: input binding: host-mode status not the reserved dispatch path(s) {'status': '/private/tmp/s68dev-bind-z6vt47le/claude_s68dev_screen.status'} (an arch | opened []
+PASS T4 a wrong reservation path refused before any raw read REFUSING: input binding: host-mode reservation not the reserved dispatch path(s) {'reservation': '/private/tmp/s68dev-bind-z6vt47le/claude_reservations/s68dev.j | opened []
 PASS T4 a reservation naming another launcher sha256 refused before any raw read REFUSING: input binding: the reservation does not bind this lane (launcher_sha256 differ from trusted) | opened []
 PASS T4 a reservation naming another lane refused before any raw read REFUSING: input binding: the reservation does not bind this lane (lane differ from trusted) | opened []
 PASS T4 an armed status line naming another launcher sha256 refused before any raw read REFUSING: status: 0 armed lines naming the trusted launcher sha256 abababababab... and tree /root/claude-s68-src-8b6ead10 @ 8b6ead10 (need exactly one; 1 armed  | opened ['claude_s68dev_screen.status']
@@ -95,10 +96,10 @@ PASS T4 an armed status line naming another tree (the R48 tree) refused before a
 PASS T4 two armed lines refused REFUSING: status: 2 armed lines naming the trusted launcher sha256 abababababab... and tree /root/claude-s68-src-8b6ead10 @ 8b6ead10 (need exactly one; 2 armed  | opened ['claude_s68dev_screen.status']
 PASS T4 the draft reader (TRUSTED_LAUNCHER_SHA256 = TO_BE_PINNED) refuses every lane read REFUSING: the reader's trusted launcher sha256 is not pinned (TO_BE_PINNED: the draft reader never reads a lane; make_s68dev_final.py pins it) | opened []
 PASS T4 the module TRUSTED is the draft (TO_BE_PINNED): the default trusted refuses REFUSING: the reader's trusted launcher sha256 is not pinned (TO_BE_PINNED: the draft reader never reads a lane; make_s68dev_final.py pins it) | opened []
-PASS T4 a symlinked root refused REFUSING: input binding: root '/private/tmp/s68dev-bind-5xjry8o7/root_link' is not canonical (a symlink component, or a relative part) | opened []
-PASS T4 a symlinked status refused REFUSING: input binding: status '/private/tmp/s68dev-bind-5xjry8o7/status_link' is not canonical (a symlink component, or a relative part) | opened []
-PASS T4 a symlinked reservation refused REFUSING: input binding: reservation '/private/tmp/s68dev-bind-5xjry8o7/claude_reservations/res_link.json' is not canonical (a symlink component, or a relative  | opened []
-PASS T4 a root without SHA256SUMS refused before any raw read REFUSING: input binding: SHA256SUMS '/private/tmp/s68dev-bind-5xjry8o7/root/SHA256SUMS' does not exist | opened []
+PASS T4 a symlinked root refused REFUSING: input binding: root '/private/tmp/s68dev-bind-z6vt47le/root_link' is not canonical (a symlink component, or a relative part) | opened []
+PASS T4 a symlinked status refused REFUSING: input binding: status '/private/tmp/s68dev-bind-z6vt47le/status_link' is not canonical (a symlink component, or a relative part) | opened []
+PASS T4 a symlinked reservation refused REFUSING: input binding: reservation '/private/tmp/s68dev-bind-z6vt47le/claude_reservations/res_link.json' is not canonical (a symlink component, or a relative  | opened []
+PASS T4 a root without SHA256SUMS refused before any raw read REFUSING: input binding: SHA256SUMS '/private/tmp/s68dev-bind-z6vt47le/root/SHA256SUMS' does not exist | opened []
 PASS T4 analyze with a binding record of another lane refused REFUSING: analyze without a bind_lane record (use analyze_lane for a lane read; SYNTHETIC only for fixture rows)
 PASS T4 analyze without a binding refused REFUSING: analyze without a bind_lane record (use analyze_lane for a lane read; SYNTHETIC only for fixture rows)
 ALL PASS

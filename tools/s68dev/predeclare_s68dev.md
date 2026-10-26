@@ -45,8 +45,8 @@ as served?
 Unit: the paired margin in levels per round. For each deal it is the mean exploiter-signed level change over the deal's two mirrors.
 The CI is the 95% percentile interval of a 10,000-rep deal-cluster bootstrap (numpy default_rng, seed 1).
 
-**The bar, per arm, verbatim:** DEV_PASS iff mean ≥ +0.030 levels/round and CI lower > 0, with zero play and belief fallbacks and
-every decision ≤ 3 s. Each arm's mean and CI are reported regardless. Arm a vs arm b is reported descriptively through
+**The bar, per arm, verbatim:** DEV_PASS iff mean ≥ +0.030 levels/round and CI lower > 0, with zero belief fallbacks, zero play
+fallbacks for arm b and the defender, arm a's exploiter play fallbacks at most 0.1% of its decisions, and every decision ≤ 3 s. Each arm's mean and CI are reported regardless. Arm a vs arm b is reported descriptively through
 `reader_lib/compare_runs.py`.
 
 - **One look, fresh-only.** The reader runs once, after `LANE DONE`, on the sealed output. There is no interim read, no extension and no
@@ -55,7 +55,10 @@ every decision ≤ 3 s. Each arm's mean and CI are reported regardless. Arm a vs
   **DEV_FAIL**. Each arm's verdict stands alone. There is no multiplicity adjustment; with two arms, the chance that at least one passes
   by noise is higher than either arm's own rate.
 - **Validity, both sides, before any outcome:**
-  - zero play and zero belief fallbacks;
+  - zero belief fallbacks, both sides, both arms;
+  - play fallbacks: zero for the defender in both arms and for arm b's exploiter. **Arm a's exploiter may have at most 0.1% of its
+    decisions as play fallbacks** (about 260 of about 260,000). Those decisions stay in the paired outcome, and the reader reports their
+    count and rate. Above 0.1%, arm a is DEV_INVALID;
   - bury fallbacks and declare abandons at most 1%;
   - every search record at the arm's play worlds (b: 64 / 64; a: 96 exploiter / 64 defender);
   - declares complete;
@@ -63,9 +66,13 @@ every decision ≤ 3 s. Each arm's mean and CI are reported regardless. Arm a vs
   - the paired premise;
   - **every exploiter decide_play ≤ 3.0 s** on the duel host, both arms, judged on the 0.1 ms bin's upper bound.
 
-  Any failure gives DEV_INVALID, with the named reasons and no outcome. In arm a, a search that runs past its own 1.5 s budget writes a
-  fallback record, which the zero-fallback ceiling counts. **The half-budget arm is therefore DEV_INVALID if even one of its plays expires
-  its budget.**
+  Any failure gives DEV_INVALID, with the named reasons and no outcome.
+
+  **Why arm a has an allowance.** In arm a, a search that runs past its own 1.5 s budget writes a fallback record and plays the heuristic
+  anchor. That is what Fly would serve for the same recipe, so these decisions are part of the recipe's strength and stay in the
+  outcome. A high count is itself a latency finding: it means the recipe does not fit Fly's budget. The fallback record does not say why
+  it was written, so the allowance covers every play fallback, not only budget expiries. Arm b and the defender run at the full budget
+  and keep zero. This rule was set on 2026-10-26, after the rehearsal and before any review, PASS or lane deal.
 - **Reported, never a condition:**
   - each arm's mean and CI, whatever the verdict;
   - the swap rate (singleton entered / chosen);
@@ -128,8 +135,9 @@ form for both arms. Details are in `rehearsal/host/rehearsal_summary.json`, `reh
 | exploiter decide_play max | 2.19 s | 1.33 s (p99 1.15 s, inside its own 1.5 s budget) |
 
 - The lane total is about 6.1 h plus checks. `KILL_AFTER` 30,000 s per arm is 2.4× arm a's projection.
-- The rehearsal's 3,720 exploiter decisions in arm a never reached 1.5 s. The full arm makes about 70× as many. A single budget expiry
-  makes arm a DEV_INVALID, as predeclared above.
+- The rehearsal's 3,720 exploiter decisions in arm a never reached 1.5 s (max 1.331 s). But 621 (17%) were past 1.1 s and 12 were past
+  1.2 s. The full arm makes about 70× as many decisions, so some expiries are plausible. Up to 0.1% of decisions they count against the
+  allowance above; beyond that, arm a is DEV_INVALID.
 
 ## Reading
 

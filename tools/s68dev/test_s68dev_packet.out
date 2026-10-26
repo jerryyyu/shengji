@@ -26,6 +26,7 @@ PASS reader TERMINAL is the launcher's final say
 PASS the DEV start text is shared by the launcher's say, the reader's bind regex and the fixture
 PASS reader per-arm play worlds {'b': {'ex': 64, 'r45': 64}, 'a': {'ex': 96, 'r45': 64}} and exploiter budgets {'b': 3.0, 'a': 1.5} follow the arms' env
 PASS reader: the +0.030 bar with CI lower > 0, zero play / belief ceilings, every exploiter decision <= 3 s on the 0.1 ms bin's upper bound
+PASS reader: arm a's exploiter play-fallback allowance 0.1%, arm b 0 (defender at BAR's zero); arm_fault_ceilings judges the other kinds; the predeclare states it
 PASS reader PINNED == the packet's reader_lib copies == fl-pilot/reader_lib's row_schema / validity / reader_lib / compare_runs
 PASS reader TRUSTED / TREE == the launcher's paths and tree
 PASS reader's s66b reference is the s66b readout (descriptive)

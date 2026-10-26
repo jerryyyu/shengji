@@ -23,3 +23,7 @@ Authority: Jerry 2026-10-26 in Claude's session "The combo and red team sound go
       a max 1.33 s vs 1.5 budget); host DRYRUN rc 0; lane_lint --packet 0 findings; staged-layout ALL PASS; packet test ALL PASS;
       launcher fresh ALL PASS; reader e2e 94/94 per arm; battery 28/28 per arm
       NOT done (needs Codex PASS first): lane-phase staging, arming, RELEASE; no posts made
+- [x] Arm-a play-fallback allowance (coordinator decision, before any review): exploiter <= 0.1% of decisions, counted in the outcome;
+      arm b + defender zero; belief zero; 3 s unchanged. Reader draft cfa548a3 / final 21ca2d6a (TRUSTED = launcher 2adc5531, unchanged);
+      reader e2e b 95/95, a 98/98 (cap-1, cap, cap+1, cap+defender cases); battery 28/28 both (arm a at the allowance); lint 0; packet test ALL PASS
+

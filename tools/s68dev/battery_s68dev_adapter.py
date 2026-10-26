@@ -77,24 +77,6 @@ class S68devAdapter(ab.DuelAdapter):
         return self.rd.analyze(rows_path, arm=self.arm, status=status_path, binding=self.rd.SYNTHETIC)   # r2: the reader's logic on fixture rows; the lane read binds through analyze_lane
 
     def guard(self, rows, tier='DEV'):
-        """the reader's fault ceilings, re-judged independently: every kind at the reader's BAR on both sides, except that the exploiter's
-        play fallbacks are judged at the arm's allowance (PLAY_FALLBACK_ALLOWANCE: arm a 0.1% of its decisions, arm b zero); the defender's
-        stay at the BAR ceiling (zero)"""
-        checks = self._guard_base(rows, tier=tier)
-        share = self.rd.PLAY_FALLBACK_ALLOWANCE[self.arm]
-        if share == self.ceilings['play_fallback']:
-            return checks
-        hs = [h for r in rows for h in r['dhist']['ex']]
-        n, d = sum(h[0] == ab.FALLBACK_SCHEMA for h in hs), len(hs)
-        reasons = [] if n <= int(share * d) else [f"oracle: exploiter play fallbacks {n} of {d} > {share:g} allowance ({int(share * d)})"]
-        first = dict(checks[0])
-        if any("'ex' play_fallback" in x for x in first['reasons']):
-            first['reasons'] = [x for x in first['reasons'] if "'ex' play_fallback" not in x]
-            first['verdict'] = va.VALID if not first['reasons'] else first['verdict']
-        allowance = dict(check='play_fallback_allowance', verdict=va.VALID if not reasons else va.invalid_verdict(tier), reasons=reasons, n_reasons=len(reasons), detail={})
-        return [first, allowance] + checks[1:]
-
-    def _guard_base(self, rows, tier='DEV'):
         checks = super().guard(rows, tier=tier)
         assert checks[0]['check'] == 'arm_fault_ceilings', checks[0]['check']
         counts = {}
@@ -113,7 +95,7 @@ class S68devAdapter(ab.DuelAdapter):
         h = super().header(tier)
         c = self.ceilings
         h[0] = (f'{ab.BATTERY_VERSION}  tier {tier}  ceilings (the reader\'s BAR) play {100 * c["play_fallback"]:g}% / belief {100 * c["belief_fallback"]:g}% / '
-                f'bury {100 * c["bury_fallback"]:g}% / declare {100 * c["declare_abandon"]:g}% on every arm, except the exploiter play-fallback allowance {100 * self.rd.PLAY_FALLBACK_ALLOWANCE[self.arm]:g}%; play worlds {self.play_worlds}; arm read {self.arm}')
+                f'bury {100 * c["bury_fallback"]:g}% / declare {100 * c["declare_abandon"]:g}% on every arm; play worlds {self.play_worlds}; arm read {self.arm}')
         return h
 
 
@@ -125,27 +107,6 @@ def main(argv=None):
     assert adapter.arm == a.arm, (adapter.arm, a.arm)
     adapter.play_worlds = dict(adapter.rd.PLAY_WORLDS[a.arm])   # the arm's play worlds (b 64 / 64; a 96 / 64)
     header = adapter.header('DEV') + [f'adapter  {os.path.realpath(__file__)}  sha256 {ab.sha256_file(os.path.realpath(__file__))}  (DuelAdapter + the lane status + the reader\'s ceilings)']
-    share = adapter.rd.PLAY_FALLBACK_ALLOWANCE[a.arm]
-    if share != adapter.ceilings['play_fallback']:
-        # the exploiter's two play-fallback cases at the arm's allowance (arm a: 0.1% of its decisions); every other case as built
-        orig = ab.build_cases
-
-        def build_cases(ad, ceilings):
-            out = []
-            for name, want, kind, build in orig(ad, ceilings):
-                if name.startswith('exploiter play fallbacks '):
-                    over = name.endswith('over ceiling by one')
-
-                    def build(rows, over=over):
-                        d, sites = ad.fault_sites(rows, 'ex', 'play_fallback')
-                        k = ab._units_at_ceiling(share, d) + int(over)
-                        for j in ab._spread(len(sites), k):
-                            sites[j]()
-                        return f'{k} of {d} (allowance {share:g})'
-                    name = name + f' (arm {a.arm} allowance {share:g})'
-                out.append((name, want, kind, build))
-            return out
-        ab.build_cases = build_cases
     results = ab.run_battery(adapter, ceilings=adapter.ceilings, tier='DEV')
     text, ok = ab.format_table(results, header)
     sys.stdout.write(text)

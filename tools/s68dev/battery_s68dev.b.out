@@ -1,23 +1,23 @@
-adversarial-battery-v1  tier DEV  ceilings (the reader's BAR) play 0% / belief 0% / bury 1% / declare 1% on every arm, except the exploiter play-fallback allowance 0%; play worlds {'ex': 64, 'r45': 64}; arm read b
-reader   /Users/jerryyu/Projects/shengji-wt/claude-s68-combo/tools/s68dev/s68dev_read.py  sha256 cfa548a3db1e763c9fb6ba040cb6f46aec1e1eab4f5042452db6e9d55161ac30  (invoke module)
-fixture  /Users/jerryyu/Projects/shengji-wt/claude-s68-combo/tools/s68dev/test_s68dev_read.py  sha256 70381e982b27c7cd2950ea450aedfacddc5a09cc040e7651d1ac20f2734324a1  (generator above '# ---- T1 ----', seed 7, engine-consistent outcomes)
+adversarial-battery-v1  tier DEV  ceilings (the reader's BAR) play 0.1% / belief 0% / bury 1% / declare 1% on every arm; play worlds {'ex': 64, 'r45': 64}; arm read b
+reader   /Users/jerryyu/Projects/shengji-wt/claude-s68-combo/tools/s68dev/s68dev_read.py  sha256 326d4388fcc05df12dcae4f3345f8c4aae42f1ac1a13712c6a645a4d2ba4a981  (invoke module)
+fixture  /Users/jerryyu/Projects/shengji-wt/claude-s68-combo/tools/s68dev/test_s68dev_read.py  sha256 515eebbb612a18f156c06b15974548d27eaeaecff48645dd8aa913f5436d4f9f  (generator above '# ---- T1 ----', seed 7, engine-consistent outcomes)
 battery  /Users/jerryyu/.claude/jobs/68f9c8bd/tmp/fl-pilot/reader_lib/adversarial_battery.py  sha256 0b490be037091a9de707b272ca4f009f61d3f08f648cd6f3b3921f1e340108a9
 validity /Users/jerryyu/.claude/jobs/68f9c8bd/tmp/fl-pilot/reader_lib/validity.py  sha256 ba84c408c3b96fbe7834184df09a48dc66b3a1c492913c8f1462d36825ea1920
-adapter  /Users/jerryyu/Projects/shengji-wt/claude-s68-combo/tools/s68dev/battery_s68dev_adapter.py  sha256 009f761d063b2371326f068137cc16b6d527e925d70e1f7a998e6440fa9296e9  (DuelAdapter + the lane status + the reader's ceilings)
+adapter  /Users/jerryyu/Projects/shengji-wt/claude-s68-combo/tools/s68dev/battery_s68dev_adapter.py  sha256 df71705be84ce8345b3b0b93b7fe247a1514047ddb2e0ddf329897dd8a717a1d  (DuelAdapter + the lane status + the reader's ceilings)
  #  case                                            want    reader outcome  guard         result  injected / detail
  1  clean fixture                                   ACCEPT  DEV_FAIL        VALID         PASS    unchanged
  2  all exploiter plays fallback                    REJECT  REFUSED         DEV_INVALID   PASS    392000 of 392000 decisions
  3  all defender plays fallback                     REJECT  REFUSED         DEV_INVALID   PASS    392000 of 392000 decisions
- 4  exploiter play fallbacks over ceiling by one    REJECT  DEV_INVALID     DEV_INVALID   PASS    1 of 392000
- 5  exploiter play fallbacks at ceiling             ACCEPT  DEV_FAIL        VALID         PASS    0 of 392000
+ 4  exploiter play fallbacks over ceiling by one    REJECT  DEV_INVALID     DEV_INVALID   PASS    393 of 392000
+ 5  exploiter play fallbacks at ceiling             ACCEPT  DEV_FAIL        VALID         PASS    392 of 392000
  6  exploiter belief fallbacks over ceiling by one  REJECT  DEV_INVALID     DEV_INVALID   PASS    1 of 392000
  7  exploiter belief fallbacks at ceiling           ACCEPT  DEV_FAIL        VALID         PASS    0 of 392000
  8  exploiter bury fallbacks over ceiling by one    REJECT  DEV_INVALID     DEV_INVALID   PASS    40 of 3920
  9  exploiter bury fallbacks at ceiling             ACCEPT  DEV_FAIL        VALID         PASS    39 of 3920
 10  exploiter declare abandons over ceiling by one  REJECT  DEV_INVALID     DEV_INVALID   PASS    158 of 15729
 11  exploiter declare abandons at ceiling           ACCEPT  DEV_FAIL        VALID         PASS    157 of 15729
-12  defender play fallbacks over ceiling by one     REJECT  DEV_INVALID     DEV_INVALID   PASS    1 of 392000
-13  defender play fallbacks at ceiling              ACCEPT  DEV_FAIL        VALID         PASS    0 of 392000
+12  defender play fallbacks over ceiling by one     REJECT  DEV_INVALID     DEV_INVALID   PASS    393 of 392000
+13  defender play fallbacks at ceiling              ACCEPT  DEV_FAIL        VALID         PASS    392 of 392000
 14  defender belief fallbacks over ceiling by one   REJECT  DEV_INVALID     DEV_INVALID   PASS    1 of 392000
 15  defender belief fallbacks at ceiling            ACCEPT  DEV_FAIL        VALID         PASS    0 of 392000
 16  defender bury fallbacks over ceiling by one     REJECT  DEV_INVALID     DEV_INVALID   PASS    40 of 3920

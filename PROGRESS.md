@@ -26,4 +26,8 @@ Authority: Jerry 2026-10-26 in Claude's session "The combo and red team sound go
 - [x] Arm-a play-fallback allowance (coordinator decision, before any review): exploiter <= 0.1% of decisions, counted in the outcome;
       arm b + defender zero; belief zero; 3 s unchanged. Reader draft cfa548a3 / final 21ca2d6a (TRUSTED = launcher 2adc5531, unchanged);
       reader e2e b 95/95, a 98/98 (cap-1, cap, cap+1, cap+defender cases); battery 28/28 both (arm a at the allowance); lint 0; packet test ALL PASS
+- [x] Codex HOLD 1075/6420474437 (asymmetric arm-a-only allowance violates same-ceilings rule) repaired: ONE common play-fallback ceiling
+      0.1% of each side's decisions, every side, both arms (BAR mapping; the one arm_fault_ceilings call); belief 0; per-side counts/rates;
+      reader draft 326d4388 / final baee0a2a (TRUSTED = launcher 2adc5531, unchanged); symmetry fixture; reader e2e 104/104 both arms;
+      battery 28/28 both (adapter back to df71705b); lint 0; packet test ALL PASS; delta ask ~/.claude/jobs/d0498cda/tmp/s68_delta_ask.md
 

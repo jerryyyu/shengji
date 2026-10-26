@@ -249,7 +249,7 @@ def refused(label, want, rs, **kw):
 base = rows()
 out = run(base)
 m, lo, hi = out['levels']
-check('T1 clean read: DEV_PASS at a +0.06 synthetic effect, validity VALID (six checks incl. play_fallback_allowance and latency_inside_budget), 600 deals', out['bar']['verdict'] == 'DEV_PASS' and out['validity']['verdict'] == 'VALID' and out['validity']['checks'] == ['arm_fault_ceilings', 'play_fallback_allowance', 'worlds_delivered', 'completion_shape', 'outcome_consistency', 'latency_inside_budget'] and out['deals'] == DEALS and abs(m - 0.06) < 0.02 and lo > 0, f'{m:+.4f} [{lo:+.4f}, {hi:+.4f}] {out["validity"]["checks"]}')
+check('T1 clean read: DEV_PASS at a +0.06 synthetic effect, validity VALID (five checks incl. latency_inside_budget), 600 deals', out['bar']['verdict'] == 'DEV_PASS' and out['validity']['verdict'] == 'VALID' and out['validity']['checks'] == ['arm_fault_ceilings', 'worlds_delivered', 'completion_shape', 'outcome_consistency', 'latency_inside_budget'] and out['deals'] == DEALS and abs(m - 0.06) < 0.02 and lo > 0, f'{m:+.4f} [{lo:+.4f}, {hi:+.4f}] {out["validity"]["checks"]}')
 sp = out['split_descriptive']
 check('T1 the rank split partitions the deals (trump rank 2 vs != 2) and both are reported', sp['deals_rank_2'] == sum(1 for i in range(DEALS) if rd.round_plan(i)[1] == '2') and sp['trump_rank_2'] is not None and sp['trump_rank_not_2'] is not None, sp['deals_rank_2'])
 check('T1 belief_ms reported on both sides', out['exploiter']['belief_ms_p50_p95_p99_max'][0] == 12.5 and out['defender']['belief_ms_p50_p95_p99_max'][3] == 12.5)
@@ -326,11 +326,7 @@ def to_fallback_ex(r, i):
     to_fallback(r['dhist']['ex'][i]); r['sc8']['ex'][i] = [r['dhist']['ex'][i][9], None, None, None, None, None]
 for side, who in (('ex', 'exploiter'), ('r45', 'defender')):
     rs = rows(); to_fallback(rs[10]['dhist'][side][3]) if side == 'r45' else to_fallback_ex(rs[10], 3)
-    o = run(rs)
-    if side == 'ex' and rd.PLAY_FALLBACK_ALLOWANCE[ARM] > 0:
-        check(f'T2 ONE {who} play fallback in arm {ARM} (allowance {rd.PLAY_FALLBACK_ALLOWANCE[ARM]:g}) -> accepted, counted and reported', o['bar']['verdict'] == 'DEV_PASS' and o['validity']['detail']['play_fallback_allowance']['exploiter']['fallbacks'] == 1 and o['exploiter']['fallback'] == 1 and any('play fallbacks exploiter 1 of' in l for l in o['canonical_lines']), o['validity']['detail']['play_fallback_allowance']['exploiter'])
-    else:
-        check(f'T2 ONE {who} play fallback -> DEV_INVALID (zero ceiling), no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any(f"arm '{side}' play_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+    o = run(rs); check(f'T2 ONE {who} play fallback -> accepted under the common 0.1% ceiling; counted in the outcome and reported per side', o['bar']['verdict'] == 'DEV_PASS' and o['levels'] is not None and o['play_fallbacks'][side]['fallbacks'] == 1 and o['play_fallbacks']['ex' if side == 'r45' else 'r45']['fallbacks'] == 0 and abs(o['play_fallbacks'][side]['rate'] - 1 / o['play_fallbacks'][side]['decisions']) < 1e-15, o['play_fallbacks'])
     rs = rows(); h = next(h for h in rs[10]['dhist'][side] if h[0] == '-decision-v1'); h[4], h[7] = 1, 'BeliefNumpyError'
     o = run(rs); check(f'T2 ONE {who} belief fallback -> DEV_INVALID (zero ceiling)', o['bar']['verdict'] == 'DEV_INVALID' and any(f"arm '{side}' belief_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
     rs = rows()
@@ -347,29 +343,32 @@ for side, who in (('ex', 'exploiter'), ('r45', 'defender')):
     o = run(rs); check(f"T2 one {who} search record at 128 play worlds (configured {PW[side]}) -> DEV_INVALID", o['bar']['verdict'] == 'DEV_INVALID' and any('worlds_delivered' in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
     rs = rows(); h = next(h for h in rs[5]['dhist'][side] if h[0] == '-decision-v1'); h[18] = 32
     o = run(rs); check(f'T2 one {who} search record at 32 play worlds -> DEV_INVALID', o['bar']['verdict'] == 'DEV_INVALID' and any('worlds_delivered' in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
-def ex_fallbacks(k):
-    """rows with k exploiter play fallbacks, spread over the rows (search records only), each with its all-None sc8 entry"""
-    rs = rows()
-    sites = [(r, i) for r in rs for i, h in enumerate(r['dhist']['ex']) if h[0] == '-decision-v1']
+def side_fallbacks(rs, side, k):
+    """k play fallbacks on `side`, spread over its search records (an exploiter fallback carries its all-None sc8 entry)"""
+    sites = [(r, i) for r in rs for i, h in enumerate(r['dhist'][side]) if h[0] == '-decision-v1']
     for j in range(k):
         r, i = sites[(j * len(sites)) // max(k, 1)]
-        to_fallback_ex(r, i)
+        to_fallback_ex(r, i) if side == 'ex' else to_fallback(r['dhist'][side][i])
     return rs
-share = rd.PLAY_FALLBACK_ALLOWANCE[ARM]
-n_dec = sum(len(r['dhist']['ex']) for r in rows())
-cap = int(share * n_dec)
-if share > 0:
-    for k, ok in ((cap - 1, True), (cap, True), (cap + 1, False)):
-        o = run(ex_fallbacks(k))
-        pa = o['validity']['detail']['play_fallback_allowance']['exploiter']
-        if ok:
-            check(f'T2 arm {ARM}: {k} exploiter play fallbacks (cap {cap} = {share:g} x {n_dec}) -> accepted; the fallback decisions stay in the outcome; count and rate reported', o['bar']['verdict'] == 'DEV_PASS' and o['levels'] is not None and pa['fallbacks'] == k and abs(pa['rate'] - k / n_dec) < 1e-15 and pa['allowed'] == cap and o['validity']['verdict'] == 'VALID', pa)
-        else:
-            check(f'T2 arm {ARM}: {k} exploiter play fallbacks, one above the cap {cap} -> DEV_INVALID, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any(f"arm 'ex' play_fallback: {k} of {n_dec}" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
-    rs = ex_fallbacks(cap); to_fallback(next(h for h in rs[20]['dhist']['r45'] if h[0] == '-decision-v1'))
-    o = run(rs); check(f'T2 arm {ARM}: the exploiter at its cap plus ONE defender play fallback -> DEV_INVALID (the defender stays at zero)', o['bar']['verdict'] == 'DEV_INVALID' and any("arm 'r45' play_fallback: 1 of" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
-else:
-    check(f'T2 arm {ARM}: no play-fallback allowance (zero, the T2 one-fallback case above)', cap == 0 and rd.PLAY_FALLBACK_ALLOWANCE == {'b': 0.0, 'a': 0.001}, rd.PLAY_FALLBACK_ALLOWANCE)
+base_rows = rows()
+n_dec = {side: sum(len(r['dhist'][side]) for r in base_rows) for side in ('ex', 'r45')}
+ceil = rd.BAR['ceilings']['play_fallback']
+check('T2 one play-fallback ceiling for every side and arm (one BAR mapping, 0.1%)', ceil == 0.001 and rd.BAR['ceilings']['belief_fallback'] == 0 and not hasattr(rd, 'PLAY_FALLBACK_ALLOWANCE'), rd.BAR['ceilings'])
+OTHER = next(a for a in rd.ARM_ORDER if a != ARM)
+sym = {}
+for arm_ in (ARM, OTHER):
+    for side in ('ex', 'r45'):
+        cap = int(ceil * n_dec[side])
+        for k in (cap, cap + 1):
+            rs = side_fallbacks(copy.deepcopy(base_rows), side, k)
+            o = run(rs if arm_ == ARM else arm_rows(rs, arm_), arm=arm_)
+            sym[(arm_, side, k - cap)] = o['validity']['verdict']
+            pf = o['play_fallbacks'][side]
+            if k == cap:
+                check(f'T2 symmetry: arm {arm_} {side} at the cap ({k} of {n_dec[side]}) -> VALID; counted in the outcome; count and rate reported', o['validity']['verdict'] == 'VALID' and o['bar']['verdict'] == 'DEV_PASS' and o['levels'] is not None and pf['fallbacks'] == k and pf['allowed'] == cap and abs(pf['rate'] - k / n_dec[side]) < 1e-15, pf)
+            else:
+                check(f'T2 symmetry: arm {arm_} {side} one above the cap ({k} of {n_dec[side]}) -> DEV_INVALID, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any(f"arm '{side}' play_fallback: {k} of {n_dec[side]}" in x for x in o['bar']['reasons']), o['bar']['reasons'][:2])
+check('T2 symmetry: the same count gets the same verdict on the exploiter and the defender, in arm b and arm a', all(sym[(a_, s_, d_)] == sym[(ARM, 'ex', d_)] for a_ in (ARM, OTHER) for s_ in ('ex', 'r45') for d_ in (0, 1)) and sym[(ARM, 'ex', 0)] == 'VALID' and sym[(ARM, 'ex', 1)] == 'DEV_INVALID', sym)
 rs = rows(); rs[11]['dsecs']['ex'][2] = 3.0001
 o = run(rs); check('T2 ONE exploiter decide_play recorded 3.0001 s -> DEV_INVALID by latency_inside_budget, no outcome', o['bar']['verdict'] == 'DEV_INVALID' and o['levels'] is None and any('latency_inside_budget' in x and 'recorded 3.0001 s' in x and '> the served budget 3 s' in x for x in o['bar']['reasons']) and o['validity']['detail']['latency_inside_budget']['over'] == 1, o['bar']['reasons'][:2])
 rs = rows(); rs[11]['dsecs']['ex'][2] = round(3.00004, 4)   # the producer's 4-decimal rounding records an actual 3.00004 s as 3.0
@@ -422,11 +421,7 @@ rs = rows(); rs[4]['sc8']['ex'][0] = rs[4]['sc8']['ex'][0][:5]; refused('T3 a 5-
 rs = rows(); rs[4]['sc8']['r45'] = []; refused('T3 an sc8 dict with a defender list refused (the probe runs on the exploiter side only)', 'sc8 form', rs)
 rs = rows(); p = rs[4]['sc8']['ex'][0]; p[0] = not p[0]; refused('T3 an sc8 lead flag disagreeing with dhist refused', 'sc8 lead flag', rs)
 rs = rows(); to_fallback(rs[10]['dhist']['ex'][3]); rs[10]['sc8']['ex'][3] = [rs[10]['dhist']['ex'][3][9], None, None, None, None, None]
-o = run(rs)
-if rd.PLAY_FALLBACK_ALLOWANCE[ARM] > 0:
-    check(f'T3 control: a fallback record with an all-None sc8 entry is the expected pairing (arm {ARM}: one exploiter fallback is inside its allowance, so the read stands)', o['bar']['verdict'] == 'DEV_PASS' and o['exploiter']['fallback'] == 1 and not any('sc8' in x for x in o['bar']['reasons']), o['bar']['reasons'][:1])
-else:
-    check('T3 control: a fallback record with an all-None sc8 entry is the expected pairing (the fallback itself then makes the read DEV_INVALID)', o['bar']['verdict'] == 'DEV_INVALID' and any('play_fallback: 1 of' in x for x in o['bar']['reasons']) and not any('sc8' in x for x in o['bar']['reasons']), o['bar']['reasons'][:1])
+o = run(rs); check('T3 control: a fallback record with an all-None sc8 entry is the expected pairing (one fallback is inside the common ceiling, so the read stands)', o['bar']['verdict'] == 'DEV_PASS' and o['exploiter']['fallback'] == 1 and not any('sc8' in x for x in o['bar']['reasons']), o['bar']['reasons'][:1])
 rs = rows(); to_fallback(rs[10]['dhist']['ex'][3]); rs[10]['sc8']['ex'][3] = [rs[10]['dhist']['ex'][3][9], False, None, None, None, False]; refused('T3 probe fields (applied False) on a FALLBACK record refused', 'sc8 on a fallback record', rs)
 def first_probe(rs):
     for r in rs:

@@ -1,0 +1,57 @@
+30,32c30,32
+< fallbacks (bury fallbacks <= 1% of buries, declare abandons <= 1% of declare evaluations); play_fallback_allowance: ZERO play fallbacks for
+< the defender and for arm b's exploiter, and for arm a's exploiter at most 0.1% of its decisions (its half-budget expiries; Fly would serve
+< the same heuristic anchor, so those decisions stay in the outcome and their count and rate are reported); worlds_delivered (every search
+---
+> fallbacks and ONE common play-fallback ceiling of 0.1% of that side's decisions, the same on every side (exploiter and defender) in both arms
+> (the fallback record cannot tell a deadline expiry from another search failure, so it covers every play fallback; fallback decisions stay in
+> the outcome; per-side counts and rates are reported); bury fallbacks <= 1% of buries, declare abandons <= 1% of declare evaluations; worlds_delivered (every search
+88c88
+< #: the predeclared read per arm: DEV_PASS iff mean >= +0.030 and CI lower > 0; the validity ceilings on BOTH sides (zero play and belief fallbacks)
+---
+> #: the predeclared read per arm: DEV_PASS iff mean >= +0.030 and CI lower > 0; the validity ceilings, ONE mapping for every side in both arms (zero belief fallbacks, play fallbacks <= 0.1% of that side's decisions)
+90c90,93
+<            ceilings=dict(play_fallback=0, belief_fallback=0, bury_fallback=0.01, declare_abandon=0.01))
+---
+>            ceilings=dict(play_fallback=0.001, belief_fallback=0, bury_fallback=0.01, declare_abandon=0.01))
+> #: ONE play-fallback ceiling, the same 0.1% of that side's decisions on every side (exploiter and defender) in both arms, judged by the one
+> #: validity.arm_fault_ceilings mapping; fallback decisions stay in the outcome.  The fallback record cannot tell a deadline expiry from
+> #: any other search failure, so the ceiling covers every play fallback
+97,99d99
+< #: the exploiter's play-fallback allowance per arm (share of its decisions): arm a's half-budget expiries are the recipe's own serving
+< #: behaviour (Fly would serve the same heuristic anchor), so up to 0.1% are allowed and stay in the outcome; arm b and the defender stay at zero
+< PLAY_FALLBACK_ALLOWANCE = {"b": 0.0, "a": 0.001}
+571,587d570
+< def play_fallback_allowance(counts, arm):
+<     """Play fallbacks, per side: the exploiter at most PLAY_FALLBACK_ALLOWANCE[arm] of its decisions (arm a: 0.1%), the defender at
+<     BAR's play_fallback ceiling (zero).  validity.arm_fault_ceilings once per side (each its own single-arm mapping), merged into one
+<     guard result; arm_fault_ceilings over both sides then judges the other fault kinds with play_fallback not applicable."""
+<     share = PLAY_FALLBACK_ALLOWANCE[arm]
+<     exv = va.arm_fault_ceilings({"ex": counts.get("ex")}, {"play_fallback": share}, arms=("ex",), tier="DEV")
+<     dfv = va.arm_fault_ceilings({"r45": counts.get("r45")}, {"play_fallback": BAR["ceilings"]["play_fallback"]}, arms=("r45",), tier="DEV")
+<     reasons = list(exv["reasons"]) + list(dfv["reasons"])
+<     rate = lambda c: (c["play_fallback"] / c["decisions"]) if isinstance(c, dict) and c.get("decisions") else None
+<     return dict(check="play_fallback_allowance", verdict=va.VALID if exv["verdict"] == va.VALID and dfv["verdict"] == va.VALID else va.invalid_verdict("DEV"),
+<                 reasons=reasons, n_reasons=len(reasons),
+<                 detail=dict(exploiter_share=share, defender_share=BAR["ceilings"]["play_fallback"],
+<                             exploiter=dict(fallbacks=counts["ex"]["play_fallback"], decisions=counts["ex"]["decisions"], rate=rate(counts["ex"]), allowed=int(share * counts["ex"]["decisions"])),
+<                             defender=dict(fallbacks=counts["r45"]["play_fallback"], decisions=counts["r45"]["decisions"], rate=rate(counts["r45"])),
+<                             ex=exv["detail"], r45=dfv["detail"]))
+< 
+< 
+639,640c622
+<     checks = [va.arm_fault_ceilings(counts, dict(BAR["ceilings"], play_fallback=None), arms=ARMS, tier="DEV"),
+<               play_fallback_allowance(counts, arm),
+---
+>     checks = [va.arm_fault_ceilings(counts, BAR["ceilings"], arms=ARMS, tier="DEV"),
+648a631,632
+>     out["play_fallbacks"] = {side: dict(fallbacks=counts[side]["play_fallback"], decisions=counts[side]["decisions"], rate=(counts[side]["play_fallback"] / counts[side]["decisions"]) if counts[side]["decisions"] else None,
+>                                         ceiling=BAR["ceilings"]["play_fallback"], allowed=int(BAR["ceilings"]["play_fallback"] * counts[side]["decisions"])) for side in ARMS}
+700c684
+<         f"[{arm}] Faults (validity inputs, both sides): play fallbacks exploiter {e['fallback']} of {e['decisions']} ({100 * e['fallback'] / e['decisions']:.4f}%; allowed {100 * PLAY_FALLBACK_ALLOWANCE[arm]:g}% = {int(PLAY_FALLBACK_ALLOWANCE[arm] * e['decisions'])}, counted in the outcome) vs defender {d['fallback']} of {d['decisions']} (allowed 0); belief fallbacks {e['belief_fallback']} of {e['search']} vs {d['belief_fallback']} of {d['search']}; bury fallbacks {e['bury_fallback']} of {e['buries']} vs {d['bury_fallback']} of {d['buries']}; declare abandons {e['declare_abandoned']} of {e['declares']} vs {d['declare_abandoned']} of {d['declares']}; search records off their play worlds ({pw['ex']} / {pw['r45']}) {e['play_worlds_mismatch']} vs {d['play_worlds_mismatch']}.",
+---
+>         f"[{arm}] Faults (validity inputs, both sides): play fallbacks exploiter {e['fallback']} of {e['decisions']} ({100 * e['fallback'] / e['decisions']:.4f}%) vs defender {d['fallback']} of {d['decisions']} ({100 * d['fallback'] / d['decisions']:.4f}%) (one common ceiling {100 * BAR['ceilings']['play_fallback']:g}% of each side's decisions; fallback decisions counted in the outcome); belief fallbacks {e['belief_fallback']} of {e['search']} vs {d['belief_fallback']} of {d['search']}; bury fallbacks {e['bury_fallback']} of {e['buries']} vs {d['bury_fallback']} of {d['buries']}; declare abandons {e['declare_abandoned']} of {e['declares']} vs {d['declare_abandoned']} of {d['declares']}; search records off their play worlds ({pw['ex']} / {pw['r45']}) {e['play_worlds_mismatch']} vs {d['play_worlds_mismatch']}.",
+733c717
+<         f"[{arm}] Read (predeclared): validity VALID on both sides (zero belief fallbacks; play fallbacks: defender 0, exploiter {e['fallback']} of {e['decisions']} within its {100 * PLAY_FALLBACK_ALLOWANCE[arm]:g}% allowance; {pw['ex']} / {pw['r45']} worlds, every exploiter decision inside {BUDGET_S:g} s, the paired premise); DEV_PASS iff mean >= +{BAR['pass_min_mean']:.3f} and CI lower > 0.  Verdict {verdict}.  (This arm alone, one look; a PASS leads to a screen and a Fly latency check; release is Jerry's.)",
+---
+>         f"[{arm}] Read (predeclared): validity VALID on both sides (zero belief fallbacks; play fallbacks within the common {100 * BAR['ceilings']['play_fallback']:g}% ceiling on each side: exploiter {e['fallback']}, defender {d['fallback']}; {pw['ex']} / {pw['r45']} worlds, every exploiter decision inside {BUDGET_S:g} s, the paired premise); DEV_PASS iff mean >= +{BAR['pass_min_mean']:.3f} and CI lower > 0.  Verdict {verdict}.  (This arm alone, one look; a PASS leads to a screen and a Fly latency check; release is Jerry's.)",

@@ -27,9 +27,9 @@ from the arm's seed0, the r2 plan per deal, the 19-field dhist and its row schem
 reconciliations, no 8-card exact stage on either side, the declare / bury producer shapes at 64 / 32 / K <= 64 on both sides, the decision
 trace and the first-divergence form, and the adapter's 'sc8' probe entries (sc8_gate).
 VALIDITY (per arm, on BOTH sides, before any outcome; a failure -> DEV_INVALID and no outcome): arm_fault_ceilings with ZERO belief
-fallbacks (bury fallbacks <= 1% of buries, declare abandons <= 1% of declare evaluations); play_fallback_allowance: ZERO play fallbacks for
-the defender and for arm b's exploiter, and for arm a's exploiter at most 0.1% of its decisions (its half-budget expiries; Fly would serve
-the same heuristic anchor, so those decisions stay in the outcome and their count and rate are reported); worlds_delivered (every search
+fallbacks and ONE common play-fallback ceiling of 0.1% of that side's decisions, the same on every side (exploiter and defender) in both arms
+(the fallback record cannot tell a deadline expiry from another search failure, so it covers every play fallback; fallback decisions stay in
+the outcome; per-side counts and rates are reported); bury fallbacks <= 1% of buries, declare abandons <= 1% of declare evaluations; worlds_delivered (every search
 record reports the arm's play worlds: b 64 / 64, a 96 exploiter / 64 defender), completion_shape, outcome_consistency, latency_inside_budget
 (every EXPLOITER decide_play <= 3.0 s on the duel host, both arms); plus the paired premise.
 THE READ (predeclared, per arm, each alone): the paired mean (levels/round; per deal the mean exploiter-signed level change over its two
@@ -85,18 +85,18 @@ LANE = "s68dev"
 TERMINAL = "s68dev DEV output sealed (arms b a); rc/status only (strength qualification is reader-owned); LANE DONE"   # the launcher's final say, minus the stamp
 RANKS13 = ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
 FIRST_INDICES = (0, 3, 5, 8)
-#: the predeclared read per arm: DEV_PASS iff mean >= +0.030 and CI lower > 0; the validity ceilings on BOTH sides (zero play and belief fallbacks)
+#: the predeclared read per arm: DEV_PASS iff mean >= +0.030 and CI lower > 0; the validity ceilings, ONE mapping for every side in both arms (zero belief fallbacks, play fallbacks <= 0.1% of that side's decisions)
 BAR = dict(pass_min_mean=0.030, pass_ci_lower_above=0.0,
-           ceilings=dict(play_fallback=0, belief_fallback=0, bury_fallback=0.01, declare_abandon=0.01))
+           ceilings=dict(play_fallback=0.001, belief_fallback=0, bury_fallback=0.01, declare_abandon=0.01))
+#: ONE play-fallback ceiling, the same 0.1% of that side's decisions on every side (exploiter and defender) in both arms, judged by the one
+#: validity.arm_fault_ceilings mapping; fallback decisions stay in the outcome.  The fallback record cannot tell a deadline expiry from
+#: any other search failure, so the ceiling covers every play fallback
 ARMS = ("ex", "r45")
 #: the side recipes' world counts: value-declare (both sides R48's 64; SHENGJI_PV_WORLDS does not set them) and play worlds PER ARM
 DECLARE_WORLDS = {"ex": 64, "r45": 64}
 PLAY_WORLDS = {"b": {"ex": 64, "r45": 64}, "a": {"ex": 96, "r45": 64}}
 #: the exploiter's own play budget per arm (SHENGJI_PV_SERVING_BUDGET_SECONDS on its side): descriptive share of decisions past it
 EXPLOITER_BUDGET_S = {"b": 3.0, "a": 1.5}
-#: the exploiter's play-fallback allowance per arm (share of its decisions): arm a's half-budget expiries are the recipe's own serving
-#: behaviour (Fly would serve the same heuristic anchor), so up to 0.1% are allowed and stay in the outcome; arm b and the defender stay at zero
-PLAY_FALLBACK_ALLOWANCE = {"b": 0.0, "a": 0.001}
 BUDGET_S = 3.0   # the predeclared ceiling for every exploiter decide_play, both arms (latency_inside_budget): R48's served play budget
 HALF_BIN = 0.00005   # the producer records decide_play seconds rounded to 4 decimals (0.1 ms bins): a recorded x stands for [x - 0.00005, x + 0.00005]; the ceiling is judged on the bin's upper bound, so recorded 3.0 (actual up to 3.00005) is OVER
 TRUSTED_LAUNCHER_SHA256 = "TO_BE_PINNED"   # the FINAL launcher's sha256 (the RELEASE token): filled by make_s68dev_final.py at the pin step, the only line of this file that step changes; the draft refuses a lane read
@@ -568,23 +568,6 @@ def bind(path, status, sums, arm):
     return out
 
 
-def play_fallback_allowance(counts, arm):
-    """Play fallbacks, per side: the exploiter at most PLAY_FALLBACK_ALLOWANCE[arm] of its decisions (arm a: 0.1%), the defender at
-    BAR's play_fallback ceiling (zero).  validity.arm_fault_ceilings once per side (each its own single-arm mapping), merged into one
-    guard result; arm_fault_ceilings over both sides then judges the other fault kinds with play_fallback not applicable."""
-    share = PLAY_FALLBACK_ALLOWANCE[arm]
-    exv = va.arm_fault_ceilings({"ex": counts.get("ex")}, {"play_fallback": share}, arms=("ex",), tier="DEV")
-    dfv = va.arm_fault_ceilings({"r45": counts.get("r45")}, {"play_fallback": BAR["ceilings"]["play_fallback"]}, arms=("r45",), tier="DEV")
-    reasons = list(exv["reasons"]) + list(dfv["reasons"])
-    rate = lambda c: (c["play_fallback"] / c["decisions"]) if isinstance(c, dict) and c.get("decisions") else None
-    return dict(check="play_fallback_allowance", verdict=va.VALID if exv["verdict"] == va.VALID and dfv["verdict"] == va.VALID else va.invalid_verdict("DEV"),
-                reasons=reasons, n_reasons=len(reasons),
-                detail=dict(exploiter_share=share, defender_share=BAR["ceilings"]["play_fallback"],
-                            exploiter=dict(fallbacks=counts["ex"]["play_fallback"], decisions=counts["ex"]["decisions"], rate=rate(counts["ex"]), allowed=int(share * counts["ex"]["decisions"])),
-                            defender=dict(fallbacks=counts["r45"]["play_fallback"], decisions=counts["r45"]["decisions"], rate=rate(counts["r45"])),
-                            ex=exv["detail"], r45=dfv["detail"]))
-
-
 def latency_inside_budget(by, budget=BUDGET_S):
     """Every EXPLOITER decide_play on the duel host within the served play budget (a validity.py-shaped guard result): a decision past it
     is the candidate's probe cost overrunning the budget, whether or not a fallback record was written (the finish after the last
@@ -636,8 +619,7 @@ def analyze(path, *, arm, status, sums=None, deals=DEALS, binding):
     declares = [dict(where=(sd, mi, side, i), arm=side, evaluated=d[2], worlds=d[3], completed=d[4])
                 for (sd, mi), r in sorted(by.items()) for side in ARMS for i, d in enumerate(r["declare_recs"][side])]
     req = va.CORE_OUTCOME_FIELDS + ("kitty_points", "last_trick_winner", "ex_team", "ex_levels", "ex_attacker_points_signed", "ex_role")
-    checks = [va.arm_fault_ceilings(counts, dict(BAR["ceilings"], play_fallback=None), arms=ARMS, tier="DEV"),
-              play_fallback_allowance(counts, arm),
+    checks = [va.arm_fault_ceilings(counts, BAR["ceilings"], arms=ARMS, tier="DEV"),
               va.worlds_delivered(worlds, pw, tier="DEV"),
               va.completion_shape(declares, tier="DEV", expected_worlds_by_arm=DECLARE_WORLDS),
               va.outcome_consistency([(k, r) for k, r in sorted(by.items())], tier="DEV", require=req),
@@ -646,6 +628,8 @@ def analyze(path, *, arm, status, sums=None, deals=DEALS, binding):
     premise_bad = [sd for j, sd in enumerate(seeds) if div[sd] is None and lv[j] != 0]
     reasons = list(v["reasons"]) + ([f"paired premise: {len(premise_bad)} deals whose two mirrors never diverged have a nonzero margin (seeds {premise_bad[:5]})"] if premise_bad else [])
     valid = v["verdict"] == va.VALID and not premise_bad
+    out["play_fallbacks"] = {side: dict(fallbacks=counts[side]["play_fallback"], decisions=counts[side]["decisions"], rate=(counts[side]["play_fallback"] / counts[side]["decisions"]) if counts[side]["decisions"] else None,
+                                        ceiling=BAR["ceilings"]["play_fallback"], allowed=int(BAR["ceilings"]["play_fallback"] * counts[side]["decisions"])) for side in ARMS}
     out["validity"] = dict(verdict=va.VALID if valid else "DEV_INVALID", reasons=reasons, checks=v["checks"],
                            detail={c["check"]: c["detail"] for c in checks}, paired_premise=dict(undiverged=sum(d is None for d in div.values()), undiverged_nonzero=len(premise_bad)))
     # reported per side (never a condition)
@@ -697,7 +681,7 @@ def analyze(path, *, arm, status, sums=None, deals=DEALS, binding):
         first[key] = first.get(key, 0) + 1
     out["first_divergence"] = dict(sorted(first.items()))
     lines_common = [
-        f"[{arm}] Faults (validity inputs, both sides): play fallbacks exploiter {e['fallback']} of {e['decisions']} ({100 * e['fallback'] / e['decisions']:.4f}%; allowed {100 * PLAY_FALLBACK_ALLOWANCE[arm]:g}% = {int(PLAY_FALLBACK_ALLOWANCE[arm] * e['decisions'])}, counted in the outcome) vs defender {d['fallback']} of {d['decisions']} (allowed 0); belief fallbacks {e['belief_fallback']} of {e['search']} vs {d['belief_fallback']} of {d['search']}; bury fallbacks {e['bury_fallback']} of {e['buries']} vs {d['bury_fallback']} of {d['buries']}; declare abandons {e['declare_abandoned']} of {e['declares']} vs {d['declare_abandoned']} of {d['declares']}; search records off their play worlds ({pw['ex']} / {pw['r45']}) {e['play_worlds_mismatch']} vs {d['play_worlds_mismatch']}.",
+        f"[{arm}] Faults (validity inputs, both sides): play fallbacks exploiter {e['fallback']} of {e['decisions']} ({100 * e['fallback'] / e['decisions']:.4f}%) vs defender {d['fallback']} of {d['decisions']} ({100 * d['fallback'] / d['decisions']:.4f}%) (one common ceiling {100 * BAR['ceilings']['play_fallback']:g}% of each side's decisions; fallback decisions counted in the outcome); belief fallbacks {e['belief_fallback']} of {e['search']} vs {d['belief_fallback']} of {d['search']}; bury fallbacks {e['bury_fallback']} of {e['buries']} vs {d['bury_fallback']} of {d['buries']}; declare abandons {e['declare_abandoned']} of {e['declares']} vs {d['declare_abandoned']} of {d['declares']}; search records off their play worlds ({pw['ex']} / {pw['r45']}) {e['play_worlds_mismatch']} vs {d['play_worlds_mismatch']}.",
         f"[{arm}] Latency on the duel host under its workers (not serving latency): belief_ms p50 / p95 / p99 / max exploiter {e['belief_ms_p50_p95_p99_max']} vs defender {d['belief_ms_p50_p95_p99_max']}; decide_play s {e['decide_play_p50_p95_p99_max']} vs {d['decide_play_p50_p95_p99_max']}; bury s p50 / p99 / max {e['bury_seconds_p50_p99_max']} vs {d['bury_seconds_p50_p99_max']}; failed throws {failed['ex']} vs {failed['r45']}.",
         f"[{arm}] Play time arm / defender (descriptive, duel host): sum {out['play_time']['ratio_sum']:.3f} (exploiter {out['play_time']['ex_sum_s']:.0f} s vs defender {out['play_time']['def_sum_s']:.0f} s); p50 / p95 / p99 ratios {[None if x is None else round(x, 3) for x in out['play_time']['ratio_p50_p95_p99']]}.",
         f"[{arm}] Swap rate (descriptive): leads {sc8['leads']} (at max hand > 7: {sc8['leads_gt7']}); probed {sc8['probed']}; a singleton ENTERED the ballot {sc8['entered']} times ({100 * (out['swap_rate']['entered_per_probe'] or 0):.1f}% of probes, {100 * (out['swap_rate']['entered_per_lead'] or 0):.1f}% of leads) and was CHOSEN {sc8['chosen']} times ({100 * (out['swap_rate']['chosen_per_entered'] or 0):.1f}% of entries, {100 * (out['swap_rate']['chosen_per_lead'] or 0):.1f}% of leads); evaluations per probe p50 / max {out['swap_rate']['evaluations_p50_max']}; margin p50 / p90 / max {[None if x is None else round(x, 4) for x in out['swap_rate']['margin_p50_p90_max']]}; by rank group {sc8['by_rank_group']}.",
@@ -730,7 +714,7 @@ def analyze(path, *, arm, status, sums=None, deals=DEALS, binding):
     fm = lambda b: "n/a" if b is None else f"{b[0]:+.4f} [{b[1]:+.4f}, {b[2]:+.4f}]"
     out["canonical_lines"] = [
         f"s68dev [{arm}] R48 + sc8 + bwc{' + W96/K12 at the half budget (1.5 s / lgfd 1000 / bury 1 s)' if arm == 'a' else ' at the served budgets'} vs R48 as served (3 s / lgfd 2000, W 64 K 8), paired, seat-swapped, r2 plan per deal, {len(seeds)} deals from {seeds[0]}: {m:+.4f} levels/round, 95% CI [{lo:+.4f}, {hi:+.4f}] (deal bootstrap {BOOT_REPS}, seed {BOOT_SEED}); points {out['points'][0]:+.2f} [{out['points'][1]:+.2f}, {out['points'][2]:+.2f}]; nonzero share {out['nonzero_share']:.3f}.",
-        f"[{arm}] Read (predeclared): validity VALID on both sides (zero belief fallbacks; play fallbacks: defender 0, exploiter {e['fallback']} of {e['decisions']} within its {100 * PLAY_FALLBACK_ALLOWANCE[arm]:g}% allowance; {pw['ex']} / {pw['r45']} worlds, every exploiter decision inside {BUDGET_S:g} s, the paired premise); DEV_PASS iff mean >= +{BAR['pass_min_mean']:.3f} and CI lower > 0.  Verdict {verdict}.  (This arm alone, one look; a PASS leads to a screen and a Fly latency check; release is Jerry's.)",
+        f"[{arm}] Read (predeclared): validity VALID on both sides (zero belief fallbacks; play fallbacks within the common {100 * BAR['ceilings']['play_fallback']:g}% ceiling on each side: exploiter {e['fallback']}, defender {d['fallback']}; {pw['ex']} / {pw['r45']} worlds, every exploiter decision inside {BUDGET_S:g} s, the paired premise); DEV_PASS iff mean >= +{BAR['pass_min_mean']:.3f} and CI lower > 0.  Verdict {verdict}.  (This arm alone, one look; a PASS leads to a screen and a Fly latency check; release is Jerry's.)",
         f"[{arm}] Split (descriptive): trump rank 2 ({sp['deals_rank_2']} deals) {fm(sp['trump_rank_2'])}, rank != 2 {fm(sp['trump_rank_not_2'])}; first round {fm(sp['first_round'])}, fixed banker {fm(sp['fixed_banker'])}; exploiter games as banker {fm(out['games_banker']['mean'])}, as attacker {fm(out['games_attacker']['mean'])}.",
     ] + lines_common
     return out

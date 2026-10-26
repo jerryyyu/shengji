@@ -135,11 +135,11 @@ check('vs exploiter $nm (exploiter env: $ew; defender at served budgets and widt
 envd = {a: dict(w.split('=', 1) for w in spec[a]['env'].split()) for a in arms}
 check(rd.PLAY_WORLDS == {a: {'ex': int(envd[a].get('SHENGJI_PV_WORLDS', 64)), 'r45': 64} for a in arms} and rd.EXPLOITER_BUDGET_S == {a: float(envd[a].get('SHENGJI_PV_SERVING_BUDGET_SECONDS', 3)) for a in arms},
       f"reader per-arm play worlds {rd.PLAY_WORLDS} and exploiter budgets {rd.EXPLOITER_BUDGET_S} follow the arms' env")
-check(rd.BUDGET_S == 3.0 and rd.BAR['pass_min_mean'] == 0.030 and rd.BAR['pass_ci_lower_above'] == 0.0 and rd.BAR['ceilings']['play_fallback'] == 0 and rd.BAR['ceilings']['belief_fallback'] == 0
-      and rd.HALF_BIN == 0.00005 and 'x + HALF_BIN > budget' in rsrc, "reader: the +0.030 bar with CI lower > 0, zero play / belief ceilings, every exploiter decision <= 3 s on the 0.1 ms bin's upper bound")
-check(rd.PLAY_FALLBACK_ALLOWANCE == {'b': 0.0, 'a': 0.001} and "play_fallback_allowance(counts, arm)" in rsrc and 'dict(BAR["ceilings"], play_fallback=None)' in rsrc
-      and 'at most 0.1% of its' in open(os.path.join(HERE, 'predeclare_s68dev.md')).read(),
-      "reader: arm a's exploiter play-fallback allowance 0.1%, arm b 0 (defender at BAR's zero); arm_fault_ceilings judges the other kinds; the predeclare states it")
+check(rd.BUDGET_S == 3.0 and rd.BAR['pass_min_mean'] == 0.030 and rd.BAR['pass_ci_lower_above'] == 0.0 and rd.BAR['ceilings']['play_fallback'] == 0.001 and rd.BAR['ceilings']['belief_fallback'] == 0
+      and rd.HALF_BIN == 0.00005 and 'x + HALF_BIN > budget' in rsrc, "reader: the +0.030 bar with CI lower > 0, the common 0.1% play / zero belief ceilings, every exploiter decision <= 3 s on the 0.1 ms bin's upper bound")
+check(not hasattr(rd, 'PLAY_FALLBACK_ALLOWANCE') and 'play_fallback_allowance' not in rsrc and rd.BAR['ceilings'] == dict(play_fallback=0.001, belief_fallback=0, bury_fallback=0.01, declare_abandon=0.01)
+      and rsrc.count('va.arm_fault_ceilings(counts, BAR["ceilings"], arms=ARMS, tier="DEV")') == 1 and 'one common ceiling applied identically to every side' in open(os.path.join(HERE, 'predeclare_s68dev.md')).read(),
+      "reader: ONE fault-ceiling mapping for every side in both arms (play 0.1%, belief 0, bury / declare 1%), the one arm_fault_ceilings call; the predeclare states the common ceiling")
 check(all(sha(os.path.join(LIB, f'{k}.py')) == sha(os.path.join(FL_LIB, f'{k}.py')) == rd.PINNED[k] for k in ('row_schema', 'validity', 'reader_lib', 'compare_runs')),
       "reader PINNED == the packet's reader_lib copies == fl-pilot/reader_lib's row_schema / validity / reader_lib / compare_runs")
 check(rd.TRUSTED['lane'] == v['LANE'] and rd.TRUSTED['root'] == v['OUT'] and rd.TRUSTED['status'] == v['S'] and rd.TRUSTED['reservation'] == res['reservation_path'] and rd.TRUSTED['host'] == 'shengji-perf'

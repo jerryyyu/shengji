@@ -45,8 +45,8 @@ as served?
 Unit: the paired margin in levels per round. For each deal it is the mean exploiter-signed level change over the deal's two mirrors.
 The CI is the 95% percentile interval of a 10,000-rep deal-cluster bootstrap (numpy default_rng, seed 1).
 
-**The bar, per arm, verbatim:** DEV_PASS iff mean ≥ +0.030 levels/round and CI lower > 0, with zero belief fallbacks, zero play
-fallbacks for arm b and the defender, arm a's exploiter play fallbacks at most 0.1% of its decisions, and every decision ≤ 3 s. Each arm's mean and CI are reported regardless. Arm a vs arm b is reported descriptively through
+**The bar, per arm, verbatim:** DEV_PASS iff mean ≥ +0.030 levels/round and CI lower > 0, with zero belief fallbacks, play
+fallbacks at most 0.1% of that side's decisions on every side (one common ceiling), and every decision ≤ 3 s. Each arm's mean and CI are reported regardless. Arm a vs arm b is reported descriptively through
 `reader_lib/compare_runs.py`.
 
 - **One look, fresh-only.** The reader runs once, after `LANE DONE`, on the sealed output. There is no interim read, no extension and no
@@ -56,9 +56,9 @@ fallbacks for arm b and the defender, arm a's exploiter play fallbacks at most 0
   by noise is higher than either arm's own rate.
 - **Validity, both sides, before any outcome:**
   - zero belief fallbacks, both sides, both arms;
-  - play fallbacks: zero for the defender in both arms and for arm b's exploiter. **Arm a's exploiter may have at most 0.1% of its
-    decisions as play fallbacks** (about 260 of about 260,000). Those decisions stay in the paired outcome, and the reader reports their
-    count and rate. Above 0.1%, arm a is DEV_INVALID;
+  - **play fallbacks at most 0.1% of that side's decisions, one common ceiling applied identically to every side (exploiter and
+    defender) in both arms** (about 260 of about 260,000 decisions per side). Fallback decisions stay in the paired outcome, and the
+    reader reports the count and rate for each side. One above the ceiling on any side makes that arm DEV_INVALID;
   - bury fallbacks and declare abandons at most 1%;
   - every search record at the arm's play worlds (b: 64 / 64; a: 96 exploiter / 64 defender);
   - declares complete;
@@ -68,11 +68,19 @@ fallbacks for arm b and the defender, arm a's exploiter play fallbacks at most 0
 
   Any failure gives DEV_INVALID, with the named reasons and no outcome.
 
-  **Why arm a has an allowance.** In arm a, a search that runs past its own 1.5 s budget writes a fallback record and plays the heuristic
-  anchor. That is what Fly would serve for the same recipe, so these decisions are part of the recipe's strength and stay in the
-  outcome. A high count is itself a latency finding: it means the recipe does not fit Fly's budget. The fallback record does not say why
-  it was written, so the allowance covers every play fallback, not only budget expiries. Arm b and the defender run at the full budget
-  and keep zero. This rule was set on 2026-10-26, after the rehearsal and before any review, PASS or lane deal.
+  **Why one common play-fallback ceiling.** AGENTS.md requires the same fault ceilings for every arm, and the reader applies one
+  `validity.arm_fault_ceilings` mapping to both sides. A fallback record (`pv-search-fallback-v1`) cannot tell a deadline expiry from
+  any other search failure, so the ceiling covers every play fallback.
+
+  The ceiling is nonzero because arm a's exploiter plays at half budget (1.5 s). A search past that budget plays the heuristic anchor,
+  as Fly would serve it. A few expiries in about 260,000 decisions are plausible: the rehearsal had 17% of decisions past 1.1 s and a
+  maximum of 1.331 s. Under a zero ceiling, a single one would void the arm. Those decisions are part of the recipe's served strength, so
+  they stay in the outcome, and a high count is itself a latency finding.
+
+  The same 0.1% applies to arm b and to the defender, whose own rate at the full budget is expected to be near zero.
+
+  History: an earlier draft gave only arm a's exploiter an allowance. Codex HOLD 1075/6420474437 found that it broke the same-ceilings
+  rule, and this common ceiling replaced it on 2026-10-26, before any PASS or lane deal.
 - **Reported, never a condition:**
   - each arm's mean and CI, whatever the verdict;
   - the swap rate (singleton entered / chosen);
@@ -137,7 +145,7 @@ form for both arms. Details are in `rehearsal/host/rehearsal_summary.json`, `reh
 - The lane total is about 6.1 h plus checks. `KILL_AFTER` 30,000 s per arm is 2.4× arm a's projection.
 - The rehearsal's 3,720 exploiter decisions in arm a never reached 1.5 s (max 1.331 s). But 621 (17%) were past 1.1 s and 12 were past
   1.2 s. The full arm makes about 70× as many decisions, so some expiries are plausible. Up to 0.1% of decisions they count against the
-  allowance above; beyond that, arm a is DEV_INVALID.
+  common ceiling above; beyond that, arm a is DEV_INVALID.
 
 ## Reading
 

@@ -57,6 +57,11 @@ def test_release48_lgft3_wla32_plays_a_lead_through_the_server_path(
     assert "-wla-" in name and "-lgfd2000-lgft3-" in name
     bot = factory(seed=7)
     assert bot.leaf_greedy_top == 3 and bot.wide_lead_admission is True
+    # wall clocks lifted so a slow CI runner cannot turn this witness into the deadline's plain decision
+    # (that branch is test_pv_leaf_greedy_top's): the restriction itself is what this test serves
+    assert bot.leaf_greedy_deadline_ms == 2000 and bot.serving_budget_seconds == 3.0
+    bot.leaf_greedy_deadline_ms = 0
+    bot.serving_budget_seconds = None
     rnd = _play_state()
     seat = rnd.turn
     assert not rnd.trick.plays
@@ -78,6 +83,7 @@ def test_release48_lgft3_wla32_plays_a_lead_through_the_server_path(
     record = asyncio.run(scenario())
     assert record["work_complete"] and record["worlds"] == 64
     assert record["wide_lead_admission_k"] == 32 and len(record["admitted"]) > 3
+    assert record.get("leaf_greedy_deadline_fired") is not True
     assert record["leaf_greedy_top_applied"] is True and len(record["leaf_greedy_top_kept"]) == 3
     assert record["admitted_indices"].index(record["selected_index"]) in record["leaf_greedy_top_kept"] \
         or record.get("doomed_throw_reselect_applied") or record.get("exact_lead_status") == "complete"

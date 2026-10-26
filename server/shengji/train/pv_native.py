@@ -34,6 +34,12 @@ except ImportError:      # not built: every caller keeps its Python reference
 
 HAVE_NATIVE = _pv_fast is not None
 
+#: the reference functions the listing kernel stands for, as imported: a
+#: listing call declines (the caller's Python listing runs) once either is
+#: replaced
+_REFERENCE_MULTISET_SUBSETS = harvest_legal.multiset_subsets
+_REFERENCE_ITER_FOLLOW = harvest_legal.iter_follow_actions
+
 _TABLES = None
 
 
@@ -57,7 +63,8 @@ def follow_listing(hand, lead, ordering, cap):
     first ``cap`` actions of ``iter_follow_actions(hand, lead, ordering)``
     (every action when ``cap`` is None), or None without the compiled
     module.  Raises what the reference raises on the same inputs."""
-    if _pv_fast is None:
+    if (_pv_fast is None or harvest_legal.multiset_subsets is not _REFERENCE_MULTISET_SUBSETS
+            or harvest_legal.iter_follow_actions is not _REFERENCE_ITER_FOLLOW):
         return None
     case, h_suit, off, n = harvest_legal._follow_case(hand, lead, ordering)
     card_index, rank, names = _tables()
@@ -73,6 +80,16 @@ def follow_listing(hand, lead, ordering, cap):
     codes = sorted(counts)
     return _pv_fast.subset_listing(codes, [counts[c] for c in codes], n - len(h_suit), limit,
                                    card_index, rank, list(h_suit), None)
+
+
+def is_reference_belief_draw(draw) -> bool:
+    """``draw`` is `belief_seq.sample_worlds` itself (code defined in that
+    module under that name), not a replacement installed over the module
+    attribute; the compiled draw stands only for the reference."""
+    from . import belief_seq
+    code = getattr(draw, "__code__", None)
+    return (code is not None and code.co_name == "sample_worlds"
+            and code.co_filename == getattr(belief_seq, "__file__", None))
 
 
 def belief_sample_worlds(P, n_c, M, sizes, W, rng):
@@ -108,11 +125,13 @@ def world_completion(bot, rnd, seat):
     """``bot._complete_determinized_hands`` for draws at ``(rnd, seat)``, the
     cards already played and the deck counted once: the same hands, the same
     refusals with the same messages.  None when ``bot`` overrides the method
-    (the caller keeps it)."""
+    (the caller keeps it): the method ``bot`` resolves, on its class or on
+    the instance, must be `MCBot`'s own bound to ``bot``."""
     from collections import Counter as _Counter
     from ..ai.mcbot import DeterminizationContractError, MCBot
-    if getattr(type(bot), "_complete_determinized_hands", None) is not \
-            MCBot._complete_determinized_hands:
+    method = getattr(bot, "_complete_determinized_hands", None)
+    if (getattr(method, "__func__", None) is not MCBot._complete_determinized_hands
+            or getattr(method, "__self__", None) is not bot):
         return None
     expected = {other for other in range(4) if other != seat}
     played = []
@@ -158,4 +177,5 @@ def world_completion(bot, rnd, seat):
     return complete
 
 
-__all__ = ["HAVE_NATIVE", "belief_sample_worlds", "follow_listing", "world_completion"]
+__all__ = ["HAVE_NATIVE", "belief_sample_worlds", "follow_listing", "is_reference_belief_draw",
+           "world_completion"]

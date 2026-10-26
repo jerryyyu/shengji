@@ -11,7 +11,8 @@ is committed by `_commit_bot_turn`; halfway the committed bot is replaced by a
 pickle round trip of itself.  Every turn the two copies play the same cards and
 leave the same record (clock fields aside), sampler state and evaluator
 counters, and the switched copy carries no finished leaf into the next turn's
-snapshot.  The switches enter no name.
+snapshot.  The pure engine plays both copies without the exact stages (its
+solvers take minutes per endgame unbudgeted).  The switches enter no name.
 """
 import asyncio
 import copy
@@ -89,8 +90,7 @@ def test_the_native_switches_decide_exactly_as_release48_through_the_server_path
 
     if not pv_native.HAVE_NATIVE:
         pytest.skip("train/_pv_fast is not built")
-    if legal.validate_follow.__module__ != "shengji.engine._fast":
-        pytest.skip("the exact stages' pure solvers take minutes per endgame unbudgeted")
+    compiled = legal.validate_follow.__module__ == "shengji.engine._fast"
     monkeypatch.setattr(bn, "PREP_SECONDS", 1e9)
     for key in pv.LATENCY_SWITCH_ENV.values():
         monkeypatch.delenv(key, raising=False)
@@ -99,6 +99,10 @@ def test_the_native_switches_decide_exactly_as_release48_through_the_server_path
     _, name, factory = served_entries(pinned_production_package, pinned_release48_belief_package)
     assert name == RELEASE48 == fly_env()["SHENGJI_BOT"]
     bot = _lift(factory(seed=seed))
+    if not compiled:
+        # the pure engine's exact solvers take minutes per endgame unbudgeted:
+        # both copies play without the exact stages there
+        bot.exact_lead_endgame = bot.exact_follow = False
     assert not set(NATIVE_SWITCHES) & set(vars(bot))
     room = _room(bot, seed, tmp_path)
     turns = plays = applied = released = 0
@@ -157,3 +161,48 @@ def test_the_native_switches_enter_no_name(pinned_production_package,  # noqa: F
     bot = factory(seed=3)
     assert all(vars(bot)[attr] is True for attr in NATIVE_SWITCHES)
     assert copy.deepcopy(bot).legal_native is True
+
+
+def test_world_fast_keeps_an_instance_completion_override_on_the_served_bot(
+        pinned_production_package, pinned_release48_belief_package,  # noqa: F811
+        monkeypatch):
+    """The served bot's world draw (``_belief_worlds`` -> `world_completion` ->
+    `sample_worlds_history_legal`) with ``world_fast`` on: an override set on
+    the sampler instance (a bound method, a plain function) is the completion
+    that runs, as with the switch off, and the decision is the same."""
+    from types import MethodType
+    from shengji.ai import belief_numpy as bn
+    from shengji.train import pv_search_policy as pv
+    from test_pv_search_serving import _play_state
+
+    monkeypatch.setattr(bn, "PREP_SECONDS", 1e9)
+    for key in pv.LATENCY_SWITCH_ENV.values():
+        monkeypatch.delenv(key, raising=False)
+    apply_to_process(monkeypatch, local_env(pinned_production_package,
+                                            pinned_release48_belief_package))
+    _, _, factory = served_entries(pinned_production_package, pinned_release48_belief_package)
+    rnd = _play_state(1026_302)
+    seat = rnd.turn
+    outcomes = {}
+    for fast in (False, True):
+        for kind in ("bound", "function"):
+            bot = _lift(factory(seed=11))
+            bot.world_fast = fast
+            calls = []
+            reference = bot.sampler._complete_determinized_hands
+
+            def counted(*args, **kwargs):
+                calls.append(1)
+                return reference(*args, **kwargs)
+            if kind == "bound":
+                bot.sampler._complete_determinized_hands = MethodType(
+                    lambda self, *a, **k: counted(*a, **k), bot.sampler)
+            else:
+                bot.sampler._complete_determinized_hands = counted
+            cards = bot.decide_play(copy.deepcopy(rnd), seat)
+            record = bot.last_decision_record
+            assert record["belief_fallback"] == 0 and len(calls) >= record["worlds"]
+            outcomes[fast, kind] = (cards, _comparable(record), len(calls),
+                                    bot.sampler.rng.getstate())
+    for kind in ("bound", "function"):
+        assert outcomes[True, kind] == outcomes[False, kind]

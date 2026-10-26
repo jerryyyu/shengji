@@ -754,7 +754,8 @@ def native_arrays(prefix, positions, seats, version):
     batched builder would skip or refuse, any kernel error) or ``prefix`` has
     no native arguments."""
     arguments = prefix.native
-    if arguments is None or version not in VERSIONS or not len(positions):
+    if arguments is None or version not in VERSIONS or not len(positions) \
+            or not _reference_builders():
         return None
     from .pv_native import _pv_fast
     played, physical, voids, suit_of, is_trump, suit_index = arguments
@@ -766,6 +767,13 @@ def native_arrays(prefix, positions, seats, version):
             HISTORY_MAX_EVENTS)
     except Exception:
         return None
+
+
+def _reference_builders() -> bool:
+    """This module's names still bind the batched builder and the helpers the
+    kernel stands for (a replacement keeps the replacement)."""
+    names = globals()
+    return all(names.get(name) is fn for name, fn in _KERNEL_REFERENCES.items())
 
 
 def fused_many_native(prefix, positions, seats, version):
@@ -799,7 +807,9 @@ def _stacked_evaluator(evaluator) -> bool:
     """The served NumPy evaluator, whose ``probabilities`` stacks each chunk's
     fields and runs `probabilities_stacked`'s forward on them."""
     from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
-    return type(evaluator) is NumpyCompleteWorldEvaluator
+    # an instance-level ``probabilities`` is the evaluator's forward: kept
+    return (type(evaluator) is NumpyCompleteWorldEvaluator
+            and "probabilities" not in vars(evaluator))
 
 
 def _builder(prefix):
@@ -1045,6 +1055,12 @@ def prior_rows(rnd, seat, worlds, version):
     except Exception:
         return reference()
 
+
+#: the functions `_pv_fast.encode_static_batch` reproduces, as defined here
+_KERNEL_REFERENCES = {"fused_many_batched": fused_many_batched, "_checked": _checked,
+                      "_traverse": _traverse, "_tail_head": _tail_head,
+                      "_trump_indices": _trump_indices, "_suit_masks": _suit_masks,
+                      "next_actor_rel": next_actor_rel, "trick_state": trick_state}
 
 __all__ = ["VERSIONS", "HistoryPrefix", "encode_leaves", "fused_many", "fused_many_batched",
            "fused_many_native", "native_arrays", "prior_rows", "reply_rows", "score_leaves", "static_version"]

@@ -727,11 +727,91 @@ def test_the_world_completion_is_the_reference_completion():
                 checked += 1
     assert checked > 1000
 
+
+
+def test_the_world_completion_declines_every_override_of_the_method():
+    """Whatever ``bot._complete_determinized_hands`` resolves to other than
+    `MCBot`'s own bound to ``bot`` -- a subclass method, a plain function or a
+    bound method set on the instance, another bot's bound method -- keeps the
+    caller's reference call; the unchanged method is the one replaced."""
+    from types import MethodType
+    from shengji.ai.mcbot import MCBot
+    rnd = _fresh_round(707_001)
+    seat = rnd.turn
+
     class Override(MCBot):
         def _complete_determinized_hands(self, *a, **k):
             return None
+    assert pv_native.world_completion(Override(seed=1), rnd, seat) is None
+    plain = MCBot(seed=1)
+    instance_function = MCBot(seed=1)
+    instance_function._complete_determinized_hands = lambda *a, **k: [["INSTANCE-OVERRIDE"]]
+    assert pv_native.world_completion(instance_function, rnd, seat) is None
+    bound = MCBot(seed=1)
+    bound._complete_determinized_hands = MethodType(
+        lambda self, *a, **k: [["BOUND-OVERRIDE"]], bound)
+    assert pv_native.world_completion(bound, rnd, seat) is None
+    foreign = MCBot(seed=1)
+    foreign._complete_determinized_hands = plain._complete_determinized_hands
+    assert pv_native.world_completion(foreign, rnd, seat) is None
+    reference_method = MCBot(seed=1)
+    reference_method._complete_determinized_hands = MethodType(
+        MCBot._complete_determinized_hands, reference_method)
+    assert pv_native.world_completion(reference_method, rnd, seat) is not None
+    complete = pv_native.world_completion(plain, rnd, seat)
+    assert complete is not None
+    others = {s: list(rnd.hands[s]) for s in range(4) if s != seat}
+    assert complete(rnd, seat, others, buried=list(rnd.buried)) == \
+        plain._complete_determinized_hands(rnd, seat, others, buried=list(rnd.buried))
+
+
+def test_the_fast_paths_keep_a_replaced_reference(monkeypatch):
+    """A replacement installed over a reference a fast path stands for (the
+    shallow copy's instance reduce hook, an instance ``probabilities``, the
+    module's ``afterstate``, ``child_position``, ``legal_replies``, the batched
+    encoder, the listing's subset enumeration, the belief draw) is what runs."""
+    from shengji.ai import cwv_numpy_evaluator as cne
+    from shengji.train import policy_value_search as pvs
+    from test_pv_encode_prefix import stub_evaluator
     rnd = _fresh_round(707_001)
-    assert pv_native.world_completion(Override(seed=1), rnd, rnd.turn) is None
+    # copy.copy reads __reduce_ex__ through the instance
+    hooked = copy.copy(rnd)
+    calls = []
+    hooked.__reduce_ex__ = lambda proto: calls.append(proto) or object.__reduce_ex__(rnd, proto)
+    pts.shallow_round(hooked)
+    assert calls == [4]
+    ev = stub_evaluator(7)
+    assert pe._stacked_evaluator(ev)
+    ev.probabilities = lambda rows: cne.NumpyCompleteWorldEvaluator.probabilities(ev, rows)
+    assert not pe._stacked_evaluator(ev)
+    # the module-level references
+    seen = []
+    real_afterstate, real_child = pvs.afterstate, pts.child_position
+    monkeypatch.setattr(pvs, "afterstate", lambda *a, **k: seen.append("afterstate")
+                        or real_afterstate(*a, **k))
+    monkeypatch.setattr(pts, "child_position", lambda *a, **k: seen.append("child")
+                        or real_child(*a, **k))
+    real_legal = pts.legal_replies
+    monkeypatch.setattr(pts, "legal_replies", lambda *a, **k: seen.append("legal")
+                        or real_legal(*a, **k))
+    real_batched = pe.fused_many_batched
+    monkeypatch.setattr(pe, "fused_many_batched", lambda *a, **k: seen.append("encode")
+                        or real_batched(*a, **k))
+    bot = lgf_bot(7, True, 5)
+    for attr in ALL_SWITCHES:
+        setattr(bot, attr, True)
+    state = _fresh_round(CAPPED_SEED)
+    for _ in range(6):
+        seat = state.turn
+        state.play(seat, bot.decide_play(copy.deepcopy(state), seat))
+    assert {"afterstate", "child", "legal", "encode"} <= set(seen)
+    if pv_native.HAVE_NATIVE:
+        real_subsets = harvest_legal.multiset_subsets
+        monkeypatch.setattr(harvest_legal, "multiset_subsets", lambda *a: real_subsets(*a))
+        hands, ordering = next(_deals([707001]))
+        assert pv_native.follow_listing(list(hands[1]), [hands[0][0]], ordering, 4000) is None
+    assert pv_native.is_reference_belief_draw(belief_seq.sample_worlds)
+    assert not pv_native.is_reference_belief_draw(lambda *a: belief_seq.sample_worlds(*a))
 
 
 def test_the_world_switch_is_off_by_default_and_enters_no_name():

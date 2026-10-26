@@ -612,7 +612,12 @@ class PolicyValueBot(PolicyWorldBot):
         pass at once, the replies batched across all the clones, under
         ``check_budget`` (the ply gate), into this decision's cache."""
         state = self._leaf_greedy = _greedy_state()
+        fast_clones = False
         if getattr(self, 'leaf_clone_fast', False):
+            from . import pv_tree_search
+            # only while this module still binds the reference ``afterstate``
+            fast_clones = afterstate is pv_tree_search._REFERENCE_AFTERSTATE
+        if fast_clones:
             # the same clones without ``copy.copy``'s reduce machinery
             from .pv_tree_search import afterstate_fast
             clones = [afterstate_fast(rnd, seat, hands, buried, action)

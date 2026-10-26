@@ -479,9 +479,10 @@ class BeliefProposal:
         draw = sample_worlds_capacity if self.capacity else sample_worlds
         W = None
         if self.native and not self.capacity:
-            from ..train.pv_native import belief_sample_worlds
-            W = belief_sample_worlds(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch,
-                                     self.rng)
+            from ..train.pv_native import belief_sample_worlds, is_reference_belief_draw
+            if is_reference_belief_draw(draw):
+                W = belief_sample_worlds(self.Q, inp["n_c"], self.M, inp["sizes"],
+                                         self.batch, self.rng)
         if W is None:
             W = draw(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
         codes = _codes()

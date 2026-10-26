@@ -154,6 +154,12 @@ from . import pv_native
 from .pv_search_policy import PVSearchBot, PVSearchBuryBot, PVSearchPolicyError
 from .pv_tree_config import PVTreeConfig
 
+#: the reference functions the fast clones and the native listing stand for,
+#: as imported: each fast path runs only while this module's name still binds
+#: its reference (a replacement keeps the replacement)
+_REFERENCE_AFTERSTATE = afterstate
+_REFERENCE_CHILD_POSITION = child_position
+
 #: the stop-fraction deadline is also checked every this-many clones inside a ply
 TREE_BUDGET_STRIDE = 16
 #: a closed-form policy choice is used only when its maximiser is unique by more
@@ -328,6 +334,9 @@ def legal_replies(bot, clone, seat, cache):
     return hit
 
 
+_REFERENCE_LEGAL_REPLIES = legal_replies
+
+
 def _card_names():
     from .policy_prior import CARD_INDEX
     names = [None] * len(CARD_INDEX)
@@ -424,7 +433,7 @@ def legal_replies_compact(bot, clone, seat, cache, slot, native=False):
     hit = cache.get(key)
     if hit is None:
         listing = None
-        if native and plays:
+        if native and plays and legal_replies is _REFERENCE_LEGAL_REPLIES:
             listing = pv_native.follow_listing(list(clone.hands[seat]), plays[0].cards, clone.ordering,
                                      bot.cap)
         if listing is not None:
@@ -471,7 +480,9 @@ def _round_default_copy() -> bool:
 def shallow_round(rnd):
     """``copy.copy(rnd)``: for an exact `Round` under the default protocol the
     same new object built without the reduce machinery, else ``copy.copy``."""
-    if type(rnd) is Round and (_ROUND_DEFAULT_COPY or _round_default_copy()):
+    # copy.copy reads __reduce_ex__ / __reduce__ through the instance
+    if (type(rnd) is Round and (_ROUND_DEFAULT_COPY or _round_default_copy())
+            and "__reduce_ex__" not in rnd.__dict__ and "__reduce__" not in rnd.__dict__):
         clone = object.__new__(Round)
         clone.__dict__.update(rnd.__dict__)
         return clone
@@ -709,7 +720,9 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
         greedy_reply_ply(bot, active, ply_gate, cache, stats, keep, version, legal_fn,
                          lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_,
                                                                       prefix),
-                         rows_fn, guard, child_position_fast if fast_clone else child_position)
+                         rows_fn, guard,
+                         child_position_fast if fast_clone
+                         and child_position is _REFERENCE_CHILD_POSITION else child_position)
         active = [c for c in active if trick_open(c, target)]
     return stats
 

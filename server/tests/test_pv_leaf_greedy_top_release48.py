@@ -89,7 +89,7 @@ def test_release48_lgft3_wla32_plays_a_lead_through_the_server_path(
         or record.get("doomed_throw_reselect_applied") or record.get("exact_lead_status") == "complete"
 
 
-def test_wide_top_finish_keeps_its_server_decision_with_native_paths(
+def test_lead_admission_and_top_finish_keep_their_server_decisions_with_native_paths(
         pinned_production_package, pinned_release48_belief_package, tmp_path, monkeypatch):
     import random
     from shengji.api import server as srv
@@ -110,8 +110,8 @@ def test_wide_top_finish_keeps_its_server_decision_with_native_paths(
         return encode(*args, **kwargs)
 
     monkeypatch.setattr(pv_native._pv_fast, "encode_static_batch", counted_encode)
-    for width in (24, 32):
-        env = {**fly_env(), TOP: "3", WLA: "1", K: str(width)}
+    for top, width in ((0, 0), (3, 0), (0, 24), (3, 24), (3, 32)):
+        env = {**fly_env(), TOP: str(top), WLA: str(int(bool(width))), K: str(width) if width else ""}
         apply_to_process(monkeypatch, local_env(
             pinned_production_package, pinned_release48_belief_package, env))
         results = []
@@ -122,6 +122,13 @@ def test_wide_top_finish_keeps_its_server_decision_with_native_paths(
             _, name, factory = served_entries(
                 pinned_production_package, pinned_release48_belief_package, {**env, **flags})
             bot = factory(seed=7)
+            assert bot.leaf_greedy_top == top
+            assert bot.wide_lead_admission is bool(width)
+            assert bot.wide_lead_k == (width or 32)
+            assert ("-lgft3-" in name) is bool(top)
+            assert ("-wla" in name) is bool(width)
+            if not top and not width:
+                assert name == RELEASE48
             assert all(getattr(bot, attr) is native for attr in NATIVE_SWITCHES)
             bot.leaf_greedy_deadline_ms = 0
             bot.serving_budget_seconds = None
@@ -138,7 +145,13 @@ def test_wide_top_finish_keeps_its_server_decision_with_native_paths(
             assert (len(native_encodes) > before) is native
             searched = decision.snapshot.bot_copy
             record = searched.last_decision_record
-            assert record["leaf_greedy_top_applied"] and record["wide_lead_admission_k"] == width
+            assert bool(record.get("leaf_greedy_top_applied")) is bool(top)
+            if top:
+                assert len(record["leaf_greedy_top_kept"]) == top
+            if width:
+                assert record["wide_lead_admission_k"] == width
+            else:
+                assert not record.get("wide_lead_admission_applied")
             assert record["work_complete"] and record["worlds"] == 64
             assert not record.get("leaf_greedy_deadline_fired")
             results.append((name, list(decision.cards), _comparable(record),
@@ -146,4 +159,4 @@ def test_wide_top_finish_keeps_its_server_decision_with_native_paths(
             prepared = srv._PreparedBotTurn(decision=decision, compute_seconds=0.0,
                                             pacing_seconds=0.0, turn_seconds=0.0)
             assert srv._commit_bot_turn(room, prepared)
-        assert results[0] == results[1], width
+        assert results[0] == results[1], (top, width)

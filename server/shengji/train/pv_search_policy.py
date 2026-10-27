@@ -3604,7 +3604,7 @@ class PVSearchBot(PolicyValueBot):
             self.last_decision_record["value_means"] = means.tolist() + [None]
         return list(played)
 
-    # -- the optional held-out lead confirmation (class docstring) ---------------
+    # the optional held-out lead confirmation (class docstring)
 
     def _lead_confirm_decision(self, rnd, seat, actions, preferences, chosen, worlds, started,
                                check_budget, winner, played, single_fast):

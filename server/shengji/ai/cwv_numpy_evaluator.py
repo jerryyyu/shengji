@@ -89,3 +89,22 @@ class NumpyCompleteWorldEvaluator(CompleteWorldEvaluator):
             out[start:start + len(chunk)] = values
             self.forward_calls += 1
         return out
+
+    def probabilities_stacked(self, public, world, perspective):
+        """`probabilities` of the rows whose fields are stacked in ``public``,
+        ``world`` and ``perspective``: the same chunks, forward passes, checks
+        and counter (the model concatenates each chunk into a fresh array, so
+        a slice reads as the chunk's own stack)."""
+        n = public.shape[0]
+        out = np.empty((n, OUTCOME_CLASSES), dtype=np.float64)
+        for start in range(0, n, self.max_batch):
+            stop = min(start + self.max_batch, n)
+            values = self.model.probabilities(public[start:stop], world[start:stop],
+                                              perspective[start:stop])
+            if (values.shape != (stop - start, OUTCOME_CLASSES)
+                    or not np.isfinite(values).all() or np.any(values < 0)
+                    or not np.allclose(values.sum(axis=1), 1.0, rtol=0, atol=1e-5)):
+                raise CWVError("model probability drift")
+            out[start:stop] = values
+            self.forward_calls += 1
+        return out

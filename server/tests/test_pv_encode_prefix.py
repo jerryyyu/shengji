@@ -35,6 +35,7 @@ from shengji.train.pv_encode_prefix import HistoryPrefix, encode_leaves, prior_r
 from test_pv_doomed_throw_reselect_exact_guard import R46_ENV
 from test_pv_leaf_greedy_finish import R46_RULES
 from test_pv_small_joker_lead import _fresh_round
+from native_switches import NATIVE_OFF
 
 FLAG = "SHENGJI_PV_ENCODE_PREFIX_CACHE"
 SEEDS = tuple(range(707300, 707340))
@@ -409,7 +410,7 @@ def test_a_served_bot_decides_and_counts_exactly_as_off_over_seeded_rounds(versi
 def test_the_switch_is_off_by_default_and_enters_no_name(monkeypatch):
     assert pv.PVSearchBot.encode_prefix_cache is False
     assert pv.latency_switches({}) == {"encode_prefix_cache": False, "single_candidate_fast": False,
-                                       "leaf_greedy_stream": False, "encode_batch_fast": False}
+                                       "leaf_greedy_stream": False, "encode_batch_fast": False, **NATIVE_OFF}
     assert pv.latency_switches({FLAG: "1"})["encode_prefix_cache"] is True
     assert pv.latency_switches({FLAG: "0"})["encode_prefix_cache"] is False
     with pytest.raises(pv.PVSearchPolicyError, match=FLAG):

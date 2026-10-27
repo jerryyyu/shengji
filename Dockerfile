@@ -22,7 +22,7 @@ COPY server/setup.py ./setup.py
 COPY server/shengji ./shengji
 RUN python setup.py build_ext --inplace \
     && ls -la shengji/engine/_fast*.so shengji/ai/_cwv_math*.so \
-       shengji/ai/_endgame_fast*.so
+       shengji/ai/_endgame_fast*.so shengji/train/_pv_fast*.so
 
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -48,6 +48,9 @@ COPY --from=fastbuild /build/shengji/ai/_cwv_math*.so ./shengji/ai/
 # Compiled exact endgame solver (ai/endgame_compact.py selects it exactly when
 # the compiled engine is active; otherwise its identical pure-Python twin runs).
 COPY --from=fastbuild /build/shengji/ai/_endgame_fast*.so ./shengji/ai/
+# Compiled kernels of the search's native latency switches (train/pv_native.py
+# keeps the Python reference paths when it is absent or a switch is off).
+COPY --from=fastbuild /build/shengji/train/_pv_fast*.so ./shengji/train/
 COPY --from=web /app/web/dist /app/web/dist
 
 EXPOSE 8000

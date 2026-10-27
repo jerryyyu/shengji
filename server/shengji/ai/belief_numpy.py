@@ -436,7 +436,7 @@ class BeliefProposal:
 
     def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
                  seed: int, batch: int, forbidden: Mapping | None = None,
-                 check_budget=None, capacity: bool = False):
+                 check_budget=None, capacity: bool = False, native: bool = False):
         from ..train.belief_seq import project_sizes
         import time
         t0 = time.perf_counter()
@@ -464,6 +464,9 @@ class BeliefProposal:
         self.rng = np.random.default_rng(int(seed))
         self.batch = int(batch)
         self.capacity = bool(capacity)
+        #: draw the plain proposal through `train.pv_native.belief_sample_worlds`
+        #: (the same worlds and generator stream, compiled)
+        self.native = bool(native)
         self.queue: list = []
         self.drawn = 0
         self.prep_seconds = time.perf_counter() - t0
@@ -474,7 +477,14 @@ class BeliefProposal:
         from ..train.belief_seq import sample_worlds, sample_worlds_capacity
         inp, rnd, seat = self.inp, self.rnd, self.seat
         draw = sample_worlds_capacity if self.capacity else sample_worlds
-        W = draw(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
+        W = None
+        if self.native and not self.capacity:
+            from ..train.pv_native import belief_sample_worlds, is_reference_belief_draw
+            if is_reference_belief_draw(draw):
+                W = belief_sample_worlds(self.Q, inp["n_c"], self.M, inp["sizes"],
+                                         self.batch, self.rng)
+        if W is None:
+            W = draw(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
         codes = _codes()
         idx = np.arange(N_CARDS)
         K = inp["K"]

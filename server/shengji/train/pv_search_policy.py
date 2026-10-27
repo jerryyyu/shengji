@@ -458,6 +458,35 @@ pass's leaves and ``lgf``'s reply valuations and reply policy rows) with
 same rows kept or refused, with the world planes indexed from the distinct
 hands and the v2/v7 columns assembled as arrays.  Without
 ``SHENGJI_PV_ENCODE_PREFIX_CACHE=1`` nothing reads it.
+``SHENGJI_PV_LEAF_CACHE_RELEASE=1`` empties ``lgf``'s finished-leaf cache
+when a decision ends.  `_search` starts every decision with a fresh cache, so
+no decision reads an earlier one's leaves; without the switch the up to
+W x K finished rounds stay on the bot, and the server deep-copies the bot
+(and them) before every bury and play turn.
+``SHENGJI_PV_LEAF_CLONE_FAST=1`` builds ``lgf``'s clones and reply children
+(`pv_tree_search.afterstate_fast`, `child_position_fast`) with a shallow copy
+that is ``copy.copy``'s own result for an exact `Round` under the default copy
+protocol (``copy.copy`` otherwise): the same objects, attribute for attribute.
+``SHENGJI_PV_LEAF_TRICK_CACHE=1`` gives ``lgf``'s clones of a FOLLOW root the
+trusted trick caches (incumbent, running points; `pv_tree_search.seed_trick_caches`)
+a lead root's clones get from their own lead, folded over the trick's plays by
+the same rule `Round.play` folds them, so their finishing plays take the
+trusted rollout paths a lead root's already take.  The winners, points and
+heuristic replies are the recomputed ones.
+``SHENGJI_PV_WORLD_FAST=1`` speeds up the belief-proposed world draw: the
+proposal's copy loop compiled on the same generator and each world completed
+against the decision's played cards counted once (`pv_native`): the same
+worlds, the same generator and sampler states.
+``SHENGJI_PV_ENCODE_NATIVE=1`` builds those batches with the compiled
+`pv_encode_prefix.fused_many_native`: `fused_many_batched`'s tensors byte for
+byte, every batch the kernel declines (a row the batched builder would skip
+or refuse) built by `fused_many_batched` itself.  Without
+``SHENGJI_PV_ENCODE_BATCH_FAST=1`` (or the compiled module) nothing reads it.
+``SHENGJI_PV_LEGAL_NATIVE=1`` builds ``lgf``'s follow listings with the
+compiled `pv_native.follow_listing`: the same actions in the same order as
+the Python enumeration, stored as `pv_tree_search.CompactReplies`; without the
+compiled module the Python listing runs.  Without
+``SHENGJI_PV_LEAF_GREEDY_STREAM=1`` nothing reads it.
 
 The exact stages' world subset, OFF BY DEFAULT and a search-policy change
 where it applies: ``SHENGJI_PV_EXACT_WORLD_SUBSET=<n>`` (an int in [1, 512];
@@ -1194,7 +1223,13 @@ _EXACT_WORLD_SUBSET_REQUIRES = (
 LATENCY_SWITCH_ENV = {"encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
                       "single_candidate_fast": "SHENGJI_PV_SINGLE_CANDIDATE_FAST",
                       "leaf_greedy_stream": "SHENGJI_PV_LEAF_GREEDY_STREAM",
-                      "encode_batch_fast": "SHENGJI_PV_ENCODE_BATCH_FAST"}
+                      "encode_batch_fast": "SHENGJI_PV_ENCODE_BATCH_FAST",
+                      "legal_native": "SHENGJI_PV_LEGAL_NATIVE",
+                      "encode_native": "SHENGJI_PV_ENCODE_NATIVE",
+                      "leaf_cache_release": "SHENGJI_PV_LEAF_CACHE_RELEASE",
+                      "leaf_clone_fast": "SHENGJI_PV_LEAF_CLONE_FAST",
+                      "leaf_trick_cache": "SHENGJI_PV_LEAF_TRICK_CACHE",
+                      "world_fast": "SHENGJI_PV_WORLD_FAST"}
 
 
 def latency_switches(environ=None) -> dict[str, bool]:
@@ -1948,6 +1983,12 @@ class PVSearchBot(PolicyValueBot):
     #: Instance state of an ON bot only.
     encode_prefix_cache = False
     encode_batch_fast = False
+    legal_native = False
+    encode_native = False
+    leaf_cache_release = False
+    leaf_clone_fast = False
+    leaf_trick_cache = False
+    world_fast = False
     single_candidate_fast = False
     #: the exact stages' world subset (module docstring): 0 = every world
     exact_world_subset = 0
@@ -2976,13 +3017,20 @@ class PVSearchBot(PolicyValueBot):
             # proposal bypasses them there, so it honours them itself
             constraints = draw_constraints(rnd, seat)
             seed = self.sampler.rng.getrandbits(63)
+            fast = self.world_fast
             propose = BeliefProposal(self.belief_model, rnd, seat, refusals,
                                      seed=seed, batch=self.worlds,
                                      forbidden=constraints, check_budget=check_budget,
-                                     capacity=getattr(self, "belief_capacity", False))
+                                     capacity=getattr(self, "belief_capacity", False),
+                                     **({"native": True} if fast else {}))
+            complete = None
+            if fast:
+                from .pv_native import world_completion
+                complete = world_completion(self.sampler, rnd, seat)
             worlds, attempts, stats = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
-                check_budget=check_budget, propose=propose, constrain=True)
+                check_budget=check_budget, propose=propose, constrain=True,
+                **({"complete": complete} if complete is not None else {}))
             stats.update(history_draw_constraints=len(constraints),
                          history_draw_forbidden=sum(sum(c.values()) for c in constraints.values()),
                          belief_fallback=0, belief_proposed=int(propose.drawn),
@@ -3040,7 +3088,8 @@ class PVSearchBot(PolicyValueBot):
         if self.encode_prefix_cache:
             # the same tensors, the root's history traversed once (`pv_encode_prefix`)
             from .pv_encode_prefix import HistoryPrefix, score_leaves
-            prefix = HistoryPrefix.of(rnd, batched=self.encode_batch_fast)
+            prefix = HistoryPrefix.of(rnd, batched=self.encode_batch_fast,
+                                      native=self.encode_native)
 
         def flush():
             nonlocal batches
@@ -3735,6 +3784,11 @@ class PVSearchBot(PolicyValueBot):
         try:
             return self._decide_play(rnd, seat, started)
         finally:
+            if self.leaf_cache_release and self._leaf_greedy is not None:
+                # the finished leaves serve one decision only (`_search` resets
+                # them); dropped here, the server's per-turn copy of this bot
+                # does not copy them
+                self._leaf_greedy['cache'] = {}
             self.search_secs += time.perf_counter() - started
             # #707 S9, telemetry only: this decision's change in the sampler's
             # cumulative void counters (worlds assigned ignoring public voids

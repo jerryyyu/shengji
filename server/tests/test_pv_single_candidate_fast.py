@@ -26,6 +26,7 @@ from test_pv_doomed_throw_reselect_exact_guard import R46_ENV
 from test_pv_leaf_greedy_finish import R46_RULES
 from test_pv_small_joker_lead import _fresh_round
 from test_pv_tree_search import endgame
+from native_switches import NATIVE_OFF
 
 FLAG = "SHENGJI_PV_SINGLE_CANDIDATE_FAST"
 #: the fields a skipped pass leaves out: its value, batches and evaluations, and the marker
@@ -185,7 +186,7 @@ def test_the_switch_is_off_by_default_and_enters_no_name():
     assert pv.latency_switches({FLAG: "1"}) == {"encode_prefix_cache": False,
                                                 "single_candidate_fast": True,
                                                 "leaf_greedy_stream": False,
-                                                "encode_batch_fast": False}
+                                                "encode_batch_fast": False, **NATIVE_OFF}
     with pytest.raises(pv.PVSearchPolicyError, match=FLAG):
         pv.latency_switches({FLAG: "true"})
     env = {**R46_ENV, "SHENGJI_PV_CKPT": "/x.npz", "SHENGJI_PV_SHA256": "f" * 64}

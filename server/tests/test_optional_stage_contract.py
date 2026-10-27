@@ -2,7 +2,8 @@
 serving stage after a finalized base decision, and the reusable contract
 (`optional_stage_contract.CONTRACT`) applied to every stage that uses it:
 ``adaptive_worlds`` (#936), ``doomed_throw_reselect`` (#946) and
-``value_declare`` (its nested step is `PVSearchBot._value_declare_means`).
+``value_declare`` (its nested step is `PVSearchBot._value_declare_means`) and
+``lead_confirm`` (its nested step is `PVSearchBot._score_leaves`).
 
 A NEW optional stage adds a `StageCase` to ``CASES`` below.
 """
@@ -136,7 +137,39 @@ def _exact_abandon(bot):
     return record['exact_lead_abandon_reason'], record['exact_lead_abandon_error']
 
 
+def _lcc_run(deadline, on=True):
+    """A lead whose pool holds a challenger the fresh worlds confirm (a
+    replacement), the base decision under a far budget."""
+    from test_pv_lead_confirm import KEYS, OutsideBallotEvaluator, _bot, _lead, _on, _prime
+    from test_pv_leaf_greedy_finish import R46_RULES
+    # without the doomed-throw re-select, whose own stage would run first
+    rules = {k: v for k, v in R46_RULES.items() if not k.startswith("doomed_throw")}
+    rnd, seat = _lead()
+    evaluator = OutsideBallotEvaluator(1.0)
+    _prime(evaluator, rnd, seat, rules)
+    bot = _bot(evaluator, rules, budget=1e6)
+    if on:
+        bot = _on(bot)
+    anchor = HeuristicBot.decide_play(bot, copy.deepcopy(rnd), seat)
+    played = bot._search(copy.deepcopy(rnd), seat, anchor, time.perf_counter(), deadline)
+    record = {k: v for k, v in bot.last_decision_record.items()
+              if not k.endswith("seconds") and k not in KEYS
+              and k not in ("lead_confirm_abandon_reason", "lead_confirm_abandon_error")}
+    return bot, (list(played), record)
+
+
+def _lcc_abandon(bot):
+    record = bot.last_decision_record
+    if record.get("lead_confirm_status") != "abandoned":
+        return None
+    return record["lead_confirm_abandon_reason"], record["lead_confirm_abandon_error"]
+
+
 CASES = [
+    StageCase("lead_confirm", run=_lcc_run,
+              base=lambda: _lcc_run(Deadline(), on=False)[1],
+              abandon=_lcc_abandon, abandons_errors=True,
+              nested=(PVSearchBot, "_score_leaves")),
     StageCase("exact_lead_endgame", run=_exact_run,
               base=lambda: _exact_run(Deadline(), on=False)[1],
               abandon=_exact_abandon, abandons_errors=True),

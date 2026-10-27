@@ -931,6 +931,25 @@ WIDE_LEAD_K = 32
 #: ``SHENGJI_PV_WIDE_LEAD_K=<k>`` (``wide_lead_k``; needs ``wide_lead_admission``)
 WIDE_LEAD_K_ENV = "WIDE_LEAD_K"
 WIDE_LEAD_K_RANGE = (9, 64)
+#: ``SHENGJI_PV_LEAD_CONFIRM=<k>`` (``lead_confirm``, token ``lcc<k>``): extra lead
+#: candidates (the policy's next ``k - K`` beyond the served ballot) may replace the
+#: served lead only after a fresh world draw confirms one (`PVSearchBot` docstring); 0 is off
+LEAD_CONFIRM_ENV = "LEAD_CONFIRM"
+LEAD_CONFIRM_TOKEN = "lcc"
+LEAD_CONFIRM_RULE_ID = ("policy-pool-beyond-ballot-screened-on-base-world-prefix-"
+                        "replaces-served-lead-only-if-paired-delta-on-fresh-worlds-exceeds-z-se")
+LEAD_CONFIRM_K_RANGE = (9, 64)
+#: its parameters, digested with the rule: the base-world prefix the pool is
+#: screened on, the challengers taken to confirmation, the fresh W-world draws
+#: they are confirmed on, the paired z and value margin a challenger must clear,
+#: and the start / soft shares of the serving budget
+LEAD_CONFIRM_PARAMS = dict(screen_worlds=32, challengers=2, rounds=2, z=1.0, margin=0.0,
+                           start_fraction=0.4, soft_fraction=0.8)
+#: the per-decision rule records the base finalization set; an abandon restores them
+LEAD_CONFIRM_RULE_STATE = ("_tiebreak", "_lead_tiebreak", "_doomed_throw", "_last_sampling")
+_LEAD_CONFIRM_EXCLUSIVE = ("lead_confirm does not combine with the tree or adaptive worlds "
+                           "(SHENGJI_PV_LEAD_CONFIRM with SHENGJI_PV_TREE_SIMS, "
+                           "SHENGJI_PV_ADAPTIVE_WORLDS or SHENGJI_PV_ADAPTIVE_WORLDS_LEADS)")
 FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
 EXACT_FOLLOW_RULE = {"EXACT_FOLLOW": "exact_follow"}
@@ -1425,6 +1444,9 @@ class PVSearchConfig:
     leaf_greedy_deadline_ms: int = 0
     # its top-m restriction (module docstring): 0 is off and ABSENT from the payload
     leaf_greedy_top: int = 0
+    # the held-out lead confirmation (`PVSearchBot` docstring): 0 is off and ABSENT
+    # from the payload
+    lead_confirm: int = 0
     # the optional declaration rule and its two parameters; the same contract
     # (the parameters too are ABSENT from the payload while the rule is off)
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
@@ -1569,6 +1591,23 @@ def _check_wide_lead_k(config) -> int:
     return k
 
 
+def _check_lead_confirm(config) -> int:
+    """The confirmation pool width ``k``, 0 when off; refuses a malformed value,
+    one not wider than ``candidates``, and the tree and adaptive worlds (their
+    reducers re-select on a matrix this rule does not see)."""
+    k = config.lead_confirm
+    lo, hi = LEAD_CONFIRM_K_RANGE
+    if isinstance(k, bool) or type(k) is not int or not (k == 0 or lo <= k <= hi):
+        raise PVSearchPolicyError(f"lead_confirm must be 0 (off) or an int in [{lo}, {hi}]")
+    if not k:
+        return 0
+    if k <= config.candidates:
+        raise PVSearchPolicyError("lead_confirm must exceed candidates (the served ballot width)")
+    if config.tree is not None or config.adaptive_worlds or config.adaptive_worlds_leads:
+        raise PVSearchPolicyError(_LEAD_CONFIRM_EXCLUSIVE)
+    return k
+
+
 def _check_leaf_greedy_deadline(config) -> int:
     """The finish deadline in ms, 0 when off; refuses a malformed value and
     one without ``leaf_greedy_finish``."""
@@ -1706,6 +1745,10 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                                       "offset": LEAF_GREEDY_TOP_OFFSET}
     if deadline_ms:
         payload["leaf_greedy_deadline"] = {"ms": deadline_ms, "rule": LEAF_GREEDY_DEADLINE_RULE_ID}
+    confirm = _check_lead_confirm(config)
+    del payload["lead_confirm"]
+    if confirm:
+        payload["lead_confirm"] = {"k": confirm, "rule": LEAD_CONFIRM_RULE_ID, **LEAD_CONFIRM_PARAMS}
     if config.adaptive_worlds and config.adaptive_worlds_leads:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
     if config.oracle_worlds and (config.adaptive_worlds or config.adaptive_worlds_leads):
@@ -1826,9 +1869,16 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     subset = _check_exact_world_subset(config)
     if subset:
         rules += f"-{EXACT_WORLD_SUBSET_TOKEN}{subset}"
+    confirm = _check_lead_confirm(config)
+    if confirm:
+        rules += f"-{LEAD_CONFIRM_TOKEN}{confirm}"
     rules += tree_token(config.tree)   # "" while the tree is off
     return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
             f"-r{recipe_digest(config)}")
+
+
+class _LeadConfirmLeafCut(Exception):
+    """The lead confirmation's greedy finish passed its deadline (an abandon)."""
 
 
 class _AdaptiveWorldsExpired(Exception):
@@ -1927,6 +1977,36 @@ class PVSearchBot(PolicyValueBot):
     cloud).  Earlier served evidence: adaptive K16 on multi-card leads (v41ak
     vs release 36) -0.006, inconclusive.  This is agreement with the value
     head, not playing strength.
+
+    Optional held-out lead confirmation ``lead_confirm`` (``SHENGJI_PV_LEAD_CONFIRM=<k>``,
+    token ``lcc<k>``; OFF BY DEFAULT, and while off `_search` takes exactly the
+    path it took before, draws nothing more and the record gains no key).  On a
+    LEAD whose base decision is final (the served ballot, value pass, selection
+    rules and doomed-throw re-select, unchanged) and on which no exact lead
+    stage runs: the pool is the policy's next ``k - k_used`` finite-preference
+    actions outside the ballot.  The served lead and the pool are priced on the
+    served leaf over the first ``screen_worlds`` of the base worlds; at most
+    ``challengers`` pool actions whose screen mean beats the served lead's (best
+    first; a doomed throw skipped under ``doomed_throw_reselect``) go on.  Those
+    and the served lead are priced again on ``rounds`` FRESH draws of W worlds
+    from this bot's own sampler, and a challenger replaces the served lead only
+    when its paired mean difference there exceeds ``z`` paired standard errors
+    plus ``margin`` (the largest such difference wins).  The fresh worlds never
+    took part in choosing the challenger, so the confirmation is not inflated by
+    the screen's selection among the pool (`LEAD_CONFIRM_PARAMS`).  Budget: as
+    ``adaptive_worlds``, through `optional_stage.OptionalStage` -- it starts only
+    below ``start_fraction`` of the serving budget, every check tests the hard
+    budget then a soft deadline at ``soft_fraction``, a greedy finish cut by
+    its deadline abandons, and any abandon plays the base decision with its
+    records.  Record (leads only, rule on): ``lead_confirm_status``
+    (``applied`` / ``rejected`` / ``no_challenger`` / ``no_pool`` /
+    ``skipped_budget`` / ``abandoned`` / ``exact`` / ``override`` /
+    ``single_candidate``), ``_pool``, ``_screen_worlds``, ``_challengers``,
+    ``_screen_margins``, ``_worlds`` (fresh), ``_deltas``, ``_ses``,
+    ``_applied``, ``_to`` and ``_seconds`` (+ ``_abandon_reason`` / ``_error``).
+    An applied challenger is appended to the admitted ballot with a None value
+    mean and is the selected index; ``value_means`` is otherwise the base pass's.
+
     Only this class: the harness `PolicyValueBot.decide_play` has no budget and
     no capture path.  A subclass that replaces `_value_means` (the tree, which
     re-selects on the PV pass's W x K matrix; the belief-weighted exploiter) is
@@ -1966,6 +2046,18 @@ class PVSearchBot(PolicyValueBot):
     #: the lead admission width of ``wide_lead_admission``; instance state only
     #: when it differs from the default
     wide_lead_k = WIDE_LEAD_K
+    #: the held-out lead confirmation (class docstring), 0 = off; instance state
+    #: of an ON bot only, as is its per-decision record.  Its parameters are the
+    #: digested `LEAD_CONFIRM_PARAMS`
+    lead_confirm = 0
+    _lead_confirm = None
+    lead_confirm_screen_worlds = LEAD_CONFIRM_PARAMS["screen_worlds"]
+    lead_confirm_challengers = LEAD_CONFIRM_PARAMS["challengers"]
+    lead_confirm_rounds = LEAD_CONFIRM_PARAMS["rounds"]
+    lead_confirm_z = LEAD_CONFIRM_PARAMS["z"]
+    lead_confirm_margin = LEAD_CONFIRM_PARAMS["margin"]
+    lead_confirm_start_fraction = LEAD_CONFIRM_PARAMS["start_fraction"]
+    lead_confirm_soft_fraction = LEAD_CONFIRM_PARAMS["soft_fraction"]
     #: the exact lead's two optional variants (module docstring): class-level OFF
     exact_lead_tie_baseline = False
     exact_lead_policy_first = False
@@ -2161,6 +2253,12 @@ class PVSearchBot(PolicyValueBot):
         top = _check_leaf_greedy_top(config)
         if top:
             self.leaf_greedy_top = top
+        confirm = _check_lead_confirm(config)
+        if confirm:
+            if type(self)._value_means is not PVSearchBot._value_means:
+                raise PVSearchPolicyError(f"lead_confirm needs serving's own _value_means; "
+                                          f"{type(self).__name__} replaces it")
+            self.lead_confirm = confirm
         if type(config.value_declare) is not bool:
             raise PVSearchPolicyError("value_declare must be a bool")
         _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
@@ -3397,6 +3495,20 @@ class PVSearchBot(PolicyValueBot):
                 rnd, seat, admitted, worlds, started, check_budget,
                 [float(preferences[i]) for i in chosen],
                 (means, batches, winner, played, evaluations))
+        confirmed = None
+        if self.lead_confirm:
+            # the held-out lead confirmation (class docstring): on a lead, once the
+            # base decision and any exact lead stage are final
+            self._lead_confirm = None
+            if leading(rnd):
+                confirmed = self._lead_confirm_decision(
+                    rnd, seat, actions, preferences, chosen, worlds, started, check_budget,
+                    winner, played, single_fast)
+                if confirmed is not None:
+                    chosen = list(chosen) + [confirmed]
+                    admitted = admitted + [actions[confirmed]]
+                    winner = len(chosen) - 1
+                    played = list(actions[confirmed])
         exact_follow_record = None
         if self._exact_follow_eligible(rnd, admitted):
             # The normal PV result is complete before this optional stage starts.
@@ -3478,6 +3590,7 @@ class PVSearchBot(PolicyValueBot):
                if self.leaf_greedy_finish_exact_skip else {}),
             **self._leaf_greedy_deadline_record(),
             **self._leaf_greedy_top_record(),
+            **self._lead_confirm_record(),
             **self._adaptive_worlds_record(),
             **self._soft_oracle_record(),
             **(self._exact_lead if self.exact_lead_endgame else {}),
@@ -3486,7 +3599,141 @@ class PVSearchBot(PolicyValueBot):
         if single_fast:
             # nothing priced the one candidate: its value is unknown, not zero
             self.last_decision_record.update(value_means=[None], single_candidate_fast=True)
+        if confirmed is not None:
+            # the confirmed challenger was priced on fresh worlds, not the base pass
+            self.last_decision_record["value_means"] = means.tolist() + [None]
         return list(played)
+
+    # -- the optional held-out lead confirmation (class docstring) ---------------
+
+    def _lead_confirm_decision(self, rnd, seat, actions, preferences, chosen, worlds, started,
+                               check_budget, winner, played, single_fast):
+        """The legal index of a confirmed challenger to play instead of the
+        final base lead, or None (the base decision stands); sets
+        ``self._lead_confirm`` (the record fields)."""
+        t0 = time.perf_counter()
+        state = {"lead_confirm_status": None, "lead_confirm_pool": 0,
+                 "lead_confirm_screen_worlds": 0, "lead_confirm_challengers": [],
+                 "lead_confirm_screen_margins": [], "lead_confirm_worlds": 0,
+                 "lead_confirm_deltas": [], "lead_confirm_ses": [],
+                 "lead_confirm_applied": False, "lead_confirm_to": None,
+                 "lead_confirm_seconds": 0.0}
+        self._lead_confirm = state
+
+        def finish(status, index=None):
+            state.update(lead_confirm_status=status, lead_confirm_applied=index is not None,
+                         lead_confirm_to=None if index is None else list(actions[index]),
+                         lead_confirm_seconds=time.perf_counter() - t0)
+            return index
+
+        admitted = [actions[i] for i in chosen]
+        if single_fast:
+            return finish("single_candidate")
+        if self.exact_lead_endgame and self._exact_lead_gate(rnd, admitted) is None:
+            # an exact lead stage decided (or was entitled to decide) this lead
+            return finish("exact")
+        if sorted(played) != sorted(admitted[winner]):
+            # a post-selection override (the doomed throw's forced component)
+            return finish("override")
+        budget = self.serving_budget_seconds
+        if budget is not None and time.perf_counter() - started >= \
+                self.lead_confirm_start_fraction * budget:
+            return finish("skipped_budget")
+        taken = set(chosen)
+        ranked = sorted(range(len(actions)), key=lambda i: (-preferences[i], i))
+        pool = [i for i in ranked if i not in taken and np.isfinite(preferences[i])]
+        pool = pool[:max(0, self.lead_confirm - self._adaptive["k_used"])]
+        state["lead_confirm_pool"] = len(pool)
+        if not pool:
+            return finish("no_pool")
+        stage = OptionalStage(
+            self, LEAD_CONFIRM_RULE_STATE, hard_check=check_budget,
+            budget_errors=PVSearchBudgetExceeded,
+            soft_deadline=(started + self.lead_confirm_soft_fraction * budget
+                           if budget is not None else None),
+            clock=time.perf_counter, soft_error=_AdaptiveWorldsExpired,
+            final_check=check_budget, abandon_on=Exception,
+            # the fresh draws overwrite the sampler record; it describes the base draw
+            restore_always=("_last_sampling",))
+        # the base pass's finished leaves and their record, kept by reference: the
+        # stage's passes build their own and never mutate these
+        kept = (self._leaf_greedy, self._leaf_greedy_pruned)
+        served = admitted[winner]
+        confirmed = None
+        try:
+            with stage:
+                guard = stage.guard
+                screen = list(worlds[:self.lead_confirm_screen_worlds])
+                state["lead_confirm_screen_worlds"] = len(screen)
+                matrix = self._lead_confirm_matrix(
+                    rnd, seat, [served] + [actions[i] for i in pool], screen, guard)
+                margins = matrix[:, 1:].mean(axis=0) - matrix[:, 0].mean()
+                order = sorted(range(len(pool)), key=lambda j: (-margins[j], j))
+                picks = [j for j in order if margins[j] > 0][:self.lead_confirm_challengers]
+                if self.doomed_throw_reselect:
+                    # a doomed throw is never played as led (the served rule's test)
+                    picks = [j for j in picks
+                             if self._doomed_component(rnd, seat, actions[pool[j]], worlds,
+                                                       guard) is None]
+                state.update(lead_confirm_challengers=[list(actions[pool[j]]) for j in picks],
+                             lead_confirm_screen_margins=[float(margins[j]) for j in picks])
+                if picks:
+                    fresh = self._lead_confirm_draw(rnd, seat, guard)
+                    state["lead_confirm_worlds"] = len(fresh)
+                    matrix = self._lead_confirm_matrix(
+                        rnd, seat, [served] + [actions[pool[j]] for j in picks], fresh, guard)
+                    paired = matrix[:, 1:] - matrix[:, [0]]
+                    deltas = paired.mean(axis=0)
+                    ses = (paired.std(axis=0, ddof=1) / math.sqrt(len(fresh))
+                           if len(fresh) >= 2 else np.full(len(picks), np.inf))
+                    state.update(lead_confirm_deltas=[float(v) for v in deltas],
+                                 lead_confirm_ses=[float(v) for v in ses])
+                    passed = [t for t in range(len(picks))
+                              if deltas[t] > self.lead_confirm_z * ses[t] + self.lead_confirm_margin]
+                    if passed:
+                        best = min(passed, key=lambda t: (-deltas[t], t))
+                        confirmed = pool[picks[best]]
+                stage.publish(changed=confirmed is not None)
+        finally:
+            self._leaf_greedy, self._leaf_greedy_pruned = kept
+        if stage.abandoned:
+            state.update(lead_confirm_abandon_reason=stage.reason,
+                         lead_confirm_abandon_error=stage.error)
+            return finish("abandoned")
+        if confirmed is not None:
+            return finish("applied", confirmed)
+        return finish("rejected" if state["lead_confirm_challengers"] else "no_challenger")
+
+    def _lead_confirm_matrix(self, rnd, seat, actions, worlds, check_budget):
+        """``(worlds x actions)`` values on the served leaf: greedy-finished
+        under ``leaf_greedy_finish`` (every leaf of this pass, the top-m
+        restriction not applied), else `_leaf`.  A finish cut by its deadline
+        raises: a pass that mixed leaves would not compare its candidates."""
+        if self.leaf_greedy_finish and not self._leaf_greedy_exact_skipped:
+            self._greedy_prefill(rnd, seat, actions, worlds, check_budget)
+            if self._leaf_greedy["deadline_cut"]:
+                raise _LeadConfirmLeafCut("the greedy finish passed its deadline")
+        self._leaf_greedy_pruned = frozenset()
+        matrix = np.full((len(worlds), len(actions)), np.nan, dtype=np.float64)
+        self._score_leaves(rnd, seat, actions, worlds, check_budget, capture=matrix)
+        if not np.isfinite(matrix).all():
+            raise PVSearchPolicyError("lead_confirm value matrix has unfilled cells",
+                                      stage="lead_confirm_matrix")
+        return matrix
+
+    def _lead_confirm_draw(self, rnd, seat, check_budget):
+        """The fresh confirmation worlds: ``lead_confirm_rounds`` draws of W
+        through this bot's own `_worlds` (the sampler stream advances)."""
+        fresh = []
+        for _ in range(self.lead_confirm_rounds):
+            drawn, _attempts = self._worlds(rnd, seat, check_budget)
+            fresh.extend(drawn)
+        return fresh
+
+    def _lead_confirm_record(self):
+        if not self.lead_confirm or self._lead_confirm is None:
+            return {}
+        return dict(self._lead_confirm)
 
     def _single_candidate_fast(self, rnd, admitted):
         """``single_candidate_fast`` applies: on, one admitted candidate, the
@@ -4098,6 +4345,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        leaf_greedy_deadline_ms: int = 0,
                        leaf_greedy_top: int = 0,
                        wide_lead_k: int = WIDE_LEAD_K,
+                       lead_confirm: int = 0,
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -4178,6 +4426,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
                             leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
+                            lead_confirm=lead_confirm,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -4309,6 +4558,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         leaf_greedy_deadline_ms: int = 0,
                         leaf_greedy_top: int = 0,
                         wide_lead_k: int = WIDE_LEAD_K,
+                        lead_confirm: int = 0,
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -4370,6 +4620,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
                             leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
+                            lead_confirm=lead_confirm,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -4489,6 +4740,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                leaf_greedy_deadline_ms=config.leaf_greedy_deadline_ms,
                                leaf_greedy_top=config.leaf_greedy_top,
                                wide_lead_k=config.wide_lead_k,
+                               lead_confirm=config.lead_confirm,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
@@ -4683,6 +4935,17 @@ def pv_env_recipe(environ=None) -> dict:
         probe = PVSearchConfig(checkpoint_sha256=recipe["sha256"], **{needs: True, key: value})
         (_check_leaf_greedy_top if key == "leaf_greedy_top" else _check_wide_lead_k)(probe)
         recipe[key] = value
+    # the held-out lead confirmation's pool width: unset, empty or 0 is off
+    raw = env.get(ENV_PREFIX + LEAD_CONFIRM_ENV)
+    if raw not in (None, "", "0"):
+        try:
+            value = int(raw)
+        except ValueError:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{LEAD_CONFIRM_ENV} is not an int: {raw!r}") from None
+        lo, hi = LEAD_CONFIRM_K_RANGE
+        if not lo <= value <= hi:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{LEAD_CONFIRM_ENV} must be an int in [{lo}, {hi}]")
+        recipe["lead_confirm"] = value
     # the exact stages' world subset: unset, empty or 0 is off
     raw = env.get(ENV_PREFIX + EXACT_WORLD_SUBSET_ENV)
     if raw not in (None, "", "0"):

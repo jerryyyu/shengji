@@ -51,16 +51,22 @@ V92_CANDIDATE_ENV = {"SHENGJI_PV_WORLD_HISTORY_LEGAL": "1",
                      "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST": "1"}
 DTRX_FLAG = "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD"
 #: the lines release 48 adds above release 46 (it also changes the belief pair's values,
-#: not its keys): dtrx, the guarded greedy finish and its three latency switches
+#: not its keys): dtrx, the guarded greedy finish and its latency switches
 RELEASE48_ADDED_KEYS = (DTRX_FLAG,
                         "SHENGJI_PV_LEAF_GREEDY_FINISH",
                         "SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP",
                         "SHENGJI_PV_LEAF_GREEDY_DEADLINE",
                         "SHENGJI_PV_ENCODE_PREFIX_CACHE",
                         "SHENGJI_PV_LEAF_GREEDY_STREAM",
-                        "SHENGJI_PV_ENCODE_BATCH_FAST")
+                        "SHENGJI_PV_ENCODE_BATCH_FAST",
+                        "SHENGJI_PV_ENCODE_NATIVE",
+                        "SHENGJI_PV_LEGAL_NATIVE",
+                        "SHENGJI_PV_LEAF_CACHE_RELEASE",
+                        "SHENGJI_PV_LEAF_CLONE_FAST",
+                        "SHENGJI_PV_LEAF_TRICK_CACHE",
+                        "SHENGJI_PV_WORLD_FAST")
 #: every line production's env carries above release 45: release 46's twelve and
-#: release 48's seven
+#: release 48's added switches
 COMBO_KEYS = tuple(V92_CANDIDATE_ENV) + RELEASE48_ADDED_KEYS
 
 
@@ -71,7 +77,7 @@ def without_combo(env: dict) -> dict:
 
 
 def release46_env(env: dict) -> dict:
-    """Production's env with release 48's rollback applied: its seven added lines
+    """Production's env with release 48's rollback applied: its added lines
     removed, the S17 belief pair and the release-46 name restored."""
     env = {k: v for k, v in env.items() if k not in RELEASE48_ADDED_KEYS}
     env.update(SHENGJI_PV_BELIEF_CKPT=BELIEF_VOLUME_PATH, SHENGJI_PV_BELIEF_SHA256=BELIEF_SHA,

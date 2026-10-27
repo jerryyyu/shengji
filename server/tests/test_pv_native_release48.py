@@ -96,6 +96,9 @@ def test_the_native_switches_decide_exactly_as_release48_through_the_server_path
         monkeypatch.delenv(key, raising=False)
     env = local_env(pinned_production_package, pinned_release48_belief_package)
     apply_to_process(monkeypatch, env)
+    for attr in NATIVE_SWITCHES:
+        assert env[pv.LATENCY_SWITCH_ENV[attr]] == "1"
+        monkeypatch.delenv(pv.LATENCY_SWITCH_ENV[attr], raising=False)
     _, name, factory = served_entries(pinned_production_package, pinned_release48_belief_package)
     assert name == RELEASE48 == fly_env()["SHENGJI_BOT"]
     bot = _lift(factory(seed=seed))

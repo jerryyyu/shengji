@@ -967,11 +967,9 @@ def test_an_unrelated_copy_registration_keeps_the_clone_fast_path(monkeypatch):
     monkeypatch.setitem(copyreg.dispatch_table, Unrelated, lambda x: (Unrelated, ()))
     also = type("AlsoUnrelated", (), {})
     copyreg.pickle(also, lambda x: (object, ()))
-    copy_module._copy_atomic_types.add(Unrelated)
     try:
         assert pts.clone_references_intact(pts.child_position)
     finally:
-        copy_module._copy_atomic_types.discard(Unrelated)
         copyreg.dispatch_table.pop(also, None)
     monkeypatch.undo()
     assert pts.clone_references_intact(pts.child_position)
@@ -980,12 +978,22 @@ def test_an_unrelated_copy_registration_keeps_the_clone_fast_path(monkeypatch):
     assert not pts.clone_references_intact(pts.child_position)
     rnd = _fresh_round(707_001)
     monkeypatch.undo()
-    copy_module._copy_atomic_types.add(Round)
-    try:
-        assert not pts.clone_references_intact(pts.child_position)
-    finally:
-        copy_module._copy_atomic_types.discard(Round)
-    assert pts.clone_references_intact(pts.child_position)
+    for name in ("_copy_atomic_types", "_copy_builtin_containers", "_copy_dispatch"):
+        registry = getattr(copy_module, name, None)
+        if registry is None:
+            continue
+        for cls, expected in ((Unrelated, True), (Round, False)):
+            with monkeypatch.context() as patch:
+                if isinstance(registry, dict):
+                    patch.setitem(registry, cls, lambda x: x)
+                else:
+                    registry.add(cls)
+                try:
+                    assert pts.clone_references_intact(pts.child_position) is expected
+                finally:
+                    if not isinstance(registry, dict):
+                        registry.discard(cls)
+            assert pts.clone_references_intact(pts.child_position)
     # copy.copy rewritten in place
     original = copy_module.copy.__code__
     copy_module.copy.__code__ = (lambda x: x).__code__

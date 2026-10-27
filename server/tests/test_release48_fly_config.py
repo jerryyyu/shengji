@@ -44,7 +44,13 @@ BELIEF_VOLUME_PATH = "/data/models/s58-e6-42444515.npz"
 BELIEF_TEMPERATURE = 1.0129481491372179
 LATENCY_KEYS = {"encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
                 "leaf_greedy_stream": "SHENGJI_PV_LEAF_GREEDY_STREAM",
-                "encode_batch_fast": "SHENGJI_PV_ENCODE_BATCH_FAST"}
+                "encode_batch_fast": "SHENGJI_PV_ENCODE_BATCH_FAST",
+                "encode_native": "SHENGJI_PV_ENCODE_NATIVE",
+                "legal_native": "SHENGJI_PV_LEGAL_NATIVE",
+                "leaf_cache_release": "SHENGJI_PV_LEAF_CACHE_RELEASE",
+                "leaf_clone_fast": "SHENGJI_PV_LEAF_CLONE_FAST",
+                "leaf_trick_cache": "SHENGJI_PV_LEAF_TRICK_CACHE",
+                "world_fast": "SHENGJI_PV_WORLD_FAST"}
 #: what the screen's candidate arm changed on release 46 (its comparator), with the
 #: belief package at its Fly volume path (the screen host's copy had the same sha256)
 R48_CANDIDATE_CHANGES = {"SHENGJI_PV_BELIEF_CKPT": BELIEF_VOLUME_PATH,
@@ -175,10 +181,10 @@ def test_latency_switches_are_on_through_the_process_environment(
         monkeypatch.delenv(key, raising=False)
     env = local_env(pinned_production_package, pinned_release48_belief_package)
     plain = served_entries(pinned_production_package, pinned_release48_belief_package)[2](seed=17)
-    assert not {"encode_prefix_cache", "leaf_greedy_stream", "encode_batch_fast"} & set(vars(plain))
+    assert not set(LATENCY_KEYS) & set(vars(plain))
     apply_to_process(monkeypatch, env)
     assert pv.latency_switches() == {"encode_prefix_cache": True, "single_candidate_fast": False,
-                                     "leaf_greedy_stream": True, "encode_batch_fast": True, **NATIVE_OFF}
+                                     "leaf_greedy_stream": True, "encode_batch_fast": True, **{k: True for k in NATIVE_OFF}}
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(dict(os.environ)))
     name, = entries
     assert name == RELEASE48
@@ -253,7 +259,7 @@ def test_healthz_reports_the_latency_switches(pinned_production_package, monkeyp
     apply_to_process(monkeypatch, {k: fly_env()[k] for k in LATENCY_KEYS.values()})
     assert srv._pv_search_health()["latency_switches"] == {
         "encode_prefix_cache": True, "single_candidate_fast": False,
-        "leaf_greedy_stream": True, "encode_batch_fast": True, **NATIVE_OFF}
+        "leaf_greedy_stream": True, "encode_batch_fast": True, **{k: True for k in NATIVE_OFF}}
 
 
 def test_rollback_to_release46_restores_the_belief_pair_and_drops_the_r48_lines(

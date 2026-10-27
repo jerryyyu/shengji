@@ -952,3 +952,46 @@ def test_reference_snapshots_decline_mutated_globals_and_functions(monkeypatch):
     monkeypatch.setattr(MCBot, "_complete_determinized_hands",
                         lambda self, *a, **k: [["CLASS-OVERRIDE"]])
     assert pv_native.world_completion(bot, rnd, rnd.turn) is None
+
+
+def test_an_unrelated_copy_registration_keeps_the_clone_fast_path(monkeypatch):
+    """``copyreg`` and ``copy``'s registries are shared: registering a reducer
+    for another class is not drift, while one for `Round` (or `Round` made
+    atomic) declines, as do a replaced or rewritten ``copy.copy``."""
+    import copy as copy_module
+    import copyreg
+    assert pts.clone_references_intact(pts.child_position)
+
+    class Unrelated:
+        pass
+    monkeypatch.setitem(copyreg.dispatch_table, Unrelated, lambda x: (Unrelated, ()))
+    also = type("AlsoUnrelated", (), {})
+    copyreg.pickle(also, lambda x: (object, ()))
+    copy_module._copy_atomic_types.add(Unrelated)
+    try:
+        assert pts.clone_references_intact(pts.child_position)
+    finally:
+        copy_module._copy_atomic_types.discard(Unrelated)
+        copyreg.dispatch_table.pop(also, None)
+    monkeypatch.undo()
+    assert pts.clone_references_intact(pts.child_position)
+    # the same registries, now naming Round itself
+    monkeypatch.setitem(copyreg.dispatch_table, Round, lambda x: (Round, ()))
+    assert not pts.clone_references_intact(pts.child_position)
+    rnd = _fresh_round(707_001)
+    monkeypatch.undo()
+    copy_module._copy_atomic_types.add(Round)
+    try:
+        assert not pts.clone_references_intact(pts.child_position)
+    finally:
+        copy_module._copy_atomic_types.discard(Round)
+    assert pts.clone_references_intact(pts.child_position)
+    # copy.copy rewritten in place
+    original = copy_module.copy.__code__
+    copy_module.copy.__code__ = (lambda x: x).__code__
+    try:
+        assert not pts.clone_references_intact(pts.child_position)
+    finally:
+        copy_module.copy.__code__ = original
+    assert pts.clone_references_intact(pts.child_position)
+    assert vars(pts.shallow_round(rnd)) == vars(rnd)

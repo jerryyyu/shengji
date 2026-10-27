@@ -56,9 +56,15 @@ class ReferenceSnapshot:
 
     _CONTAINERS = (dict, list, set, frozenset, tuple, bytearray)
 
-    def __init__(self, *functions):
+    def __init__(self, *functions, keyed=None):
+        """``keyed`` maps a global that is a shared registry (a dict or set
+        other code legitimately extends, like ``copyreg.dispatch_table``) to
+        the keys the fast path depends on: that global is held by identity and
+        only those keys' entries (a dict's value, a set's membership) are
+        frozen, so an unrelated registration is not drift."""
         import numpy as np
         self._np = np
+        self.keyed = dict(keyed or {})
         self.entries = []
         for fn in functions:
             raw = getattr(fn, "__func__", fn)
@@ -66,9 +72,15 @@ class ReferenceSnapshot:
             self.entries.append((raw, raw.__code__, raw.__defaults__, raw.__kwdefaults__,
                                  namespace, self._frozen(raw.__defaults__),
                                  self._frozen(raw.__kwdefaults__),
-                                 [(name, namespace[name], self._frozen(namespace[name]))
+                                 [(name, namespace[name],
+                                   self._keyed(namespace[name], self.keyed[name])
+                                   if name in self.keyed else self._frozen(namespace[name]))
                                   for name in sorted(self._names(raw.__code__))
                                   if name in namespace]))
+
+    @staticmethod
+    def _keyed(container, keys):
+        return _KeyedEntries(container, keys)
 
     @staticmethod
     def _names(code):
@@ -92,6 +104,8 @@ class ReferenceSnapshot:
     def _same(self, value, frozen):
         if frozen is None:
             return True
+        if isinstance(frozen, _KeyedEntries):
+            return frozen.same(value)
         if isinstance(frozen, self._np.ndarray):
             return (isinstance(value, self._np.ndarray) and value.dtype == frozen.dtype
                     and value.shape == frozen.shape and bool((value == frozen).all()))
@@ -124,6 +138,27 @@ class ReferenceSnapshot:
 
 
 _MISSING = object()
+
+
+class _KeyedEntries:
+    """The entries of a shared registry for a few keys: a dict's value (or
+    absence), a set's membership."""
+
+    __slots__ = ("keys", "entries")
+
+    def __init__(self, container, keys):
+        self.keys = tuple(keys)
+        self.entries = self._read(container)
+
+    def _read(self, container):
+        if isinstance(container, dict):
+            return tuple(container.get(key, _MISSING) for key in self.keys)
+        return tuple(key in container for key in self.keys)
+
+    def same(self, container):
+        current = self._read(container)
+        return all(a is b if not isinstance(a, bool) else a == b
+                   for a, b in zip(current, self.entries))
 
 _LISTING_REFERENCES = ReferenceSnapshot(harvest_legal.multiset_subsets,
                                         harvest_legal.iter_follow_actions)

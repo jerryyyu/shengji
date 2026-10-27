@@ -158,7 +158,12 @@ from .pv_tree_config import PVTreeConfig
 #: (`pv_native.ReferenceSnapshot`): the fast twins run only while they are
 #: intact and the names in use are those very objects
 import copy as _copy_module  # noqa: E402
-_CLONE_REFERENCES = pv_native.ReferenceSnapshot(afterstate, child_position, _copy_module.copy)
+# copy.copy's registries are shared with every library that registers a
+# reducer; only their entries for Round bear on cloning a Round
+_CLONE_REFERENCES = pv_native.ReferenceSnapshot(
+    afterstate, child_position, _copy_module.copy,
+    keyed={"dispatch_table": (Round,), "_copy_atomic_types": (Round,),
+           "_copy_builtin_containers": (Round,), "_copy_dispatch": (Round,)})
 
 
 def clone_references_intact(*functions) -> bool:

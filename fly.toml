@@ -142,6 +142,15 @@ primary_region = 'ewr'
   SHENGJI_PV_ENCODE_PREFIX_CACHE = '1'
   SHENGJI_PV_LEAF_GREEDY_STREAM = '1'
   SHENGJI_PV_ENCODE_BATCH_FAST = '1'
+  # Native hot paths (#1164): six more latency switches with the same contract (no name,
+  # payload or digest; decisions identical to switch-off). Each falls back to the Python
+  # reference whenever the code it stands for has been replaced. Rollback: delete these six.
+  SHENGJI_PV_ENCODE_NATIVE = '1'
+  SHENGJI_PV_LEGAL_NATIVE = '1'
+  SHENGJI_PV_LEAF_CACHE_RELEASE = '1'
+  SHENGJI_PV_LEAF_CLONE_FAST = '1'
+  SHENGJI_PV_LEAF_TRICK_CACHE = '1'
+  SHENGJI_PV_WORLD_FAST = '1'
   # Release 46: the combo (see the RELEASE 46 note above). History-legal, belief-proposed
   # play worlds; the belief package must be on the volume at this path with this sha256
   # (release 48: the S58 package).

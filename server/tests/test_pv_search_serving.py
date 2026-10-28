@@ -456,7 +456,8 @@ def test_served_bots_pickle_and_behave_identically_after_unpickling(package):
 
 @pytest.mark.parametrize("first_import", ["shengji.ai.registry", "shengji.train.pv_search_policy",
                                          "shengji.eval.singleton_challenger", "shengji.api.server"])
-def test_singleton_opt_in_registry_survives_fresh_process(package, first_import):
+@pytest.mark.parametrize("lead_confirm", [0, 32])
+def test_singleton_opt_in_registry_survives_fresh_process(package, first_import, lead_confirm):
     import json
     import os
     import subprocess
@@ -467,7 +468,8 @@ def test_singleton_opt_in_registry_survives_fresh_process(package, first_import)
     env.update(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
                SHENGJI_PV_WORLDS='3', SHENGJI_PV_CANDIDATES='4',
                SHENGJI_PV_CAP='400', SHENGJI_PV_BATCH_SIZE='16', SHENGJI_PV_SEED='79',
-               SHENGJI_PV_BURY_ARM='hybrid', SHENGJI_PV_SERVING_BUDGET_SECONDS='3')
+               SHENGJI_PV_BURY_ARM='hybrid', SHENGJI_PV_SERVING_BUDGET_SECONDS='3',
+               SHENGJI_PV_LEAD_CONFIRM=str(lead_confirm))
     code = textwrap.dedent('''
         import asyncio, copy, json, os
         from shengji.ai import registry
@@ -492,6 +494,9 @@ def test_singleton_opt_in_registry_survives_fresh_process(package, first_import)
             reference = candidate_from_env(os.environ, seed=19)
             bot = registry.make_bot(name, seed=19)
             assert bot.policy_name == name and bot.config == reference.config
+            confirmation = int(os.environ['SHENGJI_PV_LEAD_CONFIRM'])
+            assert bot.lead_confirm == reference.lead_confirm == confirmation
+            assert ('-lcc32-' in name) == (confirmation == 32)
             assert isinstance(bot, pv.PVSearchBuryBot)
             root = fixture(rank='2', banker=0, seed=625091990)
             a = bot.decide_play(copy.deepcopy(root), root.turn)
@@ -499,6 +504,11 @@ def test_singleton_opt_in_registry_survives_fresh_process(package, first_import)
             assert a == b
             for key in ('admitted', 'value_means', 'selected_index', 'singleton_challenger_applied'):
                 assert bot.last_decision_record[key] == reference.last_decision_record[key]
+            if confirmation:
+                for key in ('lead_confirm_status', 'lead_confirm_applied', 'lead_confirm_worlds'):
+                    assert bot.last_decision_record[key] == reference.last_decision_record[key]
+                assert bot.last_decision_record['lead_confirm_status'] in (
+                    'applied', 'rejected', 'no_challenger', 'no_pool', 'exact')
             row = asyncio.run(qualify_one(root, registry.make_bot(name, seed=19)))
             assert row['healthy'], row
         print(json.dumps({'enabled': enabled}))

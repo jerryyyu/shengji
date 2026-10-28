@@ -84,3 +84,54 @@ def test_release48_lcc32_plays_a_lead_through_the_server_path(
     if record["lead_confirm_applied"]:
         assert record["selected_index"] == record["admitted_indices"][-1]
         assert sorted(record["played"]) == sorted(record["lead_confirm_to"])
+
+
+def test_lead_confirm_keeps_its_server_decision_with_native_paths(
+        pinned_production_package, pinned_release48_belief_package, tmp_path, monkeypatch):
+    """Release 48 off and with ``lcc32``: the native latency switches change no card, record or sampler stream of a lead
+    through the server's snapshot path (the stage's fresh draws included)."""
+    import random
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from shengji.train import pv_search_policy as pv
+    from test_pv_native_release48 import NATIVE_SWITCHES, _comparable, _counters
+    from test_release48_fly_config import apply_to_process, local_env
+    from test_pv_search_serving import _play_state
+
+    monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
+    for k in (0, 32):
+        env = {**fly_env(), LCC: str(k)}
+        apply_to_process(monkeypatch, local_env(
+            pinned_production_package, pinned_release48_belief_package, env))
+        results = []
+        for native in (False, True):
+            flags = {pv.LATENCY_SWITCH_ENV[attr]: str(int(native)) for attr in NATIVE_SWITCHES}
+            for key, value in flags.items():
+                monkeypatch.setenv(key, value)
+            _, name, factory = served_entries(
+                pinned_production_package, pinned_release48_belief_package, {**env, **flags})
+            bot = factory(seed=7)
+            assert bot.lead_confirm == k
+            assert (name == RELEASE48) is (k == 0)
+            assert all(getattr(bot, attr) is native for attr in NATIVE_SWITCHES)
+            bot.leaf_greedy_deadline_ms = 0
+            bot.serving_budget_seconds = None
+            rnd = _play_state()
+            game = Game(random.Random(0))
+            game.round = rnd
+            room = srv.Room(code="LCCN", game=game, bot=bot,
+                            seats=[srv.Seat(str(s), is_bot=True) for s in range(4)], log_dir=tmp_path)
+            room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+            room._kitty_given = True
+            room.log_event = lambda kind, **data: None
+            decision = srv._compute_bot_turn(srv._snapshot_bot_turn(room, rnd.turn, "bot"))
+            searched = decision.snapshot.bot_copy
+            record = searched.last_decision_record
+            assert record["work_complete"] and record["worlds"] == 64
+            assert ("lead_confirm_status" in record) is bool(k)
+            results.append((name, list(decision.cards), _comparable(record),
+                            searched.sampler.rng.getstate(), _counters(searched.evaluator)))
+            prepared = srv._PreparedBotTurn(decision=decision, compute_seconds=0.0,
+                                            pacing_seconds=0.0, turn_seconds=0.0)
+            assert srv._commit_bot_turn(room, prepared)
+        assert results[0] == results[1], k

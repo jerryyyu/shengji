@@ -1277,12 +1277,23 @@ def refuse_single_candidate_fast_env(consumer, environ=None) -> None:
         raise _single_candidate_refusal(consumer)
 
 
+def _lead_confirm_refusal(consumer, k):
+    return PVSearchPolicyError(
+        f"{consumer} reads every admitted candidate's value, and lead_confirm (lcc{k}) "
+        "appends a confirmed challenger that was priced on fresh worlds, not the base pass, "
+        "so its value_means entry is None (unpriced); build this consumer's bot without "
+        f"SHENGJI_PV_LEAD_CONFIRM")
+
+
 def require_value_means(bot, consumer):
     """``bot``, refused when its decision records may carry an unpriced
-    candidate (``single_candidate_fast`` on); a consumer of ``value_means``
-    never receives an unknown value in place of a number."""
+    candidate (``single_candidate_fast`` on, or ``lead_confirm`` on: an
+    applied challenger's mean is None); a consumer of ``value_means`` never
+    receives an unknown value in place of a number."""
     if getattr(bot, "single_candidate_fast", False):
         raise _single_candidate_refusal(consumer)
+    if getattr(bot, "lead_confirm", 0):
+        raise _lead_confirm_refusal(consumer, bot.lead_confirm)
     return bot
 
 

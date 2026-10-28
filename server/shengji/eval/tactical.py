@@ -691,11 +691,19 @@ def run_fixture(bot, fx: Fixture, *, fill_seed: int = 0,
                               record=record, seconds=seconds, error="predicate"))
     extra = {}
     if record and record.get("work_complete") is True:
-        means = record.get("value_means") or []
-        extra["value_spread"] = (max(means) - min(means)) if means else None
+        extra["value_spread"] = value_spread(record.get("value_means") or [])
     elif record:
         extra["fallback"] = record.get("reason")
     return _result(Result(fx, action, ok, detail, record=record, seconds=seconds, extra=extra))
+
+
+def value_spread(means):
+    """max - min of a record's value means; None when there are none or any
+    entry is unpriced (None: the single-candidate switch, a confirmed lead
+    challenger), never the spread of a partial vector."""
+    if not means or not all(type(v) in (int, float) and math.isfinite(v) for v in means):
+        return None
+    return max(means) - min(means)
 
 
 def run_set(make_bot: Callable[[], Any], fixtures: Sequence[Fixture], *, fill_seed: int = 0,

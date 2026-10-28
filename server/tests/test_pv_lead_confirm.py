@@ -15,6 +15,7 @@ cut greedy finish keep the base decision and its records; (d) exact-stage leads
 and follows are untouched; (e) env, name token, payload and refusals.
 """
 import copy
+import types
 
 import numpy as np
 import pytest
@@ -322,3 +323,88 @@ def test_env_refuses_bad_values(raw, production_package):
 def test_config_refusals(bad):
     with pytest.raises(pv.PVSearchPolicyError):
         pv.recipe_payload(pv.PVSearchConfig(checkpoint_sha256="f" * 64, **bad))
+
+
+# ------------------------------------------------------- (f) numeric-value consumers refuse an lcc bot
+
+def _lcc_bot():
+    return _on(_bot(OutsideBallotEvaluator(1.0)))
+
+
+def test_require_value_means_refuses_lead_confirm_and_keeps_the_single_candidate_refusal():
+    with pytest.raises(pv.PVSearchPolicyError, match="lead_confirm \\(lcc24\\).*confirmed challenger.*None \\(unpriced\\)"):
+        pv.require_value_means(_lcc_bot(), "a consumer")
+    with pytest.raises(pv.PVSearchPolicyError, match="SHENGJI_PV_SINGLE_CANDIDATE_FAST"):
+        pv.require_value_means(types.SimpleNamespace(single_candidate_fast=True, lead_confirm=32), "a consumer")
+    off = _bot(OutsideBallotEvaluator(1.0))
+    assert pv.require_value_means(off, "a consumer") is off
+
+
+def test_an_applied_record_is_unpriced_and_serving_still_plays_it():
+    """The producer side: an applied lead's record carries the challenger's None (never a fabricated
+    number), and the bot itself -- serving, the duel adapter -- plays it without any numeric consumer."""
+    rnd, seat = _lead()
+    evaluator = OutsideBallotEvaluator(1.0)
+    _prime(evaluator, rnd, seat)
+    bot = _on(_bot(evaluator))
+    played = bot.decide_play(copy.deepcopy(rnd), seat)
+    rec = bot.last_decision_record
+    assert rec["lead_confirm_status"] == "applied" and rec["value_means"][-1] is None
+    assert sorted(played) == sorted(rec["lead_confirm_to"]) and rec["work_complete"] is True
+
+
+def test_the_trajectory_harvest_refuses_an_lcc_bot(monkeypatch):
+    import random
+    from shengji.harvest import trajectory
+    on = _lcc_bot()
+    on.__class__ = trajectory.pv_trajectory_class(type(on))
+    with pytest.raises(trajectory.TrajectoryError, match="lead_confirm"):
+        on._trajectory_init(random.Random(0))
+    monkeypatch.setattr(trajectory, "make_bot", lambda *a, **kw: _lcc_bot())
+    with pytest.raises(trajectory.TrajectoryError, match="lead_confirm"):
+        trajectory.make_trajectory_bot({"policy": "pv-search-x", "explore_rate": 0.0, "explore_k": 0, "cap": 256},
+                                       seed=0, explore_rng=random.Random(0))
+    # the consumer itself also refuses the unpriced entry of an applied record
+    rnd, seat = _lead()
+    evaluator = OutsideBallotEvaluator(1.0)
+    _prime(evaluator, rnd, seat)
+    bot = _on(_bot(evaluator))
+    bot.decide_play(copy.deepcopy(rnd), seat)
+    rec = bot.last_decision_record
+    with pytest.raises(trajectory.TrajectoryError, match="unpriced"):
+        trajectory.pv_fields_from_record(rec, rec["admitted"])
+
+
+def test_the_m9_panel_and_the_value_diagnostic_refuse_an_lcc_bot(monkeypatch):
+    from shengji.eval import m9_panel_worker
+    from shengji.train import cf_value_diagnostic
+    rnd, seat = _lead()
+    with pytest.raises(cf_value_diagnostic.AuditError, match="lead_confirm"):
+        cf_value_diagnostic.admission_under(_lcc_bot(), rnd, seat, [])
+    # the panel's own factory wrapper refuses the built bot before any panel is collected
+    job = dict(fixture_id=m9_panel_worker.ROOTS[0], seed=7, control_ballot=[], treatment_ballot=[], mode="m",
+               fill_seed=0, expected_legal_count=1, require_m9_replay_match=False)
+    monkeypatch.setattr(m9_panel_worker, "build_m9_panel_plan", lambda analysis: [job])
+    collected = []
+
+    def panel(factory, fixture, *a, **kw):
+        factory()
+        collected.append(fixture)
+    monkeypatch.setattr(m9_panel_worker, "collect_public_fixture_panel", panel)
+    fixtures = [types.SimpleNamespace(id=r) for r in m9_panel_worker.ROOTS]
+    with pytest.raises(ValueError, match="lead_confirm"):
+        m9_panel_worker.collect_m9_panels({}, fixtures, lambda seed: _lcc_bot(), on_panel=lambda p: None)
+    assert collected == []
+    from shengji.eval.m9_panel_plan import _validated_ballot
+    evaluator = OutsideBallotEvaluator(1.0)
+    _prime(evaluator, rnd, seat)
+    bot = _on(_bot(evaluator))
+    bot.decide_play(copy.deepcopy(rnd), seat)
+    with pytest.raises(ValueError, match="finite"):
+        _validated_ballot(bot.last_decision_record, "decision", len(bot.last_decision_record["admitted"]))
+
+
+def test_the_tactical_spread_is_unknown_with_an_unpriced_entry():
+    from shengji.eval.tactical import value_spread
+    assert value_spread([0.25, -0.5, 0.0]) == 0.75
+    assert value_spread([0.1, None]) is None and value_spread([None]) is None and value_spread([]) is None

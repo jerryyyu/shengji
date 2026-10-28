@@ -730,3 +730,123 @@ def test_both_forced_slots_plus_an_exploration_draw_pass_the_budget_guard():
         over._worlds = lambda *a, **k: ([(real, sorted(rnd.buried))], 1)
         crafted_preferences(over, rnd, seat, distinct)
         over.decide_play(copy.deepcopy(rnd), seat)
+
+
+def _singleton_candidate(rnd, *, greedy=False, budget=None, evaluator=None):
+    from shengji.eval.singleton_challenger import SingletonChallengerBot
+    config = pv.PVSearchConfig(checkpoint_sha256='f' * 64, worlds=8, candidates=8,
+                              cap=4000, batch_size=128, admission_diversity=True,
+                              leaf_greedy_finish=greedy, serving_budget_seconds=budget)
+    kwargs = dict(evaluator=evaluator or ZeroEvaluator(), version=2, config=config,
+                  checkpoint='/dev/null', seed=17)
+    candidate = SingletonChallengerBot(predict, **kwargs)
+    control = pv.PVSearchBot(predict, **kwargs)
+    control.decide_play(copy.deepcopy(rnd), rnd.turn)
+    ballot = control.last_decision_record['admitted']
+    actions = enumerate_legal(rnd, rnd.turn, cap=4000).actions
+    played_cards = set(card for action in ballot for card in action)
+    target = next((a for a in actions if len(a) == 1 and a[0] not in played_cards), None)
+    return candidate, control, target
+
+
+@pytest.mark.parametrize('greedy', [False, True])
+def test_singleton_challenger_reaches_full_world_scoring_and_real_reducer(greedy):
+    rnd = state(); seat = rnd.turn
+    candidate, control, target = _singleton_candidate(rnd, greedy=greedy)
+    original = Counter(rnd.hands[seat])
+
+    class TargetEvaluator(ZeroEvaluator):
+        def score(self, leaves, acting):
+            return np.array([float(original - Counter(leaf.hands[seat]) == Counter(target))
+                             for leaf in leaves])
+
+    candidate.evaluator = TargetEvaluator()
+    seen = []
+    value_means = candidate._value_means
+    def observe(root, actor, admitted, worlds, check_budget=None):
+        seen.append((copy.deepcopy(admitted), len(worlds)))
+        return value_means(root, actor, admitted, worlds, check_budget)
+    candidate._value_means = observe
+    before = copy.deepcopy(rnd.hands)
+    played = candidate.decide_play(copy.deepcopy(rnd), seat)
+    record = candidate.last_decision_record
+    assert record['schema'] == pv.RECORD_SCHEMA and record['work_complete']
+    assert record['singleton_challenger_applied']
+    assert record['singleton_challenger_added'] == list(target)
+    assert record['admitted'][:-1] == control.last_decision_record['admitted'][:-1]
+    assert len(record['admitted']) == 8 and played == list(target)
+    assert seen == [(record['admitted'], 8)]
+    assert record['worlds'] == 8 and record['singleton_probe_worlds'] == 8
+    assert record['singleton_probe_evaluations'] > 8 * 8
+    assert candidate.sampler.rng.getstate() == control.sampler.rng.getstate()
+    assert rnd.hands == before
+    if greedy:
+        assert record['leaf_greedy_finish_applied']
+
+
+def test_singleton_probe_tie_and_follow_preserve_original_ballot():
+    rnd = state()
+    for follow in (False, True):
+        if follow:
+            rnd.play(rnd.turn, module.HeuristicBot().decide_play(rnd, rnd.turn))
+        candidate, control, _ = _singleton_candidate(rnd)
+        played = candidate.decide_play(copy.deepcopy(rnd), rnd.turn)
+        record = candidate.last_decision_record
+        assert not record['singleton_challenger_applied']
+        assert record['admitted'] == control.last_decision_record['admitted']
+        assert played == control.last_decision_record['played']
+        if follow:
+            assert 'singleton_probe_evaluations' not in record
+
+
+def test_singleton_probe_deadline_restores_sampler_and_uses_served_fallback(monkeypatch):
+    rnd = state(); seat = rnd.turn
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+    candidate, _, _ = _singleton_candidate(rnd, budget=1.0)
+    class SlowEvaluator(ZeroEvaluator):
+        def score(self, leaves, acting):
+            clock[0] += 2.0
+            return super().score(leaves, acting)
+    candidate.evaluator = SlowEvaluator()
+    before = candidate.sampler.rng.getstate()
+    played = candidate.decide_play(copy.deepcopy(rnd), seat)
+    assert played == module.HeuristicBot().decide_play(rnd, seat)
+    assert candidate.last_decision_record['schema'] == pv.FALLBACK_SCHEMA
+    assert candidate.last_decision_record['reason'] == 'budget'
+    assert candidate.sampler.rng.getstate() == before
+
+
+def test_singleton_proposal_does_not_override_full_value_ranking():
+    rnd = state(); seat = rnd.turn
+    candidate, control, target = _singleton_candidate(rnd, greedy=True)
+    original = Counter(rnd.hands[seat])
+    phase = {'full': False}
+    class DisagreeingEvaluator(ZeroEvaluator):
+        def score(self, leaves, acting):
+            sign = -1.0 if phase['full'] else 1.0
+            return np.array([sign * (original - Counter(leaf.hands[seat]) == Counter(target))
+                             for leaf in leaves])
+    candidate.evaluator = DisagreeingEvaluator()
+    value_means = candidate._value_means
+    def full_pass(*args, **kwargs):
+        phase['full'] = True
+        return value_means(*args, **kwargs)
+    candidate._value_means = full_pass
+    action = candidate.decide_play(copy.deepcopy(rnd), seat)
+    rec = candidate.last_decision_record
+    assert rec['singleton_challenger_applied'] and list(target) in rec['admitted']
+    assert action != list(target)
+    assert rec['value_means'][-1] < max(rec['value_means'][:-1])
+
+
+@pytest.mark.parametrize('bad', [float('nan'), float('inf')])
+def test_singleton_probe_invalid_values_fail_closed(bad):
+    rnd = state()
+    candidate, _, _ = _singleton_candidate(rnd)
+    class InvalidEvaluator(ZeroEvaluator):
+        def score(self, leaves, seat):
+            return np.full(len(leaves), bad)
+    candidate.evaluator = InvalidEvaluator()
+    with pytest.raises(ValueError, match='finite root-team'):
+        candidate.decide_play(copy.deepcopy(rnd), rnd.turn)

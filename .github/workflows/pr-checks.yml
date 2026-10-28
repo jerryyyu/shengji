@@ -365,7 +365,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # The pure leg runs the whole search selection without the compiled
+    # kernels and reached 81% at 25 minutes on a shared runner; a timeout
+    # shows as "cancelled", not "failed".
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:

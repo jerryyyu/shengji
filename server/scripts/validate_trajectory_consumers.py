@@ -9,7 +9,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from shengji.harvest.trajectory import sha256_file, verify_shard
+from shengji.harvest.trajectory import MANIFEST_SCHEMA, SOURCE, sha256_file, verify_shard
+from shengji.harvest.schema import SCHEMA
 from shengji.train.belief_labels import extract_cluster
 from shengji.train.cwv_data import bridge_record, search_means_points
 
@@ -17,6 +18,10 @@ from shengji.train.cwv_data import bridge_record, search_means_points
 def validate_store(store: Path, *, expected_rounds: int, expected_source: str) -> dict:
     store = Path(store)
     manifest = json.loads((store / 'manifest.json').read_text())
+    if (manifest.get('schema') != MANIFEST_SCHEMA
+            or manifest.get('record_schema') != SCHEMA
+            or manifest.get('source') != SOURCE):
+        raise ValueError('unsupported manifest protocol')
     if expected_rounds <= 0 or expected_rounds % 2:
         raise ValueError('expected rounds must be positive and even')
     if (manifest['rounds'] != expected_rounds

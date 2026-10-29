@@ -69,3 +69,12 @@ def test_matching_hashes_do_not_hide_unusable_training_rows(store):
     (root / 'manifest.json').write_text(json.dumps(manifest))
     with pytest.raises(TrainDataError, match='no_outcome'):
         check(store)
+
+
+@pytest.mark.parametrize('field', ['schema', 'record_schema', 'source'])
+def test_unknown_protocol_is_refused(store, field):
+    root, manifest = store
+    manifest[field] = 'unknown-future-protocol'
+    (root / 'manifest.json').write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='unsupported manifest protocol'):
+        check(store)

@@ -303,7 +303,10 @@ def test_lead_confirmation_challenger_keeps_unpriced_mean_out_of_search_labels()
            "played": ["D4"], "value_means": [0.5, -0.25, None],
            "worlds": 8, "work_complete": True, "policy_log_odds_admitted": [1, 0, 0]}
     ballot = rec["admitted"]
-    allocation, _, action_values = trajectory.pv_fields_from_record(rec, ballot)
+    with pytest.raises(trajectory.TrajectoryError, match="unpriced"):
+        trajectory.pv_fields_from_record(rec, ballot)
+    allocation, _, action_values = trajectory.pv_fields_from_record(
+        rec, ballot, capture_served_budget=True)
     assert allocation["selection_worlds"] == [8, 8, 0]
     assert allocation["total_worlds"] == 16
     assert allocation["weights"] == [0.5, 0.5, 0.0]
@@ -448,3 +451,29 @@ def test_value_units_are_the_half_integer_signed_level_not_pt0():
     assert takeover == 0.5 and pt0_level(takeover) == 1.0
     assert trajectory.PV_VALUE_UNITS == "expected-signed-level-half-integer"
     assert "pt0" not in trajectory.PV_VALUE_UNITS
+
+
+def test_served_capture_forwards_opt_in_through_search_record_adapter(package, tmp_path, monkeypatch):
+    from shengji.train.cwv_data import bridge_record
+    original = trajectory.pv_fields_from_record
+    seen = []
+
+    def observe(rec, ballot, *, capture_served_budget=False):
+        seen.append(capture_served_budget)
+        return original(rec, ballot, capture_served_budget=capture_served_budget)
+
+    monkeypatch.setattr(trajectory, 'pv_fields_from_record', observe)
+    path, sha = package
+    names = register_pv_search_policies(path, sha256=sha, serving_budget_seconds=3,
+                                       bury_serving_budget_seconds=2, bury_arm='hybrid',
+                                       bury_config=BURY, lead_confirm=32, **SMALL)
+    try:
+        run = _gen(tmp_path / 'capture', names[0], explore_rate=0, explore_k=0,
+                   capture_served_budget=True)
+        assert seen and all(seen)
+        for record in run['records']:
+            if record['decision_kind'] == 'play':
+                assert bridge_record(record) is not None
+    finally:
+        for name in names:
+            REGISTRY.pop(name, None)

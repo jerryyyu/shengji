@@ -95,6 +95,26 @@ def command(spec):
             '--seed', str(spec['seed']), '--workers', str(spec['workers']),
             '--out', spec['output'], '--cap', '256']
 
+def progress(spec, pid, elapsed):
+    shards = Path(spec['output']) / 'shards'
+    completed = sum(1 for p in shards.glob('cluster-*.jsonl')
+                    if p.with_suffix('.json').is_file()) * 2
+    workers = None
+    try:
+        rows = subprocess.check_output(['ps', '-axo', 'ppid=,args='], text=True)
+        workers = sum(1 for row in rows.splitlines()
+                      if row.strip() and row.strip().split(None, 1)[0] == str(pid)
+                      and 'spawn_main' in row)
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return {'event': 'progress', 'stage': 'generation', 'completed_rounds': completed,
+            'total_rounds': spec['rounds'], 'percent': 100 * completed / spec['rounds'],
+            'elapsed_seconds': elapsed,
+            'eta_seconds': elapsed * (spec['rounds'] - completed) / completed if completed else None,
+            'worker_limit': spec['workers'], 'live_worker_processes': workers,
+            'deadline_headroom_seconds': max(0, spec['max_seconds'] - elapsed)}
+
+
 def execute(spec, spec_sha, launcher):
     own_sha = sha256(launcher)
     _release(spec['release'], own_sha, spec_sha)
@@ -125,6 +145,7 @@ def execute(spec, spec_sha, launcher):
         started = time.monotonic()
         print(json.dumps({'event': 'started', 'pid': proc.pid, 'spec_sha256': spec_sha}), flush=True)
         status = 'running'
+        next_progress = started
         while proc.poll() is None:
             if requested:
                 status = requested[0]
@@ -140,6 +161,10 @@ def execute(spec, spec_sha, launcher):
                 except ProcessLookupError:
                     pass
                 break
+            now = time.monotonic()
+            if now >= next_progress:
+                print(json.dumps(progress(spec, proc.pid, now - started)), flush=True)
+                next_progress = now + 60
             time.sleep(1)
         until = time.monotonic()+30
         while time.monotonic() < until:

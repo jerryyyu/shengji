@@ -521,3 +521,41 @@ def test_singleton_opt_in_registry_survives_fresh_process(package, first_import,
         else:
             assert result.returncode == 0, result.stderr
             assert json.loads(result.stdout)['enabled'] == (value == '1')
+
+
+@pytest.mark.parametrize('ambient', ['1', 'bogus'])
+@pytest.mark.parametrize('explicit', [False, True])
+@pytest.mark.parametrize('derive_first', [False, True])
+def test_served_helper_isolates_import_time_singleton_flag(package, ambient, explicit, derive_first):
+    import json
+    import os
+    import subprocess
+    import sys
+
+    path, sha = package
+    supplied = {'SHENGJI_PV_CKPT': path, 'SHENGJI_PV_SHA256': sha}
+    if explicit:
+        supplied['SHENGJI_PV_SINGLETON_CHALLENGER'] = '1'
+    from shengji.eval import served_config as sc
+    supplied['SHENGJI_BOT'] = sc.registry_name(supplied)
+    code = '''
+import json, os, sys
+from shengji.eval import served_config as sc
+env = json.loads(sys.argv[1])
+ambient = os.environ['SHENGJI_PV_SINGLETON_CHALLENGER']
+if sys.argv[2] == 'True':
+    assert env['SHENGJI_BOT'] == sc.registry_name(env)
+name, bot = sc.build_served_bot(env)
+from shengji.eval.singleton_challenger import SingletonChallengerBot
+from shengji.ai import registry
+wanted = env.get('SHENGJI_PV_SINGLETON_CHALLENGER') == '1'
+assert isinstance(bot, SingletonChallengerBot) == wanted
+assert name.endswith('-sc8') == wanted
+assert any(n.endswith('-sc8') for n in registry.REGISTRY) == wanted
+assert os.environ['SHENGJI_PV_SINGLETON_CHALLENGER'] == ambient
+'''
+    inherited = {k: v for k, v in os.environ.items() if not k.startswith('SHENGJI_PV_')}
+    inherited.update(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
+                     SHENGJI_PV_SINGLETON_CHALLENGER=ambient)
+    subprocess.run([sys.executable, '-c', code, json.dumps(supplied), str(derive_first)], env=inherited,
+                   check=True, capture_output=True, text=True)

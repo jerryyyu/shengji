@@ -125,13 +125,14 @@ def _singleton_enabled(env: Mapping[str, str]) -> bool:
 
 def registry_name(env: Mapping[str, str]) -> str:
     """The pv-search registry name the server registers for ``env`` (one recipe)."""
-    from ..train.pv_search_policy import pv_env_recipe, pv_registry_entries, singleton_registry_entries
-    recipe = pv_env_recipe(dict(env))
-    entries = singleton_registry_entries if _singleton_enabled(env) else pv_registry_entries
-    names = list(entries(**recipe))
-    if len(names) != 1:
-        raise ServedConfigError(f"the env registers {len(names)} pv-search names, not one: {names}")
-    return names[0]
+    with process_env(env):
+        from ..train.pv_search_policy import pv_env_recipe, pv_registry_entries, singleton_registry_entries
+        recipe = pv_env_recipe(dict(env))
+        entries = singleton_registry_entries if _singleton_enabled(env) else pv_registry_entries
+        names = list(entries(**recipe))
+        if len(names) != 1:
+            raise ServedConfigError(f"the env registers {len(names)} pv-search names, not one: {names}")
+        return names[0]
 
 
 @contextlib.contextmanager
@@ -142,8 +143,7 @@ def process_env(env: Mapping[str, str]):
     are read where the bot is built rather than from the recipe (the pv-search latency
     switches and the belief log flag enter no name).  Build-time keys the env leaves out are
     cleared, so an ambient shell value cannot build a different bot under the same name."""
-    from ..train.pv_search_policy import BELIEF_LOG_ENV, LATENCY_SWITCH_ENV
-    scoped = set(env) | set(LATENCY_SWITCH_ENV.values()) | {BELIEF_LOG_ENV}
+    scoped = set(env) | {key for key in os.environ if key.startswith("SHENGJI_PV_")}
     saved = {key: os.environ.get(key) for key in scoped}
     for key in scoped - set(env):
         os.environ.pop(key, None)

@@ -1,9 +1,10 @@
 """Tactical regression fixtures (tests/tactical/, #677 strategy 4, #676) against
-the REAL served bot: `pv_env_recipe` -> `pv_registry_entries` -> `decide_play`
-on the production package.
+the release-36 baseline recipe on the production package: `pv_env_recipe` ->
+`pv_registry_entries` -> `decide_play`.  (The served bot of today is fly.toml's;
+``scripts/tactical_report.py --served`` runs the fixtures against it.)
 
 Diagnostic, not a gate.  Fixtures whose ``current_bot`` is recorded as "fail"
-for the production bot are ``xfail(strict=False)``: the suite stays green while
+for the release-36 baseline are ``xfail(strict=False)``: the suite stays green while
 ``-rxX`` lists every fixture's outcome, and a fixture that starts passing shows
 up as XPASS.  The package-free tests prove the fixture set itself: it loads,
 every position rebuilds from the public view alone, the categories are
@@ -11,7 +12,7 @@ populated, and the predicates judge the OBSERVED actions as intended.
 
 Needs ``SHENGJI_PV_CKPT`` + ``SHENGJI_PV_SHA256`` (a local copy of the served
 package) for the bot tests; the other ``SHENGJI_PV_*`` knobs default to the
-production recipe (`tactical.PRODUCTION_PLAY_ENV`) and may be overridden.
+release-36 baseline recipe (`tactical.RELEASE36_PLAY_ENV`) and may be overridden.
 ``TACTICAL_SEED`` picks the bot seed (default 0); ``TACTICAL_REPORT`` names the
 report file (default: a pytest temp dir, path printed at the end).
 """
@@ -39,7 +40,7 @@ def _environ():
         return None
     if not Path(ckpt).is_file():
         return None
-    env = T.production_environ(ckpt, sha)
+    env = T.release36_environ(ckpt, sha)
     for key, value in os.environ.items():
         if key.startswith("SHENGJI_PV_"):
             env[key] = value
@@ -196,7 +197,7 @@ def test_the_env_builds_the_production_bot(environ):
     assert isinstance(bot, pv.PVSearchBot) and bot.policy_name == name
     if environ["SHENGJI_PV_SHA256"].startswith("491ee4bf") and not any(
             k.startswith("SHENGJI_PV_") for k in os.environ if k not in ("SHENGJI_PV_CKPT", "SHENGJI_PV_SHA256")):
-        assert name == T.PRODUCTION_BOT
+        assert name == T.RELEASE36_BOT
 
 
 def test_decision_is_invariant_to_the_placeholder_fill(environ):
@@ -218,7 +219,7 @@ def _params():
         marks = []
         if fx.current_bot == "fail":
             marks.append(pytest.mark.xfail(strict=False,
-                                           reason=f"{fx.category}: recorded FAIL for {T.PRODUCTION_BOT}"))
+                                           reason=f"{fx.category}: recorded FAIL for {T.RELEASE36_BOT}"))
         yield pytest.param(fx, id=fx.id, marks=marks)
 
 

@@ -21,15 +21,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import contextlib
 import hashlib
 import json
-import os
 import random
 import sys
 import time
-import tomllib
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from shengji.eval import served_config  # noqa: E402
 
 SCHEMA = "cwv-serving-smoke-v1"
 
@@ -40,74 +40,21 @@ def file_sha256(path) -> str:
 
 
 def env_from_fly_toml(path, mappings: dict[str, str]) -> dict[str, str]:
-    config = tomllib.loads(Path(path).read_text())
-    env = {k: str(v) for k, v in config["env"].items()}
-    for key, value in list(env.items()):
-        if value in mappings:
-            env[key] = mappings[value]
-    return env
+    """fly.toml's ``[env]`` with volume paths mapped (`served_config.served_env`)."""
+    return served_config.served_env(fly_toml=path, mappings=mappings)
 
 
-@contextlib.contextmanager
-def process_env(env: dict[str, str]):
-    """``env`` exported into ``os.environ`` for the duration, then restored.
-
-    The server process boots with fly.toml's ``[env]`` in its environment, and
-    some switches are read from there where the bot is built rather than from
-    the recipe (the pv-search latency switches and belief log flag enter no
-    name).  The overlay is scoped to the build so the deploy env does not leak
-    into later imports in the same process (or its subprocesses).
-    """
-    from shengji.train.pv_search_policy import BELIEF_LOG_ENV, LATENCY_SWITCH_ENV
-    # name-invisible build-time keys the env leaves out are cleared, so an
-    # ambient shell value cannot build a different bot under the same name
-    scoped = set(env) | set(LATENCY_SWITCH_ENV.values()) | {BELIEF_LOG_ENV}
-    saved = {key: os.environ.get(key) for key in scoped}
-    for key in scoped - set(env):
-        os.environ.pop(key, None)
-    os.environ.update({key: str(value) for key, value in env.items()})
-    try:
-        yield
-    finally:
-        for key, value in saved.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+#: the scoped build-time export (`served_config.process_env`)
+process_env = served_config.process_env
 
 
 def build_production_bot(env: dict[str, str]):
-    """Register exactly what the server registers from this env and build SHENGJI_BOT.
-
-    The registration is done EXPLICITLY from the parsed env, and the bot is
-    built with that env in the process environment (`process_env`), as the
-    server builds it, so the switches read at build time are fly.toml's.
-    """
-    with process_env(env):
-        return _build_production_bot(env)
-
-
-def _build_production_bot(env: dict[str, str]):
-    from shengji.ai import registry
-    from shengji.train.cwv_bury_policy import bury_env_recipe
-    from shengji.train.cwv_shortlist import shortlist_env_recipe
-    parsed = bury_env_recipe(env)
-    if parsed is not None:
-        checkpoint, worlds, recipe, arm, config, budget = parsed
-        registry.register_cwv_bury_policies(checkpoint, worlds, arm=arm, bury_config=config,
-                                            serving_budget_seconds=budget, **recipe)
-    play = shortlist_env_recipe(env)
-    if play is not None:
-        registry.register_cwv_shortlist_policies(play[0], play[1], **play[2])
-    if env.get("SHENGJI_PV_CKPT"):
-        # the policy/value search mode: one package as value net and prior
-        from shengji.train.pv_search_policy import pv_env_recipe
-        recipe = pv_env_recipe(env)
-        registry.register_pv_search_policies(recipe.pop("checkpoint"), **recipe)
-    name = env["SHENGJI_BOT"]
-    if name not in registry.REGISTRY:
-        raise SystemExit(f"SHENGJI_BOT {name!r} is not registered by this env: the server would not boot with it")
-    return name, registry.make_bot(name, seed=13)
+    """Register exactly what the server registers from this env and build SHENGJI_BOT, with
+    the env in the process environment (`served_config.build_served_bot`)."""
+    try:
+        return served_config.build_served_bot(env)
+    except served_config.ServedConfigError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def bot_latency_switches(bot) -> dict[str, bool] | None:

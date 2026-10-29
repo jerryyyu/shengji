@@ -11,12 +11,13 @@ exactly as the server registers it (`pv_env_recipe` -> `pv_registry_entries`).
 **It is not a gate.**  The recorded verdicts (`current_bot`) were stamped
 against release 36 (`pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25`),
 which fails 21 of the 22 fixtures; they have not been re-stamped for later
-releases (production is now release 45, `DEPLOY.md`), so read a candidate's table
-against a fresh run of the production recipe, not only the stamps.  The failures are `xfail(strict=False)` in the pytest module, so the
+releases, so read a candidate's table against a fresh run of the served bot
+(`scripts/tactical_report.py --served`: fly.toml's recipe, built as the server builds
+it), not only the stamps.  The failures are `xfail(strict=False)` in the pytest module, so the
 suite is green and informative.  Its purpose is to show what MOVED when an
 admission or tie-break change (#676 A/C/E, #680) is screened: run
 `scripts/tactical_report.py` against the candidate and read the per-fixture
-table against the recorded production verdicts (`current_bot`).
+table against the recorded release-36 verdicts (`current_bot`).
 
 ## The "information available at the time" rule
 
@@ -139,14 +140,17 @@ still belong to the separately reviewed execution wrapper.
 
 ```
 cd server
-# the served package, local copy (read-only), production knobs by default
+# the served package, local copy (read-only), release-36 baseline knobs by default
 export SHENGJI_PV_CKPT=/path/smv3out-491ee4bf.npz
 export SHENGJI_PV_SHA256=491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670
 SHENGJI_FAST=1 uv run python -m pytest tests/test_tactical_fixtures.py -q -rxXs
-# -> xfailed = known production failures, XPASS = a fixture that started passing;
+# -> xfailed = known release-36 failures, XPASS = a fixture that started passing;
 #    the per-fixture report path is printed at the end (TACTICAL_REPORT=path to pin it)
 
-# the screen tool: production recipe on a package
+# the screen tool: the served bot (fly.toml), volume packages mapped to local copies
+uv run python scripts/tactical_report.py --served \
+    --map /data/models/smv3out-491ee4bf.npz=$SHENGJI_PV_CKPT --map /data/models/s58-e6-42444515.npz=/path/s58.npz
+# the release-36 baseline on a package (what --stamp records)
 uv run python scripts/tactical_report.py --ckpt $SHENGJI_PV_CKPT --sha256 $SHENGJI_PV_SHA256
 # a candidate recipe: override knobs, or hand it the full env
 uv run python scripts/tactical_report.py --ckpt ... --sha256 ... --env-override SHENGJI_PV_CANDIDATES=16
@@ -158,7 +162,7 @@ uv run python scripts/tactical_report.py --bot smart
 Without the package the bot tests skip (shown under `-rs`) and the set checks
 still run.  One fresh bot per fixture (`--seed`, default 0), so a verdict is a
 function of the fixture and the seed alone, never of the order of the set; the
-production verdicts are identical at seeds 0 and 1.  A decision takes ~0.1 s.
+release-36 verdicts are identical at seeds 0 and 1.  A decision takes ~0.1 s.
 
 ## Adding a fixture
 
@@ -176,7 +180,7 @@ production verdicts are identical at seeds 0 and 1.  A decision takes ~0.1 s.
 3. `sh tests/tactical/sources.sh > tests/tactical/fixtures.jsonl` (the builder
    rebuilds the FULL deal from the source, strips it to the public view, and
    refuses if the public view does not replay to the same trick state), then
-   `scripts/tactical_report.py --ckpt <production package> ... --stamp` to
+   `scripts/tactical_report.py --ckpt <the release-36 package> ... --stamp` to
    record `current_bot`.
 4. `pytest tests/test_tactical_fixtures.py` without the package: the set checks
    must pass (the predicate must judge the OBSERVED action as a failure and an

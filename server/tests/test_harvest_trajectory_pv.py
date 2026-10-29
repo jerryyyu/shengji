@@ -275,6 +275,93 @@ def test_budgeted_serving_recipes_and_knobs_are_refused(package, tmp_path, monke
             REGISTRY.pop(n, None)
 
 
+def test_budgeted_serving_capture_is_explicit_and_exact(package):
+    path, sha = package
+    names = register_pv_search_policies(path, sha256=sha, serving_budget_seconds=3,
+                                        bury_serving_budget_seconds=2, bury_arm="hybrid",
+                                        bury_config=BURY, **SMALL)
+    try:
+        with pytest.raises(trajectory.TrajectoryError, match="scientific data teachers"):
+            trajectory.build_config(policy=names[0], seed0=SEED0)
+        config = trajectory.build_config(policy=names[0], seed0=SEED0,
+                                         capture_served_budget=True,
+                                         explore_rate=0.0, explore_k=0)
+        assert config["capture_served_budget"] is True
+        assert config["policy_flags"]["served_budget_capture"] is True
+        assert config["run_id"] == trajectory.run_id_for(config)
+        with pytest.raises(trajectory.TrajectoryError, match="forbids exploration"):
+            trajectory.build_config(policy=names[0], seed0=SEED0,
+                                    capture_served_budget=True, explore_rate=0.1)
+    finally:
+        for n in names:
+            REGISTRY.pop(n, None)
+
+
+def test_lead_confirmation_challenger_keeps_unpriced_mean_out_of_search_labels():
+    rec = {"admitted": [["S4"], ["H4"], ["D4"]],
+           "admitted_indices": [3, 7, 9], "selected_index": 9,
+           "played": ["D4"], "value_means": [0.5, -0.25, None],
+           "worlds": 8, "work_complete": True, "policy_log_odds_admitted": [1, 0, 0]}
+    ballot = rec["admitted"]
+    allocation, _, action_values = trajectory.pv_fields_from_record(rec, ballot)
+    assert allocation["selection_worlds"] == [8, 8, 0]
+    assert allocation["total_worlds"] == 16
+    assert allocation["weights"] == [0.5, 0.5, 0.0]
+    assert action_values["means"] == [0.5, -0.25, None]
+    from shengji.train.cwv_data import search_means
+    row = {"ballot": ballot, "action_values": action_values}
+    assert search_means(row) == ([0, 1], [0.5, -0.25])
+
+
+def test_served_timeouts_reach_shards_and_outcome_consumer(package, tmp_path, monkeypatch):
+    from shengji.train import cwv_bury_policy as bury
+    from shengji.train.cwv_data import bridge_record
+
+    def play_timeout(*args, **kwargs):
+        raise pv.PVSearchBudgetExceeded("forced timeout")
+
+    def bury_timeout(*args, **kwargs):
+        raise bury.BuryBudgetExceeded("forced timeout")
+
+    monkeypatch.setattr(pv.PVSearchBot, "_search", play_timeout)
+    monkeypatch.setattr(bury.CWVBuryMixin, "_decide_bury", bury_timeout)
+    path, sha = package
+    names = register_pv_search_policies(path, sha256=sha, serving_budget_seconds=3,
+                                       bury_serving_budget_seconds=2, bury_arm="hybrid",
+                                       bury_config=BURY, **SMALL)
+    try:
+        run = _gen(tmp_path / "timeouts", names[0], explore_rate=0, explore_k=0,
+                   capture_served_budget=True)
+        plays = [r for r in run["records"] if r["decision_kind"] == "play"]
+        buries = [r for r in run["records"] if r["decision_kind"] == "bury"]
+        assert plays and len(buries) == 2
+        assert run["manifest"]["counts"]["play_fallback_budget"] == len(plays)
+        assert run["manifest"]["counts"]["bury_fallback_budget"] == 2
+        assert run["manifest"]["counts"]["play_fallback_search-error"] == 0
+        for record in plays + buries:
+            assert record["action_values"] is None
+            assert record["ballot"] == [record["action"]]
+            assert record["allocation"]["serving_decision"]["reason"] == "budget"
+            assert search_means(record) is None
+        for record in plays:
+            assert bridge_record(record) is not None
+        trajectory.generate(rounds=2, seed0=SEED0, out_dir=run["out"], workers=1,
+                            policy=names[0], explore_rate=0, explore_k=0,
+                            capture_served_budget=True, resume=True,
+                            seed_windows=_seed_windows(run["out"]))
+        after = _read_dir(run["out"])
+        assert after["records"] == run["records"]
+        monkeypatch.setenv("SHENGJI_PV_ENCODE_NATIVE", "1")
+        with pytest.raises(trajectory.TrajectoryError, match="refus|different|identity|config"):
+            trajectory.generate(rounds=2, seed0=SEED0, out_dir=run["out"], workers=1,
+                                policy=names[0], explore_rate=0, explore_k=0,
+                                capture_served_budget=True, resume=True,
+                                seed_windows=_seed_windows(run["out"]))
+    finally:
+        for name in names:
+            REGISTRY.pop(name, None)
+
+
 def test_data_policy_refuses_knobs_and_work_overrides(data_policy):
     with pytest.raises(trajectory.TrajectoryError, match="pv-search data policy"):
         trajectory.build_config(policy=data_policy, seed0=SEED0, select_worlds=2)

@@ -257,6 +257,15 @@ switch is enabled. Helper work is separate in ``work.bury_mc_rollouts`` /
 advanced by bury. The known wrapper also supports optional full-legal play
 score sidecars. Existing policies and absent-option data bytes are unchanged.
 
+Served-budget capture
+---------------------
+The explicit capture_served_budget mode keeps the 3-second play and 2-second
+bury budgets. Timed search hooks are unchanged; capture occurs after deciding.
+Timeout actions are retained for outcome training without fabricated search
+means. Runtime recipe and capture-source pins enter the run identity. Completed
+shards are reused on resume, but newly played shards depend on wall-clock load
+and are not promised byte-identical across hosts, worker counts or reruns.
+
 Shards, resume, determinism
 ---------------------------
 The unit of work is one deal cluster (both mirrors).  As each cluster
@@ -790,7 +799,8 @@ class PVTrajectoryMixin:
 
     def _trajectory_init(self, explore_rng: random.Random, production_probe=None) -> None:
         # every record's value_means become action values: no unpriced candidate
-        _require_value_means(self)
+        if not getattr(self, "_capture_served_budget", False) or getattr(self, "single_candidate_fast", False):
+            _require_value_means(self)
         self.explore_rng = explore_rng
         self.production_probe = None
         self.explore_opportunities = 0
@@ -900,14 +910,41 @@ class PVTrajectoryMixin:
         return chosen
 
 
-_PV_TRAJECTORY_CLASSES: dict[type, type] = {}
+class ServedBudgetTrajectoryMixin:
+    """Capture only after the served decision; timed search hooks remain untouched."""
+
+    EXPLORE_RATE = 0.0
+    EXPLORE_K = 0
+    LEGAL_CAP = DEFAULT_CAP
+    WIDEN = ()
+    _trajectory_init = PVTrajectoryMixin._trajectory_init
+    _trajectory_reset = PVTrajectoryMixin._trajectory_reset
+    def decide_play(self, rnd, seat):
+        self._trajectory_reset()
+        action = super().decide_play(rnd, seat)
+        if getattr(self, "_capture_served_budget", False):
+            rec = self.last_decision_record
+            if rec and rec.get("schema") == "pv-search-decision-v1":
+                self.last_ballot = [list(a) for a in rec["admitted"]]
+                self.last_production_ballot = self.last_ballot
+            self.last_legal = enumerate_legal(
+                rnd, seat, cap=self.LEGAL_CAP,
+                must_include=[*(self.last_ballot or []), list(action)])
+        return action
 
 
-def pv_trajectory_class(base_cls: type) -> type:
-    cls = _PV_TRAJECTORY_CLASSES.get(base_cls)
+
+_PV_TRAJECTORY_CLASSES: dict[tuple[type, bool], type] = {}
+
+
+def pv_trajectory_class(base_cls: type, capture_served_budget: bool = False) -> type:
+    key = (base_cls, capture_served_budget)
+    cls = _PV_TRAJECTORY_CLASSES.get(key)
     if cls is None:
-        cls = type(f"PVTrajectory_{base_cls.__name__}", (PVTrajectoryMixin, base_cls), {})
-        _PV_TRAJECTORY_CLASSES[base_cls] = cls
+        mixin = ServedBudgetTrajectoryMixin if capture_served_budget else PVTrajectoryMixin
+        prefix = "ServedTrajectory" if capture_served_budget else "PVTrajectory"
+        cls = type(f"{prefix}_{base_cls.__name__}", (mixin, base_cls), {})
+        _PV_TRAJECTORY_CLASSES[key] = cls
     return cls
 
 
@@ -942,7 +979,8 @@ def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     if _is_pv_search(bot):
         if config.get("knobs") or config.get("widen") or config.get("capture_full_legal_scores"):
             raise TrajectoryError("the pv-search data policy takes no --knob, --widen or full-legal capture")
-        bot.__class__ = pv_trajectory_class(type(bot))
+        bot.__class__ = pv_trajectory_class(type(bot), bool(config.get("capture_served_budget")))
+        bot._capture_served_budget = bool(config.get("capture_served_budget"))
         bot._trajectory_init(explore_rng)
         bot.EXPLORE_RATE = float(config["explore_rate"])
         bot.EXPLORE_K = int(config["explore_k"])
@@ -1061,7 +1099,8 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
                  cap: int | None = DEFAULT_CAP,
                  knobs=None, widen=None,
                  round_mix: str = DEFAULT_ROUND_MIX,
-                 capture_full_legal_scores: bool = False) -> dict:
+                 capture_full_legal_scores: bool = False,
+                 capture_served_budget: bool = False) -> dict:
     """``knobs`` (``--knob NAME=VALUE`` strings or a mapping) and ``widen``
     (``--widen`` variant names) are validated here, so a bad override or an
     unknown variant refuses before any round; they land in ``config.knobs``
@@ -1077,7 +1116,10 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         raise TrajectoryError(f"unknown round mix {round_mix!r}: expected one of "
                               + ", ".join(ROUND_MIXES))
     probe = make_bot(policy, seed=0)
-    if getattr(probe, "serving_budget_seconds", None) is not None:
+    if type(capture_served_budget) is not bool:
+        raise TrajectoryError("capture_served_budget must be boolean")
+    serving_budget = getattr(probe, "serving_budget_seconds", None)
+    if serving_budget is not None and not capture_served_budget:
         raise TrajectoryError("serving-fallback bury policies are not scientific data teachers")
     if type(capture_full_legal_scores) is not bool:
         raise TrajectoryError("capture_full_legal_scores must be boolean")
@@ -1093,14 +1135,14 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         if knobs or widen or capture_full_legal_scores or select_worlds is not None or report_worlds is not None:
             raise TrajectoryError("the pv-search data policy takes no --knob, --widen, --select-worlds, "
                                   "--report-worlds or full-legal capture: its recipe is the registry name")
-        if getattr(probe, "bury_serving_budget_seconds", None) is not None:
+        if getattr(probe, "bury_serving_budget_seconds", None) is not None and not capture_served_budget:
             raise TrajectoryError("serving-fallback bury policies are not scientific data teachers")
         registered = {"worlds": int(probe.worlds), "candidates": int(probe.candidates),
                       "cap": int(probe.cap), "batch_size": int(probe.batch_size)}
         config = {
             "policy": policy,
             "policy_class": type(probe).__name__,
-            "trajectory_class": pv_trajectory_class(type(probe)).__name__,
+            "trajectory_class": pv_trajectory_class(type(probe), capture_served_budget).__name__,
             "knobs": {}, "widen": [],
             "round_mix": str(round_mix),
             "seed0": int(seed0),
@@ -1121,6 +1163,24 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
                 "mc_bury": False,
             },
         }
+        if capture_served_budget:
+            if serving_budget != 3:
+                raise TrajectoryError("capture_served_budget requires the exact 3s play budget")
+            bury_budget = getattr(probe, "bury_serving_budget_seconds", None)
+            if bury_budget != 2:
+                raise TrajectoryError("capture_served_budget requires the exact 2s bury budget")
+            if float(explore_rate) != 0.0 or int(explore_k) != 0:
+                raise TrajectoryError("capture_served_budget forbids exploration")
+            config["policy_flags"]["served_budget_capture"] = True
+            config["capture_served_budget"] = True
+            config["served_budgets"] = {"play_seconds": serving_budget, "bury_seconds": bury_budget,
+                                        "wall_clock_dependent": True}
+            config["served_runtime"] = {
+                k: v for k, v in sorted(os.environ.items())
+                if k.startswith(("SHENGJI_PV_", "SHENGJI_CWV_", "SHENGJI_Y_CAPTURE_"))
+                or k in ("SHENGJI_FAST", "SHENGJI_REQUIRE_VOIDS", "OMP_NUM_THREADS",
+                         "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+                         "NUMEXPR_NUM_THREADS")}
         bury_identity = getattr(probe, "bury_recipe_identity", None)
         if bury_identity is not None:
             config["bury_policy"] = json.loads(canonical_json(bury_identity))
@@ -1131,6 +1191,8 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         raise TrajectoryError(
             f"policy {policy!r} is not an MCBot search policy: it has no "
             "ballot and no decision record to harvest")
+    if capture_served_budget:
+        raise TrajectoryError("capture_served_budget is supported only for pv-search recipes")
     base_cls = type(probe)
     overrides = parse_knob_overrides(base_cls, knobs)
     shadowed = [name for name in overrides if name in vars(probe)]
@@ -1232,6 +1294,10 @@ def run_id_for(config: dict) -> str:
         payload["round_mix"] = config["round_mix"]
     if config.get("capture_full_legal_scores"):
         payload["capture_full_legal_scores"] = True
+    if config.get("capture_served_budget"):
+        payload["capture_served_budget"] = True
+        payload["served_budgets"] = config["served_budgets"]
+        payload["served_runtime"] = config["served_runtime"]
     if config.get("bury_policy"):
         payload["bury_policy"] = config["bury_policy"]
     digest = hashlib.sha256(canonical_json(payload).encode("ascii")).hexdigest()
@@ -1435,21 +1501,26 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dic
     played = indices.index(int(rec["selected_index"]))
     if action_key(admitted[played]) != action_key(rec["played"]):
         raise TrajectoryError("pv-search played_index does not map to the played cards")
-    if any(m is None for m in rec["value_means"]):
-        raise TrajectoryError("pv-search record has an unpriced candidate (single_candidate_fast); "
-                              "a harvest needs every admitted candidate's value")
-    means = [float(m) for m in rec["value_means"]]
+    # Lead confirmation may append a challenger after the base value pass;
+    # its value is intentionally None (fresh confirmation evidence is not a
+    # fabricated base mean). Keep that candidate in the ballot with zero base
+    # allocation and let the bridge consumer ignore its missing mean.
+    means = [None if m is None else float(m) for m in rec["value_means"]]
     if len(means) != k:
         raise TrajectoryError("value_means are not aligned with the ballot")
     worlds = int(rec["worlds"])
     total = worlds * k
+    priced = sum(m is not None for m in means)
     allocation = {
         "kind": ALLOCATION_KIND,
-        "weights": [1.0 / k] * k if k else [],
-        "counter": "fixed-design work split: every admitted candidate priced in every sampled world (pv-search)",
-        "selection_worlds": [worlds] * k,
+        "weights": ([1.0 / priced if m is not None else 0.0 for m in means]
+                     if priced else _one_hot(k, played)),
+        "counter": ("base-pass work only; confirmation work is in serving_decision"
+                    if priced != k else
+                    "fixed-design work split: every admitted candidate priced in every sampled world (pv-search)"),
+        "selection_worlds": [worlds if m is not None else 0 for m in means],
         "report_worlds": [0] * k,
-        "total_worlds": total,
+        "total_worlds": sum(worlds if m is not None else 0 for m in means),
         "played_index": played,
         "raw_winner_index": None,
         "report_candidate_index": None,
@@ -1463,7 +1534,8 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dic
                  "legal_complete": bool(rec.get("legal_complete", False)),
                  "legal_count": _finite(rec.get("legal_count"))},
     }
-    preference = preference_from_evidence(means, [math.inf] * k, played, [])
+    preference = preference_from_evidence(
+        [(-math.inf if m is None else m) for m in means], [math.inf] * k, played, [])
     action_values = {
         "kind": ACTION_VALUES_KIND,
         "perspective": "acting-team",
@@ -1501,7 +1573,30 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
     # on ANY decision, so production's list is stamped on every one
     if ballot is not None and (bot.production_probe is not None or bot.WIDEN):
         production_ballot = bot.last_production_ballot
-    if ballot is None:
+    if (rec is not None and rec.get("schema") == "pv-search-decision-v1"
+            and isinstance(rec.get("admitted"), list)):
+        # Lead confirmation can append an admitted challenger after the PV
+        # mixin's admission hook captured last_ballot.
+        ballot = [list(a) for a in rec["admitted"]]
+    if rec is not None and rec.get("schema") == "pv-search-fallback-v1":
+        if not getattr(bot, "_capture_served_budget", False):
+            raise TrajectoryError("a pv-search fallback is not data: the data policy carries no serving budget")
+        if action_key(rec.get("played", [])) != action_key(action):
+            raise TrajectoryError("decision record played a different action")
+        stats["play_fallback"] += 1
+        stats["play_fallback_" + rec["reason"]] += 1
+        # A timeout/error returns the served anchor before admission. Keep the
+        # actual action as a point mass and retain diagnostics without means.
+        ballot = [list(action)]
+        legal = enumerate_legal(rnd, seat, cap=cap, must_include=[action])
+        allocation = point_mass_allocation("serving_budget_fallback")
+        allocation["serving_decision"] = dict(rec)
+        preference = point_mass_preference()
+        action_values = None
+        production_ballot = None
+        exploration = None
+        widening = None
+    elif ballot is None:
         # a tractor-locked lead: returned before any ballot was enumerated
         stats["tractor_locked"] += 1
         ballot = [list(action)]
@@ -1541,8 +1636,6 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
             raise TrajectoryError("decision record played a different action")
         if rec.get("work_complete") is False:
             stats["incomplete_work"] += 1
-    elif rec.get("schema") == "pv-search-fallback-v1":
-        raise TrajectoryError("a pv-search fallback is not data: the data policy carries no serving budget")
     else:
         stats["searched"] += 1
         allocation = allocation_from_record(rec, ballot)
@@ -1595,14 +1688,40 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         # optional compressed sidecar, not in the legacy training schema.
         detail = getattr(bot, "last_shortlist", None)
         fields["_full_legal_scores"] = None if detail is None else detail["full_legal_scores"]
+    if getattr(bot, "_capture_served_budget", False):
+        fields["allocation"]["serving_decision"] = rec
+        if rec and rec.get("lead_confirm_status"):
+            stats["lcc_" + rec["lead_confirm_status"]] += 1
     return fields
 
 
 def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
                  banker: int, hand_before: list[str], bury_cards: list[str],
-                 raw: dict) -> dict:
+                 raw: dict, *, capture_served_budget: bool = False) -> dict:
     if raw.get("schema") == "cwv-bury-fallback-v1":
-        raise TrajectoryError("partial bury fallback is not MC training evidence")
+        if not capture_served_budget:
+            raise TrajectoryError("partial bury fallback is not MC training evidence")
+        if action_key(raw["action"]) != action_key(bury_cards):
+            raise TrajectoryError("bury fallback played a different burial")
+        return {
+            **base, "source_ref": f"{run_id}:{cluster}:{mirror}:{banker}:bury",
+            "decision_kind": "bury", "plays_prefix": [], "seat": banker,
+            "ply": None, "trick": None, "role": "banker-team",
+            "legal_actions": None, "legal_actions_complete": False,
+            "legal_actions_count": bury_action_count(hand_before),
+            "ballot": [list(bury_cards)],
+            "allocation": {"kind": ALLOCATION_KIND, "weights": [1.0],
+                            "counter": BURY_ALLOCATION_COUNTER,
+                            "selection_worlds": [0], "report_worlds": [0],
+                            "total_worlds": 0, "played_index": 0,
+                            "raw_winner_index": None,
+                            "report_candidate_index": None,
+                            "reason": "serving_budget_fallback", "searched": False,
+                            "work": None, "serving_decision": dict(raw)},
+            "preference": preference_from_evidence([0.0], [math.inf], 0),
+            "action_values": None,
+            "action": list(bury_cards), "exploration": None,
+        }
     if raw.get("schema") == "cwv-bury-policy-v1":
         from ..train.cwv_bury_policy import trajectory_bury_record
         raw = trajectory_bury_record(raw)
@@ -1729,8 +1848,12 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
     pending: list[dict] = []
     if bury_raw is not None:
         pending.append(_bury_fields(base, run_id, cluster, mirror, banker,
-                                    hand_before_bury, bury_cards, bury_raw))
+                                    hand_before_bury, bury_cards, bury_raw,
+                                    capture_served_budget=bool(config.get("capture_served_budget"))))
         stats["bury_records"] += 1
+        if config.get("capture_served_budget") and bury_raw.get("schema") == "cwv-bury-fallback-v1":
+            stats["bury_fallback"] += 1
+            stats["bury_fallback_" + bury_raw["reason"]] += 1
     prefix: list[dict] = []
     while rnd.phase == "play":
         seat = rnd.turn
@@ -2281,6 +2404,10 @@ def build_run_manifest(config: dict, ident: dict, *, rounds: int,
             shards[-1]["full_legal_scores"] = side["full_legal_scores"]
     for key in COUNT_KEYS:
         counts.setdefault(key, 0)
+    if config.get("capture_served_budget"):
+        for key in ("play_fallback", "play_fallback_budget", "play_fallback_search-error",
+                    "bury_fallback", "bury_fallback_budget", "bury_fallback_search-error"):
+            counts.setdefault(key, 0)
     return {
         "schema": MANIFEST_SCHEMA,
         "record_schema": SCHEMA,
@@ -2423,6 +2550,7 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
              resume: bool = False, knobs=None, widen=None,
              round_mix: str = DEFAULT_ROUND_MIX,
              capture_full_legal_scores: bool = False,
+             capture_served_budget: bool = False,
              progress: Callable[[dict], None] | None = None,
              argv: list[str] | None = None,
              allow_seed_overlap: bool = False,
@@ -2452,7 +2580,8 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
                           explore_k=explore_k, select_worlds=select_worlds,
                           report_worlds=report_worlds, cap=cap, knobs=knobs,
                           widen=widen, round_mix=round_mix,
-                          capture_full_legal_scores=capture_full_legal_scores)
+                          capture_full_legal_scores=capture_full_legal_scores,
+                          capture_served_budget=capture_served_budget)
     out = Path(out_dir)
     ident = identity(config)
     clusters = rounds // 2
@@ -2554,6 +2683,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--capture-full-legal-scores", action="store_true",
                         help="retain every learned shortlist model mean in compressed "
                              "per-cluster sidecars; no additional search or model evaluations")
+    parser.add_argument("--capture-served-budget", action="store_true",
+                        help="explicitly capture the exact pv-search serving recipe; "
+                             "timeouts are retained as actual-action point masses")
     parser.add_argument("--resume", action="store_true",
                         help="continue a run in --out with the same run_id: verified "
                              "shards are kept, missing/invalid ones regenerated")
@@ -2591,6 +2723,7 @@ def main(argv: list[str] | None = None) -> int:
             cap=cap, merge=args.merge, resume=args.resume, knobs=args.knob,
             widen=args.widen, round_mix=args.round_mix, progress=progress,
             capture_full_legal_scores=args.capture_full_legal_scores,
+            capture_served_budget=args.capture_served_budget,
             argv=sys.argv if argv is None else ["trajectory", *argv],
             allow_seed_overlap=args.allow_seed_overlap)
     except TrajectoryError as exc:

@@ -813,6 +813,48 @@
       "host": "ubuntu-32gb-hel1-2",
       "git_head": "ab515829d3bb86a22f3bd616198e24f3ad35668d",
       "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=480 out=/root/codex-y-100k/corpus"
+    },
+    {
+      "name": "traj-s1000100000-723bdd5c75c5",
+      "purpose": "trajectory",
+      "seed0": 1000100000,
+      "clusters": 3000,
+      "span": [
+        1000100000,
+        1000103000
+      ],
+      "created_at": "2026-10-28T23:43:08-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=6000 out=/Users/jerryyu/.cache/codex-y-100k-rounds-expand/corpus"
+    },
+    {
+      "name": "traj-s1000200000-83edb03f989b",
+      "purpose": "trajectory",
+      "seed0": 1000200000,
+      "clusters": 23150,
+      "span": [
+        1000200000,
+        1000223150
+      ],
+      "created_at": "2026-10-29T03:43:09+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=46300 out=/root/codex-y-100k-rounds-expand/corpus"
+    },
+    {
+      "name": "traj-s1000300000-eba782142346",
+      "purpose": "trajectory",
+      "seed0": 1000300000,
+      "clusters": 23150,
+      "span": [
+        1000300000,
+        1000323150
+      ],
+      "created_at": "2026-10-29T03:43:09+0000",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=46300 out=/root/codex-y-100k-rounds-expand/corpus"
     }
   ]
 }

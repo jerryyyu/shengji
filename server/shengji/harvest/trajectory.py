@@ -1475,7 +1475,8 @@ def action_values_from_record(rec: dict) -> dict:
     }
 
 
-def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dict, dict]:
+def pv_fields_from_record(rec: dict, ballot: list[list[str]], *,
+                          capture_served_budget: bool = False) -> tuple[dict, dict, dict]:
     """``allocation`` / ``preference`` / ``action_values`` for a
     ``pv-search-decision-v1`` record (#592, Codex's adapter requirements):
 
@@ -1505,6 +1506,9 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]]) -> tuple[dict, dic
     # its value is intentionally None (fresh confirmation evidence is not a
     # fabricated base mean). Keep that candidate in the ballot with zero base
     # allocation and let the bridge consumer ignore its missing mean.
+    if not capture_served_budget and any(m is None for m in rec["value_means"]):
+        raise TrajectoryError("pv-search record has an unpriced candidate; "
+                              "default harvest requires every admitted candidate value")
     means = [None if m is None else float(m) for m in rec["value_means"]]
     if len(means) != k:
         raise TrajectoryError("value_means are not aligned with the ballot")
@@ -1631,7 +1635,8 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         widening = None
     elif rec.get("schema") == "pv-search-decision-v1":
         stats["searched"] += 1
-        allocation, preference, action_values = pv_fields_from_record(rec, ballot)
+        allocation, preference, action_values = pv_fields_from_record(
+            rec, ballot, capture_served_budget=bool(getattr(bot, "_capture_served_budget", False)))
         if action_key(rec["played"]) != action_key(action):
             raise TrajectoryError("decision record played a different action")
         if rec.get("work_complete") is False:

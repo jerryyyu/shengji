@@ -15,8 +15,11 @@ Each fixture names a predicate for an acceptable action.  Predicates judge
 with information available at the time as well: the bot's OWN sampled worlds
 (for "doomed throw"), the public refusal history, or the engine's trick
 arithmetic in last position (where the trick outcome is exact).  The set is
-diagnostic, not a gate: the production bot is expected to fail some of it,
+diagnostic, not a gate: the baseline bot is expected to fail some of it,
 and a screen of an admission or tie-break change reads which fixtures moved.
+The recorded verdicts (``current_bot``) belong to the release-36 baseline
+(`RELEASE36_BOT`), a fixed historical recipe; the served bot of today comes
+from ``fly.toml`` through `served_environ`.
 """
 
 from __future__ import annotations
@@ -45,14 +48,15 @@ CATEGORIES = ("doomed-throw", "point-donation", "missed-point-win", "shortlist-m
               "repeated-failed-throw")
 OBSERVATION_CATEGORY = "observation"
 
-# The production play recipe (fly.toml, release 36).  A caller that pins only the
-# package gets exactly the served name; every knob can still be overridden.
-PRODUCTION_PLAY_ENV = {
+# The release-36 play recipe: the fixed baseline the recorded fixture verdicts and the
+# frozen r36-SMV3 observation control are bound to.  It is NOT the served recipe (that is
+# fly.toml, `served_environ`).  Every knob can still be overridden.
+RELEASE36_PLAY_ENV = {
     "SHENGJI_PV_WORLDS": "64", "SHENGJI_PV_CANDIDATES": "8", "SHENGJI_PV_CAP": "4000",
     "SHENGJI_PV_BATCH_SIZE": "128", "SHENGJI_PV_SERVING_BUDGET_SECONDS": "3",
     "SHENGJI_PV_BURY_ARM": "hybrid", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "2",
 }
-PRODUCTION_BOT = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
+RELEASE36_BOT = "pv-search-491ee4bf-w64-k8-r4a09aef5-bury-hybrid-355958b4db25"
 OBSERVATION_COMPARISON_SEEDS = (0, 1, 2)
 OBSERVATION_COMPARISON_FILL_SEED = 0
 OBSERVATION_COMPARISON_SHA256 = "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670"
@@ -81,7 +85,7 @@ class Fixture:
     predicate: str
     args: dict
     why: str
-    current_bot: str | None = None   # "pass" | "fail" recorded for PRODUCTION_BOT (xfail marker)
+    current_bot: str | None = None   # "pass" | "fail" recorded for RELEASE36_BOT (xfail marker)
     notes: str = ""
 
     @property
@@ -725,7 +729,7 @@ def run_set(make_bot: Callable[[], Any], fixtures: Sequence[Fixture], *, fill_se
 
 def observation_comparison_environs(checkpoint: str, sha256: str) -> dict[str, dict[str, str]]:
     """Return frozen r36-SMV3 control and the four-flag DEV treatment."""
-    control = production_environ(checkpoint, sha256)
+    control = release36_environ(checkpoint, sha256)
     treatment = dict(control)
     treatment.update({flag: "1" for flag in OBSERVATION_COMPARISON_FLAGS})
     differing = {key for key in set(control) | set(treatment)
@@ -864,20 +868,27 @@ def format_table(results: Sequence[Result], bot_name: str | None = None) -> str:
              r.status in ("pass", "FAIL") and
              (r.status == "pass") != (r.fixture.current_bot == "pass")]
     if moved:
-        lines.append("moved vs the recorded production verdict: "
+        lines.append("moved vs the recorded release-36 verdict: "
                      + ", ".join(f"{r.fixture.id} ({r.fixture.current_bot}->{r.status})" for r in moved))
     return "\n".join(lines)
 
 
 # ----------------------------------------------------------- the served bot
 
-def production_environ(checkpoint: str, sha256: str, **overrides: str) -> dict[str, str]:
-    """A fly.toml-shaped environment for the production play recipe on a local
-    package path.  ``overrides`` replace individual ``SHENGJI_PV_*`` keys."""
-    env = dict(PRODUCTION_PLAY_ENV)
+def release36_environ(checkpoint: str, sha256: str, **overrides: str) -> dict[str, str]:
+    """The release-36 baseline recipe (`RELEASE36_PLAY_ENV`) on a local package path.
+    ``overrides`` replace individual ``SHENGJI_PV_*`` keys."""
+    env = dict(RELEASE36_PLAY_ENV)
     env.update({"SHENGJI_PV_CKPT": str(checkpoint), "SHENGJI_PV_SHA256": str(sha256)})
     env.update(overrides)
     return env
+
+
+def served_environ(mappings: Mapping[str, str], *, overrides=(), fly_toml=None) -> dict[str, str]:
+    """The served recipe: ``fly.toml``'s ``[env]`` with its volume paths mapped to local
+    copies (``mappings``) and only named overrides (`served_config.NAMED_OVERRIDES`)."""
+    from . import served_config
+    return served_config.served_env(fly_toml=fly_toml, mappings=mappings, overrides=overrides)
 
 
 def bot_from_environ(environ: Mapping[str, str], *, seed: int = 0):

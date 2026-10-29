@@ -3,9 +3,15 @@
 Diagnostic, not a gate (tests/tactical/README.md).  The bot is built from a
 fly.toml-shaped environment exactly as the server registers it, so a screen of
 an admission or tie-break change points this at its candidate and reads which
-fixtures moved against the recorded production verdicts.
+fixtures moved against the recorded verdicts (those belong to the release-36 baseline).
 
-    # the production recipe on a local copy of the served package
+    # the served bot: fly.toml's [env] with its volume packages mapped to local copies,
+    # built as the server builds it (latency switches included); named overrides only
+    uv run python scripts/tactical_report.py --served \
+        --map /data/models/smv3out-491ee4bf.npz=/path/smv3out-491ee4bf.npz \
+        --map /data/models/s58-e6-42444515.npz=/path/s58-e6-42444515.npz [--override wla24]
+
+    # the release-36 baseline the recorded verdicts belong to, on a local package
     uv run python scripts/tactical_report.py \
         --ckpt /path/smv3out-491ee4bf.npz --sha256 491ee4bf...
 
@@ -17,7 +23,7 @@ fixtures moved against the recorded production verdicts.
     uv run python scripts/tactical_report.py --bot smart
 
 ``--stamp`` rewrites ``current_bot`` in the fixtures file from this run (only
-meaningful for the production bot; it is what the pytest xfail marks read).
+meaningful for the release-36 baseline; it is what the pytest xfail marks read).
 ``--json PATH`` writes the per-fixture results.
 """
 
@@ -61,12 +67,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--ckpt", help="pv-search package (.npz); production knobs unless --env-override")
+    src.add_argument("--served", action="store_true",
+                     help="fly.toml's served bot (--map volume=local, --override NAME)")
+    src.add_argument("--ckpt", help="pv-search package (.npz); release-36 baseline knobs unless --env-override")
     src.add_argument("--from-env", action="store_true", help="read SHENGJI_PV_* from the environment")
     src.add_argument("--bot", help="a registry policy name (ai.registry.make_bot)")
     ap.add_argument("--sha256", help="full sha256 of --ckpt")
     ap.add_argument("--env-override", action="append", default=[],
-                    help="KEY=VALUE applied over the production knobs (with --ckpt)")
+                    help="KEY=VALUE applied over the release-36 baseline knobs (with --ckpt)")
+    ap.add_argument("--map", action="append", default=[], metavar="VOLUME=LOCAL",
+                    help="fly.toml volume path to a local copy (with --served)")
+    ap.add_argument("--override", action="append", default=[],
+                    help="a named served-config override (with --served)")
     ap.add_argument("--fixtures", default=str(T.FIXTURES_PATH))
     ap.add_argument("--only", action="append", default=[], help="fixture id or category filter")
     ap.add_argument("--seed", type=int, default=0, help="bot seed (fresh bot per fixture)")
@@ -182,7 +194,14 @@ def main() -> None:
         print(f"wrote {args.json}", file=sys.stderr)
         return
 
-    if args.bot:
+    if args.served:
+        from shengji.eval import served_config
+        environ = T.served_environ(dict(kv.split("=", 1) for kv in args.map), overrides=args.override)
+        name, _probe = served_config.build_served_bot(environ, seed=args.seed)
+
+        def make():
+            return served_config.build_served_bot(environ, seed=args.seed)[1]
+    elif args.bot:
         from shengji.ai.registry import make_bot
         name = args.bot
 
@@ -193,7 +212,7 @@ def main() -> None:
             if not args.sha256 or len(args.sha256) != 64:
                 raise SystemExit("--ckpt needs the package's full --sha256")
             overrides = dict(kv.split("=", 1) for kv in args.env_override)
-            environ = T.production_environ(args.ckpt, args.sha256, **overrides)
+            environ = T.release36_environ(args.ckpt, args.sha256, **overrides)
         else:
             environ = dict(os.environ)
         name, _probe = T.bot_from_environ(environ, seed=args.seed)

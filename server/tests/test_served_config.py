@@ -223,3 +223,21 @@ def test_builder_refuses_previous_registration(monkeypatch, pinned_hashes):
     assert built == [base['SHENGJI_BOT']]
     changed['SHENGJI_BOT'] = sc.registry_name(changed)
     assert sc.build_served_bot(changed)[0] == changed['SHENGJI_BOT']
+
+
+def test_singleton_stack_is_named_and_explicitly_registered(monkeypatch, pinned_hashes):
+    from shengji.ai import registry
+    from shengji.train import cwv_bury_policy, cwv_shortlist
+
+    monkeypatch.setattr(cwv_bury_policy, 'bury_env_recipe', lambda env: None)
+    monkeypatch.setattr(cwv_shortlist, 'shortlist_env_recipe', lambda env: None)
+    monkeypatch.setattr(registry, 'REGISTRY', {})
+    monkeypatch.setattr(registry, 'make_bot', lambda name, seed: registry.REGISTRY[name])
+    base = sc.served_env(mappings=MAP, overrides=['lcc32'])
+    candidate = sc.served_env(mappings=MAP, overrides=['sc8', 'lcc32'])
+    assert candidate['SHENGJI_BOT'] == base['SHENGJI_BOT'] + '-sc8'
+    name, factory = sc.build_served_bot(candidate)
+    assert name == candidate['SHENGJI_BOT'] and callable(factory)
+    assert base['SHENGJI_BOT'] in registry.REGISTRY
+    with pytest.raises(sc.ServedConfigError, match='must be 0 or 1'):
+        sc.registry_name({**base, 'SHENGJI_PV_SINGLETON_CHALLENGER': 'invalid'})

@@ -40,6 +40,7 @@ NAMED_OVERRIDES: dict[str, dict[str, str]] = {
                            "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "",
                            "SHENGJI_PV_LEAF_GREEDY_DEADLINE": ""},
     # candidate search knobs (off in fly.toml)
+    "sc8": {"SHENGJI_PV_SINGLETON_CHALLENGER": "1"},
     "wla24": {"SHENGJI_PV_WIDE_LEAD_ADMISSION": "1", "SHENGJI_PV_WIDE_LEAD_K": "24"},
     "lcc32": {"SHENGJI_PV_LEAD_CONFIRM": "32"},
     "lgft3": {"SHENGJI_PV_LEAF_GREEDY_TOP": "3"},
@@ -115,11 +116,19 @@ def unexplained_diff(env: Mapping[str, str], *, overrides: Iterable[str] = (),
     return [k for k in env_diff(env, base) if k not in allowed]
 
 
+def _singleton_enabled(env: Mapping[str, str]) -> bool:
+    raw = env.get("SHENGJI_PV_SINGLETON_CHALLENGER", "0")
+    if raw not in ("", "0", "1"):
+        raise ServedConfigError("SHENGJI_PV_SINGLETON_CHALLENGER must be 0 or 1")
+    return raw == "1"
+
+
 def registry_name(env: Mapping[str, str]) -> str:
     """The pv-search registry name the server registers for ``env`` (one recipe)."""
-    from ..train.pv_search_policy import pv_env_recipe, pv_registry_entries
+    from ..train.pv_search_policy import pv_env_recipe, pv_registry_entries, singleton_registry_entries
     recipe = pv_env_recipe(dict(env))
-    names = list(pv_registry_entries(recipe.pop("checkpoint"), **recipe))
+    entries = singleton_registry_entries if _singleton_enabled(env) else pv_registry_entries
+    names = list(entries(**recipe))
     if len(names) != 1:
         raise ServedConfigError(f"the env registers {len(names)} pv-search names, not one: {names}")
     return names[0]
@@ -174,7 +183,13 @@ def build_served_bot(env: Mapping[str, str], *, seed: int = 13, expected_name: s
         if env.get("SHENGJI_PV_CKPT"):
             from ..train.pv_search_policy import pv_env_recipe
             recipe = pv_env_recipe(env)
-            registered.update(registry.register_pv_search_policies(recipe.pop("checkpoint"), **recipe))
+            checkpoint = recipe.pop("checkpoint")
+            registered.update(registry.register_pv_search_policies(checkpoint, **recipe))
+            if _singleton_enabled(env):
+                from ..train.pv_search_policy import singleton_registry_entries
+                entries = singleton_registry_entries(checkpoint=checkpoint, **recipe)
+                registry.REGISTRY.update(entries)
+                registered.update(entries)
         if name not in registered:
             raise ServedConfigError(f"SHENGJI_BOT {name!r} is not registered by this env: "
                                     "the server would not boot with it")

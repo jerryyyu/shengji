@@ -272,7 +272,8 @@ def test_soft_expiry_keeps_the_base_decision_and_records(clock, monkeypatch):
         == _comparable(ref_rec)
 
 
-def test_a_cut_greedy_finish_abandons_to_the_base(monkeypatch):
+@pytest.mark.parametrize("unexpected", [False, True])
+def test_a_cut_greedy_finish_abandons_to_the_base(monkeypatch, unexpected):
     rnd, seat = _lead()
     evaluator = OutsideBallotEvaluator(1.0)
     _prime(evaluator, rnd, seat)
@@ -286,12 +287,16 @@ def test_a_cut_greedy_finish_abandons_to_the_base(monkeypatch):
         calls.append(1)
         prefill(self, *a, **kw)
         if len(calls) == 2:
+            if unexpected:
+                raise RuntimeError("unexpected leaf failure")
             self._leaf_greedy["deadline_cut"] = 1
     monkeypatch.setattr(pv.PVSearchBot, "_greedy_prefill", cut)
     played = on.decide_play(copy.deepcopy(rnd), seat)
     rec = on.last_decision_record
-    assert rec["lead_confirm_status"] == "abandoned" and rec["lead_confirm_abandon_reason"] == "error"
-    assert rec["lead_confirm_abandon_error"] == "_LeadConfirmLeafCut" and played == base
+    assert rec["lead_confirm_status"] == "abandoned"
+    assert rec["lead_confirm_abandon_reason"] == ("error" if unexpected else "leaf_deadline")
+    assert rec["lead_confirm_abandon_error"] == ("RuntimeError" if unexpected else "_LeadConfirmLeafCut")
+    assert played == base
     assert rec["leaf_greedy_reply_plays"] == off.last_decision_record["leaf_greedy_reply_plays"]
 
 

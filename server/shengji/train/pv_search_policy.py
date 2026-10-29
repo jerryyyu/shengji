@@ -3708,7 +3708,10 @@ class PVSearchBot(PolicyValueBot):
         finally:
             self._leaf_greedy, self._leaf_greedy_pruned = kept
         if stage.abandoned:
-            state.update(lead_confirm_abandon_reason=stage.reason,
+            reason = stage.reason
+            if reason == "error" and stage.error == _LeadConfirmLeafCut.__name__:
+                reason = "leaf_deadline"
+            state.update(lead_confirm_abandon_reason=reason,
                          lead_confirm_abandon_error=stage.error)
             return finish("abandoned")
         if confirmed is not None:

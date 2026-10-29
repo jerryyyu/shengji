@@ -35,7 +35,7 @@ def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
     launcher = Path(launch.__file__)
     release.write_text(json.dumps({'launcher_sha256': launch.sha256(launcher), 'spec_sha256': 'abc'}))
     spec = dict(release=str(release), lock=str(lock), source_dir=str(source), output=str(out),
-                holds=[str(hold)], max_seconds=0 if mode in ('timeout', 'exit-race') else 10, stop_disk_gib=0)
+                rounds=2, workers=1, holds=[str(hold)], max_seconds=0 if mode in ('timeout', 'exit-race') else 10, stop_disk_gib=0)
     code = ('from pathlib import Path; import time,sys; '
             f'p=Path({str(out)!r}); p.mkdir(); (p/"partial").write_text("kept"); ')
     if mode == 'success':
@@ -81,3 +81,20 @@ def test_missing_release_and_existing_lock_do_not_launch(tmp_path, monkeypatch):
     with pytest.raises(FileExistsError):
         launch.execute(spec, 'abc', launcher)
     assert (lock/'owner').read_text() == 'foreign'
+
+
+def test_progress_counts_only_published_pairs_and_reports_eta(tmp_path, monkeypatch):
+    shards = tmp_path / 'shards'
+    shards.mkdir()
+    (shards / 'cluster-000000.jsonl').touch()
+    (shards / 'cluster-000000.json').touch()
+    (shards / 'cluster-000001.jsonl').touch()
+    monkeypatch.setattr(launch.subprocess, 'check_output',
+                        lambda *a, **k: ' 123 python spawn_main()\n 123 python resource_tracker\n 456 python spawn_main()\n')
+    spec = dict(output=str(tmp_path), rounds=10, workers=4, max_seconds=600)
+    got = launch.progress(spec, 123, 20)
+    assert got['completed_rounds'] == 2
+    assert got['percent'] == 20
+    assert got['eta_seconds'] == 80
+    assert got['live_worker_processes'] == 1
+    assert got['deadline_headroom_seconds'] == 580

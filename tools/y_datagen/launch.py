@@ -85,6 +85,8 @@ def group_alive(pid):
         return True
     except ProcessLookupError:
         return False
+    except PermissionError:
+        return True
 
 def command(spec):
     return [spec['python'], '-B', str(Path(spec['source_dir'])/'server/scripts/y_trajectory.py'),

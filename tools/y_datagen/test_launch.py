@@ -51,10 +51,12 @@ def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
     if mode == 'exit-race':
         real_killpg = launch.os.killpg
         def raced_kill(pid, sig):
-            real_killpg(pid, sig)
             if sig == launch.signal.SIGTERM:
+                real_killpg(pid, sig)
                 raise ProcessLookupError
+            return real_killpg(pid, sig)
         monkeypatch.setattr(launch.os, 'killpg', raced_kill)
+        monkeypatch.setattr(launch, 'group_alive', lambda pid: False)
     rc = launch.execute(spec, 'abc', launcher)
     assert rc == (0 if mode == 'success' else 1)
     assert not lock.exists()

@@ -24,7 +24,7 @@ def test_release_requires_both_pins(tmp_path):
         launch._release(release, 'abc', 'bad')
 
 
-@pytest.mark.parametrize('mode', ['success', 'failure', 'hold', 'timeout'])
+@pytest.mark.parametrize('mode', ['success', 'failure', 'hold', 'timeout', 'exit-race'])
 def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
     source = tmp_path / 'src'
     source.mkdir()
@@ -35,7 +35,7 @@ def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
     launcher = Path(launch.__file__)
     release.write_text(json.dumps({'launcher_sha256': launch.sha256(launcher), 'spec_sha256': 'abc'}))
     spec = dict(release=str(release), lock=str(lock), source_dir=str(source), output=str(out),
-                holds=[str(hold)], max_seconds=0 if mode == 'timeout' else 10, stop_disk_gib=0)
+                holds=[str(hold)], max_seconds=0 if mode in ('timeout', 'exit-race') else 10, stop_disk_gib=0)
     code = ('from pathlib import Path; import time,sys; '
             f'p=Path({str(out)!r}); p.mkdir(); (p/"partial").write_text("kept"); ')
     if mode == 'success':
@@ -48,12 +48,19 @@ def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
         code += 'time.sleep(20)'
     monkeypatch.setattr(launch, '_admit', lambda spec: None)
     monkeypatch.setattr(launch, 'command', lambda spec: [sys.executable, '-c', code])
+    if mode == 'exit-race':
+        real_killpg = launch.os.killpg
+        def raced_kill(pid, sig):
+            real_killpg(pid, sig)
+            if sig == launch.signal.SIGTERM:
+                raise ProcessLookupError
+        monkeypatch.setattr(launch.os, 'killpg', raced_kill)
     rc = launch.execute(spec, 'abc', launcher)
     assert rc == (0 if mode == 'success' else 1)
     assert not lock.exists()
     terminal = json.loads(Path(str(out)+'.terminal.json').read_text())
-    assert terminal['status'] == {'success':'completed','failure':'failed','hold':'held','timeout':'time-cap'}[mode]
-    if mode != 'timeout':
+    assert terminal['status'] == {'success':'completed','failure':'failed','hold':'held','timeout':'time-cap','exit-race':'time-cap'}[mode]
+    if mode not in ('timeout', 'exit-race'):
         assert (out/'partial').read_text() == 'kept'
 
 

@@ -133,7 +133,10 @@ def execute(spec, spec_sha, launcher):
             elif time.monotonic()-started >= spec['max_seconds']:
                 status = 'time-cap'
             if status != 'running':
-                os.killpg(proc.pid, signal.SIGTERM)
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
                 break
             time.sleep(1)
         until = time.monotonic()+30

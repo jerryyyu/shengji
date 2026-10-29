@@ -161,19 +161,21 @@ def build_served_bot(env: Mapping[str, str], *, seed: int = 13, expected_name: s
         from ..ai import registry
         from ..train.cwv_bury_policy import bury_env_recipe
         from ..train.cwv_shortlist import shortlist_env_recipe
+        registered = set()
         parsed = bury_env_recipe(env)
         if parsed is not None:
             checkpoint, worlds, recipe, arm, config, budget = parsed
-            registry.register_cwv_bury_policies(checkpoint, worlds, arm=arm, bury_config=config,
-                                                serving_budget_seconds=budget, **recipe)
+            registered.update(registry.register_cwv_bury_policies(
+                checkpoint, worlds, arm=arm, bury_config=config,
+                serving_budget_seconds=budget, **recipe))
         play = shortlist_env_recipe(env)
         if play is not None:
-            registry.register_cwv_shortlist_policies(play[0], play[1], **play[2])
+            registered.update(registry.register_cwv_shortlist_policies(play[0], play[1], **play[2]))
         if env.get("SHENGJI_PV_CKPT"):
             from ..train.pv_search_policy import pv_env_recipe
             recipe = pv_env_recipe(env)
-            registry.register_pv_search_policies(recipe.pop("checkpoint"), **recipe)
-        if name not in registry.REGISTRY:
+            registered.update(registry.register_pv_search_policies(recipe.pop("checkpoint"), **recipe))
+        if name not in registered:
             raise ServedConfigError(f"SHENGJI_BOT {name!r} is not registered by this env: "
                                     "the server would not boot with it")
         return name, registry.make_bot(name, seed=seed)
@@ -221,6 +223,12 @@ def main(argv=None) -> int:
         print(f"REFUSING: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 3
     if args.command == "env":
+        # Clear optional recipe keys in the consuming shell before applying the snapshot.
+        print("for _shengji_key in $(env | sed -n "
+              "'s/^\\(SHENGJI_PV_[A-Za-z0-9_]*\\)=.*/\\1/p'); do")
+        print('    unset "$_shengji_key"')
+        print("done")
+        print("unset _shengji_key")
         # the write paths name the server's volume; the caller sets its own
         for key in sorted(k for k in env if k not in WRITE_KEYS):
             print(f"export {key}={_shell_quote(env[key])}")

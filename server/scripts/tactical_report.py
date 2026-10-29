@@ -9,7 +9,8 @@ fixtures moved against the recorded verdicts (those belong to the release-36 bas
     # built as the server builds it (latency switches included); named overrides only
     uv run python scripts/tactical_report.py --served \
         --map /data/models/smv3out-491ee4bf.npz=/path/smv3out-491ee4bf.npz \
-        --map /data/models/s58-e6-42444515.npz=/path/s58-e6-42444515.npz [--override wla24]
+        --map /data/models/s58-e6-42444515.npz=/path/s58-e6-42444515.npz \
+        --map /data/models/js-m1-0d17fd03.npz=/path/js-m1-0d17fd03.npz [--override wla24]
 
     # the release-36 baseline the recorded verdicts belong to, on a local package
     uv run python scripts/tactical_report.py \

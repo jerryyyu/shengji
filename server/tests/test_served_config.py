@@ -161,3 +161,65 @@ def test_the_scan_finds_a_hand_set_recipe(tmp_path):
     (tmp_path / "scripts" / "b.py").write_text('def production():\n    return dict(SHENGJI_PV_CAP="4000")\n')
     (tmp_path / "scripts" / "c.py").write_text('ENV = {"SHENGJI_PV_LEAD_CONFIRM": "32"}\n')
     assert _hand_set_recipes(tmp_path) == {("shengji/a.py", "SERVED_ENV"), ("scripts/b.py", "production")}
+
+
+@pytest.mark.parametrize('overrides', [[], ['teacher-unbudgeted']])
+def test_shell_export_replaces_inherited_recipe(overrides, pinned_hashes, capsys):
+    import json
+    import os
+    import shlex
+    import subprocess
+    import sys
+    from shengji.train.pv_search_policy import pv_env_recipe
+
+    args = ['env']
+    for src, dst in MAP.items():
+        args += ['--map', f'{src}={dst}']
+    for override in overrides:
+        args += ['--override', override]
+    assert sc.main(args) == 0
+    script = capsys.readouterr().out
+    inherited = dict(os.environ, SHENGJI_PV_SERVING_BUDGET_SECONDS='3',
+                     SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS='2',
+                     SHENGJI_PV_LEAF_GREEDY_DEADLINE='2',
+                     SHENGJI_PV_LEAD_CONFIRM='32', KEEP_UNRELATED='present')
+    probe = shlex.join([sys.executable, '-c',
+                       'import os,json; print(json.dumps(dict(os.environ)))'])
+    result = subprocess.run(['/bin/sh', '-c', script + '\n' + probe], env=inherited,
+                            text=True, capture_output=True, check=True)
+    actual = json.loads(result.stdout)
+    expected = sc.served_env(mappings=MAP, overrides=overrides)
+    assert pv_env_recipe(actual) == pv_env_recipe(expected)
+    assert actual['SHENGJI_BOT'] == sc.registry_name(actual)
+    assert actual['KEEP_UNRELATED'] == 'present'
+
+
+def test_builder_refuses_previous_registration(monkeypatch, pinned_hashes):
+    from shengji.ai import registry
+    from shengji.train import pv_search_policy as pv
+    from shengji.train import cwv_bury_policy, cwv_shortlist
+
+    monkeypatch.setattr(cwv_bury_policy, 'bury_env_recipe', lambda env: None)
+    monkeypatch.setattr(cwv_shortlist, 'shortlist_env_recipe', lambda env: None)
+    monkeypatch.setattr(registry, 'REGISTRY', {})
+    built = []
+
+    def register(checkpoint, **recipe):
+        entries = pv.pv_registry_entries(checkpoint, **recipe)
+        registry.REGISTRY.update(entries)
+        return sorted(entries)
+
+    def make(name, seed):
+        built.append(name)
+        return name
+
+    monkeypatch.setattr(registry, 'register_pv_search_policies', register)
+    monkeypatch.setattr(registry, 'make_bot', make)
+    base = sc.served_env(mappings=MAP)
+    sc.build_served_bot(base)
+    changed = {**base, 'SHENGJI_PV_CANDIDATES': '9'}
+    with pytest.raises(sc.ServedConfigError, match='not registered by this env'):
+        sc.build_served_bot(changed)
+    assert built == [base['SHENGJI_BOT']]
+    changed['SHENGJI_BOT'] = sc.registry_name(changed)
+    assert sc.build_served_bot(changed)[0] == changed['SHENGJI_BOT']

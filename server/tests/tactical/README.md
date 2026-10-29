@@ -149,7 +149,8 @@ SHENGJI_FAST=1 uv run python -m pytest tests/test_tactical_fixtures.py -q -rxXs
 
 # the screen tool: the served bot (fly.toml), volume packages mapped to local copies
 uv run python scripts/tactical_report.py --served \
-    --map /data/models/smv3out-491ee4bf.npz=$SHENGJI_PV_CKPT --map /data/models/s58-e6-42444515.npz=/path/s58.npz
+    --map /data/models/smv3out-491ee4bf.npz=$SHENGJI_PV_CKPT --map /data/models/s58-e6-42444515.npz=/path/s58.npz \
+    --map /data/models/js-m1-0d17fd03.npz=/path/js-m1-0d17fd03.npz
 # the release-36 baseline on a package (what --stamp records)
 uv run python scripts/tactical_report.py --ckpt $SHENGJI_PV_CKPT --sha256 $SHENGJI_PV_SHA256
 # a candidate recipe: override knobs, or hand it the full env

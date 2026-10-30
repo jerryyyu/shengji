@@ -39,7 +39,7 @@ import os
 import sys
 import time
 import zipfile
-from collections import Counter
+from collections import Counter, deque
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -330,6 +330,37 @@ def _chunk_task(args) -> dict:
             "seconds": time.time() - t0}
 
 
+_WORKER_SHARDS: tuple[str, ...] | None = None
+
+
+def _init_history_worker(shards: Sequence[str]) -> None:
+    global _WORKER_SHARDS
+    _WORKER_SHARDS = tuple(shards)
+
+
+def _worker_chunk(task: tuple) -> dict:
+    if _WORKER_SHARDS is None:
+        raise BeliefLabelError("history worker has no shard inventory")
+    chunk_path, out_path, recorded_sha = task
+    return _chunk_task((chunk_path, out_path, _WORKER_SHARDS, recorded_sha))
+
+
+def _run_tasks(tasks: Sequence[tuple], shards: Sequence[str], workers: int):
+    """Share immutable paths once per worker and bound submitted chunk work."""
+    if workers < 1:
+        raise BeliefLabelError("history workers must be positive")
+    pending = deque()
+    remaining = iter(tasks)
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_history_worker,
+                             initargs=(tuple(shards),)) as pool:
+        for task in remaining:
+            pending.append(pool.submit(_worker_chunk, task))
+            if len(pending) == 2 * workers:
+                yield pending.popleft().result()
+        while pending:
+            yield pending.popleft().result()
+
+
 def extract(dirs: Sequence[str], stores_root: str, *, workers: int, log=print) -> dict:
     """``hist/`` next to every chunk of every extract dir (resumable: a finished
     chunk file is kept); writes ``hist/manifest.json`` per dir."""
@@ -373,15 +404,14 @@ def extract(dirs: Sequence[str], stores_root: str, *, workers: int, log=print) -
                 source_path = dpath / name
                 if hashlib.sha256(source_path.read_bytes()).hexdigest() != entry["sha256"]:
                     raise BeliefLabelError(f"{source_path}: sha256 mismatch with label manifest")
-                tasks.append((str(source_path), str(hist / name), shards, recorded.get(name)))
+                tasks.append((str(source_path), str(hist / name), recorded.get(name)))
         t0 = time.time()
         results = []
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            for i, res in enumerate(pool.map(_chunk_task, tasks)):
-                results.append(res)
-                if (i + 1) % 50 == 0 or i + 1 == len(tasks):
-                    log(f"[hist] {Path(d).name}: {i + 1}/{len(tasks)} chunks, {time.time() - t0:.0f}s",
-                        flush=True)
+        for i, res in enumerate(_run_tasks(tasks, shards, workers)):
+            results.append(res)
+            if (i + 1) % 50 == 0 or i + 1 == len(tasks):
+                log(f"[hist] {Path(d).name}: {i + 1}/{len(tasks)} chunks, {time.time() - t0:.0f}s",
+                    flush=True)
         hm = {"schema": SCHEMA, "source_extract_manifest_sha256": source_sha,
               "store": str(store), "max_plays": MAX_PLAYS, "token_int": TOKEN_INT,
               "token_float": TOKEN_FLOAT, "card_features": CARD_FEATURES,

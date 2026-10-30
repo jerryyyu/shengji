@@ -196,6 +196,46 @@ def test_unrecorded_mismatch_is_refused_without_replacing_partial_output(chunk, 
     assert out_path.read_bytes() == before
 
 
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_history_dispatch_bounds_pending_work_and_sends_inventory_once(monkeypatch, workers):
+    shards = tuple(f"shard-{i}" for i in range(50000))
+    tasks = [(f"label-{i}", f"history-{i}", None) for i in range(25)]
+    outstanding = 0
+    peak = 0
+    initializations = []
+
+    class Future:
+        def __init__(self, task):
+            self.task = task
+        def result(self):
+            nonlocal outstanding
+            outstanding -= 1
+            return self.task
+
+    class Pool:
+        def __init__(self, *, max_workers, initializer, initargs):
+            assert max_workers == workers
+            assert initializer is bh._init_history_worker
+            assert initargs == (shards,)
+            initializations.append(initargs)
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def submit(self, fn, task):
+            nonlocal outstanding, peak
+            assert fn is bh._worker_chunk
+            assert len(task) == 3 and task in tasks
+            outstanding += 1
+            peak = max(peak, outstanding)
+            assert outstanding <= 2 * workers
+            return Future(task)
+
+    monkeypatch.setattr(bh, "ProcessPoolExecutor", Pool)
+    assert list(bh._run_tasks(tasks, shards, workers)) == tasks
+    assert len(initializations) == 1 and peak == 2 * workers and outstanding == 0
+
+
 def test_extract_preflights_source_and_reuses_partial_outputs(chunk, tmp_path, monkeypatch):
     store = tmp_path / "stores" / "store"
     shards = store / "shards"

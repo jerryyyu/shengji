@@ -855,6 +855,34 @@
       "host": "ubuntu-32gb-hel1-2",
       "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
       "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=46300 out=/root/codex-y-100k-rounds-expand/corpus"
+    },
+    {
+      "name": "traj-s1000500000-5b47ba321be6",
+      "purpose": "trajectory",
+      "seed0": 1000500000,
+      "clusters": 25000,
+      "span": [
+        1000500000,
+        1000525000
+      ],
+      "created_at": "2026-10-30T04:21:18+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=50000 out=/root/codex-y-additional-100k/corpus"
+    },
+    {
+      "name": "traj-s1000600000-fbc83e1a2f00",
+      "purpose": "trajectory",
+      "seed0": 1000600000,
+      "clusters": 25000,
+      "span": [
+        1000600000,
+        1000625000
+      ],
+      "created_at": "2026-10-30T04:21:20+0000",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=50000 out=/root/codex-y-additional-100k/corpus"
     }
   ]
 }

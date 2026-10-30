@@ -183,6 +183,11 @@ def test_served_search_record_to_capture_and_restored_engine():
     assert bot.last_decision_record == record
     packet = json.loads(json.dumps(packet))
     assert packet['decision'] == normalized(record)
+    from shengji.train.lead_root_capture import compare_lead_continuations
+    alternative = next(a for a in record['admitted'] if sorted(a) != sorted(cards))
+    comparison = compare_lead_continuations(packet, [cards, alternative])
+    assert all(b['recorded_ballot_member'] for b in comparison['branches'])
+    assert all(b['requested_horizon_reached'] for b in comparison['branches'])
     root, ledger = restore_with_ledger(packet)
     assert ledger.observe(root) == bot._refusals.refusals
     root.play(root.turn, cards)
@@ -191,3 +196,93 @@ def test_served_search_record_to_capture_and_restored_engine():
     # Subsequent producer mutations must not rewrite the saved decision.
     bot.last_decision_record['admitted'].clear()
     assert packet['decision']['admitted']
+
+
+@pytest.mark.parametrize('tricks', [2, 3])
+def test_paired_continuation_json_capture_to_completed_engine_endpoints(tricks):
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.train.lead_root_capture import compare_lead_continuations
+
+    row = packets()[0]
+    original = copy.deepcopy(row)
+    root = restore(row)
+    actions = [[c] for c in sorted(set(root.hands[root.turn]))[:2]]
+    result = compare_lead_continuations(row, actions, tricks=tricks)
+    assert json.loads(json.dumps(result)) == result
+    assert row == original
+    assert compare_lead_continuations(row, actions, tricks=tricks) == result
+    reverse = compare_lead_continuations(row, actions[::-1], tricks=tricks)
+    assert reverse['branches'] == result['branches'][::-1]
+    for action, branch in zip(actions, result['branches']):
+        independent = rebuild_round(EVENTS)
+        driver = HeuristicBot()
+        independent.play(independent.turn, action)
+        for _ in range(4 * tricks - 1):
+            independent.play(independent.turn,
+                             driver.decide_play(independent, independent.turn))
+        assert branch['endpoint'] == fingerprint(independent)
+        assert branch['requested_horizon_reached']
+        assert branch['completed_tricks'] == tricks
+        assert len(branch['trace']) == 4 * tricks
+        assert branch['attacker_points_delta'] == independent.attacker_points
+        assert branch['recorded_ballot_member'] is None
+
+
+def test_paired_continuation_preserves_failed_throw_and_short_terminal():
+    from collections import Counter
+    from shengji.train.lead_root_capture import compare_lead_continuations
+
+    rows = packets()
+    for row in rows:
+        rnd = restore(row)
+        attempted = row['decision']['played']
+        alternative = next([c] for c in sorted(set(rnd.hands[rnd.turn]))
+                           if [c] != attempted)
+        rnd.play(rnd.turn, attempted)
+        accepted = rnd.trick.plays[-1].cards
+        if Counter(attempted) != Counter(accepted):
+            break
+    else:
+        pytest.fail('fixture lacks a failed throw')
+    row['decision'].update(schema='pv-search-decision-v1', work_complete=True,
+                           admitted=[attempted])
+    result = compare_lead_continuations(row, [attempted, alternative])
+    first, second = result['branches']
+    assert first['trace'][0]['forced']
+    assert first['accepted'] == accepted
+    assert first['attempted'] == attempted
+    assert first['forced_plays'] >= 1
+    assert first['recorded_ballot_member'] is True
+    assert second['recorded_ballot_member'] is False
+    row['decision']['work_complete'] = False
+    assert compare_lead_continuations(row, [attempted, alternative])['branches'][0][
+        'recorded_ballot_member'] is None
+
+    last = rows[-2]
+    rnd = restore(last)
+    action = last['decision']['played']
+    # A terminal branch need not reach the requested three-trick horizon.
+    other = next([c] for c in sorted(set(rnd.hands[rnd.turn])) if [c] != action)
+    terminal = compare_lead_continuations(last, [action, other], tricks=3)['branches'][0]
+    assert terminal['round_ended']
+    assert terminal['completed_tricks'] < 3
+    assert not terminal['requested_horizon_reached']
+
+
+def test_paired_continuation_refuses_invalid_inputs_and_corrupted_root():
+    from shengji.engine.legal import IllegalPlay
+    from shengji.train.lead_root_capture import compare_lead_continuations
+
+    row = packets()[0]
+    for actions, horizon in [([['S3']], 2), ([[], ['S3']], 2),
+                             ([['S3'], ['S3']], 2), ([['S3'], ['H3']], True),
+                             ([['S3'], ['H3']], 4)]:
+        with pytest.raises(ValueError):
+            compare_lead_continuations(row, actions, tricks=horizon)
+    original = copy.deepcopy(row)
+    with pytest.raises(IllegalPlay):
+        compare_lead_continuations(row, [['S3'] * 3, ['H3']])
+    assert row == original
+    row['root']['attacker_points'] += 5
+    with pytest.raises(ValueError, match='root state drift'):
+        compare_lead_continuations(row, [['S3'], ['H3']])

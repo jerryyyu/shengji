@@ -141,6 +141,62 @@ def restore_with_ledger(packet):
     return rnd, ledger
 
 
+def compare_lead_continuations(packet, alternatives, *, tricks=2):
+    """Replay explicit leads with fixed heuristic replies on the captured deal.
+
+    Endpoints are engine states, not network values or causal strength labels.
+    This does not reconstruct sampled worlds, bot RNG, or a historical ballot.
+    Throws are committed by the engine and their forced components stay visible.
+    """
+    from shengji.ai.heuristic import HeuristicBot
+
+    if type(tricks) is not int or tricks not in (2, 3):
+        raise ValueError('continuation requires two or three completed tricks')
+    if len(alternatives) != 2 or any(not action for action in alternatives):
+        raise ValueError('exactly two nonempty alternative leads required')
+    if Counter(alternatives[0]) == Counter(alternatives[1]):
+        raise ValueError('alternative leads must differ')
+    root, _ = restore_with_ledger(packet)
+    if root.phase != 'play' or root.trick.plays:
+        raise ValueError('not a lead root')
+    record = packet.get('decision') or {}
+    admitted = (record.get('admitted')
+                if record.get('schema') == 'pv-search-decision-v1'
+                and record.get('work_complete') is True else None)
+    branches = []
+    for action in alternatives:
+        rnd, _ = restore_with_ledger(packet)
+        driver = HeuristicBot()
+        start = len(rnd.history)
+        trace = []
+        while rnd.phase == 'play' and len(rnd.history) - start < tricks:
+            seat = rnd.turn
+            attempted = list(action if not trace else driver.decide_play(rnd, seat))
+            rnd.play(seat, attempted)
+            trick = rnd.trick if rnd.trick and rnd.trick.plays else rnd.last_trick
+            accepted = list(trick.plays[-1].cards)
+            trace.append(dict(seat=seat, attempted=attempted, accepted=accepted,
+                              forced=Counter(attempted) != Counter(accepted)))
+            if len(trace) > 4 * tricks:
+                raise ValueError('continuation exceeded completed-trick bound')
+        completed = len(rnd.history) - start
+        branches.append(dict(
+            attempted=list(action), accepted=trace[0]['accepted'],
+            recorded_ballot_member=(any(Counter(action) == Counter(a) for a in admitted)
+                                    if isinstance(admitted, list) else None),
+            completed_tricks=completed, requested_horizon_reached=completed == tricks,
+            round_ended=rnd.phase == 'round_end',
+            attacker_points_delta=rnd.attacker_points - root.attacker_points,
+            forced_plays=sum(t['forced'] for t in trace), trace=trace,
+            endpoint=fingerprint(rnd)))
+    return dict(schema='paired-lead-continuation-dev-v1', tricks=tricks,
+                reply_policy='HeuristicBot', branches=branches,
+                limits=['Captured true deal only; no belief-world weighting.',
+                        'Recorded ballot membership only, unknown if capture incomplete.',
+                        'Fixed replies, not optimal play or gameplay strength.',
+                        'Engine endpoints require separate value evaluation.'])
+
+
 class LeadCapture:
     def __init__(self, rnd):
         if rnd.phase != 'play' or rnd.history or rnd.trick.plays:

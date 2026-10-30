@@ -771,6 +771,118 @@
       "host": "Jerrys-Mac-mini.local",
       "git_head": null,
       "note": "runPVS10r46: slice 10 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "traj-s1000000000-39b2b48fff30",
+      "purpose": "trajectory",
+      "seed0": 1000000000,
+      "clusters": 220,
+      "span": [
+        1000000000,
+        1000000220
+      ],
+      "created_at": "2026-10-28T22:15:39-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "ab515829d3bb86a22f3bd616198e24f3ad35668d",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=440 out=/Users/jerryyu/.cache/codex-y-100k/corpus"
+    },
+    {
+      "name": "traj-s1000010000-f35e24ed6789",
+      "purpose": "trajectory",
+      "seed0": 1000010000,
+      "clusters": 240,
+      "span": [
+        1000010000,
+        1000010240
+      ],
+      "created_at": "2026-10-29T02:15:54+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "ab515829d3bb86a22f3bd616198e24f3ad35668d",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=480 out=/root/codex-y-100k/corpus"
+    },
+    {
+      "name": "traj-s1000020000-e8f63498780b",
+      "purpose": "trajectory",
+      "seed0": 1000020000,
+      "clusters": 240,
+      "span": [
+        1000020000,
+        1000020240
+      ],
+      "created_at": "2026-10-29T02:15:54+0000",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "ab515829d3bb86a22f3bd616198e24f3ad35668d",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=480 out=/root/codex-y-100k/corpus"
+    },
+    {
+      "name": "traj-s1000100000-723bdd5c75c5",
+      "purpose": "trajectory",
+      "seed0": 1000100000,
+      "clusters": 3000,
+      "span": [
+        1000100000,
+        1000103000
+      ],
+      "created_at": "2026-10-28T23:43:08-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=6000 out=/Users/jerryyu/.cache/codex-y-100k-rounds-expand/corpus"
+    },
+    {
+      "name": "traj-s1000200000-83edb03f989b",
+      "purpose": "trajectory",
+      "seed0": 1000200000,
+      "clusters": 23150,
+      "span": [
+        1000200000,
+        1000223150
+      ],
+      "created_at": "2026-10-29T03:43:09+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=46300 out=/root/codex-y-100k-rounds-expand/corpus"
+    },
+    {
+      "name": "traj-s1000300000-eba782142346",
+      "purpose": "trajectory",
+      "seed0": 1000300000,
+      "clusters": 23150,
+      "span": [
+        1000300000,
+        1000323150
+      ],
+      "created_at": "2026-10-29T03:43:09+0000",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=46300 out=/root/codex-y-100k-rounds-expand/corpus"
+    },
+    {
+      "name": "traj-s1000500000-5b47ba321be6",
+      "purpose": "trajectory",
+      "seed0": 1000500000,
+      "clusters": 25000,
+      "span": [
+        1000500000,
+        1000525000
+      ],
+      "created_at": "2026-10-30T04:21:18+0000",
+      "host": "ubuntu-32gb-hel1-1",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=50000 out=/root/codex-y-additional-100k/corpus"
+    },
+    {
+      "name": "traj-s1000600000-fbc83e1a2f00",
+      "purpose": "trajectory",
+      "seed0": 1000600000,
+      "clusters": 25000,
+      "span": [
+        1000600000,
+        1000625000
+      ],
+      "created_at": "2026-10-30T04:21:20+0000",
+      "host": "ubuntu-32gb-hel1-2",
+      "git_head": "5bd53cedddc018cc7a6ee8eed7af5bf365e4c22c",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=50000 out=/root/codex-y-additional-100k/corpus"
     }
   ]
 }

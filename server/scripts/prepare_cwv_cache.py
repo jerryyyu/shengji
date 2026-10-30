@@ -14,6 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import numpy as np
+
 from shengji.rl.encode_versions import check_version  # noqa: E402
 from shengji.train.cwv_data import prepare_stores  # noqa: E402
 
@@ -36,17 +38,40 @@ def main(argv=None) -> int:
     parser.add_argument("--limit-clusters", type=positive)
     parser.add_argument("--witness-seed", type=int, default=1)
     parser.add_argument("--history", action="store_true")
+    parser.add_argument("--search-mean-sidecar", type=Path,
+                        help="build missing teacher-target sidecars here and validate their consumption")
     args = parser.parse_args(argv)
     version = check_version(args.encoder_version)
     prepared = prepare_stores(
         args.data, args.cache_dir, limit_clusters=args.limit_clusters,
         version=version, history=args.history, witness_seed=args.witness_seed,
         cache_workers=args.workers, resident_bytes=args.resident_bytes,
+        sidecar_dir=str(args.search_mean_sidecar) if args.search_mean_sidecar else None,
         progress=lambda message: print(message, file=sys.stderr, flush=True))
     store = prepared.block_store
+    sidecars = None
+    if args.search_mean_sidecar is not None:
+        from shengji.train.search_mean_sidecar import (
+            build_sidecar, check_sidecar_coverage, sidecar_path)
+        built = reused = 0
+        for shard, _path in store.entries:
+            if sidecar_path(args.search_mean_sidecar, shard.sha256).is_file():
+                reused += 1
+            else:
+                result = build_sidecar(shard.path, args.search_mean_sidecar)
+                if result["shard_sha256"] != shard.sha256:
+                    raise RuntimeError(f"source shard changed while building sidecar: {shard.path}")
+                built += 1
+        coverage = check_sidecar_coverage(
+            args.search_mean_sidecar, [(shard.store, shard.sha256) for shard, _ in store.entries])
+        sidecars = {"built": built, "reused": reused, "coverage": coverage,
+                    "points_target_rows": 0, "level_target_rows": 0}
     rows = 0
     for block in store.iter_blocks():
         rows += block.n
+        if sidecars is not None:
+            sidecars["points_target_rows"] += int(np.isfinite(block.search_mean_played).sum())
+            sidecars["level_target_rows"] += int(np.isfinite(block.search_level_played).sum())
     if rows != sum(store.rows()):
         raise RuntimeError("decoded cache rows disagree with the trainer's index")
     print(json.dumps({
@@ -56,6 +81,7 @@ def main(argv=None) -> int:
         "cache_dir": str(args.cache_dir.resolve()), "counts": prepared.counts,
         "consumer_rows": rows, "decoded_bytes": store.nbytes,
         "resident_bytes": args.resident_bytes, "workers": args.workers,
+        "search_mean_sidecars": sidecars,
     }, sort_keys=True))
     return 0
 

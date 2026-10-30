@@ -196,6 +196,94 @@ def _violations(bot, rnd, seat):
     return bad
 
 
+@pytest.mark.parametrize("finish", [False, True])
+def test_depth_support_record_matches_descent_not_leaf_completion(finish):
+    rnd = _contested_state()
+    attrs = dict(CWV_TRACE=True, CWV_SIMULATIONS=48, CWV_LEAF_FINISH_TRICK=finish)
+    traced = _bot(_StubEvaluator(lambda p, s: 0.25), **attrs)
+    picked = traced.decide_play(rnd, rnd.turn)
+    record = traced.last_decision_record
+    counts = [[0] * record["worlds"] for _ in record["candidates"]]
+    indices = {action_key(a): i for i, a in enumerate(record["candidates"])}
+    histogram = {}
+    for trace in traced.last_trace:
+        attempted = trace["moves"][0][2]
+        counts[indices[attempted]][trace["world"]] += 1
+        tricks = str(len(trace["leaf"].history) - len(rnd.history))
+        histogram[tricks] = histogram.get(tricks, 0) + 1
+    work = record["work"]
+    assert [r["visits"] for r in work["root_world_support"]] == counts
+    assert [action_key(r["cards"]) for r in work["root_world_support"]] == list(indices)
+    assert [sum(row) for row in counts] == record["visits"]
+    assert work["completed_tricks_histogram"] == histogram
+    assert sum(histogram.values()) == work["simulations"] == 48
+    assert all(sum(row[w] for row in counts) == 12 for w in range(record["worlds"]))
+    if finish:
+        assert any(len(t["boundary"].history) > len(t["leaf"].history)
+                   for t in traced.last_trace)
+    plain = _bot(_StubEvaluator(lambda p, s: 0.25), **{**attrs, "CWV_TRACE": False})
+    assert plain.decide_play(rnd, rnd.turn) == picked
+    assert plain.last_decision_record["work"]["root_world_support"] == work["root_world_support"]
+    assert plain.last_decision_record["work"]["completed_tricks_histogram"] == histogram
+
+
+def test_two_trick_control_fixture_exposes_pair_ruff_cost():
+    """Artificial full-information witness, not a served-policy strength test.
+
+    Drawing one trump breaks the opponent's trump pair before cashing hearts.
+    Both first tricks give attackers zero points; the second exposes the cost.
+    """
+    from collections import Counter
+
+    from game_state_helpers import pair_ruff_control_state
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.engine.cards import make_deck
+
+    hands = pair_ruff_control_state().hands
+    assert not (Counter(c for hand in hands for c in hand) - Counter(make_deck()))
+    outcomes = {}
+    for lead in (("SA",), ("HA", "HA")):
+        rnd = pair_ruff_control_state()
+        assert min(map(len, rnd.hands)) == 8
+        ballot = {action_key(a) for a in MCBot(seed=0)._candidates(rnd, 0)}
+        assert {("SA",), ("HA", "HA")} <= ballot
+        reply = HeuristicBot()
+        boundaries = []
+        first_leaf = None
+        action = list(lead)
+        while rnd.phase == "play":
+            seat = rnd.turn
+            before = len(rnd.history)
+            rnd.play(seat, action)
+            # No refused throw may explain the contrast.
+            assert CWVPuctBot.accepted_play(rnd, seat) == action_key(action)
+            if len(rnd.history) != before:
+                boundaries.append((rnd.attacker_points, rnd.history[-1].winner,
+                                   copy.deepcopy(rnd.hands)))
+                if len(boundaries) == 1:
+                    first_leaf = cwv_puct.leaf_copy(rnd)
+            if rnd.phase == "play":
+                action = reply.decide_play(rnd, rnd.turn)
+        outcomes[lead] = boundaries, rnd.attacker_points
+        # Exercise the tree's real continuation consumer on the same leaf.
+        bot = _bot(_StubEvaluator(lambda p, s: 0), CWV_LEAF="playout",
+                   EXACT_ENDGAME=False)
+        leaf_hands = copy.deepcopy(first_leaf.hands)
+        value, exact = bot._playout(first_leaf, 0, None)
+        assert not exact
+        assert value == cwv_puct.playout_level(rnd.attacker_points, False)
+        assert first_leaf.hands == leaf_hands and len(first_leaf.history) == 1
+
+    draw, draw_final = outcomes[("SA",)]
+    cash, cash_final = outcomes[("HA", "HA")]
+    assert draw[0][0] == cash[0][0] == 0
+    assert draw[0][2][3].count("S10") == 1
+    assert cash[0][2][3].count("S10") == 2
+    assert (draw[1][0], draw[1][1]) == (0, 0)
+    assert (cash[1][0], cash[1][1]) == (50, 3)
+    assert (draw_final, cash_final) == (20, 55)
+
+
 def test_actions_illegal_in_the_current_world_are_never_selected(monkeypatch):
     rnd = _contested_state()
     seat = rnd.turn
@@ -357,6 +445,9 @@ def test_full_and_forced_throw_land_in_different_children(monkeypatch):
     assert accepted == outcomes and len(accepted) >= 2
     # one edge carries the attempted action's statistics ...
     assert root.edges[throw].N == len(worlds) * 2
+    support = bot.last_decision_record["work"]["root_world_support"]
+    row, = [r for r in support if action_key(r["cards"]) == throw]
+    assert row["visits"] == [2] * len(worlds)
     # ... and every accepted outcome is its OWN child state, each visited
     assert set(root.children) == outcomes
     assert sum(root.children[a].N for a in outcomes) == len(worlds) * 2

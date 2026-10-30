@@ -75,5 +75,10 @@ def test_puct_arm_plays_one_cluster_through_the_deadline_worker(puct_arm, tmp_pa
         assert d["reason"] in ("puct_argmax_visits", "candidate0_best",
                                "selection_underfilled")
         assert d["deadline"]["timed_out"] is False
+        support = d["tree_support"]
+        rows = support["root_world_support"]
+        assert rows and all(len(r["visits"]) == 2 for r in rows)
+        assert sum(sum(r["visits"]) for r in rows) == 4
+        assert sum(support["completed_tricks_histogram"].values()) == 4
     summary = json.loads((out / "summary.json").read_text())
     assert summary["arm"] == "policy" and puct_arm in summary["arm_description"]

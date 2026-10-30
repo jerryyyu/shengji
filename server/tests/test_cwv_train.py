@@ -585,3 +585,24 @@ def test_a_public_head_the_run_cannot_serve_is_refused_before_training(store_dir
                         encoder_version=1, **THIRDS)
     assert not any(line.startswith("epoch ") for line in lines), "refused before any epoch"
     assert not (tmp_path / "v1" / "best.pt").exists()
+
+
+def test_cache_only_cli_builds_then_reuses_trainer_compatible_caches(store_dir, tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_cwv_cache.py"
+    cache = tmp_path / "cache"
+    command = [sys.executable, str(script), "--data", str(store_dir),
+               "--cache-dir", str(cache), "--encoder-version", "2", "--workers", "1"]
+    first = json.loads(subprocess.check_output(command, text=True))
+    files = {path: path.stat().st_mtime_ns for path in cache.rglob("*") if path.is_file()}
+    second = json.loads(subprocess.check_output(command, text=True))
+    assert first["encoder_version"] == second["encoder_version"] == 2
+    assert first["counts"]["cache_rebuilt"] == first["counts"]["shards"] > 0
+    assert second["counts"]["cache_reused"] == first["counts"]["shards"]
+    assert second["counts"]["cache_rebuilt"] == 0
+    assert first["consumer_rows"] == second["consumer_rows"] > 0
+    assert first["resident_bytes"] == second["resident_bytes"] == 64 * 1024 * 1024
+    assert files == {path: path.stat().st_mtime_ns for path in files}

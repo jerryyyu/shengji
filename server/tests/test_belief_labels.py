@@ -438,3 +438,29 @@ def test_split_fraction_is_salted_and_deterministic():
     assert 0.0 <= bl.split_fraction(key) < 1.0
     assert bl.split_of(key, 0.0, 1.0) == "test"
     assert bl.split_of(key, 0.0, 0.0) == "train"
+
+
+def test_completed_resume_preserves_existing_history_consumer(tmp_path, monkeypatch, cluster):
+    from shengji.train import belief_history as history, belief_seq
+
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    out = tmp_path / "extract"
+    bl.extract([str(store)], str(out), **kwargs)
+    history.extract([str(out)], str(store.parent), workers=1, log=lambda *a, **k: None)
+    manifest_path = out / "manifest.json"
+    manifest_bytes = manifest_path.read_bytes()
+    manifest_mtime = manifest_path.stat().st_mtime_ns
+    expected = {}
+    for split in ("train", "calib", "test"):
+        for entry in belief_seq.extract_entries([str(out)], split):
+            expected[entry["path"]] = belief_seq.load_part(
+                entry, belief_seq.ROW_KEYS, belief_seq._Verified())
+
+    bl.extract([str(store)], str(out), resume=True, **kwargs)
+    for split in ("train", "calib", "test"):
+        for entry in belief_seq.extract_entries([str(out)], split):
+            actual = belief_seq.load_part(entry, belief_seq.ROW_KEYS, belief_seq._Verified())
+            for key in belief_seq.ROW_KEYS:
+                np.testing.assert_array_equal(actual[key], expected[entry["path"]][key])
+    assert manifest_path.read_bytes() == manifest_bytes
+    assert manifest_path.stat().st_mtime_ns == manifest_mtime

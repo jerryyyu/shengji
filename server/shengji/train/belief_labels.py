@@ -741,6 +741,7 @@ def extract(stores: Sequence[str], out: str, *, cluster_stride: int, cluster_off
     }
     run_recipe_sha = _canonical_sha(run_recipe)
     old_manifest_path = out_dir / "manifest.json"
+    old_manifest = None
     if resume and old_manifest_path.exists():
         try:
             old_manifest = json.loads(old_manifest_path.read_text())
@@ -825,6 +826,12 @@ def extract(stores: Sequence[str], out: str, *, cluster_stride: int, cluster_off
         raise BeliefLabelError(f"extraction failed for {len(manifest['failed_clusters'])} clusters; "
                                "see manifest failed_clusters")
     manifest["status"] = "complete"
+    if old_manifest is not None and all(cached for _, cached in prepared):
+        previous = {k: v for k, v in old_manifest.items() if k != "seconds"}
+        current = {k: v for k, v in manifest.items() if k != "seconds"}
+        if _canonical_sha(previous) == _canonical_sha(current):
+            # Downstream history binds these bytes; verification does not change the dataset.
+            return old_manifest
     _atomic_json(out_dir / "manifest.json", manifest)
     return manifest
 

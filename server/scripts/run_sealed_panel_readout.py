@@ -67,6 +67,10 @@ def verify_bundle(manifest_path, digest):
                     for k in os.environ), 'unrecorded SHENGJI environment')
     files = manifest['source_files']
     require(type(files) is dict and bool(files), 'empty source inventory')
+    # Namespace packages can merge the frozen tree with ambient search paths.
+    # Refuse them before importing project code or reserving the one-shot claim.
+    for package in ('scripts', 'shengji'):
+        require(package + '/__init__.py' in files, 'missing pinned package marker: ' + package)
     stamps = {}
     for relative, expected in files.items():
         relative = Path(relative)

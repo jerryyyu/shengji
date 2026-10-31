@@ -50,6 +50,7 @@ import hashlib
 import io
 import json
 import math
+import os
 import random
 import re
 import sys
@@ -300,40 +301,98 @@ def write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
             "target_kinds": {name: int((kinds == k).sum()) for k, name in TARGET_KINDS.items()}}
 
 
-_OWN_FILE = re.compile(r"chunk-\d{5}\.npz|summary\.json")
+MANIFEST_TMP = "manifest.json.tmp"
+_OWN_FILE = re.compile(r"chunk-\d{5}\.npz|summary\.json|manifest\.json\.tmp")
+#: a combined output's own entries: symlinks to partition chunks, plus the files above
+_OWN_LINK = re.compile(r"p\d{4}-chunk-\d{5}\.npz")
 
 
-def _check_out(out: Path, roots: Sequence[Path], *, replace_incomplete: bool = False) -> Path:
-    out = out.resolve()
+def _check_out(out: Path, roots: Sequence[Path], *, replace_incomplete: bool = False,
+               what: str = "the input store", links: bool = False) -> Path:
+    """The canonical output path, refused when it overlaps ``roots`` or already
+    exists (unless ``replace_incomplete`` removes an interrupted build).  A
+    symlink AT the given path is refused before anything is resolved or
+    removed: recovery must never act on a link's target."""
+    given = Path(out)
+    if given.is_symlink():
+        raise ServedPolicyRowsError(f"{given}: is a symlink; the output path must be a real directory")
+    out = given.resolve()
     for root in roots:
         root = root.resolve()
         if root == out or root in out.parents or out in root.parents:
-            raise ServedPolicyRowsError(f"{out}: overlaps the input store {root}")
+            raise ServedPolicyRowsError(f"{out}: overlaps {what} {root}")
     if out.exists() or out.is_symlink():
         if not replace_incomplete:
-            raise ServedPolicyRowsError(f"{out}: already exists; the producer writes a fresh directory only")
-        _remove_incomplete(out)
+            raise ServedPolicyRowsError(f"{out}: already exists; a fresh directory only")
+        _remove_incomplete(out, links=links)
     return out
 
 
-def _remove_incomplete(out: Path) -> None:
+def _manifest_state(directory: Path) -> str:
+    """``"absent"``, ``"complete"`` (parses as a JSON object with chunks) or
+    ``"unreadable"`` for ``directory/manifest.json``."""
+    path = directory / "manifest.json"
+    if not path.exists() and not path.is_symlink():
+        return "absent"
+    try:
+        man = json.loads(path.read_text())
+    except (OSError, UnicodeDecodeError, ValueError):
+        return "unreadable"
+    return "complete" if isinstance(man, dict) and isinstance(man.get("chunks"), list) else "unreadable"
+
+
+def _remove_incomplete(out: Path, *, links: bool = False) -> None:
     """Remove an interrupted build: a real directory with no manifest holding
-    only this producer's own file names.  A directory with a manifest is
-    complete and is never rewritten; anything else is refused untouched."""
+    only this producer's own names (``links``: also a combined output's chunk
+    symlinks, which are unlinked, never followed).  A directory with a manifest
+    is never rewritten, and one whose manifest cannot be read is refused for
+    inspection, not deleted; anything else is refused untouched."""
     if out.is_symlink() or not out.is_dir():
         raise ServedPolicyRowsError(f"{out}: exists and is not a directory this producer wrote")
-    if (out / "manifest.json").exists():
+    state = _manifest_state(out)
+    if state == "complete":
         raise ServedPolicyRowsError(f"{out}: is a complete output (it has a manifest); completed output "
                                     "is never rewritten")
+    if state == "unreadable":
+        raise ServedPolicyRowsError(f"{out}: manifest.json exists but is not a readable manifest; "
+                                    "inspect it by hand, it is not removed automatically")
     entries = list(out.iterdir())
-    foreign = [e.name for e in entries
-               if not _OWN_FILE.fullmatch(e.name) or e.is_symlink() or not e.is_file()]
+
+    def own(e: Path) -> bool:
+        if links and _OWN_LINK.fullmatch(e.name):
+            return e.is_symlink()
+        return bool(_OWN_FILE.fullmatch(e.name)) and not e.is_symlink() and e.is_file()
+
+    foreign = [e.name for e in entries if not own(e)]
     if foreign:
         raise ServedPolicyRowsError(f"{out}: holds {sorted(foreign)[:3]} that this producer does not "
                                     "write; refusing to remove it")
     for e in entries:
         e.unlink()
     out.rmdir()
+
+
+def _publish_manifest(out_dir: Path, manifest: Mapping[str, Any]) -> None:
+    """Write ``manifest.json`` atomically: the bytes go to an owned temporary
+    name, are fsynced, and replace into place, so a reader sees either no
+    manifest or the whole one.  The directory is fsynced where the platform
+    allows it."""
+    tmp = out_dir / MANIFEST_TMP
+    with open(tmp, "x") as fh:
+        fh.write(json.dumps(manifest, indent=1) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, out_dir / "manifest.json")
+    try:
+        fd = os.open(out_dir, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def parse_partition(text: str) -> tuple[int, int]:
@@ -359,6 +418,43 @@ def _shard_list_digest(shards: Sequence[ShardRef]) -> str:
     hashes, not absolute paths), so partitions built on different hosts from
     copies of the same stores agree."""
     return hashlib.sha256("\n".join(f"{s.label}\t{s.sha256}" for s in shards).encode()).hexdigest()
+
+
+def _discover_listed(corpus: str | Path):
+    """A partition's view of a store: a shard store with a trajectory manifest
+    is listed from the manifest's stated hashes WITHOUT reading the shard
+    bytes (``_verify_shards`` then hashes only the partition's own shards);
+    every other layout is ``discover_store``, which hashes what it lists.
+    The listing is the same Store ``discover_store`` returns, so the whole
+    build's shard-list identity is unchanged, and since every shard belongs to
+    exactly one partition, a combined build has had every shard verified."""
+    from .data import (TRAJECTORY_MANIFEST_SCHEMA, Store, TrainDataError, _manifest_entry, discover_store)
+    root = Path(corpus).resolve()
+    mpath = root / "manifest.json"
+    if not ((root / "shards").is_dir() and mpath.is_file()):
+        return discover_store(root)
+    manifest = json.loads(mpath.read_text(encoding="utf-8"))
+    if manifest.get("schema") != TRAJECTORY_MANIFEST_SCHEMA:
+        return discover_store(root)
+    store = Store(root=str(root), layout="shard-store")
+    store.manifests.append(_manifest_entry(mpath, manifest["schema"]))
+    for shard in sorted(manifest["shards"], key=lambda s: int(s["cluster"])):
+        path = root / shard["path"]
+        if not path.is_file():
+            raise TrainDataError(f"{path}: listed by the manifest but missing")
+        store.shards.append(ShardRef(path=str(path), label=shard["path"], sha256=shard["sha256"],
+                                     records=int(shard["records"]), cluster=int(shard["cluster"]),
+                                     store=str(root)))
+    return store
+
+
+def _verify_shards(shards: Sequence[ShardRef]) -> None:
+    from ..harvest.common import sha256_file
+    for sh in shards:
+        digest = sha256_file(sh.path)
+        if digest != sh.sha256:
+            raise ServedPolicyRowsError(f"{sh.path}: sha256 drift against the store manifest "
+                                        f"({digest[:12]} != {sh.sha256[:12]})")
 
 
 def _read_deal_keys(path: str | Path) -> tuple[frozenset[str], str]:
@@ -410,7 +506,8 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     keys_sha = None
     if exclude_deal_keys is not None:
         excluded_keys, keys_sha = _read_deal_keys(exclude_deal_keys)
-    stores = [discover_store(c) for c in corpora]
+    scoped = partition is not None
+    stores = [_discover_listed(c) if scoped else discover_store(c) for c in corpora]
     shards = [sh for s in stores for sh in s.shards]
     if len({sh.path for sh in shards}) != len(shards):
         raise ServedPolicyRowsError("a shard is listed by two input stores")
@@ -421,9 +518,11 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
         assigned = shards[index::count]
         if not assigned:
             raise ServedPolicyRowsError(f"partition {index}/{count} has no shard ({len(shards)} in all)")
+        _verify_shards(assigned)
         part_info = {"index": index, "count": count, "all_shards": len(shards),
                      "all_shards_digest": _shard_list_digest(shards),
-                     "shards": len(assigned), "shards_digest": _shard_list_digest(assigned)}
+                     "shards": len(assigned), "shards_digest": _shard_list_digest(assigned),
+                     "shard_bytes_verified": "assigned"}
         shards = assigned
     paths = [sh.path for sh in shards]
     out_dir = _check_out(Path(out), [Path(s.root) for s in stores], replace_incomplete=replace_incomplete)
@@ -522,7 +621,7 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
                 "producer": {k: v for k, v in summary.items() if k not in ("schema", "out")}}
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=1, sort_keys=True) + "\n")
     # the manifest last: a directory without one is refused by the stream
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
+    _publish_manifest(out_dir, manifest)
     return summary
 
 
@@ -547,14 +646,21 @@ def _shared_view(summary: Mapping[str, Any]) -> dict:
 def _read_partition(part: Path) -> tuple[dict, dict]:
     """A complete partition's summary and manifest, every chunk hash-checked."""
     man_path, sum_path = part / "manifest.json", part / "summary.json"
-    if not man_path.is_file():
+    state = _manifest_state(part)
+    if state == "absent":
         raise ServedPolicyRowsError(f"{part}: no manifest.json; an interrupted partition is rebuilt "
                                     "(--replace-incomplete), never combined")
+    if state == "unreadable":
+        raise ServedPolicyRowsError(f"{part}: manifest.json is not a readable manifest; inspect it by hand")
     if not sum_path.is_file():
         raise ServedPolicyRowsError(f"{part}: no summary.json")
-    summary = json.loads(sum_path.read_text())
+    try:
+        summary = json.loads(sum_path.read_text())
+    except ValueError as exc:
+        raise ServedPolicyRowsError(f"{part}: summary.json is not readable JSON") from exc
     man = json.loads(man_path.read_text())
-    if summary.get("schema") != SUMMARY_SCHEMA or not isinstance(summary.get("partition"), dict):
+    if (not isinstance(summary, dict) or summary.get("schema") != SUMMARY_SCHEMA
+            or not isinstance(summary.get("partition"), dict)):
         raise ServedPolicyRowsError(f"{part}: not a partition of served_policy_rows (no partition block)")
     if (man.get("schema") != CHUNK_SCHEMA or man.get("rows") != summary["rows"]
             or len(man.get("chunks") or []) != summary["chunks"]
@@ -573,25 +679,23 @@ def _read_partition(part: Path) -> tuple[dict, dict]:
     return summary, man
 
 
-def combine(out: str | Path, parts: Sequence[str | Path]) -> dict:
+def combine(out: str | Path, parts: Sequence[str | Path], *, replace_incomplete: bool = False) -> dict:
     """Join the complete partitions ``parts`` (all N of one build, any order)
     into the new directory ``out``: a composed chunk manifest that
     ``PolicyRowsStream`` (``train_cwv --policy-rows out``) streams, whose chunks
     are symlinks to the partitions' verified chunks, and a summary whose counts
     are the partitions' sums (deals and excluded deals as unions).  Returns the
-    combined summary (also ``out/summary.json``)."""
+    combined summary (also ``out/summary.json``).  ``replace_incomplete``
+    first removes an interrupted combine at ``out`` (no manifest; its chunk
+    links are unlinked, the partitions they point at are untouched)."""
     from .cwv_data import VALUE_UNITS_SCALE
     if not parts:
         raise ServedPolicyRowsError("no partition")
     dirs = [Path(p).resolve() for p in parts]
     if len(set(dirs)) != len(dirs):
         raise ServedPolicyRowsError("a partition is listed twice")
-    out_dir = Path(out).resolve()
-    for d in dirs:
-        if d == out_dir or d in out_dir.parents or out_dir in d.parents:
-            raise ServedPolicyRowsError(f"{out_dir}: overlaps the partition {d}")
-    if out_dir.exists() or out_dir.is_symlink():
-        raise ServedPolicyRowsError(f"{out_dir}: already exists; combine writes a fresh directory only")
+    out_dir = _check_out(Path(out), dirs, replace_incomplete=replace_incomplete, what="the partition",
+                         links=True)
     read = sorted(((d, *_read_partition(d)) for d in dirs), key=lambda t: t[1]["partition"]["index"])
     first = _shared_view(read[0][1])
     for d, s, _m in read[1:]:
@@ -665,8 +769,7 @@ def combine(out: str | Path, parts: Sequence[str | Path]) -> dict:
         (out_dir / entry["file"]).symlink_to(target)
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=1, sort_keys=True) + "\n")
     # the manifest last: a directory without one is refused by the stream
-    with open(out_dir / "manifest.json", "x") as fh:
-        fh.write(json.dumps(manifest, indent=1) + "\n")
+    _publish_manifest(out_dir, manifest)
     return summary
 
 
@@ -675,6 +778,8 @@ def build_combine_parser() -> argparse.ArgumentParser:
                                 description="join all N complete partitions of one build")
     p.add_argument("--out", required=True, help="the new combined directory (must not exist)")
     p.add_argument("parts", nargs="+", help="the partition output directories")
+    p.add_argument("--replace-incomplete", action="store_true",
+                   help="first remove an interrupted combine at --out (no manifest; links only)")
     return p
 
 
@@ -707,7 +812,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if argv[:1] == ["combine"]:
             c = build_combine_parser().parse_args(argv[1:])
-            summary = combine(c.out, c.parts)
+            summary = combine(c.out, c.parts, replace_incomplete=c.replace_incomplete)
             print(json.dumps({k: v for k, v in summary.items() if k != "partitions"}, sort_keys=True))
             return 0
         a = build_parser().parse_args(argv)

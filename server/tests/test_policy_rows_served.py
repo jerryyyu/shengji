@@ -552,3 +552,125 @@ def test_the_cli_builds_a_partition_combines_and_benchmarks(split_store, tmp_pat
     printed = json.loads(capsys.readouterr().out)
     assert printed["partition_count"] == 2 and printed["rows"] == PolicyRowsStream(tmp_path / "all", version=2).n
     assert spr.main(["combine", "--out", str(tmp_path / "all"), str(tmp_path / "p0"), str(tmp_path / "p1")]) == 2
+
+
+def test_recovery_refuses_an_output_symlink_and_leaves_its_target(split_store, tmp_path):
+    target = tmp_path / "unrelated"
+    target.mkdir()
+    (target / "chunk-00000.npz").write_bytes(b"not ours")
+    link = tmp_path / "output"
+    link.symlink_to(target, target_is_directory=True)
+    base = ["--data", str(split_store), "--encoder-version", "2", "--out", str(link), "--partition", "0/2"]
+    assert spr.main([*base, "--replace-incomplete"]) == 2
+    assert spr.main(base) == 2
+    assert link.is_symlink() and (target / "chunk-00000.npz").read_bytes() == b"not ours"
+    with pytest.raises(spr.ServedPolicyRowsError, match="symlink"):
+        spr.produce(link, [split_store], version=2, partition=(0, 2), replace_incomplete=True)
+    for i in range(2):
+        spr.produce(tmp_path / f"p{i}", [split_store], version=2, partition=(i, 2))
+    with pytest.raises(spr.ServedPolicyRowsError, match="symlink"):
+        spr.combine(link, [tmp_path / "p0", tmp_path / "p1"], replace_incomplete=True)
+    assert link.is_symlink() and sorted(p.name for p in target.iterdir()) == ["chunk-00000.npz"]
+
+
+def _tree_bytes(d: Path) -> dict[str, bytes]:
+    """Every file's bytes; the summary's own ``out`` path is the one field that names the directory."""
+    out = {p.name: p.read_bytes() for p in sorted(d.iterdir())}
+    if "summary.json" in out:
+        summary = json.loads(out["summary.json"])
+        summary.pop("out")
+        out["summary.json"] = json.dumps(summary, sort_keys=True).encode()
+    return out
+
+
+def test_an_interrupted_manifest_publication_is_never_taken_as_complete(split_store, tmp_path, monkeypatch):
+    kw = dict(version=2, chunk_rows=6)
+    for i in range(2):
+        spr.produce(tmp_path / f"ref{i}", [split_store], partition=(i, 2), **kw)
+    spr.produce(tmp_path / "p0", [split_store], partition=(0, 2), **kw)
+    p0_bytes = _tree_bytes(tmp_path / "p0")
+
+    def no_replace(*_a, **_k):
+        raise OSError("interrupted before the manifest replaced into place")
+
+    # the producer dies between the temporary manifest's fsync and its replace
+    with monkeypatch.context() as m:
+        m.setattr(spr.os, "replace", no_replace)
+        with pytest.raises(OSError, match="interrupted"):
+            spr.produce(tmp_path / "p1", [split_store], partition=(1, 2), **kw)
+    names = sorted(p.name for p in (tmp_path / "p1").iterdir())
+    assert spr.MANIFEST_TMP in names and "manifest.json" not in names
+    with pytest.raises(spr.ServedPolicyRowsError, match="no manifest"):
+        spr.combine(tmp_path / "c", [tmp_path / "p0", tmp_path / "p1"])
+    spr.produce(tmp_path / "p1", [split_store], partition=(1, 2), replace_incomplete=True, **kw)
+    assert _tree_bytes(tmp_path / "p1") == _tree_bytes(tmp_path / "ref1")
+
+    # a truncated temporary manifest left by a crash mid-write is removable too
+    (tmp_path / "p1" / "manifest.json").unlink()
+    (tmp_path / "p1" / spr.MANIFEST_TMP).write_text('{"schema":')
+    spr.produce(tmp_path / "p1", [split_store], partition=(1, 2), replace_incomplete=True, **kw)
+    assert _tree_bytes(tmp_path / "p1") == _tree_bytes(tmp_path / "ref1")
+
+    # a truncated FINAL manifest is refused, and kept for inspection
+    bad = tmp_path / "bad1"
+    bad.mkdir()
+    for name, data in _tree_bytes(tmp_path / "ref1").items():
+        (bad / name).write_bytes(data)
+    (bad / "manifest.json").write_text('{"schema":')
+    with pytest.raises(spr.ServedPolicyRowsError, match="not a readable manifest"):
+        spr.produce(bad, [split_store], partition=(1, 2), replace_incomplete=True, **kw)
+    with pytest.raises(spr.ServedPolicyRowsError, match="not a readable manifest"):
+        spr.combine(tmp_path / "c", [tmp_path / "p0", bad])
+    assert (bad / "manifest.json").read_text() == '{"schema":' and not (tmp_path / "c").exists()
+
+    # combine dies the same way: its partitions are untouched, the rerun replaces only its links
+    with monkeypatch.context() as m:
+        m.setattr(spr.os, "replace", no_replace)
+        with pytest.raises(OSError, match="interrupted"):
+            spr.combine(tmp_path / "c", [tmp_path / "p0", tmp_path / "p1"])
+    assert not (tmp_path / "c" / "manifest.json").exists() and (tmp_path / "c" / spr.MANIFEST_TMP).exists()
+    with pytest.raises(spr.ServedPolicyRowsError, match="already exists"):
+        spr.combine(tmp_path / "c", [tmp_path / "p0", tmp_path / "p1"])
+    (tmp_path / "c" / spr.MANIFEST_TMP).write_text('{"schema":')
+    spr.combine(tmp_path / "c", [tmp_path / "p0", tmp_path / "p1"], replace_incomplete=True)
+    assert _tree_bytes(tmp_path / "p0") == p0_bytes
+    assert _tree_bytes(tmp_path / "p1") == _tree_bytes(tmp_path / "ref1")
+    rows = PolicyRowsStream(tmp_path / "c", version=2).n
+    with pytest.raises(spr.ServedPolicyRowsError, match="never rewritten"):
+        spr.combine(tmp_path / "c", [tmp_path / "p0", tmp_path / "p1"], replace_incomplete=True)
+    (tmp_path / "c2").mkdir()
+    (tmp_path / "c2" / "manifest.json").write_text('{"schema":')
+    with pytest.raises(spr.ServedPolicyRowsError, match="not a readable manifest"):
+        spr.combine(tmp_path / "c2", [tmp_path / "p0", tmp_path / "p1"], replace_incomplete=True)
+    assert (tmp_path / "c2" / "manifest.json").exists()
+    assert rows == sum(json.loads((tmp_path / f"p{i}" / "summary.json").read_text())["rows"] for i in range(2))
+
+
+def test_a_partition_hashes_only_its_own_shards_and_still_combines_to_the_single_build(pv_store, tmp_path):
+    import random
+    import shutil
+    from shengji.train.data import TrainDataError, discover_store
+    store = tmp_path / "store"
+    shutil.copytree(pv_store, store)
+    assert (store / "manifest.json").is_file() and (store / "shards").is_dir()
+    kw = dict(version=2, chunk_rows=40)
+    single = spr.produce(tmp_path / "single", [store], **kw)
+    parts = [tmp_path / f"p{i}" for i in range(2)]
+    sums = [spr.produce(p, [store], partition=(i, 2), **kw) for i, p in enumerate(parts)]
+    assert all(s["partition"]["shard_bytes_verified"] == "assigned" for s in sums)
+    combined = spr.combine(tmp_path / "all", parts)
+    for key in (*_SAME, "stores"):
+        assert combined[key] == single[key], key
+    assert _canonical_rows(tmp_path / "all") == _canonical_rows(tmp_path / "single")
+    # a drifted shard of partition 1 stops partition 1 only: partition 0 never reads its bytes
+    listed = spr._discover_listed(store).shards
+    random.Random(1).shuffle(listed)
+    Path(listed[1].path).chmod(0o644)
+    with open(listed[1].path, "a") as fh:
+        fh.write("\n")
+    with pytest.raises(spr.ServedPolicyRowsError, match="sha256 drift"):
+        spr.produce(tmp_path / "q1", [store], partition=(1, 2), **kw)
+    assert spr.produce(tmp_path / "q0", [store], partition=(0, 2), **kw)["partition"]["all_shards_digest"] \
+        == sums[0]["partition"]["all_shards_digest"]
+    with pytest.raises(TrainDataError, match="sha256 drift"):
+        discover_store(store)                       # the whole-store build still hashes everything

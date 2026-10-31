@@ -227,3 +227,42 @@ def test_the_model_reads_only_plays_before_the_row():
         earlier = {k: v.copy() for k, v in b.items()}
         earlier["tok_cards"][1, 2] = 1 - earlier["tok_cards"][1, 2]
         assert not np.allclose(model(bs.to_torch(earlier)).numpy()[3], base[3], atol=1e-6)
+
+@pytest.mark.parametrize("mode", ["close", "complete", "error"])
+def test_stream_releases_producer_on_close_completion_or_error(monkeypatch, mode):
+    import threading
+    from shengji.train import belief_seq as bs
+
+    threads = []
+    original_thread = threading.Thread
+
+    def track_thread(*args, **kwargs):
+        thread = original_thread(*args, **kwargs)
+        threads.append(thread)
+        return thread
+
+    monkeypatch.setattr(bs.threading, "Thread", track_thread)
+    monkeypatch.setattr(bs, "load_part", lambda *args, **kwargs: {})
+    monkeypatch.setattr(bs, "concat_parts", lambda parts: {})
+    monkeypatch.setattr(bs, "round_batches",
+                        lambda *args: ((i, i) for i in range(20)))
+
+    def make_batch(part, round_ids, rows, no_history):
+        if mode == "error" and rows == 2:
+            raise ValueError("synthetic loader error")
+        return {"row": rows}
+
+    monkeypatch.setattr(bs, "make_batch", make_batch)
+    stream = bs.Stream([{"rows": 20}], verified=bs._Verified(), threads=1,
+                       buffer_chunks=1, rounds_per_batch=1, row_frac=1,
+                       no_history=False, permute=False)
+    batches = stream.batches(1, 0, prefetch=1)
+    assert next(batches) == (0, {"row": 0})
+    if mode == "close":
+        batches.close()
+    elif mode == "error":
+        with pytest.raises(ValueError, match="synthetic loader error"):
+            list(batches)
+    else:
+        assert [batch["row"] for _, batch in batches] == list(range(1, 20))
+    assert threads and all(not thread.is_alive() for thread in threads)

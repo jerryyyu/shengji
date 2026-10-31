@@ -59,7 +59,7 @@ import os
 import sys
 import time
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
@@ -75,6 +75,8 @@ from ..rl.encode_versions import OBS_DIM_BY_VERSION, encode_obs
 from .data import deal_key
 
 SCHEMA = "shengji-belief-labels-v1"
+TASK_RECEIPT_SCHEMA = "shengji-belief-label-task-receipt-v1"
+EXTRACT_RECIPE_SCHEMA = "shengji-belief-label-extract-recipe-v1"
 SPLIT_SALT = "s17-belief-split-v1"
 #: seat-relative receivers of a hidden copy
 RECEIVERS = ("next", "partner", "prev", "kitty")
@@ -502,9 +504,157 @@ ARRAY_KEYS = ("X", "Y", "M", "sizes", "trick", "role", "n_refusals", "round_inde
               "decision", "seed", "deal", "store", "cluster", "S", "S_n")
 
 
+def _canonical_sha(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                       default=list).encode()).hexdigest()
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _source_identity(path: Path, manifest_cache: dict[Path, dict | None], *,
+                     verify_manifest_bytes: bool) -> dict[str, Any]:
+    """Use a completed trajectory manifest's shard digest before reading shard bytes."""
+    path = path.resolve()
+    root = path.parent.parent if path.parent.name == "shards" else None
+    manifest_path = root / "manifest.json" if root is not None else None
+    manifest_info = None
+    if manifest_path is not None:
+        if manifest_path not in manifest_cache:
+            try:
+                candidate = json.loads(manifest_path.read_text())
+            except (FileNotFoundError, OSError, ValueError):
+                candidate = None
+            valid = (isinstance(candidate, dict)
+                     and candidate.get("schema") == "shengji-trajectory-manifest-v1")
+            entries = {}
+            if valid:
+                for entry in candidate.get("shards", []):
+                    listed = (root / str(entry.get("path"))).resolve()
+                    entries[str(listed)] = entry
+                manifest_cache[manifest_path] = {
+                    "entries": entries, "sha256": _file_sha256(manifest_path)}
+            else:
+                manifest_cache[manifest_path] = None
+        manifest_info = manifest_cache[manifest_path]
+    if manifest_info is not None:
+        entry = manifest_info["entries"].get(str(path))
+        stated = entry.get("sha256") if entry else None
+        if (isinstance(stated, str) and len(stated) == 64
+                and all(c in "0123456789abcdef" for c in stated.lower())):
+            if not path.is_file():
+                raise BeliefLabelError(f"missing source shard {path}")
+            stat = path.stat()
+            if entry.get("bytes") is not None and int(entry["bytes"]) != stat.st_size:
+                raise BeliefLabelError(f"{path}: size drift against completed store manifest")
+            if verify_manifest_bytes and _file_sha256(path) != stated:
+                raise BeliefLabelError(f"{path}: sha256 drift against completed store manifest")
+            return {"path": str(path), "sha256": stated, "bytes": stat.st_size,
+                    "mtime_ns": stat.st_mtime_ns, "inode": stat.st_ino,
+                    "manifest": str(manifest_path),
+                    "manifest_sha256": manifest_info["sha256"], "via": "manifest"}
+    if not path.is_file():
+        raise BeliefLabelError(f"missing source shard {path}")
+    return {"path": str(path), "sha256": _file_sha256(path), "bytes": path.stat().st_size,
+            "via": "raw"}
+
+
+def _implementation_identity() -> dict[str, Any]:
+    """Bind replay and encoder code that can change the extracted bytes."""
+    from ..rl.encoder_identity import encoder_contract
+    from ..ai import heuristic as heuristic_module, memory as memory_module
+    from ..ai import refusal as refusal_module, smart as smart_module
+    from ..ai import cwv_policy as cwv_policy_module, mcbot as mcbot_module
+    from ..harvest import rebuild as rebuild_module
+    from ..engine import cards as cards_module, combos as combos_module
+    from ..engine import fast as fast_module, legal as legal_module, round as round_module
+    from ..rl import encode as encode_module
+    from . import data as data_module
+
+    modules = (Path(__file__), Path(encode_module.__file__), Path(encode_obs.__code__.co_filename),
+               Path(memory_module.__file__), Path(refusal_module.__file__),
+               Path(rebuild_module.__file__), Path(cards_module.__file__),
+               Path(combos_module.__file__), Path(legal_module.__file__),
+               Path(round_module.__file__), Path(data_module.__file__),
+               Path(cwv_policy_module.__file__), Path(mcbot_module.__file__),
+               Path(heuristic_module.__file__), Path(smart_module.__file__))
+    package_root = Path(__file__).resolve().parents[1]
+    files = {str(path.resolve().relative_to(package_root)): _file_sha256(path)
+             for path in modules}
+    runtime = {name: os.environ.get(name) for name in (
+        "SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL", "SHENGJI_PHYSICAL_FILLS",
+        "SHENGJI_REQUIRE_VOIDS", "SHENGJI_FAST")}
+    active = bool(getattr(fast_module, "HAVE_FAST", False)
+                  and combos_module.decompose is fast_module.decompose)
+    runtime["fast_active"] = active
+    if active:
+        runtime["fast_module"] = files.setdefault(
+            "engine/fast.py", _file_sha256(Path(fast_module.__file__)))
+        native = getattr(fast_module, "_fast", None)
+        native_path = getattr(native, "__file__", None)
+        if native_path is None:
+            raise BeliefLabelError("active fast engine has no loaded kernel identity")
+        runtime["fast_kernel"] = _file_sha256(Path(native_path))
+    return {"encoder": encoder_contract(BASE_VERSION), "replay_files": files,
+            "runtime": runtime}
+
+
+def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(value, indent=1, sort_keys=True, default=list) + "\n")
+    with tmp.open("rb") as fh:
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
+def _atomic_npz(path: Path, arrays: Mapping[str, np.ndarray]) -> str:
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with tmp.open("wb") as fh:
+            np.savez(fh, **arrays)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    return _file_sha256(path)
+
+
+def _task_receipt(path: Path, recipe_sha: str) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        receipt = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise BeliefLabelError(f"{path}: unreadable task receipt") from exc
+    if receipt.get("schema") != TASK_RECEIPT_SCHEMA or receipt.get("recipe_sha256") != recipe_sha:
+        raise BeliefLabelError(f"{path}: task recipe changed")
+    result = receipt.get("result")
+    if not isinstance(result, dict) or not isinstance(result.get("files"), dict):
+        raise BeliefLabelError(f"{path}: malformed task receipt")
+    for info in result["files"].values():
+        target = path.parent / str(info.get("file", ""))
+        if not target.is_file() or _file_sha256(target) != info.get("sha256"):
+            raise BeliefLabelError(f"{target}: recorded chunk hash mismatch")
+        try:
+            with np.load(target) as arrays:
+                missing = set(ARRAY_KEYS) - set(arrays.files)
+        except (OSError, ValueError, KeyError) as exc:
+            raise BeliefLabelError(f"{target}: unreadable recorded chunk") from exc
+        if missing:
+            raise BeliefLabelError(f"{target}: missing arrays {sorted(missing)}")
+    return result
+
+
 def _extract_task(args: tuple) -> dict:
     (paths, store_indices, cluster_indices, out_dir, chunk_name, calib, test, windows,
-     sampler_worlds, sampler_splits, sampler_stride) = args
+     sampler_worlds, sampler_splits, sampler_stride, recipe_sha, run_recipe_sha) = args
     t0 = time.time()
     per_split: dict[str, list[dict]] = {"train": [], "calib": [], "test": []}
     stats = Counter()
@@ -532,21 +682,33 @@ def _extract_task(args: tuple) -> dict:
             continue
         arrays = {k: np.concatenate([p[k] for p in parts]) for k in ARRAY_KEYS}
         name = f"{split}-{chunk_name}.npz"
-        np.savez(Path(out_dir) / name, **arrays)
+        digest = _atomic_npz(Path(out_dir) / name, arrays)
         files[split] = {"file": name, "rows": int(arrays["X"].shape[0]), "deals": len(parts),
-                        "sha256": hashlib.sha256((Path(out_dir) / name).read_bytes()).hexdigest()}
-    return {"chunk": chunk_name, "files": files, "stats": dict(stats), "excluded": excluded,
-            "failed": failed, "seconds": time.time() - t0}
+                        "sha256": digest}
+    result = {"chunk": chunk_name, "files": files, "stats": dict(stats), "excluded": excluded,
+              "failed": failed, "seconds": time.time() - t0}
+    _atomic_json(Path(out_dir) / f".task-{chunk_name}.receipt.json",
+                 {"schema": TASK_RECEIPT_SCHEMA, "recipe_sha256": recipe_sha,
+                  "run_recipe_sha256": run_recipe_sha, "result": result})
+    return result
 
 
 def extract(stores: Sequence[str], out: str, *, cluster_stride: int, cluster_offset: int,
             max_clusters_per_store: int | None, calib: float, test: float,
             sampler_worlds: int, sampler_splits: Sequence[str], sampler_stride: int,
-            workers: int, task_clusters: int, log=print) -> dict:
+            workers: int, task_clusters: int, log=print, resume: bool = False) -> dict:
     out_dir = Path(out)
-    out_dir.mkdir(parents=True, exist_ok=False)
+    if resume:
+        if not out_dir.is_dir():
+            raise BeliefLabelError(f"resume output directory does not exist: {out_dir}")
+    else:
+        out_dir.mkdir(parents=True, exist_ok=False)
     windows = excluded_windows()
+    if task_clusters <= 0 or cluster_stride <= 0 or workers <= 0:
+        raise BeliefLabelError("cluster stride, task size and workers must be positive")
+    manifest_cache: dict[Path, dict | None] = {}
     tasks = []
+    source_inventory = []
     for si, store in enumerate(stores):
         paths = cluster_paths(store)
         chosen = [(ci, p) for ci, p in enumerate(paths) if ci % cluster_stride == cluster_offset]
@@ -554,9 +716,61 @@ def extract(stores: Sequence[str], out: str, *, cluster_stride: int, cluster_off
             chosen = chosen[:max_clusters_per_store]
         for start in range(0, len(chosen), task_clusters):
             group = chosen[start:start + task_clusters]
+            chunk_name = f"s{si:02d}-{start // task_clusters:05d}"
+            has_receipt = (out_dir / f".task-{chunk_name}.receipt.json").exists()
+            source_identity = [_source_identity(p, manifest_cache,
+                                                verify_manifest_bytes=not resume or not has_receipt)
+                               for _, p in group]
+            source_inventory.extend({"store_index": si, "cluster_index": ci, "source": identity}
+                                    for (ci, _), identity in zip(group, source_identity))
             tasks.append(([str(p) for _, p in group], [si] * len(group), [ci for ci, _ in group],
-                          str(out_dir), f"s{si:02d}-{start // task_clusters:05d}", calib, test,
-                          windows, sampler_worlds, tuple(sampler_splits), sampler_stride))
+                          str(out_dir), chunk_name, calib, test,
+                          windows, sampler_worlds, tuple(sampler_splits), sampler_stride,
+                          source_identity))
+    run_recipe = {
+        "schema": EXTRACT_RECIPE_SCHEMA,
+        "stores": [str(Path(s).resolve()) for s in stores],
+        "cluster_stride": cluster_stride, "cluster_offset": cluster_offset,
+        "max_clusters_per_store": max_clusters_per_store, "task_clusters": task_clusters,
+        "source_inventory_sha256": _canonical_sha(source_inventory),
+        "split": {"salt": SPLIT_SALT, "calib": calib, "test": test},
+        "excluded_windows": [list(w) for w in windows],
+        "sampler": {"worlds": sampler_worlds, "splits": list(sampler_splits),
+                    "stride": sampler_stride},
+        "implementation": _implementation_identity(),
+    }
+    run_recipe_sha = _canonical_sha(run_recipe)
+    old_manifest_path = out_dir / "manifest.json"
+    old_manifest = None
+    if resume and old_manifest_path.exists():
+        try:
+            old_manifest = json.loads(old_manifest_path.read_text())
+        except (OSError, ValueError) as exc:
+            raise BeliefLabelError(f"{old_manifest_path}: unreadable manifest") from exc
+        if old_manifest.get("recipe_sha256") != run_recipe_sha:
+            raise BeliefLabelError("resume recipe changed")
+    if resume:
+        for receipt_path in sorted(out_dir.glob(".task-*.receipt.json")):
+            try:
+                receipt = json.loads(receipt_path.read_text())
+            except (OSError, ValueError) as exc:
+                raise BeliefLabelError(f"{receipt_path}: unreadable task receipt") from exc
+            if receipt.get("schema") != TASK_RECEIPT_SCHEMA or receipt.get("run_recipe_sha256") != run_recipe_sha:
+                raise BeliefLabelError(f"{receipt_path}: resume recipe changed")
+    prepared = []
+    for (paths, sis, cis, out_path, chunk_name, calib_, test_, windows_, worlds, splits,
+         stride, source_identity) in tasks:
+        task_recipe = {"run_recipe_sha256": run_recipe_sha, "chunk": chunk_name,
+                       "paths": source_identity, "store_indices": sis,
+                       "cluster_indices": cis}
+        recipe_sha = _canonical_sha(task_recipe)
+        receipt_path = out_dir / f".task-{chunk_name}.receipt.json"
+        cached = _task_receipt(receipt_path, recipe_sha) if resume else None
+        if cached is not None:
+            prepared.append((cached, True))
+            continue
+        prepared.append(((paths, sis, cis, out_path, chunk_name, calib_, test_, windows_, worlds,
+                          splits, stride, recipe_sha, run_recipe_sha), False))
     manifest: dict[str, Any] = {
         "schema": SCHEMA, "feature_dim": FEATURE_DIM, "feature_blocks": FEATURE_BLOCKS,
         "receivers": RECEIVERS, "phases": PHASES, "roles": ROLES,
@@ -568,22 +782,57 @@ def extract(stores: Sequence[str], out: str, *, cluster_stride: int, cluster_off
                                                   "stride": sampler_stride,
                                                   "path": "PVSearchBot._worlds branch: "
                                                           "sample_worlds_refusal_aware | sample_worlds"},
+        "recipe_sha256": run_recipe_sha,
         "chunks": [], "stats": {}, "excluded_clusters": [], "failed_clusters": [],
     }
     stats = Counter()
     t0 = time.time()
+    done: dict[int, dict] = {}
+    pending = iter(enumerate(prepared))
     with ProcessPoolExecutor(max_workers=workers) as pool:
-        for i, res in enumerate(pool.map(_extract_task, tasks)):
-            manifest["chunks"].append(res)
-            manifest["excluded_clusters"] += res["excluded"]
-            manifest["failed_clusters"] += res["failed"]
-            stats.update(res["stats"])
-            if (i + 1) % 10 == 0 or i + 1 == len(tasks):
-                log(f"[extract] {i + 1}/{len(tasks)} tasks, {time.time() - t0:.0f}s, {dict(stats)}",
+        futures = {}
+        while True:
+            while len(futures) < max(1, workers * 2):
+                try:
+                    index, (payload, cached) = next(pending)
+                except StopIteration:
+                    break
+                if cached:
+                    done[index] = payload
+                    stats.update(payload["stats"])
+                else:
+                    futures[pool.submit(_extract_task, payload)] = index
+            if not futures:
+                break
+            completed, _ = wait(tuple(futures), return_when=FIRST_COMPLETED)
+            for future in completed:
+                index = futures.pop(future)
+                done[index] = future.result()
+                stats.update(done[index]["stats"])
+            count = len(done)
+            if count % 10 == 0 or count == len(tasks):
+                log(f"[extract] {count}/{len(tasks)} tasks, {time.time() - t0:.0f}s, {dict(stats)}",
                     flush=True)
+    for index in range(len(tasks)):
+        res = done[index]
+        manifest["chunks"].append(res)
+        manifest["excluded_clusters"] += res["excluded"]
+        manifest["failed_clusters"] += res["failed"]
     manifest["stats"] = dict(stats)
     manifest["seconds"] = time.time() - t0
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=1, default=list))
+    if manifest["failed_clusters"]:
+        manifest["status"] = "failed"
+        _atomic_json(out_dir / "failed-manifest.json", manifest)
+        raise BeliefLabelError(f"extraction failed for {len(manifest['failed_clusters'])} clusters; "
+                               "see manifest failed_clusters")
+    manifest["status"] = "complete"
+    if old_manifest is not None and all(cached for _, cached in prepared):
+        previous = {k: v for k, v in old_manifest.items() if k != "seconds"}
+        current = {k: v for k, v in manifest.items() if k != "seconds"}
+        if _canonical_sha(previous) == _canonical_sha(current):
+            # Downstream history binds these bytes; verification does not change the dataset.
+            return old_manifest
+    _atomic_json(out_dir / "manifest.json", manifest)
     return manifest
 
 
@@ -693,6 +942,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="draw sampler worlds on every Nth decision of an eval deal")
     ex.add_argument("--workers", type=int, default=2)
     ex.add_argument("--task-clusters", type=int, default=40)
+    ex.add_argument("--resume", action="store_true",
+                    help="reuse hash-verified completed tasks in an interrupted output")
     vx = sub.add_parser("verify-extract", help="check the gen5 extract layout against replay")
     vx.add_argument("--store", required=True)
     vx.add_argument("--extract", required=True)
@@ -710,7 +961,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     test=args.test, sampler_worlds=args.sampler_worlds,
                     sampler_splits=[s for s in args.sampler_splits.split(",") if s],
                     sampler_stride=args.sampler_stride, workers=args.workers,
-                    task_clusters=args.task_clusters)
+                    task_clusters=args.task_clusters, resume=args.resume)
         print(json.dumps({"stats": m["stats"], "seconds": m["seconds"],
                           "excluded_clusters": len(m["excluded_clusters"]),
                           "failed_clusters": len(m["failed_clusters"])}))

@@ -9,6 +9,7 @@ not to move while the labels do.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import random
 from collections import Counter
@@ -256,6 +257,155 @@ def test_a_cluster_is_one_deal_in_one_split_and_screen_windows_are_excluded(tmp_
     assert out == {"excluded": True, "path": str(path)}
 
 
+def _extract_resume_fixture(tmp_path, monkeypatch, cluster):
+    store = tmp_path / "store" / "shards"
+    store.mkdir(parents=True)
+    for index, seed in enumerate((1000, 1001)):
+        records = synthetic_cluster(seed, throw_rate=0.1)
+        with open(store / f"cluster-{index:06d}.jsonl", "w") as fh:
+            for record in records:
+                fh.write(json.dumps(record) + "\n")
+    monkeypatch.setattr(bl, "excluded_windows", lambda registry=None: [])
+    kwargs = dict(cluster_stride=1, cluster_offset=0, max_clusters_per_store=None,
+                  calib=0.3, test=0.3, sampler_worlds=0, sampler_splits=(),
+                  sampler_stride=1, workers=1, task_clusters=1,
+                  log=lambda *a, **k: None)
+    return store.parent, kwargs
+
+
+def test_extract_resume_reuses_receipted_tasks_and_matches_fresh(tmp_path, monkeypatch, cluster):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    fresh = tmp_path / "fresh"
+    expected = bl.extract([str(store)], str(fresh), **kwargs)
+    resumed = tmp_path / "resumed"
+    bl.extract([str(store)], str(resumed), **kwargs)
+    (resumed / "manifest.json").unlink()
+    monkeypatch.setattr(bl, "extract_cluster",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("replayed")))
+    got = bl.extract([str(store)], str(resumed), resume=True, **kwargs)
+    assert [c["chunk"] for c in got["chunks"]] == [c["chunk"] for c in expected["chunks"]]
+    for split in ("train", "calib", "test"):
+        if split in {s for c in expected["chunks"] for s in c["files"]}:
+            left, right = bl.load_split(fresh, split), bl.load_split(resumed, split)
+            assert left.keys() == right.keys()
+            for key in left:
+                assert np.array_equal(left[key], right[key])
+
+
+def test_extract_resume_recomputes_only_missing_task(tmp_path, monkeypatch, cluster):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    fresh = tmp_path / "fresh"
+    bl.extract([str(store)], str(fresh), **kwargs)
+    out = tmp_path / "partial"
+    bl.extract([str(store)], str(out), **kwargs)
+    first_receipt = out / ".task-s00-00000.receipt.json"
+    second_receipt = out / ".task-s00-00001.receipt.json"
+    preserved = json.loads(first_receipt.read_text())["result"]["files"]
+    preserved_path = out / next(iter(preserved.values()))["file"]
+    mtime = preserved_path.stat().st_mtime_ns
+    for info in json.loads(second_receipt.read_text())["result"]["files"].values():
+        (out / info["file"]).unlink()
+    second_receipt.unlink()
+    got = bl.extract([str(store)], str(out), resume=True, **kwargs)
+    assert preserved_path.stat().st_mtime_ns == mtime
+    for split in ("train", "calib", "test"):
+        if split in {s for c in got["chunks"] for s in c["files"]}:
+            left, right = bl.load_split(fresh, split), bl.load_split(out, split)
+            for key in left:
+                assert np.array_equal(left[key], right[key])
+
+
+def test_extract_resume_refuses_recipe_input_and_chunk_drift(tmp_path, monkeypatch, cluster):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    out = tmp_path / "extract"
+    bl.extract([str(store)], str(out), **kwargs)
+    with pytest.raises(bl.BeliefLabelError, match="resume recipe changed"):
+        bl.extract([str(store)], str(out), calib=0.2, resume=True,
+                   **{k: v for k, v in kwargs.items() if k != "calib"})
+    source = next(store.glob("shards/*.jsonl"))
+    source.write_text(source.read_text() + "\n")
+    with pytest.raises(bl.BeliefLabelError, match="resume recipe changed"):
+        bl.extract([str(store)], str(out), resume=True, **kwargs)
+    source.write_bytes(source.read_bytes()[:-1])
+    chunk = next(out.glob("*.npz"))
+    chunk.write_bytes(chunk.read_bytes() + b"corrupt")
+    with pytest.raises(bl.BeliefLabelError, match="recorded chunk hash mismatch"):
+        bl.extract([str(store)], str(out), resume=True, **kwargs)
+
+
+def test_extract_default_refuses_existing_output(tmp_path, monkeypatch, cluster):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    out = tmp_path / "extract"
+    bl.extract([str(store)], str(out), **kwargs)
+    with pytest.raises(FileExistsError):
+        bl.extract([str(store)], str(out), **kwargs)
+
+
+def test_extract_resume_refuses_same_size_manifest_shard_drift(tmp_path, monkeypatch, cluster):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    source = next(store.glob("shards/*.jsonl"))
+    raw = source.read_bytes()
+    (store / "manifest.json").write_text(json.dumps({
+        "schema": "shengji-trajectory-manifest-v1",
+        "shards": [{"path": f"shards/{source.name}", "sha256": hashlib.sha256(raw).hexdigest(),
+                    "bytes": len(raw)}]}))
+    out = tmp_path / "extract"
+    bl.extract([str(store)], str(out), **kwargs)
+    source.write_bytes(raw.replace(b'"SA"', b'"S2"', 1))
+    with pytest.raises(bl.BeliefLabelError, match="resume recipe changed"):
+        bl.extract([str(store)], str(out), resume=True, **kwargs)
+
+
+def test_extract_resume_refuses_source_inventory_removal(tmp_path, monkeypatch, cluster):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    out = tmp_path / "extract"
+    bl.extract([str(store)], str(out), **kwargs)
+    next(store.glob("shards/cluster-000001.jsonl")).unlink()
+    with pytest.raises(bl.BeliefLabelError, match="resume recipe changed"):
+        bl.extract([str(store)], str(out), resume=True, **kwargs)
+
+
+def test_extract_resume_refuses_live_replay_identity_drift(tmp_path, monkeypatch, cluster):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    out = tmp_path / "extract"
+    bl.extract([str(store)], str(out), **kwargs)
+    legal = (bl.Path(bl.__file__).resolve().parents[1] / "engine" / "legal.py").resolve()
+    original = bl._file_sha256
+
+    def drift(path):
+        return "0" * 64 if bl.Path(path).resolve() == legal else original(path)
+
+    monkeypatch.setattr(bl, "_file_sha256", drift)
+    with pytest.raises(bl.BeliefLabelError, match="resume recipe changed"):
+        bl.extract([str(store)], str(out), resume=True, **kwargs)
+
+
+@pytest.mark.parametrize("name", ["SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL",
+                                 "SHENGJI_PHYSICAL_FILLS", "SHENGJI_REQUIRE_VOIDS"])
+def test_extract_resume_refuses_sampler_runtime_drift(tmp_path, monkeypatch, cluster, name):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    out = tmp_path / "extract"
+    monkeypatch.delenv(name, raising=False)
+    bl.extract([str(store)], str(out), **kwargs)
+    monkeypatch.setenv(name, "1")
+    with pytest.raises(bl.BeliefLabelError, match="resume recipe changed"):
+        bl.extract([str(store)], str(out), resume=True, **kwargs)
+
+
+def test_extract_failed_cluster_has_no_consumer_manifest(tmp_path, monkeypatch, cluster):
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    broken = next(store.glob("shards/cluster-000000.jsonl"))
+    records = [json.loads(line) for line in broken.read_text().splitlines()]
+    records[0]["seat"] = (int(records[0]["seat"]) + 1) % 4
+    broken.write_text("".join(json.dumps(record) + "\n" for record in records))
+    out = tmp_path / "extract"
+    with pytest.raises(bl.BeliefLabelError, match="failed"):
+        bl.extract([str(store)], str(out), **kwargs)
+    assert not (out / "manifest.json").exists()
+    failed = json.loads((out / "failed-manifest.json").read_text())
+    assert failed["status"] == "failed" and failed["failed_clusters"]
+
+
 def test_the_committed_registry_yields_the_screen_windows():
     from shengji import seeds
     windows = bl.excluded_windows(seeds.load(seeds.DEFAULT_REGISTRY))
@@ -288,3 +438,29 @@ def test_split_fraction_is_salted_and_deterministic():
     assert 0.0 <= bl.split_fraction(key) < 1.0
     assert bl.split_of(key, 0.0, 1.0) == "test"
     assert bl.split_of(key, 0.0, 0.0) == "train"
+
+
+def test_completed_resume_preserves_existing_history_consumer(tmp_path, monkeypatch, cluster):
+    from shengji.train import belief_history as history, belief_seq
+
+    store, kwargs = _extract_resume_fixture(tmp_path, monkeypatch, cluster)
+    out = tmp_path / "extract"
+    bl.extract([str(store)], str(out), **kwargs)
+    history.extract([str(out)], str(store.parent), workers=1, log=lambda *a, **k: None)
+    manifest_path = out / "manifest.json"
+    manifest_bytes = manifest_path.read_bytes()
+    manifest_mtime = manifest_path.stat().st_mtime_ns
+    expected = {}
+    for split in ("train", "calib", "test"):
+        for entry in belief_seq.extract_entries([str(out)], split):
+            expected[entry["path"]] = belief_seq.load_part(
+                entry, belief_seq.ROW_KEYS, belief_seq._Verified())
+
+    bl.extract([str(store)], str(out), resume=True, **kwargs)
+    for split in ("train", "calib", "test"):
+        for entry in belief_seq.extract_entries([str(out)], split):
+            actual = belief_seq.load_part(entry, belief_seq.ROW_KEYS, belief_seq._Verified())
+            for key in belief_seq.ROW_KEYS:
+                np.testing.assert_array_equal(actual[key], expected[entry["path"]][key])
+    assert manifest_path.read_bytes() == manifest_bytes
+    assert manifest_path.stat().st_mtime_ns == manifest_mtime

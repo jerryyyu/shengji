@@ -476,11 +476,24 @@ class Stream:
         return np.random.default_rng([seed, epoch]).permutation(len(self.entries)).tolist()
 
     def batches(self, seed: int, epoch: int, start_buffer: int = 0, prefetch: int = 6):
-        """Yields ``(buffer_index, batch dict)``; resumes at ``start_buffer``."""
+        """Yield batches from ``start_buffer``; close the iterator when stopping early.
+
+        Closing waits for already submitted chunk reads and releases loader threads.
+        """
         order = self.order(seed, epoch)
         groups = [order[i:i + self.buffer_chunks] for i in range(0, len(order), self.buffer_chunks)]
         q: queue.Queue = queue.Queue(maxsize=prefetch)
         done = object()
+        stopped = threading.Event()
+
+        def offer(item):
+            while not stopped.is_set():
+                try:
+                    q.put(item, timeout=0.1)
+                    return True
+                except queue.Full:
+                    pass
+            return False
 
         def produce():
             try:
@@ -492,7 +505,7 @@ class Stream:
                                 for j in groups[g]]
                     if gi < len(groups):
                         pending = submit(gi)
-                    while gi < len(groups):
+                    while gi < len(groups) and not stopped.is_set():
                         parts = [f.result() for f in pending]
                         if gi + 1 < len(groups):
                             pending = submit(gi + 1)
@@ -504,21 +517,26 @@ class Stream:
                             cat["Y"], cat["M"] = cat["Y"][perm], cat["M"][perm]
                         for rids, rows in round_batches(cat, self.rounds_per_batch, rng,
                                                         self.row_frac):
-                            q.put((gi, make_batch(cat, rids, rows, self.no_history)))
+                            if stopped.is_set() or not offer(
+                                    (gi, make_batch(cat, rids, rows, self.no_history))):
+                                return
                         gi += 1
-                q.put(done)
+                offer(done)
             except BaseException as exc:
-                q.put(exc)
-        th = threading.Thread(target=produce, daemon=True)
+                offer(exc)
+        th = threading.Thread(target=produce, daemon=True, name="belief-batch-loader")
         th.start()
-        while True:
-            item = q.get()
-            if item is done:
-                break
-            if isinstance(item, BaseException):
-                raise item
-            yield item
-        th.join()
+        try:
+            while True:
+                item = q.get()
+                if item is done:
+                    break
+                if isinstance(item, BaseException):
+                    raise item
+                yield item
+        finally:
+            stopped.set()
+            th.join()
 
 
 def load_eval(dirs, split, verified, *, max_rows: int | None = None, seed: int = 0,

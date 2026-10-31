@@ -38,7 +38,8 @@ import json
 import os
 import sys
 import time
-from collections import Counter
+import zipfile
+from collections import Counter, deque
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -267,23 +268,97 @@ def chunk_history(chunk_path: str, shard_paths: Sequence[str]) -> dict[str, np.n
             "banker": np.asarray(rounds_banker, np.int8)}
 
 
+def _history_stats(path: str) -> tuple[int, int]:
+    """Read the counts from a history file without trusting its filename."""
+    try:
+        with np.load(path) as z:
+            return int(len(z["row_ply"])), int(len(z["round_n"]))
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
+        raise BeliefLabelError(f"{path}: invalid history output: {exc}") from exc
+
+
+def _same_history(path: str, arrays: Mapping[str, np.ndarray]) -> bool:
+    """Compare replayed arrays with an unrecorded output, without replacing it."""
+    try:
+        with np.load(path) as z:
+            return set(z.files) == set(arrays) and all(np.array_equal(z[k], arrays[k])
+                                                       for k in arrays)
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
+        raise BeliefLabelError(f"{path}: invalid history output: {exc}") from exc
+
+
+def _publish_chunk(out_path: str, data: bytes) -> None:
+    """Publish a new chunk atomically, never replacing a file that appeared first."""
+    tmp = f"{out_path}.tmp-{os.getpid()}"
+    Path(tmp).write_bytes(data)
+    try:
+        try:
+            os.link(tmp, out_path)
+        except FileExistsError:
+            raise BeliefLabelError(f"{out_path}: output appeared during extraction")
+    finally:
+        Path(tmp).unlink(missing_ok=True)
+
+
 def _chunk_task(args) -> dict:
-    chunk_path, out_path, shard_paths = args
+    chunk_path, out_path, shard_paths, recorded_sha = args
     t0 = time.time()
     if Path(out_path).exists():
         b = Path(out_path).read_bytes()
-        return {"chunk": chunk_path, "out": out_path, "skipped": True,
-                "sha256": hashlib.sha256(b).hexdigest(), "seconds": 0.0}
+        actual_sha = hashlib.sha256(b).hexdigest()
+        if recorded_sha is not None:
+            if actual_sha != recorded_sha:
+                raise BeliefLabelError(f"{out_path}: sha256 mismatch with history manifest")
+            rows, rounds = _history_stats(out_path)
+            return {"chunk": chunk_path, "out": out_path, "skipped": True,
+                    "rows": rows, "rounds": rounds, "sha256": actual_sha,
+                    "seconds": 0.0}
     arrays = chunk_history(chunk_path, shard_paths)
     buf = io.BytesIO()
     np.savez_compressed(buf, **arrays)
     b = buf.getvalue()
-    tmp = out_path + ".tmp"
-    Path(tmp).write_bytes(b)
-    os.replace(tmp, out_path)
+    if Path(out_path).exists():
+        if not _same_history(out_path, arrays):
+            raise BeliefLabelError(f"{out_path}: existing output differs from replay")
+        actual_sha = hashlib.sha256(Path(out_path).read_bytes()).hexdigest()
+        return {"chunk": chunk_path, "out": out_path, "skipped": True,
+                "rows": int(len(arrays["row_ply"])), "rounds": int(len(arrays["round_n"])),
+                "sha256": actual_sha, "seconds": time.time() - t0}
+    _publish_chunk(out_path, b)
     return {"chunk": chunk_path, "out": out_path, "skipped": False, "rows": int(len(arrays["row_ply"])),
             "rounds": int(len(arrays["round_n"])), "sha256": hashlib.sha256(b).hexdigest(),
             "seconds": time.time() - t0}
+
+
+_WORKER_SHARDS: tuple[str, ...] | None = None
+
+
+def _init_history_worker(shards: Sequence[str]) -> None:
+    global _WORKER_SHARDS
+    _WORKER_SHARDS = tuple(shards)
+
+
+def _worker_chunk(task: tuple) -> dict:
+    if _WORKER_SHARDS is None:
+        raise BeliefLabelError("history worker has no shard inventory")
+    chunk_path, out_path, recorded_sha = task
+    return _chunk_task((chunk_path, out_path, _WORKER_SHARDS, recorded_sha))
+
+
+def _run_tasks(tasks: Sequence[tuple], shards: Sequence[str], workers: int):
+    """Share immutable paths once per worker and bound submitted chunk work."""
+    if workers < 1:
+        raise BeliefLabelError("history workers must be positive")
+    pending = deque()
+    remaining = iter(tasks)
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_history_worker,
+                             initargs=(tuple(shards),)) as pool:
+        for task in remaining:
+            pending.append(pool.submit(_worker_chunk, task))
+            if len(pending) == 2 * workers:
+                yield pending.popleft().result()
+        while pending:
+            yield pending.popleft().result()
 
 
 def extract(dirs: Sequence[str], stores_root: str, *, workers: int, log=print) -> dict:
@@ -291,34 +366,61 @@ def extract(dirs: Sequence[str], stores_root: str, *, workers: int, log=print) -
     chunk file is kept); writes ``hist/manifest.json`` per dir."""
     out: dict[str, Any] = {}
     for d in dirs:
-        man = json.loads((Path(d) / "manifest.json").read_text())
+        dpath = Path(d)
+        source_manifest = dpath / "manifest.json"
+        source_bytes = source_manifest.read_bytes()
+        man = json.loads(source_bytes)
         stores = man["stores"]
         if len(stores) != 1:
             raise BeliefLabelError("one store per extract dir expected")
         store = Path(stores_root) / Path(stores[0]).name
         shards = [str(p) for p in cluster_paths(store)]
-        hist = Path(d) / "hist"
+        hist = dpath / "hist"
         hist.mkdir(exist_ok=True)
+        hist_manifest_path = hist / "manifest.json"
+        try:
+            prior = (json.loads(hist_manifest_path.read_text())
+                     if hist_manifest_path.exists() else None)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BeliefLabelError(f"{hist_manifest_path}: invalid history manifest") from exc
+        source_sha = hashlib.sha256(source_bytes).hexdigest()
+        if prior is not None:
+            if prior.get("schema") != SCHEMA:
+                raise BeliefLabelError(f"{hist_manifest_path}: incompatible history manifest")
+            if prior.get("source_extract_manifest_sha256") != source_sha:
+                raise BeliefLabelError(f"{hist_manifest_path}: source extract manifest changed")
+        recorded = {} if prior is None else prior.get("files", {})
+        if not isinstance(recorded, dict):
+            raise BeliefLabelError(f"{hist_manifest_path}: invalid files manifest")
+        # Hash every recorded output before dispatch; failed preflight leaves bytes intact.
+        for name, expected in recorded.items():
+            path = hist / name
+            if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                raise BeliefLabelError(f"{path}: sha256 mismatch with history manifest")
         tasks = []
         for chunk in man["chunks"]:
             for split, entry in chunk["files"].items():
-                tasks.append((str(Path(d) / entry["file"]), str(hist / entry["file"]), shards))
+                name = entry["file"]
+                source_path = dpath / name
+                if hashlib.sha256(source_path.read_bytes()).hexdigest() != entry["sha256"]:
+                    raise BeliefLabelError(f"{source_path}: sha256 mismatch with label manifest")
+                tasks.append((str(source_path), str(hist / name), recorded.get(name)))
         t0 = time.time()
         results = []
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            for i, res in enumerate(pool.map(_chunk_task, tasks)):
-                results.append(res)
-                if (i + 1) % 50 == 0 or i + 1 == len(tasks):
-                    log(f"[hist] {Path(d).name}: {i + 1}/{len(tasks)} chunks, {time.time() - t0:.0f}s",
-                        flush=True)
-        hm = {"schema": SCHEMA, "source_extract_manifest_sha256":
-              hashlib.sha256((Path(d) / "manifest.json").read_bytes()).hexdigest(),
+        for i, res in enumerate(_run_tasks(tasks, shards, workers)):
+            results.append(res)
+            if (i + 1) % 50 == 0 or i + 1 == len(tasks):
+                log(f"[hist] {Path(d).name}: {i + 1}/{len(tasks)} chunks, {time.time() - t0:.0f}s",
+                    flush=True)
+        hm = {"schema": SCHEMA, "source_extract_manifest_sha256": source_sha,
               "store": str(store), "max_plays": MAX_PLAYS, "token_int": TOKEN_INT,
               "token_float": TOKEN_FLOAT, "card_features": CARD_FEATURES,
               "files": {Path(r["out"]).name: r["sha256"] for r in results},
               "rows": sum(r.get("rows", 0) for r in results),
               "rounds": sum(r.get("rounds", 0) for r in results)}
-        (hist / "manifest.json").write_text(json.dumps(hm, indent=1, default=list))
+        tmp_manifest = hist / f".manifest.json.tmp-{os.getpid()}"
+        tmp_manifest.write_text(json.dumps(hm, indent=1, default=list))
+        os.replace(tmp_manifest, hist_manifest_path)
         out[d] = {"chunks": len(results), "rows": hm["rows"], "rounds": hm["rounds"],
                   "seconds": time.time() - t0}
         log(json.dumps({Path(d).name: out[d]}), flush=True)

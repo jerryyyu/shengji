@@ -1642,6 +1642,7 @@ def bench_inference(model: ValueNetwork, rows: Sequence[ValueAfterstateTensors],
 def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str = "mlp",
                  trunk_layers: int = 2, trunk_block: str = "plain", grid_channels: int = 0,
                  search_head: bool = False, search_head_weight: float = 1.0,
+                 value_weight: float = 1.0,
                  policy_head: bool = False, policy_rows: str | None = None,
                  policy_eval: str | None = None, policy_weight: float = 1.0,
                  policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
@@ -1740,6 +1741,13 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--search-head reads the mlp trunk; the seq architecture exposes none")
     if not (float(search_head_weight) > 0 and math.isfinite(float(search_head_weight))):
         raise TrainError("--search-head-weight must be a finite weight > 0")
+    if not (float(value_weight) >= 0 and math.isfinite(float(value_weight))):
+        raise TrainError("--value-weight must be a finite weight >= 0")
+    if float(value_weight) == 0.0 and not policy_head:
+        raise TrainError("--value-weight 0 needs --policy-head: without the policy loss the "
+                         "run has no loss to train on")
+    if float(value_weight) == 0.0 and float(policy_weight) == 0.0:
+        raise TrainError("--value-weight 0 with --policy-weight 0 leaves no loss to train on")
     if policy_head:
         if arch != "mlp":
             raise TrainError("--policy-head reads the mlp trunk; the seq architecture exposes none")
@@ -1815,6 +1823,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         tower_fields["val_rows"] = int(val_rows)
     if compile_trunk:
         tower_fields["compile"] = "trunk"
+    if float(value_weight) != 1.0:
+        tower_fields["value_weight"] = float(value_weight)
     return {
         **tower_fields,
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
@@ -1967,6 +1977,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           encoder_version: int = DEFAULTS["encoder_version"],
           trunk_layers: int = 2, trunk_block: str = "plain", grid_channels: int = 0,
           search_head: bool = False, search_head_weight: float = 1.0,
+          value_weight: float = 1.0,
           policy_head: bool = False, policy_rows: str | None = None,
           policy_eval: str | None = None, policy_weight: float = 1.0,
           policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
@@ -2007,6 +2018,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     config = build_config(
         trunk_layers=trunk_layers, trunk_block=trunk_block, grid_channels=grid_channels,
         search_head=search_head, search_head_weight=search_head_weight,
+        value_weight=value_weight,
         policy_head=policy_head, policy_rows=policy_rows, policy_eval=policy_eval,
         policy_weight=policy_weight, policy_listwise_weight=policy_listwise_weight,
         policy_batch_fraction=policy_batch_fraction, policy_rows_limit=policy_rows_limit,
@@ -2226,6 +2238,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say(f"policy rows: exploration tags {'present' if pd_.get('explore_tags') else 'ABSENT'}; "
             f"flag counts {pd_.get('explore_flag_counts')}; explore weight {float(policy_explore_weight)}"
             f"{' (flag-2 rows upweighted)' if float(policy_explore_weight) != 1.0 else ' (no reweighting)'}")
+        if float(value_weight) != 1.0:
+            say(f"value weight {float(value_weight)}: the value-side loss block is scaled"
+                f"{' out (POLICY-ONLY loss)' if float(value_weight) == 0.0 else ''}; "
+                f"value metrics are logged unscaled")
         if int(policy_tower_layers) or float(policy_trunk_grad_scale) != 1.0:
             mc_ = config["model_config"]
             say(f"policy tower: {mc_.get('policy_tower_layers', 0)} residual block(s), inner width "
@@ -2697,6 +2713,14 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 sums["search_head_rows"] = sums.get("search_head_rows", 0) + n_used
                 if s_loss is not None:
                     search_ce_pending.append((s_loss.detach(), n_used))
+            # --value-weight scales the whole value-side block (outcome CE, aux, search
+            # mean); every term is still computed and logged unscaled.  At 1.0 the sum
+            # is untouched; at 0 the block leaves the graph, so the value heads get no
+            # gradient (grad None: AdamW neither steps nor decays them).
+            if float(value_weight) == 0.0:
+                total = None
+            elif float(value_weight) != 1.0:
+                total = float(value_weight) * total
             p_bce = p_lw = None
             b_r = 0
             if p_tensors is not None:
@@ -2721,8 +2745,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                trunk_grad_scale=float(policy_trunk_grad_scale),
                                                rows=ballot_dev)
                 b_r = int(len(p_batch["x"]))
-                total = total + float(policy_weight) * (
-                    p_bce + float(policy_listwise_weight) * p_lw)
+                p_term = float(policy_weight) * (p_bce + float(policy_listwise_weight) * p_lw)
+                total = p_term if total is None else total + p_term
+            if total is None:
+                raise TrainError("--value-weight 0: this batch carries no policy rows, so it "
+                                 "has no loss")
             return total, b, ce, a_loss, p_bce, p_lw, b_r
 
         def host_batches():
@@ -3473,6 +3500,14 @@ def build_parser() -> argparse.ArgumentParser:
                         "head keeps the realised target and remains the selection head)")
     t.add_argument("--search-head-weight", type=float, default=1.0,
                    help="loss weight of the search-mean head (default 1.0)")
+    t.add_argument("--value-weight", type=float, default=1.0,
+                   help="multiply the value-side loss block (outcome cross-entropy + "
+                        "--aux-weight x aux + --search-head-weight x search-mean) by W >= 0 "
+                        "before the policy terms are added. Default 1.0 = the loss as before "
+                        "the option (bit-identical). 0 = a policy-only loss: the value, aux and "
+                        "search-mean heads receive no gradient, the trunk moves only through "
+                        "the policy loss; needs --policy-head and --policy-weight > 0. Every "
+                        "value metric is still computed and logged unscaled.")
     t.add_argument("--policy-head", action="store_true",
                    help="#425: add a 54-card policy head on the mlp trunk trained on root rows "
                         "(needs --policy-rows); the outcome head remains the selection head")
@@ -3650,6 +3685,7 @@ def main(argv: list[str] | None = None) -> int:
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
                   target=args.target, search_mean_sidecar=args.search_mean_sidecar,
                   search_head=args.search_head, search_head_weight=args.search_head_weight,
+                  value_weight=args.value_weight,
                   policy_head=args.policy_head, policy_rows=args.policy_rows,
                   policy_eval=args.policy_eval, policy_weight=args.policy_weight,
                   policy_listwise_weight=args.policy_listwise_weight,

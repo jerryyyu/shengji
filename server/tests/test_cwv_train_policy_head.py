@@ -387,3 +387,67 @@ def test_the_rows_stream_refuses_undeclared_non_points_search_values(store_dir, 
     with pytest.raises(ValueError, match="composition cycle at .* -> "):
         PolicyRowsStream(chunked)
     man_path.write_text(json.dumps(man))
+
+
+def test_value_weight_scales_the_value_block_and_zero_leaves_a_policy_only_loss(
+        store_dir, policy_rows, tmp_path):  # noqa: F811
+    """--value-weight W multiplies the value-side loss block (outcome CE + aux + search mean)
+    before the policy terms are added.  Default 1.0 keeps the config and the trained weights;
+    0 needs the policy loss, leaves the value and aux heads exactly where --init put them and
+    still logs their losses; any W is recorded in the config the checkpoint carries."""
+    from shengji.ai.cwv_policy import load_cwv_checkpoint as consumer_load
+    kw = dict(data=[str(store_dir)], arch="mlp", device="cpu", epochs=1, seed=7, n_boot=10,
+              hidden=32, log=None, cache_workers=1, eval_workers=1, bench_batch=32,
+              val_rank_records=50, encoder_version=2, aux_points=True, **THIRDS)
+    train_cwv.train(out=tmp_path / "base", batch_size=64, **kw)
+    init = str(tmp_path / "base" / "best.pt")
+    pk = dict(policy_head=True, policy_rows=policy_rows, policy_batch_fraction=0.5, init=init,
+              init_exclude_exposed=True, **kw)
+    for bad, match in ((dict(value_weight=0.0), "needs --policy-head"),
+                       (dict(value_weight=-0.5), "finite weight >= 0"),
+                       (dict(value_weight=float("nan")), "finite weight >= 0")):
+        with pytest.raises(train_cwv.TrainError, match=match):
+            train_cwv.train(out=tmp_path / "bad", batch_size=64, **kw, **bad)
+    with pytest.raises(train_cwv.TrainError, match="no loss"):
+        train_cwv.train(out=tmp_path / "bad", batch_size=64, value_weight=0.0, policy_weight=0.0, **pk)
+
+    # default: no config key (so config_sha256 is unchanged) and the same net as W=1 spelled out
+    default = train_cwv.train(out=tmp_path / "default", batch_size=64, **pk)
+    explicit = train_cwv.train(out=tmp_path / "w1", batch_size=64, value_weight=1.0, **pk)
+    assert "value_weight" not in default["config"]
+    assert explicit["config_sha256"] == default["config_sha256"]
+    d_sd = consumer_load(tmp_path / "default" / "checkpoints" / "epoch-01.pt")[0].state_dict()
+    e_sd = consumer_load(tmp_path / "w1" / "checkpoints" / "epoch-01.pt")[0].state_dict()
+    assert all(torch.equal(d_sd[k], e_sd[k]) for k in d_sd)
+    assert default["epochs"][0]["train"]["loss"] == explicit["epochs"][0]["train"]["loss"]
+
+    # W=0: a policy-only loss.  The value and aux heads keep the init weights exactly
+    # (grad None, so AdamW neither steps nor decays them); the trunk moves via the policy loss.
+    zero = train_cwv.train(out=tmp_path / "w0", batch_size=64, value_weight=0.0, **pk)
+    assert zero["config"]["value_weight"] == 0.0
+    base_net, base_meta, _ = consumer_load(init)
+    w0_net, w0_meta, _ = consumer_load(tmp_path / "w0" / "checkpoints" / "epoch-01.pt")
+    assert w0_meta["config"]["value_weight"] == 0.0
+    b_sd, z_sd = base_net.state_dict(), w0_net.state_dict()
+    value_keys = [k for k in b_sd if k.startswith("head.")]
+    assert value_keys and all(torch.equal(b_sd[k], z_sd[k]) for k in value_keys)
+    assert any(not torch.equal(b_sd[k], d_sd[k]) for k in value_keys)   # W=1 moves them
+    assert w0_meta["aux_points_head"] == base_meta["aux_points_head"]
+    trunk_keys = [k for k in b_sd if k.startswith("trunk")]
+    assert any(not torch.equal(b_sd[k], z_sd[k]) for k in trunk_keys)
+    tr0 = zero["epochs"][0]["train"]
+    assert math.isfinite(tr0["cross_entropy"]) and math.isfinite(tr0["aux_huber"])
+    assert tr0["policy_bce"] > 0 and math.isfinite(zero["epochs"][0]["val"]["loss"])
+
+    # W=0.5 on ONE batch: the logged loss is W x (CE + aux_weight x aux) + the policy term,
+    # and the unscaled value losses equal W=1's (the same forward before the only step)
+    one = dict(batch_size=100_000, **{**pk, "policy_batch_fraction": 0.002})
+    runs = {w: train_cwv.train(out=tmp_path / f"one{w}", value_weight=w, **one)["epochs"][0]["train"]
+            for w in (1.0, 0.5)}
+    assert runs[1.0]["batches"] == runs[0.5]["batches"] == 1
+    assert runs[0.5]["cross_entropy"] == runs[1.0]["cross_entropy"]
+    assert runs[0.5]["aux_huber"] == runs[1.0]["aux_huber"]
+    for w, tr in runs.items():
+        policy = tr["policy_bce"] + tr["policy_listwise"]
+        value = tr["cross_entropy"] + train_cwv.DEFAULTS["aux_weight"] * tr["aux_huber"]
+        assert tr["loss"] == pytest.approx(w * value + policy, rel=1e-5)

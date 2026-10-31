@@ -674,3 +674,70 @@ def test_a_partition_hashes_only_its_own_shards_and_still_combines_to_the_single
         == sums[0]["partition"]["all_shards_digest"]
     with pytest.raises(TrainDataError, match="sha256 drift"):
         discover_store(store)                       # the whole-store build still hashes everything
+
+
+def test_eligibility_audit_real_records_and_cli(pv_store, tmp_path):
+    import subprocess
+    import sys
+    from collections import Counter
+    from scripts.audit_policy_eligibility import audit
+    records = _records(pv_store)
+    result = audit(iter(records), max_records=len(records) + 1)
+    plays = [r for r in records if r['decision_kind'] == 'play']
+    expected = Counter()
+    for r in plays:
+        target, reason, _, _ = spr.classify(r)
+        expected['target:' + target if target else 'excluded:' + reason] += 1
+    actual = Counter()
+    for g in result['groups'].values():
+        actual.update(g['eligibility'])
+    assert actual == expected
+    assert result['totals']['play_records'] == len(plays)
+    assert sum(g['play_records'] for g in result['groups'].values()) == len(plays)
+    assert result['groups']['unknown']['play_records'] == 0
+    assert result['groups']['follow']['play_records'] > 0
+    assert sum(g['play_records'] for k, g in result['groups'].items() if k.startswith('lead:')) > 0
+    assert not result['reached_limit']
+    shard = tmp_path / 'records.jsonl'
+    shard.write_text(''.join(json.dumps(r) + '\n' for r in records))
+    script = Path(__file__).parents[1] / 'scripts/audit_policy_eligibility.py'
+    proc = subprocess.run([sys.executable, str(script), str(shard), '--max-records', '7'],
+                          capture_output=True, text=True, check=True)
+    report = json.loads(proc.stdout)
+    assert report['totals']['records'] == 7 and report['reached_limit']
+    assert report['inputs'] == [str(shard)]
+
+
+def test_eligibility_audit_unknowns_and_bound(pv_store):
+    from scripts.audit_policy_eligibility import audit
+    records = _records(pv_store)
+    play = next(r for r in records if r['decision_kind'] == 'play')
+    bad = copy.deepcopy(play)
+    bad['action'] = 1
+    bad.pop('seat')
+    def bounded():
+        yield bad
+        raise AssertionError('audit read beyond its cap')
+    result = audit(bounded(), max_records=1)
+    assert result['groups']['unknown']['eligibility'] == {'unknown:classification_error': 1}
+    assert sum(result['errors'].values()) == 2
+    assert result['totals']['play_records'] == 1
+    with pytest.raises(ValueError, match='positive integer'):
+        audit(iter(()), max_records=0)
+
+
+def test_eligibility_audit_retains_excluded_lead_types(pv_store):
+    from scripts.audit_policy_eligibility import audit
+    lead = next(r for r in _records(pv_store) if _is_lead(r))
+    records = []
+    for action in (['C3'], ['C3', 'C3'], ['C3', 'C3', 'C4', 'C4'], ['C3', 'C3', 'C5', 'C5']):
+        r = copy.deepcopy(lead)
+        r['action'] = action
+        r['allocation'] = {}
+        r['action_values'] = None
+        records.append(r)
+    result = audit(records, max_records=4)
+    for kind in ('single', 'pair', 'tractor', 'throw'):
+        assert result['groups']['lead:' + kind]['eligibility'] == {'excluded:fewer_than_two_finite_means': 1}
+        assert result['groups']['lead:' + kind]['excluded_fraction'] == 1.0
+    assert not result['errors']

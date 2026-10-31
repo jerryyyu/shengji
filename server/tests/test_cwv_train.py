@@ -585,3 +585,56 @@ def test_a_public_head_the_run_cannot_serve_is_refused_before_training(store_dir
                         encoder_version=1, **THIRDS)
     assert not any(line.startswith("epoch ") for line in lines), "refused before any epoch"
     assert not (tmp_path / "v1" / "best.pt").exists()
+
+
+@pytest.mark.parametrize("with_sidecars", [False, True])
+def test_cache_only_cli_builds_then_reuses_trainer_compatible_caches(store_dir, tmp_path, with_sidecars):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "prepare_cwv_cache.py"
+    cache = tmp_path / "cache"
+    command = [sys.executable, str(script), "--data", str(store_dir),
+               "--cache-dir", str(cache), "--encoder-version", "2", "--workers", "1"]
+    means = tmp_path / "means"
+    if with_sidecars:
+        command += ["--search-mean-sidecar", str(means)]
+    first = json.loads(subprocess.check_output(command, text=True))
+    sidecar_mtimes = {path: path.stat().st_mtime_ns for path in means.glob("*.npz")}
+    files = {path: path.stat().st_mtime_ns for path in cache.rglob("*") if path.is_file()}
+    second = json.loads(subprocess.check_output(command, text=True))
+    assert first["encoder_version"] == second["encoder_version"] == 2
+    assert first["counts"]["cache_rebuilt"] == first["counts"]["shards"] > 0
+    assert second["counts"]["cache_reused"] == first["counts"]["shards"]
+    assert second["counts"]["cache_rebuilt"] == 0
+    assert first["consumer_rows"] == second["consumer_rows"] > 0
+    assert first["resident_bytes"] == second["resident_bytes"] == 64 * 1024 * 1024
+    assert files == {path: path.stat().st_mtime_ns for path in files}
+
+    if with_sidecars:
+        assert first["search_mean_sidecars"]["built"] == first["counts"]["shards"]
+        assert second["search_mean_sidecars"]["built"] == 0
+        assert second["search_mean_sidecars"]["reused"] == first["counts"]["shards"]
+        for key in ("points_target_rows", "level_target_rows"):
+            assert first["search_mean_sidecars"][key] == second["search_mean_sidecars"][key]
+        assert first["search_mean_sidecars"]["points_target_rows"] > 0
+        assert sidecar_mtimes == {path: path.stat().st_mtime_ns for path in sidecar_mtimes}
+        bad = next(iter(sidecar_mtimes))
+        bad.unlink()
+        recovered = json.loads(subprocess.check_output(command, text=True))
+        assert recovered["search_mean_sidecars"]["built"] == 1
+        assert recovered["search_mean_sidecars"]["reused"] == first["counts"]["shards"] - 1
+        assert recovered["search_mean_sidecars"]["points_target_rows"] == first["search_mean_sidecars"]["points_target_rows"]
+        assert all(path.stat().st_mtime_ns == mtime for path, mtime in sidecar_mtimes.items()
+                   if path != bad)
+        with np.load(bad) as archive:
+            arrays = {key: archive[key] for key in archive.files}
+        arrays["units_code"][:] = 99
+        np.savez(bad, **arrays)
+        bad_bytes = bad.read_bytes()
+        refused = subprocess.run(command, text=True, capture_output=True)
+        assert refused.returncode != 0 and "unknown units_code" in refused.stderr
+        assert bad.read_bytes() == bad_bytes
+    else:
+        assert first["search_mean_sidecars"] is second["search_mean_sidecars"] is None

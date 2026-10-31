@@ -45,7 +45,7 @@ def main(argv=None) -> int:
             cp = cache_path(a.cache_dir, shard.sha256, history=False, version=a.encoder_version,
                             trick_end=a.trick_end_rows)
             if not Path(cp).is_file():
-                raise SystemExit(f"{shard.label}: cache {cp} is missing; run the trainer's cache build first")
+                raise SystemExit(f"{shard.label}: cache {cp} is missing; run scripts/prepare_cwv_cache.py with the same data and encoder version first")
             check_meta(read_meta(cp), path=cp, shard_sha256=shard.sha256, history=False,
                        trick_end=a.trick_end_rows)
             entries.append((shard, str(cp)))

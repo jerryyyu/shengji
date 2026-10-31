@@ -655,26 +655,43 @@ class Stream:
             th.join()
 
 
+#: calib/test row selections: ``sampler`` keeps the rows where the production
+#: sampler was drawn (``S_n > 0``; the sampler-relative metrics need them),
+#: ``all`` keeps every row of the split (for extracts without sampler draws)
+EVAL_ROWS = ("sampler", "all")
+
+
 def load_eval(dirs, split, verified, *, max_rows: int | None = None, seed: int = 0,
-              threads: int = 4, log=print) -> dict[str, Any]:
-    """Calib/test rows where the sampler was drawn (as ``belief_eval``), with history.
-    ``max_rows`` subsamples whole chunks (deals), seeded."""
+              threads: int = 4, log=print, rows: str = "sampler") -> dict[str, Any]:
+    """Calib/test rows with history: where the sampler was drawn (as
+    ``belief_eval``) for ``rows="sampler"``, every row for ``rows="all"``.
+    The split's chunks (deals) are the extract's either way; ``max_rows``
+    subsamples whole chunks, seeded.  An empty selection is refused."""
+    if rows not in EVAL_ROWS:
+        raise BeliefSeqError(f"eval rows {rows!r} not in {EVAL_ROWS}")
+    sampler_only = rows == "sampler"
     entries = extract_entries(dirs, split)
     if max_rows is not None:
         rng = np.random.default_rng(seed)
         picked, n = [], 0
+        # sampler rows are ~1/4 of a chunk's rows
+        budget = max_rows * 4 if sampler_only else max_rows
         for i in rng.permutation(len(entries)):
-            if n >= max_rows * 4:          # sampler rows are ~1/4 of a chunk's rows
+            if n >= budget:
                 break
             picked.append(entries[i])
             n += entries[i]["rows"]
         entries = picked
     with ThreadPoolExecutor(threads) as ex:
-        parts = list(ex.map(lambda e: load_part(e, EVAL_KEYS, verified, sampler_rows_only=True),
-                            entries))
+        parts = list(ex.map(lambda e: load_part(e, EVAL_KEYS, verified,
+                                                sampler_rows_only=sampler_only), entries))
     parts = [p for p in parts if len(p["X"])]
+    if not parts:
+        raise BeliefSeqError(f"{split}: no {rows} rows selected from {len(entries)} chunks of "
+                             f"{list(dirs)}" + (" (no sampler-drawn rows; --eval-rows all "
+                                                "selects every row)" if sampler_only else ""))
     out = concat_parts(parts)
-    log(f"[data] {split}: {len(out['X'])} sampler rows, {len(np.unique(out['deal']))} deals, "
+    log(f"[data] {split}: {len(out['X'])} {rows} rows, {len(np.unique(out['deal']))} deals, "
         f"{len(out['_rounds']['round_n'])} rounds", flush=True)
     return out
 
@@ -808,6 +825,13 @@ def world_agreement(worlds: np.ndarray, Y: np.ndarray) -> np.ndarray:
 
 # ------------------------------------------------------------------ training
 
+def calib_losses(lc: np.ndarray, part: Mapping[str, Any], temperature: float = 1.0) -> dict:
+    """Per-copy log-loss on ``part`` for the all/hands/kitty subsets."""
+    t = summarize(copy_terms(masked_softmax(lc, part["M"], temperature), part["Y"]),
+                  np.ones(len(part["Y"]), bool))
+    return {k: t[k]["logloss"] for k in ("all", "hands", "kitty")}
+
+
 def _status(path: str | None, msg: str) -> None:
     line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {msg}"
     print(line, flush=True)
@@ -837,7 +861,8 @@ def train(args) -> int:
     stream = Stream(entries, verified=verified, threads=args.loader_threads,
                     buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch,
                     row_frac=args.row_frac, no_history=args.no_history, permute=args.permute)
-    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed)
+    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed,
+                      rows=args.eval_rows)
     if args.permute:
         perm = permute_within_strata(strata_of(calib["trick"], calib["role"]), args.seed + 2)
         calib["Y"], calib["M"] = calib["Y"][perm], calib["M"][perm]
@@ -853,7 +878,8 @@ def train(args) -> int:
         lc = predict_logits(model, calib, no_history=args.no_history)
         init_record = {"kind": init["kind"], "path": init["path"], "sha256": init["sha256"],
                        "temperature": init["temperature"],
-                       "calib_ll": mean_ll(masked_softmax(lc, calib["M"]), calib["Y"])}
+                       "calib_ll": mean_ll(masked_softmax(lc, calib["M"]), calib["Y"]),
+                       "calib_subsets": calib_losses(lc, calib)}
         if init["temperature"] is not None:
             init_record["calib_ll_at_temperature"] = mean_ll(
                 masked_softmax(lc, calib["M"], init["temperature"]), calib["Y"])
@@ -867,6 +893,9 @@ def train(args) -> int:
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
+        run_rows = saved["args"].get("eval_rows", "sampler")
+        if run_rows != args.eval_rows:
+            raise BeliefSeqError(f"resume --eval-rows {args.eval_rows} differs from the run's {run_rows}")
         started = (state.get("init") or {}).get("sha256")
         if started != (init_record or {}).get("sha256"):
             raise BeliefSeqError(f"resume --init sha256 {(init_record or {}).get('sha256')} "
@@ -938,6 +967,7 @@ def train(args) -> int:
         lc = predict_logits(model, calib, no_history=args.no_history)
         cll = mean_ll(masked_softmax(lc, calib["M"]), calib["Y"])
         state["history"].append({"epoch": epoch + 1, "train_ll": tot / max(cnt, 1), "calib_ll": cll,
+                                 "calib_subsets": calib_losses(lc, calib),
                                  "seconds": time.time() - t0})
         _status(status, f"EPOCH {epoch + 1} train {tot / max(cnt, 1):.4f} calib {cll:.4f} "
                         f"({time.time() - t0:.0f}s)")
@@ -945,7 +975,8 @@ def train(args) -> int:
             state["best"], state["bad"] = cll, 0
             torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
                         "epoch": epoch + 1, "calib_ll": cll,
-                        "speed_segments": state["speed_segments"], "init": state.get("init")},
+                        "speed_segments": state["speed_segments"], "init": state.get("init"),
+                        "eval_rows": args.eval_rows},
                        out / "best.pt")
         else:
             state["bad"] += 1
@@ -975,8 +1006,11 @@ def evaluate(args) -> int:
     torch.set_num_threads(args.threads)
     verified = _Verified()
     t_start = time.time()
-    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed)
-    test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1)
+    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed,
+                      rows=args.eval_rows)
+    test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1,
+                     rows=args.eval_rows)
+    sampler_rows = args.eval_rows == "sampler"
     train_deals = set()
     for e in extract_entries(args.data, "train")[: args.deal_check_chunks]:
         with np.load(io.BytesIO(verified.read(e["path"], e["sha256"]))) as z:
@@ -1003,15 +1037,25 @@ def evaluate(args) -> int:
                       "calib_ll_raw": saved.get("calib_ll"), "no_history": nh, "permuted": perm,
                       "config": saved["config"]}
         print(f"[eval] {name}: T={T:.3f}", flush=True)
-    alpha = fit_scalar(lambda a: mean_ll(sampler_probs(calib["S"], calib["S_n"], calib["M"], a),
-                                         calib["Y"]), 1e-3, 64.0)
-    methods["sampler"] = sampler_probs(test["S"], test["S_n"], Mt, alpha)
+    # the sampler's marginals exist only on rows where it was drawn; on all rows the
+    # reference is the constraint-aware uniform and every sampler metric is absent
+    alpha = None
+    ref_method = "sampler" if sampler_rows else "uniform"
+    not_measured = {} if sampler_rows else {
+        "sampler": "no sampler draws on all-rows selections",
+        "worlds": "sampled-world agreement is reported only on sampler rows"}
+    if sampler_rows:
+        alpha = fit_scalar(lambda a: mean_ll(sampler_probs(calib["S"], calib["S_n"], calib["M"], a),
+                                             calib["Y"]), 1e-3, 64.0)
+        methods["sampler"] = sampler_probs(test["S"], test["S_n"], Mt, alpha)
     methods["uniform"] = uniform_probs(test["sizes"], Mt)
     terms = {k: copy_terms(P, Y) for k, P in methods.items()}
     phase = np.asarray([phase_of_trick(int(t)) for t in test["trick"]])
     groups = ([("overall", np.ones(len(Y), bool))] + [(n, phase == n) for n, _, _ in PHASES]
               + [(ROLES[i], test["role"] == i) for i in range(len(ROLES))])
-    res: dict[str, Any] = {"models": meta, "alpha_sampler": alpha, "test_rows": int(len(Y)),
+    res: dict[str, Any] = {"models": meta, "alpha_sampler": alpha, "eval_rows": args.eval_rows,
+                           "reference": ref_method, "not_measured": not_measured,
+                           "test_rows": int(len(Y)),
                            "test_deals": int(len(np.unique(test["deal"]))),
                            "calib_rows": int(len(calib["Y"])), "tables": {}}
     for g, rows in groups:
@@ -1026,10 +1070,10 @@ def evaluate(args) -> int:
         res["by_trick"][t] = {k: summarize(terms[k], rows)["all"] for k in methods}
     res["ece"] = {k: reliability(P, Y, Mt)[0] for k, P in methods.items()}
     res["bootstrap"] = {}
-    names = [k for k in methods if k != "sampler"]
+    names = [k for k in methods if k != ref_method]
     for subset, _, ll_key, _ in SUBSETS:
         ci = deal_bootstrap(test["deal"], [terms[k][ll_key] for k in names],
-                            terms["sampler"][ll_key], seed=args.seed)
+                            terms[ref_method][ll_key], seed=args.seed)
         res["bootstrap"][subset] = dict(zip(names, ci))
     # paired: each model vs the first named model (e.g. history vs no-history)
     if len(args.model) >= 2:
@@ -1044,7 +1088,8 @@ def evaluate(args) -> int:
     rng = np.random.default_rng(args.seed)
     pick = rng.choice(len(Y), size=min(args.world_states, len(Y)), replace=False)
     res["worlds"] = {}
-    for k in [m.split("=", 1)[0] for m in args.model] + ["sampler", "uniform"]:
+    world_methods = [m.split("=", 1)[0] for m in args.model] + ["sampler", "uniform"]
+    for k in world_methods if sampler_rows else ():
         agree, best, distinct, ms = [], [], [], []
         per_phase: dict[str, list] = {n: [] for n, _, _ in PHASES}
         for i in pick:
@@ -1083,23 +1128,30 @@ def _pct(x: float) -> str:
 
 def report(res: Mapping[str, Any]) -> str:
     models = list(res["models"])
-    methods = models + ["sampler", "uniform"]
+    rows = res.get("eval_rows", "sampler")
+    base = res.get("reference", "sampler")
+    methods = models + (["sampler", "uniform"] if base == "sampler" else ["uniform"])
+    ref_name = "the production sampler" if base == "sampler" else "the constraint-aware uniform"
+    alpha = (f"; sampler alpha {res['alpha_sampler']:.3f}" if res["alpha_sampler"] is not None
+             else "")
     L = ["# S17 history-input belief: offline test (unknown copies only)\n",
          "Generated by `python -m shengji.train.belief_seq evaluate`. Tier-i DEV: offline "
          "log-loss / agreement only; no strength claim.\n",
-         f"- test: {res['test_rows']} sampler rows, {res['test_deals']} deals; calib "
-         f"{res['calib_rows']} rows; sampler alpha {res['alpha_sampler']:.3f}"]
+         f"- test: {res['test_rows']} {rows} rows, {res['test_deals']} deals; calib "
+         f"{res['calib_rows']} rows{alpha}"]
+    for k, why in res.get("not_measured", {}).items():
+        L.append(f"- NOT MEASURED: {k} ({why})")
     for k, m in res["models"].items():
         L.append(f"- {k}: params {m['params']}, epoch {m['epoch']}, T {m['T']:.3f}, "
                  f"no_history={m['no_history']}, permuted={m['permuted']}")
     L.append("")
     ov = res["tables"]["overall"]
-    L.append("## Log-loss gain over the production sampler (overall)\n")
+    L.append(f"## Log-loss gain over {ref_name} (overall)\n")
     L.append("| method | hands LL | hands gain [95% deal CI] | kitty gain | all gain | hands mass | all mass |")
     L.append("|---|---:|---|---:|---:|---:|---:|")
     for k in methods:
         t = ov[k]
-        s = ov["sampler"]
+        s = ov[base]
         ci = res["bootstrap"]["hands"].get(k)
         cis = f" [{_pct(ci[0])} .. {_pct(ci[1])}]" if ci else ""
         L.append(f"| {k} | {t['hands']['logloss']:.4f} | "
@@ -1117,13 +1169,13 @@ def report(res: Mapping[str, Any]) -> str:
                 continue
             L.append(f"| {k} | " + " | ".join(f"{_pct(v[s][0])} .. {_pct(v[s][1])}"
                                               for s in ("hands", "kitty", "all")) + " |")
-    L.append("\n## Hands log-loss gain over the sampler by phase and role\n")
+    L.append(f"\n## Hands log-loss gain over {ref_name} by phase and role\n")
     gs = [g for g in res["tables"] if g != "overall"]
     L.append("| method | " + " | ".join(gs) + " |")
     L.append("|---|" + "---:|" * len(gs))
     for k in methods:
         L.append(f"| {k} | " + " | ".join(
-            _pct(1 - res["tables"][g][k]["hands"]["logloss"] / res["tables"][g]["sampler"]["hands"]["logloss"])
+            _pct(1 - res["tables"][g][k]["hands"]["logloss"] / res["tables"][g][base]["hands"]["logloss"])
             for g in gs) + " |")
     L.append("\n## True-holder mass (all unknown copies, = expected per-copy agreement) by phase\n")
     L.append("| method | overall | " + " | ".join(gs) + " |")
@@ -1138,6 +1190,8 @@ def report(res: Mapping[str, Any]) -> str:
         L.append(f"| {t} | {int(row[methods[0]]['copies'])} | " +
                  " | ".join(f"{row[k]['mass']:.4f}" for k in methods) + " |")
     L.append("\n## Sampled legal worlds: v83 card agreement\n")
+    if "worlds" in res.get("not_measured", {}):
+        L.append(f"Not measured: {res['not_measured']['worlds']}.\n")
     L.append("v83 arms (mean agreement): production-drawn ~0.42, K4 ~0.46, K16 ~0.57, Q50 ~0.72.\n")
     L.append("| method | states | mean | p10 | p25 | p50 | p75 | p90 | best-of-W | distinct/W | early | mid | late | sample ms p50 |")
     L.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
@@ -1294,6 +1348,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--row-frac", type=float, default=1.0)
     t.add_argument("--max-train-rows", type=int, default=None)
     t.add_argument("--calib-rows", type=int, default=60000)
+    t.add_argument("--eval-rows", choices=EVAL_ROWS, default="sampler",
+                   help="calib rows: sampler-drawn rows only (default) or every row of the split")
     t.add_argument("--patience", type=int, default=2)
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--no-history", action="store_true")
@@ -1322,6 +1378,9 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--seed", type=int, default=0)
     e.add_argument("--calib-rows", type=int, default=None)
     e.add_argument("--test-rows", type=int, default=None)
+    e.add_argument("--eval-rows", choices=EVAL_ROWS, default="sampler",
+                   help="calib/test rows: sampler-drawn rows only (default; every metric) or "
+                        "every row (no sampler metrics; gains are over the uniform)")
     e.add_argument("--deal-check-chunks", type=int, default=10 ** 9)
     e.add_argument("--world-states", type=int, default=4000)
     e.add_argument("--worlds", type=int, default=64)

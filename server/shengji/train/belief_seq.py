@@ -34,6 +34,11 @@ bootstrap CIs.  Added here: a per-trick table, the permuted-label control, and
 copy placed, receiver sizes and void masks honoured by a Hall-condition
 sequential sampler) scored by v83's card agreement.
 
+``train --init`` warm-starts from a served NumPy package (or a checkpoint this
+trainer wrote): the architecture is the package's, its input widths must be
+the training data's, and the run records the package's sha256, temperature and
+calib loss before any update.
+
 CLI: ``python -m shengji.train.belief_seq {train,evaluate,latency}``.
 """
 from __future__ import annotations
@@ -452,6 +457,117 @@ def n_params(model) -> int:
     return int(sum(p.numel() for p in model.parameters()))
 
 
+#: the architecture of a fresh model when neither ``--init`` nor a flag sets it
+DEFAULT_ARCH = {"d": 64, "heads": 4, "enc_layers": 1, "xattn_layers": 2, "x_hidden": 256,
+                "card_self_attn": True}
+
+
+def trainer_dims() -> dict[str, int]:
+    """The input widths this trainer builds, under ``ai.belief_numpy.DIMS``'s names."""
+    return {"feature_dim": FEATURE_DIM, "n_card_features": N_CARD_FEATURES,
+            "n_token_float": N_TOKEN_FLOAT, "n_row_card": N_ROW_CARD, "max_plays": MAX_PLAYS}
+
+
+def load_init(path: str) -> dict[str, Any]:
+    """A warm start's weights, architecture and identity.
+
+    ``path`` is a served NumPy package (``.npz``; this is the inverse of
+    ``belief_sampler.export``: the package's float32 arrays under their
+    ``state_dict`` names) or a checkpoint this trainer wrote (``best.pt`` /
+    ``checkpoint.pt``).  A package is validated by the serving loader itself
+    (schema, input widths, shapes, finite weights, temperature range).
+
+    Returns ``kind`` (``package``/``checkpoint``), ``sha256`` of the file,
+    ``config``, ``weights`` (name -> float32 array), ``dims`` (the input widths
+    the weights were built for) and ``temperature`` (the package's
+    calibration temperature; None for a checkpoint)."""
+    from ..ai.belief_numpy import CONFIG_KEYS, BeliefNumpyError, load_belief_numpy
+    if str(path).endswith(".npz"):
+        try:
+            pkg = load_belief_numpy(path, dtype=np.float32)
+        except (BeliefNumpyError, KeyError) as exc:
+            raise BeliefSeqError(f"--init {path}: not a belief package: {exc}") from exc
+        return {"kind": "package", "path": str(path), "sha256": pkg.package_sha256,
+                "config": dict(pkg.config), "weights": {k: np.array(v) for k, v in pkg.w.items()},
+                "dims": dict(pkg.metadata["dims"]), "temperature": pkg.temperature}
+    import torch
+    raw = Path(path).read_bytes()
+    saved = torch.load(io.BytesIO(raw), weights_only=False, map_location="cpu")
+    if not isinstance(saved, Mapping) or "model" not in saved or "config" not in saved:
+        raise BeliefSeqError(f"--init {path}: not a belief_seq checkpoint (no model/config)")
+    config = {k: saved["config"][k] for k in CONFIG_KEYS}
+    weights = {k: v.detach().cpu().float().numpy() for k, v in saved["model"].items()}
+    # a checkpoint records no widths: its weight shapes are checked against this trainer's
+    return {"kind": "checkpoint", "path": str(path), "sha256": hashlib.sha256(raw).hexdigest(),
+            "config": config, "weights": weights, "dims": trainer_dims(), "temperature": None}
+
+
+def check_init_identity(init: Mapping[str, Any], dirs: Sequence[str]) -> None:
+    """Refuse a warm start whose inputs are not the training data's: the
+    package's input widths must be this trainer's, its weights the shapes its
+    config implies at those widths, and every data dir's label extract must be
+    the schema, width and feature blocks this trainer reads (the history
+    extract's schema is checked by ``extract_entries``)."""
+    from ..ai.belief_numpy import expected_shapes
+    from .belief_labels import SCHEMA as LABELS_SCHEMA
+    dims = trainer_dims()
+    if init["dims"] != dims:
+        raise BeliefSeqError(f"--init input widths {init['dims']} differ from this trainer's {dims}")
+    want = expected_shapes(init["config"], **dims)
+    got = {k: tuple(v.shape) for k, v in init["weights"].items()}
+    if got != want:
+        bad = sorted(set(got) ^ set(want)) or sorted(k for k in want if got[k] != want[k])
+        raise BeliefSeqError(f"--init weights differ from its config at this trainer's widths: "
+                             f"{bad[:3]}")
+    blocks = [[b, w] for b, w in FEATURE_BLOCKS]
+    for d in dirs:
+        man = json.loads((Path(d) / "manifest.json").read_text())
+        ident = (man.get("schema"), man.get("feature_dim"),
+                 [list(x) for x in man.get("feature_blocks") or []])
+        if ident != (LABELS_SCHEMA, dims["feature_dim"], blocks):
+            raise BeliefSeqError(f"{d}: label extract (schema {ident[0]}, feature_dim {ident[1]}) "
+                                 f"is not the features the --init model reads")
+
+
+def resolve_arch(args, init_config: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The model architecture: the ``--init`` package's (an architecture flag
+    that disagrees with it is refused), else the flags over ``DEFAULT_ARCH``.
+    Writes the resolved values back to ``args`` so the saved ``args`` are
+    complete."""
+    flags = {"d": args.d, "heads": args.heads, "enc_layers": args.enc_layers,
+             "xattn_layers": args.xattn_layers, "x_hidden": args.x_hidden,
+             "card_self_attn": None if args.no_card_self_attn is None else not args.no_card_self_attn}
+    given = {k: v for k, v in flags.items() if v is not None}
+    if init_config is not None:
+        arch = {k: init_config[k] for k in DEFAULT_ARCH}
+        clash = {k: (v, arch[k]) for k, v in given.items() if v != arch[k]}
+        if clash:
+            raise BeliefSeqError("architecture flags conflict with --init (flag, package): "
+                                 + ", ".join(f"{k}={a}/{b}" for k, (a, b) in clash.items()))
+    else:
+        arch = {**DEFAULT_ARCH, **given}
+    args.d, args.heads, args.enc_layers = arch["d"], arch["heads"], arch["enc_layers"]
+    args.xattn_layers, args.x_hidden = arch["xattn_layers"], arch["x_hidden"]
+    args.no_card_self_attn = not arch["card_self_attn"]
+    return arch
+
+
+def apply_init(model, init: Mapping[str, Any]) -> None:
+    """Load ``init``'s weights into ``model`` (strict: same names and shapes)."""
+    import torch
+    sd = model.state_dict()
+    w = init["weights"]
+    if set(sd) != set(w):
+        raise BeliefSeqError(f"--init weights differ from the model: "
+                             f"{sorted(set(sd) ^ set(w))[:3]}")
+    new = {}
+    for k, ref in sd.items():
+        if tuple(w[k].shape) != tuple(ref.shape):
+            raise BeliefSeqError(f"--init {k}: shape {tuple(w[k].shape)} != {tuple(ref.shape)}")
+        new[k] = torch.from_numpy(np.array(w[k], np.float32)).to(ref.dtype)
+    model.load_state_dict(new, strict=True)
+
+
 # ------------------------------------------------------------------ streaming
 
 class Stream:
@@ -725,9 +841,22 @@ def train(args) -> int:
     if args.permute:
         perm = permute_within_strata(strata_of(calib["trick"], calib["role"]), args.seed + 2)
         calib["Y"], calib["M"] = calib["Y"][perm], calib["M"][perm]
-    model = build_model(d=args.d, heads=args.heads, enc_layers=args.enc_layers,
-                        xattn_layers=args.xattn_layers, x_hidden=args.x_hidden,
-                        card_self_attn=not args.no_card_self_attn)
+    init = None
+    if getattr(args, "init", None):
+        init = load_init(args.init)
+        check_init_identity(init, args.data)
+    model = build_model(**resolve_arch(args, init["config"] if init else None))
+    init_record = None
+    if init is not None:
+        apply_init(model, init)
+        # the loaded model's calib loss: the fine-tune's EPOCH lines (T = 1) compare to calib_ll
+        lc = predict_logits(model, calib, no_history=args.no_history)
+        init_record = {"kind": init["kind"], "path": init["path"], "sha256": init["sha256"],
+                       "temperature": init["temperature"],
+                       "calib_ll": mean_ll(masked_softmax(lc, calib["M"]), calib["Y"])}
+        if init["temperature"] is not None:
+            init_record["calib_ll_at_temperature"] = mean_ll(
+                masked_softmax(lc, calib["M"], init["temperature"]), calib["Y"])
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
     total_steps = args.epochs * n_buffers
@@ -738,6 +867,10 @@ def train(args) -> int:
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
+        started = (state.get("init") or {}).get("sha256")
+        if started != (init_record or {}).get("sha256"):
+            raise BeliefSeqError(f"resume --init sha256 {(init_record or {}).get('sha256')} "
+                                 f"differs from the run's {started}")
         # keep every earlier segment's recipe; this invocation's flags start a new one
         segs = state.setdefault("speed_segments", [speed_segment(saved["args"], 0, 0, inferred=True)])
         segs.append(speed_segment(args, state["epoch"], state["buffer"]))
@@ -746,6 +879,9 @@ def train(args) -> int:
     else:
         _status(status, f"START params={n_params(model)} train_rows={stream.rows} "
                         f"chunks={len(stream.entries)} config={json.dumps(vars(args), default=str)}")
+        if init_record is not None:
+            state["init"] = init_record
+            _status(status, f"INIT {json.dumps(init_record, sort_keys=True)}")
     # after any checkpoint load: the speed flags change no weight, key or saved state
     fwd, bf16 = apply_speed_flags(model, args)
     state.setdefault("speed_segments", [speed_segment(args, 0, 0)])
@@ -809,7 +945,8 @@ def train(args) -> int:
             state["best"], state["bad"] = cll, 0
             torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
                         "epoch": epoch + 1, "calib_ll": cll,
-                        "speed_segments": state["speed_segments"]}, out / "best.pt")
+                        "speed_segments": state["speed_segments"], "init": state.get("init")},
+                       out / "best.pt")
         else:
             state["bad"] += 1
         state["epoch"] += 1
@@ -1161,12 +1298,17 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--no-history", action="store_true")
     t.add_argument("--permute", action="store_true")
-    t.add_argument("--d", type=int, default=64)
-    t.add_argument("--heads", type=int, default=4)
-    t.add_argument("--enc-layers", type=int, default=1)
-    t.add_argument("--xattn-layers", type=int, default=2)
-    t.add_argument("--x-hidden", type=int, default=256)
-    t.add_argument("--no-card-self-attn", action="store_true")
+    t.add_argument("--init", default=None,
+                   help="warm start: a served belief package (.npz) or a belief_seq checkpoint; "
+                        "the architecture comes from it and a conflicting flag is refused")
+    # architecture flags default to None so a flag given with --init can be told apart;
+    # without --init an unset flag takes DEFAULT_ARCH
+    t.add_argument("--d", type=int, default=None, help="default 64")
+    t.add_argument("--heads", type=int, default=None, help="default 4")
+    t.add_argument("--enc-layers", type=int, default=None, help="default 1")
+    t.add_argument("--xattn-layers", type=int, default=None, help="default 2")
+    t.add_argument("--x-hidden", type=int, default=None, help="default 256")
+    t.add_argument("--no-card-self-attn", action="store_true", default=None)
     t.add_argument("--grouped-xattn", action="store_true",
                    help="frame-grouped cross-attention (same weights, equal up to summation order)")
     t.add_argument("--bf16", action="store_true",

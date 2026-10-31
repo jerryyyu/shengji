@@ -154,6 +154,16 @@ def build_sidecar(shard_path: str | os.PathLike, out_dir: str | os.PathLike,
     out = sidecar_path(out_dir, sha)
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     keys, means, codes, n = [], [], [], 0
+    attribution = {"play_records_with_action": 0, "with_mean": 0,
+                   "missing_mean": {"single_candidate": 0, "tractor_locked": 0, "other": 0}}
+
+    def missing(record):
+        allocation = record.get("allocation") or {}
+        reason = allocation.get("reason") if isinstance(allocation, dict) else None
+        bucket = {"single_candidate": "single_candidate", "tractor_lock": "tractor_locked"}.get(
+            reason, "other")
+        attribution["missing_mean"][bucket] += 1
+
     with open(shard_path) as fh:
         for line in fh:
             try:
@@ -165,14 +175,17 @@ def build_sidecar(shard_path: str | os.PathLike, out_dir: str | os.PathLike,
             n += 1
             if record.get("decision_kind", "play") != "play":
                 continue                    # the value cache keeps play decisions only
+            attribution["play_records_with_action"] += 1
             rs = record.get("record_sha256")
             pref = record.get("preference") or {}
             values, played = pref.get("means"), pref.get("played_index")
             if not rs or not isinstance(values, list) or played is None \
                     or not 0 <= played < len(values):
+                missing(record)
                 continue
             value = values[played]
             if value is None or not np.isfinite(value):
+                missing(record)
                 continue
             code = (record_units_code(record, producer_units) if units_override is None
                     else int(units_override))
@@ -186,18 +199,52 @@ def build_sidecar(shard_path: str | os.PathLike, out_dir: str | os.PathLike,
             keys.append(rs)
             means.append(float(value))
             codes.append(code)
+            attribution["with_mean"] += 1
     tmp = out.with_suffix(".tmp.npz")
     np.savez(tmp, schema=np.asarray(SIDECAR_SCHEMA),
              level_objective=np.asarray(level_objective if level_objective is not None else -1,
                                         dtype=np.int8),
              record_sha256=np.asarray(keys, dtype="S64"),
              search_mean_played=np.asarray(means, dtype=np.float32),
-             units_code=np.asarray(codes, dtype=np.int8))
+             units_code=np.asarray(codes, dtype=np.int8),
+             attribution_json=np.asarray(json.dumps(attribution, sort_keys=True)))
     os.replace(tmp, out)
-    return {"shard_sha256": sha, "records": n, "with_mean": len(keys),
+    return {"shard_sha256": sha, "records": n, "with_mean": len(keys), "attribution": attribution,
             "level_objective": level_objective,
             "points_rows": int(sum(1 for c in codes if c == UNITS_POINTS)),
             "level_rows": int(sum(1 for c in codes if c == UNITS_SIGNED_LEVEL))}
+
+
+def summarize_attribution(paths: Iterable[str | os.PathLike]) -> dict:
+    """Aggregate optional build-time counts without reopening source records.
+
+    Counts describe raw play records with an action, before cache row filtering;
+    they are not counts of decoded training rows. Older sidecars remain usable
+    but contribute only to ``shards_without_attribution``.
+    """
+    result = {"scope": "raw play records with action, before cache filtering",
+              "shards_with_attribution": 0, "shards_without_attribution": 0,
+              "play_records_with_action": 0, "with_mean": 0,
+              "missing_mean": {"single_candidate": 0, "tractor_locked": 0, "other": 0}}
+    for path in paths:
+        with np.load(path, allow_pickle=False) as archive:
+            if "attribution_json" not in archive.files:
+                result["shards_without_attribution"] += 1
+                continue
+            counts = json.loads(str(archive["attribution_json"]))
+            missing = counts["missing_mean"]
+            values = [counts["play_records_with_action"], counts["with_mean"], *missing.values()]
+            if (set(missing) != set(result["missing_mean"])
+                    or any(type(v) is not int or v < 0 for v in values)
+                    or counts["play_records_with_action"] != counts["with_mean"] + sum(missing.values())
+                    or counts["with_mean"] != len(archive["record_sha256"])):
+                raise SidecarError(f"{path}: inconsistent mean attribution")
+        result["shards_with_attribution"] += 1
+        for key in ("play_records_with_action", "with_mean"):
+            result[key] += counts[key]
+        for key in result["missing_mean"]:
+            result["missing_mean"][key] += missing[key]
+    return result
 
 
 def attach_search_means(arrays: dict, shard_sha: str, out_dir: str | os.PathLike) -> bool:

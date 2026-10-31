@@ -52,7 +52,7 @@ def main(argv=None) -> int:
     sidecars = None
     if args.search_mean_sidecar is not None:
         from shengji.train.search_mean_sidecar import (
-            build_sidecar, check_sidecar_coverage, sidecar_path)
+            build_sidecar, check_sidecar_coverage, sidecar_path, summarize_attribution)
         built = reused = 0
         for shard, _path in store.entries:
             if sidecar_path(args.search_mean_sidecar, shard.sha256).is_file():
@@ -65,7 +65,10 @@ def main(argv=None) -> int:
         coverage = check_sidecar_coverage(
             args.search_mean_sidecar, [(shard.store, shard.sha256) for shard, _ in store.entries])
         sidecars = {"built": built, "reused": reused, "coverage": coverage,
-                    "points_target_rows": 0, "level_target_rows": 0}
+                    "points_target_rows": 0, "level_target_rows": 0,
+                    "attribution": summarize_attribution(
+                        sidecar_path(args.search_mean_sidecar, shard.sha256)
+                        for shard, _ in store.entries)}
     rows = 0
     for block in store.iter_blocks():
         rows += block.n

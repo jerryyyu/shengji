@@ -619,6 +619,11 @@ def test_cache_only_cli_builds_then_reuses_trainer_compatible_caches(store_dir, 
         for key in ("points_target_rows", "level_target_rows"):
             assert first["search_mean_sidecars"][key] == second["search_mean_sidecars"][key]
         assert first["search_mean_sidecars"]["points_target_rows"] > 0
+        attr = first["search_mean_sidecars"]["attribution"]
+        assert attr == second["search_mean_sidecars"]["attribution"]
+        assert attr["shards_with_attribution"] == first["counts"]["shards"]
+        assert attr["shards_without_attribution"] == 0
+        assert attr["play_records_with_action"] == attr["with_mean"] + sum(attr["missing_mean"].values())
         assert sidecar_mtimes == {path: path.stat().st_mtime_ns for path in sidecar_mtimes}
         bad = next(iter(sidecar_mtimes))
         bad.unlink()
@@ -630,6 +635,14 @@ def test_cache_only_cli_builds_then_reuses_trainer_compatible_caches(store_dir, 
                    if path != bad)
         with np.load(bad) as archive:
             arrays = {key: archive[key] for key in archive.files}
+        arrays.pop("attribution_json")
+        np.savez(bad, **arrays)
+        legacy_bytes = bad.read_bytes()
+        legacy = json.loads(subprocess.check_output(command, text=True))
+        assert legacy["search_mean_sidecars"]["built"] == 0
+        assert legacy["search_mean_sidecars"]["attribution"]["shards_without_attribution"] == 1
+        assert legacy["search_mean_sidecars"]["points_target_rows"] == first["search_mean_sidecars"]["points_target_rows"]
+        assert bad.read_bytes() == legacy_bytes
         arrays["units_code"][:] = 99
         np.savez(bad, **arrays)
         bad_bytes = bad.read_bytes()

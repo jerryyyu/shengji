@@ -432,3 +432,40 @@ def test_the_legacy_search_means_counter_aggregates_under_one_key_across_warm_an
     both = canonical_counts({"search_means": {"present": 1, "absent": 0},
                              "action_values_means_2plus": {"present": 2, "absent": 5}})
     assert both == {"action_values_means_2plus": {"present": 3, "absent": 5}}
+
+
+def test_sidecar_attribution_survives_source_removal_and_legacy_mix(tmp_path):
+    shard = _write_run(tmp_path, False)
+    records = []
+    for i, (reason, value, kind) in enumerate([
+            ("single_candidate", None, "play"), ("tractor_lock", None, "play"),
+            ("serving_budget_fallback", None, "play"), (None, None, "play"),
+            ("single_candidate", 2.0, "play"), (None, 3.0, "bury")]):
+        records.append({"action": ["S2"], "decision_kind": kind,
+                        "record_sha256": f"{i:064x}", "allocation": {"reason": reason},
+                        "preference": {"means": [value], "played_index": 0}})
+    shard.write_text("".join(json.dumps(r) + "\n" for r in records))
+    built = sc.build_sidecar(shard, tmp_path / "side")
+    path = sc.sidecar_path(tmp_path / "side", built["shard_sha256"])
+    before = path.read_bytes()
+    shard.unlink()
+    result = sc.summarize_attribution([path])
+    assert result["play_records_with_action"] == 5 and result["with_mean"] == 1
+    assert result["missing_mean"] == {"single_candidate": 1, "tractor_locked": 1, "other": 2}
+    assert result["shards_with_attribution"] == 1 and result["shards_without_attribution"] == 0
+    arrays = {"record_sha256": np.asarray([b"0" * 63 + b"4"], dtype="S64")}
+    sc.attach_search_means(arrays, built["shard_sha256"], tmp_path / "side")
+    assert arrays["search_mean_played"].tolist() == [2.0]
+    _legacy_v2(tmp_path / "legacy", "old", level_objective=False)
+    mixed = sc.summarize_attribution([path, sc.sidecar_path(tmp_path / "legacy", "old")])
+    assert mixed["shards_without_attribution"] == 1
+    assert mixed["missing_mean"] == result["missing_mean"]
+    assert path.read_bytes() == before
+    with np.load(path) as archive:
+        payload = {k: archive[k] for k in archive.files}
+    bad = built["attribution"]
+    bad["with_mean"] += 1
+    payload["attribution_json"] = np.asarray(json.dumps(bad))
+    np.savez(path, **payload)
+    with pytest.raises(sc.SidecarError, match="inconsistent mean attribution"):
+        sc.summarize_attribution([path])

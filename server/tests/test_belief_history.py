@@ -471,3 +471,37 @@ def test_prepare_belief_cache_resumes_after_labels_before_history(tmp_path, monk
     assert prep.main(args + ['--resume']) == 0
     assert json.loads(capsys.readouterr().out)['consumer_rows'] > 0
     assert {p: (p.stat().st_mtime_ns, p.read_bytes()) for p in before} == before
+
+
+def test_prepare_belief_partitions_preserve_full_training_rows(tmp_path, capsys):
+    from scripts.prepare_belief_cache import main
+    from shengji.train.belief_seq import extract_entries, load_part, EVAL_KEYS, _Verified
+    store = tmp_path / 'store'
+    (store / 'shards').mkdir(parents=True)
+    for i, seed in enumerate((1003, 1017)):
+        (store / 'shards' / f'cluster-{i:06d}.jsonl').write_text(
+            ''.join(json.dumps(r) + '\n' for r in synthetic_cluster(seed)))
+    common = ['--store', str(store), '--workers', '1', '--task-clusters', '1']
+    whole = tmp_path / 'whole'
+    assert main(common + ['--out', str(whole)]) == 0
+    parts = [tmp_path / f'part-{i}' for i in range(2)]
+    for i, part in enumerate(parts):
+        assert main(common + ['--out', str(part), '--cluster-stride', '2',
+                              '--cluster-offset', str(i)]) == 0
+    def rows(dirs):
+        result = {}
+        for split in ('train', 'calib', 'test'):
+            for entry in extract_entries([str(d) for d in dirs], split):
+                data = load_part(entry, EVAL_KEYS, _Verified())
+                for i in range(len(data['X'])):
+                    key = (split, int(data['cluster'][i]), int(data['decision'][i]))
+                    assert key not in result
+                    rid = data['row_round'][i]
+                    result[key] = tuple(data[k][i].tobytes() for k in EVAL_KEYS) + tuple(
+                        data['_rounds'][k][rid].tobytes() for k in data['_rounds'])
+        return result
+    assert rows(parts) == rows([whole])
+    invalid = tmp_path / 'invalid'
+    with pytest.raises(SystemExit):
+        main(common + ['--out', str(invalid), '--cluster-stride', '2', '--cluster-offset', '2'])
+    assert not invalid.exists()

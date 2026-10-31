@@ -54,13 +54,17 @@ def main(argv=None):
     parser.add_argument('--workers', type=positive, default=2)
     parser.add_argument('--task-clusters', type=positive, default=10)
     parser.add_argument('--limit-clusters', type=positive)
+    parser.add_argument('--cluster-stride', type=positive, default=1)
+    parser.add_argument('--cluster-offset', type=int, default=0)
     parser.add_argument('--resume', action='store_true')
     args = parser.parse_args(argv)
+    if not 0 <= args.cluster_offset < args.cluster_stride:
+        parser.error('--cluster-offset must be in [0, cluster-stride)')
     store, out = args.store.resolve(), args.out.resolve()
     def log(*messages, **kwargs):
         print(*messages, file=sys.stderr, flush=True)
     labels = belief_labels.extract(
-        [str(store)], str(out), cluster_stride=1, cluster_offset=0,
+        [str(store)], str(out), cluster_stride=args.cluster_stride, cluster_offset=args.cluster_offset,
         max_clusters_per_store=args.limit_clusters, calib=0.06, test=0.12,
         sampler_worlds=0, sampler_splits=('calib', 'test'), sampler_stride=1,
         workers=args.workers, task_clusters=args.task_clusters, log=log, resume=args.resume)
@@ -75,6 +79,7 @@ def main(argv=None):
                       'store': str(store), 'out': str(out), 'consumer_rows': rows,
                       'split_rows': splits, 'required_eval_rows': 'all',
                       'workers': args.workers, 'task_clusters': args.task_clusters,
+                      'cluster_stride': args.cluster_stride, 'cluster_offset': args.cluster_offset,
                       'excluded_clusters': len(labels['excluded_clusters'])}, sort_keys=True))
     return 0
 

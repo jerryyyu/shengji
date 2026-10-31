@@ -938,9 +938,13 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *, history: bool 
     return path, counts
 
 
+def _archive_meta(archive: zipfile.ZipFile) -> dict:
+    return json.loads(str(_read_member(archive, "meta")))
+
+
 def read_meta(path: str | os.PathLike) -> dict:
-    with np.load(path, allow_pickle=False) as npz:
-        return json.loads(str(npz["meta"]))
+    with zipfile.ZipFile(path) as archive:
+        return _archive_meta(archive)
 
 
 def check_meta(meta: Mapping[str, Any], *, path: str | os.PathLike,
@@ -985,10 +989,10 @@ def _member_names(meta: Mapping[str, Any]) -> tuple[str, ...]:
 
 def load_block(path: str | os.PathLike, *, shard_sha256: str | None = None,
                history: bool | None = None, sidecar_dir: str | None = None) -> CwvBlock:
-    meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256, history=history)
-    names = _member_names(meta)
     with zipfile.ZipFile(path) as zf:
-        arrays = {name: _read_member(zf, name) for name in names}
+        meta = check_meta(_archive_meta(zf), path=path,
+                          shard_sha256=shard_sha256, history=history)
+        arrays = {name: _read_member(zf, name) for name in _member_names(meta)}
     check_public_width(arrays, meta, path=path)
     if sidecar_dir is not None:
         from .search_mean_sidecar import attach_search_means
@@ -1010,11 +1014,10 @@ def decode_arrays(task: tuple[str, str | None, bool | None]
     Module level and argument-picklable so a process pool can call it.
     """
     path, shard_sha256, history = task
-    meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256,
-                      history=history)
-    names = _member_names(meta)
     with zipfile.ZipFile(path) as zf:
-        arrays = {name: _read_member(zf, name) for name in names}
+        meta = check_meta(_archive_meta(zf), path=path,
+                          shard_sha256=shard_sha256, history=history)
+        arrays = {name: _read_member(zf, name) for name in _member_names(meta)}
     check_public_width(arrays, meta, path=path)
     return arrays, meta
 
@@ -1026,11 +1029,12 @@ def read_columns(task: tuple[str, str | None, bool | None, tuple[str, ...], np.n
     (``None`` = all), after the hash and flavour check ``decode_arrays`` runs.
     Module level and argument-picklable so a process pool can call it."""
     path, shard_sha256, history, names, keep_idx = task
-    meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256, history=history)
-    names = tuple(names)
-    if meta.get("trick_end") and CwvBlock.TRICK_END not in names:
-        names += (CwvBlock.TRICK_END,)
     with zipfile.ZipFile(path) as zf:
+        meta = check_meta(_archive_meta(zf), path=path,
+                          shard_sha256=shard_sha256, history=history)
+        names = tuple(names)
+        if meta.get("trick_end") and CwvBlock.TRICK_END not in names:
+            names += (CwvBlock.TRICK_END,)
         arrays = {name: _read_member(zf, name) for name in names}
     if keep_idx is not None:
         idx = np.asarray(keep_idx, dtype=np.int64)

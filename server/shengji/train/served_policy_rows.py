@@ -31,10 +31,17 @@ order is a seeded shuffle of the stores' verified shard lists and chunks are
 written with fixed zip timestamps, so the same inputs and arguments give the
 same bytes whatever the worker count.
 
+A large build runs as N partitions (``--partition I/N``, each a complete
+output directory of its own, on any host holding a copy of the stores), joined
+by ``combine`` into one directory the trainer streams.  An interrupted
+partition leaves no manifest and is rebuilt with ``--replace-incomplete``;
+completed partitions are kept as they are.
+
     python -m shengji.train.served_policy_rows --data STORE [--data STORE ...]
         --out DIR --encoder-version 2 [--exclude-seeds LO:HI ...]
         [--exclude-deal-keys FILE] [--chunk-rows N] [--max-rows N]
-        [--workers N] [--seed S]
+        [--workers N] [--seed S] [--partition I/N] [--replace-incomplete]
+    python -m shengji.train.served_policy_rows combine --out DIR PART [PART ...]
 """
 from __future__ import annotations
 
@@ -44,6 +51,7 @@ import io
 import json
 import math
 import random
+import re
 import sys
 import zipfile
 from collections import Counter, deque
@@ -292,15 +300,65 @@ def write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
             "target_kinds": {name: int((kinds == k).sum()) for k, name in TARGET_KINDS.items()}}
 
 
-def _check_out(out: Path, roots: Sequence[Path]) -> Path:
+_OWN_FILE = re.compile(r"chunk-\d{5}\.npz|summary\.json")
+
+
+def _check_out(out: Path, roots: Sequence[Path], *, replace_incomplete: bool = False) -> Path:
     out = out.resolve()
     for root in roots:
         root = root.resolve()
         if root == out or root in out.parents or out in root.parents:
             raise ServedPolicyRowsError(f"{out}: overlaps the input store {root}")
-    if out.exists():
-        raise ServedPolicyRowsError(f"{out}: already exists; the producer writes a fresh directory only")
+    if out.exists() or out.is_symlink():
+        if not replace_incomplete:
+            raise ServedPolicyRowsError(f"{out}: already exists; the producer writes a fresh directory only")
+        _remove_incomplete(out)
     return out
+
+
+def _remove_incomplete(out: Path) -> None:
+    """Remove an interrupted build: a real directory with no manifest holding
+    only this producer's own file names.  A directory with a manifest is
+    complete and is never rewritten; anything else is refused untouched."""
+    if out.is_symlink() or not out.is_dir():
+        raise ServedPolicyRowsError(f"{out}: exists and is not a directory this producer wrote")
+    if (out / "manifest.json").exists():
+        raise ServedPolicyRowsError(f"{out}: is a complete output (it has a manifest); completed output "
+                                    "is never rewritten")
+    entries = list(out.iterdir())
+    foreign = [e.name for e in entries
+               if not _OWN_FILE.fullmatch(e.name) or e.is_symlink() or not e.is_file()]
+    if foreign:
+        raise ServedPolicyRowsError(f"{out}: holds {sorted(foreign)[:3]} that this producer does not "
+                                    "write; refusing to remove it")
+    for e in entries:
+        e.unlink()
+    out.rmdir()
+
+
+def parse_partition(text: str) -> tuple[int, int]:
+    """``"I/N"``: partition ``I`` (0-based) of ``N``."""
+    try:
+        i_s, n_s = text.split("/", 1)
+        index, count = int(i_s), int(n_s)
+    except ValueError as exc:
+        raise ServedPolicyRowsError(f"partition {text!r}: expected I/N") from exc
+    _check_partition((index, count))
+    return index, count
+
+
+def _check_partition(partition: tuple[int, int]) -> tuple[int, int]:
+    index, count = partition
+    if type(index) is not int or type(count) is not int or count < 1 or not 0 <= index < count:
+        raise ServedPolicyRowsError(f"partition {partition!r}: need 0 <= I < N")
+    return index, count
+
+
+def _shard_list_digest(shards: Sequence[ShardRef]) -> str:
+    """Host-independent identity of an ordered shard list (labels and content
+    hashes, not absolute paths), so partitions built on different hosts from
+    copies of the same stores agree."""
+    return hashlib.sha256("\n".join(f"{s.label}\t{s.sha256}" for s in shards).encode()).hexdigest()
 
 
 def _read_deal_keys(path: str | Path) -> tuple[frozenset[str], str]:
@@ -319,9 +377,20 @@ def _digest(keys: Iterable[str]) -> str:
 def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
             exclude_seeds: Sequence[tuple[int, int]] = (), exclude_deal_keys: str | Path | None = None,
             chunk_rows: int = 65536, max_rows: int | None = None, workers: int = 1,
-            seed: int = 1) -> dict:
+            seed: int = 1, partition: tuple[int, int] | None = None,
+            replace_incomplete: bool = False) -> dict:
     """Write the chunked root rows of ``corpora`` to the new directory ``out``
-    and return the summary (also written to ``out/summary.json``)."""
+    and return the summary (also written to ``out/summary.json``).
+
+    ``partition=(I, N)`` keeps only every N-th shard of the seeded shuffle,
+    starting at I: the N partitions are disjoint, cover every shard, and each
+    is a complete output of its own that ``combine`` later joins.  A partition
+    may hold no rows (all its records excluded).  ``replace_incomplete``
+    removes an interrupted build at ``out`` first (``_remove_incomplete``)."""
+    if partition is not None:
+        partition = _check_partition(tuple(partition))
+        if max_rows is not None:
+            raise ServedPolicyRowsError("max_rows applies to one whole build, not to a partition")
     if type(version) is not int:
         raise ServedPolicyRowsError("the encoder version must be given explicitly as an int")
     width = input_dim(version)
@@ -342,11 +411,22 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     if exclude_deal_keys is not None:
         excluded_keys, keys_sha = _read_deal_keys(exclude_deal_keys)
     stores = [discover_store(c) for c in corpora]
-    out_dir = _check_out(Path(out), [Path(s.root) for s in stores])
-    paths = [sh.path for s in stores for sh in s.shards]
-    if len(set(paths)) != len(paths):
+    shards = [sh for s in stores for sh in s.shards]
+    if len({sh.path for sh in shards}) != len(shards):
         raise ServedPolicyRowsError("a shard is listed by two input stores")
-    random.Random(seed).shuffle(paths)
+    random.Random(seed).shuffle(shards)
+    part_info = None
+    if partition is not None:
+        index, count = partition
+        assigned = shards[index::count]
+        if not assigned:
+            raise ServedPolicyRowsError(f"partition {index}/{count} has no shard ({len(shards)} in all)")
+        part_info = {"index": index, "count": count, "all_shards": len(shards),
+                     "all_shards_digest": _shard_list_digest(shards),
+                     "shards": len(assigned), "shards_digest": _shard_list_digest(assigned)}
+        shards = assigned
+    paths = [sh.path for sh in shards]
+    out_dir = _check_out(Path(out), [Path(s.root) for s in stores], replace_incomplete=replace_incomplete)
     from .cwv_data import VALUE_UNITS_SCALE, cwv_encoder_identity
     identity = cwv_encoder_identity(version)
     out_dir.mkdir(parents=True)
@@ -394,7 +474,7 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
                 results.close()
     if X:
         flush(len(X))
-    if not chunks:
+    if not chunks and partition is None:
         raise ServedPolicyRowsError("no rows produced")
     if deals & (excluded_keys | excluded_seen):
         raise ServedPolicyRowsError("an excluded deal key reached the output")
@@ -425,6 +505,9 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
         "values_scale": "points",
         "value_units": dict(sum((Counter(c["value_units"]) for c in chunks), Counter())),
     }
+    if part_info is not None:
+        # the excluded deals themselves, so ``combine`` can count their union
+        summary["partition"] = dict(part_info, excluded_deals=sorted(excluded_seen))
     manifest = {"schema": CHUNK_SCHEMA, "input_dim": width, "enc_version": int(version),
                 "rows": total, "chunks": chunks, "deals": len(deals),
                 "split": None, "corpora": [s.root for s in stores],
@@ -443,6 +526,158 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     return summary
 
 
+COMBINED_SCHEMA = "shengji-served-policy-rows-combined-v1"
+
+#: summary fields every partition of one build must agree on (host paths excluded)
+_SHARED_FIELDS = ("enc_version", "input_dim", "encoder_implementation_sha256", "shard_order_seed",
+                  "chunk_rows", "max_rows", "values_scale")
+_SHARED_EXCLUSIONS = ("seed_intervals_half_open", "deal_keys_file_sha256", "deal_keys_listed")
+_SHARED_PARTITION = ("count", "all_shards", "all_shards_digest")
+_SUMMED = ("records", "play_records", "non_play_records", "rows", "excluded_rows")
+
+
+def _shared_view(summary: Mapping[str, Any]) -> dict:
+    return {"fields": {k: summary.get(k) for k in _SHARED_FIELDS},
+            "exclusions": {k: summary["exclusions"].get(k) for k in _SHARED_EXCLUSIONS},
+            "partition": {k: summary["partition"].get(k) for k in _SHARED_PARTITION},
+            "stores": [{k: s.get(k) for k in ("layout", "shards", "manifests", "skipped")}
+                       for s in summary["stores"]]}
+
+
+def _read_partition(part: Path) -> tuple[dict, dict]:
+    """A complete partition's summary and manifest, every chunk hash-checked."""
+    man_path, sum_path = part / "manifest.json", part / "summary.json"
+    if not man_path.is_file():
+        raise ServedPolicyRowsError(f"{part}: no manifest.json; an interrupted partition is rebuilt "
+                                    "(--replace-incomplete), never combined")
+    if not sum_path.is_file():
+        raise ServedPolicyRowsError(f"{part}: no summary.json")
+    summary = json.loads(sum_path.read_text())
+    man = json.loads(man_path.read_text())
+    if summary.get("schema") != SUMMARY_SCHEMA or not isinstance(summary.get("partition"), dict):
+        raise ServedPolicyRowsError(f"{part}: not a partition of served_policy_rows (no partition block)")
+    if (man.get("schema") != CHUNK_SCHEMA or man.get("rows") != summary["rows"]
+            or len(man.get("chunks") or []) != summary["chunks"]
+            or sum(int(c["rows"]) for c in man["chunks"]) != summary["rows"]):
+        raise ServedPolicyRowsError(f"{part}: manifest and summary disagree")
+    for c in man["chunks"]:
+        name = c["file"]
+        if Path(name).name != name or not re.fullmatch(r"chunk-\d{5}\.npz", name):
+            raise ServedPolicyRowsError(f"{part}: unexpected chunk name {name!r}")
+        path = part / name
+        if path.is_symlink() or not path.is_file():
+            raise ServedPolicyRowsError(f"{part}: chunk {name} missing")
+        with open(path, "rb") as fh:
+            if hashlib.file_digest(fh, "sha256").hexdigest() != c["sha256"]:
+                raise ServedPolicyRowsError(f"{part}: chunk {name} SHA256 differs from the manifest")
+    return summary, man
+
+
+def combine(out: str | Path, parts: Sequence[str | Path]) -> dict:
+    """Join the complete partitions ``parts`` (all N of one build, any order)
+    into the new directory ``out``: a composed chunk manifest that
+    ``PolicyRowsStream`` (``train_cwv --policy-rows out``) streams, whose chunks
+    are symlinks to the partitions' verified chunks, and a summary whose counts
+    are the partitions' sums (deals and excluded deals as unions).  Returns the
+    combined summary (also ``out/summary.json``)."""
+    from .cwv_data import VALUE_UNITS_SCALE
+    if not parts:
+        raise ServedPolicyRowsError("no partition")
+    dirs = [Path(p).resolve() for p in parts]
+    if len(set(dirs)) != len(dirs):
+        raise ServedPolicyRowsError("a partition is listed twice")
+    out_dir = Path(out).resolve()
+    for d in dirs:
+        if d == out_dir or d in out_dir.parents or out_dir in d.parents:
+            raise ServedPolicyRowsError(f"{out_dir}: overlaps the partition {d}")
+    if out_dir.exists() or out_dir.is_symlink():
+        raise ServedPolicyRowsError(f"{out_dir}: already exists; combine writes a fresh directory only")
+    read = sorted(((d, *_read_partition(d)) for d in dirs), key=lambda t: t[1]["partition"]["index"])
+    first = _shared_view(read[0][1])
+    for d, s, _m in read[1:]:
+        if _shared_view(s) != first:
+            raise ServedPolicyRowsError(f"{d}: built with other inputs or arguments than {read[0][0]}")
+    count = first["partition"]["count"]
+    indices = [s["partition"]["index"] for _d, s, _m in read]
+    if indices != list(range(count)):
+        missing = sorted(set(range(count)) - set(indices))
+        raise ServedPolicyRowsError(f"partitions {indices} of {count}: need each of 0..{count - 1} once"
+                                    + (f" (missing {missing})" if missing else ""))
+    if sum(s["partition"]["shards"] for _d, s, _m in read) != first["partition"]["all_shards"]:
+        raise ServedPolicyRowsError("the partitions' shard counts do not add up to the build's")
+
+    counts: Counter = Counter()
+    excluded: Counter = Counter(); lcc: Counter = Counter(); units: Counter = Counter()
+    targets: Counter = Counter(); flags: Counter = Counter()
+    deals: set[str] = set(); excluded_deals: set[str] = set()
+    chunks: list[tuple[dict, Path]] = []
+    for d, s, m in read:
+        for k in _SUMMED:
+            counts[k] += int(s[k])
+        excluded.update(s["excluded"]); lcc.update(s["lead_confirm_status"])
+        units.update(s["value_units"]); targets.update(s["target_rows"])
+        flags.update({k: int(v) for k, v in m["explore_flag_counts"].items()})
+        excluded_deals.update(s["partition"]["excluded_deals"])
+        for c in m["chunks"]:
+            with np.load(d / c["file"]) as z:
+                deals.update(z["deal_key"].astype(str).tolist())
+            chunks.append((dict(c, file=f"p{s['partition']['index']:04d}-{c['file']}", source=str(d)),
+                           d / c["file"]))
+    if not chunks:
+        raise ServedPolicyRowsError("no rows in any partition")
+    if deals & excluded_deals:
+        raise ServedPolicyRowsError("a deal excluded by one partition is a fit row of another")
+    head = read[0][1]
+    exclusions = {**{k: head["exclusions"][k] for k in _SHARED_EXCLUSIONS},
+                  "excluded_deals_seen": len(excluded_deals), "excluded_deals_digest": _digest(excluded_deals)}
+    summary = {
+        "schema": COMBINED_SCHEMA, "producer": PRODUCER, "out": str(out_dir),
+        **{k: head[k] for k in _SHARED_FIELDS}, "stores": head["stores"],
+        "partitions": [{"index": s["partition"]["index"], "dir": str(d), "rows": s["rows"],
+                        "chunks": s["chunks"], "shards": s["partition"]["shards"],
+                        "shards_digest": s["partition"]["shards_digest"],
+                        "manifest_sha256": hashlib.sha256((d / "manifest.json").read_bytes()).hexdigest()}
+                       for d, s, _m in read],
+        "partition_count": count, "all_shards": first["partition"]["all_shards"],
+        "all_shards_digest": first["partition"]["all_shards_digest"],
+        **{k: int(counts[k]) for k in _SUMMED},
+        "target_rows": {name: int(targets[name]) for name in TARGET_KINDS.values()},
+        "deals": len(deals), "fit_deals_digest": _digest(deals),
+        "excluded": dict(sorted(excluded.items())),
+        "lead_confirm_status": dict(sorted(lcc.items())),
+        "exclusions": exclusions, "chunks": len(chunks), "value_units": dict(units),
+    }
+    if counts["rows"] + counts["excluded_rows"] != counts["play_records"]:
+        raise ServedPolicyRowsError("the partitions' rows and exclusions do not add up to their play records")
+    manifest = {"schema": CHUNK_SCHEMA, "input_dim": head["input_dim"], "enc_version": head["enc_version"],
+                "rows": int(counts["rows"]), "chunks": [c for c, _t in chunks], "deals": len(deals),
+                "split": None, "corpora": [s["root"] for s in head["stores"]],
+                "composed_from": [{"tag": f"p{s['partition']['index']:04d}", "dir": str(d)} for d, s, _m in read],
+                "deal_key_schema": "shengji-value-deal-key-v1", "value_units": dict(units),
+                "value_units_scale": dict(VALUE_UNITS_SCALE), "values_scale": "points",
+                "explore_tags": True,
+                "explore_flag_names": {str(k): v for k, v in EXPLORE_FLAG_NAMES.items()},
+                "explore_flag_counts": {k: int(flags[k]) for k in map(str, sorted(EXPLORE_FLAG_NAMES))},
+                "target_kind_names": {str(k): v for k, v in TARGET_KINDS.items()},
+                "producer": {k: v for k, v in summary.items() if k not in ("schema", "out")}}
+    out_dir.mkdir(parents=True)
+    for entry, target in chunks:
+        (out_dir / entry["file"]).symlink_to(target)
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=1, sort_keys=True) + "\n")
+    # the manifest last: a directory without one is refused by the stream
+    with open(out_dir / "manifest.json", "x") as fh:
+        fh.write(json.dumps(manifest, indent=1) + "\n")
+    return summary
+
+
+def build_combine_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="served_policy_rows combine",
+                                description="join all N complete partitions of one build")
+    p.add_argument("--out", required=True, help="the new combined directory (must not exist)")
+    p.add_argument("parts", nargs="+", help="the partition output directories")
+    return p
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="served_policy_rows", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -458,16 +693,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-rows", type=int, default=None)
     p.add_argument("--workers", type=int, default=1)
     p.add_argument("--seed", type=int, default=1, help="shard-order shuffle seed")
+    p.add_argument("--partition", default=None, metavar="I/N",
+                   help="build only partition I (0-based) of N over the shuffled shards; join all N "
+                        "with the combine subcommand")
+    p.add_argument("--replace-incomplete", action="store_true",
+                   help="first remove an interrupted build at --out (no manifest, only this producer's "
+                        "files); a complete output is refused")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
-    a = build_parser().parse_args(argv)
+    argv = list(sys.argv[1:] if argv is None else argv)
     try:
+        if argv[:1] == ["combine"]:
+            c = build_combine_parser().parse_args(argv[1:])
+            summary = combine(c.out, c.parts)
+            print(json.dumps({k: v for k, v in summary.items() if k != "partitions"}, sort_keys=True))
+            return 0
+        a = build_parser().parse_args(argv)
         summary = produce(a.out, a.data, version=a.encoder_version,
                           exclude_seeds=[parse_seed_interval(s) for s in a.exclude_seeds],
                           exclude_deal_keys=a.exclude_deal_keys, chunk_rows=a.chunk_rows,
-                          max_rows=a.max_rows, workers=a.workers, seed=a.seed)
+                          max_rows=a.max_rows, workers=a.workers, seed=a.seed,
+                          partition=None if a.partition is None else parse_partition(a.partition),
+                          replace_incomplete=a.replace_incomplete)
     except ServedPolicyRowsError as exc:
         print(f"served_policy_rows: {exc}", file=sys.stderr)
         return 2

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import copy
+import hashlib
 from collections import Counter
 
 import numpy as np
@@ -132,6 +133,156 @@ def test_a_misaligned_chunk_is_refused(chunk, tmp_path):
     root_paths = [str(p) for p in bl.cluster_paths(tmp_path / "store")]
     with pytest.raises(bl.BeliefLabelError):
         bh.chunk_history(str(tmp_path / "bad.npz"), root_paths)
+
+
+def test_reuse_reports_real_counts_and_load_part_reads_it(chunk, tmp_path, monkeypatch):
+    """A resumable output is compared and remains consumable by the sequence loader."""
+    chunk_path = tmp_path / "labels.npz"
+    np.savez(chunk_path, **chunk["rows"])
+    out_path = tmp_path / "history.npz"
+    np.savez_compressed(out_path, **chunk["hist"])
+    before = out_path.stat().st_mtime_ns
+    digest = hashlib.sha256(out_path.read_bytes()).hexdigest()
+    monkeypatch.setattr(bh, "chunk_history", lambda *_: chunk["hist"])
+    got = bh._chunk_task((str(chunk_path), str(out_path), [], digest))
+    assert got["skipped"] and got["rows"] == len(chunk["rows"]["X"])
+    assert got["rounds"] == len(chunk["hist"]["round_n"])
+    assert out_path.stat().st_mtime_ns == before
+
+    from shengji.train import belief_seq
+    entry = {"path": str(chunk_path), "sha256": hashlib.sha256(chunk_path.read_bytes()).hexdigest(),
+             "rows": len(chunk["rows"]["X"]), "hist": str(out_path), "hist_sha256": digest,
+             "dir": str(tmp_path)}
+    part = belief_seq.load_part(entry, belief_seq.ROW_KEYS, belief_seq._Verified())
+    assert len(part["X"]) == got["rows"]
+    assert len(part["_rounds"]["round_n"]) == got["rounds"]
+
+
+def test_reuse_refuses_modified_recorded_output_without_replacing_it(chunk, tmp_path, monkeypatch):
+    chunk_path = tmp_path / "labels.npz"
+    np.savez(chunk_path, **chunk["rows"])
+    out_path = tmp_path / "history.npz"
+    np.savez_compressed(out_path, **chunk["hist"])
+    digest = hashlib.sha256(out_path.read_bytes()).hexdigest()
+    out_path.write_bytes(out_path.read_bytes() + b"changed")
+    original = out_path.read_bytes()
+    monkeypatch.setattr(bh, "chunk_history", lambda *_: pytest.fail("corrupt output was replayed"))
+    with pytest.raises(bl.BeliefLabelError, match="sha256 mismatch"):
+        bh._chunk_task((str(chunk_path), str(out_path), [], digest))
+    assert out_path.read_bytes() == original
+
+
+def test_unrecorded_existing_output_is_replayed_and_compared(chunk, tmp_path, monkeypatch):
+    chunk_path = tmp_path / "labels.npz"
+    np.savez(chunk_path, **chunk["rows"])
+    out_path = tmp_path / "history.npz"
+    np.savez_compressed(out_path, **chunk["hist"])
+    monkeypatch.setattr(bh, "chunk_history", lambda *_: chunk["hist"])
+    got = bh._chunk_task((str(chunk_path), str(out_path), [], None))
+    assert got["skipped"] and got["rows"] == len(chunk["rows"]["X"])
+
+
+def test_unrecorded_mismatch_is_refused_without_replacing_partial_output(chunk, tmp_path, monkeypatch):
+    chunk_path = tmp_path / "labels.npz"
+    np.savez(chunk_path, **chunk["rows"])
+    out_path = tmp_path / "history.npz"
+    altered = {key: value.copy() for key, value in chunk["hist"].items()}
+    altered["row_ply"][0] += 1
+    np.savez_compressed(out_path, **altered)
+    before = out_path.read_bytes()
+    monkeypatch.setattr(bh, "chunk_history", lambda *_: chunk["hist"])
+    with pytest.raises(bl.BeliefLabelError, match="differs from replay"):
+        bh._chunk_task((str(chunk_path), str(out_path), [], None))
+    assert out_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_history_dispatch_bounds_pending_work_and_sends_inventory_once(monkeypatch, workers):
+    shards = tuple(f"shard-{i}" for i in range(50000))
+    tasks = [(f"label-{i}", f"history-{i}", None) for i in range(25)]
+    outstanding = 0
+    peak = 0
+    initializations = []
+
+    class Future:
+        def __init__(self, task):
+            self.task = task
+        def result(self):
+            nonlocal outstanding
+            outstanding -= 1
+            return self.task
+
+    class Pool:
+        def __init__(self, *, max_workers, initializer, initargs):
+            assert max_workers == workers
+            assert initializer is bh._init_history_worker
+            assert initargs == (shards,)
+            initializations.append(initargs)
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def submit(self, fn, task):
+            nonlocal outstanding, peak
+            assert fn is bh._worker_chunk
+            assert len(task) == 3 and task in tasks
+            outstanding += 1
+            peak = max(peak, outstanding)
+            assert outstanding <= 2 * workers
+            return Future(task)
+
+    monkeypatch.setattr(bh, "ProcessPoolExecutor", Pool)
+    assert list(bh._run_tasks(tasks, shards, workers)) == tasks
+    assert len(initializations) == 1 and peak == 2 * workers and outstanding == 0
+
+
+def test_extract_preflights_source_and_reuses_partial_outputs(chunk, tmp_path, monkeypatch):
+    store = tmp_path / "stores" / "store"
+    shards = store / "shards"
+    shards.mkdir(parents=True)
+    for k, records in enumerate(chunk["records"]):
+        with open(shards / f"cluster-{k:06d}.jsonl", "w") as fh:
+            for record in records:
+                fh.write(json.dumps(record) + "\n")
+    data = tmp_path / "extract"
+    data.mkdir()
+    labels = data / "train-x.npz"
+    np.savez(labels, **chunk["rows"])
+    source = {"stores": ["store"], "chunks": [{"files": {"train": {
+        "file": labels.name, "rows": len(chunk["rows"]["X"]),
+        "sha256": hashlib.sha256(labels.read_bytes()).hexdigest()}}}]}
+    source_path = data / "manifest.json"
+    source_path.write_text(json.dumps(source))
+
+    first = bh.extract([str(data)], str(tmp_path / "stores"), workers=1, log=lambda *_args, **_kw: None)
+    history = data / "hist" / labels.name
+    before = history.stat().st_mtime_ns
+    second = bh.extract([str(data)], str(tmp_path / "stores"), workers=1, log=lambda *_args, **_kw: None)
+    assert first[str(data)]["rows"] == second[str(data)]["rows"] == len(chunk["rows"]["X"])
+    assert history.stat().st_mtime_ns == before
+    from shengji.train import belief_seq
+    entries = belief_seq.extract_entries([str(data)], "train")
+    loaded = belief_seq.load_part(entries[0], belief_seq.ROW_KEYS, belief_seq._Verified())
+    assert len(loaded["X"]) == second[str(data)]["rows"]
+    history_manifest = data / "hist" / "manifest.json"
+    history_manifest.unlink()
+    recovered = bh.extract([str(data)], str(tmp_path / "stores"), workers=1,
+                           log=lambda *_args, **_kw: None)
+    assert recovered[str(data)]["rows"] == second[str(data)]["rows"]
+    assert history.stat().st_mtime_ns == before
+
+    source_bytes = labels.read_bytes()
+    labels.write_bytes(source_bytes + b"changed")
+    with pytest.raises(bl.BeliefLabelError, match="label manifest"):
+        bh.extract([str(data)], str(tmp_path / "stores"), workers=1, log=lambda *_args, **_kw: None)
+    labels.write_bytes(source_bytes)
+
+    manifest_bytes = (data / "hist" / "manifest.json").read_bytes()
+    source["changed"] = True
+    source_path.write_text(json.dumps(source))
+    with pytest.raises(bl.BeliefLabelError, match="source extract manifest changed"):
+        bh.extract([str(data)], str(tmp_path / "stores"), workers=1, log=lambda *_args, **_kw: None)
+    assert (data / "hist" / "manifest.json").read_bytes() == manifest_bytes
 
 
 def test_sampled_worlds_are_legal():

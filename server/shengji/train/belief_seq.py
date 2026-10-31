@@ -34,6 +34,11 @@ bootstrap CIs.  Added here: a per-trick table, the permuted-label control, and
 copy placed, receiver sizes and void masks honoured by a Hall-condition
 sequential sampler) scored by v83's card agreement.
 
+``train --init`` warm-starts from a served NumPy package (or a checkpoint this
+trainer wrote): the architecture is the package's, its input widths must be
+the training data's, and the run records the package's sha256, temperature and
+calib loss before any update.
+
 CLI: ``python -m shengji.train.belief_seq {train,evaluate,latency}``.
 """
 from __future__ import annotations
@@ -452,6 +457,117 @@ def n_params(model) -> int:
     return int(sum(p.numel() for p in model.parameters()))
 
 
+#: the architecture of a fresh model when neither ``--init`` nor a flag sets it
+DEFAULT_ARCH = {"d": 64, "heads": 4, "enc_layers": 1, "xattn_layers": 2, "x_hidden": 256,
+                "card_self_attn": True}
+
+
+def trainer_dims() -> dict[str, int]:
+    """The input widths this trainer builds, under ``ai.belief_numpy.DIMS``'s names."""
+    return {"feature_dim": FEATURE_DIM, "n_card_features": N_CARD_FEATURES,
+            "n_token_float": N_TOKEN_FLOAT, "n_row_card": N_ROW_CARD, "max_plays": MAX_PLAYS}
+
+
+def load_init(path: str) -> dict[str, Any]:
+    """A warm start's weights, architecture and identity.
+
+    ``path`` is a served NumPy package (``.npz``; this is the inverse of
+    ``belief_sampler.export``: the package's float32 arrays under their
+    ``state_dict`` names) or a checkpoint this trainer wrote (``best.pt`` /
+    ``checkpoint.pt``).  A package is validated by the serving loader itself
+    (schema, input widths, shapes, finite weights, temperature range).
+
+    Returns ``kind`` (``package``/``checkpoint``), ``sha256`` of the file,
+    ``config``, ``weights`` (name -> float32 array), ``dims`` (the input widths
+    the weights were built for) and ``temperature`` (the package's
+    calibration temperature; None for a checkpoint)."""
+    from ..ai.belief_numpy import CONFIG_KEYS, BeliefNumpyError, load_belief_numpy
+    if str(path).endswith(".npz"):
+        try:
+            pkg = load_belief_numpy(path, dtype=np.float32)
+        except (BeliefNumpyError, KeyError) as exc:
+            raise BeliefSeqError(f"--init {path}: not a belief package: {exc}") from exc
+        return {"kind": "package", "path": str(path), "sha256": pkg.package_sha256,
+                "config": dict(pkg.config), "weights": {k: np.array(v) for k, v in pkg.w.items()},
+                "dims": dict(pkg.metadata["dims"]), "temperature": pkg.temperature}
+    import torch
+    raw = Path(path).read_bytes()
+    saved = torch.load(io.BytesIO(raw), weights_only=False, map_location="cpu")
+    if not isinstance(saved, Mapping) or "model" not in saved or "config" not in saved:
+        raise BeliefSeqError(f"--init {path}: not a belief_seq checkpoint (no model/config)")
+    config = {k: saved["config"][k] for k in CONFIG_KEYS}
+    weights = {k: v.detach().cpu().float().numpy() for k, v in saved["model"].items()}
+    # a checkpoint records no widths: its weight shapes are checked against this trainer's
+    return {"kind": "checkpoint", "path": str(path), "sha256": hashlib.sha256(raw).hexdigest(),
+            "config": config, "weights": weights, "dims": trainer_dims(), "temperature": None}
+
+
+def check_init_identity(init: Mapping[str, Any], dirs: Sequence[str]) -> None:
+    """Refuse a warm start whose inputs are not the training data's: the
+    package's input widths must be this trainer's, its weights the shapes its
+    config implies at those widths, and every data dir's label extract must be
+    the schema, width and feature blocks this trainer reads (the history
+    extract's schema is checked by ``extract_entries``)."""
+    from ..ai.belief_numpy import expected_shapes
+    from .belief_labels import SCHEMA as LABELS_SCHEMA
+    dims = trainer_dims()
+    if init["dims"] != dims:
+        raise BeliefSeqError(f"--init input widths {init['dims']} differ from this trainer's {dims}")
+    want = expected_shapes(init["config"], **dims)
+    got = {k: tuple(v.shape) for k, v in init["weights"].items()}
+    if got != want:
+        bad = sorted(set(got) ^ set(want)) or sorted(k for k in want if got[k] != want[k])
+        raise BeliefSeqError(f"--init weights differ from its config at this trainer's widths: "
+                             f"{bad[:3]}")
+    blocks = [[b, w] for b, w in FEATURE_BLOCKS]
+    for d in dirs:
+        man = json.loads((Path(d) / "manifest.json").read_text())
+        ident = (man.get("schema"), man.get("feature_dim"),
+                 [list(x) for x in man.get("feature_blocks") or []])
+        if ident != (LABELS_SCHEMA, dims["feature_dim"], blocks):
+            raise BeliefSeqError(f"{d}: label extract (schema {ident[0]}, feature_dim {ident[1]}) "
+                                 f"is not the features the --init model reads")
+
+
+def resolve_arch(args, init_config: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The model architecture: the ``--init`` package's (an architecture flag
+    that disagrees with it is refused), else the flags over ``DEFAULT_ARCH``.
+    Writes the resolved values back to ``args`` so the saved ``args`` are
+    complete."""
+    flags = {"d": args.d, "heads": args.heads, "enc_layers": args.enc_layers,
+             "xattn_layers": args.xattn_layers, "x_hidden": args.x_hidden,
+             "card_self_attn": None if args.no_card_self_attn is None else not args.no_card_self_attn}
+    given = {k: v for k, v in flags.items() if v is not None}
+    if init_config is not None:
+        arch = {k: init_config[k] for k in DEFAULT_ARCH}
+        clash = {k: (v, arch[k]) for k, v in given.items() if v != arch[k]}
+        if clash:
+            raise BeliefSeqError("architecture flags conflict with --init (flag, package): "
+                                 + ", ".join(f"{k}={a}/{b}" for k, (a, b) in clash.items()))
+    else:
+        arch = {**DEFAULT_ARCH, **given}
+    args.d, args.heads, args.enc_layers = arch["d"], arch["heads"], arch["enc_layers"]
+    args.xattn_layers, args.x_hidden = arch["xattn_layers"], arch["x_hidden"]
+    args.no_card_self_attn = not arch["card_self_attn"]
+    return arch
+
+
+def apply_init(model, init: Mapping[str, Any]) -> None:
+    """Load ``init``'s weights into ``model`` (strict: same names and shapes)."""
+    import torch
+    sd = model.state_dict()
+    w = init["weights"]
+    if set(sd) != set(w):
+        raise BeliefSeqError(f"--init weights differ from the model: "
+                             f"{sorted(set(sd) ^ set(w))[:3]}")
+    new = {}
+    for k, ref in sd.items():
+        if tuple(w[k].shape) != tuple(ref.shape):
+            raise BeliefSeqError(f"--init {k}: shape {tuple(w[k].shape)} != {tuple(ref.shape)}")
+        new[k] = torch.from_numpy(np.array(w[k], np.float32)).to(ref.dtype)
+    model.load_state_dict(new, strict=True)
+
+
 # ------------------------------------------------------------------ streaming
 
 class Stream:
@@ -539,26 +655,43 @@ class Stream:
             th.join()
 
 
+#: calib/test row selections: ``sampler`` keeps the rows where the production
+#: sampler was drawn (``S_n > 0``; the sampler-relative metrics need them),
+#: ``all`` keeps every row of the split (for extracts without sampler draws)
+EVAL_ROWS = ("sampler", "all")
+
+
 def load_eval(dirs, split, verified, *, max_rows: int | None = None, seed: int = 0,
-              threads: int = 4, log=print) -> dict[str, Any]:
-    """Calib/test rows where the sampler was drawn (as ``belief_eval``), with history.
-    ``max_rows`` subsamples whole chunks (deals), seeded."""
+              threads: int = 4, log=print, rows: str = "sampler") -> dict[str, Any]:
+    """Calib/test rows with history: where the sampler was drawn (as
+    ``belief_eval``) for ``rows="sampler"``, every row for ``rows="all"``.
+    The split's chunks (deals) are the extract's either way; ``max_rows``
+    subsamples whole chunks, seeded.  An empty selection is refused."""
+    if rows not in EVAL_ROWS:
+        raise BeliefSeqError(f"eval rows {rows!r} not in {EVAL_ROWS}")
+    sampler_only = rows == "sampler"
     entries = extract_entries(dirs, split)
     if max_rows is not None:
         rng = np.random.default_rng(seed)
         picked, n = [], 0
+        # sampler rows are ~1/4 of a chunk's rows
+        budget = max_rows * 4 if sampler_only else max_rows
         for i in rng.permutation(len(entries)):
-            if n >= max_rows * 4:          # sampler rows are ~1/4 of a chunk's rows
+            if n >= budget:
                 break
             picked.append(entries[i])
             n += entries[i]["rows"]
         entries = picked
     with ThreadPoolExecutor(threads) as ex:
-        parts = list(ex.map(lambda e: load_part(e, EVAL_KEYS, verified, sampler_rows_only=True),
-                            entries))
+        parts = list(ex.map(lambda e: load_part(e, EVAL_KEYS, verified,
+                                                sampler_rows_only=sampler_only), entries))
     parts = [p for p in parts if len(p["X"])]
+    if not parts:
+        raise BeliefSeqError(f"{split}: no {rows} rows selected from {len(entries)} chunks of "
+                             f"{list(dirs)}" + (" (no sampler-drawn rows; --eval-rows all "
+                                                "selects every row)" if sampler_only else ""))
     out = concat_parts(parts)
-    log(f"[data] {split}: {len(out['X'])} sampler rows, {len(np.unique(out['deal']))} deals, "
+    log(f"[data] {split}: {len(out['X'])} {rows} rows, {len(np.unique(out['deal']))} deals, "
         f"{len(out['_rounds']['round_n'])} rounds", flush=True)
     return out
 
@@ -692,6 +825,13 @@ def world_agreement(worlds: np.ndarray, Y: np.ndarray) -> np.ndarray:
 
 # ------------------------------------------------------------------ training
 
+def calib_losses(lc: np.ndarray, part: Mapping[str, Any], temperature: float = 1.0) -> dict:
+    """Per-copy log-loss on ``part`` for the all/hands/kitty subsets."""
+    t = summarize(copy_terms(masked_softmax(lc, part["M"], temperature), part["Y"]),
+                  np.ones(len(part["Y"]), bool))
+    return {k: t[k]["logloss"] for k in ("all", "hands", "kitty")}
+
+
 def _status(path: str | None, msg: str) -> None:
     line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {msg}"
     print(line, flush=True)
@@ -721,13 +861,28 @@ def train(args) -> int:
     stream = Stream(entries, verified=verified, threads=args.loader_threads,
                     buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch,
                     row_frac=args.row_frac, no_history=args.no_history, permute=args.permute)
-    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed)
+    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed,
+                      rows=args.eval_rows)
     if args.permute:
         perm = permute_within_strata(strata_of(calib["trick"], calib["role"]), args.seed + 2)
         calib["Y"], calib["M"] = calib["Y"][perm], calib["M"][perm]
-    model = build_model(d=args.d, heads=args.heads, enc_layers=args.enc_layers,
-                        xattn_layers=args.xattn_layers, x_hidden=args.x_hidden,
-                        card_self_attn=not args.no_card_self_attn)
+    init = None
+    if getattr(args, "init", None):
+        init = load_init(args.init)
+        check_init_identity(init, args.data)
+    model = build_model(**resolve_arch(args, init["config"] if init else None))
+    init_record = None
+    if init is not None:
+        apply_init(model, init)
+        # the loaded model's calib loss: the fine-tune's EPOCH lines (T = 1) compare to calib_ll
+        lc = predict_logits(model, calib, no_history=args.no_history)
+        init_record = {"kind": init["kind"], "path": init["path"], "sha256": init["sha256"],
+                       "temperature": init["temperature"],
+                       "calib_ll": mean_ll(masked_softmax(lc, calib["M"]), calib["Y"]),
+                       "calib_subsets": calib_losses(lc, calib)}
+        if init["temperature"] is not None:
+            init_record["calib_ll_at_temperature"] = mean_ll(
+                masked_softmax(lc, calib["M"], init["temperature"]), calib["Y"])
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
     total_steps = args.epochs * n_buffers
@@ -738,6 +893,13 @@ def train(args) -> int:
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
+        run_rows = saved["args"].get("eval_rows", "sampler")
+        if run_rows != args.eval_rows:
+            raise BeliefSeqError(f"resume --eval-rows {args.eval_rows} differs from the run's {run_rows}")
+        started = (state.get("init") or {}).get("sha256")
+        if started != (init_record or {}).get("sha256"):
+            raise BeliefSeqError(f"resume --init sha256 {(init_record or {}).get('sha256')} "
+                                 f"differs from the run's {started}")
         # keep every earlier segment's recipe; this invocation's flags start a new one
         segs = state.setdefault("speed_segments", [speed_segment(saved["args"], 0, 0, inferred=True)])
         segs.append(speed_segment(args, state["epoch"], state["buffer"]))
@@ -746,6 +908,9 @@ def train(args) -> int:
     else:
         _status(status, f"START params={n_params(model)} train_rows={stream.rows} "
                         f"chunks={len(stream.entries)} config={json.dumps(vars(args), default=str)}")
+        if init_record is not None:
+            state["init"] = init_record
+            _status(status, f"INIT {json.dumps(init_record, sort_keys=True)}")
     # after any checkpoint load: the speed flags change no weight, key or saved state
     fwd, bf16 = apply_speed_flags(model, args)
     state.setdefault("speed_segments", [speed_segment(args, 0, 0)])
@@ -802,6 +967,7 @@ def train(args) -> int:
         lc = predict_logits(model, calib, no_history=args.no_history)
         cll = mean_ll(masked_softmax(lc, calib["M"]), calib["Y"])
         state["history"].append({"epoch": epoch + 1, "train_ll": tot / max(cnt, 1), "calib_ll": cll,
+                                 "calib_subsets": calib_losses(lc, calib),
                                  "seconds": time.time() - t0})
         _status(status, f"EPOCH {epoch + 1} train {tot / max(cnt, 1):.4f} calib {cll:.4f} "
                         f"({time.time() - t0:.0f}s)")
@@ -809,7 +975,9 @@ def train(args) -> int:
             state["best"], state["bad"] = cll, 0
             torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
                         "epoch": epoch + 1, "calib_ll": cll,
-                        "speed_segments": state["speed_segments"]}, out / "best.pt")
+                        "speed_segments": state["speed_segments"], "init": state.get("init"),
+                        "eval_rows": args.eval_rows},
+                       out / "best.pt")
         else:
             state["bad"] += 1
         state["epoch"] += 1
@@ -838,8 +1006,11 @@ def evaluate(args) -> int:
     torch.set_num_threads(args.threads)
     verified = _Verified()
     t_start = time.time()
-    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed)
-    test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1)
+    calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed,
+                      rows=args.eval_rows)
+    test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1,
+                     rows=args.eval_rows)
+    sampler_rows = args.eval_rows == "sampler"
     train_deals = set()
     for e in extract_entries(args.data, "train")[: args.deal_check_chunks]:
         with np.load(io.BytesIO(verified.read(e["path"], e["sha256"]))) as z:
@@ -866,15 +1037,25 @@ def evaluate(args) -> int:
                       "calib_ll_raw": saved.get("calib_ll"), "no_history": nh, "permuted": perm,
                       "config": saved["config"]}
         print(f"[eval] {name}: T={T:.3f}", flush=True)
-    alpha = fit_scalar(lambda a: mean_ll(sampler_probs(calib["S"], calib["S_n"], calib["M"], a),
-                                         calib["Y"]), 1e-3, 64.0)
-    methods["sampler"] = sampler_probs(test["S"], test["S_n"], Mt, alpha)
+    # the sampler's marginals exist only on rows where it was drawn; on all rows the
+    # reference is the constraint-aware uniform and every sampler metric is absent
+    alpha = None
+    ref_method = "sampler" if sampler_rows else "uniform"
+    not_measured = {} if sampler_rows else {
+        "sampler": "no sampler draws on all-rows selections",
+        "worlds": "sampled-world agreement is reported only on sampler rows"}
+    if sampler_rows:
+        alpha = fit_scalar(lambda a: mean_ll(sampler_probs(calib["S"], calib["S_n"], calib["M"], a),
+                                             calib["Y"]), 1e-3, 64.0)
+        methods["sampler"] = sampler_probs(test["S"], test["S_n"], Mt, alpha)
     methods["uniform"] = uniform_probs(test["sizes"], Mt)
     terms = {k: copy_terms(P, Y) for k, P in methods.items()}
     phase = np.asarray([phase_of_trick(int(t)) for t in test["trick"]])
     groups = ([("overall", np.ones(len(Y), bool))] + [(n, phase == n) for n, _, _ in PHASES]
               + [(ROLES[i], test["role"] == i) for i in range(len(ROLES))])
-    res: dict[str, Any] = {"models": meta, "alpha_sampler": alpha, "test_rows": int(len(Y)),
+    res: dict[str, Any] = {"models": meta, "alpha_sampler": alpha, "eval_rows": args.eval_rows,
+                           "reference": ref_method, "not_measured": not_measured,
+                           "test_rows": int(len(Y)),
                            "test_deals": int(len(np.unique(test["deal"]))),
                            "calib_rows": int(len(calib["Y"])), "tables": {}}
     for g, rows in groups:
@@ -889,10 +1070,10 @@ def evaluate(args) -> int:
         res["by_trick"][t] = {k: summarize(terms[k], rows)["all"] for k in methods}
     res["ece"] = {k: reliability(P, Y, Mt)[0] for k, P in methods.items()}
     res["bootstrap"] = {}
-    names = [k for k in methods if k != "sampler"]
+    names = [k for k in methods if k != ref_method]
     for subset, _, ll_key, _ in SUBSETS:
         ci = deal_bootstrap(test["deal"], [terms[k][ll_key] for k in names],
-                            terms["sampler"][ll_key], seed=args.seed)
+                            terms[ref_method][ll_key], seed=args.seed)
         res["bootstrap"][subset] = dict(zip(names, ci))
     # paired: each model vs the first named model (e.g. history vs no-history)
     if len(args.model) >= 2:
@@ -907,7 +1088,8 @@ def evaluate(args) -> int:
     rng = np.random.default_rng(args.seed)
     pick = rng.choice(len(Y), size=min(args.world_states, len(Y)), replace=False)
     res["worlds"] = {}
-    for k in [m.split("=", 1)[0] for m in args.model] + ["sampler", "uniform"]:
+    world_methods = [m.split("=", 1)[0] for m in args.model] + ["sampler", "uniform"]
+    for k in world_methods if sampler_rows else ():
         agree, best, distinct, ms = [], [], [], []
         per_phase: dict[str, list] = {n: [] for n, _, _ in PHASES}
         for i in pick:
@@ -946,23 +1128,30 @@ def _pct(x: float) -> str:
 
 def report(res: Mapping[str, Any]) -> str:
     models = list(res["models"])
-    methods = models + ["sampler", "uniform"]
+    rows = res.get("eval_rows", "sampler")
+    base = res.get("reference", "sampler")
+    methods = models + (["sampler", "uniform"] if base == "sampler" else ["uniform"])
+    ref_name = "the production sampler" if base == "sampler" else "the constraint-aware uniform"
+    alpha = (f"; sampler alpha {res['alpha_sampler']:.3f}" if res["alpha_sampler"] is not None
+             else "")
     L = ["# S17 history-input belief: offline test (unknown copies only)\n",
          "Generated by `python -m shengji.train.belief_seq evaluate`. Tier-i DEV: offline "
          "log-loss / agreement only; no strength claim.\n",
-         f"- test: {res['test_rows']} sampler rows, {res['test_deals']} deals; calib "
-         f"{res['calib_rows']} rows; sampler alpha {res['alpha_sampler']:.3f}"]
+         f"- test: {res['test_rows']} {rows} rows, {res['test_deals']} deals; calib "
+         f"{res['calib_rows']} rows{alpha}"]
+    for k, why in res.get("not_measured", {}).items():
+        L.append(f"- NOT MEASURED: {k} ({why})")
     for k, m in res["models"].items():
         L.append(f"- {k}: params {m['params']}, epoch {m['epoch']}, T {m['T']:.3f}, "
                  f"no_history={m['no_history']}, permuted={m['permuted']}")
     L.append("")
     ov = res["tables"]["overall"]
-    L.append("## Log-loss gain over the production sampler (overall)\n")
+    L.append(f"## Log-loss gain over {ref_name} (overall)\n")
     L.append("| method | hands LL | hands gain [95% deal CI] | kitty gain | all gain | hands mass | all mass |")
     L.append("|---|---:|---|---:|---:|---:|---:|")
     for k in methods:
         t = ov[k]
-        s = ov["sampler"]
+        s = ov[base]
         ci = res["bootstrap"]["hands"].get(k)
         cis = f" [{_pct(ci[0])} .. {_pct(ci[1])}]" if ci else ""
         L.append(f"| {k} | {t['hands']['logloss']:.4f} | "
@@ -980,13 +1169,13 @@ def report(res: Mapping[str, Any]) -> str:
                 continue
             L.append(f"| {k} | " + " | ".join(f"{_pct(v[s][0])} .. {_pct(v[s][1])}"
                                               for s in ("hands", "kitty", "all")) + " |")
-    L.append("\n## Hands log-loss gain over the sampler by phase and role\n")
+    L.append(f"\n## Hands log-loss gain over {ref_name} by phase and role\n")
     gs = [g for g in res["tables"] if g != "overall"]
     L.append("| method | " + " | ".join(gs) + " |")
     L.append("|---|" + "---:|" * len(gs))
     for k in methods:
         L.append(f"| {k} | " + " | ".join(
-            _pct(1 - res["tables"][g][k]["hands"]["logloss"] / res["tables"][g]["sampler"]["hands"]["logloss"])
+            _pct(1 - res["tables"][g][k]["hands"]["logloss"] / res["tables"][g][base]["hands"]["logloss"])
             for g in gs) + " |")
     L.append("\n## True-holder mass (all unknown copies, = expected per-copy agreement) by phase\n")
     L.append("| method | overall | " + " | ".join(gs) + " |")
@@ -1001,6 +1190,8 @@ def report(res: Mapping[str, Any]) -> str:
         L.append(f"| {t} | {int(row[methods[0]]['copies'])} | " +
                  " | ".join(f"{row[k]['mass']:.4f}" for k in methods) + " |")
     L.append("\n## Sampled legal worlds: v83 card agreement\n")
+    if "worlds" in res.get("not_measured", {}):
+        L.append(f"Not measured: {res['not_measured']['worlds']}.\n")
     L.append("v83 arms (mean agreement): production-drawn ~0.42, K4 ~0.46, K16 ~0.57, Q50 ~0.72.\n")
     L.append("| method | states | mean | p10 | p25 | p50 | p75 | p90 | best-of-W | distinct/W | early | mid | late | sample ms p50 |")
     L.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
@@ -1157,16 +1348,23 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--row-frac", type=float, default=1.0)
     t.add_argument("--max-train-rows", type=int, default=None)
     t.add_argument("--calib-rows", type=int, default=60000)
+    t.add_argument("--eval-rows", choices=EVAL_ROWS, default="sampler",
+                   help="calib rows: sampler-drawn rows only (default) or every row of the split")
     t.add_argument("--patience", type=int, default=2)
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--no-history", action="store_true")
     t.add_argument("--permute", action="store_true")
-    t.add_argument("--d", type=int, default=64)
-    t.add_argument("--heads", type=int, default=4)
-    t.add_argument("--enc-layers", type=int, default=1)
-    t.add_argument("--xattn-layers", type=int, default=2)
-    t.add_argument("--x-hidden", type=int, default=256)
-    t.add_argument("--no-card-self-attn", action="store_true")
+    t.add_argument("--init", default=None,
+                   help="warm start: a served belief package (.npz) or a belief_seq checkpoint; "
+                        "the architecture comes from it and a conflicting flag is refused")
+    # architecture flags default to None so a flag given with --init can be told apart;
+    # without --init an unset flag takes DEFAULT_ARCH
+    t.add_argument("--d", type=int, default=None, help="default 64")
+    t.add_argument("--heads", type=int, default=None, help="default 4")
+    t.add_argument("--enc-layers", type=int, default=None, help="default 1")
+    t.add_argument("--xattn-layers", type=int, default=None, help="default 2")
+    t.add_argument("--x-hidden", type=int, default=None, help="default 256")
+    t.add_argument("--no-card-self-attn", action="store_true", default=None)
     t.add_argument("--grouped-xattn", action="store_true",
                    help="frame-grouped cross-attention (same weights, equal up to summation order)")
     t.add_argument("--bf16", action="store_true",
@@ -1180,6 +1378,9 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--seed", type=int, default=0)
     e.add_argument("--calib-rows", type=int, default=None)
     e.add_argument("--test-rows", type=int, default=None)
+    e.add_argument("--eval-rows", choices=EVAL_ROWS, default="sampler",
+                   help="calib/test rows: sampler-drawn rows only (default; every metric) or "
+                        "every row (no sampler metrics; gains are over the uniform)")
     e.add_argument("--deal-check-chunks", type=int, default=10 ** 9)
     e.add_argument("--world-states", type=int, default=4000)
     e.add_argument("--worlds", type=int, default=64)

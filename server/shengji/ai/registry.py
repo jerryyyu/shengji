@@ -922,7 +922,14 @@ def _register_pv_search_from_env() -> None:
         return
     from ..train.pv_search_policy import pv_env_recipe
     recipe = pv_env_recipe()
-    register_pv_search_policies(recipe.pop("checkpoint"), **recipe)
+    checkpoint = recipe.pop("checkpoint")
+    register_pv_search_policies(checkpoint, **recipe)
+    raw = os.environ.get("SHENGJI_PV_SINGLETON_CHALLENGER", "0")
+    if raw not in ("", "0", "1"):
+        raise ValueError("SHENGJI_PV_SINGLETON_CHALLENGER must be 0 or 1")
+    if raw == "1":
+        from ..train.pv_search_policy import singleton_registry_entries
+        REGISTRY.update(singleton_registry_entries(checkpoint=checkpoint, **recipe))
 
 
 def register_exploit_policies(checkpoint: str, *, sha256: str, **recipe) -> list[str]:

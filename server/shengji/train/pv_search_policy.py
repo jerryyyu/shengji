@@ -5105,3 +5105,25 @@ def pv_env_recipe(environ=None) -> dict:
                 raise PVSearchPolicyError(_BURY_KITTY_CHARGE_REQUIRES)
             recipe[key] = True
     return recipe
+
+
+def singleton_registry_entries(**recipe):
+    """Register the same candidate under a distinct opt-in name, keeping the base available."""
+    def factory(*args, **kwargs):
+        from ..eval.singleton_challenger import SingletonChallengerBot, SingletonChallengerBuryBot
+        cls = SingletonChallengerBuryBot if 'bury_arm' in kwargs else SingletonChallengerBot
+        return cls(*args, **kwargs)
+    entries = pv_registry_entries(**recipe, bot_factory=factory)
+    def named(make, name):
+        def build(**kwargs):
+            bot = make(**kwargs)
+            bot.policy_name = name
+            return bot
+        return build
+    return {name + '-sc8': named(make, name + '-sc8') for name, make in entries.items()}
+
+
+# Complete deferred environment registration after the search types exist.
+from ..ai.registry import _register_pv_search_from_env
+
+_register_pv_search_from_env()

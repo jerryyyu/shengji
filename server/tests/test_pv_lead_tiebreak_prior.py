@@ -484,7 +484,7 @@ def test_real_package_every_lead_the_points_rule_moves_is_played_as_combo_la(see
     ckpt, sha = _package()
     # no serving budget: a loaded machine must not turn a decision into the
     # anchor fallback (the search itself is the same computation)
-    base = T.production_environ(ckpt, sha, SHENGJI_PV_SERVING_BUDGET_SECONDS="",
+    base = T.release36_environ(ckpt, sha, SHENGJI_PV_SERVING_BUDGET_SECONDS="",
                                 **COMBO_LA_FLAGS)
     cand = {**base, FLAG: "1"}
     fixtures = T.load_fixtures()

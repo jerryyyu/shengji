@@ -207,6 +207,7 @@ jobs:
           tests/test_bury_fly_config.py
           tests/test_release46_fly_config.py
           tests/test_release48_fly_config.py
+          tests/test_served_config.py
           tests/test_check_ci_test_selection.py
           tests/test_check_comment_provenance.py
           tests/test_check_doc_claims.py

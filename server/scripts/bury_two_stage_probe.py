@@ -24,7 +24,6 @@ import json
 import statistics
 import sys
 import time
-import tomllib
 from collections import Counter
 from pathlib import Path
 
@@ -59,8 +58,8 @@ def main(argv=None):
         p.error(f"{a.out} exists; the probe never overwrites")
     start, stop = (int(x) for x in a.roots.split(":"))
     variants = json.loads(a.variants)
-    env = {k: v for k, v in tomllib.loads(Path(a.fly_toml).read_text())["env"].items()
-           if k.startswith("SHENGJI_PV_")}
+    from shengji.eval.served_config import fly_env
+    env = {k: v for k, v in fly_env(a.fly_toml).items() if k.startswith("SHENGJI_PV_")}
     env["SHENGJI_PV_CKPT"] = a.package
     recipe = pv.pv_env_recipe(env)
     roots = list(range(start, stop))

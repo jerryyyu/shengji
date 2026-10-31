@@ -24,7 +24,6 @@ import random
 import statistics
 import sys
 import time
-import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -94,7 +93,8 @@ def main(argv=None):
     parser.add_argument("--seeds", default="0-39")
     args = parser.parse_args(argv)
     lo, hi = (int(x) for x in args.seeds.split("-"))
-    env = tomllib.loads((Path(__file__).resolve().parents[2] / "fly.toml").read_text())["env"]
+    from shengji.eval.served_config import fly_env
+    env = fly_env()
     off_name, off_factory = build(env, args.package)
     on_name, on_factory = build({**env, "SHENGJI_PV_VALUE_DECLARE_WAIT": "1"}, args.package)
     rows = []

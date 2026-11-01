@@ -317,6 +317,9 @@ SELECT_METRICS["val_served_rank_regret_points"] = (
 #: ``--lr-schedule`` kinds and ``--weight-average`` kinds (both off by default).
 LR_SCHEDULES = ("constant", "cosine", "linear")
 WEIGHT_AVERAGES = ("none", "ema", "swa")
+#: PolicyRowsStream's default window (chunks shuffled together per pass); a window at
+#: least the chunk count shuffles the whole root-row stream at once.
+POLICY_ROWS_WINDOW = 4
 #: New trainings default to encoder v2. Jerry, 2026-09-08, with cost explicitly
 #: set aside. This is a DECISION UNDER UNCERTAINTY, not a demonstrated win: the
 #: v2 encoder's own effect crosses zero at both data sizes (+0.0510 [-0.006,
@@ -1711,6 +1714,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  policy_explore_weight: float = 1.0,
                  policy_tower_layers: int = 0, policy_tower_width: int | None = None,
                  policy_trunk_grad_scale: float = 1.0,
+                 policy_bce_weight: float = 1.0, policy_rows_window: int = POLICY_ROWS_WINDOW,
+                 grad_clip_norm: float = 0.0, train_eval_mode: bool = False,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
                  weight_decay: float = DEFAULTS["weight_decay"],
@@ -1826,6 +1831,10 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                          "run has no loss to train on")
     if float(value_weight) == 0.0 and float(policy_weight) == 0.0 and not distill:
         raise TrainError("--value-weight 0 with --policy-weight 0 leaves no loss to train on")
+    if not (float(grad_clip_norm) >= 0 and math.isfinite(float(grad_clip_norm))):
+        raise TrainError("--grad-clip-norm must be a finite norm >= 0 (0 = no clipping)")
+    if type(train_eval_mode) is not bool:
+        raise TrainError("--train-eval-mode is a flag")
     if freeze_trunk:
         if not policy_head:
             raise TrainError("--freeze-trunk trains the policy tower and head only; it needs "
@@ -1868,10 +1877,20 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                              "gradient into the trunk, 0.0 = stop-gradient)")
         if policy_detach and float(policy_trunk_grad_scale) != 1.0:
             raise TrainError("--policy-detach IS --policy-trunk-grad-scale 0; give one of them")
+        if not (float(policy_bce_weight) >= 0 and math.isfinite(float(policy_bce_weight))):
+            raise TrainError("--policy-bce-weight must be a finite weight >= 0")
+        if (float(policy_weight) > 0 and float(policy_bce_weight) == 0.0
+                and float(policy_listwise_weight) == 0.0):
+            raise TrainError("--policy-bce-weight 0 with --policy-listwise-weight 0 leaves no "
+                             "policy loss; use --policy-weight 0 for the matched twin")
+        if type(policy_rows_window) is not int or policy_rows_window < 1:
+            raise TrainError("--policy-rows-window must be an integer >= 1")
     elif policy_rows or policy_eval or policy_detach or policy_soft_targets \
-            or float(policy_explore_weight) != 1.0:
+            or float(policy_explore_weight) != 1.0 or float(policy_bce_weight) != 1.0 \
+            or policy_rows_window != POLICY_ROWS_WINDOW:
         raise TrainError("--policy-rows / --policy-eval / --policy-detach / "
-                         "--policy-soft-targets / --policy-explore-weight need --policy-head")
+                         "--policy-soft-targets / --policy-explore-weight / "
+                         "--policy-bce-weight / --policy-rows-window need --policy-head")
     elif int(policy_tower_layers) or policy_tower_width is not None \
             or float(policy_trunk_grad_scale) != 1.0:
         raise TrainError("--policy-tower-layers / --policy-tower-width / "
@@ -1926,6 +1945,14 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                     "per distilled head"}
     if freeze_trunk:
         tower_fields["freeze_trunk"] = True
+    if policy_head and float(policy_bce_weight) != 1.0:
+        tower_fields["policy_bce_weight"] = float(policy_bce_weight)
+    if policy_head and policy_rows_window != POLICY_ROWS_WINDOW:
+        tower_fields["policy_rows_window"] = int(policy_rows_window)
+    if float(grad_clip_norm) > 0:
+        tower_fields["grad_clip_norm"] = float(grad_clip_norm)
+    if train_eval_mode:
+        tower_fields["train_eval_mode"] = True
     return {
         **tower_fields,
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
@@ -2089,6 +2116,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_explore_weight: float = 1.0,
           policy_tower_layers: int = 0, policy_tower_width: int | None = None,
           policy_trunk_grad_scale: float = 1.0,
+          policy_bce_weight: float = 1.0, policy_rows_window: int = POLICY_ROWS_WINDOW,
+          grad_clip_norm: float = 0.0, train_eval_mode: bool = False,
           eval_holdout: Sequence[str] | None = None,
           frozen_population: str | None = None, frozen_population_sha256: str | None = None,
           trick_end_rows: bool = False, init_widen_encoder: bool = False,
@@ -2132,6 +2161,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         policy_explore_weight=policy_explore_weight,
         policy_tower_layers=policy_tower_layers, policy_tower_width=policy_tower_width,
         policy_trunk_grad_scale=policy_trunk_grad_scale,
+        policy_bce_weight=policy_bce_weight, policy_rows_window=policy_rows_window,
+        grad_clip_norm=grad_clip_norm, train_eval_mode=train_eval_mode,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
         batch_size=batch_size, patience=patience, val_fraction=val_fraction,
@@ -2349,7 +2380,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             policy_evalset = PolicyEval(policy_eval, exclude=value_fit | ancestral, version=enc_version)
             held |= set(policy_evalset.deal_keys)
         policy_data = open_policy_rows(policy_rows, limit=policy_rows_limit, exclude=held,
-                                       version=enc_version)
+                                       version=enc_version, window=policy_rows_window)
+        if policy_rows_window != POLICY_ROWS_WINDOW and not hasattr(policy_data, "window"):
+            raise TrainError("--policy-rows-window applies to a chunked root-row directory; "
+                             f"{policy_rows} loads in memory")
         if float(policy_explore_weight) != 1.0 and not policy_data.identity.get("explore_tags"):
             # REFUSE rather than train the unweighted run under a weighted label (the
             # --policy-soft-targets pattern): an extract from before #676 carries no
@@ -2744,8 +2778,17 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             aux_head.train()
         if freeze_trunk:
             model.trunk.eval()
+        if train_eval_mode:
+            # Dropout off for every training forward; the nets use LayerNorm only,
+            # so eval mode changes nothing else.
+            model.eval()
+            if aux_head is not None:
+                aux_head.eval()
         sums = {"total": 0.0, "ce": 0.0, "aux": 0.0, "policy_bce": 0.0, "policy_listwise": 0.0,
                 "policy_rows": 0, "distill_kl": 0.0}
+        # --grad-clip-norm: the pre-clip global norm summed and the clipped steps
+        # counted on the device, read once at the end of the epoch
+        clip_sum = clip_hits = None
         rows = 0
         batches = 0
         # Issue #342 finding 2, measured on MPS (batch 1024, h512-class net,
@@ -2928,7 +2971,14 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                trunk_grad_scale=float(policy_trunk_grad_scale),
                                                rows=ballot_dev)
                 b_r = int(len(p_batch["x"]))
-                p_term = float(policy_weight) * (p_bce + float(policy_listwise_weight) * p_lw)
+                if float(policy_bce_weight) == 0.0:
+                    bce_term = None
+                elif float(policy_bce_weight) == 1.0:
+                    bce_term = p_bce
+                else:
+                    bce_term = float(policy_bce_weight) * p_bce
+                lw_term = float(policy_listwise_weight) * p_lw
+                p_term = float(policy_weight) * (lw_term if bce_term is None else bce_term + lw_term)
                 total = p_term if total is None else total + p_term
             if total is None:
                 raise TrainError("--value-weight 0: this batch carries no policy rows, so it "
@@ -2988,6 +3038,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     raise TrainError("training loss is non-finite")
                 optim.zero_grad(set_to_none=True)
                 total.backward()
+                if float(grad_clip_norm) > 0:
+                    norm = torch.nn.utils.clip_grad_norm_(
+                        [p for p in params if p.grad is not None], float(grad_clip_norm))
+                    hit = (norm > float(grad_clip_norm)).to(torch.float32)
+                    clip_sum = norm.detach() if clip_sum is None else clip_sum + norm.detach()
+                    clip_hits = hit if clip_hits is None else clip_hits + hit
                 if lr_schedule != "constant":
                     lr_now = lr_effective * lr_factor(lr_schedule, step_count, planned_steps,
                                                       float(lr_final_scale))
@@ -3040,6 +3096,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             train_metrics["aux_huber"] = sums["aux"] / max(rows, 1)
         if teacher is not None:
             train_metrics["value_distill_kl"] = sums["distill_kl"] / max(rows, 1)
+        if clip_sum is not None:
+            train_metrics["grad_norm_mean"] = float(clip_sum.item()) / max(batches, 1)
+            train_metrics["grad_clipped_fraction"] = float(clip_hits.item()) / max(batches, 1)
         if policy_head:
             n_r = int(sums["policy_rows"])
             train_metrics["policy_rows"] = n_r
@@ -3758,6 +3817,28 @@ def build_parser() -> argparse.ArgumentParser:
                         "value gradients are untouched. 1.0 (default) = today's joint training, "
                         "0.0 = --policy-detach. Note the scale is on the gradient, before AdamW's "
                         "per-parameter normalisation of the summed value + policy gradient.")
+    t.add_argument("--policy-bce-weight", type=float, default=1.0,
+                   help="weight of the policy BCE term (the played action's multi-hot) inside "
+                        "--policy-weight x (bce_weight x BCE + listwise_weight x listwise). "
+                        "Default 1.0 = the loss as before the option (bit-identical); 0 = the "
+                        "listwise term alone, which is the P0 trainer's policy loss. BCE is "
+                        "still computed and logged.")
+    t.add_argument("--policy-rows-window", type=int, default=POLICY_ROWS_WINDOW,
+                   help="root-row chunks shuffled together per pass (default "
+                        f"{POLICY_ROWS_WINDOW}). A value at least the chunk count shuffles the "
+                        "whole stream at once, so a composed directory whose chunks each hold "
+                        "one source gives every batch the composed source mix rather than "
+                        "runs of one source; it holds every root row in memory once per pass.")
+    t.add_argument("--grad-clip-norm", type=float, default=0.0,
+                   help="clip the global L2 norm of the step's gradients (every parameter "
+                        "with a gradient) to this value before the optimiser step. Default 0 "
+                        "= no clipping (the trainer as before the option). The epoch's train "
+                        "metrics then report grad_norm_mean and grad_clipped_fraction.")
+    t.add_argument("--train-eval-mode", action="store_true",
+                   help="run the training forwards in eval mode: dropout off (the model's "
+                        "--dropout stays in its config and checkpoint, so an --init source "
+                        "with dropout still loads). The nets use LayerNorm only, so nothing "
+                        "else changes. Default off = dropout active in training.")
     t.add_argument("--policy-soft-targets", action="store_true",
                    help="train the policy head on the SEARCH'S DISTRIBUTION over the ballot "
                         "(softmax of its per-candidate means) instead of the single played "
@@ -3914,6 +3995,9 @@ def main(argv: list[str] | None = None) -> int:
                   policy_tower_layers=args.policy_tower_layers,
                   policy_tower_width=args.policy_tower_width,
                   policy_trunk_grad_scale=args.policy_trunk_grad_scale,
+                  policy_bce_weight=args.policy_bce_weight,
+                  policy_rows_window=args.policy_rows_window,
+                  grad_clip_norm=args.grad_clip_norm, train_eval_mode=args.train_eval_mode,
                   val_rank_records=args.val_rank_records, init=args.init,
                   val_rows=args.val_rows, compile_trunk=args.compile_trunk,
                   frozen_population=args.frozen_population,

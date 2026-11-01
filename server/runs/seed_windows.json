@@ -1009,6 +1009,34 @@
       "host": "shengji-cloud",
       "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
       "note": "g2dy DEV duel (board #1075 row M30 / G2 1b): Y (release 49 = R48 + sc8 + lcc32) with the G2 1b Eh policy prior (separate prior package g2-1b-Eh-e02-ema 159d7259, value 491ee4bf unchanged) vs Y as served, one arm x, 3,920 deals from seed0 245610910, launcher claude_g2dy_cloud.final.sh sha256 ea7bb8b8..., reservation /root/claude_reservations/g2dy.json, output root /root/vol-dev-claude-g2dy-y-20261101. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) is CLEAR against smv3 3e89e86f (--follow-init, with its JS3-M1 / JS-M1 ancestors), the Eh checkpoint b52503da's cumulative exposure and receipt, and the 723 M28 expert_half deals Eh trained on."
+    },
+    {
+      "name": "m30yc-rehearsal-245460200",
+      "purpose": "screen",
+      "seed0": 245460200,
+      "clusters": 56,
+      "span": [
+        245460200,
+        245460256
+      ],
+      "created_at": "2026-11-01T10:39:17Z",
+      "host": "shengji-perf",
+      "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+      "note": "m30yc rehearsal block: RESERVED, NOT DEALT. Held for a host rehearsal of the m30yc confirmation launcher (claude_m30yc_perf.sh sha256 91b7b2ea...) should one be asked for; none is planned because that launcher's logic is m30y's a67da2e0 (which ran to LANE DONE) with only the lane name, output root and seed block changed. Recorded so no other run deals these decks."
+    },
+    {
+      "name": "m30yc-lane-245630910",
+      "purpose": "screen",
+      "seed0": 245630910,
+      "clusters": 3920,
+      "span": [
+        245630910,
+        245634830
+      ],
+      "created_at": "2026-11-01T10:39:17Z",
+      "host": "shengji-perf",
+      "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+      "note": "m30yc fresh-seed CONFIRMATION of m30y (board #1075 row M30; m30y DEV_PASS +0.0203 [+0.0061, +0.0351], #1171 comment 6556609559): Y (release 49 = R48 + sc8 + lcc32) with the full-trunk FT1 policy prior (separate prior package 1fa201b2, value 491ee4bf unchanged) vs Y as served, one arm x, 3,920 deals from seed0 245630910, launcher claude_m30yc_perf.sh sha256 91b7b2ea..., reservation /root/claude_reservations/m30yc.json, output root /root/vol-dev-claude-m30yc-y-20261101. RESERVED BEFORE DEALING; exact-deal clear (seed_windows.py clear --follow-init, no --allow-unresolved) is CLEAR against smv3 3e89e86f, M28 CAT 11f453a1 and FT1 0def7b31 with their JS3-M1 / JS-M1 ancestors."
     }
   ]
 }

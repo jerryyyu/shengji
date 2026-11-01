@@ -12,7 +12,7 @@ from shengji.ai import belief_numpy as bn
 from test_pv_belief_worlds import _SHAS, names, production_package  # noqa: F401
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
 from test_release48_fly_config import RELEASE48, pinned_release48_belief_package, served_entries  # noqa: F401
-from test_release46_fly_config import fly_env
+from test_release48_fly_config import fly_env
 
 TOP = "SHENGJI_PV_LEAF_GREEDY_TOP"
 WLA = "SHENGJI_PV_WIDE_LEAD_ADMISSION"

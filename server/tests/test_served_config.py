@@ -52,12 +52,18 @@ def test_served_env_is_fly_toml_with_mapped_paths():
     assert sc.unexplained_diff(env, mappings=MAP) == []
 
 
+def served_already(name: str) -> bool:
+    """The override's every key is already set to its value in fly.toml."""
+    return all(FLY.get(k) == v for k, v in sc.NAMED_OVERRIDES[name].items())
+
+
 def test_named_overrides_touch_only_their_keys():
+    assert served_already("sc8") and served_already("lcc32")
     for name, keys in sc.NAMED_OVERRIDES.items():
         assert keys and all(k.startswith("SHENGJI_PV_") for k in keys), name
         changed = set(sc.env_diff(sc.apply_overrides(FLY, [name]), FLY))
         assert changed <= set(keys), (name, changed)
-        assert changed, f"{name} changes nothing in fly.toml"
+        assert bool(changed) != served_already(name), f"{name} changes {changed} in fly.toml"
     with pytest.raises(sc.ServedConfigError, match="unknown override"):
         sc.apply_overrides(FLY, ["wla-not-a-knob"])
     with pytest.raises(sc.ServedConfigError, match="unknown override"):
@@ -69,6 +75,9 @@ def test_fly_toml_name_is_its_recipe_and_overrides_rederive_it(pinned_hashes):
     seen = {FLY["SHENGJI_BOT"]}
     for name in sc.NAMED_OVERRIDES:
         env = sc.served_env(mappings=MAP, overrides=[name])
+        if served_already(name):
+            assert env["SHENGJI_BOT"] == FLY["SHENGJI_BOT"], name
+            continue
         assert env["SHENGJI_BOT"] == sc.registry_name(env) and env["SHENGJI_BOT"] not in seen, name
         seen.add(env["SHENGJI_BOT"])
         assert sc.unexplained_diff(env, mappings=MAP, overrides=[name]) == []
@@ -233,8 +242,10 @@ def test_singleton_stack_is_named_and_explicitly_registered(monkeypatch, pinned_
     monkeypatch.setattr(cwv_shortlist, 'shortlist_env_recipe', lambda env: None)
     monkeypatch.setattr(registry, 'REGISTRY', {})
     monkeypatch.setattr(registry, 'make_bot', lambda name, seed: registry.REGISTRY[name])
-    base = sc.served_env(mappings=MAP, overrides=['lcc32'])
+    base = {**sc.served_env(mappings=MAP), 'SHENGJI_PV_SINGLETON_CHALLENGER': '0'}
+    base['SHENGJI_BOT'] = sc.registry_name(base)
     candidate = sc.served_env(mappings=MAP, overrides=['sc8', 'lcc32'])
+    assert candidate == sc.served_env(mappings=MAP)
     assert candidate['SHENGJI_BOT'] == base['SHENGJI_BOT'] + '-sc8'
     name, factory = sc.build_served_bot(candidate)
     assert name == candidate['SHENGJI_BOT'] and callable(factory)

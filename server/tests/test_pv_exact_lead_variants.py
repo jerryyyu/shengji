@@ -367,11 +367,11 @@ NODES = 'SHENGJI_PV_EXACT_DEEP_MAX_NODES'
 
 
 def served_name(monkeypatch, **extra):
-    """The registry name production's fly.toml env (plus ``extra``) resolves to,
+    """The registry name release 48's fly.toml env (plus ``extra``) resolves to,
     with the package hashes stubbed: names and digests read no package bytes."""
-    import tomllib
     from shengji.ai import cwv_policy
-    env = tomllib.loads((Path(__file__).parents[2] / 'fly.toml').read_text())['env']
+    from test_release48_fly_config import fly_env
+    env = fly_env()
     by_path = {env['SHENGJI_PV_CKPT']: env['SHENGJI_PV_SHA256'],
                env['SHENGJI_PV_BELIEF_CKPT']: env['SHENGJI_PV_BELIEF_SHA256']}
     monkeypatch.setattr(cwv_policy, 'file_sha256', lambda path: by_path[str(path)])

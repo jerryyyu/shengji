@@ -11,7 +11,7 @@ from shengji.ai import belief_numpy as bn
 from test_pv_belief_worlds import _SHAS, names, production_package  # noqa: F401
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
 from test_release48_fly_config import RELEASE48, pinned_release48_belief_package, served_entries  # noqa: F401
-from test_release46_fly_config import fly_env
+from test_release48_fly_config import fly_env
 
 LCC = "SHENGJI_PV_LEAD_CONFIRM"
 R48_LCC32 = ("pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-"

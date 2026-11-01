@@ -123,7 +123,21 @@ primary_region = 'ewr'
   #   SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'
   #   SHENGJI_PV_BELIEF_SHA256 = '763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343'
   # RELEASE 46 name: pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r73993d62-bury-hybrid-bwv-cf77a93949b0
-  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a'
+  # RELEASE 49 (Jerry 2026-10-31: "Yea ship Y"): release 48 plus board combo3 arm Y, two lead
+  # rules. SINGLETON CHALLENGER (sc8): on a lead with more than 7 cards in some hand, the
+  # singletons the policy left off the 8-candidate ballot are priced on 8 of the sampled
+  # worlds with heuristic-finished leaves, and the best one replaces the ballot's last slot
+  # only when it beats every admitted candidate; the full search still chooses the move.
+  # LEAD CONFIRMATION (lcc32): on a lead with no exact stage, the policy's next actions up to
+  # 32 are priced on 32 of the base worlds; at most 2 that beat the served lead are priced
+  # again on 2 fresh 64-world draws, and one replaces the served lead only when its paired
+  # margin there exceeds one standard error. The stage starts only before 40% of the 3 s
+  # budget and stops at 80%; an abandoned stage plays the base lead. Evidence (vs release 48 as served, paired, 3,920 deals each): combo3y DEV_PASS
+  # +0.0270 [+0.0135, +0.0408], fresh-seed confirmation combo3yc CONFIRMED +0.0306 [+0.0167,
+  # +0.0441] (DEPLOY.md, Release 49). Rollback: delete the two "Release 49" lines below and
+  # restore the release-48 name:
+  # RELEASE 48 name: pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a
+  SHENGJI_BOT = 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
@@ -137,6 +151,10 @@ primary_region = 'ewr'
   SHENGJI_PV_LEAF_GREEDY_FINISH = '1'
   SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP = '1'
   SHENGJI_PV_LEAF_GREEDY_DEADLINE = '2'
+  # Release 49: the singleton challenger (sc8; registers the served name with the -sc8 suffix)
+  # and the held-out lead confirmation at 32 (lcc32).
+  SHENGJI_PV_SINGLETON_CHALLENGER = '1'
+  SHENGJI_PV_LEAD_CONFIRM = '32'
   # Release 48: latency switches, read where the bot is built; /healthz reports them under
   # pv_search.latency_switches.
   SHENGJI_PV_ENCODE_PREFIX_CACHE = '1'

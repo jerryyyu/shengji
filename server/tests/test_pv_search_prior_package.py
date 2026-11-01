@@ -154,3 +154,61 @@ def test_a_prior_of_another_encoder_version_refuses(package, other_package, tmp_
     with pytest.raises(pv.PVSearchPolicyError, match="must agree"):
         pv.make_pv_search_bot(package[0], sha256=package[1], prior_checkpoint=other_package[0],
                               prior_sha256=other_package[1])
+
+
+def test_singleton_prior_survives_actual_server_snapshot_and_commit(package, other_package, tmp_path):
+    import asyncio
+    import random
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from tests.test_pv_search_serving import SMALL
+
+    entries = pv.singleton_registry_entries(
+        checkpoint=package[0], sha256=package[1],
+        prior_checkpoint=other_package[0], prior_sha256=other_package[1],
+        **SMALL, bury_arm='hybrid', lead_confirm=32, leaf_greedy_finish=True,
+        serving_budget_seconds=3.0, bury_serving_budget_seconds=2.0)
+    name, factory = next(iter(entries.items()))
+    assert len(entries) == 1 and '-prior-' in name and name.endswith('-sc8')
+    bot = factory(seed=23)
+
+    async def scenario():
+        rnd = _play_state()
+        game = Game(random.Random(7))
+        game.round = rnd
+        room = srv.Room(code='PRIOR', game=game, bot=bot,
+                        seats=[srv.Seat(str(i), is_bot=True) for i in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        events = []
+        room.log_event = lambda kind, **data: events.append(kind)
+        seat = rnd.turn
+        hands = copy.deepcopy(rnd.hands)
+        rng = bot.sampler.rng.getstate()
+        direct = factory(seed=23)
+        expected = direct.decide_play(copy.deepcopy(rnd), seat)
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        assert prepared is not None and room.bot is bot
+        assert rnd.hands == hands and bot.sampler.rng.getstate() == rng
+        cloned = prepared.decision.snapshot.bot_copy
+        assert cloned is not bot and cloned.predict is not bot.predict
+        assert cloned.sampler is not bot.sampler
+        assert cloned.checkpoint == package[0] and cloned.checkpoint_sha256 == package[1]
+        assert cloned.predict.path == other_package[0] and cloned.predict.sha256 == other_package[1]
+        assert cloned.lead_confirm == 32
+        assert cloned.serving_budget_seconds == 3.0 and cloned.bury_serving_budget_seconds == 2.0
+        assert cloned.last_decision_record['schema'] == pv.RECORD_SCHEMA
+        assert cloned.last_decision_record['work_complete']
+        assert list(prepared.decision.cards) == expected
+        assert 'model_search' in events
+        expected_round = copy.deepcopy(rnd)
+        expected_round.play(seat, expected)
+        accepted_count = len(hands[seat]) - len(expected_round.hands[seat])
+        assert 0 < accepted_count < len(expected)
+        assert srv._commit_bot_turn(room, prepared)
+        assert rnd.hands == expected_round.hands
+        assert rnd.turn == expected_round.turn
+        assert len(rnd.hands[seat]) < len(hands[seat])
+        assert not srv._commit_bot_turn(room, prepared)
+
+    asyncio.run(scenario())

@@ -279,6 +279,7 @@ def _shard_rows(args: tuple) -> tuple[list[tuple], dict]:
             counts["excluded:excluded_deal_key"] += 1
             excluded_seen.add(root_key)
             continue
+        raw_ballot = rec.get("ballot") or []
         lead_type = None
         if lead_types:
             lead_type = _lead_type(root, rec["action"])
@@ -293,7 +294,6 @@ def _shard_rows(args: tuple) -> tuple[list[tuple], dict]:
         y = np.zeros(N_CARDS, np.uint8)
         for c in rec["action"]:
             y[CARD_INDEX[c]] = 1
-        raw_ballot = rec.get("ballot") or []
         eflag, emargin = explore_tags_of(raw_ballot, means_raw,
                                          (rec.get("exploration") or {}).get("added") or [],
                                          production=rec.get("production_ballot"))

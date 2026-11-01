@@ -1441,6 +1441,64 @@ def _widen_first_layer(state: dict, ours: Mapping[str, torch.Tensor], cfg: Value
                      "zero_columns": int(added), "inserted_at": int(at)}
 
 
+def value_distill_kl(student_logits: torch.Tensor, teacher_logp: torch.Tensor) -> torch.Tensor:
+    """Row-mean KL(teacher || student) at temperature 1 over the outcome support:
+    CE(softmax(teacher), student) - H(teacher).  ``teacher_logp`` is the
+    teacher's log-softmax; the gradient reaches the student only."""
+    return nn.functional.kl_div(torch.log_softmax(student_logits, dim=1), teacher_logp,
+                                reduction="batchmean", log_target=True)
+
+
+#: --freeze-trunk: the parameter-name prefixes that keep training.
+FREEZE_TRUNK_TRAINABLE = ("policy_tower.", "policy_head.")
+
+
+def _frozen_named(model: ValueNetwork, aux_head: AuxPointsHead | None):
+    """``(name, parameter)`` for every parameter --freeze-trunk keeps fixed."""
+    for name, p in model.named_parameters():
+        if not name.startswith(FREEZE_TRUNK_TRAINABLE):
+            yield name, p
+    if aux_head is not None:
+        for name, p in aux_head.named_parameters():
+            yield "aux_points_head." + name, p
+
+
+def _load_value_teacher(path: str, sha256: str, device: torch.device, *, enc_version: int,
+                        student: ValueModelConfig
+                        ) -> tuple[ValueNetwork, dict, dict, tuple[str, ...]]:
+    """The --value-teacher net (eval mode, no gradient), its ancestor record, its
+    cumulative exposure and the heads to distil.
+
+    The outcome head is always distilled; the search-mean head too when both nets
+    carry one.  The student's served ``value_head`` must be among them.  The
+    teacher must read the student's exact inputs: an mlp at the run's encoder
+    version (its encoder identity is checked by ``load_cwv_checkpoint``)."""
+    actual = file_sha256(path)
+    if actual != str(sha256).strip().lower():
+        raise TrainError(f"--value-teacher {path}: SHA256 {actual} differs from "
+                         f"--value-teacher-sha256 {sha256}; refusing")
+    teacher, meta, _aux = load_cwv_checkpoint(path, device)
+    cfg = teacher.config
+    if cfg.architecture != "mlp":
+        raise TrainError(f"--value-teacher {path}: architecture {cfg.architecture!r}; the "
+                         "distillation reads an mlp teacher")
+    if int(cfg.enc_version) != int(enc_version) or int(cfg.public_dim) != int(student.public_dim):
+        raise TrainError(f"--value-teacher {path}: encoder v{cfg.enc_version} "
+                         f"(public {cfg.public_dim}) but this run encodes v{enc_version} "
+                         f"(public {student.public_dim}); refusing")
+    heads = ("outcome",) + (("search-mean",) if cfg.search_head and student.search_head else ())
+    if student.value_head not in heads:
+        raise TrainError(f"--value-teacher {path}: the student's served value head "
+                         f"{student.value_head!r} has no teacher counterpart; refusing")
+    teacher.requires_grad_(False)
+    teacher.eval()
+    exposure = exposure_of_checkpoint(meta, path=path)
+    ancestor = {"role": "value-teacher", "path": str(Path(path).resolve()), "sha256": actual,
+                "epoch": meta.get("epoch"), "counts": dict(exposure["counts"]),
+                "digest": dict(exposure["digest"])}
+    return teacher, ancestor, exposure, heads
+
+
 def apply_init(model: ValueNetwork, aux_head: AuxPointsHead | None, init: str,
                config: Mapping[str, Any], device: torch.device, *,
                loaded: tuple[ValueNetwork, dict, AuxPointsHead | None] | None = None,
@@ -1643,6 +1701,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  trunk_layers: int = 2, trunk_block: str = "plain", grid_channels: int = 0,
                  search_head: bool = False, search_head_weight: float = 1.0,
                  value_weight: float = 1.0,
+                 value_teacher: str | None = None, value_teacher_sha256: str | None = None,
+                 value_distill_weight: float = 0.0, freeze_trunk: bool = False,
                  policy_head: bool = False, policy_rows: str | None = None,
                  policy_eval: str | None = None, policy_weight: float = 1.0,
                  policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
@@ -1724,8 +1784,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError(f"--select-metric {select_metric} needs --val-rank-records > 0")
     if not (math.isfinite(float(init_lr_scale)) and float(init_lr_scale) > 0):
         raise TrainError("--init-lr-scale must be a finite scale > 0")
-    if init_exclude_exposed and init is None:
-        raise TrainError("--init-exclude-exposed needs --init")
+    if init_exclude_exposed and init is None and value_teacher is None:
+        raise TrainError("--init-exclude-exposed needs --init or --value-teacher")
     if epochs < 1 or batch_size < 1 or patience < 0:
         raise TrainError("epochs/batch_size >= 1 and patience >= 0 are required")
     for name, frac in (("val_fraction", val_fraction), ("test_fraction", test_fraction)):
@@ -1743,11 +1803,43 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         raise TrainError("--search-head-weight must be a finite weight > 0")
     if not (float(value_weight) >= 0 and math.isfinite(float(value_weight))):
         raise TrainError("--value-weight must be a finite weight >= 0")
-    if float(value_weight) == 0.0 and not policy_head:
+    if not (float(value_distill_weight) >= 0 and math.isfinite(float(value_distill_weight))):
+        raise TrainError("--value-distill-weight must be a finite weight >= 0")
+    distill = float(value_distill_weight) > 0.0
+    if distill and value_teacher is None:
+        raise TrainError("--value-distill-weight > 0 needs --value-teacher")
+    if value_teacher is not None and not distill:
+        raise TrainError("--value-teacher needs --value-distill-weight > 0 (0 = no distillation)")
+    if value_teacher_sha256 is not None and value_teacher is None:
+        raise TrainError("--value-teacher-sha256 needs --value-teacher")
+    if distill:
+        if arch != "mlp":
+            raise TrainError("--value-teacher distils the mlp outcome head; the seq "
+                             "architecture exposes none")
+        if not value_teacher_sha256:
+            raise TrainError("--value-teacher needs --value-teacher-sha256 (the reviewed "
+                             "SHA256 of the teacher checkpoint)")
+        if not Path(value_teacher).is_file():
+            raise TrainError(f"--value-teacher {value_teacher}: no such checkpoint")
+    if float(value_weight) == 0.0 and not policy_head and not distill:
         raise TrainError("--value-weight 0 needs --policy-head: without the policy loss the "
                          "run has no loss to train on")
-    if float(value_weight) == 0.0 and float(policy_weight) == 0.0:
+    if float(value_weight) == 0.0 and float(policy_weight) == 0.0 and not distill:
         raise TrainError("--value-weight 0 with --policy-weight 0 leaves no loss to train on")
+    if freeze_trunk:
+        if not policy_head:
+            raise TrainError("--freeze-trunk trains the policy tower and head only; it needs "
+                             "--policy-head")
+        if init is None:
+            raise TrainError("--freeze-trunk needs --init (it would freeze a random trunk)")
+        if float(policy_weight) == 0.0:
+            raise TrainError("--freeze-trunk with --policy-weight 0 trains nothing")
+        if policy_detach or float(policy_trunk_grad_scale) != 1.0:
+            raise TrainError("--freeze-trunk already keeps the policy gradient out of the "
+                             "trunk; drop --policy-detach / --policy-trunk-grad-scale")
+        if distill:
+            raise TrainError("--freeze-trunk freezes the value heads; --value-distill-weight "
+                             "would have nothing to move")
     if policy_head:
         if arch != "mlp":
             raise TrainError("--policy-head reads the mlp trunk; the seq architecture exposes none")
@@ -1825,6 +1917,15 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         tower_fields["compile"] = "trunk"
     if float(value_weight) != 1.0:
         tower_fields["value_weight"] = float(value_weight)
+    if distill:
+        tower_fields["value_distill"] = {
+            "teacher": str(Path(value_teacher).resolve()),
+            "teacher_sha256": str(value_teacher_sha256).strip().lower(),
+            "weight": float(value_distill_weight),
+            "loss": "value_weight x (value block) + weight x mean_rows KL(teacher || student) "
+                    "per distilled head"}
+    if freeze_trunk:
+        tower_fields["freeze_trunk"] = True
     return {
         **tower_fields,
         "command": "train", "data": [str(Path(d).resolve()) for d in data],
@@ -1978,6 +2079,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           trunk_layers: int = 2, trunk_block: str = "plain", grid_channels: int = 0,
           search_head: bool = False, search_head_weight: float = 1.0,
           value_weight: float = 1.0,
+          value_teacher: str | None = None, value_teacher_sha256: str | None = None,
+          value_distill_weight: float = 0.0, freeze_trunk: bool = False,
           policy_head: bool = False, policy_rows: str | None = None,
           policy_eval: str | None = None, policy_weight: float = 1.0,
           policy_listwise_weight: float = 1.0, policy_batch_fraction: float = 0.25,
@@ -2018,7 +2121,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
     config = build_config(
         trunk_layers=trunk_layers, trunk_block=trunk_block, grid_channels=grid_channels,
         search_head=search_head, search_head_weight=search_head_weight,
-        value_weight=value_weight,
+        value_weight=value_weight, value_teacher=value_teacher,
+        value_teacher_sha256=value_teacher_sha256, value_distill_weight=value_distill_weight,
+        freeze_trunk=freeze_trunk,
         policy_head=policy_head, policy_rows=policy_rows, policy_eval=policy_eval,
         policy_weight=policy_weight, policy_listwise_weight=policy_listwise_weight,
         policy_batch_fraction=policy_batch_fraction, policy_rows_limit=policy_rows_limit,
@@ -2157,6 +2262,37 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             f"selection={source_exposure['counts']['selection']} deals; excluded from this "
             f"run's val={n_conflict['val']} test={n_conflict['test']} "
             f"(--init-exclude-exposed={init_exclude_exposed})")
+    teacher = teacher_exposure = teacher_ancestor = None
+    distill_heads: tuple[str, ...] = ()
+    if float(value_distill_weight) > 0.0:
+        teacher, teacher_ancestor, teacher_exposure, distill_heads = _load_value_teacher(
+            value_teacher, value_teacher_sha256, dev, enc_version=enc_version,
+            student=ValueModelConfig.from_payload(dict(config["model_config"])))
+        config["value_distill"]["heads"] = list(distill_heads)
+        # The student learns the teacher's function, so every deal the teacher
+        # (or its ancestors) fit or selected on is exposure for this run too:
+        # the same hold-out rule as --init.
+        t_conflict = exposure_conflict(teacher_exposure, assignment)
+        n_t = {part: len(keys) for part, keys in t_conflict.items()}
+        if frozen is not None and any(n_t.values()):
+            raise TrainError("value-teacher exposure would alter frozen validation/test "
+                             "populations")
+        if any(n_t.values()) and not init_exclude_exposed:
+            raise TrainError(
+                f"--value-teacher {value_teacher}: {n_t['val']} deal(s) the teacher (or an "
+                f"ancestor) was fit on land in this run's val and {n_t['test']} fit-or-selected "
+                "deal(s) in its test; pass --init-exclude-exposed to drop them from val/test, "
+                "or change the data/seed")
+        for keys in t_conflict.values():
+            for key in keys:
+                del assignment[key]
+        teacher_ancestor["excluded_from_this_run"] = dict(n_t)
+        say(f"value teacher: {teacher_ancestor['path']} sha={teacher_ancestor['sha256'][:12]} "
+            f"epoch={teacher_ancestor['epoch']} heads={'+'.join(distill_heads)} "
+            f"weight={float(value_distill_weight)}; exposure fit="
+            f"{teacher_exposure['counts']['fit']} selection="
+            f"{teacher_exposure['counts']['selection']}; excluded val={n_t['val']} "
+            f"test={n_t['test']}")
     masks = {part: SplitSelector(assignment, part)
              for part in ("train", "val", "test")}
     # from the deal keys the store recorded, decoding only a shard whose keys
@@ -2205,6 +2341,9 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         # ancestor fit or selected on (the exposure rule for a test split).
         ancestral = (set() if source_exposure is None else
                      exposure_sets(source_exposure)["fit"] | exposure_sets(source_exposure)["selection"])
+        if teacher_exposure is not None:
+            ancestral |= (exposure_sets(teacher_exposure)["fit"]
+                          | exposure_sets(teacher_exposure)["selection"])
         if policy_eval:
             # rows and eval must be built at THIS run's encoder (v5 rows are 889 wide, v2's 833)
             policy_evalset = PolicyEval(policy_eval, exclude=value_fit | ancestral, version=enc_version)
@@ -2268,6 +2407,14 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                         "digest": dict(source_exposure["digest"])}])
         assert not set(population["val"]) & src["fit"]
         assert not set(population["test"]) & (src["fit"] | src["selection"])
+    if teacher_exposure is not None:
+        cur, tea = exposure_sets(exposure), exposure_sets(teacher_exposure)
+        exposure = exposure_block(
+            cur["fit"] | tea["fit"], cur["selection"] | tea["selection"],
+            ancestors=[*exposure["ancestors"], *teacher_exposure.get("ancestors", []),
+                       teacher_ancestor])
+        assert not set(population["val"]) & tea["fit"]
+        assert not set(population["test"]) & (tea["fit"] | tea["selection"])
     say(f"exposure: fit={exposure['counts']['fit']} selection={exposure['counts']['selection']} "
         f"deals (ancestors {len(exposure['ancestors'])}; root-only fit {len(root_fit - set(population['train']))})")
     baselines = fit_baselines(store, masks["train"], workers=decode_workers)
@@ -2360,6 +2507,23 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say(f"init: {init_info['path']} sha={init_info['sha256'][:12]} "
             f"epoch={init_info['epoch']} aux_head_loaded={init_info['aux_points_head_loaded']} "
             f"lr={lr} x {init_lr_scale}")
+    if teacher is not None and teacher.head.out_features != model.head.out_features:
+        raise TrainError(f"--value-teacher: outcome head has {teacher.head.out_features} "
+                         f"classes, the student's {model.head.out_features}; refusing")
+    frozen_ref = None
+    if freeze_trunk:
+        # Only the policy tower and the policy head train.  The trunk, the value
+        # heads and the aux head leave the optimiser (no step, no weight decay)
+        # and run in eval mode, so their outputs stay the --init source's.
+        for name, p in model.named_parameters():
+            if not name.startswith(FREEZE_TRUNK_TRAINABLE):
+                p.requires_grad_(False)
+        if aux_head is not None:
+            aux_head.requires_grad_(False)
+        frozen_ref = {name: p.detach().clone() for name, p in _frozen_named(model, aux_head)}
+        n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        say(f"freeze trunk: {n_train} trainable parameter(s) (policy tower + policy head); "
+            "trunk, value, search-mean and aux heads frozen in eval mode")
     if compile_trunk:
         # In place: the parameters, the state dict and every checkpoint are the
         # eager module's.  Each forward through the trunk (value batch, root
@@ -2369,7 +2533,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say("compile: the mlp trunk runs through torch.compile (not bit-identical to eager)")
     lr_effective = float(lr) * (float(init_lr_scale) if init is not None else 1.0)
     params = list(model.parameters()) + (list(aux_head.parameters()) if aux_head else [])
-    optim = torch.optim.AdamW(params, lr=lr_effective, weight_decay=weight_decay)
+    optim = torch.optim.AdamW([p for p in params if p.requires_grad] if freeze_trunk else params,
+                              lr=lr_effective, weight_decay=weight_decay)
     # --lr-schedule: the planned horizon is epochs x ceil(train rows / batch).
     # Each window ends on a partial batch, so the real step count is slightly
     # larger; the factor reaches its floor just before the end and holds there.
@@ -2577,8 +2742,10 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         model.train()
         if aux_head is not None:
             aux_head.train()
+        if freeze_trunk:
+            model.trunk.eval()
         sums = {"total": 0.0, "ce": 0.0, "aux": 0.0, "policy_bce": 0.0, "policy_listwise": 0.0,
-                "policy_rows": 0}
+                "policy_rows": 0, "distill_kl": 0.0}
         rows = 0
         batches = 0
         # Issue #342 finding 2, measured on MPS (batch 1024, h512-class net,
@@ -2616,6 +2783,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             rows += int(vals[3])
             sums["policy_bce"] += vals[4]; sums["policy_listwise"] += vals[5]
             sums["policy_rows"] += int(vals[6])
+            sums["distill_kl"] += vals[7]
             if loss_trace:
                 # diagnostic only: one line per flushed window (a loss curve finer
                 # than the epoch means, for comparing two runs step by step)
@@ -2721,6 +2889,21 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 total = None
             elif float(value_weight) != 1.0:
                 total = float(value_weight) * total
+            # --value-distill-weight adds W x KL(teacher || student) per distilled head
+            # OUTSIDE the --value-weight scale, so a small value weight leaves the
+            # value heads anchored to the teacher rather than free.
+            kl = None
+            if teacher is not None:
+                student = {"outcome": logits, "search-mean": s_logits}
+                with torch.no_grad():
+                    t_feat = teacher.features(t["public"], t["world"], t["perspective"])
+                    t_logp = {h: torch.log_softmax(teacher.head_logits(t_feat, h), dim=1)
+                              for h in distill_heads}
+                for h in distill_heads:
+                    term = value_distill_kl(student[h], t_logp[h])
+                    kl = term if kl is None else kl + term
+                d_term = float(value_distill_weight) * kl
+                total = d_term if total is None else total + d_term
             p_bce = p_lw = None
             b_r = 0
             if p_tensors is not None:
@@ -2750,7 +2933,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
             if total is None:
                 raise TrainError("--value-weight 0: this batch carries no policy rows, so it "
                                  "has no loss")
-            return total, b, ce, a_loss, p_bce, p_lw, b_r
+            return total, b, ce, a_loss, p_bce, p_lw, b_r, kl
 
         def host_batches():
             """``(value batch, root batch, search rows, ballot rows)`` in training
@@ -2798,7 +2981,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                     t_now = time.perf_counter()
                     stage["policy_wait"] += t_now - t_dev
                     t_dev = t_now
-                total, b, ce, a_loss, p_bce, p_lw, b_r = train_step(
+                total, b, ce, a_loss, p_bce, p_lw, b_r, kl = train_step(
                     t, rows_dev, search_rows, raw, p_tensors, ballot_dev, p_batch)
                 finite = torch.isfinite(total).to(torch.float32)
                 if sync_every == 1 and not bool(finite):
@@ -2820,7 +3003,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                        torch.full((), float(b), device=total.device),
                                        (p_bce.detach() * b_r) if p_bce is not None else zero,
                                        (p_lw.detach() * b_r) if p_lw is not None else zero,
-                                       torch.full((), float(b_r), device=total.device))
+                                       torch.full((), float(b_r), device=total.device),
+                                       (kl.detach() * b) if kl is not None else zero)
                                       ).to(torch.float32)
                 finite_all = finite if finite_all is None else torch.minimum(finite_all, finite)
                 pending = contrib if pending is None else pending + contrib
@@ -2854,6 +3038,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                 sums.get("search_head_ce", 0.0) / n_used if n_used else None)
         if aux_head is not None:
             train_metrics["aux_huber"] = sums["aux"] / max(rows, 1)
+        if teacher is not None:
+            train_metrics["value_distill_kl"] = sums["distill_kl"] / max(rows, 1)
         if policy_head:
             n_r = int(sums["policy_rows"])
             train_metrics["policy_rows"] = n_r
@@ -2874,6 +3060,12 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         say("epoch %02d train stages: " % epoch + ", ".join(
             "%s %.1fs (%.0f%%)" % (k, v, 100.0 * v / train_secs if train_secs else 0.0)
             for k, v in stage.items() if k != "total"))
+        if frozen_ref is not None:
+            moved = [name for name, p in _frozen_named(model, aux_head)
+                     if not torch.equal(p.detach(), frozen_ref[name])]
+            if moved:
+                raise TrainError(f"--freeze-trunk: epoch {epoch} moved frozen parameter(s) "
+                                 f"{moved[:5]}; refusing")
         val_metrics = validate()
         avg_metrics = None
         if averager is not None and averager.ready:
@@ -3506,8 +3698,30 @@ def build_parser() -> argparse.ArgumentParser:
                         "before the policy terms are added. Default 1.0 = the loss as before "
                         "the option (bit-identical). 0 = a policy-only loss: the value, aux and "
                         "search-mean heads receive no gradient, the trunk moves only through "
-                        "the policy loss; needs --policy-head and --policy-weight > 0. Every "
-                        "value metric is still computed and logged unscaled.")
+                        "the policy loss; needs --policy-head and --policy-weight > 0 (or "
+                        "--value-distill-weight > 0). Every value metric is still computed "
+                        "and logged unscaled.")
+    t.add_argument("--value-teacher", default=None,
+                   help="a train_cwv mlp checkpoint at this run's encoder version whose value "
+                        "head(s) anchor the student's: with --value-distill-weight W the loss "
+                        "gains W x KL(teacher || student) over every value batch, for the "
+                        "outcome head and, when both nets have one, the search-mean head. The "
+                        "teacher runs in eval mode with no gradient. Its fit/selection deals "
+                        "are exposure for this run (the --init hold-out rule). Needs "
+                        "--value-teacher-sha256.")
+    t.add_argument("--value-teacher-sha256", default=None,
+                   help="the reviewed SHA256 of --value-teacher; a different file refuses")
+    t.add_argument("--value-distill-weight", type=float, default=0.0,
+                   help="W >= 0 of the teacher KL term. It is added OUTSIDE --value-weight: "
+                        "loss = value_weight x (CE + aux + search-mean) + W x KL + policy. "
+                        "Default 0 = off (config and training unchanged). E.g. --value-weight "
+                        "0.1 --value-distill-weight 1 = mostly anchored to the teacher with a "
+                        "small realised-outcome signal.")
+    t.add_argument("--freeze-trunk", action="store_true",
+                   help="train ONLY the policy tower and policy head: the trunk, the value, "
+                        "search-mean and aux heads leave the optimiser and run in eval mode, so "
+                        "the value outputs stay the --init source's bit for bit. Needs "
+                        "--policy-head and --init; replaces --policy-detach.")
     t.add_argument("--policy-head", action="store_true",
                    help="#425: add a 54-card policy head on the mlp trunk trained on root rows "
                         "(needs --policy-rows); the outcome head remains the selection head")
@@ -3685,7 +3899,10 @@ def main(argv: list[str] | None = None) -> int:
                   seq_feedforward=args.seq_feedforward, select_metric=args.select_metric,
                   target=args.target, search_mean_sidecar=args.search_mean_sidecar,
                   search_head=args.search_head, search_head_weight=args.search_head_weight,
-                  value_weight=args.value_weight,
+                  value_weight=args.value_weight, value_teacher=args.value_teacher,
+                  value_teacher_sha256=args.value_teacher_sha256,
+                  value_distill_weight=args.value_distill_weight,
+                  freeze_trunk=args.freeze_trunk,
                   policy_head=args.policy_head, policy_rows=args.policy_rows,
                   policy_eval=args.policy_eval, policy_weight=args.policy_weight,
                   policy_listwise_weight=args.policy_listwise_weight,

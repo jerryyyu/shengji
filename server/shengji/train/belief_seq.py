@@ -402,16 +402,23 @@ def to_torch(b: Mapping[str, np.ndarray]):
     return {k: torch.from_numpy(np.ascontiguousarray(v)) for k, v in b.items()}
 
 
-def batch_loss(model, tb, *, bf16: bool = False):
+def batch_loss(model, tb, *, bf16: bool = False, kitty_weight: float = 1.0):
     """Summed per-copy cross-entropy and the copy count.  ``bf16`` runs the
     forward under a CPU bf16 autocast; the logits come back fp32 and the
-    mask, log-softmax and sum stay fp32 (as do the parameters and optimizer)."""
+    mask, log-softmax and sum stay fp32 (as do the parameters and optimizer).
+    ``kitty_weight`` scales the copies whose true holder is the kitty, in the
+    loss and in the count, so the mean stays a per-copy average."""
     import torch
     with torch.autocast("cpu", dtype=torch.bfloat16, enabled=bf16):
         logits = model(tb)
     logits = logits.float().masked_fill(~tb["M"], -1e9)
     logp = torch.log_softmax(logits, -1)
-    return -(tb["Y"] * logp).sum(), tb["Y"].sum()
+    y = tb["Y"]
+    if kitty_weight != 1.0:
+        w = torch.ones(N_RECV, dtype=y.dtype)
+        w[KITTY] = kitty_weight
+        y = y * w
+    return -(y * logp).sum(), y.sum()
 
 
 def compile_forward(model):
@@ -893,6 +900,9 @@ def train(args) -> int:
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
+        run_kw = saved["args"].get("kitty_weight", 1.0)
+        if run_kw != args.kitty_weight:
+            raise BeliefSeqError(f"resume --kitty-weight {args.kitty_weight} differs from the run's {run_kw}")
         run_rows = saved["args"].get("eval_rows", "sampler")
         if run_rows != args.eval_rows:
             raise BeliefSeqError(f"resume --eval-rows {args.eval_rows} differs from the run's {run_rows}")
@@ -952,7 +962,7 @@ def train(args) -> int:
             tb = to_torch(b)
             opt.zero_grad()
             try:
-                loss, n = batch_loss(fwd, tb, bf16=bf16)
+                loss, n = batch_loss(fwd, tb, bf16=bf16, kitty_weight=args.kitty_weight)
                 (loss / n.clamp_min(1.0)).backward()
             except Exception as exc:
                 if compiled_ok:
@@ -1351,6 +1361,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--eval-rows", choices=EVAL_ROWS, default="sampler",
                    help="calib rows: sampler-drawn rows only (default) or every row of the split")
     t.add_argument("--patience", type=int, default=2)
+    t.add_argument("--kitty-weight", type=float, default=1.0,
+                   help="training-loss weight of the copies whose true holder is the kitty "
+                        "(calib selection and evaluate stay unweighted)")
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--no-history", action="store_true")
     t.add_argument("--permute", action="store_true")

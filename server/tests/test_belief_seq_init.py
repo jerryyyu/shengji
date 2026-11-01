@@ -288,3 +288,22 @@ def test_resume_refuses_a_different_init(package, tmp_path, monkeypatch):
     with pytest.raises(bs.BeliefSeqError, match="differs from the run's"):
         bs.main(base + SMALL_FLAGS)
     assert bs.main(base + ["--init", str(path)]) == 0
+
+
+def test_kitty_weight_scales_only_the_kitty_copies(package):
+    _, _, m = package
+    part = synthetic_part(3, 20, 4, seed=5)
+    rows = np.arange(len(part["X"]))
+    tb = bs.to_torch(bs.make_batch(part, np.arange(3), rows))
+    m.eval()
+    with torch.no_grad():
+        base, n = bs.batch_loss(m, tb)
+        same, n1 = bs.batch_loss(m, tb, kitty_weight=1.0)
+        heavy, n4 = bs.batch_loss(m, tb, kitty_weight=4.0)
+        logp = torch.log_softmax(m(tb).float().masked_fill(~tb["M"], -1e9), -1)
+    assert float(same) == float(base) and float(n1) == float(n)
+    per = -(tb["Y"] * logp)
+    want = per[..., :3].sum() + 4.0 * per[..., 3].sum()
+    assert float(heavy) == pytest.approx(float(want), rel=1e-6)
+    assert float(n4) == pytest.approx(float(tb["Y"][..., :3].sum() + 4.0 * tb["Y"][..., 3].sum()))
+    assert float(tb["Y"][..., 3].sum()) > 0

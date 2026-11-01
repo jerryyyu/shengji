@@ -102,7 +102,9 @@ def main(argv: list[str] | None = None) -> int:
                               exclude_deal_keys=a.exclude_deal_keys, chunk_rows=a.chunk_rows,
                               max_rows=a.max_rows, workers=a.workers, seed=a.seed,
                               partition=None if a.partition is None else spr.parse_partition(a.partition),
-                              replace_incomplete=a.replace_incomplete)
+                              replace_incomplete=a.replace_incomplete, lead_types=a.lead_types,
+                              hard_lead_types=a.hard_lead_types,
+                              drop_hard_lcc_lead_types=a.drop_hard_lcc_lead_types)
     except spr.ServedPolicyRowsError as exc:
         print(f"bench_served_policy_rows: {exc}", file=sys.stderr)
         return 2

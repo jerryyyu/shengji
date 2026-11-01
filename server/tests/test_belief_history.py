@@ -417,3 +417,91 @@ def test_stream_releases_producer_on_close_completion_or_error(monkeypatch, mode
     else:
         assert [batch["row"] for _, batch in batches] == list(range(1, 20))
     assert threads and all(not thread.is_alive() for thread in threads)
+
+
+def test_prepare_belief_cache_build_resume_and_corruption_refusal(tmp_path, capsys):
+    from scripts.prepare_belief_cache import main, validate
+    from shengji.train.belief_seq import BeliefSeqError
+    store = tmp_path / 'store'
+    shards = store / 'shards'
+    shards.mkdir(parents=True)
+    for i, seed in enumerate((1003, 1017)):
+        (shards / f'cluster-{i:06d}.jsonl').write_text(
+            ''.join(json.dumps(r) + '\n' for r in synthetic_cluster(seed)))
+    out = tmp_path / 'prepared'
+    args = ['--store', str(store), '--out', str(out), '--workers', '1', '--task-clusters', '1']
+    assert main(args) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first['status'] == 'PASS' and first['consumer_rows'] > 0
+    assert first['required_eval_rows'] == 'all'
+    assert all(s['sampler_rows'] == 0 for s in first['split_rows'].values())
+    files = [p for p in out.rglob('*') if p.is_file() and p.name != 'manifest.json']
+    before = {p: (p.stat().st_mtime_ns, p.read_bytes()) for p in files}
+    label_manifest = (out / 'manifest.json').read_bytes()
+    assert main(args + ['--resume']) == 0
+    assert json.loads(capsys.readouterr().out)['split_rows'] == first['split_rows']
+    assert (out / 'manifest.json').read_bytes() == label_manifest
+    assert {p: (p.stat().st_mtime_ns, p.read_bytes()) for p in files} == before
+    with pytest.raises(bl.BeliefLabelError, match='recipe changed'):
+        main(args + ['--resume', '--limit-clusters', '1'])
+    history_file = next((out / 'hist').glob('*.npz'))
+    history_file.write_bytes(history_file.read_bytes() + b'changed')
+    with pytest.raises(BeliefSeqError, match='sha256 mismatch'):
+        validate(out)
+
+
+def test_prepare_belief_cache_resumes_after_labels_before_history(tmp_path, monkeypatch, capsys):
+    from scripts import prepare_belief_cache as prep
+    store = tmp_path / 'store'
+    (store / 'shards').mkdir(parents=True)
+    (store / 'shards' / 'cluster-000000.jsonl').write_text(
+        ''.join(json.dumps(r) + '\n' for r in synthetic_cluster(1003)))
+    out = tmp_path / 'prepared'
+    args = ['--store', str(store), '--out', str(out), '--workers', '1']
+    real = prep.belief_history.extract
+    def interrupted(*args, **kwargs):
+        raise RuntimeError('interrupted before history')
+    monkeypatch.setattr(prep.belief_history, 'extract', interrupted)
+    with pytest.raises(RuntimeError, match='interrupted'):
+        prep.main(args)
+    assert (out / 'manifest.json').is_file()
+    before = {p: (p.stat().st_mtime_ns, p.read_bytes()) for p in out.glob('*.npz')}
+    assert before
+    monkeypatch.setattr(prep.belief_history, 'extract', real)
+    assert prep.main(args + ['--resume']) == 0
+    assert json.loads(capsys.readouterr().out)['consumer_rows'] > 0
+    assert {p: (p.stat().st_mtime_ns, p.read_bytes()) for p in before} == before
+
+
+def test_prepare_belief_partitions_preserve_full_training_rows(tmp_path, capsys):
+    from scripts.prepare_belief_cache import main
+    from shengji.train.belief_seq import extract_entries, load_part, EVAL_KEYS, _Verified
+    store = tmp_path / 'store'
+    (store / 'shards').mkdir(parents=True)
+    for i, seed in enumerate((1003, 1017)):
+        (store / 'shards' / f'cluster-{i:06d}.jsonl').write_text(
+            ''.join(json.dumps(r) + '\n' for r in synthetic_cluster(seed)))
+    common = ['--store', str(store), '--workers', '1', '--task-clusters', '1']
+    whole = tmp_path / 'whole'
+    assert main(common + ['--out', str(whole)]) == 0
+    parts = [tmp_path / f'part-{i}' for i in range(2)]
+    for i, part in enumerate(parts):
+        assert main(common + ['--out', str(part), '--cluster-stride', '2',
+                              '--cluster-offset', str(i)]) == 0
+    def rows(dirs):
+        result = {}
+        for split in ('train', 'calib', 'test'):
+            for entry in extract_entries([str(d) for d in dirs], split):
+                data = load_part(entry, EVAL_KEYS, _Verified())
+                for i in range(len(data['X'])):
+                    key = (split, int(data['cluster'][i]), int(data['decision'][i]))
+                    assert key not in result
+                    rid = data['row_round'][i]
+                    result[key] = tuple(data[k][i].tobytes() for k in EVAL_KEYS) + tuple(
+                        data['_rounds'][k][rid].tobytes() for k in data['_rounds'])
+        return result
+    assert rows(parts) == rows([whole])
+    invalid = tmp_path / 'invalid'
+    with pytest.raises(SystemExit):
+        main(common + ['--out', str(invalid), '--cluster-stride', '2', '--cluster-offset', '2'])
+    assert not invalid.exists()

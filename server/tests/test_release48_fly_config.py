@@ -1,4 +1,4 @@
-"""Release 48: the shipping ``fly.toml`` serves the candidate of the guarded R48 cloud screen.
+"""Release 48, the rollback of release 49: the candidate of the guarded R48 cloud screen.
 
 The candidate is release 46 with three changes: the hidden hands are proposed by
 the S58 belief package ``s58-e6-42444515`` (served at its stored temperature) in
@@ -11,8 +11,10 @@ name or digest and are read from the process environment where the bot is
 built, so they are witnessed here through the process environment, as the
 server reads them.
 
-The served bot is built from the repo's ``fly.toml`` environment exactly as the
-server builds it (``pv_env_recipe`` -> ``pv_registry_entries`` -> the factory)
+Release 49 adds two lines (``RELEASE49_ADDED_KEYS``), so release 48's env is the
+repo's ``fly.toml`` environment with them removed and the release-48 name restored
+(``release48_env``, the documented rollback).  The served bot is built from that
+environment exactly as the server builds it (``pv_env_recipe`` -> ``pv_registry_entries`` -> the factory)
 on the hash-pinned production and belief packages, and one served play goes
 through the server's own snapshot and commit path with the real belief model.
 The package tests fail, never skip, under ``SHENGJI_REQUIRE_PV_PACKAGE=1`` (the
@@ -31,8 +33,9 @@ import pytest
 from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA, REQUIRE_PACKAGE  # noqa: F401
 from test_pv_search_serving import _play_state
 from test_release46_fly_config import (BELIEF_SHA as RELEASE46_BELIEF_SHA, DTRX_FLAG, RELEASE46,
-                                       RELEASE48_ADDED_KEYS, V92_CANDIDATE_ENV, fly_env,
-                                       pinned_belief_package, release46_env)  # noqa: F401
+                                       RELEASE48_ADDED_KEYS, RELEASE49_ADDED_KEYS, V92_CANDIDATE_ENV,
+                                       fly_env as production_env, pinned_belief_package,
+                                       release46_env)  # noqa: F401
 from native_switches import NATIVE_OFF
 
 #: the candidate name of the guarded R48 cloud screen (arms.candidate.name of its plan)
@@ -61,6 +64,19 @@ R48_CANDIDATE_CHANGES = {"SHENGJI_PV_BELIEF_CKPT": BELIEF_VOLUME_PATH,
                          "SHENGJI_PV_LEAF_GREEDY_DEADLINE": "2",
                          **{key: "1" for key in LATENCY_KEYS.values()}}
 BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF48_PACKAGE_PATH")
+
+
+def release48_env(env: dict) -> dict:
+    """Production's env with release 49's rollback applied: its two lines removed and
+    the release-48 name restored."""
+    env = {k: v for k, v in env.items() if k not in RELEASE49_ADDED_KEYS}
+    env["SHENGJI_BOT"] = RELEASE48
+    return env
+
+
+def fly_env() -> dict:
+    """Release 48's ``fly.toml`` ``[env]``: the repo's, rolled back from release 49."""
+    return release48_env(production_env())
 
 
 @pytest.fixture(scope="module")

@@ -3,7 +3,9 @@
 Last reconciled: **2026-10-24**.
 
 **Production is release 48** (live 2026-10-24 10:18 ET, Fly v47): release 46 with the S58 belief package, `dtrx`
-and the guarded greedy finish (ladder row 17). Release 46 is the rollback. **New screens compare against release 48
+and the guarded greedy finish (ladder row 17). Release 46 is the rollback. **Release 49** (row 18: release 48 plus
+the singleton challenger `sc8` and the lead confirmation `lcc32`, Jerry 2026-10-31: "Yea ship Y") is prepared in
+`fly.toml` and replaces it on deploy, with release 48 as its rollback (`DEPLOY.md`). **New screens compare against release 48
 as served** (Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48"; before that
 release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator; screens already read keep their declared comparator.
 
@@ -15,7 +17,7 @@ long-form text this file carried until 2026-10-16 is verbatim in
 
 ## Production contract
 
-Release 48 is the `pv-search` policy/value search, W64/K8, no playouts. Rule tokens (and the release that added
+Release 48 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are release 49's additions. Rule tokens (and the release that added
 each) are in parentheses; rules are off by default in source and on in production (#676).
 
 | phase | stage | budget and fallback |
@@ -25,6 +27,8 @@ each) are in parentheses; rules are off by default in source and on in productio
 | play: worlds | 64 worlds, history-legal (`whl`), drawn under the pair obligation (`whd`), hidden hands proposed by the S58 belief model (`bw`, 46; S58 since 48); this round's refused throws stay refusable with the same forced component (`rc`, 38; #689). | A belief error, including preparation over 0.25 s, falls back for that decision to the history-legal draw and is recorded. |
 | play: admit | Policy head admits 8: at most 2 per structural key, near-duplicates skipped, back-fill (`div`, 38; #680); on a lead whose heuristic anchor is a non-trump single that is not the top live card, slot 0 is the highest plain pair/tractor, else the policy's top action (`la`, 38; #694). | 3 s per play; on expiry, the heuristic anchor. |
 | play: price | Value head prices each afterstate in each world, after finishing the trick with greedy replies (`lgf`, 48), except on decisions an exact stage is eligible for (`lgfx`, 48); within 0.02 level of the best mean, most root-team points from the current trick wins (`tb`, 38; #682). | Past 2 s into a decision the greedy finish stops and the remaining leaves are plain (`lgfd2000`, 48). |
+| play: singleton challenger | On a lead where some hand holds more than 7 cards, the singles left off the ballot are priced on 8 worlds with heuristic-finished leaves; the best replaces the ballot's last slot only when it beats every admitted candidate (`sc8`, 49). | Inside the 3 s; the 64-world search still chooses. |
+| play: lead confirmation | On a lead with no exact stage, the policy's next actions up to 32 are screened on 32 base worlds; at most 2 that beat the served lead are re-priced on two fresh 64-world draws and one replaces it only when its paired margin exceeds one standard error (`lcc32`, 49). | Starts only before 40% of the 3 s budget, stops at 80%; a finish cut by its 2 s deadline abandons; any abandon plays the base lead. |
 | play: doomed throw | A lead the engine refuses in every world with the same forced component is excluded with that component; the bot re-selects (`dtr`, 43; #946, replacing 42's swap `dts`, #830); the re-select never overrides a complete exact lead stage (`dtrx`, 48; #1120). | Abandonment keeps the first selection; all excluded plays the forced component. |
 | play: ≤ 7 cards | Lead with > 1 candidate: exact level-mode minimax per world after the first-trick leaf (`ele`, `ed7`). Follow: exact re-rank on the compiled compact-level solver, 50M nodes (`xf7`, `xfcompactlevel`) (46; #1066). | Inside the 3 s; expiry or error keeps the baseline choice. |
 
@@ -71,6 +75,7 @@ fixes. Row numbers are stable; other documents cite them.
 
 | row | rel. | change (token) | vs | result [95% CI] | status | reading | vs Sol, actor-only [95% CI] | vs PT-Sol [95% CI] | pointer |
 |---:|---:|---|---|---|---|---|---|---|---|
+| 18 | 49 | singleton challenger (`sc8`) + held-out lead confirmation at 32 (`lcc32`) | 48 | **+0.0270 [+0.0135, +0.0408]** combo3y; combo3yc **+0.0306 [+0.0167, +0.0441]** | DEV_PASS, CONFIRMED | Different instrument: paired seat-swapped head-to-head duels against release 48 as served, 3,920 fresh deals each, not the MC-LCB screen scale. Two rules at once; the increment over `lcc32` alone is +0.0102 [−0.0086, +0.0291] (independent runs), so sc8's share is unresolved. 0 play, belief and bury fallbacks. Latency: sc8 v107sc8lat QUALIFIED on perf; lcc32 on Fly (s71fly) leads p95 2.01 s unthrottled and self-limiting under throttle; the pair is not timed on Fly. | — | — | combo3y #1075 issuecomment-6475680068; combo3yc 6479431994; Codex audit 6480355443; s71fly 6469399580; v107sc8lat archive `readouts/v107sc8lat/` |
 | 17 | 48 | S58 belief package (`42444515`, stored T) + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches | 46 | **+0.0765 [+0.0571, +0.0958]**; r48confirm **+0.0843 [+0.0575, +0.1111]** | POSITIVE, CONFIRMED | Four changes screened as one recipe (no per-change attribution); 0 play and 0 belief fallbacks on both reads; v105lat QUALIFIED (play p95 0.566 s). | — | — | r48cloud #1075 issuecomment-6383298163; r48confirm 6384251320; v105lat 6384912469 |
 | 15 | 46 | belief worlds (`whl whd bw`) + exact endgame D7/X7 (`ele ed7 xf7 xfcompactlevel`) + `vdef` | 45 | **+0.2167 [+0.1923, +0.2412]**; v92c **+0.2284 [+0.2046, +0.2521]** | POSITIVE, CONFIRMED | Three changes at once; the largest served gain. | **+0.55 [+0.25, +0.90]** S47 | — | v92combo45 #707 issuecomment-6216352632; v92c 6221702452 |
 | 14 | 45 | wide value-only bury, K=64 (`bwv`) | 44 | **+0.0488 [+0.0286, +0.0690]** | POSITIVE | One screen; width and chooser changed together. | — | — | v76bwv44 #707 issuecomment-6136852119 |

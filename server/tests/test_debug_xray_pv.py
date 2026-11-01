@@ -274,7 +274,11 @@ def _served_entries(path, belief_path):
     recipe = pv.pv_env_recipe({**env, "SHENGJI_PV_CKPT": str(path),
                               "SHENGJI_PV_SHA256": PACKAGE_SHA,
                               "SHENGJI_PV_BELIEF_CKPT": str(belief_path)})
-    entries = pv.pv_registry_entries(**recipe)
+    # the singleton challenger registers the served recipe under its -sc8 name
+    if env.get("SHENGJI_PV_SINGLETON_CHALLENGER") == "1":
+        entries = pv.singleton_registry_entries(**recipe)
+    else:
+        entries = pv.pv_registry_entries(**recipe)
     name, = entries
     assert name == env["SHENGJI_BOT"]
     return name, entries[name]

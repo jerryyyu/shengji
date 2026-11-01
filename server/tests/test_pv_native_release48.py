@@ -23,7 +23,7 @@ import pytest
 
 from shengji.ai.heuristic import HeuristicBot
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
-from test_release46_fly_config import fly_env
+from test_release48_fly_config import fly_env
 from test_release48_fly_config import (RELEASE48, apply_to_process, local_env,  # noqa: F401
                                        pinned_release48_belief_package, served_entries)
 

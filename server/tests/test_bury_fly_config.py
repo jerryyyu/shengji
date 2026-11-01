@@ -7,7 +7,8 @@ import tomllib
 from shengji.train.cwv_bury_policy import bury_env_recipe
 from shengji.train.cwv_shortlist import resolved_recipe, shortlist_policy_name
 from test_release46_fly_config import RELEASE46, V92_CANDIDATE_ENV, release46_env, without_combo
-from test_release48_fly_config import R48_CANDIDATE_CHANGES, RELEASE48
+from test_release48_fly_config import R48_CANDIDATE_CHANGES, RELEASE48, release48_env
+from test_release49_fly_config import RELEASE49, Y_CHANGES
 
 # The shipping package (#425/#435, Jerry's go 2026-09-15 23:4x ET): the from-scratch joint
 # net JS-M1 a5248cc5 as ONE NumPy package (0d17fd03…) that is both the value net and, via
@@ -72,10 +73,13 @@ def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     # Release 48: release 46 with the S58 belief pair, dtrx and the guarded greedy finish
     # with its latency switches, R48_CANDIDATE_CHANGES; the name is the one the R48 cloud
     # screen's candidate arm carries.
+    # Release 49: release 48 plus the singleton challenger and the lead confirmation at 32,
+    # Y_CHANGES; the name is the one combo3y and combo3yc screened as arm Y.
     for flag in ("ADMISSION_DIVERSITY", "REFUSAL_CONSTRAINTS", "TIEBREAK_POINTS", "LEAD_ANCHOR",
                  "DOOMED_THROW_RESELECT", "VALUE_DECLARE"):
         assert pv_recipe["SHENGJI_PV_" + flag] == "1"
     assert {k: pv_recipe[k] for k in R48_CANDIDATE_CHANGES} == R48_CANDIDATE_CHANGES
+    assert {k: pv_recipe[k] for k in Y_CHANGES} == Y_CHANGES
     assert {k: release46_env(env)[k] for k in V92_CANDIDATE_ENV} == V92_CANDIDATE_ENV
     # The served name is the one the server derives from this env (pv_env_recipe ->
     # pv_registry_entries); the packages are not in the repo, so only their on-disk hash
@@ -85,11 +89,21 @@ def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     belief_volume = {pair["SHENGJI_PV_BELIEF_CKPT"]: pair["SHENGJI_PV_BELIEF_SHA256"]
                      for pair in (V92_CANDIDATE_ENV, R48_CANDIDATE_CHANGES)}
     monkeypatch.setattr(pv, "file_sha256", lambda path: belief_volume[str(path)])
+    # The singleton challenger registers the same recipe again under the -sc8 suffix (the
+    # served name); the plain name stays registered.
     names = list(pv.pv_registry_entries(**pv.pv_env_recipe(env)))
-    assert names == [env["SHENGJI_BOT"]] == [RELEASE48]
-    # Rollback to release 46: release 48's seven added lines removed and the S17 belief
-    # pair restored. The play digest moves; the bury recipe is unchanged.
-    release46 = release46_env(env)
+    recipe = pv.pv_env_recipe(env)
+    checkpoint = recipe.pop("checkpoint")
+    sc8_names = list(pv.singleton_registry_entries(checkpoint=checkpoint, **recipe))
+    assert sc8_names == [env["SHENGJI_BOT"]] == [RELEASE49] == [names[0] + "-sc8"]
+    assert "-xfcompactlevel-lcc32-r" in RELEASE49
+    # Rollback to release 48: release 49's two lines removed. The play digest moves (lcc32
+    # is in it) and the bury suffix digests the play identity with it.
+    release48 = release48_env(env)
+    assert list(pv.pv_registry_entries(**pv.pv_env_recipe(release48))) == [release48["SHENGJI_BOT"]] == [RELEASE48]
+    # Rollback to release 46: release 48's added lines removed and the S17 belief pair
+    # restored. The play digest moves; the bury recipe is unchanged.
+    release46 = release46_env(release48)
     assert list(pv.pv_registry_entries(**pv.pv_env_recipe(release46))) == [RELEASE46]
     assert RELEASE48.endswith("-bury-hybrid-bwv-cd6dd3d2b02a")
     assert (pv_recipe["SHENGJI_PV_BURY_WIDE_VALUE"], pv_recipe["SHENGJI_PV_BURY_WIDE_K"]) == ("1", "64")

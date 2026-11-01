@@ -22,7 +22,7 @@ from test_encoder_round_compat import pinned_production_package  # noqa: F401
 FLAG = "SHENGJI_PV_BELIEF_CAPACITY"
 
 from test_release48_fly_config import RELEASE48, pinned_release48_belief_package, served_entries  # noqa: E402,F401
-from test_release46_fly_config import fly_env  # noqa: E402
+from test_release48_fly_config import fly_env  # noqa: E402
 
 
 #: release 48 with ``SHENGJI_PV_BELIEF_CAPACITY=1``

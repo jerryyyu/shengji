@@ -388,12 +388,13 @@ def _pad_concat(arrays, fill) -> np.ndarray:
 
 
 def open_policy_rows(path: str | Path, *, limit: int | None = None, exclude=frozenset(),
-                     version: int = ENC_VERSION):
-    """A chunked directory streams; a ``<prefix>.npz`` loads in memory.  Either
-    refuses rows built at another encoder version than ``version``."""
+                     version: int = ENC_VERSION, window: int = 4):
+    """A chunked directory streams (``window`` chunks shuffled together); a
+    ``<prefix>.npz`` loads in memory.  Either refuses rows built at another
+    encoder version than ``version``."""
     p = Path(path)
     if p.is_dir() and (p / "manifest.json").exists():
-        return PolicyRowsStream(p, limit=limit, exclude=exclude, version=version)
+        return PolicyRowsStream(p, limit=limit, exclude=exclude, window=window, version=version)
     return PolicyRows(p, limit=limit, exclude=exclude, version=version)
 
 

@@ -451,3 +451,85 @@ def test_value_weight_scales_the_value_block_and_zero_leaves_a_policy_only_loss(
         policy = tr["policy_bce"] + tr["policy_listwise"]
         value = tr["cross_entropy"] + train_cwv.DEFAULTS["aux_weight"] * tr["aux_huber"]
         assert tr["loss"] == pytest.approx(w * value + policy, rel=1e-5)
+
+
+def test_recipe_flags_default_to_the_unchanged_trainer_and_each_changes_only_its_part(
+        store_dir, policy_rows, tmp_path):  # noqa: F811
+    """--policy-bce-weight, --policy-rows-window, --grad-clip-norm and --train-eval-mode: at
+    their defaults the config and the trained weights are the trainer's without them; each set
+    value is recorded in the config and changes only its own part of the step."""
+    import inspect
+    from shengji.ai.cwv_policy import load_cwv_checkpoint as consumer_load
+    from shengji.train.policy_rows import PolicyRowsStream
+    assert inspect.signature(PolicyRowsStream).parameters["window"].default == train_cwv.POLICY_ROWS_WINDOW
+    kw = dict(data=[str(store_dir)], arch="mlp", device="cpu", epochs=1, seed=7, n_boot=10,
+              hidden=32, log=None, cache_workers=1, eval_workers=1, bench_batch=32,
+              val_rank_records=50, encoder_version=2, aux_points=True, **THIRDS)
+    train_cwv.train(out=tmp_path / "base", batch_size=64, **kw)
+    init = str(tmp_path / "base" / "best.pt")
+    chunked = tmp_path / "chunked"
+    pp.extract(chunked, [str(store_dir)], lo=0.0, hi=1.01, thin=1.0, max_rows=400, workers=1, chunk_rows=64)
+    pk = dict(policy_head=True, policy_rows=str(chunked), policy_batch_fraction=0.5, init=init,
+              init_exclude_exposed=True, value_weight=0.0, batch_size=64, **kw)
+
+    def weights(name):
+        return consumer_load(tmp_path / name / "checkpoints" / "epoch-01.pt")[0].state_dict()
+
+    def same(a, b):
+        return a.keys() == b.keys() and all(torch.equal(a[k], b[k]) for k in a)
+
+    default = train_cwv.train(out=tmp_path / "default", **pk)
+    explicit = train_cwv.train(out=tmp_path / "explicit", policy_bce_weight=1.0,
+                               policy_rows_window=train_cwv.POLICY_ROWS_WINDOW, grad_clip_norm=0.0,
+                               train_eval_mode=False, **pk)
+    new_keys = ("policy_bce_weight", "policy_rows_window", "grad_clip_norm", "train_eval_mode")
+    assert not set(new_keys) & set(default["config"])
+    assert explicit["config_sha256"] == default["config_sha256"]
+    assert same(weights("default"), weights("explicit"))
+    assert default["epochs"][0]["train"]["loss"] == explicit["epochs"][0]["train"]["loss"]
+    assert "grad_norm_mean" not in default["epochs"][0]["train"]
+
+    # a clip norm no step reaches scales every gradient by exactly 1: the same weights
+    loose = train_cwv.train(out=tmp_path / "loose", grad_clip_norm=1e9, **pk)
+    assert loose["config"]["grad_clip_norm"] == 1e9 and same(weights("default"), weights("loose"))
+    tr = loose["epochs"][0]["train"]
+    assert tr["grad_clipped_fraction"] == 0.0 and math.isfinite(tr["grad_norm_mean"]) and tr["grad_norm_mean"] > 0
+    tight = train_cwv.train(out=tmp_path / "tight", grad_clip_norm=1e-6, **pk)
+    assert tight["epochs"][0]["train"]["grad_clipped_fraction"] == 1.0
+    assert not same(weights("default"), weights("tight"))
+
+    # BCE off: one batch's logged loss is the listwise term alone; BCE is still logged
+    one = dict(pk, batch_size=100_000, policy_batch_fraction=0.002)
+    off = train_cwv.train(out=tmp_path / "bce0", policy_bce_weight=0.0, **one)["epochs"][0]["train"]
+    on = train_cwv.train(out=tmp_path / "bce1", **one)["epochs"][0]["train"]
+    assert off["batches"] == on["batches"] == 1 and off["policy_bce"] > 0
+    assert off["loss"] == pytest.approx(off["policy_listwise"], rel=1e-5)
+    assert on["loss"] == pytest.approx(on["policy_bce"] + on["policy_listwise"], rel=1e-5)
+    half = train_cwv.train(out=tmp_path / "bce05", policy_bce_weight=0.5, **one)
+    assert half["config"]["policy_bce_weight"] == 0.5
+    t5 = half["epochs"][0]["train"]
+    assert t5["loss"] == pytest.approx(0.5 * t5["policy_bce"] + t5["policy_listwise"], rel=1e-5)
+
+    # eval mode: dropout off in training; the checkpoint keeps the --init dropout config
+    ev = train_cwv.train(out=tmp_path / "eval", train_eval_mode=True, **pk)
+    assert ev["config"]["train_eval_mode"] is True and ev["config"]["dropout"] == default["config"]["dropout"] > 0
+    assert not same(weights("default"), weights("eval"))
+    ev2 = train_cwv.train(out=tmp_path / "eval2", train_eval_mode=True, **pk)
+    assert same(weights("eval"), weights("eval2"))
+
+    # one window over every chunk: recorded, every root row still drawn once per pass
+    whole = train_cwv.train(out=tmp_path / "whole", policy_rows_window=10 ** 6, **pk)
+    assert whole["config"]["policy_rows_window"] == 10 ** 6
+    assert whole["policy_head"]["rows"]["window_chunks"] == 10 ** 6
+    assert whole["epochs"][0]["train"]["policy_rows"] == default["epochs"][0]["train"]["policy_rows"]
+
+    for bad, match in ((dict(policy_bce_weight=-1.0), "finite weight >= 0"),
+                       (dict(policy_bce_weight=0.0, policy_listwise_weight=0.0), "no policy loss"),
+                       (dict(policy_rows_window=0), "integer >= 1"),
+                       (dict(grad_clip_norm=float("nan")), "finite norm >= 0")):
+        with pytest.raises(train_cwv.TrainError, match=match):
+            train_cwv.train(out=tmp_path / "bad", **{**pk, **bad})
+    with pytest.raises(train_cwv.TrainError, match="loads in memory"):
+        train_cwv.train(out=tmp_path / "bad", **{**pk, "policy_rows": policy_rows, "policy_rows_window": 8})
+    with pytest.raises(train_cwv.TrainError, match="need --policy-head"):
+        train_cwv.train(out=tmp_path / "bad", batch_size=64, policy_bce_weight=0.0, **kw)

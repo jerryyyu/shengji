@@ -22,6 +22,9 @@ decisions:
   ``vals`` slot NaN: the trainer's soft loss then takes its hard fallback,
   cross-entropy on the played slot, with no trainer change.
 * every other play record is excluded and counted by reason (``EXCLUSION_REASONS``).
+* opt-in lead transforms add an int8 ``lead_type`` array (follow, single, pair,
+  tractor, throw); selected throw leads can become ``hard_played`` rows with
+  all-NaN values, or hard-LCC throw rows can be dropped.
 
 Held-out deals never enter the output: ``--exclude-seeds LO:HI`` (half-open,
 on the record's ``round_seed``, which both mirrors of a deal share) and
@@ -41,6 +44,8 @@ completed partitions are kept as they are.
         --out DIR --encoder-version 2 [--exclude-seeds LO:HI ...]
         [--exclude-deal-keys FILE] [--chunk-rows N] [--max-rows N]
         [--workers N] [--seed S] [--partition I/N] [--replace-incomplete]
+        [--lead-types] [--hard-lead-types TYPE]
+        [--drop-hard-lcc-lead-types TYPE]
     python -m shengji.train.served_policy_rows combine --out DIR PART [PART ...]
 """
 from __future__ import annotations
@@ -63,6 +68,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 
 from ..harvest.rebuild import state_for_record
+from ..engine import combos
 from ..rl.encode import CARD_INDEX, N_CARDS
 from .data import ShardRef, deal_key, discover_store, iter_records
 from .policy_prior import (CHUNK_SCHEMA, EXPLORE_FLAG_NAMES, NO_SEARCH_VALUES, ballot_tensors,
@@ -72,7 +78,16 @@ from .policy_prior import (CHUNK_SCHEMA, EXPLORE_FLAG_NAMES, NO_SEARCH_VALUES, b
 SUMMARY_SCHEMA = "shengji-served-policy-rows-summary-v1"
 PRODUCER = "shengji.train.served_policy_rows"
 TARGET_SOFT, TARGET_HARD_LCC = 0, 1
-TARGET_KINDS = {TARGET_SOFT: "soft", TARGET_HARD_LCC: "hard_lcc"}
+TARGET_HARD_PLAYED = 3
+TARGET_KINDS = {TARGET_SOFT: "soft", TARGET_HARD_LCC: "hard_lcc",
+                TARGET_HARD_PLAYED: "hard_played"}
+TARGET_KINDS_INV = {name: kind for kind, name in TARGET_KINDS.items()}
+LEAD_FOLLOW, LEAD_SINGLE, LEAD_PAIR, LEAD_TRACTOR, LEAD_THROW = range(5)
+LEAD_TYPE_NAMES = {
+    LEAD_FOLLOW: "follow", LEAD_SINGLE: "single", LEAD_PAIR: "pair",
+    LEAD_TRACTOR: "tractor", LEAD_THROW: "throw",
+}
+_LEAD_TYPE_VALUES = {name: value for value, name in LEAD_TYPE_NAMES.items()}
 LCC_APPLIED = "applied"
 
 #: Why a play record is not a row.  ``unsearched:<reason>`` carries the
@@ -120,6 +135,43 @@ def _played_slot(ballot: Sequence[Sequence[str]], action: Sequence[str]) -> int 
         if cand and _key(cand) == want:
             return i
     return None
+
+
+def _normalize_lead_types(values: Sequence[str] | str, option: str) -> tuple[str, ...]:
+    if isinstance(values, str):
+        values = (values,)
+    try:
+        raw = list(values)
+    except TypeError as exc:
+        raise ServedPolicyRowsError(f"{option}: expected lead type names") from exc
+    names: set[str] = set()
+    for value in raw:
+        if not isinstance(value, str):
+            raise ServedPolicyRowsError(f"{option}: invalid lead type {value!r}")
+        for name in value.split(","):
+            if name not in _LEAD_TYPE_VALUES:
+                raise ServedPolicyRowsError(
+                    f"{option}: invalid lead type {name!r}; expected one of "
+                    f"{', '.join(_LEAD_TYPE_VALUES)}")
+            names.add(name)
+    return tuple(name for name in _LEAD_TYPE_VALUES if name in names)
+
+
+def _lead_type(root, action: Sequence[str]) -> int:
+    """Classify the played action using the rebuilt engine state."""
+    if root.trick is not None and root.trick.plays:
+        return LEAD_FOLLOW
+    decomposition = combos.decompose(list(action), root.ordering)
+    if len(decomposition.components) != 1:
+        return LEAD_THROW
+    component = decomposition.components[0]
+    if component.kind == "single":
+        return LEAD_SINGLE
+    if component.kind == "pair":
+        return LEAD_PAIR
+    if component.kind == "tractor":
+        return LEAD_TRACTOR
+    return LEAD_THROW
 
 
 def _mean_at(record: Mapping[str, Any], slot: int) -> float | None:
@@ -176,7 +228,7 @@ def _record_deal_key(record: Mapping[str, Any]) -> str | None:
 
 def _shard_rows(args: tuple) -> tuple[list[tuple], dict]:
     """Rows and counters of one shard, in record order."""
-    path, version, intervals, excluded_keys = args
+    path, version, intervals, excluded_keys, lead_types, hard_lead_types, drop_hard_lcc_lead_types = args
     rows: list[tuple] = []
     counts: Counter = Counter()
     lcc_status: Counter = Counter()
@@ -227,6 +279,16 @@ def _shard_rows(args: tuple) -> tuple[list[tuple], dict]:
             counts["excluded:excluded_deal_key"] += 1
             excluded_seen.add(root_key)
             continue
+        lead_type = None
+        if lead_types:
+            lead_type = _lead_type(root, rec["action"])
+            lead_name = LEAD_TYPE_NAMES[lead_type]
+            if target == "hard_lcc" and lead_name in drop_hard_lcc_lead_types:
+                counts["excluded:hard_lcc_lead_type"] += 1
+                continue
+            if target == "soft" and lead_name in hard_lead_types:
+                target = "hard_played"
+                means_raw = [float("nan")] * len(raw_ballot)
         x = flat_input(root_tensors(root, seat, version), version).astype(np.float16)
         y = np.zeros(N_CARDS, np.uint8)
         for c in rec["action"]:
@@ -240,6 +302,8 @@ def _shard_rows(args: tuple) -> tuple[list[tuple], dict]:
                 "target": target, "explore_flag": int(eflag),
                 "explore_margin": None if not math.isfinite(emargin) else float(emargin),
                 "source_ref": rec.get("source_ref"), "round_seed": rec.get("round_seed")}
+        if lead_type is not None:
+            meta["lead_type"] = lead_type
         rows.append((x, y, meta))
         counts[f"rows:{target}"] += 1
     return rows, {"counts": dict(counts), "lcc_status": dict(lcc_status),
@@ -279,26 +343,36 @@ def save_npz_deterministic(path: Path, arrays: Mapping[str, np.ndarray]) -> str:
 
 
 def write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
-    """One chunk in ``policy_prior``'s chunk layout plus a ``target_kind`` array
-    (0 soft, 1 hard_lcc; the stream ignores arrays it does not read)."""
+    """One chunk in ``policy_prior``'s layout plus optional lead transforms.
+
+    The stream ignores arrays it does not read, including the opt-in
+    ``lead_type`` array.
+    """
     ball, mask, tgt = ballot_tensors(meta)
     vals, has_vals = ballot_value_tensor(meta, b_max=int(ball.shape[1]))
     explore_flag, explore_margin = explore_tag_arrays(meta)
-    kinds = np.asarray([TARGET_HARD_LCC if m["target"] == "hard_lcc" else TARGET_SOFT for m in meta], np.int8)
-    path = out_dir / f"chunk-{index:05d}.npz"
-    sha = save_npz_deterministic(path, {
+    kinds = np.asarray([TARGET_KINDS_INV[m["target"]] for m in meta], np.int8)
+    arrays = {
         "X": np.stack(X).astype(np.float16), "Y": np.stack(Y).astype(np.uint8),
         "ball": ball.numpy(), "mask": mask.numpy(), "tgt": tgt.numpy(),
         "deal_key": np.asarray([m["deal_key"] for m in meta]),
         "vals": vals, "has_vals": has_vals,
         "explore_flag": explore_flag, "explore_margin": explore_margin,
-        "target_kind": kinds})
+        "target_kind": kinds}
+    if any("lead_type" in m for m in meta):
+        arrays["lead_type"] = np.asarray([m["lead_type"] for m in meta], np.int8)
+    path = out_dir / f"chunk-{index:05d}.npz"
+    sha = save_npz_deterministic(path, arrays)
+    target_kinds = {name: int((kinds == kind).sum())
+                    for kind, name in TARGET_KINDS.items()
+                    if kind in (TARGET_SOFT, TARGET_HARD_LCC)
+                    or int((kinds == kind).sum())}
     return {"file": path.name, "rows": len(X), "deals": len({m["deal_key"] for m in meta}),
             "rows_with_ballot_target": int((tgt >= 0).sum()),
             "rows_with_search_values": int(has_vals.sum()), "sha256": sha,
             "value_units": dict(Counter(m["units"] for m in meta)),
             "explore_flag_counts": explore_flag_counts(explore_flag),
-            "target_kinds": {name: int((kinds == k).sum()) for k, name in TARGET_KINDS.items()}}
+            "target_kinds": target_kinds}
 
 
 MANIFEST_TMP = "manifest.json.tmp"
@@ -474,7 +548,9 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
             exclude_seeds: Sequence[tuple[int, int]] = (), exclude_deal_keys: str | Path | None = None,
             chunk_rows: int = 65536, max_rows: int | None = None, workers: int = 1,
             seed: int = 1, partition: tuple[int, int] | None = None,
-            replace_incomplete: bool = False) -> dict:
+            replace_incomplete: bool = False, lead_types: bool = False,
+            hard_lead_types: Sequence[str] = (),
+            drop_hard_lcc_lead_types: Sequence[str] = ()) -> dict:
     """Write the chunked root rows of ``corpora`` to the new directory ``out``
     and return the summary (also written to ``out/summary.json``).
 
@@ -483,6 +559,16 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     is a complete output of its own that ``combine`` later joins.  A partition
     may hold no rows (all its records excluded).  ``replace_incomplete``
     removes an interrupted build at ``out`` first (``_remove_incomplete``)."""
+    if type(lead_types) is not bool:
+        raise ServedPolicyRowsError("lead_types must be a bool")
+    hard_lead_types = _normalize_lead_types(hard_lead_types, "hard_lead_types")
+    drop_hard_lcc_lead_types = _normalize_lead_types(
+        drop_hard_lcc_lead_types, "drop_hard_lcc_lead_types")
+    lead_types = bool(lead_types or hard_lead_types or drop_hard_lcc_lead_types)
+    transform = ({"lead_types": True,
+                  "hard_lead_types": list(hard_lead_types),
+                  "drop_hard_lcc_lead_types": list(drop_hard_lcc_lead_types)}
+                 if lead_types else None)
     if partition is not None:
         partition = _check_partition(tuple(partition))
         if max_rows is not None:
@@ -537,7 +623,8 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     lcc_status: Counter = Counter()
     excluded_seen: set[str] = set()
     deals: set[str] = set()
-    args = ((p, version, tuple(intervals), excluded_keys) for p in paths)
+    args = ((p, version, tuple(intervals), excluded_keys, lead_types,
+             hard_lead_types, drop_hard_lcc_lead_types) for p in paths)
 
     def flush(n: int) -> None:
         nonlocal total
@@ -578,9 +665,13 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     if deals & (excluded_keys | excluded_seen):
         raise ServedPolicyRowsError("an excluded deal key reached the output")
     excluded = {k.split(":", 1)[1]: v for k, v in sorted(counts.items()) if k.startswith("excluded:")}
-    for reason in EXCLUSION_REASONS:
+    for reason in EXCLUSION_REASONS + (("hard_lcc_lead_type",) if transform else ()):
         excluded.setdefault(reason, 0)
-    target_rows = {name: sum(c["target_kinds"][name] for c in chunks) for name in TARGET_KINDS.values()}
+    target_rows = {name: sum(c["target_kinds"].get(name, 0) for c in chunks)
+                   for name in ("soft", "hard_lcc")}
+    if transform:
+        target_rows["hard_played"] = sum(c["target_kinds"].get("hard_played", 0)
+                                         for c in chunks)
     exclusions = {"seed_intervals_half_open": [[lo, hi] for lo, hi in intervals],
                   "deal_keys_file": None if exclude_deal_keys is None else str(Path(exclude_deal_keys).resolve()),
                   "deal_keys_file_sha256": keys_sha, "deal_keys_listed": len(excluded_keys),
@@ -604,6 +695,8 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
         "values_scale": "points",
         "value_units": dict(sum((Counter(c["value_units"]) for c in chunks), Counter())),
     }
+    if transform is not None:
+        summary["lead_type_transform"] = transform
     if part_info is not None:
         # the excluded deals themselves, so ``combine`` can count their union
         summary["partition"] = dict(part_info, excluded_deals=sorted(excluded_seen))
@@ -617,8 +710,12 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
                 "explore_flag_names": {str(k): v for k, v in EXPLORE_FLAG_NAMES.items()},
                 "explore_flag_counts": {k: sum(c["explore_flag_counts"][k] for c in chunks)
                                         for k in map(str, sorted(EXPLORE_FLAG_NAMES))},
-                "target_kind_names": {str(k): v for k, v in TARGET_KINDS.items()},
+                "target_kind_names": {str(k): v for k, v in TARGET_KINDS.items()
+                                      if k != TARGET_HARD_PLAYED or "hard_played" in target_rows},
                 "producer": {k: v for k, v in summary.items() if k not in ("schema", "out")}}
+    if transform is not None:
+        manifest["lead_type_transform"] = transform
+        manifest["lead_type_names"] = {str(k): v for k, v in LEAD_TYPE_NAMES.items()}
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=1, sort_keys=True) + "\n")
     # the manifest last: a directory without one is refused by the stream
     _publish_manifest(out_dir, manifest)
@@ -637,6 +734,7 @@ _SUMMED = ("records", "play_records", "non_play_records", "rows", "excluded_rows
 
 def _shared_view(summary: Mapping[str, Any]) -> dict:
     return {"fields": {k: summary.get(k) for k in _SHARED_FIELDS},
+            "lead_type_transform": summary.get("lead_type_transform"),
             "exclusions": {k: summary["exclusions"].get(k) for k in _SHARED_EXCLUSIONS},
             "partition": {k: summary["partition"].get(k) for k in _SHARED_PARTITION},
             "stores": [{k: s.get(k) for k in ("layout", "shards", "manifests", "skipped")}
@@ -745,12 +843,15 @@ def combine(out: str | Path, parts: Sequence[str | Path], *, replace_incomplete:
         "partition_count": count, "all_shards": first["partition"]["all_shards"],
         "all_shards_digest": first["partition"]["all_shards_digest"],
         **{k: int(counts[k]) for k in _SUMMED},
-        "target_rows": {name: int(targets[name]) for name in TARGET_KINDS.values()},
+        "target_rows": {name: int(targets[name]) for name in ("soft", "hard_lcc")},
         "deals": len(deals), "fit_deals_digest": _digest(deals),
         "excluded": dict(sorted(excluded.items())),
         "lead_confirm_status": dict(sorted(lcc.items())),
         "exclusions": exclusions, "chunks": len(chunks), "value_units": dict(units),
     }
+    if head.get("lead_type_transform") is not None:
+        summary["lead_type_transform"] = head["lead_type_transform"]
+        summary["target_rows"]["hard_played"] = int(targets["hard_played"])
     if counts["rows"] + counts["excluded_rows"] != counts["play_records"]:
         raise ServedPolicyRowsError("the partitions' rows and exclusions do not add up to their play records")
     manifest = {"schema": CHUNK_SCHEMA, "input_dim": head["input_dim"], "enc_version": head["enc_version"],
@@ -762,8 +863,13 @@ def combine(out: str | Path, parts: Sequence[str | Path], *, replace_incomplete:
                 "explore_tags": True,
                 "explore_flag_names": {str(k): v for k, v in EXPLORE_FLAG_NAMES.items()},
                 "explore_flag_counts": {k: int(flags[k]) for k in map(str, sorted(EXPLORE_FLAG_NAMES))},
-                "target_kind_names": {str(k): v for k, v in TARGET_KINDS.items()},
+                "target_kind_names": {str(k): v for k, v in TARGET_KINDS.items()
+                                      if k != TARGET_HARD_PLAYED
+                                      or "hard_played" in summary["target_rows"]},
                 "producer": {k: v for k, v in summary.items() if k not in ("schema", "out")}}
+    if head.get("lead_type_transform") is not None:
+        manifest["lead_type_transform"] = head["lead_type_transform"]
+        manifest["lead_type_names"] = {str(k): v for k, v in LEAD_TYPE_NAMES.items()}
     out_dir.mkdir(parents=True)
     for entry, target in chunks:
         (out_dir / entry["file"]).symlink_to(target)
@@ -804,6 +910,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--replace-incomplete", action="store_true",
                    help="first remove an interrupted build at --out (no manifest, only this producer's "
                         "files); a complete output is refused")
+    p.add_argument("--lead-types", action="store_true",
+                   help="write the engine-classified lead_type array")
+    p.add_argument("--hard-lead-types", action="append", default=[], metavar="TYPE",
+                   help="make matching soft rows hard_played (repeatable; enables lead types)")
+    p.add_argument("--drop-hard-lcc-lead-types", action="append", default=[], metavar="TYPE",
+                   help="drop matching hard_lcc rows with counted exclusions (repeatable)")
     return p
 
 
@@ -821,7 +933,9 @@ def main(argv: list[str] | None = None) -> int:
                           exclude_deal_keys=a.exclude_deal_keys, chunk_rows=a.chunk_rows,
                           max_rows=a.max_rows, workers=a.workers, seed=a.seed,
                           partition=None if a.partition is None else parse_partition(a.partition),
-                          replace_incomplete=a.replace_incomplete)
+                          replace_incomplete=a.replace_incomplete, lead_types=a.lead_types,
+                          hard_lead_types=a.hard_lead_types,
+                          drop_hard_lcc_lead_types=a.drop_hard_lcc_lead_types)
     except ServedPolicyRowsError as exc:
         print(f"served_policy_rows: {exc}", file=sys.stderr)
         return 2

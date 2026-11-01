@@ -21,6 +21,7 @@ torch = pytest.importorskip("torch")
 from shengji.ai.registry import REGISTRY, register_pv_search_policies  # noqa: E402
 from shengji.harvest import trajectory  # noqa: E402
 from shengji.harvest.common import action_key  # noqa: E402
+from shengji.harvest.rebuild import state_for_record  # noqa: E402
 from shengji.train import policy_prior as pp  # noqa: E402
 from shengji.train import pv_search_policy as pv  # noqa: E402
 from shengji.train import served_policy_rows as spr  # noqa: E402
@@ -173,6 +174,8 @@ def _rows(out: Path) -> dict[str, np.ndarray]:
                                    for p in parts])
     rows["vals"] = np.concatenate([np.pad(p["vals"], ((0, 0), (0, width - p["vals"].shape[1])),
                                           constant_values=np.nan) for p in parts])
+    if all("lead_type" in p for p in parts):
+        rows["lead_type"] = np.concatenate([p["lead_type"] for p in parts])
     return rows
 
 
@@ -326,6 +329,87 @@ def test_output_bytes_do_not_depend_on_workers_and_the_encoder_is_checked(pv_sto
     assert [c["rows"] for c in json.loads((tmp_path / "cap" / "manifest.json").read_text())["chunks"]] == [50, 20]
 
 
+def test_default_output_has_no_lead_transform_and_is_byte_stable(pv_store, tmp_path):
+    one = spr.produce(tmp_path / "one", [pv_store], version=2, chunk_rows=50, workers=1)
+    two = spr.produce(tmp_path / "two", [pv_store], version=2, chunk_rows=50, workers=1)
+    assert one == {**two, "out": one["out"]}
+    assert (tmp_path / "one" / "manifest.json").read_bytes() == (tmp_path / "two" / "manifest.json").read_bytes()
+    for chunk in json.loads((tmp_path / "one" / "manifest.json").read_text())["chunks"]:
+        with np.load(tmp_path / "one" / chunk["file"]) as data:
+            assert "lead_type" not in data.files
+
+
+def test_lead_types_hard_throw_rows_stream_to_hard_loss(produced, served_store, tmp_path):
+    base_out, _base_summary, _recs, _marks = produced
+    out = tmp_path / "hard-throw"
+    summary = spr.produce(out, [served_store[0]], version=2, chunk_rows=64,
+                          hard_lead_types=("throw",))
+    rows = _rows(out)
+    assert summary["lead_type_transform"] == {
+        "lead_types": True, "hard_lead_types": ["throw"],
+        "drop_hard_lcc_lead_types": [],
+    }
+    assert rows["lead_type"].dtype == np.int8
+    hard = rows["target_kind"] == spr.TARGET_HARD_PLAYED
+    assert hard.any() and summary["target_rows"]["hard_played"] == int(hard.sum())
+    assert np.isnan(rows["vals"][hard]).all()
+    assert np.all(rows["lead_type"][hard] == spr.LEAD_THROW)
+    # Follows retain their old targets and values; only selected soft leads transform.
+    follow = rows["lead_type"] == spr.LEAD_FOLLOW
+    assert np.all(rows["target_kind"][follow] != spr.TARGET_HARD_PLAYED)
+    base_rows = _rows(base_out)
+    np.testing.assert_array_equal(rows["target_kind"][follow], base_rows["target_kind"][follow])
+    np.testing.assert_allclose(rows["vals"][follow], base_rows["vals"][follow], equal_nan=True)
+
+    stream = PolicyRowsStream(out, window=100, version=2)
+    batch = next(stream.batches(10 ** 6, np.random.default_rng(0)))
+    t = stream.tensors(batch, "cpu")
+    hard_batch = (~torch.isfinite(t["vals"]) | ~t["mask"]).all(1)
+    assert int(hard_batch.sum()) == int((hard | (rows["target_kind"] == spr.TARGET_HARD_LCC)).sum())
+    hard_index = torch.nonzero(hard_batch & (t["tgt"] >= 0), as_tuple=False).flatten()
+    logits = torch.randn(len(t["tgt"]), 54)
+    soft = pp.listwise_loss_soft(logits, t["ball"], t["mask"], t["tgt"],
+                                 t["vals"], temperature=1.0, rows=hard_index)
+    hard_loss = pp.listwise_loss(logits, t["ball"], t["mask"], t["tgt"], rows=hard_index)
+    assert torch.allclose(soft, hard_loss)
+
+
+def test_drop_hard_lcc_throw_precedes_hard_played(tmp_path, served_store):
+    _source, records, marks = served_store
+    altered = copy.deepcopy(records)
+    record = altered[marks["lcc"]]
+    root = state_for_record(record)
+    ballot_keys = {action_key(action) for action in record["ballot"]}
+    throw = next(action for action in record["legal_actions"]
+                 if spr._lead_type(root, action) == spr.LEAD_THROW
+                 and action_key(action) not in ballot_keys)
+    slot = len(record["ballot"])
+    record["action"] = list(throw)
+    record["ballot"].append(list(throw))
+    record["action_values"]["means"].append(None)
+    record["action_values"]["eligible_indices"].append(slot)
+    record["allocation"]["played_index"] = slot
+    record["allocation"]["serving_decision"]["lead_confirm_to"] = list(throw)
+    custom = tmp_path / "altered"
+    custom.mkdir()
+    (custom / "trajectory.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in altered))
+    out = tmp_path / "drop"
+    summary = spr.produce(out, [custom], version=2, chunk_rows=64,
+                          hard_lead_types=("throw",),
+                          drop_hard_lcc_lead_types=("throw",))
+    assert summary["excluded"]["hard_lcc_lead_type"] == 1
+    assert summary["target_rows"]["hard_lcc"] == 0
+    assert summary["target_rows"]["hard_played"] > 0
+
+
+def test_invalid_lead_type_is_refused_before_writing(served_store, tmp_path):
+    with pytest.raises(spr.ServedPolicyRowsError, match="invalid lead type"):
+        spr.produce(tmp_path / "bad", [served_store[0]], version=2,
+                    hard_lead_types=("not-a-lead",))
+    assert not (tmp_path / "bad").exists()
+
+
 def test_the_stream_trains_one_soft_step_with_the_hard_row_mixed_in(produced):
     from shengji.rl.value_model import ValueModelConfig, ValueNetwork
     out, summary, _recs, _marks = produced
@@ -444,6 +528,14 @@ def test_partitions_combine_to_the_single_build_and_the_trainer_streams_them(
     block = r["policy_head"]["rows"]
     assert block["rows_used"] == single["rows"] and block["chunks_verified"] == combined["chunks"]
     assert r["epochs"][0]["train"]["policy_rows"] > 0
+
+
+def test_combine_refuses_mixed_lead_transform_semantics(split_store, tmp_path):
+    spr.produce(tmp_path / "p0", [split_store], version=2, partition=(0, 2))
+    spr.produce(tmp_path / "p1", [split_store], version=2, partition=(1, 2),
+                lead_types=True)
+    with pytest.raises(spr.ServedPolicyRowsError, match="other inputs or arguments"):
+        spr.combine(tmp_path / "mixed", [tmp_path / "p0", tmp_path / "p1"])
 
 
 def test_an_interrupted_partition_is_refused_then_rebuilt_to_the_same_bytes(split_store, tmp_path, monkeypatch):

@@ -374,6 +374,32 @@ def test_lead_types_hard_throw_rows_stream_to_hard_loss(produced, served_store, 
     assert torch.allclose(soft, hard_loss)
 
 
+def test_hard_throw_lead_as_a_shards_first_row_uses_its_own_ballot(served_store, tmp_path):
+    _source, records, _marks = served_store
+    first = None
+    for i, record in enumerate(records):
+        if record.get("decision_kind") != "play" or spr.classify(record)[0] != "soft":
+            continue
+        root = state_for_record(record)
+        if root.turn == int(record["seat"]) and spr._lead_type(root, record["action"]) == spr.LEAD_THROW:
+            first = i
+            break
+    assert first is not None, "the fixture has no soft throw lead"
+    store = tmp_path / "throw-first"
+    store.mkdir()
+    # the throw lead is the shard's first row; a short-ballot record follows it
+    ordered = [records[first]] + [r for j, r in enumerate(records) if j != first]
+    (store / "trajectory.jsonl").write_text("".join(json.dumps(r) + "\n" for r in ordered))
+    out = tmp_path / "out"
+    summary = spr.produce(out, [store], version=2, chunk_rows=64, hard_lead_types=("throw",))
+    rows = _rows(out)
+    hard = rows["target_kind"] == spr.TARGET_HARD_PLAYED
+    assert summary["target_rows"]["hard_played"] == int(hard.sum()) > 0
+    assert np.isnan(rows["vals"][hard]).all()
+    width = len([a for a in records[first]["ballot"] if a])
+    assert int(rows["mask"][0].sum()) == width and rows["target_kind"][0] == spr.TARGET_HARD_PLAYED
+
+
 def test_drop_hard_lcc_throw_precedes_hard_played(tmp_path, served_store):
     _source, records, marks = served_store
     altered = copy.deepcopy(records)

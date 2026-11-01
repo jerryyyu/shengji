@@ -771,6 +771,188 @@
       "host": "Jerrys-Mac-mini.local",
       "git_head": null,
       "note": "runPVS10r46: slice 10 of the later-round PV corpus block runPVS1r46..10r46 = [61740910, 61900910) (160,000 deals, 16,000 per store; odd slices on shengji-cloud, even on shengji-perf; this one on perf). --round-mix sampled: trump rank uniform over the 13 ranks, a first round with probability 0.25, else a uniform fixed banker seat. Teacher = RELEASE 46 as served with budgets unset (pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-vd-vdef-ed7-xf7-xfcompactlevel-r40f93b78-bury-hybrid-bwv-77f32c0892ae; + budgets 3/2 = fly.toml SHENGJI_BOT ...-r73993d62-bury-hybrid-bwv-cf77a93949b0), explore 0.1/k 2, cap 256, 32,000 rounds, tree 3587a1d9 (= release 46's deploy source ab6fd1b2 in server/ and fly.toml; /root/claude-pvs-src-3587a1d9). Supersedes the undealt runPVS1..10 block [61580910, 61740910) as M17's corpus (Jerry 2026-10-17: teacher release 46). RESERVED BEFORE DEALING 2026-10-17: checked disjoint against this registry, every tree registry and reservation record on both hosts and 408 local registries. Recorded here so a screen on any tree built from main refuses these decks; the store registers its own run_id window on its host when it starts."
+    },
+    {
+      "name": "m28lab-r2-train-272180910",
+      "purpose": "trajectory",
+      "seed0": 272180910,
+      "clusters": 1608,
+      "span": [
+        272180910,
+        272182518
+      ],
+      "created_at": "2026-10-25T04:48:06Z",
+      "host": "shengji-cloud",
+      "git_head": "0c1e9965d2bba674eb8dd589365776ae94a3f1c8",
+      "note": "m28lab r2 TRAIN phase: 1,608 fresh rank-mixed R48 self-play deals (134 shards x 12) with M27 expert lead labels, launcher sha256 64fb200f..., output /root/vol-dev-claude-m28lab-r2-r48-20261025/train, LANE DONE 2026-10-25T10:25:28Z. These deals are the fit/selection rows of M28's CAT head and of the P0 FT1/FT3 full-trunk priors (exposure digest ec79109d... in the G2 test-1b binding), so a screen must not reuse them. Registered after the fact (the lane used a claude-reservation-v1 record only)."
+    },
+    {
+      "name": "m28lab-r2-heldout-272190910",
+      "purpose": "other",
+      "seed0": 272190910,
+      "clusters": 360,
+      "span": [
+        272190910,
+        272191270
+      ],
+      "created_at": "2026-10-25T04:48:06Z",
+      "host": "shengji-cloud",
+      "git_head": "0c1e9965d2bba674eb8dd589365776ae94a3f1c8",
+      "note": "m28lab r2 HELD-OUT phase: 360 fresh rank-mixed R48 self-play deals (36 shards x 10), every lead labelled by the M27 expert, replay capsules recorded; M28 / P0 offline evaluation set, never trained on (exposure digest a7eb6d07... in the G2 test-1b binding). Registered after the fact so no trajectory deals these decks."
+    },
+    {
+      "name": "m30-redteam-A-97810000",
+      "purpose": "other",
+      "seed0": 97810000,
+      "clusters": 400,
+      "span": [
+        97810000,
+        97810400
+      ],
+      "created_at": "2026-10-28T12:28:52Z",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "4e75266a1e93e4bf73d521cc9cb3e4f8fcd11263",
+      "note": "M30 model red team arm A (Mini, offline diagnostic, not a screen and not trained on): R48 self-play, round-mix sampled (rank-mixed); V0 value-coverage diagnostic re-used this window. Deal seed = seed0 + cluster, both mirrors of a cluster share the deal; 400 clusters launched (window [97810000, 97810400)). Checked disjoint with seed_windows.py check before dealing; registered after the fact so later trajectories and screens see these decks (board #1075 row M30)."
+    },
+    {
+      "name": "m30-redteam-C-97820000",
+      "purpose": "other",
+      "seed0": 97820000,
+      "clusters": 200,
+      "span": [
+        97820000,
+        97820200
+      ],
+      "created_at": "2026-10-28T12:28:52Z",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "4e75266a1e93e4bf73d521cc9cb3e4f8fcd11263",
+      "note": "M30 model red team arm C (Mini, offline diagnostic, not a screen and not trained on): R48 self-play, rank-2 first rounds. Deal seed = seed0 + cluster, both mirrors of a cluster share the deal; 200 clusters launched (window [97820000, 97820200)). Checked disjoint with seed_windows.py check before dealing; registered after the fact so later trajectories and screens see these decks (board #1075 row M30)."
+    },
+    {
+      "name": "m30-redteam-B-97830000",
+      "purpose": "other",
+      "seed0": 97830000,
+      "clusters": 200,
+      "span": [
+        97830000,
+        97830200
+      ],
+      "created_at": "2026-10-28T12:28:52Z",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "4e75266a1e93e4bf73d521cc9cb3e4f8fcd11263",
+      "note": "M30 model red team arm B (Mini, offline diagnostic, not a screen and not trained on): the R30 bot plays fresh rank-2 first rounds while R48 scores every decision. Deal seed = seed0 + cluster, both mirrors of a cluster share the deal; 200 clusters launched (window [97830000, 97830200)). Checked disjoint with seed_windows.py check before dealing; registered after the fact so later trajectories and screens see these decks (board #1075 row M30)."
+    },
+    {
+      "name": "m30-redteam-E-97840000",
+      "purpose": "other",
+      "seed0": 97840000,
+      "clusters": 150,
+      "span": [
+        97840000,
+        97840150
+      ],
+      "created_at": "2026-10-28T12:31:14Z",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "4e75266a1e93e4bf73d521cc9cb3e4f8fcd11263",
+      "note": "M30 model red team arm E (Mini, offline diagnostic, not a screen and not trained on): M27 expert probe on R48 self-play, round-mix sampled. Deal seed = seed0 + cluster, both mirrors of a cluster share the deal; 150 clusters launched (window [97840000, 97840150)). Checked disjoint with seed_windows.py check before dealing; registered after the fact so later trajectories and screens see these decks (board #1075 row M30)."
+    },
+    {
+      "name": "m30-redteam-E2-97850000",
+      "purpose": "other",
+      "seed0": 97850000,
+      "clusters": 60,
+      "span": [
+        97850000,
+        97850060
+      ],
+      "created_at": "2026-10-28T13:29:28Z",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "4e75266a1e93e4bf73d521cc9cb3e4f8fcd11263",
+      "note": "M30 model red team arm E2 (Mini, offline diagnostic, not a screen and not trained on): M27 expert probe on R48 self-play, round-mix sampled (extra workers after arm E). Deal seed = seed0 + cluster, both mirrors of a cluster share the deal; 60 clusters launched (window [97850000, 97850060)). Checked disjoint with seed_windows.py check before dealing; registered after the fact so later trajectories and screens see these decks (board #1075 row M30)."
+    },
+    {
+      "name": "traj-s97960000-f2525f2bf92d",
+      "purpose": "trajectory",
+      "seed0": 97960000,
+      "clusters": 500,
+      "span": [
+        97960000,
+        97960500
+      ],
+      "created_at": "2026-10-28T10:09:07-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "4e75266a1e93e4bf73d521cc9cb3e4f8fcd11263",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rf1cb0916-bury-hybrid-bwv-d0af3db9d441 rounds=1000 out=/Users/jerryyu/mrt-b0/store-holdout"
+    },
+    {
+      "name": "traj-s97900000-f91019490753",
+      "purpose": "trajectory",
+      "seed0": 97900000,
+      "clusters": 2000,
+      "span": [
+        97900000,
+        97902000
+      ],
+      "created_at": "2026-10-28T10:46:25-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "4e75266a1e93e4bf73d521cc9cb3e4f8fcd11263",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rf1cb0916-bury-hybrid-bwv-d0af3db9d441 rounds=4000 out=/Users/jerryyu/mrt-b0/store-b1"
+    },
+    {
+      "name": "traj-s97902000-97d7012bc550",
+      "purpose": "trajectory",
+      "seed0": 97902000,
+      "clusters": 2000,
+      "span": [
+        97902000,
+        97904000
+      ],
+      "created_at": "2026-10-28T12:52:03-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": "4e75266a1e93e4bf73d521cc9cb3e4f8fcd11263",
+      "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rf1cb0916-bury-hybrid-bwv-d0af3db9d441 rounds=4000 out=/Users/jerryyu/mrt-b0/store-b2"
+    },
+    {
+      "name": "m30p0-rehearsal-245458000",
+      "purpose": "screen",
+      "seed0": 245458000,
+      "clusters": 56,
+      "span": [
+        245458000,
+        245458056
+      ],
+      "created_at": "2026-10-29T01:30:29Z",
+      "host": "shengji-perf",
+      "git_head": "088f8342105fea3f75503d6bfcd96db1d5023ec6",
+      "note": "m30p0 host rehearsal (non-scientific execution evidence): the final launcher 254d80f2... ran its exact child for arm x (R48 + the FT1 separate prior 1fa201b2 vs R48 as served) on this throwaway block, 2026-10-29T01:30:29Z-01:32:01Z, tree /root/claude-s72conf-src-088f8342. Deals already dealt; registered so no later run reuses them."
+    },
+    {
+      "name": "m30p0-lane-245570910",
+      "purpose": "screen",
+      "seed0": 245570910,
+      "clusters": 3920,
+      "span": [
+        245570910,
+        245574830
+      ],
+      "created_at": "2026-10-28T21:26:00-0400",
+      "host": "shengji-perf",
+      "git_head": "088f8342105fea3f75503d6bfcd96db1d5023ec6",
+      "note": "m30p0 DEV duel (board #1075 row M30, P0 gameplay DEV): R48 with the full-trunk FT1 policy prior (separate prior package 1fa201b2, value 491ee4bf unchanged) vs R48 as served, one arm x, 3,920 deals from seed0 245570910, launcher claude_m30p0_perf.final.sh sha256 254d80f2..., reservation /root/claude_reservations/m30p0.json, output root /root/vol-dev-claude-m30p0-r48-20261029. RESERVED BEFORE DEALING; exact-deal clear (seed_windows.py clear --follow-init, no unresolved link) is CLEAR against smv3 3e89e86f, M28 CAT 11f453a1 and FT1 0def7b31 with their JS3-M1 / JS-M1 ancestors."
+    },
+    {
+      "name": "g2-1b-expert-train-272200910",
+      "purpose": "trajectory",
+      "seed0": 272200910,
+      "clusters": 1608,
+      "span": [
+        272200910,
+        272202518
+      ],
+      "created_at": "2026-10-31T22:00:00-0400",
+      "host": "Jerrys-Mac-mini.local",
+      "git_head": null,
+      "note": "G2 test 1b: RESERVED, NOT DEALT. Candidate window for a new expert-label TRAIN batch (1,608 fresh rank-mixed R48 self-play deals, the m28lab TRAIN recipe re-bound), dealt only if the test-1b design's section-1 rule calls for it. Recorded here so no other run deals these decks; the batch's own packet names this window."
     }
   ]
 }

@@ -22,18 +22,19 @@ Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 ## Current production
 
 **Release 49** (board combo3 arm Y): release 48 plus two lead rules, the singleton challenger (`sc8`) and the
-held-out lead confirmation at 32 (`lcc32`). Prepared for deploy; until `/healthz` shows the name below, production
-is release 48 (its record is under "Rollback").
+held-out lead confirmation at 32 (`lcc32`). Live since 2026-11-01; release 48 is the rollback (its record is under
+"Rollback").
 
 | field | value |
 |---|---|
-| deployed | pending deploy (fill in: ET and Z time, room count, Jerry's word) |
-| Fly version | pending deploy |
-| image | pending deploy |
-| source | this release PR's squash merge on main (fill in the sha after merge) |
+| deployed | 2026-11-01 01:39 EST (06:39Z), at 0 rooms, on Jerry's in-session word (2026-10-31: "Yea ship Y") |
+| Fly version | v56 |
+| image | `deployment-01M6AX9WCDG3YMGWZPDE9PSM12` |
+| source | main `d2a6346ab137c4a57f5caaf5a74b4bcffa0f5123` (#1194; Codex PASS at `1bad9a2d`) |
 | evidence | `AI_POLICIES.md` ladder row 18 (combo3y DEV_PASS, confirmed combo3yc; latency s71fly and v107sc8lat) |
-| deploy record | pending deploy |
-| comparator | release 48 as served (Jerry 2026-10-24)[^cmp]; moving it to release 49 is Jerry's call |
+| deploy record | [#1075 issuecomment-6554545362](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6554545362); `/healthz` showed the name below and the in-machine check printed `True compiled 42444515` |
+| first live room | pending: no room has opened since the deploy (0 rooms at 2026-11-01 16:54Z); the first-room reader (Release checklist, step 9) and the room-log write check (step 10) run on the first one |
+| comparator | duels and screens compare against release 49 as served (Jerry 2026-11-01)[^cmp] |
 
 Served name:
 
@@ -166,11 +167,12 @@ packages as release 49. Release 48's served name:
 pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-rc252e656-bury-hybrid-bwv-cd6dd3d2b02a
 ```
 
-**Option 1, redeploy the image that served release 48** (no build). Its id is not recorded in this file: before the
-release-49 deploy, read it from `fly releases -a shengji --image` and write it into the deploy record. Then:
+**Option 1, redeploy the image that served release 48** (no build): Fly v55, image
+`deployment-01M616V35HQ3H509RPA3C8PS31` (deployed 2026-10-28 12:14Z; release 48 with the native latency switches),
+the release before v56.
 
 ```bash
-flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:<the release-48 image>
+flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:deployment-01M616V35HQ3H509RPA3C8PS31
 ```
 
 **Option 2, edit `fly.toml`:**
@@ -196,7 +198,7 @@ derives release 48's name and builds the plain `PVSearchBuryBot` with `lead_conf
 | source | main `f14ace152b5491be53b5a1088728f47f6755f393` (#1147; Codex PASS at `0c1e9965`) |
 | evidence | `AI_POLICIES.md` ladder row 17 (r48cloud, confirmed r48confirm, latency v105lat QUALIFIED) |
 | deploy record | [#1075 issuecomment-6385303349](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6385303349) |
-| comparator | new screens compare against release 48 as served (Jerry 2026-10-24)[^cmp] |
+| comparator | screens compared against release 48 as served from 2026-10-24 until 2026-11-01[^cmp] |
 
 Served name:
 
@@ -408,7 +410,7 @@ The release-44 image command, verbatim:
 ## Release checklist
 
 The gate every release passes (called "serving qualification" in `AI_POLICIES.md`); it held for releases 29–38
-and 42–48. Commands below are release 49's; substitute the new release's package names and receipt.
+and 42–49. Commands below are release 49's; substitute the new release's package names and receipt.
 
 **Before the deploy**
 
@@ -538,7 +540,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
-| 49 | pending deploy | board combo3 arm Y: singleton challenger (`sc8`) + held-out lead confirmation (`lcc32`) on release 48; evidence [combo3y](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6475680068), [combo3yc](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6479431994), latency s71fly + v107sc8lat | flags | this PR | pending deploy |
+| 49 | 2026-11-01 01:39 EST | board combo3 arm Y: singleton challenger (`sc8`) + held-out lead confirmation (`lcc32`) on release 48; evidence [combo3y](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6475680068), [combo3yc](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6479431994), latency s71fly + v107sc8lat | flags | #1194 | `deployment-01M6AX9WCDG3YMGWZPDE9PSM12` (v56), main `d2a6346a` |
 | 48 | 2026-10-24 10:18 | S58 belief package + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches; evidence [r48cloud](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6383298163), [r48confirm](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384251320), [v105lat](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384912469) | new belief package `42444515…` | #1147 | `deployment-01M5Q4ACYEJ901SQB3BNMPC55A` (v47), main `f14ace15` |
 | 46 | 2026-10-16 14:49 | v92 combo: belief worlds, exact endgame at 7, `vdef` | new belief package `763b5e05…` | #1072 | `deployment-01M530R14ARM0669QNJBW2RGTG` (v46), main `ab6fd1b2` |
 | 45 | 2026-10-13 05:27 | wide value-only bury (`bwv`, K 64) | flag | #983 | `deployment-01M4T9AVEVK51WP2GG8J34NRC9` (v45), main `1ca97051` |
@@ -644,7 +646,8 @@ Policy cost, not the rules engine, sets CPU capacity.
 - Load-test the chosen policy and room mix before advertising capacity. Memory per room is small; more than one
   process would need external state and room-affinity routing.
 
-[^cmp]: Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48". Before that, release 46
+[^cmp]: Jerry, in session 2026-11-01: duels and screens move to release 49 (Y) as served. Before that, release 48
+    (Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48"), release 46
     (Jerry 2026-10-16, #707 issuecomment-6223485189), and before that release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693). Confirmations keep their parent's comparator.
 [^belief]: Registration refuses a missing or mismatched belief file, so a served bot at all means the sha matched;
     the in-machine line (Release checklist, step 8) prints its first eight hex digits.

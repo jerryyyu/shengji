@@ -9,8 +9,9 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 48** (since 2026-10-24 10:18 ET): release 46 with the S58 belief package, dtrx and the
-guarded greedy-finished value leaf (lgf, lgfx, lgfd2000). Release 46 is the combo: belief-model worlds + exact
+**Live: release 49** (since 2026-11-01 01:39 EST): release 48 plus two lead rules, the singleton challenger (sc8)
+and the held-out lead confirmation (lcc32). New duels and screens compare against it. Release 48 is release 46 with
+the S58 belief package, dtrx and the guarded greedy-finished value leaf (lgf, lgfx, lgfd2000). Release 46 is the combo: belief-model worlds + exact
 endgame at 7 cards + every-chance first-round value declaration, on release 45. Release 45 is the SMV3
 outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds,
 8 candidates) with five search rules (div, rc, tb, la, dtr), the value-guided trump declaration
@@ -39,6 +40,8 @@ Rule tokens used in the figures and tables:
 - **bwv**: wide value-only bury (64 candidate kitties)
 - **dtrx**: dtr never overrides a complete exact lead stage (release 48)
 - **lgf / lgfx / lgfd2000**: finish the trick with greedy replies before the value pass; skip it where an exact stage is eligible; stop it past 2 s (release 48)
+- **sc8**: singleton challenger: a single the policy left off the ballot can take its last slot (release 49)
+- **lcc32**: lead confirmation: re-price the policy's next 32 lead actions on fresh worlds before playing the lead (release 49)
 
 <img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Separate contrasts through a common MC-LCB control; not additive." width="100%">
 
@@ -46,6 +49,7 @@ Rule tokens used in the figures and tables:
 
 | change | against | result | reading | vs Sol, actor-only | vs PT-Sol |
 |---|---|---|---|---|---|
+| sc8 + lcc32 (release 49; paired head-to-head duels, not the MC-LCB scale) | release 48 | +0.0270 [+0.0135, +0.0408]; confirmation +0.0306 [+0.0167, +0.0441] | DEV_PASS and CONFIRMED (combo3y, combo3yc) | — | — |
 | S58 belief + dtrx + guarded greedy finish (release 48) | release 46 | +0.0765 [+0.0571, +0.0958]; confirmation +0.0843 [+0.0575, +0.1111] | POSITIVE and CONFIRMED (r48cloud, r48confirm) | — | — |
 | the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) | +0.55 [+0.25, +0.90] (S47) | pending (S47-PT) |
 | wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) | — | — |

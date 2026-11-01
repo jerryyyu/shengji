@@ -672,6 +672,38 @@ def test_the_cli_builds_a_partition_combines_and_benchmarks(split_store, tmp_pat
     assert spr.main(["combine", "--out", str(tmp_path / "all"), str(tmp_path / "p0"), str(tmp_path / "p1")]) == 2
 
 
+@pytest.mark.parametrize("flags,options", [
+    (["--lead-types"], {"lead_types": True}),
+    (["--hard-lead-types", "throw"], {"hard_lead_types": ("throw",)}),
+    (["--drop-hard-lcc-lead-types", "throw"], {"drop_hard_lcc_lead_types": ("throw",)}),
+])
+def test_benchmark_transforms_reach_combined_training_rows(split_store, tmp_path, flags, options):
+    from scripts import bench_served_policy_rows as bench
+    parts = []
+    for index in range(2):
+        out = tmp_path / f"bench-{index}"
+        expected = tmp_path / f"direct-{index}"
+        reference = spr.produce(expected, [split_store], version=2, chunk_rows=64,
+                                partition=(index, 2), **options)
+        assert bench.main(["--data", str(split_store), "--out", str(out),
+                           "--encoder-version", "2", "--chunk-rows", "64",
+                           "--partition", f"{index}/2", *flags]) == 0
+        summary = json.loads((out / "summary.json").read_text())
+        assert summary["lead_type_transform"] == reference["lead_type_transform"]
+        assert summary["target_rows"] == reference["target_rows"]
+        assert summary["excluded"] == reference["excluded"]
+        actual_rows, expected_rows = _rows(out), _rows(expected)
+        assert "lead_type" in actual_rows
+        for key in expected_rows:
+            np.testing.assert_array_equal(actual_rows[key], expected_rows[key])
+        parts.append(out)
+    combined = tmp_path / "combined"
+    result = spr.combine(combined, parts)
+    stream = PolicyRowsStream(combined, version=2)
+    consumed = sum(len(batch["x"]) for batch in stream.batches(128, np.random.default_rng(1)))
+    assert consumed == result["rows"] == stream.n
+
+
 def test_recovery_refuses_an_output_symlink_and_leaves_its_target(split_store, tmp_path):
     target = tmp_path / "unrelated"
     target.mkdir()

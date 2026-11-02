@@ -41,11 +41,11 @@ Rule tokens used in the figures and tables:
 - **dtrx**: dtr never overrides a complete exact lead stage (release 48)
 - **lgf / lgfx / lgfd2000**: finish the trick with greedy replies before the value pass; skip it where an exact stage is eligible; stop it past 2 s (release 48)
 - **sc8**: singleton challenger: a single the policy left off the ballot can take its last slot (release 49)
-- **lcc32**: lead confirmation: re-price the policy's next 32 lead actions on fresh worlds before playing the lead (release 49)
+- **lcc32**: lead confirmation: screen extra leads up to a 32-action total budget on the base worlds, then confirm at most two challengers on fresh worlds before replacing the served lead (release 49)
 
 <img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Separate contrasts through a common MC-LCB control; not additive." width="100%">
 
-**Served results** (signed levels per round, 95% CI; indirect contrasts through a common MC-LCB control):
+**Served results** (signed levels per round, 95% CI; each row names its method: indirect contrasts through a common MC-LCB control unless the row says paired duels):
 
 | change | against | result | reading | vs Sol, actor-only | vs PT-Sol |
 |---|---|---|---|---|---|

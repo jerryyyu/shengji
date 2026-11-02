@@ -33,7 +33,7 @@ held-out lead confirmation at 32 (`lcc32`). Live since 2026-11-01; release 48 is
 | source | main `d2a6346ab137c4a57f5caaf5a74b4bcffa0f5123` (#1194; Codex PASS at `1bad9a2d`) |
 | evidence | `AI_POLICIES.md` ladder row 18 (combo3y DEV_PASS, confirmed combo3yc; latency s71fly and v107sc8lat) |
 | deploy record | [#1075 issuecomment-6554545362](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6554545362); `/healthz` showed the name below and the in-machine check printed `True compiled 42444515` |
-| first live room | pending: no room has opened since the deploy (0 rooms at 2026-11-01 16:54Z); the first-room reader (Release checklist, step 9) and the room-log write check (step 10) run on the first one |
+| first live room | pending: `/healthz` activity counters observed at 0 rooms created and 0 rounds recorded at 2026-11-01 16:54Z; the first-room reader (Release checklist, step 9) and the room-log write check (step 10) run on the first one |
 | comparator | duels and screens compare against release 49 as served (Jerry 2026-11-01)[^cmp] |
 
 Served name:
@@ -410,7 +410,8 @@ The release-44 image command, verbatim:
 ## Release checklist
 
 The gate every release passes (called "serving qualification" in `AI_POLICIES.md`); it held for releases 29–38
-and 42–49. Commands below are release 49's; substitute the new release's package names and receipt.
+and 42–48. Release 49 completed the pre-deploy and deploy gates; its first-live-room checks (steps 9 and 10) are pending.
+Commands below are release 49's; substitute the new release's package names and receipt.
 
 **Before the deploy**
 

@@ -15,7 +15,11 @@ server's own ``_paced_bot_step`` / ``_commit_bot_turn`` for every bot seat.
 
 ``--map`` rewrites volume paths to local files (the SHA of each local file is
 recorded; compare it with the volume before deploying). Exit status 0 only
-when every turn committed.
+when bury and play both committed. With ``--require-budget-records``, every
+turn must also have a complete PV decision record and both decision time and
+server wall time within its configured budget. Wall time includes queueing,
+snapshot and commit overhead. This is host-local evidence, not Fly timing
+unless executed there; it establishes no gameplay-strength result.
 """
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import math
 import random
 import sys
 import time
@@ -68,7 +73,46 @@ def bot_latency_switches(bot) -> dict[str, bool] | None:
     return {attr: bool(getattr(bot, attr, False)) for attr in LATENCY_SWITCH_ENV}
 
 
-def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91) -> dict:
+def budget_turn(phase, bot, wall_seconds, env):
+    """Bounded telemetry from the bot that actually ran in the server snapshot."""
+    from shengji.train.pv_search_policy import RECORD_SCHEMA
+
+    play = phase == "play"
+    record = getattr(bot, "last_decision_record" if play else "last_bury_record", None)
+    record = record if isinstance(record, dict) else {}
+    key = "SHENGJI_PV_SERVING_BUDGET_SECONDS" if play else "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"
+    attr = "serving_budget_seconds" if play else "bury_serving_budget_seconds"
+    elapsed = record.get("seconds" if play else "elapsed_seconds", record.get("elapsed_seconds"))
+    reason = record.get("reason") if play else record.get("fallback_reason")
+    expected_schema = RECORD_SCHEMA if play else "cwv-bury-policy-v1"
+    failures = []
+    try:
+        budget = float(env[key])
+    except (KeyError, TypeError, ValueError):
+        budget = None
+    def finite(value):
+        return type(value) in (int, float) and math.isfinite(value) and value >= 0
+    if not finite(budget) or budget <= 0:
+        failures.append("invalid_budget")
+    elif getattr(bot, attr, None) != budget:
+        failures.append("bot_budget_mismatch")
+    if record.get("schema") != expected_schema:
+        failures.append("decision_schema")
+    if reason is not None or (play and record.get("work_complete") is not True):
+        failures.append("fallback_or_incomplete")
+    for label, value in (("server_wall", wall_seconds), ("decision", elapsed)):
+        if not finite(value):
+            failures.append(label + "_time_invalid")
+        elif finite(budget) and value > budget:
+            failures.append(label + "_budget_exceeded")
+    return {"budget_seconds": budget, "decision_seconds": elapsed,
+            "server_wall_seconds": wall_seconds, "record_schema": record.get("schema"),
+            "fallback_reason": reason, "work_complete": record.get("work_complete"),
+            "failures": failures}
+
+
+def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91,
+              require_budget_records: bool = False) -> dict:
     from shengji.ai.heuristic import HeuristicBot
     from shengji.api import server as srv
     from shengji.engine.game import Game
@@ -96,7 +140,8 @@ def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91) -> d
                "latency_switches": bot_latency_switches(bot),
                "files": {k: {"path": v, "sha256": file_sha256(v)} for k, v in env.items()
                          if k.endswith("_CKPT")},
-               "turns": [], "passed": False}
+               "turns": [], "passed": False, "require_budget_records": require_budget_records,
+               "budget_failures": []}
 
     async def scenario():
         assert rnd.phase == "bury", rnd.phase
@@ -112,11 +157,18 @@ def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91) -> d
             committed = srv._commit_bot_turn(room, prepared)
             if not committed:
                 raise RuntimeError(f"server refused to commit the bot turn in phase {phase}")
-            receipt["turns"].append({"phase": phase, "seat": seat,
-                                     "seconds": round(time.perf_counter() - started, 3)})
+            wall = time.perf_counter() - started
+            turn = {"phase": phase, "seat": seat, "seconds": round(wall, 3)}
+            if require_budget_records:
+                turn["budget"] = budget_turn(phase, prepared.decision.snapshot.bot_copy, wall, env)
+                receipt["budget_failures"].extend(
+                    {"turn": len(receipt["turns"]), "phase": phase, "type": kind}
+                    for kind in turn["budget"]["failures"])
+            receipt["turns"].append(turn)
     asyncio.run(scenario())
     phases = {t["phase"] for t in receipt["turns"]}
-    receipt["passed"] = "bury" in phases and "play" in phases
+    receipt["passed"] = ("bury" in phases and "play" in phases
+                         and not receipt["budget_failures"])
     return receipt
 
 
@@ -126,11 +178,15 @@ def main(argv=None) -> int:
     parser.add_argument("--map", action="append", default=[], help="volume_path=local_path")
     parser.add_argument("--turns", type=int, default=12)
     parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--require-budget-records", action="store_true",
+                        help="require complete PV decision records and both server-wall and "
+                             "decision times within configured play/bury budgets")
     args = parser.parse_args(argv)
     mappings = dict(item.split("=", 1) for item in args.map)
     env = env_from_fly_toml(args.fly_toml, mappings)
     try:
-        receipt = run_smoke(env, turns=args.turns)
+        receipt = run_smoke(env, turns=args.turns,
+                            require_budget_records=args.require_budget_records)
     except Exception as exc:  # noqa: BLE001 - the smoke's job is to surface exactly this
         print(f"FAIL: {type(exc).__name__}: {exc}")
         if args.receipt:

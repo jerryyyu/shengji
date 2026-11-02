@@ -154,3 +154,60 @@ def test_a_prior_of_another_encoder_version_refuses(package, other_package, tmp_
     with pytest.raises(pv.PVSearchPolicyError, match="must agree"):
         pv.make_pv_search_bot(package[0], sha256=package[1], prior_checkpoint=other_package[0],
                               prior_sha256=other_package[1])
+
+
+def test_separate_prior_budget_smoke_observes_snapshot_records(package, other_package, monkeypatch):
+    from scripts.cwv_serving_smoke import run_smoke
+    from shengji.eval.served_config import registry_name
+    from shengji.api import server as srv
+
+    env = {"SHENGJI_PV_CKPT": package[0], "SHENGJI_PV_SHA256": package[1],
+           "SHENGJI_PV_PRIOR_CKPT": other_package[0], "SHENGJI_PV_PRIOR_SHA256": other_package[1],
+           "SHENGJI_PV_SINGLETON_CHALLENGER": "1", "SHENGJI_PV_LEAD_CONFIRM": "32",
+           "SHENGJI_PV_WORLDS": "2", "SHENGJI_PV_CANDIDATES": "3", "SHENGJI_PV_CAP": "50",
+           "SHENGJI_PV_SERVING_BUDGET_SECONDS": "3", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "2",
+           "SHENGJI_PV_BURY_ARM": "hybrid", "SHENGJI_PV_BURY_MAX_CANDIDATES": "2",
+           "SHENGJI_PV_BURY_MODEL_WORLDS": "1", "SHENGJI_PV_BURY_SELECTION_WORLDS": "1",
+           "SHENGJI_PV_BURY_ALTERNATIVES": "1"}
+    env["SHENGJI_BOT"] = registry_name(env)
+    receipt = run_smoke(env, turns=3, require_budget_records=True)
+    assert receipt["passed"] and receipt["budget_failures"] == []
+    assert receipt["files"]["SHENGJI_PV_PRIOR_CKPT"]["sha256"] == other_package[1]
+    assert [t["phase"] for t in receipt["turns"]] == ["bury", "play", "play"]
+    assert all(t["budget"]["decision_seconds"] >= 0 for t in receipt["turns"])
+    real = srv._paced_bot_step
+
+    async def faulty_record(*args, **kwargs):
+        turn = await real(*args, **kwargs)
+        if turn is not None and args[0].game.round.phase == "play":
+            turn.decision.snapshot.bot_copy.last_decision_record = {
+                "schema": pv.FALLBACK_SCHEMA, "reason": "budget", "elapsed_seconds": 3.1,
+                "work_complete": False, "played": list(turn.decision.cards)}
+        return turn
+
+    monkeypatch.setattr(srv, "_paced_bot_step", faulty_record)
+    failed = run_smoke(env, turns=2, require_budget_records=True)
+    assert not failed["passed"]
+    assert {f["type"] for f in failed["budget_failures"]} >= {
+        "decision_schema", "fallback_or_incomplete", "decision_budget_exceeded"}
+
+
+@pytest.mark.parametrize("phase", ["play", "bury"])
+@pytest.mark.parametrize("fault", ["missing", "nan", "over", "wall", "mismatch"])
+def test_budget_smoke_fails_closed(phase, fault):
+    from types import SimpleNamespace
+    from scripts.cwv_serving_smoke import budget_turn
+
+    play = phase == "play"
+    record = {"schema": pv.RECORD_SCHEMA if play else "cwv-bury-policy-v1",
+              "seconds": 0.1, "elapsed_seconds": 0.1, "work_complete": True}
+    if fault == "missing": record = {}
+    if fault == "nan": record["seconds" if play else "elapsed_seconds"] = float('nan')
+    if fault == "over": record["seconds" if play else "elapsed_seconds"] = 3.01
+    bot = SimpleNamespace(last_decision_record=record, last_bury_record=record,
+                          serving_budget_seconds=3, bury_serving_budget_seconds=3)
+    env = {"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3",
+           "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "3"}
+    if fault == "mismatch": bot.serving_budget_seconds = bot.bury_serving_budget_seconds = 4
+    measured = budget_turn(phase, bot, 3.01 if fault == "wall" else 0.1, env)
+    assert measured["failures"]

@@ -1,13 +1,14 @@
 # AI policy ledger
 
-Last reconciled: **2026-10-24**.
+Last reconciled: **2026-11-01**.
 
-**Production is release 48** (live 2026-10-24 10:18 ET, Fly v47): release 46 with the S58 belief package, `dtrx`
-and the guarded greedy finish (ladder row 17). Release 46 is the rollback. **Release 49** (row 18: release 48 plus
-the singleton challenger `sc8` and the lead confirmation `lcc32`, Jerry 2026-10-31: "Yea ship Y") is prepared in
-`fly.toml` and replaces it on deploy, with release 48 as its rollback (`DEPLOY.md`). **New screens compare against release 48
-as served** (Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48"; before that
-release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator; screens already read keep their declared comparator.
+**Production is release 49** (live 2026-11-01 01:39 EST, Fly v56; Jerry 2026-10-31: "Yea ship Y"): release 48
+plus the singleton challenger `sc8` and the lead confirmation `lcc32` (ladder row 18). Release 48 (row 17: release 46
+with the S58 belief package, `dtrx` and the guarded greedy finish) is the rollback (`DEPLOY.md`). **New duels and
+screens compare against release 49 as served** (Jerry, in session 2026-11-01; before that release 48, 2026-10-24,
+release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator; screens already
+read keep their declared comparator. Release 50 (release 49 plus FT1, m30yc +0.0162 confirmed vs
+release 49) is held, not deployed (Jerry 2026-11-01).
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The
@@ -17,7 +18,7 @@ long-form text this file carried until 2026-10-16 is verbatim in
 
 ## Production contract
 
-Release 48 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are release 49's additions. Rule tokens (and the release that added
+Release 49 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are what it adds to release 48. Rule tokens (and the release that added
 each) are in parentheses; rules are off by default in source and on in production (#676).
 
 | phase | stage | budget and fallback |

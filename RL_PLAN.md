@@ -1,6 +1,6 @@
 # Learning and search research plan
 
-As of 2026-10-24. Production is release 48; new screens compare against release 48 as served (Jerry 2026-10-24).
+As of 2026-11-01. Production is release 49; new duels and screens compare against release 49 as served (Jerry 2026-11-01).
 
 This file owns the research architecture, the estimands, the process rules for compute and measurement, and the
 lessons that shape planned work. Everything else lives on its canonical surface:
@@ -24,7 +24,7 @@ lessons that shape planned work. Everything else lives on its canonical surface:
 | **window** | one 520-cluster mirrored screen block of fresh deal seeds |
 | **MDE80** | minimum detectable effect at 80% power for that readout |
 | **as served** | the full production bot path, including declare, bury and budgets |
-| **comparator** | the champion a new strength claim must beat; now release 46 as served |
+| **comparator** | the champion a new strength claim must beat; now release 49 as served |
 | **MC-LCB** | the confirmed Monte Carlo search; the common control inside each screen, not the comparator |
 | **W / K** | sampled worlds per decision / candidates the policy head admits (served: W64, K8) |
 | **head-driven search** | policy head admits K candidates, value head prices them over W worlds, no playouts |
@@ -41,14 +41,18 @@ beat the served bot on fresh mirrored whole games with one learned model that ke
 data, with production's latency tail bounded. The standing goal is +0.05 levels/round over the served release
 (Jerry 2026-10-15; board #1075).
 
-- **Production:** release 48, deployed 2026-10-24 10:18 ET: release 46 with the S58 belief package, `dtrx` and
-  the guarded greedy finish (`lgf lgfx lgfd2000`), vs release 46 +0.0765, confirmed +0.0843 (`AI_POLICIES.md`
-  row 17). Release 46 (2026-10-16 14:49 ET; release 45 plus the v92 combo) is the rollback. Exact contract: `AI_POLICIES.md`
-  "Production contract".
-- **Comparator:** new screens compare against release 48 as served (Jerry 2026-10-24, in session: "Yes screens
-  should compare vs our prod policy of r48"). Confirmations keep their parent's comparator; historical reads keep
-  their original labels. The previous comparators were release 46 (Jerry 2026-10-16, recorded on #1075) and
-  release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693).
+- **Production:** release 49 ("Y"), deployed 2026-11-01 01:39 EST (Fly v56): release 48 plus the singleton
+  challenger `sc8` and the held-out lead confirmation `lcc32`, vs release 48 +0.0270 [+0.0135, +0.0408] (combo3y),
+  confirmed +0.0306 [+0.0167, +0.0441] (combo3yc), paired head-to-head duels (`AI_POLICIES.md` row 18). Release 48
+  (2026-10-24 10:18 ET; release 46 with the S58 belief package, `dtrx` and the guarded greedy finish) is the
+  rollback. Exact contract: `AI_POLICIES.md` "Production contract".
+- **Comparator:** new duels and screens compare against release 49 as served (Jerry, in session 2026-11-01).
+  Confirmations keep their parent's comparator; historical reads keep their original labels. The previous
+  comparators were release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod policy of
+  r48"), release 46 (Jerry 2026-10-16, recorded on #1075) and release 45 (Jerry 2026-10-13, #988
+  issuecomment-6142666693).
+- **Held candidate:** release 50 (release 49 plus FT1, m30yc +0.0162 confirmed vs release 49) is not deployed;
+  Jerry 2026-11-01: hold.
 
 | evidence label | supports |
 |---|---|
@@ -92,8 +96,8 @@ ship on his word; a fresh-seed confirmation runs when he asks or when the effect
 
 ## Planned work
 
-**What changes production next:** a change that beats release 46 as served on a ten-window served-bot screen,
-then the `DEPLOY.md` release checklist and Jerry's word. Release 46 shipped on its screen plus a confirmation
+**What changes production next:** a change that beats release 49 as served on a paired duel or ten-window
+served-bot screen, then the `DEPLOY.md` release checklist and Jerry's word. Release 46 shipped on its screen plus a confirmation
 (v92c) and a latency gate (v93lat). Correctness fixes may ship with no strength
 claim when the served screen is not demonstrated negative (releases 42, 43).
 

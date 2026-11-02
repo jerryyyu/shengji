@@ -243,6 +243,8 @@ def test_seed_windows_filter_mixed_chunks_through_training_and_evaluation(tmp_pa
     ck = torch.load(out / "checkpoint.pt", weights_only=False)
     assert ck["args"]["exclude_seed_window"] == windows
     res, _ = evaluate(data, out / "best.pt", tmp_path, "--eval-rows", "all", *flags)
+    assert res["models"]["m"]["training_exclude_seed_windows"] == [list(w) for w in windows]
+    assert "initialization lineage" in res["exposure_note"]
     assert res["test_deals"] == 1
     assert res["exclude_seed_windows"] == [list(w) for w in windows]
     with pytest.raises(bs.BeliefSeqError, match="resume seed exclusions"):
@@ -264,6 +266,8 @@ def test_invalid_seed_window_refused(window):
     {"deal": np.array([1]), "seed": np.array([-1])},
     {"deal": np.array([1]), "seed": np.array([1.5])},
     {"deal": np.array([1]), "seed": np.array([1, 2])},
+    {"deal": np.array([np.nan]), "seed": np.array([1])},
+    {"deal": np.array([-1]), "seed": np.array([1])},
 ])
 def test_seed_exclusions_refuse_unknown_metadata(arrays):
     with pytest.raises(bs.BeliefSeqError, match="seed"):
@@ -281,3 +285,12 @@ def test_excluding_all_training_data_refuses_checkpoint(extracts, tmp_path):
         bs.main(train_args(extracts["none"], out, "--eval-rows", "all",
                            "--exclude-seed-window", "3000:3004"))
     assert not (out / "best.pt").exists()
+
+
+def test_seed_metadata_length_cannot_broadcast(tmp_path):
+    path = tmp_path / "bad.npz"
+    np.savez(path, X=np.zeros((2, bs.FEATURE_DIM)), seed=np.array([10]), deal=np.array([1]))
+    entry = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+             "exclude_seed_windows": [(10, 11)]}
+    with pytest.raises(bs.BeliefSeqError, match="row count"):
+        bs.load_part(entry, ["X"], bs._Verified())

@@ -150,7 +150,8 @@ def seed_keep(arrays, windows):
         raise BeliefSeqError("seed exclusions require seed and deal metadata")
     seeds, deals = arrays["seed"], arrays["deal"]
     if (seeds.ndim != 1 or seeds.shape != deals.shape
-            or seeds.dtype.kind not in "iu" or np.any(seeds < 0)):
+            or seeds.dtype.kind not in "iu" or np.any(seeds < 0)
+            or deals.dtype.kind not in "iu" or np.any(deals < 0)):
         raise BeliefSeqError("seed exclusions require valid per-row seed metadata")
     excluded = np.zeros(len(seeds), dtype=bool)
     for lo, hi in windows:
@@ -166,7 +167,10 @@ def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified
         part = {k: z[k] for k in keys}
         keep = np.ones(len(part["X"]), dtype=bool)
         if entry.get("exclude_seed_windows"):
-            keep &= seed_keep(z, entry["exclude_seed_windows"])
+            selected = seed_keep(z, entry["exclude_seed_windows"])
+            if selected.shape != keep.shape:
+                raise BeliefSeqError("seed metadata row count differs from features")
+            keep &= selected
     with np.load(io.BytesIO(verified.read(entry["hist"], entry["hist_sha256"]))) as z:
         hist = {k: z[k] for k in HIST_KEYS}
     n = len(part["X"])
@@ -1075,7 +1079,8 @@ def evaluate(args) -> int:
         methods[name] = masked_softmax(predict_logits(model, test, no_history=nh), Mt, T)
         meta[name] = {"path": path, "T": T, "params": n_params(model), "epoch": saved.get("epoch"),
                       "calib_ll_raw": saved.get("calib_ll"), "no_history": nh, "permuted": perm,
-                      "config": saved["config"]}
+                      "config": saved["config"],
+                      "training_exclude_seed_windows": saved["args"].get("exclude_seed_window", [])}
         print(f"[eval] {name}: T={T:.3f}", flush=True)
     # the sampler's marginals exist only on rows where it was drawn; on all rows the
     # reference is the constraint-aware uniform and every sampler metric is absent
@@ -1155,6 +1160,8 @@ def evaluate(args) -> int:
             "by_phase": {n: float(np.mean(v)) if v else float("nan") for n, v in per_phase.items()}}
         print(f"[worlds] {k}: mean {agree.mean():.4f}", flush=True)
     res["exclude_seed_windows"] = args.exclude_seed_window
+    res["exposure_note"] = ("Row filtering does not establish checkpoint exposure clearance; "
+                            "verify each model and its initialization lineage separately.")
     res["seconds"] = time.time() - t_start
     Path(args.out_json).write_text(json.dumps(res, indent=1, default=float))
     md = report(res)

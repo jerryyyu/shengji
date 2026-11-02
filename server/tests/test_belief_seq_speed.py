@@ -221,7 +221,7 @@ def test_a_resume_with_other_speed_flags_records_both_segments(tmp_path, monkeyp
     calib = {"M": np.ones((5, 54, N_RECV), bool), "Y": np.zeros((5, 54, N_RECV), np.float32),
              "trick": np.ones(5, int), "role": np.zeros(5, int)}
     calib["Y"][:, :, 0] = 1.0
-    monkeypatch.setattr(bs, "extract_entries", lambda dirs, split: [{"rows": 20}, {"rows": 20}])
+    monkeypatch.setattr(bs, "extract_entries", lambda dirs, split, **kwargs: [{"rows": 20}, {"rows": 20}])
     monkeypatch.setattr(bs, "Stream", _FakeStream)
     monkeypatch.setattr(bs, "load_eval", lambda *a, **k: calib)
     monkeypatch.setattr(bs, "predict_logits",

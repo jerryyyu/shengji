@@ -48,9 +48,25 @@ Reported (no claim): counts per phase, labels per deal, drops by reason, expert 
 reads), in-ballot and rank shares, expert wall-time quantiles, per-shard wall; the deal-key EXPOSURE of each phase is written beside the result
 (`<out>.exposure.json`) for the trained package's checkpoint lineage.
 
+Off-ballot served moves (profile `y`).  Y's lead confirmation (lcc32) replaces the base winner by a challenger priced on fresh worlds, so
+the challenger rides in the recorded ballot with no base-pass mean and `selected_action` finds no ballot selection: the served arm's `cards`
+is None, the expert row's `served_taken` is None and the move is in `played`.  Such a decision is a VALID label row: the expert's label
+(its move, ballot and means) is unaffected and the served comparison is the played move (`served_comparison`: taken = played,
+off_ballot True).  The live seat's decision has no self row (the producer writes no X for it) and is counted in the deal row's
+`self_skipped`.  The checker counts both per rule (`off_ballot` in the phase report); a served search record without a ballot selection
+under no registered rule, a `self_skipped` count that is not the live rows skipped under a rule, or an expert row whose `served_taken`
+is not the served selection reads INVALID.  The R48 profile registers no rule, so any such record is INVALID there.  A replayed
+capsule's means and prior log-odds must hold None on the same slots and agree within REPLAY_ATOL elsewhere.
+
+Rows-only mode (`rows`): the identity, coverage, schema, validity and rows checks above on a phase directory without the lane binding
+(status, reservation and root seal belong to the lane's own packet); each shard's files are checked against its own manifest.
+`--subset N` checks shards 0..N-1 of a larger or unfinished phase: summary.json and the row floors are then not read.
+
 Usage (cwd the tree's server/, FIND_GAPS_* as the launcher sets them; torch for the loader):
   python3 m28lab_check.py <root> <status> <reservation> <out.json> [--manifest host_manifest.json --manifest-sha256 HEX]
-                          [--lane m28lab|m28labbench --launcher-sha SHA] [--replay-per-shard N]"""
+                          [--lane m28lab|m28labbench --launcher-sha SHA] [--replay-per-shard N]
+  python3 m28lab_check.py rows <root> <out.json> --profile r48|y --phase NAME=SEED0,DEALS,SHARDS,LATE_LEAD_P,FOLLOW_P,CAPSULE [--phase ...]
+                          [--subset N] [--replay-per-shard N]"""
 import argparse
 import gzip
 import hashlib
@@ -113,6 +129,16 @@ DECLARE_SHAPES = {'declare evaluated': {0: rs.one_of(DECLARE_SCHEMA), 1: rs.NULL
                   'declare abandoned': {0: rs.one_of(DECLARE_SCHEMA), 1: rs.Spec('nonempty str', lambda v: isinstance(v, str) and v != ''), 2: rs.one_of(False), 3: rs.int_in(1, 4096), 4: rs.int_in(0, 4096), 5: NUM0}}
 BURY_SHAPES = {'bury model': {0: rs.one_of(BURY_SCHEMA), 1: rs.NULL, 2: rs.int_in(1, 10**6), 3: rs.int_in(1, 4096)},
                'bury fallback': {0: rs.one_of(BURY_FALLBACK), 1: rs.Spec('nonempty str', lambda v: isinstance(v, str) and v != ''), 2: INT_OR_NULL, 3: rs.NULL}}
+#: the served-arm rules under which a search record's played move is the recorded ballot's unpriced slot (the module docstring)
+OFF_BALLOT_RULES = {'lcc_applied': lambda rec: rec.get('lead_confirm_status') == 'applied' and rec.get('lead_confirm_applied') is True}
+#: release 49 (Y = R48 + sc8 + lcc32) as the served arm, through the producer the Y label lanes ran; the expert is M28's.  The Y lanes bind
+#: their own status and output paths, so a Y check runs in rows-only mode with the phase windows given on the command line.
+Y_SERVED_NAME = 'pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8'
+Y_PINS = dict(PINS, served_name=Y_SERVED_NAME, expert_env=sorted(EXPERT_ENV + [['SHENGJI_PV_LEAD_CONFIRM', ''], ['SHENGJI_PV_SINGLETON_CHALLENGER', '']]),
+              source_sha256='d38bb1d20a2f19de7aa9a25696bc220347a88bcd674d8e5279da4dd8023443ae', harness_sha256='96954d5fee94d6f7d99925c94bc88a8f0faa0d80cad2650df8de995798309af7',
+              served_base_sha256='d67f6b9d999493f3442be32eff757ab9eb8876380f3b63a5de73096a2cc72e36', workers=None, phases={},
+              off_ballot_rules=('lcc_applied',), phase_extras=r'drive_summary\.[0-9TZ-]+\.\d+\.json')
+PROFILES = {'r48': PINS, 'y': Y_PINS}
 
 
 def terminal(pins):
@@ -151,6 +177,50 @@ def stage_faults(rec, lifted=True):
         if rec.get(k) is not None:
             out.append(k)
     return out
+
+
+def off_ballot_reason(rec, rules):
+    """The registered rule (of ``rules``) a search record satisfies, else None."""
+    if rec.get('schema') != RECORD_SCHEMA:
+        return None
+    return next((r for r in rules if OFF_BALLOT_RULES[r](rec)), None)
+
+
+def served_comparison(served, rules=()):
+    """(taken, off_ballot, reason) of a labelled decision's served arm record: its ballot selection (reason None); under a registered
+    off-ballot rule the played move, which must be the selected ballot slot, the only one without a finite mean (off_ballot True, the rule);
+    a fallback record (None, False, 'fallback'); any other record without a selection (None, False, 'unexplained').  A consumer that
+    compares the expert with the served arm reads the served move through this, not through the expert row's ``served_taken``."""
+    if served.get('cards') is not None:
+        return served['cards'], False, None
+    if served.get('schema') != RECORD_SCHEMA:
+        return None, False, 'fallback'
+    reason = off_ballot_reason(served, rules)
+    adm, idx, sel, means = served.get('admitted') or [], served.get('admitted_indices') or [], served.get('selected_index'), served.get('value_means') or []
+    if reason is None or not isinstance(served.get('played'), list) or len(adm) < 2 or len(adm) != len(idx) or len(means) != len(adm) or sel not in idx:
+        return None, False, 'unexplained'
+    slot = idx.index(sel)
+    if sorted(adm[slot]) != sorted(served['played']) or means[slot] is not None \
+            or any(m is None or not math.isfinite(float(m)) for j, m in enumerate(means) if j != slot):
+        return None, False, 'unexplained'
+    return served['played'], True, reason
+
+
+def served_taken_matches(meta, served, rules, card_index):
+    """(ok, off_ballot) of an expert row's ``served_taken`` against its decision's served record: the served selection's card indices,
+    or None when the decision has no selection (off the ballot under a rule, or a fallback)."""
+    taken, off, _ = served_comparison(served, rules)
+    want = None if off or taken is None else sorted(card_index[c] for c in taken)
+    got = meta.get('served_taken')
+    return (sorted(got) if isinstance(got, list) else got) == want, off
+
+
+def slot_diff(got, want):
+    """The largest |got - want| over a replayed listing's slots; inf when the lengths differ or a None (an unpriced slot) is not matched."""
+    got, want = got or [], want or []
+    if len(got) != len(want) or any((x is None) != (y is None) for x, y in zip(got, want)):
+        return float('inf')
+    return max((abs(float(x) - float(y)) for x, y in zip(got, want) if x is not None), default=0.0)
 
 
 def worlds_digest(worlds):
@@ -264,7 +334,7 @@ def check_record(rec, where):
             refuse(f'{where}: exact_lead_status of the wrong type')
 
 
-def load_phase(root, name, p, pins, listed):
+def load_phase(root, name, p, pins, listed, subset=None):
     per = p['deals'] // p['shards']
     pdir = os.path.join(root, name)
     if not os.path.isdir(pdir):
@@ -273,12 +343,14 @@ def load_phase(root, name, p, pins, listed):
     partial = [e for e in entries if e.endswith('.partial')]
     if partial:
         refuse(f'{name}/ holds incomplete shard(s) {partial[:3]} (a .partial is a killed worker\'s shard; the phase did not complete)')
-    want_dirs = {f'shard-{i:02d}' for i in range(p['shards'])}
-    others = [e for e in entries if e not in want_dirs and e not in ('summary.json', 'diag') and not re.fullmatch(r'probe\.(stdout|stderr|time)(\.attempt\d+)?', e)]
+    n_shards = p['shards'] if subset is None else subset
+    want_dirs = {f'shard-{i:02d}' for i in range(n_shards)}
+    others = [e for e in entries if e not in want_dirs and e not in ('summary.json', 'diag') and not re.fullmatch(r'probe\.(stdout|stderr|time)(\.attempt\d+)?', e)
+              and not (pins.get('phase_extras') and re.fullmatch(pins['phase_extras'], e)) and not (subset is not None and re.fullmatch(r'shard-\d+', e))]
     if others:
         refuse(f'{name}/ holds unexpected entries {others[:3]}')
     shards = []
-    for i in range(p['shards']):
+    for i in range(n_shards):
         d = os.path.join(pdir, f'shard-{i:02d}')
         mp = os.path.join(d, 'shard_manifest.json')
         if not os.path.isfile(mp):
@@ -288,6 +360,8 @@ def load_phase(root, name, p, pins, listed):
                        knobs=dict(late_trick=pins['late_trick'], late_lead_prob=p['late_lead_prob'], prob_follow=p['prob_follow'], expert_cap_secs=pins['expert_cap_secs'],
                                   record_capsule=p['record_capsule'], served_env=[list(x) for x in pins['served_env']], expert_env=[list(x) for x in pins['expert_env']]),
                        source_sha256=pins['source_sha256'], harness_sha256=pins['harness_sha256'])
+        if 'served_base_sha256' in pins:
+            binding['served_base_sha256'] = pins['served_base_sha256']
         if m.get('schema') != pins['shard_manifest_schema'] or m.get('binding') != binding:
             refuse(f'{name}/shard-{i:02d}: shard manifest schema / binding differ from the phase pins: {json.dumps(m.get("binding"))[:160]}')
         present = sorted(n for n in os.listdir(d) if n != 'shard_manifest.json')
@@ -313,6 +387,8 @@ def load_phase(root, name, p, pins, listed):
         if any(m['counts'].get(k) != end.get(k) for k in ('decisions', 'labelled', 'expert_dropped', 'self_rows', 'rows_expert', 'rows_self')):
             refuse(f'{name}/shard-{i:02d}: the shard manifest counts differ from the end row')
         shards.append(dict(index=i, dir=d, rows=rows, seed0=p['seed0'] + i * per, per=per, manifest=m))
+    if subset is not None:
+        return shards, None, per
     sp = os.path.join(pdir, 'summary.json')
     if not os.path.isfile(sp):
         refuse(f'{name}/summary.json missing')
@@ -324,12 +400,16 @@ def check_identity(name, p, pins, summary, shards, resumed):
                 expert_name=pins['expert_name'], served_env=pins['served_env'], expert_env=[list(x) for x in pins['expert_env']], expert_cap_secs=pins['expert_cap_secs'],
                 late_trick=pins['late_trick'], late_lead_prob=p['late_lead_prob'], prob_follow=p['prob_follow'], record_capsule=p['record_capsule'],
                 rows_units=pins['rows_units'], enc_version=pins['enc_version'], input_dim=pins['input_dim'], source_sha256=pins['source_sha256'], harness_sha256=pins['harness_sha256'])
+    if 'served_base_sha256' in pins:
+        want['served_base_sha256'] = pins['served_base_sha256']
+    if pins['workers'] is None:
+        del want['workers']
     for k, v in want.items():
-        if summary.get(k) != v:
+        if summary is not None and summary.get(k) != v:
             refuse(f'{name}/summary.json {k} = {summary.get(k)!r}, pinned {v!r}')
-    if not _t(summary.get('resumed'), bool) or not _t(summary.get('shards_skipped'), int):
+    if summary is not None and (not _t(summary.get('resumed'), bool) or not _t(summary.get('shards_skipped'), int)):
         refuse(f'{name}/summary.json resumed / shards_skipped malformed')
-    if summary['resumed'] and resumed is None:
+    if summary is not None and summary['resumed'] and resumed is None:
         refuse(f'{name}/summary.json says resumed but the status has no resume line')
     for s in shards:
         h = s['rows'][0]
@@ -339,6 +419,8 @@ def check_identity(name, p, pins, summary, shards, resumed):
                   late_lead_prob=p['late_lead_prob'], prob_follow=p['prob_follow'], record_capsule=p['record_capsule'], rows_units=pins['rows_units'],
                   enc_version=pins['enc_version'], input_dim=pins['input_dim'], fast='1', pv_sha256=pins['pv_sha256'], belief_sha256=pins['belief_sha256'],
                   source_sha256=pins['source_sha256'], harness_sha256=pins['harness_sha256'])
+        if 'served_base_sha256' in pins:
+            hw['served_base_sha256'] = pins['served_base_sha256']
         for k, v in hw.items():
             if h.get(k) != v:
                 refuse(f'{name}/shard-{s["index"]:02d} header {k} = {h.get(k)!r}, pinned {v!r}')
@@ -505,6 +587,24 @@ def validity(name, p, pins, bar, deals):
     unpaired = sum(1 for d in deals.values() for r in d['dec'] if r['worlds_digest']['served'] != r['worlds_digest']['expert_prefix'])
     if unpaired:
         reasons.append(f'{unpaired} labelled decision(s) whose served worlds are not the expert draw\'s prefix')
+    rules = pins.get('off_ballot_rules', ())
+    served_cmp, skip_by, skip_bad = {}, {}, []
+    for deal, d in deals.items():
+        for r in d['dec']:
+            _, _, why = served_comparison(r['served'], rules)
+            served_cmp[why or 'on_ballot'] = served_cmp.get(why or 'on_ballot', 0) + 1
+        skipped = [off_ballot_reason(r, rules) for r in d['recs'] if r['row'] == 'live' and r.get('self_row') is False]
+        skipped = [x for x in skipped if x is not None]
+        for x in skipped:
+            skip_by[x] = skip_by.get(x, 0) + 1
+        if not _t(d['row'].get('self_skipped'), int) or d['row']['self_skipped'] != len(skipped):
+            skip_bad.append(deal)
+    if served_cmp.get('unexplained'):
+        reasons.append(f"{served_cmp['unexplained']} labelled decision(s) whose served search record has no ballot selection under no registered off-ballot rule")
+    if skip_bad:
+        reasons.append(f'{len(skip_bad)} deal(s) whose self_skipped is not the count of live rows skipped under a registered off-ballot rule (first {skip_bad[0]})')
+    if rules:
+        report['off_ballot'] = dict(rules=list(rules), served={k: served_cmp[k] for k in sorted(served_cmp)}, self_skipped_by_rule={k: skip_by[k] for k in sorted(skip_by)})
     kept = [r for d in deals.values() for r in d['dec'] if not r['expert']['dropped']]
     dropped = [r for d in deals.values() for r in d['dec'] if r['expert']['dropped']]
     leads = [r for r in kept if r['lead']]
@@ -543,6 +643,9 @@ def check_rows(name, p, pins, shards, deals, kept, replay_make, replay_per_shard
     live_by = {(r['deal'], r['index']): r for d in deals.values() for r in d['recs'] if r['row'] == 'live' and r.get('self_row') is True}
     tot = dict(rows_expert=0, rows_self=0, capsules=0, replayed=0, replay_ok=0, replay_max_abs_diff=0.0)
     tags = dict(action_type={t: 0 for t in ACTION_TYPES}, lead_action_type={t: 0 for t in ACTION_TYPES}, in_r48_ballot=0, rank_r48_le8=0, rank_r48_known=0, rank_r48_gt24=0, swapped=0)
+    rules = pins.get('off_ballot_rules', ())
+    if rules:
+        tags['served_off_ballot'] = 0
     for s in shards:
         shard_deals = set(range(s['seed0'], s['seed0'] + s['per']))
         for which, index in (('rows_expert', dec_by), ('rows_self', live_by)):
@@ -586,6 +689,11 @@ def check_rows(name, p, pins, shards, deals, kept, replay_make, replay_per_shard
                     r = index[k]
                     if sorted(m['taken']) != sorted(CARD_INDEX[c] for c in r['expert']['cards']) or m.get('expert_in_r48_ballot') != r['expert_in_r48_ballot']:
                         reasons.append(f'{name}/shard-{s["index"]:02d}: rows_expert row {i}: taken / tags differ from the decision row'); break
+                    sv_ok, sv_off = served_taken_matches(m, r['served'], rules, CARD_INDEX)
+                    if not sv_ok:
+                        reasons.append(f'{name}/shard-{s["index"]:02d}: rows_expert row {i}: served_taken differs from the decision\'s served selection'); break
+                    if sv_off:
+                        tags['served_off_ballot'] += 1
                     tags['action_type'][m['action_type']] += 1
                     if m['lead']:
                         tags['lead_action_type'][m['action_type']] += 1
@@ -636,8 +744,7 @@ def check_rows(name, p, pins, shards, deals, kept, replay_make, replay_per_shard
                         same = {k: v for k, v in rp['same'].items() if k not in ('value_means', 'policy_log_odds_admitted')}
                         diffs = {}
                         for k in ('value_means', 'policy_log_odds_admitted'):
-                            g, w = rp['got'][k] or [], c['served'][k] or []
-                            d = max((abs(float(x) - float(y)) for x, y in zip(g, w)), default=0.0) if len(g) == len(w) else float('inf')
+                            d = slot_diff(rp['got'][k], c['served'][k])
                             diffs[k] = d; same[k] = d <= REPLAY_ATOL
                         why = [k for k, v in same.items() if not v]
                         ok = all(same.values())
@@ -719,12 +826,109 @@ def canonical_lines(res):
         t = r['timing']
         out.append(f"    expert secs leads p50/p95/max {t['expert_secs']['leads']} follows {t['expert_secs']['follows']}; served {t['served_secs']}; live {t['live_secs']}; shard wall mean/max {t['shard_wall_secs']}; per deal {t['per_deal_secs']}")
         out.append(f"    tags: action types {r['tags']['action_type']} (leads {r['tags']['lead_action_type']}); a_E in R48 ballot {r['tags']['in_r48_ballot']} of {r['kept']}; R48 rank known {r['tags']['rank_r48_known']}, < 8: {r['tags']['rank_r48_le8']}, >= 24: {r['tags']['rank_r48_gt24']}; swapped {r['tags']['swapped']}")
+        if 'off_ballot' in r:
+            ob = r['off_ballot']
+            out.append(f"    off-ballot (valid rows, rules {ob['rules']}): served {ob['served']}; expert rows with an off-ballot served move {r['tags'].get('served_off_ballot')}; live self rows skipped {ob['self_skipped_by_rule']}")
         for x in ph['reasons']:
             out.append(f'    INVALID: {x}')
     return out
 
 
+def shard_listing(root, name, n_shards):
+    """{relative path: sha256 of the bytes on disk} of every file of shards 0..n-1 that its shard manifest lists (rows-only mode: each
+    shard is checked against its own manifest; the lane's root seal is not read)."""
+    listed = {}
+    for i in range(n_shards):
+        d = os.path.join(root, name, f'shard-{i:02d}')
+        mp = os.path.join(d, 'shard_manifest.json')
+        if not os.path.isfile(mp):
+            refuse(f'{name}/shard-{i:02d}/shard_manifest.json missing (not a completed shard)')
+        for n in json.load(open(mp)).get('files') or {}:
+            p = os.path.join(d, n)
+            if os.path.isfile(p) and not os.path.islink(p):
+                listed[os.path.normpath(os.path.join(name, f'shard-{i:02d}', n))] = rl.sha256_file(p)
+    return listed
+
+
+def analyze_rows(root, *, phases, pins, bar=BAR, subset=None, replay_make=None, replay_per_shard=3, profile=None):
+    """Rows-only mode: every check of `analyze` after the lane binding, per phase, on shards 0..subset-1 (all shards when None)."""
+    if replay_make is None and any(p['record_capsule'] for p in phases.values()) and replay_per_shard >= 1:
+        import exploit_duel_s61 as duel
+        replay_make = duel.variant_factory(())[1]
+    pins = dict(pins, phases=phases)
+    bar = dict(bar, floors={} if subset is not None else bar['floors'])
+    result = dict(schema='expert-label-rows-check-v1', profile=profile, served_name=pins['served_name'], subset=subset, phases={}, validity=None, reasons=[])
+    exposure, all_reasons = {}, []
+    for name, p in phases.items():
+        listed = shard_listing(root, name, p['shards'] if subset is None else subset)
+        shards, summary, per = load_phase(root, name, p, pins, listed, subset=subset)
+        check_identity(name, p, pins, summary, shards, None)
+        deals = check_coverage(name, shards)
+        check_row_schema(name, deals)
+        reasons, report, kept = validity(name, p, pins, bar, deals)
+        rr, rows_report = check_rows(name, p, pins, shards, deals, kept, replay_make, replay_per_shard)
+        reasons += rr
+        report.update(rows_report, timing=timing(deals, shards))
+        if summary is not None:
+            report['summary_counts'] = {k: summary.get(k) for k in ('decisions', 'labelled', 'expert_dropped', 'rows_expert', 'rows_self', 'wall_secs', 'resumed', 'shards_skipped')}
+            if summary.get('rows_expert') != report['rows']['rows_expert'] or summary.get('labelled') != report['labelled'] or summary.get('expert_dropped') != report['dropped']:
+                reasons.append(f'{name}: summary.json counts differ from the rows')
+        result['phases'][name] = dict(reasons=reasons, report=report)
+        keys = sorted(dd['row']['deal_key'] for dd in deals.values())
+        exposure[name] = dict(seed0=p['seed0'], deals=len(keys), deal_keys=keys, digest=hashlib.sha256('\n'.join(keys).encode()).hexdigest(), deal_key_schema='shengji-value-deal-key-v1')
+        all_reasons += [f'{name}: {x}' for x in reasons]
+    result['reasons'] = all_reasons
+    result['validity'] = 'VALID' if not all_reasons else 'INVALID'
+    result['exposure_digests'] = {k: v['digest'] for k, v in exposure.items()}
+    result['note'] = 'rows validity only (no lane binding' + (f'; shards 0..{subset - 1} of each phase, no summary or floors' if subset is not None else '') + '); no outcome, bar or strength is read'
+    return result, exposure
+
+
+def parse_phase(text):
+    """NAME=SEED0,DEALS,SHARDS,LATE_LEAD_P,FOLLOW_P,CAPSULE (CAPSULE 0 or 1) -> (name, phase pins)."""
+    m = re.fullmatch(r'([a-z]+)=(\d+),(\d+),(\d+),([0-9.]+),([0-9.]+),([01])', text)
+    if not m:
+        raise SystemExit(f'REFUSING: --phase {text!r} is not NAME=SEED0,DEALS,SHARDS,LATE_LEAD_P,FOLLOW_P,CAPSULE')
+    seed0, deals, shards = int(m.group(2)), int(m.group(3)), int(m.group(4))
+    if shards < 1 or deals % shards:
+        raise SystemExit(f'REFUSING: --phase {text!r}: deals must be a multiple of shards')
+    return m.group(1), dict(seed0=seed0, deals=deals, shards=shards, late_lead_prob=float(m.group(5)), prob_follow=float(m.group(6)), record_capsule=m.group(7) == '1')
+
+
+def canonical_rows_lines(res):
+    head = f"expert-label rows check: {res['validity']} (profile {res['profile']}; {res['note']})"
+    return [head] + canonical_lines(dict(res, validity=res['validity'], lane='rows', binding=dict(mode='none'), status={}))[1:]
+
+
+def main_rows(argv):
+    ap = argparse.ArgumentParser(prog='m28lab_check.py rows', description='rows-only check of an expert-label output root')
+    ap.add_argument('root'); ap.add_argument('out')
+    ap.add_argument('--profile', choices=sorted(PROFILES), required=True)
+    ap.add_argument('--phase', action='append', required=True, type=parse_phase)
+    ap.add_argument('--subset', type=int, default=None, help='check shards 0..N-1 of each phase only (no summary.json, no floors)')
+    ap.add_argument('--replay-per-shard', type=int, default=3)
+    a = ap.parse_args(argv)
+    if a.subset is not None and a.subset < 1:
+        raise SystemExit('REFUSING: --subset must be >= 1')
+    if os.path.exists(a.out):
+        raise SystemExit(f'REFUSING: {a.out} exists')
+    try:
+        res, exposure = analyze_rows(a.root, phases=dict(a.phase), pins=PROFILES[a.profile], subset=a.subset, replay_per_shard=a.replay_per_shard, profile=a.profile)
+    except rl.ReaderRefusal as exc:
+        print(str(exc) if str(exc).startswith('REFUSING') else f'REFUSING: {exc}')
+        raise SystemExit(3)
+    with open(a.out, 'x') as fh:
+        json.dump(res, fh, indent=1, sort_keys=True)
+    with open(a.out + '.exposure.json', 'x') as fh:
+        json.dump(exposure, fh, indent=1, sort_keys=True)
+    print('\n'.join(canonical_rows_lines(res)))
+    return 0 if res['validity'] == 'VALID' else 1
+
+
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ['rows']:
+        return main_rows(argv[1:])
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('root'); ap.add_argument('status'); ap.add_argument('reservation'); ap.add_argument('out')
     ap.add_argument('--manifest'); ap.add_argument('--manifest-sha256')

@@ -6,12 +6,13 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import sys
 import tomllib
 
 
-def recipe_environment(fly: Path, models: Path) -> dict[str, str]:
+def recipe_environment(fly: Path, models: Path, *, recipe_mode: str = "legacy") -> dict[str, str]:
     env = tomllib.loads(fly.read_text())["env"]
     selected = {k: str(v) for k, v in env.items()
                 if k.startswith(("SHENGJI_PV_", "SHENGJI_CWV_"))
@@ -27,10 +28,36 @@ def recipe_environment(fly: Path, models: Path) -> dict[str, str]:
         raise ValueError("bury budget must be 2 seconds")
     if selected.get("SHENGJI_PV_WORLDS") != "64" or selected.get("SHENGJI_PV_CANDIDATES") != "8":
         raise ValueError("Y requires W64/K8")
-    if any(selected.get(k, "0") != "0" for k in
-           ("SHENGJI_PV_SINGLETON_CHALLENGER", "SHENGJI_PV_LEAD_CONFIRM")):
-        raise ValueError("baseline already contains candidate overrides")
+    if recipe_mode == "legacy":
+        if any(selected.get(k, "0") != "0" for k in
+               ("SHENGJI_PV_SINGLETON_CHALLENGER", "SHENGJI_PV_LEAD_CONFIRM")):
+            raise ValueError("baseline already contains candidate overrides")
+    elif recipe_mode == "served-y":
+        if (selected.get("SHENGJI_PV_SINGLETON_CHALLENGER") != "1"
+                or selected.get("SHENGJI_PV_LEAD_CONFIRM") != "32"):
+            raise ValueError("served-y requires singleton and confirmation switches")
+    else:
+        raise ValueError("unknown recipe mode")
     return selected
+
+
+def bind_packages(selected, value, value_sha, prior, prior_sha):
+    """Bind a complete value/prior pair without changing search or timing knobs."""
+    supplied = (value, value_sha, prior, prior_sha)
+    if not any(x is not None for x in supplied):
+        return dict(selected)
+    if not all(x is not None for x in supplied):
+        raise ValueError("value and prior paths and full hashes are required together")
+    out = dict(selected)
+    for prefix, path, sha in (("SHENGJI_PV_", value, value_sha),
+                              ("SHENGJI_PV_PRIOR_", prior, prior_sha)):
+        if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+            raise ValueError("full lowercase SHA256 required")
+        if hashlib.sha256(Path(path).read_bytes()).hexdigest() != sha:
+            raise ValueError("package SHA256 mismatch")
+        out[prefix + "CKPT"] = str(Path(path).resolve())
+        out[prefix + "SHA256"] = sha
+    return out
 
 
 def main(argv=None):
@@ -39,6 +66,11 @@ def main(argv=None):
     parser.add_argument("--models", type=Path, required=True)
     parser.add_argument("--seed-registry", type=Path, required=True)
     parser.add_argument("--inspect", action="store_true")
+    parser.add_argument("--recipe-mode", choices=("legacy", "served-y"), default="legacy")
+    parser.add_argument("--value-package", type=Path)
+    parser.add_argument("--value-sha256")
+    parser.add_argument("--prior-package", type=Path)
+    parser.add_argument("--prior-sha256")
     args, rest = parser.parse_known_args(argv)
     if any(a.split("=", 1)[0] in {
         "--policy", "--explore-rate", "--explore-k", "--round-mix",
@@ -46,7 +78,7 @@ def main(argv=None):
         "--report-worlds", "--capture-full-legal-scores", "--capture-served-budget",
     } for a in rest):
         parser.error("policy, capture mode, sampling and exploration are fixed by this runner")
-    selected = recipe_environment(args.fly, args.models)
+    selected = recipe_environment(args.fly, args.models, recipe_mode=args.recipe_mode)
     for key in list(os.environ):
         if key.startswith("SHENGJI_"):
             del os.environ[key]
@@ -62,11 +94,19 @@ def main(argv=None):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from shengji.ai import registry
     from shengji.train.pv_search_policy import pv_env_recipe, pv_registry_entries, singleton_registry_entries
-    baseline = pv_registry_entries(**pv_env_recipe())
+    baseline_entries = singleton_registry_entries if args.recipe_mode == "served-y" else pv_registry_entries
+    baseline = baseline_entries(**pv_env_recipe())
     expected = selected["SHENGJI_BOT"]
     if expected not in baseline:
         raise ValueError(f"fly baseline drift: {expected} not in {sorted(baseline)}")
     baseline[expected](seed=0)
+    selected = bind_packages(selected, args.value_package, args.value_sha256,
+                             args.prior_package, args.prior_sha256)
+    os.environ.update(selected)
+    os.environ["SHENGJI_Y_CAPTURE_HOST"] = platform.node()
+    os.environ["SHENGJI_Y_CAPTURE_SYSTEM"] = platform.system()
+    os.environ["SHENGJI_Y_CAPTURE_MACHINE"] = platform.machine()
+    os.environ["SHENGJI_Y_CAPTURE_RECIPE_MODE"] = args.recipe_mode
     os.environ["SHENGJI_PV_SINGLETON_CHALLENGER"] = "1"
     os.environ["SHENGJI_PV_LEAD_CONFIRM"] = "32"
     entries = singleton_registry_entries(**pv_env_recipe())

@@ -1192,6 +1192,9 @@ def _log_bot_timing(room: Room, prepared: _PreparedBotTurn, *,
                 "bury_fallback_reason": record.get("reason"),
                 "bury_error_class": record.get("error_class"),
             }
+            if "bury_belief_fallbacks" in record:
+                # only a bbw bury carries it: every other bury logs the fields above
+                bury_fields["bury_belief_fallbacks"] = record["bury_belief_fallbacks"]
     prior_fields = {}
     # PLAY ONLY, and that is load-bearing.  `room.bot = snapshot.bot_copy` keeps the
     # bot between turns and `decide_bury` never touches `_prior_diagnostics`, so on a

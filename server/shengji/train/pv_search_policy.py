@@ -746,6 +746,19 @@ after ``-bwv``/``-bwv2`` (``...-bury-hybrid-bwv-bkc-<12 hex>``) and the record
 ``kitty_charge``.  Off, it is absent from the identity, the bot's instance state and
 every record.
 
+Its optional belief worlds, OFF BY DEFAULT: ``SHENGJI_PV_BURY_BELIEF_WORLDS=1``
+(`bury_belief_worlds`; ``0`` or ``1``, refused without ``SHENGJI_PV_BURY_WIDE_VALUE=1``
+and ``SHENGJI_PV_BELIEF_WORLDS=1``, and with ``SHENGJI_PV_BURY_TWO_STAGE=1`` or
+``SHENGJI_PV_VALUE_DECLARE_SERVED_BURY=1``, whose choices would not see it) scores the
+chooser's candidates on ``model_worlds`` worlds drawn by the play's belief package on
+the bury state's trick-1 twin (`bury_wide_value.belief_bury_worlds`) instead of the
+helper's split sampler; a failed draw falls back to the helper's worlds for that
+decision and is counted in the record (``bury_belief_fallbacks``).  On, the identity's
+``wide_value`` gains ``belief_worlds`` (the source and the proposal), the bury token
+gains ``-bbw`` after ``-bwv``/``-bwv2``/``-bkc`` (``...-bury-hybrid-bwv-bbw-<12 hex>``)
+and the record the ``bury_belief_*`` fields.  Off, it is absent from the identity, the
+bot's instance state and every record.
+
 DIAGNOSTIC ONLY, never served (#707 S16, the perfect-information ceiling), OFF
 BY DEFAULT: ``SHENGJI_PV_ORACLE_WORLDS=1`` (token ``orc``, the last rule token
 after ``lpft``; enters the recipe digest) replaces the W sampled completions of
@@ -834,6 +847,8 @@ from .bury_wide_value import (WIDE_K_DEFAULT as BURY_WIDE_K_DEFAULT, CHOOSER as 
                               WIDE_K_MAX as BURY_WIDE_K_MAX,
                               WIDE_SWAPS_DEFAULT as BURY_WIDE_SWAPS_DEFAULT,
                               TOKEN as BURY_WIDE_TOKEN, TOKEN_TWO_SWAPS as BURY_WIDE_TOKEN_TWO_SWAPS,
+                              TOKEN_BELIEF_WORLDS as BURY_BELIEF_WORLDS_TOKEN,
+                              BELIEF_WORLDS_SOURCE as BURY_BELIEF_WORLDS_SOURCE,
                               check_wide_k, check_wide_swaps, decide_wide_value_bury)
 from . import declare_served_bury
 from . import declare_pass_worlds
@@ -1098,6 +1113,18 @@ _BURY_KITTY_CHARGE_EXCLUSIVE = ("bury_kitty_charge is exclusive with bury_two_st
                                 "value_declare_served_bury, whose choices would not see the "
                                 "charge (SHENGJI_PV_BURY_KITTY_CHARGE=1 with "
                                 "SHENGJI_PV_BURY_TWO_STAGE=1 or SHENGJI_PV_VALUE_DECLARE_SERVED_BURY=1)")
+#: the optional belief worlds of the wide chooser (module docstring;
+#: `bury_wide_value.belief_bury_worlds`): a 0/1 bury setting, kept out of every
+#: flag-off construction (the bot's keyword is passed only when on)
+BURY_BELIEF_WORLDS_FLAG = {"BURY_BELIEF_WORLDS": "bury_belief_worlds"}
+_BURY_BELIEF_WORLDS_REQUIRES = ("bury_belief_worlds needs bury_wide_value and belief_worlds "
+                                "(SHENGJI_PV_BURY_BELIEF_WORLDS=1 needs SHENGJI_PV_BURY_WIDE_VALUE=1 "
+                                "and SHENGJI_PV_BELIEF_WORLDS=1)")
+_BURY_BELIEF_WORLDS_EXCLUSIVE = ("bury_belief_worlds is exclusive with bury_two_stage and "
+                                 "value_declare_served_bury, whose choices would not see the "
+                                 "belief worlds (SHENGJI_PV_BURY_BELIEF_WORLDS=1 with "
+                                 "SHENGJI_PV_BURY_TWO_STAGE=1 or "
+                                 "SHENGJI_PV_VALUE_DECLARE_SERVED_BURY=1)")
 #: the DIAGNOSTIC perfect-information rule (module docstring; #707 S16): the
 #: play worlds are the one true deal, supplied by the screen harness's hook;
 #: never served
@@ -4195,6 +4222,8 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
     bury_two_stage = None
     #: its optional kitty charge (`bury_kitty_charge`): OFF
     bury_kitty_charge = False
+    #: its optional belief worlds (`bury_wide_value.belief_bury_worlds`): OFF
+    bury_belief_worlds = False
 
     def __init__(self, predict, *, evaluator, version: int, config: PVSearchConfig,
                  checkpoint: str, seed: int = 0, bury_arm: str = "hybrid",
@@ -4203,12 +4232,13 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
                  bury_wide_k: int = BURY_WIDE_VALUE_DEFAULTS["bury_wide_k"],
                  bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
                  bury_two_stage: BuryTwoStageConfig | None = None,
-                 bury_kitty_charge: bool = False):
+                 bury_kitty_charge: bool = False, bury_belief_worlds: bool = False):
         if bury_arm not in BURY_ARMS:
             raise BuryPolicyError(f"unknown bury arm {bury_arm!r}")
         _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
         _check_bury_two_stage(bury_wide_value, bury_two_stage)
         _check_bury_kitty_charge(config, bury_wide_value, bury_two_stage, bury_kitty_charge)
+        _check_bury_belief_worlds(config, bury_wide_value, bury_two_stage, bury_belief_worlds)
         # bound before the base constructor: its ``leaf_policy_first_trick`` effect
         # check asks whether a model bury arm (a value leaf) exists
         self._leaf_bury_arm = bury_arm
@@ -4234,6 +4264,9 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
             if bury_kitty_charge:
                 # likewise: a bot without the charge is exactly release 46's
                 self.bury_kitty_charge = True
+            if bury_belief_worlds:
+                # likewise: a bot without the belief worlds is exactly release 49's
+                self.bury_belief_worlds = True
         if self.value_declare_served_bury and not self.bury_wide_value:
             raise PVSearchPolicyError(_VALUE_DECLARE_SERVED_BURY_NO_EFFECT)
 
@@ -4328,6 +4361,22 @@ def _check_bury_kitty_charge(config: PVSearchConfig, bury_wide_value, bury_two_s
         raise PVSearchPolicyError(_BURY_KITTY_CHARGE_REQUIRES)
     if bury_two_stage is not None or config.value_declare_served_bury:
         raise PVSearchPolicyError(_BURY_KITTY_CHARGE_EXCLUSIVE)
+
+
+def _check_bury_belief_worlds(config: PVSearchConfig, bury_wide_value, bury_two_stage,
+                              bury_belief_worlds) -> None:
+    """``bury_belief_worlds`` is a bool and needs the wide chooser whose worlds
+    it draws and the play's belief proposal whose package draws them; the
+    second stage and the declaration's served-bury model sample their own
+    worlds, so it refuses them."""
+    if type(bury_belief_worlds) is not bool:
+        raise PVSearchPolicyError("bury_belief_worlds must be a bool")
+    if not bury_belief_worlds:
+        return
+    if not bury_wide_value or not config.belief_worlds:
+        raise PVSearchPolicyError(_BURY_BELIEF_WORLDS_REQUIRES)
+    if bury_two_stage is not None or config.value_declare_served_bury:
+        raise PVSearchPolicyError(_BURY_BELIEF_WORLDS_EXCLUSIVE)
 
 
 def _check_leaf_policy_effect(config: PVSearchConfig, bury_arm) -> None:
@@ -4452,6 +4501,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
                        bury_two_stage: BuryTwoStageConfig | None = None,
                        bury_kitty_charge: bool = False,
+                       bury_belief_worlds: bool = False,
                        oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"],
                        oracle_deal=None,
                        oracle_mix_k: int = ORACLE_SOFT_DEFAULTS["oracle_mix_k"],
@@ -4536,6 +4586,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
     _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
     _check_bury_two_stage(bury_wide_value, bury_two_stage)
     _check_bury_kitty_charge(config, bury_wide_value, bury_two_stage, bury_kitty_charge)
+    _check_bury_belief_worlds(config, bury_wide_value, bury_two_stage, bury_belief_worlds)
     _check_served_bury_effect(config, bury_arm, bury_wide_value)
     if (prior_checkpoint is None) != (prior_sha256 is None):
         raise PVSearchPolicyError("a separate prior package needs BOTH prior_checkpoint and prior_sha256")
@@ -4575,6 +4626,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
             wide["bury_two_stage"] = bury_two_stage
         if bury_kitty_charge:
             wide["bury_kitty_charge"] = True
+        if bury_belief_worlds:
+            wide["bury_belief_worlds"] = True
         bot = build(predict, evaluator=evaluator, version=predict.version, config=config,
                     checkpoint=path, seed=int(seed), bury_arm=bury_arm,
                     bury_config=bury_config,
@@ -4665,6 +4718,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         bury_wide_swaps: int = BURY_WIDE_SWAPS_DEFAULT,
                         bury_two_stage: BuryTwoStageConfig | None = None,
                         bury_kitty_charge: bool = False,
+                        bury_belief_worlds: bool = False,
                         oracle_worlds: bool = ORACLE_WORLDS_DEFAULTS["oracle_worlds"],
                         oracle_mix_k: int = ORACLE_SOFT_DEFAULTS["oracle_mix_k"],
                         oracle_pin_q: float = ORACLE_SOFT_DEFAULTS["oracle_pin_q"]
@@ -4732,6 +4786,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
     _check_bury_wide_value(bury_arm, bury_wide_value, bury_wide_k, bury_wide_swaps)
     _check_bury_two_stage(bury_wide_value, bury_two_stage)
     _check_bury_kitty_charge(config, bury_wide_value, bury_two_stage, bury_kitty_charge)
+    _check_bury_belief_worlds(config, bury_wide_value, bury_two_stage, bury_belief_worlds)
     _check_served_bury_effect(config, bury_arm, bury_wide_value)
     ckpt8 = checkpoint_id(checkpoint)
     if ckpt8 != sha256[:8]:
@@ -4775,6 +4830,13 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                 # the kitty charge: only then does the identity gain it (and the name its token)
                 bury_identity["wide_value"]["kitty_charge"] = bury_kitty_charge_identity()
                 token += f"-{BURY_KITTY_CHARGE_TOKEN}"
+            if bury_belief_worlds:
+                # the belief worlds: only then does the identity gain them (and the name its token)
+                bury_identity["wide_value"]["belief_worlds"] = {
+                    "source": BURY_BELIEF_WORLDS_SOURCE,
+                    "proposal": (BELIEF_PROPOSAL_CAPACITY if config.belief_capacity
+                                 else BELIEF_PROPOSAL)}
+                token += f"-{BURY_BELIEF_WORLDS_TOKEN}"
         encoded = json.dumps(bury_identity, sort_keys=True, separators=(",", ":")).encode()
         name = f"{name}-bury-{bury_arm}{token}-{hashlib.sha256(encoded).hexdigest()[:12]}"
         bury_config, bury_serving_budget_seconds = bconfig, bbudget
@@ -4846,6 +4908,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                bury_wide_swaps=bury_wide_swaps,
                                bury_two_stage=bury_two_stage,
                                bury_kitty_charge=bury_kitty_charge,
+                               bury_belief_worlds=bury_belief_worlds,
                                oracle_worlds=config.oracle_worlds,
                                oracle_deal=oracle_deal,
                                oracle_mix_k=config.oracle_mix_k,
@@ -4895,8 +4958,9 @@ def pv_env_recipe(environ=None) -> dict:
     select the wide value-only bury chooser (module docstring), and ``_BURY_TWO_STAGE``
     (``0`` or ``1``; needs ``_BURY_WIDE_VALUE=1``) with its ``_BURY_TWO_STAGE_TOP`` /
     ``_WORLDS`` / ``_TRICKS`` / ``_MARGIN`` / ``_Z`` / ``_SECONDS`` parameters (each refused
-    unless ``_BURY_TWO_STAGE=1``) its second stage, and ``_BURY_KITTY_CHARGE`` (``0`` or
-    ``1``; needs ``_BURY_WIDE_VALUE=1``) its kitty charge.
+    unless ``_BURY_TWO_STAGE=1``) its second stage, ``_BURY_KITTY_CHARGE`` (``0`` or
+    ``1``; needs ``_BURY_WIDE_VALUE=1``) its kitty charge, and ``_BURY_BELIEF_WORLDS``
+    (``0`` or ``1``; needs ``_BURY_WIDE_VALUE=1`` and ``_BELIEF_WORLDS=1``) its belief worlds.
     ``_ORACLE_WORLDS=1`` (the diagnostic) registers a name whose factory REFUSES to build
     without the screen harness's ``oracle_deal`` hook (`_check_oracle_hook`), so the game
     server can never serve it; `api.server` refuses the flag at import besides.  Its
@@ -5181,6 +5245,18 @@ def pv_env_recipe(environ=None) -> dict:
         if raw == "1":
             if not recipe.get("bury_wide_value"):
                 raise PVSearchPolicyError(_BURY_KITTY_CHARGE_REQUIRES)
+            recipe[key] = True
+    # the wide chooser's belief worlds: 0/1, only with the chooser and the
+    # belief proposal on (the remaining checks are `_check_bury_belief_worlds`')
+    for suffix, key in BURY_BELIEF_WORLDS_FLAG.items():
+        raw = env.get(ENV_PREFIX + suffix)
+        if raw in (None, ""):
+            continue
+        if raw not in ("0", "1"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} must be 0 or 1, not {raw!r}")
+        if raw == "1":
+            if not recipe.get("bury_wide_value"):
+                raise PVSearchPolicyError(_BURY_BELIEF_WORLDS_REQUIRES)
             recipe[key] = True
     return recipe
 

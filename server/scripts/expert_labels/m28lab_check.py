@@ -852,6 +852,9 @@ def shard_listing(root, name, n_shards):
 
 def analyze_rows(root, *, phases, pins, bar=BAR, subset=None, replay_make=None, replay_per_shard=3, profile=None):
     """Rows-only mode: every check of `analyze` after the lane binding, per phase, on shards 0..subset-1 (all shards when None)."""
+    no_replay = sorted(name for name, p in phases.items() if p['record_capsule'])
+    if no_replay and replay_per_shard < 1:   # a capsule phase read without one replay would say VALID on no reproduction of the served path
+        raise CheckRefusal(f'REFUSING: replay_per_shard {replay_per_shard} < 1 on capsule phase(s) {", ".join(no_replay)}; rows mode replays at least one capsule per shard')
     if replay_make is None and any(p['record_capsule'] for p in phases.values()) and replay_per_shard >= 1:
         import exploit_duel_s61 as duel
         replay_make = duel.variant_factory(())[1]

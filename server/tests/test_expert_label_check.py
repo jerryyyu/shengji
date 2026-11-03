@@ -175,3 +175,43 @@ def test_the_y_profile_pins_the_y_producer_and_the_m28_expert():
     assert {k: v for k, v in y.items() if k not in ("served_name", "expert_env", "source_sha256", "harness_sha256", "served_base_sha256", "workers",
                                                     "phases", "off_ballot_rules", "phase_extras")} == \
         {k: v for k, v in ck.PINS.items() if k not in ("served_name", "expert_env", "source_sha256", "harness_sha256", "workers", "phases")}
+
+
+def stub_rows_pipeline(monkeypatch):
+    """Every rows-mode stage stubbed to a clean phase (check_rows as its zero-replay pass returns: no reasons), so only the replay count
+    decides the read.  The real check_rows loads the served package at import, which this synthetic test does not have."""
+    monkeypatch.setattr(ck, "shard_listing", lambda root, name, n: [])
+    monkeypatch.setattr(ck, "load_phase", lambda root, name, p, pins, listed, subset=None: ([], None, {}))
+    monkeypatch.setattr(ck, "check_identity", lambda *a, **k: None)
+    monkeypatch.setattr(ck, "check_coverage", lambda name, shards: {})
+    monkeypatch.setattr(ck, "check_row_schema", lambda name, deals: None)
+    monkeypatch.setattr(ck, "validity", lambda name, p, pins, bar, deals: ([], {}, []))
+    monkeypatch.setattr(ck, "timing", lambda deals, shards: {})
+    monkeypatch.setattr(ck, "check_rows", lambda name, p, pins, shards, deals, kept, replay_make, replay_per_shard: ([], dict(rows={}, tags={})))
+
+
+def rows_phase(capsule):
+    return dict(seed0=7, deals=1, shards=1, late_lead_prob=1.0, prob_follow=0.2, record_capsule=capsule)
+
+
+@pytest.mark.parametrize("replay", [0, -1])
+def test_rows_mode_refuses_a_capsule_phase_with_no_replay(monkeypatch, replay):
+    stub_rows_pipeline(monkeypatch)
+    with pytest.raises(ck.CheckRefusal, match="replay_per_shard"):
+        ck.analyze_rows("unused", phases=dict(train=rows_phase(False), heldout=rows_phase(True)), pins=ck.PROFILES["y"],
+                        replay_make=object(), replay_per_shard=replay)
+
+
+def test_rows_mode_reads_a_replayed_capsule_phase_and_a_capsule_free_phase(monkeypatch):
+    stub_rows_pipeline(monkeypatch)
+    res, _ = ck.analyze_rows("unused", phases=dict(heldout=rows_phase(True)), pins=ck.PROFILES["y"], replay_make=object(), replay_per_shard=1)
+    assert res["validity"] == "VALID"
+    res, _ = ck.analyze_rows("unused", phases=dict(train=rows_phase(False)), pins=ck.PROFILES["y"], replay_per_shard=0)
+    assert res["validity"] == "VALID"
+
+
+def test_the_rows_cli_refuses_replay_zero_on_a_capsule_phase(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        ck.main_rows([str(tmp_path / "root"), str(tmp_path / "out.json"), "--profile", "y", "--phase", "heldout=7,1,1,1.0,0.2,1", "--replay-per-shard", "0"])
+    assert exc.value.code == 3 and "REFUSING: replay_per_shard 0" in capsys.readouterr().out
+    assert not (tmp_path / "out.json").exists()

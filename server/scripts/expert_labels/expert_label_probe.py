@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""m28lab: expert labels on fresh R48 self-play, step 1b stage 1 (board row M28; design ~/.claude/jobs/d0498cda/tmp/policy_1b_design.md).
-A LABEL producer (a DEV data generator; NOT a strength result), cut from h1a's search_audit_probe_v5.py r3 (fl-pilot/h1a): the same game
-loop, plan, shared draw, FixedWorldsBot, lift() and record fields; the forced, replica-yardstick, sf, vt, roll and exact arms are gone.
+"""Expert labels on fresh self-play of the served bot (the tree's fly.toml SHENGJI_BOT: release 48, or release 49 "Y").
+A LABEL producer (a DEV data generator; NOT a strength result) with the search audit probe's game loop, plan, shared draw, FixedWorldsBot,
+lift() and record fields.
+
+Supported bases.  The state generator is the base fly.toml serves; "R48" below names it.  On release 49 (R48 plus the singleton
+challenger -sc8 and the lead confirmation lcc32) the live seats, the sampler and the served arm are Y as served, its singleton challenger
+and lead confirmation included: the served arm's confirmation draws are the shared draw's next 2 x 64 worlds (FixedWorldsBot).  The expert
+drops both rules (served_base.EXPERT_DROPS), so on either base it is the same bot under the same name.  On release 48 (no wrapper, no
+lead confirmation) none of this applies: the served arm is FixedWorldsBot itself and its confirmation draw is never called.
 
 Four R48 bots play fresh rank-mixed deals (the s61dev r2 plan per deal index) exactly as served -- fly.toml's SHENGJI_BOT and SHENGJI_* env
 through the reviewed harness's served_env / variant_factory (exploit_duel_s61.py beside this file) -- under the R48 recipe with lifted
@@ -49,7 +55,7 @@ given their window, so a recomputed shard holds the same rows.  Resume is a reco
 The checker (m28lab_check.py) applies the validity guards; this file makes no claim.
 
 Usage (cwd = the tree's server/; SHENGJI_FAST=1; FIND_GAPS_SERVER / FIND_GAPS_PKG / FIND_GAPS_PATH_MAP as the harness):
-  python -B expert_label_probe.py --out DIR --seed0 S --deals N --shards 12 --workers 12 [knobs] [--record-capsule] [--resume]
+  python -B scripts/expert_labels/expert_label_probe.py --out DIR --seed0 S --deals N --shards 12 --workers 12 [knobs] [--record-capsule] [--resume]
 """
 from __future__ import annotations
 
@@ -85,6 +91,8 @@ from shengji.train.leaf_screen import _game_factory_for  # noqa: E402
 from shengji.train.policy_prior import CARD_INDEX, ENC_VERSION, N_CARDS, cards_to_idx, deal_id, flat_input, input_dim, root_tensors  # noqa: E402
 from shengji.train.pv_search_policy import EXACT_LEAD_MAX_SECONDS_RANGE, FALLBACK_SCHEMA, RECORD_SCHEMA, PVSearchBuryBot  # noqa: E402
 
+import served_base  # noqa: E402
+
 PROBE_SCHEMA = "m28lab-v2"
 PROBE_REV = "r2"
 SHARD_MANIFEST_SCHEMA = "m28lab-shard-manifest-v2"
@@ -101,11 +109,8 @@ _belief_numpy.PREP_SECONDS = math.inf
 #: the per-record `caps` of a lifted bot, and of the expert at its declared caps (its wall cap, lgfd off, els 9 s from EXPERT_ENV)
 LIFTED_CAPS = {"serving_budget_seconds": None, "leaf_greedy_deadline_ms": 0, "exact_lead_max_seconds": LIFTED["exact_lead_max_seconds"],
                "belief_prep_seconds": "inf"}
-#: the expert's overrides on top of R48 as served (h1a's EXPERT_ENV, verbatim: the s61dev exploiter block minus its S46 belief and its
-#: 48 s budget; the belief stays R48's S58 so the shared draw IS the served draw; the budget is the wall cap; lgfd removed)
-EXPERT_ENV = (("SHENGJI_PV_CANDIDATES", "32"), ("SHENGJI_PV_EXACT_DEEP_CARDS", "8"), ("SHENGJI_PV_EXACT_DEEP_MAX_NODES", "200000000"),
-              ("SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS", "8"), ("SHENGJI_PV_EXACT_FOLLOW_MAX_NODES", "200000000"),
-              ("SHENGJI_PV_EXACT_LEAD_MAX_SECONDS", "9.0"), ("SHENGJI_PV_LEAF_GREEDY_DEADLINE", ""), ("SHENGJI_PV_WORLDS", "256"))
+#: the expert's overrides on top of the served base (served_base.EXPERT_ENV); main() adds the removal of the base's EXPERT_DROPS rules
+EXPERT_ENV = served_base.EXPERT_ENV
 EXPERT_WORLDS = 256
 LISTING_CAP = 256    # pv_search_policy records the policy log-odds of the scored set's first 256 entries
 
@@ -153,6 +158,34 @@ class FixedWorldsBot(PVSearchBuryBot):
         self.received_digest = worlds_digest(use)
         return use, attempts
 
+    def confirm_world_count(self):
+        """Worlds the lead confirmation's fresh draws take from the injected draw after the base worlds (0 with the rule off)."""
+        return self.worlds * self.lead_confirm_rounds if self.lead_confirm else 0
+
+    def _lead_confirm_draw(self, rnd, seat, check_budget):
+        """The lead confirmation's fresh draws: the injected draw's next ``lead_confirm_rounds`` blocks of ``self.worlds`` worlds after
+        the base worlds, disjoint from them and drawn by the same sampler call, so the paired arms stay on one shared draw."""
+        worlds = self._fixed[0] if self._fixed is not None else ()
+        need = self.worlds + self.confirm_world_count()
+        if len(worlds) < need:
+            raise RuntimeError(f"FixedWorldsBot: injected draw holds {len(worlds)} worlds, the lead confirmation needs {need}")
+        if check_budget:
+            check_budget()
+        return list(worlds[self.worlds:need])
+
+
+_FIXED_WORLDS_CLASSES = {PVSearchBuryBot: FixedWorldsBot}
+
+
+def fixed_worlds_class(cls):
+    """The FixedWorldsBot form of a served class: FixedWorldsBot itself for the plain search, else a subclass placing the injected draw
+    ahead of ``cls`` in the MRO, so every rule ``cls`` adds (the singleton challenger's admission) stays in force."""
+    if not (isinstance(cls, type) and issubclass(cls, PVSearchBuryBot)):
+        raise TypeError(f"not a PVSearchBuryBot class: {cls!r}")
+    if cls not in _FIXED_WORLDS_CLASSES:
+        _FIXED_WORLDS_CLASSES[cls] = type("FixedWorlds" + cls.__name__, (FixedWorldsBot, cls), {"__module__": __name__})
+    return _FIXED_WORLDS_CLASSES[cls]
+
 
 def lift(bot):
     """The R48 recipe under lifted budgets with internal wall deadlines removed (module docstring, LIFTED)."""
@@ -167,6 +200,11 @@ def caps(bot):
     """The wall-time caps a bot runs under, as the probe set them: the per-row witness of the lifted (or the expert's declared) policy."""
     return {"serving_budget_seconds": bot.serving_budget_seconds, "leaf_greedy_deadline_ms": int(bot.leaf_greedy_deadline_ms),
             "exact_lead_max_seconds": float(bot.exact_lead_max_seconds), "belief_prep_seconds": "inf" if _belief_numpy.PREP_SECONDS == math.inf else _belief_numpy.PREP_SECONDS}
+
+
+#: record fields of the served lead rules (the singleton challenger's admission, the lead confirmation), copied when the record has them
+SERVED_RULE_FIELDS = ("singleton_challenger_applied", "singleton_probe_margin", "lead_confirm_status", "lead_confirm_applied",
+                      "lead_confirm_worlds", "lead_confirm_abandon_reason")
 
 
 def rec_fields(rec, bot):
@@ -185,6 +223,8 @@ def rec_fields(rec, bot):
                    exact_follow_abandoned=rec.get("exact_follow_abandoned"),
                    lgf_deadline_fired=rec.get("leaf_greedy_deadline_fired"), lgf_deadline_cut_leaves=rec.get("leaf_greedy_deadline_cut_leaves"),
                    tiebreak_abandoned=rec.get("tiebreak_abandoned"), reselect_abandoned=rec.get("doomed_throw_reselect_abandoned"))
+        # the served lead rules' witnesses, on the records of a bot that runs them (a plain R48 record carries none of these keys)
+        out.update({k: rec[k] for k in SERVED_RULE_FIELDS if k in rec})
     return out
 
 
@@ -260,10 +300,11 @@ def file_sha256(path):
     return h.hexdigest()
 
 
-def capsule_of(rnd, seat, D, worlds64, served, deal, index, dkey, first_round, served_seed):
+def capsule_of(rnd, seat, D, worlds64, served, deal, index, dkey, first_round, served_seed, confirm_worlds=()):
     """The replay capsule of one kept labelled decision (module docstring): the canonical root state, the deck, the public notice, the
-    served arm's refusal ledger and seed, its 64 worlds and its recorded record."""
-    return {"schema": CAPSULE_SCHEMA, "deal": deal, "index": index, "seat": seat, "deal_key": dkey, "first_round": bool(first_round),
+    served arm's refusal ledger and seed, its 64 worlds and its recorded record; with the served lead confirmation on, also the worlds its
+    fresh draws took (``confirm_worlds``, absent otherwise)."""
+    cap = {"schema": CAPSULE_SCHEMA, "deal": deal, "index": index, "seat": seat, "deal_key": dkey, "first_round": bool(first_round),
             "snapshot": _state_snapshot(rnd), "deck": cards_to_idx(list(rnd.deck)), "notice": copy.deepcopy(getattr(rnd, "notice", None)),
             # the snapshot sorts every hand; the heuristic anchor (slot 0 of the ballot, hence the ballot order and the tie-breaks) reads the hand in
             # its live order, so the live order is kept beside it (same multiset, asserted on replay)
@@ -272,6 +313,9 @@ def capsule_of(rnd, seat, D, worlds64, served, deal, index, dkey, first_round, s
             "worlds": world_indices(worlds64),
             "served": {k: served[k] for k in ("admitted", "admitted_indices", "cards", "played", "value_means", "policy_log_odds_admitted", "selected_index", "n_actions", "legal_count", "worlds", "schema")},
             "worlds_digest": D.received_digest}
+    if D.lead_confirm:
+        cap["confirm_worlds"] = world_indices(confirm_worlds)
+    return cap
 
 
 def round_from_capsule(cap):
@@ -298,18 +342,20 @@ def replay_capsule(cap, make):
     rnd = round_from_capsule(cap)
     before = json.dumps(_state_snapshot(rnd), sort_keys=True)
     bot = lift(make(cap["served_seed"]))
-    bot.__class__ = FixedWorldsBot
+    bot.__class__ = fixed_worlds_class(type(bot))
     bot._refusals.key = tuple(rnd.deck)
     bot._refusals.refusals = [Refusal(int(a), tuple(b), tuple(c), int(d)) for a, b, c, d in cap["refusals"]]
     worlds = worlds_from_indices(cap["worlds"])
-    bot._fixed = (worlds, 0, {})
+    if bool(bot.lead_confirm) != ("confirm_worlds" in cap):
+        raise ValueError("capsule: confirm_worlds present iff the served bot runs the lead confirmation")
+    bot._fixed = (worlds + worlds_from_indices(cap.get("confirm_worlds", [])), 0, {})
     cards = bot.decide_play(rnd, cap["seat"])
     rec = bot.last_decision_record or {}
     got = dict(admitted=[key(a) for a in rec.get("admitted") or []], value_means=rec.get("value_means"), policy_log_odds_admitted=rec.get("policy_log_odds_admitted"),
                cards=selected_action(rec), played=key(cards), selected_index=rec.get("selected_index"), n_actions=rec.get("actions"), worlds=rec.get("worlds"), schema=rec.get("schema"))
     want = cap["served"]
     same = {k: got[k] == want[k] for k in ("admitted", "value_means", "policy_log_odds_admitted", "cards", "played", "selected_index", "n_actions", "worlds", "schema")}
-    same["worlds_digest"] = bot.received_digest == cap["worlds_digest"] == worlds_digest(worlds)
+    same["worlds_digest"] = bot.received_digest == cap["worlds_digest"] == worlds_digest(worlds[:bot.worlds])
     same["state_unchanged"] = json.dumps(_state_snapshot(rnd), sort_keys=True) == before
     return dict(ok=all(same.values()), same=same, got=got, caps=caps(bot))
 
@@ -325,6 +371,8 @@ def label(bots, rnd, seat, deal, index, live_cards, live_rec, live_bot):
     worlds, attempts = S._worlds(snap, seat)
     sampling = dict(S._last_sampling)
     secs["draw"] = time.perf_counter() - t
+    if len(worlds) < D.worlds + D.confirm_world_count():
+        raise RuntimeError(f"shared draw of {len(worlds)} worlds is narrower than the served arm's {D.worlds} + {D.confirm_world_count()}")
     for b in (D, E):
         b._fixed = (worlds, attempts, sampling)
     # expert
@@ -377,7 +425,7 @@ def label(bots, rnd, seat, deal, index, live_cards, live_rec, live_bot):
                               "served_ballot": [cards_to_idx(a) for a in served["admitted"]], "served_means": served["value_means"],
                               "served_prior_lo": served["policy_log_odds_admitted"], "served_taken": cards_to_idx(served["cards"]) if served["cards"] else None,
                               "served_schema": served["schema"], "live_taken": cards_to_idx(live["cards"]), **tags})
-    return row, train, worlds[:D.worlds], served
+    return row, train, worlds[:D.worlds], worlds[D.worlds:D.worlds + D.confirm_world_count()], served
 
 
 def note_declare(bot, drecs):
@@ -395,13 +443,16 @@ def play_deal(cfg, deal, gidx, fh, rows_e, rows_s, cfh):
     S = lift(dmake(det_seed(deal, -1)))
     served_seed = det_seed(deal, -3)
     D = lift(dmake(served_seed))
-    D.__class__ = FixedWorldsBot
+    served_cls = served_base.served_class(dn)
+    D.__class__ = fixed_worlds_class(type(D))
     E = emake(det_seed(deal, -5))
-    E.__class__ = FixedWorldsBot
+    E.__class__ = fixed_worlds_class(type(E))
     E.serving_budget_seconds = cfg["expert_cap_secs"]
     E.bury_serving_budget_seconds = None
-    for b in pol + [S, D, E]:
-        assert type(b).__name__ in ("PVSearchBuryBot", "FixedWorldsBot"), type(b).__name__
+    # the classes the names build: the live seats and the sampler are the served class, the served arm its FixedWorlds form, the expert the
+    # plain search's (its EXPERT_DROPS leave no wrapper)
+    assert all(type(b) is served_cls for b in pol + [S]), [type(b).__name__ for b in pol + [S]]
+    assert type(D) is fixed_worlds_class(served_cls) and type(E) is FixedWorldsBot, (type(D).__name__, type(E).__name__)
     for b in pol + [S, D]:   # the lifted policy, witnessed before the deal is played
         assert caps(b) == LIFTED_CAPS and b.bury_serving_budget_seconds is None, caps(b)
     assert caps(E) == EXPERT_CAPS(cfg["expert_cap_secs"]), caps(E)
@@ -447,7 +498,7 @@ def play_deal(cfg, deal, gidx, fh, rows_e, rows_s, cfh):
         single = rec.get("schema") == RECORD_SCHEMA and (rec.get("actions") or 0) < 2
         if want and not single:
             before = (json.dumps(rnd.hands), len(rnd.history), len(rnd.trick.plays) if rnd.trick is not None else 0)
-            row, train, w64, served = label(bots, rnd, seat, deal, index, cards, rec, pol[seat])
+            row, train, w64, wconfirm, served = label(bots, rnd, seat, deal, index, cards, rec, pol[seat])
             assert before == (json.dumps(rnd.hands), len(rnd.history), len(rnd.trick.plays) if rnd.trick is not None else 0)
             row["live_secs"] = live_secs
             fh.write(json.dumps(row) + "\n")
@@ -456,7 +507,7 @@ def play_deal(cfg, deal, gidx, fh, rows_e, rows_s, cfh):
             if train is not None:
                 rows_e.append(train)
                 if cfh is not None:
-                    cfh.write((json.dumps(capsule_of(rnd, seat, D, w64, served, deal, index, dkey, kind == "first", served_seed)) + "\n").encode())
+                    cfh.write((json.dumps(capsule_of(rnd, seat, D, w64, served, deal, index, dkey, kind == "first", served_seed, wconfirm)) + "\n").encode())
         else:
             live = rec_fields(rec, pol[seat])
             sel = selected_action(rec) if not single else None
@@ -503,6 +554,7 @@ def write_rows(prefix, rows):
 
 SOURCE_SHA256 = file_sha256(os.path.realpath(__file__))
 HARNESS_SHA256 = file_sha256(os.path.join(HERE, "exploit_duel_s61.py"))
+SERVED_BASE_SHA256 = file_sha256(os.path.join(HERE, "served_base.py"))
 KNOBS = ("late_trick", "late_lead_prob", "prob_follow", "expert_cap_secs", "record_capsule", "served_env", "expert_env")
 
 
@@ -518,7 +570,7 @@ def header_row(cfg, shard, seed0, deals):
             "expert_env": [list(x) for x in cfg["expert_env"]], "served_worlds": dmake(0).worlds, "expert_worlds": emake(0).worlds,
             "expert_cap_secs": cfg["expert_cap_secs"], "late_trick": cfg["late_trick"], "late_lead_prob": cfg["late_lead_prob"],
             "prob_follow": cfg["prob_follow"], "record_capsule": cfg["record_capsule"], "rows_units": ROWS_UNITS,
-            "enc_version": int(ENC_VERSION), "input_dim": input_dim(ENC_VERSION), "source_sha256": SOURCE_SHA256, "harness_sha256": HARNESS_SHA256,
+            "enc_version": int(ENC_VERSION), "input_dim": input_dim(ENC_VERSION), "source_sha256": SOURCE_SHA256, "harness_sha256": HARNESS_SHA256, "served_base_sha256": SERVED_BASE_SHA256,
             "pv_sha256": os.environ.get("SHENGJI_PV_SHA256"), "belief_sha256": os.environ.get("SHENGJI_PV_BELIEF_SHA256"),
             "fly_toml_sha256": duel._sha256(duel.REPO / "fly.toml"), "python": platform.python_version(),
             "numpy": np.__version__, "fast": os.environ.get("SHENGJI_FAST")}
@@ -528,7 +580,7 @@ def shard_binding(cfg, shard, seed0, deals):
     """What a completed shard must have been produced from: its window, plan base, knobs and the producing sources."""
     return {"shard": shard, "seed0": seed0, "deals": deals, "plan_base": cfg["plan_base"], "plan": PLAN, "schema": PROBE_SCHEMA, "probe_rev": PROBE_REV,
             "knobs": {k: ([list(x) for x in cfg[k]] if k in ("served_env", "expert_env") else cfg[k]) for k in KNOBS},
-            "source_sha256": SOURCE_SHA256, "harness_sha256": HARNESS_SHA256}
+            "source_sha256": SOURCE_SHA256, "harness_sha256": HARNESS_SHA256, "served_base_sha256": SERVED_BASE_SHA256}
 
 
 def verify_completed_shard(final, cfg, shard, seed0, deals):
@@ -610,7 +662,7 @@ def main(argv=None):
     if a.deals % a.shards:
         raise SystemExit("REFUSING: --deals must divide evenly over --shards")
     per = a.deals // a.shards
-    expert_env = dict(EXPERT_ENV)
+    expert_env = dict(served_base.expert_env(os.environ))      # EXPERT_ENV, and the base's EXPERT_DROPS rules removed
     expert_env.update(dict(duel._parse_env(a.expert_env)))      # a TEST override replaces the expert's own value for that key
     cfg = dict(served_env=duel._parse_env(a.served_env), expert_env=tuple(sorted(expert_env.items())),
                late_trick=a.late_trick, late_lead_prob=a.late_lead_prob, prob_follow=a.prob_follow,
@@ -647,7 +699,7 @@ def main(argv=None):
                    "expert_env": [list(x) for x in cfg["expert_env"]], "expert_cap_secs": a.expert_cap_secs,
                    "late_trick": a.late_trick, "late_lead_prob": a.late_lead_prob, "prob_follow": a.prob_follow, "record_capsule": bool(a.record_capsule),
                    "rows_units": ROWS_UNITS, "enc_version": int(ENC_VERSION), "input_dim": input_dim(ENC_VERSION),
-                   "source_sha256": SOURCE_SHA256, "harness_sha256": HARNESS_SHA256, "resumed": bool(a.resume), "shards_skipped": sum(1 for r in results if r["skipped"]),
+                   "source_sha256": SOURCE_SHA256, "harness_sha256": HARNESS_SHA256, "served_base_sha256": SERVED_BASE_SHA256, "resumed": bool(a.resume), "shards_skipped": sum(1 for r in results if r["skipped"]),
                    **tot, "wall_secs": time.time() - t0, "shards_detail": results}, fh, sort_keys=True)
         fh.write("\n")
     os.replace(tmp, summary)

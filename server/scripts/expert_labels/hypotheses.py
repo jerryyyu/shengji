@@ -1,4 +1,4 @@
-"""Exploit hypotheses for exploit_duel.py: scripted overrides of release 45.
+"""Exploit hypotheses for exploit_duel_s61.py: scripted overrides of release 45.
 
 A hypothesis sees only what its seat may see (its own hand, public history,
 its own team's bury) unless it is labelled CHEAT (a calibration bound, not an
@@ -53,7 +53,6 @@ class Identity(Base):
     """Exploiter wrapper with no override: must read exactly 0 on every deal."""
 
 
-# --------------------------------------------------------------------------
 # CHEAT bounds (hidden information; calibration only, not exploits)
 
 def _patch_sampler(bot, fn):
@@ -109,7 +108,6 @@ class CheatPartner(Base):
         return got
 
 
-# --------------------------------------------------------------------------
 # Legal exploits
 
 @register("bury-declared")

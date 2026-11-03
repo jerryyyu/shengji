@@ -298,6 +298,41 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-perf '
   echo "  Performance host probe FAILED — state UNKNOWN (not idle)"
 fi
 
+hdr "ULTRA — M5 Mac Studio (macOS): load, memory, host lock, running lanes"
+# macOS has no /proc, nproc or free: load and memory come from shengji.ops.hostinfo run with the Ultra's own checkout
+# venv.  The host lock follows the fleet-root convention (FLEET_ROOT=/Users/jeryyu/fleet); the $HOME lock is reported
+# as well because the expert-label lane holds its lock there.  The `ultra` alias lives only in the operator's SSH config.
+# ULTRA_SERVER names the server/ tree whose hostinfo answers (default: the Ultra's checkout); the venv is that checkout's.
+if ! ssh -o BatchMode=yes -o ConnectTimeout=8 ultra /bin/bash -s -- "${ULTRA_SERVER:-/Users/jeryyu/Projects/shengji/server}" <<'ULTRA'
+  echo "  Host: $(hostname)"
+  SRV=$1; PY=/Users/jeryyu/Projects/shengji/server/.venv/bin/python
+  if [ -x "$PY" ] && PYTHONPATH=$SRV "$PY" -c "import shengji.ops.hostinfo" 2>/dev/null; then
+    PYTHONPATH=$SRV "$PY" -m shengji.ops.hostinfo load | python3 -c 'import json, sys
+v = json.load(sys.stdin); print("  Capacity: %d CPUs; load %s" % (v["cpus"], " ".join("%.2f" % x for x in v["loadavg"])))'
+    PYTHONPATH=$SRV "$PY" -m shengji.ops.hostinfo mem | python3 -c 'import json, sys
+v = json.load(sys.stdin); print("  Memory: total %.1f GiB; available %.1f GiB" % (v["total_bytes"] / 2**30, v["available_bytes"] / 2**30))'
+  else
+    echo "  !! shengji.ops.hostinfo is not importable from $SRV: load and memory UNKNOWN (fast-forward the checkout)"
+  fi
+  for lock in /Users/jeryyu/fleet/.claude-host.lock "$HOME/.claude-host.lock"; do
+    if [ -d "$lock" ]; then echo "  Host lock $lock: HELD ($(head -c 120 "$lock/owner" 2>/dev/null | tr "\n" " "))"
+    else echo "  Host lock $lock: free"; fi
+  done
+  for hold in /Users/jeryyu/fleet/claude_screen.HOLD "$HOME/claude_screen.HOLD"; do
+    [ -e "$hold" ] && echo "  !! HOLD present: $hold"
+  done
+  echo "  --- lane launchers (bash claude_*.sh): pid, elapsed, %cpu, command"
+  ps -Axo pid=,etime=,%cpu=,command= | awk '$4 ~ /^(\/bin\/)?bash$/ && $5 ~ /claude_.*\.sh/ {print "  " $0}'
+  n=$(ps -Axo pid=,comm= | awk 'tolower($0) ~ /python/ {n++} END {print n+0}')
+  echo "  Python processes visible: $n"
+  if [ "$n" -eq 0 ]; then
+    echo "  !! ZERO ROWS = UNKNOWN, not IDLE; reconcile expected PIDs and status files"
+  fi
+ULTRA
+then
+  echo "  Ultra probe FAILED — state UNKNOWN (not idle)"
+fi
+
 hdr "INTEGRITY — process identity + dataset provenance"
 # Aggregates (hot count / total CPU) hide orphans: a worker that survives
 # pkill keeps writing into the live dataset. Identify EVERY long-running

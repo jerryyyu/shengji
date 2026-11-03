@@ -4,12 +4,18 @@
 This entrypoint is deliberately independent of the package installation.  It
 is useful when a shared virtualenv may still have an editable install from a
 different checkout.
+
+An interpreter that cannot import pytest never runs the tests: the script
+re-executes itself under the checkout's ``server/.venv/bin/python`` (once,
+guarded by an environment marker) and refuses with a nonzero status when that
+virtualenv is missing or also lacks pytest.
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 import os
 from pathlib import Path
 import sys
@@ -19,6 +25,10 @@ from types import ModuleType
 SERVER_DIR = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = SERVER_DIR / "shengji"
 NO_TESTS_COLLECTED = 5  # pytest.ExitCode.NO_TESTS_COLLECTED; always nonzero, never a pass
+VENV_DIR = SERVER_DIR / ".venv"
+VENV_PYTHON = VENV_DIR / "bin" / "python"
+REEXEC_MARKER = "SHENGJI_TEST_CHECKOUT_REEXEC"
+NO_PYTEST = 3
 
 
 class CheckoutError(RuntimeError):
@@ -132,6 +142,51 @@ def _prepare_imports(engine: str) -> tuple[ModuleType, ModuleType]:
     return shengji, legal
 
 
+def _running_checkout_venv() -> bool:
+    try:
+        return Path(sys.prefix).resolve() == VENV_DIR.resolve()
+    except OSError:
+        return False
+
+
+def _ensure_pytest(words: list[str]) -> int | None:
+    """Return None when pytest is importable; otherwise re-execute under the
+    checkout virtualenv (which does not return) or return a refusal status.
+    A run without pytest would die on ModuleNotFoundError, which a caller
+    reading only the tail of the output can mistake for a pass."""
+    if importlib.util.find_spec("pytest") is not None:
+        return None
+    current = sys.executable or "<unknown interpreter>"
+    if os.environ.get(REEXEC_MARKER) or _running_checkout_venv():
+        print(
+            f"test checkout refused: pytest is not importable by {current} "
+            f"(checkout virtualenv {VENV_DIR}); run `uv sync --group dev` in "
+            f"{SERVER_DIR}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return NO_PYTEST
+    if not os.access(VENV_PYTHON, os.X_OK):
+        print(
+            f"test checkout refused: pytest is not importable by {current} and "
+            f"the checkout virtualenv interpreter {VENV_PYTHON} is missing; run "
+            f"`uv sync --group dev` in {SERVER_DIR}, or run this script with an "
+            f"interpreter that has pytest",
+            file=sys.stderr,
+            flush=True,
+        )
+        return NO_PYTEST
+    print(
+        f"test_checkout: pytest is not importable by {current}; "
+        f"re-executing under {VENV_PYTHON}",
+        file=sys.stderr,
+        flush=True,
+    )
+    os.environ[REEXEC_MARKER] = "1"
+    os.execv(str(VENV_PYTHON), [str(VENV_PYTHON), str(Path(__file__).resolve()), *words])
+    return NO_PYTEST  # unreachable: execv replaces the process or raises
+
+
 def _arguments(argv: list[str] | None) -> tuple[str, list[str]]:
     parser = argparse.ArgumentParser(
         description="run pytest using this checkout's source tree",
@@ -149,7 +204,11 @@ def _arguments(argv: list[str] | None) -> tuple[str, list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    engine, pytest_args = _arguments(argv)
+    words = list(sys.argv[1:] if argv is None else argv)
+    refused = _ensure_pytest(words)
+    if refused is not None:
+        return refused
+    engine, pytest_args = _arguments(words)
     print(f"checkout source: {SERVER_DIR}", flush=True)
     print(f"engine mode: {engine}", flush=True)
     try:

@@ -68,12 +68,32 @@ each candidate kitty's expected bonus (`bury_kitty_charge.charged_choice`); its
 record key is ``kitty_charge``.  Off (``bury_kitty_charge`` False, the class
 default) the chooser is the code above, byte for byte.
 
+Optional belief worlds (``SHENGJI_PV_BURY_BELIEF_WORLDS=1``, ``bury_belief_worlds``;
+only with the chooser on and the play's belief proposal configured, exclusive with
+the second stage and with ``vdsb``; bury-name token ``bbw`` after
+``bwv``/``bwv2``/``bkc``): the ``model_worlds`` worlds the candidates are scored on
+come from the bot's belief package (`belief_bury_worlds`) instead of the
+``mc-s0-report-lcb`` helper's split sampler.  The belief model is trained on play
+states, so the bury state is presented as its information-equivalent twin, the
+banker's trick-1 lead after burying the heuristic incumbent: the other three
+hands' posterior is the same at bury and at that lead, the declaration pins and
+the draw constraints (`ai.history_legality.draw_constraints`) hold, and the
+banker's own 33-card hand completes each world.  The draw has its own stream
+(`belief_seed`), so the play sampler's RNG is untouched.  Any
+error but the bury budget falls back, for that decision, to the helper's worlds
+exactly as without the flag, recorded as ``bury_belief_fallbacks`` 1 with
+``bury_belief_error`` its type.  On, the record gains ``bury_belief_worlds``,
+``bury_belief_fallbacks``, ``bury_belief_error`` and ``bury_belief_ms``.  Off
+(``bury_belief_worlds`` False, the class default) the chooser is the code above,
+byte for byte.
+
 Off (the default) nothing here is called by a decision: the bot's
 `_decide_bury` is the mixin's, every name, digest and record are unchanged.
 """
 
 from __future__ import annotations
 
+import copy
 import time
 from collections import Counter
 from dataclasses import asdict
@@ -86,7 +106,7 @@ from ..engine.cards import TRUMP, points
 from .bury_kitty_charge import RECORD_KEY as KITTY_CHARGE_RECORD_KEY, charged_choice
 from .bury_two_stage import RECORD_KEY as TWO_STAGE_RECORD_KEY, run_stage_two
 from .cwv_bury import score_bury_candidates
-from .cwv_bury_policy import BuryPolicyError, _seed, _worlds
+from .cwv_bury_policy import BuryBudgetExceeded, BuryPolicyError, _seed, _worlds
 
 #: the default cap on the widened candidate set (the incumbent included)
 WIDE_K_DEFAULT = 32
@@ -103,6 +123,10 @@ CHOOSER = "value-argmax-over-model-worlds"
 TOKEN = "bwv"
 #: the bury-name token with two-card swaps (``...-bury-<arm>-bwv2-<12 hex>``)
 TOKEN_TWO_SWAPS = "bwv2"
+#: the bury-name token of the belief worlds (``...-bury-<arm>-bwv-bbw-<12 hex>``)
+TOKEN_BELIEF_WORLDS = "bbw"
+#: the belief worlds' identity inside the ``cwv-bury-recipe-v1`` digest
+BELIEF_WORLDS_SOURCE = "belief-proposal-trick1-twin-v1"
 
 
 def check_wide_k(k) -> int:
@@ -256,6 +280,68 @@ def wide_bury_candidates(rnd, banker: int, ballot, k: int,
     return candidates, counts
 
 
+def belief_seed(bot: Any) -> int:
+    """The belief draw's stream: bury-only, derived from the bot seed as the
+    helper bots' are, so the play sampler's RNG is never consumed."""
+    return _seed("belief", bot.seed)
+
+
+def belief_bury_worlds(bot: Any, model_bot: Any, rnd, seat: int, incumbent, count: int,
+                       check_budget=None) -> list:
+    """``count`` complete bury worlds drawn by the bot's belief package
+    (`ai.belief_numpy.BeliefProposal`) on the trick-1 twin of the bury state
+    (module docstring), each validated and canonicalised by the helper bot's
+    `_complete_determinized_hands` exactly as its own worlds are.  Errors
+    propagate: the caller falls back."""
+    from ..ai.belief_numpy import BeliefNumpyError, BeliefProposal
+    from ..ai.history_legality import draw_constraints
+    if check_budget is not None:
+        check_budget()
+    if bot.belief_model is None:
+        raise BeliefNumpyError("no belief package bound")
+    twin = copy.deepcopy(rnd)
+    twin.bury(seat, list(incumbent))
+    native = {"native": True} if getattr(bot, "world_fast", False) else {}
+    propose = BeliefProposal(bot.belief_model, twin, seat, (), seed=belief_seed(bot),
+                             batch=count, forbidden=draw_constraints(twin, seat),
+                             check_budget=check_budget,
+                             capacity=bool(getattr(bot, "belief_capacity", False)), **native)
+    kitty = Counter(incumbent)
+    worlds = []
+    for _ in range(count):
+        hands, buried = propose(twin, seat, None)
+        if Counter(buried) != kitty:
+            raise BuryPolicyError("belief world moved the twin's kitty")
+        worlds.append((model_bot._complete_determinized_hands(rnd, seat, hands, buried=[]), []))
+    if check_budget is not None:
+        check_budget()
+    return worlds
+
+
+def _model_worlds(bot: Any, model_bot: Any, rnd, seat: int, incumbent, count: int, options):
+    """The chooser's worlds: the helper's split sampler, or (``bury_belief_worlds``)
+    the belief draw with the helper's worlds as its per-decision fallback.
+    Returns ``(worlds, attempts, belief)``; ``belief`` is None with the flag off,
+    else the record's ``bury_belief_*`` fields."""
+    if not getattr(bot, "bury_belief_worlds", False):
+        worlds, attempts = _worlds(model_bot, rnd, seat, count, "model", **options)
+        return worlds, attempts, None
+    t0 = time.perf_counter()
+    try:
+        worlds = belief_bury_worlds(bot, model_bot, rnd, seat, incumbent, count, **options)
+        attempts, error = count, None
+    except BuryBudgetExceeded:
+        raise
+    except Exception as exc:
+        worlds, attempts = _worlds(model_bot, rnd, seat, count, "model", **options)
+        error = type(exc).__name__
+    belief = {"bury_belief_worlds": True,
+              "bury_belief_fallbacks": int(error is not None),
+              "bury_belief_error": error,
+              "bury_belief_ms": round(1e3 * (time.perf_counter() - t0), 3)}
+    return worlds, attempts, belief
+
+
 def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
                            check_budget=None, progress) -> list[str]:
     """The chooser, in the mixin's `_decide_bury` slot (the mixin's
@@ -278,7 +364,8 @@ def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
     model_bot = make_bot("mc-s0-report-lcb", seed=_seed("model", bot.seed))
     model_counter_before = bot._counter(model_bot)
     progress["model_positions"] = None
-    model_worlds, model_attempts = _worlds(model_bot, rnd, seat, worlds, "model", **options)
+    model_worlds, model_attempts, belief = _model_worlds(bot, model_bot, rnd, seat, incumbent,
+                                                         worlds, options)
     leaf = bot._leaf_first_trick(model_bot.rollout_policy, check_budget)
     if leaf is None:
         first_trick = {"first_trick_policy": model_bot.rollout_policy}
@@ -355,6 +442,8 @@ def decide_wide_value_bury(bot: Any, rnd, seat: int, *, started, incumbent,
             **counts,
         },
     }
+    if belief is not None:
+        bot.last_bury_record.update(belief)
     if kitty_charge is not None:
         bot.last_bury_record[KITTY_CHARGE_RECORD_KEY] = kitty_charge
     if two_stage is not None:

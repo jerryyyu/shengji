@@ -1163,6 +1163,34 @@
       "host": "shengji-cloud",
       "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
       "note": "g3da DEV duel = G3 duel D-A (board #1075 row G3): Y served on the G3 Stage A play package (g3A-e04-ema, value and prior f4f4127e; no separate prior) vs Y as served (491ee4bf), one arm x, 3,920 paired seat-swapped rank-mixed deals from seed0 245810910, r2 plan, 14 workers, launcher claude_g3da_cloud.final.sh, reservation /root/claude_reservations/g3da.json, output root /root/vol-dev-claude-g3da-y-20261102. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) is CLEAR against A's own exposure (epoch-04.avg.pt a09cef7c with its receipt) and smv3 3e89e86f with --follow-init (A's init, with its JS3-M1 / JS-M1 ancestors)."
+    },
+    {
+      "name": "g3dsc-rehearsal-245460600",
+      "purpose": "screen",
+      "seed0": 245460600,
+      "clusters": 56,
+      "span": [
+        245460600,
+        245460656
+      ],
+      "created_at": "2026-11-03T04:30:00Z",
+      "host": "shengji-perf",
+      "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+      "note": "g3dsc host rehearsal block (non-scientific execution evidence) for the fresh-seed confirmation of the G3 split-package duel g3ds: the final launcher's exact child for arm x (g3ds's arm: Y on the G3 Stage A value package Ae04 f4f4127e + P0's FT1 prior 1fa201b2 vs Y as served) on perf, tree /root/claude-m30y-src-1bad9a2d, launcher claude_g3dsc_perf.sh sha256 81e9e877.... Dealt by that rehearsal on 2026-11-03 (03:53-03:56Z, before this entry); registered so no later run reuses these decks."
+    },
+    {
+      "name": "g3dsc-lane-245710910",
+      "purpose": "screen",
+      "seed0": 245710910,
+      "clusters": 3920,
+      "span": [
+        245710910,
+        245714830
+      ],
+      "created_at": "2026-11-03T04:30:00Z",
+      "host": "shengji-perf",
+      "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+      "note": "g3dsc CONFIRMATION duel = fresh-seed confirmation of g3ds (board #1075 row G3; g3ds read DEV_PASS +0.0307 [+0.0161, +0.0459] on 245690910): the same arm, Y served on the G3 Stage A value package Ae04 (f4f4127e, EMA export of a09cef7c) with P0's FT1 as a separate policy prior (1fa201b2) vs Y as served (491ee4bf), one arm x, 3,920 paired seat-swapped rank-mixed deals from seed0 245710910, r2 plan, 14 workers, launcher claude_g3dsc_perf.sh sha256 81e9e877..., reservation /root/claude_reservations/g3dsc.json, output root /root/vol-dev-claude-g3dsc-y-20261103; CONFIRMED iff mean >= +0.010 and 95% CI lower > 0, judged alone, never pooled with g3ds. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) is CLEAR against A's checkpoint a09cef7c and receipt, smv3 3e89e86f with --follow-init (A's init; JS3-M1 / JS-M1 reached), and FT1 0def7b31 with M28 CAT 11f453a1 (--follow-init; m30y's FT1 set)."
     }
   ]
 }

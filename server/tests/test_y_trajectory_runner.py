@@ -71,6 +71,8 @@ def test_served_y_and_split_reach_real_bot_and_manifest(tmp_path, tmp_path_facto
         "SHENGJI_PV_SINGLETON_CHALLENGER": "1", "SHENGJI_PV_LEAD_CONFIRM": "32",
         "SHENGJI_PV_BURY_ARM": "hybrid",
     }
+    if os.environ.get("SHENGJI_FAST") == "1":
+        env["SHENGJI_FAST"] = "1"
     # Restore the complete environment after the runner's deliberate isolation.
     monkeypatch.setattr(os, "environ", os.environ.copy())
     for k in list(os.environ):
@@ -99,6 +101,20 @@ def test_served_y_and_split_reach_real_bot_and_manifest(tmp_path, tmp_path_facto
         assert captured.checkpoint_sha256 == value_sha
         assert captured.prior_sha256 == expected_prior
         assert captured.serving_budget_seconds == 3 and captured.bury_serving_budget_seconds == 2
+        import subprocess
+        import sys
+        worker = """
+import json, random, sys
+from shengji.harvest.trajectory import make_trajectory_bot
+config = json.loads(sys.stdin.read())
+bot = make_trajectory_bot(config, seed=1, explore_rng=random.Random(2))
+print(json.dumps([bot.checkpoint_sha256, bot.prior_sha256,
+                  bot.serving_budget_seconds, bot.bury_serving_budget_seconds]))
+"""
+        fresh = subprocess.run([sys.executable, "-c", worker], input=json.dumps(config),
+                               text=True, capture_output=True, env=dict(os.environ), timeout=30)
+        assert fresh.returncode == 0, fresh.stderr
+        assert json.loads(fresh.stdout) == [value_sha, expected_prior, 3, 2]
         runtime = config["served_runtime"]
         assert runtime["SHENGJI_Y_CAPTURE_HOST"] == runner.platform.node()
         assert runtime["SHENGJI_Y_CAPTURE_RECIPE_MODE"] == "served-y"

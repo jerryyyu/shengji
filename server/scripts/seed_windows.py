@@ -12,6 +12,9 @@ candidate span [SEED0, SEED0 + CLUSTERS) would overlap and exits 1 when it
 overlaps any (2 when a --purpose's always-refused overlap is hit: a
 trajectory refuses every overlap, a screen / calibration any trajectory).
 ``$SHENGJI_SEED_WINDOWS`` or ``--registry`` selects another registry file.
+Every command reads the registry file together with its per-entry directory
+(``runs/seed_windows.d/<name>.json`` beside the committed file; see
+``shengji.seeds.load``).
 
 ``clear`` is the check a screen needs before it deals (``shengji.train.seed_clearance``): the
 registry check for every window, then the DEAL KEYS of every scheduled deal intersected with each
@@ -127,7 +130,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         registry = seeds.load(args.registry)
         if args.command == "list":
-            print(f"{seeds.registry_path(args.registry)}: {len(registry['windows'])} window(s)")
+            from_dir = len(seeds.load_dir(seeds.registry_dir(args.registry)))
+            print(f"{seeds.registry_path(args.registry)}: {len(registry['windows'])} window(s)"
+                  + (f" ({from_dir} from {seeds.registry_dir(args.registry)})" if from_dir else ""))
             for w in sorted(registry["windows"], key=lambda w: (w["seed0"], w["name"])):
                 print(f"  [{w['span'][0]}, {w['span'][1]}) {w['purpose']:<11} "
                       f"{w['name']:<32} clusters={w['clusters']:<6} {w['created_at']}"

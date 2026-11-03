@@ -46,6 +46,14 @@ registry inside the lock and sees the first.
 
 ``SHENGJI_SEED_WINDOWS`` points the registry elsewhere (tests; a scratch
 registry); the default is the committed file.
+
+A registry is the JSON file plus its sibling directory ``<stem>.d`` (for the
+committed file, ``server/runs/seed_windows.d``) holding one entry per
+``<name>.json`` file, so independent registrations do not edit the same
+lines.  ``load`` returns the file's windows followed by the directory's,
+sorted by filename, and refuses a directory file that is not one valid
+object entry, whose filename is not ``<name>.json``, or whose name is
+already registered.  ``register`` appends to the JSON file only.
 """
 from __future__ import annotations
 
@@ -101,10 +109,54 @@ def registry_path(path: str | os.PathLike | None = None) -> Path:
     return Path(override) if override else DEFAULT_REGISTRY
 
 
-def load(path: str | os.PathLike | None = None) -> dict:
-    """The registry document (``{"schema", "windows": [...]}``); a missing
-    file is an empty registry so a scratch path works from nothing."""
+def registry_dir(path: str | os.PathLike | None = None) -> Path:
+    """The per-entry directory beside the registry file: ``<stem>.d``."""
     file = registry_path(path)
+    return file.with_name(file.stem + ".d")
+
+
+def load(path: str | os.PathLike | None = None) -> dict:
+    """The registry document (``{"schema", "windows": [...]}``): the JSON
+    file's windows, then every ``<stem>.d/*.json`` entry sorted by filename.
+    A missing file or directory contributes no windows, so a scratch path
+    works from nothing."""
+    file = registry_path(path)
+    doc = _load_file(file)
+    names = {entry["name"] for entry in doc["windows"]}
+    windows = list(doc["windows"])
+    for entry in load_dir(registry_dir(file)):
+        if entry["name"] in names:
+            raise SeedWindowError(f"{registry_dir(file)}: window {entry['name']!r} is "
+                                  f"already registered in {file}")
+        names.add(entry["name"])
+        windows.append(entry)
+    return {**doc, "windows": windows}
+
+
+def load_dir(directory: str | os.PathLike) -> list[dict]:
+    """The one-entry files ``<directory>/*.json`` in filename order; each
+    must hold one valid entry object named after its file."""
+    directory = Path(directory)
+    if not directory.is_dir():
+        return []
+    entries = []
+    for item in sorted(directory.glob("*.json"), key=lambda f: f.name):
+        try:
+            entry = json.loads(item.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise SeedWindowError(f"{item}: not valid JSON ({exc})") from exc
+        if not isinstance(entry, dict):
+            raise SeedWindowError(f"{item}: not a window object")
+        _validate(entry, item)
+        if item.name != f"{entry['name']}.json":
+            raise SeedWindowError(f"{item}: filename must be the window name "
+                                  f"{entry['name']!r} + '.json'")
+        entries.append(entry)
+    return entries
+
+
+def _load_file(file: Path) -> dict:
+    """The JSON registry file alone (what ``register`` rewrites)."""
     if not file.exists():
         return {"schema": SCHEMA, "windows": []}
     try:
@@ -267,8 +319,7 @@ def _register_locked(entry: dict, path=None, *, reuse: bool = False) -> dict:
     """``register`` inside an already-held registry lock."""
     file = registry_path(path)
     _validate(entry, "new entry")
-    registry = load(file)
-    existing = find(registry, entry["name"])
+    existing = find(load(file), entry["name"])
     if existing is not None:
         same = (existing["seed0"], existing["clusters"]) == (entry["seed0"], entry["clusters"])
         if reuse and same:
@@ -280,8 +331,9 @@ def _register_locked(entry: dict, path=None, *, reuse: bool = False) -> dict:
             + ("" if same else f"; the requested span [{entry['span'][0]}, "
                                f"{entry['span'][1]}) differs")
             + "; a resume must reuse its own window, a new run needs a new name")
-    registry["windows"].append(entry)
-    _atomic_write(file, json.dumps(registry, indent=2, sort_keys=False) + "\n")
+    document = _load_file(file)
+    document["windows"].append(entry)
+    _atomic_write(file, json.dumps(document, indent=2, sort_keys=False) + "\n")
     return entry
 
 

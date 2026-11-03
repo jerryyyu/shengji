@@ -196,3 +196,87 @@ def test_release50_wiring_matches_its_manifest():
     if not {"g3A-e04-ema", "p0-ft1-1fa201b2", "s58-e6-42444515"} <= set(paths):
         pytest.skip("set SHENGJI_RELEASE_PACKAGE_DIR to a directory holding release 50's packages")
     _check_wiring(manifest, paths)
+
+
+class _StampBot:
+    """A stand-in served bot for the report producer: the heuristic's decisions, and per
+    stage the record ``stamp(stage)`` returns (``model_ids`` from the manifest's table)."""
+
+    def __init__(self, manifest, stamp):
+        from shengji.ai.heuristic import HeuristicBot
+        self.policy_name = manifest["bot_name"]
+        self.heuristic = HeuristicBot()
+        self.ids = releases.expected_model_ids(manifest)
+        self.stamp = stamp
+        self.stage = None
+
+    def record(self, stage):
+        return self.stamp(stage, {"schema": "stub-v1", "model_ids": dict(self.ids[stage])})
+
+    def decide_declare(self, rnd, seat, final=False):
+        self.last_declare_record = self.record("declare")
+        return self.heuristic.decide_declare(rnd, seat, final=final)
+
+    def decide_bury(self, rnd, seat):
+        self.last_bury_record = self.record("bury")
+        return self.heuristic.decide_bury(rnd, seat)
+
+    def decide_play(self, rnd, seat):
+        lead = rnd.trick is None or not rnd.trick.plays
+        stage = ("endgame" if len(rnd.hands[seat]) <= releases.ENDGAME_CARDS
+                 else "lead" if lead else "follow")
+        self.last_decision_record = self.record(stage)
+        return self.heuristic.decide_play(rnd, seat)
+
+
+def _stub_report(monkeypatch, stamp):
+    """`releases.wiring` on r49 with the bot replaced by `_StampBot` and the witnessed
+    packages and samplers set to the manifest's, so only the records can disagree."""
+    manifest = r49()
+    want = releases.expected_wiring(manifest)
+    monkeypatch.setattr(releases, "local_env", lambda m, paths: dict(m["env"]))
+    monkeypatch.setattr(releases, "_build",
+                        lambda env, full, seed: ("pv-search", _StampBot(manifest, stamp)))
+    monkeypatch.setattr(releases._Witness, "stage_report",
+                        lambda self, stage: {**copy.deepcopy(want[stage]), "counts": {}})
+    paths = {name: "unused" for name in manifest["packages"]}
+    return manifest, releases.wiring(manifest, paths)
+
+
+def test_a_normal_report_through_the_producer_has_no_mismatch(monkeypatch):
+    manifest, report = _stub_report(monkeypatch, lambda stage, record: record)
+    ids = releases.expected_model_ids(manifest)
+    for stage in releases.STAGES:
+        seen = report["stages"][stage]
+        assert seen["decisions"] >= 1
+        assert seen["model_ids"] == [ids[stage]] * seen["decisions"]
+        assert seen["schemas"] == ["stub-v1"] and seen["fallback_reasons"] == []
+    assert releases.wiring_mismatches(manifest, report) == []
+
+
+@pytest.mark.parametrize("stage", ["bury", "lead", "follow", "endgame"])
+@pytest.mark.parametrize("bad", ["none", "no-model-ids"])
+def test_a_decision_without_a_stamped_record_is_a_mismatch(monkeypatch, stage, bad):
+    def stamp(at, record):
+        if at != stage:
+            return record
+        return None if bad == "none" else {"schema": "stub-v1"}
+    manifest, report = _stub_report(monkeypatch, stamp)
+    assert report["stages"][stage]["decisions"] >= 1
+    problems = releases.wiring_mismatches(manifest, report)
+    assert problems and all(p.startswith(f"{stage}:") for p in problems), problems
+    assert any("no model_ids stamp" in p for p in problems), problems
+
+
+def test_a_report_with_fewer_stamps_than_decisions_is_a_mismatch():
+    manifest = r49()
+    report = {"stages": {}}
+    for stage, row in releases.expected_wiring(manifest).items():
+        report["stages"][stage] = {**copy.deepcopy(row), "decisions": 1,
+                                   "model_ids": [releases.expected_model_ids(manifest)[stage]]}
+    report["stages"]["lead"]["model_ids"] = []
+    report["stages"]["bury"]["model_ids"] = [{"value": "x"}]
+    problems = releases.wiring_mismatches(manifest, report)
+    assert len(problems) == 2, problems
+    assert problems[0].startswith("bury record model_ids {'value': 'x'}")
+    assert problems[1] == "lead: 1 decisions witnessed, 0 model_ids stamps"

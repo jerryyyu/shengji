@@ -239,7 +239,8 @@ def expected_model_ids(manifest: Mapping[str, Any], chars: int = 8) -> dict[str,
 def wiring_mismatches(manifest: Mapping[str, Any], report: Mapping[str, Any]) -> list[str]:
     """Every way the witnessed ``report`` differs from the manifest's stage table: a package
     or sampler a stage used that the manifest does not list, or one it lists that the stage
-    never used; and a decision record whose ``model_ids`` differ from the table's."""
+    never used; a witnessed decision without a stamped ``model_ids`` record; and a decision
+    record whose ``model_ids`` differ from the table's."""
     problems = []
     want = expected_wiring(manifest)
     ids = expected_model_ids(manifest)
@@ -256,8 +257,15 @@ def wiring_mismatches(manifest: Mapping[str, Any], report: Mapping[str, Any]) ->
                 problems.append(f"{stage}: a witnessed decision fell back ({schema})")
         for reason in seen.get("fallback_reasons", ()):
             problems.append(f"{stage}: a witnessed decision fell back ({reason})")
-        for got in seen["model_ids"]:
-            if got != ids[stage]:
+        stamped = seen["model_ids"]
+        if len(stamped) != seen["decisions"]:
+            problems.append(f"{stage}: {seen['decisions']} decisions witnessed, "
+                            f"{len(stamped)} model_ids stamps")
+        for got in stamped:
+            if not isinstance(got, dict):
+                problems.append(f"{stage}: a witnessed decision carries no model_ids stamp "
+                                f"(record absent, not a dict, or without model_ids)")
+            elif got != ids[stage]:
                 problems.append(f"{stage} record model_ids {got}, manifest {ids[stage]}")
     return problems
 
@@ -475,7 +483,9 @@ def wiring(manifest: Mapping[str, Any], paths: Mapping[str, str | os.PathLike], 
     for stage in STAGES:
         row = witness.stage_report(stage)
         row["decisions"] = len(records.get(stage, ()))
-        row["model_ids"] = [r.get("model_ids") for r in records.get(stage, ()) if isinstance(r, dict)]
+        # one entry per decision: None where the record is absent or carries no model_ids
+        row["model_ids"] = [r.get("model_ids") if isinstance(r, dict) else None
+                            for r in records.get(stage, ())]
         row["schemas"] = sorted({str(r.get("schema")) for r in records.get(stage, ())
                                  if isinstance(r, dict)})
         row["fallback_reasons"] = sorted({str(r["fallback_reason"]) for r in records.get(stage, ())

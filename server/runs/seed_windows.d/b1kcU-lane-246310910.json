@@ -1,0 +1,14 @@
+{
+ "name": "b1kcU-lane-246310910",
+ "purpose": "screen",
+ "seed0": 246310910,
+ "clusters": 3920,
+ "span": [
+  246310910,
+  246314830
+ ],
+ "created_at": "2026-11-03T23:30:00Z",
+ "host": "ultra",
+ "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+ "note": "b1kcU SCREEN duel (board #1075 row G2, the B1k kitty-fix follow-up duel): the release-50 combo (Y served on the G3 Stage A value package Ae04 f4f4127e + P0's FT1 prior 1fa201b2) with the B1kc belief package (B1k 592c79e9 with the kitty-fix correction (b): temperature 1.0178670, kitty logit bias -1.3624; package g2-b1kc-0de02ac6.npz sha256 0de02ac6...) on the exploiter only, vs Y as served (release 49, 491ee4bf, S58 belief), one arm x, 3,920 paired seat-swapped rank-mixed deals from seed0 246310910, r2 plan, 24 workers, on the M5 Ultra; two-stage screen bar: SCREEN_PASS iff mean >= +0.005 and the one-sided 80% deal-bootstrap lower bound > 0; output root /Users/jeryyu/fleet/vol-dev-claude-b1kcU-y-20261103. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) is CLEAR against A's checkpoint a09cef7c and receipt, smv3 3e89e86f with --follow-init (A's init; JS3-M1 / JS-M1 reached), and FT1 0def7b31 with M28 CAT 11f453a1 (--follow-init); the belief lineage (S58 0f48ab1b <- S46r3 433eb4a6: M17 rows by deal hash and seed, S17 rows by seed; B1k's four Y belief stores and excluded windows) is disjoint."
+}

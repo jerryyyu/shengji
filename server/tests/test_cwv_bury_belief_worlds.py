@@ -139,6 +139,7 @@ def test_off_decisions_and_records_reproduce_the_frozen_tape(monkeypatch):
             bot = served_bury(bury_wide_value=True, bury_wide_k=k, bury_belief_worlds=False,
                               belief=False, bury_budget=None)
             chosen, record = decide(bot, index)
+            assert record.pop("model_ids") == bot.model_ids("bury")
             assert tuple(record) == RECORD_KEYS + (bwv.RECORD_KEY,)
             wv = {key: v for key, v in record[bwv.RECORD_KEY].items() if key != "seconds"}
             tape.append([index, k, chosen, without_timing({**record, bwv.RECORD_KEY: wv})])
@@ -190,6 +191,7 @@ def test_on_the_worlds_are_the_belief_proposal_on_the_twin(index, monkeypatch):
     bot = bbw()
     before = bot.sampler.rng.getstate()
     chosen, record = decide(bot, index)
+    assert record.pop("model_ids") == bot.model_ids("bury")
     assert record["schema"] == "cwv-bury-policy-v1"
     assert (record["bury_belief_worlds"], record["bury_belief_fallbacks"],
             record["bury_belief_error"]) == (True, 0, None)
@@ -252,6 +254,7 @@ def test_a_failed_draw_falls_back_to_the_flag_off_worlds_and_is_counted(index, b
     bot = bbw(model=None) if break_it == "model" else bbw()
     before = bot.sampler.rng.getstate()
     chosen, record = decide(bot, index)
+    assert record.pop("model_ids") == bot.model_ids("bury")
     assert record["schema"] == "cwv-bury-policy-v1"
     assert (record["bury_belief_fallbacks"], record["bury_belief_error"]) == (1, error)
     assert chosen == off_chosen

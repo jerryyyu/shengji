@@ -109,14 +109,14 @@ def bot(evaluator=None, *, on=True, budget=None, seed=17, **rules):
 
 def tape(make):
     """Every declare call of the seeded deals: the choice and the record
-    (``seconds`` dropped), as one canonical JSON digest."""
+    (``seconds`` and the ``model_ids`` stamp dropped), as one canonical JSON digest."""
     rows = []
     for seed in TAPE_SEEDS:
         b = make()
 
         def check(before, seat, final, choice, record):
             if record is not None:
-                record = {k: v for k, v in record.items() if k != "seconds"}
+                record = {k: v for k, v in record.items() if k not in ("seconds", "model_ids")}
             rows.append([seed, seat, final, choice, record])
         drive(seed, b, check)
     return hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()

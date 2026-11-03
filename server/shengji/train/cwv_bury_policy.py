@@ -162,6 +162,9 @@ class CWVBuryMixin:
         return None
 
     def decide_bury(self, rnd, seat):
+        # a record describes this bury or none: a refused or raising call
+        # never leaves an earlier bury's record readable as its own
+        self.last_bury_record = None
         if self.bury_serving_budget_seconds is None:
             return self._decide_bury(rnd, seat)
         # Only valid banker decisions can fall back. Never hide a bad caller

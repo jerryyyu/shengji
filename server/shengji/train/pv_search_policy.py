@@ -143,8 +143,19 @@ is refused with the oracle diagnostics (whose worlds bypass the sampler).
 name right after the refusal tokens, and the decision record gains
 ``history_follow_events``, ``history_rejections``,
 ``history_rejections_by_age`` (tricks back from the current one, of the first
-violated follow) and ``history_fallback_worlds``; off, every existing name,
-digest, sampled world and decision record is unchanged.
+violated follow) and ``history_fallback_worlds``, split as
+``history_unchecked_worlds`` (drawn by the sampler's source, kept untested once
+the history budget ran out) plus ``history_fill_worlds`` (the shortfall after
+the attempt cap, filled by the plain production draw, never by a belief
+proposal); off, every existing name, digest, sampled world and decision record
+is unchanged.  These base-draw fields describe the decision's first draw only.
+The record also counts every completed draw of the decision, by the stage that
+made it (``base``, ``lead_confirm``, ``adaptive_worlds``; an abandoned stage's
+draws included, since they ran): ``world_draws_by_stage``,
+``history_fill_worlds_by_stage``, ``history_unchecked_worlds_by_stage`` and
+their sums ``history_fill_worlds_all_draws`` and
+``history_unchecked_worlds_all_draws``.  The counts only read each draw's own
+record; no draw, stream or decision depends on them.
 Its draw-time form, ``SHENGJI_PV_WORLD_HISTORY_DRAW=1`` (requires the test; name
 token ``-whd`` after ``-whl``), deals no seat the twin of a card it played at or
 after a follow that showed fewer pairs than were led
@@ -171,8 +182,11 @@ history-legal production draw and is recorded (``belief_fallback``,
 ``belief_error``).  ``0`` or ``1`` only; on, the recipe digest gains the
 package's sha256 and the proposal's identity, the name gains ``-bw`` right
 after ``-whd``, and the decision record gains ``belief_fallback``,
-``belief_proposed`` and ``belief_ms``; off, every existing name, digest, sampled
-world and record is unchanged.
+``belief_proposed`` and ``belief_ms`` (the base draw's), and, over every draw
+of the decision, ``belief_fallback_by_stage`` (draws that fell back, by stage
+as ``world_draws_by_stage``), ``belief_fallback_all_draws`` (their sum) and
+``belief_fallback_any`` (1 when any draw fell back); off, every existing name,
+digest, sampled world and record is unchanged.
 Its capacity-aware draw (board row S34), OFF BY DEFAULT:
 ``SHENGJI_PV_BELIEF_CAPACITY=1`` (requires the proposal; name token ``-bwc``
 after ``-bw``) makes the proposal draw each copy with its receiver weights
@@ -388,7 +402,11 @@ for the value pass and the tie-break alike, is the plain heuristic leaf
 deadlines.  On, it enters the recipe digest as ``leaf_greedy_deadline``
 (`LEAF_GREEDY_DEADLINE_RULE_ID`) and adds ``-lgfd<ms>`` after ``lgf`` /
 ``lgfx``; the record gains ``leaf_greedy_deadline_fired`` and
-``leaf_greedy_deadline_cut_leaves`` (only with it on).
+``leaf_greedy_deadline_cut_leaves`` (the base pass's), and
+``leaf_greedy_deadline_fired_lead_confirm`` (the finish passed its deadline
+inside the lead confirmation, which then abandoned with reason
+``leaf_deadline``) and ``leaf_greedy_deadline_fired_any`` (either), all only
+with it on, the last two only with ``lead_confirm`` on as well.
 
 Its optional top-m restriction, OFF BY DEFAULT and a search-policy change
 where it applies: ``SHENGJI_PV_LEAF_GREEDY_TOP=<m>`` (``leaf_greedy_top``, an
@@ -945,6 +963,10 @@ LEAD_CONFIRM_K_RANGE = (9, 64)
 #: and the start / soft shares of the serving budget
 LEAD_CONFIRM_PARAMS = dict(screen_worlds=32, challengers=2, rounds=2, z=1.0, margin=0.0,
                            start_fraction=0.4, soft_fraction=0.8)
+#: the stages whose `_worlds` draws the decision record counts, and the counts
+DRAW_STAGES = ("base", "lead_confirm", "adaptive_worlds")
+DRAW_TALLY_FIELDS = ("draws", "belief_fallback", "history_fill_worlds",
+                     "history_unchecked_worlds")
 #: the per-decision rule records the base finalization set; an abandon restores them
 LEAD_CONFIRM_RULE_STATE = ("_tiebreak", "_lead_tiebreak", "_doomed_throw", "_last_sampling")
 _LEAD_CONFIRM_EXCLUSIVE = ("lead_confirm does not combine with the tree or adaptive worlds "
@@ -2062,6 +2084,9 @@ class PVSearchBot(PolicyValueBot):
     #: digested `LEAD_CONFIRM_PARAMS`
     lead_confirm = 0
     _lead_confirm = None
+    #: the per-decision draw counts by stage (`_tally_draw`): None while the
+    #: history-legal draw is off, and between decisions of a bot never searched
+    _draw_tally = None
     lead_confirm_screen_worlds = LEAD_CONFIRM_PARAMS["screen_worlds"]
     lead_confirm_challengers = LEAD_CONFIRM_PARAMS["challengers"]
     lead_confirm_rounds = LEAD_CONFIRM_PARAMS["rounds"]
@@ -3435,7 +3460,11 @@ class PVSearchBot(PolicyValueBot):
         single_fast = False
         legal = self._legal(rnd, seat, [anchor])
         actions = list(legal.actions)
+        if getattr(self, "world_history_legal", False):
+            self._draw_tally = {stage: dict.fromkeys(DRAW_TALLY_FIELDS, 0)
+                                for stage in DRAW_STAGES}
         worlds, attempts = self._worlds(rnd, seat, check_budget)
+        self._tally_draw("base")
         if check_budget is not None:
             check_budget()
         preferences = self.scores(rnd, seat, actions, worlds).mean(axis=0)
@@ -3741,6 +3770,7 @@ class PVSearchBot(PolicyValueBot):
         fresh = []
         for _ in range(self.lead_confirm_rounds):
             drawn, _attempts = self._worlds(rnd, seat, check_budget)
+            self._tally_draw("lead_confirm")
             fresh.extend(drawn)
         return fresh
 
@@ -3981,6 +4011,7 @@ class PVSearchBot(PolicyValueBot):
             for _ in range(ADAPTIVE_WORLDS_EXTRA_ROUNDS):
                 state["adaptive_worlds_sampler_advanced"] = True
                 drawn, _attempts = self._worlds(rnd, seat, guard)
+                self._tally_draw("adaptive_worlds")
                 round_sums, round_batches = self._score_leaves(rnd, seat, admitted, drawn, guard)
                 extra_evaluations += len(drawn) * n_admitted
                 extra_batches += round_batches
@@ -4025,7 +4056,8 @@ class PVSearchBot(PolicyValueBot):
                        refusal_fallback_worlds=0, refusal_pinned_codes=0)
         if getattr(self, "world_history_legal", False):
             out.update(history_follow_events=0, history_rejections=0,
-                       history_fallback_worlds=0, history_rejections_by_age={})
+                       history_fallback_worlds=0, history_unchecked_worlds=0,
+                       history_fill_worlds=0, history_rejections_by_age={})
             if getattr(self, "world_history_draw", False):
                 out.update(history_draw_constraints=0, history_draw_forbidden=0)
         if getattr(self, "belief_worlds", False):
@@ -4034,7 +4066,53 @@ class PVSearchBot(PolicyValueBot):
                 out["belief_log"] = 1
         if not out:
             return {}
-        return {**out, **self._last_sampling}
+        return {**out, **self._last_sampling, **self._draw_tally_record()}
+
+    def _tally_draw(self, stage):
+        """Counts the draw `_worlds` just completed for ``stage`` from its own
+        record (``_last_sampling``).  Reads only; a no-op while no tally runs."""
+        tally = self._draw_tally
+        if tally is None:
+            return
+        stats = self._last_sampling or {}
+        row = tally[stage]
+        row["draws"] += 1
+        row["belief_fallback"] += int(stats.get("belief_fallback", 0))
+        row["history_fill_worlds"] += int(stats.get("history_fill_worlds", 0))
+        row["history_unchecked_worlds"] += int(stats.get("history_unchecked_worlds", 0))
+
+    def _draw_tally_record(self):
+        """The record fields of every draw of the decision (module docstring)."""
+        tally = self._draw_tally
+        if tally is None or not getattr(self, "world_history_legal", False):
+            return {}
+
+        def by_stage(field):
+            return {stage: tally[stage][field] for stage in DRAW_STAGES}
+        fill, unchecked = by_stage("history_fill_worlds"), by_stage("history_unchecked_worlds")
+        out = {"world_draws_by_stage": by_stage("draws"),
+               "history_fill_worlds_by_stage": fill,
+               "history_unchecked_worlds_by_stage": unchecked,
+               "history_fill_worlds_all_draws": sum(fill.values()),
+               "history_unchecked_worlds_all_draws": sum(unchecked.values())}
+        if getattr(self, "belief_worlds", False):
+            fallback = by_stage("belief_fallback")
+            total = sum(fallback.values())
+            out.update(belief_fallback_by_stage=fallback, belief_fallback_all_draws=total,
+                       belief_fallback_any=int(total > 0))
+        return out
+
+    def _leaf_greedy_deadline_record(self):
+        record = super()._leaf_greedy_deadline_record()
+        if not record or not self.lead_confirm:
+            # no confirmation stage, no second finish to report
+            return record
+        state = self._lead_confirm
+        cut = bool(state and state.get("lead_confirm_abandon_reason") == "leaf_deadline")
+        record.update(leaf_greedy_deadline_fired_lead_confirm=cut,
+                      leaf_greedy_deadline_fired_any=bool(record["leaf_greedy_deadline_fired"]
+                                                          or cut))
+        return record
 
     def _sampler_counts(self):
         return {name: int(getattr(self.sampler, name, 0)) for name in SAMPLER_DELTA_COUNTERS}

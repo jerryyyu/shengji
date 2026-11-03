@@ -185,7 +185,11 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     fields: the follow events tested, the history rejections (also by how many
     tricks back the first violated follow lies), the worlds accepted after the
     history budget ran out (``history_fallback_worlds``: drawn as today) and,
-    with refusals, the refusal rule's own fields.
+    with refusals, the refusal rule's own fields.  ``history_fallback_worlds``
+    sums two kinds: ``history_unchecked_worlds``, drawn by ``draw`` (a belief
+    proposal when one is passed) and kept untested once the history budget is
+    spent, and ``history_fill_worlds``, the shortfall after the attempt cap
+    filled by plain `cwv_policy.sample_worlds` (never a proposal).
 
     ``propose(rnd, seat, mem) -> (hands, buried) | None`` replaces
     ``bot._sample_hands`` as the source of drawn hands (a belief proposal plugs
@@ -253,6 +257,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
         check_budget()
     stats = {"history_follow_events": len(events), "history_rejections": rejected,
              "history_fallback_worlds": unchecked + fill,
+             "history_unchecked_worlds": unchecked, "history_fill_worlds": fill,
              "history_rejections_by_age": {str(k): v for k, v in sorted(by_age.items())}}
     if constrain:
         stats["history_draw_constraints"] = len(constraints)

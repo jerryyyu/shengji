@@ -312,3 +312,17 @@ def test_singleton_prior_survives_actual_server_snapshot_and_commit(package, oth
         assert not srv._commit_bot_turn(room, prepared)
 
     asyncio.run(scenario())
+
+@pytest.mark.parametrize("count", [0, 1, None, True, False, 0.0, "0", -1])
+def test_budget_smoke_checks_bury_belief_count(count):
+    from types import SimpleNamespace
+    from scripts.cwv_serving_smoke import budget_turn
+    record = {"schema": "cwv-bury-policy-v1", "elapsed_seconds": 0.1}
+    if count is not None:
+        record["bury_belief_fallbacks"] = count
+    bot = SimpleNamespace(last_bury_record=record, bury_serving_budget_seconds=2,
+                          bury_belief_worlds=True)
+    result = budget_turn("bury", bot, 0.2,
+                         {"SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "2"})
+    assert result["bury_belief_fallbacks"] == count
+    assert (result["failures"] == []) == (type(count) is int and count == 0)

@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
 import torch
 
+from ..ops.hostinfo import path_map_from_env, remap_path
 from .policy_prior import (ENC_VERSION, INPUT_DIM, MAX_LEGAL, _rank_rows, _report, ballot_tensors,
                            input_dim, listwise_loss)
 
@@ -148,7 +150,23 @@ def _to_device(batch: Mapping[str, Any], device, copy=None) -> dict[str, torch.T
     return out
 
 
-def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
+def _chunk_path(path: Path, path_map) -> Path:
+    """``path``, or the remapped target of a composed chunk's dangling symlink.
+
+    A composed directory links each chunk to its absolute source path; after
+    a copy to another host that target exists only under the mapped root.
+    The chunk's SHA256 is still checked against the manifest.
+    """
+    if not path_map or path.exists() or not path.is_symlink():
+        return path
+    target = Path(os.readlink(path))
+    if not target.is_absolute():
+        return path
+    mapped = remap_path(target, path_map)
+    return mapped if mapped != target and mapped.exists() else path
+
+
+def _check_values_scale(man: Mapping[str, Any], directory: Path, path_map=()) -> str:
     """The scale the soft targets were built on, refused when it is not declared
     and the rows are not all points.  An extract that
     carries no ``value_units`` and no ``values_scale``: a points-producer extract,
@@ -160,7 +178,8 @@ def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
     A COMPOSED directory (``composed_from``) is validated down to its leaves,
     recursively; a cycle is a repeat on the ACTIVE recursion path (a leaf shared
     by two parts, a diamond, is validated once and accepted);
-    a part that cannot be read is a refusal."""
+    a part that cannot be read is a refusal.  A part ``dir`` written on another
+    host is looked up through ``path_map`` (``hostinfo.remap_path``)."""
     from .policy_prior import NO_SEARCH_VALUES
     declared = False
     active: list[str] = []          # the recursion PATH: a repeat here is a cycle
@@ -191,7 +210,8 @@ def _check_values_scale(man: Mapping[str, Any], directory: Path) -> str:
                              f"search values with no values_scale -- the un-fixed extract of #649 "
                              f"(uniform soft targets); re-extract with the units fix (#650)")
         for part in m.get("composed_from") or []:
-            d = Path(part["dir"]) if isinstance(part, Mapping) and part.get("dir") else None
+            d = (remap_path(part["dir"], path_map) if isinstance(part, Mapping) and part.get("dir")
+                 else None)
             if d is None or not (d / "manifest.json").is_file():
                 raise ValueError(f"policy rows stream: composed part {part!r} of {where} has no "
                                  "readable manifest; the scale of its means cannot be verified")
@@ -227,7 +247,11 @@ class PolicyRowsStream:
         self.chunks = man["chunks"]
         if not self.chunks:
             raise ValueError("policy rows stream: no chunks")
-        self.values_scale = _check_values_scale(man, self.dir)
+        # SHENGJI_PATH_MAP relocates absolute directories a manifest recorded on
+        # another host; unset, every lookup below reads the recorded path.
+        path_map = path_map_from_env()
+        self.values_scale = _check_values_scale(man, self.dir, path_map)
+        self._paths = {c["file"]: _chunk_path(self.dir / c["file"], path_map) for c in self.chunks}
         self.exclude = frozenset(exclude)
         self.window = max(1, int(window))
         self.limit = None if not limit else int(limit)
@@ -241,7 +265,7 @@ class PolicyRowsStream:
         self.explore_tags = bool(man.get("explore_tags", False))
         flag_counts = np.zeros(3, dtype=np.int64)
         for c in self.chunks:
-            path = self.dir / c["file"]
+            path = self._paths[c["file"]]
             if not path.exists():
                 raise ValueError(f"policy rows stream: missing {c['file']}")
             actual = _file_sha256(path)
@@ -284,9 +308,11 @@ class PolicyRowsStream:
                          "explore_tags": self.explore_tags,
                          "explore_flag_counts": {str(k): int(flag_counts[k]) for k in range(3)},
                          "split": man.get("split")}
+        if path_map:
+            self.identity["path_map"] = [[str(old), str(new)] for old, new in path_map]
 
     def _load(self, c: dict) -> dict[str, np.ndarray]:
-        with np.load(self.dir / c["file"]) as d:
+        with np.load(self._paths[c["file"]]) as d:
             dk = d["deal_key"].astype(str)
             keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
             all_kept = bool(keep.all())

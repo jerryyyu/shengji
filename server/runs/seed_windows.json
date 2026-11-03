@@ -1387,6 +1387,34 @@
       "host": "shengji-perf",
       "git_head": "ee1fb2126e5c89e4d9944140b0a0545e5e3cf856",
       "note": "expertperf2 TRAIN chunk on perf (Jerry 2026-11-03 'keep doing label run gen on perf'): the next 2,800 fresh Y (release 49) self-play deals under the M28 expert-label producer (scripts/expert_labels/expert_label_probe.py, PR #1215), one deal per shard, r2 rank-mixed plan per deal index; M28 TRAIN knobs, 14 workers, after expertperf's LANE DONE; launcher perf/claude_expertperf2_perf.sh in ~/shengji-archive/2026-11-03-expertperf2-packet (a counted-edit delta of expertperf's), output /root/claude-expertperf2-20261103/out/train. Same schema as expert3x/expertperf; a screen must not reuse these deals. RESERVED BEFORE DEALING."
+    },
+    {
+      "name": "wla50-rehearsal-246100400",
+      "purpose": "screen",
+      "seed0": 246100400,
+      "clusters": 56,
+      "span": [
+        246100400,
+        246100456
+      ],
+      "created_at": "2026-11-03T16:00:00Z",
+      "host": "shengji-perf",
+      "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+      "note": "wla50 host rehearsal block (non-scientific execution evidence) for the wla50 screen: the final launcher's exact child for arm x (the release-50 combo -- Y on the G3 Stage A value package Ae04 f4f4127e + P0's FT1 prior 1fa201b2 -- plus wide lead admission wla24, vs Y as served) on perf, tree /root/claude-m30y-src-1bad9a2d, after expertperf's LANE DONE; packet ~/shengji-archive/2026-11-03-wla50-screen. RESERVED BEFORE DEALING."
+    },
+    {
+      "name": "wla50-lane-246110910",
+      "purpose": "screen",
+      "seed0": 246110910,
+      "clusters": 3920,
+      "span": [
+        246110910,
+        246114830
+      ],
+      "created_at": "2026-11-03T16:00:00Z",
+      "host": "shengji-perf",
+      "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+      "note": "wla50 SCREEN duel (board #1075; Jerry 2026-11-03 'Yea I'm good to try'): the release-50 combo (Y served on the G3 Stage A value package Ae04 f4f4127e, EMA export of a09cef7c, with P0's FT1 as a separate policy prior 1fa201b2) PLUS wide lead admission wla24 (SHENGJI_PV_WIDE_LEAD_ADMISSION=1, SHENGJI_PV_WIDE_LEAD_K=24) on the exploiter only, vs Y as served (release 49, 491ee4bf), one arm x, 3,920 paired seat-swapped rank-mixed deals from seed0 246110910, r2 plan, 14 workers, on perf after expertperf; two-stage screen bar: SCREEN_PASS iff mean >= +0.005 and the one-sided 80% deal-bootstrap lower bound > 0; output root /root/vol-dev-claude-wla50-y-20261103. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) is CLEAR against A's checkpoint a09cef7c and receipt, smv3 3e89e86f with --follow-init (A's init; JS3-M1 / JS-M1 reached), and FT1 0def7b31 with M28 CAT 11f453a1 (--follow-init)."
     }
   ]
 }

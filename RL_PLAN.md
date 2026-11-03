@@ -114,10 +114,10 @@ Pass probability by true effect (per-deal sd ≈ 0.485, g3dsc; normal approximat
 |---|---|---|---|---|---|
 | single DEV bar, 3,920 deals | 2.5% | 9% | 25% | 49% | 73% |
 | screen, 3,920 deals | 20% | 42% | 67% | 86% | 96% |
-| confirmation, 7,840 deals | 2.5% | 15% | 45% | 78% | 96% |
+| confirmation, 7,840 deals | 2.5% | 15% | 45% | 78% | 95% |
 | screen then confirmation | 0.5% | 6% | 30% | 68% | 92% |
 
-A run started before 2026-11-03 keeps the bar it predeclared; its readout is read and labelled against that bar.
+The two-stage rule applies only to runs not yet started when it was adopted (2026-11-03 ~15:45Z). Every run started before then, on any date, keeps the bar it predeclared; its readout is read and labelled against that bar.
 
 ## Planned work
 

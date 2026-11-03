@@ -194,3 +194,103 @@ def test_a_resume_under_another_mode_is_refused(extracts, tmp_path):
     with pytest.raises(bs.BeliefSeqError, match="--eval-rows sampler differs from the run's all"):
         bs.main(train_args(data, out))
     assert bs.main(train_args(data, out, "--eval-rows", "all")) == 0
+
+
+def test_seed_windows_filter_mixed_chunks_through_training_and_evaluation(tmp_path):
+    data = build_extract(tmp_path / "data", sampler=False,
+                         splits=("train", "train", "calib", "calib", "test", "test"))
+    manifest = json.loads((data / "manifest.json").read_text())
+    hmanifest = json.loads((data / "hist" / "manifest.json").read_text())
+    paths = sorted((tmp_path / "data" / "store" / "shards").glob("*.jsonl"))
+    chunks = []
+    for split in ("train", "calib", "test"):
+        entries = bs.extract_entries([str(data)], split)
+        arrays = {}
+        for entry in entries:
+            with np.load(entry["path"]) as z:
+                for key in z.files:
+                    arrays.setdefault(key, []).append(z[key])
+        name = f"mixed-{split}.npz"
+        np.savez(data / name, **{k: np.concatenate(v) for k, v in arrays.items()})
+        np.savez(data / "hist" / name,
+                 **bh.chunk_history(str(data / name), [str(p) for p in paths]))
+        chunks.append({"files": {split: {"file": name,
+            "rows": sum(e["rows"] for e in entries),
+            "sha256": hashlib.sha256((data / name).read_bytes()).hexdigest()}}})
+        hmanifest["files"][name] = hashlib.sha256((data / "hist" / name).read_bytes()).hexdigest()
+    manifest["chunks"] = chunks
+    (data / "manifest.json").write_text(json.dumps(manifest))
+    hmanifest["source_extract_manifest_sha256"] = hashlib.sha256(
+        (data / "manifest.json").read_bytes()).hexdigest()
+    (data / "hist" / "manifest.json").write_text(json.dumps(hmanifest))
+    windows = [(3000, 3001), (3002, 3003), (3004, 3005)]
+    flags = [arg for lo, hi in windows for arg in ("--exclude-seed-window", f"{lo}:{hi}")]
+    for split in ("train", "calib", "test"):
+        entry = bs.extract_entries([str(data)], split, exclude_seed_windows=windows)[0]
+        part = bs.load_part(entry, bs.EVAL_KEYS, bs._Verified())
+        with np.load(entry["path"]) as z:
+            keep = np.isin(z["seed"], [3001, 3003, 3005])
+            assert np.array_equal(part["deal"], z["deal"][keep])
+        assert len(part["X"]) > 0 and len(part["X"]) < entry["rows"]
+        assert np.array_equal(part["_rounds"]["tok_int"][part["row_round"], part["row_ply"], 0],
+                              part["row_seat"])
+        if split != "train":
+            loaded = bs.load_eval([str(data)], split, bs._Verified(), rows="all",
+                                  exclude_seed_windows=windows, log=quiet)
+            assert np.array_equal(loaded["deal"], part["deal"])
+    out = tmp_path / "train"
+    assert bs.main(train_args(data, out, "--eval-rows", "all", *flags)) == 0
+    ck = torch.load(out / "checkpoint.pt", weights_only=False)
+    assert ck["args"]["exclude_seed_window"] == windows
+    res, _ = evaluate(data, out / "best.pt", tmp_path, "--eval-rows", "all", *flags)
+    assert res["models"]["m"]["training_exclude_seed_windows"] == [list(w) for w in windows]
+    assert "initialization lineage" in res["exposure_note"]
+    assert res["test_deals"] == 1
+    assert res["exclude_seed_windows"] == [list(w) for w in windows]
+    with pytest.raises(bs.BeliefSeqError, match="resume seed exclusions"):
+        bs.main(train_args(data, out, "--eval-rows", "all"))
+    with pytest.raises(bs.BeliefSeqError, match="no all rows"):
+        bs.load_eval([str(data)], "test", bs._Verified(), rows="all",
+                     exclude_seed_windows=[(0, 10000)], log=quiet)
+
+
+@pytest.mark.parametrize("window", ["1:1", "2:1", "-1:2", "x:2", "1:2:3"])
+def test_invalid_seed_window_refused(window):
+    with pytest.raises(SystemExit):
+        bs.build_parser().parse_args(["train", "--data", "d", "--out", "o",
+                                      "--exclude-seed-window", window])
+
+
+@pytest.mark.parametrize("arrays", [
+    {"deal": np.array([1])},
+    {"deal": np.array([1]), "seed": np.array([-1])},
+    {"deal": np.array([1]), "seed": np.array([1.5])},
+    {"deal": np.array([1]), "seed": np.array([1, 2])},
+    {"deal": np.array([np.nan]), "seed": np.array([1])},
+    {"deal": np.array([-1]), "seed": np.array([1])},
+])
+def test_seed_exclusions_refuse_unknown_metadata(arrays):
+    with pytest.raises(bs.BeliefSeqError, match="seed"):
+        bs.seed_keep(arrays, [(0, 2)])
+
+
+def test_seed_window_excludes_entire_deal_and_keeps_upper_boundary():
+    arrays = {"deal": np.array([1, 1, 2, 3]), "seed": np.array([10, 11, 12, 9])}
+    assert bs.seed_keep(arrays, [(10, 11)]).tolist() == [False, False, True, True]
+
+
+def test_excluding_all_training_data_refuses_checkpoint(extracts, tmp_path):
+    out = tmp_path / "empty"
+    with pytest.raises(bs.BeliefSeqError, match="no training targets"):
+        bs.main(train_args(extracts["none"], out, "--eval-rows", "all",
+                           "--exclude-seed-window", "3000:3004"))
+    assert not (out / "best.pt").exists()
+
+
+def test_seed_metadata_length_cannot_broadcast(tmp_path):
+    path = tmp_path / "bad.npz"
+    np.savez(path, X=np.zeros((2, bs.FEATURE_DIM)), seed=np.array([10]), deal=np.array([1]))
+    entry = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+             "exclude_seed_windows": [(10, 11)]}
+    with pytest.raises(bs.BeliefSeqError, match="row count"):
+        bs.load_part(entry, ["X"], bs._Verified())

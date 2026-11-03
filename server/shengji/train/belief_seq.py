@@ -105,7 +105,7 @@ def row_card_planes(X: np.ndarray) -> np.ndarray:
 
 # ------------------------------------------------------------------ data
 
-def extract_entries(dirs: Sequence[str], split: str) -> list[dict[str, Any]]:
+def extract_entries(dirs: Sequence[str], split: str, *, exclude_seed_windows=()) -> list[dict[str, Any]]:
     """Every chunk of ``split`` with its history file (and both sha256s)."""
     out = []
     for d in dirs:
@@ -122,7 +122,8 @@ def extract_entries(dirs: Sequence[str], split: str) -> list[dict[str, Any]]:
                 continue
             out.append({"path": str(Path(d) / e["file"]), "sha256": e["sha256"],
                         "rows": int(e["rows"]), "hist": str(Path(d) / "hist" / e["file"]),
-                        "hist_sha256": hman["files"][e["file"]], "dir": d})
+                        "hist_sha256": hman["files"][e["file"]], "dir": d,
+                        "exclude_seed_windows": exclude_seed_windows})
     return out
 
 
@@ -143,12 +144,33 @@ class _Verified:
         return b
 
 
+def seed_keep(arrays, windows):
+    """Exclude all rows of a deal when any of its cached seeds is reserved."""
+    if "seed" not in arrays or "deal" not in arrays:
+        raise BeliefSeqError("seed exclusions require seed and deal metadata")
+    seeds, deals = arrays["seed"], arrays["deal"]
+    if (seeds.ndim != 1 or seeds.shape != deals.shape
+            or seeds.dtype.kind not in "iu" or np.any(seeds < 0)
+            or deals.dtype.kind not in "iu" or np.any(deals < 0)):
+        raise BeliefSeqError("seed exclusions require valid per-row seed metadata")
+    excluded = np.zeros(len(seeds), dtype=bool)
+    for lo, hi in windows:
+        excluded |= (seeds >= lo) & (seeds < hi)
+    return ~np.isin(deals, deals[excluded])
+
+
 def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified, *,
               sampler_rows_only: bool = False) -> dict[str, np.ndarray]:
     """One chunk's rows (residualized: unknown copies only) joined with its
     history; round arrays keep their chunk-local indices."""
     with np.load(io.BytesIO(verified.read(entry["path"], entry["sha256"]))) as z:
         part = {k: z[k] for k in keys}
+        keep = np.ones(len(part["X"]), dtype=bool)
+        if entry.get("exclude_seed_windows"):
+            selected = seed_keep(z, entry["exclude_seed_windows"])
+            if selected.shape != keep.shape:
+                raise BeliefSeqError("seed metadata row count differs from features")
+            keep &= selected
     with np.load(io.BytesIO(verified.read(entry["hist"], entry["hist_sha256"]))) as z:
         hist = {k: z[k] for k in HIST_KEYS}
     n = len(part["X"])
@@ -159,7 +181,8 @@ def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified
     part.update({k: hist[k] for k in ("row_round", "row_ply", "row_seat")})
     part["_dir"] = np.full(n, entry["dir"], dtype=object)
     if sampler_rows_only:
-        keep = part["S_n"] > 0
+        keep &= part["S_n"] > 0
+    if not keep.all():
         part = {k: v[keep] for k, v in part.items()}
     if len(part["X"]):
         residualize(part)
@@ -669,7 +692,8 @@ EVAL_ROWS = ("sampler", "all")
 
 
 def load_eval(dirs, split, verified, *, max_rows: int | None = None, seed: int = 0,
-              threads: int = 4, log=print, rows: str = "sampler") -> dict[str, Any]:
+              threads: int = 4, log=print, rows: str = "sampler",
+              exclude_seed_windows=()) -> dict[str, Any]:
     """Calib/test rows with history: where the sampler was drawn (as
     ``belief_eval``) for ``rows="sampler"``, every row for ``rows="all"``.
     The split's chunks (deals) are the extract's either way; ``max_rows``
@@ -677,7 +701,7 @@ def load_eval(dirs, split, verified, *, max_rows: int | None = None, seed: int =
     if rows not in EVAL_ROWS:
         raise BeliefSeqError(f"eval rows {rows!r} not in {EVAL_ROWS}")
     sampler_only = rows == "sampler"
-    entries = extract_entries(dirs, split)
+    entries = extract_entries(dirs, split, exclude_seed_windows=exclude_seed_windows)
     if max_rows is not None:
         rng = np.random.default_rng(seed)
         picked, n = [], 0
@@ -855,7 +879,8 @@ def train(args) -> int:
     out.mkdir(parents=True, exist_ok=True)
     status = str(out / "status.log")
     verified = _Verified()
-    entries = extract_entries(args.data, "train")
+    entries = extract_entries(args.data, "train",
+                              exclude_seed_windows=args.exclude_seed_window)
     if args.max_train_rows:
         rng = np.random.default_rng(args.seed)
         picked, n = [], 0
@@ -869,7 +894,7 @@ def train(args) -> int:
                     buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch,
                     row_frac=args.row_frac, no_history=args.no_history, permute=args.permute)
     calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed,
-                      rows=args.eval_rows)
+                      rows=args.eval_rows, exclude_seed_windows=args.exclude_seed_window)
     if args.permute:
         perm = permute_within_strata(strata_of(calib["trick"], calib["role"]), args.seed + 2)
         calib["Y"], calib["M"] = calib["Y"][perm], calib["M"][perm]
@@ -897,6 +922,8 @@ def train(args) -> int:
     state = {"epoch": 0, "buffer": 0, "history": [], "best": float("inf"), "bad": 0}
     if ck.exists():
         saved = torch.load(ck, weights_only=False)
+        if saved["args"].get("exclude_seed_window", []) != args.exclude_seed_window:
+            raise BeliefSeqError("resume seed exclusions differ from the run")
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
@@ -916,7 +943,7 @@ def train(args) -> int:
         _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']} "
                         f"speed segment {len(segs)}: {_segment_text(segs[-1])}")
     else:
-        _status(status, f"START params={n_params(model)} train_rows={stream.rows} "
+        _status(status, f"START params={n_params(model)} cached_train_rows={stream.rows} "
                         f"chunks={len(stream.entries)} config={json.dumps(vars(args), default=str)}")
         if init_record is not None:
             state["init"] = init_record
@@ -944,6 +971,7 @@ def train(args) -> int:
         t0 = time.time()
         tot = cnt = 0.0
         cur_buffer = state["buffer"]
+        started_at_beginning = cur_buffer == 0
         model.train()
         for gi, b in stream.batches(args.seed, epoch, state["buffer"]):
             if gi != cur_buffer:
@@ -974,6 +1002,8 @@ def train(args) -> int:
             opt.step()
             tot += float(loss.detach())
             cnt += float(n)
+        if cnt == 0 and started_at_beginning:
+            raise BeliefSeqError("no training targets remain after row selection")
         lc = predict_logits(model, calib, no_history=args.no_history)
         cll = mean_ll(masked_softmax(lc, calib["M"]), calib["Y"])
         state["history"].append({"epoch": epoch + 1, "train_ll": tot / max(cnt, 1), "calib_ll": cll,
@@ -1017,14 +1047,18 @@ def evaluate(args) -> int:
     verified = _Verified()
     t_start = time.time()
     calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed,
-                      rows=args.eval_rows)
+                      rows=args.eval_rows, exclude_seed_windows=args.exclude_seed_window)
     test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1,
-                     rows=args.eval_rows)
+                     rows=args.eval_rows, exclude_seed_windows=args.exclude_seed_window)
     sampler_rows = args.eval_rows == "sampler"
     train_deals = set()
-    for e in extract_entries(args.data, "train")[: args.deal_check_chunks]:
+    for e in extract_entries(args.data, "train",
+                             exclude_seed_windows=args.exclude_seed_window)[: args.deal_check_chunks]:
         with np.load(io.BytesIO(verified.read(e["path"], e["sha256"]))) as z:
-            train_deals.update(np.unique(z["deal"]).tolist())
+            deals = z["deal"]
+            if args.exclude_seed_window:
+                deals = deals[seed_keep(z, args.exclude_seed_window)]
+            train_deals.update(np.unique(deals).tolist())
     if train_deals & set(np.unique(test["deal"]).tolist()):
         raise BeliefSeqError("a train deal is in the test split")
     Y, Mt = test["Y"], test["M"]
@@ -1045,7 +1079,8 @@ def evaluate(args) -> int:
         methods[name] = masked_softmax(predict_logits(model, test, no_history=nh), Mt, T)
         meta[name] = {"path": path, "T": T, "params": n_params(model), "epoch": saved.get("epoch"),
                       "calib_ll_raw": saved.get("calib_ll"), "no_history": nh, "permuted": perm,
-                      "config": saved["config"]}
+                      "config": saved["config"],
+                      "training_exclude_seed_windows": saved["args"].get("exclude_seed_window", [])}
         print(f"[eval] {name}: T={T:.3f}", flush=True)
     # the sampler's marginals exist only on rows where it was drawn; on all rows the
     # reference is the constraint-aware uniform and every sampler metric is absent
@@ -1124,6 +1159,9 @@ def evaluate(args) -> int:
             "sample_ms_p50": float(np.median(ms)),
             "by_phase": {n: float(np.mean(v)) if v else float("nan") for n, v in per_phase.items()}}
         print(f"[worlds] {k}: mean {agree.mean():.4f}", flush=True)
+    res["exclude_seed_windows"] = args.exclude_seed_window
+    res["exposure_note"] = ("Row filtering does not establish checkpoint exposure clearance; "
+                            "verify each model and its initialization lineage separately.")
     res["seconds"] = time.time() - t_start
     Path(args.out_json).write_text(json.dumps(res, indent=1, default=float))
     md = report(res)
@@ -1228,7 +1266,8 @@ def latency(args) -> int:
     import torch
     torch.set_num_threads(args.threads)
     verified = _Verified()
-    test = load_eval(args.data, "test", verified, max_rows=2000, seed=args.seed)
+    test = load_eval(args.data, "test", verified, max_rows=2000, seed=args.seed,
+                     exclude_seed_windows=args.exclude_seed_window)
     model, _ = load_trained(args.model)
     rng = np.random.default_rng(args.seed)
     rows = rng.choice(len(test["X"]), size=args.n, replace=False)
@@ -1301,7 +1340,8 @@ def production_worlds(args) -> int:
     from concurrent.futures import ProcessPoolExecutor
     from .belief_labels import cluster_paths
     verified = _Verified()
-    test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1)
+    test = load_eval(args.data, "test", verified, max_rows=args.test_rows, seed=args.seed + 1,
+                     exclude_seed_windows=args.exclude_seed_window)
     rng = np.random.default_rng(args.seed)
     pick = rng.choice(len(test["Y"]), size=min(args.world_states, len(test["Y"])), replace=False)
     # rows -> (dir, cluster, decision): dirs from the store column of each chunk
@@ -1339,6 +1379,17 @@ def production_worlds(args) -> int:
 
 
 # ------------------------------------------------------------------ CLI
+
+def seed_window(value: str) -> tuple[int, int]:
+    """Parse a nonempty, half-open interval of known round seeds."""
+    try:
+        lo, hi = map(int, value.split(":"))
+        if not 0 <= lo < hi:
+            raise ValueError
+        return lo, hi
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected nonnegative START:END with START < END") from exc
+
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="belief_seq", description=__doc__,
@@ -1416,6 +1467,10 @@ def build_parser() -> argparse.ArgumentParser:
     la.add_argument("--n", type=int, default=300)
     la.add_argument("--seed", type=int, default=0)
     la.add_argument("--out-json", default=None)
+    for parser in (t, e, pw, la):
+        parser.add_argument("--exclude-seed-window", type=seed_window, action="append", default=[],
+                            help="exclude deals with seeds in START:END from every loaded split; "
+                                 "repeat for multiple half-open windows")
     return ap
 
 

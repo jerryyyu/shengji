@@ -209,7 +209,7 @@ class _PartStream:
 
 def _patch_data(monkeypatch, train_part, calib):
     _PartStream.part = train_part
-    monkeypatch.setattr(bs, "extract_entries", lambda dirs, split: [{"rows": 1}, {"rows": 1}])
+    monkeypatch.setattr(bs, "extract_entries", lambda dirs, split, **kwargs: [{"rows": 1}, {"rows": 1}])
     monkeypatch.setattr(bs, "Stream", _PartStream)
     monkeypatch.setattr(bs, "load_eval", lambda *a, **k: calib)
 

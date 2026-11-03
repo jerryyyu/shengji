@@ -1331,6 +1331,34 @@
       "host": "Jerrys-Mac-mini.local",
       "git_head": "ee1fb2126e5c89e4d9944140b0a0545e5e3cf856",
       "note": "expertmini TRAIN chunk on the Mac mini (Jerry 2026-11-03 'you can also use mini for compute'): 1,500 fresh Y (release 49) self-play under the M28 expert-label producer (scripts/expert_labels/expert_label_probe.py, PR #1215), one deal per shard, r2 rank-mixed plan per deal index; M28 TRAIN knobs, nice 15, 3 workers until 07:15Z then 6; launcher mini/claude_expertmini_mini.sh in ~/shengji-archive/2026-11-03-expert3x-ultra-packet, output ~/claude-expert-mini/out/train. Same schema as expert3x; a screen must not reuse these deals. RESERVED BEFORE DEALING."
+    },
+    {
+      "name": "b1kd-rehearsal-246000400",
+      "purpose": "screen",
+      "seed0": 246000400,
+      "clusters": 56,
+      "span": [
+        246000400,
+        246000456
+      ],
+      "created_at": "2026-11-03T08:40:00Z",
+      "host": "shengji-perf",
+      "git_head": "44faf916f077638c10cba3cc68fb829defdbaa46",
+      "note": "b1kd host rehearsal block (non-scientific execution evidence, throwaway): a perf rehearsal of the b1kd duel launcher claude_b1kd_cloud.sh (both arms cb and yb on this block, defender Y as served, release 49) with a stand-in belief package in place of B1k; registered so no later run reuses these decks. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) CLEAR against A a09cef7c + receipt, smv3 3e89e86f + FT1 0def7b31 + M28 CAT 11f453a1 (--follow-init); deals disjoint from the four Y belief store spans B1k trained on."
+    },
+    {
+      "name": "b1kd-lane-246010910",
+      "purpose": "screen",
+      "seed0": 246010910,
+      "clusters": 3920,
+      "span": [
+        246010910,
+        246014830
+      ],
+      "created_at": "2026-11-03T08:40:00Z",
+      "host": "shengji-cloud",
+      "git_head": "44faf916f077638c10cba3cc68fb829defdbaa46",
+      "note": "b1kd DEV duel (board #1075; Jerry 2026-11-03 'For cloud, screen new belief when it is ready'): two arms on this one block, paired by deal, seat-swapped, r2 rank-mixed, 3920 deals, 14 workers, on cloud, defender Y as served (release 49): arm cb = Y + G3 Stage A value g3A-e04-ema f4f4127e + FT1 prior 1fa201b2 + the B1k belief package (G2 belief B1k, S58 warm start on the four Y belief stores, kitty weight 4); arm yb = Y + the B1k belief package only. DEV_PASS per arm iff mean >= +0.015 and CI lower > 0. Launcher claude_b1kd_cloud.sh (sha pinned after the B1k package is filled), output root /root/vol-dev-claude-b1kd-y-20261103. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) CLEAR against A a09cef7c + receipt, smv3 3e89e86f + FT1 0def7b31 + M28 CAT 11f453a1 (--follow-init); deals disjoint from the four Y belief store spans B1k trained on."
     }
   ]
 }

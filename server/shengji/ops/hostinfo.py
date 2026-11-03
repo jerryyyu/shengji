@@ -317,36 +317,135 @@ def _exit_status(returncode: int) -> int:
     return 128 - returncode if returncode < 0 else returncode
 
 
+def live_group_members(pgid: int) -> list[ProcRow]:
+    """Members of ``pgid`` that can still run: zombies and dead entries are excluded."""
+    return [r for r in group_members(pgid) if not r.state.startswith(("Z", "X"))]
+
+
+class Cancellation:
+    """An external stop request for :func:`run_with_timeout`, safe to call from a signal handler.
+
+    The first request's signal is recorded and every request is forwarded to
+    the command's process group; a request that arrives before the command
+    starts is delivered as soon as it does.
+    """
+
+    def __init__(self) -> None:
+        self.signum: int | None = None
+        self._pgid: int | None = None
+
+    def request(self, signum: int) -> None:
+        if self.signum is None:
+            self.signum = signum
+        if self._pgid is not None:
+            _killpg_quiet(self._pgid, signum)
+
+    def attach(self, pgid: int) -> None:
+        self._pgid = pgid
+        if self.signum is not None:
+            _killpg_quiet(pgid, self.signum)
+
+
+def _killpg_quiet(pgid: int, sig: int) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _wait_drained(child: subprocess.Popen, timeout_s: float | None, poll_s: float = 0.05) -> bool:
+    """Reap the leader and wait until no live member remains in its group.
+
+    ``timeout_s=None`` waits without a deadline.  Returns False when a live
+    member remains at the deadline.
+    """
+    deadline = None if timeout_s is None else time.monotonic() + timeout_s
+    while True:
+        child.poll()
+        if child.returncode is not None and not live_group_members(child.pid):
+            return True
+        if deadline is not None and time.monotonic() >= deadline:
+            return False
+        time.sleep(poll_s)
+
+
+GROUP_NOT_DRAINED_STATUS = 125
+DEFAULT_CANCEL_GRACE_S = 10.0
+KILL_DRAIN_S = 10.0
+
+
+class GroupNotDrained(HostProbeError):
+    """Live members of the command's process group survived SIGKILL."""
+
+
 def run_with_timeout(argv: Sequence[str], wall_s: float, *, sig: int = _signal.SIGTERM,
-                     kill_after_s: float | None = None, on_start=None, **popen_kw) -> int:
+                     kill_after_s: float | None = None, on_start=None,
+                     cancel: Cancellation | None = None, **popen_kw) -> int:
     """Run ``argv`` in its own process group and stop the whole group at ``wall_s``.
 
-    Exit status follows GNU ``timeout``: the command's own status when it
-    finishes in time (128+N for death by signal N), 124 after a timeout, and
-    137 when SIGKILL was sent (directly via ``sig`` or after ``kill_after_s``).
+    Exit status follows GNU ``timeout``:
+
+    * finished in time: the command's own status (128+N for death by signal N);
+      members it left running in its group are not touched;
+    * timed out: 124, or 137 when SIGKILL was sent (directly via ``sig`` or
+      because a live member remained ``kill_after_s`` after ``sig``); with no
+      ``kill_after_s`` the leader is awaited and its surviving members are
+      killed;
+    * cancelled through ``cancel``: the command's own status, or 137 when a
+      live member remained ``kill_after_s`` (default
+      ``DEFAULT_CANCEL_GRACE_S``) after the forwarded signal, even if the
+      leader had already exited.
+
+    A timed-out or cancelled run returns only once no live member remains in
+    the group; if one survives SIGKILL for ``KILL_DRAIN_S`` it raises
+    :class:`GroupNotDrained`.
     """
     if wall_s <= 0:
         raise ValueError("wall_s must be positive")
     child = spawn_new_session(argv, **popen_kw)
+    if cancel is not None:
+        cancel.attach(child.pid)
     if on_start is not None:
         on_start(child)
-    try:
-        return _exit_status(child.wait(timeout=wall_s))
-    except subprocess.TimeoutExpired:
-        pass
+    deadline = time.monotonic() + wall_s
+    while True:
+        if cancel is not None and cancel.signum is not None:
+            return _drain_cancelled(child, kill_after_s)
+        if child.returncode is not None:
+            return _exit_status(child.returncode)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            child.wait(timeout=min(remaining, 0.1))
+        except subprocess.TimeoutExpired:
+            pass
     _signal_group(child.pid, sig)
     killed = sig == _signal.SIGKILL
-    if not killed and kill_after_s is not None:
-        try:
-            child.wait(timeout=kill_after_s)
-        except subprocess.TimeoutExpired:
-            _signal_group(child.pid, _signal.SIGKILL)
-            killed = True
-    child.wait()
+    if not killed and kill_after_s is not None and not _wait_drained(child, kill_after_s):
+        _signal_group(child.pid, _signal.SIGKILL)
+        killed = True
     if not killed:
+        child.wait()
         # Members that outlived the leader still belong to the timed-out command.
         _signal_group(child.pid, _signal.SIGKILL)
+    _require_drained(child)
     return 128 + _signal.SIGKILL if killed else TIMEOUT_STATUS
+
+
+def _drain_cancelled(child: subprocess.Popen, kill_after_s: float | None) -> int:
+    grace = DEFAULT_CANCEL_GRACE_S if kill_after_s is None else kill_after_s
+    if _wait_drained(child, grace):
+        return _exit_status(child.returncode)
+    _signal_group(child.pid, _signal.SIGKILL)
+    _require_drained(child)
+    return 128 + _signal.SIGKILL
+
+
+def _require_drained(child: subprocess.Popen) -> None:
+    if not _wait_drained(child, KILL_DRAIN_S):
+        live = [r.pid for r in live_group_members(child.pid)]
+        raise GroupNotDrained(f"process group {child.pid} still has live members {live} after SIGKILL")
 
 
 def sha256_file(path: str | os.PathLike) -> str:
@@ -415,7 +514,8 @@ def _detach(argv: Sequence[str]) -> None:
 
 
 def _check_sums(listing: str) -> int:
-    bad = 0
+    """``sha256sum -c``: 0 only when at least one record was checked and every line is a matching record."""
+    bad = checked = 0
     for line in listing.splitlines():
         if not line.strip():
             continue
@@ -430,7 +530,11 @@ def _check_sums(listing: str) -> int:
         except OSError:
             ok = False
         print(f"{name}: {'OK' if ok else 'FAILED'}")
+        checked += 1
         bad += not ok
+    if not checked:
+        print("no checksum records to check", file=sys.stderr)
+        return 1
     return 1 if bad else 0
 
 
@@ -460,7 +564,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     p = sub.add_parser("run", help="GNU timeout replacement: run CMD in its own group under a wall ceiling")
     p.add_argument("--wall", type=float, required=True)
     p.add_argument("--signal", default="TERM")
-    p.add_argument("--kill-after", type=float)
+    p.add_argument("--kill-after", type=float,
+                   help="seconds after the stop signal (timeout or a forwarded TERM/INT/HUP) before SIGKILL; "
+                        f"a forwarded signal defaults to {DEFAULT_CANCEL_GRACE_S:g}")
     p.add_argument("command", nargs=argparse.REMAINDER)
     p = sub.add_parser("detach", help="setsid replacement: exec CMD as a new session leader")
     p.add_argument("command", nargs=argparse.REMAINDER)
@@ -499,15 +605,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.cmd == "detach":
                 _detach(command)
             sig = _signal_number(args.signal)
-            box: dict[str, subprocess.Popen] = {}
-
-            def forward(signum, _frame):
-                if "child" in box:
-                    _signal_group(box["child"].pid, signum)
+            cancel = Cancellation()
             for s in (_signal.SIGTERM, _signal.SIGINT, _signal.SIGHUP):
-                _signal.signal(s, forward)
-            return run_with_timeout(command, args.wall, sig=sig, kill_after_s=args.kill_after,
-                                    on_start=lambda c: box.__setitem__("child", c))
+                _signal.signal(s, lambda signum, _frame: cancel.request(signum))
+            try:
+                return run_with_timeout(command, args.wall, sig=sig, kill_after_s=args.kill_after,
+                                        cancel=cancel)
+            except GroupNotDrained as exc:
+                print(f"hostinfo: {exc}", file=sys.stderr)
+                return GROUP_NOT_DRAINED_STATUS
         if args.cmd == "sha256":
             if args.check:
                 listing = "".join(Path(f).read_text() if f != "-" else sys.stdin.read()

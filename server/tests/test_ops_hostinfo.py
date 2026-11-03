@@ -146,6 +146,85 @@ def test_cli_run_and_detach():
     assert out.returncode == 0 and out.stdout.split() == ["True", "True"]
 
 
+TERM_IGNORING_TREE = (
+    "import os,signal,subprocess,sys,time\n"
+    "child = subprocess.Popen([sys.executable, '-c',\n"
+    "    'import signal,time\\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\\n'\n"
+    "    'print(1, flush=True)\\ntime.sleep(60)'], stdout=subprocess.PIPE)\n"
+    "child.stdout.readline()\n"
+    "tmp = sys.argv[1] + '.tmp'\n"
+    "with open(tmp, 'w') as fh:\n"
+    "    fh.write(f'{os.getpid()} {child.pid}')\n"
+    "os.replace(tmp, sys.argv[1])\n"
+    "time.sleep(60)\n")
+
+
+def _await_pids(path, proc):
+    deadline = time.monotonic() + 30
+    while not path.exists():
+        assert proc.poll() is None and time.monotonic() < deadline
+        time.sleep(0.05)
+    return [int(x) for x in path.read_text().split()]
+
+
+def _live_group(pgid):
+    return [r.pid for r in hi.group_members(pgid) if not r.state.startswith(("Z", "X"))]
+
+
+def test_cli_run_term_drains_a_term_ignoring_grandchild(tmp_path):
+    """A forwarded TERM ends only after every live member of the command's group is gone."""
+    pids = tmp_path / "pids"
+    env = dict(os.environ, PYTHONPATH=str(SERVER))
+    wrapper = subprocess.Popen([sys.executable, "-m", "shengji.ops.hostinfo", "run", "--wall", "30",
+                                "--kill-after", "0.5", "--", sys.executable, "-c",
+                                TERM_IGNORING_TREE, str(pids)], env=env)
+    parent = grandchild = None
+    try:
+        parent, grandchild = _await_pids(pids, wrapper)
+        assert os.getpgid(grandchild) == parent
+        wrapper.send_signal(signal.SIGTERM)
+        rc = wrapper.wait(timeout=30)
+        live = _live_group(parent)
+        assert live == [], f"wrapper exited {rc} with live group members {live}"
+        assert rc == 137                       # escalated to SIGKILL after --kill-after
+    finally:
+        if wrapper.poll() is None:
+            wrapper.kill()
+            wrapper.wait()
+        if parent is not None:
+            try:
+                os.killpg(parent, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+
+def test_cli_run_term_keeps_the_command_status_when_the_group_drains(tmp_path):
+    marker = tmp_path / "started"
+    script = ("import pathlib,sys,time\npathlib.Path(sys.argv[1]).write_text('x')\ntime.sleep(60)")
+    env = dict(os.environ, PYTHONPATH=str(SERVER))
+    wrapper = subprocess.Popen([sys.executable, "-m", "shengji.ops.hostinfo", "run", "--wall", "30",
+                                "--", sys.executable, "-c", script, str(marker)], env=env)
+    try:
+        deadline = time.monotonic() + 30
+        while not marker.exists():
+            assert wrapper.poll() is None and time.monotonic() < deadline
+            time.sleep(0.05)
+        wrapper.send_signal(signal.SIGTERM)
+        assert wrapper.wait(timeout=30) == 143
+    finally:
+        if wrapper.poll() is None:
+            wrapper.kill()
+            wrapper.wait()
+
+
+def test_cancellation_before_start_reaches_the_command():
+    cancel = hi.Cancellation()
+    cancel.request(signal.SIGTERM)
+    start = time.monotonic()
+    assert hi.run_with_timeout([sys.executable, "-c", SLEEPER], 30, cancel=cancel) == 143
+    assert time.monotonic() - start < 20
+
+
 def test_cli_probes_emit_json():
     mem = json.loads(_cli("mem").stdout)
     assert mem["total_bytes"] >= mem["available_bytes"] > 0
@@ -168,6 +247,17 @@ def test_sha256_matches_sha256sum_format(tmp_path):
     a.write_bytes(b"changed")
     bad = _cli("sha256", "-c", str(sums))
     assert bad.returncode == 1 and "FAILED" in bad.stdout
+
+
+@pytest.mark.parametrize("listing", ["", "\n", "  \n\t\n"])
+def test_sha256_check_refuses_a_listing_with_no_records(tmp_path, listing):
+    """An empty or blank inventory checks nothing, so it cannot pass."""
+    assert hi._check_sums(listing) != 0
+    sums = tmp_path / "SUMS"
+    sums.write_text(listing)
+    assert _cli("sha256", "-c", str(sums)).returncode != 0
+    assert _cli("sha256", "-c", input=listing).returncode != 0
+    assert _cli("sha256", "-c", "-", input=listing).returncode != 0
 
 
 def test_path_map_parse_and_remap():

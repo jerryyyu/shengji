@@ -36,6 +36,8 @@ from shengji.train.search_screen import trace_fields
 from test_policy_world_search import state
 
 NEW_KEYS = {"impossible_worlds_delta", "rejected_worlds_delta"}
+#: the decision wrapper's other stamp (`PVSearchBot.model_ids`)
+STAMP_KEYS = {"model_ids"}
 ERROR_KEYS = {"error_stage", "error_message"}
 
 
@@ -272,7 +274,7 @@ def test_committed_history_is_the_engine_transcript_not_the_attempt(monkeypatch)
 
 def _strip(rec):
     return {k: v for k, v in rec.items()
-            if k not in NEW_KEYS | ERROR_KEYS | {"seconds", "elapsed_seconds"}}
+            if k not in NEW_KEYS | ERROR_KEYS | STAMP_KEYS | {"seconds", "elapsed_seconds"}}
 
 
 @pytest.mark.parametrize("budget", [None, 60])
@@ -291,7 +293,7 @@ def test_decisions_rng_and_records_are_unchanged(budget, rules):
         assert a == b
         assert ours.sampler.rng.getstate() == bare.sampler.rng.getstate()
         assert ours.sampler._sampler_snapshot() == bare.sampler._sampler_snapshot()
-        assert set(ours.last_decision_record) - set(bare.last_decision_record) == NEW_KEYS
+        assert set(ours.last_decision_record) - set(bare.last_decision_record) == NEW_KEYS | STAMP_KEYS
         assert _strip(ours.last_decision_record) == _strip(bare.last_decision_record)
 
 

@@ -97,8 +97,16 @@ def wide(k=None, **kw):
 
 
 def decide(bot, index):
+    """``(chosen, record)``; a pv-search bot's record without its ``model_ids``
+    stamp (checked here against `PVSearchBot.model_ids`), so the record's own
+    fields compare as they always have."""
     rnd = bury_state(index)
-    return bot.decide_bury(copy.deepcopy(rnd), rnd.banker), bot.last_bury_record
+    chosen = bot.decide_bury(copy.deepcopy(rnd), rnd.banker)
+    record = bot.last_bury_record
+    if isinstance(bot, pv.PVSearchBot) and isinstance(record, dict):
+        record = dict(record)
+        assert record.pop("model_ids") == bot.model_ids("bury")
+    return chosen, record
 
 
 def incumbent_of(index):

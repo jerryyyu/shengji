@@ -1351,6 +1351,9 @@ _DOOMED_THROW_EXCLUSIVE = ("doomed_throw_swap and doomed_throw_reselect are excl
 #: the fallback record's ``error_message`` is the exception text cut to this
 #: many characters (#707 S9)
 ERROR_MESSAGE_MAX = 200
+#: the decision records' ``model_ids`` (`PVSearchBot.model_ids`): hex chars per id
+MODEL_ID_CHARS = 8
+MODEL_ID_STAGES = ("declare", "bury", "play")
 #: the sampler's cumulative counters whose per-decision change the record
 #: carries as ``<name>_delta`` (#707 S9; read, never written)
 SAMPLER_DELTA_COUNTERS = ("impossible_worlds", "rejected_worlds")
@@ -2796,6 +2799,7 @@ class PVSearchBot(PolicyValueBot):
             # likewise; None where the wait pass did not run (the grace window,
             # an abandoned evaluation, or a value choice that already passes)
             record["wait"] = wait
+        record["model_ids"] = self.model_ids("declare")
         self.last_declare_record = record
         return None if played is None else list(played)
 
@@ -4165,6 +4169,7 @@ class PVSearchBot(PolicyValueBot):
                 after = self._sampler_counts()
                 for name in SAMPLER_DELTA_COUNTERS:
                     record[f"{name}_delta"] = after[name] - counts[name]
+                record["model_ids"] = self.model_ids("play")
 
     def _decide_play(self, rnd, seat, started):
         self.last_decision_record = None
@@ -4205,6 +4210,29 @@ class PVSearchBot(PolicyValueBot):
                 "work_complete": False,
             }
             return list(anchor)
+
+    def model_ids(self, stage):
+        """The packages a ``stage`` decision (``declare``, ``bury`` or ``play``)
+        of this bot consults, as `MODEL_ID_CHARS`-hex sha256 prefixes:
+        ``value`` (the evaluator's package), ``prior`` (the policy head's; None
+        where the stage calls none) and ``belief`` (None where the stage's worlds
+        are not the belief proposal's).  Read from the bound objects, so a
+        stand-in evaluator or predictor without a package hash reads as None;
+        the record's own fallback fields say whether a degraded decision
+        consulted them."""
+        def short(sha):
+            return sha[:MODEL_ID_CHARS] if isinstance(sha, str) else None
+        if stage not in MODEL_ID_STAGES:
+            raise ValueError(f"unknown decision stage {stage!r}")
+        policy = stage == "play" or bool(self.leaf_policy_first_trick)
+        belief = ((stage == "play" and self.belief_worlds)
+                  or (stage == "bury" and getattr(self, "bury_belief_worlds", False)))
+        return {
+            "value": short(getattr(self.evaluator, "checkpoint_sha256", None)),
+            "prior": short(getattr(self.predict, "sha256", None)) if policy else None,
+            "belief": (short(getattr(self.belief_model, "package_sha256", None))
+                       if belief else None),
+        }
 
 
 class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
@@ -4297,6 +4325,13 @@ class PVSearchBuryBot(CWVBuryMixin, PVSearchBot):
         the policy head under ``leaf_policy_first_trick``, else None (the
         heuristic continuation, ``fallback``)."""
         return self._policy_first_trick(fallback, check_budget)
+
+    def decide_bury(self, rnd, seat):
+        cards = super().decide_bury(rnd, seat)
+        record = self.last_bury_record
+        if isinstance(record, dict):
+            record["model_ids"] = self.model_ids("bury")
+        return cards
 
 
 def _check_wide_k(k) -> int:

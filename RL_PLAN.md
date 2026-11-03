@@ -94,6 +94,31 @@ ship on his word; a fresh-seed confirmation runs when he asks or when the effect
   +0.2284 [+0.2046, +0.2521] vs release 45, more than its parts' sum. Keep one running combination of near-miss
   levers on the board and test it as one duel rather than each lever alone.
 
+**Duel bar: screen, then confirmation (Jerry 2026-11-03)**
+
+A paired seat-swapped duel against the served release reads levels/round with a deal bootstrap (10,000 reps,
+seed 1). Two stages replace the single DEV bar (mean ≥ +0.015 and 95% CI lower > 0 on 3,920 deals):
+
+1. **Screen (DEV):** 3,920 seat-swapped deals. SCREEN_PASS iff mean ≥ +0.005 and the one-sided 80% lower bound
+   (the 20th percentile of the bootstrap means) is > 0; otherwise SCREEN_FAIL. Validity guards run first and an
+   invalid arm is DEV_INVALID. A screen PASS earns a confirmation or a place in a combination, not a release.
+   Readers also print the 95% interval and the single-bar verdict as a descriptive `old_bar:` line, so reads stay
+   comparable with earlier duels.
+2. **Confirmation:** fresh seeds, 7,840 deals. CONFIRMED iff mean ≥ +0.005 and the 95% lower bound (2.5th
+   percentile) is > 0.
+3. **Release:** unchanged: a confirmed duel, Fly timing and Jerry's word (`DEPLOY.md`).
+
+Pass probability by true effect (per-deal sd ≈ 0.485, g3dsc; normal approximation):
+
+| true effect (levels/round) | 0 | +0.005 | +0.010 | +0.015 | +0.020 |
+|---|---|---|---|---|---|
+| single DEV bar, 3,920 deals | 2.5% | 9% | 25% | 49% | 73% |
+| screen, 3,920 deals | 20% | 42% | 67% | 86% | 96% |
+| confirmation, 7,840 deals | 2.5% | 15% | 45% | 78% | 95% |
+| screen then confirmation | 0.5% | 6% | 30% | 68% | 92% |
+
+The two-stage rule applies only to runs not yet started when it was adopted (2026-11-03 ~15:45Z). Every run started before then, on any date, keeps the bar it predeclared; its readout is read and labelled against that bar.
+
 ## Planned work
 
 **What changes production next:** a change that beats release 49 as served on a paired duel or ten-window

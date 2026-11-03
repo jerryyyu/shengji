@@ -1359,6 +1359,34 @@
       "host": "shengji-cloud",
       "git_head": "44faf916f077638c10cba3cc68fb829defdbaa46",
       "note": "b1kd DEV duel (board #1075; Jerry 2026-11-03 'For cloud, screen new belief when it is ready'): two arms on this one block, paired by deal, seat-swapped, r2 rank-mixed, 3920 deals, 14 workers, on cloud, defender Y as served (release 49): arm cb = Y + G3 Stage A value g3A-e04-ema f4f4127e + FT1 prior 1fa201b2 + the B1k belief package (G2 belief B1k, S58 warm start on the four Y belief stores, kitty weight 4); arm yb = Y + the B1k belief package only. DEV_PASS per arm iff mean >= +0.015 and CI lower > 0. Launcher claude_b1kd_cloud.sh (sha pinned after the B1k package is filled), output root /root/vol-dev-claude-b1kd-y-20261103. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) CLEAR against A a09cef7c + receipt, smv3 3e89e86f + FT1 0def7b31 + M28 CAT 11f453a1 (--follow-init); deals disjoint from the four Y belief store spans B1k trained on."
+    },
+    {
+      "name": "expertperf2-rehearsal-311229000",
+      "purpose": "other",
+      "seed0": 311229000,
+      "clusters": 100,
+      "span": [
+        311229000,
+        311229100
+      ],
+      "created_at": "2026-11-03T15:30:00Z",
+      "host": "shengji-perf",
+      "git_head": "ee1fb2126e5c89e4d9944140b0a0545e5e3cf856",
+      "note": "expertperf2 host rehearsal block (non-scientific execution evidence): train 311229000 (+4) through the expertperf2 perf launcher's REHEARSAL mode, on perf after expertperf's LANE DONE and before the RELEASE; packet ~/shengji-archive/2026-11-03-expertperf2-packet. RESERVED BEFORE DEALING."
+    },
+    {
+      "name": "expertperf2-train-311220000",
+      "purpose": "trajectory",
+      "seed0": 311220000,
+      "clusters": 2800,
+      "span": [
+        311220000,
+        311222800
+      ],
+      "created_at": "2026-11-03T15:30:00Z",
+      "host": "shengji-perf",
+      "git_head": "ee1fb2126e5c89e4d9944140b0a0545e5e3cf856",
+      "note": "expertperf2 TRAIN chunk on perf (Jerry 2026-11-03 'keep doing label run gen on perf'): the next 2,800 fresh Y (release 49) self-play deals under the M28 expert-label producer (scripts/expert_labels/expert_label_probe.py, PR #1215), one deal per shard, r2 rank-mixed plan per deal index; M28 TRAIN knobs, 14 workers, after expertperf's LANE DONE; launcher perf/claude_expertperf2_perf.sh in ~/shengji-archive/2026-11-03-expertperf2-packet (a counted-edit delta of expertperf's), output /root/claude-expertperf2-20261103/out/train. Same schema as expert3x/expertperf; a screen must not reuse these deals. RESERVED BEFORE DEALING."
     }
   ]
 }

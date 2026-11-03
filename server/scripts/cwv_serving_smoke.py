@@ -104,6 +104,12 @@ def budget_turn(phase, bot, wall_seconds, env):
     if play and (getattr(bot, "belief_worlds", False) or "belief_fallback" in record):
         if type(belief_fallback) is not int or belief_fallback != 0:
             failures.append("belief_fallback_or_missing")
+    all_draws = record.get("belief_fallback_all_draws")
+    needs_all_draws = (getattr(bot, "belief_worlds", False)
+                       and getattr(bot, "world_history_legal", False))
+    if play and (needs_all_draws or "belief_fallback_all_draws" in record):
+        if type(all_draws) is not int or all_draws != 0:
+            failures.append("belief_all_draws_fallback_or_missing")
     for label, value in (("server_wall", wall_seconds), ("decision", elapsed)):
         if not finite(value):
             failures.append(label + "_time_invalid")
@@ -113,6 +119,7 @@ def budget_turn(phase, bot, wall_seconds, env):
             "server_wall_seconds": wall_seconds, "record_schema": record.get("schema"),
             "fallback_reason": reason, "work_complete": record.get("work_complete"),
             "belief_fallback": belief_fallback,
+            "belief_fallback_all_draws": all_draws,
             "failures": failures}
 
 

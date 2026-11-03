@@ -156,7 +156,7 @@ def test_a_prior_of_another_encoder_version_refuses(package, other_package, tmp_
                               prior_sha256=other_package[1])
 
 
-@pytest.mark.parametrize("fault", ["budget", "belief", "missing_belief"])
+@pytest.mark.parametrize("fault", ["budget", "belief", "missing_belief", "later_belief", "missing_all_draws"])
 def test_separate_prior_budget_smoke_observes_snapshot_records(package, other_package, monkeypatch, fault):
     from scripts.cwv_serving_smoke import run_smoke
     from shengji.eval.served_config import registry_name
@@ -188,7 +188,14 @@ def test_separate_prior_budget_smoke_observes_snapshot_records(package, other_pa
                     "work_complete": False, "played": list(turn.decision.cards)}
             else:
                 bot.belief_worlds = True
-                if fault == "belief":
+                if fault in ("later_belief", "missing_all_draws"):
+                    bot.world_history_legal = True
+                    bot.last_decision_record["belief_fallback"] = 0
+                    if fault == "later_belief":
+                        bot.last_decision_record["belief_fallback_all_draws"] = 1
+                    else:
+                        bot.last_decision_record.pop("belief_fallback_all_draws", None)
+                elif fault == "belief":
                     bot.last_decision_record["belief_fallback"] = 1
                 else:
                     bot.last_decision_record.pop("belief_fallback", None)
@@ -198,7 +205,8 @@ def test_separate_prior_budget_smoke_observes_snapshot_records(package, other_pa
     failed = run_smoke(env, turns=2, require_budget_records=True)
     assert not failed["passed"]
     expected = ({"decision_schema", "fallback_or_incomplete", "decision_budget_exceeded"}
-                if fault == "budget" else {"belief_fallback_or_missing"})
+                if fault == "budget" else {"belief_all_draws_fallback_or_missing"}
+                if fault in ("later_belief", "missing_all_draws") else {"belief_fallback_or_missing"})
     assert {f["type"] for f in failed["budget_failures"]} >= expected
 
 
@@ -233,3 +241,16 @@ def test_budget_smoke_requires_valid_belief_telemetry(fallback):
     bot = SimpleNamespace(last_decision_record=record, serving_budget_seconds=3, belief_worlds=True)
     result = budget_turn("play", bot, 0.2, {"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3"})
     assert (result["failures"] == []) == (type(fallback) is int and fallback == 0)
+
+
+@pytest.mark.parametrize("count", [0, 1, None, True, "0", -1])
+def test_budget_smoke_checks_all_draw_belief_count(count):
+    from types import SimpleNamespace
+    from scripts.cwv_serving_smoke import budget_turn
+    record = {"schema": pv.RECORD_SCHEMA, "seconds": 0.1, "work_complete": True,
+              "belief_fallback": 0, "belief_fallback_all_draws": count}
+    bot = SimpleNamespace(last_decision_record=record, serving_budget_seconds=3,
+                          belief_worlds=True, world_history_legal=True)
+    result = budget_turn("play", bot, 0.2, {"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3"})
+    assert result["belief_fallback_all_draws"] == count
+    assert (result["failures"] == []) == (type(count) is int and count == 0)

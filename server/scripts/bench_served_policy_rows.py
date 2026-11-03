@@ -5,8 +5,9 @@ Takes exactly the producer's arguments plus ``--report FILE`` and runs the real
 ``produce`` in this process, recording wall time, rows and records per second,
 every chunk flush (rows, bytes on disk, seconds to encode and write), the
 parent's peak RSS and the peak of the summed RSS of the parent and all its
-worker processes (sampled from ``ps`` every ``--sample-seconds``; the sum is
-an upper bound: a page shared by several processes counts once per process).
+worker processes (sampled through the portable host census every
+``--sample-seconds``; the sum is an upper bound: a page shared by several
+processes counts once per process, and the macOS census includes its own probe).
 
     python scripts/bench_served_policy_rows.py --data STORE --out DIR \
         --encoder-version 2 --workers 8 [--partition I/N] --report bench.json
@@ -17,7 +18,6 @@ import json
 import os
 import platform
 import resource
-import subprocess
 import sys
 import threading
 import time
@@ -26,49 +26,57 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from shengji.ops import hostinfo
 from shengji.train import served_policy_rows as spr  # noqa: E402
 
 
 def _tree_rss_kib(root: int) -> tuple[int, int, int]:
     """``(parent KiB, summed KiB of root and descendants, descendant count)``."""
-    ps = subprocess.Popen(["ps", "-A", "-o", "pid=,ppid=,rss="], stdout=subprocess.PIPE, text=True)
-    out, _ = ps.communicate()
-    rss: dict[int, int] = {}
+    table = hostinfo.process_table()
+    if root not in table or table[root].rss_bytes <= 0:
+        raise hostinfo.HostProbeError("RSS census lacks a live benchmark root")
     children: dict[int, list[int]] = {}
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) != 3:
-            continue
-        pid, ppid, kib = map(int, parts)
-        if pid == ps.pid:                 # the sampler's own ps is not a worker
-            continue
-        rss[pid] = kib
-        children.setdefault(ppid, []).append(pid)
-    total, seen, stack = 0, 0, [root]
+    for row in table.values():
+        children.setdefault(row.ppid, []).append(row.pid)
+    total, seen, stack = 0, set(), [root]
     while stack:
         pid = stack.pop()
-        total += rss.get(pid, 0)
-        seen += 1
+        if pid in seen:
+            raise hostinfo.HostProbeError("RSS census contains a parent cycle")
+        seen.add(pid)
+        total += table[pid].rss_bytes
         stack.extend(children.get(pid, []))
-    return rss.get(root, 0), total, seen - 1
+    return table[root].rss_bytes // 1024, total // 1024, len(seen) - 1
 
 
 class Sampler(threading.Thread):
     def __init__(self, interval: float):
         super().__init__(daemon=True)
         self.interval = float(interval)
+        if not 0 < self.interval < float("inf"):
+            raise ValueError("sample interval must be positive and finite")
         self.stop = threading.Event()
+        self.error: Exception | None = None
         self.peak_parent = self.peak_tree = self.peak_workers = self.samples = 0
 
     def run(self) -> None:
         pid = os.getpid()
-        while not self.stop.is_set():
-            parent, tree, workers = _tree_rss_kib(pid)
-            self.peak_parent = max(self.peak_parent, parent)
-            self.peak_tree = max(self.peak_tree, tree)
-            self.peak_workers = max(self.peak_workers, workers)
-            self.samples += 1
-            self.stop.wait(self.interval)
+        try:
+            while True:
+                parent, tree, workers = _tree_rss_kib(pid)
+                self.peak_parent = max(self.peak_parent, parent)
+                self.peak_tree = max(self.peak_tree, tree)
+                self.peak_workers = max(self.peak_workers, workers)
+                self.samples += 1
+                if self.stop.wait(self.interval):
+                    break
+        except Exception as exc:
+            self.error = exc
+
+    def join(self, timeout=None) -> None:
+        super().join(timeout)
+        if not self.is_alive() and self.error is not None:
+            raise hostinfo.HostProbeError("RSS sampling failed; measurement incomplete") from self.error
 
 
 def _maxrss_mib(who: int) -> float:
@@ -111,8 +119,10 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         wall = time.perf_counter() - t0
         sampler.stop.set()
-        sampler.join()
-        spr.write_chunk = real_write
+        try:
+            sampler.join()
+        finally:
+            spr.write_chunk = real_write
     report = {
         "host": platform.node(), "platform": platform.platform(), "cpus": os.cpu_count(),
         "argv": list(sys.argv[1:] if argv is None else argv),

@@ -1191,6 +1191,34 @@
       "host": "shengji-perf",
       "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
       "note": "g3dsc CONFIRMATION duel = fresh-seed confirmation of g3ds (board #1075 row G3; g3ds read DEV_PASS +0.0307 [+0.0161, +0.0459] on 245690910): the same arm, Y served on the G3 Stage A value package Ae04 (f4f4127e, EMA export of a09cef7c) with P0's FT1 as a separate policy prior (1fa201b2) vs Y as served (491ee4bf), one arm x, 3,920 paired seat-swapped rank-mixed deals from seed0 245710910, r2 plan, 14 workers, launcher claude_g3dsc_perf.sh sha256 81e9e877..., reservation /root/claude_reservations/g3dsc.json, output root /root/vol-dev-claude-g3dsc-y-20261103; CONFIRMED iff mean >= +0.010 and 95% CI lower > 0, judged alone, never pooled with g3ds. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) is CLEAR against A's checkpoint a09cef7c and receipt, smv3 3e89e86f with --follow-init (A's init; JS3-M1 / JS-M1 reached), and FT1 0def7b31 with M28 CAT 11f453a1 (--follow-init; m30y's FT1 set)."
+    },
+    {
+      "name": "rt50-rehearsal-245900400",
+      "purpose": "screen",
+      "seed0": 245900400,
+      "clusters": 56,
+      "span": [
+        245900400,
+        245900456
+      ],
+      "created_at": "2026-11-03T05:45:00Z",
+      "host": "shengji-cloud",
+      "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+      "note": "rt50 host rehearsal block (non-scientific execution evidence) for the red team of the release-50 candidate: the expert-budget exploiter (Y at the M27/M28 expert budget via PR #1215's served_base.expert_env, lcc32 and sc8 dropped, 60 s play budget) vs arm c = Y on the G3 Stage A value package Ae04 f4f4127e + P0's FT1 prior 1fa201b2 and arm y = Y as served, both arms on this block, on cloud, tree /root/claude-g2dy-src-1bad9a2d, rehearsed launcher claude_rt50_cloud.sh sha256 747def95... (the two-arm form; the lane launcher a82f164a... runs arm c alone). Dealt by that rehearsal on 2026-11-03 (05:16-05:33Z, before this entry); registered so no later run reuses these decks."
+    },
+    {
+      "name": "rt50-lane-245910910",
+      "purpose": "screen",
+      "seed0": 245910910,
+      "clusters": 600,
+      "span": [
+        245910910,
+        245911510
+      ],
+      "created_at": "2026-11-03T05:45:00Z",
+      "host": "shengji-cloud",
+      "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+      "note": "rt50 DEV red-team duel (board #1075; Jerry 2026-11-03 'Red team Y and A and FT1'): the expert-budget exploiter (Y at the M27/M28 expert budget via PR #1215's served_base.expert_env: W256, K32, exact 8/8, lcc32 and sc8 dropped, 60 s play budget; S69r2's exploiter name) vs the release-50 candidate (Y on the G3 Stage A value package Ae04 f4f4127e + P0's FT1 prior 1fa201b2) at served budgets, one arm c, 600 paired seat-swapped rank-mixed deals from seed0 245910910, r2 plan, --history, 14 workers, launcher claude_rt50_cloud.sh sha256 a82f164a..., reservation /root/claude_reservations/rt50.json, output root /root/vol-dev-claude-rt50-r50c-20261103; EXPLOITER_AHEAD iff CI lower > 0, DEFENDER_AHEAD iff CI upper < 0, else NO_RESOLVED_GAP, with first-divergence attribution (diagnostic, no strength claim). An optional arm-y follow-up (the same exploiter vs Y as served) would reuse this block deal by deal as a deliberate paired replicate. RESERVED BEFORE DEALING; exact-deal clear (no --allow-unresolved) is CLEAR against A's checkpoint a09cef7c and receipt, smv3 3e89e86f with --follow-init (A's init and the exploiter's / Y's 491ee4bf lineage; JS3-M1 / JS-M1 reached), and FT1 0def7b31 with M28 CAT 11f453a1 (--follow-init)."
     }
   ]
 }

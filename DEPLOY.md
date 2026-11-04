@@ -25,18 +25,19 @@ Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 **Release 50** (the cbaC stack): release 49 with new packages and belief bury worlds. The value package is G3 Stage
 A's (`g3a-e04-f4f4127e`), the card-play prior is FT1's (`p0-ft1-1fa201b2`), the belief package is B1a's
 (`b1a-028131a0`, in place of S58), and the wide value-only bury scores its candidates on belief-drawn worlds
-(`bbw`). lcc32, sc8, every other rule, every budget and the latency switches are release 49's. Prepared for deploy;
-until `/healthz` shows the name below, production is release 49 (its record is under "Rollback").
+(`bbw`). lcc32, sc8, every other rule, every budget and the latency switches are release 49's. Live since 2026-11-04
+15:24 EST (Fly v57); the first-room qualification (Release checklist, steps 9–10) is pending the first live room.
+Release 49's record is under "Rollback".
 
 | field | value |
 |---|---|
-| deployed | pending deploy (fill in: ET and Z time, room count, Jerry's word: in session 2026-11-04 ~14:05 ET, "I'm good to ship and we can manage what to do with lcc after") |
-| Fly version | pending deploy |
-| image | pending deploy |
-| source | this release PR's squash merge on main (fill in the sha after merge) |
+| deployed | 2026-11-04 15:24 EST (20:24Z) at 0 rooms; Jerry's word: in session 2026-11-04 ~14:05 ET, "I'm good to ship and we can manage what to do with lcc after" |
+| Fly version | v57 |
+| image | `registry.fly.io/shengji:deployment-01M6M3PX2A43CPZ65RBQPRY8AB` (`sha256:92badd5749996c0a2423b1ff2c6f7a4d0d492bfd68df06ba93d9162903895bec`) |
+| source | main `db3a5c6d8c6b5f32e2055d042333a3e843e8a659` (#1260), deployed from a clean worktree at that commit |
 | evidence | `AI_POLICIES.md` ladder row 19 (cbaC CONFIRMED; cbaf arm a SCREEN_PASS; rtF red team; latency: the R50 speed profile, Fly timing pending) |
-| deploy record | pending deploy |
-| comparator | release 49 as served (Jerry 2026-11-01)[^cmp]; moving it to release 50 is Jerry's call |
+| deploy record | [#1260 issuecomment-6641264830](https://github.com/jerryyyu/shengji/pull/1260#issuecomment-6641264830): `/healthz` bot, `fast: true`, value `f4f4127e…`, budgets 3 s / bury 2 s, latency switches as `fly.toml`; in-machine `True compiled 028131a0`; first-room reader and room-log write check pending the first live room |
+| comparator | release 50 as served for new duels and screens (Jerry, in session 2026-11-04: "Yes move comparator")[^cmp] |
 
 Served name:
 
@@ -761,7 +762,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
-| 50 | pending deploy | the cbaC stack: G3 Stage A value + FT1 card-play prior + B1a belief + belief bury worlds (`bbw`) on release 49; evidence [cbaC](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629156672) (audit [6629239690](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629239690)), [cbaf](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6637319197), rtF; latency: the R50 speed profile, Fly timing pending | new value `f4f4127e…`, prior `1fa201b2…`, belief `028131a0…` | this PR | pending deploy |
+| 50 | 2026-11-04 15:24 EST | the cbaC stack: G3 Stage A value + FT1 card-play prior + B1a belief + belief bury worlds (`bbw`) on release 49; evidence [cbaC](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629156672) (audit [6629239690](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629239690)), [cbaf](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6637319197), rtF; latency: the R50 speed profile, Fly timing pending | new value `f4f4127e…`, prior `1fa201b2…`, belief `028131a0…` | #1260 | v57, `deployment-01M6M3PX2A43CPZ65RBQPRY8AB` |
 | 49 | 2026-11-01 01:39 EST | board combo3 arm Y: singleton challenger (`sc8`) + held-out lead confirmation (`lcc32`) on release 48; evidence [combo3y](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6475680068), [combo3yc](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6479431994), latency s71fly + v107sc8lat | flags | #1194 | `deployment-01M6AX9WCDG3YMGWZPDE9PSM12` (v56), main `d2a6346a` |
 | 48 | 2026-10-24 10:18 | S58 belief package + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches; evidence [r48cloud](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6383298163), [r48confirm](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384251320), [v105lat](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384912469) | new belief package `42444515…` | #1147 | `deployment-01M5Q4ACYEJ901SQB3BNMPC55A` (v47), main `f14ace15` |
 | 46 | 2026-10-16 14:49 | v92 combo: belief worlds, exact endgame at 7, `vdef` | new belief package `763b5e05…` | #1072 | `deployment-01M530R14ARM0669QNJBW2RGTG` (v46), main `ab6fd1b2` |
@@ -870,7 +871,7 @@ Policy cost, not the rules engine, sets CPU capacity.
 - Load-test the chosen policy and room mix before advertising capacity. Memory per room is small; more than one
   process would need external state and room-affinity routing.
 
-[^cmp]: Jerry, in session 2026-11-01: duels and screens move to release 49 (Y) as served. Before that, release 48
+[^cmp]: Jerry, in session 2026-11-04 ("Yes move comparator"): duels and screens move to release 50 as served. Before that, release 49 (Y; Jerry, in session 2026-11-01), release 48
     (Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48"), release 46
     (Jerry 2026-10-16, #707 issuecomment-6223485189), and before that release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693). Confirmations keep their parent's comparator.
 [^belief]: Registration refuses a missing or mismatched belief file, so a served bot at all means the sha matched;

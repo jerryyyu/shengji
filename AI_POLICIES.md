@@ -7,8 +7,10 @@ plus the singleton challenger `sc8` and the lead confirmation `lcc32` (ladder ro
 with the S58 belief package, `dtrx` and the guarded greedy finish) is the rollback (`DEPLOY.md`). **New duels and
 screens compare against release 49 as served** (Jerry, in session 2026-11-01; before that release 48, 2026-10-24,
 release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator; screens already
-read keep their declared comparator. The release-50 candidate (board row R50: release 50 = release 49 + the G3 Stage A value (f4f4127e) + the FT1 prior (1fa201b2) + the B1a belief (028131a0) + belief bury worlds (`bbw`); cbaC +0.0618 [+0.0507, +0.0729] vs release 49 on 7,840 fresh deals)
-is held, not deployed; its remaining gates are on the board.
+read keep their declared comparator. **Release 50** (row 19: release 49 with the G3 Stage A value package `f4f4127e`,
+the FT1 card-play prior `1fa201b2`, the B1a belief package `028131a0` and belief bury worlds `bbw`; Jerry 2026-11-04:
+"I'm good to ship and we can manage what to do with lcc after") is prepared in `fly.toml` and replaces release 49 on
+deploy, with release 49 as its rollback (`DEPLOY.md`).
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The
@@ -18,14 +20,14 @@ long-form text this file carried until 2026-10-16 is verbatim in
 
 ## Production contract
 
-Release 49 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are what it adds to release 48. Rule tokens (and the release that added
+Release 49 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are what it adds to release 48, and the entries marked 50 are release 50's changes on deploy. Rule tokens (and the release that added
 each) are in parentheses; rules are off by default in source and on in production (#676).
 
 | phase | stage | budget and fallback |
 |---|---|---|
 | declare | The heuristic proposes. At every first-round chance with an option (`vdef`, 46), else where the heuristic would declare or in the grace window, the value head scores each legal declaration plus PASS over 64 sampled completions (heuristic bury and first trick inside) and replaces the heuristic only when beaten (`vd`, 44; #952, #959, #958, #965). | Off the event loop on copies, applied only if the round is unchanged; heuristic on expiry or error; a human's declaration wins any race. |
-| bury | 64 candidates (the hybrid ballot plus the incumbent's single-card swaps), chosen by the value head's mean over the arm's model worlds; no MC stage (`bwv` K=64, 45; #974). | 2 s; heuristic fallback. |
-| play: worlds | 64 worlds, history-legal (`whl`), drawn under the pair obligation (`whd`), hidden hands proposed by the S58 belief model (`bw`, 46; S58 since 48); this round's refused throws stay refusable with the same forced component (`rc`, 38; #689). | A belief error, including preparation over 0.25 s, falls back for that decision to the history-legal draw and is recorded. |
+| bury | 64 candidates (the hybrid ballot plus the incumbent's single-card swaps), chosen by the value head's mean over the arm's model worlds; no MC stage (`bwv` K=64, 45; #974). Release 50: the 32 model worlds are drawn by the belief package on the bury state's trick-1 twin (`bbw`, 50). | 2 s; heuristic fallback. A failed belief draw (`bbw`) falls back for that decision to the split sampler's worlds and is recorded. |
+| play: worlds | 64 worlds, history-legal (`whl`), drawn under the pair obligation (`whd`), hidden hands proposed by the S58 belief model (`bw`, 46; S58 since 48; B1a in 50); this round's refused throws stay refusable with the same forced component (`rc`, 38; #689). | A belief error, including preparation over 0.25 s, falls back for that decision to the history-legal draw and is recorded. |
 | play: admit | Policy head admits 8: at most 2 per structural key, near-duplicates skipped, back-fill (`div`, 38; #680); on a lead whose heuristic anchor is a non-trump single that is not the top live card, slot 0 is the highest plain pair/tractor, else the policy's top action (`la`, 38; #694). | 3 s per play; on expiry, the heuristic anchor. |
 | play: price | Value head prices each afterstate in each world, after finishing the trick with greedy replies (`lgf`, 48), except on decisions an exact stage is eligible for (`lgfx`, 48); within 0.02 level of the best mean, most root-team points from the current trick wins (`tb`, 38; #682). | Past 2 s into a decision the greedy finish stops and the remaining leaves are plain (`lgfd2000`, 48). |
 | play: singleton challenger | On a lead where some hand holds more than 7 cards, the singles left off the ballot are priced on 8 worlds with heuristic-finished leaves; the best replaces the ballot's last slot only when it beats every admitted candidate (`sc8`, 49). | Inside the 3 s; the 64-world search still chooses. |
@@ -34,7 +36,10 @@ each) are in parentheses; rules are off by default in source and on in productio
 | play: ≤ 7 cards | Lead with > 1 candidate: exact level-mode minimax per world after the first-trick leaf (`ele`, `ed7`). Follow: exact re-rank on the compiled compact-level solver, 50M nodes (`xf7`, `xfcompactlevel`) (46; #1066). | Inside the 3 s; expiry or error keeps the baseline choice. |
 
 **Packages:** play/value `smv3out-491ee4bf` (gen-5 SMV3 outcome head, since release 36); prior keys JS-M1 `0d17fd03`
-(since 28); belief NumPy `s58-e6-42444515` (since 48, at its stored temperature 1.0129; release 46 served `s17long-e2-763b5e05`), sha-pinned, loaded once per process. **Latency switches** (48): prefix-cached and batched encoding and a streamed greedy finish, no name token; on completed decisions the cards played are the switch-off ones. **Logging:** the belief log is on
+(since 28); belief NumPy `s58-e6-42444515` (since 48, at its stored temperature 1.0129; release 46 served `s17long-e2-763b5e05`), sha-pinned, loaded once per process.
+Release 50: value `g3a-e04-f4f4127e` (G3 Stage A, EMA export of epoch 4) at every stage, a separate card-play prior
+`p0-ft1-1fa201b2` (FT1, `SHENGJI_PV_PRIOR_*`), belief `b1a-028131a0` (stored temperature 1.0190); the stage table is
+`server/releases/r50.json`. **Latency switches** (48): prefix-cached and batched encoding and a streamed greedy finish, no name token; on completed decisions the cards played are the switch-off ones. **Logging:** the belief log is on
 by default (#1068): each play record carries `belief_seed` and a marginal snapshot; no decision depends on it.
 
 Served name, package SHA256s, `fly.toml`, deploy record and rollback: `DEPLOY.md` "Current production" and the
@@ -78,6 +83,7 @@ fixes. Row numbers are stable; other documents cite them.
 
 | row | rel. | change (token) | vs | result [95% CI] | status | reading | vs Sol, actor-only [95% CI] | vs PT-Sol [95% CI] | pointer |
 |---:|---:|---|---|---|---|---|---|---|---|
+| 19 | 50 | G3 Stage A value (`f4f4127e`) + FT1 card-play prior (`1fa201b2`) + B1a belief (`028131a0`) + belief bury worlds (`bbw`) | 49 | cbaf arm a **+0.0695** (one-sided 80% lower bound +0.0631); cbaC **+0.0618 [+0.0507, +0.0729]** | SCREEN_PASS, CONFIRMED | Paired seat-swapped duels against release 49 as served: cbaf 3,920 deals on the M5 Ultra, cbaC 7,840 fresh deals on cloud, each judged alone. Four changes at once; the only within-run attribution is cbaf's a − s, B1a over S58 on this stack, +0.0228 (97.5% CI [+0.0010, +0.0448]); FT2X4 in place of FT1 is UNRESOLVED (+0.0047) and not shipped. lcc32 stays on: loo (lcc32 off − on) +0.0079 [−0.0069, +0.0221], DROP_SAFE, the lcc decision deferred. Red team rtF (expert-budget Y vs this stack) −0.0433 [−0.0842, −0.0042], DEFENDER_AHEAD. 0 play, belief, bury and bury-belief fallbacks. Latency: +1.4% compute over release 49 on a cloud core (R50 speed profile); not timed on Fly; the half-budget duel hb50 is pending. | — | — | cbaC #1171 issuecomment-6629156672; Codex audit 6629239690; cbaf 6637319197; archives `readouts/{cbaC,cbaf,rtF,loo}/`, `2026-11-04-r50-speed-profile/` |
 | 18 | 49 | singleton challenger (`sc8`) + held-out lead confirmation at 32 (`lcc32`) | 48 | **+0.0270 [+0.0135, +0.0408]** combo3y; combo3yc **+0.0306 [+0.0167, +0.0441]** | DEV_PASS, CONFIRMED | Different instrument: paired seat-swapped head-to-head duels against release 48 as served, 3,920 fresh deals each, not the MC-LCB screen scale. Two rules at once; the increment over `lcc32` alone is +0.0102 [−0.0086, +0.0291] (independent runs), so sc8's share is unresolved. 0 play, belief and bury fallbacks. Latency: sc8 v107sc8lat QUALIFIED on perf; lcc32 on Fly (s71fly) leads p95 2.01 s unthrottled and self-limiting under throttle; the pair is not timed on Fly. | — | — | combo3y #1075 issuecomment-6475680068; combo3yc 6479431994; Codex audit 6480355443; s71fly 6469399580; v107sc8lat archive `readouts/v107sc8lat/` |
 | 17 | 48 | S58 belief package (`42444515`, stored T) + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches | 46 | **+0.0765 [+0.0571, +0.0958]**; r48confirm **+0.0843 [+0.0575, +0.1111]** | POSITIVE, CONFIRMED | Four changes screened as one recipe (no per-change attribution); 0 play and 0 belief fallbacks on both reads; v105lat QUALIFIED (play p95 0.566 s). | — | — | r48cloud #1075 issuecomment-6383298163; r48confirm 6384251320; v105lat 6384912469 |
 | 15 | 46 | belief worlds (`whl whd bw`) + exact endgame D7/X7 (`ele ed7 xf7 xfcompactlevel`) + `vdef` | 45 | **+0.2167 [+0.1923, +0.2412]**; v92c **+0.2284 [+0.2046, +0.2521]** | POSITIVE, CONFIRMED | Three changes at once; the largest served gain. | **+0.55 [+0.25, +0.90]** S47 | — | v92combo45 #707 issuecomment-6216352632; v92c 6221702452 |

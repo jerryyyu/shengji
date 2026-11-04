@@ -44,7 +44,7 @@ def _fly_env():
     # value-only bury SHENGJI_PV_BURY_WIDE_VALUE/_K, release 45's bury chooser), so derive the
     # release-38 env as production minus those lines, which is exactly the documented release-38
     # rollback.
-    env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    env = _r49_env()
     assert env.get("SHENGJI_PV_DOOMED_THROW_RESELECT") == "1"
     return {k: v for k, v in env.items() if k not in (
         "SHENGJI_PV_DOOMED_THROW_RESELECT", "SHENGJI_PV_VALUE_DECLARE",
@@ -575,3 +575,10 @@ def test_summary_reads_scalar_receipts_on_fallback_and_unknown_is_not_zero():
     assert partly["full_bury_rollouts"] == 18 * 640
     assert partly["full_bury_rollouts_unknown_rows"] == 17      # the receipt with neither
     assert partly["model_positions_unknown_rows"] == 34
+
+
+def _r49_env():
+    """Release 49's ``fly.toml`` env: the repo's, with release 50 rolled back (the
+    release-49 recipe the identities in this module are derived from)."""
+    from test_release49_fly_config import fly_env
+    return fly_env()

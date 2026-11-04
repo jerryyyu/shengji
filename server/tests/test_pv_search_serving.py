@@ -102,7 +102,7 @@ def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_
     import tomllib
     from shengji.eval.singleton_challenger import candidate_from_env
     path, sha = package
-    env = tomllib.loads((pathlib.Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env = _r49_env()
     belief = tmp_path / 'belief.npz'
     belief.write_bytes(b'synthetic belief binding')
     env.update(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
@@ -559,3 +559,10 @@ assert os.environ['SHENGJI_PV_SINGLETON_CHALLENGER'] == ambient
                      SHENGJI_PV_SINGLETON_CHALLENGER=ambient)
     subprocess.run([sys.executable, '-c', code, json.dumps(supplied), str(derive_first)], env=inherited,
                    check=True, capture_output=True, text=True)
+
+
+def _r49_env():
+    """Release 49's ``fly.toml`` env: the repo's, with release 50 rolled back (the
+    release-49 recipe the identities in this module are derived from)."""
+    from test_release49_fly_config import fly_env
+    return fly_env()

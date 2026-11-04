@@ -175,7 +175,7 @@ def fly_env():
     Production is release 46 (release 44 + SHENGJI_PV_BURY_WIDE_VALUE/_K + the combo), so
     the release-44 identities here and in the modules that import this helper are derived
     from the documented rollbacks."""
-    env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    env = _r49_env()
     assert env.get(VD) == "1"
     assert (env.get("SHENGJI_PV_BURY_WIDE_VALUE"), env.get("SHENGJI_PV_BURY_WIDE_K")) == ("1", "64")
     return {k: v for k, v in env.items()
@@ -768,3 +768,10 @@ def test_the_screen_wrapper_carries_the_leaf_keys():
     assert set(lft.__all__) == {"FOLLOW_CAP", "TRICK_PLAYS", "PolicyFirstTrick", "best_lead",
                                 "best_follow"}
     assert pv.LEAF_FIRST_TRICK_PLAYERS == ("heuristic", "policy")
+
+
+def _r49_env():
+    """Release 49's ``fly.toml`` env: the repo's, with release 50 rolled back (the
+    release-49 recipe the identities in this module are derived from)."""
+    from test_release49_fly_config import fly_env
+    return fly_env()

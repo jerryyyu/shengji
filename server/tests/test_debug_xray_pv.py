@@ -270,7 +270,7 @@ def test_xray_room_routes_the_declaration_phases_to_the_declare_view():
 def _served_entries(path, belief_path):
     from shengji.train import pv_search_policy as pv
 
-    env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    env = _r49_env()
     recipe = pv.pv_env_recipe({**env, "SHENGJI_PV_CKPT": str(path),
                               "SHENGJI_PV_SHA256": PACKAGE_SHA,
                               "SHENGJI_PV_BELIEF_CKPT": str(belief_path)})
@@ -368,3 +368,9 @@ def test_production_overlay_keeps_the_panel_fixtures_shape(pinned_production_pac
     assert set(view["declare"]) == set(declare["declare"])
     assert set(view["declare"]["record"]) == set(declare["declare"]["record"])
 
+
+def _r49_env():
+    """Release 49's ``fly.toml`` env: the repo's, with release 50 rolled back (the
+    release-49 recipe the identities in this module are derived from)."""
+    from test_release49_fly_config import fly_env
+    return fly_env()

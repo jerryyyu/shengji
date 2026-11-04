@@ -1,4 +1,4 @@
-"""Release 49: the shipping ``fly.toml`` serves board combo3 arm Y, release 48 plus two lead rules.
+"""Release 49, the rollback of release 50: board combo3 arm Y, release 48 plus two lead rules.
 
 Y adds two lines to release 48's environment: the singleton challenger
 (``SHENGJI_PV_SINGLETON_CHALLENGER = '1'``, which registers the served name with
@@ -6,10 +6,11 @@ the ``-sc8`` suffix and builds `SingletonChallengerBuryBot`) and the held-out le
 confirmation at 32 (``SHENGJI_PV_LEAD_CONFIRM = '32'``, token ``lcc32``).  Every
 other line is release 48's, so release 48's env is this one with those two lines
 removed and the release-48 name restored (``release48_env``, the documented
-rollback).
+rollback).  Release 50 changes the value and belief packages and adds three lines
+(``undo_release50``), so release 49's env is the repo's ``fly.toml`` environment with
+that change undone and the release-49 name restored (``release49_env``).
 
-The served bot is built from the repo's ``fly.toml`` environment exactly as the
-server builds it: the env in the process, the registry's import-time
+The served bot is built from that environment exactly as the server builds it: the env in the process, the registry's import-time
 registration (``_register_pv_search_from_env``, which registers the ``-sc8`` name
 when the challenger is on) and ``make_bot(SHENGJI_BOT)``, on the hash-pinned
 production and S58 belief packages.  One served lead goes through
@@ -27,7 +28,7 @@ import pytest
 
 from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA  # noqa: F401
 from test_pv_search_serving import _play_state
-from test_release46_fly_config import RELEASE49_ADDED_KEYS, fly_env
+from test_release46_fly_config import RELEASE49_ADDED_KEYS, fly_env as production_env, undo_release50
 from test_release48_fly_config import (BELIEF_SHA, BELIEF_TEMPERATURE, LATENCY_KEYS, R48_CANDIDATE_CHANGES,
                                        RELEASE48, apply_to_process, local_env, release48_env,
                                        pinned_release48_belief_package)  # noqa: F401
@@ -40,8 +41,21 @@ RELEASE49 = ("pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-
 Y_CHANGES = {"SHENGJI_PV_SINGLETON_CHALLENGER": "1", "SHENGJI_PV_LEAD_CONFIRM": "32"}
 
 
+def release49_env(env: dict) -> dict:
+    """Production's env with release 50's rollback applied: its three lines removed, the
+    release-49 value and belief pairs and the release-49 name restored."""
+    env = undo_release50(env)
+    env["SHENGJI_BOT"] = RELEASE49
+    return env
+
+
+def fly_env() -> dict:
+    """Release 49's ``fly.toml`` ``[env]``: the repo's, rolled back from release 50."""
+    return release49_env(production_env())
+
+
 def served_bot(path, belief_path, monkeypatch, *, env=None, seed=17):
-    """``(name, bot)`` built as the server builds it, with ``env`` (production's by
+    """``(name, bot)`` built as the server builds it, with ``env`` (release 49's by
     default) mapped to the local packages and exported into the process: the
     registry's import-time pv-search registration, then ``make_bot(SHENGJI_BOT)``.
     The registry is a scratch copy, so no name leaks into other tests."""

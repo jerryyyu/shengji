@@ -28,7 +28,7 @@ from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA  # 
 from test_release46_fly_config import RELEASE49_ADDED_KEYS, fly_env
 from test_release48_fly_config import (BELIEF_VOLUME_PATH, RELEASE48, local_env, release48_env,
                                        pinned_release48_belief_package)  # noqa: F401
-from test_release49_fly_config import RELEASE49
+from test_release49_fly_config import RELEASE49, fly_env as release49_fly_env
 
 SERVER = Path(__file__).resolve().parents[1]
 REPO = SERVER.parent
@@ -49,7 +49,7 @@ SMALL_SERVED = (("SHENGJI_PV_CANDIDATES", "4"), ("SHENGJI_PV_WORLDS", "8"))
 
 
 def y_env():
-    return fly_env()
+    return release49_fly_env()
 
 
 def r48_env():
@@ -144,13 +144,18 @@ def test_a_served_variant_keeps_the_bases_wrapper(envs, base):
 
 
 def scratch_repo(tmp_path, base):
-    """A repo whose ``fly.toml`` is production's (Y) or its release-48 rollback, around this tree's server/."""
-    text = (REPO / "fly.toml").read_text()
-    if base == "r48":
-        text = "".join(line for line in text.splitlines(keepends=True)
-                       if not any(line.startswith(f"  {k} = ") for k in RELEASE49_ADDED_KEYS))
-        text, n = re.subn(r"(?m)^  SHENGJI_BOT = '[^']*'$", f"  SHENGJI_BOT = '{RELEASE48}'", text)
-        assert n == 1
+    """A repo whose ``fly.toml`` is production's rolled back to Y (release 49) or to release 48,
+    around this tree's server/: each ``[env]`` line is dropped or set to that env's value."""
+    target = y_env() if base == "y" else r48_env()
+    lines = []
+    for line in (REPO / "fly.toml").read_text().splitlines(keepends=True):
+        m = re.match(r"^  ([A-Z0-9_]+) = '[^']*'$", line.rstrip("\n"))
+        if m and m.group(1).startswith("SHENGJI_"):
+            if m.group(1) not in target:
+                continue
+            line = f"  {m.group(1)} = '{target[m.group(1)]}'\n"
+        lines.append(line)
+    text = "".join(lines)
     repo = tmp_path / f"repo-{base}"
     repo.mkdir()
     (repo / "fly.toml").write_text(text)

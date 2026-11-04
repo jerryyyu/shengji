@@ -1,6 +1,6 @@
 """Per-release model manifests (`shengji.releases`, ``server/releases/r<N>.json``).
 
-* ``fly.toml``'s served env is release 49's manifest env, key for key: editing one
+* ``fly.toml``'s served env is release 50's manifest env, key for key: editing one
   without the other fails here.
 * The schema refuses a manifest whose null value, null prior or non-belief worlds
   carry no ``why``, that names an unknown package, or whose hashes disagree with
@@ -10,9 +10,9 @@
   table: no package reaches a stage the manifest does not list, none it lists is
   missing, and every decision record's ``model_ids`` agree.  Release 49's witness
   runs on the hash-pinned CI packages and fails, never skips, under
-  ``SHENGJI_REQUIRE_PV_PACKAGE=1``.  Release 50's value and prior packages are not
-  in the ``serving-packages`` release, so its witness runs where
-  ``SHENGJI_RELEASE_PACKAGE_DIR`` holds them and skips elsewhere.
+  ``SHENGJI_REQUIRE_PV_PACKAGE=1``.  Release 50's witness runs on its three
+  ``serving-packages`` assets (``test_release50_fly_config``'s pinned paths, or
+  ``SHENGJI_RELEASE_PACKAGE_DIR``) and fails, never skips, under the same flag.
 """
 import copy
 import os
@@ -24,6 +24,7 @@ from shengji import releases
 from shengji.eval import served_config
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
 from test_release48_fly_config import pinned_release48_belief_package  # noqa: F401
+from test_release50_fly_config import release50_packages  # noqa: F401
 
 FLY_TOML = Path(__file__).parents[2] / "fly.toml"
 #: a directory holding packages by basename (the release-50 candidate's among them)
@@ -34,8 +35,8 @@ def r49():
     return releases.load(49)
 
 
-def test_fly_toml_env_is_release49_manifest_env():
-    manifest = r49()
+def test_fly_toml_env_is_release50_manifest_env():
+    manifest = releases.load(50)
     assert releases.fly_env(FLY_TOML) == manifest["env"]
     assert manifest["bot_name"] == manifest["env"]["SHENGJI_BOT"]
 
@@ -49,7 +50,7 @@ def _edited_fly(tmp_path, old, new):
 
 
 def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
-    manifest = r49()
+    manifest = releases.load(50)
     # fly.toml edited, manifest not
     fly = _edited_fly(tmp_path, "SHENGJI_PV_WORLDS = '64'", "SHENGJI_PV_WORLDS = '48'")
     assert releases.fly_env(fly) != manifest["env"]
@@ -72,15 +73,26 @@ def test_manifests_validate_and_name_their_packages(release):
     assert tuple(manifest["stages"]) == releases.STAGES
 
 
-def test_release50_is_release49_with_the_value_and_prior_swapped():
+def test_release50_is_release49_with_new_packages_and_belief_bury_worlds():
     a, b = r49(), releases.load(50)
     changed = {k for k in set(a["env"]) | set(b["env"]) if a["env"].get(k) != b["env"].get(k)}
     assert changed == {"SHENGJI_BOT", "SHENGJI_PV_CKPT", "SHENGJI_PV_SHA256",
-                       "SHENGJI_PV_PRIOR_CKPT", "SHENGJI_PV_PRIOR_SHA256"}
-    assert b["packages"]["g3A-e04-ema"]["sha256"].startswith("f4f4127e")
+                       "SHENGJI_PV_PRIOR_CKPT", "SHENGJI_PV_PRIOR_SHA256",
+                       "SHENGJI_PV_BELIEF_CKPT", "SHENGJI_PV_BELIEF_SHA256",
+                       "SHENGJI_PV_BURY_BELIEF_WORLDS"}
+    assert b["packages"]["g3a-e04-f4f4127e"]["sha256"].startswith("f4f4127e")
     assert b["packages"]["p0-ft1-1fa201b2"]["sha256"].startswith("1fa201b2")
+    assert b["packages"]["b1a-028131a0"]["sha256"].startswith("028131a0")
+    # the belief package moves from S58 to B1a, and the bury draws on it too (bbw)
     for stage in releases.STAGES:
-        assert a["stages"][stage]["worlds"] == b["stages"][stage]["worlds"]
+        if stage == "bury":
+            assert (a["stages"][stage]["worlds"], b["stages"][stage]["worlds"]) == (
+                "mcbot-split", "belief:b1a-028131a0")
+        elif stage == "declare":
+            assert a["stages"][stage]["worlds"] == b["stages"][stage]["worlds"] == "uniform-declare"
+        else:
+            assert (a["stages"][stage]["worlds"], b["stages"][stage]["worlds"]) == (
+                "belief:s58-e6-42444515", "belief:b1a-028131a0")
 
 
 def _refused(manifest, match):
@@ -109,8 +121,8 @@ def test_schema_refuses_a_missing_why():
 
 def test_schema_refuses_an_unknown_package():
     bad = copy.deepcopy(r49())
-    bad["stages"]["lead"]["value"] = "g3A-e04-ema"
-    _refused(bad, "unknown package 'g3A-e04-ema'")
+    bad["stages"]["lead"]["value"] = "g3a-e04-f4f4127e"
+    _refused(bad, "unknown package 'g3a-e04-f4f4127e'")
     bad = copy.deepcopy(r49())
     bad["stages"]["lead"]["worlds"] = "belief:s17long-e2-763b5e05"
     _refused(bad, "unknown package 's17long-e2-763b5e05'")
@@ -190,11 +202,13 @@ def test_release49_wiring_matches_its_manifest(pinned_production_package,
     _check_wiring(manifest, paths)
 
 
-def test_release50_wiring_matches_its_manifest():
+def test_release50_wiring_matches_its_manifest(release50_packages):
     manifest = releases.load(50)
-    paths = releases.package_paths(manifest, PACKAGE_DIR) if PACKAGE_DIR else {}
-    if not {"g3A-e04-ema", "p0-ft1-1fa201b2", "s58-e6-42444515"} <= set(paths):
-        pytest.skip("set SHENGJI_RELEASE_PACKAGE_DIR to a directory holding release 50's packages")
+    paths = {"g3a-e04-f4f4127e": release50_packages["value"],
+             "p0-ft1-1fa201b2": release50_packages["prior"],
+             "b1a-028131a0": release50_packages["belief"]}
+    if PACKAGE_DIR:
+        paths.update(releases.package_paths(manifest, PACKAGE_DIR))
     _check_wiring(manifest, paths)
 
 

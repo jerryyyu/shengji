@@ -1,12 +1,13 @@
-"""Release 46, the second rollback of release 49: the combo screened as v92combo45.
+"""Release 46, the third rollback of release 50: the combo screened as v92combo45.
 
 The combo is release 45 plus history-legal, belief-proposed play worlds (``-whl
 -whd -bw``, the S17 belief package), the exact endgame search at 7 cards (``-ele
 -ed7 -xf7 -xfcompactlevel``) and the value-guided declaration at every
 first-round chance (``-vdef``).  Release 48 changes the belief pair and adds
-the lines in ``RELEASE48_ADDED_KEYS``, and release 49 adds ``RELEASE49_ADDED_KEYS``,
-so release 46's env is the repo's ``fly.toml`` environment with both changes
-undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
+the lines in ``RELEASE48_ADDED_KEYS``, release 49 adds ``RELEASE49_ADDED_KEYS``, and
+release 50 adds ``RELEASE50_ADDED_KEYS`` and changes the value and belief pairs
+(``undo_release50``), so release 46's env is the repo's ``fly.toml`` environment with
+the three changes undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
 (``pv_env_recipe`` ->
 ``pv_registry_entries`` -> the factory) on the hash-pinned production and belief
 packages, so the registry name, every combo knob, the bound belief model and the
@@ -68,21 +69,44 @@ RELEASE48_ADDED_KEYS = (DTRX_FLAG,
 #: the lines release 49 adds above release 48: the singleton challenger (sc8) and the
 #: held-out lead confirmation (lcc32)
 RELEASE49_ADDED_KEYS = ("SHENGJI_PV_SINGLETON_CHALLENGER", "SHENGJI_PV_LEAD_CONFIRM")
+#: the lines release 50 adds above release 49: the FT1 card-play prior pair and the
+#: belief bury worlds (bbw)
+RELEASE50_ADDED_KEYS = ("SHENGJI_PV_PRIOR_CKPT", "SHENGJI_PV_PRIOR_SHA256",
+                        "SHENGJI_PV_BURY_BELIEF_WORLDS")
+#: the values release 50 changes, as release 49 (and every release back to 36 for the
+#: value pair, 48 for the belief pair) serves them
+RELEASE49_VALUES = {"SHENGJI_PV_CKPT": "/data/models/smv3out-491ee4bf.npz",
+                    "SHENGJI_PV_SHA256": PACKAGE_SHA,
+                    "SHENGJI_PV_BELIEF_CKPT": "/data/models/s58-e6-42444515.npz",
+                    "SHENGJI_PV_BELIEF_SHA256": "424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e"}
 #: every line production's env carries above release 45: release 46's twelve and
-#: the lines releases 48 and 49 added
-COMBO_KEYS = tuple(V92_CANDIDATE_ENV) + RELEASE48_ADDED_KEYS + RELEASE49_ADDED_KEYS
+#: the lines releases 48, 49 and 50 added
+COMBO_KEYS = tuple(V92_CANDIDATE_ENV) + RELEASE48_ADDED_KEYS + RELEASE49_ADDED_KEYS + RELEASE50_ADDED_KEYS
+
+
+def undo_release50(env: dict) -> dict:
+    """``env`` with release 50's rollback applied (its added lines removed, the
+    release-49 value and belief pairs restored); the name is left to the caller.
+    An env of release 49 or earlier keeps its own belief pair."""
+    if not set(RELEASE50_ADDED_KEYS) & set(env) and env.get("SHENGJI_PV_SHA256") == PACKAGE_SHA:
+        return dict(env)
+    env = {k: v for k, v in env.items() if k not in RELEASE50_ADDED_KEYS}
+    env.update(RELEASE49_VALUES)
+    return env
 
 
 def without_combo(env: dict) -> dict:
     """``env`` without the lines above release 45: release 45's env when ``env`` is
     production's or release 46's (the documented rollbacks)."""
-    return {k: v for k, v in env.items() if k not in COMBO_KEYS}
+    return {k: v for k, v in undo_release50(env).items() if k not in COMBO_KEYS}
 
 
 def release46_env(env: dict) -> dict:
-    """Production's env with the rollbacks of releases 49 and 48 applied: their added
-    lines removed, the S17 belief pair and the release-46 name restored."""
-    env = {k: v for k, v in env.items() if k not in RELEASE48_ADDED_KEYS + RELEASE49_ADDED_KEYS}
+    """Production's env with the rollbacks of releases 50, 49 and 48 applied: their added
+    lines removed, the release-36 value pair, the S17 belief pair and the release-46 name
+    restored."""
+    env = {k: v for k, v in undo_release50(env).items()
+           if k not in RELEASE48_ADDED_KEYS + RELEASE49_ADDED_KEYS}
     env.update(SHENGJI_PV_BELIEF_CKPT=BELIEF_VOLUME_PATH, SHENGJI_PV_BELIEF_SHA256=BELIEF_SHA,
                SHENGJI_BOT=RELEASE46)
     return env
@@ -92,7 +116,7 @@ BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
 
 
 def fly_env() -> dict:
-    """The repo's ``fly.toml`` ``[env]`` as written (production's, release 49)."""
+    """The repo's ``fly.toml`` ``[env]`` as written (production's, release 50)."""
     return tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
 
 

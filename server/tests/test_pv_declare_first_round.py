@@ -96,7 +96,7 @@ def fly_env():
     bury SHENGJI_PV_BURY_WIDE_VALUE/_K), so the flag-off identities below are derived from
     the documented release-43 rollback, exactly as test_bury_arms / test_fixed_tape_policy
     derive release 38."""
-    env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
+    env = _r49_env()
     assert env.get(VD) == "1"
     return {k: v for k, v in env.items()
             if k not in (VD, "SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
@@ -441,3 +441,10 @@ def test_the_screen_wrapper_carries_both_records():
     assert rows and "every_first" in {r["gate"] for r in rows}
     assert {r["gate"] for r in rows} <= set(pv.VALUE_DECLARE_GATES)
     assert all(r["schema"] == pv.VALUE_DECLARE_RECORD_SCHEMA for r in rows)
+
+
+def _r49_env():
+    """Release 49's ``fly.toml`` env: the repo's, with release 50 rolled back (the
+    release-49 recipe the identities in this module are derived from)."""
+    from test_release49_fly_config import fly_env
+    return fly_env()

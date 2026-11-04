@@ -117,7 +117,7 @@ def test_release38_adapter_is_bound_to_production_environment(monkeypatch):
     from shengji.train import pv_search_policy as pv
     from test_pv_admission_rules import predict, ZeroEvaluator
 
-    env = tomllib.loads((Path(__file__).resolve().parents[2] / 'fly.toml').read_text())['env']
+    env = _r49_env()
     # The adapter is the HISTORICAL release-38 admission boundary. Production moved to
     # release 45 (release 38 + SHENGJI_PV_DOOMED_THROW_RESELECT, which re-selects among the
     # already-admitted candidates and never changes admission, + SHENGJI_PV_VALUE_DECLARE, a
@@ -278,3 +278,10 @@ def test_budget_expiry_before_or_after_prediction_returns_no_result(expire_at):
             raise TimeoutError('observation budget')
     with pytest.raises(TimeoutError):
         capture_policy_ranks(*args, check_budget=budget)
+
+
+def _r49_env():
+    """Release 49's ``fly.toml`` env: the repo's, with release 50 rolled back (the
+    release-49 recipe the identities in this module are derived from)."""
+    from test_release49_fly_config import fly_env
+    return fly_env()

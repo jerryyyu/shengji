@@ -20,7 +20,8 @@ from shengji.eval import served_config as sc
 
 SERVER = Path(__file__).resolve().parents[1]
 FLY = sc.fly_env()
-MAP = {FLY["SHENGJI_PV_CKPT"]: "/local/pv.npz", FLY["SHENGJI_PV_BELIEF_CKPT"]: "/local/belief.npz"}
+MAP = {FLY["SHENGJI_PV_CKPT"]: "/local/pv.npz", FLY["SHENGJI_PV_PRIOR_CKPT"]: "/local/prior.npz",
+       FLY["SHENGJI_PV_BELIEF_CKPT"]: "/local/belief.npz"}
 
 #: hand-set recipes that are deliberately NOT the served bot: each a fixed historical baseline, named by its
 #: release, that recorded evidence is bound to.  (file, assigned or enclosing name) -> why it stays.
@@ -38,6 +39,8 @@ def pinned_hashes(monkeypatch):
     import shengji.ai.cwv_policy as cwv
     from shengji.train import pv_search_policy as pv
     pins = {"/local/pv.npz": FLY["SHENGJI_PV_SHA256"], FLY["SHENGJI_PV_CKPT"]: FLY["SHENGJI_PV_SHA256"],
+            "/local/prior.npz": FLY["SHENGJI_PV_PRIOR_SHA256"],
+            FLY["SHENGJI_PV_PRIOR_CKPT"]: FLY["SHENGJI_PV_PRIOR_SHA256"],
             "/local/belief.npz": FLY["SHENGJI_PV_BELIEF_SHA256"],
             FLY["SHENGJI_PV_BELIEF_CKPT"]: FLY["SHENGJI_PV_BELIEF_SHA256"]}
     monkeypatch.setattr(cwv, "checkpoint_id", lambda path: pins[str(path)][:8])
@@ -47,7 +50,8 @@ def pinned_hashes(monkeypatch):
 def test_served_env_is_fly_toml_with_mapped_paths():
     assert sc.served_env() == FLY
     env = sc.served_env(mappings=MAP)
-    assert sc.env_diff(env, FLY) == sorted({"SHENGJI_PV_CKPT", "SHENGJI_PV_BELIEF_CKPT"})
+    assert sc.env_diff(env, FLY) == sorted({"SHENGJI_PV_CKPT", "SHENGJI_PV_PRIOR_CKPT",
+                                            "SHENGJI_PV_BELIEF_CKPT"})
     assert env["SHENGJI_PV_CKPT"] == "/local/pv.npz"
     assert sc.unexplained_diff(env, mappings=MAP) == []
 

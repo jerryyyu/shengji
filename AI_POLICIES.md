@@ -58,20 +58,22 @@ The baselines every result is read against (names from `server/shengji/ai/regist
   candidate; a 4-world variant opposed the first policy/value pilot and proved weaker than MC-LCB.
 - **MC-LCB** (`mc-s0-report-lcb`): `mc-strong`'s 30 worlds nominate one challenger; challenger and incumbent replay
   on R=300 fresh shared worlds, and the challenger plays only if its one-sided paired lower confidence bound is ≥ 0.
-  Production until 2026-09-08; now the rollback/reference policy and **the common control for every screen**.
+  Production until 2026-09-08; now the rollback/reference policy. It was the common control of every ten-window
+  screen through 2026-10-25; the duels that replaced those screens play the served release directly.
 - **The W32 shortlist** (`mc-shortlist-*`, releases 22–28): the value net ranks every legal action over 32 worlds and
   4 alternatives plus the incumbent go to MC-LCB's search; release 27 added a policy prior, release 28 merged both
   into one package, **JS-M1**.
 
-**Reading the ladder.** From release 29 each row is one screen: the candidate and the release it replaced each play
-the same fixed MC-LCB control on the same deals (ten 520-cluster mirrored windows unless noted), and the result is
-the difference in signed levels per round. Rows are separate contrasts from different eras: **not one calibrated
-scale, not additive.** Rows before 29 used other instruments. Fresh-seed confirmation ran only where Jerry or the
+**Reading the ladder.** From release 29 through release 48 each row is one screen: the candidate and the release it
+replaced each play the same fixed MC-LCB control on the same deals (ten 520-cluster mirrored windows unless noted),
+and the result is the difference in signed levels per round. From release 49 rows are paired seat-swapped
+head-to-head duels against the served release (`RL_PLAN.md` "Duel bar"), a different instrument. Rows are separate
+contrasts from different eras: **not one calibrated scale, not additive.** Rows before 29 used other instruments. Fresh-seed confirmation ran only where Jerry or the
 packet required it.
 
 ## The ladder: every production change and what it measured
 
-Newest first; rows 7–15 (release 29 up) are the README's "Served results by release" plot plus the correctness
+Newest first; rows 7–18 (release 29 up) are the README's "Served results by release" plot plus the correctness
 fixes. Row numbers are stable; other documents cite them.
 
 | row | rel. | change (token) | vs | result [95% CI] | status | reading | vs Sol, actor-only [95% CI] | vs PT-Sol [95% CI] | pointer |

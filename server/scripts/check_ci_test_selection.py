@@ -248,21 +248,6 @@ def _matrix_values(job: list[str]) -> dict[str, list[str]]:
     return values
 
 
-def run_values(workflow_text: str) -> list[str]:
-    """Text of every ``run:`` value in the jobs, with matrix references expanded."""
-    lines = workflow_text.splitlines()
-    out: list[str] = []
-    for job in _job_blocks(lines):
-        matrix = _matrix_values(job)
-        for i, line in enumerate(job):
-            m = KEY_LINE.match(line)
-            if not m or m.group(2) != "run" or line.lstrip().startswith("#"):
-                continue
-            text = _scalar(job, i, _key_column(line), m.group(3) or "")
-            out.append(MATRIX_REF.sub(lambda r: " ".join(matrix.get(r.group(1), [r.group(0)])), text))
-    return out
-
-
 def _env_text(lines: list[str], col: int) -> str | None:
     """Raw ``SHENGJI_FAST`` text of the ``env:`` key at column ``col`` in ``lines``.
 

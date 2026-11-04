@@ -578,18 +578,3 @@ def register_netroll_from_env(environ: Mapping[str, str] | None = None) -> list[
     stages = [p for p in env.get(NETROLL_STAGES_ENV, "report").split(",") if p]
     return register_netroll_policies(checkpoint, tricks, stages,
                                      receipt=env.get(NETROLL_RECEIPT_ENV) or None)
-
-
-def netroll_record(bot) -> dict:
-    """Cumulative net-rollout telemetry of one bot (zeros for production)."""
-    counts = dict(getattr(bot, "netroll_counts", None) or {})
-    evaluator = getattr(bot, "evaluator", None)
-    return {
-        "schema": NETROLL_RECORD_SCHEMA,
-        "net_rollout": bot.describe() if isinstance(bot, MCNetRolloutSearch) else None,
-        "counts": counts,
-        "sim_secs": float(getattr(bot, "netroll_sim_secs", 0.0)),
-        "net_secs": float(getattr(bot, "netroll_net_secs", 0.0)),
-        "evaluator_wall_secs": float(getattr(evaluator, "wall_secs", 0.0)),
-        "evaluator_cpu_secs": float(getattr(evaluator, "cpu_secs", 0.0)),
-    }

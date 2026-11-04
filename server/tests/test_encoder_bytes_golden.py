@@ -128,27 +128,38 @@ CURRENT_CWV = {
 }
 
 
+DECLARATION_HISTORY_CWV = {
+    1: "aeafe6d0a0e66d50410ab10542ae2e50fb75a3082dcb3234599770a9988def8e",
+    2: "542842550d270813f8652355fe035bd873152aaf652c7c6a5b2be12779afece0",
+    4: "a7ccf13fc2332a7e303444aaf4ede2dee4a30ef5a6788ada24a07f8014acb4e5",
+    5: "d2134c8eb11af43fce95b4fda3e2777e01c0ad031f3696e689fe12352813e93c",
+    6: "6ec99dfda740f52f13568f8d44da4a9aa9f9aa8a58218227466da4281468ca60",
+}
+
+
 @pytest.mark.parametrize("version", [1, 2, 4, 5, 6])
 def test_identity_pins_and_named_round_migration(version):
     """Public identities stay frozen; CWV moves only by the reviewed round migration."""
-    from shengji.ai.cwv_encoder_compat import round_notice_identity
+    from shengji.ai.cwv_encoder_compat import declaration_history_identities, round_notice_identity
     from shengji.ai.cwv_policy import afterstate_encoder_identity, local_encoder_identity
     from shengji.rl import encoder_identity
     from shengji.rl.encode import ENCODER_IMPLEMENTATION_SHA256
     from shengji.train import data
-    from shengji.train.cwv_data import cwv_encoder_identity
-    cwv = CURRENT_CWV[version]
+    from shengji.train.cwv_data import cwv_encoder_identity, cwv_source_paths
+    cwv = DECLARATION_HISTORY_CWV[version]
     current = cwv_encoder_identity(version)
     assert current["implementation_sha256"] == cwv
     assert afterstate_encoder_identity(version)["implementation_sha256"] == cwv
     assert local_encoder_identity(version)["implementation_sha256"] == cwv
     assert current["source_sha256s"]["round"] == (
-        "2ec9c5677e80449560f69abac53db271710cf8a64b2afe7ae15949698d3a4e95")
+        "df0bfbf748f2553cc20083b74f046b0148211cebe5897fc774e75d7b87e8d083")
     if version == 6:
         # The differential harness cannot prove v6; don't silently extend it.
         assert round_notice_identity(current) is None
+        assert declaration_history_identities(current, cwv_source_paths(version)) == ()
     else:
         assert round_notice_identity(current) == PRISTINE[f"cwv_v{version}"]
+        assert CURRENT_CWV[version] in declaration_history_identities(current, cwv_source_paths(version))
     assert encoder_identity.encoder_contract(version)["implementation_sha256"] == PRISTINE[f"transitive_v{version}"]
     assert ENCODER_IMPLEMENTATION_SHA256 == PRISTINE["public"]
     ident = data.encoder_identity(version)

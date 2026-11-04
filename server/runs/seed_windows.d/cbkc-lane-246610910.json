@@ -1,0 +1,14 @@
+{
+ "name": "cbkc-lane-246610910",
+ "purpose": "screen",
+ "seed0": 246610910,
+ "clusters": 7840,
+ "span": [
+  246610910,
+  246618750
+ ],
+ "created_at": "2026-11-04T04:15:00Z",
+ "host": "ultra",
+ "git_head": "100ef989fcd9bbee295136a24b24af1b9d9a6302",
+ "note": "cbkc CONFIRMATION duel (board #1075 row G2; Jerry 2026-11-03 ~23:10 ET in session \"yea lets build a combined confirmation- i would want one with b1a and one with b1kc\"): the release-50 combo (Y served on the G3 Stage A value package Ae04 f4f4127e + P0's FT1 prior 1fa201b2) plus belief bury worlds bbw (SHENGJI_PV_BURY_BELIEF_WORLDS=1, #1228) and the B1kc (g2-b1kc-0de02ac6.npz, T 1.0178670055189478) belief package on the exploiter only, vs Y as served (release 49, 491ee4bf, S58 belief), one arm x, 7,840 paired seat-swapped rank-mixed deals from seed0 246610910, r2 plan, tree src-100ef989 (#1228's head); CONFIRMATION bar: CONFIRMED iff mean >= +0.005 and the 95% deal-bootstrap CI lower bound > 0; on the M5 Ultra, 20 workers, output root /Users/jeryyu/fleet/vol-dev-claude-cbkc-y-20261104. RESERVED BEFORE DEALING; exact-deal clear of this block against the belief lineage (S58 + the four Y belief stores) from the saved full-row scans and seed_windows.py clear against the value / prior checkpoints (packet ~/shengji-archive/2026-11-04-combined-confirm/exposure)."
+}

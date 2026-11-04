@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Admit one pinned, bounded capture; never restart a partial store."""
+"""Admit a pinned capture or an explicitly released continuation of its partial store."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -64,9 +64,26 @@ def _admit(spec):
         if present(path):
             raise Refused(f'HOLD/foreign lock: {path}')
     out = Path(spec['output'])
-    for path in (out, Path(str(out)+'.log'), Path(str(out)+'.terminal.json')):
-        if present(path):
-            raise Refused(f'existing output: {path}')
+    resume = spec.get('resume', False)
+    if type(resume) is not bool:
+        raise Refused('resume must be boolean')
+    if resume:
+        expected = spec.get('run_id')
+        if not isinstance(expected, str) or not expected:
+            raise Refused('resume requires expected run_id')
+        if present(out/'manifest.json'):
+            raise Refused('completed store cannot resume')
+        run = out/'run.json'
+        if not run.is_file() or run.stat().st_size > 1_000_000:
+            raise Refused('resume requires bounded run.json')
+        if json.loads(run.read_text()).get('run_id') != expected:
+            raise Refused('resume run_id mismatch')
+    else:
+        logs = [p for p in out.parent.iterdir()
+                if p.name.startswith((out.name+'.log.', out.name+'.terminal.'))]
+        for path in (out, Path(str(out)+'.log'), Path(str(out)+'.terminal.json'), *logs):
+            if present(path):
+                raise Refused(f'existing output: {path}')
     if shutil.disk_usage(out.parent).free < spec['admit_disk_gib'] * 2**30:
         raise Refused('insufficient disk at admission')
     source = spec['source_dir']
@@ -89,11 +106,27 @@ def group_alive(pid):
         return True
 
 def command(spec):
-    return [spec['python'], '-B', str(Path(spec['source_dir'])/'server/scripts/y_trajectory.py'),
+    args = [spec['python'], '-B', str(Path(spec['source_dir'])/'server/scripts/y_trajectory.py'),
             '--fly', spec['fly_path'], '--models', spec['models_path'],
             '--seed-registry', spec['seed_registry'], '--rounds', str(spec['rounds']),
             '--seed', str(spec['seed']), '--workers', str(spec['workers']),
             '--out', spec['output'], '--cap', '256']
+    if spec.get('resume', False):
+        args.append('--resume')
+    return args
+
+def attempt_paths(out):
+    used = [-1]
+    for path in out.parent.iterdir():
+        for prefix in (out.name+'.log.', out.name+'.terminal.'):
+            if path.name.startswith(prefix):
+                suffix = path.name[len(prefix):].removesuffix('.json')
+                if suffix.isdigit():
+                    used.append(int(suffix))
+    if present(Path(str(out)+'.log')) or present(Path(str(out)+'.terminal.json')):
+        used.append(0)
+    attempt = max(used) + 1
+    return attempt, Path(f'{out}.log.{attempt}'), Path(f'{out}.terminal.{attempt}.json')
 
 def progress(spec, pid, elapsed):
     shards = Path(spec['output']) / 'shards'
@@ -138,12 +171,13 @@ def execute(spec, spec_sha, launcher):
         if requested:
             raise Refused('stop requested before dispatch')
         out = Path(spec['output'])
-        with Path(str(out)+'.log').open('x') as log:
+        attempt, log_path, terminal_path = attempt_paths(out)
+        with log_path.open('x') as log:
             proc = subprocess.Popen(command(spec), cwd=spec['source_dir'], stdout=log,
                                     stderr=subprocess.STDOUT, start_new_session=True)
         safe = False
         started = time.monotonic()
-        print(json.dumps({'event': 'started', 'pid': proc.pid, 'spec_sha256': spec_sha}), flush=True)
+        print(json.dumps({'event': 'started', 'pid': proc.pid, 'spec_sha256': spec_sha, 'attempt': attempt}), flush=True)
         status = 'running'
         next_progress = started
         while proc.poll() is None:
@@ -178,8 +212,8 @@ def execute(spec, spec_sha, launcher):
             status = 'completed' if rc == 0 and (out/'manifest.json').is_file() else 'failed'
         if not safe:
             status = 'containment-unresolved'
-        with Path(str(out)+'.terminal.json').open('x') as stream:
-            json.dump({'status': status, 'returncode': rc, 'pid': proc.pid,
+        with terminal_path.open('x') as stream:
+            json.dump({'attempt': attempt, 'resume': spec.get('resume', False), 'status': status, 'returncode': rc, 'pid': proc.pid,
                        'spec_sha256': spec_sha, 'elapsed': time.monotonic()-started,
                        'lock_retained': not safe}, stream)
         print(status, flush=True)

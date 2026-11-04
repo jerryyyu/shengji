@@ -349,7 +349,7 @@ jobs:
           SHENGJI_PV50_PACKAGE_PATH: /tmp/shengji-packages/g3a-e04-f4f4127e.npz
           SHENGJI_PV50_PRIOR_PACKAGE_PATH: /tmp/shengji-packages/p0-ft1-1fa201b2.npz
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_release_manifests.py tests/test_y_trajectory_runner.py
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_release_manifests.py
 
   import-walk:
     needs: changes

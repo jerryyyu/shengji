@@ -60,7 +60,7 @@ def test_terminal_and_owned_lock_cleanup(tmp_path, monkeypatch, mode):
     rc = launch.execute(spec, 'abc', launcher)
     assert rc == (0 if mode == 'success' else 1)
     assert not lock.exists()
-    terminal = json.loads(Path(str(out)+'.terminal.json').read_text())
+    terminal = json.loads(Path(str(out)+'.terminal.0.json').read_text())
     assert terminal['status'] == {'success':'completed','failure':'failed','hold':'held','timeout':'time-cap','exit-race':'time-cap'}[mode]
     if mode not in ('timeout', 'exit-race'):
         assert (out/'partial').read_text() == 'kept'
@@ -98,3 +98,55 @@ def test_progress_counts_only_published_pairs_and_reports_eta(tmp_path, monkeypa
     assert got['eta_seconds'] == 80
     assert got['live_worker_processes'] == 1
     assert got['deadline_headroom_seconds'] == 580
+
+
+def admission_spec(tmp_path, monkeypatch):
+    monkeypatch.setattr(launch, '_census', lambda: None)
+    real = launch.subprocess.check_output
+    def git_state(args, **kw):
+        if args[:1] == ['git']:
+            return 'head\n' if 'rev-parse' in args else ''
+        return real(args, **kw)
+    monkeypatch.setattr(launch.subprocess, 'check_output', git_state)
+    return dict(host=launch.socket.gethostname(), source_dir=str(tmp_path), source_git_head='head',
+                rounds=4, workers=1, max_seconds=90, holds=[], foreign_locks=[],
+                output=str(tmp_path/'store'), admit_disk_gib=0, stop_disk_gib=0, files={})
+
+
+@pytest.mark.parametrize('fault', ['missing', 'wrong_id', 'complete', 'hold', 'foreign_lock', 'not_bool'])
+def test_resume_admission_refuses_wrong_or_unsafe_store(tmp_path, monkeypatch, fault):
+    spec = admission_spec(tmp_path, monkeypatch)
+    out = Path(spec['output'])
+    out.mkdir()
+    spec.update(resume=True, run_id='expected')
+    if fault != 'missing':
+        (out/'run.json').write_text(json.dumps({'run_id': 'wrong' if fault == 'wrong_id' else 'expected'}))
+    if fault == 'complete':
+        (out/'manifest.json').touch()
+    if fault in ('hold', 'foreign_lock'):
+        stop = tmp_path/'stop'
+        stop.touch()
+        spec['holds' if fault == 'hold' else 'foreign_locks'] = [str(stop)]
+    if fault == 'not_bool':
+        spec['resume'] = 'true'
+    with pytest.raises(launch.Refused):
+        launch._admit(spec)
+
+
+def test_resume_preserves_attempts_and_passes_runner_flag(tmp_path, monkeypatch):
+    spec = admission_spec(tmp_path, monkeypatch)
+    out = Path(spec['output'])
+    out.mkdir()
+    (out/'run.json').write_text(json.dumps({'run_id': 'expected'}))
+    spec.update(resume=True, run_id='expected', python=sys.executable,
+                fly_path='fly', models_path='models', seed_registry='registry', seed=100)
+    launch._admit(spec)
+    assert launch.command(spec)[-1] == '--resume'
+    Path(str(out)+'.log').write_text('legacy')
+    Path(str(out)+'.terminal.3.json').write_text('old terminal')
+    attempt, log, terminal = launch.attempt_paths(out)
+    assert attempt == 4
+    assert log.name == 'store.log.4' and terminal.name == 'store.terminal.4.json'
+    spec['resume'] = False
+    with pytest.raises(launch.Refused, match='existing output'):
+        launch._admit(spec)

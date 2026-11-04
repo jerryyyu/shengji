@@ -427,6 +427,74 @@ def test_sampled_worlds_keep_the_view_and_conserve_cards(seed):
             assert not Counter(rnd.declaration["cards"]) - Counter(hands[declarer])
 
 
+def test_sampled_worlds_keep_overridden_public_declarations():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    rnd.declare(0, ["S2", "S2"])
+    for draw_seed in range(64):
+        hands, kitty = vdm.sample_declare_world(rnd, 2, random.Random(draw_seed))
+        assert hands[1].count("H2") >= 1
+        assert hands[0].count("S2") >= 2
+        assert Counter(sum(hands, []) + kitty) == Counter(make_deck())
+
+
+def test_same_seat_upgrade_uses_maximum_card_count():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(0, ["S2"])
+    rnd.declare(0, ["S2", "S2"])
+    hands, kitty = vdm.sample_declare_world(rnd, 2, random.Random(0))
+    assert hands[0].count("S2") >= 2
+    assert Counter(sum(hands, []) + kitty) == Counter(make_deck())
+
+
+def test_public_declarations_are_isolated_across_shallow_copies():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    clone = copy.copy(rnd)
+    clone.declare(0, ["S2", "S2"])
+    assert len(rnd.public_declarations) == 1
+    assert len(clone.public_declarations) == 2
+
+
+def test_public_declarations_survive_deepcopy():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    clone = copy.deepcopy(rnd)
+    assert clone.public_declarations == rnd.public_declarations
+    hands, kitty = vdm.sample_declare_world(clone, 2, random.Random(0))
+    assert hands[1].count("H2") >= 1
+
+
+def test_legacy_round_without_public_declarations_uses_current_declaration():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    del rnd.public_declarations
+    hands, kitty = vdm.sample_declare_world(rnd, 2, random.Random(0))
+    assert hands[1].count("H2") >= 1
+    assert Counter(sum(hands, []) + kitty) == Counter(make_deck())
+
+
+def test_legacy_direct_declaration_is_preserved_on_later_overcall():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declaration = {"seat": 1, "cards": ["H2"], "strength": 1}
+    rnd.declare(0, ["S2", "S2"])
+    hands, kitty = vdm.sample_declare_world(rnd, 2, random.Random(0))
+    assert hands[1].count("H2") >= 1
+    assert hands[0].count("S2") >= 2
+
+
 def test_pass_without_a_declaration_takes_the_engine_flip():
     rnd = Round("5", None, random.Random(3))
     for _ in range(40):

@@ -65,7 +65,7 @@ from ..engine.round import HAND_SIZE, KITTY_SIZE
 
 SCHEMA = "pv-value-declare-v1"
 #: the model the recipe digest binds (module docstring)
-MODEL = "uniform-unseen|no-counter-declare|heuristic-bury|heuristic-first-trick|value-head-seat-team"
+MODEL = "uniform-unseen|public-declaration-reveals|no-counter-declare|heuristic-bury|heuristic-first-trick|value-head-seat-team"
 #: the same model with the first trick played by the policy head
 #: (`leaf_first_trick`; the ``lpft`` rule of `pv_search_policy`)
 MODEL_POLICY_FIRST_TRICK = MODEL.replace("heuristic-first-trick", "policy-first-trick")
@@ -132,14 +132,36 @@ def decision_rng(seed, rnd, seat: int) -> random.Random:
 
 def sample_declare_world(rnd, seat: int, rng: random.Random):
     """``(hands, kitty)``: one complete deal consistent with the seat's view
-    (module docstring, step 1)."""
+    (module docstring, step 1). Public declarations that precede a stronger
+    overcall remain pinned as well."""
     pool = Counter(make_deck())
     pool.subtract(rnd.hands[seat])
     pinned = [[] for _ in range(4)]
+    # ``public_declarations`` is immutable and survives shallow rollout
+    # copies.  Aggregate by seat/card using the maximum count seen in that
+    # seat's declarations: an upgrade reveals additional copies, while
+    # repeated records must not double-count the same physical cards.
+    records = getattr(rnd, "public_declarations", None)
+    if records is None:
+        records = ()
+    else:
+        records = tuple(records)
+    # Reconstructed/legacy rounds may assign ``declaration`` directly rather
+    # than passing through Round.declare; retain that latest public fact too.
     declaration = rnd.declaration
-    if declaration is not None and declaration["seat"] != seat:
-        pinned[declaration["seat"]] = list(declaration["cards"])
-        pool.subtract(declaration["cards"])
+    if declaration is not None:
+        current = (declaration["seat"], tuple(declaration["cards"]))
+        if current not in records:
+            records += (current,)
+    maxima = [Counter() for _ in range(4)]
+    for declared_seat, cards in records:
+        for code, count in Counter(cards).items():
+            maxima[declared_seat][code] = max(maxima[declared_seat][code], count)
+    for declared_seat, counts in enumerate(maxima):
+        if declared_seat == seat:
+            continue
+        pinned[declared_seat] = list(counts.elements())
+        pool.subtract(pinned[declared_seat])
     if any(count < 0 for count in pool.values()):
         raise ValueDeclareError("the seat's view holds more copies of a card than the deck")
     unseen = sorted(pool.elements())

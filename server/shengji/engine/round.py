@@ -60,6 +60,10 @@ class Round:
         self.phase = "deal"
         self.turn: int | None = None
         self.declaration: dict | None = None  # {seat, cards, strength}
+        # Cards exposed by every declaration remain public even after a
+        # stronger overcall replaces ``declaration``.  Tuples keep this safe
+        # across the shallow copies used by value-world rollouts.
+        self.public_declarations: tuple[tuple[int, tuple[str, ...]], ...] = ()
         self.passed: set[int] = set()
         self.ordering: Ordering | None = None
         self.trump_suit: str | None | str = None  # set at finalize; "NT" handled as None
@@ -141,7 +145,15 @@ class Round:
         current = self.declaration["strength"] if self.declaration else 0
         if strength is None or strength <= current:
             raise IllegalPlay("Not a valid (stronger) declaration.")
+        records = tuple(getattr(self, "public_declarations", ()))
+        prior = self.declaration
+        if prior is not None:
+            previous = (prior["seat"], tuple(prior["cards"]))
+            if previous not in records:
+                records += (previous,)
         self.declaration = {"seat": seat, "cards": list(cards), "strength": strength}
+        current = (seat, tuple(cards))
+        self.public_declarations = records if current in records else records + (current,)
         self.passed.clear()
         nt = is_joker(cards[0])
         label = "NT" if nt else f"{card_suit(cards[0])}{self.trump_rank}"

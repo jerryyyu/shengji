@@ -314,7 +314,11 @@ def test_preparation_cache_invalidates_inputs_and_never_caches_failure(small_pac
     assert not cache
 
 
-def test_preparation_reuse_full_lead_search_parity(small_package):
+@pytest.mark.parametrize("native", [False, True])
+def test_preparation_reuse_full_lead_search_parity(small_package, native):
+    from shengji.train import pv_native
+    if native and not pv_native.HAVE_NATIVE:
+        pytest.skip("native extension is tested by the compiled engine job")
     import copy
     from test_pv_lead_confirm import _bot, OutsideBallotEvaluator, SEEDS
     from test_pv_small_joker_lead import _fresh_round
@@ -339,6 +343,7 @@ def test_preparation_reuse_full_lead_search_parity(small_package):
         scratch.decide_play(copy.deepcopy(rnd), rnd.turn)
         evaluator.ballot = {tuple(sorted(a)) for a in scratch.last_decision_record['admitted']}
         off.lead_confirm = 24
+        off.world_fast = native
         on = copy.deepcopy(off)
         on.evaluator = evaluator
         on.belief_model = model
@@ -351,3 +356,47 @@ def test_preparation_reuse_full_lead_search_parity(small_package):
         assert on._belief_preparation_cache is None
         applied += on.last_decision_record['lead_confirm_status'] == 'applied'
     assert applied > 0
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_preparation_reuse_across_public_states(chunk, small_package, native, monkeypatch):
+    import copy
+    from shengji.ai.history_legality import draw_constraints
+    from shengji.train import pv_native
+    if native and not pv_native.HAVE_NATIVE:
+        pytest.skip("native extension is tested by the compiled engine job")
+    model = bn.load_belief_numpy(small_package['path'], small_package['sha256'])
+    cache = {}
+    native_calls = []
+    original = pv_native.belief_sample_worlds
+    def draw(*args, **kwargs):
+        native_calls.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(pv_native, 'belief_sample_worlds', draw)
+    seen_seats, seen_refusals, seen_kitty = set(), False, set()
+    roots = 0
+    for path in chunk['paths']:
+        records = [r for r in bl._read_records(path) if r.get('decision_kind') == 'play']
+        for n, d in enumerate(bl.iter_decisions(records)):
+            if n % 7: continue
+            kwargs = dict(seed=n+123, batch=4, native=native,
+                          forbidden=draw_constraints(d.rnd, d.seat))
+            fresh = bn.BeliefProposal(model, d.rnd, d.seat, d.refusals, **kwargs)
+            reused = bn.BeliefProposal(model, d.rnd, d.seat, d.refusals,
+                                      preparation_cache=cache, **kwargs)
+            hit = bn.BeliefProposal(model, d.rnd, d.seat, d.refusals,
+                                   preparation_cache=cache, **kwargs)
+            saved = copy.deepcopy(cache)
+            for _ in range(8):
+                want = fresh(d.rnd,d.seat,None)
+                assert reused(d.rnd,d.seat,None) == hit(d.rnd,d.seat,None) == want
+            assert fresh.rng.bit_generator.state == reused.rng.bit_generator.state == hit.rng.bit_generator.state
+            assert saved.keys() == cache.keys()
+            for k in saved:
+                for a,b in zip(saved[k],cache[k]): np.testing.assert_array_equal(a,b)
+            roots += 1
+            seen_seats.add(d.seat)
+            seen_refusals |= bool(d.refusals)
+            seen_kitty.add(fresh.kitty_hidden)
+    assert roots >= 20 and len(seen_seats) == 4 and seen_refusals and seen_kitty == {True,False}
+    assert bool(native_calls) == native

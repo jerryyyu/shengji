@@ -183,7 +183,7 @@ def test_an_exact_lead_stage_that_starts_keeps_the_pass():
 def test_the_switch_is_off_by_default_and_enters_no_name():
     assert pv.PVSearchBot.single_candidate_fast is False
     assert "single_candidate_fast" not in vars(bot(False, SERVED_RULES))
-    assert pv.latency_switches({FLAG: "1"}) == {"encode_prefix_cache": False,
+    assert pv.latency_switches({FLAG: "1"}) == {"belief_prep_reuse": False, "encode_prefix_cache": False,
                                                 "single_candidate_fast": True,
                                                 "leaf_greedy_stream": False,
                                                 "encode_batch_fast": False, **NATIVE_OFF}

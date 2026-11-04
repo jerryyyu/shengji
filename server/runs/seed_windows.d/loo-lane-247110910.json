@@ -1,0 +1,14 @@
+{
+ "name": "loo-lane-247110910",
+ "purpose": "screen",
+ "seed0": 247110910,
+ "clusters": 3920,
+ "span": [
+  247110910,
+  247114830
+ ],
+ "created_at": "2026-11-04T13:23:13Z",
+ "host": "ultra",
+ "git_head": "100ef989fcd9bbee295136a24b24af1b9d9a6302",
+ "note": "loo leave-one-out duel, 3,920 seat-swapped deals on the M5 Ultra: the release-50 candidate (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + bbw + B1a belief 028131a0) with lcc32 off (exploiter) vs the same candidate with lcc32 on (defender), served budgets, tree 100ef989; packet ~/shengji-archive/2026-11-04-loo-packet. Exact-deal clear against A / FT1 / smv3 / M28 CAT lineages and the B1a lineage (Y belief stores, S17, M17, S58 live). RESERVED BEFORE DEALING."
+}

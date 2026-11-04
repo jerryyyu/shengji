@@ -1,0 +1,14 @@
+{
+ "name": "cbaf-rehearsal-246900400",
+ "purpose": "screen",
+ "seed0": 246900400,
+ "clusters": 56,
+ "span": [
+  246900400,
+  246900456
+ ],
+ "created_at": "2026-11-04T12:33:49Z",
+ "host": "ultra",
+ "git_head": "100ef989fcd9bbee295136a24b24af1b9d9a6302",
+ "note": "cbaf host rehearsal block (non-scientific execution evidence, REHEARSAL=1, 56 deals) for the cbaf lane block cbaf-lane-246910910: cbaf three-arm SCREEN (board #1075 row G2; Jerry 2026-11-04 in session, \"Can we screen combo and bury on belief and b1a and ft2 4x?\", and ~08:00 ET \"Yea let's try it\" for arm s): every arm on the SAME seeds (the rehearsal runs all three), each vs Y as served (release 49, defender 491ee4bf + S58 belief), tree src-100ef989, on the M5 Ultra. Arm s = Y on the G3 Stage A value package Ae04 + the FT1 prior + bbw with Y's served S58 belief (bbw50U r2's arm). Arm a = arm s + Y on the G3 Stage A value package Ae04 (g3A-e04-ema.npz f4f4127e, EMA export of epoch-04.avg.pt a09cef7c) + the FT1 prior (p0-ft1-1fa201b2.npz, export of FT1 best.pt 0def7b31) + the B1a belief package (g2-b1k-B1a.npz 028131a0, S58 fine-tuned on the four Y belief stores) + bbw; arm f = the same with the FT2X4 prior (p0-ft2x4-483931e4.npz, export of best.pt 73e4306f) in place of FT1. Bar: each arm SCREEN_PASS iff mean >= +0.005 and the one-sided 80% deal-bootstrap lower bound > 0, else SCREEN_FAIL; primary paired contrasts f - a and a - s, each on a 97.5% deal-bootstrap CI (Bonferroni over the two). Packet ~/shengji-archive/2026-11-04-cbaf-packet. RESERVED BEFORE DEALING; exposure clear of this block in the packet's exposure/."
+}

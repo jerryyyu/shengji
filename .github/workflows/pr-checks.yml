@@ -218,17 +218,8 @@ jobs:
           tests/test_ci_review_ledger_step.py
           tests/test_receipt_summary.py
           tests/test_seed_windows_dir.py
-          tests/test_paired_window_metadata.py
           tests/test_paired_window_stats.py
           tests/test_comparator_bank.py
-          tests/test_doomed_throw_readout.py
-          tests/test_v53dts_reader_build.py
-          tests/test_refusal_readout_summary.py
-          tests/test_v52ec_handoff.py
-          tests/test_v52ec_recovery_diagnostics.py
-          tests/test_v52ec_recovery_traces.py
-          tests/test_v52ec_recovery_reader.py
-          tests/test_v52ec_recovery_integration.py
           tests/test_fast_parity.py
           tests/test_pv_exact_follow.py
       # New modules in these families are selected without editing this list.
@@ -480,7 +471,6 @@ jobs:
             tests/test_endgame_compact.py \
             tests/test_endgame_level.py \
             tests/test_pv_exact_lead_variants.py \
-            tests/test_doomed_throw_readout.py \
             tests/test_pv_search_bury.py \
             tests/test_pv_search_prior_package.py \
             tests/test_pv_serving_smoke.py \

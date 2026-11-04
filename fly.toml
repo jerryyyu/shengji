@@ -105,8 +105,7 @@ primary_region = 'ewr'
   # flags, the two BELIEF package lines, the six SHENGJI_PV_EXACT_* lines and
   # SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST) and restore the release-45 name:
   # RELEASE 45 name: pv-search-491ee4bf-w64-k8-div-rc-tb-la-dtr-vd-radd86676-bury-hybrid-bwv-7a73e8fbf1a8
-  # RELEASE 48 (prepared, NOT deployed; deploy only after its cloud screen and fresh-seed
-  # confirmation read POSITIVE, the latency packet passes and Jerry's word stands): release 46
+  # RELEASE 48 (deployed 2026-10-24, Fly v47, on Jerry's in-session word): release 46
   # with three changes screened together as the guarded R48 cloud screen. BELIEF: the hidden
   # hands are proposed by the S58 belief package s58-e6-42444515 (served at its stored
   # temperature) in place of S17's s17long-e2-763b5e05; same runtime, same fallback to the
@@ -116,8 +115,9 @@ primary_region = 'ewr'
   # and once a decision passes 2 s the finish stops and every leaf is the plain heuristic one
   # (-lgfd2000). Three latency switches (no name, payload or digest; on completed decisions the
   # cards played are the switch-off ones) cut lgf's encoding and memory cost. Play, bury and
-  # declaration budgets, package, worlds and candidates are release 46's. Evidence: PENDING
-  # (DEPLOY.md, Release 48).
+  # declaration budgets, package, worlds and candidates are release 46's. Evidence (vs
+  # release 46 as served, ten common-control windows): r48cloud +0.0765 [+0.0571, +0.0958],
+  # fresh-seed confirmation r48confirm +0.0843 [+0.0575, +0.1111] (DEPLOY.md, Release 48).
   # Rollback: delete the seven SHENGJI_PV_* lines marked "Release 48" below, restore the two
   # release-46 belief lines and the release-46 name:
   #   SHENGJI_PV_BELIEF_CKPT = '/data/models/s17long-e2-763b5e05.npz'
@@ -216,8 +216,9 @@ primary_region = 'ewr'
   SHENGJI_PV_CANDIDATES = '8'
   SHENGJI_PV_CAP = '4000'
   SHENGJI_PV_BATCH_SIZE = '128'
-  # Cooperative play budget (heuristic anchor on expiry); single-thread W64/K8 measured 0.05 s
-  # mean / 0.09 s max on the Mini, so 3 s is a ceiling, not an ETA.
+  # Cooperative play budget (heuristic anchor on expiry). Release 50 on one pinned cloud core:
+  # play p95 1.054 s, p99 1.262 s, max 1.671 s (R50 speed profile); unthrottled Fly runs about
+  # x2 a cloud core and a throttled one far slower (DEPLOY.md, Release 50 Latency and Capacity).
   SHENGJI_PV_SERVING_BUDGET_SECONDS = '3'
   # Value-guided hybrid bury (release 27/28's arm, on this package's value head; Jerry: "we
   # should use value guided hybrid"): 32 candidates, 32 model worlds, 32 selection worlds,
@@ -252,8 +253,8 @@ primary_region = 'ewr'
   # Cloud console. Unset = the feature is off (no button, /api/auth/google is 404).
   # No client secret is used anywhere.
   GOOGLE_CLIENT_ID = '804081879262-h9te26ulofdij1nqrr7urbjec6vsbfes.apps.googleusercontent.com'
-  # Optional creator-authenticated engineering rooms use separate excluded
-  # logs; ordinary rooms already use W32 without an access code.
+  # Optional creator-authenticated W32 engineering rooms with separate excluded logs; off.
+  # Ordinary rooms serve SHENGJI_BOT above and need no access code.
   SHENGJI_W32_TEST_ROOMS = '0'
 
 [mounts]

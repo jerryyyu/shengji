@@ -1,0 +1,14 @@
+{
+ "name": "ft2U-rehearsal-246800400",
+ "purpose": "screen",
+ "seed0": 246800400,
+ "clusters": 56,
+ "span": [
+  246800400,
+  246800456
+ ],
+ "created_at": "2026-11-04T08:32:49Z",
+ "host": "ultra",
+ "git_head": "1bad9a2dfac5b50a85341a303a454051609837e7",
+ "note": "ft2U host rehearsal block (non-scientific execution evidence; exact heavy-path capacity witness) for the ft2U screen: the launcher's exact child for arm x (the release-50 combo (Y served on the G3 Stage A value package Ae04 f4f4127e) with the FT2X4 prior p0-ft2x4-483931e4.npz sha256 483931e4... on the exploiter only, vs Y as served (release 49, 491ee4bf, S58 belief)) on the M5 Ultra (Jerrys-Mac-Studio.local), tree /Users/jeryyu/fleet/src-1bad9a2d, REHEARSAL=1 mode under its own rehearsal RELEASE token (launcher r2), 20 workers; replaces the inherited, already-used g3dsc-rehearsal-245460600 (never reused for a new run); packet ~/shengji-archive/2026-11-04-ft2U-packet (r2). Exact-deal clear against A / FT2X4 / smv3 / M28 CAT lineages, the FT2X4 training deals, S17 / M17 / Y stores / live (exposure_r2). RESERVED BEFORE DEALING."
+}

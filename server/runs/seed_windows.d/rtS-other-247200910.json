@@ -1,0 +1,14 @@
+{
+ "name": "rtS-other-247200910",
+ "purpose": "other",
+ "seed0": 247200910,
+ "clusters": 6,
+ "span": [
+  247200910,
+  247200916
+ ],
+ "created_at": "2026-11-04T17:23:19Z",
+ "host": "cloud",
+ "git_head": "100ef989fcd9bbee295136a24b24af1b9d9a6302",
+ "note": "rtS release-50 self red team (Codex's proposal, #1171 issuecomment-6636309224): 6 seat-swapped deals (12 mirrors), both sides the release-50 candidate (A f4f4127e + FT1 1fa201b2 + B1a 028131a0 + bbw + sc8/lcc32), defender at served budgets vs challenger W128/K16/6 s/lgfd4000, on shengji-cloud, tree 100ef989; packet ~/shengji-archive/2026-11-04-rtS-packet. A bounded DEV diagnostic for missed tactics, not a strength test; no checkpoint-exposure clearance claimed. RESERVED BEFORE DEALING."
+}

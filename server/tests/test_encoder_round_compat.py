@@ -637,3 +637,20 @@ def test_the_real_production_checkpoint_warm_starts_through_the_trainer_loader()
     model, metadata, _aux = load_cwv_checkpoint(PRODUCTION_CHECKPOINT)
     assert metadata["encoder"]["implementation_sha256"] == RELEASE_30_IDENTITY
     assert model.config.search_head is True and model.config.policy_head is True
+
+
+def test_declaration_history_allowance_is_exact_and_keeps_other_sources():
+    from shengji.ai.cwv_policy import (AFTERSTATE_SOURCE_PATHS, CWVCheckpointMismatch,
+                                       verify_checkpoint_identity)
+    current = dict(local_encoder_identity(2))
+    before = dict(current['source_sha256s'])
+    old = compat.declaration_history_identities(current, AFTERSTATE_SOURCE_PATHS)
+    assert old and current['source_sha256s'] == before
+    for declared in old:
+        metadata = {'encoder': {'enc_version': 2, 'implementation_sha256': declared}}
+        assert verify_checkpoint_identity(metadata, identity=current) == declared
+        for key in ('round', 'memory'):
+            drift = dict(current, source_sha256s={**before, key: 'f' * 64})
+            with pytest.raises(CWVCheckpointMismatch):
+                verify_checkpoint_identity(metadata, identity=drift)
+    assert compat.declaration_history_identities(dict(current, enc_version=6), AFTERSTATE_SOURCE_PATHS) == ()

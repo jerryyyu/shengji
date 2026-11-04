@@ -114,6 +114,16 @@ def restore(packet):
         raise ValueError('unknown schema')
     rnd = round_from_setup(packet['deck'], packet['setup'])
     rnd.first_round = packet['first_round']
+    # Older roots encode only the current declaration, not reveal history.
+    if 'public_declarations' not in packet['root']:
+        del rnd.public_declarations
+    elif packet['root']['public_declarations'] == [] and rnd.declaration:
+        # Direct assignment exposes the current declaration without a history
+        # record. Accept only that exact singleton replay, not missing overcalls.
+        current = {'seat': rnd.declaration['seat'], 'cards': list(rnd.declaration['cards'])}
+        if (packet['setup'].get('declarations') == [current]
+                and packet['root'].get('declaration') == normalized(rnd.declaration)):
+            rnd.public_declarations = ()
     for event in packet['plays']:
         before = Counter(rnd.hands[event['seat']])
         rnd.play(event['seat'], event['attempted'])
@@ -147,9 +157,13 @@ class LeadCapture:
             raise ValueError('capture must start immediately after bury')
         setup = setup_from_round(rnd)
         setup['buried'] = list(rnd.buried)
-        setup['declarations'] = ([{'seat': rnd.declaration['seat'],
-                                  'cards': list(rnd.declaration['cards'])}]
-                                 if rnd.declaration else [])
+        declarations = list(getattr(rnd, 'public_declarations', ()))
+        if rnd.declaration:
+            current = (rnd.declaration['seat'], tuple(rnd.declaration['cards']))
+            if current not in declarations:
+                declarations.append(current)
+        setup['declarations'] = [{'seat': seat, 'cards': list(cards)}
+                                 for seat, cards in declarations]
         setup['passed'] = sorted(rnd.passed)
         self.packet = dict(schema='lead-root-capture-dev-v1', deck=list(rnd.deck),
                            setup=setup, first_round=rnd.first_round, plays=[],

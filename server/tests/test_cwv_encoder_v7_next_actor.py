@@ -192,8 +192,8 @@ def test_every_closure_hashes_the_v7_module_and_no_published_identity_moves():
     assert ident["implementation_sha256"] not in others
     assert encoder_contract(7)["schema"] == "rl-observation-v7-next-actor"
     # the identities production and the archived caches carry
-    from tests.test_encoder_bytes_golden import CURRENT_CWV
-    for version, sha in CURRENT_CWV.items():
+    from tests.test_encoder_bytes_golden import DECLARATION_HISTORY_CWV
+    for version, sha in DECLARATION_HISTORY_CWV.items():
         assert cwv_data.cwv_encoder_identity(version)["implementation_sha256"] == sha
 
 

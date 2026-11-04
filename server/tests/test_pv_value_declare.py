@@ -29,6 +29,7 @@ import pytest
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.cards import RANKS, is_joker, make_deck
 from shengji.engine.round import Round
+from shengji.train import declare_wait as dw
 from shengji.train import pv_search_policy as pv
 from shengji.train import value_declare as vdm
 from test_pv_adaptive_worlds import RELEASE42_ENV, RELEASE42_NAME
@@ -159,12 +160,17 @@ def test_vd_token_last_and_digest_when_on(production_package):
     assert "-bury-hybrid-" in on and on != RELEASE42_NAME
     every, = names({**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_ADAPTIVE_WORLDS_LEADS": "1"})
     assert every.startswith("pv-search-491ee4bf-w64-k8-div-rc-tb-la-dts-awl-vd-r")
-    # the declare slot: vd, then its first-round gate, then the model-free variant
-    assert pv.RULE_TOKENS[-10:-4] == (("value_declare", "vd"), ("value_declare_every_first", "vdef"),
-                                     ("value_declare_served_bury", "vdsb"),
-                                     ("value_declare_pass_worlds", "vdpw"),
-                                     ("value_declare_wait", "vdw"),
-                                     ("declare_asap_first", "asap"))   # then lpft, then the diagnostic orc
+    # the declare slot: vd, its public-reveal opt-in, then the first-round gate
+    # and the model-free variant
+    start = next(i for i, pair in enumerate(pv.RULE_TOKENS)
+                 if pair == ("value_declare", "vd"))
+    assert pv.RULE_TOKENS[start:start + 7] == (("value_declare", "vd"),
+                                               ("value_declare_public_reveals", "vdpr"),
+                                               ("value_declare_every_first", "vdef"),
+                                               ("value_declare_served_bury", "vdsb"),
+                                               ("value_declare_pass_worlds", "vdpw"),
+                                               ("value_declare_wait", "vdw"),
+                                               ("declare_asap_first", "asap"))   # then lpft, then the diagnostic orc
     assert pv.RULE_FLAGS["VALUE_DECLARE"] == "value_declare"
     worlds, = names({**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_VALUE_DECLARE_WORLDS": "32"})
     margin, = names({**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_VALUE_DECLARE_MARGIN": "0.05"})
@@ -176,6 +182,101 @@ def test_vd_token_last_and_digest_when_on(production_package):
     assert payload["value_declare_margin"] == 0.0
     assert payload["value_declare_model"] == vdm.MODEL
     assert pv.recipe_digest(base) != pv.recipe_digest(vd)
+
+
+def test_public_reveals_is_an_opt_in_model_and_name_token(production_package):
+    env = {**RELEASE42_ENV, FLAG: "1", "SHENGJI_PV_VALUE_DECLARE_PUBLIC_REVEALS": "1"}
+    on, = names(env)
+    assert "-vd-vdpr-" in on
+    config = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, value_declare=True,
+                               value_declare_public_reveals=True)
+    payload = pv.recipe_payload(config)
+    assert payload["value_declare_public_reveals"] is True
+    assert payload["value_declare_model"] == vdm.MODEL_PUBLIC_REVEALS
+    assert "value_declare_public_reveals" not in pv.recipe_payload(
+        pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA, value_declare=True))
+
+
+def test_public_reveals_requires_value_declare():
+    with pytest.raises(pv.PVSearchPolicyError, match="requires value_declare"):
+        pv.recipe_payload(pv.PVSearchConfig(checkpoint_sha256="f" * 64,
+                                            value_declare_public_reveals=True))
+    recipe = pv.pv_env_recipe({**PRODUCTION_ENV, FLAG: "1",
+                               "SHENGJI_PV_VALUE_DECLARE_PUBLIC_REVEALS": "1"})
+    assert recipe["value_declare_public_reveals"] is True
+
+
+@pytest.mark.parametrize("pass_worlds", [False, True])
+def test_real_value_means_routes_public_reveals_to_ordinary_and_pass_sampler(
+        monkeypatch, pass_worlds):
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    rnd.declare(0, ["S2", "S2"])
+    bot = served(ZeroEvaluator(), value_declare=True,
+                 value_declare_public_reveals=True,
+                 value_declare_pass_worlds=pass_worlds)
+    real = vdm.sample_declare_world
+    seen = []
+
+    def spy(r, s, rng, **kwargs):
+        assert kwargs.get("public_reveals") is True
+        world = real(r, s, rng, **kwargs)
+        assert world[0][1].count("H2") >= 1
+        seen.append(True)
+        return world
+
+    monkeypatch.setattr(vdm, "sample_declare_world", spy)
+    progress = {"worlds_completed": 0}
+    if pass_worlds:
+        progress["pass_worlds"] = {"worlds": 0, "attempts": 0, "fallbacks": 0}
+    bot._value_declare_means(rnd, 2, [None], worlds=4, progress=progress)
+    assert len(seen) >= 4
+
+
+def test_real_wait_outer_and_inner_routes_public_reveals(monkeypatch):
+    rnd, seat = state_at(11, 49)
+    now = HEURISTIC.decide_declare(rnd, seat)
+    assert now is not None and rnd.declaration is None
+    bot = served(ZeroEvaluator(), value_declare=True, value_declare_wait=True,
+                 value_declare_public_reveals=True)
+    monkeypatch.setattr(dw, "WORLDS_DEFAULT", 1)
+    monkeypatch.setattr(dw, "INNER_WORLDS_DEFAULT", 1)
+    monkeypatch.setattr(dw, "DRAWS_CAP", 1)
+    monkeypatch.setattr(dw, "silence_consistent", lambda *args: True)
+    real = vdm.sample_declare_world
+    calls = []
+
+    def spy(r, s, rng, **kwargs):
+        assert kwargs.get("public_reveals") is True
+        calls.append(r)
+        return real(r, s, rng, **kwargs)
+
+    monkeypatch.setattr(vdm, "sample_declare_world", spy)
+    bot._declare_wait_values(rnd, seat, now)
+    assert len(calls) >= 2       # one outer draw and one end-choice inner draw
+
+
+def test_public_reveals_env_registry_factory_builds_enabled_bot(monkeypatch,
+                                                                 production_package):
+    class Predict:
+        version = 2
+        sha256 = PRODUCTION_SHA
+
+        def __call__(self, rows):
+            return np.zeros((len(rows), 54), dtype=np.float32)
+
+    monkeypatch.setattr(pv, "file_sha256", lambda path: PRODUCTION_SHA)
+    monkeypatch.setattr(pv, "NumpyPriorPredict", lambda path, sha256: Predict())
+    monkeypatch.setattr(pv, "shared_evaluator", lambda *args, **kwargs: ZeroEvaluator())
+    env = {**PRODUCTION_ENV, FLAG: "1",
+           "SHENGJI_PV_VALUE_DECLARE_PUBLIC_REVEALS": "1"}
+    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+    name, factory = next(iter(entries.items()))
+    bot = factory(seed=3)
+    assert name.find("-vd-vdpr-") >= 0
+    assert bot.value_declare_public_reveals is True
 
 
 @pytest.mark.parametrize("bad", ["2", "true", "yes", "on", " 1"])
@@ -425,6 +526,107 @@ def test_sampled_worlds_keep_the_view_and_conserve_cards(seed):
         assert hands[seat][:len(rnd.hands[seat])] == rnd.hands[seat]
         if declarer is not None and declarer != seat:
             assert not Counter(rnd.declaration["cards"]) - Counter(hands[declarer])
+
+
+def test_sampled_worlds_keep_overridden_public_declarations():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    rnd.declare(0, ["S2", "S2"])
+    for draw_seed in range(64):
+        hands, kitty = vdm.sample_declare_world(
+            rnd, 2, random.Random(draw_seed), public_reveals=True)
+        assert hands[1].count("H2") >= 1
+        assert hands[0].count("S2") >= 2
+        assert Counter(sum(hands, []) + kitty) == Counter(make_deck())
+
+
+def test_default_sampler_matches_legacy_current_declaration_only_worlds():
+    """The flag-off sampler keeps the pre-reveal draw, including card order."""
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    rnd.declare(0, ["S2", "S2"])
+
+    def legacy_world(rnd, seat, rng):
+        pool = Counter(make_deck())
+        pool.subtract(rnd.hands[seat])
+        pinned = [[] for _ in range(4)]
+        declaration = rnd.declaration
+        if declaration is not None and declaration["seat"] != seat:
+            pinned[declaration["seat"]] = list(declaration["cards"])
+            pool.subtract(declaration["cards"])
+        unseen = sorted(pool.elements())
+        rng.shuffle(unseen)
+        hands, used = [], 0
+        for s in range(4):
+            base = list(rnd.hands[s]) if s == seat else pinned[s]
+            need = 25 - len(base)
+            hands.append(base + unseen[used:used + need])
+            used += need
+        return hands, unseen[used:]
+
+    for seed in range(16):
+        expected = legacy_world(rnd, 2, random.Random(seed))
+        actual = vdm.sample_declare_world(rnd, 2, random.Random(seed))
+        assert actual == expected
+
+
+def test_same_seat_upgrade_uses_maximum_card_count():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(0, ["S2"])
+    rnd.declare(0, ["S2", "S2"])
+    hands, kitty = vdm.sample_declare_world(rnd, 2, random.Random(0), public_reveals=True)
+    assert hands[0].count("S2") >= 2
+    assert Counter(sum(hands, []) + kitty) == Counter(make_deck())
+
+
+def test_public_declarations_are_isolated_across_shallow_copies():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    clone = copy.copy(rnd)
+    clone.declare(0, ["S2", "S2"])
+    assert len(rnd.public_declarations) == 1
+    assert len(clone.public_declarations) == 2
+
+
+def test_public_declarations_survive_deepcopy():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    clone = copy.deepcopy(rnd)
+    assert clone.public_declarations == rnd.public_declarations
+    hands, kitty = vdm.sample_declare_world(clone, 2, random.Random(0), public_reveals=True)
+    assert hands[1].count("H2") >= 1
+
+
+def test_legacy_round_without_public_declarations_uses_current_declaration():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    del rnd.public_declarations
+    hands, kitty = vdm.sample_declare_world(rnd, 2, random.Random(0), public_reveals=True)
+    assert hands[1].count("H2") >= 1
+    assert Counter(sum(hands, []) + kitty) == Counter(make_deck())
+
+
+def test_legacy_direct_declaration_is_preserved_on_later_overcall():
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declaration = {"seat": 1, "cards": ["H2"], "strength": 1}
+    rnd.declare(0, ["S2", "S2"])
+    hands, kitty = vdm.sample_declare_world(rnd, 2, random.Random(0), public_reveals=True)
+    assert hands[1].count("H2") >= 1
+    assert hands[0].count("S2") >= 2
 
 
 def test_pass_without_a_declaration_takes_the_engine_flip():

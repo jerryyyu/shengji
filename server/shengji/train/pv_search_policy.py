@@ -1044,6 +1044,9 @@ VALUE_DECLARE_DEFAULTS = dict(value_declare=False, value_declare_worlds=64,
                               value_declare_margin=0.0)
 VALUE_DECLARE_PARAMS = {"VALUE_DECLARE_WORLDS": "value_declare_worlds",
                         "VALUE_DECLARE_MARGIN": "value_declare_margin"}
+#: the optional public declaration-reveal world model (requires ``value_declare``)
+VALUE_DECLARE_PUBLIC_REVEALS_RULE = {"VALUE_DECLARE_PUBLIC_REVEALS": "value_declare_public_reveals"}
+VALUE_DECLARE_PUBLIC_REVEALS_DEFAULTS = dict(value_declare_public_reveals=False)
 #: the record a value-declare decision leaves in ``last_declare_record``
 VALUE_DECLARE_RECORD_SCHEMA = "pv-value-declare-decision-v1"
 #: its first-round gate widening (requires ``value_declare``; module docstring)
@@ -1162,6 +1165,7 @@ RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_
               **SMALL_JOKER_GUARD_RULE, **ADAPTIVE_WORLDS_RULE, **WIDE_LEAD_RULE,
               **DOOMED_THROW_RESELECT_RULE, **DOOMED_THROW_RESELECT_EXACT_GUARD_RULE,
               **VALUE_DECLARE_RULE,
+              **VALUE_DECLARE_PUBLIC_REVEALS_RULE,
               **VALUE_DECLARE_EVERY_FIRST_RULE, **VALUE_DECLARE_SERVED_BURY_RULE,
               **VALUE_DECLARE_PASS_WORLDS_RULE, **VALUE_DECLARE_WAIT_RULE,
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE, **LEAF_GREEDY_RULE,
@@ -1185,6 +1189,7 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("doomed_throw_reselect", "dtr"),
                                                    ("doomed_throw_reselect_exact_guard", "dtrx"),
                                                    ("value_declare", "vd"),
+                                                   ("value_declare_public_reveals", "vdpr"),
                                                    ("value_declare_every_first", "vdef"),
                                                    ("value_declare_served_bury",
                                                     declare_served_bury.TOKEN),
@@ -1232,6 +1237,9 @@ _LEAF_POLICY_NO_EFFECT = ("leaf_policy_first_trick needs a value leaf it changes
 _VALUE_DECLARE_EVERY_FIRST_REQUIRES = ("value_declare_every_first requires value_declare "
                                        "(SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST=1 needs "
                                        "SHENGJI_PV_VALUE_DECLARE=1)")
+_VALUE_DECLARE_PUBLIC_REVEALS_REQUIRES = ("value_declare_public_reveals requires value_declare "
+                                          "(SHENGJI_PV_VALUE_DECLARE_PUBLIC_REVEALS=1 needs "
+                                          "SHENGJI_PV_VALUE_DECLARE=1)")
 _VALUE_DECLARE_SERVED_BURY_REQUIRES = ("value_declare_served_bury requires value_declare "
                                        "(SHENGJI_PV_VALUE_DECLARE_SERVED_BURY=1 needs "
                                        "SHENGJI_PV_VALUE_DECLARE=1)")
@@ -1515,6 +1523,9 @@ class PVSearchConfig:
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
     value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
     value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+    # its opt-in public declaration reveals (requires ``value_declare``); the
+    # default sampler remains the legacy current-declaration-only model
+    value_declare_public_reveals: bool = VALUE_DECLARE_PUBLIC_REVEALS_DEFAULTS["value_declare_public_reveals"]
     # its first-round gate widening (requires ``value_declare``); the same contract
     value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
     # the served bury in its worlds (requires ``value_declare`` and, checked where
@@ -1851,9 +1862,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
     if config.value_declare:
         payload["value_declare_margin"] = float(config.value_declare_margin)
-        payload["value_declare_model"] = (value_declare_model.MODEL_POLICY_FIRST_TRICK
-                                          if config.leaf_policy_first_trick
-                                          else value_declare_model.MODEL)
+        model = (value_declare_model.MODEL_POLICY_FIRST_TRICK
+                 if config.leaf_policy_first_trick else value_declare_model.MODEL)
+        if config.value_declare_public_reveals:
+            model = model.replace("uniform-unseen", "uniform-unseen|public-declaration-reveals")
+        payload["value_declare_model"] = model
         if config.value_declare_served_bury:
             payload["value_declare_model"] = payload["value_declare_model"].replace(
                 value_declare_model.MODEL_HEURISTIC_BURY, declare_served_bury.MODEL_BURY)
@@ -1879,6 +1892,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         del payload["value_declare_worlds"], payload["value_declare_margin"]
     if config.value_declare_every_first and not config.value_declare:
         raise PVSearchPolicyError(_VALUE_DECLARE_EVERY_FIRST_REQUIRES)
+    if config.value_declare_public_reveals and not config.value_declare:
+        raise PVSearchPolicyError(_VALUE_DECLARE_PUBLIC_REVEALS_REQUIRES)
     if config.value_declare_served_bury and not config.value_declare:
         raise PVSearchPolicyError(_VALUE_DECLARE_SERVED_BURY_REQUIRES)
     if config.value_declare_pass_worlds and not config.value_declare:
@@ -2087,6 +2102,7 @@ class PVSearchBot(PolicyValueBot):
     value_declare = VALUE_DECLARE_DEFAULTS["value_declare"]
     value_declare_worlds = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
     value_declare_margin = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+    value_declare_public_reveals = VALUE_DECLARE_PUBLIC_REVEALS_DEFAULTS["value_declare_public_reveals"]
     value_declare_every_first = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
     value_declare_served_bury = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"]
     value_declare_pass_worlds = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"]
@@ -2334,6 +2350,14 @@ class PVSearchBot(PolicyValueBot):
             self.value_declare = True
             self.value_declare_worlds = config.value_declare_worlds
             self.value_declare_margin = float(config.value_declare_margin)
+        if type(config.value_declare_public_reveals) is not bool:
+            raise PVSearchPolicyError("value_declare_public_reveals must be a bool")
+        if config.value_declare_public_reveals:
+            if not config.value_declare:
+                raise PVSearchPolicyError(_VALUE_DECLARE_PUBLIC_REVEALS_REQUIRES)
+            # instance state only when on: a flag-off bot's attributes remain
+            # absent from its instance, preserving legacy construction
+            self.value_declare_public_reveals = True
         for key in ("value_declare_every_first", "value_declare_served_bury",
                     "value_declare_pass_worlds", "value_declare_wait",
                     "declare_asap_first"):
@@ -2799,6 +2823,8 @@ class PVSearchBot(PolicyValueBot):
             # likewise; None where the wait pass did not run (the grace window,
             # an abandoned evaluation, or a value choice that already passes)
             record["wait"] = wait
+        if self.value_declare_public_reveals:
+            record["public_reveals"] = True
         record["model_ids"] = self.model_ids("declare")
         self.last_declare_record = record
         return None if played is None else list(played)
@@ -2930,7 +2956,11 @@ class PVSearchBot(PolicyValueBot):
         for _ in range(declare_wait.INNER_WORLDS_DEFAULT):
             if check_budget is not None:
                 check_budget()
-            hands, kitty = value_declare_model.sample_declare_world(sim, seat, rng)
+            if self.value_declare_public_reveals:
+                hands, kitty = value_declare_model.sample_declare_world(
+                    sim, seat, rng, public_reveals=True)
+            else:
+                hands, kitty = value_declare_model.sample_declare_world(sim, seat, rng)
             for _, option in outcomes:
                 positions.append(value_declare_model.declare_outcome_position(
                     sim, seat, hands, kitty, option, first_trick=leaf is None))
@@ -2973,7 +3003,11 @@ class PVSearchBot(PolicyValueBot):
         while accepted < declare_wait.WORLDS_DEFAULT and draws < declare_wait.DRAWS_CAP:
             if check_budget is not None:
                 check_budget()
-            hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
+            if self.value_declare_public_reveals:
+                hands, kitty = value_declare_model.sample_declare_world(
+                    rnd, seat, rng, public_reveals=True)
+            else:
+                hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
             draws += 1
             progress["draws"] = draws
             if not declare_wait.silence_consistent(
@@ -3076,9 +3110,18 @@ class PVSearchBot(PolicyValueBot):
             if check_budget is not None:
                 check_budget()
             if self.value_declare_pass_worlds:
-                hands, kitty = declare_pass_worlds.sample_pass_world(rnd, seat, rng, pass_stats)
+                if self.value_declare_public_reveals:
+                    hands, kitty = declare_pass_worlds.sample_pass_world(
+                        rnd, seat, rng, pass_stats, public_reveals=True)
+                else:
+                    hands, kitty = declare_pass_worlds.sample_pass_world(
+                        rnd, seat, rng, pass_stats)
             else:
-                hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
+                if self.value_declare_public_reveals:
+                    hands, kitty = value_declare_model.sample_declare_world(
+                        rnd, seat, rng, public_reveals=True)
+                else:
+                    hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
             for index, option in enumerate(candidates):
                 pending.append(value_declare_model.declare_outcome_position(
                     rnd, seat, hands, kitty, option, first_trick=leaf is None,
@@ -4525,6 +4568,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
+                       value_declare_public_reveals: bool = VALUE_DECLARE_PUBLIC_REVEALS_DEFAULTS["value_declare_public_reveals"],
                        value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
                        value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"],
                        value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"],
@@ -4607,6 +4651,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
+                            value_declare_public_reveals=value_declare_public_reveals,
                             value_declare_every_first=value_declare_every_first,
                             value_declare_served_bury=value_declare_served_bury,
                             value_declare_pass_worlds=value_declare_pass_worlds,
@@ -4742,6 +4787,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
+                        value_declare_public_reveals: bool = VALUE_DECLARE_PUBLIC_REVEALS_DEFAULTS["value_declare_public_reveals"],
                         value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
                         value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"],
                         value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"],
@@ -4805,6 +4851,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
+                            value_declare_public_reveals=value_declare_public_reveals,
                             value_declare_every_first=value_declare_every_first,
                             value_declare_served_bury=value_declare_served_bury,
                             value_declare_pass_worlds=value_declare_pass_worlds,
@@ -4933,6 +4980,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
+                               value_declare_public_reveals=config.value_declare_public_reveals,
                                value_declare_every_first=config.value_declare_every_first,
                                value_declare_served_bury=config.value_declare_served_bury,
                                value_declare_pass_worlds=config.value_declare_pass_worlds,

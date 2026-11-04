@@ -26,6 +26,7 @@ from __future__ import annotations
 import glob
 import json
 from collections import defaultdict
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
@@ -101,6 +102,17 @@ def _allocation_from_decision(decision: dict) -> dict[str, Any]:
         "report_candidate_index": decision.get("report_candidate_index"),
         "reason": decision.get("reason"),
     }
+    # Missing telemetry stays unknown; later draws can degrade independently of base draws.
+    for key in (
+        "belief_fallback", "world_draws_by_stage", "belief_fallback_by_stage",
+        "belief_fallback_all_draws", "belief_fallback_any",
+        "history_fill_worlds_by_stage", "history_unchecked_worlds_by_stage",
+        "history_fill_worlds_all_draws", "history_unchecked_worlds_all_draws",
+        "history_fallback_worlds", "leaf_greedy_deadline_fired",
+        "leaf_greedy_deadline_fired_lead_confirm", "leaf_greedy_deadline_fired_any",
+    ):
+        if key in decision:
+            out[key] = deepcopy(decision[key])
     fold = decision.get("report_fold")
     if isinstance(fold, dict):
         out["report_fold"] = {k: fold.get(k) for k in (

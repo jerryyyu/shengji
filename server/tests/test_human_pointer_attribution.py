@@ -157,3 +157,52 @@ def test_missing_or_nonboolean_bot_flag_is_rejected(tmp_path, kind, marker):
                        match=rf"{kind} pointer .*exactly false"):
         human.extract_human(human_dir=corpus, registry=InputRegistry(),
                             repo=tmp_path)
+
+
+@pytest.mark.parametrize("degraded", [None, False, True])
+def test_room_log_harvest_preserves_search_degradation(tmp_path, degraded):
+    from shengji.harvest.schema import encode_line
+
+    events = _completed_round()
+    play = next(event for event in events if event["e"] == "play")
+    stats = {}
+    if degraded is not None:
+        failures = 2 if degraded else 0
+        stats = {
+            "belief_fallback": 0,
+            "world_draws_by_stage": {"base": 1, "lead_confirm": 2, "adaptive_worlds": 0},
+            "belief_fallback_by_stage": {"base": 0, "lead_confirm": failures, "adaptive_worlds": 0},
+            "belief_fallback_all_draws": failures,
+            "belief_fallback_any": int(degraded),
+            "history_fill_worlds_by_stage": {"base": 0, "lead_confirm": failures, "adaptive_worlds": 0},
+            "history_unchecked_worlds_by_stage": {"base": 0, "lead_confirm": 0, "adaptive_worlds": 0},
+            "history_fill_worlds_all_draws": failures,
+            "history_unchecked_worlds_all_draws": 0,
+            "history_fallback_worlds": 0,
+            "leaf_greedy_deadline_fired": False,
+            "leaf_greedy_deadline_fired_lead_confirm": bool(degraded),
+            "leaf_greedy_deadline_fired_any": bool(degraded),
+        }
+    play.update(bot=True, decision={"schema": "pv-search-decision-v1", "policy": "synthetic-pv",
+                                    "played": list(play["cards"]), **stats})
+    source = tmp_path / "room.jsonl"
+    _write_jsonl(source, events)
+    rounds, bad = read_rounds(source, InputRegistry())
+    assert bad == 0
+    records, counts = extract_round("logs/room.jsonl", 1, rounds[1], fallback_policy=None)
+    assert counts["decision_blobs"] == 1
+    record = next(r for r in records if r["decision_kind"] == "play")
+    saved = json.loads(encode_line(record))
+    assert saved["action"] == play["cards"]
+    allocation = saved["allocation"]
+    if degraded is None:
+        assert "belief_fallback_any" not in allocation
+        assert "belief_fallback_by_stage" not in allocation
+        assert "leaf_greedy_deadline_fired_any" not in allocation
+    else:
+        assert {key: allocation[key] for key in stats} == stats
+        assert allocation["belief_fallback"] == 0
+        assert allocation["belief_fallback_any"] == int(degraded)
+        record["allocation"]["belief_fallback_by_stage"]["lead_confirm"] = 999
+        original_play = next(event for event in rounds[1] if event["e"] == "play")
+        assert original_play["decision"]["belief_fallback_by_stage"]["lead_confirm"] == failures

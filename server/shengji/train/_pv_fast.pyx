@@ -15,6 +15,27 @@ from libc.string cimport memcpy
 import numpy as np
 
 
+def reply_multiplicity(const signed char[::1] cards, const int[::1] offsets):
+    """Dense float64 card counts, preserving listing row and column order."""
+    cdef Py_ssize_t n = offsets.shape[0] - 1
+    cdef Py_ssize_t i, j, start, end
+    cdef int card
+    if n < 0 or offsets[0] != 0 or offsets[n] != cards.shape[0]:
+        raise ValueError("invalid reply offsets")
+    out = np.zeros((n, 54), dtype=np.float64)
+    cdef double[:, ::1] counts = out
+    for i in range(n):
+        start, end = offsets[i], offsets[i + 1]
+        if start < 0 or end < start or end > cards.shape[0]:
+            raise ValueError("invalid reply offsets")
+        for j in range(start, end):
+            card = cards[j]
+            if card < 0 or card >= 54:
+                raise ValueError("invalid reply card index")
+            counts[i, card] += 1.0
+    return out
+
+
 cdef class _Out:
     """A growing int8 card buffer and its int32 offsets."""
     cdef signed char *cards

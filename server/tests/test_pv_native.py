@@ -192,6 +192,7 @@ def test_compact_replies_with_native_are_the_reference_listing_and_scores():
                         assert b[1] is None and type(a[0]) is type(b[0]) is list
                         singles += 1
                     else:
+                        assert b[1].native
                         row = rng.normal(size=54)
                         assert (a[1] @ row).tobytes() == (b[1] @ row).tobytes()
                     checked += 1
@@ -1003,3 +1004,50 @@ def test_an_unrelated_copy_registration_keeps_the_clone_fast_path(monkeypatch):
         copy_module.copy.__code__ = original
     assert pts.clone_references_intact(pts.child_position)
     assert vars(pts.shallow_round(rnd)) == vars(rnd)
+
+
+@needs_native
+@pytest.mark.parametrize('actions', [[], [['S2']], [['S2', 'S2'], ['S3', 'S4'], ['BJ', 'BJ']]])
+def test_native_reply_counts_preserve_dense_bytes(actions):
+    replies = pts.CompactReplies(actions, leads=False)
+    expected = replies.multiplicity()
+    actual = pv_native.reply_multiplicity(replies.cards, replies.offsets)
+    assert actual is not None
+    assert actual.shape == expected.shape and actual.dtype == expected.dtype
+    assert actual.tobytes() == expected.tobytes()
+
+
+@needs_native
+@pytest.mark.parametrize('cards,offsets', [([0], []), ([0], [0]), ([0], [1, 1]),
+    ([0], [0, 2, 1]), ([0], [0, -1, 1]), ([-1], [0, 1]), ([54], [0, 1])])
+def test_native_reply_counts_reject_unsafe_indices(cards, offsets):
+    with pytest.raises(ValueError):
+        pv_native.reply_multiplicity(np.array(cards, dtype=np.int8),
+                                     np.array(offsets, dtype=np.int32))
+
+
+@needs_native
+def test_native_reply_counts_reach_lazy_consumer_and_reuse_slot(monkeypatch):
+    replies = pts.CompactReplies([['S2', 'S2'], ['S3', 'S4']], leads=False)
+    reference = replies.multiplicity()
+    calls = []
+    kernel = pv_native.reply_multiplicity
+    def tracked(cards, offsets):
+        calls.append(1)
+        return kernel(cards, offsets)
+    monkeypatch.setattr(pv_native, 'reply_multiplicity', tracked)
+    slot = pts._DenseSlot()
+    lazy = pts.LazyScoring(replies, slot, native=True)
+    row = np.linspace(-1, 1, 54)
+    for _ in range(2):
+        assert (lazy @ row).tobytes() == (reference @ row).tobytes()
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('extension', [None, object()])
+def test_native_reply_counts_older_extension_keeps_reference(monkeypatch, extension):
+    monkeypatch.setattr(pv_native, '_pv_fast', extension)
+    replies = pts.CompactReplies([['S2', 'S2'], ['S3']], leads=False)
+    row = np.linspace(-1, 1, 54)
+    lazy = pts.LazyScoring(replies, pts._DenseSlot(), native=True)
+    assert (lazy @ row).tobytes() == (replies.multiplicity() @ row).tobytes()

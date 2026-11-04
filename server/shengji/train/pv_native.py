@@ -194,6 +194,12 @@ def listing_intact() -> bool:
             and policy_prior.CARD_INDEX == tables[0])
 
 
+def reply_multiplicity(cards, offsets):
+    """Unnormalized follow counts, or None with an absent/older extension."""
+    kernel = getattr(_pv_fast, "reply_multiplicity", None)
+    return None if kernel is None else kernel(cards, offsets)
+
+
 def follow_listing(hand, lead, ordering, cap):
     """``(cards, offsets)`` (int8 card indices, int32 row offsets) of the
     first ``cap`` actions of ``iter_follow_actions(hand, lead, ordering)``

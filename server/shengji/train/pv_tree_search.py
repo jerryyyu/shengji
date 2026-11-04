@@ -421,16 +421,19 @@ class LazyScoring:
     """``scoring @ row`` for a `CompactReplies`: the dense matrix is built at
     the product and kept only in the ply's single `_DenseSlot`."""
 
-    __slots__ = ("replies", "slot")
+    __slots__ = ("replies", "slot", "native")
 
-    def __init__(self, replies: CompactReplies, slot: _DenseSlot):
-        self.replies, self.slot = replies, slot
+    def __init__(self, replies: CompactReplies, slot: _DenseSlot, native=False):
+        self.replies, self.slot, self.native = replies, slot, native
 
     def __matmul__(self, row):
         slot = self.slot
         if slot.owner is not self:
             slot.owner, slot.dense = None, None
-            slot.dense = self.replies.multiplicity()
+            if self.native and not self.replies.leads:
+                slot.dense = pv_native.reply_multiplicity(self.replies.cards, self.replies.offsets)
+            if slot.dense is None:
+                slot.dense = self.replies.multiplicity()
             slot.owner = self
         return slot.dense @ row
 
@@ -457,7 +460,7 @@ def legal_replies_compact(bot, clone, seat, cache, slot, native=False):
             if len(replies) == 1:
                 hit = ([replies[0]], None)
             else:
-                hit = (replies, LazyScoring(replies, slot))
+                hit = (replies, LazyScoring(replies, slot, native=True))
         else:
             legal, multiplicity = legal_replies(bot, clone, seat, None)
             if multiplicity is None:

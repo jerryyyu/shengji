@@ -1,0 +1,14 @@
+{
+ "name": "lccC-lane-247410910",
+ "purpose": "screen",
+ "seed0": 247410910,
+ "clusters": 7840,
+ "span": [
+  247410910,
+  247418750
+ ],
+ "created_at": "2026-11-04T23:38:52Z",
+ "host": "cloud",
+ "git_head": "100ef989fcd9bbee295136a24b24af1b9d9a6302",
+ "note": "lccC confirmation head-to-head: release 50 with lcc32 off (SHENGJI_PV_LEAD_CONFIRM=0) vs release 50 as served (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + B1a belief 028131a0 + bbw, sc8 + lcc32), both at the served budgets, on shengji-cloud, tree 100ef989; the cloud confirmation of loo (seeds 247110910 + 3920); packet ~/shengji-archive/2026-11-04-lccC-packet. Exact-deal clear against the A / FT1 / smv3 / M28 CAT lineages and the B1a lineage (Y belief stores, S17, M17, S58 live). RESERVED BEFORE DEALING. 7,840 paired seat-swapped r2 deals."
+}

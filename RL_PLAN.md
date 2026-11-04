@@ -1,6 +1,6 @@
 # Learning and search research plan
 
-As of 2026-11-04. Production is release 49; new duels and screens compare against release 49 as served (Jerry 2026-11-01),
+As of 2026-11-04. Production is release 50; new duels and screens compare against release 50 as served (Jerry 2026-11-04),
 read against the two-stage duel bar (2026-11-03).
 
 This file owns the research architecture, the estimands, the process rules for compute and measurement, and the
@@ -54,7 +54,7 @@ data, with production's latency tail bounded. The standing goal is +0.05 levels/
   r48"), release 46 (Jerry 2026-10-16, recorded on #1075) and release 45 (Jerry 2026-10-13, #988
   issuecomment-6142666693).
 - **Next cost candidate:** release 50 with `lcc32` off. The S82 leave-one-out inside release 50 read DROP_SAFE,
-  +0.0079 [−0.0069, +0.0221] (off − on), and the stage abandons about 23% of leads at half budget (hb50). It needs a
+  +0.0079 [−0.0069, +0.0221] (off − on), and at half budget the stage abandons on about 23% of search leads (hb50; descriptive). It needs a
   confirmation against release 50 and Jerry's word.
 
 | evidence label | supports |
@@ -124,9 +124,10 @@ The two-stage rule applies only to runs not yet started when it was adopted (202
 
 ## Planned work
 
-**What changes production next:** a change that passes the duel bar against release 49 as served (a screen, then a
-fresh-seed confirmation), then the `DEPLOY.md` release checklist and Jerry's word. Release 49 shipped on a duel plus
-a fresh-seed confirmation (combo3y, combo3yc) and latency reads (v107sc8lat, s71fly). Correctness fixes may ship
+**What changes production next:** a change that passes the duel bar against release 50 as served (a screen, then a
+fresh-seed confirmation), then the `DEPLOY.md` release checklist and Jerry's word. Release 50 shipped on a fresh-seed
+confirmation against release 49 (cbaC) plus a duel screen (cbaf) and the R50 speed profile; release 49 shipped on a duel
+plus a fresh-seed confirmation (combo3y, combo3yc) and latency reads (v107sc8lat, s71fly). Correctness fixes may ship
 with no strength claim when the served screen is not demonstrated negative (releases 42, 43).
 
 **Direction (Jerry 2026-10-11, 2026-10-13):** "Where we use heuristics, it may be better to use the model";

@@ -25,8 +25,9 @@ Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 **Release 50** (the cbaC stack): release 49 with new packages and belief bury worlds. The value package is G3 Stage
 A's (`g3a-e04-f4f4127e`), the card-play prior is FT1's (`p0-ft1-1fa201b2`), the belief package is B1a's
 (`b1a-028131a0`, in place of S58), and the wide value-only bury scores its candidates on belief-drawn worlds
-(`bbw`). lcc32, sc8, every other rule, every budget and the latency switches are release 49's. Prepared for deploy;
-until `/healthz` shows the name below, production is release 49 (its record is under "Rollback").
+(`bbw`). lcc32, sc8, every other rule, every budget and the latency switches are release 49's. Live since 2026-11-04
+15:24 EST (Fly v57); the first-room qualification (Release checklist, steps 9–10) is pending the first live room.
+Release 49's record is under "Rollback".
 
 | field | value |
 |---|---|

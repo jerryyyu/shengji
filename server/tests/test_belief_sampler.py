@@ -229,3 +229,86 @@ def test_history_legal_draws_match_the_served_paths(small_package):
         assert len(worlds) == 16 and keep["worlds"] is worlds
         if not stats["history_fallback_worlds"]:
             assert all(HL.history_legal(now, seat, hands) for hands, _ in worlds)
+
+
+def test_decision_preparation_reuse_keeps_fresh_confirmation_streams(small_package, monkeypatch):
+    import copy
+    import types
+    from shengji.train import pv_search_policy as pv
+    from test_world_history_legal import fixture
+    from test_pv_lead_confirm import _bot, OutsideBallotEvaluator
+    _, rnd, seat = fixture()
+    model = bn.load_belief_numpy(small_package['path'], small_package['sha256'])
+    calls = []
+    marginal = model.marginals
+    def counted(inp):
+        calls.append(1)
+        return marginal(inp)
+    monkeypatch.setattr(model, 'marginals', counted)
+    off = _bot(OutsideBallotEvaluator())
+    off.belief_model = model
+    off.belief_worlds = off.world_history_legal = True
+    off.serving_budget_seconds = None
+    off.lead_confirm_rounds = 2
+    on = copy.deepcopy(off)
+    on.belief_model = model
+    on.belief_prep_reuse = True
+    observed = {}
+    def search(bot, root, actor, anchor, started, check_budget=None):
+        base, _ = bot._worlds(root, actor, check_budget)
+        fresh = bot._lead_confirm_draw(root, actor, check_budget)
+        observed[id(bot)] = (base, fresh)
+        return anchor
+    for bot in (off, on):
+        bot._search = types.MethodType(search, bot)
+    for _ in range(2):
+        calls.clear()
+        a = off.decide_play(rnd, seat)
+        assert len(calls) == 3
+        calls.clear()
+        assert on.decide_play(rnd, seat) == a
+        assert len(calls) == 1
+        assert observed[id(off)] == observed[id(on)]
+        assert off.sampler.rng.getstate() == on.sampler.rng.getstate()
+        assert on._belief_preparation_cache is None
+    def crash(*args, **kwargs):
+        raise RuntimeError('cancelled search')
+    on._search = crash
+    with pytest.raises(RuntimeError, match='cancelled search'):
+        on.decide_play(rnd, seat)
+    assert on._belief_preparation_cache is None
+    assert pv.latency_switches({'SHENGJI_PV_BELIEF_PREP_REUSE': '1'})['belief_prep_reuse']
+
+
+def test_preparation_cache_invalidates_inputs_and_never_caches_failure(small_package, monkeypatch):
+    from test_world_history_legal import fixture
+    _, rnd, seat = fixture()
+    model = bn.load_belief_numpy(small_package['path'], small_package['sha256'])
+    marginal = model.marginals
+    calls = []
+    def counted(inp):
+        calls.append(1)
+        return marginal(inp)
+    monkeypatch.setattr(model, 'marginals', counted)
+    cache = {}
+    def proposal(actor=seat, guard=None):
+        return bn.BeliefProposal(model, rnd, actor, seed=13, batch=4,
+                                preparation_cache=cache, check_budget=guard)
+    proposal()
+    proposal()
+    assert len(calls) == 1
+    model.temperature += 0.01
+    proposal()
+    assert len(calls) == 2
+    proposal((seat + 1) % 4)
+    assert len(calls) == 3 and len(cache) == 1
+    def expired():
+        raise RuntimeError('hard deadline')
+    with pytest.raises(RuntimeError, match='hard deadline'):
+        proposal((seat + 1) % 4, expired)
+    assert len(calls) == 3
+    cache.clear()
+    monkeypatch.setattr(bn, 'PREP_SECONDS', -1)
+    with pytest.raises(bn.BeliefNumpyError, match='preparation took'):
+        proposal()
+    assert not cache

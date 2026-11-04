@@ -4,8 +4,8 @@ Historical (releases 22–28). Since release 29 production plays with the policy
 `pv_search_policy.py` / `policy_value_search.py` (see the root README's diagram); the W32
 shortlist below served releases 22–28 and the older prior/value root-search experiment described
 first remains research-only. Deployment state and
-the selected model belong in [AI_POLICIES.md](../../../AI_POLICIES.md) and
-[docs_archive/w32-fly-serving-through-2026-09-22.md](../../../docs_archive/w32-fly-serving-through-2026-09-22.md) (archived 2026-09-22; the live record is `DEPLOY.md`).
+the selected model belong in [AI_POLICIES.md](../AI_POLICIES.md) and
+[docs_archive/w32-fly-serving-through-2026-09-22.md](./w32-fly-serving-through-2026-09-22.md) (archived 2026-09-22; the live record is `DEPLOY.md`).
 
 `search_inference.py` consumes the existing `ValuePriorNet` checkpoint;
 `search_policy.py` plugs it into the production MC-LCB selection/report split.
@@ -13,7 +13,7 @@ No retraining, BELIEF dependency, or production registry entry is required.
 
 **Consumer deployed through release 28:** the complete-world **full-legal W32
 shortlist** below, not the older RunA prior/value experiment described first
-in this file. See [MC vs W32 and the results](../../../docs_archive/ai-policies-release-sections-through-r38.md#the-shortlist-era-condensed-releases-2228)
+in this file. See [MC vs W32 and the results](./ai-policies-release-sections-through-r38.md#the-shortlist-era-condensed-releases-2228)
 for the A+B+C milestone and its limits.
 
 ## What changes
@@ -319,9 +319,9 @@ ranking randomness separate, and inherits the full final MC/report path.
 It is not the `mc-cwv-*` one-ply argmax bot and not recursive PUCT. Four
 alternatives means at most **five** final candidates including the incumbent.
 
-![Full-legal W32 shortlist pipeline](../../../docs_archive/visuals/2026-09-05/shortlist-anatomy.svg)
+![Full-legal W32 shortlist pipeline](./visuals/2026-09-05/shortlist-anatomy.svg)
 
-[Open the standalone W32 pipeline explainer](../../../docs_archive/visuals/2026-09-05/shortlist-anatomy.html)
+[Open the standalone W32 pipeline explainer](./visuals/2026-09-05/shortlist-anatomy.html)
 
 The CE-selected A+B+C MLP checkpoint gained +0.1387 levels/round
 [+0.0645,+0.2168] on 256 paired rank-2 DEV deals. Reviewed opt-in static
@@ -408,4 +408,4 @@ time. Compare measured CPU/wall before claiming equal-work strength; the
 screen always labels `equal_work_strength_claim: false`.
 
 Initial matched-state measurements and validation are recorded in
-[`world_shortlist_dev_20260905.md`](../../runs/world_shortlist_dev_20260905.md).
+[`world_shortlist_dev_20260905.md`](./runs-2026-08-01-to-09-14/world_shortlist_dev_20260905.md).

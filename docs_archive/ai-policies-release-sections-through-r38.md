@@ -105,7 +105,7 @@ Evidence (2026-09-15, capped screens; the release 24 recipe is the control):
 
 ### The soft head in the policy/value search (release 29)
 
-![Release 29: the policy/value search as one package](../docs/visuals/pv-search-one-package.svg)
+![Release 29: the policy/value search as one package](visuals/pv-search-one-package.svg)
 
 `8ecd4fea` is gen-3-warm's recipe (JS-M1 warm-started on the 256k afterstate corpus, residual trunk, outcome +
 search-mean + points heads), but its policy target is the SEARCH'S PER-CANDIDATE VALUES (soft targets, T=1.0,
@@ -125,7 +125,7 @@ Evidence, in the order it was gathered (ladder row 7 has the caveats):
 
 ### JS-M1 — the joint model (release 28)
 
-![Release 28: one JS-M1 package proposes inside the MC shortlist](../docs/visuals/js-m1-one-package.svg)
+![Release 28: one JS-M1 package proposes inside the MC shortlist](visuals/js-m1-one-package.svg)
 
 `a5248cc5` is M1's recipe (residual d4 trunk, 176k afterstate corpus, outcome + search-mean + points heads) trained
 from scratch for 20 epochs, with a 54-card policy head at weight 0.2 and one root batch per value batch from the full

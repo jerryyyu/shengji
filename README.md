@@ -175,8 +175,8 @@ codes per seat so hidden information never leaves the server.
 
 Closed lanes (PUCT with the heads, root allocation, the BELIEF and privileged-teacher
 teachers, direct-Q, Suphx O0) are lessons in [AI_POLICIES.md](AI_POLICIES.md) and
-[RL_PLAN.md](RL_PLAN.md), not policies. The G1 grid trunk, a served null in gen 4, is back as the
-C14 training run (RL_PLAN "Planned work").
+[RL_PLAN.md](RL_PLAN.md), not policies. The G1 grid trunk, a served null in gen 4, came back as the
+C14 training run, which closed inconclusive (v96c14e11); the open rows are on the board (RL_PLAN "Planned work").
 
 ## Debugging & analysis tools
 

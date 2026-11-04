@@ -206,7 +206,7 @@ Governing conclusions only; old toggle grids are in Git history and their head-t
 
 ## Scaling and search insights
 
-As of 2026-10-16; runs are on the scaling page (`docs/scaling_log/`), the search atlas and Atlas v2.
+As of 2026-11-04; runs are on the scaling page (`docs/scaling_log/`), the search atlas and Atlas v2.
 
 - **Offline loss does not order play.** The best CE played like the leader; the last shortlist data doubling bought
   −0.0036 CE and nothing in play; width and depth alone, DEEP8 and TOWER1 did not confirm. Encoder v2 was the one
@@ -225,6 +225,12 @@ As of 2026-10-16; runs are on the scaling page (`docs/scaling_log/`), the search
 - **Exact minimax pays in small endgames**: D7 + X7 +0.0439 [+0.0307, +0.0570] alone (≤ 7 cards). It is a different
   mechanism from a learned finite-horizon continuation; it motivates S35 but is no evidence that a learned boundary
   value works.
+- **The first post-SMV3 retrains with confirmed served gains anchor on expert search or use all the data.** FT1,
+  the expert-anchored prior, read m30yc +0.0162 [+0.0024, +0.0306] and G3 Stage A value + FT1 read g3dsc +0.0349
+  [+0.0203, +0.0492], both fresh-seed confirmations vs release 49 as served. Fine-tunes of release 45's model on
+  release-46 slices (C16 Stage 1, M21, M22, M24, M25) moved calibration, not picks, and are parked (board M24,
+  M25). The belief retrains B1a and B1kc confirmed only inside the combo (cbaC, b1kcC); their increments over the
+  combo alone are unresolved.
 - Release 29's served read (+0.049) is below its card-play read (+0.086) with no measured cause; the deploy gate is
   the served design. Corpus seeds are decks and are excluded from screens per model.
 
@@ -236,7 +242,8 @@ separate, positive result).
 ## Current scientific conclusions
 
 - **Belief worlds are the largest single served gain so far** (v86bw45 +0.1165 [+0.0914, +0.1416] vs release 45,
-  read alone). This does not show belief is the only bottleneck; ranking and horizon lanes stay open (S35, S38).
+  read alone). This does not show belief is the only bottleneck. S35 (hybrid) and S38 (horizon) are parked on their
+  bars and ranking-aware training (M22) failed its gate; deeper lookahead (M31) stays open.
 - **Components are not additive; the combo read is the decision.** Belief, D7 + X7 and `vdef` (+0.0421) were read
   alone, and `vdef` changes who banks (71.4% vs 51.9%), so release 46 was screened and confirmed as one policy.
 - **DEV reads and screens measure different things.** Observed: the `vdef` head-to-head DEV duel read +0.115

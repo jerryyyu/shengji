@@ -38,18 +38,6 @@ frozen for one bot is refused for the other.
              minimum detectable effect for the round count, and
              ``equal_work_strength_claim: false`` (a dev screen).
 
-``--tree`` switches both subcommands to the PUCT bot (shengji.ai.cwv_puct):
-the budget is S simulations per decision (grid {64, 256, 1024, 4096}), the
-arms are mc-cwvpuct-<ckpt8>-s<S_b>, the control mc-cwvpuct-prior-<ckpt8>-s<S_1x>
-(uniform prior, stratified-prior leaf), and the calibration binding carries
-the search parameters (world pool W, batch K, c_puct, prior mode and prior
-checkpoint sha), so a run with other parameters is refused.  Records add
-simulations, forward passes and leaf depth (mean and per-decision max).
-``--leaf playout [--leaf-playouts N]`` values every leaf by production's
-heuristic playout instead of the net (arms ``...-s<S>-pleaf[N]``); the leaf
-mode and N are in the binding, so a net-leaf calibration is refused for a
-playout-leaf ladder and vice versa.
-
 The canonical strength harness is scripts/evaluate.py; this driver reproduces
 its pairing through shengji.evaluation (run_arm's seed layout, paired_by_seed,
 clustered_win_rate, counters, arm_ballots) rather than re-deriving them, and
@@ -81,7 +69,6 @@ sys.path.insert(0, SERVER)
 
 from shengji.ai.env import RoundLog, play_round  # noqa: E402
 from shengji.ai.registry import (make_bot, register_cwv_policies,  # noqa: E402
-                                 register_cwv_puct_policies,
                                  register_scaled_policies, scaled_policy_name)
 from shengji.engine.cards import RANKS  # noqa: E402
 from shengji.engine.game import Game  # noqa: E402
@@ -96,7 +83,6 @@ CALIBRATION_SCHEMA = "shengji-cwv-calibration-v2"
 RUN_SCHEMA = "shengji-cwv-duel-v1"
 PRODUCTION = "mc-s0-report-lcb"
 DEFAULT_GRID = (30, 100, 300, 1000)
-DEFAULT_TREE_GRID = (64, 256, 1024, 4096)
 DEFAULT_BUDGETS = ("1x", "3x", "10x")
 CALIBRATION_SEED0 = 70_360_904
 DUEL_SEED0 = 70_260_904
@@ -158,97 +144,20 @@ def budget_label(multiplier: float) -> str:
     return f"{multiplier:g}x"
 
 
-def search_binding(*, world_pool: int, batch: int, c_puct: float, prior: str,
-                   prior_checkpoint_sha256: str | None, leaf: str = "net",
-                   leaf_playouts: int = 1, prior_temperature: float = 1.0,
-                   leaf_finish_trick: bool = False) -> dict:
-    """The PUCT search parameters a tree calibration is bound to (S is the
-    budget and lives in the rungs).  The leaf keys follow the bot's own
-    ``search_identity``: absent for the net leaf (the v1 binding, so the
-    existing net-leaf calibrations stay valid), ``leaf``/``leaf_playouts``
-    for a playout leaf (``check_calibration`` compares the union of keys, so
-    a binding made under one leaf never serves the other).  Likewise
-    ``prior_temperature`` only under ``prior="value"`` / ``"package"`` and
-    ``leaf_finish_trick`` only when on."""
-    from shengji.ai.cwv_puct import leaf_identity, prior_identity
-    return {"kind": "puct", "world_pool": int(world_pool), "batch": int(batch),
-            "c_puct": float(c_puct), "prior": str(prior),
-            "prior_checkpoint_sha256": prior_checkpoint_sha256,
-            **prior_identity(prior, prior_temperature),
-            **leaf_identity(leaf, leaf_playouts, leaf_finish_trick)}
-
-
-def search_from_args(args) -> dict | None:
-    """``None`` for the one-ply bot; the search binding under ``--tree``."""
-    if not getattr(args, "tree", False):
-        return None
-    if int(getattr(args, "plies", 0) or 0):
-        raise CalibrationMismatch("--tree and --plies 1/2 are different bots; pass one")
-    from shengji.ai.cwv_policy import file_sha256
-    prior_sha = None
-    if args.prior == "head":
-        if not args.prior_checkpoint:
-            raise CalibrationMismatch("--prior head needs --prior-checkpoint")
-        prior_sha = file_sha256(args.prior_checkpoint)
-    elif args.prior == "package":
-        # the pinned sha is the binding (the adapter refuses a file that differs)
-        if not args.prior_checkpoint or not getattr(args, "prior_sha256", None):
-            raise CalibrationMismatch("--prior package needs --prior-checkpoint and --prior-sha256")
-        prior_sha = str(args.prior_sha256)
-    return search_binding(world_pool=args.world_pool, batch=args.batch,
-                          c_puct=args.c_puct, prior=args.prior,
-                          prior_checkpoint_sha256=prior_sha,
-                          leaf=getattr(args, "leaf", "net"),
-                          leaf_playouts=int(getattr(args, "leaf_playouts", 1)),
-                          prior_temperature=float(getattr(args, "prior_temperature", 1.0)),
-                          leaf_finish_trick=bool(getattr(args, "leaf_finish_trick", False)))
-
-
 def register_arms(args, checkpoint: str, budgets, *, receipt=None) -> None:
-    """Register the arm and control at every budget (one-ply or tree)."""
-    if getattr(args, "tree", False):
-        register_cwv_puct_policies(
-            checkpoint, budgets, world_pool=args.world_pool, batch=args.batch,
-            c_puct=args.c_puct, prior=args.prior,
-            prior_checkpoint=args.prior_checkpoint, receipt=receipt,
-            leaf=getattr(args, "leaf", "net"),
-            leaf_playouts=int(getattr(args, "leaf_playouts", 1)),
-            prior_temperature=float(getattr(args, "prior_temperature", 1.0)),
-            prior_sha256=getattr(args, "prior_sha256", None),
-            leaf_finish_trick=bool(getattr(args, "leaf_finish_trick", False)))
-    else:
-        register_cwv_policies(checkpoint, budgets, finish_trick=args.finish_trick,
-                              lcb=args.lcb, receipt=receipt,
-                              plies=bot_plies(getattr(args, "plies", 0)))
-
-
-def _leaf_kw(args, ckpt8: str | None = None) -> dict:
-    prior = getattr(args, "prior", "uniform")
-    prior_sha = getattr(args, "prior_sha256", None)
-    # a package prior that is not the value package carries its own id
-    prior8 = (str(prior_sha)[:8] if prior == "package" and prior_sha
-              and ckpt8 is not None and str(prior_sha)[:8] != ckpt8 else None)
-    return {"leaf": getattr(args, "leaf", "net"),
-            "leaf_playouts": int(getattr(args, "leaf_playouts", 1)),
-            "prior": prior,
-            "prior_temperature": float(getattr(args, "prior_temperature", 1.0)),
-            "leaf_finish_trick": bool(getattr(args, "leaf_finish_trick", False)),
-            "prior8": prior8}
+    """Register the arm and control at every budget."""
+    register_cwv_policies(checkpoint, budgets, finish_trick=args.finish_trick,
+                          lcb=args.lcb, receipt=receipt,
+                          plies=bot_plies(getattr(args, "plies", 0)))
 
 
 def arm_name(args, ckpt8: str, budget: int) -> str:
     from shengji.ai.cwv_policy import policy_name
-    from shengji.ai.cwv_puct import puct_policy_name
-    if getattr(args, "tree", False):
-        return puct_policy_name(ckpt8, budget, **_leaf_kw(args, ckpt8))
     return policy_name(ckpt8, budget, lcb=args.lcb, plies=bot_plies(getattr(args, "plies", 0)))
 
 
 def control_arm_name(args, ckpt8: str, budget: int) -> str:
     from shengji.ai.cwv_policy import control_name
-    from shengji.ai.cwv_puct import puct_control_name
-    if getattr(args, "tree", False):
-        return puct_control_name(ckpt8, budget, **_leaf_kw(args))
     return control_name(ckpt8, budget, lcb=args.lcb, plies=bot_plies(getattr(args, "plies", 0)))
 
 
@@ -541,18 +450,16 @@ def bot_plies(plies) -> int | None:
 
 def calibration_binding(checkpoint_sha256: str, *, finish_trick: bool, lcb: float,
                         base_policy: str, trump_ranks: str, budgets,
-                        production_ladder=(), plies: int = 0,
-                        search: dict | None = None) -> dict:
-    """``plies`` is the two-ply bot's depth (0 = the one-ply bot); ``search``
-    is the PUCT binding (``search_binding``) for a tree calibration and
-    ``None`` otherwise.  Both are recorded so a ladder frozen for one bot is
-    refused for another.  ``worlds`` in a rung is the budget unit of the arm
-    (W for the one-ply / two-ply bots, S for the tree)."""
+                        production_ladder=(), plies: int = 0) -> dict:
+    """``plies`` is the two-ply bot's depth (0 = the one-ply bot), recorded so
+    a ladder frozen for one bot is refused for another.  ``search`` stays
+    ``None`` so existing calibration identities recompute.  ``worlds`` in a
+    rung is the budget unit of the arm."""
     return {"checkpoint_sha256": checkpoint_sha256,
             "finish_trick": bool(finish_trick), "lcb": float(lcb),
             "plies": int(plies or 0),
             "base_policy": base_policy, "trump_ranks": trump_ranks,
-            "search": None if search is None else dict(search),
+            "search": None,
             "budgets": [{"budget": b["budget"], "multiplier": b["multiplier"],
                          "worlds": b["worlds"]} for b in budgets],
             "production_ladder": [
@@ -571,14 +478,12 @@ def calibration_identity(binding: dict) -> str:
 def check_calibration(calibration: dict, *, checkpoint_sha256: str,
                       finish_trick: bool, lcb: float, base_policy: str,
                       trump_ranks: str, budgets: list[float],
-                      plies: int = 0, search: dict | None = None) -> list[dict]:
+                      plies: int = 0) -> list[dict]:
     """Refuse a calibration bound to anything but the live configuration.
 
-    ``search`` is the live PUCT binding (S is a budget; W, K, c_puct, prior
-    mode and prior checkpoint are compared field by field) or ``None`` for
-    the one-ply bot; a tree calibration never serves a one-ply run and vice
-    versa.  Returns the requested rungs; each carries ``production`` (the
-    scaled production policy at that rung, if the calibration measured one).
+    A tree calibration (a non-null ``search`` binding) is refused.  Returns
+    the requested rungs; each carries ``production`` (the scaled production
+    policy at that rung, if the calibration measured one).
     """
     if calibration.get("schema") != CALIBRATION_SCHEMA:
         raise CalibrationMismatch(
@@ -604,14 +509,8 @@ def check_calibration(calibration: dict, *, checkpoint_sha256: str,
         problems.append(f"base policy {binding.get('base_policy')!r} != {base_policy!r}")
     if binding.get("trump_ranks") != trump_ranks:
         problems.append(f"trump ranks {binding.get('trump_ranks')!r} != {trump_ranks!r}")
-    bound_search = binding.get("search")
-    if (bound_search is None) != (search is None):
-        problems.append(f"search {'puct' if bound_search else 'one-ply'} != live "
-                        f"{'puct' if search else 'one-ply'}")
-    elif search is not None:
-        for key in sorted(set(bound_search) | set(search)):
-            if bound_search.get(key) != search.get(key):
-                problems.append(f"search.{key} {bound_search.get(key)!r} != {search.get(key)!r}")
+    if binding.get("search") is not None:
+        problems.append("search puct != live one-ply")
     if missing:
         problems.append(f"budgets {missing} are not in the calibration")
     if problems:
@@ -628,7 +527,6 @@ def calibrate(args) -> dict:
     plan = rank_plan(args.trump_ranks)
     budgets = parse_budgets(args.budgets)
     plies = bot_plies(args.plies)
-    search = search_from_args(args)
     # the outcome-blind calibration deals are a registered window too: an
     # overlap with a trajectory (training) window refuses, any other is recorded
     seed_window = seeds.check_and_register(
@@ -637,17 +535,17 @@ def calibrate(args) -> dict:
         resume=True, note=f"cwv_duel calibrate {os.path.abspath(args.out)}",
         what=f"cwv_duel calibrate {args.out}")
     if args.grid is None:
-        args.grid = ",".join(str(w) for w in (DEFAULT_TREE_GRID if search else DEFAULT_GRID))
+        args.grid = ",".join(str(w) for w in DEFAULT_GRID)
     grid = sorted({int(w) for w in str(args.grid).split(",") if w})
     _model, metadata, sha = load_cwv_checkpoint(args.checkpoint)
     ckpt8 = sha[:8]
-    unit = "S" if search else "W"
+    unit = "W"
     started = time.perf_counter()
-    bot_label = "puct" if search else ("two-ply" if plies else "one-ply")
+    bot_label = "two-ply" if plies else "one-ply"
     described = bot_label + (f", plies {plies}" if plies else "")
     print(f"calibrate: checkpoint {ckpt8} ({described}) vs {args.base_policy} on "
           f"{args.deals} deals x 2 mirrors (seed0 {args.seed0}, ranks "
-          f"{rank_spec_label(plan)}" + (f", search {search}" if search else "") + ")",
+          f"{rank_spec_label(plan)})",
           flush=True)
     production = measure_production(
         args.base_policy, deals=args.deals, seed0=args.seed0, plan=plan,
@@ -720,7 +618,7 @@ def calibrate(args) -> dict:
         sha, finish_trick=args.finish_trick, lcb=args.lcb,
         base_policy=args.base_policy, trump_ranks=rank_spec_label(plan),
         budgets=chosen["ladder"], production_ladder=production_ladder,
-        plies=plies or 0, search=search)
+        plies=plies or 0)
     calibration = {
         "schema": CALIBRATION_SCHEMA,
         "created": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -732,7 +630,7 @@ def calibrate(args) -> dict:
         "bot": bot_label, "plies": plies or 0,
         "arm_policy_at_1x": arm_name(args, ckpt8, best_1x["worlds"]),
         "binding": binding,
-        "budget_unit": "simulations" if search else "worlds",
+        "budget_unit": "worlds",
         "identity_sha256": calibration_identity(binding),
         "match_band": list(MATCH_BAND),
         "matched_1x": matched,
@@ -1172,11 +1070,10 @@ def run(args) -> dict:
     plies = bot_plies(args.plies)
     checkpoint = args.checkpoint or calibration["checkpoint"]["path"]
     _model, _metadata, sha = load_cwv_checkpoint(checkpoint)
-    search = search_from_args(args)
     rungs = check_calibration(
         calibration, checkpoint_sha256=sha, finish_trick=args.finish_trick,
         lcb=args.lcb, base_policy=args.opponent, trump_ranks=rank_spec_label(plan_ranks),
-        budgets=budgets, plies=plies or 0, search=search)
+        budgets=budgets, plies=plies or 0)
     if not calibration.get("matched_1x", False) and not args.allow_unmatched:
         raise CalibrationMismatch(
             "calibration did not match production's wall within the band; "
@@ -1205,18 +1102,7 @@ def run(args) -> dict:
     budgets_by_label["control"] = {"budget": rungs[0]["budget"] + " (prior)",
                                    "worlds": rungs[0]["worlds"]}
     metric, threshold = parse_bar(args.bar)         # fail before compute
-    arm_args = {"tree": bool(search), "finish_trick": args.finish_trick, "lcb": args.lcb,
-                "plies": plies or 0,
-                "world_pool": getattr(args, "world_pool", None),
-                "batch": getattr(args, "batch", None),
-                "c_puct": getattr(args, "c_puct", None),
-                "prior": getattr(args, "prior", None),
-                "prior_checkpoint": getattr(args, "prior_checkpoint", None),
-                "prior_sha256": getattr(args, "prior_sha256", None),
-                "leaf": getattr(args, "leaf", "net"),
-                "leaf_playouts": int(getattr(args, "leaf_playouts", 1)),
-                "prior_temperature": float(getattr(args, "prior_temperature", 1.0)),
-                "leaf_finish_trick": bool(getattr(args, "leaf_finish_trick", False))}
+    arm_args = {"finish_trick": args.finish_trick, "lcb": args.lcb, "plies": plies or 0}
     register_arms(args, checkpoint, worlds, receipt=args.receipt)
     if scaled_multipliers:
         register_scaled_policies(args.opponent, scaled_multipliers)
@@ -1229,7 +1115,7 @@ def run(args) -> dict:
         "budgets": [{"budget": r["budget"], "worlds": r["worlds"]} for r in rungs],
         "trump_ranks": rank_spec_label(plan_ranks),
         "finish_trick": args.finish_trick, "lcb": args.lcb, "plies": plies or 0,
-        "search": search,
+        "search": None,
         "calibration_identity": calibration["identity_sha256"],
         "checkpoint_sha256": sha,
     }
@@ -1251,8 +1137,8 @@ def run(args) -> dict:
         "workers": args.workers, "declared_bar": args.bar,
         "budgets": rungs, "trump_ranks": rank_spec_label(plan_ranks),
         "finish_trick": args.finish_trick, "lcb": args.lcb,
-        "bot": "puct" if search else ("two-ply" if plies else "one-ply"), "plies": plies or 0,
-        "search": search, "budget_unit": "simulations" if search else "worlds",
+        "bot": "two-ply" if plies else "one-ply", "plies": plies or 0,
+        "search": None, "budget_unit": "worlds",
         "calibration": {"path": os.path.abspath(args.calibration),
                         "identity_sha256": calibration["identity_sha256"],
                         "matched_1x": calibration.get("matched_1x")},
@@ -1348,41 +1234,6 @@ def run(args) -> dict:
 
 # ------------------------------------------------------------------- main
 
-def add_tree_arguments(parser: argparse.ArgumentParser) -> None:
-    """``--tree``: the PUCT bot; its search parameters bind the calibration."""
-    from shengji.ai.cwv_puct import (DEFAULT_BATCH, DEFAULT_C_PUCT, DEFAULT_WORLD_POOL,
-                                     LEAF_MODES, PRIOR_MODES)
-    tree = parser.add_argument_group("tree (PUCT over sampled worlds)")
-    tree.add_argument("--tree", action="store_true",
-                      help="calibrate/run the PUCT bot; the budget is S simulations")
-    tree.add_argument("--world-pool", type=int, default=DEFAULT_WORLD_POOL,
-                      help="W complete worlds sampled once per decision")
-    tree.add_argument("--batch", type=int, default=DEFAULT_BATCH,
-                      help="K simulations per batched leaf evaluation")
-    tree.add_argument("--c-puct", type=float, default=DEFAULT_C_PUCT)
-    tree.add_argument("--prior", choices=PRIOR_MODES, default="uniform",
-                      help="uniform; head (--prior-checkpoint); value: softmax of the "
-                           "complete-world net's one-ply afterstate values (arms -vprior); "
-                           "package: the joint NumPy package's policy head "
-                           "(--prior-checkpoint PKG.npz --prior-sha256; arms -pprior)")
-    tree.add_argument("--prior-checkpoint", default=None,
-                      help="shengji-train-v0 checkpoint whose public prior head prices "
-                           "the ballot (--prior head), or the joint .npz package (--prior package)")
-    tree.add_argument("--prior-sha256", default=None,
-                      help="the pinned SHA256 of --prior-checkpoint under --prior package")
-    tree.add_argument("--prior-temperature", type=float, default=1.0,
-                      help="softmax temperature of --prior value / package "
-                           "(arms -vprior<T> / -pprior-T<T>)")
-    tree.add_argument("--leaf", choices=LEAF_MODES, default="net",
-                      help="leaf value: the net (default) or production's heuristic "
-                           "playout of the sampled world to round end (arms -pleaf)")
-    tree.add_argument("--leaf-playouts", type=int, default=1,
-                      help="playouts averaged per leaf under --leaf playout")
-    tree.add_argument("--leaf-finish-trick", action="store_true",
-                      help="score the net leaf at the finished-trick afterstate boundary "
-                           "(production's heuristic finishes the current trick; arms -ftl)")
-
-
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="command", required=True)
@@ -1394,7 +1245,7 @@ def build_parser() -> argparse.ArgumentParser:
     cal.add_argument("--deals", type=int, default=4)
     cal.add_argument("--seed0", type=int, default=CALIBRATION_SEED0)
     cal.add_argument("--grid", default=None,
-                     help=f"W grid {DEFAULT_GRID} (one-ply) / S grid {DEFAULT_TREE_GRID} (--tree)")
+                     help=f"W grid {DEFAULT_GRID}")
     cal.add_argument("--budgets", default=",".join(DEFAULT_BUDGETS))
     cal.add_argument("--subset-stride", type=int, default=4,
                      help="time the bot on every k-th production decision state")
@@ -1412,7 +1263,6 @@ def build_parser() -> argparse.ArgumentParser:
                       action="store_true", default=True,
                       help="also time production with N/R scaled at each rung above 1x")
     prod.add_argument("--no-production-ladder", dest="production_ladder", action="store_false")
-    add_tree_arguments(cal)
     cal.set_defaults(func=calibrate)
 
     duel = sub.add_parser("run", help="the strength-vs-compute duel")
@@ -1449,7 +1299,6 @@ def build_parser() -> argparse.ArgumentParser:
                       action="store_true", default=True,
                       help="run production with N/R scaled at each rung above 1x")
     prod.add_argument("--no-production-ladder", dest="production_ladder", action="store_false")
-    add_tree_arguments(duel)
     duel.set_defaults(func=run)
     return ap
 

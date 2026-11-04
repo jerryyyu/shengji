@@ -43,7 +43,7 @@ Rule tokens used in the figures and tables:
 - **sc8**: singleton challenger: a single the policy left off the ballot can take its last slot (release 49)
 - **lcc32**: lead confirmation: screen extra leads up to a 32-action total budget on the base worlds, then confirm at most two challengers on fresh worlds before replacing the served lead (release 49)
 
-<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation, every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Separate contrasts through a common MC-LCB control; not additive." width="100%">
+<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 49 vs 48 is +0.0270 on the screen and +0.0306 on the confirmation (paired head-to-head duels, a different instrument); release 48 vs 46 is +0.0765 on the screen and +0.0843 on the confirmation; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation; every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Rows up to release 48 are contrasts through a common MC-LCB control; separate contrasts; not additive." width="100%">
 
 **Served results** (signed levels per round, 95% CI; each row names its method: indirect contrasts through a common MC-LCB control unless the row says paired duels):
 
@@ -74,12 +74,16 @@ Open work: the board issue (see AGENTS.md) and [RL_PLAN.md](RL_PLAN.md#planned-w
 
 ## How a strength change ships (current workflow)
 
-<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, DEV test with a predeclared bar, screen of 10 windows, confirmation (dashed: when Jerry or the packet requires it), latency gate on one core, reviewed release PR with green CI, deploy on Jerry&#39;s word, Fly check. Inside one screen, example v92c: release 46 and release 45 each play the same fixed MC-LCB control; window dots and 95% CIs give +0.540 and +0.312 levels per round, a difference of +0.228 [+0.205, +0.252], POSITIVE because the lower bound is above zero." width="100%">
+<img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, DEV test with a predeclared bar, screen duel of 3,920 seat-swapped deals, confirmation duel of 7,840 fresh deals, latency gate on one core, reviewed release PR with green CI, deploy on Jerry&#39;s word, Fly check. Inside one duel, the candidate plays the served release head to head, each deal twice with the seats swapped; example cbaC, a confirmation of the release-50 candidate: +0.0618 [+0.0507, +0.0729] levels per round vs release 49 as served, CONFIRMED because the mean is at least +0.005 and the 95% lower bound is above zero." width="100%">
 
-The screen never plays the candidate against the release directly: both play the same fixed MC-LCB
-control on the same deals, and the result is the difference. That puts the two arms of one screen on one scale; rows
-of the ladder come from different eras and instruments, so read each alone. Confirmation runs when Jerry or the
-packet requires it.
+Screens and confirmations are paired, seat-swapped head-to-head duels against the served release (release 49):
+each deal is played twice with the seats swapped, and the read is signed levels per round with a deal bootstrap.
+A screen of 3,920 deals passes when the mean is at least +0.005 and the one-sided 80% lower bound is above zero; a
+screen pass earns a 7,840-deal fresh-seed confirmation (mean at least +0.005, 95% lower bound above zero) or a
+place in a combination. Release still needs the confirmed duel, Fly timing and Jerry's word. The rules and their pass rates:
+[RL_PLAN.md](RL_PLAN.md#operating-modes-rigor-tiers) ("Duel bar"). The ten-window screens through 2026-10-25 used the
+older instrument: candidate and release each played the same fixed MC-LCB control over ten 520-cluster windows,
+and the result was the difference. Rows of the ladder come from different eras and instruments, so read each alone.
 
 ## Quick start
 
@@ -164,8 +168,8 @@ codes per seat so hidden information never leaves the server.
 
 ## Other policies in the registry
 
-- `mc-s0-report-lcb`: the bare MC-LCB search; the common control of every served screen and
-  the deep rollback.
+- `mc-s0-report-lcb`: the bare MC-LCB search; the common control of the ten-window screens through
+  2026-10-25 (duels have no common control) and the deep rollback.
 - The shortlist-era packages (releases 22–28): registered rollbacks (order in [DEPLOY.md](DEPLOY.md)).
 - `smart` and `heuristic`: the hand-written baselines.
 

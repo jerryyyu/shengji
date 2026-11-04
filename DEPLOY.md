@@ -578,7 +578,9 @@ The server is a **single stateful process**: rooms and games live in memory, and
 | bot chosen by `SHENGJI_BOT` | source fallback is `mc` (N=10); Fly sets the served name |
 
 `smart` and `heuristic` are cheaper difficulty choices, not strength-equivalent replacements;
-`mc-s0-report-lcb` is the broader W32 play-policy rollback (`docs_archive/w32-fly-serving-through-2026-09-22.md`).
+`mc-s0-report-lcb` (MC-LCB, the pre-release-22 production policy) is the deep play-policy rollback; the W32
+shortlist packages (releases 22–28) are the registered rollbacks between it and pv-search
+(`docs_archive/w32-fly-serving-through-2026-09-22.md`).
 
 **Health check `GET /healthz`.** Reports `bot`, `fast`, `pv_search` (sha256, budgets, bury arm) and `prior`. Its
 `activity` block counts, since the process started: rooms created, games started, rounds recorded (a

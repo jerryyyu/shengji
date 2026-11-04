@@ -9,9 +9,10 @@ Release records through release 46 in full: [docs_archive/deploy-through-2026-10
 | term | meaning |
 |---|---|
 | served name | the `SHENGJI_BOT` value; the registry derives it from the `fly.toml` env, and `/healthz` reports it as `bot` |
-| play package | the NumPy value/policy net, `smv3out-491ee4bf.npz` |
-| prior | the JS-M1 package `js-m1-0d17fd03.npz`, kept under the `SHENGJI_CWV_PRIOR_*` keys |
-| belief package | the hidden-hand model: S58's `s58-e6-42444515.npz` in releases 48 and 49; S17's `s17long-e2-763b5e05.npz` in release 46 (the rollback) |
+| play package | the NumPy value net (the evaluator at every stage): G3 Stage A's `g3a-e04-f4f4127e.npz` in release 50; `smv3out-491ee4bf.npz` in releases 36–49, where it was also the card-play policy head |
+| card-play prior | the policy net that admits the card-play candidates, under `SHENGJI_PV_PRIOR_*`: FT1's `p0-ft1-1fa201b2.npz` in release 50 (releases 36–49 used the play package's own head) |
+| prior (`/healthz` `prior`) | the JS-M1 package `js-m1-0d17fd03.npz`, kept under the `SHENGJI_CWV_PRIOR_*` keys for the release-28 rollback; the served `pv-search` bot does not consult it |
+| belief package | the hidden-hand model: B1a's `b1a-028131a0.npz` in release 50; S58's `s58-e6-42444515.npz` in releases 48 and 49; S17's `s17long-e2-763b5e05.npz` in release 46 |
 | volume | the Fly volume mounted at `/data`; packages in `/data/models`, room logs in `/data/logs` |
 | image | `registry.fly.io/shengji:<image>`; Fly numbers each deploy `vNN` |
 | smoke | a run of the served bot through the server path (`_paced_bot_step` / `_commit_bot_turn`) |
@@ -21,9 +22,207 @@ Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 
 ## Current production
 
+**Release 50** (the cbaC stack): release 49 with new packages and belief bury worlds. The value package is G3 Stage
+A's (`g3a-e04-f4f4127e`), the card-play prior is FT1's (`p0-ft1-1fa201b2`), the belief package is B1a's
+(`b1a-028131a0`, in place of S58), and the wide value-only bury scores its candidates on belief-drawn worlds
+(`bbw`). lcc32, sc8, every other rule, every budget and the latency switches are release 49's. Prepared for deploy;
+until `/healthz` shows the name below, production is release 49 (its record is under "Rollback").
+
+| field | value |
+|---|---|
+| deployed | pending deploy (fill in: ET and Z time, room count, Jerry's word: in session 2026-11-04 ~14:05 ET, "I'm good to ship and we can manage what to do with lcc after") |
+| Fly version | pending deploy |
+| image | pending deploy |
+| source | this release PR's squash merge on main (fill in the sha after merge) |
+| evidence | `AI_POLICIES.md` ladder row 19 (cbaC CONFIRMED; cbaf arm a SCREEN_PASS; rtF red team; latency: the R50 speed profile, Fly timing pending) |
+| deploy record | pending deploy |
+| comparator | release 49 as served (Jerry 2026-11-01)[^cmp]; moving it to release 50 is Jerry's call |
+
+Served name:
+
+```
+pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8
+```
+
+The registry derives it from the `fly.toml` env. The value package's hash heads the name (`f4f4127e`), the separate
+prior adds `-prior-1fa201b2`, the value and belief hashes are in the play digest (`rb3477266`), and
+`SHENGJI_PV_BURY_BELIEF_WORLDS = '1'` adds `-bbw` to the bury token (its digest `b6262940978b` moves with the play
+identity); `-sc8` is release 49's. Package paths do not enter the name: it is the name cbaC confirmed, which its
+host derived from packages under `/root/claude-cbaC/`, byte for byte (`test_release50_fly_config.py` derives it
+from the `/data/models/` paths).
+
+### Packages
+
+Three new packages, all assets of the `serving-packages` GitHub release under the same file names; upload them before
+the `fly.toml` switch (Release checklist, step 2). Keep every release-49 package on the volume for the rollback.
+
+| package | path on the volume | sha256 | `/healthz` field |
+|---|---|---|---|
+| value (G3 Stage A, EMA export of epoch 4, `epoch-04.avg.pt` `a09cef7c`) | `/data/models/g3a-e04-f4f4127e.npz` | `f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd` | `pv_search.sha256` |
+| card-play prior (FT1) | `/data/models/p0-ft1-1fa201b2.npz` | `1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf` | not reported[^pvprior] |
+| belief (B1a, stored temperature 1.0190) | `/data/models/b1a-028131a0.npz` | `028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8` | not reported[^belief] |
+| JS-M1 (release-28 rollback keys, unchanged) | `/data/models/js-m1-0d17fd03.npz` | `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747` | `prior` |
+| value and policy (releases 36–49, kept for the rollback) | `/data/models/smv3out-491ee4bf.npz` | `491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670` | — |
+| belief (S58, releases 48–49, kept for the rollback) | `/data/models/s58-e6-42444515.npz` | `424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e` | — |
+| belief (S17, release 46, kept for its rollback) | `/data/models/s17long-e2-763b5e05.npz` | `763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343` | — |
+
+### `fly.toml` keys
+
+What release 50 changes in release 49's environment (with `SHENGJI_BOT`; every other line byte-identical):
+
+| change | `fly.toml` | name token |
+|---|---|---|
+| value package (changed) | `SHENGJI_PV_CKPT = '/data/models/g3a-e04-f4f4127e.npz'`, `SHENGJI_PV_SHA256 = 'f4f4127e…'` | `pv-search-f4f4127e` |
+| card-play prior (added) | `SHENGJI_PV_PRIOR_CKPT = '/data/models/p0-ft1-1fa201b2.npz'`, `SHENGJI_PV_PRIOR_SHA256 = '1fa201b2…'` | `-prior-1fa201b2` |
+| belief package (changed) | `SHENGJI_PV_BELIEF_CKPT = '/data/models/b1a-028131a0.npz'`, `SHENGJI_PV_BELIEF_SHA256 = '028131a0…'` | the play digest moves |
+| belief bury worlds (added) | `SHENGJI_PV_BURY_BELIEF_WORLDS = '1'` | `-bbw` after `-bwv` |
+
+`server/releases/r50.json` is this env with its stage table: G3 A is the value at every stage, FT1 the prior at
+lead, follow and endgame, B1a the worlds at bury, lead, follow and endgame, and declare keeps its uniform deals.
+`server/tests/test_release_manifests.py` checks that `fly.toml` equals that env and that the served bot's forwards
+and samplers match the table on a seeded round.
+
+`server/tests/test_release50_fly_config.py` builds the served bot from this env on the three pinned packages as the
+server does (the registry's import-time registration, then `make_bot(SHENGJI_BOT)`), checks every knob and each
+package's sha, plays one lead through the server path and decides one bury on B1a's worlds with no fallback; it also
+builds the release-49 rollback on its own packages. `test_release49_fly_config.py`, `test_release48_fly_config.py`
+and `test_release46_fly_config.py` build releases 49, 48 and 46 from the rolled-back env, and
+`test_bury_fly_config.py` pins the name chain 50 → 49 → 48 → 46 → 45 and the deeper rollbacks.
+
+### What changes at serving time
+
+- **Value.** Every value forward (declare, bury, play, the lcc and sc8 stages) runs on G3 Stage A's package, an
+  EMA export of epoch 4 of the unified retrain on all Y data. Its policy head is not consulted for card play.
+- **Prior.** The card-play policy rows (admission, `div`, `la`, the lcc pool, sc8's ballot and the greedy-finish
+  replies) come from FT1's package, `p0-ft1-1fa201b2`. Declaration and bury call no policy head (the `lpft` rule is
+  off).
+- **Belief.** B1a (S58 fine-tuned on all four Y stores) proposes the hidden hands at its stored temperature;
+  the runtime and the fallback to the history-legal draw are release 48's.
+- **Bury worlds (`bbw`).** The wide value-only bury's 32 model worlds are drawn by the belief package on the bury
+  state's trick-1 twin (the banker's first lead after burying the heuristic incumbent) instead of the split
+  sampler. The draw has its own seed stream and runs inside the 2 s bury budget; any draw error falls back for that
+  decision to the split sampler's worlds and is recorded as `bury_belief_fallbacks` 1 with `bury_belief_error`.
+  Records gain `bury_belief_worlds`, `bury_belief_fallbacks`, `bury_belief_error` and `bury_belief_ms`.
+- Everything else is release 49's: `sc8`, `lcc32`, exact endgame at 7 cards, `dtrx`, `lgf lgfx lgfd2000`, the value
+  declaration, the latency switches. The lcc decision is open: Jerry ships release 50 with lcc32 on and decides
+  lcc afterwards ("we can manage what to do with lcc after"; loo below).
+
+### Evidence
+
+Paired, seat-swapped head-to-head duels against release 49 as it was then served (Y: S58 belief, no bbw), served budgets, r2
+rank-mixed round plan per deal, the two-stage bar (screen: mean ≥ +0.005 and one-sided 80% lower bound > 0;
+confirmation: mean ≥ +0.005 and 95% lower bound > 0, on fresh deals). Each read is judged alone, never pooled.
+
+| read | what | result | validity | pointer |
+|---|---|---|---|---|
+| cbaC (stage-2 confirmation, cloud, 7,840 fresh deals from 246710910) | the full release-50 stack vs release 49 | **+0.0618 [+0.0507, +0.0729]**, CONFIRMED | VALID; 0 play fallbacks of 517,390 decisions per side, 0 belief fallbacks, 0 bury fallbacks and 0 bury-belief fallbacks of 7,832 buries, 0 declare abandons; 130 lcc abandons, all `leaf_deadline` | readout [#1171 issuecomment-6629156672](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629156672); Codex saved-result audit [#1171 issuecomment-6629239690](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629239690); `readouts/cbaC/` |
+| cbaf arm a (stage-1 screen, M5 Ultra, 3,920 deals) | the same stack | **+0.0695**, one-sided 80% lower bound +0.0631, SCREEN_PASS | VALID; 0 play, belief, bury fallbacks | [#1171 issuecomment-6637319197](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6637319197); `readouts/cbaf/` |
+| cbaf contrast a − s (paired on cbaf's deals) | B1a against S58 on this stack (both with bbw) | **+0.0228**, 97.5% CI [+0.0010, +0.0448], B1A_ADDS | same run | as above |
+| cbaf contrast f − a | FT2X4 in place of FT1 | +0.0047, 97.5% CI [−0.0149, +0.0239], UNRESOLVED (FT2X4 not shipped) | same run | as above |
+
+cbaC's margin belongs to the four changes together; it has no attribution among them. Its descriptive splits: first
+round +0.0512, fixed banker +0.0689; rank 2 +0.0480, rank ≠ 2 +0.0729. The first-divergence locator puts the largest
+cells at the bury (+0.0354 of the +0.0618) and the declaration (+0.0147); a locator, not a causal decomposition.
+cbaf was an independent run on another host and is not pooled with cbaC.
+
+**Red team (rtF, cloud, 600 deals from 247010910).** An expert-budget search (Y at W256 / K32 / exact 8, 60 s a
+decision, not servable) against the full release-50 stack: **−0.0433 [−0.0842, −0.0042]**, DEFENDER_AHEAD (the
+release-50 stack ahead); `readouts/rtF/`. A diagnostic of where the stack loses, not a strength claim for any served
+bot.
+
+**lcc (loo, M5 Ultra, 3,920 deals from 247110910).** The release-50 stack with lcc32 off against the same stack with
+it on: **+0.0079 [−0.0069, +0.0221]**, DROP_SAFE (the predeclared non-inferiority bar: dropping lcc32 costs at most
+about 0.010 levels/round on this host). Release 50 keeps lcc32 on; the lcc decision is Jerry's, after the deploy.
+`readouts/loo/`.
+
+**Pending:** hb50, the half-budget (Fly-equivalent) duel of the release-50 stack, is running.
+
+### Latency
+
+| read | what | result | pointer |
+|---|---|---|---|
+| R50 speed profile | release 50's stack vs Y, served budgets, one pinned cloud core each, 30 games × 2 rounds per bot (not deal-paired) | Bot compute per round 16.17 s vs 15.94 s (×1.014). Play p50 0.066 / p95 1.054 / p99 1.262 / max 1.671 s (Y 0.064 / 1.031 / 1.208 / 2.400); leads p95 1.236 s (Y 1.185); bury p95 0.383 s (Y 0.384), bbw belief draw p50 7.7 ms; 0 play fallbacks, 0 belief fallbacks (play and bury), 0 lcc abandons of 990 leads, 0 plays ≥ 3 s | `~/shengji-archive/2026-11-04-r50-speed-profile/README.md` |
+| cbaC (duel host, descriptive) | the release-50 stack vs Y | decide_play p95 1.084 vs 1.077 s, max 2.429 vs 2.421 s; bury seconds p95 0.415 s, bury-belief draw p95 9.3 ms | `readouts/cbaC/` |
+
+**Not measured: release 50 on Fly** (S79, pending). The speed profile's Fly projection (assuming unthrottled Fly at
+×2 a cloud core, uniform across components) puts play p99 at about 2.5 s against the 3 s budget, with about a third
+of lcc leads reaching the 2 s greedy-finish cut and abandoning (the designed `leaf_deadline` cut, which plays the
+base lead). That projection holds for release 49 alike: release 50's extra cost over release 49 is about +1.4% per
+round on a cloud core. Throttled (×5 or more), about 18% of plays would pass the 3 s budget for either release.
+Release 49's first-room triggers (Release checklist, step 9) apply unchanged.
+
+### Pre-deploy smoke (release tree, this host)
+
+`smoke_release45_bury.py --rounds 10 --full-round` on the release branch with sha-verified local packages (the three
+`serving-packages` assets and JS-M1), Mac mini M4, compiled engine (receipt `smoke50.jsonl`, sha256
+`1c93b4c0…`): validator **PASS**; `bot.files` value `f4f4127e`, prior `1fa201b2`, belief `028131a0`, JS-M1
+`0d17fd03`; bot class `SingletonChallengerBuryBot`, all nine latency switches on. Bury: 10 of 10 committed once, 64
+candidates, 0 fallbacks, all 10 on belief worlds with 0 bury-belief fallbacks (belief draw 3.5–8.6 ms), wall max
+0.208 s; 33 value declarations. First-room reader over its 10 room logs: 712 plays, 712 belief-drawn, **0 belief
+fallbacks**; exact-eligible 55 leads + 100 follows, **0 abandons, 0 fallbacks**; decision p50 0.026 / p95 0.436 /
+max 1.004 s; `lcc` leads p50 0.348 / p95 0.507 / max 1.004 s; other decisions p95 0.087 s; 0 decisions at 3 s;
+belief_ms p95 8.9. `lcc` on 178 leads: applied 21, rejected 17, no_challenger 85, no_pool 9, exact 46, abandoned 0.
+`sc8` probed 123 leads and applied 50. The smoke writes no `bot_timing` events, so the reader's bury line reads 0
+there; the receipt carries the bury counts. These are M4 timings, not Fly's. Re-run on the merged tree before
+the deploy (Release checklist, step 3).
+
+### Watch list
+
+Release 49's rows of the first-room rollback triggers (Release checklist, step 9); the bury's `bury_belief_fallbacks`
+(any is a trigger to examine) and bury seconds against the 2 s budget; the `lcc` status mix on Fly; belief fallbacks
+and `belief_ms` with B1a; any `pv-search-fallback-v1`, `cwv-bury-fallback-v1` or `pv-declare-serving-fallback-v1`
+record; the `/healthz` `activity` counters (step 10).
+
+### Release note: what a player will notice
+
+- **Different burying and declaring.** cbaC's largest first-divergence cells are the bury and the declaration; the
+  bury now reasons over hidden hands drawn by the belief model. The effect on human opponents is not measured.
+- **Lead timing as release 49.** The new packages add about 1–2% to the play tails on a cloud core.
+
+## Rollback
+
+### To release 49 (the rollback target)
+
+Release 49 as served before release 50: Fly v56, image `deployment-01M6AX9WCDG3YMGWZPDE9PSM12`, main `d2a6346a`
+(#1194), and later deploys of main that change no served decision. Its packages stay on the volume. Release 49's
+served name:
+
+```
+pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8
+```
+
+**Option 1, redeploy the image that served release 49** (no build). Before the release-50 deploy, confirm the image
+of the release then live with `fly releases -a shengji --image` (v56 above unless a later deploy of main replaced
+it) and write it into the deploy record. Then:
+
+```bash
+flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:<the release-49 image>
+```
+
+**Option 2, edit `fly.toml`:**
+
+1. Delete the three release-50 lines, `SHENGJI_PV_PRIOR_CKPT`, `SHENGJI_PV_PRIOR_SHA256` and
+   `SHENGJI_PV_BURY_BELIEF_WORLDS` (and their comments).
+2. Restore the release-49 value and belief pairs:
+   ```
+   SHENGJI_PV_CKPT = '/data/models/smv3out-491ee4bf.npz'
+   SHENGJI_PV_SHA256 = '491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670'
+   SHENGJI_PV_BELIEF_CKPT = '/data/models/s58-e6-42444515.npz'
+   SHENGJI_PV_BELIEF_SHA256 = '424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e'
+   ```
+3. Set `SHENGJI_BOT` to the release-49 name kept in the comment above it.
+4. Run `fly deploy --ha=false`; `/healthz` must show the release-49 name, `pv_search.sha256` `491ee4bf…` and all nine
+   latency switches true, and the step-8 line with the S58 path and sha must print `True compiled 42444515`.
+
+`test_release50_fly_config.py`, `test_release49_fly_config.py` and `test_bury_fly_config.py` check that this env
+derives release 49's name and builds `SingletonChallengerBuryBot` on `491ee4bf` with no separate prior, S58 and
+`bury_belief_worlds` off. Rolling back also rolls the manifest check back: `server/releases/r49.json` is release
+49's env, and `test_release_manifests.py` compares `fly.toml` with the current release's manifest.
+
+#### Release 49 record
+
 **Release 49** (board combo3 arm Y): release 48 plus two lead rules, the singleton challenger (`sc8`) and the
-held-out lead confirmation at 32 (`lcc32`). Live since 2026-11-01; release 48 is the rollback (its record is under
-"Rollback").
+held-out lead confirmation at 32 (`lcc32`). Production from 2026-11-01 until release 50's deploy.
 
 | field | value |
 |---|---|
@@ -34,7 +233,7 @@ held-out lead confirmation at 32 (`lcc32`). Live since 2026-11-01; release 48 is
 | evidence | `AI_POLICIES.md` ladder row 18 (combo3y DEV_PASS, confirmed combo3yc; latency s71fly and v107sc8lat) |
 | deploy record | [#1075 issuecomment-6554545362](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6554545362); `/healthz` showed the name below and the in-machine check printed `True compiled 42444515` |
 | first live room | pending: `/healthz` activity counters observed at 0 rooms created and 0 rounds recorded at 2026-11-01 16:54Z; the first-room reader (Release checklist, step 9) and the room-log write check (step 10) run on the first one |
-| comparator | duels and screens compare against release 49 as served (Jerry 2026-11-01)[^cmp] |
+| comparator | release 49 as served is the comparator of release 50's evidence (Jerry 2026-11-01)[^cmp] |
 
 Served name:
 
@@ -46,7 +245,7 @@ The registry derives it from the `fly.toml` env: `lcc32` enters the play recipe 
 suffix `d12d7acfc860` move), and `SHENGJI_PV_SINGLETON_CHALLENGER = '1'` registers that recipe a second time under
 the `-sc8` suffix with the challenger bot class. It is byte for byte the arm-Y name combo3y and combo3yc screened.
 
-### Packages
+##### Packages
 
 Unchanged from release 48; nothing to upload.
 
@@ -57,7 +256,7 @@ Unchanged from release 48; nothing to upload.
 | belief | `/data/models/s58-e6-42444515.npz` | `424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e` | not reported[^belief] |
 | belief (release 46, kept for its rollback) | `/data/models/s17long-e2-763b5e05.npz` | `763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343` | — |
 
-### `fly.toml` keys
+##### `fly.toml` keys
 
 The two lines release 49 adds to release 48's environment (with `SHENGJI_BOT`; every other line byte-identical):
 
@@ -76,7 +275,7 @@ one lead through the server path with both rules running; it also builds the rel
 rolled-back env. `server/tests/test_bury_fly_config.py` pins the name chain 49 → 48 → 46 → 45 and the deeper
 rollbacks.
 
-### What the two rules do at serving time
+##### What the two rules do at serving time
 
 - **Singleton challenger (`sc8`).** On a lead where some hand still holds more than 7 cards, the singles the policy
   left off the 8-candidate ballot are priced on the first 8 sampled worlds with heuristic-finished leaves. The best
@@ -93,7 +292,7 @@ rollbacks.
 - Everything else is release 48's: belief worlds on S58, exact endgame at 7 cards, `dtrx`, `lgf lgfx lgfd2000`,
   the value declaration, the wide value-only bury, the latency switches.
 
-### Evidence
+##### Evidence
 
 Both reads are paired, seat-swapped head-to-head duels of Y against release 48 (then production), at the served budgets,
 3,920 fresh deals each on cloud (r2 rank-mixed round plan). This is a different instrument from the MC-LCB
@@ -112,7 +311,7 @@ entered the ballot on 26.9% of search leads and was played on 9.7%. On the duel 
 ×2.9 at p95 (lead p95 1.24 s vs 0.43 s); follows were unchanged. Archive:
 `~/shengji-archive/2026-09-13/readouts/{combo3y,combo3yc}/`.
 
-### Latency
+##### Latency
 
 | read | what | result | pointer |
 |---|---|---|---|
@@ -127,7 +326,7 @@ its deadline far more often than on the duel host (7 of 20 unthrottled leads vs 
 bounded above by the duel reads. Leads also take about 2 s on an unthrottled machine, which is why release 49 has
 its own latency triggers (Release checklist, step 9).
 
-### Pre-deploy smoke (merged tree, this host)
+##### Pre-deploy smoke (merged tree, this host)
 
 `smoke_release45_bury.py --rounds 10 --full-round` on the release tree with sha-verified local packages, Mac mini
 M4, compiled engine (receipt `smoke49.jsonl`, sha256 `e9b87235…`): validator **PASS**; `bot.files` play
@@ -138,7 +337,7 @@ p95 0.730 / max 0.876 s; other decisions p95 0.127 s; 0 decisions at 3 s; belief
 applied 20, rejected 19, no_challenger 81, no_pool 8, exact 37, abandoned 0. `sc8` probed 120 leads and applied
 39. Bury: 10 of 10 committed once, 64 candidates, max 0.33 s; 34 value declarations. These are M4 timings, not Fly's.
 
-### Watch list
+##### Watch list
 
 The release-49 rows of the first-room rollback triggers (Release checklist, step 9); the `lcc` status mix on Fly
 (how many leads are `applied` against `abandoned`/`skipped_budget`); `sc8` applied counts; lead p95 against
@@ -146,18 +345,17 @@ release 48's first-room numbers; any `pv-search-fallback-v1`, `cwv-bury-fallback
 `pv-declare-serving-fallback-v1` record; the `/healthz` `activity` counters (step 10). Release 48's watch items
 (belief_ms, failed throws per round, `leaf_greedy_deadline_fired`) stay.
 
-### Release note: what a player will notice
+##### Release note: what a player noticed
 
 - **Slower early leads.** On an unthrottled machine the bot's leads take about 1–2 s where release 48 took about
   0.6 s (the 0.7 s pacing floor still applies to every turn). Follows are unchanged.
 - **More single-card leads** early in a hand (sc8 played a singleton the ballot had left out on about 10% of
   search leads in the duels). Their effect on human opponents is not measured.
 
-## Rollback
 
-### To release 48 (the rollback target)
+### To release 48
 
-Release 48 as served before release 49: the release-48 recipe deployed 2026-10-24 (Fly v47, image
+Release 48 as served before release 49 (from release 50, first apply the release-49 steps above): the release-48 recipe deployed 2026-10-24 (Fly v47, image
 `deployment-01M5Q4ACYEJ901SQB3BNMPC55A`, main `f14ace15`), plus the six native latency switches deployed
 2026-10-27 from main `329ae08f` (#1165; decisions identical, [#1075 issuecomment-6432593573](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6432593573)),
 and later deploys of main that change no served decision (main `4e75266a` on 2026-10-28, before s71fly). Same
@@ -411,34 +609,47 @@ The release-44 image command, verbatim:
 
 The gate every release passes (called "serving qualification" in `AI_POLICIES.md`); it held for releases 29–38
 and 42–48. Release 49 completed the pre-deploy and deploy gates; its first-live-room checks (steps 9 and 10) are pending.
-Commands below are release 49's; substitute the new release's package names and receipt.
+Commands below are release 50's; substitute the new release's package names and receipt.
 
 **Before the deploy**
 
 1. **Review and CI.** A non-author PASS on the release PR at its exact head, and all CI checks green. The
    package-gate step fetches the pinned packages from the `serving-packages` release, sha256-verifies them, and
-   runs `server/tests/test_release49_fly_config.py` (`test_release48_fly_config.py` and
-   `test_release46_fly_config.py` for the rollbacks), which builds the served bot from the `fly.toml` env through the server path (name, every knob,
-   belief model, compiled solver, latency switches, one play with no fallback).
+   runs `server/tests/test_release50_fly_config.py` (`test_release49_fly_config.py`, `test_release48_fly_config.py`
+   and `test_release46_fly_config.py` for the rollbacks), which builds the served bot from the `fly.toml` env through
+   the server path (name, every knob, the value, prior and belief packages, compiled solver, latency switches, one
+   play and one bury with no fallback), and the release manifest's wiring witness (`test_release_manifests.py`).
    `server/tests/test_bury_fly_config.py` pins the served name.
 2. **Package upload, before the `fly.toml` switch.** The policy registers at server import and refuses a missing
    or mismatched package, so a deploy without it does not boot the served bot. The running machine does not read
-   the new file. Release 49 adds no package (its packages are release 48's, already on the volume); for a release
-   that does, with S58 as the example:
-   1. Verify the local copy with `shasum -a 256` against `424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e`
-      (or fetch it from the `serving-packages` release asset of the same name).
-   2. Upload: `fly ssh sftp shell -a shengji`, then `put <local>/s58-e6-42444515.npz /data/models/s58-e6-42444515.npz`.
-   3. Verify in the machine: `fly ssh console -a shengji -C "sha256sum /data/models/s58-e6-42444515.npz"` must print
-      `424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e`.
-   Keep the previous release's belief package on the volume; its rollback reads it.
+   the new file. Release 50 uploads three packages, each an asset of the `serving-packages` release:
+
+   | file | sha256 |
+   |---|---|
+   | `g3a-e04-f4f4127e.npz` | `f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd` |
+   | `p0-ft1-1fa201b2.npz` | `1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf` |
+   | `b1a-028131a0.npz` | `028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8` |
+
+   1. Verify each local copy with `shasum -a 256 g3a-e04-f4f4127e.npz p0-ft1-1fa201b2.npz b1a-028131a0.npz` against
+      the table (or fetch them from the release assets of the same names, e.g.
+      `gh release download serving-packages -R jerryyyu/shengji -p 'g3a-e04-f4f4127e.npz' -p 'p0-ft1-1fa201b2.npz' -p 'b1a-028131a0.npz'`).
+   2. Upload: `fly ssh sftp shell -a shengji`, then
+      `put <local>/g3a-e04-f4f4127e.npz /data/models/g3a-e04-f4f4127e.npz`,
+      `put <local>/p0-ft1-1fa201b2.npz /data/models/p0-ft1-1fa201b2.npz` and
+      `put <local>/b1a-028131a0.npz /data/models/b1a-028131a0.npz`.
+   3. Verify in the machine:
+      `fly ssh console -a shengji -C "sha256sum /data/models/g3a-e04-f4f4127e.npz /data/models/p0-ft1-1fa201b2.npz /data/models/b1a-028131a0.npz"`
+      must print the three hashes of the table.
+   Keep the previous release's packages on the volume (`smv3out-491ee4bf.npz`, `s58-e6-42444515.npz`); its rollback
+   reads them.
 3. **Merged-tree full-round smoke**, against the sha-verified packages, from `server/`:
    ```
-   SHENGJI_FAST=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 python scripts/smoke_release45_bury.py --fly-toml ../fly.toml --map /data/models/smv3out-491ee4bf.npz=<local> --map /data/models/js-m1-0d17fd03.npz=<local> --map /data/models/s58-e6-42444515.npz=<local> --rounds 10 --full-round --receipt smoke49.jsonl
+   SHENGJI_FAST=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 python scripts/smoke_release45_bury.py --fly-toml ../fly.toml --map /data/models/g3a-e04-f4f4127e.npz=<local> --map /data/models/p0-ft1-1fa201b2.npz=<local> --map /data/models/b1a-028131a0.npz=<local> --map /data/models/js-m1-0d17fd03.npz=<local> --rounds 10 --full-round --receipt smoke50.jsonl
    ```
    Pass: validator PASS; the receipt's `bot.files` lists each package at its sha; the first-room reader (step 9)
-   over `smoke49.jsonl.logs/*.jsonl` shows belief fallbacks 0, exact-eligible decisions > 0, abandons 0,
-   fallbacks 0, with p95 and max recorded; for release 49 also `lcc` statuses with `applied` > 0 and `sc8`
-   applied > 0 (both rules ran). The smoke must take the server path: release 25 passed the
+   over `smoke50.jsonl.logs/*.jsonl` shows belief fallbacks 0, exact-eligible decisions > 0, abandons 0,
+   fallbacks 0, with p95 and max recorded; `lcc` statuses with `applied` > 0 and `sc8` applied > 0 (both rules
+   ran); for release 50 also every bury on belief worlds with `bury_belief_fallbacks` 0. The smoke must take the server path: release 25 passed the
    decision-identity gate yet stalled every live bot turn[^smoke].
 4. **Evidence.** For a strength change, the served-bot screen against the current production release, read out
    (the ladder table in `AI_POLICIES.md`), plus any confirmation and latency packet the change requires.
@@ -451,15 +662,15 @@ Commands below are release 49's; substitute the new release's package names and 
 
 **After the deploy**
 
-7. **`/healthz`.** `bot` is the new served name, `fast: true`, `pv_search.sha256` `491ee4bf…`, `prior`
-   `0d17fd03…`, `budget_seconds "3"`, `bury_arm hybrid`, `bury_budget_seconds "2"`, and `latency_switches` as
+7. **`/healthz`.** `bot` is the new served name, `fast: true`, `pv_search.sha256` `f4f4127e…`, `prior`
+   `0d17fd03…` (the JS-M1 rollback key; the card-play prior shows in the name), `budget_seconds "3"`, `bury_arm hybrid`, `bury_budget_seconds "2"`, and `latency_switches` as
    the release's `fly.toml` sets them. `/healthz` does not report the belief package; the bot registering at all
    shows its sha matched.
 8. **In-machine compiled/belief check** (read-only, same image and interpreter as the server):
    ```
-   fly ssh console -a shengji -C "sh -c 'cd /app/server && SHENGJI_FAST=1 .venv/bin/python -c \"import sys; from shengji.ai.endgame_compact import HAVE_FAST, default_backend; from shengji.ai.belief_numpy import load_belief_numpy; m = load_belief_numpy(sys.argv[1], sys.argv[2]); print(HAVE_FAST, default_backend(), m.package_sha256[:8])\" /data/models/s58-e6-42444515.npz 424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e'"
+   fly ssh console -a shengji -C "sh -c 'cd /app/server && SHENGJI_FAST=1 .venv/bin/python -c \"import sys; from shengji.ai.endgame_compact import HAVE_FAST, default_backend; from shengji.ai.belief_numpy import load_belief_numpy; m = load_belief_numpy(sys.argv[1], sys.argv[2]); print(HAVE_FAST, default_backend(), m.package_sha256[:8])\" /data/models/b1a-028131a0.npz 028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8'"
    ```
-   Must print `True compiled 42444515`. `False python` means `_endgame_fast` did not ship or does not import:
+   Must print `True compiled 028131a0`. `False python` means `_endgame_fast` did not ship or does not import:
    roll back (the latency gate did not qualify the pure twin).
 9. **First-room reader.** Fetch the log cache with `server/scripts/fetch_fly_logs.sh`, then read
    `logs/<CODE>.jsonl` once (read-only), over its `play` events that carry a `decision`:
@@ -491,6 +702,9 @@ Commands below are release 49's; substitute the new release's package names and 
    rest_s = [x["seconds"] for x in d if "lead_confirm_status" not in x and "seconds" in x]
    print(f"lcc leads {len(lcc)} {dict(st)} abandon reasons {dict(why)}; sc8 probed {sum('singleton_probe_margin' in x for x in sc)} applied {sum(bool(x['singleton_challenger_applied']) for x in sc)}")
    print(f"lead s p50 {q(lead_s,.5)} p95 {q(lead_s,.95)} max {max(lead_s) if lead_s else None}; other s p50 {q(rest_s,.5)} p95 {q(rest_s,.95)} max {max(rest_s) if rest_s else None}; at >= 3 s {sum(s >= 3 for s in secs)}")
+   # release 50: the bury's belief worlds (bbw), from the bury bot_timing events
+   bt = [r for r in rows if r.get("e") == "bot_timing" and r.get("phase") == "bury"]
+   print(f"buries {len(bt)} bbw {sum('bury_belief_fallbacks' in r for r in bt)} bury-belief fallbacks {sum(r.get('bury_belief_fallbacks') or 0 for r in bt)} bury fallbacks {sum(r.get('bury_search_status') == 'fallback' for r in bt)}")
    EOF
    ```
    Record the lines under "Current production" with the room code. Server-side wall per decision is in the
@@ -505,6 +719,7 @@ Commands below are release 49's; substitute the new release's package names and 
    | decision p95, other than `lcc` leads | above 1.5 s (release 48 and earlier: every decision) |
    | decision p95, `lcc` leads (release 49) | above 2.5 s |
    | `lcc` abandons with a reason other than `leaf_deadline` (release 49) | any (examine each) |
+   | bury-belief fallbacks (release 50) | any (examine each; the bury then used the split sampler's worlds) |
    | decisions at the 3 s budget | two or more in the first room (examine any one) |
    | bury budget fallbacks | `cwv-bury-fallback-v1` above a few percent |
 
@@ -541,6 +756,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
+| 50 | pending deploy | the cbaC stack: G3 Stage A value + FT1 card-play prior + B1a belief + belief bury worlds (`bbw`) on release 49; evidence [cbaC](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629156672) (audit [6629239690](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629239690)), [cbaf](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6637319197), rtF; latency: the R50 speed profile, Fly timing pending | new value `f4f4127e…`, prior `1fa201b2…`, belief `028131a0…` | this PR | pending deploy |
 | 49 | 2026-11-01 01:39 EST | board combo3 arm Y: singleton challenger (`sc8`) + held-out lead confirmation (`lcc32`) on release 48; evidence [combo3y](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6475680068), [combo3yc](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6479431994), latency s71fly + v107sc8lat | flags | #1194 | `deployment-01M6AX9WCDG3YMGWZPDE9PSM12` (v56), main `d2a6346a` |
 | 48 | 2026-10-24 10:18 | S58 belief package + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches; evidence [r48cloud](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6383298163), [r48confirm](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384251320), [v105lat](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384912469) | new belief package `42444515…` | #1147 | `deployment-01M5Q4ACYEJ901SQB3BNMPC55A` (v47), main `f14ace15` |
 | 46 | 2026-10-16 14:49 | v92 combo: belief worlds, exact endgame at 7, `vdef` | new belief package `763b5e05…` | #1072 | `deployment-01M530R14ARM0669QNJBW2RGTG` (v46), main `ab6fd1b2` |
@@ -654,6 +870,9 @@ Policy cost, not the rules engine, sets CPU capacity.
     (Jerry 2026-10-16, #707 issuecomment-6223485189), and before that release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693). Confirmations keep their parent's comparator.
 [^belief]: Registration refuses a missing or mismatched belief file, so a served bot at all means the sha matched;
     the in-machine line (Release checklist, step 8) prints its first eight hex digits.
+[^pvprior]: `/healthz` `prior` is the JS-M1 rollback key (`SHENGJI_CWV_PRIOR_*`), not the card-play prior.
+    Registration refuses a `SHENGJI_PV_PRIOR_CKPT` file whose hash is not `SHENGJI_PV_PRIOR_SHA256`, and the served
+    name carries its first eight hex digits (`-prior-1fa201b2`), so the name on `/healthz` shows the sha matched.
 [^fast]: Its `ls` fails the build if a `.so` is missing; `.dockerignore` keeps a local Darwin `_endgame_fast*.so`
     out of the build context. The pure-Python twin returns identical results, only slower: a `python` backend in
     production is a latency regression, not a wrong play.

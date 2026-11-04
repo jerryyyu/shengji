@@ -1,4 +1,4 @@
-"""Release 48, the rollback of release 49: the candidate of the guarded R48 cloud screen.
+"""Release 48, the second rollback of release 50: the candidate of the guarded R48 cloud screen.
 
 The candidate is release 46 with three changes: the hidden hands are proposed by
 the S58 belief package ``s58-e6-42444515`` (served at its stored temperature) in
@@ -11,9 +11,10 @@ name or digest and are read from the process environment where the bot is
 built, so they are witnessed here through the process environment, as the
 server reads them.
 
-Release 49 adds two lines (``RELEASE49_ADDED_KEYS``), so release 48's env is the
-repo's ``fly.toml`` environment with them removed and the release-48 name restored
-(``release48_env``, the documented rollback).  The served bot is built from that
+Release 49 adds two lines (``RELEASE49_ADDED_KEYS``) and release 50 changes the
+packages on top (``undo_release50``), so release 48's env is the repo's ``fly.toml``
+environment with release 50 undone, those two lines removed and the release-48 name
+restored (``release48_env``, the documented rollback).  The served bot is built from that
 environment exactly as the server builds it (``pv_env_recipe`` -> ``pv_registry_entries`` -> the factory)
 on the hash-pinned production and belief packages, and one served play goes
 through the server's own snapshot and commit path with the real belief model.
@@ -35,7 +36,7 @@ from test_pv_search_serving import _play_state
 from test_release46_fly_config import (BELIEF_SHA as RELEASE46_BELIEF_SHA, DTRX_FLAG, RELEASE46,
                                        RELEASE48_ADDED_KEYS, RELEASE49_ADDED_KEYS, V92_CANDIDATE_ENV,
                                        fly_env as production_env, pinned_belief_package,
-                                       release46_env)  # noqa: F401
+                                       release46_env, undo_release50)  # noqa: F401
 from native_switches import NATIVE_OFF
 
 #: the candidate name of the guarded R48 cloud screen (arms.candidate.name of its plan)
@@ -67,15 +68,15 @@ BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF48_PACKAGE_PATH")
 
 
 def release48_env(env: dict) -> dict:
-    """Production's env with release 49's rollback applied: its two lines removed and
-    the release-48 name restored."""
-    env = {k: v for k, v in env.items() if k not in RELEASE49_ADDED_KEYS}
+    """Production's env with the rollbacks of releases 50 and 49 applied: release 50's
+    packages undone, release 49's two lines removed and the release-48 name restored."""
+    env = {k: v for k, v in undo_release50(env).items() if k not in RELEASE49_ADDED_KEYS}
     env["SHENGJI_BOT"] = RELEASE48
     return env
 
 
 def fly_env() -> dict:
-    """Release 48's ``fly.toml`` ``[env]``: the repo's, rolled back from release 49."""
+    """Release 48's ``fly.toml`` ``[env]``: the repo's, rolled back from releases 50 and 49."""
     return release48_env(production_env())
 
 

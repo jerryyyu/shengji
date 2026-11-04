@@ -286,7 +286,7 @@ def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, p
     from pathlib import Path
     from shengji.api import server as srv
     from shengji.engine.game import Game
-    env = tomllib.loads((Path(__file__).resolve().parents[2] / "fly.toml").read_text())["env"]
+    env = _r49_env()
     env.update(SHENGJI_PV_CKPT=str(pinned_production_package),
                SHENGJI_PV_WORLD_HISTORY_LEGAL="1", SHENGJI_PV_WORLD_HISTORY_DRAW="1",
                SHENGJI_PV_BELIEF_WORLDS="1", SHENGJI_PV_BELIEF_CAPACITY="1",
@@ -317,3 +317,10 @@ def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, p
         assert len(rnd.hands[seat]) == len(before) - len(prepared.decision.cards)
 
     asyncio.run(scenario())
+
+
+def _r49_env():
+    """Release 49's ``fly.toml`` env: the repo's, with release 50 rolled back (the
+    release-49 recipe the identities in this module are derived from)."""
+    from test_release49_fly_config import fly_env
+    return fly_env()

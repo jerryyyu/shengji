@@ -43,7 +43,7 @@ from test_cwv_bury_wide_value import (BURY, RECORD_KEYS, RELEASE44_BWV64, SWAPS1
 from test_pv_admission_rules import PRODUCTION_ENV, names, production_package  # noqa: F401
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
 from test_release48_fly_config import local_env, pinned_release48_belief_package  # noqa: F401
-from test_release46_fly_config import fly_env as production_fly_env
+from test_release49_fly_config import fly_env as release49_fly_env
 from test_release49_fly_config import RELEASE49, served_bot
 
 FLAG = "SHENGJI_PV_BURY_BELIEF_WORLDS"
@@ -384,7 +384,7 @@ def test_the_served_recipe_with_the_flag_buries_on_belief_worlds(
     the server builds it: the name is release 49's with ``-bbw`` in the bury
     segment, and a bury completes on belief worlds with no fallback.  Flag
     ``0`` builds release 49 itself."""
-    env = production_fly_env()
+    env = release49_fly_env()
     name0, _ = served_bot(pinned_production_package, pinned_release48_belief_package,
                           monkeypatch, env={**env, FLAG: "0"})
     assert name0 == RELEASE49

@@ -209,6 +209,7 @@ jobs:
           tests/test_release46_fly_config.py
           tests/test_release48_fly_config.py
           tests/test_release49_fly_config.py
+          tests/test_release50_fly_config.py
           tests/test_expert_label_producer.py
           tests/test_expert_label_check.py
           tests/test_served_config.py
@@ -297,6 +298,35 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 3 -o /tmp/shengji-packages/s58-e6-42444515.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/s58-e6-42444515.npz" | sha256sum -c -
+      # Release 50's three packages: the G3 Stage A value package, the FT1 card-play prior
+      # and the B1a belief package; the release-49 packages above stay for its rollback.
+      - name: Fetch the pinned release-50 package g3a-e04-f4f4127e
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/g3a-e04-f4f4127e.npz
+          PACKAGE_SHA256: f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/g3a-e04-f4f4127e.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/g3a-e04-f4f4127e.npz" | sha256sum -c -
+      - name: Fetch the pinned release-50 package p0-ft1-1fa201b2
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/p0-ft1-1fa201b2.npz
+          PACKAGE_SHA256: 1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/p0-ft1-1fa201b2.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/p0-ft1-1fa201b2.npz" | sha256sum -c -
+      - name: Fetch the pinned release-50 package b1a-028131a0
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/b1a-028131a0.npz
+          PACKAGE_SHA256: 028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/b1a-028131a0.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/b1a-028131a0.npz" | sha256sum -c -
       - name: Load the production package on this tree
         env:
           SHENGJI_FAST: "1"
@@ -304,15 +334,21 @@ jobs:
           SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
           SHENGJI_PV_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/s17long-e2-763b5e05.npz
           SHENGJI_PV_BELIEF48_PACKAGE_PATH: /tmp/shengji-packages/s58-e6-42444515.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_pv_belief_capacity_release48.py tests/test_pv_leaf_greedy_top_release48.py tests/test_pv_lead_confirm_release48.py tests/test_release46_fly_config.py tests/test_release48_fly_config.py tests/test_release49_fly_config.py tests/test_expert_label_producer.py tests/test_pv_latency_switches_release46.py tests/test_pv_leaf_greedy_stream.py tests/test_pv_native_release48.py tests/test_cwv_bury_belief_worlds.py
-      # The release manifests' wiring witness on the same pinned packages: release 49's
-      # stage table must be what its served bot does (fails, never skips, here).
-      - name: Check the release-49 manifest's wiring on this tree
+          SHENGJI_PV50_PACKAGE_PATH: /tmp/shengji-packages/g3a-e04-f4f4127e.npz
+          SHENGJI_PV50_PRIOR_PACKAGE_PATH: /tmp/shengji-packages/p0-ft1-1fa201b2.npz
+          SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_pv_belief_capacity_release48.py tests/test_pv_leaf_greedy_top_release48.py tests/test_pv_lead_confirm_release48.py tests/test_release46_fly_config.py tests/test_release48_fly_config.py tests/test_release49_fly_config.py tests/test_release50_fly_config.py tests/test_expert_label_producer.py tests/test_pv_latency_switches_release46.py tests/test_pv_leaf_greedy_stream.py tests/test_pv_native_release48.py tests/test_cwv_bury_belief_worlds.py
+      # The release manifests' wiring witness on the same pinned packages: the stage tables
+      # of releases 49 and 50 must be what their served bots do (fails, never skips, here).
+      - name: Check the release-49 and release-50 manifests' wiring on this tree
         env:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
           SHENGJI_PV_PACKAGE_PATH: /tmp/shengji-packages/smv3out-491ee4bf.npz
           SHENGJI_PV_BELIEF48_PACKAGE_PATH: /tmp/shengji-packages/s58-e6-42444515.npz
+          SHENGJI_PV50_PACKAGE_PATH: /tmp/shengji-packages/g3a-e04-f4f4127e.npz
+          SHENGJI_PV50_PRIOR_PACKAGE_PATH: /tmp/shengji-packages/p0-ft1-1fa201b2.npz
+          SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
         run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_release_manifests.py
 
   import-walk:

@@ -50,7 +50,6 @@ server/tests/test_heuristic_lead_prefilter.py
 server/tests/test_human_eval_contract.py
 server/tests/test_human_shards.py
 server/tests/test_invariants.py
-server/tests/test_jev_bot.py
 server/tests/test_luna_atomic_io.py
 server/tests/test_luna_game.py
 server/tests/test_luna_gameplay_tranches.py

@@ -1,0 +1,14 @@
+{
+ "name": "bbw50-lane-246210910",
+ "purpose": "screen",
+ "seed0": 246210910,
+ "clusters": 3920,
+ "span": [
+  246210910,
+  246214830
+ ],
+ "created_at": "2026-11-03T17:10:00Z",
+ "host": "shengji-perf",
+ "git_head": "100ef989fcd9bbee295136a24b24af1b9d9a6302",
+ "note": "bbw50 lane block for board #1075: the two-stage SCREEN of the release-50 combo (Y on the G3 Stage A value package Ae04 f4f4127e + P0's FT1 prior 1fa201b2) plus belief bury worlds bbw (SHENGJI_PV_BURY_BELIEF_WORLDS=1, PR #1228 head 100ef989) on the exploiter, vs Y as served (release 49), on perf, 3,920 fresh paired seat-swapped deals on the r2 plan, after wla50's LANE DONE; launcher claude_bbw50_perf.sh in ~/shengji-archive/2026-11-03-bbw50-screen. RESERVED BEFORE DEALING."
+}

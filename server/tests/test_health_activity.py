@@ -198,13 +198,13 @@ def test_healthz_reports_the_latency_switches_from_the_process_environment(
     for key in LATENCY_SWITCHES:
         monkeypatch.delenv(key, raising=False)
     health = client.get("/healthz").json()["pv_search"]
-    assert health["latency_switches"] == {"encode_prefix_cache": False, "single_candidate_fast": False,
+    assert health["latency_switches"] == {"encode_prefix_cache": False, "singleton_prefix_cache": False, "single_candidate_fast": False,
                                           "leaf_greedy_stream": False, "encode_batch_fast": False, **NATIVE_OFF}
     for key in ("SHENGJI_PV_ENCODE_PREFIX_CACHE", "SHENGJI_PV_LEAF_GREEDY_STREAM",
                 "SHENGJI_PV_ENCODE_BATCH_FAST"):
         monkeypatch.setenv(key, "1")
     health = client.get("/healthz").json()["pv_search"]
-    assert health["latency_switches"] == {"encode_prefix_cache": True, "single_candidate_fast": False,
+    assert health["latency_switches"] == {"encode_prefix_cache": True, "singleton_prefix_cache": False, "single_candidate_fast": False,
                                           "leaf_greedy_stream": True, "encode_batch_fast": True, **NATIVE_OFF}
     # a malformed switch is reported, not raised: health must answer
     monkeypatch.setenv("SHENGJI_PV_ENCODE_BATCH_FAST", "yes")

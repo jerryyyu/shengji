@@ -85,7 +85,7 @@ progress, and keep every material node resumable.
   and `terra_reviewer` for risk-justified independent review.
 - A Luna capsule names owned files or symbols, invariants, forbidden changes,
   acceptance checks and stop conditions. Never assign overlapping write
-  surfaces. Use at most three concurrent subagents.
+  surfaces. Use at most six concurrent subagents (Jerry 2026-11-04).
 - The primary agent inspects every resulting diff and its validation evidence.
   Parallel workers prepare support work; they do not become competing truth.
 - Attempt delegation before depending on its result. If capacity is exhausted,

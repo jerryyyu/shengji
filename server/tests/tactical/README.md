@@ -81,7 +81,7 @@ id, category, source{kind,path,line|source_ref,round|run}, seat, trick (0-based)
 position (0 = lead .. 3 = last), setup{trump_rank, trump_suit, trump_is_nt,
 banker, declarations[{seat,cards}], buried|null}, plays[{seat, cards[, attempted]}],
 hand, observed{action, engine_play, admitted, value_means, ...}, predicate{name,
-args}, why, current_bot ("pass"|"fail"|null, recorded for the production bot),
+args}, why, current_bot ("pass"|"fail"|null, recorded for the release-36 bot),
 notes
 ```
 
@@ -191,11 +191,12 @@ Ids are `<room>-r<round>-s<seat>-t<trick>-<tag>` or `pvr<run>-<key>-<tag>`.
 
 ## Caveats
 
-- The production bot reproduces the observed action on 18 of the 22 fixtures
-  at seed 0; on two positions (`cdce-r1-s1-t1-*`, `pvr1-0-0-3-48-throw`) it
-  picks a sibling variant of the same throw, and on `pvr1-3952-1-1-16-lead` the
-  observed action was an exploration draw the production recipe never admits.
-  This is the position, not the production RNG state, so a seed can differ.
+- The release-36 bot (the one `current_bot` was stamped against) reproduces the
+  observed action on 18 of the 22 fixtures at seed 0; on two positions
+  (`cdce-r1-s1-t1-*`, `pvr1-0-0-3-48-throw`) it picks a sibling variant of the
+  same throw, and on `pvr1-3952-1-1-16-lead` the observed action was an
+  exploration draw the release-36 recipe never admits. This is the position, not
+  the live game's RNG state, so a seed can differ.
 - `pvr1-3952-1-1-16-lead` asks whether admission reaches the lead the value
   head preferred (+0.133) when it was drawn by exploration; that lead was itself
   refused by the engine in the real deal (forced S9).  It measures admission

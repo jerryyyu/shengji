@@ -2,15 +2,13 @@
 
 Last reconciled: **2026-11-01**.
 
-**Production is release 49** (live 2026-11-01 01:39 EST, Fly v56; Jerry 2026-10-31: "Yea ship Y"): release 48
-plus the singleton challenger `sc8` and the lead confirmation `lcc32` (ladder row 18). Release 48 (row 17: release 46
-with the S58 belief package, `dtrx` and the guarded greedy finish) is the rollback (`DEPLOY.md`). **New duels and
-screens compare against release 49 as served** (Jerry, in session 2026-11-01; before that release 48, 2026-10-24,
-release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator; screens already
-read keep their declared comparator. **Release 50** (row 19: release 49 with the G3 Stage A value package `f4f4127e`,
-the FT1 card-play prior `1fa201b2`, the B1a belief package `028131a0` and belief bury worlds `bbw`; Jerry 2026-11-04:
-"I'm good to ship and we can manage what to do with lcc after") is prepared in `fly.toml` and replaces release 49 on
-deploy, with release 49 as its rollback (`DEPLOY.md`).
+**Production is release 50** (live 2026-11-04 15:24 EST, Fly v57; Jerry 2026-11-04: "I'm good to ship and we can
+manage what to do with lcc after"): release 49 with the G3 Stage A value package `f4f4127e`, the FT1 card-play prior
+`1fa201b2`, the B1a belief package `028131a0` and belief bury worlds `bbw` (ladder row 19). Release 49 (row 18:
+release 48 plus `sc8` and `lcc32`) is the rollback (`DEPLOY.md`). **New duels and screens compare against release 50
+as served** (Jerry, in session 2026-11-04, "Yes move comparator"; before that release 49, 2026-11-01, release 48,
+2026-10-24, release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator;
+screens already read keep their declared comparator.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The

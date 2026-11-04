@@ -25,7 +25,7 @@ lessons that shape planned work. Everything else lives on its canonical surface:
 | **window** | one 520-cluster mirrored screen block of fresh deal seeds |
 | **MDE80** | minimum detectable effect at 80% power for that readout |
 | **as served** | the full production bot path, including declare, bury and budgets |
-| **comparator** | the champion a new strength claim must beat; now release 49 as served |
+| **comparator** | the champion a new strength claim must beat; now release 50 as served |
 | **MC-LCB** | the confirmed Monte Carlo search; the common control inside each ten-window screen (through 2026-10-25), not the comparator |
 | **duel** | the default screen since 2026-10-25: the candidate plays the served release head to head on the same deals, seats swapped |
 | **SCREEN_PASS / CONFIRMED** | the two duel-bar verdicts (3,920-deal screen; 7,840-deal fresh-seed confirmation); "Duel bar" below |
@@ -44,18 +44,18 @@ beat the served bot on fresh mirrored whole games with one learned model that ke
 data, with production's latency tail bounded. The standing goal is +0.05 levels/round over the served release
 (Jerry 2026-10-15; board #1075).
 
-- **Production:** release 49 ("Y"), deployed 2026-11-01 01:39 EST (Fly v56): release 48 plus the singleton
-  challenger `sc8` and the held-out lead confirmation `lcc32`, vs release 48 +0.0270 [+0.0135, +0.0408] (combo3y),
-  confirmed +0.0306 [+0.0167, +0.0441] (combo3yc), paired head-to-head duels (`AI_POLICIES.md` row 18). Release 48
-  (2026-10-24 10:18 ET; release 46 with the S58 belief package, `dtrx` and the guarded greedy finish) is the
-  rollback. Exact contract: `AI_POLICIES.md` "Production contract".
-- **Comparator:** new duels and screens compare against release 49 as served (Jerry, in session 2026-11-01).
-  Confirmations keep their parent's comparator; historical reads keep their original labels. The previous
-  comparators were release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod policy of
+- **Production:** release 50, deployed 2026-11-04 15:24 EST (Fly v57): release 49 with the G3 Stage A value
+  package, the FT1 card-play prior, the B1a belief package and belief bury worlds (`bbw`), vs release 49 confirmed
+  +0.0618 [+0.0507, +0.0729] (cbaC, 7,840 fresh paired deals; `AI_POLICIES.md` row 19). Release 49 ("Y": release 48
+  plus `sc8` and `lcc32`) is the rollback. Exact contract: `AI_POLICIES.md` "Production contract".
+- **Comparator:** new duels and screens compare against release 50 as served (Jerry, in session 2026-11-04,
+  "Yes move comparator"). Confirmations keep their parent's comparator; historical reads keep their original labels.
+  The previous comparators were release 49 (Jerry, in session 2026-11-01), release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod policy of
   r48"), release 46 (Jerry 2026-10-16, recorded on #1075) and release 45 (Jerry 2026-10-13, #988
   issuecomment-6142666693).
-- **Held candidate:** release 50 = release 49 + the G3 Stage A value (f4f4127e) + the FT1 prior (1fa201b2) + the B1a belief (028131a0) + belief bury worlds (`bbw`); cbaC +0.0618 [+0.0507, +0.0729] vs release 49 on 7,840 fresh deals.
-  Not deployed; its remaining gates are on the board (row R50).
+- **Next cost candidate:** release 50 with `lcc32` off. The S82 leave-one-out inside release 50 read DROP_SAFE,
+  +0.0079 [−0.0069, +0.0221] (off − on), and the stage abandons about 23% of leads at half budget (hb50). It needs a
+  confirmation against release 50 and Jerry's word.
 
 | evidence label | supports |
 |---|---|

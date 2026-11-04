@@ -7,8 +7,8 @@ plus the singleton challenger `sc8` and the lead confirmation `lcc32` (ladder ro
 with the S58 belief package, `dtrx` and the guarded greedy finish) is the rollback (`DEPLOY.md`). **New duels and
 screens compare against release 49 as served** (Jerry, in session 2026-11-01; before that release 48, 2026-10-24,
 release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator; screens already
-read keep their declared comparator. Release 50 (release 49 plus FT1, m30yc +0.0162 confirmed vs
-release 49) is held, not deployed (Jerry 2026-11-01).
+read keep their declared comparator. The release-50 candidate (board row R50: release 50 = release 49 + the G3 Stage A value (f4f4127e) + the FT1 prior (1fa201b2) + the B1a belief (028131a0) + belief bury worlds (`bbw`); cbaC +0.0618 [+0.0507, +0.0729] vs release 49 on 7,840 fresh deals)
+is held, not deployed; its remaining gates are on the board.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The
@@ -183,7 +183,7 @@ If this summary and `server/shengji/ai/registry.py` differ, the registry is auth
 | `mc-cwv-<ckpt8>-w<W>`, `mc-cwv-prior-<ckpt8>-w<W>` | One-ply search whose ENTIRE evaluator is the complete-world value net (`ai/cwv_policy.py`): production's ballot and sampler, every (candidate, world) afterstate over W worlds scored in one batch, argmax of the mean. The `prior` twin is the no-learning control (the training receipt's stratified prior as the value, in its own utility scale: PT0 integer levels for the `baselines` prior, exact terminals converted to match). Registered by `register_cwv_policies` or `SHENGJI_CWV_CKPT`; the checkpoint id is in the name, and a checkpoint whose encoder identity differs from `value_afterstate`'s is refused. | Dev screen only (`scripts/cwv_duel.py`, budget ladder 1x/3x/10x of production's wall). No strength claim; no production authority. |
 | `mc-s0-report-lcb-x3`, `-x10` | MC-LCB with selection and report doses scaled together (N=90/R=900, N=300/R=3000): its own compute curve, the bar a learned arm must beat at each budget. | Reference arms only. |
 | `mc-shortlist-<ckpt8>-w<W>` (`CWVShortlistBot`) | Every legal action ranked by the complete-world model over W worlds; K4 or K8 alternatives plus the incumbent go to full N30/R300 MC, so unlike `mc-cwv-*` the model does not replace the final evaluator. Registered by `register_cwv_shortlist_policies` or `SHENGJI_CWV_SHORTLIST_CKPT` so `make_bot` and `harvest/trajectory.py --policy` reach it; the entry point refuses anything that is not a `CWVShortlistBot` (`mc-cwv-<ckpt8>-w32` is the one-ply bot). | Production 22–28 (W32 play, hybrid bury, bounded heuristic fallback); since 29 a registered rollback (its keys stay in `fly.toml`). |
-| `pv-search-<ckpt8>-w<W>-k<K>[-<rule tokens>]-r<recipe8>[-bury-hybrid-<id>]` (`PVSearchBot`, `PVSearchBuryBot`; `train/pv_search_policy.py`) | The policy/value search and its bury on the same package; registered by `register_pv_search_policies` when `SHENGJI_PV_CKPT` and `SHENGJI_PV_SHA256` are set, name derived from the environment. | PRODUCTION since 29; release 46 is the [production contract](#production-contract). |
+| `pv-search-<ckpt8>-w<W>-k<K>[-<rule tokens>]-r<recipe8>[-bury-hybrid-<id>]` (`PVSearchBot`, `PVSearchBuryBot`; `train/pv_search_policy.py`) | The policy/value search and its bury on the same package; registered by `register_pv_search_policies` when `SHENGJI_PV_CKPT` and `SHENGJI_PV_SHA256` are set, name derived from the environment. | PRODUCTION since 29; release 49 is the [production contract](#production-contract). |
 
 Local: `SHENGJI_BOT=smart uv run shengji-server`. In code, always pass a deterministic seed:
 `make_bot("mc-strong", seed=1234)` (from `shengji.ai.registry`).
@@ -354,8 +354,8 @@ Moved from `BACKLOG.md` on 2026-10-03.
 
 | topic | source |
 |---|---|
-| current queue and priority | GitHub: the board issue #707, open issues and PRs (`BACKLOG.md` was deprecated 2026-10-03 and is a pointer stub) |
-| active fleet, open investigations and exact review asks | `server/scripts/fleet_status.sh`, the board issue #707 (its predecessor #679 is closed and holds everything finished through 2026-10-03) and its topic issues (#663 model, #700 gameplay audit and search diagnostics, #676 search screens, #436 PUCT/allocation, #681 lead audit; the Sol benchmark #355 is closed), and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
+| current queue and priority | GitHub: the board issue #1075, open issues and PRs (`BACKLOG.md` was deprecated 2026-10-03 and is a pointer stub) |
+| active fleet, open investigations and exact review asks | `server/scripts/fleet_status.sh`, the board issue #1075 (its predecessors #707 and #679 are closed and hold the earlier history) and its topic issues (#663 model, #700 gameplay audit and search diagnostics, #676 search screens, #436 PUCT/allocation, #681 lead audit; the Sol benchmark #355 is closed), and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
 | callable code | `server/shengji/ai/registry.py` |
 | production config | `fly.toml` |
 | model/belief/teacher design; research architecture and model lineage | `RL_PLAN.md` |

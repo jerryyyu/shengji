@@ -195,7 +195,7 @@ C14 training run (RL_PLAN "Planned work").
 | `AI_POLICIES.md` | production contract, measured policies, evidence and lane rules |
 | `RL_PLAN.md` | research plan, key learnings, measurement rules |
 | `DEPLOY.md` | release records, rollbacks, gates |
-| GitHub issue #707 + topic issues | the live investigation board and work queue |
+| GitHub issue #1075 + topic issues | the live investigation board and work queue (predecessors #707, #679, closed) |
 | `docs/atlas_v2/` | every screen since release 29 (`registry.json`) |
 | `docs/scaling_log/` | every model with its offline metrics; engine and search speed (with issue #208) |
 | `docs/EXTERNAL_SSD.md` | what lives on the external SSD (corpora, backups) and its rules |
@@ -203,7 +203,7 @@ C14 training run (RL_PLAN "Planned work").
 | `AGENTS.md` | execution discipline and agent orchestration |
 | `HANDOFF_REVIEW.md` | frozen authority markers (#674) |
 | `PROTOCOL.md` / `web/README.md` | wire protocol; client architecture |
-| `BACKLOG.md` | deprecated; see #707 |
+| `BACKLOG.md` | deprecated; see #1075 |
 | `docs_archive/` | compacted history: closed lanes, old designs, rotated ledgers |
 
 Top-level documents hold only current project, operational or durable contract

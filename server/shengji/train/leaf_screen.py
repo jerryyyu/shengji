@@ -11,8 +11,8 @@ the determinized clone floored at the clone's banked attacker points
 prior at the leaf (the no-learning control).  The
 baseline is always ``mc-s0-report-lcb`` at its registered N=30 / R=300.
 
-CPU parity (``README.md``): the arm's decision CPU is
-measured with ``TimedPolicy`` on outcome-blind calibration deals at several
+CPU parity (``docs_archive/train-readme-releases-22-28.md``): the arm's
+decision CPU is measured with ``TimedPolicy`` on outcome-blind calibration deals at several
 selection doses N (R unchanged), the ratio to production's decision CPU is
 fitted as a line in N (selection work is proportional to N, the report fold
 is fixed) and the N at ratio 1.0 is frozen in ``calibration.json``.  The

@@ -21,7 +21,7 @@ worked; it does not establish teacher quality or inherit the historical PT win.
 
 ## Latest completed gameplay comparison
 
-The [52-deal / 104-round paired comparison](server/runs/luna_quality_gameplay_tranche1_result_20260906.md)
+The [52-deal / 104-round paired comparison](./runs-2026-08-01-to-09-14/luna_quality_gameplay_tranche1_result_20260906.md)
 has now completed: Batch4 minus Compact1 was −0.1058 levels/round
 [−0.2885,+0.0769], with 2.27× fewer reported tokens per decision. This is
 inconclusive quality evidence, not equivalence and not a comparison against
@@ -32,7 +32,7 @@ the current evidence summary.
 
 ## Earlier state — September 6
 
-The [fresh 52-deal diagnostic](server/runs/luna_fresh_quality_result_20260906.md)
+The [fresh 52-deal diagnostic](./runs-2026-08-01-to-09-14/luna_fresh_quality_result_20260906.md)
 is complete: 208 sampled positions, 208 Batch4 and 207 Compact1 accepted
 labels. Batch4 used about 2.98x fewer reported tokens per accepted decision;
 the fixed-continuation quality difference is inconclusive, not equivalence.
@@ -40,9 +40,9 @@ Keep the 26 fit deals (104 positions with both labels) separate from the 26
 validation deals. These are action labels on MC-generated states, not new
 complete Luna games or value targets. Failures and both arms remain retained.
 
-The [direct paired-gameplay source](server/runs/luna_quality_gameplay_design_20260906.md)
+The [direct paired-gameplay source](./runs-2026-08-01-to-09-14/luna_quality_gameplay_design_20260906.md)
 is merged in #270, but its forecast of roughly 45.4M tokens/23 hours is not
-a launch budget. A separate [historical-teacher bridge](server/runs/luna_historical_bridge_20260906.md)
+a launch budget. A separate [historical-teacher bridge](./runs-2026-08-01-to-09-14/luna_historical_bridge_20260906.md)
 replays the original rollout-enabled teacher's saved choices: 52 role games,
 26 independent deals, 170 selected positions. This avoids paying to regenerate
 that reference; it does not make the old games fresh validation data. The

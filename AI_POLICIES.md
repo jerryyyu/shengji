@@ -271,7 +271,7 @@ teachers PT0 (small edge), PT1 (`1/208` mean C−B, with a governance caveat) an
 ensembles); C0; the shortlist K8 (+0.08203 vs production, −0.05664 vs K4); Value-Afterstate V0
 (`REFUSE_MECHANICS_OR_NEGATIVE_CONTROL`) and V1 P1 (`SELECT_NONE_NO_ACTION_ADVANTAGE`); the PT-Sol0/PT-Luna
 planners (open-DEV mechanism evidence; batch4−compact1 −0.1058 [−0.2885, +0.0769],
-[readout](server/runs/luna_quality_gameplay_tranche1_result_20260906.md)); Value V2 D64 (`D64_DEV_SEALED`: shape
+[readout](docs_archive/runs-2026-08-01-to-09-14/luna_quality_gameplay_tranche1_result_20260906.md)); Value V2 D64 (`D64_DEV_SEALED`: shape
 improved, scalar and action value worsened).
 
 ## Evaluation and identity rules

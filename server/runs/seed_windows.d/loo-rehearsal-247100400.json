@@ -1,0 +1,14 @@
+{
+ "name": "loo-rehearsal-247100400",
+ "purpose": "screen",
+ "seed0": 247100400,
+ "clusters": 56,
+ "span": [
+  247100400,
+  247100456
+ ],
+ "created_at": "2026-11-04T13:23:13Z",
+ "host": "ultra",
+ "git_head": "100ef989fcd9bbee295136a24b24af1b9d9a6302",
+ "note": "loo host rehearsal block (non-scientific execution evidence; exact heavy-path capacity witness) for the loo leave-one-out duel: the release-50 candidate (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + bbw + B1a belief 028131a0) with lcc32 off (exploiter) vs the same candidate with lcc32 on (defender), served budgets, tree 100ef989; packet ~/shengji-archive/2026-11-04-loo-packet. Exact-deal clear against A / FT1 / smv3 / M28 CAT lineages and the B1a lineage (Y belief stores, S17, M17, S58 live). The launcher's exact child on the M5 Ultra, REHEARSAL=1 mode under its own rehearsal RELEASE token, 56 deals. RESERVED BEFORE DEALING."
+}

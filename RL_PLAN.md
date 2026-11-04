@@ -1,6 +1,7 @@
 # Learning and search research plan
 
-As of 2026-11-01. Production is release 49; new duels and screens compare against release 49 as served (Jerry 2026-11-01).
+As of 2026-11-04. Production is release 49; new duels and screens compare against release 49 as served (Jerry 2026-11-01),
+read against the two-stage duel bar (2026-11-03).
 
 This file owns the research architecture, the estimands, the process rules for compute and measurement, and the
 lessons that shape planned work. Everything else lives on its canonical surface:
@@ -25,12 +26,14 @@ lessons that shape planned work. Everything else lives on its canonical surface:
 | **MDE80** | minimum detectable effect at 80% power for that readout |
 | **as served** | the full production bot path, including declare, bury and budgets |
 | **comparator** | the champion a new strength claim must beat; now release 49 as served |
-| **MC-LCB** | the confirmed Monte Carlo search; the common control inside each screen, not the comparator |
+| **MC-LCB** | the confirmed Monte Carlo search; the common control inside each ten-window screen (through 2026-10-25), not the comparator |
+| **duel** | the default screen since 2026-10-25: the candidate plays the served release head to head on the same deals, seats swapped |
+| **SCREEN_PASS / CONFIRMED** | the two duel-bar verdicts (3,920-deal screen; 7,840-deal fresh-seed confirmation); "Duel bar" below |
 | **W / K** | sampled worlds per decision / candidates the policy head admits (served: W64, K8) |
 | **head-driven search** | policy head admits K candidates, value head prices them over W worlds, no playouts |
 | **rule tokens** | served search flags (`div`, `rc`, `tb`, `la`, `dtr`, `vd`, `bwv`, `vdef`, …); defined in `AI_POLICIES.md` |
 | **D7 + X7** | exact endgame stages at ≤ 7 cards: lead (D7) and follow (X7) |
-| **belief worlds** | play worlds whose hidden hands the S17 belief model proposes |
+| **belief worlds** | play worlds whose hidden hands the belief model proposes: S58 (`s58-e6-42444515`) since release 48, S17 in release 46; the release-50 candidate uses B1a (`028131a0`) |
 | **first-round / later-round** | deals where the declaration decides the banker / where the banker is fixed |
 | **val_ce** | offline validation cross-entropy, a checkpoint-selection signal |
 
@@ -80,12 +83,12 @@ ship on his word; a fresh-seed confirmation runs when he asks or when the effect
 
 **Promotion path (tier i to tier ii)**
 
-- **DEV duel before a screen.** An offline metric (agreement, calibration, true-world regret, coverage) does not by
-  itself admit a screen. A new lever first passes a paired seat-swapped DEV duel against the served release (about
-  600 deals, fresh seeds) with a bar written before it runs; only then does it get a ten-window screen. A 600-deal duel
-  resolves about ±0.075 levels/round, so when the expected gain is smaller its bar is no regression and no operational
-  fault (fallbacks, expiries, latency), not a positive estimate. Offline gains
-  have not carried: belief epoch 8's +0.83 pp agreement read +0.0062 [−0.0118, +0.0243] levels/round (v95s17e8);
+- **Cheap DEV test before a screen.** An offline metric (agreement, calibration, true-world regret, coverage) does
+  not by itself admit a screen. A new lever first passes a cheap DEV test with a bar written before it runs (an
+  offline bar, or a small paired seat-swapped duel against the served release); only then does it get a screen
+  duel under the "Duel bar" below. A 600-deal duel resolves about ±0.075 levels/round, so when the expected gain is
+  smaller its bar is no regression and no operational fault (fallbacks, expiries, latency), not a positive
+  estimate. Offline gains have not carried: belief epoch 8's +0.83 pp agreement read +0.0062 [−0.0118, +0.0243] levels/round (v95s17e8);
   wide lead admission's 45.5% outside-K8 gap read +0.0168 [−0.0078, +0.0414] (v94wla46).
 - **Strength ceiling before cost work.** A search mechanism's first gameplay test runs with its serving deadline and
   node caps lifted. Latency or approximation work starts only after a positive ceiling; a null ceiling parks the
@@ -121,27 +124,27 @@ The two-stage rule applies only to runs not yet started when it was adopted (202
 
 ## Planned work
 
-**What changes production next:** a change that beats release 49 as served on a paired duel or ten-window
-served-bot screen, then the `DEPLOY.md` release checklist and Jerry's word. Release 46 shipped on its screen plus a confirmation
-(v92c) and a latency gate (v93lat). Correctness fixes may ship with no strength
-claim when the served screen is not demonstrated negative (releases 42, 43).
+**What changes production next:** a change that passes the duel bar against release 49 as served (a screen, then a
+fresh-seed confirmation), then the `DEPLOY.md` release checklist and Jerry's word. Release 49 shipped on a duel plus
+a fresh-seed confirmation (combo3y, combo3yc) and latency reads (v107sc8lat, s71fly). Correctness fixes may ship
+with no strength claim when the served screen is not demonstrated negative (releases 42, 43).
 
 **Direction (Jerry 2026-10-11, 2026-10-13):** "Where we use heuristics, it may be better to use the model";
 after release 45, "we should keep trying in this direction." Heuristics still in the served bot: the play
 anchor, the heuristic first trick inside each value leaf, and the continuations before the exact endgame.
 
-The open rows below mirror board #1075; the board is authoritative for state, next test, bar, owner and host.
+The board #1075 is authoritative for open rows: state, next test, bar, owner and host. This table lists only the
+open row ids by area (board of 2026-11-04); parked rows and their failed bars are on the board.
 
-| area | open rows (board id: question) | parked rows |
-|---|---|---|
-| search | S35 belief-informed multi-trick hybrid search; S33 greedy-finished leaves; S38 paired completed-trick horizon; S32 wider lead shortlist (K=32) | S36 eight-card exact dedup; S37 failed-throw exposure |
-| belief | S39 belief successors (later S17 checkpoints) | S34 capacity-aware kitty draw; S25 human-seat model; S22, S23 (propose close) |
-| model | M13 C15 value model on release 45's trunk; M9 C14 epoch 11 (v88); M10 history encoder, after M13 | M12 game-state objective |
-| sampler / declare | S30 model-free fallback sampler (`wu`+`kb`); S15 'wait' declare under belief | S31 (into S30); S40 later-round value declare |
-| data | M17 corpus round coverage (runPVS1/2) | — |
-| infra / measure | D8 comparator bank; D9 two-look screens; D11 lane overhead; D4 human-play metric | D13 SSD dropout (propose close) |
+| area | open rows (board id: question) |
+|---|---|
+| release | R50 release-50 candidate (held); G2 cbaf three-arm screen of its parts |
+| search | S82 lcc32 inside the R50 candidate; S59 Exact8 at the served budget; M31 deeper policy→value lookahead; S60 compute ceiling |
+| model | M33 expert-label scaling for the prior (FT2) |
+| diagnosis / serving | S75 first-round gap; S79 served bot under Fly load; D19 degradation telemetry |
+| infra / measure | D16 packet generator; D17 Ultra migration; D18 GPU data gen; D9 two-look screens; D11 lane overhead; D4 human-play metric |
 
-Packets built against release 45 (S32, M9, S30) are rebuilt against release 46 before queueing.
+A packet built against an older release is rebuilt against release 49 before it is queued.
 
 ## What we learned
 
@@ -158,7 +161,7 @@ Each lesson summarises Atlas v2 and scaling-page rows. Superseded wording is in 
 | Width and depth alone did not move play | h256–h2048, d4; DEEP8 and TOWER1 did not confirm | still true |
 | Encoders: v2 was the one real gain | v3/v4/v5 bought nothing in play; v5 closed | still true |
 | Soft (search-value) targets carry the largest point estimate | soft +0.086 vs hard twin +0.024 on the same deals; paired +0.063 exploratory | still true |
-| Retrains since SMV3 have not beaten production | gen-5 arms, C11 e9 vs release 38 (v55e9r38 −0.0145), C12, C14 E5 (v84 −0.0133): all inconclusive | still true; open bets are C15 (M13) and history (M10) |
+| Retrains from SMV3 to C16 did not beat production; the expert-anchored prior and the full-data value did | gen-5 arms, C11 e9 vs release 38 (v55e9r38 −0.0145), C12, C14 E5 (v84 −0.0133), C15, C16 Stage 1: inconclusive or failed; FT1 prior m30yc +0.0162 [+0.0024, +0.0306] and G3 Stage A value + FT1 g3dsc +0.0349 [+0.0203, +0.0492], both fresh-seed confirmations vs release 49 as served | corrected: the C15/C16 PV fine-tune line is parked (M13); FT1 + A are the base of the R50 candidate |
 | Corpus seeds are decks | a window inside a corpus's seed range replays decks the model saw; ranges on #436, excluded per model | still true |
 
 ¹ The shortlist instrument tied 54–62% of deals and could not resolve head differences (warm-started generations
@@ -173,7 +176,7 @@ gain, +0.021 [+0.004, +0.039].
 | The heads can be the whole search | head-driven search vs MC-LCB +0.095 at W16, +0.187 at W64; W4 loses | still true |
 | No resolved benefit from the tested additional-world recipes; a better world draw helped | belief worlds v86bw45 +0.1165 [+0.0914, +0.1416]; 512 vs 64 worlds −0.0007 [−0.0022, +0.0008] per decision on 2,133 replayed decisions (board #707 S2 closure) | replaces "worlds are the lever" |
 | A better policy head alone does not show in served play | head alone +0.24 vs SmartBot (arm F, 2026-09-30); value head decides | still true |
-| The tested admission-rule combo beat its parent; the tested PUCT recipe lost | div + rc + tb confirmed together (release 38); PUCT −0.417 vs release 36 | tested recipes only; horizon/hybrid search stays open (S35, S38) |
+| The tested admission-rule combo beat its parent; the tested PUCT recipe lost | div + rc + tb confirmed together (release 38); PUCT −0.417 vs release 36 | tested recipes only; S35 (hybrid) and S38 (horizon) parked on their bars; deeper lookahead stays open (M31) |
 | Model-owned decisions and exact endgames moved the result | `vd` (release 44), `bwv` (release 45), v92 combo +0.2167 [+0.1923, +0.2412] (release 46) | still true |
 | The value cutoff is the gain, not terminal MC | learned continuations and PUCT over worlds lose or add nothing at large cost | still true |
 | Knowing the hidden hands is worth a lot to the current search | true-world probe v78orc45 +0.4026 [+0.3806, +0.4245]; a diagnostic, not a ceiling² | still true |
@@ -198,8 +201,9 @@ deploy gate is the served design.
 4. **Paired worlds, and the flat W64 search as the yardstick** (search audit, 2026-10-15, S33). Every search
    variant scores all candidates, and every reply inside a lookahead, on the SAME sampled worlds. Never allocate
    one world per visit (PUCT v1's −0.417). Before any screen, a search change must beat the flat W64 K8 paired
-   search offline on the audit's true-deal yardstick (`search_audit_probe_v4.py` / `analyze_audit.py`, same probe
-   states): sf Δ ≥ +0.003 per decision with a 95% CI above zero, and vt Δ ≥ 0, on at least 700 decisions.⁴
+   search offline on the audit's true-deal yardstick (the S33 audit probe and analyzer, not in the repository; their
+   location is on #700 issuecomment-6219217579; same probe states): sf Δ ≥ +0.003 per decision with a 95% CI above
+   zero, and vt Δ ≥ 0, on at least 700 decisions.⁴
 
 Measure search work, world quality, consumer decision dose and whole-game utility separately.
 
@@ -368,7 +372,10 @@ links and every reported number, is in `docs_archive/rl-plan-through-2026-10-16.
 - Interval overlap is not a difference test: superiority between two arms needs a contrast that clears zero on a
   common opponent or paired deals.
 
-**Window rule (default)**
+**Window rule (ten-window MC-LCB instrument only)**
+
+The default screen is the duel ("Duel bar" above). This rule applies only to a lane that predeclares the
+ten-window MC-LCB instrument.
 
 - Five windows first; extend to ten only when the point exceeds +0.015 and the interval crosses zero.
 - A five-window interval spanning zero is INCONCLUSIVE, reported with its MDE80; it supports neither "not large"

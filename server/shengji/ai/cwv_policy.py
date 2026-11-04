@@ -353,6 +353,10 @@ def verify_checkpoint_identity(metadata: Mapping[str, Any], *,
     from .cwv_encoder_compat import (history_import_move_identity,
                                      round_notice_identity,
                                      round_notice_history_import_identity)
+    from .cwv_encoder_compat import declaration_history_identities
+    for legacy in declaration_history_identities(current, AFTERSTATE_SOURCE_PATHS):
+        if legacy in declared:
+            return legacy
     legacy = history_import_move_identity(current, AFTERSTATE_SOURCE_PATHS)
     if legacy is not None and legacy in declared:
         return legacy

@@ -92,6 +92,8 @@ def history_import_move_identity(current, paths):
 PROVEN_VERSIONS = (1, 2, 4, 5)
 
 ROUND_EQUIVALENT_SOURCES = {
+    "df0bfbf748f2553cc20083b74f046b0148211cebe5897fc774e75d7b87e8d083":
+        "02e7831ec58c224dc1eee83cab465c9e4b3002e1f52eff03125cd84809c2432c",
     "2ec9c5677e80449560f69abac53db271710cf8a64b2afe7ae15949698d3a4e95":
         "02e7831ec58c224dc1eee83cab465c9e4b3002e1f52eff03125cd84809c2432c",
 }
@@ -150,3 +152,24 @@ def round_notice_history_import_identity(current, paths):
             dict(current, source_sha256s=sources), paths)
     except (AttributeError, KeyError, TypeError, ValueError):
         return None
+
+
+def declaration_history_identities(current, paths):
+    """Prior identities for the exact round revision adding unused history metadata."""
+    try:
+        if current.get("enc_version", 1) not in PROVEN_VERSIONS:
+            return ()
+        sources = dict(current["source_sha256s"])
+        if sources.get("round") != "df0bfbf748f2553cc20083b74f046b0148211cebe5897fc774e75d7b87e8d083":
+            return ()
+        sources["round"] = "2ec9c5677e80449560f69abac53db271710cf8a64b2afe7ae15949698d3a4e95"
+        parts = [current["identity_schema"], current["afterstate_schema"]]
+        version = current.get("enc_version", 1)
+        if version != 1:
+            parts.append(f"enc_version:{version}")
+        payload = "|".join(parts + [f"{name}:{sha}" for name, sha in sorted(sources.items())])
+        direct = hashlib.sha256(payload.encode("ascii")).hexdigest()
+        moved = history_import_move_identity(dict(current, source_sha256s=sources), paths)
+        return (direct, moved) if moved is not None else (direct,)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return ()

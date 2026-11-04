@@ -481,7 +481,8 @@ def test_the_served_construction_with_the_flag_on_decides_a_declaration(package)
     assert record["evaluated"] is True and record["pass_worlds"]["worlds"] == 4
 
 
-def test_production_package_pass_worlds_server_smoke(pinned_production_package):
+@pytest.mark.parametrize("public_reveals", [False, True])
+def test_production_package_pass_worlds_server_smoke(pinned_production_package, public_reveals):
     """The real package through the server's off-loop declare path with the
     rule on: a logged record with the counts, and a legal declaration."""
     import asyncio
@@ -501,6 +502,7 @@ def test_production_package_pass_worlds_server_smoke(pinned_production_package):
         str(pinned_production_package), sha256=PACKAGE_SHA,
         worlds=64, candidates=8, cap=4000, batch_size=128,
         serving_budget_seconds=3.0, value_declare=True, value_declare_pass_worlds=True,
+        value_declare_public_reveals=public_reveals,
         bury_arm="hybrid", bury_wide_value=True, bury_wide_k=64)
     seat = next(s for s in range(4) if rnd.declare_options(s))
     legal = rnd.declare_options(seat)

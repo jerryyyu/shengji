@@ -312,3 +312,42 @@ def test_preparation_cache_invalidates_inputs_and_never_caches_failure(small_pac
     with pytest.raises(bn.BeliefNumpyError, match='preparation took'):
         proposal()
     assert not cache
+
+
+def test_preparation_reuse_full_lead_search_parity(small_package):
+    import copy
+    from test_pv_lead_confirm import _bot, OutsideBallotEvaluator, SEEDS
+    from test_pv_small_joker_lead import _fresh_round
+    model = bn.load_belief_numpy(small_package['path'], small_package['sha256'])
+    def stable(value):
+        if isinstance(value, dict):
+            return {k:stable(v) for k,v in value.items()
+                    if not k.endswith(('seconds', '_ms', '_secs'))}
+        if isinstance(value, list):
+            return [stable(v) for v in value]
+        return value
+    applied = 0
+    for seed in SEEDS:
+        rnd = _fresh_round(seed)
+        evaluator = OutsideBallotEvaluator()
+        off = _bot(evaluator)
+        off.belief_model = model
+        off.belief_worlds = off.world_history_legal = True
+        off.serving_budget_seconds = None
+        scratch = copy.deepcopy(off)
+        scratch.evaluator = evaluator
+        scratch.decide_play(copy.deepcopy(rnd), rnd.turn)
+        evaluator.ballot = {tuple(sorted(a)) for a in scratch.last_decision_record['admitted']}
+        off.lead_confirm = 24
+        on = copy.deepcopy(off)
+        on.evaluator = evaluator
+        on.belief_model = model
+        on.belief_prep_reuse = True
+        a = off.decide_play(copy.deepcopy(rnd), rnd.turn)
+        b = on.decide_play(copy.deepcopy(rnd), rnd.turn)
+        assert a == b
+        assert stable(off.last_decision_record) == stable(on.last_decision_record)
+        assert off.sampler.rng.getstate() == on.sampler.rng.getstate()
+        assert on._belief_preparation_cache is None
+        applied += on.last_decision_record['lead_confirm_status'] == 'applied'
+    assert applied > 0

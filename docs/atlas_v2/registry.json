@@ -3360,8 +3360,8 @@
    "point": 0.0349,
    "lo": 0.0203,
    "hi": 0.0492,
-   "takeaway": "CONFIRMED +0.035 [+0.020, +0.049] on fresh seeds: the release-50 combo beats r49; the gain is in bury and declare.",
-   "note": "Sealed 11-03; one-shot read (Claude, perf, reader 5ade123e). VALID: 0 play/belief/bury fallbacks, 0 declare abandons. Archive readouts/g3dsc (SHA256SUMS)."
+   "takeaway": "CONFIRMED +0.035 [+0.020, +0.049] on fresh seeds: the release-50 combo beats r49.",
+   "note": "Sealed 11-03; one-shot read (Claude, perf, reader 5ade123e). VALID: 0 play/belief/bury fallbacks, 0 declare abandons. Archive readouts/g3dsc (SHA256SUMS). First-divergence locators (descriptive, not causal attribution of the combined value + prior change) fall mostly in bury and declare."
   },
   {
    "id": "g3dscU",
@@ -3462,7 +3462,7 @@
      "hi": 0.024
     }
    ],
-   "takeaway": "Both SCREEN_PASS, but combo + B1k (+0.032) shows no gain over the combo alone (+0.035); the miscalibrated package does not add.",
+   "takeaway": "Both SCREEN_PASS; combo + B1k (+0.032) shows no resolved additive gain over the combo alone (cb − g3dsc −0.0034 [−0.024, +0.017]).",
    "note": "Sealed 11-04 01:23Z; one-shot read (reader 6b8dc940). VALID both arms. cb − g3dsc −0.0034 [−0.024, +0.017], descriptive. Archive readouts/b1kd."
   },
   {
@@ -3505,8 +3505,8 @@
    "point": 0.0513,
    "lo": 0.0352,
    "hi": 0.0672,
-   "takeaway": "SCREEN_PASS +0.051 [+0.035, +0.067]; the bury class carries +0.031 of it. About +0.016 over the combo alone, not yet confirmed.",
-   "note": "Sealed 11-04 03:54Z; one-shot read (reader ac647a05). VALID: 0 play/belief/bury fallbacks, bury_belief_fallbacks 0, max decision 2.40 s. Bury belief draw p99 41 ms. Combined confirmations with B1kc and B1a are being built. Archive readouts/bbw50U.",
+   "takeaway": "SCREEN_PASS +0.051 [+0.035, +0.067] for the full combo + bbw; the gain added by bbw over the combo alone is unresolved.",
+   "note": "Sealed 11-04 03:54Z; one-shot read (reader ac647a05). VALID: 0 play/belief/bury fallbacks, bury_belief_fallbacks 0, max decision 2.40 s. Bury belief draw p99 41 ms. Descriptive first-divergence locator: the bury class carries +0.031 of the +0.051. Increment over the combo alone (g3dsc, different run) +0.016, 95% [−0.005, +0.038], unresolved. Combined confirmations with B1kc and B1a are being built. Archive readouts/bbw50U.",
    "ref": "https://github.com/jerryyyu/shengji/issues/1171#issuecomment-6622144973"
   }
  ],

@@ -9,6 +9,7 @@ from shengji.engine import combos, fast
 from shengji.train import pv_search_policy as pv
 from test_pv_search_serving import package  # noqa: F401
 from native_switches import NATIVE_OFF
+from test_belief_sampler import small_package  # noqa: F401
 
 pytestmark = pytest.mark.skipif(not (fast.HAVE_FAST and combos.decompose is fast.decompose),
                                 reason="server-path smoke runs in the compiled engine only")
@@ -83,7 +84,7 @@ def test_the_smoke_builds_with_the_fly_env_in_the_process_environment(package, c
     assert os.environ.get("SHENGJI_PV_CKPT") != path
     receipt = run_smoke(env, turns=4)
     assert receipt["passed"] is True
-    assert receipt["latency_switches"] == {"encode_prefix_cache": True, "single_candidate_fast": False,
+    assert receipt["latency_switches"] == {"belief_prep_reuse": False, "encode_prefix_cache": True, "single_candidate_fast": False,
                                            "leaf_greedy_stream": True, "encode_batch_fast": True, **NATIVE_OFF}
 
 
@@ -127,3 +128,34 @@ def test_the_build_scope_restores_the_shell_after_an_error(monkeypatch):
         pass
     assert os.environ["SHENGJI_PV_SINGLE_CANDIDATE_FAST"] == "1"
     assert "SHENGJI_PV_ENCODE_PREFIX_CACHE" not in os.environ
+
+
+
+def test_belief_reuse_survives_server_snapshot_and_commit(package, small_package, clean_registry, monkeypatch):
+    from shengji.ai import belief_numpy as bn
+    seen = []
+    original = bn.BeliefProposal.__init__
+    def proposal(self, *args, **kwargs):
+        assert kwargs.get('preparation_cache') is not None
+        result = original(self, *args, **kwargs)
+        seen.append(self)
+        return result
+    monkeypatch.setattr(bn.BeliefProposal, '__init__', proposal)
+    original_play = pv.PVSearchBot.decide_play
+    completed = []
+    def play(self, *args, **kwargs):
+        action = original_play(self, *args, **kwargs)
+        assert self._belief_preparation_cache is None
+        completed.append(action)
+        return action
+    monkeypatch.setattr(pv.PVSearchBot, 'decide_play', play)
+    env, _ = _env(*package, SHENGJI_PV_BELIEF_PREP_REUSE='1',
+                  SHENGJI_PV_WORLD_HISTORY_LEGAL='1', SHENGJI_PV_WORLD_HISTORY_DRAW='1',
+                  SHENGJI_PV_BELIEF_WORLDS='1',
+                  SHENGJI_PV_BELIEF_CKPT=str(small_package['path']),
+                  SHENGJI_PV_BELIEF_SHA256=small_package['sha256'])
+    _, bot = build_production_bot(env)
+    assert bot.belief_prep_reuse and bot.belief_worlds
+    receipt = run_smoke(env, turns=8)
+    assert receipt['passed'] and seen and completed
+    assert receipt['latency_switches']['belief_prep_reuse']

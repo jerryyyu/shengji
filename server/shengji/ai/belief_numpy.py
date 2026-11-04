@@ -436,7 +436,8 @@ class BeliefProposal:
 
     def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
                  seed: int, batch: int, forbidden: Mapping | None = None,
-                 check_budget=None, capacity: bool = False, native: bool = False):
+                 check_budget=None, capacity: bool = False, native: bool = False,
+                 preparation_cache: dict | None = None):
         from ..train.belief_seq import project_sizes
         import time
         t0 = time.perf_counter()
@@ -446,7 +447,18 @@ class BeliefProposal:
         self.inp = decision_inputs(rnd, seat, refusals)
         if check_budget is not None:
             check_budget()
-        P = model.marginals(self.inp)
+        key = None
+        prepared = None
+        # Keys cover every model input and the post-model constraint mask;
+        # seeds and draw queues belong to each proposal, never to this cache.
+        if preparation_cache is not None:
+            mask = draw_mask(self.inp, rnd, seat, forbidden)
+            key = (id(model), model.temperature, tuple(
+                (name, np.asarray(value).dtype.str, np.asarray(value).shape,
+                 np.asarray(value).tobytes()) for name, value in sorted(self.inp.items())),
+                mask.tobytes())
+            prepared = preparation_cache.get(key)
+        P = model.marginals(self.inp) if prepared is None else prepared[0]
         # the model's own prediction, before the draw's masking and projection
         # (read by the belief log, never by the draw)
         self.P = P
@@ -455,9 +467,11 @@ class BeliefProposal:
         # suit): codes}) by masking those receivers after the model
         if check_budget is not None:
             check_budget()
-        self.M = draw_mask(self.inp, rnd, seat, forbidden)
+        self.M = (draw_mask(self.inp, rnd, seat, forbidden)
+                  if preparation_cache is None else mask)
         P = np.where(self.M, P, 0.0)
-        self.Q = project_sizes(P, self.inp["n_c"], self.inp["sizes"], self.M)
+        self.Q = (project_sizes(P, self.inp["n_c"], self.inp["sizes"], self.M)
+                  if prepared is None else prepared[1])
         if check_budget is not None:
             check_budget()
         self.kitty_hidden = bool(self.inp["M"][:, 3].any()) or int(self.inp["sizes"][3]) > 0
@@ -472,6 +486,9 @@ class BeliefProposal:
         self.prep_seconds = time.perf_counter() - t0
         if self.prep_seconds > PREP_SECONDS:
             raise BeliefNumpyError(f"belief preparation took {self.prep_seconds:.3f}s")
+        if preparation_cache is not None and prepared is None:
+            preparation_cache.clear()
+            preparation_cache[key] = (self.P, self.Q)
 
     def _refill(self) -> None:
         from ..train.belief_seq import sample_worlds, sample_worlds_capacity

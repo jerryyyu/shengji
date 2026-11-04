@@ -1288,7 +1288,8 @@ _EXACT_WORLD_SUBSET_REQUIRES = (
     "(SHENGJI_PV_EXACT_WORLD_SUBSET below SHENGJI_PV_WORLDS needs "
     "SHENGJI_PV_EXACT_LEAD_ENDGAME=1 or SHENGJI_PV_EXACT_FOLLOW=1)")
 #: the latency switches (module docstring): ``0`` or ``1``, unset (or empty) is off
-LATENCY_SWITCH_ENV = {"encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
+LATENCY_SWITCH_ENV = {"belief_prep_reuse": "SHENGJI_PV_BELIEF_PREP_REUSE",
+                      "encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
                       "single_candidate_fast": "SHENGJI_PV_SINGLE_CANDIDATE_FAST",
                       "leaf_greedy_stream": "SHENGJI_PV_LEAF_GREEDY_STREAM",
                       "encode_batch_fast": "SHENGJI_PV_ENCODE_BATCH_FAST",
@@ -2139,6 +2140,9 @@ class PVSearchBot(PolicyValueBot):
     #: belief log they enter no name or digest, and none changes a decision
     #: (``leaf_greedy_stream`` is declared on `PolicyValueBot`).
     #: Instance state of an ON bot only.
+    # Reuse preserves draw streams; saved time can change deadline outcomes.
+    belief_prep_reuse = False
+    _belief_preparation_cache = None
     encode_prefix_cache = False
     encode_batch_fast = False
     legal_native = False
@@ -3187,7 +3191,9 @@ class PVSearchBot(PolicyValueBot):
                                      seed=seed, batch=self.worlds,
                                      forbidden=constraints, check_budget=check_budget,
                                      capacity=getattr(self, "belief_capacity", False),
-                                     **({"native": True} if fast else {}))
+                                     **({"native": True} if fast else {}),
+                                     **({"preparation_cache": self._belief_preparation_cache}
+                                        if self._belief_preparation_cache is not None else {}))
             complete = None
             if fast:
                 from .pv_native import world_completion
@@ -4151,9 +4157,11 @@ class PVSearchBot(PolicyValueBot):
     def decide_play(self, rnd, seat):
         started = time.perf_counter()
         counts = self._sampler_counts()
+        self._belief_preparation_cache = {} if self.belief_prep_reuse else None
         try:
             return self._decide_play(rnd, seat, started)
         finally:
+            self._belief_preparation_cache = None
             if self.leaf_cache_release and self._leaf_greedy is not None:
                 # the finished leaves serve one decision only (`_search` resets
                 # them); dropped here, the server's per-turn copy of this bot

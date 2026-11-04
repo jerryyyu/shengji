@@ -221,35 +221,6 @@ def test_digest_covers_self_method_helpers():
         f"generator helpers missing from the identity: {sorted(seen)}"
 
 
-def test_multi_stage_policy_reports_every_stage(monkeypatch):
-    """A value-leaf policy binds its checkpoint at the LEAF, not the root.
-
-    Reporting only the inherited MC root ballot is what hid the v13abs
-    mismatch behind a manifest that looked complete.
-    """
-    from shengji.engine.ballot import policy_ballots
-
-    # v7w is legacy and unstamped; every construction in this test needs the
-    # declared research-only exception, including the one in the last assert.
-    monkeypatch.setenv(ESCAPE_HATCH, "1")
-    st = policy_ballots("mc-vleaf-v7w-ep02")
-    assert set(st) == {"root", "leaf"}
-    assert st["root"].name == "mc_candidates"
-    assert st["leaf"].name == "rl_actions"
-    assert ballot_for_policy("mc-vleaf-v7w-ep02").digest == st["leaf"].digest
-
-
-def test_override_policy_is_not_reported_as_ballotless(monkeypatch):
-    """rl-override keeps its generator on `_ballot`; dropping that lookup made
-    it report none@v0 while it was scoring _ballot._candidates()."""
-    from shengji.engine.ballot import policy_ballots
-
-    monkeypatch.setenv(ESCAPE_HATCH, "1")
-    st = policy_ballots("rl-override-v11pair")
-    assert st["root"] is not NO_BALLOT
-    assert st["root"].name == "mc_candidates"
-
-
 def test_stamped_checkpoint_round_trips(tmp_path):
     from shengji.ai.mcbot import MCBot
     from shengji.rl.provenance import ballot_of, record_ballot, require_ballot

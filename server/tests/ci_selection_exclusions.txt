@@ -102,7 +102,6 @@ server/tests/test_train_v0.py
 server/tests/test_trick_incumbent.py
 server/tests/test_trunk_depth.py
 server/tests/test_two_head_value.py
-server/tests/test_v11_anchor.py
 server/tests/test_v6_tensor_layer_gap.py
 server/tests/test_value_trajectory_core.py
 server/tests/test_vleaf_leaf.py

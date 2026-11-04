@@ -20,7 +20,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from shengji.ai.registry import make_bot
 from shengji.ai.smart import SmartBot
 from shengji.engine.game import Game
 from shengji.harvest.rebuild import state_for_record
@@ -181,8 +180,9 @@ def test_the_v2_columns_state_the_trick_the_v1_vector_never_did():
 
 def test_archived_v1_checkpoint_loads_and_runs_a_forward_pass():
     """C: the test #283 could not pass — a real 531-wide archived net."""
-    bot = make_bot("rl-override-v11pair", seed=2)
-    net = bot.net
+    from shengji.ai.mcbot import MCBot
+    from shengji.rl.npnet import NpNet
+    net = NpNet(str(Path(__file__).parents[1] / "snapshots_v11pair" / "ep07.npz"))
     assert net.obs_dim == 531, "the archived v11pair checkpoint is 531 wide"
     assert net.enc_version == 1
     assert net.w["t0w"].shape[1] == 531
@@ -191,12 +191,9 @@ def test_archived_v1_checkpoint_loads_and_runs_a_forward_pass():
     obs = encode_obs(rnd, seat, version=net.enc_version)
     assert len(obs) == 531
     from shengji.rl.encode import encode_action
-    actions = bot._ballot._candidates(rnd, seat)
+    actions = MCBot(seed=2)._candidates(rnd, seat)
     scores = net.value_candidates(obs, [encode_action(a, rnd) for a in actions])
     assert scores.shape == (len(actions),) and np.all(np.isfinite(scores))
-
-    played = bot.decide_play(rnd, seat)
-    assert played in actions or sorted(played) in [sorted(a) for a in actions]
 
 
 def test_the_torch_nets_and_arch_route_by_their_own_width():

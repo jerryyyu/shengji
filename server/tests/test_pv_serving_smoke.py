@@ -41,6 +41,7 @@ def test_pv_search_env_registers_and_plays_through_the_server(package, clean_reg
     assert built_name == name and isinstance(bot, pv.PVSearchBot)
     receipt = run_smoke(env, turns=12)
     assert receipt["passed"] is True
+    assert receipt["engine_backend"] == "compiled"
     assert receipt["policy"] == name and receipt["bot_class"] == "PVSearchBot"
     assert receipt["files"]["SHENGJI_PV_CKPT"]["sha256"] == sha
     phases = [t["phase"] for t in receipt["turns"]]
@@ -127,3 +128,14 @@ def test_the_build_scope_restores_the_shell_after_an_error(monkeypatch):
         pass
     assert os.environ["SHENGJI_PV_SINGLE_CANDIDATE_FAST"] == "1"
     assert "SHENGJI_PV_ENCODE_PREFIX_CACHE" not in os.environ
+
+
+def test_smoke_refuses_compiled_recipe_with_pure_engine_before_build(monkeypatch):
+    from scripts import cwv_serving_smoke as smoke
+
+    monkeypatch.setattr(combos, "decompose", lambda *args: None)
+    def unexpected_build(env):
+        pytest.fail("backend mismatch must refuse before constructing a bot")
+    monkeypatch.setattr(smoke, "build_production_bot", unexpected_build)
+    with pytest.raises(RuntimeError, match="fresh process.*SHENGJI_FAST=1"):
+        smoke.run_smoke({"SHENGJI_FAST": "1"}, turns=1)

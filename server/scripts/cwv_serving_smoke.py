@@ -134,6 +134,13 @@ def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91,
     from shengji.ai.heuristic import HeuristicBot
     from shengji.api import server as srv
     from shengji.engine.game import Game
+    from shengji.engine import combos, fast, legal
+
+    compiled = (fast.HAVE_FAST and combos.decompose is fast.decompose
+                and legal.validate_follow is fast.validate_follow)
+    if env.get("SHENGJI_FAST") == "1" and not compiled:
+        raise RuntimeError("recipe requires the compiled engine; start a fresh process "
+                           "with SHENGJI_FAST=1 before importing shengji")
 
     name, bot = build_production_bot(env)
     room = srv.Room(code="SMOKE")
@@ -155,6 +162,7 @@ def run_smoke(env: dict[str, str], *, turns: int = 12, deal_seed: int = 91,
     room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
     room._kitty_given = True
     receipt = {"schema": SCHEMA, "policy": name, "bot_class": type(bot).__name__,
+               "engine_backend": "compiled" if compiled else "pure",
                "latency_switches": bot_latency_switches(bot),
                "files": {k: {"path": v, "sha256": file_sha256(v)} for k, v in env.items()
                          if k.endswith("_CKPT")},

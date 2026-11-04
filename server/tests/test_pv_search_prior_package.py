@@ -313,6 +313,7 @@ def test_singleton_prior_survives_actual_server_snapshot_and_commit(package, oth
 
     asyncio.run(scenario())
 
+
 @pytest.mark.parametrize("count", [0, 1, None, True, False, 0.0, "0", -1])
 def test_budget_smoke_checks_bury_belief_count(count):
     from types import SimpleNamespace

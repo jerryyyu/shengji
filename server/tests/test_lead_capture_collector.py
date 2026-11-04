@@ -288,3 +288,113 @@ def test_non_refused_finish_is_not_declared_a_ranking_error(monkeypatch):
     assert result['whole_hand_refused_true_deal'] is False
     assert result['whole_hand_played'] is False
     assert result['ranking_or_horizon_error'] is None
+
+
+def test_common_world_lead_comparison_uses_real_scorer_without_mutating_bot():
+    import copy
+    import json
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_leaf_greedy_finish import leaf_bot
+    from test_pv_small_joker_lead import _fresh_round
+    from test_pv_doomed_throw_reselect import HashNoiseEvaluator
+
+    rnd = _fresh_round(707014)
+    bot = leaf_bot(HashNoiseEvaluator(), worlds=2)
+    control = copy.deepcopy(bot)
+    alternatives = [[c] for c in sorted(set(rnd.hands[rnd.turn]))[:2]]
+    result = compare_lead_actions(bot, rnd, rnd.turn, alternatives, gate=lambda: None)
+    assert result['worlds'] == 2
+    assert len(result['values']) == 2
+    assert result['actions'][0]['delta_vs_played'] == 0
+    assert result['actions'][0]['paired_se'] == 0
+    assert all(r['policy_rank'] > 0 for r in result['actions'])
+    json.dumps(result, allow_nan=False)
+    assert bot.last_decision_record == control.last_decision_record
+    assert bot.decide_play(copy.deepcopy(rnd), rnd.turn) == control.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert result['played'] == bot.last_decision_record['played']
+
+
+def test_common_world_lead_comparison_refuses_expiry_and_invalid_alternatives():
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_leaf_greedy_finish import leaf_bot
+    from test_pv_small_joker_lead import _fresh_round
+    import pytest
+
+    rnd = _fresh_round(707014)
+    bot = leaf_bot(worlds=2)
+    with pytest.raises(ValueError, match='duplicate'):
+        compare_lead_actions(bot, rnd, rnd.turn, [['S3'], ['S3']], gate=lambda: None)
+    bot.leaf_greedy_top = 1
+    with pytest.raises(ValueError, match='top-m'):
+        compare_lead_actions(bot, rnd, rnd.turn, [['S3']], gate=lambda: None)
+    bot.leaf_greedy_top = 0
+    def expired():
+        raise TimeoutError('diagnostic deadline')
+    with pytest.raises(TimeoutError):
+        compare_lead_actions(bot, rnd, rnd.turn, [[rnd.hands[rnd.turn][0]]], gate=expired)
+
+
+@pytest.mark.parametrize('fault', ['matrix', 'late_expiry', 'fallback'])
+def test_common_world_lead_comparison_never_returns_partial_evidence(monkeypatch, fault):
+    import numpy as np
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_leaf_greedy_finish import leaf_bot
+    from test_pv_small_joker_lead import _fresh_round
+
+    rnd = _fresh_round(707014)
+    bot = leaf_bot(worlds=2)
+    original = pv.PVSearchBot._lead_confirm_matrix
+    finished = False
+    def score(self, *args, **kwargs):
+        nonlocal finished
+        matrix = original(self, *args, **kwargs)
+        finished = True
+        if fault == 'matrix':
+            matrix[0, 0] = np.nan
+        return matrix
+    monkeypatch.setattr(pv.PVSearchBot, '_lead_confirm_matrix', score)
+    def gate():
+        if finished and fault == 'late_expiry':
+            raise TimeoutError('completed after deadline')
+    if fault == 'fallback':
+        def fallback(self, rnd, seat):
+            self.last_decision_record = {'work_complete': False}
+            return [rnd.hands[seat][0]]
+        monkeypatch.setattr(pv.PVSearchBot, 'decide_play', fallback)
+    with pytest.raises(TimeoutError if fault == 'late_expiry' else ValueError):
+        compare_lead_actions(bot, rnd, rnd.turn, [[rnd.hands[rnd.turn][0]]], gate=gate)
+
+
+def test_common_world_lead_deadline_is_checked_inside_initial_search(monkeypatch):
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_leaf_greedy_finish import leaf_bot
+    from test_pv_small_joker_lead import _fresh_round
+
+    rnd = _fresh_round(707014)
+    calls = 0
+    def gate():
+        nonlocal calls
+        calls += 1
+        if calls >= 3:
+            raise TimeoutError('inside search')
+    def forbidden(*args, **kwargs):
+        pytest.fail('pricing must not start after an expired decision')
+    monkeypatch.setattr(pv.PVSearchBot, '_lead_confirm_matrix', forbidden)
+    with pytest.raises(TimeoutError):
+        compare_lead_actions(leaf_bot(worlds=2), rnd, rnd.turn,
+                             [[rnd.hands[rnd.turn][0]]], gate=gate)
+    assert calls >= 3
+
+
+def test_common_world_comparison_separates_selected_throw_from_played_component():
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_doomed_throw_swap import (oxps, served, throw_first_scores,
+                                          RELEASE38_RULES, THROW, FORCED, SEAT)
+    bot = served(doomed_throw_swap=True, **RELEASE38_RULES)
+    bot.scores = throw_first_scores
+    result = compare_lead_actions(bot, oxps(), SEAT, [THROW], gate=lambda: None)
+    assert result['played'] == FORCED
+    assert sorted(result['record_selected']) == sorted(THROW)
+    assert result['actions'][0]['action'] == FORCED
+    assert result['actions'][0]['delta_vs_played'] == 0
+    assert result['decision']['doomed_throw_swap_applied'] is True

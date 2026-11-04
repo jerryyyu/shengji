@@ -302,3 +302,24 @@ def test_rollback_to_release49_restores_its_packages_and_drops_the_three_lines(
     assert bot.belief_model.package_sha256 == S58_SHA and bot.lead_confirm == 32
     for attr in LATENCY_KEYS:
         assert getattr(bot, attr) is True
+
+
+def test_lead_counterfactual_uses_the_served_registry_bot(release50_packages, monkeypatch):
+    import time
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_small_joker_lead import _fresh_round
+
+    name, bot = served_bot(release50_packages, monkeypatch)
+    rnd = _fresh_round(707014)
+    deadline = time.perf_counter() + 20
+    def gate():
+        if time.perf_counter() > deadline:
+            raise TimeoutError('counterfactual integration deadline')
+    result = compare_lead_actions(bot, rnd, rnd.turn,
+                                 [[sorted(rnd.hands[rnd.turn])[0]]], gate=gate)
+    assert name == RELEASE50
+    assert result['worlds'] == 64
+    assert result['scorer'] == 'lead_confirmation_on_base_worlds'
+    assert result['decision']['work_complete'] is True
+    assert len(result['values']) == 64
+    assert bot.last_decision_record is None

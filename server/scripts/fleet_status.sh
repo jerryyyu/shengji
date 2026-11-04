@@ -1,7 +1,7 @@
 #!/bin/bash
 # One-command status for every shengji job across the fleet
-# (Mini + Air + optional local `shengji-cloud` strength and `shengji-perf`
-# performance SSH aliases). Public addresses never belong in this repository.
+# (Mini + Air + the optional local SSH aliases `shengji-cloud`, `shengji-perf`
+# (retiring) and `ultra`). Public addresses never belong in this repository.
 # Probes LIVE state — no registry to go stale. Run from any directory.
 #
 # Job identification: our compute jobs are python processes in the
@@ -253,11 +253,10 @@ PY
   echo "  Cloud probe FAILED — state UNKNOWN (not idle)"
 fi
 
-hdr "PERFORMANCE HOST — qualification / performance work only"
-# This host is intentionally distinct from the strength Cloud worker above.
-# It is not authorized for scored evidence until a future controller pins its
-# exact runtime. This alias-only probe reads operating state, never evidence
-# files or log content.
+hdr "PERFORMANCE HOST (retiring; its lanes move to the Ultra) — load, memory, Python work"
+# The probe stays while the host exists, so a lane still running here is
+# reported rather than taken for idle.  This alias-only probe reads operating
+# state, never evidence files or log content.
 if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-perf '
   echo "  Host: $(hostname)"
   echo "  Capacity: $(nproc) CPUs; load $(cut -d" " -f1-3 /proc/loadavg)"
@@ -267,7 +266,7 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=8 shengji-perf '
   count=$(printf "%s\n" "$pids" | awk "NF {n++} END {print n+0}")
   echo "  Python processes visible: $count"
   if [ "$count" -eq 0 ]; then
-    echo "  (no Python work visible; performance host remains unqualified for strength)"
+    echo "  (no Python work visible on the retiring performance host)"
   fi
   echo "  --- exact Python process command, cwd and source"
   printf "%s\n" "$pids" | while IFS= read -r pid; do

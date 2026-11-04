@@ -1,0 +1,14 @@
+{
+ "name": "rtF-lane-247010910",
+ "purpose": "screen",
+ "seed0": 247010910,
+ "clusters": 600,
+ "span": [
+  247010910,
+  247011510
+ ],
+ "created_at": "2026-11-04T13:01:17Z",
+ "host": "perf",
+ "git_head": "100ef989fcd9bbee295136a24b24af1b9d9a6302",
+ "note": "rtF red team of the release-50 candidate (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + bbw + B1a belief 028131a0) vs Y at the expert budget (W256/K32/exact 8, 60 s), 600 seat-swapped deals on shengji-perf, tree 100ef989; packet ~/shengji-archive/2026-11-04-rtF-packet. Exact-deal clear against A / FT1 / smv3 / M28 CAT lineages and the B1a lineage (Y belief stores, S17, M17, S58 live). RESERVED BEFORE DEALING."
+}

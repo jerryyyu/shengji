@@ -124,8 +124,9 @@ def test_witness_b_disjoint_registers_and_resume_reuses(registry):
         seeds.register(seeds.make_entry(name="run-F", purpose="trajectory",
                                         seed0=99_000_000, clusters=16000), registry, reuse=True)
     # the registry is append-only and atomic: every earlier entry survives verbatim
-    before = seeds.load(COMMITTED)["windows"]
-    assert seeds.load(registry)["windows"][:len(before)] == before
+    # register rewrites the JSON file alone (the per-entry directory is never rewritten), so compare file to file
+    before = json.loads(COMMITTED.read_text(encoding="utf-8"))["windows"]
+    assert json.loads(registry.read_text(encoding="utf-8"))["windows"][:len(before)] == before
     assert not list(registry.parent.glob("*.tmp"))
 
 

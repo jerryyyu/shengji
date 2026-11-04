@@ -135,7 +135,13 @@ it on: **+0.0079 [−0.0069, +0.0221]**, DROP_SAFE (the predeclared non-inferior
 about 0.010 levels/round on this host). Release 50 keeps lcc32 on; the lcc decision is Jerry's, after the deploy.
 `readouts/loo/`.
 
-**Pending:** hb50, the half-budget (Fly-equivalent) duel of the release-50 stack, is running.
+**Half budget (hb50, cloud, 3,920 fresh deals from 247310910).** The release-50 stack against release 49 as then
+served, both at half the served budgets (play 1.5 s, lgfd 1000 ms, bury 1 s), a cloud-core proxy for the full
+budget on an unthrottled Fly CPU: **+0.0520 [+0.0362, +0.0679]**, one-sided 80% lower bound +0.0453,
+HALF_BUDGET_PASS; 0 budget fallbacks of 260,644 decisions per side, 0 belief and 0 bury-belief fallbacks. Not a Fly
+measurement and not modelling Fly's throttling. Readout
+[#1171 issuecomment-6641693008](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6641693008);
+`readouts/hb50/`.
 
 ### Latency
 
@@ -143,12 +149,15 @@ about 0.010 levels/round on this host). Release 50 keeps lcc32 on; the lcc decis
 |---|---|---|---|
 | R50 speed profile | release 50's stack vs Y, served budgets, one pinned cloud core each, 30 games × 2 rounds per bot (not deal-paired) | Bot compute per round 16.17 s vs 15.94 s (×1.014). Play p50 0.066 / p95 1.054 / p99 1.262 / max 1.671 s (Y 0.064 / 1.031 / 1.208 / 2.400); leads p95 1.236 s (Y 1.185); bury p95 0.383 s (Y 0.384), bbw belief draw p50 7.7 ms; 0 play fallbacks, 0 belief fallbacks (play and bury), 0 lcc abandons of 990 leads, 0 plays ≥ 3 s | `~/shengji-archive/2026-11-04-r50-speed-profile/README.md` |
 | cbaC (duel host, descriptive) | the release-50 stack vs Y | decide_play p95 1.084 vs 1.077 s, max 2.429 vs 2.421 s; bury seconds p95 0.415 s, bury-belief draw p95 9.3 ms | `readouts/cbaC/` |
+| hb50 (cloud duel host at half budget, descriptive) | the release-50 stack vs Y, both at play 1.5 s / lgfd 1000 ms / bury 1 s | decide_play p95 1.005 / max 1.23 s (Y 1.006 / 1.22 s); 0 budget fallbacks; lcc32 abandoned 15,061 of 64,548 search leads (23%, all `leaf_deadline`), against 0 of 990 leads at the full budget in the R50 speed profile; bury seconds p95 0.407 s | `readouts/hb50/` |
+| loo (M5 Ultra duel host, descriptive) | the release-50 stack with lcc32 off vs on | lead p95 0.305 s off vs 0.830 s on; decide_play p95 0.272 vs 0.702 s; mean decision time ratio 0.567 | `readouts/loo/` |
 
 **Not measured: release 50 on Fly** (S79, pending). The speed profile's Fly projection (assuming unthrottled Fly at
 ×2 a cloud core, uniform across components) puts play p99 at about 2.5 s against the 3 s budget, with about a third
 of lcc leads reaching the 2 s greedy-finish cut and abandoning (the designed `leaf_deadline` cut, which plays the
 base lead). That projection holds for release 49 alike: release 50's extra cost over release 49 is about +1.4% per
-round on a cloud core. Throttled (×5 or more), about 18% of plays would pass the 3 s budget for either release.
+round on a cloud core. Throttled (×5 or more), about 18% of plays would pass the 3 s budget for either release;
+s71fly found 14 of 16 timed blocks throttled on Fly, at about 8% of a core (CPU/wall about 0.08).
 Release 49's first-room triggers (Release checklist, step 9) apply unchanged.
 
 ### Pre-deploy smoke (release tree, this host)
@@ -811,10 +820,12 @@ all zeros for days is inactivity. The counters never gate the room path and carr
 so the endpoint stays unauthenticated.
 
 **The `pv-search` mode** (production since release 29) is `train/pv_search_policy.py`, registered when
-`SHENGJI_PV_CKPT` is set and refusing a package without its `SHENGJI_PV_SHA256` pin. Per play: heuristic anchor,
-W sampled worlds, the policy head admits K candidates, the value head scores each, the best mean plays. On budget
+`SHENGJI_PV_CKPT` is set and refusing a package without its `SHENGJI_PV_SHA256` pin. Per play: a heuristic anchor,
+W belief-proposed worlds, K candidates admitted by the card-play prior, each scored by the value package, then
+the rule stages the env turns on (exact endgame, the greedy-finished leaf, sc8, lcc32, and the rest).
+`AI_POLICIES.md` "Production contract" lists each stage. On budget
 expiry or error the anchor plays with a `pv-search-fallback-v1` record; otherwise the record is
-`pv-search-decision-v1`. Mechanism detail: `AI_POLICIES.md` and the archive.
+`pv-search-decision-v1`.
 
 ### Option A: Fly.io (recommended)
 
@@ -859,11 +870,15 @@ Policy cost, not the rules engine, sets CPU capacity.
 | direct v11pair (NumPy) | 0.25 ms / 0.52 ms |
 | `mc` (N=10) | 77 ms / 150 ms |
 | production report-LCB vs `mc-strong` (earlier matched benchmark) | 0.390 s vs 0.127 s |
+| release 50 play, one pinned cloud core (R50 speed profile) | p95 1.054 s, p99 1.262 s, max 1.671 s; release 49 on the same profile p95 1.031 s, p99 1.208 s, max 2.400 s; leads are 72% of bot compute and lcc32 alone 43% of release 49's play compute |
 | release 48 play, one pinned cloud core (v105lat) | p95 0.566 s, p99 0.746 s, max 2.408 s; peak RSS +26,792 kB over release 46 |
 | release 46 combo play, one perf core (v93lat) | p95 0.187 s, p99 0.400 s, max 2.404 s; peak RSS +48 MiB over release 45 |
 
-- Fly's shared-cpu-1x is slower and shared, so the release-48 tail may reach the 3 s budget there and play the
-  baseline; the first-room reader checks that.
+- Fly's shared-cpu-1x is slower and shared: about ×2 a cloud core unthrottled (v104fly), and about 8% of a core
+  once throttled (s71fly). Release 50 at half budget on a cloud core (hb50) had 0 budget fallbacks, but lcc32
+  abandoned 23% of its leads at the cut. Throttled, releases 48 and 49 ran near the 3 s budget (s71fly), and the
+  R50 speed profile projects the same for release 50. The first-room reader (Release checklist, step 9) checks
+  that on Fly.
 - The 512MiB machine fits bounded serving probes; that is not a concurrency or worst-case memory guarantee.
 - Off-loop execution hides event-loop blocking and overlaps the 0.7 s pacing floor; it does not make search free.
   Each turn snapshots after the latest play, computes, then revalidates before commit.

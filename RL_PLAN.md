@@ -51,8 +51,8 @@ data, with production's latency tail bounded. The standing goal is +0.05 levels/
   comparators were release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod policy of
   r48"), release 46 (Jerry 2026-10-16, recorded on #1075) and release 45 (Jerry 2026-10-13, #988
   issuecomment-6142666693).
-- **Held candidate:** release 50 (release 49 plus FT1, m30yc +0.0162 confirmed vs release 49) is not deployed;
-  Jerry 2026-11-01: hold.
+- **Held candidate:** release 50 = release 49 + the G3 Stage A value (f4f4127e) + the FT1 prior (1fa201b2) + the B1a belief (028131a0) + belief bury worlds (`bbw`); cbaC +0.0618 [+0.0507, +0.0729] vs release 49 on 7,840 fresh deals.
+  Not deployed; its remaining gates are on the board (row R50).
 
 | evidence label | supports |
 |---|---|
@@ -188,7 +188,7 @@ deploy gate is the served design.
 
 ## Search and teacher strategy
 
-1. **Admission and cost.** The release-46 search is the reference. Separate exact speedups from policy changes;
+1. **Admission and cost.** Release 49's search as served is the reference. Separate exact speedups from policy changes;
    compute-match controls when a claim is about cost.
 2. **Depth and allocation.** Test one bounded change against the comparator before any larger tree recipe; the
    ballot-rooted PUCT ladder is closed.

@@ -3889,6 +3889,42 @@
    "val_ce": 0.6327,
    "regret": null,
    "status": "sealed 2026-10-19 10:51:44Z (Mac mini). Offline readout (Claude, read once): val_ce 0.6455 at init -> 0.6376 at e4 -> 0.6327 at e20, but no epoch reaches the init's val rank_regret@1 (0.0500) or top-1 (0.4265); holdouts mixed; the offline signal does not separate the two picks. Selections: val_ce e20 (epoch-20.avg.pt 801772f3, screened as c15e20) and served_rank_regret e4 (best.pt 12a1027b, screened as c15e4). Served vs release 46, both selections INCONCLUSIVE: c15e20 +0.0075 [-0.0279, +0.0430], c15e4 +0.0044 [-0.0216, +0.0305] (MDE80 0.0372); neither C15 pick is shown ahead of release 46. Archive ~/shengji-archive/2026-09-13/readouts/c15-r45v7-offline/ (SHA256SUMS f8c91c7c...)."
+  },
+  {
+   "name": "S58 belief (served in releases 48 and 49)",
+   "ck": "42444515",
+   "date": "2026-10-21",
+   "recipe": "Hidden-hand belief model, not a value net (the val_ce and rank-regret columns do not apply): the S46 r3 belief continued on the rank-mixed corpora, 6 epochs, selected by the calibration log-loss. Package s58-e6-42444515.npz, sha256 424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e, served at its stored temperature.",
+   "val_ce": null,
+   "regret": null,
+   "status": "sealed 2026-10-21 21:58Z (6 of 6 epochs, 0 resumes); calib_ll 0.9740. Offline (read once by Claude): M17 guard S58 0.97312 - S46 r3 0.98662 = -0.01350 nats, PASS; endgame on rank != 2 rows +3.05 pp [+3.00, +3.11] of the uniform NLL over S46 r3, PASS. SERVED v103s58 (S58 + dtrx vs release 46 as served, ten windows) +0.0331 [+0.0145, +0.0516] POSITIVE; shipped in release 48 (r48cloud +0.0765 [+0.0571, +0.0958] vs release 46, the four changes together). Archive ~/shengji-archive/2026-09-13/readouts/s58/."
+  },
+  {
+   "name": "FT1 expert-anchored card-play prior (release 50)",
+   "ck": "1fa201b2",
+   "date": "by 2026-10-29",
+   "recipe": "Card-play prior, not a value net: the policy net fine-tuned toward expert-search labels (board M30 P0, the G2 1b expert-anchored prior; about 37.8k expert labels per board M33). Served as a separate prior package (SHENGJI_PV_PRIOR_*) beside the value package; package p0-ft1-1fa201b2.npz, sha256 1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf.",
+   "val_ce": null,
+   "regret": null,
+   "status": "SERVED reads (paired seat-swapped duels, 3,920 deals each, value 491ee4bf on both sides): m30p0 in release 48 vs release 48 as served +0.0247 [+0.0103, +0.0390] DEV_PASS; m30y in release 49 vs release 49 as served +0.0203 [+0.0061, +0.0351] DEV_PASS; m30yc fresh-seed confirmation +0.0162 [+0.0024, +0.0306] CONFIRMED. Shipped in release 50 with the G3 Stage A value (g3dsc, cbaC). Archives readouts/m30p0/, m30y/, m30yc/."
+  },
+  {
+   "name": "G3 Stage A value (release 50)",
+   "ck": "f4f4127e",
+   "date": "2026-11-02",
+   "recipe": "Unified value retrain on all Y self-play data from the served trunk 3e89e86f (smv3out-491ee4bf); the pick Ae04 is the EMA export of epoch 4 (epoch-04.avg.pt a09cef7c). Package g3a-e04-f4f4127e.npz, sha256 f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd; served as the value at every stage, its policy head unused.",
+   "val_ce": null,
+   "regret": null,
+   "status": "Offline Stage A bars, read once by Claude 2026-11-02 (calibration and NLL, not strength): A1 outcome NLL A - served -0.0860 [-0.1013, -0.0714] PASS; A2 fixed-banker bias +0.0485 vs served +0.2263 PASS; A3 bias +0.083, slope 0.937 PASS; A4 served-leaf rank regret A - served +0.0134 [-0.0013, +0.0281] PASS (narrow); A5 throw prior no-harm FAIL (its policy head is not served). V5 val_ce 0.7807 vs served 0.8485 on its own split (not comparable to the rows above). SERVED with the FT1 prior vs release 49 as served: g3ds +0.0307 [+0.0161, +0.0459]; g3dsc fresh seeds +0.0349 [+0.0203, +0.0492] CONFIRMED. Shipped in release 50. Archive readouts/g3-stageA/."
+  },
+  {
+   "name": "B1a belief (release 50)",
+   "ck": "028131a0",
+   "date": "2026-11-04",
+   "recipe": "Hidden-hand belief model, not a value net: S58 fine-tuned on all four Y stores at kitty weight 1.0 (the control arm of B1k, kitty weight 4.0); stored temperature 1.0190. Package b1a-028131a0.npz, sha256 028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8.",
+   "val_ce": null,
+   "regret": null,
+   "status": "Offline (read once by Claude 2026-11-04, tier-i log-loss and calibration only) on 360,064 test rows: log-loss gain over S58 all +2.24 pp [+2.17, +2.33], hands +2.37 pp, kitty +1.81 pp; ECE 0.00058 (S58 0.00126). SERVED on the A + FT1 stack vs release 49 as served: b1aU +0.0561 [+0.0416, +0.0712] SCREEN_PASS; cbaf contrast a - s (B1a over S58, both with bbw) +0.0228, 97.5% CI [+0.0010, +0.0448]; the full release-50 stack cbaC +0.0618 [+0.0507, +0.0729] CONFIRMED. Shipped in release 50. Archive readouts/b1a/."
   }
  ],
  "data": [

@@ -200,8 +200,8 @@ C14 training run, which closed inconclusive (v96c14e11); the open rows are on th
 | `RL_PLAN.md` | research plan, key learnings, measurement rules |
 | `DEPLOY.md` | release records, rollbacks, gates |
 | GitHub issue #1263 + topic issues | the live investigation board and work queue (predecessors #1075, #707, #679, closed) |
-| `docs/atlas_v2/` | every screen since release 29 (`registry.json`) |
-| `docs/scaling_log/` | every model with its offline metrics; engine and search speed (with issue #208) |
+| `docs/atlas_v2/` | every screen since release 29 and the era's models (`registry.json`) |
+| `docs/scaling_log/` | models with their offline metrics through 2026-10-02; engine and search speed (with issue #208). Later models (C15, S58, FT1, G3 Stage A, B1a) are in Atlas v2's models table |
 | `docs/EXTERNAL_SSD.md` | what lives on the external SSD (corpora, backups) and its rules |
 | `incidents/` / `server/tests/` | postmortems; the validation suite |
 | `AGENTS.md` | execution discipline and agent orchestration |

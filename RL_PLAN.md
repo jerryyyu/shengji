@@ -13,7 +13,7 @@ lessons that shape planned work. Everything else lives on its canonical surface:
 | production contract, measured ladder, policy names | `AI_POLICIES.md` ("Production contract", the ladder table) |
 | releases, rollback, deploy checklist | `DEPLOY.md` |
 | every screen | Atlas v2, `docs/atlas_v2/registry.json` |
-| every training run | the scaling page, `docs/scaling_log/` |
+| training runs | Atlas v2's models table (`registry.json` `models`); the scaling page, `docs/scaling_log/`, through 2026-10-02 |
 | fleet state | `server/scripts/fleet_status.sh` |
 | this plan's history and full detail | `docs_archive/rl-plan-through-2026-10-16.md` and earlier `docs_archive/rl-plan-*` files |
 

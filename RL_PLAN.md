@@ -8,7 +8,7 @@ lessons that shape planned work. Everything else lives on its canonical surface:
 
 | what | where |
 |---|---|
-| open questions, row state, next tests and bars | board issue [#1075](https://github.com/jerryyyu/shengji/issues/1075) (predecessors #707, #679, closed) |
+| open questions, row state, next tests and bars | board issue [#1263](https://github.com/jerryyyu/shengji/issues/1263) (predecessors #1075, #707, #679, closed) |
 | model plans and decision gates; search diagnostics | #663; #700 |
 | production contract, measured ladder, policy names | `AI_POLICIES.md` ("Production contract", the ladder table) |
 | releases, rollback, deploy checklist | `DEPLOY.md` |
@@ -133,7 +133,7 @@ with no strength claim when the served screen is not demonstrated negative (rele
 after release 45, "we should keep trying in this direction." Heuristics still in the served bot: the play
 anchor, the heuristic first trick inside each value leaf, and the continuations before the exact endgame.
 
-The board #1075 is authoritative for open rows: state, next test, bar, owner and host. This table lists only the
+The board #1263 is authoritative for open rows: state, next test, bar, owner and host. This table lists only the
 open row ids by area (board of 2026-11-04); parked rows and their failed bars are on the board.
 
 | area | open rows (board id: question) |
@@ -325,7 +325,7 @@ links and every reported number, is in `docs_archive/rl-plan-through-2026-10-16.
 
 ### Fleet handover and review latency
 
-1. While a predecessor runs, keep its next named successor on the board (#1075) or the owning issue: priority,
+1. While a predecessor runs, keep its next named successor on the board (#1263) or the owning issue: priority,
    owner, user-authority reference, source and model recipe, remaining review gates, required predecessor outputs,
    host reservation and next action. A prepared successor is not ARMED.
 2. Prepare those gates before the predecessor ends. If no successor is ready, name the exact blocker and the useful
@@ -384,7 +384,7 @@ ten-window MC-LCB instrument.
   each readout reports its own. Ten shared-control windows are a nominal read; only fresh held-out deals confirm.
 
 **Predeclared statistics options** (D9, 2026-10-15; code `server/shengji/eval/paired_window_stats.py`; adoption on
-HOLD per board #1075). A lane may predeclare either or both before any outcome; otherwise it keeps the frozen
+HOLD per board #1263). A lane may predeclare either or both before any outcome; otherwise it keeps the frozen
 DerSimonian-Laird (DL) pool and one ten-window read. Sealed rows keep their original pooling and labels.
 
 - **Adoption gate.** Every number is labelled *nominal* (the ideal model: known window SEs, equal information,

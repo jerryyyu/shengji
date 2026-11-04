@@ -369,8 +369,8 @@ Moved from `BACKLOG.md` on 2026-10-03.
 
 | topic | source |
 |---|---|
-| current queue and priority | GitHub: the board issue #1075, open issues and PRs (`BACKLOG.md` was deprecated 2026-10-03 and is a pointer stub) |
-| active fleet, open investigations and exact review asks | `server/scripts/fleet_status.sh`, the board issue #1075 (its predecessors #707 and #679 are closed and hold the earlier history) and its topic issues (#663 model, #700 gameplay audit and search diagnostics, #676 search screens, #436 PUCT/allocation, #681 lead audit; the Sol benchmark #355 is closed), and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
+| current queue and priority | GitHub: the board issue #1263, open issues and PRs (`BACKLOG.md` was deprecated 2026-10-03 and is a pointer stub) |
+| active fleet, open investigations and exact review asks | `server/scripts/fleet_status.sh`, the board issue #1263 (its predecessors #1075, #707 and #679 are closed and hold the earlier history) and its topic issues (#663 model, #700 gameplay audit and search diagnostics, #676 search screens, #436 PUCT/allocation, #681 lead audit; the Sol benchmark #355 is closed), and the owning GitHub issue or PR (`HANDOFF_ACTIVE.md` was deleted, #674) |
 | callable code | `server/shengji/ai/registry.py` |
 | production config | `fly.toml` |
 | model/belief/teacher design; research architecture and model lineage | `RL_PLAN.md` |

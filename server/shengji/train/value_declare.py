@@ -14,10 +14,11 @@ does NOT know the undealt cards, the other hands or the kitty.  One world:
    the current declaration is shuffled (a per-decision `random.Random`) and
    dealt to complete all four 25-card hands, the rest (8) is the kitty, in
    shuffled order (the order matters: an undeclared round flips trump from the
-   kitty's first non-joker).  This is the uniform posterior given the seat's
-   hand and the public declaration; it ignores what other seats' NOT
-   declaring so far says about their hands, and any declaration that was
-   overridden earlier (the engine keeps only the current one).
+   kitty's first non-joker).  By default this is the legacy uniform posterior
+   given the seat's hand and the current public declaration; it ignores what
+   other seats' NOT declaring so far says about their hands, and any declaration
+   that was overridden earlier.  With ``public_reveals=True``, preceding public
+   declarations are pinned as well.
 2. `declare_outcome_position`: the candidate declaration is applied with NO
    counter-declaration by anyone afterwards (the simplification: an override
    would need a model of every other seat's declare policy; the heuristic has
@@ -65,7 +66,10 @@ from ..engine.round import HAND_SIZE, KITTY_SIZE
 
 SCHEMA = "pv-value-declare-v1"
 #: the model the recipe digest binds (module docstring)
-MODEL = "uniform-unseen|public-declaration-reveals|no-counter-declare|heuristic-bury|heuristic-first-trick|value-head-seat-team"
+MODEL = "uniform-unseen|no-counter-declare|heuristic-bury|heuristic-first-trick|value-head-seat-team"
+#: the opt-in world model that also pins declaration records preceding the
+#: current overcall (`pv_search_policy`, ``vdpr``).
+MODEL_PUBLIC_REVEALS = MODEL.replace("uniform-unseen", "uniform-unseen|public-declaration-reveals")
 #: the same model with the first trick played by the policy head
 #: (`leaf_first_trick`; the ``lpft`` rule of `pv_search_policy`)
 MODEL_POLICY_FIRST_TRICK = MODEL.replace("heuristic-first-trick", "policy-first-trick")
@@ -130,38 +134,45 @@ def decision_rng(seed, rnd, seat: int) -> random.Random:
     return random.Random(int.from_bytes(hashlib.sha256(material.encode()).digest()[:8], "big"))
 
 
-def sample_declare_world(rnd, seat: int, rng: random.Random):
+def sample_declare_world(rnd, seat: int, rng: random.Random, *, public_reveals=False):
     """``(hands, kitty)``: one complete deal consistent with the seat's view
-    (module docstring, step 1). Public declarations that precede a stronger
-    overcall remain pinned as well."""
+    (module docstring, step 1). With ``public_reveals=True``, public
+    declarations that precede a stronger overcall remain pinned as well."""
     pool = Counter(make_deck())
     pool.subtract(rnd.hands[seat])
     pinned = [[] for _ in range(4)]
-    # ``public_declarations`` is immutable and survives shallow rollout
-    # copies.  Aggregate by seat/card using the maximum count seen in that
-    # seat's declarations: an upgrade reveals additional copies, while
-    # repeated records must not double-count the same physical cards.
-    records = getattr(rnd, "public_declarations", None)
-    if records is None:
-        records = ()
-    else:
-        records = tuple(records)
-    # Reconstructed/legacy rounds may assign ``declaration`` directly rather
-    # than passing through Round.declare; retain that latest public fact too.
     declaration = rnd.declaration
-    if declaration is not None:
-        current = (declaration["seat"], tuple(declaration["cards"]))
-        if current not in records:
-            records += (current,)
-    maxima = [Counter() for _ in range(4)]
-    for declared_seat, cards in records:
-        for code, count in Counter(cards).items():
-            maxima[declared_seat][code] = max(maxima[declared_seat][code], count)
-    for declared_seat, counts in enumerate(maxima):
-        if declared_seat == seat:
-            continue
-        pinned[declared_seat] = list(counts.elements())
-        pool.subtract(pinned[declared_seat])
+    if public_reveals:
+        # ``public_declarations`` is immutable and survives shallow rollout
+        # copies.  Aggregate by seat/card using the maximum count seen in that
+        # seat's declarations: an upgrade reveals additional copies, while
+        # repeated records must not double-count the same physical cards.
+        records = getattr(rnd, "public_declarations", None)
+        if records is None:
+            records = ()
+        else:
+            records = tuple(records)
+        # Reconstructed/legacy rounds may assign ``declaration`` directly
+        # rather than passing through Round.declare; retain that latest public
+        # fact too.
+        if declaration is not None:
+            current = (declaration["seat"], tuple(declaration["cards"]))
+            if current not in records:
+                records += (current,)
+        maxima = [Counter() for _ in range(4)]
+        for declared_seat, cards in records:
+            for code, count in Counter(cards).items():
+                maxima[declared_seat][code] = max(maxima[declared_seat][code], count)
+        for declared_seat, counts in enumerate(maxima):
+            if declared_seat == seat:
+                continue
+            pinned[declared_seat] = list(counts.elements())
+            pool.subtract(pinned[declared_seat])
+    elif declaration is not None and declaration["seat"] != seat:
+        # The legacy model knows only the current declaration.  Keep this
+        # branch byte-for-byte equivalent to the pre-public-reveal sampler.
+        pinned[declaration["seat"]] = list(declaration["cards"])
+        pool.subtract(declaration["cards"])
     if any(count < 0 for count in pool.values()):
         raise ValueDeclareError("the seat's view holds more copies of a card than the deck")
     unseen = sorted(pool.elements())
@@ -231,6 +242,6 @@ def declare_outcome_position(rnd, seat: int, hands, kitty, option, policy=None, 
     return world
 
 
-__all__ = ["SCHEMA", "MODEL", "MODEL_POLICY_FIRST_TRICK", "MODEL_HEURISTIC_BURY", "PASS", "ValueDeclareError",
+__all__ = ["SCHEMA", "MODEL", "MODEL_PUBLIC_REVEALS", "MODEL_POLICY_FIRST_TRICK", "MODEL_HEURISTIC_BURY", "PASS", "ValueDeclareError",
            "outcome_key", "candidate_outcomes",
            "decision_rng", "sample_declare_world", "declare_outcome_position"]

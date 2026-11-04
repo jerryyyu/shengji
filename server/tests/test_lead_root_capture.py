@@ -191,3 +191,48 @@ def test_served_search_record_to_capture_and_restored_engine():
     # Subsequent producer mutations must not rewrite the saved decision.
     bot.last_decision_record['admitted'].clear()
     assert packet['decision']['admitted']
+
+
+def test_capture_preserves_overcalled_public_declarations():
+    import random
+    from shengji.engine.round import Round
+    from shengji.ai.heuristic import HeuristicBot
+
+    rnd = Round("2", 0, random.Random(0))
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.declare(1, ["H2"])
+    rnd.declare(0, ["S2", "S2"])
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, HeuristicBot().decide_bury(rnd, rnd.banker))
+    capture = LeadCapture(rnd)
+    restored = restore(json.loads(json.dumps(capture.packet)))
+    assert restored.public_declarations == rnd.public_declarations
+    assert len(restored.public_declarations) == 2
+    assert fingerprint(restored) == fingerprint(rnd)
+
+
+def test_capture_restores_legacy_root_without_reveal_metadata():
+    rnd = rebuild_round(EVENTS)
+    packet = LeadCapture(rnd).packet
+    del packet['root']['public_declarations']
+    restored = restore(packet)
+    assert fingerprint(restored) == packet['root']
+
+
+def test_capture_roundtrips_direct_declaration_without_history():
+    rnd = rebuild_round(EVENTS)
+    assert rnd.declaration is not None
+    rnd.public_declarations = ()
+    packet = LeadCapture(rnd).packet
+    restored = restore(json.loads(json.dumps(packet)))
+    assert restored.public_declarations == ()
+    assert fingerprint(restored) == fingerprint(rnd)
+
+
+def test_capture_refuses_overcall_history_mismatch():
+    rnd = rebuild_round(EVENTS)
+    packet = LeadCapture(rnd).packet
+    packet['root']['public_declarations'].append([3, ['BJ', 'BJ']])
+    with pytest.raises(ValueError, match='root state drift'):
+        restore(packet)

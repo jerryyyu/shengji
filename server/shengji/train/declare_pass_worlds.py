@@ -126,14 +126,20 @@ def silence_weight(rnd, seat: int, hands, hazard: float | None = None) -> float:
     return (1.0 - hazard) ** silent
 
 
-def sample_pass_world(rnd, seat: int, rng: random.Random, stats=None):
+def sample_pass_world(rnd, seat: int, rng: random.Random, stats=None, *, public_reveals=False):
     """``(hands, kitty)``: one world drawn from the uniform declare posterior
     (`value_declare.sample_declare_world`) and accepted with its silence
     weight; after ``MAX_ATTEMPTS`` rejections the last draw is returned.
     ``stats`` (a dict, optional) accumulates ``worlds``, ``attempts`` and
     ``fallbacks``."""
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
+        if public_reveals:
+            hands, kitty = value_declare_model.sample_declare_world(
+                rnd, seat, rng, public_reveals=True)
+        else:
+            # Preserve the legacy positional call for existing patches and
+            # the default world model's exact stream.
+            hands, kitty = value_declare_model.sample_declare_world(rnd, seat, rng)
         if rng.random() < silence_weight(rnd, seat, hands):
             break
     else:

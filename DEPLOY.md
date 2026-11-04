@@ -680,7 +680,7 @@ Commands below are release 50's; substitute the new release's package names and 
    rows = [json.loads(l) for p in sys.argv[1:] for l in open(p) if l.strip()]
    d = [r["decision"] for r in rows if r.get("e") == "play" and r.get("decision")]
    bw = [x for x in d if "belief_fallback" in x]
-   bfb = [x for x in bw if x["belief_fallback"]]
+   bfb = [x for x in bw if x.get("belief_fallback_any", 0) or x["belief_fallback"]]
    leads = [x for x in d if x.get("exact_lead_status", "ineligible") != "ineligible"]
    follows = [x for x in d if x.get("exact_follow_attempted")]
    ab = [x for x in leads if x["exact_lead_status"] in ("abandoned", "skipped_budget")] + \
@@ -690,7 +690,9 @@ Commands below are release 50's; substitute the new release's package names and 
    secs = [x["seconds"] for x in d if "seconds" in x]
    endg = [x["seconds"] for x in leads + follows if "seconds" in x]
    bms = [x["belief_ms"] for x in bw if "belief_ms" in x]
-   print(f"plays {len(d)} belief-drawn {len(bw)} belief fallbacks {len(bfb)} {sorted({x.get('belief_error') for x in bfb})}")
+   print(f"plays {len(d)} belief-drawn {len(bw)} belief fallbacks {len(bfb)} {sorted({x['belief_error'] for x in bfb if x.get('belief_error')})}")
+   coverage = sum("belief_fallback_any" in x for x in bw)
+   print(f"belief all-draw coverage {coverage}/{len(bw)}; legacy base-only {len(bw) - coverage}")
    print(f"exact-eligible leads {len(leads)} follows {len(follows)} abandons {len(ab)} fallbacks {len(fb)}")
    print(f"decision s all p50 {q(secs,.5)} p95 {q(secs,.95)} max {max(secs) if secs else None}; endgame p50 {q(endg,.5)} p95 {q(endg,.95)} max {max(endg) if endg else None}; belief_ms p50 {q(bms,.5)} p95 {q(bms,.95)}")
    # release 49: the lead confirmation (lcc32) and the singleton challenger (sc8)
@@ -707,6 +709,9 @@ Commands below are release 50's; substitute the new release's package names and 
    print(f"buries {len(bt)} bbw {sum('bury_belief_fallbacks' in r for r in bt)} bury-belief fallbacks {sum(r.get('bury_belief_fallbacks') or 0 for r in bt)} bury fallbacks {sum(r.get('bury_search_status') == 'fallback' for r in bt)}")
    EOF
    ```
+   Belief fallbacks count decisions with any failed draw, including lead-confirmation and adaptive draws,
+   once per decision. Legacy records without `belief_fallback_any` expose only the base draw; zero
+   fallbacks in those records cannot establish that later draws succeeded.
    Record the lines under "Current production" with the room code. Server-side wall per decision is in the
    `bot_timing` events with `phase == "play"` (`compute_seconds`; `pacing_seconds` is the 0.7 s floor, not
    search); `model_search` events give queue/run stages; `declare_decision` records show `gate`.

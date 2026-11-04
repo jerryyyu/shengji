@@ -14,6 +14,10 @@ no earlier bury's record behind.  Decision identity is
 `test_degradation_telemetry_identity`.
 """
 import copy
+import json
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -70,7 +74,7 @@ def _fail_belief_after_first_draw(monkeypatch):
 
 # ------------------------------------------------------- (a) belief fallback on every draw
 
-def test_a_lead_confirmation_draw_that_falls_back_is_counted(package, monkeypatch):
+def test_a_lead_confirmation_draw_that_falls_back_is_counted(package, monkeypatch, tmp_path):
     rnd, seat = _lead()
     evaluator = OutsideBallotEvaluator(1.0)
     _prime(evaluator, rnd, seat)
@@ -86,6 +90,42 @@ def test_a_lead_confirmation_draw_that_falls_back_is_counted(package, monkeypatc
     assert rec["belief_fallback_by_stage"] == {"base": 0, "lead_confirm": rounds,
                                                "adaptive_worlds": 0}
     assert rec["belief_fallback_all_draws"] == rounds and rec["belief_fallback_any"] == 1
+    output = _deploy_room_read([rec], tmp_path)
+    assert "belief-drawn 1 belief fallbacks 1" in output
+    assert "belief all-draw coverage 1/1; legacy base-only 0" in output
+
+
+def _deploy_room_read(records, tmp_path):
+    text = (Path(__file__).parents[2] / "DEPLOY.md").read_text()
+    marker = "python3 - logs/<CODE>.jsonl <<'EOF'\n"
+    snippet = text.split(marker, 1)[1].split("   EOF", 1)[0]
+    import textwrap
+    path = tmp_path / "room.jsonl"
+    path.write_text("".join(json.dumps({"e": "play", "decision": r}) + "\n" for r in records))
+    return subprocess.run([sys.executable, "-c", textwrap.dedent(snippet), str(path)],
+                          check=True, capture_output=True, text=True).stdout
+
+
+@pytest.mark.parametrize("record,failures,coverage,legacy", [
+    ({"belief_fallback": 0}, 0, 0, 1),
+    ({"belief_fallback": 1, "belief_error": "cold"}, 1, 0, 1),
+    ({"belief_fallback": 1, "belief_fallback_any": 1, "belief_error": "cold"}, 1, 1, 0),
+    ({"belief_fallback": 0, "belief_fallback_any": 0}, 0, 1, 0),
+])
+def test_deploy_room_reader_counts_decisions_and_labels_legacy_coverage(
+        record, failures, coverage, legacy, tmp_path):
+    output = _deploy_room_read([record], tmp_path)
+    assert f"belief-drawn 1 belief fallbacks {failures}" in output
+    assert f"belief all-draw coverage {coverage}/1; legacy base-only {legacy}" in output
+
+
+def test_deploy_room_reader_handles_later_draw_and_base_draw_errors(tmp_path):
+    output = _deploy_room_read([
+        {"belief_fallback": 0, "belief_fallback_any": 1, "belief_error": None},
+        {"belief_fallback": 1, "belief_error": "cold"},
+    ], tmp_path)
+    assert "belief-drawn 2 belief fallbacks 2 ['cold']" in output
+    assert "belief all-draw coverage 1/2; legacy base-only 1" in output
 
 
 def _adaptive_bot(package):

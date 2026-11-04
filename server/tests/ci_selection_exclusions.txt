@@ -19,7 +19,6 @@ server/tests/test_banker_support_panel.py
 server/tests/test_bury_arms.py
 server/tests/test_cf_value_diagnostic.py
 server/tests/test_debug_xray.py
-server/tests/test_deep_capture.py
 server/tests/test_douzero_micro.py
 server/tests/test_encode_banker_kitty_corrected.py
 server/tests/test_encode_versions.py
@@ -77,7 +76,6 @@ server/tests/test_parallel_decode.py
 server/tests/test_pilot_freezer.py
 server/tests/test_pinned_watchdog_adapter.py
 server/tests/test_prior_live_telemetry.py
-server/tests/test_profile_luna_tokens.py
 server/tests/test_provenance_admission.py
 server/tests/test_report_fold_throw_fail.py
 server/tests/test_report_lcb_perf_accepted_stack_receipt.py

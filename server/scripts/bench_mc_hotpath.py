@@ -11,7 +11,7 @@ Example, from server/ with the native extension built:
     --out /path/to/fresh-report.json
 
 Only the named method is replaced; other candidate methods remain installed
-in both arms. Use bench_mc_builds for an identical-source native compiler A/B.
+in both arms.
 """
 
 from __future__ import annotations

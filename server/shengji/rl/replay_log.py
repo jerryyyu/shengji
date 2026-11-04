@@ -7,7 +7,6 @@ human_shards) share.
 
 from __future__ import annotations
 
-import glob as _glob
 import json
 import random
 from collections import defaultdict
@@ -59,35 +58,3 @@ def rebuild_round(evs: list[dict]) -> Round | None:
     rnd.finalize_declare()
     rnd.bury(tr["banker"], bury["cards"])
     return rnd
-
-
-def iter_human_decisions(paths):
-    """Yield (rnd, seat, human_cards) at each genuine human play decision
-    across the given log paths/globs. Known test-script seats excluded."""
-    expanded: list[str] = []
-    for p in paths if isinstance(paths, (list, tuple)) else [paths]:
-        expanded.extend(_glob.glob(p) if any(ch in p for ch in "*?[") else [p])
-    for path in expanded:
-        excluded_seats: set = set()
-        try:
-            first = next((e for e in map(json.loads, open(path))
-                          if e.get("e") == "round_start"), None)
-        except (OSError, json.JSONDecodeError):
-            continue
-        if first:
-            excluded_seats = {p["seat"] for p in first["players"]
-                              if p["name"] in EXCLUDE_PLAYERS}
-        for rno, evs in sorted(group_rounds(path).items()):
-            try:
-                rnd = rebuild_round(evs)
-                if rnd is None:
-                    continue
-                for e in evs:
-                    if e["e"] != "play" or rnd.phase != "play":
-                        continue
-                    if (e.get("bot") is False and rnd.turn == e["seat"]
-                            and e["seat"] not in excluded_seats):
-                        yield rnd, e["seat"], e["cards"]
-                    rnd.play(e["seat"], e["cards"])
-            except Exception:
-                continue  # partial/corrupt round

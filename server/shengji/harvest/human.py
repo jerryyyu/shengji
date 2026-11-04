@@ -171,7 +171,3 @@ def extract_human(human_dir: Path = HUMAN_V8, *, cap: int | None = 256,
     result.notes.append("policy pseudonyms are the corpus' player_id values "
                         "(sha256 of 'shengji-human-player-v1' + seat name)")
     return result
-
-
-def load_manifest(human_dir: Path = HUMAN_V8) -> dict:
-    return json.loads((human_dir / "manifest.json").read_text())

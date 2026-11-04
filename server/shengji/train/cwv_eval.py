@@ -471,10 +471,6 @@ def candidate_task_digest(task: tuple) -> str:
     return h.hexdigest()
 
 
-def candidate_task_cache_path(cache_dir: str | os.PathLike, task: tuple) -> Path:
-    return Path(cache_dir) / "candidate-pass" / f"{candidate_task_digest(task)[:24]}.npz"
-
-
 def save_shard_result(result: ShardResult, path: str | os.PathLike, *, digest: str,
                       version: int) -> None:
     """Persist one worker's ``ShardResult`` (flat arrays + record offsets),

@@ -132,10 +132,3 @@ def fit_stratified_prior(
         training_examples=len(rows))
     result.validate()
     return result
-
-
-def mean_metric(values: Iterable[float]) -> float:
-    rows = [float(value) for value in values]
-    if not rows or not all(np.isfinite(value) for value in rows):
-        raise ValueMetricError("metric population must be non-empty and finite")
-    return float(sum(rows) / len(rows))

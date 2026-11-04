@@ -665,11 +665,6 @@ class ScientificBudgetLedger:
                     "events_sha256": _sha([
                         event["event_sha256"] for event in self._events])}
 
-    def is_settled(self, packet_sha256: str) -> bool:
-        packet = _strict_sha(packet_sha256, "scientific settlement packet")
-        with self._lock:
-            return any(row[3] == packet for row in self._responses.values())
-
     def packet_state(self, packet_sha256: str) -> str:
         packet = _strict_sha(packet_sha256, "scientific packet state")
         with self._lock:

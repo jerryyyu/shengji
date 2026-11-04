@@ -461,11 +461,6 @@ def build_model(hidden: Sequence[int] = (512, 256)):
     return torch.nn.Sequential(*layers)
 
 
-def card_log_odds(logits):
-    """log p - log (1 - p) per card, from the head's logits (that IS the logit)."""
-    return logits
-
-
 def score_candidates(log_odds: np.ndarray, candidates: Sequence[Sequence[int]]) -> np.ndarray:
     """Factorised prior score of each candidate: the sum of its cards' log-odds,
     with multiplicity (a pair counts its card twice).  Order-invariant."""

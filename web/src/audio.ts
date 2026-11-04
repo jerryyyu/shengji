@@ -97,11 +97,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-/** True when clips cannot play because the context has not been unlocked. */
-export function isAudioBlocked(): boolean {
-  return !muted && ctx !== null && ctx.state !== "running";
-}
-
 export function isMuted(): boolean {
   return muted;
 }

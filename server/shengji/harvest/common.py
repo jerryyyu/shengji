@@ -136,9 +136,5 @@ def action_key(cards: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(cards))
 
 
-def action_keys(actions: Iterable[Iterable[str]]) -> set[tuple[str, ...]]:
-    return {action_key(a) for a in actions}
-
-
 def trump_mode(trump_suit: str | None, trump_is_nt: bool) -> str:
     return "NT" if trump_is_nt or trump_suit is None else str(trump_suit)

@@ -147,21 +147,6 @@ class RLBot(SmartBot):
         scores = self.net.score_candidates(obs, encoded)
         return actions[int(scores.argmax())]
 
-def check_ballot(trained, played, who: str) -> None:
-    """Warn loudly when a checkpoint scores a ballot it was not trained on.
-
-    A warning rather than an exception because existing registry entries are
-    already in this state — MCValueLeaf evaluates leaves over the pinned v1
-    enumeration while every head since v7w was trained on MC candidates. That is
-    one of the two misalignments that made v13abs uninformative. New policies
-    should pass the same spec for both and the warning should never fire.
-    """
-    if trained.digest != played.digest:
-        import sys as _s
-        print(f"BALLOT MISMATCH in {who}: trained on {trained}, scoring "
-              f"{played}. The model is ranking actions its labels never "
-              f"priced (this is the v10res/v13abs failure).", file=_s.stderr)
-
 
 class MCValueLeaf(MCBotBase):
     """Value-leaf hybrid (Suphx-style): MC search with TRUNCATED heuristic

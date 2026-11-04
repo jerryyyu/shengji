@@ -737,14 +737,6 @@ class FileTurnJournal:
             "failure_class": body["failure_class"],
         }
 
-    def pending_refusal_tool_event_count(self) -> int | None:
-        """Return the exact sealed refusal tool count while bytes still exist."""
-        self._groups = self._scan()
-        if not self._groups or "refusal" not in self._groups[-1]:
-            return None
-        value = self._refusal(self._groups[-1])["tool_event_count"]
-        return 0 if value is None else int(value)
-
     def pending_refusal_failure_disposition(self) \
             -> dict[str, object] | None:
         """Return the originally sealed closed failure classification."""

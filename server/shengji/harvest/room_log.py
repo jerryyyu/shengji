@@ -366,7 +366,3 @@ def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 
 def player_names(events: list[dict]) -> dict[int, str]:
     start = next(e for e in events if e.get("e") == "round_start")
     return {int(p["seat"]): str(p["name"]) for p in start["players"]}
-
-
-def rebuild_start_of_play(events: list[dict]) -> Round | None:
-    return rebuild_round(events)

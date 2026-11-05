@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMuted } from "../useMuted";
 import { conn } from "../ws";
 import { auth, effectiveName, useAuth } from "../auth";
+import { navigate } from "../replay/route";
 import NameEditForm from "./NameEditForm";
 
 /** The phone's `…` overflow: kitty count, sound, invite link and leave —
@@ -104,6 +105,10 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
                   <span className="hud-menu-k">Edit name</span>
                 </button>
               )}
+              <button className="hud-menu-row account-games" role="menuitem"
+                      onClick={() => { close(); navigate({ page: "list" }); }}>
+                <span>My games</span>
+              </button>
               <button className="hud-menu-row account" role="menuitem"
                       onClick={() => {
                         // the menu stays open until the server confirms, so a

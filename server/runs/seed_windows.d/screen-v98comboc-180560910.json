@@ -1,0 +1,14 @@
+{
+ "name": "screen-v98comboc-180560910",
+ "purpose": "screen",
+ "seed0": 180560910,
+ "clusters": 520,
+ "span": [
+  180560910,
+  180561430
+ ],
+ "created_at": "2026-10-20T15:50:34Z",
+ "host": "shengji-perf",
+ "git_head": null,
+ "note": "v98comboc: window 6 of 10 (seeds 180060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. fresh-seed confirmation of v98combo (same arms), two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v98comboc_screen_perf.sh (sha256 a0ce4002890b52b1...); no reservation record. Status: PINNED, NOT YET DEALT: launcher staged on perf 2026-10-20T15:50:34Z (created_at = its mtime), no reservation record or status at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

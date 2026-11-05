@@ -1,0 +1,14 @@
+{
+ "name": "screen-s43t-166360910",
+ "purpose": "screen",
+ "seed0": 166360910,
+ "clusters": 520,
+ "span": [
+  166360910,
+  166361430
+ ],
+ "created_at": "2026-10-19T22:48:31Z",
+ "host": "shengji-perf",
+ "git_head": null,
+ "note": "s43t: window 4 of 10 (seeds 166060910 + 100000*i, 520 clusters each), r2 round plan: a FIRST-ROUND window at trump rank 2. release 46 with the S43 belief package (T1.35 confirmation) vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s43t_screen_perf.sh (sha256 ef040669a0f8a1e5...); reservation shengji-perf:/root/claude_reservations/s43t.json. Status: LANE DONE 2026-10-20T03:42:42Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

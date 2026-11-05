@@ -1,0 +1,14 @@
+{
+ "name": "exact8fx-153061101",
+ "purpose": "other",
+ "seed0": 153061101,
+ "clusters": 8,
+ "span": [
+  153061101,
+  153061109
+ ],
+ "created_at": "2026-10-20T03:03:19Z",
+ "host": "shengji-perf",
+ "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+ "note": "exact8fx: Exact8 fixture search over initial seeds 153061101..153061108, 1 round per seed, sequential, stopping at the first hit (hit_seed 153061101 per Codex 700/6295407344); all 8 reserved. Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Launcher /root/claude_exact8fx_perf.sh (sha256 bef74ebf...); reservation shengji-perf:/root/claude_reservations/exact8fx.json. Status: === exact8fx DONE === 2026-10-20T03:43:14Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

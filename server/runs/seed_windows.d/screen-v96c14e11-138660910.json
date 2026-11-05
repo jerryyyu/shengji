@@ -1,0 +1,14 @@
+{
+ "name": "screen-v96c14e11-138660910",
+ "purpose": "screen",
+ "seed0": 138660910,
+ "clusters": 520,
+ "span": [
+  138660910,
+  138661430
+ ],
+ "created_at": "2026-10-17T01:13:44Z",
+ "host": "shengji-cloud",
+ "git_head": null,
+ "note": "v96c14e11: window 7 of 10 (seeds 138060910 + 100000*i, 520 clusters each), first-round deals (the harness default rank plan). C14 epoch 11 play/value package on release 46 vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_v96c14e11_screen_cloud.sh (sha256 b68b18a0f6b2a6f8...); reservation shengji-cloud:/root/claude_reservations/v96c14e11.json. Status: LANE DONE 2026-10-17T08:00:28Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

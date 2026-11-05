@@ -1,0 +1,14 @@
+{
+ "name": "exact8reh3-153061101",
+ "purpose": "other",
+ "seed0": 153061101,
+ "clusters": 1,
+ "span": [
+  153061101,
+  153061102
+ ],
+ "created_at": "2026-10-20T03:45:49Z",
+ "host": "shengji-perf",
+ "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+ "note": "exact8reh3: INTENTIONAL REPLICATE of the exact8fx hit seed 153061101 (capture rehearsal on the fixture deal), 1 round. Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Launcher /root/claude_exact8reh3_perf.sh (sha256 b8909c54...); reservation shengji-perf:/root/claude_reservations/exact8reh3.json. Status: === exact8reh3 DONE === 2026-10-20T03:48:12Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

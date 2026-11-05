@@ -30,8 +30,8 @@ def test_runtime_widths_are_the_training_widths():
                        "max_plays": bh.MAX_PLAYS}
 
 
-@pytest.fixture(scope="module")
-def chunk(tmp_path_factory):
+@pytest.fixture(scope="module", params=["2", "7"], ids=["rank2", "rank7"])
+def chunk(tmp_path_factory, request):
     """Synthetic clusters extracted as one chunk with their history, plus the
     replayed decisions (so a test can run the live featurizer at every row)."""
     root = tmp_path_factory.mktemp("s17s")
@@ -39,7 +39,7 @@ def chunk(tmp_path_factory):
     shards.mkdir(parents=True)
     for k, seed in enumerate((1003, 1017)):
         with open(shards / f"cluster-{k:06d}.jsonl", "w") as fh:
-            for r in synthetic_cluster(seed):
+            for r in synthetic_cluster(seed, trump_rank=request.param):
                 fh.write(json.dumps(r) + "\n")
     paths = bl.cluster_paths(root / "store")
     parts = [bl.extract_cluster(p, store_index=0, cluster_index=i, calib=0.0, test=0.0, windows=[],
@@ -47,7 +47,8 @@ def chunk(tmp_path_factory):
     arrays = {k: np.concatenate([p[k] for p in parts]) for k in bl.ARRAY_KEYS}
     np.savez(root / "train-x.npz", **arrays)
     hist = bh.chunk_history(str(root / "train-x.npz"), [str(p) for p in paths])
-    return {"rows": arrays, "hist": hist, "paths": paths, "root": root}
+    return {"rows": arrays, "hist": hist, "paths": paths, "root": root,
+            "trump_rank": request.param}
 
 
 def _model_batch(chunk):
@@ -72,6 +73,7 @@ def test_the_live_featurizer_rebuilds_every_extract_row(chunk):
     for path in chunk["paths"]:
         recs = [r for r in bl._read_records(path) if r.get("decision_kind") == "play"]
         for d in bl.iter_decisions(recs):
+            assert d.rnd.trump_rank == chunk["trump_rank"]
             inp = bn.decision_inputs(d.rnd, d.seat, d.refusals)
             ref = bsm.row_inputs(batch, i)
             for k in ("X", "row_card", "M", "card_feat", "tok_int", "tok_f", "tok_cards", "tok_att"):

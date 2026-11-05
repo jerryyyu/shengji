@@ -570,3 +570,38 @@ def test_diagnostic_recipe_controls_subprocess_package_import(tmp_path, monkeypa
     supervise([sys.executable, '-c', code], target, 5,
               expected={}, env=recipe_environment(spec))
     assert json.loads(target.read_text())['schema'] == 'saved-lead-diagnostic-v1'
+
+
+def test_diagnostic_file_cli_isolates_environment_before_package_import(tmp_path):
+    import hashlib
+    import json
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    from shengji.train import lead_diagnostic_run as runner
+    package = tmp_path / 'shengji'
+    package.mkdir()
+    witness = tmp_path / 'imports.txt'
+    actual_package = Path(runner.__file__).resolve().parents[1]
+    (package / '__init__.py').write_text(
+        'import os\nfrom pathlib import Path\n'
+        f'Path({str(witness)!r}).write_text(os.environ.get("SHENGJI_FAST", "absent"))\n'
+        'assert os.environ.get("SHENGJI_FAST") == "0"\n'
+        f'__path__ = [{str(actual_package)!r}]\n')
+    saved = tmp_path / 'saved.json'
+    saved.write_text('{}')
+    spec = dict(schema='saved-lead-run-v1', policy='pv-search-test', wall_seconds=5,
+                env={'SHENGJI_BOT': 'pv-search-test', 'SHENGJI_FAST': '0'},
+                saved_path=str(saved), saved_sha256='0' * 64)
+    packet = tmp_path / 'run.json'
+    packet.write_text(json.dumps(spec))
+    sha = hashlib.sha256(packet.read_bytes()).hexdigest()
+    output = tmp_path / 'result.json'
+    proc = subprocess.run([sys.executable, runner.__file__, '--spec', str(packet),
+                           '--sha256', sha, str(output)], capture_output=True, text=True,
+                          env={**os.environ, 'PYTHONPATH': str(tmp_path), 'SHENGJI_FAST': '1'},
+                          cwd=tmp_path, timeout=10)
+    assert proc.returncode != 0 and 'input hash mismatch' in proc.stderr
+    assert witness.read_text() == '0'
+    assert not output.exists()

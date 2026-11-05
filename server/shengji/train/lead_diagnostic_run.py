@@ -1,4 +1,12 @@
-"""Pinned saved-result diagnostic runner; launch authority and host admission are external."""
+"""Pinned saved-result diagnostic runner; authority and host admission are external.
+
+Invoke the supervisor by file path (not ``-m``) so no shengji package import
+precedes environment isolation::
+
+    python server/shengji/train/lead_diagnostic_run.py --spec RUN.json --sha256 SHA OUTPUT.json
+
+Only the supervisor invocation is launchable; --worker is its private child path.
+"""
 import argparse
 import hashlib
 import json

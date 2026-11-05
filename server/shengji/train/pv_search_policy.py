@@ -72,6 +72,14 @@ with level-mode sessions (`pv_exact_deep.exact_root_means`): the minimax value
 resolved only up to the signed-level steps the means use, so the means are a
 full minimax's, at a per-world node cap of ``EXACT_DEEP_LIMITS['max_nodes']``
 instead of 10000; the start gate, deadline and fallback are the exact lead's.
+Its full-trick variant, OFF BY DEFAULT: ``SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1``
+(``exact_lead_full_minimax``, token ``elm``; refused without ``exact_deep_cards``
+and ``exact_lead_tie_baseline``, and with ``exact_lead_policy_first``) solves the
+lead's own trick as well: each candidate's leaf is the world right after the
+lead, played through the engine's validation (a throw that world refuses plays
+its forced component), so the three responses are minimax moves instead of the
+heuristic's first-trick finish.  The tie rule then keeps the baseline lead unless
+the exact mean is strictly higher.  Same stage, deadline, node cap and fallback.
 Two DEV caps exist for a ceiling measurement that lifts those limits:
 ``SHENGJI_PV_EXACT_LEAD_MAX_SECONDS`` (the stage deadline, default
 ``EXACT_LEAD_LIMITS['max_seconds']``, token ``els<ms>``) and
@@ -996,6 +1004,15 @@ EXACT_LEAD_VARIANT_RULES = {"EXACT_LEAD_TIE_BASELINE": "exact_lead_tie_baseline"
 #: the tie rule's recipe identity: the exact pass replaces the baseline lead
 #: only on a strictly higher exact mean (exact float comparison)
 EXACT_LEAD_TIE_RULE = "replace-only-if-selected-exact-mean-gt-baseline-exact-mean"
+#: the deeper rule's full-trick variant (module docstring)
+EXACT_LEAD_FULL_MINIMAX_RULE = {"EXACT_LEAD_FULL_MINIMAX": "exact_lead_full_minimax"}
+#: its recipe identity: the leaf is the world right after the engine-validated lead
+EXACT_LEAD_FIRST_TRICK_MINIMAX = "minimax-from-the-lead"
+_EXACT_LEAD_FULL_MINIMAX_REQUIRES = (
+    "exact_lead_full_minimax requires exact_deep_cards and exact_lead_tie_baseline and "
+    "excludes exact_lead_policy_first (SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1 needs "
+    "SHENGJI_PV_EXACT_DEEP_CARDS and SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, without "
+    "SHENGJI_PV_EXACT_LEAD_POLICY_FIRST=1)")
 _EXACT_LEAD_VARIANT_REQUIRES = ("exact_lead_tie_baseline / exact_lead_policy_first / "
                                 "exact_deep_cards require exact_lead_endgame "
                                 "(SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, "
@@ -1155,7 +1172,8 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 #: pass-conditioned worlds, its wait option, the model-free first-round
 #: declaration, the policy-played value leaf, the greedy-finished value leaf,
 #: its exact-stage yield, the diagnostic oracle worlds):
-#: div, fs, rc, rcec, whl, whd, bw, bwc, tb, fla, ak16, wla, la, lp, dts, sjg, aw, awl, dtr, dtrx,
+#: div, fs, rc, rcec, whl, whd, bw, bwc, tb, fla, ele, elt, elp, elm, ak16, wla, la, lp, dts, sjg,
+#: aw, awl, dtr, dtrx,
 #: vd, vdef, vdsb, vdpw, vdw, asap, lpft, lgf, lgfx, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
               **LEAD_ANCHOR_RULE, **LEAD_TIEBREAK_RULE, **DOOMED_THROW_RULE,
@@ -1167,13 +1185,15 @@ RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_
               **DECLARE_ASAP_RULE, **LEAF_POLICY_RULE, **LEAF_GREEDY_RULE,
               **LEAF_GREEDY_EXACT_SKIP_RULE,
               **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE,
-              **EXACT_LEAD_VARIANT_RULES, **EXACT_FOLLOW_RULE}
+              **EXACT_LEAD_VARIANT_RULES, **EXACT_LEAD_FULL_MINIMAX_RULE,
+              **EXACT_FOLLOW_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("finish_lead_admission", "fla"),
                                                    ("exact_lead_endgame", "ele"),
                                                    ("exact_lead_tie_baseline", "elt"),
                                                    ("exact_lead_policy_first", "elp"),
+                                                   ("exact_lead_full_minimax", "elm"),
                                                    ADAPTIVE_K_TOKEN,
                                                    ("wide_lead_admission", "wla"),
                                                    ("lead_anchor", "la"),
@@ -1479,6 +1499,8 @@ class PVSearchConfig:
     exact_lead_policy_first: bool = False
     # the deeper exact rule (module docstring): 0 is off
     exact_deep_cards: int = 0
+    # its full-trick variant (module docstring); needs it and the tie rule
+    exact_lead_full_minimax: bool = False
     # DEV caps of the exact lead stage (``EXACT_LEAD_CAP_PARAMS``): the stage
     # deadline (needs ``exact_lead_endgame``) and the deeper rule's per-world
     # node cap (needs ``exact_deep_cards``); at their defaults ABSENT from the payload
@@ -1559,6 +1581,24 @@ def _check_exact_deep_cards(cards) -> None:
     lo, hi = EXACT_DEEP_CARDS_RANGE
     if isinstance(cards, bool) or type(cards) is not int or not (cards == 0 or lo <= cards <= hi):
         raise PVSearchPolicyError(f"exact_deep_cards must be 0 (off) or an int in [{lo}, {hi}]")
+
+
+def _lead_only_leaf(world_root, seat, hands, buried, action, world_index):
+    """The full-trick variant's leaf (``exact_lead_full_minimax``): the world
+    right after the lead and nothing more, so the exact solve plays the rest of
+    the lead's trick.  The engine validates the lead in that world, so a throw
+    the world refuses plays its forced component, as it would at the table."""
+    child = root_clone(world_root, hands, buried)
+    child._trusted_rollout = False
+    child.play(seat, list(action))
+    return child
+
+
+def _check_exact_lead_full_minimax(config) -> None:
+    if config.exact_lead_full_minimax and not (
+            config.exact_deep_cards and config.exact_lead_tie_baseline
+            and not config.exact_lead_policy_first):
+        raise PVSearchPolicyError(_EXACT_LEAD_FULL_MINIMAX_REQUIRES)
 
 
 def _check_exact_lead_caps(config) -> tuple[bool, bool]:
@@ -1774,6 +1814,9 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload['exact_lead_tie_rule'] = EXACT_LEAD_TIE_RULE
     if config.exact_lead_policy_first:
         payload['exact_lead_policy_first_limits'] = EXACT_LEAD_POLICY_LIMITS
+    _check_exact_lead_full_minimax(config)
+    if config.exact_lead_full_minimax:
+        payload['exact_lead_first_trick'] = EXACT_LEAD_FIRST_TRICK_MINIMAX
     if config.finish_lead_admission:
         if config.tree is not None:
             raise PVSearchPolicyError('finish_lead_admission does not combine with the tree')
@@ -2128,6 +2171,7 @@ class PVSearchBot(PolicyValueBot):
     exact_lead_tie_baseline = False
     exact_lead_policy_first = False
     exact_deep_cards = 0
+    exact_lead_full_minimax = False
     #: the exact lead stage's DEV caps: class-level defaults, instance state only
     #: when lifted
     exact_lead_max_seconds = EXACT_LEAD_CAP_DEFAULTS["exact_lead_max_seconds"]
@@ -2268,6 +2312,12 @@ class PVSearchBot(PolicyValueBot):
             if not config.exact_lead_endgame:
                 raise PVSearchPolicyError(_EXACT_LEAD_VARIANT_REQUIRES)
             self.exact_deep_cards = config.exact_deep_cards
+        if type(config.exact_lead_full_minimax) is not bool:
+            raise PVSearchPolicyError('exact_lead_full_minimax must be a bool')
+        _check_exact_lead_full_minimax(config)
+        if config.exact_lead_full_minimax:
+            # instance state only when on, as the variants above
+            self.exact_lead_full_minimax = True
         lifted_seconds, lifted_nodes = _check_exact_lead_caps(config)
         if lifted_seconds:
             self.exact_lead_max_seconds = float(config.exact_lead_max_seconds)
@@ -3898,6 +3948,8 @@ class PVSearchBot(PolicyValueBot):
         with stage:
             leaf_fn = (self._leaf if policy_first is None
                        else policy_first.leaf_fn(rnd, seat, admitted, solved))
+            if self.exact_lead_full_minimax:
+                leaf_fn = _lead_only_leaf
             if deep:
                 # the deeper rule (module docstring)
                 from .pv_exact_deep import exact_root_means
@@ -3923,6 +3975,8 @@ class PVSearchBot(PolicyValueBot):
         state['exact_lead_seconds'] = time.perf_counter() - now
         if policy_first is not None:
             state.update(exact_lead_first_trick='policy', **policy_first.counters())
+        if self.exact_lead_full_minimax:
+            state['exact_lead_first_trick'] = 'minimax'
         if self.exact_lead_tie_baseline:
             state.update(exact_lead_tie_baseline_kept=kept_index is not None,
                          exact_lead_tie_baseline_exact_index=kept_index)
@@ -4507,6 +4561,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_lead_tie_baseline: bool = False,
                        exact_lead_policy_first: bool = False,
                        exact_deep_cards: int = 0,
+                       exact_lead_full_minimax: bool = False,
                        exact_lead_max_seconds: float = EXACT_LEAD_CAP_DEFAULTS["exact_lead_max_seconds"],
                        exact_deep_max_nodes: int = EXACT_LEAD_CAP_DEFAULTS["exact_deep_max_nodes"],
                        exact_follow: bool = False,
@@ -4590,6 +4645,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
                             exact_deep_cards=exact_deep_cards,
+                            exact_lead_full_minimax=exact_lead_full_minimax,
                             exact_lead_max_seconds=exact_lead_max_seconds,
                             exact_deep_max_nodes=exact_deep_max_nodes,
                             exact_follow=exact_follow,
@@ -4724,6 +4780,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_lead_tie_baseline: bool = False,
                         exact_lead_policy_first: bool = False,
                         exact_deep_cards: int = 0,
+                        exact_lead_full_minimax: bool = False,
                         exact_lead_max_seconds: float = EXACT_LEAD_CAP_DEFAULTS["exact_lead_max_seconds"],
                         exact_deep_max_nodes: int = EXACT_LEAD_CAP_DEFAULTS["exact_deep_max_nodes"],
                         exact_follow: bool = False,
@@ -4788,6 +4845,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_lead_tie_baseline=exact_lead_tie_baseline,
                             exact_lead_policy_first=exact_lead_policy_first,
                             exact_deep_cards=exact_deep_cards,
+                            exact_lead_full_minimax=exact_lead_full_minimax,
                             exact_lead_max_seconds=exact_lead_max_seconds,
                             exact_deep_max_nodes=exact_deep_max_nodes,
                             exact_follow=exact_follow,
@@ -4915,6 +4973,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_lead_tie_baseline=config.exact_lead_tie_baseline,
                                exact_lead_policy_first=config.exact_lead_policy_first,
                                exact_deep_cards=config.exact_deep_cards,
+                               exact_lead_full_minimax=config.exact_lead_full_minimax,
                                exact_lead_max_seconds=config.exact_lead_max_seconds,
                                exact_deep_max_nodes=config.exact_deep_max_nodes,
                                exact_follow=config.exact_follow,
@@ -4967,7 +5026,8 @@ def pv_env_recipe(environ=None) -> dict:
     ``_BELIEF_WORLDS`` / ``_BELIEF_CAPACITY`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_EXACT_LEAD_ENDGAME`` /
-    ``_EXACT_LEAD_TIE_BASELINE`` / ``_EXACT_LEAD_POLICY_FIRST`` / ``_DOOMED_THROW_RESELECT`` /
+    ``_EXACT_LEAD_TIE_BASELINE`` / ``_EXACT_LEAD_POLICY_FIRST`` / ``_EXACT_LEAD_FULL_MINIMAX``
+    (needs ``_EXACT_DEEP_CARDS`` and ``_EXACT_LEAD_TIE_BASELINE=1``) / ``_DOOMED_THROW_RESELECT`` /
     ``_DOOMED_THROW_RESELECT_EXACT_GUARD`` (needs ``_DOOMED_THROW_RESELECT=1`` and
     ``_EXACT_LEAD_ENDGAME=1``) / ``_LEAF_GREEDY_FINISH`` (refused with ``_TREE_SIMS``,
     ``_ADAPTIVE_WORLDS`` or ``_ADAPTIVE_WORLDS_LEADS``) / ``_LEAF_GREEDY_FINISH_EXACT_SKIP``

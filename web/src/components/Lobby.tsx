@@ -237,7 +237,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         <h1 className="game-title">
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
-        <p className="game-subtitle">Tractor · two decks · first to Ace</p>
+        <p className="game-subtitle">Tractor · two decks</p>
 
         {account.status === "in" && account.user ? (
           <AccountChip user={account.user} />

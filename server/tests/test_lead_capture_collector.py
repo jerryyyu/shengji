@@ -605,3 +605,98 @@ def test_diagnostic_file_cli_isolates_environment_before_package_import(tmp_path
     assert proc.returncode != 0 and 'input hash mismatch' in proc.stderr
     assert witness.read_text() == '0'
     assert not output.exists()
+
+
+@pytest.mark.parametrize('signal_name', ['SIGTERM', 'SIGHUP', 'SIGINT'])
+def test_diagnostic_cli_signal_reaps_worker_without_publishing(tmp_path, signal_name):
+    import hashlib
+    import json
+    import os
+    from pathlib import Path
+    import signal
+    import subprocess
+    import sys
+    import time
+    from shengji.train import lead_diagnostic_run as runner
+
+    package = tmp_path / 'shengji' / 'train'
+    package.mkdir(parents=True)
+    (package.parent / '__init__.py').write_text('')
+    (package / '__init__.py').write_text('')
+    marker = tmp_path / 'worker.pid'
+    (package / 'lead_diagnostic_run.py').write_text(
+        'import os,time\nfrom pathlib import Path\n'
+        f'Path({str(marker)!r}).write_text(str(os.getpid()))\n'
+        'time.sleep(30)\n')
+    spec = dict(schema='saved-lead-run-v1', policy='pv-search-test', wall_seconds=20,
+                env={'SHENGJI_BOT': 'pv-search-test'}, saved_sha256='0' * 64)
+    packet = tmp_path / 'run.json'
+    packet.write_text(json.dumps(spec))
+    sha = hashlib.sha256(packet.read_bytes()).hexdigest()
+    output = tmp_path / 'result.json'
+    proc = subprocess.Popen([sys.executable, runner.__file__, '--spec', str(packet),
+                             '--sha256', sha, str(output)], cwd=tmp_path,
+                            env={**os.environ, 'PYTHONPATH': str(tmp_path)})
+    worker = None
+    try:
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert marker.exists(), 'worker did not start'
+        worker = int(marker.read_text())
+        sig = getattr(signal, signal_name)
+        proc.send_signal(sig)
+        assert proc.wait(timeout=5) == 128 + sig
+        with pytest.raises(ProcessLookupError):
+            os.kill(worker, 0)
+        assert not output.exists()
+        assert not list(tmp_path.glob('.lead-diagnostic-*'))
+    finally:
+        if worker is not None:
+            try:
+                os.killpg(worker, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=5)
+
+
+@pytest.mark.parametrize('signal_name', ['SIGTERM', 'SIGHUP', 'SIGINT'])
+def test_diagnostic_signal_during_spawn_reaps_worker(tmp_path, monkeypatch, signal_name):
+    import os
+    import signal
+    import subprocess
+    import sys
+    from shengji.train import lead_diagnostic_run as runner
+
+    original = subprocess.Popen
+    children = []
+    sig = getattr(signal, signal_name)
+    handler = signal.getsignal(sig)
+
+    def interrupted_spawn(*args, **kwargs):
+        child = original(*args, **kwargs)
+        children.append(child)
+        os.kill(os.getpid(), sig)
+        return child
+
+    monkeypatch.setattr(runner.subprocess, 'Popen', interrupted_spawn)
+    output = tmp_path / 'result.json'
+    try:
+        with pytest.raises(SystemExit) as error:
+            runner.supervise([sys.executable, '-c', 'import time; time.sleep(30)'],
+                             output, 5, expected={})
+        assert error.value.code == 128 + sig
+        assert len(children) == 1
+        assert children[0].returncode is not None
+        with pytest.raises(ProcessLookupError):
+            os.kill(children[0].pid, 0)
+        assert signal.getsignal(sig) == handler
+        assert not output.exists()
+        assert not list(tmp_path.glob('.lead-diagnostic-*'))
+    finally:
+        for child in children:
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGKILL)
+            child.wait(timeout=5)

@@ -8,6 +8,7 @@ precedes environment isolation::
 Only the supervisor invocation is launchable; --worker is its private child path.
 """
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import math
@@ -30,6 +31,38 @@ def pinned_json(path, expected, limit):
     return json.loads(data)
 
 
+@contextmanager
+def termination_guard():
+    signals = (signal.SIGTERM, signal.SIGHUP, signal.SIGINT)
+    previous = {sig: signal.getsignal(sig) for sig in signals}
+    deferred = True
+    pending = None
+
+    def terminate(sig, frame):
+        nonlocal pending
+        # A second signal must not interrupt process-group cleanup and reaping.
+        for item in signals:
+            signal.signal(item, signal.SIG_IGN)
+        if deferred:
+            pending = sig
+        else:
+            raise SystemExit(128 + sig)
+
+    def child_owned():
+        nonlocal deferred
+        deferred = False
+        if pending is not None:
+            raise SystemExit(128 + pending)
+
+    try:
+        for sig in signals:
+            signal.signal(sig, terminate)
+        yield child_owned
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
 def supervise(command, output, seconds, *, expected, env=None):
     """Bound one child process group and publish its JSON only on successful exit.
 
@@ -43,16 +76,18 @@ def supervise(command, output, seconds, *, expected, env=None):
         raise FileExistsError(output)
     with tempfile.TemporaryDirectory(prefix='.lead-diagnostic-', dir=output.parent) as tmp:
         partial = Path(tmp) / 'result.json'
-        child = subprocess.Popen([*command, str(partial)], start_new_session=True, env=env)
-        try:
-            rc = child.wait(timeout=seconds)
-        finally:
-            # Stop the process group even when native inference ignores the gate.
+        with termination_guard() as child_owned:
+            child = subprocess.Popen([*command, str(partial)], start_new_session=True, env=env)
             try:
-                os.killpg(child.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            child.wait()
+                child_owned()
+                rc = child.wait(timeout=seconds)
+            finally:
+                # Stop the process group even when native inference ignores the gate.
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.wait()
         if rc != 0:
             raise RuntimeError(f'diagnostic child exited {rc}')
         data = partial.read_bytes()

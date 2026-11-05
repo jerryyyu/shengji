@@ -504,6 +504,12 @@ textarea:focus-visible {
   color: var(--gold, #d9a441);
 }
 
+.signin-upsell {
+  margin: 4px 0 -4px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
 .divider {
   display: flex;
   align-items: center;

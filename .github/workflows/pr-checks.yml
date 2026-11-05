@@ -340,7 +340,7 @@ jobs:
         run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_pv_belief_capacity_release48.py tests/test_pv_leaf_greedy_top_release48.py tests/test_pv_lead_confirm_release48.py tests/test_release46_fly_config.py tests/test_release48_fly_config.py tests/test_release49_fly_config.py tests/test_release50_fly_config.py tests/test_expert_label_producer.py tests/test_pv_latency_switches_release46.py tests/test_pv_leaf_greedy_stream.py tests/test_pv_native_release48.py tests/test_cwv_bury_belief_worlds.py
       # The release manifests' wiring witness on the same pinned packages: the stage tables
       # of releases 49 and 50 must be what their served bots do (fails, never skips, here).
-      - name: Check the release-49 and release-50 manifests' wiring on this tree
+      - name: Check release manifests and served capture on pinned packages
         env:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
@@ -349,7 +349,7 @@ jobs:
           SHENGJI_PV50_PACKAGE_PATH: /tmp/shengji-packages/g3a-e04-f4f4127e.npz
           SHENGJI_PV50_PRIOR_PACKAGE_PATH: /tmp/shengji-packages/p0-ft1-1fa201b2.npz
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_release_manifests.py
+        run: uv run --frozen --group rl python scripts/test_checkout.py --engine compiled -- -q tests/test_release_manifests.py tests/test_y_trajectory_runner.py
 
   import-walk:
     needs: changes

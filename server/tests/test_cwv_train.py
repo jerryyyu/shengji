@@ -416,10 +416,45 @@ def test_training_smoke_receipt_and_checkpoint_api(store_dir, luna, tmp_path, mo
     assert prediction.expected_signed_level == pytest.approx(level[0], abs=1e-5)
     assert predict_tensors(loaded, [row.tensors])[0].probability == prediction.probability
     # evaluate reproduces the checkpoint's TEST and Luna metrics
+    original_run_eval = train_cwv.run_eval
+    evaluated_splits = []
+
+    def check_eval_decode_selection(model, store, mask_fn, device, **kwargs):
+        # The first call is evaluate's data/test path; Luna is separate.
+        if evaluated_splits:
+            return original_run_eval(model, store, mask_fn, device, **kwargs)
+        selected = set(metadata["population"]["test"])
+        expected_blocks = [i for i in range(len(store.entries))
+                           if selected.intersection(store.keys_of(i))]
+        assert 0 < len(expected_blocks) < len(store.entries)
+        decoded = []
+        original_block = store.block
+
+        def record_block(i, *args, **kw):
+            decoded.append(i)
+            return original_block(i, *args, **kw)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(store, "block", record_block)
+            actual = original_run_eval(model, store, mask_fn, device, **kwargs)
+            assert decoded == expected_blocks, "evaluate must skip non-test block loads"
+            decoded.clear()
+            # Independent old selector path, without the skip protocol.
+            plain = original_run_eval(
+                model, store, lambda b: np.isin(b.deal_key, sorted(selected)),
+                device, **kwargs)
+            assert decoded == list(range(len(store.entries)))
+        for name in actual:
+            np.testing.assert_array_equal(actual[name], plain[name], err_msg=name)
+        evaluated_splits.append(True)
+        return actual
+
+    monkeypatch.setattr(train_cwv, "run_eval", check_eval_decode_selection)
     ev = train_cwv.evaluate(checkpoint=str(out / "best.pt"), out=tmp_path / "e",
                             data=[str(store_dir)], eval_luna=str(luna_path), device="cpu",
                             n_boot=20, cache_dir=str(cache_dir), cache_workers=1,
                             eval_workers=1, bench_batch=8, log=None)
+    assert evaluated_splits == [True]
     assert ev["final"]["test"]["value"]["model"] == test["value"]["model"]
     assert ev["final"]["luna"]["value"]["model"] == luna_block["value"]["model"]
     assert ev["final"]["test"]["ranking"]["scorers"]["cwv"]["top1"]["mean"] == \

@@ -1867,14 +1867,26 @@ def test_a_cancelled_deal_task_is_recorded_without_a_warning(client, caplog):
             assert "deal_task=cancelled" in message
 
 
-def test_a_finished_game_start_records_the_deal_and_bot_tasks(client):
-    """The real path, unmodified: once play begins, the deal task has RETURNED
-    and the bot task exists, both recorded by the same callback."""
+def test_a_finished_game_start_records_the_deal_and_bot_tasks(client, monkeypatch):
+    """A human banker starts play without a bot task; the human lead starts it."""
     from shengji.api import server as srv
+    from shengji.ai.heuristic import HeuristicBot
 
+    monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
     with client.websocket_connect("/ws") as a:
         code, room = _start_game(client, a, to_play=True)
         assert room.deal_task.done()
         assert room.task_exits.get("deal_task") == "returned"
-        assert room.bot_task is not None
+        assert room.round.banker == room.round.turn == 0
+        assert room.bot_task is None
+        card_id = next(iter(room.ids[0]))
+        a.send_json({"type": "play", "card_ids": [card_id]})
+        _drain(a, "state", tries=60)
+
+        async def bot_task_after_action():
+            # The state broadcast precedes task creation inside the room lock.
+            async with room.lock:
+                return room.bot_task
+
+        assert client.portal.call(bot_task_after_action) is not None
         assert srv.rooms[code] is room

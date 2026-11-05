@@ -9,6 +9,6 @@
  ],
  "created_at": "2026-11-05T04:50:00Z",
  "host": "cloud",
- "git_head": "0fb3f0debc7df4243932c56088a6662633dcc198",
- "note": "S83 elm CONFIRMATION (fresh seeds, reserved with the screen; dealt only if the screen passes) head-to-head: release 50 + elt + elm (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1, PR #1288) vs release 50 as served with lcc32 off (SHENGJI_PV_LEAD_CONFIRM=0; the control's lcc setting follows the served config at launch), both at the served budgets, on shengji-cloud, tree = PR #1288 head 0fb3f0de (rebound to its merge commit on main before RELEASE); packet ~/shengji-archive/2026-11-05-elm-packet. Exact-deal clear against the A / FT1 / B1a lineages (lccC's exposure method) is an open item of the packet. RESERVED BEFORE DEALING. 7,840 paired seat-swapped r2 deals (the two-stage duel bar's confirmation stage)."
+ "git_head": "41491c7f6e473ef5c0c54cadf4cd1fb1624c78a3",
+ "note": "S83 elm CONFIRMATION (fresh seeds, reserved with the screen; dealt only if the screen passes) head-to-head: release 50 + elt + elm (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1, PR #1288) vs release 50 as served with lcc32 on (SHENGJI_PV_LEAD_CONFIRM=32 on both sides; wht off on both), both at the served budgets, on shengji-cloud, tree = origin/main 41491c7f (contains #1288 elm and #1289 wht); packet ~/shengji-archive/2026-11-05-elm-packet. Exact-deal clear against the A / FT1 / B1a lineages (lccC's exposure method): CLEAR on all three blocks (packet exposure/). RESERVED BEFORE DEALING. 7,840 paired seat-swapped r2 deals (the two-stage duel bar's confirmation stage)."
 }

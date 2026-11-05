@@ -168,6 +168,17 @@ class LeadCapture:
     def capture(self, rnd, *, ledger, decision):
         if rnd.phase != 'play' or rnd.trick.plays:
             raise ValueError('not a lead root')
+        return self.capture_turn(rnd, ledger=ledger, decision=decision)
+
+    def capture_turn(self, rnd, *, ledger, decision):
+        """Capture any play turn for whole-decision replay, including follows.
+
+        The legacy schema already serializes the complete partial trick. Keep
+        capture() lead-only so existing lead-analysis consumers stay strict.
+        This is engine/ledger replay, not a restoration of bot RNG state.
+        """
+        if rnd.phase != 'play':
+            raise ValueError('not a play root')
         if ledger.key is not None and tuple(rnd.deck) != ledger.key:
             raise ValueError('ledger belongs to another round')
         packet = copy.deepcopy(self.packet)

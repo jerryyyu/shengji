@@ -92,6 +92,47 @@ def _declare_room():
     return room
 
 
+@pytest.mark.parametrize("choice", ["declare", "pass", "invalid"])
+def test_inline_declare_receipt_reaches_room_log_only_after_valid_commit(monkeypatch, choice):
+    room = _declare_room()
+    seat = next(s for s in range(4) if room.round.declare_options(s))
+    caller_thread = threading.get_ident()
+
+    class InlineBot(HeuristicBot):
+        value_declare = False
+
+        def decide_declare(self, rnd, s, final=False):
+            assert threading.get_ident() == caller_thread
+            cards = rnd.declare_options(s)[0] if choice == "declare" else None
+            if choice == "invalid":
+                cards = ["SA"] * 3
+            self.last_declare_record = {"schema": "inline-declare-test-v1",
+                                        "chosen": cards, "final": final}
+            return cards
+
+    async def forbidden_admission(*args):
+        pytest.fail("inline receipt logging must not acquire a model permit")
+
+    monkeypatch.setattr(srv, "run_model_search", forbidden_admission)
+    room.bot = bot = InlineBot()
+    asyncio.run(srv._bot_declares(room, [seat], final=True))
+    assert room.bot is bot
+    records = [data for kind, data in room.records if kind == "declare_decision"]
+    if choice == "invalid":
+        assert records == [] and room.round.declaration is None
+    else:
+        assert records == [{"seat": seat, "record": bot.last_declare_record, "bot": True}]
+        assert [kind for kind, _ in room.records] == (
+            ["declare", "declare_decision"] if choice == "declare" else ["declare_decision"])
+
+
+def test_inline_heuristic_does_not_create_declare_receipts():
+    room = _declare_room()
+    room.bot = HeuristicBot()
+    asyncio.run(srv._bot_declares(room, list(range(4)), final=True))
+    assert not any(kind == "declare_decision" for kind, _ in room.records)
+
+
 def test_cheap_declare_gate_precedes_copy_and_model_admission(monkeypatch):
     class CheapBot(HeuristicBot):
         value_declare = True

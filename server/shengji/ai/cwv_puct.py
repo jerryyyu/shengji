@@ -966,6 +966,8 @@ class CWVPuctBot(MCBot):
                  "max_depth": 0, "depth_sum": 0, "batch_wall": 0.0,
                  "batch_cpu": 0.0, "build_wall": 0.0, "terminal_leaves": 0,
                  "playouts": 0, "exact_leaves": 0}
+        root_world_visits = {action: [0] * pool for action in root.actions}
+        completed_tricks = {}
         playout_leaf = self.CWV_LEAF == "playout"
         finish_leaf = bool(self.CWV_LEAF_FINISH_TRICK) and not playout_leaf
         sessions: list[Any] = []
@@ -1014,6 +1016,11 @@ class CWVPuctBot(MCBot):
                 depth = len(path) - 1
                 stats["max_depth"] = max(stats["max_depth"], depth)
                 stats["depth_sum"] += depth
+                # Count tree descent only, excluding a leaf finisher or rollout.
+                tricks = len(leaf.history) - len(rnd.history)
+                completed_tricks[str(tricks)] = completed_tricks.get(str(tricks), 0) + 1
+                attempted = next(action for action, edge in root.edges.items() if edge is edges[0])
+                root_world_visits.setdefault(attempted, [0] * pool)[(done + index) % pool] += 1
                 if leaf.phase == "round_end":
                     stats["terminal_leaves"] += 1
                 if tr is not None:
@@ -1026,6 +1033,10 @@ class CWVPuctBot(MCBot):
             done += batch
             stats["positions"] += batch
         stats["simulations"] = done
+        stats["root_world_support"] = [
+            {"cards": list(action), "visits": visits}
+            for action, visits in root_world_visits.items()]
+        stats["completed_tricks_histogram"] = completed_tricks
         stats["forward_passes"] = (int(getattr(self.evaluator, "forward_calls", 0))
                                    - forwards_before)
         if self.CWV_TRACE:
@@ -1140,6 +1151,8 @@ class CWVPuctBot(MCBot):
                 "simulations": stats["simulations"],
                 "forward_passes": stats["forward_passes"],
                 "max_depth": stats["max_depth"],
+                "completed_tricks_histogram": stats.get("completed_tricks_histogram", {}),
+                "root_world_support": stats.get("root_world_support", []),
                 "mean_depth": (stats["depth_sum"] / stats["simulations"]
                                if stats["simulations"] else 0.0),
                 "terminal_leaves": stats["terminal_leaves"],

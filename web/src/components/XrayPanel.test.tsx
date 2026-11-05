@@ -7,6 +7,9 @@ import XrayPanel from "./XrayPanel";
 import shortlistFixture from "./xray-shortlist.fixture.json";
 import pvSearchFixture from "./xray-pv-search.fixture.json";
 import declareFixture from "./xray-declare.fixture.json";
+import r50PlayFixture from "./xray-r50-play.fixture.json";
+import r50BuryFixture from "./xray-r50-bury.fixture.json";
+import r50DeclareFixture from "./xray-r50-declare.fixture.json";
 
 const previousActEnvironment = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT;
@@ -320,5 +323,124 @@ describe("XrayPanel play analysis", () => {
     const { host } = mount();
     await settle();
     expect(host.textContent).toContain("Error: network down");
+  });
+});
+
+describe("XrayPanel release-50 verdicts", () => {
+  async function render(payload: unknown) {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => payload }));
+    const { host } = mount();
+    await settle();
+    return host;
+  }
+
+  it("says the lead confirmation replaced the search's lead and names the packages", async () => {
+    const host = await render(r50PlayFixture);
+    const verdict = host.querySelector(".xr-verdict");
+    const text = verdict?.textContent ?? "";
+    expect(text).toContain("OK");
+    expect(text).toContain("decided by lead_confirm");
+    expect(text).toContain(r50PlayFixture.analysis.verdict.summary);
+    expect(text).toContain("value f4f4127e · prior 1fa201b2 · belief 028131a0");
+    const stages = Array.from(host.querySelectorAll(".xr-pipeline li"));
+    expect(stages.map((li) => li.querySelector(".xr-stage")?.textContent)).toEqual(
+      r50PlayFixture.analysis.verdict.pipeline.map((p) => p.stage));
+    const lcc = stages.find((li) => li.textContent?.startsWith("lead_confirm"));
+    expect(lcc?.className).toBe("changed");
+    expect(lcc?.textContent).toContain("applied");
+    expect(lcc?.textContent).toContain("changed the play");
+    // the top candidates with values and the margin to the next
+    const top = Array.from(host.querySelectorAll(".xr-top-row:not(.xr-top-head)"));
+    expect(top).toHaveLength(r50PlayFixture.analysis.verdict.top.length);
+    const first = r50PlayFixture.analysis.verdict.top[0];
+    expect(top[0]?.textContent).toContain(`+${first.value.toFixed(3)}`);
+    expect(top[0]?.textContent).toContain(`+${first.margin_to_next.toFixed(3)}`);
+    expect(top[0]?.textContent).toContain("anchor");
+    // the raw detail stays, collapsed
+    const raw = host.querySelector("details.xr-raw");
+    expect(raw).not.toBeNull();
+    expect(raw?.hasAttribute("open")).toBe(false);
+    expect(raw?.textContent).toContain("lead_confirm · status applied");
+    expect(raw?.textContent).toContain("belief_fallback_by_stage · base 0 · lead_confirm 0");
+    // the ballot row lcc played
+    const rows = Array.from(host.querySelectorAll("tbody tr"));
+    const chosen = rows.filter((row) => row.textContent?.includes("chosen"));
+    expect(chosen).toHaveLength(1);
+    expect(chosen[0]?.textContent).toContain("lcc confirmed");
+    expect(chosen[0]?.textContent).toContain("lcc delta vs search lead: +0.054");
+  });
+
+  it("marks the singleton challenger's admitted row and its stage", async () => {
+    const payload = structuredClone(r50PlayFixture) as any;
+    payload.candidates[7].singleton_added = true;
+    payload.analysis.verdict.pipeline[2] = {
+      stage: "singleton_challenger", status: "applied", changed: true, play: "SA",
+      detail: "sc8 admitted SA in place of S3; probe margin +0.020 on 8 worlds" };
+    const host = await render(payload);
+    const sc8 = Array.from(host.querySelectorAll(".xr-pipeline li"))
+      .find((li) => li.textContent?.startsWith("singleton_challenger"));
+    expect(sc8?.className).toBe("changed");
+    expect(sc8?.textContent).toContain("probe margin +0.020");
+    const rows = Array.from(host.querySelectorAll("tbody tr"));
+    expect(rows[7]?.textContent).toContain("sc8 admitted");
+  });
+
+  it("raises the degraded badge and lists each warning", async () => {
+    const payload = structuredClone(r50PlayFixture) as any;
+    payload.analysis.verdict.warnings = [
+      { code: "belief_fallback", severity: "degraded", text: "belief draw fell back to the sampler (base 1)" },
+      { code: "lead_confirm_abandoned", severity: "degraded", text: "lead confirmation abandoned (leaf_deadline)" },
+      { code: "legal_capped", severity: "info", text: "legal listing capped at 4000 of 5295" },
+    ];
+    payload.analysis.verdict.degraded = true;
+    const host = await render(payload);
+    const badge = host.querySelector(".xr-badge");
+    expect(badge?.className).toContain("warn");
+    expect(badge?.textContent).toContain("degraded (2)");
+    const items = Array.from(host.querySelectorAll(".xr-warnings li"));
+    expect(items.map((li) => li.className)).toEqual(["warn", "warn", "info"]);
+    expect(items[0]?.textContent).toContain("belief draw fell back");
+  });
+
+  it("lists the wide value-only bury's candidates on belief worlds", async () => {
+    const host = await render(r50BuryFixture);
+    const text = host.textContent ?? "";
+    const bury = r50BuryFixture.bury;
+    expect(text).toContain("decided by wide_value");
+    expect(text).toContain(bury.verdict.summary);
+    expect(text).toContain("belief worlds on · fallbacks 0");
+    expect(text).toContain(`${bury.candidate_count} candidates scored on 32/32 worlds`);
+    expect(text).toContain(`top ${bury.candidates.length} listed`);
+    expect(text).toContain("value f4f4127e · prior n/a · belief 028131a0");
+    expect(text).not.toContain("value-only-no-MC");
+    const rows = Array.from(host.querySelectorAll("tbody tr"));
+    expect(rows).toHaveLength(bury.candidates.length);
+    expect(rows[0]?.textContent).toContain("BOT");
+    expect(rows[0]?.textContent).toContain(`+${bury.candidates[0].value.toFixed(3)}`);
+    const incumbent = rows.find((row) => row.textContent?.includes("incumbent"));
+    expect(incumbent).toBeDefined();
+  });
+
+  it("ranks the declaration outcomes with the packages", async () => {
+    const host = await render(r50DeclareFixture);
+    const text = host.textContent ?? "";
+    expect(text).toContain(r50DeclareFixture.declare.verdict.summary);
+    expect(text).toContain("value f4f4127e · prior n/a · belief n/a");
+    const top = Array.from(host.querySelectorAll(".xr-top-row:not(.xr-top-head)"));
+    expect(top).toHaveLength(r50DeclareFixture.declare.verdict.top.length);
+    expect(top[0]?.textContent).toContain("chosen");
+  });
+
+  it("renders an older server's response with n/a for the release-50 blocks", async () => {
+    const host = await render(pvSearchFixture);
+    const text = host.textContent ?? "";
+    expect(text).toContain("health n/a");
+    expect(text).toContain("verdict n/a");
+    const old = await render({ ...r50PlayFixture, analysis: { ...r50PlayFixture.analysis,
+      model_ids: null, verdict: { ...r50PlayFixture.analysis.verdict, model_ids: null } } });
+    expect(old.textContent).toContain("packages" + "n/a (the record names no package ids)");
+    const bury = await render({ ...r50BuryFixture, bury: { ...r50BuryFixture.bury, belief: null,
+      model_ids: null, verdict: undefined } });
+    expect(bury.textContent).toContain("belief worlds n/a");
   });
 });

@@ -83,6 +83,87 @@ class HashEvaluator:
         return np.array(out)
 
 
+def test_paired_horizon_actual_boundaries_and_common_prefix():
+    from shengji.train.paired_horizon import paired_horizon
+    rnd = endgame(3)
+    worlds = [([list(h) for h in rnd.hands], list(rnd.buried))] * 2
+    bot = bot_of(PVTreeConfig(sims=8, cont="trick"))
+    before = pickle.dumps((rnd, worlds, bot.sampler.rng.getstate()))
+    config = bot.tree_config
+    result = paired_horizon(bot, rnd, rnd.turn, [["D8"], ["DQ"]], worlds)
+    assert bot.tree_config is config
+    assert pickle.dumps((rnd, worlds, bot.sampler.rng.getstate())) == before
+    for name, tricks, plies in (("trick", 1, 4), ("policy", 2, 8)):
+        arm = result[name]
+        assert arm["values"].shape == (2, 2)
+        assert len(arm["leaves"]) == 4
+        assert all(row["completed_tricks"] == tricks for row in arm["leaves"])
+        assert all(row["action_plies"] == plies for row in arm["leaves"])
+        assert not any(row["terminal"] for row in arm["leaves"])
+        # Explicit world-major / action-minor mapping.
+        assert [row["plays"][0][1] for row in arm["leaves"]] == [
+            ("D8",), ("DQ",), ("D8",), ("DQ",)]
+    for shallow, deep in zip(result["trick"]["leaves"], result["policy"]["leaves"]):
+        assert shallow["plays"] == deep["plays"][:4]
+
+
+def test_paired_horizon_terminal_and_last_seat_depth():
+    from shengji.train.paired_horizon import paired_horizon
+    rnd = endgame(1)
+    for _ in range(3):
+        rnd.play(rnd.turn, list(rnd.hands[rnd.turn]))
+    worlds = [([list(h) for h in rnd.hands], list(rnd.buried))]
+    bot = bot_of(PVTreeConfig(sims=8))
+    result = paired_horizon(bot, rnd, rnd.turn, [list(rnd.hands[rnd.turn])], worlds)
+    for arm in result.values():
+        row, = arm["leaves"]
+        assert row["terminal"]
+        assert row["completed_tricks"] == row["action_plies"] == 1
+    np.testing.assert_array_equal(result["trick"]["values"], result["policy"]["values"])
+
+
+@pytest.mark.parametrize("stage", ["entry", "publication"])
+def test_paired_horizon_gate_covers_entry_and_final_publication(stage):
+    from shengji.train.paired_horizon import paired_horizon
+    rnd = endgame(3)
+    worlds = [([list(h) for h in rnd.hands], list(rnd.buried))]
+    bot = bot_of(PVTreeConfig(sims=8))
+    calls = []
+    paired_horizon(bot, rnd, rnd.turn, [["D8"]], worlds, gate=lambda: calls.append(1))
+    stop = 1 if stage == "entry" else len(calls)
+    count = 0
+    bot.evaluator.seen.clear()
+    def gate():
+        nonlocal count
+        count += 1
+        if count == stop:
+            raise pv.PVSearchBudgetExceeded(stage)
+    with pytest.raises(pv.PVSearchBudgetExceeded, match=stage):
+        paired_horizon(bot, rnd, rnd.turn, [["D8"]], worlds, gate=gate)
+    assert len(bot.evaluator.seen) == (0 if stage == "entry" else 2)
+
+
+@pytest.mark.parametrize("failure", ["deadline", "prefix"])
+def test_paired_horizon_refuses_partial_or_unpaired_output(failure):
+    from shengji.train.paired_horizon import paired_horizon
+    rnd = endgame(3)
+    worlds = [([list(h) for h in rnd.hands], list(rnd.buried))]
+    bot = bot_of(PVTreeConfig(sims=8))
+    original = type(bot)._tree_lookahead
+    class Broken(type(bot)):
+        def _tree_lookahead(self, root, seat, actions, worlds, gate=None):
+            if self.tree_config.cont == "policy":
+                if failure == "deadline":
+                    raise pv.PVSearchBudgetExceeded("second arm expired")
+                actions = [["DQ"]]
+            return original(self, root, seat, actions, worlds, gate=gate)
+    bot.__class__ = Broken
+    error = pv.PVSearchBudgetExceeded if failure == "deadline" else ValueError
+    with pytest.raises(error):
+        paired_horizon(bot, rnd, rnd.turn, [["D8"]], worlds)
+    assert bot.tree_config.cont == "trick"
+
+
 def predict_x(X):
     """A policy that depends on its input row (so the acting seat's own
     perspective and world matter), deterministic."""

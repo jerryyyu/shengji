@@ -262,6 +262,8 @@ def _validate_wide_config(config):
 
 def _policy_identity(bot) -> dict:
     """What a registry-built bot pins: its name, class and package hashes (and bury recipe)."""
+    from .pv_search_policy import LATENCY_SWITCH_ENV
+
     identity = {"policy_name": getattr(bot, "policy_name", None), "bot_class": type(bot).__name__}
     for key in ("checkpoint_sha256", "cwv_checkpoint_sha256", "cwv_prior_sha256", "version",
                 "bury_arm", "bury_recipe_identity"):
@@ -271,6 +273,11 @@ def _policy_identity(bot) -> dict:
     config = getattr(bot, "config", None)
     if config is not None and hasattr(config, "__dataclass_fields__"):
         identity["config"] = asdict(config)
+    # Runtime speed switches affect deadline completion without changing the
+    # policy name. Bind the built instance, not the parent's environment.
+    switches = {attr: True for attr in LATENCY_SWITCH_ENV if getattr(bot, attr, False)}
+    if switches:
+        identity["runtime_switches"] = switches
     return identity
 
 

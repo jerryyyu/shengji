@@ -1,6 +1,8 @@
 """The shortlist screen's ``--arm policy`` (release 29 confirmation): the arm is a served bot
 built by registry name, its identity is bound at configuration time and re-checked in the
 worker, and the queue's ``--arm-policy`` mode refuses checkpoint options."""
+import os
+
 import pytest
 
 from shengji.ai.registry import REGISTRY, register_pv_search_policies
@@ -44,6 +46,79 @@ def test_policy_arm_builds_the_registry_bot_and_binds_its_identity(registered):
     recipe = screen._recipe({**config, "schema": "cwv-shortlist-config-v1", "checkpoint_sha256": None,
                              "production_multiplier": 1, "target_wall_multiplier": 1})
     assert recipe["arm_policy"] == registered and recipe["arm_policy_identity"]["bot_class"] == "Other"
+
+
+@pytest.mark.parametrize('attr,env', pv.LATENCY_SWITCH_ENV.items())
+@pytest.mark.parametrize('enabled', [False, True])
+def test_policy_worker_refuses_runtime_switch_drift(registered, monkeypatch, attr, env, enabled):
+    from shengji.ai.registry import make_bot
+
+    for key in pv.LATENCY_SWITCH_ENV.values():
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv(env, '1' if enabled else '0')
+    probe = make_bot(registered, seed=0)
+    identity = screen._policy_identity(probe)
+    config = dict(arm='policy', arm_policy=registered, arm_policy_identity=identity)
+    assert getattr(screen.make_side(config, 'arm', 7), attr) is enabled
+    monkeypatch.setenv(env, '0' if enabled else '1')
+    drifted = make_bot(registered, seed=7)
+    assert drifted.policy_name == probe.policy_name
+    assert drifted.config == probe.config
+    with pytest.raises(ValueError, match='identity changed'):
+        screen.make_side(config, 'arm', 7)
+
+
+def test_all_off_policy_identity_keeps_legacy_shape(registered, monkeypatch):
+    from shengji.ai.registry import make_bot
+
+    for key in pv.LATENCY_SWITCH_ENV.values():
+        monkeypatch.delenv(key, raising=False)
+    probe = make_bot(registered, seed=0)
+    identity = screen._policy_identity(probe)
+    assert 'runtime_switches' not in identity
+    for key in pv.LATENCY_SWITCH_ENV.values():
+        monkeypatch.setenv(key, '0')
+    assert screen._policy_identity(make_bot(registered, seed=7)) == identity
+    monkeypatch.setenv(pv.LATENCY_SWITCH_ENV['leaf_greedy_stream'], '1')
+    on = screen._policy_identity(make_bot(registered, seed=7))
+    assert on.pop('runtime_switches') == {'leaf_greedy_stream': True}
+    assert on == identity
+
+
+def test_spawned_worker_binds_runtime_switches_before_any_play(registered, package, monkeypatch):
+    from dataclasses import asdict
+    from shengji.ai.registry import make_bot
+    from shengji.train.screen_deadline import DeadlineSession
+
+    for key in list(os.environ):
+        if key.startswith('SHENGJI_PV_'):
+            monkeypatch.delenv(key)
+    path, sha = package
+    env = dict(CKPT=path, SHA256=sha, BURY_ARM='hybrid',
+               **{k.upper(): v for k, v in SMALL.items()},
+               **{'BURY_' + k.upper(): v for k, v in asdict(BURY).items()})
+    for key, value in env.items():
+        monkeypatch.setenv('SHENGJI_PV_' + key, str(value))
+    monkeypatch.setenv('SHENGJI_PV_ENCODE_PREFIX_CACHE', '1')
+    monkeypatch.setenv('SHENGJI_PV_LEAF_GREEDY_STREAM', '1')
+    config = dict(arm='policy', arm_policy=registered,
+                  arm_policy_identity=screen._policy_identity(make_bot(registered, seed=0)))
+    assert config['arm_policy_identity']['runtime_switches'] == {
+        'encode_prefix_cache': True, 'leaf_greedy_stream': True}
+    for drift in (False, True):
+        monkeypatch.setenv('SHENGJI_PV_LEAF_GREEDY_STREAM', '0' if drift else '1')
+        session = DeadlineSession(screen._deadline_side)
+        try:
+            if drift:
+                with pytest.raises(ValueError, match='identity changed'):
+                    screen.make_side(config, 'arm', 7)
+                # Initial factory failure terminates the child before its RPC loop.
+                with pytest.raises(RuntimeError, match='transport-error|identity changed'):
+                    session.register(config, 'arm', 7)
+            else:
+                session.register(config, 'arm', 7)
+        finally:
+            session.close()
 
 
 def test_screen_and_queue_refuse_mismatched_policy_options(registered, tmp_path):

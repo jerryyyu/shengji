@@ -323,3 +323,48 @@ def test_lead_counterfactual_uses_the_served_registry_bot(release50_packages, mo
     assert result['decision']['work_complete'] is True
     assert len(result['values']) == 64
     assert bot.last_decision_record is None
+
+
+def test_saved_lead_cli_publishes_with_pinned_models(release50_packages, tmp_path, record_property):
+    import json
+    import subprocess
+    import sys
+    import time
+    from shengji.train import lead_diagnostic_run as runner
+    from test_lead_capture_collector import _saved_diagnostic_fixture
+
+    saved, case = _saved_diagnostic_fixture()
+    source = tmp_path / 'saved.json'
+    source.write_text(json.dumps(saved))
+    # CWV registers a separate unused policy and requires an unrelated package.
+    spec = dict(schema='saved-lead-run-v1', saved_path=str(source),
+                saved_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                cases=[case], policy=RELEASE50, wall_seconds=30,
+                env={k: v for k, v in local_env(release50_packages).items()
+                     if k.startswith("SHENGJI_") and not k.startswith("SHENGJI_CWV_")})
+    packet = tmp_path / 'run.json'
+    packet.write_text(json.dumps(spec))
+    sha = hashlib.sha256(packet.read_bytes()).hexdigest()
+    output = tmp_path / 'result.json'
+    server = Path(__file__).resolve().parents[1]
+    started = time.monotonic()
+    proc = subprocess.run(
+        [sys.executable, runner.__file__, '--spec', str(packet), '--sha256', sha, str(output)],
+        cwd=tmp_path, capture_output=True, text=True, timeout=40,
+        env={**os.environ, 'PYTHONPATH': str(server), 'OPENBLAS_NUM_THREADS': '1',
+             'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1'})
+    record_property('diagnostic_cli_wall_seconds', time.monotonic() - started)
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(output.read_text())
+    assert result['schema'] == 'saved-lead-diagnostic-v1'
+    assert result['run_spec_sha256'] == sha
+    assert result['saved_sha256'] == spec['saved_sha256']
+    assert result['policy'] == RELEASE50
+    assert len(result['cases']) == 1 and result['cases'][0]['case'] == case
+    evidence = result['cases'][0]['evidence']
+    assert evidence['worlds'] == len(evidence['values']) == 64
+    assert evidence['scorer'] == 'lead_confirmation_on_base_worlds'
+    assert evidence['decision']['work_complete'] is True
+    assert evidence['actions'][0]['delta_vs_played'] == 0
+    json.dumps(result, allow_nan=False)
+    assert not list(tmp_path.glob('.lead-diagnostic-*'))

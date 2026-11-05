@@ -22,6 +22,7 @@ import r50_flag_positions as P
 from shengji.train import pv_encode_prefix
 from shengji.train import pv_search_policy as pv
 from shengji.train import pv_two_trick as tt2
+from test_r50_flag_off_parity import assert_decision
 from test_release46_fly_config import fly_env
 from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA,  # noqa: F401
                                        PRIOR_VOLUME_PATH, RELEASE50, VALUE_SHA, VALUE_VOLUME_PATH,
@@ -181,7 +182,7 @@ def test_flag_off_at_zero_decides_as_main(release50_packages, monkeypatch, key, 
     assert name == bot.policy_name == RELEASE50
     assert "two_trick_lead" not in vars(bot) and bot._two_trick is None
     got = P.decision(P.lift(bot), P.replay(key, trick, pos))
-    assert got == PINS["decisions"][P.label(key, trick, pos)]
+    assert_decision(got, PINS["decisions"][P.label(key, trick, pos)])
     assert not any(k.startswith("tt2_") for k in bot.last_decision_record)
 
 

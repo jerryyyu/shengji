@@ -406,8 +406,8 @@ def test_the_served_recipe_with_the_flag_buries_on_belief_worlds(
 
 # ------------------------------------------------------------ (f) the room log
 
-@pytest.mark.parametrize("flag", [False, True])
-def test_the_room_log_carries_the_fallback_count_only_for_a_bbw_bury(tmp_path, flag):
+@pytest.mark.parametrize("mode", ["off", "clean", "fallback"])
+def test_the_room_log_carries_the_fallback_count_only_for_a_bbw_bury(tmp_path, mode):
     """Through the server's own snapshot, commit and timing log: a ``bbw`` bury
     that fell back (no package bound) logs ``bury_belief_fallbacks`` 1; any
     other bury logs exactly the fields it logged before."""
@@ -415,7 +415,7 @@ def test_the_room_log_carries_the_fallback_count_only_for_a_bbw_bury(tmp_path, f
         rnd = bury_state(65)
         game = Game(random.Random(7))
         game.round = rnd
-        player = (bbw(model=None) if flag else
+        player = (bbw(model=None) if mode == "fallback" else bbw() if mode == "clean" else
                   served_bury(bury_wide_value=True, bury_wide_k=64))
         room = server.Room(code="BBWTEST", game=game, bot=player,
                            seats=[server.Seat(str(i), is_bot=True) for i in range(4)],
@@ -428,11 +428,17 @@ def test_the_room_log_carries_the_fallback_count_only_for_a_bbw_bury(tmp_path, f
         acted = server._commit_bot_turn(room, prepared)
         server._log_bot_timing(room, prepared, acted=acted)
         assert acted and rnd.phase == "play"
-        return [e for e in events if e["kind"] == "bot_timing"][-1]
+        from scripts.cwv_serving_smoke import budget_turn
+        snapshot_bot = prepared.decision.snapshot.bot_copy
+        measured = budget_turn("bury", snapshot_bot, 0.1,
+                               {"SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "60"})
+        return [e for e in events if e["kind"] == "bot_timing"][-1], measured
 
-    timing = asyncio.run(scenario())
+    timing, measured = asyncio.run(scenario())
     assert timing["bury_search_status"] == "complete"
-    if flag:
-        assert timing["bury_belief_fallbacks"] == 1
+    if mode != "off":
+        assert timing["bury_belief_fallbacks"] == int(mode == "fallback")
     else:
         assert "bury_belief_fallbacks" not in timing
+    assert measured["failures"] == (["bury_belief_fallback_or_missing"]
+                                    if mode == "fallback" else [])

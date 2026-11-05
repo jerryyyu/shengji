@@ -171,6 +171,13 @@ after a follow that showed fewer pairs than were led
 rejection; the test still checks every world (the tractor obligation stays
 with it).  The record gains ``history_draw_constraints`` and
 ``history_draw_forbidden``.
+Its accepted-throw test, OFF BY DEFAULT: ``SHENGJI_PV_WORLD_HISTORY_THROWS=1``
+(requires the test; name token ``-wht`` after ``-whd``) also rejects a world in
+which a multi-component lead that stood this round would have been refused
+against the hands the world gives the other seats then
+(`ai.history_legality.throw_events`), under the same attempt budget, in every
+history-legal draw (the belief proposal's and its fallback's included).  The
+record gains ``history_throw_events`` and ``history_throw_rejections``.
 
 Optional belief proposal inside the history-legal test (board row S17), OFF BY
 DEFAULT: ``SHENGJI_PV_BELIEF_WORLDS=1`` with ``SHENGJI_PV_BELIEF_CKPT`` and
@@ -882,14 +889,16 @@ SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints",
                  "REFUSAL_EVENT_COMPLETE": "refusal_event_complete",
                  "WORLD_HISTORY_LEGAL": "world_history_legal",
                  "WORLD_HISTORY_DRAW": "world_history_draw",
+                 "WORLD_HISTORY_THROWS": "world_history_throws",
                  "BELIEF_WORLDS": "belief_worlds",
                  "BELIEF_CAPACITY": "belief_capacity"}
 SAMPLER_DEFAULTS = dict(refusal_constraints=False, refusal_event_complete=False,
-                        world_history_legal=False, world_history_draw=False, belief_worlds=False,
-                        belief_capacity=False)
+                        world_history_legal=False, world_history_draw=False,
+                        world_history_throws=False, belief_worlds=False, belief_capacity=False)
 #: name tokens, in name order, for the rules that are on
 SAMPLER_TOKENS = (("refusal_constraints", "rc"), ("refusal_event_complete", "rcec"),
                   ("world_history_legal", "whl"), ("world_history_draw", "whd"),
+                  ("world_history_throws", "wht"),
                   ("belief_worlds", "bw"), ("belief_capacity", "bwc"))
 #: the optional selection rule (`policy_value_search`): env flag -> recipe key
 TIEBREAK_RULE = {"TIEBREAK_POINTS": "tiebreak_points"}
@@ -1172,7 +1181,7 @@ SOFT_ORACLE_COUNTERS = ("constructions", "constructions_complete", "true_worlds"
 #: pass-conditioned worlds, its wait option, the model-free first-round
 #: declaration, the policy-played value leaf, the greedy-finished value leaf,
 #: its exact-stage yield, the diagnostic oracle worlds):
-#: div, fs, rc, rcec, whl, whd, bw, bwc, tb, fla, ele, elt, elp, elm, ak16, wla, la, lp, dts, sjg,
+#: div, fs, rc, rcec, whl, whd, wht, bw, bwc, tb, fla, ele, elt, elp, elm, ak16, wla, la, lp, dts, sjg,
 #: aw, awl, dtr, dtrx,
 #: vd, vdef, vdsb, vdpw, vdw, asap, lpft, lgf, lgfx, orc
 RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_RULE,
@@ -1275,6 +1284,9 @@ _HISTORY_LEGAL_ORACLE_EXCLUSIVE = ("world_history_legal and the oracle diagnosti
                                    "the oracle worlds bypass the sampler the test applies to "
                                    "(SHENGJI_PV_WORLD_HISTORY_LEGAL=1 with SHENGJI_PV_ORACLE_WORLDS, "
                                    "_ORACLE_MIX_K or _ORACLE_PIN_Q)")
+_HISTORY_THROWS_REQUIRES = ("world_history_throws requires world_history_legal "
+                            "(SHENGJI_PV_WORLD_HISTORY_THROWS=1 needs "
+                            "SHENGJI_PV_WORLD_HISTORY_LEGAL=1)")
 _BELIEF_REQUIRES = ("belief_worlds requires world_history_legal and world_history_draw: the "
                     "belief proposal plugs into the history-legal draw and honours its draw-time "
                     "constraints (SHENGJI_PV_BELIEF_WORLDS=1 needs SHENGJI_PV_WORLD_HISTORY_LEGAL=1 "
@@ -1468,6 +1480,8 @@ class PVSearchConfig:
     world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"]
     # its draw-time form (`ai.history_legality.draw_constraints`; requires it)
     world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"]
+    # its accepted-throw test (`ai.history_legality.throw_events`; requires it)
+    world_history_throws: bool = SAMPLER_DEFAULTS["world_history_throws"]
     # the S17 belief proposal inside that test (requires it); the same contract
     belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"]
     # its capacity-aware draw (requires the proposal); the same contract
@@ -1863,6 +1877,8 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         raise PVSearchPolicyError("world_history_draw requires world_history_legal "
                                   "(SHENGJI_PV_WORLD_HISTORY_DRAW=1 needs "
                                   "SHENGJI_PV_WORLD_HISTORY_LEGAL=1)")
+    if config.world_history_throws and not config.world_history_legal:
+        raise PVSearchPolicyError(_HISTORY_THROWS_REQUIRES)
     if config.world_history_legal and (config.oracle_worlds or config.oracle_mix_k
                                        or config.oracle_pin_q):
         raise PVSearchPolicyError(_HISTORY_LEGAL_ORACLE_EXCLUSIVE)
@@ -2157,6 +2173,8 @@ class PVSearchBot(PolicyValueBot):
     #: digested `LEAD_CONFIRM_PARAMS`
     lead_confirm = 0
     _lead_confirm = None
+    #: the history test's accepted-throw form (module docstring): class-level OFF
+    world_history_throws = False
     #: the per-decision draw counts by stage (`_tally_draw`): None while the
     #: history-legal draw is off, and between decisions of a bot never searched
     _draw_tally = None
@@ -2258,6 +2276,12 @@ class PVSearchBot(PolicyValueBot):
         self.world_history_draw = bool(config.world_history_draw)
         if self.world_history_draw and not self.world_history_legal:
             raise PVSearchPolicyError("world_history_draw requires world_history_legal")
+        # its accepted-throw test; instance state only when on, so a flag-off
+        # bot's attributes are unchanged
+        if config.world_history_throws:
+            if not self.world_history_legal:
+                raise PVSearchPolicyError(_HISTORY_THROWS_REQUIRES)
+            self.world_history_throws = True
         # the S17 belief proposal inside the history-legal draw; its package is
         # bound by `make_pv_search_bot` (None: every decision falls back)
         self.belief_worlds = bool(config.belief_worlds)
@@ -3188,7 +3212,8 @@ class PVSearchBot(PolicyValueBot):
             worlds, attempts, self._last_sampling = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
                 check_budget=check_budget,
-                constrain=getattr(self, "world_history_draw", False))
+                constrain=getattr(self, "world_history_draw", False),
+                **self._history_throws_kw())
         elif refusals:
             worlds, attempts, self._last_sampling = sample_worlds_refusal_aware(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
@@ -3212,6 +3237,11 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("policy world sampling violates public voids",
                                       stage="world_sampling_void_check")
         return worlds, attempts
+
+    def _history_throws_kw(self):
+        """The history-legal draw's accepted-throw option: passed only while
+        the rule is on, so a flag-off draw is called exactly as before."""
+        return {"throws": True} if getattr(self, "world_history_throws", False) else {}
 
     def _belief_worlds(self, rnd, seat, mem, refusals, check_budget):
         """The history-legal draw with the S17 belief proposal as its source
@@ -3245,7 +3275,8 @@ class PVSearchBot(PolicyValueBot):
             worlds, attempts, stats = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
                 check_budget=check_budget, propose=propose, constrain=True,
-                **({"complete": complete} if complete is not None else {}))
+                **({"complete": complete} if complete is not None else {}),
+                **self._history_throws_kw())
             stats.update(history_draw_constraints=len(constraints),
                          history_draw_forbidden=sum(sum(c.values()) for c in constraints.values()),
                          belief_fallback=0, belief_proposed=int(propose.drawn),
@@ -3265,7 +3296,7 @@ class PVSearchBot(PolicyValueBot):
             fresh = Memory(rnd, seat, own_kitty=getattr(self.sampler, "BANKER_KITTY", True))
             worlds, attempts, stats = sample_worlds_history_legal(
                 self.sampler, rnd, seat, self.worlds, refusals, mem=fresh,
-                check_budget=check_budget, constrain=True)
+                check_budget=check_budget, constrain=True, **self._history_throws_kw())
             stats.update(belief_fallback=1, belief_proposed=0,
                          belief_ms=round(1e3 * (time.perf_counter() - t0), 3),
                          belief_error=type(exc).__name__)
@@ -4145,6 +4176,8 @@ class PVSearchBot(PolicyValueBot):
                        history_fill_worlds=0, history_rejections_by_age={})
             if getattr(self, "world_history_draw", False):
                 out.update(history_draw_constraints=0, history_draw_forbidden=0)
+            if getattr(self, "world_history_throws", False):
+                out.update(history_throw_events=0, history_throw_rejections=0)
         if getattr(self, "belief_worlds", False):
             out.update(belief_fallback=0, belief_proposed=0, belief_ms=0.0)
             if self.belief_log:
@@ -4541,6 +4574,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                        world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"],
                        world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"],
+                       world_history_throws: bool = SAMPLER_DEFAULTS["world_history_throws"],
                        belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"],
                        belief_capacity: bool = SAMPLER_DEFAULTS["belief_capacity"],
                        belief_checkpoint: str | None = None,
@@ -4628,6 +4662,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             refusal_event_complete=refusal_event_complete,
                             world_history_legal=world_history_legal,
                             world_history_draw=world_history_draw,
+                            world_history_throws=world_history_throws,
                             belief_worlds=belief_worlds, belief_sha256=belief_sha256,
                             belief_capacity=belief_capacity,
                             admission_diversity=admission_diversity,
@@ -4760,6 +4795,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         refusal_event_complete: bool = SAMPLER_DEFAULTS["refusal_event_complete"],
                         world_history_legal: bool = SAMPLER_DEFAULTS["world_history_legal"],
                         world_history_draw: bool = SAMPLER_DEFAULTS["world_history_draw"],
+                        world_history_throws: bool = SAMPLER_DEFAULTS["world_history_throws"],
                         belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"],
                         belief_capacity: bool = SAMPLER_DEFAULTS["belief_capacity"],
                         belief_checkpoint: str | None = None,
@@ -4828,6 +4864,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             refusal_event_complete=refusal_event_complete,
                             world_history_legal=world_history_legal,
                             world_history_draw=world_history_draw,
+                            world_history_throws=world_history_throws,
                             belief_worlds=belief_worlds, belief_sha256=belief_sha256,
                             belief_capacity=belief_capacity,
                             admission_diversity=admission_diversity,
@@ -4953,6 +4990,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                refusal_event_complete=config.refusal_event_complete,
                                world_history_legal=config.world_history_legal,
                                world_history_draw=config.world_history_draw,
+                               world_history_throws=config.world_history_throws,
                                belief_worlds=config.belief_worlds,
                                belief_capacity=config.belief_capacity,
                                belief_checkpoint=belief_checkpoint,
@@ -5023,6 +5061,7 @@ def pv_env_recipe(environ=None) -> dict:
     / ``_CAP`` / ``_BATCH_SIZE`` / ``_SEED`` / ``_SERVING_BUDGET_SECONDS`` knobs and the
     optional ``_ADMISSION_DIVERSITY`` / ``_ADMIT_FORCED_SINGLE`` / ``_REFUSAL_CONSTRAINTS`` /
     ``_REFUSAL_EVENT_COMPLETE`` / ``_WORLD_HISTORY_LEGAL`` / ``_WORLD_HISTORY_DRAW`` /
+    ``_WORLD_HISTORY_THROWS`` (needs ``_WORLD_HISTORY_LEGAL=1``) /
     ``_BELIEF_WORLDS`` / ``_BELIEF_CAPACITY`` / ``_TIEBREAK_POINTS`` / ``_ADAPTIVE_K`` / ``_LEAD_ANCHOR`` / ``_LEAD_TIEBREAK_PRIOR`` /
     ``_DOOMED_THROW_SWAP`` / ``_SMALL_JOKER_GUARD`` / ``_ADAPTIVE_WORLDS`` / ``_ADAPTIVE_WORLDS_LEADS`` /
     ``_WIDE_LEAD_ADMISSION`` / ``_FINISH_LEAD_ADMISSION`` / ``_EXACT_LEAD_ENDGAME`` /

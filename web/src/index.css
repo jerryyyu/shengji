@@ -585,10 +585,10 @@ textarea:focus-visible {
 }
 .account-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
   gap: 6px;
 }
-.account-actions .btn { padding: 9px 6px; border-radius: 12px; white-space: nowrap; }
+.account-actions .btn { padding: 9px 6px; border-radius: 12px; white-space: normal; }
 .account-actions .btn.subtle { border-color: transparent; color: var(--text-dim); }
 .account-card .name-edit { padding: 0 4px 4px; }
 .account-error { font-size: 13px; }

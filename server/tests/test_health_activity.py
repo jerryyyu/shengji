@@ -21,6 +21,7 @@ from native_switches import NATIVE_OFF
 ISO_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 ZERO = {"rooms_created": 0, "games_started": 0, "rounds_recorded": 0,
         "records_written": 0, "record_write_failures": 0,
+        "account_link_failures": 0,
         "last_record_write": None, "last_record_failure": None}
 
 

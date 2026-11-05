@@ -288,3 +288,415 @@ def test_non_refused_finish_is_not_declared_a_ranking_error(monkeypatch):
     assert result['whole_hand_refused_true_deal'] is False
     assert result['whole_hand_played'] is False
     assert result['ranking_or_horizon_error'] is None
+
+
+def test_common_world_lead_comparison_uses_real_scorer_without_mutating_bot():
+    import copy
+    import json
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_leaf_greedy_finish import leaf_bot
+    from test_pv_small_joker_lead import _fresh_round
+    from test_pv_doomed_throw_reselect import HashNoiseEvaluator
+
+    rnd = _fresh_round(707014)
+    bot = leaf_bot(HashNoiseEvaluator(), worlds=2)
+    control = copy.deepcopy(bot)
+    alternatives = [[c] for c in sorted(set(rnd.hands[rnd.turn]))[:2]]
+    result = compare_lead_actions(bot, rnd, rnd.turn, alternatives, gate=lambda: None)
+    assert result['worlds'] == 2
+    assert len(result['values']) == 2
+    assert result['actions'][0]['delta_vs_played'] == 0
+    assert result['actions'][0]['paired_se'] == 0
+    assert all(r['policy_rank'] > 0 for r in result['actions'])
+    json.dumps(result, allow_nan=False)
+    assert bot.last_decision_record == control.last_decision_record
+    assert bot.decide_play(copy.deepcopy(rnd), rnd.turn) == control.decide_play(copy.deepcopy(rnd), rnd.turn)
+    assert result['played'] == bot.last_decision_record['played']
+
+
+def test_common_world_lead_comparison_refuses_expiry_and_invalid_alternatives():
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_leaf_greedy_finish import leaf_bot
+    from test_pv_small_joker_lead import _fresh_round
+    import pytest
+
+    rnd = _fresh_round(707014)
+    bot = leaf_bot(worlds=2)
+    with pytest.raises(ValueError, match='duplicate'):
+        compare_lead_actions(bot, rnd, rnd.turn, [['S3'], ['S3']], gate=lambda: None)
+    bot.leaf_greedy_top = 1
+    with pytest.raises(ValueError, match='top-m'):
+        compare_lead_actions(bot, rnd, rnd.turn, [['S3']], gate=lambda: None)
+    bot.leaf_greedy_top = 0
+    def expired():
+        raise TimeoutError('diagnostic deadline')
+    with pytest.raises(TimeoutError):
+        compare_lead_actions(bot, rnd, rnd.turn, [[rnd.hands[rnd.turn][0]]], gate=expired)
+
+
+@pytest.mark.parametrize('fault', ['matrix', 'late_expiry', 'fallback'])
+def test_common_world_lead_comparison_never_returns_partial_evidence(monkeypatch, fault):
+    import numpy as np
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_leaf_greedy_finish import leaf_bot
+    from test_pv_small_joker_lead import _fresh_round
+
+    rnd = _fresh_round(707014)
+    bot = leaf_bot(worlds=2)
+    original = pv.PVSearchBot._lead_confirm_matrix
+    finished = False
+    def score(self, *args, **kwargs):
+        nonlocal finished
+        matrix = original(self, *args, **kwargs)
+        finished = True
+        if fault == 'matrix':
+            matrix[0, 0] = np.nan
+        return matrix
+    monkeypatch.setattr(pv.PVSearchBot, '_lead_confirm_matrix', score)
+    def gate():
+        if finished and fault == 'late_expiry':
+            raise TimeoutError('completed after deadline')
+    if fault == 'fallback':
+        def fallback(self, rnd, seat):
+            self.last_decision_record = {'work_complete': False}
+            return [rnd.hands[seat][0]]
+        monkeypatch.setattr(pv.PVSearchBot, 'decide_play', fallback)
+    with pytest.raises(TimeoutError if fault == 'late_expiry' else ValueError):
+        compare_lead_actions(bot, rnd, rnd.turn, [[rnd.hands[rnd.turn][0]]], gate=gate)
+
+
+def test_common_world_lead_deadline_is_checked_inside_initial_search(monkeypatch):
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_leaf_greedy_finish import leaf_bot
+    from test_pv_small_joker_lead import _fresh_round
+
+    rnd = _fresh_round(707014)
+    calls = 0
+    def gate():
+        nonlocal calls
+        calls += 1
+        if calls >= 3:
+            raise TimeoutError('inside search')
+    def forbidden(*args, **kwargs):
+        pytest.fail('pricing must not start after an expired decision')
+    monkeypatch.setattr(pv.PVSearchBot, '_lead_confirm_matrix', forbidden)
+    with pytest.raises(TimeoutError):
+        compare_lead_actions(leaf_bot(worlds=2), rnd, rnd.turn,
+                             [[rnd.hands[rnd.turn][0]]], gate=gate)
+    assert calls >= 3
+
+
+def test_common_world_comparison_separates_selected_throw_from_played_component():
+    from shengji.train.lead_counterfactual import compare_lead_actions
+    from test_pv_doomed_throw_swap import (oxps, served, throw_first_scores,
+                                          RELEASE38_RULES, THROW, FORCED, SEAT)
+    bot = served(doomed_throw_swap=True, **RELEASE38_RULES)
+    bot.scores = throw_first_scores
+    result = compare_lead_actions(bot, oxps(), SEAT, [THROW], gate=lambda: None)
+    assert result['played'] == FORCED
+    assert sorted(result['record_selected']) == sorted(THROW)
+    assert result['actions'][0]['action'] == FORCED
+    assert result['actions'][0]['delta_vs_played'] == 0
+    assert result['decision']['doomed_throw_swap_applied'] is True
+
+
+def _saved_diagnostic_fixture():
+    import copy
+    import random
+    from shengji.engine.round import Round
+    rnd = Round('2', 0, random.Random(1707))
+    while rnd.phase == 'deal':
+        rnd.deal_next()
+    rnd.finalize_declare()
+    buried = list(rnd.hands[0][:8])
+    rnd.bury(0, buried)
+    action = [rnd.hands[0][0]]
+    row = dict(seed=1707, mirror=0, trump_rank='2', planned_banker=0,
+               declares=[], banker=0, trump=('NT' if rnd.trump_is_nt else rnd.trump_suit), buried=buried,
+               dtrace=[['P', 0, 0, True, 25, action]], history=[[0, action]])
+    mirror = copy.deepcopy(row)
+    mirror['mirror'] = 1
+    return dict(validated_rows=[row, mirror]), dict(seed=1707, play_index=0,
+                                                   seat=0, alternatives=[action])
+
+
+def test_saved_readout_to_common_world_scorer():
+    import json
+    from shengji.train.lead_saved_diagnostic import diagnose_saved_leads
+    from test_pv_leaf_greedy_finish import leaf_bot
+    saved, case = _saved_diagnostic_fixture()
+    built = []
+    def build(seed):
+        bot = leaf_bot(worlds=2)
+        built.append(bot)
+        return bot
+    result = diagnose_saved_leads(json.loads(json.dumps(saved)), [case], build,
+                                  gate=lambda: None)
+    assert result['cases'][0]['case'] == case
+    assert result['cases'][0]['evidence']['worlds'] == 2
+    assert result['cases'][0]['evidence']['decision']['work_complete'] is True
+    assert built[0].last_decision_record is None
+    json.dumps(result, allow_nan=False)
+
+
+def test_saved_diagnostic_refuses_bad_mirror_before_build():
+    import pytest
+    from shengji.train.lead_saved_diagnostic import diagnose_saved_leads
+    saved, case = _saved_diagnostic_fixture()
+    def forbidden(seed):
+        pytest.fail('bad input must refuse before model construction')
+    with pytest.raises(ValueError, match='duplicate case'):
+        diagnose_saved_leads(saved, [case, case], forbidden, gate=lambda: None)
+    saved['validated_rows'].pop()
+    with pytest.raises(ValueError, match='two mirrors'):
+        diagnose_saved_leads(saved, [case], forbidden, gate=lambda: None)
+
+
+def test_diagnostic_supervisor_publishes_only_success_and_never_overwrites(tmp_path):
+    import sys
+    from shengji.train.lead_diagnostic_run import supervise
+    target = tmp_path / 'result.json'
+    command = [sys.executable, '-c',
+               'import json,sys; json.dump({"schema":"saved-lead-diagnostic-v1"},open(sys.argv[1],"w"))']
+    supervise(command, target, 5, expected={})
+    original = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        supervise(command, target, 5, expected={})
+    assert target.read_bytes() == original
+    failed = tmp_path / 'failed.json'
+    with pytest.raises(RuntimeError, match='exited 1'):
+        supervise(command[:-1] + [command[-1] + '; sys.exit(1)'], failed, 5, expected={})
+    assert not failed.exists()
+
+
+def test_diagnostic_supervisor_hard_timeout_cannot_publish(tmp_path):
+    import subprocess
+    import sys
+    from shengji.train.lead_diagnostic_run import supervise
+    target = tmp_path / 'result.json'
+    with pytest.raises(subprocess.TimeoutExpired):
+        supervise([sys.executable, '-c', 'import time; time.sleep(30)'], target, .1, expected={})
+    assert not target.exists()
+    assert not list(tmp_path.iterdir())
+
+
+def test_diagnostic_pinned_input_refuses_hash_drift_and_oversize(tmp_path):
+    import hashlib
+    from shengji.train.lead_diagnostic_run import pinned_json
+    source = tmp_path / 'saved.json'
+    source.write_bytes(b'{"validated_rows": []}')
+    sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    assert pinned_json(source, sha, 100) == {'validated_rows': []}
+    with pytest.raises(ValueError, match='hash mismatch'):
+        pinned_json(source, '0' * 64, 100)
+    with pytest.raises(ValueError, match='byte limit'):
+        pinned_json(source, sha, 2)
+
+
+def test_pinned_worker_consumes_saved_json_with_real_scorer(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    import os
+    from shengji.ai import registry
+    from shengji.train.lead_diagnostic_run import worker
+    from test_pv_leaf_greedy_finish import leaf_bot
+    saved, case = _saved_diagnostic_fixture()
+    source = tmp_path / 'saved.json'
+    source.write_text(json.dumps(saved))
+    spec = dict(schema='saved-lead-run-v1', saved_path=str(source),
+                saved_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                cases=[case], policy='pv-search-test', wall_seconds=5,
+                env={'SHENGJI_BOT': 'pv-search-test'})
+    packet = tmp_path / 'run.json'
+    packet.write_text(json.dumps(spec))
+    sha = hashlib.sha256(packet.read_bytes()).hexdigest()
+    def build(name, seed):
+        assert name == 'pv-search-test' and seed == case['seed']
+        assert os.environ['SHENGJI_BOT'] == name
+        assert 'SHENGJI_PV_UNKNOWN_OVERRIDE' not in os.environ
+        return leaf_bot(worlds=2)
+    monkeypatch.setattr(registry, 'make_bot', build)
+    monkeypatch.setattr(os, 'environ', dict(os.environ))
+    os.environ['SHENGJI_PV_UNKNOWN_OVERRIDE'] = '1'
+    result_path = tmp_path / 'result.json'
+    worker(packet, sha, result_path)
+    result = json.loads(result_path.read_text())
+    assert result['run_spec_sha256'] == sha
+    assert result['saved_sha256'] == spec['saved_sha256']
+    assert result['cases'][0]['evidence']['worlds'] == 2
+    assert result['cases'][0]['evidence']['decision']['work_complete']
+
+
+@pytest.mark.parametrize('payload', ['{"schema":"wrong"}',
+                                     '{"schema":"saved-lead-diagnostic-v1","value":NaN}'])
+def test_diagnostic_supervisor_rejects_invalid_result(tmp_path, payload):
+    import sys
+    from shengji.train.lead_diagnostic_run import supervise
+    target = tmp_path / 'result.json'
+    with pytest.raises(ValueError):
+        supervise([sys.executable, '-c',
+                   'import sys; open(sys.argv[2],"w").write(sys.argv[1])', payload], target, 5, expected={})
+    assert not target.exists()
+
+
+@pytest.mark.parametrize('key', ['run_spec_sha256', 'saved_sha256', 'policy'])
+def test_diagnostic_supervisor_refuses_wrong_run_identity(tmp_path, key):
+    import json
+    import sys
+    from shengji.train.lead_diagnostic_run import supervise
+    expected = dict(run_spec_sha256='a' * 64, saved_sha256='b' * 64, policy='pv-search-test')
+    payload = dict(schema='saved-lead-diagnostic-v1', **expected)
+    payload[key] = 'wrong'
+    with pytest.raises(ValueError, match='identity mismatch'):
+        supervise([sys.executable, '-c',
+                   'import sys; open(sys.argv[2],"w").write(sys.argv[1])', json.dumps(payload)],
+                  tmp_path / 'result.json', 5, expected=expected)
+    assert not (tmp_path / 'result.json').exists()
+
+
+def test_diagnostic_recipe_controls_subprocess_package_import(tmp_path, monkeypatch):
+    import json
+    import sys
+    from shengji.train.lead_diagnostic_run import recipe_environment, supervise
+    monkeypatch.setenv('SHENGJI_FAST', '1')
+    monkeypatch.setenv('SHENGJI_PV_UNKNOWN_OVERRIDE', '1')
+    spec = dict(schema='saved-lead-run-v1', policy='pv-search-test',
+                env={'SHENGJI_BOT': 'pv-search-test', 'SHENGJI_FAST': '0'})
+    target = tmp_path / 'result.json'
+    code = ('import os,sys,json,shengji; '
+            'assert "shengji.engine.fast" not in sys.modules; '
+            'assert "SHENGJI_PV_UNKNOWN_OVERRIDE" not in os.environ; '
+            'json.dump({"schema":"saved-lead-diagnostic-v1"},open(sys.argv[1],"w"))')
+    supervise([sys.executable, '-c', code], target, 5,
+              expected={}, env=recipe_environment(spec))
+    assert json.loads(target.read_text())['schema'] == 'saved-lead-diagnostic-v1'
+
+
+def test_diagnostic_file_cli_isolates_environment_before_package_import(tmp_path):
+    import hashlib
+    import json
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    from shengji.train import lead_diagnostic_run as runner
+    package = tmp_path / 'shengji'
+    package.mkdir()
+    witness = tmp_path / 'imports.txt'
+    actual_package = Path(runner.__file__).resolve().parents[1]
+    (package / '__init__.py').write_text(
+        'import os\nfrom pathlib import Path\n'
+        f'Path({str(witness)!r}).write_text(os.environ.get("SHENGJI_FAST", "absent"))\n'
+        'assert os.environ.get("SHENGJI_FAST") == "0"\n'
+        f'__path__ = [{str(actual_package)!r}]\n')
+    saved = tmp_path / 'saved.json'
+    saved.write_text('{}')
+    spec = dict(schema='saved-lead-run-v1', policy='pv-search-test', wall_seconds=5,
+                env={'SHENGJI_BOT': 'pv-search-test', 'SHENGJI_FAST': '0'},
+                saved_path=str(saved), saved_sha256='0' * 64)
+    packet = tmp_path / 'run.json'
+    packet.write_text(json.dumps(spec))
+    sha = hashlib.sha256(packet.read_bytes()).hexdigest()
+    output = tmp_path / 'result.json'
+    proc = subprocess.run([sys.executable, runner.__file__, '--spec', str(packet),
+                           '--sha256', sha, str(output)], capture_output=True, text=True,
+                          env={**os.environ, 'PYTHONPATH': str(tmp_path), 'SHENGJI_FAST': '1'},
+                          cwd=tmp_path, timeout=10)
+    assert proc.returncode != 0 and 'input hash mismatch' in proc.stderr
+    assert witness.read_text() == '0'
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('signal_name', ['SIGTERM', 'SIGHUP', 'SIGINT'])
+def test_diagnostic_cli_signal_reaps_worker_without_publishing(tmp_path, signal_name):
+    import hashlib
+    import json
+    import os
+    from pathlib import Path
+    import signal
+    import subprocess
+    import sys
+    import time
+    from shengji.train import lead_diagnostic_run as runner
+
+    package = tmp_path / 'shengji' / 'train'
+    package.mkdir(parents=True)
+    (package.parent / '__init__.py').write_text('')
+    (package / '__init__.py').write_text('')
+    marker = tmp_path / 'worker.pid'
+    (package / 'lead_diagnostic_run.py').write_text(
+        'import os,time\nfrom pathlib import Path\n'
+        f'Path({str(marker)!r}).write_text(str(os.getpid()))\n'
+        'time.sleep(30)\n')
+    spec = dict(schema='saved-lead-run-v1', policy='pv-search-test', wall_seconds=20,
+                env={'SHENGJI_BOT': 'pv-search-test'}, saved_sha256='0' * 64)
+    packet = tmp_path / 'run.json'
+    packet.write_text(json.dumps(spec))
+    sha = hashlib.sha256(packet.read_bytes()).hexdigest()
+    output = tmp_path / 'result.json'
+    proc = subprocess.Popen([sys.executable, runner.__file__, '--spec', str(packet),
+                             '--sha256', sha, str(output)], cwd=tmp_path,
+                            env={**os.environ, 'PYTHONPATH': str(tmp_path)})
+    worker = None
+    try:
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert marker.exists(), 'worker did not start'
+        worker = int(marker.read_text())
+        sig = getattr(signal, signal_name)
+        proc.send_signal(sig)
+        assert proc.wait(timeout=5) == 128 + sig
+        with pytest.raises(ProcessLookupError):
+            os.kill(worker, 0)
+        assert not output.exists()
+        assert not list(tmp_path.glob('.lead-diagnostic-*'))
+    finally:
+        if worker is not None:
+            try:
+                os.killpg(worker, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(timeout=5)
+
+
+@pytest.mark.parametrize('signal_name', ['SIGTERM', 'SIGHUP', 'SIGINT'])
+def test_diagnostic_signal_during_spawn_reaps_worker(tmp_path, monkeypatch, signal_name):
+    import os
+    import signal
+    import subprocess
+    import sys
+    from shengji.train import lead_diagnostic_run as runner
+
+    original = subprocess.Popen
+    children = []
+    sig = getattr(signal, signal_name)
+    handler = signal.getsignal(sig)
+
+    def interrupted_spawn(*args, **kwargs):
+        child = original(*args, **kwargs)
+        children.append(child)
+        os.kill(os.getpid(), sig)
+        return child
+
+    monkeypatch.setattr(runner.subprocess, 'Popen', interrupted_spawn)
+    output = tmp_path / 'result.json'
+    try:
+        with pytest.raises(SystemExit) as error:
+            runner.supervise([sys.executable, '-c', 'import time; time.sleep(30)'],
+                             output, 5, expected={})
+        assert error.value.code == 128 + sig
+        assert len(children) == 1
+        assert children[0].returncode is not None
+        with pytest.raises(ProcessLookupError):
+            os.kill(children[0].pid, 0)
+        assert signal.getsignal(sig) == handler
+        assert not output.exists()
+        assert not list(tmp_path.glob('.lead-diagnostic-*'))
+    finally:
+        for child in children:
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGKILL)
+            child.wait(timeout=5)

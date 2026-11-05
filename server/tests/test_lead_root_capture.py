@@ -191,3 +191,77 @@ def test_served_search_record_to_capture_and_restored_engine():
     # Subsequent producer mutations must not rewrite the saved decision.
     bot.last_decision_record['admitted'].clear()
     assert packet['decision']['admitted']
+
+
+def _saved_seed_row():
+    """Synthetic saved-result row using the xmtj trump-rank fixture."""
+    from collections import Counter
+    import random
+    from shengji.engine.round import Round
+
+    rnd = Round(EVENTS[0]['trump_rank'], 0, random.Random(1707))
+    while rnd.phase == 'deal':
+        rnd.deal_next()
+    rnd.finalize_declare()
+    buried = list(rnd.hands[0][:8])
+    trump = 'NT' if rnd.trump_is_nt else rnd.trump_suit
+    rnd.bury(0, buried)
+    dtrace, history, leads = [], [], []
+    while rnd.phase == 'play' and len(dtrace) < 100:
+        seat = rnd.turn
+        before = list(rnd.hands[seat])
+        if not rnd.trick.plays:
+            leads.append((len(dtrace), seat, fingerprint(rnd)))
+        candidates = ([card] for card in before)
+        attempted = None
+        for candidate in candidates:
+            trial = copy.deepcopy(rnd)
+            try:
+                trial.play(seat, candidate)
+            except Exception:
+                continue
+            attempted = candidate
+            break
+        assert attempted
+        before_counts = Counter(before)
+        hand_len = len(before)
+        rnd.play(seat, attempted)
+        accepted = list((before_counts - Counter(rnd.hands[seat])).elements())
+        dtrace.append(['P', seat, 0, True, hand_len, attempted])
+        history.append([len(history), accepted])
+    return dict(seed=1707, trump_rank=EVENTS[0]['trump_rank'], planned_banker=0,
+                declares=[], banker=0, trump=trump, buried=buried,
+                dtrace=dtrace, history=history), leads
+
+
+def test_saved_lead_reconstructs_json_roundtrip():
+    from shengji.train.lead_saved_case import reconstruct_saved_lead
+
+    row, leads = _saved_seed_row()
+    index, seat, expected = leads[2]
+    root, ledger = reconstruct_saved_lead(row, index, seat)
+    loaded = json.loads(json.dumps(row))
+    loaded_root, loaded_ledger = reconstruct_saved_lead(loaded, index, seat)
+    assert fingerprint(root) == fingerprint(loaded_root) == expected
+    assert normalized(vars(ledger)) == normalized(vars(loaded_ledger))
+    assert root.turn == seat and not root.trick.plays
+
+
+def test_saved_lead_rejects_wrong_prefix_and_missing_history():
+    from shengji.train.lead_saved_case import reconstruct_saved_lead
+
+    row, leads = _saved_seed_row()
+    index, seat, expected = leads[2]
+    bad = copy.deepcopy(row)
+    bad['dtrace'][0][1] = (bad['dtrace'][0][1] + 1) % 4
+    with pytest.raises(ValueError, match='turn mismatch'):
+        reconstruct_saved_lead(bad, index, seat)
+    bad = copy.deepcopy(row)
+    bad['history'] = bad['history'][:index - 1]
+    with pytest.raises(ValueError, match='missing'):
+        reconstruct_saved_lead(bad, index, seat)
+
+    bad = copy.deepcopy(row)
+    bad['history'][0][1] = []
+    with pytest.raises(ValueError, match='accepted cards mismatch'):
+        reconstruct_saved_lead(bad, index, seat)

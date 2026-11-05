@@ -1,0 +1,14 @@
+{
+ "name": "calibration-v97dev-smoke-175960000",
+ "purpose": "calibration",
+ "seed0": 175960000,
+ "clusters": 2,
+ "span": [
+  175960000,
+  175960002
+ ],
+ "created_at": "2026-10-20T08:08:43Z",
+ "host": "shengji-perf",
+ "git_head": null,
+ "note": "v97dev: the 2-deal harness smoke (175960000 first round, 175960001 fixed-banker rank 3 / banker 1), one worker, rc 0; seeds read from fl-pilot/v97dev/smoke/smoke.jsonl. Status: smoke done. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

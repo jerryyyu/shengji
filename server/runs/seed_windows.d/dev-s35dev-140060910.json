@@ -1,0 +1,14 @@
+{
+ "name": "dev-s35dev-140060910",
+ "purpose": "screen",
+ "seed0": 140060910,
+ "clusters": 200,
+ "span": [
+  140060910,
+  140061110
+ ],
+ "created_at": "2026-10-17T02:32:58Z",
+ "host": "shengji-perf",
+ "git_head": "6371a6ea0c5d5143711dd404fd337a2207a56597",
+ "note": "s35dev: S35 DEV duel, candidate (attach_hybrid) and release 46 on the same 200 deals [140060910, 140061110), seat-swapped. Launcher /root/codex-s35dev-reader/codex_s35dev_perf_ready_r2.sh (sha256 8b841673...; DEALS=200 SEED0=140060910); reservation shengji-perf:/root/claude_reservations/s35dev.json; source PR #1071 head 6371a6ea. Status: LANE DONE. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

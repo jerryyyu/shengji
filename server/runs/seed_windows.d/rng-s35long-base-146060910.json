@@ -1,0 +1,14 @@
+{
+ "name": "rng-s35long-base-146060910",
+ "purpose": "other",
+ "seed0": 146060910,
+ "clusters": 600,
+ "span": [
+  146060910,
+  146061510
+ ],
+ "created_at": "2026-10-17T15:31:45Z",
+ "host": "shengji-cloud",
+ "git_head": "756035a60c93f5b5ac08dfd4a1fa183a4d44d1a2",
+ "note": "s35long: S35 long DEV, attach_hybrid (30 s hybrid stage) vs release 46 as served, seat-swapped, 4 workers x 150 pairs. Launcher /root/codex_s35long_final.sh (sha256 2c7e0de9...); reservation shengji-cloud:/root/claude_reservations/s35long.json (intervals.deals / candidate_rng / baseline_rng); source PR #1071 head 756035a6. Status: LANE DONE 2026-10-17T17:24:20Z. This window: the first baseline bot RNG interval (not deals), reserved with the lane. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

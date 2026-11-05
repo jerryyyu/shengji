@@ -1,0 +1,14 @@
+{
+ "name": "exact8-capture-153061000",
+ "purpose": "other",
+ "seed0": 153061000,
+ "clusters": 32,
+ "span": [
+  153061000,
+  153061032
+ ],
+ "created_at": "2026-10-20T08:42:30Z",
+ "host": "shengji-perf",
+ "git_head": "96d7705079054650fafbf161886fcb497405b2e7",
+ "note": "exact8: S48 fresh 8-card exact-stage follow-only capture (self-play of four ed8/xf8 release-46 seats), the 32 INITIAL seeds 153061000..153061031, 4 rounds each; the later games are the exact8-capture-follow-* windows. Exact8 recipe: each initial seed s deals Game(random.Random(s)); a finished game starts Game(random.Random(1000*s + r)); bot seeds 10*s + seat (not deals, not registered). Tree 96d77050. Launcher /root/claude_exact8_perf.sh (sha256 439acd11...); reservation shengji-perf:/root/claude_reservations/exact8.json. Status: === exact8 DONE === 2026-10-20T09:24:15Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

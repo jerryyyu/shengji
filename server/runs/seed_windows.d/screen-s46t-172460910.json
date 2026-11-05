@@ -1,0 +1,14 @@
+{
+ "name": "screen-s46t-172460910",
+ "purpose": "screen",
+ "seed0": 172460910,
+ "clusters": 520,
+ "span": [
+  172460910,
+  172461430
+ ],
+ "created_at": "2026-10-20T05:51:13Z",
+ "host": "shengji-cloud",
+ "git_head": null,
+ "note": "s46t: window 5 of 10 (seeds 172060910 + 100000*i, 520 clusters each), r2 round plan: a FIXED-BANKER window, trump rank = cluster % 13 over 2..A, banker = cluster % 4. release 46 with the S46 r3 belief package vs release 46 as served, two arms on the same seeds, each vs the common MC-LCB control. Launcher /root/claude_s46t_screen_cloud.sh (sha256 f93d316cf254b64a...); reservation shengji-cloud:/root/claude_reservations/s46t.json. Status: LANE DONE 2026-10-20T10:23:47Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

@@ -1,0 +1,14 @@
+{
+ "name": "census-s51d-fixed-168360910",
+ "purpose": "other",
+ "seed0": 168360910,
+ "clusters": 104,
+ "span": [
+  168360910,
+  168361014
+ ],
+ "created_at": "2026-10-20T02:11:09Z",
+ "host": "shengji-cloud",
+ "git_head": null,
+ "note": "s51d: S51 census FIXED-BANKER 2..A window, 104 clusters; one arm (release 46 as served) vs the common MC-LCB control; a census, not a screen. Launcher /root/claude_s51d_census_cloud.sh (sha256 227f103b...); reservation shengji-cloud:/root/claude_reservations/s51d.json. Status: CENSUS DONE 2026-10-20T02:18:41Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

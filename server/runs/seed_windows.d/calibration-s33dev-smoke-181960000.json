@@ -1,0 +1,14 @@
+{
+ "name": "calibration-s33dev-smoke-181960000",
+ "purpose": "calibration",
+ "seed0": 181960000,
+ "clusters": 2,
+ "span": [
+  181960000,
+  181960002
+ ],
+ "created_at": "2026-10-20T16:04:20Z",
+ "host": "shengji-perf",
+ "git_head": null,
+ "note": "s33dev: the 2-deal harness smoke (181960000 banker 0, 181960001 banker 1), rc 0; seeds read from fl-pilot/s33dev/smoke/smoke.jsonl. The 600-deal s33dev block is NOT registered here: no launcher or reservation existed at registration. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

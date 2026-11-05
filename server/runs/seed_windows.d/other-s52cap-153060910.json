@@ -1,0 +1,14 @@
+{
+ "name": "other-s52cap-153060910",
+ "purpose": "other",
+ "seed0": 153060910,
+ "clusters": 4,
+ "span": [
+  153060910,
+  153060914
+ ],
+ "created_at": "2026-10-19T05:49:44Z",
+ "host": "shengji-perf",
+ "git_head": "be697d1f5c1066799d7771d4391f12e4bbc6e003",
+ "note": "s52cap: S52 capacity test, 4 seat-mirrored pairs on deals [153060910, 153060914), first round, trump ranks 2,4,8,A; release 46 + lead-alias refill vs release 46 as served. Launcher /root/claude_s52cap_perf.sh (sha256 fe81a5e7...); reservation shengji-perf:/root/claude_reservations/s52cap.json; tree be697d1f. Status: === s52cap DONE === 2026-10-19T05:50:57Z. Registered retroactively 2026-10-20 from the host reservation record and the launcher it names (seed blocks used since 2026-10-17 were missing here, so seed_windows.py check could not see them; Codex 700/6295407344)."
+}

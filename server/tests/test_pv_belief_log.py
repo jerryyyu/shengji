@@ -347,8 +347,10 @@ def test_xray_shows_the_summary_only(arms):
     bot.last_decision_record = d["record"]
     _, info = play_analysis(bot, d["cards"], is_attacker=True, elapsed=0.1)
     block = info["stages"]["belief"]
-    assert set(block) == {"belief_fallback", "belief_proposed", "belief_ms",
-                          "belief_entropy_bits", "belief_top_mass", "belief_hidden_copies"}
+    # the per-decision draw totals ride along where the record carries them
+    assert set(block) - {"belief_fallback_all_draws", "belief_fallback_any"} == {
+        "belief_fallback", "belief_proposed", "belief_ms",
+        "belief_entropy_bits", "belief_top_mass", "belief_hidden_copies"}
     assert "belief_seed" not in json.dumps(info) and "belief_snapshot" not in json.dumps(info)
 
 

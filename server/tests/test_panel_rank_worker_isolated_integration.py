@@ -24,7 +24,7 @@ import pytest
 from scripts import panel_rank_worker as worker
 from shengji.eval import m9_panel_plan, m9_panel_recipe, observation_runtime, tactical
 
-from test_cwv_puct_package_prior import _write_joint_package
+from tiny_joint_package import _write_joint_package
 from test_panel_rank_worker_authenticated_integration import (
     _complete_authenticated_bundle,
 )

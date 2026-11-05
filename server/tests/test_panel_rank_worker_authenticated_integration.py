@@ -379,7 +379,7 @@ def test_authenticated_prediction_drift_refuses_publication(
 
 def test_authenticated_real_numpy_factory_to_publication(tmp_path, monkeypatch):
     """Use real model loading/encoding/inference; runtime remains synthetic."""
-    from test_cwv_puct_package_prior import _write_joint_package
+    from tiny_joint_package import _write_joint_package
     from shengji.eval import m9_panel_plan
     import test_m9_panel_plan
     import test_m9_panel_readout

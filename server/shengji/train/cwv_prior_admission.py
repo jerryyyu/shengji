@@ -191,8 +191,7 @@ def prior_scores(log_odds, version, rnd, seat, actions, worlds):
     ``(W, input_dim) -> (W, 54)`` card log-odds callable), then the card sum.
 
     This is THE scoring path: `CWVPriorAdmissionBot._prior_scores` (the served
-    prior admission) and the PUCT package prior (`cwv_puct.JointPackagePriorHead`)
-    both call it, so a prior read in the tree is the prior serving computes.
+    prior admission) calls it.
     """
     X = prior_rows(rnd, seat, worlds, version)
     rows = np.asarray(log_odds(X))

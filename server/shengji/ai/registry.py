@@ -812,47 +812,6 @@ def _register_cwv_from_env() -> None:
 _register_cwv_from_env()
 
 
-def register_cwv_puct_policies(checkpoint: str, simulations, **search) -> list[str]:
-    """PUCT-over-sampled-worlds arms, named
-    ``mc-cwvpuct-<ckpt8>[-prior-<prior8>]-s<S>[-pprior[-T<T>]|-vprior[<T>]][-ftl|-pleaf[N]]``.
-
-    Same identity rule as ``register_cwv_policies``: the VALUE checkpoint,
-    the simulation budget, the prior (``prior="package"`` -- the joint NumPy
-    package's policy head -- adds ``-pprior``/``-pprior-T<T>`` and, when
-    that package is not the value package, ``-prior-<prior8>``;
-    ``prior="value"`` adds ``-vprior[<T>]``) and the leaf (``leaf="playout"``
-    with ``leaf_playouts=N`` -> ``-pleaf``/``-pleaf<N>``; the net leaf scored
-    at the finished-trick boundary, ``leaf_finish_trick=True`` -> ``-ftl``;
-    the plain net leaf adds nothing) are in the name; the search parameters
-    (world pool, batch, c_puct, prior mode / prior checkpoint and its pinned
-    ``prior_sha256``, receipt for the control) are keyword arguments recorded
-    in every decision and in the duel's calibration binding.
-    ``mc-cwvpuct-prior-<ckpt8>-s<S>[-ftl|-pleaf[N]]`` is the matching
-    no-learning control (uniform prior; stratified-prior leaf, or the same
-    playout leaf).  Screen-only: nothing here is read from the environment.
-    Returns the registered names.
-    """
-    from .cwv_puct import cwv_puct_registry_entries
-    entries = cwv_puct_registry_entries(checkpoint, simulations, **search)
-    REGISTRY.update(entries)
-    return sorted(entries)
-
-
-def _register_cwv_puct_from_env() -> None:
-    """``SHENGJI_CWV_PUCT_CKPT`` + ``SHENGJI_CWV_PUCT_SHA256`` + ``_SIMULATIONS`` (+ the
-    ``_PRIOR`` / ``_PRIOR_CKPT`` + ``_PRIOR_SHA256`` / ``_PRIOR_TEMPERATURE`` /
-    ``_LEAF_FINISH_TRICK`` / ``_WORLD_POOL`` / ``_BATCH`` / ``_C_PUCT`` knobs) register
-    the PUCT arms at import, so a spawned screen worker resolves the same name the
-    parent did (`ai.cwv_puct.puct_env_recipe`).  Screen-only: nothing
-    served reads these variables."""
-    import os
-    if not os.environ.get("SHENGJI_CWV_PUCT_CKPT"):
-        return
-    from .cwv_puct import puct_env_recipe
-    recipe = puct_env_recipe()
-    register_cwv_puct_policies(recipe.pop("checkpoint"), recipe.pop("simulations"), **recipe)
-
-
 def _register_cwv_shortlist_from_env() -> None:
     """``SHENGJI_CWV_SHORTLIST_CKPT`` (+ the ``_WORLDS``/``_ALTERNATIVES``/
     ``_SELECTION_WORLDS``/``_REPORT_WORLDS``/``_BATCH_SIZE``/``_ENCODING``/
@@ -976,6 +935,5 @@ def _register_netroll_from_env() -> None:
 _register_netroll_from_env()
 _register_cwv_shortlist_from_env()
 _register_pv_search_from_env()
-_register_cwv_puct_from_env()
 _register_exploit_from_env()
 _register_cwv_bury_from_env()

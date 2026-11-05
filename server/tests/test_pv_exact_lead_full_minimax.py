@@ -165,3 +165,60 @@ def test_served_bot_leads_the_truly_better_card_only_with_the_variant(release50_
     assert not rnd.is_attacker(seat)
     assert attacker_points(rnd, seat, ["HQ"]) == 100 < 125 == attacker_points(rnd, seat, ["D3"])
 
+
+
+@pytest.mark.parametrize('cap', [1.8, 2.0, 2.25])
+def test_lower_cap_reaches_minimax_and_keeps_baseline_on_expiry(
+        release50_packages, monkeypatch, cap):
+    import copy
+    import numpy as np
+    from shengji.train import pv_exact_deep
+    from test_release50_fly_config import local_env
+
+    env = {**local_env(release50_packages), TIE: '1', FLAG: '1',
+           'SHENGJI_PV_EXACT_LEAD_MAX_SECONDS': str(cap)}
+    recipe = pv.pv_env_recipe(env)
+    entries = pv.singleton_registry_entries(**recipe)
+    name, = entries
+    if cap == 2.25:
+        assert name == ELM50
+    else:
+        assert f'-els{round(cap * 1000)}-' in name and name != ELM50
+    policy = entries[name](seed=7)
+    assert policy.exact_lead_max_seconds == cap
+    assert policy.exact_lead_full_minimax and policy.exact_lead_tie_baseline
+
+    rnd = P.replay(*MISPRICED)
+    actions = [['D3'], ['D5'], ['HQ']]
+    worlds = [([list(h) for h in rnd.hands], list(rnd.buried))]
+    base = (np.zeros(3), 1, 0, actions[0], 2)
+    policy._tiebreak = {'baseline': True}
+    before = copy.deepcopy(policy._tiebreak)
+    clock = [0.0]
+    monkeypatch.setattr(pv.time, 'perf_counter', lambda: clock[0])
+    original = pv_exact_deep.exact_root_means
+    entered = []
+
+    def elapsed(*args, **kwargs):
+        assert args[4] is pv._lead_only_leaf
+        entered.append(True)
+        policy._tiebreak = {'partial': True}
+        # Exercise the real leaf/scorer guard with elapsed time below the default cap.
+        clock[0] = 2.01
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pv_exact_deep, 'exact_root_means', elapsed)
+    result = policy._exact_lead_decision(rnd, rnd.turn, actions, worlds, 0.0,
+                                         None, [0.0] * 3, base)
+    state = policy._exact_lead
+    assert entered == [True] and state['exact_lead_first_trick'] == 'minimax'
+    assert state['exact_lead_seconds'] == 2.01
+    if cap < 2.01:
+        assert result is base
+        assert state['exact_lead_status'] == 'abandoned'
+        assert state['exact_lead_abandon_reason'] == 'soft_budget'
+        assert state['exact_lead_worlds_completed'] is None
+        assert policy._tiebreak == before
+    else:
+        assert state['exact_lead_status'] == 'complete'
+        assert state['exact_lead_worlds_completed'] == 1

@@ -1,0 +1,837 @@
+{
+ "seat": 3,
+ "phase": "bury",
+ "hand": [
+  "S3",
+  "S4",
+  "S5",
+  "S6",
+  "S7",
+  "S9",
+  "SQ",
+  "C3",
+  "C7",
+  "C8",
+  "C9",
+  "C10",
+  "CJ",
+  "CQ",
+  "CK",
+  "D3",
+  "D4",
+  "D5",
+  "D6",
+  "DJ",
+  "DQ",
+  "DK",
+  "H3",
+  "H4",
+  "H4",
+  "H6",
+  "H8",
+  "H10",
+  "HQ",
+  "S2",
+  "H2",
+  "H2",
+  "BJ"
+ ],
+ "is_attacker": false,
+ "voids": {
+  "0": [],
+  "1": [],
+  "2": []
+ },
+ "unseen_trumps": 25,
+ "unseen_by_suit": {
+  "S": [
+   "SA",
+   "SA",
+   "SK",
+   "SK",
+   "SQ",
+   "SJ",
+   "SJ",
+   "S10",
+   "S10",
+   "S9"
+  ],
+  "H": [],
+  "D": [
+   "DA",
+   "DA",
+   "DK",
+   "DQ",
+   "DJ",
+   "D10",
+   "D10",
+   "D9",
+   "D9",
+   "D8"
+  ],
+  "C": [
+   "CA",
+   "CA",
+   "CK",
+   "CQ",
+   "CJ",
+   "C10",
+   "C9",
+   "C8",
+   "C7",
+   "C6"
+  ],
+  "T": [
+   "BJ",
+   "LJ",
+   "LJ",
+   "C2",
+   "C2",
+   "D2",
+   "D2",
+   "S2",
+   "HA",
+   "HA"
+  ]
+ },
+ "boss_cards": [
+  "BJ"
+ ],
+ "ruff_risky_suits": [],
+ "candidates": null,
+ "bury": {
+  "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+  "mode": "hybrid",
+  "chooser": "wide_value",
+  "chosen": [
+   "D6",
+   "S3",
+   "S4",
+   "S5",
+   "S6",
+   "S7",
+   "S9",
+   "SQ"
+  ],
+  "reason": "value-head-argmax",
+  "fallback": false,
+  "margin": 0.017245718892473505,
+  "gap_vs_incumbent": 0.40636262958270697,
+  "search_secs": 0.19107075000647455,
+  "work": {
+   "worlds_requested": 32,
+   "worlds_used": 32,
+   "attempts": 32,
+   "candidate_rollouts": 0,
+   "complete": true
+  },
+  "sampler_delta": null,
+  "candidates": [
+   {
+    "cards": [
+     "D6",
+     "S3",
+     "S4",
+     "S5",
+     "S6",
+     "S7",
+     "S9",
+     "SQ"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": 0.23982230172275182,
+    "rank": 1,
+    "margin_to_next": 0.017245718892473505,
+    "incumbent": false,
+    "raw_winner": true,
+    "bot_buries": true
+   },
+   {
+    "cards": [
+     "D3",
+     "S3",
+     "S4",
+     "S5",
+     "S6",
+     "S7",
+     "S9",
+     "SQ"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": 0.2225765828302783,
+    "rank": 2,
+    "margin_to_next": 0.00525320262463147,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "D4",
+     "S3",
+     "S4",
+     "S5",
+     "S6",
+     "S7",
+     "S9",
+     "SQ"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": 0.21732338020564684,
+    "rank": 3,
+    "margin_to_next": 0.01015182329541206,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "C3",
+     "S3",
+     "S4",
+     "S5",
+     "S6",
+     "S7",
+     "S9",
+     "SQ"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": 0.20717155691023478,
+    "rank": 4,
+    "margin_to_next": 0.13573891588485376,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "D5",
+     "S3",
+     "S4",
+     "S5",
+     "S6",
+     "S7",
+     "S9",
+     "SQ"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": 0.07143264102538102,
+    "rank": 5,
+    "margin_to_next": 0.11131967317736005,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "D3",
+     "D4",
+     "D6",
+     "S3",
+     "S4",
+     "S6",
+     "S7",
+     "S9"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": -0.03988703215197903,
+    "rank": 6,
+    "margin_to_next": 0.005281034079065237,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "D3",
+     "D4",
+     "D6",
+     "S3",
+     "S4",
+     "S6",
+     "S7",
+     "SQ"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": -0.04516806623104427,
+    "rank": 7,
+    "margin_to_next": 0.02493234923505678,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "S3",
+     "D3",
+     "C3",
+     "S9",
+     "S4",
+     "S6",
+     "D6",
+     "S7"
+    ],
+    "sources": [
+     "swap"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": -0.07010041546610105,
+    "rank": 8,
+    "margin_to_next": 0.006284380383498905,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "S3",
+     "S9",
+     "C3",
+     "D4",
+     "S4",
+     "S6",
+     "D6",
+     "S7"
+    ],
+    "sources": [
+     "swap"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": -0.07638479584959995,
+    "rank": 9,
+    "margin_to_next": 0.003219292881522895,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "S3",
+     "D3",
+     "C3",
+     "D4",
+     "S4",
+     "S6",
+     "S9",
+     "S7"
+    ],
+    "sources": [
+     "swap"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": -0.07960408873112285,
+    "rank": 10,
+    "margin_to_next": 0.01677478873787952,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "D3",
+     "D4",
+     "D6",
+     "S3",
+     "S4",
+     "S5",
+     "S6",
+     "S7"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": -0.09637887746900237,
+    "rank": 11,
+    "margin_to_next": 0.01667109032623161,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "D3",
+     "D4",
+     "D6",
+     "DJ",
+     "S3",
+     "S4",
+     "S6",
+     "S7"
+    ],
+    "sources": [
+     "ballot"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": -0.11304996779523398,
+    "rank": 12,
+    "margin_to_next": 0.01569431076735954,
+    "incumbent": false,
+    "raw_winner": false,
+    "bot_buries": false
+   },
+   {
+    "cards": [
+     "S3",
+     "D3",
+     "C3",
+     "D4",
+     "S4",
+     "S6",
+     "D6",
+     "S7"
+    ],
+    "sources": [
+     "incumbent"
+    ],
+    "banker_avg": null,
+    "worlds": 32,
+    "value": -0.16654032785995515,
+    "rank": 14,
+    "margin_to_next": 0.005083078201633395,
+    "incumbent": true,
+    "raw_winner": false,
+    "bot_buries": false
+   }
+  ],
+  "candidate_count": 64,
+  "candidates_truncated": true,
+  "value_units": "expected signed levels for the banker's team",
+  "model_positions": 2048,
+  "enumeration": {
+   "k": 64,
+   "ballot_count": 29,
+   "swap_count": 35,
+   "swaps_enumerated": 184
+  },
+  "chosen_value": 0.23982230172275182,
+  "belief": {
+   "bury_belief_worlds": true,
+   "bury_belief_fallbacks": 0,
+   "bury_belief_error": null,
+   "bury_belief_ms": 3.205
+  },
+  "model_ids": {
+   "value": "f4f4127e",
+   "prior": null,
+   "belief": "028131a0"
+  },
+  "verdict": {
+   "buried": [
+    "D6",
+    "S3",
+    "S4",
+    "S5",
+    "S6",
+    "S7",
+    "S9",
+    "SQ"
+   ],
+   "decided_by": "wide_value",
+   "summary": "buried D6 S3 S4 S5 S6 S7 S9 SQ: value argmax (rank 1) of 64 candidates on 32 belief worlds; +0.017 vs the next best",
+   "warnings": [],
+   "degraded": false,
+   "model_ids": {
+    "value": "f4f4127e",
+    "prior": null,
+    "belief": "028131a0"
+   }
+  }
+ },
+ "analysis": null,
+ "ml": {
+  "inputs": {
+   "kind": "model-input",
+   "scope": "root_state_preview",
+   "scope_note": "encoder layout and the current board's values; NOT the input behind any displayed candidate score, which is the candidate's trick-completed afterstate in each sampled world",
+   "encoder_version": 2,
+   "public_dim": 561,
+   "round_end_flag": 0.0,
+   "groups": {
+    "own_hand": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      0,
+      54
+     ],
+     "value": {
+      "S2": 1,
+      "S3": 1,
+      "S4": 1,
+      "S5": 1,
+      "S6": 1,
+      "S7": 1,
+      "S9": 1,
+      "SQ": 1,
+      "H2": 2,
+      "H3": 1,
+      "H4": 2,
+      "H6": 1,
+      "H8": 1,
+      "H10": 1,
+      "HQ": 1,
+      "D3": 1,
+      "D4": 1,
+      "D5": 1,
+      "D6": 1,
+      "DJ": 1,
+      "DQ": 1,
+      "DK": 1,
+      "C3": 1,
+      "C7": 1,
+      "C8": 1,
+      "C9": 1,
+      "C10": 1,
+      "CJ": 1,
+      "CQ": 1,
+      "CK": 1,
+      "BJ": 1
+     }
+    },
+    "played_by_self": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      54,
+      108
+     ],
+     "value": {}
+    },
+    "played_by_next": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      108,
+      162
+     ],
+     "value": {}
+    },
+    "played_by_partner": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      162,
+      216
+     ],
+     "value": {}
+    },
+    "played_by_previous": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      216,
+      270
+     ],
+     "value": {}
+    },
+    "current_trick_play_1": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      270,
+      324
+     ],
+     "value": {}
+    },
+    "current_trick_play_2": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      324,
+      378
+     ],
+     "value": {}
+    },
+    "current_trick_play_3": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      378,
+      432
+     ],
+     "value": {}
+    },
+    "unseen": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      432,
+      486
+     ],
+     "value": {
+      "S2": 1,
+      "S3": 1,
+      "S4": 1,
+      "S5": 1,
+      "S6": 1,
+      "S7": 1,
+      "S8": 2,
+      "S9": 1,
+      "S10": 2,
+      "SJ": 2,
+      "SQ": 1,
+      "SK": 2,
+      "SA": 2,
+      "H3": 1,
+      "H5": 2,
+      "H6": 1,
+      "H7": 2,
+      "H8": 1,
+      "H9": 2,
+      "H10": 1,
+      "HJ": 2,
+      "HQ": 1,
+      "HK": 2,
+      "HA": 2,
+      "D2": 2,
+      "D3": 1,
+      "D4": 1,
+      "D5": 1,
+      "D6": 1,
+      "D7": 2,
+      "D8": 2,
+      "D9": 2,
+      "D10": 2,
+      "DJ": 1,
+      "DQ": 1,
+      "DK": 1,
+      "DA": 2,
+      "C2": 2,
+      "C3": 1,
+      "C4": 2,
+      "C5": 2,
+      "C6": 2,
+      "C7": 1,
+      "C8": 1,
+      "C9": 1,
+      "C10": 1,
+      "CJ": 1,
+      "CQ": 1,
+      "CK": 1,
+      "CA": 2,
+      "LJ": 2,
+      "BJ": 1
+     }
+    },
+    "trump_suit_onehot": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      486,
+      491
+     ],
+     "value": "H"
+    },
+    "trump_rank_onehot": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      491,
+      504
+     ],
+     "value": 0
+    },
+    "banker_relative": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      504,
+      508
+     ],
+     "value": "self"
+    },
+    "attacker_points_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      508,
+      509
+     ],
+     "value": 0.0
+    },
+    "cards_remaining_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      509,
+      510
+     ],
+     "value": 1.08
+    },
+    "is_attacker": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      510,
+      511
+     ],
+     "value": 0.0
+    },
+    "observed_voids": {
+     "kind": "model-input",
+     "type": "flags",
+     "columns": [
+      511,
+      531
+     ],
+     "value": []
+    },
+    "trick_winner_relative": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      531,
+      535
+     ],
+     "value": null
+    },
+    "trick_winner_is_partner": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      535,
+      536
+     ],
+     "value": 0.0
+    },
+    "trick_points_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      536,
+      537
+     ],
+     "value": 0.0
+    },
+    "lead_suit_onehot": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      537,
+      542
+     ],
+     "value": null
+    },
+    "position_in_trick": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      542,
+      546
+     ],
+     "value": 0
+    },
+    "lead_size_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      546,
+      547
+     ],
+     "value": 0.0
+    },
+    "points_regime_kink": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      547,
+      548
+     ],
+     "value": -1.0
+    },
+    "points_band": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      548,
+      552
+     ],
+     "value": "<40"
+    },
+    "own_suit_lengths_frac": {
+     "kind": "model-input",
+     "type": "scalars",
+     "columns": [
+      552,
+      557
+     ],
+     "value": {
+      "S": 0.2593,
+      "H": 0.0,
+      "D": 0.2593,
+      "C": 0.2963,
+      "T": 0.4074
+     }
+    },
+    "unseen_trumps_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      557,
+      558
+     ],
+     "value": 0.9259
+    },
+    "own_pair_rank_count_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      558,
+      559
+     ],
+     "value": 0.1538
+    },
+    "hand_size_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      559,
+      560
+     ],
+     "value": 1.2222
+    }
+   },
+   "world_block": {
+    "kind": "model-input",
+    "rendered": false,
+    "why": "sampled hidden hands, one complete world per sample (W per decision); never shown on the X-ray"
+   }
+  },
+  "inputs_scope": "root_state_preview; scored inputs are per-candidate trick-completed afterstates in sampled worlds",
+  "outputs_note": "per-candidate model_score rows in candidates[] and analysis.model are model-output"
+ }
+}

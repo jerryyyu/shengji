@@ -32,9 +32,67 @@ interface XrayCandidate {
   anchor?: boolean;
   selected?: boolean;
   forced_component?: boolean;
+  // release 49+: the value rank, the lead confirmation's challenger and its
+  // paired delta, the singleton challenger's admission, the exact stages' values
+  rank?: number | null;
+  lead_confirm_challenger?: boolean;
+  lead_confirm_delta?: number | null;
+  lead_confirm_se?: number | null;
+  singleton_added?: boolean;
+  search_value?: number | null;
+  exact_score?: number | null;
 }
 
 type Scalar = number | string | boolean | null;
+
+// The verdict blocks every decision view carries (server `debug_play._pv_verdict`,
+// `debug._bury_verdict`, `debug._declare_verdict`). All optional: an older
+// server, or a record from an older release, leaves them out and the panel
+// shows n/a.
+interface XrayWarning {
+  code: string;
+  severity: "degraded" | "info" | string;
+  text: string;
+}
+
+interface XrayModelIds {
+  value?: string | null;
+  prior?: string | null;
+  belief?: string | null;
+}
+
+interface XrayPipelineStage {
+  stage: string;
+  status: string;
+  changed: boolean;
+  play: string | null;
+  detail: string;
+}
+
+interface XrayTopRow {
+  play: string[] | string;
+  value: number | null;
+  prior_log_odds?: number | null;
+  margin_to_next: number | null;
+  anchor?: boolean;
+  heuristic?: boolean;
+  bot_plays?: boolean;
+}
+
+interface XrayVerdict {
+  summary?: string;
+  decided_by?: string;
+  played?: string[];
+  chosen_value?: number | null;
+  margin_to_next?: number | null;
+  top?: XrayTopRow[];
+  pipeline?: XrayPipelineStage[];
+  warnings?: XrayWarning[];
+  degraded?: boolean;
+  model_ids?: XrayModelIds | null;
+  gap?: number | null;
+  threshold?: number | null;
+}
 
 interface XrayAnalysis {
   source?: string;
@@ -112,6 +170,9 @@ interface XrayAnalysis {
   evaluation_seconds?: number | null;
   candidate_count?: number | null;
   candidates_truncated?: boolean;
+  model_ids?: XrayModelIds | null;
+  draws?: Record<string, Record<string, number | null>> | null;
+  verdict?: XrayVerdict | null;
 }
 
 interface XrayDeclareRecord {
@@ -147,6 +208,8 @@ interface XrayDeclare {
   current: { seat: number; cards: string[]; strength: number } | null;
   record: XrayDeclareRecord | null;
   evaluation_seconds: number;
+  model_ids?: XrayModelIds | null;
+  verdict?: XrayVerdict | null;
 }
 
 interface XrayBuryCandidate {
@@ -157,6 +220,10 @@ interface XrayBuryCandidate {
   incumbent: boolean;
   raw_winner: boolean;
   bot_buries: boolean;
+  // the wide value-only chooser: the banker team's expected signed level
+  value?: number | null;
+  rank?: number | null;
+  margin_to_next?: number | null;
 }
 
 interface XrayBuryWork {
@@ -181,6 +248,19 @@ interface XrayBuryAnalysis {
   work: XrayBuryWork | null;
   sampler_delta: Record<string, number> | null;
   candidates: XrayBuryCandidate[];
+  chooser?: string;
+  candidate_count?: number;
+  candidates_truncated?: boolean;
+  value_units?: string;
+  model_positions?: number | null;
+  belief?: {
+    bury_belief_worlds?: boolean | null;
+    bury_belief_fallbacks?: number | null;
+    bury_belief_error?: string | null;
+    bury_belief_ms?: number | null;
+  } | null;
+  model_ids?: XrayModelIds | null;
+  verdict?: XrayVerdict | null;
 }
 
 interface XrayData {
@@ -219,6 +299,129 @@ function StageBlock({ name, block }: { name: string; block: Record<string, Scala
           {key.startsWith(prefix) ? key.slice(prefix.length) : key} {scalarText(value)}
         </span>
       ))}
+    </div>
+  );
+}
+
+function signed(value: number | null | undefined, digits = 3): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`
+    : "n/a";
+}
+
+function playText(play: string[] | string | null | undefined): string {
+  if (play === null || play === undefined) return "";
+  return Array.isArray(play) ? play.join(" ") : play;
+}
+
+function PlayCodes({ play }: { play: string[] | string | null | undefined }) {
+  const codes = playText(play).split(" ").filter((c) => c.length > 0);
+  if (codes.length === 0) return <span className="xr-dim">—</span>;
+  return (
+    <span className="xr-cards">
+      {codes.map((c, i) => (c === "PASS" ? <span key={i}>PASS</span> : <CodeSpan key={i} c={c} />))}
+    </span>
+  );
+}
+
+/** The packages that decided: value / prior / belief sha256 prefixes. */
+function ModelIds({ ids }: { ids: XrayModelIds | null | undefined }) {
+  return (
+    <div className="xr-row xr-ids">
+      <span className="xr-label">packages</span>
+      {ids === null || ids === undefined ? (
+        <span className="xr-dim">n/a (the record names no package ids)</span>
+      ) : (
+        <span>
+          value {ids.value ?? "n/a"} · prior {ids.prior ?? "n/a"} · belief {ids.belief ?? "n/a"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** One badge: a count of degradations, or OK; info notes never raise it. */
+function HealthBadge({ verdict }: { verdict: XrayVerdict | null | undefined }) {
+  if (verdict === null || verdict === undefined || verdict.warnings === undefined) {
+    return <span className="xr-badge na">health n/a</span>;
+  }
+  const degraded = verdict.warnings.filter((w) => w.severity === "degraded");
+  return degraded.length > 0 ? (
+    <span className="xr-badge warn" title={degraded.map((w) => w.text).join("\n")}>
+      ⚠ degraded ({degraded.length})
+    </span>
+  ) : (
+    <span className="xr-badge ok">OK</span>
+  );
+}
+
+/** The at-a-glance block: what was decided, by which stage, the top
+ *  alternatives with their margins, the stage pipeline, warnings and packages. */
+function VerdictCard({ verdict, valueLabel }: { verdict: XrayVerdict | null | undefined; valueLabel: string }) {
+  if (verdict === null || verdict === undefined) {
+    return (
+      <div className="xr-verdict">
+        <div className="xr-row">
+          <HealthBadge verdict={verdict} />
+          <span className="xr-dim">verdict n/a (an older server)</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="xr-verdict">
+      <div className="xr-row">
+        <HealthBadge verdict={verdict} />
+        {verdict.decided_by !== undefined ? <span className="xr-tag decided">decided by {verdict.decided_by}</span> : null}
+      </div>
+      <div className="xr-summary">{verdict.summary ?? "n/a"}</div>
+      {verdict.warnings && verdict.warnings.length > 0 ? (
+        <ul className="xr-warnings">
+          {verdict.warnings.map((w, i) => (
+            <li key={i} className={w.severity === "degraded" ? "warn" : "info"}>
+              {w.severity === "degraded" ? "⚠ " : "ⓘ "}
+              {w.text}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {verdict.top && verdict.top.length > 0 ? (
+        <div className="xr-top">
+          <div className="xr-top-row xr-top-head">
+            <span>top by {valueLabel}</span>
+            <span className="xr-num">value</span>
+            <span className="xr-num">prior</span>
+            <span className="xr-num">to next</span>
+          </div>
+          {verdict.top.map((row, i) => (
+            <div key={i} className={`xr-top-row${row.bot_plays ? " bot" : ""}`}>
+              <span>
+                <PlayCodes play={row.play} />
+                {row.bot_plays ? <span className="xr-tag bot">chosen</span> : null}
+                {row.anchor ? <Flag>anchor</Flag> : null}
+                {row.heuristic ? <Flag>heuristic</Flag> : null}
+              </span>
+              <span className="xr-num">{signed(row.value)}</span>
+              <span className="xr-num">{row.prior_log_odds === undefined ? "" : metric(row.prior_log_odds, 2)}</span>
+              <span className="xr-num">{signed(row.margin_to_next)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {verdict.pipeline && verdict.pipeline.length > 0 ? (
+        <ol className="xr-pipeline">
+          {verdict.pipeline.map((stage, i) => (
+            <li key={i} className={stage.changed ? "changed" : ""}>
+              <span className="xr-stage">{stage.stage}</span>
+              <span className="xr-tag">{stage.status}</span>
+              {stage.changed ? <span className="xr-tag changed">changed the play</span> : null}
+              {stage.play ? <PlayCodes play={stage.play} /> : null}
+              {stage.detail ? <div className="xr-dim">{stage.detail}</div> : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <ModelIds ids={verdict.model_ids} />
     </div>
   );
 }
@@ -327,6 +530,7 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
                 {" "}· {data.declare!.final ? "grace window" : "during the deal"} · {data.declare!.cards_dealt} cards dealt
               </span>
             </div>
+            <VerdictCard verdict={data.declare!.verdict} valueLabel="expected signed levels (this seat's team)" />
             <div className="xr-row">
               <span className="xr-label">bot declares</span>
               <span className="xr-cards">
@@ -457,6 +661,9 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
         {data.analysis !== null && data.analysis !== undefined && pv ? (
           <div className="xr-section">
             <div className="xr-head">play analysis</div>
+            <VerdictCard verdict={data.analysis.verdict} valueLabel="value (expected signed levels, acting team)" />
+            <details className="xr-raw">
+            <summary>raw detail</summary>
             <div className="xr-dim">isolated current-state replay · not historical decision</div>
             {data.analysis.snapshot !== null && data.analysis.snapshot !== undefined ? (
               <div className="xr-dim">
@@ -554,6 +761,17 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
             {Object.entries(data.analysis.stages ?? {}).map(([name, block]) => (
               <StageBlock key={name} name={name} block={block} />
             ))}
+            {Object.entries(data.analysis.draws ?? {}).map(([name, table]) => (
+              <div key={name} className="xr-dim">
+                <span className="xr-label">{name}</span>
+                {Object.entries(table).map(([stage, count]) => (
+                  <span key={stage}>
+                    {" · "}{stage} {integerMetric(count)}
+                  </span>
+                ))}
+              </div>
+            ))}
+            </details>
           </div>
         ) : null}
 
@@ -650,6 +868,14 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
           <div className="xr-section">
             <div className="xr-head">
               kitty bury — {data.bury.policy} / {data.bury.mode}
+              {data.bury.chooser ? ` / ${data.bury.chooser}` : ""}
+            </div>
+            <VerdictCard verdict={data.bury.verdict} valueLabel="value" />
+            <div className="xr-dim">
+              belief worlds{" "}
+              {data.bury.belief === null || data.bury.belief === undefined
+                ? "n/a"
+                : `${data.bury.belief.bury_belief_worlds ? "on" : "off"} · fallbacks ${integerMetric(data.bury.belief.bury_belief_fallbacks)}${data.bury.belief.bury_belief_error ? ` (${data.bury.belief.bury_belief_error})` : ""} · ${metric(data.bury.belief.bury_belief_ms, 1)} ms`}
             </div>
             <div className="xr-row">
               <span className="xr-label">chosen</span>
@@ -664,6 +890,17 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
             </div>
             {data.bury.work === null ? (
               <div className="xr-dim">heuristic decision — no rollout search</div>
+            ) : data.bury.chooser === "wide_value" ? (
+              <div className="xr-dim">
+                {integerMetric(data.bury.candidate_count)} candidates scored on{" "}
+                {integerMetric(data.bury.work.worlds_used)}/{integerMetric(data.bury.work.worlds_requested)} worlds
+                {" · "}{integerMetric(data.bury.model_positions)} value positions · no MC rollouts
+                {" · "}{data.bury.search_secs.toFixed(3)}s
+                {" · "}margin {signed(data.bury.margin)} · vs incumbent {signed(data.bury.gap_vs_incumbent)}
+                {data.bury.candidates_truncated
+                  ? ` · top ${data.bury.candidates.length} listed`
+                  : ""}
+              </div>
             ) : (
               <div className="xr-dim">
                 {data.bury.work.worlds_used ?? 0}/{data.bury.work.worlds_requested ?? 0} worlds
@@ -684,7 +921,15 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
               <thead>
                 <tr>
                   <th>bury</th>
-                  <th>banker avg</th>
+                  {data.bury.chooser === "wide_value" ? (
+                    <>
+                      <th>rank</th>
+                      <th>value</th>
+                      <th>to next</th>
+                    </>
+                  ) : (
+                    <th>banker avg</th>
+                  )}
                   <th></th>
                 </tr>
               </thead>
@@ -696,9 +941,17 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
                         <CodeSpan key={j} c={c} />
                       ))}
                     </td>
-                    <td className="xr-num">
-                      {cand.banker_avg === null ? "—" : cand.banker_avg.toFixed(1)}
-                    </td>
+                    {data.bury!.chooser === "wide_value" ? (
+                      <>
+                        <td className="xr-num">{integerMetric(cand.rank)}</td>
+                        <td className="xr-num">{signed(cand.value)}</td>
+                        <td className="xr-num">{signed(cand.margin_to_next)}</td>
+                      </>
+                    ) : (
+                      <td className="xr-num">
+                        {cand.banker_avg === null ? "—" : cand.banker_avg.toFixed(1)}
+                      </td>
+                    )}
                     <td>
                       {cand.incumbent ? <span className="xr-tag">incumbent</span> : null}
                       {cand.raw_winner ? <span className="xr-tag">raw best</span> : null}
@@ -739,8 +992,13 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
                       {pv ? (
                         <td>
                           <div>value · expected signed levels (acting team): {metric(cand.acting_team_levels, 3)}</div>
+                          {cand.search_value !== undefined ? <div>search value (before exact): {metric(cand.search_value, 3)}</div> : null}
+                          {cand.exact_score !== undefined ? <div>exact follow score: {metric(cand.exact_score, 3)}</div> : null}
+                          {cand.lead_confirm_delta !== undefined ? (
+                            <div>lcc delta vs search lead: {signed(cand.lead_confirm_delta)} ± {metric(cand.lead_confirm_se, 3)}</div>
+                          ) : null}
                           <div>policy log-odds: {metric(cand.policy_log_odds, 2)}</div>
-                          <div>worlds: {integerMetric(cand.selection_worlds)}</div>
+                          <div>worlds: {integerMetric(cand.selection_worlds)}{cand.rank ? ` · rank ${cand.rank}` : ""}</div>
                         </td>
                       ) : (
                         <td>
@@ -762,6 +1020,8 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
                         {cand.report_finalist === true ? <Flag>report finalist</Flag> : null}
                         {cand.selected === true ? <Flag>selected</Flag> : null}
                         {cand.forced_component === true ? <Flag>forced component</Flag> : null}
+                        {cand.lead_confirm_challenger === true ? <Flag>lcc confirmed</Flag> : null}
+                        {cand.singleton_added === true ? <Flag>sc8 admitted</Flag> : null}
                         {cand.bot_plays === true ? <span className="xr-tag bot">chosen</span> : null}
                       </td>
                     </tr>
@@ -776,7 +1036,7 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
   }
 
   return (
-    <div className="xray-panel" style={{ width: 640 }}>
+    <div className="xray-panel" style={{ width: 680 }}>
       <div className="xr-titlebar">
         <span>
           xray — {room} seat {seat}

@@ -1,0 +1,143 @@
+{
+ "seat": 2,
+ "phase": "declare",
+ "hand": [
+  "BJ",
+  "C5",
+  "C6",
+  "CA",
+  "D10",
+  "D2",
+  "D2",
+  "D4",
+  "DJ",
+  "DQ",
+  "H10",
+  "H2",
+  "H4",
+  "H5",
+  "H6",
+  "H8",
+  "HJ",
+  "HQ",
+  "S10",
+  "S2",
+  "S4",
+  "S9",
+  "SJ",
+  "SJ",
+  "SK"
+ ],
+ "is_attacker": null,
+ "voids": {},
+ "unseen_trumps": null,
+ "unseen_by_suit": {},
+ "boss_cards": [],
+ "ruff_risky_suits": [],
+ "candidates": null,
+ "bury": null,
+ "analysis": null,
+ "ml": null,
+ "declare": {
+  "model_ids": {
+   "value": "f4f4127e",
+   "prior": null,
+   "belief": null
+  },
+  "verdict": {
+   "declared": "H2",
+   "decided_by": "heuristic",
+   "summary": "declares H2: heuristic (value agreed); best H2 +0.000 vs the heuristic's H2",
+   "top": [
+    {
+     "play": "H2",
+     "value": 1.091662788084581,
+     "margin_to_next": 0.2948947544202043,
+     "heuristic": true,
+     "bot_plays": true
+    },
+    {
+     "play": "S2",
+     "value": 0.7967680336643768,
+     "margin_to_next": 0.0982025928021818,
+     "heuristic": false,
+     "bot_plays": false
+    },
+    {
+     "play": "PASS",
+     "value": 0.698565440862195,
+     "margin_to_next": 0.034140912740541984,
+     "heuristic": false,
+     "bot_plays": false
+    },
+    {
+     "play": "D2 D2",
+     "value": 0.664424528121653,
+     "margin_to_next": null,
+     "heuristic": false,
+     "bot_plays": false
+    }
+   ],
+   "gap": 0.0,
+   "threshold": 0.0,
+   "warnings": [],
+   "degraded": false,
+   "model_ids": {
+    "value": "f4f4127e",
+    "prior": null,
+    "belief": null
+   }
+  },
+  "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+  "phase": "declare",
+  "final": true,
+  "cards_dealt": 100,
+  "options": [
+   [
+    "D2"
+   ],
+   [
+    "D2",
+    "D2"
+   ],
+   [
+    "H2"
+   ],
+   [
+    "S2"
+   ]
+  ],
+  "chosen": [
+   "H2"
+  ],
+  "current": null,
+  "record": {
+   "schema": "pv-value-declare-decision-v1",
+   "final": true,
+   "cards_dealt": 100,
+   "gate": "final",
+   "evaluated": true,
+   "heuristic": "H2",
+   "value_choice": "H2",
+   "played": "H2",
+   "changed": false,
+   "worlds": 64,
+   "worlds_completed": 64,
+   "fallback_reason": null,
+   "outcomes": "2:H=H2 | 2:D=D2 D2 | 2:S=S2 | 0:flip=PASS",
+   "outcome_means": [
+    1.091662788084581,
+    0.664424528121653,
+    0.7967680336643768,
+    0.698565440862195
+   ],
+   "heuristic_mean": 1.091662788084581,
+   "best_mean": 1.091662788084581,
+   "margin": 0.0,
+   "seconds": 0.04162241599988192,
+   "leaf_first_trick": "heuristic",
+   "leaf_first_trick_fallbacks": 0
+  },
+  "evaluation_seconds": 0.04164854099508375
+ }
+}

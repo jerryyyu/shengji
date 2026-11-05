@@ -1,0 +1,973 @@
+{
+ "seat": 0,
+ "phase": "play",
+ "hand": [
+  "C3",
+  "C3",
+  "C5",
+  "C10",
+  "C10",
+  "CJ",
+  "CJ",
+  "CA",
+  "D5",
+  "DJ",
+  "DJ",
+  "S3",
+  "S3",
+  "S4",
+  "S5",
+  "S7",
+  "S7",
+  "S10",
+  "SJ",
+  "SK",
+  "SK",
+  "D2",
+  "D2",
+  "H2",
+  "S2"
+ ],
+ "is_attacker": false,
+ "voids": {
+  "1": [],
+  "2": [],
+  "3": []
+ },
+ "unseen_trumps": 22,
+ "unseen_by_suit": {
+  "S": [],
+  "H": [
+   "HA",
+   "HA",
+   "HK",
+   "HK",
+   "HQ",
+   "HJ",
+   "HJ",
+   "H10",
+   "H10",
+   "H9"
+  ],
+  "D": [
+   "DA",
+   "DA",
+   "DK",
+   "DK",
+   "DQ",
+   "DQ",
+   "D10",
+   "D10",
+   "D9",
+   "D8"
+  ],
+  "C": [
+   "CA",
+   "CK",
+   "CK",
+   "CQ",
+   "CQ",
+   "C9",
+   "C9",
+   "C8",
+   "C8",
+   "C7"
+  ],
+  "T": [
+   "BJ",
+   "BJ",
+   "LJ",
+   "LJ",
+   "S2",
+   "C2",
+   "C2",
+   "H2",
+   "SA",
+   "SA"
+  ]
+ },
+ "boss_cards": [
+  "CA"
+ ],
+ "ruff_risky_suits": [],
+ "candidates": [
+  {
+   "rank": 1,
+   "index": 0,
+   "play": [
+    "C10",
+    "C10",
+    "CJ",
+    "CJ"
+   ],
+   "acting_team_levels": 1.8365126030272982,
+   "model_score": 1.8365126030272982,
+   "policy_log_odds": -0.08983686085642342,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": true,
+   "heuristic_pick": true,
+   "model_nominated": false,
+   "report_finalist": false,
+   "selected": false,
+   "bot_plays": false
+  },
+  {
+   "rank": 3,
+   "index": 1,
+   "play": [
+    "C3",
+    "C3",
+    "CA",
+    "CJ",
+    "CJ"
+   ],
+   "acting_team_levels": 1.5711580129232516,
+   "model_score": 1.5711580129232516,
+   "policy_log_odds": 1.2813560234102634,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": false,
+   "heuristic_pick": false,
+   "model_nominated": true,
+   "report_finalist": false,
+   "selected": false,
+   "bot_plays": false
+  },
+  {
+   "rank": 6,
+   "index": 2,
+   "play": [
+    "C3",
+    "CA",
+    "CJ",
+    "CJ"
+   ],
+   "acting_team_levels": 1.4653810978003179,
+   "model_score": 1.4653810978003179,
+   "policy_log_odds": 1.2182761204885593,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": false,
+   "heuristic_pick": false,
+   "model_nominated": true,
+   "report_finalist": false,
+   "selected": false,
+   "bot_plays": false
+  },
+  {
+   "rank": 5,
+   "index": 3,
+   "play": [
+    "CA",
+    "CJ",
+    "CJ"
+   ],
+   "acting_team_levels": 1.4835117649627776,
+   "model_score": 1.4835117649627776,
+   "policy_log_odds": 1.1551962175668558,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": false,
+   "heuristic_pick": false,
+   "model_nominated": true,
+   "report_finalist": false,
+   "selected": false,
+   "bot_plays": false
+  },
+  {
+   "rank": 2,
+   "index": 4,
+   "play": [
+    "DJ",
+    "DJ"
+   ],
+   "acting_team_levels": 1.6437364837271027,
+   "model_score": 1.6437364837271027,
+   "policy_log_odds": 1.012114201390289,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": false,
+   "heuristic_pick": false,
+   "model_nominated": true,
+   "report_finalist": false,
+   "selected": false,
+   "bot_plays": false
+  },
+  {
+   "rank": 8,
+   "index": 5,
+   "play": [
+    "C10",
+    "C3",
+    "C3",
+    "CA",
+    "CJ",
+    "CJ"
+   ],
+   "acting_team_levels": 1.2506319139447426,
+   "model_score": 1.2506319139447426,
+   "policy_log_odds": 0.9601932950549917,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": false,
+   "heuristic_pick": false,
+   "model_nominated": true,
+   "report_finalist": false,
+   "selected": false,
+   "bot_plays": false
+  },
+  {
+   "rank": 7,
+   "index": 6,
+   "play": [
+    "CA",
+    "CJ"
+   ],
+   "acting_team_levels": 1.3812721533413974,
+   "model_score": 1.3812721533413974,
+   "policy_log_odds": 0.8789519196397951,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": false,
+   "heuristic_pick": false,
+   "model_nominated": true,
+   "report_finalist": false,
+   "selected": false,
+   "bot_plays": false
+  },
+  {
+   "rank": 4,
+   "index": 7,
+   "play": [
+    "D2",
+    "D2"
+   ],
+   "acting_team_levels": 1.5706448581339756,
+   "model_score": 1.5706448581339756,
+   "policy_log_odds": 0.8362400083774034,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": false,
+   "heuristic_pick": false,
+   "model_nominated": true,
+   "report_finalist": false,
+   "selected": false,
+   "bot_plays": false
+  },
+  {
+   "rank": null,
+   "lead_confirm_challenger": true,
+   "lead_confirm_delta": 0.05439155154640774,
+   "lead_confirm_se": 0.005804420618575004,
+   "index": 8,
+   "play": [
+    "C10",
+    "C10",
+    "CA",
+    "CJ",
+    "CJ"
+   ],
+   "acting_team_levels": null,
+   "model_score": null,
+   "policy_log_odds": 0.5128707608563116,
+   "attackers_avg": null,
+   "se": null,
+   "paired_se_vs_incumbent": null,
+   "selection_worlds": 64,
+   "old_ballot": null,
+   "anchor": false,
+   "heuristic_pick": false,
+   "model_nominated": true,
+   "report_finalist": false,
+   "selected": true,
+   "bot_plays": true
+  }
+ ],
+ "bury": null,
+ "analysis": {
+  "source": "isolated_current_state_replay",
+  "historical_decision": false,
+  "schema": "pv-search-decision-v1",
+  "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+  "reason": "pv_search",
+  "applied_rules": [
+   "lead_confirm_applied"
+  ],
+  "anchor_selected": false,
+  "selected_index": 8,
+  "work_complete": true,
+  "model": {
+   "backend": "numpy",
+   "checkpoint_sha256": "f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd",
+   "source_checkpoint_sha256": "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962",
+   "encoding": "mlp-static",
+   "effective_encoding": "mlp-static",
+   "max_batch": 128,
+   "device": "cpu",
+   "encoder_version": 2
+  },
+  "model_score_units": "expected signed levels for acting team",
+  "selection_score_units": "expected signed levels for acting team",
+  "report": null,
+  "recipe": {
+   "worlds": 64,
+   "alternatives": 9,
+   "cap": 4000,
+   "serving_budget_seconds": null,
+   "encoder_version": 2
+  },
+  "sampling": {
+   "worlds": 64,
+   "sample_attempts": 64,
+   "impossible_worlds_delta": 0,
+   "rejected_worlds_delta": 0
+  },
+  "admission": {
+   "legal_count": 5295,
+   "actions": 4000,
+   "legal_complete": false,
+   "admitted": 9,
+   "diversity_skipped": 3,
+   "forced_single_added": 0
+  },
+  "stages": {
+   "tiebreak": {
+    "tiebreak_applied": false,
+    "tiebreak_near_set": [
+     0
+    ],
+    "tiebreak_points": []
+   },
+   "lead_anchor": {
+    "lead_anchor_applied": false,
+    "lead_anchor_from": "C10 C10 CJ CJ",
+    "lead_anchor_to": "C10 C10 CJ CJ",
+    "lead_anchor_source": "heuristic"
+   },
+   "doomed_throw_reselect": {
+    "doomed_throw_reselect_applied": false,
+    "doomed_throw_reselect_from": "C10 C10 CJ CJ",
+    "doomed_throw_reselect_to": "C10 C10 CJ CJ",
+    "doomed_throw_reselect_doomed_candidates": 0,
+    "doomed_throw_reselect_forced_excluded": 0,
+    "doomed_throw_reselect_fallback_forced": false,
+    "doomed_throw_reselect_exact_guarded": false,
+    "doomed_throw_reselect_exact_floor_excluded": 0
+   },
+   "exact_lead": {
+    "exact_lead_status": "ineligible",
+    "exact_lead_changed": false,
+    "exact_lead_worlds_completed": 0,
+    "exact_lead_nodes": null,
+    "exact_lead_cache_hits": null,
+    "exact_deep_cards": 7
+   },
+   "lead_confirm": {
+    "lead_confirm_status": "applied",
+    "lead_confirm_applied": true,
+    "lead_confirm_to": [
+     "C10",
+     "C10",
+     "CA",
+     "CJ",
+     "CJ"
+    ],
+    "lead_confirm_pool": 24,
+    "lead_confirm_screen_worlds": 32,
+    "lead_confirm_screen_margins": [
+     0.049251146313776806
+    ],
+    "lead_confirm_worlds": 128,
+    "lead_confirm_deltas": [
+     0.05439155154640774
+    ],
+    "lead_confirm_ses": [
+     0.005804420618575004
+    ],
+    "lead_confirm_seconds": 0.34693854198849294,
+    "lead_confirm_challengers": [
+     "C10 C10 CA CJ CJ"
+    ]
+   },
+   "singleton_challenger": {
+    "singleton_challenger_applied": false,
+    "singleton_probe_worlds": 8,
+    "singleton_probe_evaluations": 200,
+    "singleton_probe_margin": -0.22522939260385266
+   },
+   "leaf_greedy": {
+    "leaf_greedy_finish_applied": true,
+    "leaf_greedy_finish_exact_skipped": false,
+    "leaf_greedy_uncached_leaves": 0,
+    "leaf_greedy_reply_plays": 1536,
+    "leaf_greedy_reply_evaluations": 4308
+   },
+   "history": {
+    "history_follow_events": 0,
+    "history_rejections": 0,
+    "history_fallback_worlds": 0,
+    "history_unchecked_worlds": 0,
+    "history_fill_worlds": 0,
+    "history_fill_worlds_all_draws": 0,
+    "history_unchecked_worlds_all_draws": 0
+   },
+   "refusal": {
+    "refusal_observations": 0,
+    "refusal_rejections": 0,
+    "refusal_fallback_worlds": 0,
+    "refusal_pinned_codes": 0
+   },
+   "belief": {
+    "belief_fallback": 0,
+    "belief_proposed": 64,
+    "belief_ms": 5.325,
+    "belief_entropy_bits": 1.5846,
+    "belief_top_mass": 0.3408,
+    "belief_hidden_copies": 75,
+    "belief_fallback_all_draws": 0,
+    "belief_fallback_any": 0
+   }
+  },
+  "work": {
+   "value_evaluations": 512,
+   "value_batches": 4,
+   "worlds": 64
+  },
+  "search_seconds": 0.515,
+  "evaluation_seconds": 0.516,
+  "candidate_count": 9,
+  "candidates_truncated": false,
+  "model_ids": {
+   "value": "f4f4127e",
+   "prior": "1fa201b2",
+   "belief": "028131a0"
+  },
+  "draws": {
+   "world_draws_by_stage": {
+    "base": 1,
+    "lead_confirm": 2,
+    "adaptive_worlds": 0
+   },
+   "belief_fallback_by_stage": {
+    "base": 0,
+    "lead_confirm": 0,
+    "adaptive_worlds": 0
+   },
+   "history_fill_worlds_by_stage": {
+    "base": 0,
+    "lead_confirm": 0,
+    "adaptive_worlds": 0
+   },
+   "history_unchecked_worlds_by_stage": {
+    "base": 0,
+    "lead_confirm": 0,
+    "adaptive_worlds": 0
+   }
+  },
+  "verdict": {
+   "played": [
+    "C10",
+    "C10",
+    "CA",
+    "CJ",
+    "CJ"
+   ],
+   "decided_by": "lead_confirm",
+   "summary": "played C10 C10 CA CJ CJ: lead_confirm; lcc delta +0.054 vs the search's lead",
+   "chosen_value": null,
+   "margin_to_next": null,
+   "top": [
+    {
+     "play": [
+      "C10",
+      "C10",
+      "CJ",
+      "CJ"
+     ],
+     "value": 1.8365126030272982,
+     "prior_log_odds": -0.08983686085642342,
+     "margin_to_next": 0.19277611930019556,
+     "anchor": true,
+     "bot_plays": false
+    },
+    {
+     "play": [
+      "DJ",
+      "DJ"
+     ],
+     "value": 1.6437364837271027,
+     "prior_log_odds": 1.012114201390289,
+     "margin_to_next": 0.07257847080385105,
+     "anchor": false,
+     "bot_plays": false
+    },
+    {
+     "play": [
+      "C3",
+      "C3",
+      "CA",
+      "CJ",
+      "CJ"
+     ],
+     "value": 1.5711580129232516,
+     "prior_log_odds": 1.2813560234102634,
+     "margin_to_next": 0.0005131547892760491,
+     "anchor": false,
+     "bot_plays": false
+    },
+    {
+     "play": [
+      "D2",
+      "D2"
+     ],
+     "value": 1.5706448581339756,
+     "prior_log_odds": 0.8362400083774034,
+     "margin_to_next": 0.087133093171198,
+     "anchor": false,
+     "bot_plays": false
+    },
+    {
+     "play": [
+      "CA",
+      "CJ",
+      "CJ"
+     ],
+     "value": 1.4835117649627776,
+     "prior_log_odds": 1.1551962175668558,
+     "margin_to_next": 0.0181306671624597,
+     "anchor": false,
+     "bot_plays": false
+    }
+   ],
+   "pipeline": [
+    {
+     "stage": "anchor",
+     "status": "heuristic",
+     "changed": false,
+     "play": "C10 C10 CJ CJ",
+     "detail": "the heuristic's play, slot 0"
+    },
+    {
+     "stage": "admission",
+     "status": "complete",
+     "changed": false,
+     "play": null,
+     "detail": "8 admitted of 5295 legal, listing capped at 4000; diversity skipped 3"
+    },
+    {
+     "stage": "singleton_challenger",
+     "status": "kept",
+     "changed": false,
+     "play": null,
+     "detail": "sc8 probed: best omitted singleton -0.225 vs the ballot on 8 worlds"
+    },
+    {
+     "stage": "search",
+     "status": "complete",
+     "changed": false,
+     "play": "C10 C10 CJ CJ",
+     "detail": "value argmax +1.837 on 64 worlds, greedy-finished leaves"
+    },
+    {
+     "stage": "exact_lead",
+     "status": "ineligible",
+     "changed": false,
+     "play": null,
+     "detail": "a lead with every hand <= 7 cards only"
+    },
+    {
+     "stage": "lead_confirm",
+     "status": "applied",
+     "changed": true,
+     "play": "C10 C10 CA CJ CJ",
+     "detail": "lcc replaced the search's lead; 128 fresh worlds: C10 C10 CA CJ CJ delta +0.054 +/- 0.006 (pool 24, 0.347s)"
+    }
+   ],
+   "warnings": [
+    {
+     "code": "legal_capped",
+     "severity": "info",
+     "text": "legal listing capped at 4000 of 5295"
+    }
+   ],
+   "degraded": false,
+   "model_ids": {
+    "value": "f4f4127e",
+    "prior": "1fa201b2",
+    "belief": "028131a0"
+   }
+  },
+  "snapshot": {
+   "trick_number": 1,
+   "plays_in_trick": 0,
+   "acting_seat": 0
+  }
+ },
+ "ml": {
+  "inputs": {
+   "kind": "model-input",
+   "scope": "root_state_preview",
+   "scope_note": "encoder layout and the current board's values; NOT the input behind any displayed candidate score, which is the candidate's trick-completed afterstate in each sampled world",
+   "encoder_version": 2,
+   "public_dim": 561,
+   "round_end_flag": 0.0,
+   "groups": {
+    "own_hand": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      0,
+      54
+     ],
+     "value": {
+      "S2": 1,
+      "S3": 2,
+      "S4": 1,
+      "S5": 1,
+      "S7": 2,
+      "S10": 1,
+      "SJ": 1,
+      "SK": 2,
+      "H2": 1,
+      "D2": 2,
+      "D5": 1,
+      "DJ": 2,
+      "C3": 2,
+      "C5": 1,
+      "C10": 2,
+      "CJ": 2,
+      "CA": 1
+     }
+    },
+    "played_by_self": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      54,
+      108
+     ],
+     "value": {}
+    },
+    "played_by_next": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      108,
+      162
+     ],
+     "value": {}
+    },
+    "played_by_partner": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      162,
+      216
+     ],
+     "value": {}
+    },
+    "played_by_previous": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      216,
+      270
+     ],
+     "value": {}
+    },
+    "current_trick_play_1": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      270,
+      324
+     ],
+     "value": {}
+    },
+    "current_trick_play_2": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      324,
+      378
+     ],
+     "value": {}
+    },
+    "current_trick_play_3": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      378,
+      432
+     ],
+     "value": {}
+    },
+    "unseen": {
+     "kind": "model-input",
+     "type": "cards",
+     "columns": [
+      432,
+      486
+     ],
+     "value": {
+      "S2": 1,
+      "S4": 1,
+      "S5": 1,
+      "S6": 2,
+      "S8": 2,
+      "S9": 2,
+      "S10": 1,
+      "SJ": 1,
+      "SQ": 2,
+      "SA": 2,
+      "H2": 1,
+      "H3": 2,
+      "H4": 2,
+      "H5": 2,
+      "H6": 2,
+      "H7": 2,
+      "H8": 2,
+      "H9": 2,
+      "H10": 2,
+      "HJ": 2,
+      "HQ": 2,
+      "HK": 2,
+      "HA": 2,
+      "D3": 2,
+      "D4": 2,
+      "D5": 1,
+      "D6": 2,
+      "D7": 2,
+      "D8": 2,
+      "D9": 2,
+      "D10": 2,
+      "DQ": 2,
+      "DK": 2,
+      "DA": 2,
+      "C2": 2,
+      "C4": 2,
+      "C5": 1,
+      "C6": 2,
+      "C7": 2,
+      "C8": 2,
+      "C9": 2,
+      "CQ": 2,
+      "CK": 2,
+      "CA": 1,
+      "LJ": 2,
+      "BJ": 2
+     }
+    },
+    "trump_suit_onehot": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      486,
+      491
+     ],
+     "value": "S"
+    },
+    "trump_rank_onehot": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      491,
+      504
+     ],
+     "value": 0
+    },
+    "banker_relative": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      504,
+      508
+     ],
+     "value": "self"
+    },
+    "attacker_points_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      508,
+      509
+     ],
+     "value": 0.0
+    },
+    "cards_remaining_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      509,
+      510
+     ],
+     "value": 1.0
+    },
+    "is_attacker": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      510,
+      511
+     ],
+     "value": 0.0
+    },
+    "observed_voids": {
+     "kind": "model-input",
+     "type": "flags",
+     "columns": [
+      511,
+      531
+     ],
+     "value": []
+    },
+    "trick_winner_relative": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      531,
+      535
+     ],
+     "value": null
+    },
+    "trick_winner_is_partner": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      535,
+      536
+     ],
+     "value": 0.0
+    },
+    "trick_points_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      536,
+      537
+     ],
+     "value": 0.0
+    },
+    "lead_suit_onehot": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      537,
+      542
+     ],
+     "value": null
+    },
+    "position_in_trick": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      542,
+      546
+     ],
+     "value": 0
+    },
+    "lead_size_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      546,
+      547
+     ],
+     "value": 0.0
+    },
+    "points_regime_kink": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      547,
+      548
+     ],
+     "value": -1.0
+    },
+    "points_band": {
+     "kind": "model-input",
+     "type": "onehot",
+     "columns": [
+      548,
+      552
+     ],
+     "value": "<40"
+    },
+    "own_suit_lengths_frac": {
+     "kind": "model-input",
+     "type": "scalars",
+     "columns": [
+      552,
+      557
+     ],
+     "value": {
+      "S": 0.0,
+      "H": 0.0,
+      "D": 0.1111,
+      "C": 0.2963,
+      "T": 0.5185
+     }
+    },
+    "unseen_trumps_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      557,
+      558
+     ],
+     "value": 0.8148
+    },
+    "own_pair_rank_count_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      558,
+      559
+     ],
+     "value": 0.6154
+    },
+    "hand_size_frac": {
+     "kind": "model-input",
+     "type": "scalar",
+     "columns": [
+      559,
+      560
+     ],
+     "value": 0.9259
+    }
+   },
+   "world_block": {
+    "kind": "model-input",
+    "rendered": false,
+    "why": "sampled hidden hands, one complete world per sample (W per decision); never shown on the X-ray"
+   }
+  },
+  "inputs_scope": "root_state_preview; scored inputs are per-candidate trick-completed afterstates in sampled worlds",
+  "outputs_note": "per-candidate model_score rows in candidates[] and analysis.model are model-output"
+ }
+}

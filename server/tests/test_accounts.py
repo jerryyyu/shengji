@@ -485,10 +485,12 @@ def test_page_open_then_login_then_create_room_binds_the_account(accounts_on, ke
 
 
 def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socket(
-        accounts_on, keypair, client):
+        accounts_on, keypair, client, monkeypatch):
     from shengji.api import server as srv
     from tests.test_server_ws import _room_with_bots
 
+    # Identity transitions must not race the fixture's accelerated room expiry.
+    monkeypatch.setattr(srv, "ROOM_TTL", 300.0)
     private_pem, _ = keypair
     with client.websocket_connect("/ws") as guest:
         code = _room_with_bots(guest)

@@ -25,8 +25,18 @@ obligations reject; the test still runs the whole rule.
 
 Leads are not tested here: a lead is legal for any hand that holds its cards,
 which every world does, and a refused throw is the refusal rule's subject
-(`ai.refusal`).  An accepted multi-component throw does constrain the other
-hands, but that is a lead-side inference this module does not draw.
+(`ai.refusal`).
+
+ACCEPTED THROWS (``throws=True``, OFF BY DEFAULT).  A multi-component lead
+that stood tells the table that no other hand at that moment could beat any of
+its components in suit (the engine's `validate_lead`).  With ``throws=True``
+the history test also asks, of every accepted throw on record, whether
+`validate_lead` would have let it stand against the hands the world gives the
+other seats at that moment (each hand now plus every card that seat played from
+that trick on).  A world in which it would have been refused is rejected, under
+the same attempt budget as the follow test.  The true deal passes by
+construction, as for follows.  `Memory` encodes no part of this inference, so
+without the option such worlds are kept.
 
 `sample_worlds_history_legal` is production's draw (`cwv_policy.sample_worlds`
 through ``bot._sample_hands`` and ``_complete_determinized_hands``) with this
@@ -61,6 +71,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
+from ..engine import combos as _combos
 from ..engine import legal as _legal
 from ..engine.legal import IllegalPlay
 from .refusal import pin_unplayed_attempt, refusal_consistent
@@ -100,6 +111,53 @@ def follow_events(rnd, seat: int) -> list[FollowEvent]:
                                       later[play.seat], index))
     events.reverse()
     return events
+
+
+@dataclass(frozen=True)
+class ThrowEvent:
+    """One accepted multi-component lead of this round."""
+    seat: int
+    cards: tuple[str, ...]
+    #: per seat, every card it played from this trick on (this trick included)
+    later: tuple[tuple[str, ...], ...]
+    #: index of the trick (``len(rnd.history)`` for the current one)
+    trick: int
+
+
+def throw_events(rnd) -> list[ThrowEvent]:
+    """Every lead of this round that is a throw the engine let stand: a lead
+    of more than one component (a refused throw is recorded as its forced
+    component, a single one, so it never appears here)."""
+    tricks = list(rnd.history)
+    if rnd.trick is not None and rnd.trick.plays:
+        tricks.append(rnd.trick)
+    ordering = rnd.ordering
+    later: list[tuple[str, ...]] = [() for _ in range(4)]
+    events: list[ThrowEvent] = []
+    for index in range(len(tricks) - 1, -1, -1):
+        for play in reversed(tricks[index].plays):
+            later[play.seat] = tuple(play.cards) + later[play.seat]
+        lead = tricks[index].plays[0]
+        if len(lead.cards) > 1 and len(_combos.decompose(list(lead.cards), ordering).components) > 1:
+            events.append(ThrowEvent(lead.seat, tuple(lead.cards), tuple(later), index))
+    events.reverse()
+    return events
+
+
+def first_throw_violation(throws, hands, ordering) -> int | None:
+    """The index into ``throws`` of the first accepted throw the world's hands
+    would have refused, else None.  ``hands`` are the world's four current hands."""
+    for i, ev in enumerate(throws):
+        then = [list(hands[s]) + list(ev.later[s]) for s in range(4)]
+        try:
+            actual, message = _legal.validate_lead(
+                list(ev.cards), then[ev.seat], [then[s] for s in range(4) if s != ev.seat],
+                ordering)
+        except IllegalPlay:
+            return i
+        if message is not None or sorted(actual) != sorted(ev.cards):
+            return i
+    return None
 
 
 def first_violation(events, hands, ordering) -> int | None:
@@ -175,7 +233,7 @@ def constrained_draw(bot, constraints):
 
 def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem,
                                 check_budget=None, propose=None, constrain=False,
-                                complete=None):
+                                complete=None, throws=False):
     """``n`` worlds by production's draw, each history-legal while the history
     test's attempt budget lasts and consistent with every refusal in
     ``refusals`` (`ai.refusal`, the same test and pinning as
@@ -203,9 +261,16 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     (`draw_constraints` is the list to honour).
 
     ``complete``, when given, stands for ``bot._complete_determinized_hands``
-    (`train.pv_native.world_completion`: the same hands and refusals)."""
+    (`train.pv_native.world_completion`: the same hands and refusals).
+
+    ``throws=True`` also rejects a world in which an accepted throw on record
+    would have been refused (module docstring), under the same attempt budget;
+    ``stats`` then gains ``history_throw_events`` and
+    ``history_throw_rejections``.  Off, nothing about the draw or its record
+    changes."""
     from .cwv_policy import sample_worlds
     events = follow_events(rnd, seat)
+    thrown = throw_events(rnd) if throws else []
     ordering = rnd.ordering
     current = len(rnd.history)
     pinned = sum(pin_unplayed_attempt(mem, rnd, r, seat) for r in refusals)
@@ -213,6 +278,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     attempts = 0
     refusal_rejected = 0
     rejected = 0
+    throw_rejected = 0
     unchecked = 0
     by_age: Counter[int] = Counter()
     constraints = draw_constraints(rnd, seat, events) if constrain and propose is None else {}
@@ -223,7 +289,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     else:
         draw = bot._sample_hands
     cap = n * bot.SAMPLE_ATTEMPT_FACTOR
-    history_cap = n * HISTORY_ATTEMPT_FACTOR if events else 0
+    history_cap = n * HISTORY_ATTEMPT_FACTOR if events or thrown else 0
     while len(worlds) < n and attempts < cap:
         if check_budget is not None:
             check_budget()
@@ -243,7 +309,10 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
                 rejected += 1
                 by_age[current - events[bad].trick] += 1
                 continue
-        elif events:
+            if thrown and first_throw_violation(thrown, world, ordering) is not None:
+                throw_rejected += 1
+                continue
+        elif events or thrown:
             unchecked += 1
         worlds.append((world, sorted(buried)))
     fill = 0
@@ -259,6 +328,8 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
              "history_fallback_worlds": unchecked + fill,
              "history_unchecked_worlds": unchecked, "history_fill_worlds": fill,
              "history_rejections_by_age": {str(k): v for k, v in sorted(by_age.items())}}
+    if throws:
+        stats.update(history_throw_events=len(thrown), history_throw_rejections=throw_rejected)
     if constrain:
         stats["history_draw_constraints"] = len(constraints)
         stats["history_draw_forbidden"] = sum(sum(c.values()) for c in constraints.values())

@@ -4,14 +4,16 @@ The served bot is built from the repo's ``fly.toml`` env exactly as the server
 builds it (`test_release50_fly_config.served_bot`) on the hash-pinned
 release-50 packages, and decides the ten fixed production positions of
 `r50_flag_positions`.  Its played cards, base worlds and decision record (less
-the fields that measure the run) must equal ``fixtures/r50_flag_off_decisions.json``,
-which holds the same projection computed on the main tree named in it, on the
+the fields that measure the run) must match ``fixtures/r50_flag_off_decisions.json``. Structure and discrete
+values are exact; finite float values allow 1e-12 absolute/relative roundoff. The fixture
+holds the same projection computed on the main tree named in it, on the
 pure and the compiled engine alike.  Every rule flag the env leaves unset may
 also be set to ``0`` explicitly without changing the recipe or a decision.
 
 A correctness and identity witness of the flag-off path only; no strength claim.
 """
 import json
+import math
 
 import pytest
 
@@ -60,7 +62,7 @@ def test_flag_off_decisions_are_mains(release50_packages, monkeypatch, key, tric
     name, bot = served_bot(release50_packages, monkeypatch, seed=P.SEED)
     assert name == bot.policy_name == RELEASE50
     got = P.decision(P.lift(bot), P.replay(key, trick, pos))
-    assert got == PINS["decisions"][P.label(key, trick, pos)]
+    assert_decision(got, PINS["decisions"][P.label(key, trick, pos)])
 
 
 def test_flag_off_at_zero_decides_as_main(release50_packages, monkeypatch):
@@ -69,4 +71,45 @@ def test_flag_off_at_zero_decides_as_main(release50_packages, monkeypatch):
                            seed=P.SEED)
     assert name == bot.policy_name == RELEASE50
     position = ("SDUS2", 14, 0)
-    assert P.decision(P.lift(bot), P.replay(*position)) == PINS["decisions"][P.label(*position)]
+    assert_decision(P.decision(P.lift(bot), P.replay(*position)),
+                    PINS["decisions"][P.label(*position)])
+
+
+def assert_decision(actual, expected, path='decision'):
+    """Keep structure/discrete values exact; permit only tiny numeric roundoff."""
+    assert type(actual) is type(expected), f'{path}: type differs'
+    if isinstance(expected, dict):
+        assert actual.keys() == expected.keys(), f'{path}: keys differ'
+        for key in expected:
+            assert_decision(actual[key], expected[key], f'{path}.{key}')
+    elif isinstance(expected, list):
+        assert len(actual) == len(expected), f'{path}: length differs'
+        for index, (got, want) in enumerate(zip(actual, expected)):
+            assert_decision(got, want, f'{path}[{index}]')
+    elif isinstance(expected, float):
+        assert math.isfinite(actual) and math.isfinite(expected), f'{path}: nonfinite value'
+        assert math.isclose(actual, expected, rel_tol=1e-12, abs_tol=1e-12), (
+            f'{path}: {actual!r} != {expected!r}')
+    else:
+        assert actual == expected, f'{path}: {actual!r} != {expected!r}'
+
+
+def test_record_comparison_accepts_roundoff_but_rejects_meaning_changes():
+    import copy
+    expected = {'cards': ['D3'], 'worlds': 'world-id',
+                'record': {'value_means': [0.123], 'selected_index': 0, 'complete': True}}
+    roundoff = copy.deepcopy(expected)
+    roundoff['record']['value_means'][0] += 1e-15
+    assert_decision(roundoff, expected)
+    for key, value in [('value_means', [0.123001]), ('value_means', [float('nan')]),
+                       ('selected_index', 1), ('selected_index', 0.0), ('complete', False)]:
+        changed = copy.deepcopy(expected)
+        changed['record'][key] = value
+        with pytest.raises(AssertionError, match='decision.record'):
+            assert_decision(changed, expected)
+    for key, value in [('cards', ['HQ']), ('worlds', 'other')]:
+        changed = {**expected, key: value}
+        with pytest.raises(AssertionError):
+            assert_decision(changed, expected)
+    with pytest.raises(AssertionError, match='keys differ'):
+        assert_decision({**expected, 'extra': 1}, expected)

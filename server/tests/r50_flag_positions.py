@@ -12,7 +12,7 @@ The bot is release 50 as the server builds it (`test_release50_fly_config.served
 fly.toml's env, the registry's import-time registration, ``make_bot``), with
 its three clocks lifted (``lift``) so a slow engine never cuts a stage and the
 decision is a function of the code alone.  ``decision`` returns the played
-cards and digests of the base worlds and of the decision record without the
+cards a digest of the base worlds and the structured decision record without the
 fields that measure the run (durations, solver effort).  ``fixtures/r50_flag_off_decisions.json`` holds the same
 projection computed on the main tree the rules were added to; a rule that is
 off must reproduce it exactly, on the pure and the compiled engine.
@@ -73,8 +73,7 @@ def _engine_dependent(key: str) -> bool:
 
 
 def decision(bot, rnd) -> dict:
-    """``{cards, worlds, record}``: the played cards, and sha256 digests of the
-    decision's base worlds and of its record without the fields that measure
+    """``{cards, worlds, record}``: played cards, a world digest and the record without the fields that measure
     the run (`_engine_dependent`)."""
     drawn = []
     original = bot._worlds
@@ -96,7 +95,7 @@ def decision(bot, rnd) -> dict:
     return {"cards": cards,
             "worlds": digest([[sorted(map(sorted, hands)), sorted(buried)]
                               for hands, buried in drawn[0]]) if drawn else None,
-            "record": digest(record)}
+            "record": record}
 
 
 def label(key: str, trick: int, pos: int) -> str:

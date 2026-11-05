@@ -108,7 +108,7 @@ describe("the lobby with sign-in ON", () => {
       user: JERRY,
     };
     await render();
-    const chip = host.querySelector(".account-chip")!;
+    const chip = host.querySelector(".account-card")!;
     expect(chip).not.toBeNull();
     expect(chip.querySelector("img.account-avatar")?.getAttribute("src")).toBe("https://img/j.png");
     expect(chip.querySelector(".account-name")?.textContent).toBe("Jerry");   // the effective name

@@ -9,7 +9,7 @@ import Card, { SUIT_SYMBOL, shortLabel } from "./Card";
 import Hand from "./Hand";
 import type { HandRects } from "./Hand";
 import TrickArea from "./TrickArea";
-import { GamesUnavailable, SignInPrompt } from "./GamesStatus";
+import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesStatus";
 
 const NO_SELECTION = new Set<number>();
 const noToggle = () => {};
@@ -213,12 +213,9 @@ export default function ReplayView({ id, round }: { id: string; round: number })
   const replay = useMemo(() => (res && res.ok ? buildReplay(res.data) : null), [res]);
 
   return (
-    <div className="games-panel">
-      <div className="games-head">
-        <button className="btn subtle" onClick={() => navigate({ page: "game", id })}>‹ Game</button>
-        <h2 className="games-title">Round {round}</h2>
-      </div>
-      {res === null ? <p className="games-empty">Loading…</p>
+    <div className="panel games-panel wide">
+      <GamesHead back="Game" onBack={() => navigate({ page: "game", id })} title={`Round ${round}`} />
+      {res === null ? <GamesNotice title="Loading…" />
         : !res.ok ? (res.reason === "signed_out" ? <SignInPrompt />
           : res.reason === "not_found" ? <GamesUnavailable />
           : <p className="lobby-error" role="alert">Could not load the round ({res.status || "no connection"}).</p>)

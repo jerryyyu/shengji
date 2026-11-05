@@ -539,15 +539,24 @@ textarea:focus-visible {
   color-scheme: light;
 }
 .google-signin-slot iframe { background: transparent; }
+/* The account pill: avatar and name above three evenly spaced actions,
+   My games filled and the other two quiet. */
+.account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 22px;
+  background: rgba(16, 19, 26, 0.5);
+  text-align: left;
+}
 .account-chip {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 8px 6px 6px;
-  border: 1px solid var(--panel-edge);
-  border-radius: 999px;
-  background: rgba(16, 19, 26, 0.5);
-  text-align: left;
+  min-width: 0;
+  padding: 0 4px;
 }
 .account-avatar {
   width: 28px;
@@ -557,6 +566,7 @@ textarea:focus-visible {
   object-fit: cover;
   background: #2a3140;
 }
+.account-chip .account-avatar { width: 32px; height: 32px; }
 .account-avatar-blank {
   display: inline-flex;
   align-items: center;
@@ -573,10 +583,15 @@ textarea:focus-visible {
   white-space: nowrap;
   font-weight: 600;
 }
-.account-chip-wrap { display: flex; flex-direction: column; gap: 6px; }
+.account-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  gap: 6px;
+}
+.account-actions .btn { padding: 9px 6px; border-radius: 12px; white-space: normal; }
+.account-actions .btn.subtle { border-color: transparent; color: var(--text-dim); }
+.account-card .name-edit { padding: 0 4px 4px; }
 .account-error { font-size: 13px; }
-.account-signout, .account-edit, .account-games { padding: 4px 10px; font-size: 13px; }
-.account-games { align-self: flex-start; }
 .account-block { display: flex; flex-direction: column; gap: 8px; }
 /* The display-name editor (NameEditForm): one input, Save / Cancel, a
    message line. The same form sits in the lobby chip and the phone menu. */
@@ -3021,29 +3036,51 @@ button.room-chip:active { background-color: #394452; }
   letter-spacing: 0.08em;
 }
 
-/* My games: the history list, a game's rounds and the round replay. */
+/* My games: the history list, a game's rounds and the round replay. Each
+   page is a lobby-sized panel: same width, padding, height and type scale. */
 
-.games-screen {
-  align-items: flex-start;
-}
 .games-panel {
-  margin: 0 auto;
-  width: min(100%, 40rem);
+  width: 24rem;
+  max-width: 100%;
+  min-height: min(100%, 40rem);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  background: linear-gradient(180deg, var(--panel) 0%, #171b22 100%);
-  border: 1px solid var(--panel-edge);
-  border-radius: 16px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
-  padding: 16px;
+  gap: 16px;
   min-width: 0;
 }
-.games-head { display: flex; align-items: center; gap: 10px; }
-.games-head .btn { padding: 6px 12px; font-size: 13px; }
-.games-title { margin: 0; font-size: 1.15rem; }
-.games-empty, .games-status p, .replay-note { color: var(--text-dim); margin: 0; }
-.games-status { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.games-panel.wide { width: 32rem; }
+.games-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+.games-back {
+  align-self: flex-start;
+  margin: -12px 0 4px -18px;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.games-title { margin: 0; font-size: 28px; line-height: 1.2; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.games-sub { margin: 0; }
+.games-status {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.games-status p { margin: 0; }
+.games-status .games-status-title { color: var(--text); font-size: 16px; font-weight: 600; }
+.games-cta { align-self: stretch; margin-top: 16px; }
+.games-section { display: flex; flex-direction: column; gap: 8px; }
 .games-list, .games-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .games-row {
   appearance: none;
@@ -3093,7 +3130,8 @@ button.games-row { cursor: pointer; }
 .games-round-n { font-weight: 700; white-space: nowrap; }
 .games-round-res { flex: 1; min-width: 0; color: var(--text-dim); font-size: 0.875rem; }
 .games-round .btn { padding: 5px 12px; font-size: 13px; }
-.games-more, .games-remove { align-self: flex-start; }
+.games-more, .games-remove { align-self: stretch; }
+.games-remove { margin-top: auto; }
 
 .replay { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .replay-info { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -3135,16 +3173,22 @@ button.games-row { cursor: pointer; }
 .replay-felt .trick-cards .card + .card { margin-left: -24px; }
 .replay-felt .table-emblem { top: 50%; font-size: 64px; }
 .replay-caption { margin: 0; min-height: 2.6em; font-size: 0.875rem; line-height: 1.3; overflow-wrap: anywhere; }
-.replay-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.replay-controls .btn { padding: 6px 12px; min-width: 40px; }
+.replay-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 6px;
+}
+.replay-controls .btn { padding: 6px 0; }
 .replay-step { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; min-width: 4.5em; text-align: center; }
 .replay-jump {
-  margin-left: auto;
+  grid-column: 1 / -1;
+  width: 100%;
   background: #10131a;
   color: var(--text);
   border: 1px solid var(--panel-edge);
-  border-radius: 8px;
-  padding: 5px 8px;
+  border-radius: 10px;
+  padding: 8px 12px;
   font-size: max(16px, 1rem);
 }
 .replay-hand { overflow: hidden; }
@@ -3163,4 +3207,5 @@ button.games-row { cursor: pointer; }
 .replay-result-head { font-weight: 700; font-size: 1rem; }
 .replay-mini-cards { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; --cw: 28px; }
 .replay-mini-label { font-size: 12px; color: var(--text-dim); margin-right: 6px; min-width: 4em; }
+.replay-note { margin: 0; color: var(--text-dim); font-size: 14px; }
 .replay-all { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }

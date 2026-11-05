@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildReplay, type RoundReplayDoc } from "./reducer";
 import finished from "./server-round-finished.fixture.json";
 import unfinished from "./server-round-unfinished.fixture.json";
+import duringDeal from "./server-round-during-deal.fixture.json";
 
 // These fixtures are responses captured from the server's
 // GET /api/me/games/{id}/rounds/{n} tests, so the reducer is held to the
@@ -29,5 +30,21 @@ describe("server round responses", () => {
       if (seat !== doc.seat) expect(h).toBeNull();
     });
     for (const f of replay.frames) expect(f.result).toBeNull();
+  });
+
+  it("replays a round still being dealt with no card known", () => {
+    const doc = duringDeal as unknown as RoundReplayDoc;
+    expect(doc.finished).toBe(false);
+    expect(doc.events[0].e).toBe("round_start");
+    expect((doc.events[0] as unknown as { deck: unknown[] }).deck.every((c) => c === null)).toBe(true);
+    const replay = buildReplay(doc);
+    expect(replay.complete).toBe(false);
+    for (const f of replay.frames) {
+      expect(f.hand).toEqual([]);
+      expect(f.result).toBeNull();
+      f.hands.forEach((h, seat) => {
+        if (seat !== doc.seat) expect(h).toBeNull();
+      });
+    }
   });
 });

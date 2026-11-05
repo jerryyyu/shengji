@@ -12,7 +12,12 @@ export function parseHash(hash: string): GamesRoute | null {
   const m = /^#\/games(?:\/([^/]+)(?:\/rounds\/(\d+))?)?\/?$/.exec(hash);
   if (!m) return null;
   if (!m[1]) return { page: "list" };
-  const id = decodeURIComponent(m[1]);
+  let id: string;
+  try {
+    id = decodeURIComponent(m[1]);
+  } catch {
+    return null; // a malformed escape (`#/games/%`) is no route at all
+  }
   if (m[2]) return { page: "replay", id, round: Number(m[2]) };
   return { page: "game", id };
 }

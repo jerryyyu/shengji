@@ -140,7 +140,7 @@ function GameView({ id, onRemoved }: { id: string; onRemoved: (id: string) => vo
 type ListState =
   | { status: "loading" }
   | { status: "failed"; reason: "signed_out" | "not_found" | "error"; code: number }
-  | { status: "ready"; games: GameRow[]; next: number | null; more: boolean; moreError: boolean };
+  | { status: "ready"; games: GameRow[]; next: string | null; more: boolean; moreError: boolean };
 
 /** "My games": the signed-in account's history, its games, and replays of
  *  their rounds. The list survives a visit to a game, so back is instant. */

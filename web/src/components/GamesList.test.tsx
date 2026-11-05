@@ -99,12 +99,13 @@ describe("the games list", () => {
   });
 
   it("loads more with next_before until the server has no more", async () => {
-    routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [row("g1", 300)], next_before: 300 } };
-    routes["GET /api/me/games?limit=20&before=300"] = { status: 200, body: { games: [row("g0", 200)], next_before: null } };
+    // The cursor is opaque: sent back exactly as the server gave it.
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [row("g1", 300)], next_before: "300:g1" } };
+    routes["GET /api/me/games?limit=20&before=300%3Ag1"] = { status: 200, body: { games: [row("g0", 300)], next_before: null } };
     await mount();
     expect(qa(".games-row")).toHaveLength(1);
     await click(button("Load more"));
-    expect(calls.map((c) => c.url)).toContain("/api/me/games?limit=20&before=300");
+    expect(calls.map((c) => c.url)).toContain("/api/me/games?limit=20&before=300%3Ag1");
     expect(qa(".games-row")).toHaveLength(2);
     expect(button("Load more")).toBeUndefined();
   });

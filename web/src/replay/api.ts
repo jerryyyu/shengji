@@ -27,7 +27,8 @@ export interface GameDetail extends GameRow {
 
 export interface GamesPage {
   games: GameRow[];
-  next_before: number | null;
+  /** Opaque paging cursor: pass it back as `before` for the next page. */
+  next_before: string | null;
 }
 
 export type Fetched<T> =
@@ -53,9 +54,9 @@ async function getJson<T>(path: string): Promise<Fetched<T>> {
   }
 }
 
-export function fetchGames(before: number | null, limit = PAGE_SIZE): Promise<Fetched<GamesPage>> {
+export function fetchGames(before: string | null, limit = PAGE_SIZE): Promise<Fetched<GamesPage>> {
   const q = new URLSearchParams({ limit: String(limit) });
-  if (before !== null) q.set("before", String(before));
+  if (before !== null) q.set("before", before);
   return getJson<GamesPage>(`/api/me/games?${q.toString()}`);
 }
 

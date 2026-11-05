@@ -60,3 +60,14 @@ it("the lobby's My games opens the history page and Lobby returns", async () => 
   expect(host.querySelector(".lobby-panel")).not.toBeNull();
   expect(window.location.hash).toBe("");
 });
+
+it("opens the usual screens when the hash holds a malformed escape", async () => {
+  window.history.replaceState(null, "", "/#/games/%");
+  const { default: App } = await import("./App");
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => { root.render(<App />); });
+  expect(host.querySelector(".lobby-panel")).not.toBeNull();
+  expect(host.querySelector(".games-title")).toBeNull();
+});

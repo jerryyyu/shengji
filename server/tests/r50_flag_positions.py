@@ -72,10 +72,23 @@ def _engine_dependent(key: str) -> bool:
     return key == "seconds" or key.endswith(("_seconds", "_ms", "_nodes", "_cache_hits"))
 
 
+def _canonical(value):
+    """The record without the fields that measure the run, at any depth, with
+    floats rounded to 6 decimals: value means agree across platforms only to
+    the last few bits (BLAS summation order differs between macOS and Linux)."""
+    if isinstance(value, dict):
+        return {k: _canonical(v) for k, v in value.items() if not _engine_dependent(str(k))}
+    if isinstance(value, (list, tuple)):
+        return [_canonical(v) for v in value]
+    if isinstance(value, float):
+        return round(value, 6)
+    return value
+
+
 def decision(bot, rnd) -> dict:
     """``{cards, worlds, record}``: the played cards, and sha256 digests of the
     decision's base worlds and of its record without the fields that measure
-    the run (`_engine_dependent`)."""
+    the run (`_canonical`)."""
     drawn = []
     original = bot._worlds
 
@@ -89,7 +102,7 @@ def decision(bot, rnd) -> dict:
         cards = sorted(bot.decide_play(rnd, rnd.turn))
     finally:
         del bot._worlds
-    record = {k: v for k, v in (bot.last_decision_record or {}).items() if not _engine_dependent(k)}
+    record = _canonical(bot.last_decision_record or {})
 
     def digest(value) -> str:
         return hashlib.sha256(json.dumps(value, sort_keys=True, default=list).encode()).hexdigest()

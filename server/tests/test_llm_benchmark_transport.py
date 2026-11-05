@@ -61,20 +61,23 @@ def test_provider_5xx_retry_discards_response_and_preserves_budget(tmp_path, mon
         capacity_retry_delays=() if mode == "disabled" else CAPACITY_RETRY_DELAYS,
         runtime_attestor=lambda _: {"schema": "pt-luna-codex-tool-catalog-v1"},
         run_command=run)
+    from scripts.w32_llm_benchmark import _Budget, _BudgetedPlanner, _row_cost
+    budget = _Budget(wall_seconds=300, token_limit=100000)
+    planner = _BudgetedPlanner(transport, budget)
     assert transport.accept_recovered_reconnects is False
     if mode == "success":
-        assert transport({"packet": 1}) == {"cards": ["C3"], "memory": good["memory"]}
+        assert planner({"packet": 1}) == {"cards": ["C3"], "memory": good["memory"]}
         assert clock.sleeps == [15] and timeouts == [120, 105]
         assert transport.calls[1]["accepted"] is True
-        from scripts.w32_llm_benchmark import _row_cost
         usage = transport.calls[1]["usage"]
         assert _row_cost({"calls": transport.calls}) == 2 * (
             usage["input_tokens"] + usage["output_tokens"])
     else:
         with pytest.raises(CodexTurnTransportError if mode == "disabled"
                            else CodexProviderResourceError):
-            transport({"packet": 1})
+            planner({"packet": 1})
         assert clock.sleeps == ([15, 30, 60] if mode in ("exhausted", "mixed") else [])
+    assert budget.tokens == _row_cost({"calls": transport.calls})
     assert len(set(prompts)) == 1
     discarded = transport.calls[:-1] if mode == "success" else transport.calls
     for receipt in discarded:

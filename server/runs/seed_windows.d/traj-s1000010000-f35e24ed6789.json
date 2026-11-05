@@ -1,0 +1,14 @@
+{
+  "name": "traj-s1000010000-f35e24ed6789",
+  "purpose": "trajectory",
+  "seed0": 1000010000,
+  "clusters": 240,
+  "span": [
+    1000010000,
+    1000010240
+  ],
+  "created_at": "2026-10-29T02:15:54+0000",
+  "host": "ubuntu-32gb-hel1-1",
+  "git_head": "ab515829d3bb86a22f3bd616198e24f3ad35668d",
+  "note": "trajectory pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8 rounds=480 out=/root/codex-y-100k/corpus"
+}

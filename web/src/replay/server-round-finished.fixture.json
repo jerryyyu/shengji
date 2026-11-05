@@ -1,0 +1,1957 @@
+{
+ "game_id": "c71ad89c3b8e5fa1205d256cdfce1b81",
+ "round": 1,
+ "seat": 0,
+ "players": [
+  "P0",
+  "P1",
+  "P2",
+  "P3"
+ ],
+ "finished": true,
+ "events": [
+  {
+   "t": 1793843697.25,
+   "room": "REPL",
+   "round": 1,
+   "e": "round_start",
+   "deck": [
+    "S3",
+    "S6",
+    "D3",
+    "H7",
+    "H8",
+    "S10",
+    "H5",
+    "C7",
+    "S9",
+    "H8",
+    "CK",
+    "D9",
+    "C4",
+    "D4",
+    "C2",
+    "DK",
+    "C9",
+    "HK",
+    "H9",
+    "D7",
+    "CK",
+    "S5",
+    "D8",
+    "C5",
+    "HK",
+    "C10",
+    "S9",
+    "CA",
+    "D7",
+    "DA",
+    "C2",
+    "CA",
+    "D5",
+    "S5",
+    "S4",
+    "C7",
+    "CQ",
+    "LJ",
+    "DJ",
+    "HQ",
+    "C8",
+    "HQ",
+    "SA",
+    "S3",
+    "SA",
+    "H3",
+    "S2",
+    "H3",
+    "D10",
+    "SK",
+    "H4",
+    "SJ",
+    "S8",
+    "SQ",
+    "SK",
+    "SQ",
+    "H7",
+    "HJ",
+    "H10",
+    "C9",
+    "C4",
+    "BJ",
+    "H10",
+    "S7",
+    "C3",
+    "SJ",
+    "HA",
+    "D6",
+    "D2",
+    "HJ",
+    "H4",
+    "H6",
+    "DA",
+    "C10",
+    "D8",
+    "D4",
+    "C6",
+    "LJ",
+    "D2",
+    "DQ",
+    "S7",
+    "H9",
+    "D3",
+    "S10",
+    "C3",
+    "C5",
+    "CJ",
+    "H2",
+    "S8",
+    "S6",
+    "D9",
+    "D6",
+    "DK",
+    "CQ",
+    "BJ",
+    "S2",
+    "HA",
+    "CJ",
+    "S4",
+    "D5",
+    "H5",
+    "C6",
+    "DQ",
+    "D10",
+    "C8",
+    "H2",
+    "DJ",
+    "H6"
+   ],
+   "banker": null,
+   "trump_rank": "2",
+   "levels": [
+    "2",
+    "2"
+   ],
+   "players": [
+    {
+     "seat": 0,
+     "name": "P0",
+     "is_bot": false
+    },
+    {
+     "seat": 1,
+     "name": "P1",
+     "is_bot": false
+    },
+    {
+     "seat": 2,
+     "name": "P2",
+     "is_bot": false
+    },
+    {
+     "seat": 3,
+     "name": "P3",
+     "is_bot": false
+    }
+   ]
+  },
+  {
+   "t": 1793843697.251,
+   "room": "REPL",
+   "round": 1,
+   "e": "trump",
+   "suit": "H",
+   "rank": "2",
+   "banker": 0,
+   "declared": false
+  },
+  {
+   "t": 1793843697.251,
+   "room": "REPL",
+   "round": 1,
+   "e": "bury",
+   "seat": 0,
+   "cards": [
+    "S3",
+    "S7",
+    "D7",
+    "S9",
+    "C9",
+    "DJ",
+    "CQ",
+    "DQ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.251,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "C3",
+    "C3",
+    "C4",
+    "C4"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.251,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "C10",
+    "C10",
+    "CJ",
+    "CQ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.251,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "CK",
+    "CJ",
+    "S4",
+    "S4"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "C7",
+    "C7",
+    "CA",
+    "CA"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 0,
+   "points": 30,
+   "plays": [
+    {
+     "seat": 0,
+     "cards": [
+      "C3",
+      "C3",
+      "C4",
+      "C4"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "C10",
+      "C10",
+      "CJ",
+      "CQ"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "CK",
+      "CJ",
+      "S4",
+      "S4"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "C7",
+      "C7",
+      "CA",
+      "CA"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "SA"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "S6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "SK"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "S3"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 0,
+   "points": 10,
+   "plays": [
+    {
+     "seat": 0,
+     "cards": [
+      "SA"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "S6"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "SK"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "S3"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "DA"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "D4"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "D3"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "D4"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.252,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 0,
+   "points": 0,
+   "plays": [
+    {
+     "seat": 0,
+     "cards": [
+      "DA"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "D4"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "D3"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "D4"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "C6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "C5"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "S9"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "C9"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 3,
+   "points": 5,
+   "plays": [
+    {
+     "seat": 0,
+     "cards": [
+      "C6"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "C5"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "S9"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "C9"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "D6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "D10"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "DA"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "D3"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 1,
+   "points": 10,
+   "plays": [
+    {
+     "seat": 3,
+     "cards": [
+      "D6"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "D10"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "DA"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "D3"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "S6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "SA"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.253,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "S7"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "S8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 2,
+   "points": 0,
+   "plays": [
+    {
+     "seat": 1,
+     "cards": [
+      "S6"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "SA"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "S7"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "S8"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "D8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "D9"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "D10"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "H3"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 1,
+   "points": 10,
+   "plays": [
+    {
+     "seat": 2,
+     "cards": [
+      "D8"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "D9"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "D10"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "H3"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "SJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "D8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "SJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "S8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 1,
+   "points": 0,
+   "plays": [
+    {
+     "seat": 1,
+     "cards": [
+      "SJ"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "D8"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "SJ"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "S8"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.254,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "SQ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "D9"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "SQ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "C6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 1,
+   "points": 0,
+   "plays": [
+    {
+     "seat": 1,
+     "cards": [
+      "SQ"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "D9"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "SQ"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "C6"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "S5"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "DJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "S10"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "H5"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 0,
+   "points": 20,
+   "plays": [
+    {
+     "seat": 1,
+     "cards": [
+      "S5"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "DJ"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "S10"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "H5"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "C8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "S5"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "H4"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "C5"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.255,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 2,
+   "points": 10,
+   "plays": [
+    {
+     "seat": 0,
+     "cards": [
+      "C8"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "S5"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "H4"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "C5"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "H4"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "H6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "H7"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "H8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 1,
+   "points": 0,
+   "plays": [
+    {
+     "seat": 2,
+     "cards": [
+      "H4"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "H6"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "H7"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "H8"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "S10"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "H5"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "H7"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "H8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 0,
+   "points": 15,
+   "plays": [
+    {
+     "seat": 1,
+     "cards": [
+      "S10"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "H5"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "H7"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "H8"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "D5"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "SK"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.256,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "H9"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "D6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 2,
+   "points": 15,
+   "plays": [
+    {
+     "seat": 0,
+     "cards": [
+      "D5"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "SK"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "H9"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "D6"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "HA"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "S2"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "H2"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "LJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 1,
+   "points": 0,
+   "plays": [
+    {
+     "seat": 2,
+     "cards": [
+      "HA"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "S2"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "H2"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "LJ"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "H9"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "H10"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "HQ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "HK"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 0,
+   "points": 20,
+   "plays": [
+    {
+     "seat": 1,
+     "cards": [
+      "H9"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "H10"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "HQ"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "HK"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.257,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "C8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "HJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "C2"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "D7"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 2,
+   "points": 0,
+   "plays": [
+    {
+     "seat": 0,
+     "cards": [
+      "C8"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "HJ"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "C2"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "D7"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "C2"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "H2"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "H6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "HK"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 3,
+   "points": 10,
+   "plays": [
+    {
+     "seat": 2,
+     "cards": [
+      "C2"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "H2"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "H6"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "HK"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "DQ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "DK"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.258,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "HJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "S2"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 2,
+   "points": 10,
+   "plays": [
+    {
+     "seat": 3,
+     "cards": [
+      "DQ"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "DK"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "HJ"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "S2"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "D2"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "H3"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "HA"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "LJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 1,
+   "points": 0,
+   "plays": [
+    {
+     "seat": 2,
+     "cards": [
+      "D2"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "H3"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "HA"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "LJ"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "HQ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "BJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "D5"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "D2"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 2,
+   "points": 5,
+   "plays": [
+    {
+     "seat": 1,
+     "cards": [
+      "HQ"
+     ]
+    },
+    {
+     "seat": 2,
+     "cards": [
+      "BJ"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "D5"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "D2"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "H10"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "DK"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.259,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "CK"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.26,
+   "room": "REPL",
+   "round": 1,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "BJ"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.26,
+   "room": "REPL",
+   "round": 1,
+   "e": "trick",
+   "winner": 1,
+   "points": 30,
+   "plays": [
+    {
+     "seat": 2,
+     "cards": [
+      "H10"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "DK"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "CK"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "BJ"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.26,
+   "room": "REPL",
+   "round": 1,
+   "e": "round_end",
+   "attacker_points": 65,
+   "kitty": [
+    "S3",
+    "S7",
+    "D7",
+    "S9",
+    "C9",
+    "DJ",
+    "CQ",
+    "DQ"
+   ],
+   "kitty_points": 0,
+   "winner_team": 0,
+   "level_change": 1,
+   "new_levels": [
+    "3",
+    "2"
+   ],
+   "next_banker": 2,
+   "game_over": false,
+   "games_won": [
+    0,
+    0
+   ],
+   "point_scored": false
+  }
+ ]
+}

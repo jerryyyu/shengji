@@ -1,0 +1,267 @@
+{
+ "game_id": "c71ad89c3b8e5fa1205d256cdfce1b81",
+ "round": 2,
+ "seat": 1,
+ "players": [
+  "P0",
+  "P1",
+  "P2",
+  "P3"
+ ],
+ "finished": false,
+ "events": [
+  {
+   "t": 1793843697.26,
+   "room": "REPL",
+   "round": 2,
+   "e": "round_start",
+   "deck": [
+    null,
+    "HK",
+    null,
+    null,
+    null,
+    "C4",
+    null,
+    null,
+    null,
+    "D7",
+    null,
+    null,
+    null,
+    "H8",
+    null,
+    null,
+    null,
+    "H4",
+    null,
+    null,
+    null,
+    "D9",
+    null,
+    null,
+    null,
+    "DK",
+    null,
+    null,
+    null,
+    "SQ",
+    null,
+    null,
+    null,
+    "D10",
+    null,
+    null,
+    null,
+    "H5",
+    null,
+    null,
+    null,
+    "C10",
+    null,
+    null,
+    null,
+    "S10",
+    null,
+    null,
+    null,
+    "HA",
+    null,
+    null,
+    null,
+    "H2",
+    null,
+    null,
+    null,
+    "DQ",
+    null,
+    null,
+    null,
+    "CK",
+    null,
+    null,
+    null,
+    "BJ",
+    null,
+    null,
+    null,
+    "H9",
+    null,
+    null,
+    null,
+    "CA",
+    null,
+    null,
+    null,
+    "S8",
+    null,
+    null,
+    null,
+    "H9",
+    null,
+    null,
+    null,
+    "D4",
+    null,
+    null,
+    null,
+    "CJ",
+    null,
+    null,
+    null,
+    "C7",
+    null,
+    null,
+    null,
+    "C5",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "banker": 2,
+   "trump_rank": "3",
+   "levels": [
+    "3",
+    "2"
+   ],
+   "players": [
+    {
+     "seat": 0,
+     "name": "P0",
+     "is_bot": false
+    },
+    {
+     "seat": 1,
+     "name": "P1",
+     "is_bot": false
+    },
+    {
+     "seat": 2,
+     "name": "P2",
+     "is_bot": false
+    },
+    {
+     "seat": 3,
+     "name": "P3",
+     "is_bot": false
+    }
+   ]
+  },
+  {
+   "t": 1793843697.261,
+   "room": "REPL",
+   "round": 2,
+   "e": "trump",
+   "suit": "H",
+   "rank": "3",
+   "banker": 2,
+   "declared": false
+  },
+  {
+   "t": 1793843697.261,
+   "room": "REPL",
+   "round": 2,
+   "e": "bury",
+   "seat": 2,
+   "cards": null,
+   "bot": true
+  },
+  {
+   "t": 1793843697.261,
+   "room": "REPL",
+   "round": 2,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "SA"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.261,
+   "room": "REPL",
+   "round": 2,
+   "e": "play",
+   "seat": 3,
+   "cards": [
+    "S6"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.261,
+   "room": "REPL",
+   "round": 2,
+   "e": "play",
+   "seat": 0,
+   "cards": [
+    "SK"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.262,
+   "room": "REPL",
+   "round": 2,
+   "e": "play",
+   "seat": 1,
+   "cards": [
+    "S8"
+   ],
+   "bot": true
+  },
+  {
+   "t": 1793843697.262,
+   "room": "REPL",
+   "round": 2,
+   "e": "trick",
+   "winner": 2,
+   "points": 10,
+   "plays": [
+    {
+     "seat": 2,
+     "cards": [
+      "SA"
+     ]
+    },
+    {
+     "seat": 3,
+     "cards": [
+      "S6"
+     ]
+    },
+    {
+     "seat": 0,
+     "cards": [
+      "SK"
+     ]
+    },
+    {
+     "seat": 1,
+     "cards": [
+      "S8"
+     ]
+    }
+   ]
+  },
+  {
+   "t": 1793843697.262,
+   "room": "REPL",
+   "round": 2,
+   "e": "play",
+   "seat": 2,
+   "cards": [
+    "CQ",
+    "CQ"
+   ],
+   "bot": true
+  }
+ ]
+}

@@ -283,10 +283,10 @@ describe("signed out, the guest names themselves", () => {
   });
 });
 
-describe("the signed-out preview clip and the How to play entry", () => {
+describe("the lobby preview clip and the How to play entry", () => {
   const preview = () => host.querySelector(".lobby-preview");
 
-  it("plays the muted, looping clip only while signed out", async () => {
+  it("plays the muted, looping clip", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
@@ -301,15 +301,16 @@ describe("the signed-out preview clip and the How to play entry", () => {
     expect(v.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("shows no clip when signed in, while loading, or with sign-in off", async () => {
+  it("shows the clip signed in, signed out, while loading and with sign-in off", async () => {
     for (const state of [
       { status: "in", clientId: "cid", user: JERRY },
+      { status: "out", clientId: "cid", user: null },
       { status: "loading", clientId: null, user: null },
       { status: "off", clientId: null, user: null },
     ] as AuthState[]) {
       authState.current = state;
       await render();
-      expect(preview()).toBeNull();
+      expect(preview()).not.toBeNull();
       act(() => root.unmount());
       host.remove();
     }

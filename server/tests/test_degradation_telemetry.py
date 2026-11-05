@@ -128,6 +128,26 @@ def test_deploy_room_reader_handles_later_draw_and_base_draw_errors(tmp_path):
     assert "belief all-draw coverage 1/2; legacy base-only 1" in output
 
 
+@pytest.mark.parametrize("degrade", [False, True])
+def test_serving_budget_gate_consumes_later_draw_failures(package, monkeypatch, degrade):
+    from scripts.cwv_serving_smoke import budget_turn
+    rnd, seat = _lead()
+    evaluator = OutsideBallotEvaluator(1.0)
+    _prime(evaluator, rnd, seat)
+    bot = _lcc_bot(evaluator, package)
+    bot.serving_budget_seconds = 3.0
+    if degrade:
+        _fail_belief_after_first_draw(monkeypatch)
+    bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    assert record["lead_confirm_worlds"] > 0
+    assert record["belief_fallback"] == 0
+    result = budget_turn("play", bot, record["seconds"],
+                         {"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3"})
+    assert result["belief_fallback_all_draws"] == record["belief_fallback_all_draws"]
+    assert result["failures"] == (["belief_all_draws_fallback_or_missing"] if degrade else [])
+
+
 def _adaptive_bot(package):
     bot = _belief(served(worlds=8, adaptive_worlds=True, belief_worlds=True,
                          belief_sha256=package["sha256"], **WHL), package)

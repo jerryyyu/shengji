@@ -1,0 +1,14 @@
+{
+ "name": "loosc8-lane-248010910",
+ "purpose": "screen",
+ "seed0": 248010910,
+ "clusters": 3920,
+ "span": [
+  248010910,
+  248014830
+ ],
+ "created_at": "2026-11-05T14:00:00Z",
+ "host": "mini",
+ "git_head": "7988c84aeef1d2274d85022149db1d631d433563",
+ "note": "LOO-sc8 leave-one-out screen head-to-head on the Mac mini: release 50 with the singleton challenger OFF (SHENGJI_PV_SINGLETON_CHALLENGER=0: the registry serves the base pv-search entry without the -sc8 suffix) vs release 50 as served (fly.toml at 7988c84a), both at the served budgets, 8 workers, tree = origin/main 7988c84a; packet ~/shengji-archive/2026-11-05-loo-rules/sc8. 3,920 paired seat-swapped r2 deals, the non-inferiority bar (DROP_SAFE / KEEP / INCONCLUSIVE). RESERVED BEFORE DEALING."
+}

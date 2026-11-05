@@ -1,0 +1,167 @@
+"""The exact lead's full-trick variant (``exact_lead_full_minimax``, ``elm``), OFF BY DEFAULT.
+
+With ``SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1`` (which needs the deeper exact
+rule and the tie rule ``elt``) each candidate's exact leaf is the world right
+after the lead, so the exact solve also plays the lead's own trick, instead of
+the heuristic finishing it.  Off, release 50's name and decisions are main's
+(`test_r50_flag_off_parity`).  On, the name gains ``-elm`` after ``-elt``, the
+recipe carries the leaf's identity, and at SDUS round 2 trick 14 (a production
+position where the heuristic-finished first trick misprices the lead) the
+served bot leads the card that is better on the true deal.
+
+Correctness and identity witnesses only, not a strength or latency claim.
+"""
+import json
+
+import pytest
+
+import r50_flag_positions as P
+from shengji.ai.cwv_policy import afterstate
+from shengji.ai.endgame import _clone_for_play
+from shengji.ai.endgame_compact import CompactWorldSession
+from shengji.engine import legal
+from shengji.rl.value_afterstate import category_signed_level, signed_level_category
+from shengji.train import pv_search_policy as pv
+from shengji.train.cwv_prior_admission import root_clone
+from shengji.train.pv_exact_deep import exact_root_means
+from test_release46_fly_config import fly_env
+from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA,  # noqa: F401
+                                       PRIOR_VOLUME_PATH, RELEASE50, VALUE_SHA, VALUE_VOLUME_PATH,
+                                       release50_packages, served_bot)
+
+FLAG = "SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX"
+TIE = "SHENGJI_PV_EXACT_LEAD_TIE_BASELINE"
+#: release 50 with the tie rule and this variant on
+ELM50 = ("pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-"
+         "vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb1000f9b-bury-hybrid-bwv-bbw-"
+         "e31b3dc5cf72-sc8")
+#: release 50 with the tie rule alone (the variant's own control)
+ELT50 = ("pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-elt-la-dtr-dtrx-vd-"
+         "vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r379b379c-bury-hybrid-bwv-bbw-"
+         "ab298d84c9fc-sc8")
+#: the production lead where the heuristic-finished first trick misprices the lead
+MISPRICED = ("SDUS2", 14, 0)
+#: main's pick there (`test_r50_flag_off_parity`)
+PINNED_PICK = json.loads(P.PINNED.read_text())["decisions"][P.label(*MISPRICED)]["cards"]
+
+
+def names(monkeypatch, extra):
+    """The served name the registry derives from fly.toml plus ``extra``
+    (package hashes stood in for the files)."""
+    from shengji.ai import cwv_policy
+
+    by_path = {VALUE_VOLUME_PATH: VALUE_SHA, PRIOR_VOLUME_PATH: PRIOR_SHA,
+               BELIEF_VOLUME_PATH: BELIEF_SHA}
+    monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: by_path[str(path)][:8])
+    monkeypatch.setattr(pv, "file_sha256", lambda path: by_path[str(path)])
+    return list(pv.singleton_registry_entries(**pv.pv_env_recipe({**fly_env(), **extra})))
+
+
+def attacker_points(rnd, seat, action) -> int:
+    """True-deal perfect-information attacker points after ``action``."""
+    child = _clone_for_play(rnd)
+    child.play(seat, list(action))
+    if child.phase == "round_end":
+        return child.attacker_points
+    return CompactWorldSession(rnd, max_hand_cards=7, max_nodes=50_000_000,
+                               alpha_beta=True).solve(child).attacker_points
+
+
+def test_recipe_carries_the_variant_only_when_on_and_refuses_it_alone():
+    base = dict(checkpoint_sha256="f" * 64, exact_lead_endgame=True, exact_deep_cards=7,
+                exact_lead_tie_baseline=True)
+    off = pv.recipe_payload(pv.PVSearchConfig(**base))
+    assert not {"exact_lead_full_minimax", "exact_lead_first_trick"} & set(off)
+    on = pv.recipe_payload(pv.PVSearchConfig(**base, exact_lead_full_minimax=True))
+    assert on == {**off, "exact_lead_full_minimax": True,
+                  "exact_lead_first_trick": pv.EXACT_LEAD_FIRST_TRICK_MINIMAX}
+    for change in ({"exact_deep_cards": 0}, {"exact_lead_tie_baseline": False},
+                   {"exact_lead_policy_first": True}):
+        config = pv.PVSearchConfig(**{**base, **change, "exact_lead_full_minimax": True})
+        with pytest.raises(pv.PVSearchPolicyError, match="exact_lead_full_minimax requires"):
+            pv.recipe_payload(config)
+    with pytest.raises(pv.PVSearchPolicyError, match="must be a bool"):
+        pv.recipe_payload(pv.PVSearchConfig(**base, exact_lead_full_minimax=1))
+    tokens = [t for _, t in pv.RULE_TOKENS]
+    assert tokens.index("elm") == tokens.index("elp") + 1
+    assert pv.PVSearchBot.exact_lead_full_minimax is False
+
+
+def test_served_name_gains_elm_only_when_on(monkeypatch):
+    for off in ({}, {FLAG: "0"}, {FLAG: ""}):
+        assert names(monkeypatch, off) == [RELEASE50]
+    assert names(monkeypatch, {TIE: "1"}) == [ELT50]
+    assert names(monkeypatch, {TIE: "1", FLAG: "1"}) == [ELM50]
+    with pytest.raises(pv.PVSearchPolicyError, match="exact_lead_full_minimax requires"):
+        names(monkeypatch, {FLAG: "1"})
+    with pytest.raises(pv.PVSearchPolicyError, match="must be 0 or 1"):
+        names(monkeypatch, {TIE: "1", FLAG: "yes"})
+
+
+def test_lead_only_leaf_plays_the_lead_through_the_engine():
+    # ADKY round 3 trick 11: seat 2's throw D7 D7 DA stood on the true deal
+    rnd = P.replay("ADKY3", 11, 0)
+    seat, throw = rnd.turn, ["D7", "D7", "DA"]
+    true_hands = [list(h) for h in rnd.hands]
+    world = [list(h) for h in true_hands]
+    # the world that gives seat 0 the DJ pair, which beats the D7 pair
+    world[0][world[0].index("S5")], world[3][world[3].index("DJ")] = "DJ", "S5"
+    for hands, expected in ((true_hands, throw), (world, ["D7", "D7"])):
+        root = root_clone(rnd, hands, list(rnd.buried))
+        actual, _ = legal.validate_lead(throw, hands[seat], [hands[s] for s in range(4) if s != seat],
+                                        rnd.ordering)
+        assert sorted(actual) == sorted(expected)
+        leaf = pv._lead_only_leaf(root, seat, hands, list(rnd.buried), throw, 0)
+        assert [(p.seat, sorted(p.cards)) for p in leaf.trick.plays] == [(seat, sorted(expected))]
+        assert leaf.turn == (seat + 1) % 4 and leaf.history == rnd.history
+        # the root it was cloned from is untouched
+        assert root.trick.plays == [] and sorted(root.hands[seat]) == sorted(rnd.hands[seat])
+
+
+def test_lead_only_means_are_the_true_minimax_where_the_heuristic_finish_misprices():
+    rnd = P.replay(*MISPRICED)
+    seat = rnd.turn
+    actions = [["D3"], ["D5"], ["HQ"]]
+    world = [([list(h) for h in rnd.hands], list(rnd.buried))]
+
+    def means(leaf):
+        out, stats = exact_root_means(rnd, seat, actions, world, leaf, None, max_hand_cards=7,
+                                      max_nodes=50_000_000)
+        assert stats["worlds_completed"] == 1
+        return list(out)
+
+    truth = [category_signed_level(signed_level_category(attacker_points(rnd, seat, a),
+                                                         rnd.is_attacker(seat)))
+             for a in actions]
+    assert means(pv._lead_only_leaf) == truth
+    heuristic = means(lambda r, s, h, b, a, i: afterstate(r, s, h, b, a, finish_trick=True))
+    assert heuristic != truth
+    # the heuristic finish rates D3 at least as high as HQ; the true minimax does not
+    assert heuristic[0] >= heuristic[2] and truth[2] > truth[0]
+
+
+def test_served_bot_leads_the_truly_better_card_only_with_the_variant(release50_packages,
+                                                                      monkeypatch):
+    rnd = P.replay(*MISPRICED)
+    seat = rnd.turn
+    env = fly_env()
+    picks = {}
+    for label, extra, expected_name in (("off", {}, RELEASE50), ("elt", {TIE: "1"}, ELT50),
+                                        ("elm", {TIE: "1", FLAG: "1"}, ELM50)):
+        name, bot = served_bot(release50_packages, monkeypatch,
+                               env={**env, **extra, "SHENGJI_BOT": expected_name}, seed=P.SEED)
+        assert name == bot.policy_name == expected_name
+        assert bot.exact_lead_full_minimax is (label == "elm")
+        assert ("exact_lead_full_minimax" in vars(bot)) is (label == "elm")
+        picks[label] = sorted(P.lift(bot).decide_play(rnd, seat))
+        record = bot.last_decision_record
+        assert record["exact_lead_status"] == "complete"
+        assert (record.get("exact_lead_first_trick") == "minimax") is (label == "elm")
+    # off and the tie rule alone keep the head's D3 (main's pinned pick); the
+    # variant leads HQ, which the true deal prices 25 points better for the
+    # defending seat
+    assert picks["off"] == PINNED_PICK == picks["elt"] == ["D3"]
+    assert picks["elm"] == ["HQ"]
+    assert not rnd.is_attacker(seat)
+    assert attacker_points(rnd, seat, ["HQ"]) == 100 < 125 == attacker_points(rnd, seat, ["D3"])
+

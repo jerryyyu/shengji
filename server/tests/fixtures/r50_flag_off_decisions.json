@@ -1,0 +1,79 @@
+{
+ "decisions": {
+  "ADKY3:11:1": {
+   "cards": [
+    "D3",
+    "D8",
+    "D9"
+   ],
+   "record": "2de686b7e94b6ca2259a0c85d1edde392d4cc2f1af9bfe990dd54a0b72518632",
+   "worlds": "32d33a3891a0a52558e702559daed82cb82bce4832cb66db1c659e325734cb67"
+  },
+  "ADKY3:12:0": {
+   "cards": [
+    "D9"
+   ],
+   "record": "a96b43a88c3cad5c36cfd5c60148a4f07c5da46335bdb35b057c233d2a79fac2",
+   "worlds": "ea86c82a16cb41e481e3306cc504eac42597adae591c2ea9970c09ff61758f8e"
+  },
+  "ADKY3:13:0": {
+   "cards": [
+    "DK"
+   ],
+   "record": "c3415903ec1856c5e4172a2ed8581358a6a56046514cf63814b652ee70a5da88",
+   "worlds": "bff5f7e70aec24be820792a33210d951474e745600f72edddd38fd724958d739"
+  },
+  "ADKY3:9:0": {
+   "cards": [
+    "D2"
+   ],
+   "record": "29f7a3b99c8adfd87c5889a9649a5e9edf8e4448eebda7bfd9807634c2d59039",
+   "worlds": "bda5deebb2a6700da227c1e66cb99dc1c54cf7f340537cc4cdca894123e20656"
+  },
+  "SDUS2:14:0": {
+   "cards": [
+    "D3"
+   ],
+   "record": "a7c87bbb09f8b750112af5ea7919dc87d98bdd4f58b56baca234996b7724f4b8",
+   "worlds": "e39116aedf523b7dfbb78296364e5a8257f83aa1d188476aaf54b44164e545a0"
+  },
+  "SDUS2:14:1": {
+   "cards": [
+    "DQ"
+   ],
+   "record": "20c7606cd9b805c05c75ba3f0420073e80323f672bd78892a31531da6ad45eae",
+   "worlds": "5c6e5617d6b4df0edb6a221e3b910934a8796aa81dd3edda24cf0b21018e7c05"
+  },
+  "SDUS2:8:0": {
+   "cards": [
+    "D4"
+   ],
+   "record": "385582873f2468a3361953cb710bf553b486f61b6e6c64ed3bab15f1abac51df",
+   "worlds": "b339dc4a5b737c3336d58c4bbcff678fd6a1e0ee3300858b19ee591b68590657"
+  },
+  "WJLB2:16:1": {
+   "cards": [
+    "D5"
+   ],
+   "record": "4f3478d3a6e1b9e4e26d7042cfd1611e391393c273b367eda627d2a6c70d6f21",
+   "worlds": "ac93c4ee91b29ee0fd6e612b4c3c3f91f78c788f67e8d7c2c22a477eab59861a"
+  },
+  "WJLB2:17:0": {
+   "cards": [
+    "C6"
+   ],
+   "record": "a4a19d37344f90d3aa2cfe730ec4a82f85d12940efbe453b8740ba40bd8b77c1",
+   "worlds": "04397207a6a025fc26220bc03ba831758df730802182fa7287b47f999e909c95"
+  },
+  "WJLB2:18:1": {
+   "cards": [
+    "DJ",
+    "DQ"
+   ],
+   "record": "ab06d17b46d100566a88d9d94da0b156095ab33797cf9b20f398d2ebc6d0ebda",
+   "worlds": "80ab0bcc949ccd53dd9df57d0e5cd06d72251b0dd53b2b6a335bb751137c5bcc"
+  }
+ },
+ "main": "00a8371c38ed9eb420022b23da30e31748dc10d4",
+ "name": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8"
+}

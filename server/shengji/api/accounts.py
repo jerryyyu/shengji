@@ -917,6 +917,22 @@ async def patch_me(body: DisplayNamePatch, request: Request) -> dict:
     return public_user(updated)
 
 
+@router.delete("/me", status_code=204)
+async def delete_me(request: Request) -> Response:
+    """Delete the account: the user row, its sessions and its saved-game
+    links (by cascade). The anonymous room logs never held the account and
+    are unchanged."""
+    if not LIMITER.allow(client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many changes; try again in a minute.")
+    user = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in.")
+    await STORE.run(STORE.delete_user, user["id"])
+    response = Response(status_code=204)
+    _clear_session_cookie(response, request)
+    return response
+
+
 @router.post("/auth/logout")
 async def logout(request: Request, response: Response) -> dict:
     token = request.cookies.get(COOKIE)

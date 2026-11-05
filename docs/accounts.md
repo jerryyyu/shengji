@@ -107,12 +107,17 @@ Vite proxies `/api` to `:8000` so the page and the API share one origin.
 ## Schema (`accounts.sqlite3`, WAL)
 
 ```
-schema_version(version INTEGER)                      -- currently 2
+schema_version(version INTEGER)                      -- currently 3
 users(id INTEGER PK, google_sub TEXT UNIQUE, email, name, picture,
       created_at INTEGER, last_login_at INTEGER,    -- unix seconds
       display_name TEXT NULL)                        -- v2; NULL = Google first name
 sessions(token_hash TEXT PK, user_id -> users.id ON DELETE CASCADE,
          created_at INTEGER, expires_at INTEGER)
+games(id TEXT PK, room_code, log_file, log_offset INTEGER NULL,   -- v3
+      started_at, last_round, ended_at NULL, final_levels NULL,
+      games_won NULL, incomplete INTEGER)
+game_players(game_id -> games.id, user_id -> users.id,  -- both ON DELETE CASCADE
+             seat, from_round, to_round NULL, hidden)
 ```
 
 Migrations are the `SCHEMA` list in `accounts.py`: version N applies entries
@@ -123,6 +128,30 @@ database whose version row was lost is harmless. Database access is plain
 `sqlite3` on a fresh connection per call, run off the event loop via
 `run_in_executor`; each call is a few indexed statements. Expired sessions are
 purged on every login.
+
+## Saved games
+
+Design: `docs/design/saved-games.md`; code: `server/shengji/api/saved_games.py`.
+The room log stays the source of truth and never carries an account id; the
+database holds only which account sat at which seat for which rounds. A
+signed-in seat is linked when the table starts; a seat that signs in mid-game
+is linked from that round (the next one if the current round is over); guest
+seats and training-excluded rooms are never linked. Link writes run on one
+worker thread; a failure counts on `/healthz` as
+`activity.account_link_failures` and play goes on.
+
+Endpoints (the `sj_session` cookie; 401 without it, 404 for anything the
+account may not read):
+
+- `GET /api/me/games?before=&limit=`: the latest 100 games, newest first, 50 a page.
+- `GET /api/me/games/{id}`: the summary plus each readable round's result.
+- `GET /api/me/games/{id}/rounds/{n}`: that round's log records from the
+  seat the account held, without bot reasoning, timing, seeds or chat, and
+  with hidden cards (`null`) until the round ends.
+- `DELETE /api/me/games/{id}`: hide a game from this account.
+- `DELETE /api/me`: delete the account, its sessions and its links.
+
+Linked games are kept for 12 months.
 
 ## Backup
 

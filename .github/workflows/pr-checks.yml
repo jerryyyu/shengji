@@ -196,6 +196,7 @@ jobs:
           tests/test_health_activity.py
           tests/test_accounts.py
           tests/test_saved_games_link.py
+          tests/test_saved_games_api.py
           tests/test_web_cache_headers.py
           tests/test_hybrid_duel_quality.py
           tests/test_room_bot_seed.py

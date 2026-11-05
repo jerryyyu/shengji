@@ -2113,9 +2113,10 @@ async def healthz() -> dict:
 from .debug import register_debug  # noqa: E402
 
 register_debug(app, rooms)
-# /api/auth/*, /api/me: registered before the static mount so the catch-all
+# /api/auth/*, /api/me, /api/me/games: registered before the static mount so the catch-all
 # page handler never shadows them.
 accounts.register_accounts(app)
+saved_games.register_saved_games(app)
 
 # ------------------------------------------------------------------ static
 class WebFiles(StaticFiles):

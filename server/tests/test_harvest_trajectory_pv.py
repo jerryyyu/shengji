@@ -117,7 +117,8 @@ def _gen(out, policy, **opt):
 @pytest.mark.parametrize('status', [None, 'ineligible', 'single_candidate',
                                    'skipped_budget', 'abandoned', 'complete'])
 @pytest.mark.parametrize('follow_applied', [False, True])
-def test_exact_target_provenance_preserves_values(status, follow_applied):
+@pytest.mark.parametrize('subset', [None, 1])
+def test_exact_target_provenance_preserves_values(status, follow_applied, subset):
     ballot = [['S3'], ['S4']]
     rec = dict(admitted=ballot, admitted_indices=[2, 5], selected_index=5,
                played=['S4'], value_means=[-0.5, 1.0], worlds=3,
@@ -125,24 +126,30 @@ def test_exact_target_provenance_preserves_values(status, follow_applied):
                exact_follow_abandoned=None, exact_lead_seconds=0.125)
     if status is not None:
         rec['exact_lead_status'] = status
+    if subset is not None:
+        rec['exact_lead_subset_worlds'] = subset
+        rec['exact_follow_subset_worlds'] = subset
     allocation, preference, values = trajectory.pv_fields_from_record(rec, ballot)
     assert allocation['played_index'] == 1
     assert preference['means'] == values['means'] == rec['value_means']
     assert ('exact-lead sampled-world minimax' in values['value_source']) == (status == 'complete')
+    assert values['worlds'] == (subset if status == 'complete' and subset else 3)
+    assert allocation['selection_worlds'] == [3, 3]
     assert values['exact_search'] == {key: value for key, value in rec.items()
                                      if key.startswith('exact_') and key != 'exact_lead_seconds'}
     assert search_means({'action_values': values, 'ballot': ballot}) == ([0, 1], [-0.5, 1.0])
 
 
-@pytest.fixture
-def exact_data_policy(package, monkeypatch):
+@pytest.fixture(params=[0, 1])
+def exact_data_policy(package, monkeypatch, request):
     yield from _register_data_policy(package, monkeypatch, EXACT_LEAD_ENDGAME=1,
                                      EXACT_DEEP_CARDS=4, EXACT_FOLLOW=1,
                                      EXACT_FOLLOW_MAX_CARDS=4,
-                                     EXACT_FOLLOW_SOLVER='compact-level')
+                                     EXACT_FOLLOW_SOLVER='compact-level',
+                                     EXACT_WORLD_SUBSET=request.param)
 
 
-def test_exact_producer_values_reach_harvest(exact_data_policy, tmp_path):
+def test_exact_producer_values_reach_harvest(exact_data_policy, tmp_path, request):
     from shengji.train.cwv_data import bridge_record
     run = _gen(tmp_path / 'exact', exact_data_policy, explore_rate=0.0, explore_k=0)
     plays = [r for r in run['records'] if r['decision_kind'] == 'play']
@@ -150,16 +157,22 @@ def test_exact_producer_values_reach_harvest(exact_data_policy, tmp_path):
                for r in plays)
     follows = [r for r in plays if r['action_values'].get('exact_search', {}).get('exact_follow_attempted')]
     assert follows
+    subset = request.node.callspec.params['exact_data_policy']
     for r in follows:
         values = r['action_values']
         assert values['exact_search']['exact_follow_abandoned'] is None
         assert type(values['exact_search']['exact_follow_applied']) is bool
         assert 'model-bootstrap' in values['value_source']
+        if subset:
+            assert values['exact_search']['exact_follow_subset_worlds'] == subset
         assert values['means'] == r['preference']['means']
     for r in plays:
         values = r['action_values']
         if values.get('exact_search', {}).get('exact_lead_status') == 'complete':
             assert 'exact-lead sampled-world minimax' in values['value_source']
+            if subset:
+                assert values['exact_search']['exact_lead_subset_worlds'] == subset
+                assert values['worlds'] == subset
             assert r['preference']['means'] == values['means']
     assert all(bridge_record(r) is not None for r in plays)
 

@@ -1483,8 +1483,9 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]], *,
     * the ballot is the record's ``admitted`` cards in admission order and
       ``played_index`` is the position of ``selected_index`` in
       ``admitted_indices`` -- never the legal index;
-    * ``selection_worlds`` is W per candidate (every candidate is priced in
-      every sampled world; W is a sampled-world count, not MC visits);
+    * ``selection_worlds`` counts base-pass work, W per priced candidate;
+      ``action_values.worlds`` counts the worlds behind the published means,
+      which can be a smaller exact-solved subset;
     * ``action_values.means`` are model-bootstrap values, or sampled-world
       minimax values when the exact lead completed, ``PV_VALUE_UNITS``, acting-team
       perspective -- not completed returns and not paired MC evidence, so
@@ -1554,12 +1555,14 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]], *,
     }
     exact = {key: rec[key] for key in (
         "exact_lead_status", "exact_follow_attempted", "exact_follow_applied",
-        "exact_follow_abandoned", "exact_follow_error") if key in rec}
+        "exact_follow_abandoned", "exact_follow_error", "exact_lead_subset_worlds",
+        "exact_follow_subset_worlds") if key in rec}
     if exact:
         action_values["exact_search"] = exact
     if rec.get("exact_lead_status") == "complete":
         action_values["value_source"] = (
-            "pv-search: exact-lead sampled-world minimax level values, mean over the sampled worlds")
+            "pv-search: exact-lead sampled-world minimax level values, mean over the exact-solved worlds")
+        action_values["worlds"] = int(rec.get("exact_lead_subset_worlds", worlds))
     belief = {key: rec[key] for key in rec if key.startswith(BELIEF_RECORD_PREFIX)}
     if belief:
         # the belief proposal's record fields as the producer wrote them (its

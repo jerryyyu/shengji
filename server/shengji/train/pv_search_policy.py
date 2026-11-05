@@ -870,6 +870,7 @@ from . import declare_pass_worlds
 from . import declare_wait
 from . import pv_soft_oracle as soft_oracle
 from .pv_tree_config import PVTreeConfig, tree_env, tree_token
+from . import pv_two_trick as two_trick
 
 SCHEMA = "pv-search-recipe-v1"
 RECORD_SCHEMA = "pv-search-decision-v1"
@@ -1546,6 +1547,10 @@ class PVSearchConfig:
     # the held-out lead confirmation (`PVSearchBot` docstring): 0 is off and ABSENT
     # from the payload
     lead_confirm: int = 0
+    # the two-trick value leaf at a lead (`pv_two_trick`) and its per-decision
+    # wall cap: both ABSENT from the payload while the rule is off
+    two_trick_lead: bool = False
+    two_trick_max_seconds: float = two_trick.TT2_MAX_SECONDS_DEFAULT
     # the optional declaration rule and its two parameters; the same contract
     # (the parameters too are ABSENT from the payload while the rule is off)
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
@@ -1706,6 +1711,27 @@ def _check_wide_lead_k(config) -> int:
         raise PVSearchPolicyError("wide_lead_k needs wide_lead_admission "
                                   "(SHENGJI_PV_WIDE_LEAD_K needs SHENGJI_PV_WIDE_LEAD_ADMISSION=1)")
     return k
+
+
+def _check_two_trick(config) -> bool:
+    """Validate the two-trick rule (`pv_two_trick`); returns whether its cap
+    differs from the default.  A cap without the rule, or the rule with the
+    tree (whose continuation prices its own leaves), is refused."""
+    on, seconds = config.two_trick_lead, config.two_trick_max_seconds
+    if type(on) is not bool:
+        raise PVSearchPolicyError("two_trick_lead must be a bool")
+    lo, hi = two_trick.TT2_MAX_SECONDS_RANGE
+    if (isinstance(seconds, bool) or type(seconds) not in (int, float)
+            or not math.isfinite(seconds) or not lo <= seconds <= hi):
+        raise PVSearchPolicyError(f"two_trick_max_seconds must be a finite number in [{lo}, {hi}]")
+    lifted = seconds != two_trick.TT2_MAX_SECONDS_DEFAULT
+    if lifted and not on:
+        raise PVSearchPolicyError("two_trick_max_seconds needs two_trick_lead "
+                                  "(SHENGJI_PV_TT2_MAX_SECONDS needs SHENGJI_PV_TT2=1)")
+    if on and config.tree is not None:
+        raise PVSearchPolicyError("two_trick_lead does not combine with the tree "
+                                  "(SHENGJI_PV_TT2=1 with SHENGJI_PV_TREE_SIMS)")
+    return lifted
 
 
 def _check_lead_confirm(config) -> int:
@@ -1869,6 +1895,12 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     del payload["lead_confirm"]
     if confirm:
         payload["lead_confirm"] = {"k": confirm, "rule": LEAD_CONFIRM_RULE_ID, **LEAD_CONFIRM_PARAMS}
+    _check_two_trick(config)
+    del payload["two_trick_lead"], payload["two_trick_max_seconds"]
+    if config.two_trick_lead:
+        payload["two_trick_lead"] = {"rule": two_trick.TT2_RULE_ID,
+                                     "max_seconds": float(config.two_trick_max_seconds),
+                                     "budget_fraction": two_trick.TT2_BUDGET_FRACTION}
     if config.adaptive_worlds and config.adaptive_worlds_leads:
         raise PVSearchPolicyError(_ADAPTIVE_WORLDS_EXCLUSIVE)
     if config.oracle_worlds and (config.adaptive_worlds or config.adaptive_worlds_leads):
@@ -1994,6 +2026,11 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     confirm = _check_lead_confirm(config)
     if confirm:
         rules += f"-{LEAD_CONFIRM_TOKEN}{confirm}"
+    if _check_two_trick(config):
+        rules += (f"-{two_trick.TT2_TOKEN}-{two_trick.TT2_MAX_SECONDS_TOKEN}"
+                  f"{round(config.two_trick_max_seconds * 1000)}")
+    elif config.two_trick_lead:
+        rules += f"-{two_trick.TT2_TOKEN}"
     rules += tree_token(config.tree)   # "" while the tree is off
     return (f"pv-search-{ckpt8}{prior}-w{config.worlds}-k{config.candidates}{rules}"
             f"-r{recipe_digest(config)}")
@@ -2173,6 +2210,11 @@ class PVSearchBot(PolicyValueBot):
     #: digested `LEAD_CONFIRM_PARAMS`
     lead_confirm = 0
     _lead_confirm = None
+    #: the two-trick value leaf at a lead (`pv_two_trick`): class-level OFF; the
+    #: rule's cap and per-decision state are instance state of an ON bot only
+    two_trick_lead = False
+    two_trick_max_seconds = two_trick.TT2_MAX_SECONDS_DEFAULT
+    _two_trick = None
     #: the history test's accepted-throw form (module docstring): class-level OFF
     world_history_throws = False
     #: the per-decision draw counts by stage (`_tally_draw`): None while the
@@ -2399,6 +2441,11 @@ class PVSearchBot(PolicyValueBot):
                 raise PVSearchPolicyError(f"lead_confirm needs serving's own _value_means; "
                                           f"{type(self).__name__} replaces it")
             self.lead_confirm = confirm
+        lifted_two_trick = _check_two_trick(config)
+        if config.two_trick_lead:
+            self.two_trick_lead = True
+            if lifted_two_trick:
+                self.two_trick_max_seconds = float(config.two_trick_max_seconds)
         if type(config.value_declare) is not bool:
             raise PVSearchPolicyError("value_declare must be a bool")
         _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
@@ -3314,7 +3361,8 @@ class PVSearchBot(PolicyValueBot):
                                        int(r.trick_index)] for r in refusals]
         return out
 
-    def _score_leaves(self, rnd, seat, actions, worlds, check_budget=None, capture=None):
+    def _score_leaves(self, rnd, seat, actions, worlds, check_budget=None, capture=None,
+                      leaf=None):
         """The ONE scoring and batching loop; serving's accumulator, unchanged.
 
         ``capture``, when given, is a (worlds x actions) array whose cells are
@@ -3325,7 +3373,17 @@ class PVSearchBot(PolicyValueBot):
         per-world values cannot alter what serving computes (Codex, #625).
 
         Default serving passes ``capture=None`` and allocates no matrix.
+
+        ``leaf`` replaces `_scored_leaf` as the source of this pass's leaves
+        (`pv_two_trick` passes its recorder and its copies); None is
+        `_scored_leaf`.  Under an active two-trick rule a pass without ``leaf``
+        is priced by `pv_two_trick.score_leaves`, which runs this loop twice.
         """
+        if leaf is None:
+            if self._two_trick is not None and self._two_trick["active"]:
+                return two_trick.score_leaves(self, rnd, seat, actions, worlds, check_budget,
+                                              capture)
+            leaf = self._scored_leaf
         sums = np.zeros(len(actions), dtype=np.float64)
         pending, indices = [], []
         cells = [] if capture is not None else None
@@ -3365,7 +3423,7 @@ class PVSearchBot(PolicyValueBot):
 
         for world_index, (hands, buried) in enumerate(worlds):
             for index, action in enumerate(actions):
-                pending.append(self._scored_leaf(rnd, seat, hands, buried, action, world_index))
+                pending.append(leaf(rnd, seat, hands, buried, action, world_index))
                 indices.append(index)
                 if cells is not None:
                     cells.append((world_index, index))
@@ -3558,6 +3616,8 @@ class PVSearchBot(PolicyValueBot):
         return limit
 
     def _search(self, rnd, seat, anchor, started, check_budget=None):
+        if self.two_trick_lead:
+            self._two_trick = self._two_trick_state(rnd, started)
         if self.leaf_greedy_finish:
             self._leaf_greedy = None      # no leaf of an earlier decision is ever reused
         if self.leaf_greedy_deadline_ms:
@@ -3743,6 +3803,7 @@ class PVSearchBot(PolicyValueBot):
             **self._leaf_greedy_deadline_record(),
             **self._leaf_greedy_top_record(),
             **self._lead_confirm_record(),
+            **(two_trick.record(self._two_trick) if self.two_trick_lead else {}),
             **self._adaptive_worlds_record(),
             **self._soft_oracle_record(),
             **(self._exact_lead if self.exact_lead_endgame else {}),
@@ -3755,6 +3816,17 @@ class PVSearchBot(PolicyValueBot):
             # the confirmed challenger was priced on fresh worlds, not the base pass
             self.last_decision_record["value_means"] = means.tolist() + [None]
         return list(played)
+
+    def _two_trick_state(self, rnd, started):
+        """This decision's two-trick state: active at a lead, its deadline the
+        cap from ``started``, clamped to `pv_two_trick.TT2_BUDGET_FRACTION` of
+        the serving budget when one is set."""
+        allowance = float(self.two_trick_max_seconds)
+        if self.serving_budget_seconds is not None:
+            allowance = min(allowance, two_trick.TT2_BUDGET_FRACTION * self.serving_budget_seconds)
+        lead = leading(rnd)
+        return two_trick.new_state(lead, started + allowance if lead else None,
+                                   allowance if lead else None)
 
     # the optional held-out lead confirmation (class docstring)
 
@@ -4241,6 +4313,9 @@ class PVSearchBot(PolicyValueBot):
         try:
             return self._decide_play(rnd, seat, started)
         finally:
+            if self._two_trick is not None:
+                # the rule prices passes of this decision's search only
+                self._two_trick["active"] = False
             if self.leaf_cache_release and self._leaf_greedy is not None:
                 # the finished leaves serve one decision only (`_search` resets
                 # them); dropped here, the server's per-turn copy of this bot
@@ -4611,6 +4686,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        leaf_greedy_top: int = 0,
                        wide_lead_k: int = WIDE_LEAD_K,
                        lead_confirm: int = 0,
+                       two_trick_lead: bool = False,
+                       two_trick_max_seconds: float = two_trick.TT2_MAX_SECONDS_DEFAULT,
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -4695,6 +4772,8 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
                             leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
                             lead_confirm=lead_confirm,
+                            two_trick_lead=two_trick_lead,
+                            two_trick_max_seconds=two_trick_max_seconds,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -4832,6 +4911,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         leaf_greedy_top: int = 0,
                         wide_lead_k: int = WIDE_LEAD_K,
                         lead_confirm: int = 0,
+                        two_trick_lead: bool = False,
+                        two_trick_max_seconds: float = two_trick.TT2_MAX_SECONDS_DEFAULT,
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
@@ -4897,6 +4978,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
                             leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
                             lead_confirm=lead_confirm,
+                            two_trick_lead=two_trick_lead,
+                            two_trick_max_seconds=two_trick_max_seconds,
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
@@ -5027,6 +5110,8 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                leaf_greedy_top=config.leaf_greedy_top,
                                wide_lead_k=config.wide_lead_k,
                                lead_confirm=config.lead_confirm,
+                               two_trick_lead=config.two_trick_lead,
+                               two_trick_max_seconds=config.two_trick_max_seconds,
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
@@ -5078,7 +5163,9 @@ def pv_env_recipe(environ=None) -> dict:
     / ``_EXACT_FOLLOW`` and its ``_EXACT_FOLLOW_MAX_NODES`` /
     ``_EXACT_FOLLOW_SOLVER`` / ``_EXACT_FOLLOW_MAX_CARDS`` DEV knobs, the exact lead
     stage's ``_EXACT_LEAD_MAX_SECONDS`` (needs ``_EXACT_LEAD_ENDGAME=1``) and
-    ``_EXACT_DEEP_MAX_NODES`` (needs ``_EXACT_DEEP_CARDS``) DEV caps
+    ``_EXACT_DEEP_MAX_NODES`` (needs ``_EXACT_DEEP_CARDS``) DEV caps, the two-trick
+    value leaf ``_TT2`` (``0`` or ``1``; `pv_two_trick`) and its ``_TT2_MAX_SECONDS``
+    per-decision cap (needs ``_TT2=1``)
     / ``_ORACLE_WORLDS`` rule flags (``0`` or ``1`` only; unset or empty is off) and the
     ``_VALUE_DECLARE_WORLDS`` / ``_VALUE_DECLARE_MARGIN`` parameters (refused unless
     ``_VALUE_DECLARE=1``), as keyword arguments for `pv_registry_entries`.
@@ -5236,6 +5323,26 @@ def pv_env_recipe(environ=None) -> dict:
         if not lo <= value <= hi:
             raise PVSearchPolicyError(f"{ENV_PREFIX}{LEAD_CONFIRM_ENV} must be an int in [{lo}, {hi}]")
         recipe["lead_confirm"] = value
+    # the two-trick value leaf at a lead (`pv_two_trick`) and its cap: unset,
+    # empty or 0 is off; the cap is refused without the rule
+    raw = env.get(ENV_PREFIX + two_trick.TT2_ENV)
+    if raw not in (None, "", "0"):
+        if raw != "1":
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{two_trick.TT2_ENV} must be 0 or 1: {raw!r}")
+        recipe["two_trick_lead"] = True
+    raw = env.get(ENV_PREFIX + two_trick.TT2_MAX_SECONDS_ENV)
+    if raw not in (None, ""):
+        if not recipe.get("two_trick_lead"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{two_trick.TT2_MAX_SECONDS_ENV} needs "
+                                      f"{ENV_PREFIX}{two_trick.TT2_ENV}=1")
+        try:
+            value = float(raw)
+        except ValueError:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{two_trick.TT2_MAX_SECONDS_ENV} is not a "
+                                      f"number: {raw!r}") from None
+        _check_two_trick(PVSearchConfig(checkpoint_sha256=recipe["sha256"], two_trick_lead=True,
+                                        two_trick_max_seconds=value))
+        recipe["two_trick_max_seconds"] = value
     # the exact stages' world subset: unset, empty or 0 is off
     raw = env.get(ENV_PREFIX + EXACT_WORLD_SUBSET_ENV)
     if raw not in (None, "", "0"):

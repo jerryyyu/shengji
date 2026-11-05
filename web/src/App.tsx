@@ -11,6 +11,8 @@ import Room from "./components/Room";
 import Table from "./components/Table";
 import GamesList from "./components/GamesList";
 import { useGamesRoute } from "./replay/route";
+import HowTo from "./howto/HowTo";
+import { useHowtoRoute } from "./howto/route";
 
 const TOAST_MS = 4000;
 
@@ -28,6 +30,7 @@ export default function App() {
   // "My games" pages (hash routes) sit over whatever screen is live; the
   // socket and any game in progress keep running underneath.
   const gamesRoute = useGamesRoute();
+  const howtoRoute = useHowtoRoute();
 
   useEffect(() => {
     const showToast = (message: string) => {
@@ -128,7 +131,9 @@ export default function App() {
   }, []);
 
   let screen: ReactNode;
-  if (gamesRoute) {
+  if (howtoRoute) {
+    screen = <HowTo route={howtoRoute} />;
+  } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} inGame={room !== null || game !== null} />;
   } else if (game) {
     screen = <Table state={game} />;

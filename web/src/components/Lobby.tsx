@@ -1,4 +1,6 @@
 import type { RoomSeats, ServerMsg } from "../protocol";
+import { openHowto } from "../howto/route";
+import { prefersReducedMotion } from "../motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
@@ -14,6 +16,27 @@ interface LobbyProps {
   error: string | null;
   /** Arm App's fill-with-bots-then-start orchestration before creating a room. */
   onArmAutoFill: () => void;
+}
+
+// Signed-out visitors see a few seconds of real play under the title. The box
+// keeps the clip's 1200:630 shape before it loads, so nothing below it moves;
+// reduced motion gets the still frame instead.
+function PreviewVideo() {
+  return prefersReducedMotion() ? (
+    <img className="lobby-preview" src="/og/preview.jpg" alt="" aria-hidden="true" />
+  ) : (
+    <video
+      className="lobby-preview"
+      muted
+      loop
+      playsInline
+      autoPlay
+      preload="none"
+      poster="/og/preview.jpg"
+      src="/og/preview.mp4"
+      aria-hidden="true"
+    />
+  );
 }
 
 const STATUS_LABEL: Record<ConnStatus, string> = {
@@ -238,6 +261,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
         <p className="game-subtitle">Tractor · two decks</p>
+        {account.status === "out" ? <PreviewVideo /> : null}
 
         {account.status === "in" && account.user ? (
           <AccountChip user={account.user} />
@@ -343,6 +367,11 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             <GoogleSignIn clientId={account.clientId} />
           </>
         ) : null}
+
+        <p className="howto-entry">
+          New to Sheng Ji?{" "}
+          <button className="howto-link" onClick={() => openHowto()}>How to play</button>
+        </p>
 
         <div className={`conn-status ${status}`}>
           <span className="conn-dot" />

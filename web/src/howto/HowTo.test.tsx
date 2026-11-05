@@ -1,0 +1,118 @@
+// The How to play guide is a hash route: `#/howto` and `#/howto/<n>` pick the
+// step, Next/Back and the dots move the hash, and any other hash is no guide.
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import HowTo from "./HowTo";
+import { parseHowto, useHowtoRoute } from "./route";
+
+function Guide() {
+  const route = useHowtoRoute();
+  return route ? <HowTo route={route} /> : <p className="no-guide">lobby</p>;
+}
+
+let host: HTMLDivElement;
+let root: ReturnType<typeof createRoot>;
+const tick = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+async function open(hash: string) {
+  window.history.replaceState(null, "", "/" + hash);
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => root.render(<Guide />));
+}
+const title = () => host.querySelector(".howto-title")?.textContent;
+const counter = () => host.querySelector(".howto-count")?.textContent;
+const button = (label: string) =>
+  Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent === label);
+async function click(el: HTMLElement | undefined | null) {
+  expect(el).toBeTruthy();
+  act(() => el!.click());
+  await tick();
+}
+
+beforeEach(() => window.history.replaceState(null, "", "/"));
+afterEach(() => {
+  act(() => root?.unmount());
+  host?.remove();
+  window.history.replaceState(null, "", "/");
+});
+
+describe("parseHowto", () => {
+  it("reads the guide and its step from the hash", () => {
+    expect(parseHowto("#/howto")).toEqual({ step: 1 });
+    expect(parseHowto("#/howto/")).toEqual({ step: 1 });
+    expect(parseHowto("#/howto/7")).toEqual({ step: 7 });
+    expect(parseHowto("#/howto/0")).toEqual({ step: 1 });
+  });
+
+  it("is no route for other or malformed hashes, and never throws", () => {
+    for (const h of ["", "#", "#/games", "#/howto/%", "#/howto/%E0%A4%A", "#/howto/abc",
+                     "#/howto/all", "#/howto/3/x", "#/howtox", "#/howto/1234567"]) {
+      expect(() => parseHowto(h)).not.toThrow();
+      expect(parseHowto(h)).toBeNull();
+    }
+  });
+});
+
+describe("the stepped guide", () => {
+  it("#/howto opens step 1 with Back disabled", async () => {
+    await open("#/howto");
+    expect(title()).toBe("Climb from 2 to Ace");
+    expect(counter()).toBe("1 of 10");
+    expect(button("Back")!.disabled).toBe(true);
+    expect(host.querySelectorAll(".howto-dot")).toHaveLength(10);
+    expect(host.querySelector(".howto-dot.on")!.getAttribute("aria-current")).toBe("step");
+  });
+
+  it("Next and Back walk the steps through the hash", async () => {
+    await open("#/howto");
+    await click(button("Next"));
+    expect(window.location.hash).toBe("#/howto/2");
+    expect(title()).toBe("Trump beats everything");
+    await click(button("Next"));
+    expect(counter()).toBe("3 of 10");
+    await click(button("Back"));
+    expect(window.location.hash).toBe("#/howto/2");
+    await click(button("Back"));
+    expect(window.location.hash).toBe("#/howto");
+    expect(title()).toBe("Climb from 2 to Ace");
+  });
+
+  it("a dot jumps straight to its step", async () => {
+    await open("#/howto/2");
+    await click(host.querySelector<HTMLButtonElement>("button[aria-label='Step 9']"));
+    expect(window.location.hash).toBe("#/howto/9");
+    expect(title()).toBe("Scoring a round");
+    expect(host.querySelectorAll(".howto-dot.on")).toHaveLength(1);
+  });
+
+  it("an out-of-range step clamps to the last step, which offers Start playing", async () => {
+    await open("#/howto/99");
+    expect(title()).toBe("Win a game");
+    expect(counter()).toBe("10 of 10");
+    expect(button("Next")).toBeUndefined();
+    await click(button("Start playing"));
+    expect(window.location.hash).toBe("");
+    expect(host.querySelector(".no-guide")).not.toBeNull();
+  });
+
+  it("a malformed hash renders no guide instead of crashing", async () => {
+    await open("#/howto/%");
+    expect(host.querySelector(".no-guide")).not.toBeNull();
+    window.location.hash = "#/howto/%E0%A4%A";
+    await tick();
+    expect(host.querySelector(".no-guide")).not.toBeNull();
+    window.location.hash = "#/howto/4";
+    await tick();
+    expect(title()).toBe("Banker and kitty");
+  });
+
+  it("‹ Lobby leaves the guide", async () => {
+    await open("#/howto/5");
+    await click(button("‹ Lobby"));
+    expect(window.location.hash).toBe("");
+    expect(host.querySelector(".no-guide")).not.toBeNull();
+  });
+});

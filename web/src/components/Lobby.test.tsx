@@ -303,3 +303,65 @@ describe("a saved account default follows a rename; a typed name does not (revie
     expect(localStorage.getItem("shengji.nameSource")).toBe("typed");
   });
 });
+
+describe("the signed-out preview clip and the How to play entry", () => {
+  const preview = () => host.querySelector(".lobby-preview");
+
+  it("plays the muted, looping clip only while signed out", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
+    expect(v).not.toBeNull();
+    expect(v.muted).toBe(true);
+    expect(v.loop).toBe(true);
+    expect(v.autoplay).toBe(true);
+    expect(v.hasAttribute("playsinline")).toBe(true);
+    expect(v.getAttribute("preload")).toBe("none");
+    expect(v.getAttribute("poster")).toBe("/og/preview.jpg");
+    expect(v.getAttribute("src")).toBe("/og/preview.mp4");
+    expect(v.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("shows no clip when signed in, while loading, or with sign-in off", async () => {
+    for (const state of [
+      { status: "in", clientId: "cid", user: JERRY },
+      { status: "loading", clientId: null, user: null },
+      { status: "off", clientId: null, user: null },
+    ] as AuthState[]) {
+      authState.current = state;
+      await render();
+      expect(preview()).toBeNull();
+      act(() => root.unmount());
+      host.remove();
+    }
+    await render(); // afterEach unmounts once more
+  });
+
+  it("reduced motion shows the poster still, not the video", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+    try {
+      await render();
+    } finally {
+      window.matchMedia = mm;
+    }
+    expect(host.querySelector("video")).toBeNull();
+    const img = host.querySelector<HTMLImageElement>("img.lobby-preview")!;
+    expect(img.getAttribute("src")).toBe("/og/preview.jpg");
+    expect(img.getAttribute("alt")).toBe("");
+  });
+
+  it("New to Sheng Ji? How to play opens #/howto", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    const entry = host.querySelector(".howto-entry")!;
+    expect(entry.textContent).toBe("New to Sheng Ji? How to play");
+    try {
+      act(() => entry.querySelector<HTMLButtonElement>("button")!.click());
+      expect(window.location.hash).toBe("#/howto");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+});

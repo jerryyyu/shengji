@@ -1,79 +1,2183 @@
 {
- "decisions": {
-  "ADKY3:11:1": {
-   "cards": [
-    "D3",
-    "D8",
-    "D9"
-   ],
-   "record": "2de686b7e94b6ca2259a0c85d1edde392d4cc2f1af9bfe990dd54a0b72518632",
-   "worlds": "32d33a3891a0a52558e702559daed82cb82bce4832cb66db1c659e325734cb67"
+  "decisions": {
+    "ADKY3:11:1": {
+      "cards": [
+        "D3",
+        "D8",
+        "D9"
+      ],
+      "record": {
+        "actions": 10,
+        "admitted": [
+          [
+            "D3",
+            "D6",
+            "D8"
+          ],
+          [
+            "D8",
+            "D9",
+            "DJ"
+          ],
+          [
+            "D6",
+            "D8",
+            "D9"
+          ],
+          [
+            "D3",
+            "D8",
+            "D9"
+          ],
+          [
+            "D3",
+            "D6",
+            "D9"
+          ],
+          [
+            "D6",
+            "D9",
+            "DJ"
+          ],
+          [
+            "D6",
+            "D8",
+            "DJ"
+          ],
+          [
+            "D3",
+            "D9",
+            "DJ"
+          ]
+        ],
+        "admitted_indices": [
+          0,
+          9,
+          6,
+          3,
+          1,
+          8,
+          7,
+          5
+        ],
+        "anchor_selected": false,
+        "belief_entropy_bits": 1.3156,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 32,
+        "belief_log": 1,
+        "belief_proposed": 80,
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "AXUAiW+BAA8A+gAFAP8AAAAEXJ8ATRGgADxNdgA6QIUASjWAAEU+fQAzRIcAawWPACVZggAaj1dUNUYxNDc/VZQxOQFGNU81byxSE6olLwCJJFEBkylCAYg6PQDiHAEAvUIAAA==",
+          "rows": "04007e6dbf642a",
+          "v": 1
+        },
+        "belief_top_mass": 0.5601,
+        "cap": 4000,
+        "diversity_skipped": [
+          4,
+          2
+        ],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 0,
+        "doomed_throw_reselect_exact_guarded": false,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "D3 D8 D9",
+        "doomed_throw_reselect_to": "D3 D8 D9",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_lead_changed": false,
+        "exact_lead_status": "ineligible",
+        "exact_lead_worlds_completed": 0,
+        "history_draw_constraints": 4,
+        "history_draw_forbidden": 20,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 21,
+        "history_rejections": 16,
+        "history_rejections_by_age": {
+          "6": 16
+        },
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": false,
+        "lead_anchor_from": "D3 D6 D8",
+        "lead_anchor_source": "heuristic",
+        "lead_anchor_to": "D3 D6 D8",
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": true,
+        "leaf_greedy_finish_exact_skipped": false,
+        "leaf_greedy_policy_rows": 872,
+        "leaf_greedy_reply_differs_heuristic": 588,
+        "leaf_greedy_reply_evaluations": 3624,
+        "leaf_greedy_reply_plays": 1024,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 10,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "D3",
+          "D8",
+          "D9"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          -1.5284853201021533,
+          -1.209739372139827,
+          -0.7372307370060865,
+          -1.1202115445618395,
+          -1.1976829398282074,
+          -1.287210767406195,
+          -1.6180131476801412,
+          -1.670191574961948
+        ],
+        "policy_log_odds_listing": [
+          -1.5284853201021533,
+          -1.1976829398282074,
+          -2.078465350502262,
+          -1.1202115445618395,
+          -2.0009939552358946,
+          -1.670191574961948,
+          -0.7372307370060865,
+          -1.6180131476801412,
+          -1.287210767406195,
+          -1.209739372139827
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 0,
+        "refusal_pinned_codes": 0,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 80,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 3,
+        "singleton_challenger_applied": false,
+        "tiebreak_applied": false,
+        "tiebreak_near_set": [
+          3
+        ],
+        "tiebreak_points": [],
+        "value_batches": 4,
+        "value_evaluations": 512,
+        "value_means": [
+          0.8788588710743497,
+          0.8397091197567367,
+          0.8722181215038363,
+          0.9230127209833218,
+          0.8703875610049757,
+          0.767503310605113,
+          0.7635263950910322,
+          0.8119854254483987
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 0
+        },
+        "worlds": 64
+      },
+      "worlds": "32d33a3891a0a52558e702559daed82cb82bce4832cb66db1c659e325734cb67"
+    },
+    "ADKY3:12:0": {
+      "cards": [
+        "D9"
+      ],
+      "record": {
+        "actions": 18,
+        "admitted": [
+          [
+            "HK"
+          ],
+          [
+            "DQ"
+          ],
+          [
+            "D9"
+          ],
+          [
+            "H5",
+            "HK"
+          ],
+          [
+            "D9",
+            "DQ"
+          ],
+          [
+            "H5"
+          ],
+          [
+            "D6",
+            "D9",
+            "DQ"
+          ],
+          [
+            "D6",
+            "DK"
+          ]
+        ],
+        "admitted_indices": [
+          1,
+          5,
+          3,
+          6,
+          11,
+          0,
+          14,
+          8
+        ],
+        "anchor_selected": false,
+        "belief_entropy_bits": 1.136,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 26,
+        "belief_log": 1,
+        "belief_proposed": 116,
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "AAWAegBsbyQAAP4BAAD/AFkAA6NLADp6TgA4eUgAPHsAAGWaWABBZgAAVqkjAEmUAABGuV4AD5JVLQB9P5AAMFCvAABUqgAARLoBAFeSFgCQbwAA",
+          "rows": "24005845bf642a",
+          "v": 1
+        },
+        "belief_top_mass": 0.5898,
+        "cap": 4000,
+        "diversity_skipped": [
+          2,
+          4,
+          9,
+          12,
+          7,
+          10,
+          16
+        ],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 4,
+        "doomed_throw_reselect_exact_guarded": true,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "D9",
+        "doomed_throw_reselect_to": "D9",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_lead_base_level_mean": 1.046875,
+        "exact_lead_base_played": [
+          "D9"
+        ],
+        "exact_lead_base_selected_index": 2,
+        "exact_lead_base_value_means": [
+          -0.6947133470194583,
+          -0.29550800224240725,
+          -0.2982261417037097,
+          -0.5191750979958126,
+          -0.2982261417037097,
+          -0.5191750979958126,
+          -0.2902479086533837,
+          -0.2902479086533837
+        ],
+        "exact_lead_change_kind": "unchanged",
+        "exact_lead_changed": false,
+        "exact_lead_selected_level_delta": 0.0,
+        "exact_lead_selected_level_mean": 1.046875,
+        "exact_lead_status": "complete",
+        "exact_lead_worlds_completed": 64,
+        "history_draw_constraints": 7,
+        "history_draw_forbidden": 30,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 24,
+        "history_rejections": 52,
+        "history_rejections_by_age": {
+          "1": 4,
+          "7": 27,
+          "8": 21
+        },
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": true,
+        "lead_anchor_from": "D6",
+        "lead_anchor_source": "policy",
+        "lead_anchor_to": "HK",
+        "lead_confirm_applied": false,
+        "lead_confirm_challengers": [],
+        "lead_confirm_deltas": [],
+        "lead_confirm_pool": 0,
+        "lead_confirm_screen_margins": [],
+        "lead_confirm_screen_worlds": 0,
+        "lead_confirm_ses": [],
+        "lead_confirm_status": "exact",
+        "lead_confirm_to": null,
+        "lead_confirm_worlds": 0,
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": false,
+        "leaf_greedy_finish_exact_skipped": true,
+        "leaf_greedy_policy_rows": 0,
+        "leaf_greedy_reply_differs_heuristic": 0,
+        "leaf_greedy_reply_evaluations": 0,
+        "leaf_greedy_reply_plays": 0,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 18,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "D9"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          1.000741340273949,
+          -0.3584680117059066,
+          -0.896790108281148,
+          -1.1626858049811084,
+          -1.2552581199870547,
+          -2.163427145255058,
+          -2.7358421301024407,
+          -3.159037371000461
+        ],
+        "policy_log_odds_listing": [
+          -2.163427145255058,
+          1.000741340273949,
+          -1.480584010115385,
+          -0.896790108281148,
+          -1.6784533608850756,
+          -0.3584680117059066,
+          -1.1626858049811084,
+          -2.377374118396532,
+          -3.159037371000461,
+          -1.8390520218212918,
+          -2.5752434691662245,
+          -1.2552581199870547,
+          -2.036921372590983,
+          -4.055827479281609,
+          -2.7358421301024407,
+          -3.5175053827063683,
+          -2.9337114808721303,
+          -4.414295490987514
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 0,
+        "refusal_pinned_codes": 0,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 116,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 3,
+        "singleton_challenger_applied": false,
+        "tiebreak_applied": false,
+        "tiebreak_near_set": [
+          2,
+          4,
+          6,
+          7
+        ],
+        "tiebreak_points": [
+          -0.703125,
+          -0.703125,
+          -0.703125,
+          -0.703125
+        ],
+        "value_batches": 4,
+        "value_evaluations": 512,
+        "value_means": [
+          0.515625,
+          0.875,
+          1.046875,
+          -0.734375,
+          1.046875,
+          -0.734375,
+          1.046875,
+          1.046875
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 0
+        },
+        "worlds": 64
+      },
+      "worlds": "ea86c82a16cb41e481e3306cc504eac42597adae591c2ea9970c09ff61758f8e"
+    },
+    "ADKY3:13:0": {
+      "cards": [
+        "DK"
+      ],
+      "record": {
+        "actions": 10,
+        "admitted": [
+          [
+            "HK"
+          ],
+          [
+            "D9"
+          ],
+          [
+            "H5",
+            "HK"
+          ],
+          [
+            "D6"
+          ],
+          [
+            "H5"
+          ],
+          [
+            "D6",
+            "D9"
+          ],
+          [
+            "D6",
+            "D9",
+            "DK"
+          ],
+          [
+            "DK"
+          ]
+        ],
+        "admitted_indices": [
+          1,
+          3,
+          5,
+          2,
+          0,
+          6,
+          9,
+          4
+        ],
+        "anchor_selected": false,
+        "belief_entropy_bits": 1.0032,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 23,
+        "belief_log": 1,
+        "belief_proposed": 109,
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "AAWEdgBnbykAAP4BAAD/AEEAAb1FACaUPAAjoAAANcpPACuEAAAl2iEANakAACvUWgAKmke4AABgngAAP8AAAGmFEgClWgAA",
+          "rows": "24005801bf242a",
+          "v": 1
+        },
+        "belief_top_mass": 0.663,
+        "cap": 4000,
+        "diversity_skipped": [
+          8,
+          7
+        ],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 7,
+        "doomed_throw_reselect_exact_guarded": true,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "DK",
+        "doomed_throw_reselect_to": "DK",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_lead_base_level_mean": 0.203125,
+        "exact_lead_base_played": [
+          "DK"
+        ],
+        "exact_lead_base_selected_index": 7,
+        "exact_lead_base_value_means": [
+          -0.743934988660889,
+          -0.4768464057133394,
+          -0.8039966781885087,
+          -0.46418390002356436,
+          -0.8039966781885087,
+          -0.46418390002356436,
+          -0.46418390002356436,
+          -0.40324672588496313
+        ],
+        "exact_lead_change_kind": "unchanged",
+        "exact_lead_changed": false,
+        "exact_lead_selected_level_delta": 0.0,
+        "exact_lead_selected_level_mean": 0.203125,
+        "exact_lead_status": "complete",
+        "exact_lead_worlds_completed": 64,
+        "history_draw_constraints": 7,
+        "history_draw_forbidden": 31,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 27,
+        "history_rejections": 45,
+        "history_rejections_by_age": {
+          "8": 19,
+          "9": 26
+        },
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": true,
+        "lead_anchor_from": "D6",
+        "lead_anchor_source": "policy",
+        "lead_anchor_to": "HK",
+        "lead_confirm_applied": false,
+        "lead_confirm_challengers": [],
+        "lead_confirm_deltas": [],
+        "lead_confirm_pool": 0,
+        "lead_confirm_screen_margins": [],
+        "lead_confirm_screen_worlds": 0,
+        "lead_confirm_ses": [],
+        "lead_confirm_status": "exact",
+        "lead_confirm_to": null,
+        "lead_confirm_worlds": 0,
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": false,
+        "leaf_greedy_finish_exact_skipped": true,
+        "leaf_greedy_policy_rows": 0,
+        "leaf_greedy_reply_differs_heuristic": 0,
+        "leaf_greedy_reply_evaluations": 0,
+        "leaf_greedy_reply_plays": 0,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 10,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "DK"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          0.9641419993951859,
+          -0.7712819333520601,
+          -1.074028407755872,
+          -1.5976671947932946,
+          -2.038170407151058,
+          -2.3689491281453545,
+          -4.376378492475499,
+          -2.007429364330145
+        ],
+        "policy_log_odds_listing": [
+          -2.038170407151058,
+          0.9641419993951859,
+          -1.5976671947932946,
+          -0.7712819333520601,
+          -2.007429364330145,
+          -1.074028407755872,
+          -2.3689491281453545,
+          -3.6050965591234396,
+          -2.778711297682204,
+          -4.376378492475499
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 0,
+        "refusal_pinned_codes": 0,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 109,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 4,
+        "singleton_challenger_applied": false,
+        "tiebreak_applied": false,
+        "tiebreak_near_set": [
+          7
+        ],
+        "tiebreak_points": [],
+        "value_batches": 4,
+        "value_evaluations": 512,
+        "value_means": [
+          -0.4375,
+          0.109375,
+          -1.484375,
+          0.109375,
+          -1.484375,
+          0.109375,
+          0.109375,
+          0.203125
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 0
+        },
+        "worlds": 64
+      },
+      "worlds": "bff5f7e70aec24be820792a33210d951474e745600f72edddd38fd724958d739"
+    },
+    "ADKY3:9:0": {
+      "cards": [
+        "D2"
+      ],
+      "record": {
+        "actions": 103,
+        "admitted": [
+          [
+            "DA"
+          ],
+          [
+            "S5"
+          ],
+          [
+            "LJ"
+          ],
+          [
+            "D5"
+          ],
+          [
+            "S4"
+          ],
+          [
+            "LJ",
+            "S4"
+          ],
+          [
+            "D5",
+            "D5"
+          ],
+          [
+            "CK",
+            "LJ",
+            "S4"
+          ],
+          [
+            "D2"
+          ]
+        ],
+        "admitted_indices": [
+          4,
+          0,
+          8,
+          3,
+          9,
+          28,
+          10,
+          54,
+          2
+        ],
+        "anchor_selected": false,
+        "belief_entropy_bits": 1.1685,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 32,
+        "belief_log": 1,
+        "belief_proposed": 67,
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "/wAAAENFdwD/AAAA/wAAAP8AAACXKj8APpAxAFlmPwBRdjgAB84qAEFfXwA7YmIALQDSAEFiXAA9ZlwAWxGTAEJkWQBCZ1UAP2VbAE1iUAA5ZmAAUK8AAFKtAAAiH70AAA3yAA==",
+          "rows": "32027bdd0b442e",
+          "v": 1
+        },
+        "belief_top_mass": 0.5811,
+        "cap": 4000,
+        "diversity_skipped": [
+          7,
+          2,
+          26,
+          5,
+          6,
+          20,
+          27,
+          1,
+          16
+        ],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 0,
+        "doomed_throw_reselect_exact_guarded": false,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "S4",
+        "doomed_throw_reselect_to": "S4",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_lead_changed": false,
+        "exact_lead_status": "ineligible",
+        "exact_lead_worlds_completed": 0,
+        "history_draw_constraints": 6,
+        "history_draw_forbidden": 26,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 19,
+        "history_rejections": 3,
+        "history_rejections_by_age": {
+          "5": 3
+        },
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": false,
+        "lead_anchor_from": "DA",
+        "lead_anchor_source": "heuristic",
+        "lead_anchor_to": "DA",
+        "lead_confirm_applied": true,
+        "lead_confirm_challengers": [
+          [
+            "D2"
+          ]
+        ],
+        "lead_confirm_deltas": [
+          0.06663345273408482
+        ],
+        "lead_confirm_pool": 24,
+        "lead_confirm_screen_margins": [
+          0.06806159596251715
+        ],
+        "lead_confirm_screen_worlds": 32,
+        "lead_confirm_ses": [
+          0.020449974303378454
+        ],
+        "lead_confirm_status": "applied",
+        "lead_confirm_to": [
+          "D2"
+        ],
+        "lead_confirm_worlds": 128,
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": true,
+        "leaf_greedy_finish_exact_skipped": false,
+        "leaf_greedy_policy_rows": 1205,
+        "leaf_greedy_reply_differs_heuristic": 653,
+        "leaf_greedy_reply_evaluations": 4278,
+        "leaf_greedy_reply_plays": 1536,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 103,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "D2"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          -1.5371196443399913,
+          -0.7613283265006782,
+          -1.0033880577785634,
+          -1.3960419264302668,
+          -1.427754001706849,
+          -2.4311420594854125,
+          -2.7920838528605336,
+          -3.944511522574557,
+          -2.4710751722377817
+        ],
+        "policy_log_odds_listing": [
+          -0.7613283265006782,
+          -3.4312911763790597,
+          -2.4710751722377817,
+          -1.3960419264302668,
+          -1.5371196443399913,
+          -2.8136811496065417,
+          -2.8410042038977306,
+          -1.5133694630891443,
+          -1.0033880577785634,
+          -1.427754001706849,
+          -2.7920838528605336,
+          -5.90236634861684,
+          -4.827333102809325,
+          -4.9684108207190505,
+          -6.2449723259856,
+          -6.272295380276794,
+          -3.867117098668047,
+          -4.008194816577773,
+          -5.284756321844323,
+          -5.3120793761355145,
+          -2.9331615707702587,
+          -4.209723076036809,
+          -4.237046130327998,
+          -4.350800793946533,
+          -4.378123848237722,
+          -5.654685353504274,
+          -2.516757520867707,
+          -2.9411234647959925,
+          -2.4311420594854125,
+          -7.298408275047109,
+          -7.43948599295683,
+          -8.716047498223384,
+          -8.743370552514573,
+          -6.223375029239593,
+          -6.3644527471493175,
+          -7.64101425241587,
+          -7.668337306707058,
+          -7.782091970325592,
+          -7.809415024616782,
+          -9.08597652988333,
+          -5.263159025098315,
+          -5.40423674300804,
+          -6.680798248274591,
+          -6.708121302565779,
+          -6.821875966184316,
+          -6.849199020475504,
+          -8.125760525742058,
+          -4.329203497200526,
+          -5.605765002467075,
+          -5.633088056758267,
+          -5.7468427203768,
+          -5.77416577466799,
+          -7.05072727993454,
+          -7.191804997844262,
+          -3.944511522574557,
+          -8.694450201477373,
+          -8.835527919387099,
+          -10.11208942465365,
+          -10.139412478944841,
+          -10.25316714256337,
+          -10.280490196854565,
+          -11.557051702121115,
+          -7.760494673579584,
+          -9.037056178846136,
+          -9.064379233137325,
+          -9.178133896755856,
+          -9.20545695104705,
+          -10.482018456313602,
+          -10.623096174223326,
+          -6.800278669438305,
+          -8.076840174704854,
+          -8.104163228996045,
+          -8.217917892614581,
+          -8.245240946905774,
+          -9.521802452172322,
+          -9.66288017008205,
+          -7.142884646807066,
+          -7.170207701098254,
+          -8.446769206364811,
+          -8.587846924274531,
+          -10.231569845817367,
+          -11.508131351083911,
+          -11.535454405375111,
+          -11.64920906899364,
+          -11.676532123284828,
+          -12.953093628551382,
+          -13.094171346461103,
+          -10.574175823186126,
+          -10.601498877477319,
+          -11.878060382743866,
+          -12.019138100653592,
+          -9.613959819044847,
+          -9.64128287333604,
+          -10.917844378602584,
+          -11.058922096512314,
+          -9.983888850704794,
+          -13.045250995423904,
+          -13.072574049715103,
+          -14.349135554981649,
+          -14.490213272891372,
+          -13.415180027083855,
+          -12.45496402294258,
+          -15.886255199321646
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 0,
+        "refusal_pinned_codes": 0,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 67,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 2,
+        "singleton_challenger_applied": false,
+        "singleton_probe_evaluations": 104,
+        "singleton_probe_margin": -0.06773456794640265,
+        "singleton_probe_worlds": 8,
+        "tiebreak_applied": true,
+        "tiebreak_near_set": [
+          1,
+          4,
+          5
+        ],
+        "tiebreak_points": [
+          -0.234375,
+          0.0,
+          0.0
+        ],
+        "value_batches": 4,
+        "value_evaluations": 512,
+        "value_means": [
+          -1.0008620672035415,
+          -0.8533445934512786,
+          -0.8799152247666724,
+          -0.9852578427802248,
+          -0.8594485031660652,
+          -0.8594485031660652,
+          -1.0431592088730022,
+          -0.9127846515812498,
+          null
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 2
+        },
+        "worlds": 64
+      },
+      "worlds": "bda5deebb2a6700da227c1e66cb99dc1c54cf7f340537cc4cdca894123e20656"
+    },
+    "SDUS2:14:0": {
+      "cards": [
+        "D3"
+      ],
+      "record": {
+        "actions": 4,
+        "admitted": [
+          [
+            "HQ"
+          ],
+          [
+            "D5"
+          ],
+          [
+            "D3"
+          ],
+          [
+            "D3",
+            "D5"
+          ]
+        ],
+        "admitted_indices": [
+          0,
+          2,
+          1,
+          3
+        ],
+        "anchor_selected": false,
+        "belief_entropy_bits": 0.911,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 17,
+        "belief_log": 1,
+        "belief_proposed": 64,
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "BAAA+wAAAP8QAAHuDd4GDiQDF8KHAnYAPBAFrjwAwwAA/QACSwBAdCMAAtlGAFJoOwBRcw==",
+          "rows": "000019436c40a0",
+          "v": 1
+        },
+        "belief_top_mass": 0.7046,
+        "cap": 4000,
+        "diversity_skipped": [],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 1,
+        "doomed_throw_reselect_exact_guarded": true,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "D3",
+        "doomed_throw_reselect_to": "D3",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_lead_base_level_mean": -0.625,
+        "exact_lead_base_played": [
+          "D3"
+        ],
+        "exact_lead_base_selected_index": 2,
+        "exact_lead_base_value_means": [
+          -0.8256881460370041,
+          -0.6702197798100237,
+          -0.6508418651459542,
+          -0.6508418651459542
+        ],
+        "exact_lead_change_kind": "unchanged",
+        "exact_lead_changed": false,
+        "exact_lead_selected_level_delta": 0.0,
+        "exact_lead_selected_level_mean": -0.625,
+        "exact_lead_status": "complete",
+        "exact_lead_worlds_completed": 64,
+        "history_draw_constraints": 4,
+        "history_draw_forbidden": 17,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 30,
+        "history_rejections": 0,
+        "history_rejections_by_age": {},
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": true,
+        "lead_anchor_from": "D3",
+        "lead_anchor_source": "policy",
+        "lead_anchor_to": "HQ",
+        "lead_confirm_applied": false,
+        "lead_confirm_challengers": [],
+        "lead_confirm_deltas": [],
+        "lead_confirm_pool": 0,
+        "lead_confirm_screen_margins": [],
+        "lead_confirm_screen_worlds": 0,
+        "lead_confirm_ses": [],
+        "lead_confirm_status": "exact",
+        "lead_confirm_to": null,
+        "lead_confirm_worlds": 0,
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": false,
+        "leaf_greedy_finish_exact_skipped": true,
+        "leaf_greedy_policy_rows": 0,
+        "leaf_greedy_reply_differs_heuristic": 0,
+        "leaf_greedy_reply_evaluations": 0,
+        "leaf_greedy_reply_plays": 0,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 4,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "D3"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          -0.937035826991479,
+          -1.1214070599731143,
+          -1.708733649555681,
+          -2.8301407095287954
+        ],
+        "policy_log_odds_listing": [
+          -0.937035826991479,
+          -1.708733649555681,
+          -1.1214070599731143,
+          -2.8301407095287954
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 0,
+        "refusal_pinned_codes": 0,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 64,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 1,
+        "singleton_challenger_applied": false,
+        "tiebreak_applied": true,
+        "tiebreak_near_set": [
+          1,
+          2,
+          3
+        ],
+        "tiebreak_points": [
+          -5.15625,
+          -0.15625,
+          -0.15625
+        ],
+        "value_batches": 2,
+        "value_evaluations": 256,
+        "value_means": [
+          -1.0,
+          -0.625,
+          -0.625,
+          -0.625
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 0
+        },
+        "worlds": 64
+      },
+      "worlds": "e39116aedf523b7dfbb78296364e5a8257f83aa1d188476aaf54b44164e545a0"
+    },
+    "SDUS2:14:1": {
+      "cards": [
+        "DQ"
+      ],
+      "record": {
+        "actions": 3,
+        "admitted": [
+          [
+            "D6"
+          ],
+          [
+            "DQ"
+          ],
+          [
+            "DJ"
+          ]
+        ],
+        "admitted_indices": [
+          0,
+          2,
+          1
+        ],
+        "anchor_selected": false,
+        "belief_entropy_bits": 0.7274,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 16,
+        "belief_log": 1,
+        "belief_proposed": 64,
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "AAAA/wAAAP8AAQ3xtg4TJwEWHMwBqlMACgU7tClHO1QAwT4A/AAAAwB3hwEADgvnAAIP7gAnFMQANRK4",
+          "rows": "00001963ec40a0",
+          "v": 1
+        },
+        "belief_top_mass": 0.7974,
+        "cap": 4000,
+        "diversity_skipped": [],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 0,
+        "doomed_throw_reselect_exact_guarded": false,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "D6",
+        "doomed_throw_reselect_to": "D6",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_follow_abandoned": null,
+        "exact_follow_applied": true,
+        "exact_follow_attempted": true,
+        "exact_follow_scores": [
+          1.25,
+          1.421875,
+          1.34375
+        ],
+        "exact_follow_worlds": 64,
+        "exact_lead_changed": false,
+        "exact_lead_status": "ineligible",
+        "exact_lead_worlds_completed": 0,
+        "history_draw_constraints": 5,
+        "history_draw_forbidden": 25,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 30,
+        "history_rejections": 0,
+        "history_rejections_by_age": {},
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": false,
+        "lead_anchor_from": "D6",
+        "lead_anchor_source": "heuristic",
+        "lead_anchor_to": "D6",
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": false,
+        "leaf_greedy_finish_exact_skipped": true,
+        "leaf_greedy_policy_rows": 0,
+        "leaf_greedy_reply_differs_heuristic": 0,
+        "leaf_greedy_reply_evaluations": 0,
+        "leaf_greedy_reply_plays": 0,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 3,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "DQ"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          -1.9298715483529163,
+          -1.633012539073135,
+          -1.752469309345063
+        ],
+        "policy_log_odds_listing": [
+          -1.9298715483529163,
+          -1.752469309345063,
+          -1.633012539073135
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 0,
+        "refusal_pinned_codes": 0,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 64,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 2,
+        "singleton_challenger_applied": false,
+        "tiebreak_applied": false,
+        "tiebreak_near_set": [
+          0
+        ],
+        "tiebreak_points": [],
+        "value_batches": 2,
+        "value_evaluations": 192,
+        "value_means": [
+          0.8176944020047414,
+          0.7552612552765865,
+          0.7875671166935319
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 0
+        },
+        "worlds": 64
+      },
+      "worlds": "5c6e5617d6b4df0edb6a221e3b910934a8796aa81dd3edda24cf0b21018e7c05"
+    },
+    "SDUS2:8:0": {
+      "cards": [
+        "D4"
+      ],
+      "record": {
+        "actions": 70,
+        "admitted": [
+          [
+            "DA"
+          ],
+          [
+            "HJ"
+          ],
+          [
+            "H10"
+          ],
+          [
+            "H10",
+            "HJ"
+          ],
+          [
+            "D9"
+          ],
+          [
+            "D9",
+            "DA"
+          ],
+          [
+            "H10",
+            "HJ",
+            "HK"
+          ],
+          [
+            "D8"
+          ],
+          [
+            "D4"
+          ]
+        ],
+        "admitted_indices": [
+          7,
+          1,
+          0,
+          9,
+          6,
+          24,
+          27,
+          5,
+          3
+        ],
+        "anchor_selected": false,
+        "belief_entropy_bits": 1.3924,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 35,
+        "belief_log": 1,
+        "belief_proposed": 77,
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "iGMUAAAUAOsAAAD/Y14+AC1AA48QWo4HEksEnlE7RC5WPz8rHUGgAFJBHVBpL0gfAQD6BEhZEE8NWwCXg1UlAV5RDEMoVQCCXyN9AGFLAVJxOxo5ZiJ3AJhfCQAEZpYAAHmGAI8DbQA=",
+          "rows": "1c023d7aef60a1",
+          "v": 1
+        },
+        "belief_top_mass": 0.5209,
+        "cap": 4000,
+        "diversity_skipped": [
+          2,
+          8,
+          4,
+          11,
+          5,
+          26,
+          10,
+          3,
+          19,
+          22,
+          15,
+          25,
+          18
+        ],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 0,
+        "doomed_throw_reselect_exact_guarded": false,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "D9",
+        "doomed_throw_reselect_to": "D9",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_lead_changed": false,
+        "exact_lead_status": "ineligible",
+        "exact_lead_worlds_completed": 0,
+        "history_draw_constraints": 4,
+        "history_draw_forbidden": 17,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 14,
+        "history_rejections": 13,
+        "history_rejections_by_age": {
+          "7": 13
+        },
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": false,
+        "lead_anchor_from": "DA",
+        "lead_anchor_source": "heuristic",
+        "lead_anchor_to": "DA",
+        "lead_confirm_applied": true,
+        "lead_confirm_challengers": [
+          [
+            "D4"
+          ]
+        ],
+        "lead_confirm_deltas": [
+          0.005350225753711085
+        ],
+        "lead_confirm_pool": 24,
+        "lead_confirm_screen_margins": [
+          0.006983702078188214
+        ],
+        "lead_confirm_screen_worlds": 32,
+        "lead_confirm_ses": [
+          0.0029552544842269524
+        ],
+        "lead_confirm_status": "applied",
+        "lead_confirm_to": [
+          "D4"
+        ],
+        "lead_confirm_worlds": 128,
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": true,
+        "leaf_greedy_finish_exact_skipped": false,
+        "leaf_greedy_policy_rows": 1396,
+        "leaf_greedy_reply_differs_heuristic": 531,
+        "leaf_greedy_reply_evaluations": 4269,
+        "leaf_greedy_reply_plays": 1536,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 70,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "D4"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          -0.49306065779644437,
+          -0.6829894018568329,
+          -0.9049227532349564,
+          -1.5879121550917892,
+          -1.906066553932458,
+          -2.399127211728903,
+          -3.15066747699186,
+          -2.316085376321748,
+          -2.6385765245625388
+        ],
+        "policy_log_odds_listing": [
+          -0.9049227532349564,
+          -0.6829894018568329,
+          -1.562755321900071,
+          -2.6385765245625388,
+          -2.1728570021944393,
+          -2.316085376321748,
+          -1.906066553932458,
+          -0.49306065779644437,
+          -1.9727986839761353,
+          -1.5879121550917892,
+          -2.4676780751350282,
+          -2.245744723756903,
+          -4.811433526756979,
+          -4.954661900884289,
+          -4.544643078494999,
+          -3.1316371823589835,
+          -4.611375208538676,
+          -4.488942378516188,
+          -4.078923556126899,
+          -2.6659176599908836,
+          -4.145655686170573,
+          -4.222151930254206,
+          -2.809146034118192,
+          -4.288884060297882,
+          -2.399127211728903,
+          -3.878865237908594,
+          -2.4658593417725787,
+          -3.15066747699186,
+          -7.127518903078725,
+          -6.717500080689439,
+          -5.3044941845534215,
+          -6.784232210733115,
+          -6.860728454816743,
+          -5.447722558680732,
+          -6.927460584860424,
+          -5.037703736291443,
+          -6.517441762471134,
+          -5.104435866335119,
+          -6.395008932448646,
+          -4.982003036312631,
+          -6.461741062492324,
+          -4.571984213923341,
+          -6.051722240103032,
+          -4.638716343967018,
+          -4.715212588050651,
+          -6.194950614230344,
+          -4.781944718094326,
+          -4.371925895705038,
+          -9.033585457011181,
+          -7.6205795608751705,
+          -9.100317587054862,
+          -7.210560738485884,
+          -8.69029876466557,
+          -7.2772928685295595,
+          -7.3537891126131925,
+          -8.833527138792881,
+          -7.420521242656865,
+          -7.0105024202675805,
+          -6.88806959024509,
+          -8.36780761642478,
+          -6.954801720288766,
+          -6.544782897899475,
+          -6.688011272026783,
+          -9.526646114807633,
+          -11.006384140987318,
+          -9.593378244851309,
+          -9.183359422462017,
+          -9.326587796589324,
+          -8.860868274221225,
+          -11.499444798783761
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 0,
+        "refusal_pinned_codes": 0,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 77,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 3,
+        "singleton_challenger_added": [
+          "D8"
+        ],
+        "singleton_challenger_applied": true,
+        "singleton_challenger_removed": [
+          "D7",
+          "DJ"
+        ],
+        "singleton_probe_evaluations": 104,
+        "singleton_probe_margin": 0.003726293268743852,
+        "singleton_probe_worlds": 8,
+        "tiebreak_applied": true,
+        "tiebreak_near_set": [
+          1,
+          4,
+          5,
+          7
+        ],
+        "tiebreak_points": [
+          -5.859375,
+          -3.671875,
+          -3.671875,
+          -3.75
+        ],
+        "value_batches": 4,
+        "value_evaluations": 512,
+        "value_means": [
+          0.6347139700439719,
+          0.6691647145429005,
+          0.6282595490143329,
+          0.6282595490143329,
+          0.6768184155624961,
+          0.6768184155624961,
+          0.6282595490143329,
+          0.680769814647854,
+          null
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 2
+        },
+        "worlds": 64
+      },
+      "worlds": "b339dc4a5b737c3336d58c4bbcff678fd6a1e0ee3300858b19ee591b68590657"
+    },
+    "WJLB2:16:1": {
+      "cards": [
+        "D5"
+      ],
+      "record": {
+        "actions": 3,
+        "admitted": [
+          [
+            "DJ"
+          ],
+          [
+            "D5"
+          ],
+          [
+            "DQ"
+          ]
+        ],
+        "admitted_indices": [
+          1,
+          0,
+          2
+        ],
+        "anchor_selected": false,
+        "belief_entropy_bits": 0.9184,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 19,
+        "belief_log": 1,
+        "belief_proposed": 116,
+        "belief_refusals": [
+          [
+            1,
+            [
+              "D9",
+              "D9",
+              "DK"
+            ],
+            [
+              "DK"
+            ],
+            15
+          ]
+        ],
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "AMM7ANQGJQBRowsAEAkA5gCKAHUB4xsAC0MAsQTJADIBpQBZYEhXABkAZ34DAAX3JQAB2RYAB+NBAGdXqQAAVQDPADDcHAcA",
+          "rows": "200845f00ee0a4",
+          "v": 1
+        },
+        "belief_top_mass": 0.7066,
+        "cap": 4000,
+        "diversity_skipped": [],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 0,
+        "doomed_throw_reselect_exact_guarded": false,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "D5",
+        "doomed_throw_reselect_to": "D5",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_follow_abandoned": null,
+        "exact_follow_applied": false,
+        "exact_follow_attempted": true,
+        "exact_follow_scores": [
+          -0.6875,
+          -0.515625,
+          -0.6875
+        ],
+        "exact_follow_worlds": 64,
+        "exact_lead_changed": false,
+        "exact_lead_status": "ineligible",
+        "exact_lead_worlds_completed": 0,
+        "history_draw_constraints": 3,
+        "history_draw_forbidden": 12,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 33,
+        "history_rejections": 0,
+        "history_rejections_by_age": {},
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": false,
+        "lead_anchor_from": "DJ",
+        "lead_anchor_source": "heuristic",
+        "lead_anchor_to": "DJ",
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": false,
+        "leaf_greedy_finish_exact_skipped": true,
+        "leaf_greedy_policy_rows": 0,
+        "leaf_greedy_reply_differs_heuristic": 0,
+        "leaf_greedy_reply_evaluations": 0,
+        "leaf_greedy_reply_plays": 0,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 3,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "D5"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          -2.3274059367240336,
+          -1.964380453511078,
+          -2.1523928009129496
+        ],
+        "policy_log_odds_listing": [
+          -1.964380453511078,
+          -2.3274059367240336,
+          -2.1523928009129496
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 1,
+        "refusal_pinned_codes": 1,
+        "refusal_rejections": 52,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 116,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 0,
+        "singleton_challenger_applied": false,
+        "tiebreak_applied": false,
+        "tiebreak_near_set": [
+          1
+        ],
+        "tiebreak_points": [],
+        "value_batches": 2,
+        "value_evaluations": 192,
+        "value_means": [
+          -0.805286079160045,
+          -0.6599332306468045,
+          -0.8313754062222041
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 0
+        },
+        "worlds": 64
+      },
+      "worlds": "ac93c4ee91b29ee0fd6e612b4c3c3f91f78c788f67e8d7c2c22a477eab59861a"
+    },
+    "WJLB2:17:0": {
+      "cards": [
+        "C6"
+      ],
+      "record": {
+        "actions": 8,
+        "admitted": [
+          [
+            "C6"
+          ],
+          [
+            "H4"
+          ],
+          [
+            "D4"
+          ],
+          [
+            "D4",
+            "H4"
+          ],
+          [
+            "D4",
+            "H4",
+            "S4"
+          ],
+          [
+            "S4"
+          ],
+          [
+            "H4",
+            "S4"
+          ],
+          [
+            "D4",
+            "S4"
+          ]
+        ],
+        "admitted_indices": [
+          0,
+          2,
+          1,
+          4,
+          7,
+          3,
+          6,
+          5
+        ],
+        "anchor_selected": true,
+        "belief_entropy_bits": 0.7342,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 9,
+        "belief_log": 1,
+        "belief_proposed": 64,
+        "belief_refusals": [
+          [
+            1,
+            [
+              "D9",
+              "D9",
+              "DK"
+            ],
+            [
+              "DK"
+            ],
+            15
+          ]
+        ],
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "eQCGAAD0CwAAPsEAA8g0AK8aNQDXJwAAAcU4AALKMwAQAO8A",
+          "rows": "20001d83000020",
+          "v": 1
+        },
+        "belief_top_mass": 0.7845,
+        "cap": 4000,
+        "diversity_skipped": [],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 7,
+        "doomed_throw_reselect_exact_guarded": true,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "C6",
+        "doomed_throw_reselect_to": "C6",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_lead_base_level_mean": -0.53125,
+        "exact_lead_base_played": [
+          "S4"
+        ],
+        "exact_lead_base_selected_index": 5,
+        "exact_lead_base_value_means": [
+          -0.5144446242400488,
+          -0.6865992430101754,
+          -0.6998216847892863,
+          -0.6998216847892863,
+          -0.6998216847892863,
+          -0.06305622415879407,
+          -0.6865992430101754,
+          -0.6998216847892863
+        ],
+        "exact_lead_change_kind": "higher",
+        "exact_lead_changed": true,
+        "exact_lead_selected_level_delta": 0.03125,
+        "exact_lead_selected_level_mean": -0.5,
+        "exact_lead_status": "complete",
+        "exact_lead_worlds_completed": 64,
+        "history_draw_constraints": 5,
+        "history_draw_forbidden": 20,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 38,
+        "history_rejections": 0,
+        "history_rejections_by_age": {},
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": false,
+        "lead_anchor_from": "C6",
+        "lead_anchor_source": "heuristic",
+        "lead_anchor_to": "C6",
+        "lead_confirm_applied": false,
+        "lead_confirm_challengers": [],
+        "lead_confirm_deltas": [],
+        "lead_confirm_pool": 0,
+        "lead_confirm_screen_margins": [],
+        "lead_confirm_screen_worlds": 0,
+        "lead_confirm_ses": [],
+        "lead_confirm_status": "exact",
+        "lead_confirm_to": null,
+        "lead_confirm_worlds": 0,
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": false,
+        "leaf_greedy_finish_exact_skipped": true,
+        "leaf_greedy_policy_rows": 0,
+        "leaf_greedy_reply_differs_heuristic": 0,
+        "leaf_greedy_reply_evaluations": 0,
+        "leaf_greedy_reply_plays": 0,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 8,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "C6"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          -0.44603974130081925,
+          -1.276383675130891,
+          -1.8158927537310865,
+          -3.092276428861978,
+          -5.981667157659682,
+          -2.8893907287977054,
+          -4.165774403928596,
+          -4.705283482528791
+        ],
+        "policy_log_odds_listing": [
+          -0.44603974130081925,
+          -1.8158927537310865,
+          -1.276383675130891,
+          -2.8893907287977054,
+          -3.092276428861978,
+          -4.705283482528791,
+          -4.165774403928596,
+          -5.981667157659682
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 1,
+        "refusal_pinned_codes": 1,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 64,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 0,
+        "singleton_challenger_applied": false,
+        "tiebreak_applied": false,
+        "tiebreak_near_set": [
+          0
+        ],
+        "tiebreak_points": [],
+        "value_batches": 4,
+        "value_evaluations": 512,
+        "value_means": [
+          -0.5,
+          -0.53125,
+          -0.53125,
+          -0.53125,
+          -0.53125,
+          -0.53125,
+          -0.53125,
+          -0.53125
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 0
+        },
+        "worlds": 64
+      },
+      "worlds": "04397207a6a025fc26220bc03ba831758df730802182fa7287b47f999e909c95"
+    },
+    "WJLB2:18:1": {
+      "cards": [
+        "DJ",
+        "DQ"
+      ],
+      "record": {
+        "actions": 1,
+        "admitted": [
+          [
+            "DJ",
+            "DQ"
+          ]
+        ],
+        "admitted_indices": [
+          0
+        ],
+        "anchor_selected": true,
+        "belief_entropy_bits": 0.8795,
+        "belief_fallback": 0,
+        "belief_fallback_all_draws": 0,
+        "belief_fallback_any": 0,
+        "belief_fallback_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "belief_hidden_copies": 14,
+        "belief_log": 1,
+        "belief_proposed": 64,
+        "belief_seed": 2058345730942315950,
+        "belief_snapshot": {
+          "p": "APwDACgCANYBLwDPA55eACISAMsTkwBZBXAAijIAR4YEAAL5TQAAsiEAAtyxAB0xAKQAWw==",
+          "rows": "000805e00ee004",
+          "v": 1
+        },
+        "belief_top_mass": 0.7331,
+        "cap": 4000,
+        "diversity_skipped": [],
+        "doomed_throw_reselect_applied": false,
+        "doomed_throw_reselect_doomed_candidates": 0,
+        "doomed_throw_reselect_exact_floor_excluded": 0,
+        "doomed_throw_reselect_exact_guarded": false,
+        "doomed_throw_reselect_fallback_forced": false,
+        "doomed_throw_reselect_forced_excluded": 0,
+        "doomed_throw_reselect_from": "DJ DQ",
+        "doomed_throw_reselect_to": "DJ DQ",
+        "encoder_version": 2,
+        "exact_deep_cards": 7,
+        "exact_lead_changed": false,
+        "exact_lead_status": "ineligible",
+        "exact_lead_worlds_completed": 0,
+        "history_draw_constraints": 3,
+        "history_draw_forbidden": 14,
+        "history_fallback_worlds": 0,
+        "history_fill_worlds": 0,
+        "history_fill_worlds_all_draws": 0,
+        "history_fill_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "history_follow_events": 37,
+        "history_rejections": 0,
+        "history_rejections_by_age": {},
+        "history_unchecked_worlds": 0,
+        "history_unchecked_worlds_all_draws": 0,
+        "history_unchecked_worlds_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 0,
+          "lead_confirm": 0
+        },
+        "impossible_worlds_delta": 0,
+        "lead_anchor_applied": false,
+        "lead_anchor_from": "DJ DQ",
+        "lead_anchor_source": "heuristic",
+        "lead_anchor_to": "DJ DQ",
+        "leaf_greedy_deadline_cut_leaves": 0,
+        "leaf_greedy_deadline_fired": false,
+        "leaf_greedy_deadline_fired_any": false,
+        "leaf_greedy_deadline_fired_lead_confirm": false,
+        "leaf_greedy_finish_applied": true,
+        "leaf_greedy_finish_exact_skipped": false,
+        "leaf_greedy_policy_rows": 80,
+        "leaf_greedy_reply_differs_heuristic": 30,
+        "leaf_greedy_reply_evaluations": 226,
+        "leaf_greedy_reply_plays": 128,
+        "leaf_greedy_uncached_leaves": 0,
+        "legal_complete": true,
+        "legal_count": 1,
+        "model_ids": {
+          "belief": "028131a0",
+          "prior": "1fa201b2",
+          "value": "f4f4127e"
+        },
+        "played": [
+          "DJ",
+          "DQ"
+        ],
+        "policy": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+        "policy_log_odds_admitted": [
+          1.195891537745377
+        ],
+        "policy_log_odds_listing": [
+          1.195891537745377
+        ],
+        "refusal_fallback_worlds": 0,
+        "refusal_observations": 0,
+        "refusal_pinned_codes": 0,
+        "refusal_rejections": 0,
+        "rejected_worlds_delta": 0,
+        "sample_attempts": 64,
+        "schema": "pv-search-decision-v1",
+        "selected_index": 0,
+        "singleton_challenger_applied": false,
+        "tiebreak_applied": false,
+        "tiebreak_near_set": [
+          0
+        ],
+        "tiebreak_points": [],
+        "value_batches": 1,
+        "value_evaluations": 64,
+        "value_means": [
+          -0.6291441167776332
+        ],
+        "work_complete": true,
+        "world_draws_by_stage": {
+          "adaptive_worlds": 0,
+          "base": 1,
+          "lead_confirm": 0
+        },
+        "worlds": 64
+      },
+      "worlds": "80ab0bcc949ccd53dd9df57d0e5cd06d72251b0dd53b2b6a335bb751137c5bcc"
+    }
   },
-  "ADKY3:12:0": {
-   "cards": [
-    "D9"
-   ],
-   "record": "a96b43a88c3cad5c36cfd5c60148a4f07c5da46335bdb35b057c233d2a79fac2",
-   "worlds": "ea86c82a16cb41e481e3306cc504eac42597adae591c2ea9970c09ff61758f8e"
-  },
-  "ADKY3:13:0": {
-   "cards": [
-    "DK"
-   ],
-   "record": "c3415903ec1856c5e4172a2ed8581358a6a56046514cf63814b652ee70a5da88",
-   "worlds": "bff5f7e70aec24be820792a33210d951474e745600f72edddd38fd724958d739"
-  },
-  "ADKY3:9:0": {
-   "cards": [
-    "D2"
-   ],
-   "record": "29f7a3b99c8adfd87c5889a9649a5e9edf8e4448eebda7bfd9807634c2d59039",
-   "worlds": "bda5deebb2a6700da227c1e66cb99dc1c54cf7f340537cc4cdca894123e20656"
-  },
-  "SDUS2:14:0": {
-   "cards": [
-    "D3"
-   ],
-   "record": "a7c87bbb09f8b750112af5ea7919dc87d98bdd4f58b56baca234996b7724f4b8",
-   "worlds": "e39116aedf523b7dfbb78296364e5a8257f83aa1d188476aaf54b44164e545a0"
-  },
-  "SDUS2:14:1": {
-   "cards": [
-    "DQ"
-   ],
-   "record": "20c7606cd9b805c05c75ba3f0420073e80323f672bd78892a31531da6ad45eae",
-   "worlds": "5c6e5617d6b4df0edb6a221e3b910934a8796aa81dd3edda24cf0b21018e7c05"
-  },
-  "SDUS2:8:0": {
-   "cards": [
-    "D4"
-   ],
-   "record": "385582873f2468a3361953cb710bf553b486f61b6e6c64ed3bab15f1abac51df",
-   "worlds": "b339dc4a5b737c3336d58c4bbcff678fd6a1e0ee3300858b19ee591b68590657"
-  },
-  "WJLB2:16:1": {
-   "cards": [
-    "D5"
-   ],
-   "record": "4f3478d3a6e1b9e4e26d7042cfd1611e391393c273b367eda627d2a6c70d6f21",
-   "worlds": "ac93c4ee91b29ee0fd6e612b4c3c3f91f78c788f67e8d7c2c22a477eab59861a"
-  },
-  "WJLB2:17:0": {
-   "cards": [
-    "C6"
-   ],
-   "record": "a4a19d37344f90d3aa2cfe730ec4a82f85d12940efbe453b8740ba40bd8b77c1",
-   "worlds": "04397207a6a025fc26220bc03ba831758df730802182fa7287b47f999e909c95"
-  },
-  "WJLB2:18:1": {
-   "cards": [
-    "DJ",
-    "DQ"
-   ],
-   "record": "ab06d17b46d100566a88d9d94da0b156095ab33797cf9b20f398d2ebc6d0ebda",
-   "worlds": "80ab0bcc949ccd53dd9df57d0e5cd06d72251b0dd53b2b6a335bb751137c5bcc"
+  "main": "00a8371c38ed9eb420022b23da30e31748dc10d4",
+  "name": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+  "record_comparison": {
+    "abs_tol": 1e-12,
+    "discrete": "exact",
+    "rel_tol": 1e-12
   }
- },
- "main": "00a8371c38ed9eb420022b23da30e31748dc10d4",
- "name": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8"
 }

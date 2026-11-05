@@ -12,10 +12,11 @@ The bot is release 50 as the server builds it (`test_release50_fly_config.served
 fly.toml's env, the registry's import-time registration, ``make_bot``), with
 its three clocks lifted (``lift``) so a slow engine never cuts a stage and the
 decision is a function of the code alone.  ``decision`` returns the played
-cards and digests of the base worlds and of the decision record without the
+cards, a digest of the base worlds and the structured decision record without the
 fields that measure the run (durations, solver effort).  ``fixtures/r50_flag_off_decisions.json`` holds the same
 projection computed on the main tree the rules were added to; a rule that is
-off must reproduce it exactly, on the pure and the compiled engine.
+off must reproduce its discrete values exactly and its finite floats within
+1e-12 absolute/relative tolerance, on the pure and compiled engine.
 """
 from __future__ import annotations
 
@@ -73,21 +74,16 @@ def _engine_dependent(key: str) -> bool:
 
 
 def _canonical(value):
-    """The record without the fields that measure the run, at any depth, with
-    floats rounded to 6 decimals: value means agree across platforms only to
-    the last few bits (BLAS summation order differs between macOS and Linux)."""
+    """Remove runtime measurements recursively without rounding decision values."""
     if isinstance(value, dict):
         return {k: _canonical(v) for k, v in value.items() if not _engine_dependent(str(k))}
     if isinstance(value, (list, tuple)):
         return [_canonical(v) for v in value]
-    if isinstance(value, float):
-        return round(value, 6)
     return value
 
 
 def decision(bot, rnd) -> dict:
-    """``{cards, worlds, record}``: the played cards, and sha256 digests of the
-    decision's base worlds and of its record without the fields that measure
+    """``{cards, worlds, record}``: played cards, a world digest and the record without the fields that measure
     the run (`_canonical`)."""
     drawn = []
     original = bot._worlds
@@ -109,7 +105,7 @@ def decision(bot, rnd) -> dict:
     return {"cards": cards,
             "worlds": digest([[sorted(map(sorted, hands)), sorted(buried)]
                               for hands, buried in drawn[0]]) if drawn else None,
-            "record": digest(record)}
+            "record": record}
 
 
 def label(key: str, trick: int, pos: int) -> str:

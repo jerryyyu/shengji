@@ -517,8 +517,8 @@
   },
   {
    "release": 49,
-   "status": "production",
-   "since": "2026-11-01 01:39 ET",
+   "status": "superseded",
+   "since": "2026-11-01 01:39 ET → 2026-11-04 15:24 ET",
    "bot": "pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8",
    "head": "3e89e86f",
    "package": "unchanged from release 48: smv3out-491ee4bf.npz (sha256 491ee4bf…), prior js-m1-0d17fd03.npz, belief s58-e6-42444515.npz; nothing uploaded",
@@ -560,6 +560,54 @@
     "combined sc8 + lcc32 Fly timing at load is unmeasured; the first live room is the witness against the release-49 trigger table (DEPLOY.md)",
     "comparator for NEW duels and screens: release 49 as served (Jerry, in session 2026-11-01); combo3y and combo3yc keep release 48",
     "rollback: redeploy Fly v55, image deployment-01M616V35HQ3H509RPA3C8PS31 (release 48 with the native latency switches), or delete the two release-49 fly.toml lines and restore release 48's SHENGJI_BOT"
+   ]
+  },
+  {
+   "release": 50,
+   "status": "production",
+   "since": "2026-11-04 15:24 ET",
+   "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
+   "head": "FT1 1fa201b2 (card-play prior); the value is G3 Stage A f4f4127e",
+   "package": "value g3a-e04-f4f4127e.npz (sha256 f4f4127e…), card-play prior p0-ft1-1fa201b2.npz (sha256 1fa201b2…), belief b1a-028131a0.npz (sha256 028131a0…); JS-M1 js-m1-0d17fd03.npz unchanged",
+   "oneline": "Release 49 + G3 Stage A value, FT1 card-play prior, B1a belief and belief bury worlds (bbw). Vs release 49 head to head: cbaC confirmed +0.0618.",
+   "recipe": "release 49 (sc8, lcc32, every rule, the 3 s play / 2 s bury budgets, the latency switches) with four fly.toml changes: the value package G3 Stage A g3a-e04-f4f4127e (an EMA export of epoch 4 of the unified retrain on all Y data), the separate card-play prior FT1 p0-ft1-1fa201b2 (-prior-1fa201b2), the belief package B1a b1a-028131a0 in place of S58 (play digest rb3477266), and SHENGJI_PV_BURY_BELIEF_WORLDS=1 (bbw: the wide value-only bury draws its 32 worlds from the belief package; -bbw). Built from main db3a5c6d (#1260). Jerry, in session 2026-11-04: 'I'm good to ship and we can manage what to do with lcc after'.",
+   "evidence": [
+    {
+     "what": "cbaC: the release-50 stack vs release 49 as served, head to head, 7,840 fresh seat-swapped deal pairs (cloud, from 246710910), CONFIRMED, 0 fallbacks (#1171 issuecomment-6629156672)",
+     "point": 0.0618,
+     "lo": 0.0507,
+     "hi": 0.0729,
+     "ref": "cbaC"
+    },
+    {
+     "what": "cbaf arm a: the same stack vs release 49 as served, 3,920 deal pairs (Ultra, from 246910910), SCREEN_PASS; within-run a − s (B1a over S58) +0.0228, 97.5% CI [+0.0010, +0.0448] (#1171 issuecomment-6637319197)",
+     "point": 0.0695,
+     "lo": 0.0543,
+     "hi": 0.0852,
+     "ref": "cbaf"
+    },
+    {
+     "what": "rtF red team: expert-budget Y minus the release-50 stack, 600 deal pairs (cloud, from 247010910), DEFENDER_AHEAD (#1171 issuecomment-6635097248)",
+     "point": -0.0433,
+     "lo": -0.0842,
+     "hi": -0.0042,
+     "ref": "rtF"
+    },
+    {
+     "what": "latency: R50 speed profile on one pinned cloud core, play p99 1.262 s vs release 49 1.208 s, bot compute per round x1.014; hb50 half-budget duel HALF_BUDGET_PASS, a cloud-core proxy, not a Fly measurement",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-11-04-r50-speed-profile/README.md; hb50"
+    }
+   ],
+   "caveats": [
+    "image deployment-01M6M3PX2A43CPZ65RBQPRY8AB (Fly version 57), main db3a5c6d (#1260); 0 rooms at deploy; deployed 2026-11-04 20:24Z (#1260 issuecomment-6641264830)",
+    "four changes at once; the only within-run attribution is cbaf's a − s (B1a over S58 on this stack); every other package's increment is unresolved",
+    "lcc32 stays on: loo read DROP_SAFE on the Ultra, then the 7,840-deal cloud confirmation lccC read KEEP_LCC −0.0133 [−0.0232, −0.0033]",
+    "Fly timing is the S79 timing run (#1263 issuecomment-6660235834), not a strength read",
+    "comparator for NEW duels and screens: release 50 as served (Jerry, in session 2026-11-04: 'Yes move comparator'); cbaC, cbaf, rtF and hb50 keep release 49",
+    "rollback: redeploy Fly v56, image deployment-01M6AX9WCDG3YMGWZPDE9PSM12 (release 49)"
    ]
   }
  ],
@@ -3618,6 +3666,205 @@
    "takeaway": "SCREEN_PASS +0.056 [+0.042, +0.071] for combo + B1a; its increment over the combo alone is descriptive only.",
    "note": "Sealed 11-04 12:10Z; one-shot read (reader 59c6094d). VALID: 0 fallbacks, max 2.40 s. Descriptive vs g3dscU +0.021 [+0.0002, +0.042] (independent runs). Archive readouts/b1aU.",
    "ref": "https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6630313603"
+  },
+  {
+   "id": "cbaf",
+   "date": "2026-11-04",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "Release-50 stack, three arms vs r49 (bbw, B1a, FT2X4)",
+   "candidate": "Y with value G3 Stage A f4f4127e plus: arm s = FT1 prior 1fa201b2 + bbw on Y's served S58 belief; arm a = arm s with the B1a belief package 028131a0 (the release-50 stack); arm f = arm a with the FT2X4 prior 483931e4 in place of FT1. Ultra.",
+   "comparator": "release 49 as served (Y = release 48 + sc8 + lcc32: pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8), head to head",
+   "vs": 49,
+   "vs_group": "release 49 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3,920 seat-swapped deal pairs from 246910910 (r2 rank-mixed plan per deal), each arm vs release 49 head to head on the same deals; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host Ultra; predeclared bar per arm: SCREEN_PASS iff mean >= +0.005 AND one-sided 80% bootstrap lower bound > 0; two paired contrasts (f − a, a − s) at Bonferroni 97.5%",
+   "seeds": "246910910 (ultra)",
+   "confidence": null,
+   "family": "three arms vs release 49 head to head, each judged alone against the screen bar; two predeclared paired contrasts at Bonferroni 97.5% (diagnostic slots)",
+   "results": [
+    {
+     "arm": "s",
+     "label": "combo + bbw (S58 belief)",
+     "role": "primary",
+     "confidence": 0.95,
+     "point": 0.0467,
+     "lo": 0.0309,
+     "hi": 0.0634
+    },
+    {
+     "arm": "a",
+     "label": "combo + bbw + B1a (release 50)",
+     "role": "primary",
+     "confidence": 0.95,
+     "point": 0.0695,
+     "lo": 0.0543,
+     "hi": 0.0852
+    },
+    {
+     "arm": "f",
+     "label": "combo + bbw + B1a, FT2X4 prior",
+     "role": "primary",
+     "confidence": 0.95,
+     "point": 0.0742,
+     "lo": 0.0583,
+     "hi": 0.0902
+    },
+    {
+     "arm": "a−s",
+     "label": "B1a over S58 on this stack (paired)",
+     "role": "diagnostic",
+     "confidence": 0.975,
+     "point": 0.0228,
+     "lo": 0.001,
+     "hi": 0.0448
+    },
+    {
+     "arm": "f−a",
+     "label": "FT2X4 over FT1 on this stack (paired)",
+     "role": "diagnostic",
+     "confidence": 0.975,
+     "point": 0.0047,
+     "lo": -0.0149,
+     "hi": 0.0239
+    }
+   ],
+   "takeaway": "All three arms SCREEN_PASS; B1a adds +0.023 over S58 on this stack (B1A_ADDS), FT2X4 over FT1 is UNRESOLVED.",
+   "note": "Sealed 11-04 17:20Z; one-shot read (reader 64b3fe74, host binding). VALID. Arm a is the release-50 stack, shipped with cbaC. Descriptive vs bbw50U (arm s, independent seeds): −0.0046 [−0.0273, +0.0181]. Archive readouts/cbaf.",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6637319197"
+  },
+  {
+   "id": "rtF",
+   "date": "2026-11-04",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Red team: expert-budget Y vs the release-50 stack",
+   "candidate": "red-team exploiter: Y at a lifted expert budget on the duel host (not servable)",
+   "comparator": "the release-50 candidate, the full stack later served as release 50 (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + B1a belief 028131a0 + bbw), head to head",
+   "vs": 49,
+   "vs_group": "red team vs the release-50 candidate, head to head",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "600 seat-swapped deal pairs from 247010910 (r2 rank-mixed plan per deal), expert exploiter vs the release-50 stack; paired level utility, deal bootstrap 95% (10000 reps); predeclared: EXPLOITER_AHEAD iff CI lower > 0, DEFENDER_AHEAD iff CI upper < 0, else NO_RESOLVED_GAP",
+   "seeds": "247010910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.0433,
+   "lo": -0.0842,
+   "hi": -0.0042,
+   "takeaway": "DEFENDER_AHEAD −0.043 [−0.084, −0.004]: the expert-budget Y loses to the release-50 stack at 600 deals; a diagnostic, not a strength claim.",
+   "note": "Sealed 11-04 15:44Z; one-shot read (reader 11b80634, host binding). VALID both sides; attribution OK. A margin belongs to A's value and FT1's prior together; 600 deals resolve only large differences. The rtS follow-up (six deals, descriptive cases) has no estimate and is not an Atlas row. Archive readouts/rtF.",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6635097248"
+  },
+  {
+   "id": "loo",
+   "date": "2026-11-04",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "Leave-one-out: lcc32 off in the release-50 stack",
+   "candidate": "the release-50 stack with lcc32 off (SHENGJI_PV_LEAD_CONFIRM=0), nothing else differing. Ultra.",
+   "comparator": "the release-50 candidate with lcc32 on (the stack later served as release 50), head to head",
+   "vs": 49,
+   "vs_group": "the release-50 candidate with lcc32 on, head to head: a leave-one-out non-inferiority duel",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3,920 seat-swapped deal pairs from 247110910 (r2 rank-mixed plan per deal), lcc32 off vs on; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host Ultra; predeclared non-inferiority bar: DROP_SAFE iff 95% CI lower >= −0.010, KEEP_HELPS iff CI upper < 0",
+   "seeds": "247110910 (ultra)",
+   "confidence": 0.95,
+   "point": 0.0079,
+   "lo": -0.0069,
+   "hi": 0.0221,
+   "takeaway": "DROP_SAFE +0.008 [−0.007, +0.022] on the Ultra; the cloud confirmation lccC then read KEEP_LCC, so lcc32 stays on.",
+   "note": "Sealed 11-04 18:50Z; read once (reader r2 0785ae79, host binding). VALID: 0 fallbacks either side. The reader wrote loo_read.json, then exited rc 1 on a template KeyError in its final summary print; the saved result is complete, no reread. The Ultra runs ~2x cloud speed. DROP_SAFE bounds the cost of dropping lcc32 on this host; it is not a gain claim. Archive readouts/loo.",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1247#issuecomment-6639232243"
+  },
+  {
+   "id": "hb50",
+   "date": "2026-11-04",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "Release-50 stack vs r49, both at half budget",
+   "candidate": "the release-50 stack (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + B1a belief 028131a0 + bbw) at half the served budgets (play 1.5 s, lgfd 1000 ms, bury 1 s)",
+   "comparator": "release 49 (Y: pv-search-491ee4bf-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-r9f8f5c05-bury-hybrid-bwv-d12d7acfc860-sc8) with only the budgets halved (play 1.5 s, lgfd 1000 ms, bury 1 s), head to head",
+   "vs": 49,
+   "vs_group": "release 49 at half the served budgets, head to head: a cloud-core proxy for Fly, not a Fly measurement",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3,920 seat-swapped deal pairs from 247310910 (r2 rank-mixed plan per deal), both sides at half the served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host cloud; predeclared bar: HALF_BUDGET_PASS iff mean >= +0.005 AND one-sided 80% bootstrap lower bound > 0",
+   "seeds": "247310910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.052,
+   "lo": 0.0362,
+   "hi": 0.0679,
+   "takeaway": "HALF_BUDGET_PASS +0.052 [+0.036, +0.068] with 0 budget fallbacks either side; a cloud-core proxy, not Fly latency.",
+   "note": "Sealed 11-04 20:42Z; read once (reader 5716030a, host binding, rc 0). VALID. lcc32 abandoned 15,061 of 64,548 search leads at half budget (all leaf_deadline). Descriptive vs cbaC at full budget: −0.0098 [−0.0292, +0.0097]. Archive readouts/hb50.",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6641693008"
+  },
+  {
+   "id": "lccC",
+   "date": "2026-11-05",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "lcc32 off vs release 50, fresh-seed confirmation",
+   "candidate": "release 50 with lcc32 off (SHENGJI_PV_LEAD_CONFIRM=0), nothing else differing; cloud. The confirmation of loo.",
+   "comparator": "release 50 as served (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + B1a belief 028131a0 + bbw, lcc32 on: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8), head to head",
+   "vs": 50,
+   "vs_group": "release 50 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "7,840 seat-swapped deal pairs from 247410910 (r2 rank-mixed plan per deal), lcc32 off vs release 50 as served; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host cloud; predeclared: KEEP_LCC iff 95% CI upper < 0, else SAFE_TO_DROP iff CI lower >= −0.010, else INCONCLUSIVE",
+   "seeds": "247410910 (cloud)",
+   "confidence": 0.95,
+   "point": -0.0133,
+   "lo": -0.0232,
+   "hi": -0.0033,
+   "takeaway": "KEEP_LCC −0.013 [−0.023, −0.003]: dropping lcc32 from release 50 costs strength on cloud; lcc32 stays on.",
+   "note": "Sealed 11-05 05:02Z; read once (reader dc4d8a81). VALID: 0 play, belief, bury fallbacks of 523,502 decisions per side. Descriptive vs loo (Ultra, independent seeds): difference −0.0212 [−0.0387, −0.0038]. Archive readouts/lccC.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6650211305"
+  },
+  {
+   "id": "elm",
+   "date": "2026-11-05",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "S83 exact-lead tie baseline + full minimax (elt+elm)",
+   "candidate": "release 50 + elt + elm (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1), nothing else differing; cloud, 14 workers",
+   "comparator": "release 50 as served (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + B1a belief 028131a0 + bbw, lcc32 on: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8), head to head",
+   "vs": 50,
+   "vs_group": "release 50 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3,920 seat-swapped deal pairs from 247510910 (r2 rank-mixed plan per deal), candidate vs release 50 head to head; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host cloud, 14 workers; predeclared bar: SCREEN_PASS iff mean >= +0.005 AND one-sided 80% bootstrap lower bound > 0; separate timing gate: exploiter exact-lead stage p99 <= 2.0 s AND abandon <= 2%",
+   "seeds": "247510910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.0413,
+   "lo": 0.0338,
+   "hi": 0.0489,
+   "takeaway": "Strength SCREEN_PASS +0.041 [+0.034, +0.049]; timing gate failed (exact-lead stage p99 2.25 s > 2.0 s), so not passed as a lane.",
+   "note": "Sealed 11-05 10:57Z; read once (reader 05816eae). Verdict SCREEN_PASS_TIMING_FAIL. VALID: 0 fallbacks either side. Timing: p99 2.25 s over 16,489 started stages (fails the 2.0 s bar), abandon 1.3% (meets 2%). The cloud timing gate is not Fly latency. Follow-up: elm16 with a 1.6 s cap. Archive readouts/S83-elm.",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6656349058"
+  },
+  {
+   "id": "elm16",
+   "date": "2026-11-05",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "S83 elt+elm with a 1.6 s exact-lead cap (els1600)",
+   "candidate": "release 50 + elt + elm + els1600 (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1, SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=1.6), a new policy identity; cloud, 14 workers",
+   "comparator": "release 50 as served (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + B1a belief 028131a0 + bbw, lcc32 on: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8), head to head",
+   "vs": 50,
+   "vs_group": "release 50 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3,920 seat-swapped deal pairs from 247710910 (r2 rank-mixed plan per deal), candidate vs release 50 head to head; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host cloud, 14 workers; predeclared bar: SCREEN_PASS iff mean >= +0.005 AND one-sided 80% bootstrap lower bound > 0; separate timing gate: exploiter exact-lead stage p99 <= 2.0 s AND abandon <= 2%",
+   "seeds": "247710910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.0375,
+   "lo": 0.0298,
+   "hi": 0.0449,
+   "takeaway": "Strength SCREEN_PASS +0.038 [+0.030, +0.045]; timing gate failed on abandons (2.4% > 2%); Jerry accepted the overrun, confirmation next.",
+   "note": "Sealed 11-05 18:24Z; read once (reader 79b888b9, host mode). Verdict SCREEN_PASS_TIMING_FAIL. VALID: 0 fallbacks either side. Timing: p99 1.60 s (meets 2.0 s), abandon 2.4% = 397 of 16,323 started stages (fails 2%); an abandoned stage plays the served lead, so the margin includes them. Jerry accepted the 0.4 pp abandon overrun 11-05; the 7,840-deal fresh confirmation elm16C is next. Archive readouts/S83-elm16.",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1297#issuecomment-6665915162"
   }
  ],
  "context_screens": [
@@ -4140,8 +4387,8 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran — Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once — which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 49,
+  "release": 50,
   "status": "confirmed",
-  "note": "New screens compare against release 49 as served (Jerry, in session 2026-11-01: 'yes and update docs'). Before that release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and before that release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
+  "note": "New screens compare against release 50 as served (Jerry, in session 2026-11-04: 'Yes move comparator'). Before that release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  }
 }

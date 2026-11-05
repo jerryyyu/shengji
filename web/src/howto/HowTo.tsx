@@ -360,18 +360,24 @@ function Stepper({ step }: { step: number }) {
   const n = STEPS.length;
   const i = Math.min(Math.max(step, 1), n) - 1;
   const s = STEPS[i];
-  const touch = useRef<number | null>(null);
+  const touch = useRef<{ x: number; y: number } | null>(null);
   const go = (to: number) => openHowto(Math.min(Math.max(to, 1), n));
   return (
     <div className="panel games-panel howto-panel">
       <Head count={`${i + 1} of ${n}`} />
       <section className="howto-step" aria-roledescription="slide"
-               onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
+               onTouchStart={(e) => {
+                 touch.current = e.touches.length === 1
+                   ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+               }}
+               onTouchMove={(e) => { if (e.touches.length !== 1) touch.current = null; }}
+               onTouchCancel={() => { touch.current = null; }}
                onTouchEnd={(e) => {
-                 const x0 = touch.current; touch.current = null;
-                 if (x0 === null) return;
-                 const dx = e.changedTouches[0].clientX - x0;
-                 if (Math.abs(dx) > 50) go(i + 1 + (dx < 0 ? 1 : -1));
+                 const start = touch.current; touch.current = null;
+                 if (start === null || e.changedTouches.length !== 1) return;
+                 const dx = e.changedTouches[0].clientX - start.x;
+                 const dy = e.changedTouches[0].clientY - start.y;
+                 if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(i + 1 + (dx < 0 ? 1 : -1));
                }}>
         <h2 className="howto-title">{s.title}</h2>
         <p className="howto-body">{s.body}</p>

@@ -116,3 +116,32 @@ describe("the stepped guide", () => {
     expect(host.querySelector(".no-guide")).not.toBeNull();
   });
 });
+
+
+it("only a horizontal single-finger swipe changes the guide step", async () => {
+  await open("#/howto/2");
+  const surface = host.querySelector(".howto-step")!;
+  const touch = (type: string, x: number, y: number, count = 1) => {
+    const event = new Event(type, { bubbles: true });
+    const points = Array.from({ length: count }, () => ({ clientX: x, clientY: y }));
+    Object.defineProperties(event, { touches: { value: points }, changedTouches: { value: points } });
+    act(() => surface.dispatchEvent(event));
+  };
+  touch("touchstart", 200, 100);
+  touch("touchend", 120, 400);
+  await tick();
+  expect(counter()).toBe("2 of 10");
+  touch("touchstart", 200, 100, 2);
+  touch("touchend", 100, 110);
+  await tick();
+  expect(counter()).toBe("2 of 10");
+  touch("touchstart", 200, 100);
+  touch("touchcancel", 200, 100);
+  touch("touchend", 100, 110);
+  await tick();
+  expect(counter()).toBe("2 of 10");
+  touch("touchstart", 200, 100);
+  touch("touchend", 100, 110);
+  await tick();
+  expect(counter()).toBe("3 of 10");
+});

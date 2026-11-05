@@ -376,7 +376,8 @@ def test_copies_never_mutate_shared_or_aliased_leaves(release50_packages, monkey
     assert len({id(p) for p in second}) == len(served) == len(worlds)
     assert not {id(p) for p in second} & {id(leaf) for leaf, _ in served.values()}
     for row in capture:
-        assert len(set(row.tolist())) == 1
+        # the same copy batched at different rows may differ in the last bit
+        np.testing.assert_allclose(row, np.full(row.shape, row[0]), rtol=1e-12, atol=1e-12)
     assert bot._two_trick["leaves"] == len(served)
 
 

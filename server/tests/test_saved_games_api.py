@@ -301,7 +301,7 @@ def test_list_pages_newest_first(api):
             db.commit()
     page = client.get("/api/me/games?limit=2", headers=owner_h).json()
     assert [g["id"] for g in page["games"]] == [ids[2], ids[1]]
-    assert page["next_before"] == base + 1
+    assert page["next_before"] == f"{base + 1}:{ids[1]}"
     rest = client.get(f"/api/me/games?limit=2&before={page['next_before']}",
                       headers=owner_h).json()
     assert [g["id"] for g in rest["games"]] == [ids[0]] and rest["next_before"] is None
@@ -368,8 +368,151 @@ def test_the_read_byte_cap_stops_a_scan(api, monkeypatch):
     t.act()
     t.start_round()
     t.act()
-    size = (srv.LOG_DIR / "REPL.jsonl").stat().st_size
-    monkeypatch.setattr(saved_games, "READ_BYTE_CAP", size // 2)
+    # The cap ends the scan at round 2's first record, so round 2 is never
+    # reached whatever length the dealt rounds have.
+    blob = (srv.LOG_DIR / "REPL.jsonl").read_bytes()
+    round_2 = blob.index(b'"round": 2, "e": "round_start"')
+    monkeypatch.setattr(saved_games, "READ_BYTE_CAP", blob.rindex(b"\n", 0, round_2) + 1)
     detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
     assert detail["incomplete"] is True
     assert _round(client, owner_h, t.game_id, 2).status_code == 404
+
+
+# ------------------------------------------------- a round still being dealt
+def test_a_live_round_shows_no_deck_card_until_the_deal_completes(api):
+    """Through the real start hook and endpoint: before the first card and
+    part-way through the deal the viewer sees no deck position at all (the
+    log does not say how far the deal had gone); once ``trump`` is logged
+    the viewer's own 25 appear, and the kitty only to the banker."""
+    from shengji.api import saved_games
+
+    srv, store, client = api
+    owner, headers = _user(store, "deal-owner")
+    t = Table(srv, users=(owner, None, None, None))
+    room = t.room
+    room.game.start_round()
+    room.index_round()
+    saved_games.start(room, srv._log_round_start(room), srv.LOG_DIR)
+    rnd = room.round
+    assert rnd.phase == "deal" and rnd.hands[0] == []
+
+    def deck_shown():
+        r = _round(client, headers, t.game_id, 1)
+        assert r.status_code == 200 and r.json()["finished"] is False
+        start = r.json()["events"][0]
+        assert start["e"] == "round_start" and len(start["deck"]) == len(rnd.deck)
+        return [(i, c) for i, c in enumerate(start["deck"]) if c is not None]
+
+    assert deck_shown() == []                               # before the first card
+    for _ in range(37):                                     # part-way: 9 or 10 each
+        seat, idx, code = rnd.deal_next()
+        room.ids[seat][idx] = code
+    room.log_event("declare", seat=1, cards=[], bot=True)
+    assert rnd.phase == "deal" and 0 < len(rnd.hands[0]) < 25
+    assert deck_shown() == []                               # during the deal
+    while rnd.phase == "deal":
+        seat, idx, code = rnd.deal_next()
+        room.ids[seat][idx] = code
+    assert deck_shown() == []                               # dealt, declaring open
+    rnd.finalize_declare()
+    room.log_event("trump", suit=rnd.trump_suit or "NT", rank=rnd.trump_rank,
+                   banker=rnd.banker, declared=rnd.declaration is not None)
+    own = [(i, rnd.deck[i]) for i in range(100) if i % 4 == 0]
+    kitty = [(i, rnd.deck[i]) for i in range(100, 108)]
+    assert deck_shown() == own + (kitty if rnd.banker == 0 else [])
+
+
+# --------------------------------------- deletion while the table stays live
+def test_a_deleted_account_is_detached_from_live_seats_and_its_id_not_reused(
+        api, monkeypatch):
+    """Delete while the room stays live, then an unrelated signup and a new
+    game on the same table: the stranger gets a fresh id, the live seat no
+    longer carries the old one, and nothing links to either account."""
+    import sqlite3
+    from contextlib import closing
+
+    from shengji.api import saved_games
+    from shengji.engine.game import Game
+
+    srv, store, client = api
+    owner, headers = _user(store, "old-owner")
+    t = Table(srv, code="LIVE", users=(owner, None, None, None))
+    monkeypatch.setitem(srv.rooms, t.room.code, t.room)
+    t.start_round(first=True)
+    assert t.room.saved_game.open == {0: owner}
+    assert client.delete("/api/me", headers=headers).status_code == 204
+    assert t.room.seats[0].user_id is None
+    assert t.room.saved_game.open == {}
+    stranger, stranger_h = _user(store, "unrelated-new-user")
+    assert stranger != owner
+    # the rest of this game and the next game on the table
+    t.act()
+    t.start_round()
+    t.act(plays=4)
+    room = t.room
+    room.game = Game(start_level="2", games_to_win=None)
+    room.game.start_round()
+    room.index_round()
+    saved_games.start(room, srv._log_round_start(room), srv.LOG_DIR)
+    assert room.saved_game.open == {}
+    # a link write naming the deleted id is refused, even straight to the store
+    assert store.link_seat(room.saved_game.header(), owner, 0, 1) is False
+    assert client.get("/api/me/games", headers=stranger_h).json() == {
+        "games": [], "next_before": None}
+    with closing(sqlite3.connect(store.path)) as db:
+        assert db.execute("SELECT COUNT(*) FROM game_players").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM games").fetchone()[0] == 0
+
+
+def test_a_socket_left_open_across_its_account_delete_is_signed_out(api):
+    from tests.test_server_ws import _drain
+
+    srv, store, client = api
+    owner, headers = _user(store, "socket-owner")
+    with client.websocket_connect("/ws", headers=headers) as ws:
+        ws.send_json({"type": "create_room"})
+        room = _drain(ws, "room")
+        assert room["players"][0]["name"] == "Jerry"
+        seat = srv.rooms[room["room"]].seats[0]
+        assert seat.user_id == owner
+        assert client.delete("/api/me", headers=headers).status_code == 204
+        assert seat.user_id is None
+        stranger, _h = _user(store, "unrelated-new-user")
+        assert stranger != owner
+        # The same socket leaves and opens a new table: a guest seat now.
+        ws.send_json({"type": "leave_room"})
+        ws.send_json({"type": "create_room"})
+        again = _drain(ws, "room")
+        assert again["room"] != room["room"]
+        assert again["players"][0]["name"] == "Player"
+        assert srv.rooms[again["room"]].seats[0].user_id is None
+
+
+def test_list_pages_through_games_that_share_a_start_second(api):
+    import sqlite3
+    import time as _time
+    from contextlib import closing
+
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    same = int(_time.time()) - 100
+    ids = []
+    for i in range(5):
+        t = Table(srv, code=f"TIE{i}", users=(owner, None, None, None))
+        t.start_round(first=True)
+        ids.append(t.game_id)
+        with closing(sqlite3.connect(store.path)) as db:
+            db.execute("UPDATE games SET started_at = ? WHERE id = ?", (same, t.game_id))
+            db.commit()
+    seen, url = [], "/api/me/games?limit=2"
+    while True:
+        page = client.get(url, headers=owner_h).json()
+        seen += [g["id"] for g in page["games"]]
+        if page["next_before"] is None:
+            break
+        assert isinstance(page["next_before"], str)
+        url = f"/api/me/games?limit=2&before={page['next_before']}"
+    assert seen == sorted(ids, reverse=True)
+    assert client.get("/api/me/games?before=nope", headers=owner_h).status_code == 400
+    # a bare integer still reads as "started before that second"
+    assert client.get(f"/api/me/games?before={same}", headers=owner_h).json()["games"] == []

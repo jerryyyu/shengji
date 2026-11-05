@@ -108,7 +108,8 @@ Vite proxies `/api` to `:8000` so the page and the API share one origin.
 
 ```
 schema_version(version INTEGER)                      -- currently 3
-users(id INTEGER PK, google_sub TEXT UNIQUE, email, name, picture,
+users(id INTEGER PK AUTOINCREMENT,                   -- v3: ids never reused
+      google_sub TEXT UNIQUE, email, name, picture,
       created_at INTEGER, last_login_at INTEGER,    -- unix seconds
       display_name TEXT NULL)                        -- v2; NULL = Google first name
 sessions(token_hash TEXT PK, user_id -> users.id ON DELETE CASCADE,
@@ -124,7 +125,10 @@ Migrations are the `SCHEMA` list in `accounts.py`: version N applies entries
 `[current..N)` in one transaction on first use. An entry is either SQL
 statements or a callable taking the connection; v2 is a callable that adds
 `users.display_name` only when `PRAGMA table_info` lacks it, so a re-run on a
-database whose version row was lost is harmless. Database access is plain
+database whose version row was lost is harmless. v3 rebuilds `users` with
+`AUTOINCREMENT` (rename the old table, copy users and sessions with their ids,
+drop the old tables sessions first, then `PRAGMA foreign_key_check`) and adds
+the saved-games tables; it is skipped piecewise on a re-run. Database access is plain
 `sqlite3` on a fresh connection per call, run off the event loop via
 `run_in_executor`; each call is a few indexed statements. Expired sessions are
 purged on every login.
@@ -143,13 +147,22 @@ worker thread; a failure counts on `/healthz` as
 Endpoints (the `sj_session` cookie; 401 without it, 404 for anything the
 account may not read):
 
-- `GET /api/me/games?before=&limit=`: the latest 100 games, newest first, 50 a page.
+- `GET /api/me/games?before=&limit=`: the latest 100 games, newest first by
+  `(started_at, id)`, 50 a page. `next_before` is an opaque cursor string
+  (`"<started_at>:<id>"`); pass it back as `before` for the next page, so games
+  started in the same second are neither skipped nor repeated. A malformed
+  cursor answers 400.
 - `GET /api/me/games/{id}`: the summary plus each readable round's result.
 - `GET /api/me/games/{id}/rounds/{n}`: that round's log records from the
   seat the account held, without bot reasoning, timing, seeds or chat, and
-  with hidden cards (`null`) until the round ends.
+  with hidden cards (`null`) until the round ends. While the round is still
+  being dealt (no `trump` record yet) every deck card is `null`, the
+  viewer's own included.
 - `DELETE /api/me/games/{id}`: hide a game from this account.
-- `DELETE /api/me`: delete the account, its sessions and its links.
+- `DELETE /api/me`: delete the account, its sessions and its links. Live
+  seats holding the account become guest seats and an open socket of it
+  reads as signed out; account ids are never reused, so no later account
+  can inherit a deleted one's seat or games.
 
 Linked games are kept for 12 months.
 

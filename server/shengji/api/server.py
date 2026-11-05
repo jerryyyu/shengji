@@ -1700,8 +1700,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
     user_id = user["id"] if user else None
     default_name = accounts.effective_name(user) if user else ""
 
+    def account_id() -> int | None:
+        # A socket whose account was deleted while it stayed open reads as
+        # signed out from then on.
+        return None if user_id is None or accounts.is_deleted(user_id) else user_id
+
     def player_name(raw: Any) -> str:
-        return str(raw or default_name or "Player")
+        return str(raw or (default_name if account_id() is not None else "") or "Player")
 
     try:
         while True:
@@ -1746,7 +1751,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     # resume token, so a creator had no identity and an
                     # overlapping refresh appended them as a SECOND seat
                     # (Codex, 2026-08-04).
-                    me = Seat(name=player_name(msg.get("name")), user_id=user_id)
+                    me = Seat(name=player_name(msg.get("name")), user_id=account_id())
                     room.seats.append(me)
                     my_gen = _attach(room, me, ws)
                     await broadcast(room)
@@ -1825,10 +1830,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             # owns it: a sign-in reconnect brings one, a
                             # sign-out reconnect (or a guest's by-name
                             # re-entry) brings none and clears it.
-                            me.user_id = user_id
+                            me.user_id = account_id()
                             saved_games.seat_changed(target, target.seats.index(me))
                         elif len(target.seats) < 4 and target.game is None:
-                            me = Seat(name=name, user_id=user_id)
+                            me = Seat(name=name, user_id=account_id())
                             target.seats.append(me)
                         else:
                             # Take over a BOT's seat, mid-game if need be —
@@ -1908,7 +1913,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             me.token = secrets.token_urlsafe(12)
                             me.is_bot = False
                             me.name = name
-                            me.user_id = user_id
+                            me.user_id = account_id()
                             saved_games.seat_changed(target, pick)
                             target.log_event("seat_claimed", seat=pick,
                                              name=name, bot=False)
@@ -2113,6 +2118,18 @@ async def healthz() -> dict:
 from .debug import register_debug  # noqa: E402
 
 register_debug(app, rooms)
+def detach_deleted_user(user_id: int) -> None:
+    """``DELETE /api/me`` hook: every live seat held by the deleted account
+    becomes a guest seat, and its open saved-game link is closed, so no later
+    round or game links that id."""
+    for room in list(rooms.values()):
+        for index, seat in enumerate(room.seats):
+            if seat.user_id == user_id:
+                seat.user_id = None
+                saved_games.seat_changed(room, index)
+
+
+accounts.USER_DELETED_HOOKS.append(detach_deleted_user)
 # /api/auth/*, /api/me, /api/me/games: registered before the static mount so the catch-all
 # page handler never shadows them.
 accounts.register_accounts(app)

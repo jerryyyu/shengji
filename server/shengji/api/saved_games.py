@@ -27,10 +27,12 @@ outside every interval, answers 404, so ids and round numbers cannot be
 probed. A round's events are the room log's records for that round, sliced
 from the game's first ``round_start`` to the next game in the same file,
 with a per-kind allow-list of keys (bot reasoning, timing, seeds and chat
-never leave) and the hidden cards masked: the viewer's own hand always;
+never leave) and the hidden cards masked: the viewer's own hand once dealt;
 the kitty and the bury to the seat that took the kitty; every other hand
-only once that round's ``round_end`` exists. File reads run off the event
-loop and stop at ``READ_BYTE_CAP`` bytes per request.
+only once that round's ``round_end`` exists. Before the round's ``trump``
+record (the deal and declaring still running) no deck card is shown at all.
+File reads run off the event loop and stop at ``READ_BYTE_CAP`` bytes per
+request.
 """
 
 from __future__ import annotations
@@ -160,6 +162,8 @@ def _maybe_purge() -> None:
 
 
 def _open(room: Any, link: GameLink, seat: int, user_id: int, from_round: int) -> None:
+    if accounts.is_deleted(user_id):
+        return
     first = not link.stored
     link.open[seat] = user_id
     link.stored = True
@@ -433,15 +437,18 @@ def _summary(game: dict, rounds: dict[int, int]) -> dict:
             "games_won": game["games_won"], "incomplete": bool(game["incomplete"])}
 
 
-def public_event(rec: dict, seat: int, finished: bool, kitty_holder: int | None) -> dict:
-    """One record as the viewer at ``seat`` may see it."""
+def public_event(rec: dict, seat: int, finished: bool, kitty_holder: int | None,
+                 dealt: bool = True) -> dict:
+    """One record as the viewer at ``seat`` may see it. ``dealt`` says the
+    log shows the deal complete; until then no deck card is shown, since the
+    log does not record how far the deal had gone."""
     kind = rec["e"]
     ev = {k: rec[k] for k in (*_COMMON_KEYS, *PUBLIC_KEYS[kind]) if k in rec}
     if kind == "round_start" and isinstance(ev.get("deck"), list):
         sees_kitty = finished or kitty_holder == seat
         ev["deck"] = [card if finished
-                      or (i < DEAL_CARDS and i % 4 == seat)
-                      or (i >= DEAL_CARDS and sees_kitty) else None
+                      or (dealt and i < DEAL_CARDS and i % 4 == seat)
+                      or (dealt and i >= DEAL_CARDS and sees_kitty) else None
                       for i, card in enumerate(ev["deck"])]
     elif kind == "bury" and not finished and rec.get("seat") != seat:
         ev["cards"] = None
@@ -455,7 +462,9 @@ def filter_round(records: list[dict], seat: int) -> tuple[bool, list[dict]]:
     bury = next((r for r in records if r.get("e") == "bury"), None)
     # The seat that picked up the kitty: the banker once trump is settled.
     holder = bury.get("seat") if bury else (trump.get("banker") if trump else None)
-    return finished, [public_event(r, seat, finished, holder) for r in records
+    # ``trump`` is logged when declaring closes, after the last card is dealt.
+    dealt = finished or trump is not None
+    return finished, [public_event(r, seat, finished, holder, dealt) for r in records
                       if r.get("e") in PUBLIC_KEYS]
 
 
@@ -464,7 +473,7 @@ def _result(rec: dict) -> dict:
 
 
 # The blocking bodies of the endpoints; each runs on a worker thread.
-def _list(user_id: int, before: int | None, limit: int) -> dict:
+def _list(user_id: int, before: tuple[int, str] | None, limit: int) -> dict:
     games = accounts.STORE.list_games(user_id, before=before, limit=limit + 1)
     more = len(games) > limit
     out = []
@@ -473,7 +482,7 @@ def _list(user_id: int, before: int | None, limit: int) -> dict:
         if rounds:
             out.append(_summary(game, rounds))
     return {"games": out,
-            "next_before": games[limit - 1]["started_at"] if more else None}
+            "next_before": accounts.Store.game_cursor(games[limit - 1]) if more else None}
 
 
 def _visible(user_id: int, game_id: str) -> tuple[dict, dict[int, int]] | None:
@@ -543,11 +552,16 @@ def _not_found() -> HTTPException:
 
 
 @router.get("/me/games")
-async def list_games(request: Request, before: int | None = None,
+async def list_games(request: Request, before: str | None = None,
                      limit: int = LIST_LIMIT_MAX) -> dict:
+    """``before`` is the previous page's ``next_before``: an opaque cursor."""
     user = await _signed_in(request)
     limit = max(1, min(LIST_LIMIT_MAX, limit))
-    return await accounts.STORE.run(_list, user["id"], before, limit)
+    try:
+        cursor = None if before is None else accounts.Store.parse_game_cursor(before)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Bad cursor.") from None
+    return await accounts.STORE.run(_list, user["id"], cursor, limit)
 
 
 @router.get("/me/games/{game_id}")

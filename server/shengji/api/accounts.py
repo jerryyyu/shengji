@@ -307,6 +307,8 @@ class Store:
         self._path = Path(path) if path is not None else None
         self._ready = False
         self._lock = threading.Lock()
+        # Ids deleted through ``DELETE /api/me`` since this process started.
+        self.deleted_ids: set[int] = set()
 
     @property
     def path(self) -> Path:
@@ -917,16 +919,35 @@ async def patch_me(body: DisplayNamePatch, request: Request) -> dict:
     return public_user(updated)
 
 
+# Called on the event loop with the id, before the row is deleted: the game
+# server detaches the id from every live seat.
+USER_DELETED_HOOKS: list[Callable[[int], None]] = []
+
+
+def is_deleted(user_id: int) -> bool:
+    """Whether the account was deleted while this process runs: a socket
+    opened before the delete still holds the id and reads as signed out."""
+    return user_id in STORE.deleted_ids
+
+
 @router.delete("/me", status_code=204)
 async def delete_me(request: Request) -> Response:
     """Delete the account: the user row, its sessions and its saved-game
-    links (by cascade). The anonymous room logs never held the account and
+    links (by cascade). Live seats and open sockets holding the account are
+    detached first, so nothing links the id afterwards (ids are never
+    reused, schema v3). The anonymous room logs never held the account and
     are unchanged."""
     if not LIMITER.allow(client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many changes; try again in a minute.")
     user = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
     if user is None:
         raise HTTPException(status_code=401, detail="Not signed in.")
+    STORE.deleted_ids.add(int(user["id"]))
+    for hook in USER_DELETED_HOOKS:
+        try:
+            hook(int(user["id"]))
+        except Exception:           # noqa: BLE001 - the delete still happens
+            log.exception("account-deletion hook failed")
     await STORE.run(STORE.delete_user, user["id"])
     response = Response(status_code=204)
     _clear_session_cookie(response, request)

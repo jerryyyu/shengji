@@ -450,3 +450,123 @@ def test_saved_diagnostic_refuses_bad_mirror_before_build():
     saved['validated_rows'].pop()
     with pytest.raises(ValueError, match='two mirrors'):
         diagnose_saved_leads(saved, [case], forbidden, gate=lambda: None)
+
+
+def test_diagnostic_supervisor_publishes_only_success_and_never_overwrites(tmp_path):
+    import sys
+    from shengji.train.lead_diagnostic_run import supervise
+    target = tmp_path / 'result.json'
+    command = [sys.executable, '-c',
+               'import json,sys; json.dump({"schema":"saved-lead-diagnostic-v1"},open(sys.argv[1],"w"))']
+    supervise(command, target, 5, expected={})
+    original = target.read_bytes()
+    with pytest.raises(FileExistsError):
+        supervise(command, target, 5, expected={})
+    assert target.read_bytes() == original
+    failed = tmp_path / 'failed.json'
+    with pytest.raises(RuntimeError, match='exited 1'):
+        supervise(command[:-1] + [command[-1] + '; sys.exit(1)'], failed, 5, expected={})
+    assert not failed.exists()
+
+
+def test_diagnostic_supervisor_hard_timeout_cannot_publish(tmp_path):
+    import subprocess
+    import sys
+    from shengji.train.lead_diagnostic_run import supervise
+    target = tmp_path / 'result.json'
+    with pytest.raises(subprocess.TimeoutExpired):
+        supervise([sys.executable, '-c', 'import time; time.sleep(30)'], target, .1, expected={})
+    assert not target.exists()
+    assert not list(tmp_path.iterdir())
+
+
+def test_diagnostic_pinned_input_refuses_hash_drift_and_oversize(tmp_path):
+    import hashlib
+    from shengji.train.lead_diagnostic_run import pinned_json
+    source = tmp_path / 'saved.json'
+    source.write_bytes(b'{"validated_rows": []}')
+    sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    assert pinned_json(source, sha, 100) == {'validated_rows': []}
+    with pytest.raises(ValueError, match='hash mismatch'):
+        pinned_json(source, '0' * 64, 100)
+    with pytest.raises(ValueError, match='byte limit'):
+        pinned_json(source, sha, 2)
+
+
+def test_pinned_worker_consumes_saved_json_with_real_scorer(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    import os
+    from shengji.ai import registry
+    from shengji.train.lead_diagnostic_run import worker
+    from test_pv_leaf_greedy_finish import leaf_bot
+    saved, case = _saved_diagnostic_fixture()
+    source = tmp_path / 'saved.json'
+    source.write_text(json.dumps(saved))
+    spec = dict(schema='saved-lead-run-v1', saved_path=str(source),
+                saved_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                cases=[case], policy='pv-search-test', wall_seconds=5,
+                env={'SHENGJI_BOT': 'pv-search-test'})
+    packet = tmp_path / 'run.json'
+    packet.write_text(json.dumps(spec))
+    sha = hashlib.sha256(packet.read_bytes()).hexdigest()
+    def build(name, seed):
+        assert name == 'pv-search-test' and seed == case['seed']
+        assert os.environ['SHENGJI_BOT'] == name
+        assert 'SHENGJI_PV_UNKNOWN_OVERRIDE' not in os.environ
+        return leaf_bot(worlds=2)
+    monkeypatch.setattr(registry, 'make_bot', build)
+    monkeypatch.setattr(os, 'environ', dict(os.environ))
+    os.environ['SHENGJI_PV_UNKNOWN_OVERRIDE'] = '1'
+    result_path = tmp_path / 'result.json'
+    worker(packet, sha, result_path)
+    result = json.loads(result_path.read_text())
+    assert result['run_spec_sha256'] == sha
+    assert result['saved_sha256'] == spec['saved_sha256']
+    assert result['cases'][0]['evidence']['worlds'] == 2
+    assert result['cases'][0]['evidence']['decision']['work_complete']
+
+
+@pytest.mark.parametrize('payload', ['{"schema":"wrong"}',
+                                     '{"schema":"saved-lead-diagnostic-v1","value":NaN}'])
+def test_diagnostic_supervisor_rejects_invalid_result(tmp_path, payload):
+    import sys
+    from shengji.train.lead_diagnostic_run import supervise
+    target = tmp_path / 'result.json'
+    with pytest.raises(ValueError):
+        supervise([sys.executable, '-c',
+                   'import sys; open(sys.argv[2],"w").write(sys.argv[1])', payload], target, 5, expected={})
+    assert not target.exists()
+
+
+@pytest.mark.parametrize('key', ['run_spec_sha256', 'saved_sha256', 'policy'])
+def test_diagnostic_supervisor_refuses_wrong_run_identity(tmp_path, key):
+    import json
+    import sys
+    from shengji.train.lead_diagnostic_run import supervise
+    expected = dict(run_spec_sha256='a' * 64, saved_sha256='b' * 64, policy='pv-search-test')
+    payload = dict(schema='saved-lead-diagnostic-v1', **expected)
+    payload[key] = 'wrong'
+    with pytest.raises(ValueError, match='identity mismatch'):
+        supervise([sys.executable, '-c',
+                   'import sys; open(sys.argv[2],"w").write(sys.argv[1])', json.dumps(payload)],
+                  tmp_path / 'result.json', 5, expected=expected)
+    assert not (tmp_path / 'result.json').exists()
+
+
+def test_diagnostic_recipe_controls_subprocess_package_import(tmp_path, monkeypatch):
+    import json
+    import sys
+    from shengji.train.lead_diagnostic_run import recipe_environment, supervise
+    monkeypatch.setenv('SHENGJI_FAST', '1')
+    monkeypatch.setenv('SHENGJI_PV_UNKNOWN_OVERRIDE', '1')
+    spec = dict(schema='saved-lead-run-v1', policy='pv-search-test',
+                env={'SHENGJI_BOT': 'pv-search-test', 'SHENGJI_FAST': '0'})
+    target = tmp_path / 'result.json'
+    code = ('import os,sys,json,shengji; '
+            'assert "shengji.engine.fast" not in sys.modules; '
+            'assert "SHENGJI_PV_UNKNOWN_OVERRIDE" not in os.environ; '
+            'json.dump({"schema":"saved-lead-diagnostic-v1"},open(sys.argv[1],"w"))')
+    supervise([sys.executable, '-c', code], target, 5,
+              expected={}, env=recipe_environment(spec))
+    assert json.loads(target.read_text())['schema'] == 'saved-lead-diagnostic-v1'

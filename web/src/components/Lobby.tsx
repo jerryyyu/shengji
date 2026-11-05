@@ -361,7 +361,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
         {account.status === "out" && account.clientId ? (
           <>
-            <p className="signin-upsell">Sign in to save your games and replay them later.</p>
+            <p className="signin-upsell">Sign in to save your games.</p>
             <GoogleSignIn clientId={account.clientId} />
           </>
         ) : null}

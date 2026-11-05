@@ -92,8 +92,19 @@ INDEX game_players_user ON game_players(user_id, game_id)
   the volume passes 70 % used, write a stripped replay file per linked game
   (only `round_start`, `declare`, `trump`, `bury`, `play` without `decision`,
   `trick`, `round_end`; about 5 % of the raw size), and only then may raw logs that
-  `fetch_fly_logs.sh` has already copied be removed. Cap the history list at the
+  `fetch_fly_logs.sh` has already copied be removed (gate below). Cap the history list at the
   latest 100 games per account (older ones stay until the 12 months are up).
+- **Compaction gate (future work, not part of phase 1).** One room-code file
+  can hold several games, because a reused code appends to the same
+  `<CODE>.jsonl`. A raw file may be deleted only when all of these hold: the
+  file is not open for append (no live room with that code); every game
+  segment in it that has a `games` row has a stripped replay written and
+  read back with a matching sha256; and the whole raw file has a verified
+  copy in the training archive (sha256 recorded at fetch). Replay lookup goes
+  through a `replays(game_id, path, sha256)` row once it exists, so a deleted
+  source file or a stale `log_offset` cannot break a lookup. Test fixture: two
+  games under one code, where compacting the first must leave the second
+  readable and both lookups correct.
 - **Backups.** The volume snapshot covers both files today; check the Fly
   snapshot schedule and retention before launch. The Litestream plan in
   `docs/accounts.md` "Backup" becomes worth doing once history exists.
@@ -102,8 +113,14 @@ INDEX game_players_user ON game_players(user_id, game_id)
 
 ## 3. Privacy
 
-- A game is visible only to an account in its `game_players`; every other
-  request gets 404, not 403, so ids cannot be probed.
+- Access follows the linked interval, not game membership. An account may
+  read a round `n` of a game only through a `game_players` row with
+  `from_round <= n <= coalesce(to_round, last_round)`, and it sees that round
+  from that row's seat. The game summary lists only those rounds. Every other
+  request, including a round outside the interval, gets 404, not 403, so ids
+  and round numbers cannot be probed. A guest who signs in mid-game therefore
+  never reads the rounds played as a guest, and a player who changed seats
+  reads each round from the seat held in it.
 - The replay is built from the viewer's seat: their own hand from the deal;
   other hands and the kitty only once that round's `round_end` exists; an
   unfinished round shows only the cards played.
@@ -154,7 +171,10 @@ INDEX game_players_user ON game_players(user_id, game_id)
    and guest seats, a reused room code giving two games with distinct offsets,
    a DB failure that leaves play unaffected, no account id in any log record.
 3. **Read API with the privacy filter.** Tests: an owner sees the game, another
-   account gets 404; hidden hands before `round_end`; decision fields absent.
+   account gets 404; a mid-game sign-in reads only rounds from the sign-in on
+   and gets 404 for earlier rounds; a seat change shows each round from the seat
+   held then; an out-of-range round gets 404; hidden hands before `round_end`;
+   decision fields absent.
 4. **Web "My games" and replay** (vitest coverage like `App.auth.test.tsx`).
 5. **Deletion.**
 6. *(phase 2)* Rejoin by account. *(later)* Stripped replay compaction once

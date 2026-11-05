@@ -478,6 +478,36 @@ textarea:focus-visible {
   color: var(--text);
 }
 
+/* The lobby name field with its random-name dice inside the right edge. */
+.name-input { position: relative; display: flex; }
+.name-input input { flex: 1; min-width: 0; padding-right: 46px; }
+.name-reroll {
+  appearance: none;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  translate: 0 -50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font-size: 17px;
+  line-height: 1;
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 150ms ease, background 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .name-reroll:hover { opacity: 1; background: rgba(255, 255, 255, 0.06); }
+}
+.name-reroll:active { scale: 0.92; }
+.name-reroll:focus-visible { opacity: 1; outline: 2px solid var(--gold); outline-offset: 1px; }
+
 .field-hint {
   font-size: 12px;
   line-height: 1.45;
@@ -638,17 +668,7 @@ textarea:focus-visible {
 .name-edit-input:focus { border-color: var(--team0); outline: none; }
 .name-edit-actions { display: flex; gap: 8px; }
 .name-edit-actions .btn { padding: 6px 12px; font-size: 13px; }
-.name-edit-error, .save-name-error { color: #f0a0aa; font-size: 12px; }
-.save-name-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: var(--text-dim);
-  text-align: left;
-}
-.save-name-row input { accent-color: var(--gold); }
+.name-edit-error { color: #f0a0aa; font-size: 12px; }
 .hud-menu-row.account-edit .account-avatar { width: 20px; height: 20px; }
 .hud-menu-row.hud-menu-edit { display: block; cursor: default; min-width: 220px; }
 .hud-menu-row.hud-menu-edit .name-edit-input { font-size: 14px; }
@@ -3460,6 +3480,116 @@ button.games-row { cursor: pointer; }
 }
 .howto-dot.on::before { width: 20px; background: var(--gold); }
 .howto-buttons { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+
+/* Animated pictures (Picture + useTimeline): quiet play/pause, replay and
+   still-image buttons in the picture's corner, then each slide's moving
+   parts. Parts that appear later keep their space while hidden. */
+.howto-visual { position: relative; }
+.howto-frame { display: contents; }
+.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }
+.howto-anim-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--panel-edge);
+  background: rgba(16, 19, 26, 0.55);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+.howto-anim-btn svg { width: 14px; height: 14px; fill: currentColor; }
+.howto-anim-btn svg[fill="none"] { fill: none; }
+.howto-anim-btn.on { color: var(--gold); border-color: var(--gold-soft); }
+@media (hover: hover) and (pointer: fine) {
+  .howto-anim-btn:hover { color: var(--text); background: rgba(16, 19, 26, 0.8); }
+}
+.howto-anim-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+.howto-out { visibility: hidden; opacity: 0; }
+.howto-in { animation: howto-in 320ms var(--ease-out) backwards; }
+@keyframes howto-in { from { opacity: 0; transform: translateY(6px) scale(0.94); } }
+.howto-visual .level-chip,
+.howto-ladder .team-dot,
+.howto-count-up { animation: chip-pop 300ms var(--ease-back) backwards; }
+.howto-count-up { display: inline-block; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Declare: the declaration standing now. */
+.howto-declare-row { transition: box-shadow 250ms ease; }
+.howto-declare-row.standing { box-shadow: inset 0 0 0 1px var(--gold), 0 0 12px rgba(242, 193, 78, 0.25); }
+
+/* Kitty: slides down into the banker's hand, comes back as the buried 8. */
+.howto-kitty-cards { transition: transform 600ms var(--ease-in-out), opacity 600ms ease; }
+.howto-kitty-cards.taken { transform: translateY(72px) scale(0.9); opacity: 0; }
+.howto-frame .howto-cards .card { transition: transform 200ms var(--ease-out), box-shadow 200ms ease; }
+
+/* Play a trick: TrickArea flies each play in from these seat anchors. */
+.howto-felt .table-emblem { display: none; }
+.howto-felt .howto-anchor {
+  position: absolute;
+  display: block;
+  width: 2px;
+  height: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  transform: none;
+  pointer-events: none;
+}
+.howto-felt .howto-anchor.pos-left { left: 10px; top: 50%; right: auto; }
+.howto-felt .howto-anchor.pos-right { right: 10px; left: auto; top: 50%; }
+.howto-felt .howto-anchor.pos-top { top: 8px; left: 50%; }
+.howto-felt .howto-anchor.you-tagline { bottom: 8px; left: 50%; }
+.howto-felt .trick-cards .card { transition: box-shadow 250ms ease; }
+.howto-felt[data-leading="1"] .trick-play[data-seat="1"] .card,
+.howto-felt[data-leading="2"] .trick-play[data-seat="2"] .card,
+.howto-felt[data-leading="3"] .trick-play[data-seat="3"] .card {
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.55), 0 0 12px rgba(242, 193, 78, 0.35);
+}
+
+/* Scoring a round: point cards fly into the attackers' count and the bar
+   fills toward the final total. */
+.howto-score { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; width: 100%; height: 64px; }
+.howto-haul-slot { display: flex; justify-content: center; align-items: center; min-width: 0; }
+.howto-haul { animation: howto-haul 520ms var(--ease-in-out) both; }
+@keyframes howto-haul {
+  0% { opacity: 0; transform: translateY(8px) scale(0.9); }
+  25%, 50% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translate(var(--fx, 0), var(--fy, 0)) scale(0.4); }
+}
+.howto-result { white-space: nowrap; animation: chip-pop 350ms var(--ease-back) both; }
+.howto-scale-fill {
+  position: absolute;
+  left: 0;
+  top: 5px;
+  height: 8px;
+  border-radius: 999px;
+  background: #eef2f7;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  transition: width 380ms var(--ease-out);
+}
+.howto-scale-line { z-index: 1; transition: box-shadow 250ms ease; }
+.howto-scale-line.crossed { box-shadow: 0 0 10px 2px var(--gold); }
+.howto-bands li { transition: background 250ms ease, box-shadow 250ms ease; }
+.howto-bands li.on { background: rgba(242, 193, 78, 0.16); }
+.howto-bands li.final { box-shadow: inset 0 0 0 1px var(--gold); }
+
+/* The still image: the last frame, drawn without any movement. */
+.howto-still *,
+.howto-still *::before,
+.howto-still *::after { animation: none !important; transition: none !important; }
+.howto-still .trick-play.winner .trick-cards { transform: translateY(-10px) scale(1.06); }
+@media (prefers-reduced-motion: reduce) {
+  .howto-visual *,
+  .howto-visual *::before,
+  .howto-visual *::after { animation: none !important; transition: none !important; }
+}
 
 @media (max-width: 420px) {
   .howto-panel { padding: 20px 16px; gap: 14px; }

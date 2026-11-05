@@ -134,6 +134,14 @@ def test_pv_records_carry_the_admitted_ballot_and_priced_values(data_policy, tmp
         assert r["legal_actions_count"] >= len(r["legal_actions"])
         got = search_means(r)
         assert (got is None) == (k < 2)
+    # The generated shard remains consumable by the belief-label producer;
+    # bury rows may precede the play rows and are ignored by this consumer.
+    from shengji.train import belief_labels
+    shard = run["out"] / run["manifest"]["shards"][0]["path"]
+    labels = belief_labels.extract_cluster(
+        shard, store_index=0, cluster_index=0, calib=0.0, test=0.0,
+        windows=[], sampler_worlds=0, sampler_splits=())
+    assert labels is not None and labels["X"].shape[0] == len(plays)
     buries = [r for r in run["records"] if r["decision_kind"] == "bury"]
     assert buries and all(r["allocation"]["searched"] for r in buries)
 
@@ -273,6 +281,154 @@ def test_budgeted_serving_recipes_and_knobs_are_refused(package, tmp_path, monke
     finally:
         for n in names:
             REGISTRY.pop(n, None)
+
+
+def test_budgeted_serving_capture_is_explicit_and_exact(package):
+    path, sha = package
+    names = register_pv_search_policies(path, sha256=sha, serving_budget_seconds=3,
+                                        bury_serving_budget_seconds=2, bury_arm="hybrid",
+                                        bury_config=BURY, **SMALL)
+    try:
+        with pytest.raises(trajectory.TrajectoryError, match="scientific data teachers"):
+            trajectory.build_config(policy=names[0], seed0=SEED0)
+        config = trajectory.build_config(policy=names[0], seed0=SEED0,
+                                         capture_served_budget=True,
+                                         explore_rate=0.0, explore_k=0)
+        assert config["capture_served_budget"] is True
+        assert config["policy_flags"]["served_budget_capture"] is True
+        assert config["run_id"] == trajectory.run_id_for(config)
+        with pytest.raises(trajectory.TrajectoryError, match="forbids exploration"):
+            trajectory.build_config(policy=names[0], seed0=SEED0,
+                                    capture_served_budget=True, explore_rate=0.1)
+    finally:
+        for n in names:
+            REGISTRY.pop(n, None)
+
+
+def test_lead_confirmation_challenger_keeps_unpriced_mean_out_of_search_labels():
+    rec = {"admitted": [["S4"], ["H4"], ["D4"]],
+           "admitted_indices": [3, 7, 9], "selected_index": 9,
+           "played": ["D4"], "value_means": [0.5, -0.25, None],
+           "worlds": 8, "work_complete": True, "policy_log_odds_admitted": [1, 0, 0]}
+    ballot = rec["admitted"]
+    with pytest.raises(trajectory.TrajectoryError, match="scientific data teachers"):
+        trajectory.pv_fields_from_record(rec, ballot)
+    allocation, _, action_values = trajectory.pv_fields_from_record(
+        rec, ballot, capture_served_budget=True)
+    assert allocation["selection_worlds"] == [8, 8, 0]
+    assert allocation["total_worlds"] == 16
+    assert allocation["weights"] == [0.5, 0.5, 0.0]
+    assert action_values["means"] == [0.5, -0.25, None]
+    from shengji.train.cwv_data import search_means
+    row = {"ballot": ballot, "action_values": action_values}
+    assert search_means(row) == ([0, 1], [0.5, -0.25])
+
+
+def test_served_bury_telemetry_reaches_trajectory_row_and_manifest(tmp_path):
+    """Serving-only belief telemetry survives the bury row mapping and count merge."""
+    raw = {
+        "schema": "cwv-bury-policy-v1",
+        "arm": "hybrid",
+        "candidates": [["S2"]],
+        "picked_index": 0,
+        "n_by_candidate": [2],
+        "played_index": 0,
+        "raw_winner_index": 0,
+        "candidate_count": 1,
+        "reason": "value-only-no-MC",
+        "selection_worlds": 0,
+        "mc_rollouts": 0,
+        "model_means": [0.2],
+        "mc_evidence": None,
+        "bury_config": {},
+        "model_worlds": 32,
+        "wide_value": {"chosen_index": 0, "candidates": 1},
+        "bury_belief_worlds": True,
+        "bury_belief_fallbacks": 1,
+        "bury_belief_error": "draw-timeout",
+        "bury_belief_ms": 12.5,
+    }
+    row = trajectory._bury_fields(
+        {"source": "test"}, "run", 0, 0, 0, ["S2", "H3"], ["S2"], raw,
+        capture_served_budget=True)
+    serving = row["allocation"]["serving_decision"]
+    assert {key: serving[key] for key in (
+        "bury_belief_worlds", "bury_belief_fallbacks", "bury_belief_error",
+        "bury_belief_ms")} == {
+        "bury_belief_worlds": True, "bury_belief_fallbacks": 1,
+        "bury_belief_error": "draw-timeout", "bury_belief_ms": 12.5,
+    }
+    (tmp_path / "shards").mkdir()
+    (tmp_path / "shards" / "cluster-000000.json").write_text("{}")
+    side = {"seed": 0, "path": "shard.jsonl", "sha256": "x", "bytes": 1,
+            "records": 1, "counts": {"bury_records": 1,
+                                       "bury_belief_worlds": 1,
+                                       "bury_belief_fallbacks": 1},
+            "work": {}}
+    manifest = trajectory.build_run_manifest(
+        {"run_id": "run", "seed0": 0, "round_mix": "first"}, {"git_sha": "test"}, rounds=1,
+        sidecars={0: side}, merged=None, out_dir=tmp_path)
+    assert manifest["counts"]["bury_belief_worlds"] == 1
+    assert manifest["counts"]["bury_belief_fallbacks"] == 1
+
+
+def test_served_timeouts_reach_shards_and_outcome_consumer(package, tmp_path, monkeypatch):
+    from shengji.train import cwv_bury_policy as bury
+    from shengji.train.cwv_data import bridge_record
+
+    def play_timeout(*args, **kwargs):
+        raise pv.PVSearchBudgetExceeded("forced timeout")
+
+    def bury_timeout(*args, **kwargs):
+        raise bury.BuryBudgetExceeded("forced timeout")
+
+    monkeypatch.setattr(pv.PVSearchBot, "_search", play_timeout)
+    monkeypatch.setattr(bury.CWVBuryMixin, "_decide_bury", bury_timeout)
+    path, sha = package
+    names = register_pv_search_policies(path, sha256=sha, serving_budget_seconds=3,
+                                       bury_serving_budget_seconds=2, bury_arm="hybrid",
+                                       bury_config=BURY, **SMALL)
+    try:
+        run = _gen(tmp_path / "timeouts", names[0], explore_rate=0, explore_k=0,
+                   capture_served_budget=True)
+        plays = [r for r in run["records"] if r["decision_kind"] == "play"]
+        buries = [r for r in run["records"] if r["decision_kind"] == "bury"]
+        assert plays and len(buries) == 2
+        assert run["manifest"]["counts"]["play_fallback_budget"] == len(plays)
+        assert run["manifest"]["counts"]["bury_fallback_budget"] == 2
+        assert run["manifest"]["counts"]["play_fallback_search-error"] == 0
+        assert run["manifest"]["counts"]["bury_belief_worlds"] == 0
+        assert run["manifest"]["counts"]["bury_belief_fallbacks"] == 0
+        for record in plays + buries:
+            assert record["action_values"] is None
+            assert record["ballot"] == [record["action"]]
+            assert record["allocation"]["serving_decision"]["reason"] == "budget"
+            assert search_means(record) is None
+            if record["decision_kind"] == "bury":
+                assert "bury_belief_worlds" not in record["allocation"]["serving_decision"]
+        for record in plays:
+            assert bridge_record(record) is not None
+        from shengji.train import belief_labels
+        shard = run["out"] / run["manifest"]["shards"][0]["path"]
+        labels = belief_labels.extract_cluster(
+            shard, store_index=0, cluster_index=0, calib=0.0, test=0.0,
+            windows=[], sampler_worlds=0, sampler_splits=())
+        assert labels is not None and labels["X"].shape[0] == len(plays)
+        trajectory.generate(rounds=2, seed0=SEED0, out_dir=run["out"], workers=1,
+                            policy=names[0], explore_rate=0, explore_k=0,
+                            capture_served_budget=True, resume=True,
+                            seed_windows=_seed_windows(run["out"]))
+        after = _read_dir(run["out"])
+        assert after["records"] == run["records"]
+        monkeypatch.setenv("SHENGJI_PV_ENCODE_NATIVE", "1")
+        with pytest.raises(trajectory.TrajectoryError, match="refus|different|identity|config"):
+            trajectory.generate(rounds=2, seed0=SEED0, out_dir=run["out"], workers=1,
+                                policy=names[0], explore_rate=0, explore_k=0,
+                                capture_served_budget=True, resume=True,
+                                seed_windows=_seed_windows(run["out"]))
+    finally:
+        for name in names:
+            REGISTRY.pop(name, None)
 
 
 def test_data_policy_refuses_knobs_and_work_overrides(data_policy):

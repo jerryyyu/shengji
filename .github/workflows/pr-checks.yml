@@ -144,9 +144,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # The pure suite alone reached 14m22s on a shared runner; leave room for
-    # the compiled parity step too. Durations expose the tail for optimization.
-    timeout-minutes: 25
+    # Bound the complete serial path, including compiled parity and required
+    # package-backed capture tests after the core suite.
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: server

@@ -293,32 +293,6 @@ REGISTRY.update({
 })
 
 
-def _make_rl():
-    from ..rl.torch_policy import RLBot  # lazy: needs torch + a checkpoint
-    return RLBot()
-
-
-def _make_mc_v5roll():
-    """MCBot with the distilled net as rollout policy (the 55%-vs-mc
-    hybrid). Needs torch + the checkpoint (SHENGJI_V5_CKPT, default
-    ckpt_distill_full.pt in the server cwd). ~2-3s per decision."""
-    import os
-    from ..rl.torch_policy import RLBot
-    from .mcbot import MCBot
-
-    class MCv5Roll(MCBot):
-        def __init__(self, seed=None):
-            super().__init__(seed)
-            self.rollout_policy = RLBot(
-                ckpt=os.environ.get("SHENGJI_V5_CKPT", "ckpt_distill_full.pt"))
-
-    return MCv5Roll()
-
-
-REGISTRY["rl"] = _make_rl
-REGISTRY["mc-v5roll"] = _make_mc_v5roll
-
-
 def make_bot(name: str, **kw):
     """Build a policy by name, FORWARDING kwargs (notably seed=).
 
@@ -359,93 +333,6 @@ def make_bot(name: str, **kw):
     return bot
 
 
-def _make_vleaf(ckpt: str):
-    """Value-leaf hybrid, named by its VALUE-HEAD checkpoint.
-
-    The hybrid's strength depends entirely on which net evaluates the
-    truncated-rollout leaves, so the checkpoint is part of the policy's
-    identity — never register or report a bare "mc-vleaf": a result that
-    does not name its value head cannot be reproduced.
-    """
-    def f():
-        from ..rl.torch_policy import MCValueLeaf
-        return MCValueLeaf(ckpt=ckpt)
-    return f
-
-
-# Value-leaf hybrids, one entry per value head.
-REGISTRY["mc-vleaf-v7w-ep02"] = _make_vleaf("snapshots_v7w/ep02.pt")
-# Absolute action-Q head trained on 240-world `Q^H(s,a)` labels. The v7w arm is
-# the same architecture/wrapper, but the comparison does NOT isolate label
-# quality: v13's MCBot-candidate/early-state training distribution differs from
-# the pinned-v1/post-four-trick distribution used by MCValueLeaf.
-REGISTRY["mc-vleaf-v13abs"] = _make_vleaf("ckpt_v13abs.pt")
-REGISTRY["mc-vleaf-v8a-ep03"] = _make_vleaf("snapshots_v8a/ep03.pt")
-# v11pair is deliberately NOT a value-leaf arm: it was trained with a pairwise
-# objective, so its head has no cross-state scale and is invalid as a leaf
-# evaluator, which compares leaves ACROSS states.
-
-
-def _make_override(ckpt: str):
-    def f():
-        from ..rl.torch_policy import RLOverrideBot
-        return RLOverrideBot(ckpt=ckpt)
-    return f
-
-
-_V11PAIR_NPZ_SHA256 = (
-    "cd89d6ed7e9d5f798d69ce546107c4dfbef682c5385de39af527026e39e1c003"
-)
-
-
-# threshold 0.02 was fitted on half A of the holdout and reported on half B
-# (regret 1.943 vs 2.103 for always-candidate-0), so it is not post-hoc.
-# MARGIN 0 = trust the net's argmax over the MC ballot. The 0.02 bar was
-# fitted on the teacher's own biased estimates; refitted against the N=240
-# reference the best bar is ZERO, and held-out regret drops 2.870 -> 2.152,
-# below deployed mc's 2.803.
-def _make_override_thr(path: str, margin: float):
-    def make(**kw):
-        from pathlib import Path
-        from ..rl.torch_policy import RLOverrideBot
-        # Registry identity must not depend on the caller's cwd.  In particular,
-        # the revalidation runner hashes server/snapshots_v11pair/ep07.npz, so
-        # the policy must load those same absolute bytes even if another cwd
-        # happens to contain a lookalike relative path.
-        resolved = (Path(__file__).resolve().parents[2] / path).resolve()
-        b = RLOverrideBot(str(resolved))
-        expected_path = resolved.with_suffix(".npz")
-        if (Path(b.checkpoint_path) != expected_path
-                or b.checkpoint_sha256 != _V11PAIR_NPZ_SHA256):
-            raise RuntimeError(
-                "frozen v11pair registry checkpoint identity drift: "
-                f"loaded {b.checkpoint_path} {b.checkpoint_sha256}, expected "
-                f"{expected_path} {_V11PAIR_NPZ_SHA256}")
-        b.MARGIN = margin          # fitted on a DISJOINT half of the holdout
-        return b
-    return make
-
-
-# Net as a root prior; same rollout budget, concentrated on fewer candidates.
-def _make_race(ckpt: str, keep: int):
-    def f(**kw):
-        from ..rl.torch_policy import MCPriorRace
-        b = MCPriorRace(ckpt, seed=kw.get("seed"))
-        b.KEEP = keep
-        return b
-    return f
-
-
-# THE CONTROL for the racing result: same pruning size and budget, no net.
-def _make_randrace(keep: int):
-    def f(**kw):
-        from ..rl.torch_policy import MCRandomRace
-        b = MCRandomRace("snapshots_v11pair/ep07.pt", seed=kw.get("seed"))
-        b.KEEP = keep
-        return b
-    return f
-
-
 def _make_v3(random_fill: bool):
     def f(**kw):
         from ..ai.mcbot import MCBot as _MC
@@ -460,83 +347,15 @@ def _make_v3(random_fill: bool):
 # only top + lowest-non-point per suit. Recovers 51 of 93 missed human leads.
 REGISTRY["mc-v3lead"] = _make_v3(False)
 REGISTRY["mc-v3lead-rand"] = _make_v3(True)   # the control
-REGISTRY["mc-randrace4"] = _make_randrace(4)
-REGISTRY["mc-race3-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 3)
-REGISTRY["mc-race4-v11pair"] = _make_race("snapshots_v11pair/ep07.pt", 4)
-# Bounded hypothesis from the full-corpus threshold diagnostic: fit on
-# even deal seeds, reported on odd, margin 0.005 cut stored all-state regret
-# from 1.261 (at the deployed 0.02) to 1.142 raw points/decision. That is
-# offline, early-state, fixed-ballot evidence — it justifies an ONLINE test,
-# not a promotion.
-REGISTRY["rl-override-v11pair-m005"] = _make_override_thr(
-    "snapshots_v11pair/ep07.pt", 0.005)
-REGISTRY["rl-override-v11pair-m0"] = _make_override_thr(
-    "snapshots_v11pair/ep07.pt", 0.0)
-REGISTRY["rl-override-v11pair"] = _make_override_thr(
-    "snapshots_v11pair/ep07.pt", 0.02)
-
-
-def _make_v11_anchor(*, random_control: bool = False,
-                     search_base_policy: str = "mc-strong"):
-    """Frozen v11pair proposal inside one literal MC search contract."""
-    def make(**kw):
-        from ..rl.torch_policy import (MCV11ProtectedAnchor,
-                                       MCV11RandomAnchor)
-        cls = MCV11RandomAnchor if random_control else MCV11ProtectedAnchor
-        seed = kw.get("seed")
-        search_base = make_bot(search_base_policy, seed=seed)
-        return cls(
-            "snapshots_v11pair/ep07.npz", seed=seed,
-            search_base=search_base,
-            search_base_policy=search_base_policy,
-        )
-    return make
-
-
-# The first learned/search composition that preserves the complete current
-# action set and all N=30 common worlds.  The random arm fires on exactly the
-# same v11 threshold but protects an arbitrary non-Smart action, separating
-# proposal quality from the generic effect of changing candidate 0.
-REGISTRY["mc-v11anchor"] = _make_v11_anchor()
-REGISTRY["mc-v11anchor-random"] = _make_v11_anchor(random_control=True)
-# S0 can terminate with either the report-LCB mechanism or its deterministic
-# adaptive allocator.  These variants compose v11 with that exact survivor;
-# the original two entries above remain the SELECT-NONE/current-N=30 lane.
-for _suffix, _base in (
-    ("s0-report-lcb", "mc-s0-report-lcb"),
-    ("s0-adaptive", "mc-s0-adaptive"),
-):
-    REGISTRY[f"mc-v11anchor-{_suffix}"] = _make_v11_anchor(
-        search_base_policy=_base)
-    REGISTRY[f"mc-v11anchor-{_suffix}-random"] = _make_v11_anchor(
-        random_control=True, search_base_policy=_base)
-
-
-def _make_gate(path: str, gate: float):
-    def f(**kw):
-        from ..rl.torch_policy import MCGatedOverride
-        b = MCGatedOverride(path)
-        b.GATE = gate
-        b._seed = kw.get("seed")
-        return b
-    return f
-
-
-# Cheap net as a stakes DETECTOR: SmartBot on low-stakes decisions, full MC
-# search on the ~12% the net flags. Gate fitted on a disjoint holdout half.
-REGISTRY["mc-gate-v11pair"] = _make_gate("snapshots_v11pair/ep07.pt", 0.02)
-# Residual-distillation override of SmartBot: a near no-op, registered only
-# for the offline residual post-mortem, not a candidate for play.
-REGISTRY["rl-override-v10res"] = _make_override("snapshots_v10res/ep09.pt")
 
 
 # ---------------------------------------------------------------------------
 # Value-at-leaf screen arms (DEV; shengji/train/leaf_policy.py).  The arm is
 # the production search class with ONE override — its rollout leaf — and its
 # strength depends entirely on the points head that evaluates truncated
-# leaves, so the checkpoint id is part of the policy name, exactly as
-# `_make_vleaf` above insists.  Nothing is registered by default: the arms
-# appear only through `register_vleaf_arms` (the screen driver) or when the
+# leaves, so the checkpoint id is part of the policy name.  Nothing is
+# registered by default: the arms appear only through `register_vleaf_arms`
+# (the screen driver) or when the
 # environment names the artifacts, so `scripts/evaluate.py` can drive them by
 # name while the default registry stays production-only.
 VLEAF_BASE_POLICY = "mc-s0-report-lcb"
@@ -681,7 +500,7 @@ def register_cwv_policies(checkpoint: str, worlds, *, finish_trick: bool = True,
                           plies: int | None = None) -> list[str]:
     """Complete-world-value one-ply arms, named by their VALUE checkpoint.
 
-    Same rule as ``_make_vleaf``: the checkpoint is the policy's identity, so
+    The checkpoint is the policy's identity, so
     every name embeds ``<ckpt8>`` (sha256 of the file, first eight hex) and
     the world count -- ``mc-cwv-<ckpt8>-w<W>`` -- and a bare ``mc-cwv`` never
     exists.  ``mc-cwv-prior-<ckpt8>-w<W>`` is the matching NO-LEARNING control: the

@@ -398,3 +398,55 @@ def test_common_world_comparison_separates_selected_throw_from_played_component(
     assert result['actions'][0]['action'] == FORCED
     assert result['actions'][0]['delta_vs_played'] == 0
     assert result['decision']['doomed_throw_swap_applied'] is True
+
+
+def _saved_diagnostic_fixture():
+    import copy
+    import random
+    from shengji.engine.round import Round
+    rnd = Round('2', 0, random.Random(1707))
+    while rnd.phase == 'deal':
+        rnd.deal_next()
+    rnd.finalize_declare()
+    buried = list(rnd.hands[0][:8])
+    rnd.bury(0, buried)
+    action = [rnd.hands[0][0]]
+    row = dict(seed=1707, mirror=0, trump_rank='2', planned_banker=0,
+               declares=[], banker=0, trump=('NT' if rnd.trump_is_nt else rnd.trump_suit), buried=buried,
+               dtrace=[['P', 0, 0, True, 25, action]], history=[[0, action]])
+    mirror = copy.deepcopy(row)
+    mirror['mirror'] = 1
+    return dict(validated_rows=[row, mirror]), dict(seed=1707, play_index=0,
+                                                   seat=0, alternatives=[action])
+
+
+def test_saved_readout_to_common_world_scorer():
+    import json
+    from shengji.train.lead_saved_diagnostic import diagnose_saved_leads
+    from test_pv_leaf_greedy_finish import leaf_bot
+    saved, case = _saved_diagnostic_fixture()
+    built = []
+    def build(seed):
+        bot = leaf_bot(worlds=2)
+        built.append(bot)
+        return bot
+    result = diagnose_saved_leads(json.loads(json.dumps(saved)), [case], build,
+                                  gate=lambda: None)
+    assert result['cases'][0]['case'] == case
+    assert result['cases'][0]['evidence']['worlds'] == 2
+    assert result['cases'][0]['evidence']['decision']['work_complete'] is True
+    assert built[0].last_decision_record is None
+    json.dumps(result, allow_nan=False)
+
+
+def test_saved_diagnostic_refuses_bad_mirror_before_build():
+    import pytest
+    from shengji.train.lead_saved_diagnostic import diagnose_saved_leads
+    saved, case = _saved_diagnostic_fixture()
+    def forbidden(seed):
+        pytest.fail('bad input must refuse before model construction')
+    with pytest.raises(ValueError, match='duplicate case'):
+        diagnose_saved_leads(saved, [case, case], forbidden, gate=lambda: None)
+    saved['validated_rows'].pop()
+    with pytest.raises(ValueError, match='two mirrors'):
+        diagnose_saved_leads(saved, [case], forbidden, gate=lambda: None)

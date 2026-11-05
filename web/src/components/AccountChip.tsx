@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { auth, effectiveName } from "../auth";
 import type { AuthUser } from "../auth";
+import { navigate } from "../replay/route";
 import NameEditForm from "./NameEditForm";
 
-/** The signed-in state: avatar, name, Edit name and Sign out, in the lobby
+/** The signed-in state: avatar, name, My games, Edit name and Sign out, in the lobby
  *  panel. A sign-out the server did not confirm stays signed in and says so. */
 export default function AccountChip({ user }: { user: AuthUser }) {
   const [editing, setEditing] = useState(false);
@@ -36,6 +37,9 @@ export default function AccountChip({ user }: { user: AuthUser }) {
           {busy ? "Signing out…" : "Sign out"}
         </button>
       </div>
+      <button className="btn subtle account-games" onClick={() => navigate({ page: "list" })}>
+        My games
+      </button>
       {editing ? <NameEditForm user={user} onDone={() => setEditing(false)} /> : null}
       {error ? <div className="lobby-error account-error" role="alert">{error}</div> : null}
     </div>

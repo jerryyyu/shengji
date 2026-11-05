@@ -9,6 +9,8 @@ import { auth } from "./auth";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
 import Table from "./components/Table";
+import GamesList from "./components/GamesList";
+import { useGamesRoute } from "./replay/route";
 
 const TOAST_MS = 4000;
 
@@ -23,6 +25,9 @@ export default function App() {
   const autoFill = useRef(false);
   // Whether the announcer has been seeded with a first game state.
   const seededRef = useRef(false);
+  // "My games" pages (hash routes) sit over whatever screen is live; the
+  // socket and any game in progress keep running underneath.
+  const gamesRoute = useGamesRoute();
 
   useEffect(() => {
     const showToast = (message: string) => {
@@ -123,7 +128,9 @@ export default function App() {
   }, []);
 
   let screen: ReactNode;
-  if (game) {
+  if (gamesRoute) {
+    screen = <GamesList route={gamesRoute} inGame={room !== null || game !== null} />;
+  } else if (game) {
     screen = <Table state={game} />;
   } else if (room) {
     screen = <Room room={room} />;
@@ -154,7 +161,7 @@ export default function App() {
           {toast}
         </div>
       ) : null}
-      {game ? (
+      {game && !gamesRoute ? (
         <div className="rotate-hint">
           <div className="rotate-icon" aria-hidden="true">📱</div>
           <div>Rotate your phone to play</div>

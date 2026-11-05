@@ -5,6 +5,7 @@ import HudMenu from "./HudMenu";
 import MuteButton from "./MuteButton";
 import { isMuted, setMuted } from "../audio";
 import { auth } from "../auth";
+import { navigate } from "../replay/route";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
@@ -94,8 +95,9 @@ describe("a signed-in player's rows", () => {
     act(() => btn(v.host).click());
     const text = rows(v.host).map((r) => r.textContent);
     expect(text[3]).toContain("Cap"); expect(text[3]).toContain("Edit name");
-    expect(text[4]).toContain("Sign out");
-    expect(text[5]).toContain("Leave game");
+    expect(text[4]).toContain("My games");
+    expect(text[5]).toContain("Sign out");
+    expect(text[6]).toContain("Leave game");
     act(() => (rows(v.host)[3] as HTMLButtonElement).click());
     expect(v.host.querySelector(".hud-menu")).not.toBeNull();     // the menu stays open
     const input = v.host.querySelector<HTMLInputElement>(".hud-menu-edit .name-edit-input")!;
@@ -149,6 +151,24 @@ describe("the account row (optional sign-in)", () => {
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     expect(auth.state.status).toBe("out");
     v.unmount();
+    auth.reset();
+  });
+});
+
+describe("the My games row", () => {
+  it("is shown only when signed in, and opens the history page", () => {
+    auth.reset();
+    const v = render();
+    act(() => btn(v.host).click());
+    const games = () => rows(v.host).find((r) => r.textContent?.includes("My games")) as HTMLButtonElement | undefined;
+    expect(games()).toBeUndefined();
+    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
+    expect(games()).toBeDefined();
+    act(() => games()!.click());
+    expect(v.host.querySelector(".hud-menu")).toBeNull();
+    expect(window.location.hash).toBe("#/games");
+    v.unmount();
+    act(() => navigate(null));
     auth.reset();
   });
 });

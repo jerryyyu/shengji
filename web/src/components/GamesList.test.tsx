@@ -1,0 +1,225 @@
+// "My games": the history list, a game's rounds, removal, and the replay,
+// against a mocked `/api/me/games*` (the contract the server implements).
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import GamesList from "./GamesList";
+import { navigate, useGamesRoute } from "../replay/route";
+import roundFixture from "../replay/round.fixture.json";
+import type { GameRow } from "../replay/api";
+
+vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
+
+function row(id: string, started: number, extra: Partial<GameRow> = {}): GameRow {
+  return {
+    id, room_code: "ABCD", started_at: started, ended_at: started + 1800, seat: 0,
+    players: ["Ana", "Bot 1", "Bea", "Bot 3"], rounds: [1, 2, 3],
+    final_levels: ["5", "3"], games_won: [1, 0], incomplete: false, ...extra,
+  };
+}
+
+type Route = { status: number; body?: unknown };
+let routes: Record<string, Route>;
+let calls: { url: string; method: string }[];
+
+beforeEach(() => {
+  calls = [];
+  routes = {};
+  globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({ url, method });
+    const r = routes[`${method} ${url}`] ?? { status: 404, body: { detail: "not found" } };
+    return {
+      status: r.status,
+      json: async () => {
+        if (r.body === undefined) throw new Error("no body");
+        return r.body;
+      },
+    } as Response;
+  }) as typeof fetch;
+});
+
+let host: HTMLDivElement;
+let root: ReturnType<typeof createRoot>;
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+  act(() => navigate(null));
+});
+
+function Host() {
+  const route = useGamesRoute();
+  return route ? <GamesList route={route} inGame={false} /> : <div className="no-route" />;
+}
+
+async function settle() {
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+}
+
+async function mount(start: Parameters<typeof navigate>[0] = { page: "list" }) {
+  act(() => navigate(start));
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  act(() => root.render(<Host />));
+  await settle();
+}
+
+const q = (sel: string) => host.querySelector<HTMLElement>(sel);
+const qa = (sel: string) => Array.from(host.querySelectorAll<HTMLElement>(sel));
+const button = (label: string) =>
+  qa("button").find((b) => b.textContent?.trim() === label || b.getAttribute("aria-label") === label) as HTMLButtonElement;
+const click = async (el: HTMLElement) => { act(() => el.click()); await settle(); };
+
+describe("the games list", () => {
+  it("renders rows from the API with the viewer's team marked", async () => {
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: {
+      games: [row("g1", 1_790_000_000), row("g2", 1_789_000_000, { seat: 1, incomplete: true,
+                                                                  final_levels: null, games_won: null, rounds: [2] })],
+      next_before: null } };
+    await mount();
+    const rows = qa(".games-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector(".games-team.mine")?.textContent).toBe("Ana (you) & Bea");
+    expect(rows[0].textContent).toContain("Bot 1, Bot 3");
+    expect(rows[0].textContent).toContain("3 rounds");
+    expect(rows[0].textContent).toContain("Levels: you 5 · them 3");
+    expect(rows[0].textContent).toContain("Games won: 1–0");
+    expect(rows[0].querySelector(".games-tag")).toBeNull();
+    // seat 1: partner is seat 3, and the levels read from team 1's side
+    expect(rows[1].querySelector(".games-team.mine")?.textContent).toBe("Bot 1 (you) & Bot 3");
+    expect(rows[1].textContent).toContain("1 round");
+    expect(rows[1].querySelector(".games-tag")?.textContent).toBe("incomplete");
+    expect(q(".games-when")?.textContent).toBeTruthy();
+    expect(button("Load more")).toBeUndefined();
+    expect(calls[0]).toEqual({ url: "/api/me/games?limit=20", method: "GET" });
+    const init = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
+    expect(init.credentials).toBe("same-origin");
+  });
+
+  it("loads more with next_before until the server has no more", async () => {
+    // The cursor is opaque: sent back exactly as the server gave it.
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [row("g1", 300)], next_before: "300:g1" } };
+    routes["GET /api/me/games?limit=20&before=300%3Ag1"] = { status: 200, body: { games: [row("g0", 300)], next_before: null } };
+    await mount();
+    expect(qa(".games-row")).toHaveLength(1);
+    await click(button("Load more"));
+    expect(calls.map((c) => c.url)).toContain("/api/me/games?limit=20&before=300%3Ag1");
+    expect(qa(".games-row")).toHaveLength(2);
+    expect(button("Load more")).toBeUndefined();
+  });
+
+  it("asks a signed-out visitor to sign in (401)", async () => {
+    routes["GET /api/me/games?limit=20"] = { status: 401, body: { detail: "not signed in" } };
+    await mount();
+    expect(q(".games-status")?.textContent).toContain("Sign in to see your saved games.");
+    expect(qa(".games-row")).toHaveLength(0);
+  });
+
+  it("says an unknown game is unavailable (404)", async () => {
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [], next_before: null } };
+    await mount({ page: "game", id: "nope" });
+    expect(q(".games-status")?.textContent).toContain("This game isn't available");
+  });
+});
+
+describe("a game", () => {
+  beforeEach(() => {
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: {
+      games: [row("g1", 1_790_000_000), row("g2", 1_789_000_000)], next_before: null } };
+    routes["GET /api/me/games/g1"] = { status: 200, body: { ...row("g1", 1_790_000_000), round_results: [
+      { round: 1, seat: 0, result: { winner_team: 0, level_change: 2, attacker_points: 35 } },
+      { round: 2, seat: 0, result: { winner_team: 1, level_change: 1, attacker_points: 90 } },
+    ] } };
+  });
+
+  it("lists its rounds with results and a Replay for each", async () => {
+    await mount();
+    await click(qa(".games-row")[0]);
+    const rounds = qa(".games-round");
+    expect(rounds.map((r) => r.querySelector(".games-round-n")?.textContent)).toEqual(["Round 1", "Round 2", "Round 3"]);
+    expect(rounds[0].textContent).toContain("won, +2 levels");
+    expect(rounds[1].textContent).toContain("lost, +1 level");
+    expect(rounds[2].textContent).toContain("unfinished");
+    expect(rounds.every((r) => r.querySelector("button")?.textContent === "Replay")).toBe(true);
+  });
+
+  it("Remove from my history needs two taps, sends DELETE and drops the row", async () => {
+    routes["DELETE /api/me/games/g1"] = { status: 204 };
+    await mount();
+    await click(qa(".games-row")[0]);
+    await click(button("Remove from my history"));
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    await click(button("Tap again to remove"));
+    expect(calls.filter((c) => c.method === "DELETE")).toEqual([{ url: "/api/me/games/g1", method: "DELETE" }]);
+    expect(q(".games-title")?.textContent).toBe("My games");
+    const rows = qa(".games-row");
+    expect(rows).toHaveLength(1);
+    expect(window.location.hash).toBe("#/games");
+  });
+
+  it("a failed DELETE keeps the game and says so", async () => {
+    routes["DELETE /api/me/games/g1"] = { status: 500 };
+    await mount({ page: "game", id: "g1" });
+    await click(button("Remove from my history"));
+    await click(button("Tap again to remove"));
+    expect(q("[role=alert]")?.textContent).toContain("Could not remove the game (500)");
+    expect(q(".games-title")?.textContent).toBe("Game");
+  });
+});
+
+describe("the replay page", () => {
+  it("opens from a round, steps plays and tricks, and ends on the result", async () => {
+    routes["GET /api/me/games/g1/rounds/3"] = { status: 200, body: roundFixture };
+    await mount({ page: "replay", id: "g1", round: 3 });
+    expect(calls.map((c) => c.url)).toContain("/api/me/games/g1/rounds/3");
+    expect(q(".replay-caption")?.textContent).toContain("Bot 3 declared ♣4");
+    expect(qa(".replay-hand .hand-slot")).toHaveLength(25);
+    await click(button("Next play"));
+    expect(q(".replay-caption")?.textContent).toContain("You buried");
+    await click(button("Next play"));
+    expect(q(".replay-caption")?.textContent).toMatch(/^Trick 1: You led/);
+    expect(qa(".trick-area .trick-play")).toHaveLength(1);
+    const handAfterLead = qa(".replay-hand .hand-slot").length;
+    expect(handAfterLead).toBeLessThan(25);
+    await click(button("Next trick"));
+    expect(qa(".trick-area .trick-play")).toHaveLength(4);
+    expect(q(".trick-area .win-tag")).not.toBeNull();
+    await click(button("Previous play"));
+    expect(qa(".trick-area .trick-play")).toHaveLength(3);
+    // jump to the last trick, then step to the end
+    const jump = q(".replay-jump") as HTMLSelectElement;
+    const lastTrick = jump.options[jump.options.length - 1].value;
+    act(() => {
+      jump.value = lastTrick;
+      jump.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(q(".replay-caption")?.textContent).toContain(`Trick ${lastTrick}:`);
+    while (!button("Next play").disabled) await click(button("Next play"));
+    expect(q(".replay-result")?.textContent).toContain("Your team lost the round");
+    expect(q(".replay-result")?.textContent).toContain("Attackers scored 110 points");
+    expect(qa(".replay-hand .hand-slot")).toHaveLength(0);
+    expect(button("Show other hands")).toBeDefined();
+    expect(q(".chat-launch")).toBeNull();
+  });
+
+  it("an unfinished round shows only the played cards and says so", async () => {
+    const events = (roundFixture.events as { e: string; deck?: (string | null)[] }[]);
+    const cut = events.findIndex((e) => e.e === "trick") + 2;
+    routes["GET /api/me/games/g1/rounds/3"] = { status: 200, body: { ...roundFixture, finished: false,
+      events: events.slice(0, cut).map((e) => (e.e === "round_start"
+        ? { ...e, deck: e.deck!.map((c, i) => (i < 100 && i % 4 === 0 ? c : null)) } : e)) } };
+    await mount({ page: "replay", id: "g1", round: 3 });
+    expect(q(".replay-note")?.textContent).toContain("did not finish");
+    while (!button("Next play").disabled) await click(button("Next play"));
+    expect(q(".replay-result")).toBeNull();
+    expect(qa(".trick-area .trick-play")).toHaveLength(1);
+    expect(button("Show other hands")).toBeUndefined();
+  });
+
+  it("a round outside the account's interval is unavailable (404)", async () => {
+    await mount({ page: "replay", id: "g1", round: 9 });
+    expect(q(".games-status")?.textContent).toContain("This game isn't available");
+  });
+});

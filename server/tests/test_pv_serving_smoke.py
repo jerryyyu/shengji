@@ -84,7 +84,7 @@ def test_the_smoke_builds_with_the_fly_env_in_the_process_environment(package, c
     assert os.environ.get("SHENGJI_PV_CKPT") != path
     receipt = run_smoke(env, turns=4)
     assert receipt["passed"] is True
-    assert receipt["latency_switches"] == {"encode_prefix_cache": True, "single_candidate_fast": False,
+    assert receipt["latency_switches"] == {"encode_prefix_cache": True, "singleton_prefix_cache": False, "single_candidate_fast": False,
                                            "leaf_greedy_stream": True, "encode_batch_fast": True, **NATIVE_OFF}
 
 

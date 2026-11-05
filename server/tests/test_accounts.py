@@ -744,22 +744,71 @@ def _tables(path):
 def test_a_v2_database_upgrades_to_v3_once_and_keeps_its_rows(accounts_on, tmp_path):
     path = tmp_path / "v2" / "accounts.sqlite3"
     _v2_database(path)
+    with accounts_sqlite(path) as db:
+        db.execute("""INSERT INTO users(google_sub, email, name, picture, created_at,
+                                        last_login_at, display_name)
+                      VALUES ('sub-v2b', 'b@example.com', 'Second', NULL, 2, 2, NULL)""")
+        db.execute("INSERT INTO sessions VALUES ('hash-1', 1, 1, 9999999999)")
+        db.execute("INSERT INTO sessions VALUES ('hash-2', 2, 1, 9999999999)")
+        db.commit()
     assert "games" not in _tables(path)
     store = accounts_on.Store(path)
     assert store.schema_version() == 3 == len(accounts_on.SCHEMA)
-    assert {"games", "game_players", "game_players_user", "games_started"} <= _tables(path)
+    assert {"games", "game_players", "game_players_user", "games_started",
+            "sessions_user", "sessions_expires"} <= _tables(path)
+    assert "users_v2" not in _tables(path) and "sessions_v3" not in _tables(path)
     row = store.user(1)
     assert row["name"] == "Old Timer" and row["display_name"] == "Oldie"
-    # The step re-runs harmlessly (IF NOT EXISTS) and a new Store does nothing.
+    assert store.user(2)["google_sub"] == "sub-v2b"
     with accounts_sqlite(path) as db:
-        for statement in filter(None, (s.strip() for s in accounts_on.SCHEMA[2].split(";"))):
-            db.execute(statement)
+        users_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'users'").fetchone()[0]
+        sessions_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[0]
+        assert "AUTOINCREMENT" in users_sql.upper()
+        assert "REFERENCES users(id) ON DELETE CASCADE" in sessions_sql
+        assert sorted(db.execute("SELECT token_hash, user_id FROM sessions")) == [
+            ("hash-1", 1), ("hash-2", 2)]
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert _columns(path, "users") == [
+        "id", "google_sub", "email", "name", "picture", "created_at", "last_login_at",
+        "display_name"]
+    # The sessions still follow their users, and the highest id is never
+    # handed out again after its account is deleted.
+    store.link_seat(_game(), 2, 0, 1)
+    assert store.delete_user(2) is True
+    with accounts_sqlite(path) as db:
+        assert db.execute("SELECT user_id FROM sessions").fetchall() == [(1,)]
+        assert db.execute("SELECT COUNT(*) FROM game_players").fetchone()[0] == 0
+    newcomer = store.upsert_user(_claims(sub="after-upgrade"))
+    assert newcomer["id"] == 3
+    # The step re-runs harmlessly and a new Store does nothing.
+    with accounts_sqlite(path) as db:
+        db.row_factory = accounts_on.sqlite3.Row
+        accounts_on._migrate_v3(db)
+        db.commit()
     again = accounts_on.Store(path)
     assert again.schema_version() == 3
+    assert again.user(1)["display_name"] == "Oldie"
     with accounts_sqlite(path) as db:
         assert db.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 1
     assert _columns(path, "game_players") == [
         "game_id", "user_id", "seat", "from_round", "to_round", "hidden"]
+
+
+def test_account_ids_are_never_reused_after_a_delete(accounts_on):
+    """A live seat or socket can still hold a deleted account's id; a later
+    signup must not receive it, and a link write for it must be refused."""
+    store = accounts_on.STORE
+    a, b = _two_users(store)
+    assert b > a
+    assert store.delete_user(b) is True
+    stranger = store.upsert_user(_claims(sub="stranger"))["id"]
+    assert stranger not in (a, b) and stranger > b
+    assert store.link_seat(_game("after"), b, 0, 1) is False
+    assert store.list_games(stranger) == []
+    with accounts_sqlite(store.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM games").fetchone()[0] == 0
 
 
 def _game(game_id="g1", started_at=None, **over):
@@ -827,9 +876,10 @@ def test_list_is_newest_first_paged_capped_and_retained(accounts_on):
                     a, 0, 1)
     first = store.list_games(a, limit=50)
     assert [g["id"] for g in first][:2] == ["g104", "g103"] and len(first) == 50
-    second = store.list_games(a, before=first[-1]["started_at"], limit=50)
+    cursor = accounts_on.Store.parse_game_cursor
+    second = store.list_games(a, before=cursor(store.game_cursor(first[-1])), limit=50)
     assert second[0]["id"] == "g054" and len(second) == 50
-    third = store.list_games(a, before=second[-1]["started_at"], limit=50)
+    third = store.list_games(a, before=cursor(store.game_cursor(second[-1])), limit=50)
     # 100 games are ever listed; the five oldest (and the expired one) are not.
     assert [g["id"] for g in third] == []
     assert store.user_game(a, "g000") is not None          # still readable by id
@@ -837,6 +887,32 @@ def test_list_is_newest_first_paged_capped_and_retained(accounts_on):
     assert store.purge_games() == 1
     with accounts_sqlite(store.path) as db:
         assert db.execute("SELECT COUNT(*) FROM games WHERE id = 'old'").fetchone()[0] == 0
+
+
+def test_list_pages_through_games_that_share_a_start_second(accounts_on):
+    store = accounts_on.STORE
+    a, _b = _two_users(store)
+    now = int(time.time())
+    ids = [f"t{i}" for i in range(5)]
+    for game_id in ids:
+        store.link_seat(_game(game_id, started_at=now - 10), a, 0, 1)
+    store.link_seat(_game("older", started_at=now - 20), a, 0, 1)
+    seen, before = [], None
+    while True:
+        page = store.list_games(a, before=before, limit=2)
+        if not page:
+            break
+        seen += [g["id"] for g in page]
+        before = accounts_on.Store.parse_game_cursor(store.game_cursor(page[-1]))
+    assert seen == ["t4", "t3", "t2", "t1", "t0", "older"]
+    # A bare integer cursor still means "started before that second".
+    assert [g["id"] for g in store.list_games(a, before=(now - 10, ""))] == ["older"]
+
+
+@pytest.mark.parametrize("raw", ["", "x", "12:", "-1:a", "1:a b", "1:" + "a" * 65, "1" * 13])
+def test_bad_game_cursors_are_refused(accounts_on, raw):
+    with pytest.raises(ValueError):
+        accounts_on.Store.parse_game_cursor(raw)
 
 
 def test_hide_and_account_delete(accounts_on):

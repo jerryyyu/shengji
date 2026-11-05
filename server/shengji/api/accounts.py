@@ -165,6 +165,98 @@ def _migrate_v2(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "users", "display_name", "TEXT NULL")
 
 
+_USERS_V3 = """
+    CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        google_sub TEXT NOT NULL UNIQUE,
+        email TEXT,
+        name TEXT,
+        picture TEXT,
+        created_at INTEGER NOT NULL,
+        last_login_at INTEGER NOT NULL,
+        display_name TEXT NULL
+    )"""
+_SESSIONS_V3 = """
+    CREATE TABLE sessions_v3 (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+    )"""
+# The room log stays the source of truth; these tables hold only which
+# account sat where, for which rounds, and a small summary, so no log record
+# ever carries an account id.
+_GAMES_V3 = """
+    CREATE TABLE IF NOT EXISTS games (
+        id TEXT PRIMARY KEY,
+        room_code TEXT NOT NULL,
+        log_file TEXT NOT NULL,
+        log_offset INTEGER NULL,
+        started_at INTEGER NOT NULL,
+        last_round INTEGER NOT NULL DEFAULT 1,
+        ended_at INTEGER NULL,
+        final_levels TEXT NULL,
+        games_won TEXT NULL,
+        incomplete INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS games_started ON games(started_at);
+    CREATE TABLE IF NOT EXISTS game_players (
+        game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        seat INTEGER NOT NULL,
+        from_round INTEGER NOT NULL,
+        to_round INTEGER NULL,
+        hidden INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (game_id, user_id, seat, from_round)
+    );
+    CREATE INDEX IF NOT EXISTS game_players_user ON game_players(user_id, game_id)
+"""
+
+
+def _users_autoincrement(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+    return row is not None and "AUTOINCREMENT" in row["sql"].upper()
+
+
+def _migrate_v3(conn: sqlite3.Connection) -> None:
+    """Rebuild ``users`` with ``AUTOINCREMENT`` so a deleted account's id is
+    never handed to a later signup (a live seat or socket may still hold the
+    old id), then add the saved-games tables.
+
+    SQLite cannot add ``AUTOINCREMENT`` in place, and ``PRAGMA foreign_keys``
+    cannot change inside the migration's transaction, so the rebuild never
+    deletes a referenced ``users`` row: the old table is renamed first
+    (``sessions`` now references the renamed table), the new ``users`` and a
+    new ``sessions`` are filled from the old rows with their ids, and only then
+    are the old tables dropped, sessions first. Every user, id and session is
+    kept; the sequence starts at the largest kept id. A re-run on an
+    already-rebuilt table only re-creates what is missing."""
+    _add_column_if_missing(conn, "users", "display_name", "TEXT NULL")
+    if not _users_autoincrement(conn):
+        conn.execute("ALTER TABLE users RENAME TO users_v2")
+        conn.execute(_USERS_V3)
+        conn.execute(
+            """INSERT INTO users(id, google_sub, email, name, picture, created_at,
+                                 last_login_at, display_name)
+               SELECT id, google_sub, email, name, picture, created_at,
+                      last_login_at, display_name FROM users_v2 ORDER BY id""")
+        conn.execute(_SESSIONS_V3)
+        conn.execute(
+            """INSERT INTO sessions_v3(token_hash, user_id, created_at, expires_at)
+               SELECT token_hash, user_id, created_at, expires_at FROM sessions""")
+        conn.execute("DROP TABLE sessions")
+        conn.execute("DROP TABLE users_v2")
+        conn.execute("ALTER TABLE sessions_v3 RENAME TO sessions")
+        conn.execute("CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at)")
+    for statement in filter(None, (s.strip() for s in _GAMES_V3.split(";"))):
+        conn.execute(statement)
+    problems = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if problems:
+        raise sqlite3.IntegrityError(f"foreign key check failed after v3: {len(problems)} rows")
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -192,34 +284,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     # version 2: a player-chosen display name; NULL means "use the Google
     # first name".
     _migrate_v2,
-    # version 3: saved games. The room log stays the source of truth; these
-    # tables hold only which account sat where, for which rounds, and a small
-    # summary, so no log record ever carries an account id.
-    """
-    CREATE TABLE IF NOT EXISTS games (
-        id TEXT PRIMARY KEY,
-        room_code TEXT NOT NULL,
-        log_file TEXT NOT NULL,
-        log_offset INTEGER NULL,
-        started_at INTEGER NOT NULL,
-        last_round INTEGER NOT NULL DEFAULT 1,
-        ended_at INTEGER NULL,
-        final_levels TEXT NULL,
-        games_won TEXT NULL,
-        incomplete INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE INDEX IF NOT EXISTS games_started ON games(started_at);
-    CREATE TABLE IF NOT EXISTS game_players (
-        game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        seat INTEGER NOT NULL,
-        from_round INTEGER NOT NULL,
-        to_round INTEGER NULL,
-        hidden INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (game_id, user_id, seat, from_round)
-    );
-    CREATE INDEX IF NOT EXISTS game_players_user ON game_players(user_id, game_id);
-    """,
+    # version 3: account ids that are never reused, and saved games.
+    _migrate_v3,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -447,12 +513,14 @@ class Store:
         game["incomplete"] = bool(game["incomplete"]) or game["log_offset"] is None
         return game
 
-    def list_games(self, user_id: int, before: int | None = None,
+    def list_games(self, user_id: int, before: tuple[int, str] | None = None,
                    limit: int = 50, now: float | None = None) -> list[dict]:
-        """The account's visible games, newest first: within retention, not
-        hidden, among its latest ``GAMES_LIST_CAP``, and started before
-        ``before`` when given. Each game carries its ``links`` (seat,
-        from_round, to_round) for the account."""
+        """The account's visible games, newest first by ``(started_at, id)``:
+        within retention, not hidden, among its latest ``GAMES_LIST_CAP``, and
+        strictly after the cursor ``before`` in that order when given (a
+        ``(started_at, id)`` pair, see ``game_cursor``), so games that share a
+        start second are neither skipped nor repeated across pages. Each game
+        carries its ``links`` (seat, from_round, to_round) for the account."""
         t = int(now if now is not None else time.time())
         with closing(self._open()) as conn:
             rows = conn.execute(
@@ -463,10 +531,30 @@ class Store:
                    ORDER BY g.started_at DESC, g.id DESC LIMIT ?""",
                 (t - GAMES_RETENTION_SECONDS, user_id, GAMES_LIST_CAP)).fetchall()
             games = [self._game_dict(r) for r in rows
-                     if before is None or r["started_at"] < before][:max(0, limit)]
+                     if before is None
+                     or (r["started_at"], r["id"]) < (int(before[0]), str(before[1]))
+                     ][:max(0, limit)]
             for game in games:
                 game["links"] = self._links(conn, game["id"], user_id)
             return games
+
+    @staticmethod
+    def game_cursor(game: Mapping[str, Any]) -> str:
+        """The paging cursor that lists the games after ``game``: an opaque
+        ``"<started_at>:<id>"`` string to clients."""
+        return f"{int(game['started_at'])}:{game['id']}"
+
+    @staticmethod
+    def parse_game_cursor(raw: str) -> tuple[int, str]:
+        """``"<started_at>:<id>"`` as ``(started_at, id)``. A bare integer is
+        read as ``(started_at, "")``: every game started before that second.
+        Anything else raises ``ValueError``."""
+        stamp, sep, game_id = raw.partition(":")
+        if not stamp.isdigit() or len(stamp) > 12 or len(game_id) > 64:
+            raise ValueError("bad cursor")
+        if sep and not re.fullmatch(r"[0-9A-Za-z_-]+", game_id):
+            raise ValueError("bad cursor")
+        return int(stamp), game_id
 
     def user_game(self, user_id: int, game_id: str, now: float | None = None) -> dict | None:
         """One game with the account's links, or None when the account has

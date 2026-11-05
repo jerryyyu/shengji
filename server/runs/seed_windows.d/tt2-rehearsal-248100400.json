@@ -1,0 +1,14 @@
+{
+ "name": "tt2-rehearsal-248100400",
+ "purpose": "screen",
+ "seed0": 248100400,
+ "clusters": 56,
+ "span": [
+  248100400,
+  248100456
+ ],
+ "created_at": "2026-11-05T17:32:02Z",
+ "host": "cloud",
+ "git_head": "315061541c692157d788f6dc050416a62328f0ed",
+ "note": "tt2 host rehearsal block (non-scientific execution evidence; exact heavy-path capacity witness) for the S93 tt2 screen head-to-head: release 50 + tt2 (SHENGJI_PV_TT2=1: the two-trick value leaf at a lead, PR #1302; a NEW policy identity, name token -tt2) vs release 50 as served (lcc32 on both sides: SHENGJI_PV_LEAD_CONFIRM=32), both at the served budgets, on shengji-cloud; packet ~/shengji-archive/2026-11-05-tt2-packet (lane tt2). Exact-deal clear against the A / FT1 / B1a lineages (lccC's exposure method): see the packet's seeds/exposure/. RESERVED BEFORE DEALING. The launcher's exact child, REHEARSAL=1 mode under its own rehearsal RELEASE token, 56 deals."
+}

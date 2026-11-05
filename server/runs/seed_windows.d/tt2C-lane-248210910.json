@@ -1,0 +1,14 @@
+{
+ "name": "tt2C-lane-248210910",
+ "purpose": "screen",
+ "seed0": 248210910,
+ "clusters": 7840,
+ "span": [
+  248210910,
+  248218750
+ ],
+ "created_at": "2026-11-05T17:32:02Z",
+ "host": "cloud",
+ "git_head": "315061541c692157d788f6dc050416a62328f0ed",
+ "note": "S93 tt2 CONFIRMATION (fresh seeds, reserved with the screen; dealt only if the screen lane passes) head-to-head: release 50 + tt2 (SHENGJI_PV_TT2=1: the two-trick value leaf at a lead, PR #1302; a NEW policy identity, name token -tt2) vs release 50 as served (lcc32 on both sides: SHENGJI_PV_LEAD_CONFIRM=32), both at the served budgets, on shengji-cloud; packet ~/shengji-archive/2026-11-05-tt2-packet (lane tt2). Exact-deal clear against the A / FT1 / B1a lineages (lccC's exposure method): see the packet's seeds/exposure/. RESERVED BEFORE DEALING. 7,840 paired seat-swapped r2 deals (the two-stage duel bar's confirmation stage)."
+}

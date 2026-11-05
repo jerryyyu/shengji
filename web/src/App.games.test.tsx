@@ -52,7 +52,7 @@ it("the lobby's My games opens the history page and Lobby returns", async () => 
   expect(games).not.toBeNull();
   await act(async () => { games.click(); await new Promise((r) => setTimeout(r, 0)); });
   expect(host.querySelector(".games-title")?.textContent).toBe("My games");
-  expect(host.querySelector(".games-empty")?.textContent).toContain("No saved games yet");
+  expect(host.querySelector(".games-status")?.textContent).toContain("No saved games yet");
   expect(host.querySelector(".lobby-panel")).toBeNull();
   expect(FakeWS.all).toHaveLength(1);       // the socket was not touched
   const back = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "‹ Lobby")!;

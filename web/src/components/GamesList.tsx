@@ -3,7 +3,7 @@ import { fetchGame, fetchGames, removeGame, teamPair } from "../replay/api";
 import type { Fetched, GameDetail, GameRow } from "../replay/api";
 import { navigate } from "../replay/route";
 import type { GamesRoute } from "../replay/route";
-import { GamesUnavailable, SignInPrompt } from "./GamesStatus";
+import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesStatus";
 import ReplayView from "./ReplayView";
 
 function when(unix: number): string {
@@ -89,7 +89,8 @@ function GameView({ id, onRemoved }: { id: string; onRemoved: (id: string) => vo
   };
 
   let body;
-  if (res === null) body = <p className="games-empty">Loading…</p>;
+  let sub: string | undefined;
+  if (res === null) body = <GamesNotice title="Loading…" />;
   else if (!res.ok) {
     body = res.reason === "signed_out" ? <SignInPrompt />
       : res.reason === "not_found" ? <GamesUnavailable />
@@ -97,28 +98,31 @@ function GameView({ id, onRemoved }: { id: string; onRemoved: (id: string) => vo
   } else {
     const game = res.data;
     const results = new Map((game.round_results ?? []).map((r) => [r.round, r]));
+    sub = `${when(game.started_at)} · room ${game.room_code}`;
     body = (
       <>
         <div className="games-row static">
-          <span className="games-when">{when(game.started_at)} · room {game.room_code}</span>
           <Teams game={game} />
           <Summary game={game} />
         </div>
-        <ul className="games-rounds">
-          {game.rounds.map((n) => {
-            const r = results.get(n);
-            return (
-              <li key={n} className="games-round">
-                <span className="games-round-n">Round {n}</span>
-                <span className="games-round-res">{roundLine(r?.seat ?? game.seat, r?.result)}</span>
-                <button className="btn subtle" onClick={() => navigate({ page: "replay", id, round: n })}>
-                  Replay
-                </button>
-              </li>
-            );
-          })}
-          {game.rounds.length === 0 ? <li className="games-empty">No rounds to replay.</li> : null}
-        </ul>
+        <div className="games-section">
+          <span className="field-label">Rounds</span>
+          <ul className="games-rounds">
+            {game.rounds.map((n) => {
+              const r = results.get(n);
+              return (
+                <li key={n} className="games-round">
+                  <span className="games-round-n">Round {n}</span>
+                  <span className="games-round-res">{roundLine(r?.seat ?? game.seat, r?.result)}</span>
+                  <button className="btn subtle" onClick={() => navigate({ page: "replay", id, round: n })}>
+                    Replay
+                  </button>
+                </li>
+              );
+            })}
+            {game.rounds.length === 0 ? <li className="games-round-res">No rounds to replay.</li> : null}
+          </ul>
+        </div>
         <button className={`btn danger games-remove${armed ? " armed" : ""}`} disabled={busy} onClick={remove}>
           {busy ? "Removing…" : armed ? "Tap again to remove" : "Remove from my history"}
         </button>
@@ -127,11 +131,8 @@ function GameView({ id, onRemoved }: { id: string; onRemoved: (id: string) => vo
     );
   }
   return (
-    <div className="games-panel">
-      <div className="games-head">
-        <button className="btn subtle" onClick={() => navigate({ page: "list" })}>‹ My games</button>
-        <h2 className="games-title">Game</h2>
-      </div>
+    <div className="panel games-panel">
+      <GamesHead back="My games" onBack={() => navigate({ page: "list" })} title="Game" sub={sub} />
       {body}
     </div>
   );
@@ -182,7 +183,7 @@ export default function GamesList({ route, inGame }: { route: GamesRoute; inGame
   else if (route.page === "game") page = <GameView id={route.id} onRemoved={onRemoved} />;
   else {
     let body;
-    if (list.status === "loading") body = <p className="games-empty">Loading…</p>;
+    if (list.status === "loading") body = <GamesNotice title="Loading…" />;
     else if (list.status === "failed") {
       body = list.reason === "signed_out" ? <SignInPrompt />
         : <p className="lobby-error" role="alert">Could not load your games ({list.code || "no connection"}).</p>;
@@ -190,7 +191,12 @@ export default function GamesList({ route, inGame }: { route: GamesRoute; inGame
       body = (
         <>
           {list.games.length === 0 ? (
-            <p className="games-empty">No saved games yet. Games you play while signed in appear here.</p>
+            <GamesNotice title="No saved games yet">
+              <p>Games you play while signed in appear here.</p>
+              <button className="btn gold big games-cta" onClick={() => navigate(null)}>
+                {inGame ? "Back to game" : "Play a game"}
+              </button>
+            </GamesNotice>
           ) : (
             <ul className="games-list">
               {list.games.map((g) => (
@@ -214,11 +220,9 @@ export default function GamesList({ route, inGame }: { route: GamesRoute; inGame
       );
     }
     page = (
-      <div className="games-panel">
-        <div className="games-head">
-          <button className="btn subtle" onClick={() => navigate(null)}>{inGame ? "‹ Back to game" : "‹ Lobby"}</button>
-          <h2 className="games-title">My games</h2>
-        </div>
+      <div className="panel games-panel">
+        <GamesHead back={inGame ? "Back to game" : "Lobby"} onBack={() => navigate(null)} title="My games"
+                   sub="Games you played while signed in" />
         {body}
       </div>
     );

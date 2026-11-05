@@ -1,0 +1,14 @@
+{
+ "name": "r50sp-ultra-rehearsal-1001090000",
+ "purpose": "other",
+ "seed0": 1001090000,
+ "clusters": 100,
+ "span": [
+  1001090000,
+  1001090100
+ ],
+ "created_at": "2026-11-04T23:10:00Z",
+ "host": "jerrys-mac-studio (ssh ultra)",
+ "git_head": "78db227bc13005cebc8ab2beb5e180888bd6799b",
+ "note": "R50 self-play Ultra host rehearsal block (non-scientific execution evidence, ~50-200 rounds, one kill-and-resume); packet ~/shengji-archive/2026-11-04-r50-selfplay-packet. RESERVED BEFORE DEALING."
+}

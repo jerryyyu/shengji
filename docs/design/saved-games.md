@@ -93,7 +93,7 @@ INDEX game_players_user ON game_players(user_id, game_id)
   (only `round_start`, `declare`, `trump`, `bury`, `play` without `decision`,
   `trick`, `round_end`; about 5 % of the raw size), and only then may raw logs that
   `fetch_fly_logs.sh` has already copied be removed. Cap the history list at the
-  latest 200 games per account (older ones stay until the 12 months are up).
+  latest 100 games per account (older ones stay until the 12 months are up).
 - **Backups.** The volume snapshot covers both files today; check the Fly
   snapshot schedule and retention before launch. The Litestream plan in
   `docs/accounts.md` "Backup" becomes worth doing once history exists.
@@ -108,13 +108,12 @@ INDEX game_players_user ON game_players(user_id, game_id)
   other hands and the kitty only once that round's `round_end` exists; an
   unfinished round shows only the cards played.
 - Never served: `decision`, `model_search`, `bot_timing`, `declare_decision`,
-  `bot_seed`. Chat is left out in phase 1 (it is other people's text).
+  `bot_seed`. Chat is never saved or served (it is other people's text).
 - Other players appear under the names they had in that room, as at the table.
 - Deletion: `DELETE /api/me/games/{id}` hides the game from that account;
   `DELETE /api/me` removes the user, sessions and links (cascade). The
-  anonymous room log is unchanged; it never held the account. One line under
-  the sign-in button says so: "Signed in, your games appear in My games. Game
-  records without your account are kept to improve the bots."
+  anonymous room log is unchanged; it never held the account. No consent
+  line is added to the sign-in flow.
 
 ## 4. API and UI sketch
 
@@ -157,17 +156,17 @@ INDEX game_players_user ON game_players(user_id, game_id)
 3. **Read API with the privacy filter.** Tests: an owner sees the game, another
    account gets 404; hidden hands before `round_end`; decision fields absent.
 4. **Web "My games" and replay** (vitest coverage like `App.auth.test.tsx`).
-5. **Deletion and consent line.**
+5. **Deletion.**
 6. *(phase 2)* Rejoin by account. *(later)* Stripped replay compaction once
    the volume reaches the threshold.
 
-## Decisions for Jerry
+## Decisions (Jerry, 2026-11-04)
 
-1. Scope: phase 1 (history + replay) now, phase 2 next, phase 3 deferred?
-2. Retention: 12 months and a 200-game list cap, or other numbers?
-3. Guests: when a guest signs in during a game, the seat links from that round
-   on (proposed). Should they also claim the earlier rounds of that game? Games
-   finished as a guest are never claimed (proposed: no).
-4. Chat in replays: out (proposed) or in?
-5. Consent wording under the sign-in button, and whether to show the bots'
-   reasoning to the owner later as an opt-in "analysis" view (proposed: no for now).
+1. Scope: phase 1 (history + replay) now, phase 2 next, phase 3 deferred.
+2. Retention: 12 months, and the history list shows the latest 100 games.
+3. Guests: guest play is not saved. A seat links only while it is signed in
+   to an account; a guest who creates or signs in to an account mid-game is
+   linked from that round on, and the earlier rounds stay unlinked. Games
+   finished as a guest are never claimed.
+4. Chat: not saved.
+5. No consent line at sign-in. The bots' reasoning stays out of replays.

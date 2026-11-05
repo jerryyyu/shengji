@@ -165,6 +165,98 @@ def _migrate_v2(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "users", "display_name", "TEXT NULL")
 
 
+_USERS_V3 = """
+    CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        google_sub TEXT NOT NULL UNIQUE,
+        email TEXT,
+        name TEXT,
+        picture TEXT,
+        created_at INTEGER NOT NULL,
+        last_login_at INTEGER NOT NULL,
+        display_name TEXT NULL
+    )"""
+_SESSIONS_V3 = """
+    CREATE TABLE sessions_v3 (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+    )"""
+# The room log stays the source of truth; these tables hold only which
+# account sat where, for which rounds, and a small summary, so no log record
+# ever carries an account id.
+_GAMES_V3 = """
+    CREATE TABLE IF NOT EXISTS games (
+        id TEXT PRIMARY KEY,
+        room_code TEXT NOT NULL,
+        log_file TEXT NOT NULL,
+        log_offset INTEGER NULL,
+        started_at INTEGER NOT NULL,
+        last_round INTEGER NOT NULL DEFAULT 1,
+        ended_at INTEGER NULL,
+        final_levels TEXT NULL,
+        games_won TEXT NULL,
+        incomplete INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS games_started ON games(started_at);
+    CREATE TABLE IF NOT EXISTS game_players (
+        game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        seat INTEGER NOT NULL,
+        from_round INTEGER NOT NULL,
+        to_round INTEGER NULL,
+        hidden INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (game_id, user_id, seat, from_round)
+    );
+    CREATE INDEX IF NOT EXISTS game_players_user ON game_players(user_id, game_id)
+"""
+
+
+def _users_autoincrement(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+    return row is not None and "AUTOINCREMENT" in row["sql"].upper()
+
+
+def _migrate_v3(conn: sqlite3.Connection) -> None:
+    """Rebuild ``users`` with ``AUTOINCREMENT`` so a deleted account's id is
+    never handed to a later signup (a live seat or socket may still hold the
+    old id), then add the saved-games tables.
+
+    SQLite cannot add ``AUTOINCREMENT`` in place, and ``PRAGMA foreign_keys``
+    cannot change inside the migration's transaction, so the rebuild never
+    deletes a referenced ``users`` row: the old table is renamed first
+    (``sessions`` now references the renamed table), the new ``users`` and a
+    new ``sessions`` are filled from the old rows with their ids, and only then
+    are the old tables dropped, sessions first. Every user, id and session is
+    kept; the sequence starts at the largest kept id. A re-run on an
+    already-rebuilt table only re-creates what is missing."""
+    _add_column_if_missing(conn, "users", "display_name", "TEXT NULL")
+    if not _users_autoincrement(conn):
+        conn.execute("ALTER TABLE users RENAME TO users_v2")
+        conn.execute(_USERS_V3)
+        conn.execute(
+            """INSERT INTO users(id, google_sub, email, name, picture, created_at,
+                                 last_login_at, display_name)
+               SELECT id, google_sub, email, name, picture, created_at,
+                      last_login_at, display_name FROM users_v2 ORDER BY id""")
+        conn.execute(_SESSIONS_V3)
+        conn.execute(
+            """INSERT INTO sessions_v3(token_hash, user_id, created_at, expires_at)
+               SELECT token_hash, user_id, created_at, expires_at FROM sessions""")
+        conn.execute("DROP TABLE sessions")
+        conn.execute("DROP TABLE users_v2")
+        conn.execute("ALTER TABLE sessions_v3 RENAME TO sessions")
+        conn.execute("CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at)")
+    for statement in filter(None, (s.strip() for s in _GAMES_V3.split(";"))):
+        conn.execute(statement)
+    problems = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if problems:
+        raise sqlite3.IntegrityError(f"foreign key check failed after v3: {len(problems)} rows")
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -192,7 +284,14 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     # version 2: a player-chosen display name; NULL means "use the Google
     # first name".
     _migrate_v2,
+    # version 3: account ids that are never reused, and saved games.
+    _migrate_v3,
 ]
+
+# Saved games: kept for twelve months; the history list shows the latest
+# ``GAMES_LIST_CAP`` of them.
+GAMES_RETENTION_SECONDS = 365 * 86400
+GAMES_LIST_CAP = 100
 
 
 def _hash_token(token: str) -> str:
@@ -200,7 +299,7 @@ def _hash_token(token: str) -> str:
 
 
 class Store:
-    """Users and sessions in one SQLite file. Every public method is
+    """Users, sessions and saved-game links in one SQLite file. Every public method is
     synchronous and opens its own connection; ``run`` moves one onto a
     worker thread for use from the event loop."""
 
@@ -208,6 +307,8 @@ class Store:
         self._path = Path(path) if path is not None else None
         self._ready = False
         self._lock = threading.Lock()
+        # Ids deleted through ``DELETE /api/me`` since this process started.
+        self.deleted_ids: set[int] = set()
 
     @property
     def path(self) -> Path:
@@ -340,6 +441,181 @@ class Store:
             row = conn.execute("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?",
                                (user_id,)).fetchone()
             return int(row["n"])
+
+    # -- saved games
+    def link_seat(self, game: Mapping[str, Any], user_id: int, seat: int,
+                  from_round: int) -> bool:
+        """Open a link from ``from_round`` on for one account at one seat.
+
+        ``game`` is the header the room holds (``id``, ``room_code``,
+        ``log_file``, ``log_offset``, ``started_at``, ``last_round``,
+        ``incomplete``); the ``games`` row is created by the first link, so
+        a game nobody signed in to never reaches the database. An account
+        deleted while its seat is still live links nothing. Returns whether
+        a link row is open afterwards."""
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+                    conn.execute("COMMIT")
+                    return False
+                conn.execute(
+                    """INSERT INTO games(id, room_code, log_file, log_offset, started_at,
+                                         last_round, incomplete)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(id) DO NOTHING""",
+                    (game["id"], game["room_code"], game["log_file"], game["log_offset"],
+                     int(game["started_at"]), int(game.get("last_round") or 1),
+                     1 if game.get("incomplete") else 0))
+                conn.execute(
+                    """INSERT INTO game_players(game_id, user_id, seat, from_round, to_round)
+                       VALUES (?, ?, ?, ?, NULL)
+                       ON CONFLICT(game_id, user_id, seat, from_round)
+                       DO UPDATE SET to_round = NULL""",
+                    (game["id"], user_id, seat, from_round))
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        return True
+
+    def close_link(self, game_id: str, user_id: int, seat: int, to_round: int) -> int:
+        """Close the open link of one account at one seat after ``to_round``;
+        returns the number of rows closed."""
+        with closing(self._open()) as conn:
+            cur = conn.execute(
+                """UPDATE game_players SET to_round = ?
+                   WHERE game_id = ? AND user_id = ? AND seat = ? AND to_round IS NULL""",
+                (to_round, game_id, user_id, seat))
+            return cur.rowcount
+
+    def record_round_start(self, game_id: str, round_no: int) -> None:
+        with closing(self._open()) as conn:
+            conn.execute("UPDATE games SET last_round = MAX(last_round, ?) WHERE id = ?",
+                         (round_no, game_id))
+
+    def record_round_end(self, game_id: str, round_no: int, final_levels: Any,
+                         games_won: Any, now: float | None = None) -> None:
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            conn.execute(
+                """UPDATE games SET last_round = MAX(last_round, ?), ended_at = ?,
+                       final_levels = ?, games_won = ? WHERE id = ?""",
+                (round_no, t, json.dumps(final_levels), json.dumps(games_won), game_id))
+
+    def mark_incomplete(self, game_id: str) -> None:
+        with closing(self._open()) as conn:
+            conn.execute("UPDATE games SET incomplete = 1 WHERE id = ?", (game_id,))
+
+    @staticmethod
+    def _game_dict(row: sqlite3.Row) -> dict:
+        game = dict(row)
+        for key in ("final_levels", "games_won"):
+            game[key] = json.loads(game[key]) if game[key] is not None else None
+        game["incomplete"] = bool(game["incomplete"]) or game["log_offset"] is None
+        return game
+
+    def list_games(self, user_id: int, before: tuple[int, str] | None = None,
+                   limit: int = 50, now: float | None = None) -> list[dict]:
+        """The account's visible games, newest first by ``(started_at, id)``:
+        within retention, not hidden, among its latest ``GAMES_LIST_CAP``, and
+        strictly after the cursor ``before`` in that order when given (a
+        ``(started_at, id)`` pair, see ``game_cursor``), so games that share a
+        start second are neither skipped nor repeated across pages. Each game
+        carries its ``links`` (seat, from_round, to_round) for the account."""
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            rows = conn.execute(
+                """SELECT g.* FROM games g
+                   WHERE g.started_at >= ? AND EXISTS (
+                       SELECT 1 FROM game_players p
+                       WHERE p.game_id = g.id AND p.user_id = ? AND p.hidden = 0)
+                   ORDER BY g.started_at DESC, g.id DESC LIMIT ?""",
+                (t - GAMES_RETENTION_SECONDS, user_id, GAMES_LIST_CAP)).fetchall()
+            games = [self._game_dict(r) for r in rows
+                     if before is None
+                     or (r["started_at"], r["id"]) < (int(before[0]), str(before[1]))
+                     ][:max(0, limit)]
+            for game in games:
+                game["links"] = self._links(conn, game["id"], user_id)
+            return games
+
+    @staticmethod
+    def game_cursor(game: Mapping[str, Any]) -> str:
+        """The paging cursor that lists the games after ``game``: an opaque
+        ``"<started_at>:<id>"`` string to clients."""
+        return f"{int(game['started_at'])}:{game['id']}"
+
+    @staticmethod
+    def parse_game_cursor(raw: str) -> tuple[int, str]:
+        """``"<started_at>:<id>"`` as ``(started_at, id)``. A bare integer is
+        read as ``(started_at, "")``: every game started before that second.
+        Anything else raises ``ValueError``."""
+        stamp, sep, game_id = raw.partition(":")
+        if not stamp.isdigit() or len(stamp) > 12 or len(game_id) > 64:
+            raise ValueError("bad cursor")
+        if sep and not re.fullmatch(r"[0-9A-Za-z_-]+", game_id):
+            raise ValueError("bad cursor")
+        return int(stamp), game_id
+
+    def user_game(self, user_id: int, game_id: str, now: float | None = None) -> dict | None:
+        """One game with the account's links, or None when the account has
+        no visible link to it (unknown, someone else's, hidden or past
+        retention all read the same)."""
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            row = conn.execute("SELECT * FROM games WHERE id = ? AND started_at >= ?",
+                               (game_id, t - GAMES_RETENTION_SECONDS)).fetchone()
+            if row is None:
+                return None
+            links = self._links(conn, game_id, user_id)
+            if not links:
+                return None
+            game = self._game_dict(row)
+            game["links"] = links
+            return game
+
+    @staticmethod
+    def _links(conn: sqlite3.Connection, game_id: str, user_id: int) -> list[dict]:
+        return [dict(r) for r in conn.execute(
+            """SELECT seat, from_round, to_round FROM game_players
+               WHERE game_id = ? AND user_id = ? AND hidden = 0
+               ORDER BY from_round, seat""", (game_id, user_id))]
+
+    def hide_game(self, user_id: int, game_id: str) -> int:
+        """Hide a game from one account; returns the rows hidden (0 when the
+        account had no visible link)."""
+        with closing(self._open()) as conn:
+            return conn.execute(
+                "UPDATE game_players SET hidden = 1 WHERE game_id = ? AND user_id = ? AND hidden = 0",
+                (game_id, user_id)).rowcount
+
+    def purge_games(self, now: float | None = None) -> int:
+        """Delete games past retention (their links go by cascade) and games
+        no account links any more; returns the games deleted."""
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            return conn.execute(
+                """DELETE FROM games WHERE started_at < ? OR NOT EXISTS (
+                       SELECT 1 FROM game_players p WHERE p.game_id = games.id)""",
+                (t - GAMES_RETENTION_SECONDS,)).rowcount
+
+    def delete_user(self, user_id: int) -> bool:
+        """Remove a user; its sessions and game links go by cascade, and so
+        do the games no other account links. The anonymous room logs are
+        untouched: they never held the account."""
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                gone = conn.execute("DELETE FROM users WHERE id = ?", (user_id,)).rowcount
+                conn.execute(
+                    """DELETE FROM games WHERE NOT EXISTS (
+                           SELECT 1 FROM game_players p WHERE p.game_id = games.id)""")
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        return gone > 0
 
     async def run(self, fn: Callable[..., Any], *args: Any) -> Any:
         loop = asyncio.get_running_loop()
@@ -641,6 +917,41 @@ async def patch_me(body: DisplayNamePatch, request: Request) -> dict:
     if updated is None:
         raise HTTPException(status_code=401, detail="Not signed in.")
     return public_user(updated)
+
+
+# Called on the event loop with the id, before the row is deleted: the game
+# server detaches the id from every live seat.
+USER_DELETED_HOOKS: list[Callable[[int], None]] = []
+
+
+def is_deleted(user_id: int) -> bool:
+    """Whether the account was deleted while this process runs: a socket
+    opened before the delete still holds the id and reads as signed out."""
+    return user_id in STORE.deleted_ids
+
+
+@router.delete("/me", status_code=204)
+async def delete_me(request: Request) -> Response:
+    """Delete the account: the user row, its sessions and its saved-game
+    links (by cascade). Live seats and open sockets holding the account are
+    detached first, so nothing links the id afterwards (ids are never
+    reused, schema v3). The anonymous room logs never held the account and
+    are unchanged."""
+    if not LIMITER.allow(client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many changes; try again in a minute.")
+    user = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in.")
+    STORE.deleted_ids.add(int(user["id"]))
+    for hook in USER_DELETED_HOOKS:
+        try:
+            hook(int(user["id"]))
+        except Exception:           # noqa: BLE001 - the delete still happens
+            log.exception("account-deletion hook failed")
+    await STORE.run(STORE.delete_user, user["id"])
+    response = Response(status_code=204)
+    _clear_session_cookie(response, request)
+    return response
 
 
 @router.post("/auth/logout")

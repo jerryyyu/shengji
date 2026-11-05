@@ -325,7 +325,7 @@ def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, 
         users = db.execute("SELECT google_sub, email, name FROM users").fetchall()
     assert rows == [(accounts_on._hash_token(token),)]
     assert users == [("10987654321", "jerry@example.com", "Jerry Yu")]
-    assert accounts_on.STORE.schema_version() == 2
+    assert accounts_on.STORE.schema_version() == len(accounts_on.SCHEMA)
 
     # The cookie is Secure, so httpx's jar withholds it from the http test
     # origin; the browser sends it, and here the header is passed by hand.
@@ -579,7 +579,7 @@ def test_a_v1_database_upgrades_to_v2_once_and_keeps_its_rows(accounts_on, tmp_p
     assert _columns(fresh, "users") == _columns(path, "users")
 
     store = accounts_on.Store(path)
-    assert store.schema_version() == 2
+    assert store.schema_version() == len(accounts_on.SCHEMA)
     assert "display_name" in _columns(path, "users")
     row = store.user(1)
     assert row["name"] == "Old Timer" and row["display_name"] is None
@@ -587,13 +587,13 @@ def test_a_v1_database_upgrades_to_v2_once_and_keeps_its_rows(accounts_on, tmp_p
     # Re-opening (a new Store on the same file) is a no-op, and the migration
     # step itself tolerates a re-run on an already-migrated table.
     again = accounts_on.Store(path)
-    assert again.schema_version() == 2
+    assert again.schema_version() == len(accounts_on.SCHEMA)
     with accounts_sqlite(path) as db:
         db.row_factory = accounts_on.sqlite3.Row
         accounts_on._migrate_v2(db)
     assert _columns(path, "users").count("display_name") == 1
-    # A brand-new database lands at v2 directly.
-    assert accounts_on.STORE.schema_version() == 2
+    # A brand-new database lands at the current version directly.
+    assert accounts_on.STORE.schema_version() == len(accounts_on.SCHEMA)
     assert "display_name" in _columns(accounts_on.STORE.path, "users")
 
 
@@ -721,3 +721,218 @@ def test_a_chosen_display_name_is_the_room_default_but_a_typed_name_wins(account
             joined = _drain(c, "room")
             names = {p["seat"]: p["name"] for p in joined["players"]}
             assert names[2] == "Captain"
+
+
+# ------------------------------------------------------------ saved games
+def _v2_database(path):
+    """The version-2 layout: version 1 plus the display-name column."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with accounts_sqlite(path) as db:
+        db.executescript(V1_SCHEMA)
+        db.execute("ALTER TABLE users ADD COLUMN display_name TEXT NULL")
+        db.execute("UPDATE schema_version SET version = 2")
+        db.execute("UPDATE users SET display_name = 'Oldie'")
+        db.commit()
+
+
+def _tables(path):
+    with accounts_sqlite(path) as db:
+        return {row[0] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table', 'index')")}
+
+
+def test_a_v2_database_upgrades_to_v3_once_and_keeps_its_rows(accounts_on, tmp_path):
+    path = tmp_path / "v2" / "accounts.sqlite3"
+    _v2_database(path)
+    with accounts_sqlite(path) as db:
+        db.execute("""INSERT INTO users(google_sub, email, name, picture, created_at,
+                                        last_login_at, display_name)
+                      VALUES ('sub-v2b', 'b@example.com', 'Second', NULL, 2, 2, NULL)""")
+        db.execute("INSERT INTO sessions VALUES ('hash-1', 1, 1, 9999999999)")
+        db.execute("INSERT INTO sessions VALUES ('hash-2', 2, 1, 9999999999)")
+        db.commit()
+    assert "games" not in _tables(path)
+    store = accounts_on.Store(path)
+    assert store.schema_version() == 3 == len(accounts_on.SCHEMA)
+    assert {"games", "game_players", "game_players_user", "games_started",
+            "sessions_user", "sessions_expires"} <= _tables(path)
+    assert "users_v2" not in _tables(path) and "sessions_v3" not in _tables(path)
+    row = store.user(1)
+    assert row["name"] == "Old Timer" and row["display_name"] == "Oldie"
+    assert store.user(2)["google_sub"] == "sub-v2b"
+    with accounts_sqlite(path) as db:
+        users_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'users'").fetchone()[0]
+        sessions_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'sessions'").fetchone()[0]
+        assert "AUTOINCREMENT" in users_sql.upper()
+        assert "REFERENCES users(id) ON DELETE CASCADE" in sessions_sql
+        assert sorted(db.execute("SELECT token_hash, user_id FROM sessions")) == [
+            ("hash-1", 1), ("hash-2", 2)]
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert _columns(path, "users") == [
+        "id", "google_sub", "email", "name", "picture", "created_at", "last_login_at",
+        "display_name"]
+    # The sessions still follow their users, and the highest id is never
+    # handed out again after its account is deleted.
+    store.link_seat(_game(), 2, 0, 1)
+    assert store.delete_user(2) is True
+    with accounts_sqlite(path) as db:
+        assert db.execute("SELECT user_id FROM sessions").fetchall() == [(1,)]
+        assert db.execute("SELECT COUNT(*) FROM game_players").fetchone()[0] == 0
+    newcomer = store.upsert_user(_claims(sub="after-upgrade"))
+    assert newcomer["id"] == 3
+    # The step re-runs harmlessly and a new Store does nothing.
+    with accounts_sqlite(path) as db:
+        db.row_factory = accounts_on.sqlite3.Row
+        accounts_on._migrate_v3(db)
+        db.commit()
+    again = accounts_on.Store(path)
+    assert again.schema_version() == 3
+    assert again.user(1)["display_name"] == "Oldie"
+    with accounts_sqlite(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 1
+    assert _columns(path, "game_players") == [
+        "game_id", "user_id", "seat", "from_round", "to_round", "hidden"]
+
+
+def test_account_ids_are_never_reused_after_a_delete(accounts_on):
+    """A live seat or socket can still hold a deleted account's id; a later
+    signup must not receive it, and a link write for it must be refused."""
+    store = accounts_on.STORE
+    a, b = _two_users(store)
+    assert b > a
+    assert store.delete_user(b) is True
+    stranger = store.upsert_user(_claims(sub="stranger"))["id"]
+    assert stranger not in (a, b) and stranger > b
+    assert store.link_seat(_game("after"), b, 0, 1) is False
+    assert store.list_games(stranger) == []
+    with accounts_sqlite(store.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM games").fetchone()[0] == 0
+
+
+def _game(game_id="g1", started_at=None, **over):
+    header = {"id": game_id, "room_code": "ABCD", "log_file": "ABCD.jsonl",
+              "log_offset": 0, "started_at": int(started_at or time.time()),
+              "last_round": 1, "incomplete": False}
+    header.update(over)
+    return header
+
+
+def _two_users(store):
+    a = store.upsert_user(_claims(sub="a", email="a@example.com"))
+    b = store.upsert_user(_claims(sub="b", email="b@example.com"))
+    return a["id"], b["id"]
+
+
+def test_saved_game_links_open_close_and_list_per_account(accounts_on):
+    store = accounts_on.STORE
+    a, b = _two_users(store)
+    assert store.list_games(a) == []
+    assert store.link_seat(_game(), a, 0, 1) is True
+    # The games row is created once; a second link reuses it.
+    assert store.link_seat(_game(last_round=7), b, 2, 3) is True
+    store.record_round_start("g1", 2)
+    store.record_round_end("g1", 2, ["4", "2"], [0, 0], now=1234)
+    [game] = store.list_games(a)
+    assert game["id"] == "g1" and game["last_round"] == 2 and game["ended_at"] == 1234
+    assert game["final_levels"] == ["4", "2"] and game["games_won"] == [0, 0]
+    assert game["incomplete"] is False
+    assert game["links"] == [{"seat": 0, "from_round": 1, "to_round": None}]
+    assert store.user_game(b, "g1")["links"] == [{"seat": 2, "from_round": 3, "to_round": None}]
+    # Closing a link ends its interval; a new seat opens its own row.
+    assert store.close_link("g1", a, 0, 2) == 1
+    assert store.close_link("g1", a, 0, 2) == 0
+    store.link_seat(_game(), a, 1, 3)
+    assert store.user_game(a, "g1")["links"] == [
+        {"seat": 0, "from_round": 1, "to_round": 2},
+        {"seat": 1, "from_round": 3, "to_round": None}]
+    # Re-opening the same seat at the same round re-opens the row.
+    store.close_link("g1", a, 1, 3)
+    store.link_seat(_game(), a, 1, 3)
+    assert store.user_game(a, "g1")["links"][-1]["to_round"] is None
+    store.mark_incomplete("g1")
+    assert store.user_game(a, "g1")["incomplete"] is True
+    # Unknown game, unknown account: nothing.
+    assert store.user_game(a, "nope") is None
+    c = store.upsert_user(_claims(sub="c"))["id"]
+    assert store.user_game(c, "g1") is None
+
+
+def test_a_deleted_account_links_nothing(accounts_on):
+    store = accounts_on.STORE
+    assert store.link_seat(_game(), 99, 0, 1) is False
+    with accounts_sqlite(store.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM games").fetchone()[0] == 0
+
+
+def test_list_is_newest_first_paged_capped_and_retained(accounts_on):
+    store = accounts_on.STORE
+    a, _b = _two_users(store)
+    now = int(time.time())
+    for i in range(accounts_on.GAMES_LIST_CAP + 5):
+        store.link_seat(_game(f"g{i:03d}", started_at=now - 1000 + i), a, 0, 1)
+    store.link_seat(_game("old", started_at=now - accounts_on.GAMES_RETENTION_SECONDS - 5),
+                    a, 0, 1)
+    first = store.list_games(a, limit=50)
+    assert [g["id"] for g in first][:2] == ["g104", "g103"] and len(first) == 50
+    cursor = accounts_on.Store.parse_game_cursor
+    second = store.list_games(a, before=cursor(store.game_cursor(first[-1])), limit=50)
+    assert second[0]["id"] == "g054" and len(second) == 50
+    third = store.list_games(a, before=cursor(store.game_cursor(second[-1])), limit=50)
+    # 100 games are ever listed; the five oldest (and the expired one) are not.
+    assert [g["id"] for g in third] == []
+    assert store.user_game(a, "g000") is not None          # still readable by id
+    assert store.user_game(a, "old") is None               # past retention
+    assert store.purge_games() == 1
+    with accounts_sqlite(store.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM games WHERE id = 'old'").fetchone()[0] == 0
+
+
+def test_list_pages_through_games_that_share_a_start_second(accounts_on):
+    store = accounts_on.STORE
+    a, _b = _two_users(store)
+    now = int(time.time())
+    ids = [f"t{i}" for i in range(5)]
+    for game_id in ids:
+        store.link_seat(_game(game_id, started_at=now - 10), a, 0, 1)
+    store.link_seat(_game("older", started_at=now - 20), a, 0, 1)
+    seen, before = [], None
+    while True:
+        page = store.list_games(a, before=before, limit=2)
+        if not page:
+            break
+        seen += [g["id"] for g in page]
+        before = accounts_on.Store.parse_game_cursor(store.game_cursor(page[-1]))
+    assert seen == ["t4", "t3", "t2", "t1", "t0", "older"]
+    # A bare integer cursor still means "started before that second".
+    assert [g["id"] for g in store.list_games(a, before=(now - 10, ""))] == ["older"]
+
+
+@pytest.mark.parametrize("raw", ["", "x", "12:", "-1:a", "1:a b", "1:" + "a" * 65, "1" * 13])
+def test_bad_game_cursors_are_refused(accounts_on, raw):
+    with pytest.raises(ValueError):
+        accounts_on.Store.parse_game_cursor(raw)
+
+
+def test_hide_and_account_delete(accounts_on):
+    store = accounts_on.STORE
+    a, b = _two_users(store)
+    store.link_seat(_game("shared"), a, 0, 1)
+    store.link_seat(_game("shared"), b, 1, 1)
+    store.link_seat(_game("mine"), a, 0, 1)
+    token = store.create_session(a)
+    assert store.hide_game(a, "shared") == 1
+    assert store.hide_game(a, "shared") == 0
+    assert [g["id"] for g in store.list_games(a)] == ["mine"]
+    assert store.user_game(a, "shared") is None
+    assert store.user_game(b, "shared") is not None       # hiding is per account
+    assert store.delete_user(a) is True
+    assert store.session_user(token) is None
+    assert store.user(a) is None
+    with accounts_sqlite(store.path) as db:
+        assert db.execute("SELECT COUNT(*) FROM game_players WHERE user_id = ?",
+                          (a,)).fetchone()[0] == 0
+        games = {r[0] for r in db.execute("SELECT id FROM games")}
+    assert games == {"shared"}                             # b still links it
+    assert store.delete_user(a) is False

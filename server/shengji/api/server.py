@@ -29,7 +29,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts
+from . import accounts, saved_games
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
@@ -162,6 +162,8 @@ class Activity:
     rounds_recorded: int = 0
     records_written: int = 0
     record_write_failures: int = 0
+    # saved-game link writes that failed; the game went on without them
+    account_link_failures: int = 0
     last_record_write_t: float | None = None
     last_record_failure: dict | None = None
 
@@ -180,6 +182,9 @@ class Activity:
             "errno_name": _errno_name(exc),
         }
 
+    def account_link_failed(self) -> None:
+        self.account_link_failures += 1
+
     def health(self) -> dict:
         return {
             "rooms_created": self.rooms_created,
@@ -187,6 +192,7 @@ class Activity:
             "rounds_recorded": self.rounds_recorded,
             "records_written": self.records_written,
             "record_write_failures": self.record_write_failures,
+            "account_link_failures": self.account_link_failures,
             "last_record_write": (None if self.last_record_write_t is None
                                   else _iso_utc(self.last_record_write_t)),
             "last_record_failure": (None if self.last_record_failure is None
@@ -286,6 +292,9 @@ class Room:
     evaluation_invalidated: bool = False
     # Fixed at creation, never set from join/action messages. Not HUMAN-C1.
     experimental_policy: str | None = None
+    # The saved-game link of the running game (``saved_games.GameLink``), or
+    # None. Server-only: it enters no state frame and no log record.
+    saved_game: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.bot is None:
@@ -321,13 +330,15 @@ class Room:
     def round(self) -> Round | None:
         return self.game.round if self.game else None
 
-    def log_event(self, kind: str, **data) -> None:
-        """Append one JSONL record.
+    def log_event(self, kind: str, **data) -> int | None:
+        """Append one JSONL record; returns the byte offset it starts at, or
+        None when it did not reach disk.
 
         Ordinary game logging remains best-effort.  Evaluation logging fails
         closed because continuing an unrecorded assigned session would create
         evidence that cannot be audited.
         """
+        offset: int | None = None
         try:
             assert self.log_dir is not None
             self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -347,10 +358,16 @@ class Room:
                     }
                 rec["experiment"] = self.evaluation.log_payload()
                 rec["training_excluded"] = True
-            with open(self.log_dir / f"{self.code}.jsonl", "a") as f:
-                f.write(json.dumps(rec) + "\n")
+            # Binary append: the offset is an exact byte position, and the
+            # bytes are the same as a text write (json.dumps emits ASCII).
+            with open(self.log_dir / f"{self.code}.jsonl", "ab") as f:
+                start = f.seek(0, os.SEEK_END)
+                f.write((json.dumps(rec) + "\n").encode("utf-8"))
+            offset = start
         except OSError as exc:
             ACTIVITY.record_failed(exc)
+            if self.saved_game is not None:
+                saved_games.log_failed(self)
             if self.evaluation is not None:
                 self.evaluation_invalidated = True
                 raise  # evidence rooms fail closed instead of silently playing
@@ -365,6 +382,7 @@ class Room:
                                 _errno_name(exc) or exc.errno)
         else:
             ACTIVITY.record_written(kind)
+        return offset
 
     # ------------------------------------------------------------- id mapping
     def index_round(self) -> None:
@@ -890,11 +908,12 @@ async def advance_if_all_ready(room: Room) -> bool:
     game.start_round()
     room.index_round()
     _log_round_start(room)
+    saved_games.round_started(room)
     _spawn_room_task(room, "deal_task", run_deal(room))
     return True
 
 
-def _log_round_start(room: Room) -> None:
+def _log_round_start(room: Room) -> int | None:
     rnd, game = room.round, room.game
     assert rnd is not None and game is not None
     if room.evaluation is None:
@@ -912,7 +931,7 @@ def _log_round_start(room: Room) -> None:
             }
             for i, seat in enumerate(room.seats)
         ]
-    room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
+    return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
                    players=players, bot_seed=room.bot_seed)
 
@@ -927,6 +946,7 @@ def _log_round_end(room: Room) -> None:
                    new_levels=list(r.new_levels), next_banker=r.next_banker,
                    game_over=r.game_over, games_won=list(r.games_won),
                    point_scored=r.point_scored)
+    saved_games.round_ended(room, r)
 
 
 def bot_step(room: Room, seat: int) -> bool:
@@ -1607,7 +1627,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         ACTIVITY.games_started += 1
         room.game.start_round()
         room.index_round()
-        _log_round_start(room)
+        saved_games.start(room, _log_round_start(room), LOG_DIR)
         _spawn_room_task(room, "deal_task", run_deal(room))
         if room.watchdog_task is None or room.watchdog_task.done():
             room.watchdog_task = asyncio.create_task(watchdog(room))
@@ -1680,8 +1700,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
     user_id = user["id"] if user else None
     default_name = accounts.effective_name(user) if user else ""
 
+    def account_id() -> int | None:
+        # A socket whose account was deleted while it stayed open reads as
+        # signed out from then on.
+        return None if user_id is None or accounts.is_deleted(user_id) else user_id
+
     def player_name(raw: Any) -> str:
-        return str(raw or default_name or "Player")
+        return str(raw or (default_name if account_id() is not None else "") or "Player")
 
     try:
         while True:
@@ -1726,7 +1751,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     # resume token, so a creator had no identity and an
                     # overlapping refresh appended them as a SECOND seat
                     # (Codex, 2026-08-04).
-                    me = Seat(name=player_name(msg.get("name")), user_id=user_id)
+                    me = Seat(name=player_name(msg.get("name")), user_id=account_id())
                     room.seats.append(me)
                     my_gen = _attach(room, me, ws)
                     await broadcast(room)
@@ -1805,9 +1830,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             # owns it: a sign-in reconnect brings one, a
                             # sign-out reconnect (or a guest's by-name
                             # re-entry) brings none and clears it.
-                            me.user_id = user_id
+                            me.user_id = account_id()
+                            saved_games.seat_changed(target, target.seats.index(me))
                         elif len(target.seats) < 4 and target.game is None:
-                            me = Seat(name=name, user_id=user_id)
+                            me = Seat(name=name, user_id=account_id())
                             target.seats.append(me)
                         else:
                             # Take over a BOT's seat, mid-game if need be —
@@ -1887,7 +1913,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             me.token = secrets.token_urlsafe(12)
                             me.is_bot = False
                             me.name = name
-                            me.user_id = user_id
+                            me.user_id = account_id()
+                            saved_games.seat_changed(target, pick)
                             target.log_event("seat_claimed", seat=pick,
                                              name=name, bot=False)
                             claimed_from_bot = True
@@ -2091,9 +2118,22 @@ async def healthz() -> dict:
 from .debug import register_debug  # noqa: E402
 
 register_debug(app, rooms)
-# /api/auth/*, /api/me: registered before the static mount so the catch-all
+def detach_deleted_user(user_id: int) -> None:
+    """``DELETE /api/me`` hook: every live seat held by the deleted account
+    becomes a guest seat, and its open saved-game link is closed, so no later
+    round or game links that id."""
+    for room in list(rooms.values()):
+        for index, seat in enumerate(room.seats):
+            if seat.user_id == user_id:
+                seat.user_id = None
+                saved_games.seat_changed(room, index)
+
+
+accounts.USER_DELETED_HOOKS.append(detach_deleted_user)
+# /api/auth/*, /api/me, /api/me/games: registered before the static mount so the catch-all
 # page handler never shadows them.
 accounts.register_accounts(app)
+saved_games.register_saved_games(app)
 
 # ------------------------------------------------------------------ static
 class WebFiles(StaticFiles):

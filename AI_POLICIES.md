@@ -5,7 +5,7 @@ Last reconciled: **2026-11-01**.
 **Production is release 50** (live 2026-11-04 15:24 EST, Fly v57, redeployed unchanged as v58 and v59; Jerry
 2026-11-04: "I'm good to ship and we can manage what to do with lcc after"): release 49 with the G3 Stage A value
 package `f4f4127e`, the FT1 card-play prior `1fa201b2`, the B1a belief package `028131a0` and belief bury worlds
-`bbw` (ladder row 19). **Release 51**, prepared for deploy (ladder row 20), is release 50 with `lcc32` off (Jerry,
+`bbw` (ladder row 19). **Release 51**, live since 2026-11-06 (Fly v61; ladder row 20), is release 50 with `lcc32` off (Jerry,
 in session 2026-11-06, knowing lccC's cost: "im good to turn off lcc, bc for new data gens, etc it will be
 cheaper"); release 50 is its rollback and release 49 (row 18: release 48 plus `sc8` and `lcc32`) the one below
 (`DEPLOY.md`). **New duels and screens compare against release 50 as served** (Jerry, in session 2026-11-04, "Yes

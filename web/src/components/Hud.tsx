@@ -3,9 +3,9 @@ import type { GameState, Notice, Phase } from "../protocol";
 import { RANKS } from "../protocol";
 import { DUR, prefersReducedMotion } from "../motion";
 import { useCountUp } from "../useCountUp";
-import { conn } from "../ws";
 import { SUIT_SYMBOL, shortLabel } from "./Card";
 import MuteButton from "./MuteButton";
+import LeaveButton from "./LeaveButton";
 import HudMenu from "./HudMenu";
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -41,45 +41,6 @@ function TrumpChip({ state }: { state: GameState }) {
       <span className={`trump-suit ${red ? "red" : "black"}`}>{SUIT_SYMBOL[trump.suit] ?? trump.suit}</span>
       <span className="trump-rank">{trump.rank}</span>
     </span>
-  );
-}
-
-/** Subtle leave control with a confirm step: first tap arms ("Leave game?"),
- * second tap within 3s sends leave_room; otherwise it reverts. */
-function LeaveButton() {
-  const [armed, setArmed] = useState(false);
-  const timer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (timer.current !== null) window.clearTimeout(timer.current);
-    },
-    []
-  );
-
-  const click = () => {
-    if (!armed) {
-      setArmed(true);
-      timer.current = window.setTimeout(() => {
-        timer.current = null;
-        setArmed(false);
-      }, 3000);
-    } else {
-      if (timer.current !== null) window.clearTimeout(timer.current);
-      timer.current = null;
-      setArmed(false);
-      conn.send({ type: "leave_room" });
-    }
-  };
-
-  return (
-    <button
-      className={`leave-btn${armed ? " armed" : ""}`}
-      onClick={click}
-      title="Leave the game (a bot takes over your seat)"
-    >
-      {armed ? "Leave game?" : "Leave"}
-    </button>
   );
 }
 

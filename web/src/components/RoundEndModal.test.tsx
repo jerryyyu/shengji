@@ -1,8 +1,11 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, RoundResult, StatePlayer } from "../protocol";
 import RoundEndModal from "./RoundEndModal";
+
+const sent: unknown[] = [];
+vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, leaveToLobby: () => {} } }));
 
 function makePlayer(seat: number, name: string, team: 0 | 1): StatePlayer {
   return {
@@ -52,11 +55,12 @@ afterEach(() => {
     else Reflect.deleteProperty(HTMLDialogElement.prototype, name);
   }
 });
-function renderModal(result: RoundResult): string {
+function renderModal(result: RoundResult, shown: GameState = state): string {
+  sent.length = 0;
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => { root.render(<RoundEndModal state={state} result={result} />); });
+  act(() => { root.render(<RoundEndModal state={shown} result={result} />); });
   return host.textContent ?? "";
 }
 
@@ -123,5 +127,36 @@ describe("buried kitty reveal", () => {
 
   it("shows nothing when there are no buried cards", () => {
     expect(renderModal(makeResult())).not.toContain("Buried");
+  });
+});
+
+describe("leaving from the round-end screen", () => {
+  // The dialog is modal, so everything behind it (the HUD's Leave control
+  // included) is inert; the way out has to live inside the dialog.
+  const waiting: GameState = { ...state, ready: [0] };
+  const leaveButton = () =>
+    [...host.querySelectorAll("dialog button")].find((b) => /leave/i.test(b.textContent ?? "")) as
+      HTMLButtonElement | undefined;
+
+  it("offers an enabled Leave control inside the dialog while you wait for others", () => {
+    const text = renderModal(makeResult(), waiting);
+    expect(text).toContain("Waiting for others");
+    const leave = leaveButton();
+    expect(leave).toBeDefined();
+    expect(leave!.disabled).toBe(false);
+  });
+
+  it("sends leave_room only on the confirming second tap", () => {
+    renderModal(makeResult(), waiting);
+    act(() => { leaveButton()!.click(); });
+    expect(sent).toEqual([]);
+    expect(leaveButton()!.textContent).toBe("Tap again to leave");
+    act(() => { leaveButton()!.click(); });
+    expect(sent).toEqual([{ type: "leave_room" }]);
+  });
+
+  it("is also available before you confirm the next round", () => {
+    renderModal(makeResult());
+    expect(leaveButton()).toBeDefined();
   });
 });

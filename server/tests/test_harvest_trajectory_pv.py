@@ -580,3 +580,28 @@ def test_value_units_are_the_half_integer_signed_level_not_pt0():
     assert takeover == 0.5 and pt0_level(takeover) == 1.0
     assert trajectory.PV_VALUE_UNITS == "expected-signed-level-half-integer"
     assert "pt0" not in trajectory.PV_VALUE_UNITS
+
+
+@pytest.fixture
+def rcec_policy(package, monkeypatch):
+    yield from _register_data_policy(package, monkeypatch, REFUSAL_CONSTRAINTS=1,
+                                     REFUSAL_EVENT_COMPLETE=1)
+
+
+def test_every_seat_observes_every_committed_play(rcec_policy, monkeypatch):
+    """The round driver feeds each seat's bot the public notice after every committed
+    play, as ai.env.play_round does, so an event-complete refusal ledger (rcec) sees the
+    same notices in a harvest as at a served table."""
+    seen = []
+    real = pv.PVSearchBot.observe_public
+
+    def spy(self, rnd):
+        seen.append((id(self), len(rnd.history) if hasattr(rnd, "history") else None))
+        return real(self, rnd)
+    monkeypatch.setattr(pv.PVSearchBot, "observe_public", spy)
+    config = {"run_id": "observe-test", "policy": rcec_policy, "round_mix": trajectory.DEFAULT_ROUND_MIX,
+              "seed0": SEED0, "cap": 400, "explore_rate": 0.0, "explore_k": 0}
+    records, stats = trajectory.play_trajectory_round(config, 0, SEED0, 0)
+    plays = stats["counts"]["plays"]
+    assert plays > 0 and len(seen) == 4 * plays
+    assert len({bot for bot, _ in seen}) == 4

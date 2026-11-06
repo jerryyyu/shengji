@@ -363,6 +363,7 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 from .. import seeds
+from ..ai.env import observe_committed_play
 from ..ai.mcbot import MCBot, _child_seed
 from ..ai.registry import make_bot
 from ..engine.cards import RANKS
@@ -1901,6 +1902,9 @@ def play_trajectory_round(config: dict, cluster: int, seed: int, mirror: int
         prev_last = rnd.last_trick
         rnd.play(seat, action)
         played = actual_play_after(rnd, seat, prev_last)
+        # every seat reads the public failed-throw notice after each committed
+        # play, as ai.env.play_round and the server do (rcec's ledger needs it)
+        observe_committed_play(rnd, bots)
         if action_key(played) != action_key(action):
             fields["engine_play"] = list(played)
             stats["failed_throws"] += 1

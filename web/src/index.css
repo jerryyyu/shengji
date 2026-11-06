@@ -3662,3 +3662,15 @@ button.games-row { cursor: pointer; }
   .howto-nav { flex-direction: row; align-items: center; justify-content: space-between; }
   .howto-buttons { width: 22rem; }
 }
+
+/* Leave from inside a modal result screen; quieter than the primary action */
+.dialog-leave-btn {
+  display: block;
+  margin: 12px auto 0;
+}
+
+.dialog-leave-btn.armed {
+  background: #3a1e24;
+  border-color: var(--danger);
+  color: #ffb3bc;
+}

@@ -1,0 +1,14 @@
+{
+ "name": "combo51C-rehearsal-248400400",
+ "purpose": "screen",
+ "seed0": 248400400,
+ "clusters": 56,
+ "span": [
+  248400400,
+  248400456
+ ],
+ "created_at": "2026-11-06T11:45:00Z",
+ "host": "ultra",
+ "git_head": "1490b72bf186180b1480c95ed825d1d3e7696737",
+ "note": "combo51C CONFIRMATION head-to-head on the M5 Ultra (the two-stage duel bar's confirmation stage of the combo51 screen, which read SCREEN_PASS +0.0418 [+0.0332, +0.0506] on combo51-lane-248310910): the same arm, release 51 as served + fix e (elt + elm, exact-lead cap 1.6 s) + wht (SHENGJI_PV_WORLD_HISTORY_THROWS=1) + event-complete (SHENGJI_PV_REFUSAL_EVENT_COMPLETE=1) vs release 51 as served (fly.toml at 1490b72b), both at the served budgets, tree = origin/main 1490b72b; packet ~/shengji-archive/2026-11-06-combo51c-packet. Exact-deal clear against the A / FT1 / smv3 / M28 CAT lineages and the B1a lineage (Y belief stores, S17, M17, S58 live): see the packet's seeds/exposure/. The lane's own 56-deal rehearsal block (REHEARSAL=1 of the same launcher); never pooled with the lane, never read for strength. RESERVED BEFORE DEALING."
+}

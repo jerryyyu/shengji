@@ -1226,8 +1226,7 @@ RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("leaf_policy_first_trick", "lpft"),
                                                    ("leaf_greedy_finish", "lgf"),
                                                    ("leaf_greedy_finish_exact_skip", "lgfx"),
-                                                   ("oracle_worlds", "orc"),
-                                                   ("exact_follow_points", "xfpt"))
+                                                   ("oracle_worlds", "orc"))
 ENV_PREFIX = "SHENGJI_PV_"
 _ORACLE_NOT_SERVED = ("oracle_worlds is a screen-harness diagnostic and is never served: "
                       "SHENGJI_PV_ORACLE_WORLDS=1 needs the harness's true-deal hook "

@@ -480,7 +480,7 @@ def test_points_tiebreak_is_opt_in_and_keeps_default_identity():
     on = replace(off, exact_follow_points=True)
     assert pv.recipe_payload(off) == pv.recipe_payload(replace(off, exact_follow_points=False))
     assert 'xfpt' not in pv.pv_policy_name('ffffffff', off)
-    assert 'xfpt' in pv.pv_policy_name('ffffffff', on)
+    assert pv.pv_policy_name('ffffffff', on).split('-').count('xfpt') == 1
     with pytest.raises(pv.PVSearchPolicyError, match='needs exact_follow'):
         pv.recipe_payload(replace(off, exact_follow=False, exact_follow_points=True))
 

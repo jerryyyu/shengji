@@ -3596,3 +3596,69 @@ button.games-row { cursor: pointer; }
   .howto-head { margin: -6px -8px 0; }
   .howto-count { padding-right: 8px; }
 }
+
+/* How to play on a desktop: a wider panel with the headline and rules in a
+   left column beside a larger picture, cards and diagrams scaled about 1.5x.
+   Below 900px the stacked phone layout above is unchanged. The picture
+   spans every text row, so it keeps one size on every step and the text
+   needs no reserved height. */
+@media (min-width: 900px) {
+  .howto-panel { width: 58rem; gap: 20px; }
+  .howto-step {
+    display: grid;
+    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+    grid-template-rows: 1fr auto auto auto 1fr;
+    grid-template-areas: ". visual" "title visual" "body visual" "caption visual" ". visual";
+    column-gap: 36px;
+    row-gap: 12px;
+    /* Tall enough for the scoring table; shorter on a 720px-tall laptop so
+       the panel still fits without scrolling. */
+    min-height: clamp(28rem, 100dvh - 14rem, 34rem);
+  }
+  .howto-step > .howto-visual { grid-area: visual; padding: 24px 20px; gap: 14px; }
+  .howto-title { grid-area: title; text-align: left; }
+  .howto-body,
+  .howto-caption { grid-area: body; margin: 0; max-width: none; min-height: 0; text-align: left; text-wrap: pretty; }
+  .howto-caption { grid-area: caption; font-size: 14px; }
+  .howto-caption:empty { display: none; }
+  .howto-body { font-size: 16px; line-height: 1.55; }
+
+  .howto-cards { --cw: 72px; }
+  .howto-cards.sm { --cw: 52px; }
+  .howto-cards.lg { --cw: 92px; }
+  .howto-cards.sm:has(.lifted) { padding-top: 10px; }
+  .howto-cards .card.lifted { transform: translateY(-11px); }
+  .howto-cap { font-size: 13px; }
+  .howto-note { font-size: 12px; }
+  .howto-label { font-size: 12px; }
+  .howto-order { gap: 16px 22px; }
+  .howto-follow { gap: 16px; }
+  .howto-arrow { font-size: 13px; }
+  .howto-arrow.side { font-size: 26px; }
+
+  .howto-seats { max-width: 440px; height: 180px; }
+  .howto-seats .replay-seat { padding: 6px 14px; font-size: 14px; }
+  .howto-seats-mark { font-size: 40px; }
+  .howto-ladder { gap: 5px; }
+  .howto-rung { font-size: 14px; min-height: 50px; padding: 8px 0; gap: 5px; }
+
+  .howto-stack { max-width: 460px; gap: 10px; }
+  .howto-declare-row { grid-template-columns: 96px 1fr auto; padding: 8px 14px; }
+  .howto-declare-what { font-size: 14px; }
+  .howto-pill { font-size: 13px; }
+
+  .howto-felt { height: 360px; }
+  .howto-felt .trick-cards { --cw: 68px; }
+  .howto-seat-name { font-size: 13px; }
+
+  .howto-kitty { padding: 10px 14px; font-size: 13px; }
+  .howto-kitty-cards.taken { transform: translateY(108px) scale(0.9); }
+
+  .howto-score { height: 84px; }
+  .howto-bands li { font-size: 14px; padding: 5px 12px; grid-template-columns: 76px 1fr; }
+  .howto-ticks { font-size: 11px; }
+
+  /* Dots on the left, the two buttons at their phone width on the right. */
+  .howto-nav { flex-direction: row; align-items: center; justify-content: space-between; }
+  .howto-buttons { width: 22rem; }
+}

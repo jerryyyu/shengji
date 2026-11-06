@@ -5,6 +5,8 @@ leaves no trace in the next decision.  On the hash-pinned release-50 packages,
 pure and compiled.  An identity witness only; no strength claim."""
 from collections import Counter
 
+import pytest
+
 import r50_flag_positions as P
 from shengji.engine import rules_profile as rp
 from test_r50_flag_off_parity import PINS, assert_decision
@@ -15,6 +17,14 @@ from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA
 
 #: the late WJLB position: the exact stages run, over a kitty holding points
 POSITION = ("WJLB2", 18, 1)
+
+
+@pytest.fixture(autouse=True)
+def lift_belief_preparation_clock(monkeypatch):
+    """Identity checks compare complete model draws regardless of host load."""
+    from shengji.ai import belief_numpy
+
+    monkeypatch.setattr(belief_numpy, "PREP_SECONDS", 600.0)
 
 
 def test_production_env_names_no_rules_profile():

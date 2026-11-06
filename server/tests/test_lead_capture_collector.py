@@ -43,6 +43,7 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             self._refusals.observe(root)
             if mode == "calibration" and not root.trick.plays:
                 self._worlds(root, seat)
+                self._worlds(root, seat)
             event = plays[cursor]
             assert event['seat'] == seat
             cursor += 1
@@ -137,6 +138,8 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
             if measured['is_throw']:
                 assert measured['predicted_success'] == float(measured['succeeded'])
                 assert measured['worlds'] == 1
+                assert measured['extra_draws'] == 1
+                assert measured['unavailable'] is None
         assert any(x['throw_calibration']['is_throw'] and not x['throw_calibration']['succeeded'] for x in rows)
     if mode != 'historical':
         from scripts.lead_finish_classify import main as classify
@@ -339,7 +342,11 @@ def test_throw_forecast_uses_sampled_worlds_and_checks_partner():
     assert not committed(measured, ['SJ'])['succeeded']
     assert committed(measured, hand)['succeeded']
     assert forecast(rnd, 0, hand, [worlds[:1]], record, 2)['unavailable']
-    assert forecast(rnd, 0, hand, [worlds, worlds], record, 2)['unavailable']
+    confirmation = forecast(rnd, 0, hand, [worlds, worlds[:1]], record, 2)
+    assert confirmation['unavailable'] is None
+    assert confirmation['predicted_success'] == 0.5
+    assert confirmation['extra_draws'] == 1
+    assert forecast(rnd, 0, hand, [], record, 2)['unavailable']
     assert forecast(rnd, 0, hand, [worlds], {**record, 'work_complete': False}, 2)['unavailable']
     with pytest.raises(ValueError, match='action drift'):
         forecast(rnd, 0, hand, [worlds], {**record, 'played': ['SJ']}, 2)
@@ -356,7 +363,23 @@ def test_throw_summary_refuses_bad_evidence_and_does_not_promote_small_samples(t
     with pytest.raises(ValueError, match='duplicate'):
         summarize([row, row])
     rows = [dict(row, round=i) for i in range(1000)]
-    assert summarize(rows)['verdict'] == 'CALIBRATION_GAP'
+    result = summarize(rows)
+    assert result['verdict'] == 'CALIBRATION_GAP'
+    assert result['overprediction_ci95'] == [0.5, 0.5]
+    sparse = [dict(r, throw_calibration=dict(rec, unseen_union_risky=i < 199))
+              for i, r in enumerate(rows)]
+    assert summarize(sparse)['verdict'] == 'INSUFFICIENT'
+    # Two correlated rounds cannot masquerade as a thousand independent throws.
+    correlated = [dict(row, round=i // 500, trick=i,
+                       throw_calibration=dict(rec, predicted_success=0.7,
+                           accepted=rec['attempted'] if i < 500 else rec['accepted'],
+                           succeeded=i < 500)) for i in range(1000)]
+    uncertain = summarize(correlated)
+    assert uncertain['overprediction'] == pytest.approx(0.2)
+    assert uncertain['risky_rounds'] == 2
+    assert uncertain['overprediction_ci95'] == pytest.approx([-0.3, 0.7])
+    assert uncertain['verdict'] == 'BAR_NOT_MET'
+    assert summarize([dict(r, round=0) for r in correlated])['verdict'] == 'INSUFFICIENT'
     bad = copy.deepcopy(row)
     bad['throw_calibration']['unavailable'] = 'incomplete_decision'
     assert summarize([bad])['verdict'] == 'INCOMPLETE'

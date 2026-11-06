@@ -43,7 +43,8 @@ def forecast(rnd, seat, attempted, draws, record, expected_worlds):
     validate_lead(list(attempted), hand, [], rnd.ordering)
     row = dict(schema='throw-calibration-v1', attempted=list(attempted),
                is_throw=len(decompose(list(attempted), rnd.ordering).components) > 1,
-               predicted_success=None, worlds=0, unavailable=None)
+               predicted_success=None, worlds=0, unavailable=None,
+               extra_draws=max(0, len(draws) - 1))
     if not row['is_throw']:
         return row
     seen = Counter(hand)
@@ -60,8 +61,8 @@ def forecast(rnd, seat, attempted, draws, record, expected_worlds):
         return row
     if sorted(record.get('played', [])) != sorted(attempted):
         raise ValueError('decision action drift')
-    if len(draws) != 1 or len(draws[0]) != expected_worlds or expected_worlds <= 0:
-        row['unavailable'] = 'missing_short_or_multiple_draws'
+    if not draws or len(draws[0]) != expected_worlds or expected_worlds <= 0:
+        row['unavailable'] = 'missing_or_short_base_draw'
         return row
     successes = 0
     for hands, _ in draws[0]:

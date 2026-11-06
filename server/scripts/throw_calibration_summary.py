@@ -8,9 +8,12 @@ from collections import Counter
 import json
 import math
 
+import numpy as np
+
 
 def summarize(rows):
     keys, risky = set(), []
+    clusters = {}
     counts = Counter(leads=0, throws=0, unavailable_throws=0)
     identity = None
     for row in rows:
@@ -49,19 +52,33 @@ def summarize(rows):
             raise ValueError('invalid public risk classification')
         if rec['unseen_union_risky']:
             risky.append((p, int(rec['succeeded'])))
+            cluster = (row['seed'], row['game'], row['round'])
+            clusters.setdefault(cluster, []).append(p - int(rec['succeeded']))
     n = len(risky)
     predicted = sum(p for p, _ in risky) / n if n else None
     realized = sum(y for _, y in risky) / n if n else None
     gap = predicted - realized if n else None
+    ci = None
+    if len(clusters) >= 2:
+        totals = np.array([sum(values) for values in clusters.values()])
+        sizes = np.array([len(values) for values in clusters.values()])
+        rng = np.random.default_rng(0)
+        estimates = []
+        for _ in range(20):
+            indices = rng.integers(len(totals), size=(100, len(totals)))
+            estimates.extend(totals[indices].sum(axis=1) / sizes[indices].sum(axis=1))
+        ci = np.quantile(estimates, [0.025, 0.975]).tolist()
     if counts['unavailable_throws']:
         verdict = 'INCOMPLETE'
-    elif counts['throws'] < 1000 or not n:
+    elif counts['throws'] < 1000 or n < 200 or ci is None:
         verdict = 'INSUFFICIENT'
     else:
-        verdict = 'CALIBRATION_GAP' if gap >= 0.15 else 'BAR_NOT_MET'
+        verdict = 'CALIBRATION_GAP' if gap >= 0.15 and ci[0] > 0 else 'BAR_NOT_MET'
     return dict(counts=dict(counts), risky_throws=n, predicted_success=predicted,
                 realized_success=realized, overprediction=gap, verdict=verdict,
-                claim='Calibration only; no evidence of gain from a throw guard', collection=identity)
+                overprediction_ci95=ci, risky_rounds=len(clusters),
+                bootstrap=dict(unit='risky-bearing round', replicates=2000, seed=0),
+                claim='Calibration only: >=1000 throws, >=200 risky throws, gap >=0.15 and round-clustered CI95 lower >0; no evidence of guard strength gain', collection=identity)
 
 
 def validated_summary(rows, journal):

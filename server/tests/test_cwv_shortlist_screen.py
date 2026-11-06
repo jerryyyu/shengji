@@ -143,6 +143,8 @@ def test_cwv_summary_includes_exact_follow_receipt_summary(monkeypatch):
             exact_follow_error='ExactFollowRefusal')]}]}]
     result = S.summary_for(shards, cfg())['exact_follow']
     assert result['valid'] and result['sides']['arm']['refusal'] == 1
+    points = S.summary_for(shards, cfg())['exact_follow_points']
+    assert points['valid'] and points['sides']['arm']['missing'] == 1
 
 
 @pytest.mark.parametrize(
@@ -253,3 +255,30 @@ def test_tie_knob_never_reaches_a_flat_shortlist_baseline(monkeypatch):
     assert got == {"arm": True, "baseline": False}
     assert S.make_bot("mc-s0-report-lcb", seed=1).REPORT_TIE_KEEPS_INCUMBENT is False
     assert type(S.make_side(config, "arm", seed=17)).REPORT_TIE_KEEPS_INCUMBENT is False
+
+
+def test_cwv_summary_reports_points_completion_and_abandonment(monkeypatch):
+    from shengji.train.search_screen import trace_fields
+    monkeypatch.setattr(S.duel, 'summarize', identity_summary)
+    primary = dict(exact_follow_attempted=True, exact_follow_applied=False,
+                   exact_follow_abandoned=None, exact_follow_worlds=2,
+                   exact_follow_nodes=1, exact_follow_scores=[1., 0., 1.])
+    complete = dict(primary, exact_follow_points_attempted=True,
+                    exact_follow_points_applied=True, exact_follow_points_abandoned=None,
+                    exact_follow_points_scores=[5., None, 30.],
+                    exact_follow_points_nodes=3, exact_follow_points_seconds=.02)
+    abandoned = dict(primary, exact_follow_points_attempted=True,
+                     exact_follow_points_applied=False,
+                     exact_follow_points_abandoned='soft_budget',
+                     exact_follow_points_error='PVSearchBudgetExceeded',
+                     exact_follow_points_seconds=.3)
+    result = S.summary_for([{'records': [], 'decision_traces': [
+        {'side': 'arm', 'decisions': [trace_fields(complete), trace_fields(abandoned)]},
+        {'side': 'baseline', 'decisions': [trace_fields(primary)]},
+    ]}], cfg())
+    points = result['exact_follow_points']
+    assert points['valid'] and points['cost_valid'] and points['cost_complete']
+    assert points['sides']['arm']['complete'] == points['sides']['arm']['changed'] == 1
+    assert points['sides']['arm']['soft_budget'] == 1
+    assert points['sides']['baseline']['missing'] == 1
+    assert points['sides']['arm']['stage_cost']['abandoned']['max_seconds'] == .3

@@ -4021,6 +4021,7 @@ class PVSearchBot(PolicyValueBot):
             soft_deadline=soft_deadline, clock=time.perf_counter,
             soft_error=PVSearchBudgetExceeded, final_check=check_budget)
         winner = exact.winner
+        points_started = time.perf_counter()
         with stage:
             if stage.guard is not None:
                 stage.guard()
@@ -4033,6 +4034,7 @@ class PVSearchBot(PolicyValueBot):
             stage.publish()
             winner = points.winner
         record = {"exact_follow_points_attempted": True}
+        record["exact_follow_points_seconds"] = time.perf_counter() - points_started
         if stage.abandoned:
             record.update(exact_follow_points_applied=False,
                           exact_follow_points_abandoned=stage.reason,

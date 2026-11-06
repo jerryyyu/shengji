@@ -344,7 +344,7 @@ def disagreement():
 
 
 def search_case(deadline=None, on=True, max_nodes=10000, preferred='D3',
-                exact_follow_points=False, attacker_points=35):
+                exact_follow_points=False, attacker_points=35, solver="reference"):
     """Real enumeration/admission/search/engine, with a controlled value head.
 
     This isolates the mechanism; it is not a measured production-model mistake.
@@ -354,7 +354,8 @@ def search_case(deadline=None, on=True, max_nodes=10000, preferred='D3',
     policy = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
         config=pv.PVSearchConfig(checkpoint_sha256='f' * 64, worlds=2,
             candidates=8, cap=4000, exact_follow=on,
-            exact_follow_max_nodes=max_nodes, exact_follow_points=exact_follow_points),
+            exact_follow_max_nodes=max_nodes, exact_follow_points=exact_follow_points,
+            exact_follow_solver=solver),
         checkpoint='/dev/null', seed=7)
     worlds = [(copy.deepcopy(rnd.hands), []) for _ in range(2)]
     policy._worlds = lambda *args: (worlds, 2)
@@ -424,14 +425,26 @@ def test_exact_follow_publication_checks_deadline_even_if_action_unchanged(monke
     assert 'exact_follow_worlds' not in record
 
 
-def test_points_stage_real_search_changes_tie_without_changing_levels():
-    off, (before, _) = search_case(attacker_points=5)
-    on, (after, _) = search_case(attacker_points=5, exact_follow_points=True)
+@pytest.mark.parametrize("solver", ["reference", "compact-level"])
+def test_points_stage_real_search_changes_tie_without_changing_levels(solver):
+    off, (before, _) = search_case(attacker_points=5, solver=solver)
+    on, (after, _) = search_case(attacker_points=5, exact_follow_points=True, solver=solver)
     assert before == ['D3'] and after == ['HJ']
     assert on.last_decision_record['exact_follow_points_applied']
     assert on.last_decision_record['exact_follow_scores'] == off.last_decision_record['exact_follow_scores']
     assert on.last_decision_record['admitted'] == off.last_decision_record['admitted']
     assert on.last_decision_record['worlds'] == off.last_decision_record['worlds']
+    record = on.last_decision_record
+    assert record['exact_follow_points_seconds'] >= 0
+    from shengji.train.search_screen import exact_follow_points_summary, trace_fields
+    summary = exact_follow_points_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [trace_fields(record)]},
+        {'side': 'baseline', 'decisions': [trace_fields(off.last_decision_record)]},
+    ]}])
+    assert summary['valid'] and summary['cost_valid'] and summary['cost_complete']
+    assert summary['sides']['arm']['complete'] == 1
+    assert summary['sides']['arm']['changed'] == 1
+    assert summary['sides']['baseline']['missing'] == 1
 
 
 def test_points_stage_refusal_preserves_completed_primary_winner(monkeypatch):
@@ -457,6 +470,12 @@ def test_points_stage_refusal_preserves_completed_primary_winner(monkeypatch):
     assert record['exact_follow_points_applied'] is False
     assert record['exact_follow_points_abandoned'] == 'error'
     assert record['exact_follow_points_error'] == 'ExactFollowRefusal'
+    from shengji.train.search_screen import exact_follow_points_summary, trace_fields
+    summary = exact_follow_points_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [trace_fields(record)]}]}])
+    assert summary['valid'] and summary['cost_valid'] and summary['cost_complete']
+    assert summary['sides']['arm']['refusal'] == 1
+    assert summary['sides']['arm']['stage_cost']['abandoned']['count'] == 1
 
 
 def test_recipe_identity_and_own_hand_multiset():

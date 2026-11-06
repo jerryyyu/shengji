@@ -70,6 +70,10 @@ def trace_fields(rec, skip=()):
                 out[f"{k}__len"] = len(v)
             if (len(v) <= TRACE_LIST_MAX and k not in out
                     and (all(isinstance(x, (int, float)) for x in v)
+                         or (k == 'exact_follow_points_scores'
+                             and all(x is None or
+                                     (type(x) in (int, float) and math.isfinite(x))
+                                     for x in v))
                          or (k == 'exact_lead_base_played'
                              and all(isinstance(x, str) for x in v))
                          or (k == 'admitted' and exact_complete
@@ -440,6 +444,120 @@ def exact_follow_summary(shards):
             'valid': all(counts['invalid'] == 0 for counts in sides.values())}
 
 
+def exact_follow_points_summary(shards):
+    """Validate the optional points tie-break receipts and report cost.
+
+    This is mechanism telemetry only: it makes no latency or strength claim.
+    A points receipt is distinct from the primary exact-follow receipt; absent
+    points keys therefore count as missing, including when exact follow itself
+    ran successfully.
+    """
+    sides = {side: dict(total_traces=0, missing=0, invalid=0, attempted=0,
+                        complete=0, soft_budget=0, hard_budget=0, refusal=0,
+                        other_error=0, changed=0, score_unavailable=0,
+                        stage_cost={}) for side in ('arm', 'baseline')}
+    costs = {side: {status: dict(samples=[], missing=0, invalid=0)
+                    for status in ('complete', 'abandoned')}
+             for side in sides}
+    reasons = {'soft_budget', 'hard_budget', 'error'}
+    for shard in shards:
+        for group in shard.get('decision_traces', []):
+            side = group.get('side')
+            if side not in sides:
+                raise ValueError('unknown exact-follow-points trace side')
+            counts = sides[side]
+            for row in group.get('decisions', []):
+                counts['total_traces'] += 1
+                if not isinstance(row, dict):
+                    counts['invalid'] += 1
+                    continue
+                if not any(key.startswith('exact_follow_points_') for key in row):
+                    counts['missing'] += 1
+                    continue
+                attempted = row.get('exact_follow_points_attempted')
+                if attempted is True:
+                    counts['attempted'] += 1
+                abandoned = row.get('exact_follow_points_abandoned')
+                applied = row.get('exact_follow_points_applied')
+                seconds = row.get('exact_follow_points_seconds')
+                valid = (type(attempted) is bool and attempted
+                         and type(applied) is bool
+                         and row.get('exact_follow_attempted') is True
+                         and 'exact_follow_abandoned' in row
+                         and row.get('exact_follow_abandoned') is None
+                         and 'exact_follow_points_abandoned' in row
+                         and (abandoned is None or
+                              (type(abandoned) is str and abandoned in reasons)))
+                if not valid:
+                    counts['invalid'] += 1
+                    continue
+                status = 'complete' if abandoned is None else 'abandoned'
+                cost = costs[side][status]
+                if seconds is None:
+                    cost['missing'] += 1
+                elif type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds < 0:
+                    cost['invalid'] += 1
+                else:
+                    cost['samples'].append(seconds)
+                if abandoned is not None:
+                    valid = (applied is False
+                             and isinstance(row.get('exact_follow_points_error'), str)
+                             and bool(row.get('exact_follow_points_error'))
+                             and not any(k in row for k in
+                                         ('exact_follow_points_scores',
+                                          'exact_follow_points_scores__len',
+                                          'exact_follow_points_nodes')))
+                    if not valid:
+                        counts['invalid'] += 1
+                        continue
+                    if abandoned == 'soft_budget':
+                        counts['soft_budget'] += 1
+                    elif abandoned == 'hard_budget':
+                        counts['hard_budget'] += 1
+                    elif row.get('exact_follow_points_error') == 'ExactFollowRefusal':
+                        counts['refusal'] += 1
+                    else:
+                        counts['other_error'] += 1
+                    continue
+                scores = row.get('exact_follow_points_scores')
+                score_len = row.get('exact_follow_points_scores__len')
+                if scores is not None:
+                    numeric = [x for x in scores if x is not None] if isinstance(scores, list) else []
+                    valid = (isinstance(scores, list) and len(scores) > 1
+                             and len(numeric) >= 2
+                             and all(x is None or
+                                     (type(x) in (int, float) and math.isfinite(x))
+                                     for x in scores)
+                             and (score_len is None or
+                                  (type(score_len) is int and score_len == len(scores))))
+                else:
+                    valid = type(score_len) is int and score_len > TRACE_LIST_MAX
+                    counts['score_unavailable'] += int(valid)
+                nodes = row.get('exact_follow_points_nodes')
+                valid = valid and type(nodes) is int and nodes >= 0
+                if not valid:
+                    counts['invalid'] += 1
+                    continue
+                counts['complete'] += 1
+                counts['changed'] += int(applied)
+    for side, groups in costs.items():
+        for status, cost in groups.items():
+            samples = sorted(cost.pop('samples'))
+            n = len(samples)
+            cost.update(count=n, total_seconds=sum(samples),
+                        p50_seconds=samples[math.ceil(.5 * n) - 1] if n else None,
+                        p90_seconds=samples[math.ceil(.9 * n) - 1] if n else None,
+                        max_seconds=samples[-1] if n else None)
+        sides[side]['stage_cost'] = groups
+    return {'schema': 'exact-follow-points-summary-v1', 'sides': sides,
+            'claim': 'descriptive optional points tie-break telemetry; no latency or playing-strength inference',
+            'cost_claim': 'optional points-stage wall time; nearest-rank quantiles, not whole-decision latency',
+            'cost_valid': all(c['invalid'] == 0 for g in costs.values() for c in g.values()),
+            'cost_complete': all(c['missing'] == 0 and c['invalid'] == 0
+                                 for g in costs.values() for c in g.values()),
+            'valid': all(c['invalid'] == 0 for c in sides.values())}
+
+
 def summary_for(shards, config):
     records = [r for shard in shards for r in shard["records"]]
     base = duel.build_config(arm="none", select_worlds=config["select_worlds"],
@@ -464,6 +582,7 @@ def summary_for(shards, config):
         "equal_work_strength_claim": False,
         "exact_lead": exact_lead_summary(shards),
         "exact_follow": exact_follow_summary(shards),
+        "exact_follow_points": exact_follow_points_summary(shards),
         "work_caveat": ("N is matched against the production ballot per searched state, not full cost. "
                         "An explicit candidate N override can reduce learned selection cost. "
                         "Different trajectories/extra unlocked decisions change aggregate work. "

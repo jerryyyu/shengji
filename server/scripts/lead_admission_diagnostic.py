@@ -46,7 +46,7 @@ from contextlib import nullcontext
 import numpy as np
 from shengji.engine.game import Game
 from shengji.ai import env
-from shengji.train.pv_search_policy import PVSearchBot, make_pv_search_bot, pv_env_recipe, pv_registry_entries
+from shengji.train.pv_search_policy import PVSearchBot, make_pv_search_bot, pv_env_recipe, pv_registry_entries, singleton_registry_entries
 from shengji.train.policy_value_search import leading
 
 R42 = dict(admission_diversity=True, refusal_constraints=True, tiebreak_points=True,
@@ -243,6 +243,11 @@ def served_capture_bots(package, sha, seed, environ):
         raise ValueError('capture package SHA differs from serving snapshot')
     recipe['checkpoint'] = package
     entries = pv_registry_entries(**recipe)
+    challenger = environ.get('SHENGJI_PV_SINGLETON_CHALLENGER', '0')
+    if challenger not in ('', '0', '1'):
+        raise ValueError('SHENGJI_PV_SINGLETON_CHALLENGER must be 0 or 1')
+    if challenger == '1':
+        entries.update(singleton_registry_entries(**recipe))
     name = environ.get('SHENGJI_BOT')
     if name not in entries:
         raise ValueError('SHENGJI_BOT differs from computed serving recipe')

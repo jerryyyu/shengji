@@ -5,6 +5,7 @@ import random
 from pathlib import Path
 
 import pytest
+from test_release50_fly_config import release50_packages  # noqa: F401
 
 from scripts import lead_admission_diagnostic as collector
 from shengji.ai.refusal import RefusalLedger
@@ -180,8 +181,9 @@ def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, mo
         collector.main([*flags, *(['unused'] * 8)])
 
 
+@pytest.mark.parametrize('challenger', [False, True])
 @pytest.mark.parametrize('budget', ['0.000000001', '60'])
-def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budget):
+def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budget, challenger):
     """Real tiny package, registry factory, lifecycle and lead replay; no screen."""
     path, sha = package
     env = dict(SHENGJI_PV_CKPT=path, SHENGJI_PV_SHA256=sha,
@@ -192,11 +194,16 @@ def test_capture_factory_uses_served_declare_bury_play_and_budgets(package, budg
                SHENGJI_PV_VALUE_DECLARE_WORLDS='2', SHENGJI_PV_BURY_MAX_CANDIDATES='4',
                SHENGJI_PV_BURY_MODEL_WORLDS='2', SHENGJI_PV_BURY_SELECTION_WORLDS='2',
                SHENGJI_PV_BURY_ALTERNATIVES='1')
-    entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+    from shengji.eval.singleton_challenger import SingletonChallengerBuryBot
+    if challenger:
+        env['SHENGJI_PV_SINGLETON_CHALLENGER'] = '1'
+    factory = pv.singleton_registry_entries if challenger else pv.pv_registry_entries
+    entries = factory(**pv.pv_env_recipe(env))
     env['SHENGJI_BOT'], = entries
     bots, identity = collector.served_capture_bots(path, sha, 7, env)
     direct = [entries[env['SHENGJI_BOT']](seed=70 + s) for s in range(4)]
-    assert all(type(bot) is pv.PVSearchBuryBot for bot in bots)
+    assert all(type(bot) is (SingletonChallengerBuryBot if challenger else pv.PVSearchBuryBot)
+               for bot in bots)
     assert identity['recipe']['value_declare'] and identity['recipe']['doomed_throw_reselect']
     assert identity['recipe']['serving_budget_seconds'] == float(budget)
     roots = [collector.env.prepare_round(collector.Game(random.Random(17)), group)
@@ -481,3 +488,14 @@ def test_calibration_shards_require_every_planned_collection(tmp_path):
     with pytest.raises(FileNotFoundError):
         main([str(manifest), str(tmp_path/'partial.json')])
     assert not (tmp_path/'partial.json').exists()
+
+
+def test_capture_constructs_real_release50(release50_packages):
+    from test_release50_fly_config import local_env, RELEASE50, VALUE_SHA
+    from shengji.eval.singleton_challenger import SingletonChallengerBuryBot
+    env = local_env(release50_packages)
+    bots, identity = collector.served_capture_bots(env['SHENGJI_PV_CKPT'], VALUE_SHA, 7, env)
+    assert identity['policy'] == RELEASE50
+    assert identity['seat_seeds'] == [70, 71, 72, 73]
+    assert all(type(bot) is SingletonChallengerBuryBot for bot in bots)
+    assert all(bot.policy_name == RELEASE50 for bot in bots)

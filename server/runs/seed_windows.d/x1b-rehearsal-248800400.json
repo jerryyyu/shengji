@@ -1,0 +1,14 @@
+{
+ "name": "x1b-rehearsal-248800400",
+ "purpose": "screen",
+ "seed0": 248800400,
+ "clusters": 56,
+ "span": [
+  248800400,
+  248800456
+ ],
+ "created_at": "2026-11-06T16:30:00Z",
+ "host": "ultra",
+ "git_head": "df45962d137b0df3b1e701407bf968f2d1317217",
+ "note": "x1b X1 TEACHER CERTIFICATION head-to-head on the M5 Ultra (board #1263 row X1): candidate B = candidate A + the exact endgame at 8 cards (SHENGJI_PV_EXACT_DEEP_CARDS=8, SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS=8; 8 is the code maximum), both exact node caps 2e8, value-declare worlds 256 vs release 51 as served (fly.toml at df45962d), tree = origin/main df45962d; packet ~/shengji-archive/2026-11-06-x1-packet. The lane's own 56-deal rehearsal block (REHEARSAL=1 of the same launcher); never pooled with the lane. RESERVED BEFORE DEALING."
+}

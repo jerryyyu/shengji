@@ -432,6 +432,14 @@ def test_points_stage_real_search_changes_tie_without_changing_levels():
     assert on.last_decision_record['exact_follow_scores'] == off.last_decision_record['exact_follow_scores']
     assert on.last_decision_record['admitted'] == off.last_decision_record['admitted']
     assert on.last_decision_record['worlds'] == off.last_decision_record['worlds']
+    record = on.last_decision_record
+    assert record['exact_follow_points_seconds'] >= 0
+    from shengji.train.search_screen import exact_follow_points_summary, trace_fields
+    summary = exact_follow_points_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [trace_fields(record)]},
+        {'side': 'baseline', 'decisions': [trace_fields(off.last_decision_record)]},
+    ]}])
+    assert summary['valid'] and summary['sides']['arm']['complete'] == 1
 
 
 def test_points_stage_refusal_preserves_completed_primary_winner(monkeypatch):

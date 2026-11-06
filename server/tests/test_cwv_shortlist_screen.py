@@ -143,6 +143,8 @@ def test_cwv_summary_includes_exact_follow_receipt_summary(monkeypatch):
             exact_follow_error='ExactFollowRefusal')]}]}]
     result = S.summary_for(shards, cfg())['exact_follow']
     assert result['valid'] and result['sides']['arm']['refusal'] == 1
+    points = S.summary_for(shards, cfg())['exact_follow_points']
+    assert points['valid'] and points['sides']['arm']['missing'] == 1
 
 
 @pytest.mark.parametrize(

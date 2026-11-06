@@ -11,6 +11,7 @@ pytest.importorskip("torch")
 
 from shengji.oracle import screen as duel
 from shengji.train import search_screen as S
+trace_fields = S.trace_fields
 
 
 def config(arm="none"):
@@ -34,6 +35,64 @@ assert 'shengji.train.search_inference' not in sys.modules
 assert 'shengji.train.search_policy' not in sys.modules
 """], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_trace_fields_preserves_bounded_points_scores_with_unresolved_entries():
+    assert trace_fields({'exact_follow_points_scores': [None, 1.5, -2.0]}) == {
+        'exact_follow_points_scores__len': 3,
+        'exact_follow_points_scores': [None, 1.5, -2.0],
+        'trace_dropped_fields': 0}
+
+
+def test_exact_follow_points_summary_validates_both_sides_and_cost():
+    complete = dict(exact_follow_points_attempted=True,
+                    exact_follow_attempted=True,
+                    exact_follow_abandoned=None,
+                    exact_follow_points_applied=True,
+                    exact_follow_points_abandoned=None,
+                    exact_follow_points_seconds=.25,
+                    exact_follow_points_scores=[None, 3.0, -1.0],
+                    exact_follow_points_nodes=7)
+    abandoned = dict(exact_follow_points_attempted=True,
+                     exact_follow_attempted=True,
+                     exact_follow_abandoned=None,
+                     exact_follow_points_applied=False,
+                     exact_follow_points_abandoned='soft_budget',
+                     exact_follow_points_error='PVSearchBudgetExceeded',
+                     exact_follow_points_seconds=.5)
+    result = S.exact_follow_points_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [complete, abandoned]},
+        {'side': 'baseline', 'decisions': [complete]},
+    ]}])
+    assert result['valid'] and result['cost_valid'] and result['cost_complete']
+    assert result['sides']['arm']['complete'] == 1
+    assert result['sides']['arm']['soft_budget'] == 1
+    assert result['sides']['arm']['changed'] == 1
+    assert result['sides']['arm']['stage_cost']['complete']['max_seconds'] == .25
+
+
+@pytest.mark.parametrize('patch', [
+    {'exact_follow_points_seconds': True},
+    {'exact_follow_points_scores': [None, float('nan')]},
+    {'exact_follow_points_scores': [None]},
+    {'exact_follow_points_applied': 1},
+])
+def test_exact_follow_points_summary_rejects_invalid_receipts(patch):
+    row = dict(exact_follow_points_attempted=True,
+               exact_follow_attempted=True,
+               exact_follow_abandoned=None,
+               exact_follow_points_applied=False,
+               exact_follow_points_abandoned=None,
+               exact_follow_points_seconds=.1,
+               exact_follow_points_scores=[None, 1.0],
+               exact_follow_points_nodes=1)
+    row.update(patch)
+    result = S.exact_follow_points_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [row]}]}])
+    if 'exact_follow_points_seconds' in patch:
+        assert not result['valid'] and not result['cost_valid']
+    else:
+        assert not result['valid'] and result['sides']['arm']['invalid'] == 1
 
 
 def test_exact_lead_summary_distinguishes_missing_skipped_and_abandoned():

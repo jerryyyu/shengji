@@ -224,9 +224,11 @@ def test_lower_cap_reaches_minimax_and_keeps_baseline_on_expiry(
         assert state['exact_lead_worlds_completed'] == 1
 
 
-@pytest.mark.parametrize("candidate, expected", [(False, ["D3"]), (True, ["HQ"])])
+@pytest.mark.parametrize("candidate, expire, expected", [
+    (False, False, ["D3"]), (True, False, ["HQ"]), (True, True, ["D3"]),
+])
 def test_combo_lead_keeps_serving_budgets_through_server_commit(
-        release50_packages, tmp_path, monkeypatch, candidate, expected):
+        release50_packages, tmp_path, monkeypatch, candidate, expire, expected):
     """The candidate corrects the replayed lead through a budgeted server turn."""
     import asyncio
     import random
@@ -249,6 +251,18 @@ def test_combo_lead_keeps_serving_budgets_through_server_commit(
     if candidate:
         assert bot.exact_lead_max_seconds == 1.6
     assert bot.leaf_greedy_deadline_ms == 2000
+    if expire:
+        from shengji.train import pv_exact_deep
+        original = pv_exact_deep.exact_root_means
+        real_clock = time.perf_counter
+
+        def expired(*args, **kwargs):
+            # Expire inside the real solver, after the server has admitted the turn.
+            with monkeypatch.context() as clock_patch:
+                clock_patch.setattr(time, "perf_counter", lambda: real_clock() + 1.61)
+                return original(*args, **kwargs)
+
+        monkeypatch.setattr(pv_exact_deep, "exact_root_means", expired)
     rnd = P.replay(*MISPRICED)
     seat = rnd.turn
 
@@ -268,7 +282,7 @@ def test_combo_lead_keeps_serving_budgets_through_server_commit(
         searched = prepared.decision.snapshot.bot_copy
         record = searched.last_decision_record
         cards = list(prepared.decision.cards)
-        print({"candidate": candidate, "elapsed": elapsed, "cards": cards,
+        print({"candidate": candidate, "expire": expire, "elapsed": elapsed, "cards": cards,
                "exact_seconds": record.get("exact_lead_seconds"),
                "worlds": record.get("exact_lead_worlds_completed")})
         assert searched.policy_name == name
@@ -278,13 +292,18 @@ def test_combo_lead_keeps_serving_budgets_through_server_commit(
         assert srv._commit_bot_turn(room, prepared)
         assert len(rnd.hands[seat]) == len(before) - len(cards)
         assert cards == expected
-        assert record["exact_lead_status"] == "complete"
-        assert record["exact_lead_worlds_completed"] == 64
-        if candidate:
+        if expire:
+            assert record["exact_lead_status"] == "abandoned"
+            assert record["exact_lead_abandon_reason"] == "soft_budget"
+            assert record["exact_lead_worlds_completed"] is None
+        else:
+            assert record["exact_lead_status"] == "complete"
+            assert record["exact_lead_worlds_completed"] == 64
+        if candidate and not expire:
             assert record["exact_lead_first_trick"] == "minimax"
             assert record["exact_lead_base_played"] == ["D3"]
             assert record["exact_lead_changed"]
-        else:
+        elif not candidate:
             assert "exact_lead_first_trick" not in record
         assert record["belief_fallback"] == 0
 

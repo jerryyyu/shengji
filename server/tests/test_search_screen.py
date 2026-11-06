@@ -11,7 +11,6 @@ pytest.importorskip("torch")
 
 from shengji.oracle import screen as duel
 from shengji.train import search_screen as S
-trace_fields = S.trace_fields
 
 
 def config(arm="none"):
@@ -38,7 +37,7 @@ assert 'shengji.train.search_policy' not in sys.modules
 
 
 def test_trace_fields_preserves_bounded_points_scores_with_unresolved_entries():
-    assert trace_fields({'exact_follow_points_scores': [None, 1.5, -2.0]}) == {
+    assert S.trace_fields({'exact_follow_points_scores': [None, 1.5, -2.0]}) == {
         'exact_follow_points_scores__len': 3,
         'exact_follow_points_scores': [None, 1.5, -2.0],
         'trace_dropped_fields': 0}
@@ -84,13 +83,13 @@ def test_exact_follow_points_summary_rejects_invalid_receipts(patch):
                exact_follow_points_applied=False,
                exact_follow_points_abandoned=None,
                exact_follow_points_seconds=.1,
-               exact_follow_points_scores=[None, 1.0],
+               exact_follow_points_scores=[None, 1.0, 2.0],
                exact_follow_points_nodes=1)
     row.update(patch)
     result = S.exact_follow_points_summary([{'decision_traces': [
         {'side': 'arm', 'decisions': [row]}]}])
     if 'exact_follow_points_seconds' in patch:
-        assert not result['valid'] and not result['cost_valid']
+        assert result['valid'] and not result['cost_valid']
     else:
         assert not result['valid'] and result['sides']['arm']['invalid'] == 1
 
@@ -432,3 +431,68 @@ def test_bounded_pending_failure_publishes_and_drains_running_success(tmp_path, 
     assert (tmp_path / "cluster-00001.json").exists()
     summary = json.loads((tmp_path / "summary.json").read_text())
     assert summary["complete"] is False
+
+
+def _points_receipt():
+    return dict(exact_follow_attempted=True, exact_follow_abandoned=None,
+                exact_follow_points_attempted=True, exact_follow_points_applied=False,
+                exact_follow_points_abandoned=None, exact_follow_points_nodes=0,
+                exact_follow_points_scores=[1., None, 2.], exact_follow_points_seconds=.1)
+
+
+def _points_summary(rows):
+    return S.exact_follow_points_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': rows}]}])
+
+
+@pytest.mark.parametrize('key', ['exact_follow_abandoned', 'exact_follow_points_abandoned',
+                                 'exact_follow_points_nodes'])
+def test_points_summary_requires_explicit_completion_fields(key):
+    row = _points_receipt()
+    assert _points_summary([row])['valid']
+    del row[key]
+    assert not _points_summary([row])['valid']
+
+
+@pytest.mark.parametrize('patch', [
+    {'exact_follow_abandoned': 'error'}, {'exact_follow_attempted': False},
+    {'exact_follow_points_nodes': True}, {'exact_follow_points_nodes': -1},
+    {'exact_follow_points_scores': [None, None, None]},
+    {'exact_follow_points_scores__len': 4},
+])
+def test_points_summary_rejects_inconsistent_completion(patch):
+    assert _points_summary([_points_receipt()])['valid']
+    assert not _points_summary([{**_points_receipt(), **patch}])['valid']
+
+
+def test_points_summary_distinguishes_old_missing_cost_and_truncated_scores():
+    row = _points_receipt()
+    del row['exact_follow_points_seconds']
+    row['exact_follow_points_scores'] = [1.] * 17
+    result = _points_summary([S.trace_fields(row), {}, None])
+    counts = result['sides']['arm']
+    assert counts['complete'] == counts['score_unavailable'] == 1
+    assert counts['missing'] == counts['invalid'] == 1
+    assert counts['stage_cost']['complete']['missing'] == 1
+    assert result['cost_valid'] and not result['cost_complete']
+
+
+@pytest.mark.parametrize('partial', ['exact_follow_points_nodes', 'exact_follow_points_scores',
+                                    'exact_follow_points_scores__len'])
+def test_points_summary_rejects_partial_publication_on_abandon(partial):
+    row = dict(exact_follow_attempted=True, exact_follow_abandoned=None,
+               exact_follow_points_attempted=True, exact_follow_points_applied=False,
+               exact_follow_points_abandoned='hard_budget',
+               exact_follow_points_error='PVSearchBudgetExceeded',
+               exact_follow_points_seconds=.3)
+    assert _points_summary([row])['valid']
+    row[partial] = 1
+    assert not _points_summary([row])['valid']
+
+
+@pytest.mark.parametrize('seconds', [-1., float('nan'), float('inf'), True, '0.1'])
+def test_points_summary_rejects_invalid_cost_without_inventing_latency(seconds):
+    result = _points_summary([{**_points_receipt(), 'exact_follow_points_seconds': seconds}])
+    assert result['valid'] and not result['cost_valid'] and not result['cost_complete']
+    cost = result['sides']['arm']['stage_cost']['complete']
+    assert cost['count'] == 0 and cost['invalid'] == 1 and cost['max_seconds'] is None

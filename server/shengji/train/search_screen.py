@@ -483,6 +483,7 @@ def exact_follow_points_summary(shards):
                 valid = (type(attempted) is bool and attempted
                          and type(applied) is bool
                          and row.get('exact_follow_attempted') is True
+                         and 'exact_follow_abandoned' in row
                          and row.get('exact_follow_abandoned') is None
                          and 'exact_follow_points_abandoned' in row
                          and (abandoned is None or

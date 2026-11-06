@@ -39,7 +39,7 @@ NAMED_OVERRIDES: dict[str, dict[str, str]] = {
     "teacher-unbudgeted": {"SHENGJI_PV_SERVING_BUDGET_SECONDS": "",
                            "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "",
                            "SHENGJI_PV_LEAF_GREEDY_DEADLINE": ""},
-    # search knobs: sc8 and lcc32 are on in fly.toml (no-ops on the served env); wla24 and
+    # search knobs: sc8 is on in fly.toml (a no-op on the served env); lcc32, wla24 and
     # lgft3 are off
     "sc8": {"SHENGJI_PV_SINGLETON_CHALLENGER": "1"},
     "wla24": {"SHENGJI_PV_WIDE_LEAD_ADMISSION": "1", "SHENGJI_PV_WIDE_LEAD_K": "24"},

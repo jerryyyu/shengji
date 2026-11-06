@@ -9,8 +9,11 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 49** (since 2026-11-01 01:39 EST): release 48 plus two lead rules, the singleton challenger (sc8)
-and the held-out lead confirmation (lcc32). New duels and screens compare against it. Release 48 is release 46 with
+**Live: release 50** (since 2026-11-04 15:24 EST): release 49 on the G3 Stage A value package, the FT1 card-play
+prior, the B1a belief package and belief-drawn bury worlds (bbw). New duels and screens compare against it.
+**Release 51**, prepared for deploy, is release 50 with lcc32 off: cheaper per play, at a measured strength cost on
+cloud (−0.0133 [−0.0232, −0.0033], lccC) that Fly, where the rule rarely completes, has not measured. Release 49 is
+release 48 plus two lead rules, the singleton challenger (sc8) and the held-out lead confirmation (lcc32). Release 48 is release 46 with
 the S58 belief package, dtrx and the guarded greedy-finished value leaf (lgf, lgfx, lgfd2000). Release 46 is the combo: belief-model worlds + exact
 endgame at 7 cards + every-chance first-round value declaration, on release 45. Release 45 is the SMV3
 outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds,
@@ -41,7 +44,7 @@ Rule tokens used in the figures and tables:
 - **dtrx**: dtr never overrides a complete exact lead stage (release 48)
 - **lgf / lgfx / lgfd2000**: finish the trick with greedy replies before the value pass; skip it where an exact stage is eligible; stop it past 2 s (release 48)
 - **sc8**: singleton challenger: a single the policy left off the ballot can take its last slot (release 49)
-- **lcc32**: lead confirmation: screen extra leads up to a 32-action total budget on the base worlds, then confirm at most two challengers on fresh worlds before replacing the served lead (release 49)
+- **lcc32**: lead confirmation: screen extra leads up to a 32-action total budget on the base worlds, then confirm at most two challengers on fresh worlds before replacing the served lead (release 49); off in release 51
 
 <img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 49 vs 48 is +0.0270 on the screen and +0.0306 on the confirmation (paired head-to-head duels, a different instrument); release 48 vs 46 is +0.0765 on the screen and +0.0843 on the confirmation; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation; every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Rows up to release 48 are contrasts through a common MC-LCB control; separate contrasts; not additive." width="100%">
 

@@ -23,7 +23,7 @@ from shengji.ai.endgame_compact import CompactWorldSession
 from shengji.ai.mcbot import MCBot
 from shengji.ai.memory import Memory
 from shengji.train import pv_search_policy as pv
-from test_release46_fly_config import fly_env
+from test_release50_fly_config import fly_env  # release 50's env, lcc32 on
 from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA,  # noqa: F401
                                        PRIOR_VOLUME_PATH, RELEASE50, VALUE_SHA, VALUE_VOLUME_PATH,
                                        release50_packages, served_bot)

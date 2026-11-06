@@ -22,12 +22,158 @@ Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 
 ## Current production
 
+**Release 51**: release 50 with the held-out lead confirmation off (`SHENGJI_PV_LEAD_CONFIRM = '0'`; `lcc32`
+leaves the name). Same packages, same stage table (`server/releases/r51.json`), and sc8, every other rule, every
+budget and the latency switches are release 50's. Prepared for deploy; until `/healthz` shows the name below,
+production is release 50 (its record is under "Rollback"), served by Fly v59.
+
+| field | value |
+|---|---|
+| deployed | pending deploy (fill in: ET and Z time, room count). Jerry's word: in session 2026-11-06 ~03:35Z, knowing lccC's measured cost, "im good to turn off lcc, bc for new data gens, etc it will be cheaper" |
+| Fly version | pending deploy |
+| image | pending deploy |
+| source | this release PR's squash merge on main (fill in the sha after merge) |
+| evidence | `AI_POLICIES.md` ladder row 20 (lccC KEEP_LCC on cloud; loo DROP_SAFE on the M5 Ultra; S91 Fly CPU) |
+| deploy record | pending deploy |
+| comparator | release 50 as served until the deploy[^cmp]; after it, release 51 as served (lcc off on both sides of future duels and screens, per Jerry's 2026-11-06 word) |
+
+Served name:
+
+```
+pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8
+```
+
+The registry derives it from the `fly.toml` env: with the lead confirmation at 0, `-lcc32` leaves the play token,
+and the play digest (`rb3477266` → `r30ff6f0f`) and the bury suffix (`b6262940978b` → `73a716a9bf72`) move with the
+play identity. It is byte for byte the lcc-off arm lccC and loo duelled against release 50
+(`test_release51_fly_config.py` derives it from the `/data/models/` paths).
+
+### Packages
+
+Release 50's, unchanged; nothing to upload. Keep every release-50 and release-49 package on the volume.
+
+### `fly.toml` keys
+
+| change | `fly.toml` | name token |
+|---|---|---|
+| lead confirmation off | `SHENGJI_PV_LEAD_CONFIRM = '0'` (release 50: `'32'`) | `-lcc32` removed; play and bury digests move |
+
+Every other line is byte-identical to release 50's. `server/tests/test_release51_fly_config.py` builds the served
+bot from this env on the three pinned release-50 packages as the server does, checks the name and
+`lead_confirm == 0`, and plays one lead through the server path with sc8 probing and no lead-confirmation stage; it
+also builds the release-50 rollback (lcc32 back on). `test_release_manifests.py` checks that `fly.toml` equals
+`r51.json`'s env and that release 51 differs from release 50 only in this line and the name.
+`server/scripts/y_trajectory.py`, the served-recipe data runner, now requires the lead confirmation off, so new
+served-budget self-play data is generated without lcc32.
+
+### What changes at serving time
+
+- **Leads.** On a lead with no exact stage, release 50 screened up to 32 of the policy's next actions on 32 base
+  worlds and re-priced up to two challengers on fresh worlds before keeping or replacing the searched lead. Release
+  51 skips that stage: the lead is the 64-world search's choice (after sc8, `dtr` and the exact endgame stages, as
+  in release 50). Decision records carry no `lead_confirm_*` fields.
+- **Follows, declaration, bury.** Unchanged (the stage ran only on leads).
+- **CPU.** On Fly, lcc-off plays took 0.55× the CPU per play of lcc-on (S91, below); data generation on the served
+  recipe is cheaper by about the same share.
+
+### Evidence
+
+Paired, seat-swapped head-to-head duels inside release 50, its stack with lcc32 off against the same stack with
+lcc32 on, at the 3 s play and 2 s bury budgets.
+Each read is judged alone, never pooled.
+
+| read | host, deals | result (lcc32 off − on) | verdict | pointer |
+|---|---|---|---|---|
+| lccC (confirmation) | cloud, 7,840 fresh deals from 247410910 | **−0.0133 [−0.0232, −0.0033]** | KEEP_LCC: turning lcc32 off costs strength on this host | `readouts/lccC/` (reader `dc4d8a81`) |
+| loo (leave-one-out) | M5 Ultra, 3,920 deals from 247110910 | +0.0079 [−0.0069, +0.0221] | DROP_SAFE (non-inferiority bar about −0.010) | `readouts/loo/` |
+
+The two reads disagree; release 51 does not claim zero strength cost. On cloud (lccC) the stage applied on 14.7% of
+searched leads (19.9% of early ones) and abandoned on 0.14% of the stages it started; lccC's first-divergence locator puts −0.0124 of the −0.0133 at leads, most of it in
+tricks 1–5. On Fly the stage rarely completes: in S91 (below) it applied on 1 of 47 and 1 of 137 non-exact leads
+(1–2%), and most stages abandoned on the 2 s finish deadline or the budget; in the live rooms UXVG and TBTH it
+abandoned in all 57 runs where it ran. **The strength effect of release 51 on Fly is not measured**; it is
+expected to be smaller than lccC's cloud cost because the stage rarely changes a Fly lead. Jerry chose release 51
+with lccC's cost in view, for the CPU (serving and data generation).
+
+**S91 (Fly, production machine at 0 rooms, two drain runs, k=1 and k=2 concurrent bot rooms).** Unthrottled CPU per
+play: lcc off 0.2592 s (650 plays) against lcc on 0.4692 s (508 plays), ratio 0.552. Unthrottled single-room
+decision p95: lcc off 0.84–0.91 s, lcc on 2.01–2.02 s. Both arms reached the CPU-credit throttle at minute 16
+of a two-room drain; throttled, lcc off had 30 of 170 play-budget fallbacks against 40 of 153 for lcc on, and belief
+fallbacks 40 of 170 against 26 of 153. The Codex saved-result audit
+([#1263 issuecomment-6673552894](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6673552894)): lcc off
+cuts CPU but does not fix throttled serving; these are descriptive rates (rows share rooms and credit history).
+`readouts/S91-fly-lccoff/`.
+
+### Latency
+
+| read | what | result | pointer |
+|---|---|---|---|
+| S91 (Fly, unthrottled k=1) | lcc off vs on, same release-50 packages | CPU per play ×0.552; decision p95 0.84–0.91 s off vs 2.01–2.02 s on; 0 play-budget, belief and bury fallbacks in both unthrottled single-room cells | `readouts/S91-fly-lccoff/` |
+| loo (M5 Ultra duel host, descriptive) | lcc off vs on | lead p95 0.305 s off vs 0.830 s on; decide_play p95 0.272 vs 0.702 s; mean decision time ratio 0.567 | `readouts/loo/` |
+
+### Pre-deploy smoke (release tree, this host)
+
+`smoke_release45_bury.py --rounds 10 --full-round` on the release branch (head `71865ee7`, clean) with sha-verified
+local packages (the three release-50 `serving-packages` assets and JS-M1), Mac mini M4, compiled engine, run
+2026-11-06 06:02Z after the host's screen ended, under the host lock (receipt `smoke51.jsonl`, sha256
+`e9a3a96d…0657`, archived in `~/shengji-archive/2026-11-06-r51-smoke/` with `SHA256SUMS`): validator **PASS**; the
+receipt's bot is the release-51 name above, class `SingletonChallengerBuryBot`, `bot.files` value `f4f4127e`, prior
+`1fa201b2`, belief `028131a0`, JS-M1 `0d17fd03`, all nine latency switches on. Bury: 10 of 10 committed once, 64
+candidates, 0 fallbacks, all 10 on belief worlds with 0 bury-belief fallbacks, wall max 0.221 s; 33 value
+declarations. First-room reader over its 10 room logs: 704 plays, 704 belief-drawn, **0 belief fallbacks**;
+exact-eligible 57 leads + 102 follows, **0 abandons, 0 fallbacks**; decision p50 0.028 / p95 0.176 / max 0.454 s;
+**no `lcc` status on any record**; `sc8` probed 119 leads and applied 47; 0 decisions at 3 s. Split by trick
+position: leads (176) p50 0.152 / p95 0.217 / max 0.454 s (release 50's smoke: `lcc` leads p95 0.507 s), follows
+(528) p95 0.098 s. A niced test process shared the host during the smoke. These are M4 timings, not Fly's. Re-run
+on the merged tree before the deploy (Release checklist, step 3).
+
+### Watch list
+
+Release 50's rows of the first-room rollback triggers (Release checklist, step 9), with every decision p95
+against the 1.5 s row (no `lcc` leads remain); no record carries `lead_confirm_status` (any one means the stage
+ran: examine); bury-belief fallbacks; the `/healthz` `activity` counters (step 10).
+
+### Release note: what a player will notice
+
+- **Faster leads.** Early leads no longer spend up to 2 s on the confirmation stage; on Fly most such stages
+  were abandoned anyway.
+- **Rarely a different lead.** Where the stage completed and replaced the lead (about 1–2% of Fly's non-exact
+  leads in S91), release 51 plays the search's own choice.
+
+## Rollback
+
+### To release 50 (the rollback target)
+
+Release 50 as served before release 51: Fly v59, image `deployment-01M6NVJGMKP9G0AKFPY9MZ8668`, main `26924ef7`
+(the release-50 recipe of #1260 with later decision-identical deploys of main). Its packages are release 51's.
+Release 50's served name:
+
+```
+pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8
+```
+
+**Option 1, redeploy the image that served release 50** (no build). Before the release-51 deploy, confirm the image
+of the release then live with `fly releases -a shengji --image` (v59 above unless a later deploy replaced it) and
+write it into the deploy record. Then:
+
+```bash
+flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:<the release-50 image>
+```
+
+**Option 2, edit `fly.toml`:** set `SHENGJI_PV_LEAD_CONFIRM = '32'` and `SHENGJI_BOT` to the release-50 name kept in
+the comment above it, then `fly deploy --ha=false`; `/healthz` must show the release-50 name. Rolling back also rolls
+the manifest check back: `test_release_manifests.py` then compares `fly.toml` with `server/releases/r50.json`.
+`test_release51_fly_config.py` builds this rollback env on the release-50 packages with `lead_confirm == 32`.
+
+#### Release 50 record
+
 **Release 50** (the cbaC stack): release 49 with new packages and belief bury worlds. The value package is G3 Stage
 A's (`g3a-e04-f4f4127e`), the card-play prior is FT1's (`p0-ft1-1fa201b2`), the belief package is B1a's
 (`b1a-028131a0`, in place of S58), and the wide value-only bury scores its candidates on belief-drawn worlds
-(`bbw`). lcc32, sc8, every other rule, every budget and the latency switches are release 49's. Live since 2026-11-04
-15:24 EST (Fly v57); the first-room qualification (Release checklist, steps 9–10) is pending the first live room.
-Release 49's record is under "Rollback".
+(`bbw`). lcc32, sc8, every other rule, every budget and the latency switches are release 49's. Production from
+2026-11-04 15:24 EST (Fly v57) until release 51's deploy; v58 (main `90f850ee`: #1259 native reply counts, X-ray,
+saved games phase 1) and v59 (main `26924ef7`: web) redeployed it from main with the same served name and
+decisions.
 
 | field | value |
 |---|---|
@@ -52,7 +198,7 @@ identity); `-sc8` is release 49's. Package paths do not enter the name: it is th
 host derived from packages under `/root/claude-cbaC/`, byte for byte (`test_release50_fly_config.py` derives it
 from the `/data/models/` paths).
 
-### Packages
+##### Packages
 
 Three new packages, all assets of the `serving-packages` GitHub release under the same file names; upload them before
 the `fly.toml` switch (Release checklist, step 2). Keep every release-49 package on the volume for the rollback.
@@ -67,7 +213,7 @@ the `fly.toml` switch (Release checklist, step 2). Keep every release-49 package
 | belief (S58, releases 48–49, kept for the rollback) | `/data/models/s58-e6-42444515.npz` | `424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e` | — |
 | belief (S17, release 46, kept for its rollback) | `/data/models/s17long-e2-763b5e05.npz` | `763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343` | — |
 
-### `fly.toml` keys
+##### `fly.toml` keys
 
 What release 50 changes in release 49's environment (with `SHENGJI_BOT`; every other line byte-identical):
 
@@ -90,7 +236,7 @@ builds the release-49 rollback on its own packages. `test_release49_fly_config.p
 and `test_release46_fly_config.py` build releases 49, 48 and 46 from the rolled-back env, and
 `test_bury_fly_config.py` pins the name chain 50 → 49 → 48 → 46 → 45 and the deeper rollbacks.
 
-### What changes at serving time
+##### What changes at serving time
 
 - **Value.** Every value forward (declare, bury, play, the lcc and sc8 stages) runs on G3 Stage A's package, an
   EMA export of epoch 4 of the unified retrain on all Y data. Its policy head is not consulted for card play.
@@ -108,7 +254,7 @@ and `test_release46_fly_config.py` build releases 49, 48 and 46 from the rolled-
   declaration, the latency switches. The lcc decision is open: Jerry ships release 50 with lcc32 on and decides
   lcc afterwards ("we can manage what to do with lcc after"; loo below).
 
-### Evidence
+##### Evidence
 
 Paired, seat-swapped head-to-head duels against release 49 as it was then served (Y: S58 belief, no bbw), served budgets, r2
 rank-mixed round plan per deal, the two-stage bar (screen: mean ≥ +0.005 and one-sided 80% lower bound > 0;
@@ -144,7 +290,7 @@ measurement and not modelling Fly's throttling. Readout
 [#1171 issuecomment-6641693008](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6641693008);
 `readouts/hb50/`.
 
-### Latency
+##### Latency
 
 | read | what | result | pointer |
 |---|---|---|---|
@@ -161,7 +307,7 @@ round on a cloud core. Throttled (×5 or more), about 18% of plays would pass th
 s71fly found 14 of 16 timed blocks throttled on Fly, at about 8% of a core (CPU/wall about 0.08).
 Release 49's first-room triggers (Release checklist, step 9) apply unchanged.
 
-### Pre-deploy smoke (release tree, this host)
+##### Pre-deploy smoke (release tree, this host)
 
 `smoke_release45_bury.py --rounds 10 --full-round` on the release branch with sha-verified local packages (the three
 `serving-packages` assets and JS-M1), Mac mini M4, compiled engine (receipt `smoke50.jsonl`, sha256
@@ -176,22 +322,20 @@ belief_ms p95 8.9. `lcc` on 178 leads: applied 21, rejected 17, no_challenger 85
 there; the receipt carries the bury counts. These are M4 timings, not Fly's. Re-run on the merged tree before
 the deploy (Release checklist, step 3).
 
-### Watch list
+##### Watch list
 
 Release 49's rows of the first-room rollback triggers (Release checklist, step 9); the bury's `bury_belief_fallbacks`
 (any is a trigger to examine) and bury seconds against the 2 s budget; the `lcc` status mix on Fly; belief fallbacks
 and `belief_ms` with B1a; any `pv-search-fallback-v1`, `cwv-bury-fallback-v1` or `pv-declare-serving-fallback-v1`
 record; the `/healthz` `activity` counters (step 10).
 
-### Release note: what a player will notice
+##### Release note: what a player will notice
 
 - **Different burying and declaring.** cbaC's largest first-divergence cells are the bury and the declaration; the
   bury now reasons over hidden hands drawn by the belief model. The effect on human opponents is not measured.
 - **Lead timing as release 49.** The new packages add about 1–2% to the play tails on a cloud core.
 
-## Rollback
-
-### To release 49 (the rollback target)
+### To release 49
 
 Release 49 as served before release 50: Fly v56, image `deployment-01M6AX9WCDG3YMGWZPDE9PSM12`, main `d2a6346a`
 (#1194), and later deploys of main that change no served decision. Its packages stay on the volume. Release 49's
@@ -209,7 +353,7 @@ it) and write it into the deploy record. Then:
 flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:<the release-49 image>
 ```
 
-**Option 2, edit `fly.toml`:**
+**Option 2, edit `fly.toml`** (from release 51, first set `SHENGJI_PV_LEAD_CONFIRM` back to `'32'`):
 
 1. Delete the three release-50 lines, `SHENGJI_PV_PRIOR_CKPT`, `SHENGJI_PV_PRIOR_SHA256` and
    `SHENGJI_PV_BURY_BELIEF_WORLDS` (and their comments).
@@ -619,13 +763,15 @@ The release-44 image command, verbatim:
 
 The gate every release passes (called "serving qualification" in `AI_POLICIES.md`); it held for releases 29–38
 and 42–48. Release 49 completed the pre-deploy and deploy gates; its first-live-room checks (steps 9 and 10) are pending.
-Commands below are release 50's; substitute the new release's package names and receipt.
+Commands below are release 50's; substitute the new release's package names and receipt. Release 51 changes one
+`fly.toml` value and no package: step 2's upload is skipped (its in-machine sha check still holds), its smoke
+receipt is `smoke51.jsonl`, and its records carry no `lcc` statuses.
 
 **Before the deploy**
 
 1. **Review and CI.** A non-author PASS on the release PR at its exact head, and all CI checks green. The
    package-gate step fetches the pinned packages from the `serving-packages` release, sha256-verifies them, and
-   runs `server/tests/test_release50_fly_config.py` (`test_release49_fly_config.py`, `test_release48_fly_config.py`
+   runs `server/tests/test_release51_fly_config.py` and `test_release50_fly_config.py` (`test_release49_fly_config.py`, `test_release48_fly_config.py`
    and `test_release46_fly_config.py` for the rollbacks), which builds the served bot from the `fly.toml` env through
    the server path (name, every knob, the value, prior and belief packages, compiled solver, latency switches, one
    play and one bury with no fallback), and the release manifest's wiring witness (`test_release_manifests.py`).
@@ -659,7 +805,7 @@ Commands below are release 50's; substitute the new release's package names and 
    Pass: validator PASS; the receipt's `bot.files` lists each package at its sha; the first-room reader (step 9)
    over `smoke50.jsonl.logs/*.jsonl` shows belief fallbacks 0, exact-eligible decisions > 0, abandons 0,
    fallbacks 0, with p95 and max recorded; `lcc` statuses with `applied` > 0 and `sc8` applied > 0 (both rules
-   ran); for release 50 also every bury on belief worlds with `bury_belief_fallbacks` 0. The smoke must take the server path: release 25 passed the
+   ran; release 51: `sc8` applied > 0 and no `lcc` status); for release 50 also every bury on belief worlds with `bury_belief_fallbacks` 0. The smoke must take the server path: release 25 passed the
    decision-identity gate yet stalled every live bot turn[^smoke].
 4. **Evidence.** For a strength change, the served-bot screen against the current production release, read out
    (the ladder table in `AI_POLICIES.md`), plus any confirmation and latency packet the change requires.
@@ -732,8 +878,9 @@ Commands below are release 50's; substitute the new release's package names and 
    | belief fallbacks | above 1% of belief-drawn decisions |
    | exact abandons | above 2% of eligible decisions |
    | decision p95, other than `lcc` leads | above 1.5 s (release 48 and earlier: every decision) |
-   | decision p95, `lcc` leads (release 49) | above 2.5 s |
-   | `lcc` abandons with a reason other than `leaf_deadline` (release 49) | any (examine each) |
+   | decision p95, `lcc` leads (releases 49–50) | above 2.5 s |
+   | `lcc` abandons with a reason other than `leaf_deadline` (releases 49–50) | any (examine each) |
+| any `lead_confirm_status` record (release 51) | any (the stage is off; examine) |
    | bury-belief fallbacks (release 50) | any (examine each; the bury then used the split sampler's worlds) |
    | decisions at the 3 s budget | two or more in the first room (examine any one) |
    | bury budget fallbacks | `cwv-bury-fallback-v1` above a few percent |
@@ -771,6 +918,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
+| 51 | pending deploy | release 50 with the held-out lead confirmation off (`SHENGJI_PV_LEAD_CONFIRM = '0'`); lccC (off − on) −0.0133 [−0.0232, −0.0033] on cloud, loo +0.0079 [−0.0069, +0.0221]; S91: CPU per play ×0.55 on Fly | flag | this PR | pending deploy |
 | 50 | 2026-11-04 15:24 EST | the cbaC stack: G3 Stage A value + FT1 card-play prior + B1a belief + belief bury worlds (`bbw`) on release 49; evidence [cbaC](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629156672) (audit [6629239690](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629239690)), [cbaf](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6637319197), rtF; latency: the R50 speed profile, Fly timing pending | new value `f4f4127e…`, prior `1fa201b2…`, belief `028131a0…` | #1260 | v57, `deployment-01M6M3PX2A43CPZ65RBQPRY8AB` |
 | 49 | 2026-11-01 01:39 EST | board combo3 arm Y: singleton challenger (`sc8`) + held-out lead confirmation (`lcc32`) on release 48; evidence [combo3y](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6475680068), [combo3yc](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6479431994), latency s71fly + v107sc8lat | flags | #1194 | `deployment-01M6AX9WCDG3YMGWZPDE9PSM12` (v56), main `d2a6346a` |
 | 48 | 2026-10-24 10:18 | S58 belief package + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches; evidence [r48cloud](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6383298163), [r48confirm](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384251320), [v105lat](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384912469) | new belief package `42444515…` | #1147 | `deployment-01M5Q4ACYEJ901SQB3BNMPC55A` (v47), main `f14ace15` |

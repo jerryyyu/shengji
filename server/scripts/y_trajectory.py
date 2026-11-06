@@ -28,8 +28,8 @@ def recipe_environment(fly: Path, models: Path) -> dict[str, str]:
     if selected.get("SHENGJI_PV_WORLDS") != "64" or selected.get("SHENGJI_PV_CANDIDATES") != "8":
         raise ValueError("served capture requires W64/K8")
     if (selected.get("SHENGJI_PV_SINGLETON_CHALLENGER") != "1"
-            or selected.get("SHENGJI_PV_LEAD_CONFIRM") != "32"):
-        raise ValueError("served capture requires sc8 and lcc32")
+            or selected.get("SHENGJI_PV_LEAD_CONFIRM") != "0"):
+        raise ValueError("served capture requires sc8 on and the lead confirmation off")
     return selected
 
 
@@ -67,8 +67,8 @@ def main(argv=None):
         raise ValueError(f"fly served name drift: {expected}")
     name = expected
     bot = registry.make_bot(name, seed=0)
-    if bot.serving_budget_seconds != 3 or bot.bury_serving_budget_seconds != 2 or bot.lead_confirm != 32:
-        raise ValueError("served bot lost serving budgets or confirmation")
+    if bot.serving_budget_seconds != 3 or bot.bury_serving_budget_seconds != 2 or bot.lead_confirm:
+        raise ValueError("served bot lost serving budgets or runs the lead confirmation")
     print(json.dumps({"baseline": expected, "candidate": name,
                       "fly_sha256": hashlib.sha256(args.fly.read_bytes()).hexdigest(),
                       "play_seconds": 3, "bury_seconds": 2,

@@ -10,7 +10,7 @@ import pytest
 import r50_flag_positions as P
 from shengji.engine import rules_profile as rp
 from test_r50_flag_off_parity import PINS, assert_decision
-from test_release46_fly_config import fly_env
+from test_release50_fly_config import fly_env
 from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA,  # noqa: F401
                                        PRIOR_VOLUME_PATH, RELEASE50, VALUE_SHA, VALUE_VOLUME_PATH,
                                        release50_packages, served_bot)

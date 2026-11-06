@@ -1,4 +1,4 @@
-"""Release 50: the shipping ``fly.toml`` serves the cbaC stack, release 49 on new packages.
+"""Release 50, the rollback of release 51: the cbaC stack, release 49 on new packages.
 
 Release 50 changes four things in release 49's environment and nothing else
 (``R50_CHANGES``): the value package is G3 Stage A's ``g3a-e04-f4f4127e`` (the
@@ -8,9 +8,11 @@ B1a's ``b1a-028131a0`` in place of S58's, and the wide value-only bury scores
 its candidates on belief-drawn worlds (``SHENGJI_PV_BURY_BELIEF_WORLDS = '1'``,
 bury token ``-bbw``).  lcc32, sc8, every rule, budget and latency switch are
 release 49's, so release 49's env is this one with that change undone
-(``release49_env``, the documented rollback).
+(``release49_env``, the documented rollback).  Release 51 turns lcc32 off and changes
+nothing else, so release 50's env is the repo's ``fly.toml`` with that undone
+(``release50_env``).
 
-The served bot is built from the repo's ``fly.toml`` environment exactly as the
+The served bot is built from that environment exactly as the
 server builds it: the env in the process, the registry's import-time
 registration (``_register_pv_search_from_env``) and ``make_bot(SHENGJI_BOT)``,
 on the hash-pinned release-50 packages.  One served lead goes through the
@@ -30,7 +32,8 @@ import pytest
 
 from test_encoder_round_compat import pinned_production_package, PACKAGE_SHA, REQUIRE_PACKAGE  # noqa: F401
 from test_pv_search_serving import _play_state
-from test_release46_fly_config import RELEASE49_VALUES, RELEASE50_ADDED_KEYS, fly_env
+from test_release46_fly_config import (RELEASE49_VALUES, RELEASE50_ADDED_KEYS,
+                                       fly_env as production_env, undo_release51)
 from test_release48_fly_config import (BELIEF_SHA as S58_SHA, LATENCY_KEYS, apply_to_process,
                                        pinned_release48_belief_package)  # noqa: F401
 from test_release49_fly_config import RELEASE49, Y_CHANGES, release49_env
@@ -65,6 +68,17 @@ PACKAGES = {"value": ("SHENGJI_PV50_PACKAGE_PATH", VALUE_SHA),
             "belief": ("SHENGJI_PV50_BELIEF_PACKAGE_PATH", BELIEF_SHA)}
 
 
+def release50_env(env: dict) -> dict:
+    """Production's env with release 51's rollback applied: lcc32 back on and the
+    release-50 name restored."""
+    return {**undo_release51(env), "SHENGJI_BOT": RELEASE50}
+
+
+def fly_env() -> dict:
+    """Release 50's ``fly.toml`` ``[env]``: the repo's, rolled back from release 51."""
+    return release50_env(production_env())
+
+
 @pytest.fixture(scope="module")
 def release50_packages():
     """The three hash-pinned release-50 packages named by ``PACKAGES``' env vars;
@@ -88,7 +102,7 @@ def release50_packages():
 
 
 def local_env(packages, env=None) -> dict:
-    """``env`` (production's by default) with the release-50 volume paths mapped to the
+    """``env`` (release 50's by default) with the release-50 volume paths mapped to the
     local copies; the hashes stay the pinned ones."""
     env = fly_env() if env is None else env
     return {**env, "SHENGJI_PV_CKPT": str(packages["value"]),
@@ -97,7 +111,7 @@ def local_env(packages, env=None) -> dict:
 
 
 def served_bot(packages, monkeypatch, *, env=None, seed=17):
-    """``(name, bot)`` built as the server builds it from ``env`` (production's by
+    """``(name, bot)`` built as the server builds it from ``env`` (release 50's by
     default) on the local packages: the registry's import-time pv-search registration,
     then ``make_bot(SHENGJI_BOT)``.  The registry is a scratch copy."""
     from shengji.ai import registry
@@ -114,7 +128,7 @@ def served_bot(packages, monkeypatch, *, env=None, seed=17):
     return name, registry.make_bot(name, seed=seed)
 
 
-def test_fly_toml_is_release49_plus_the_r50_changes():
+def test_release50_is_release49_plus_the_r50_changes():
     env = fly_env()
     assert {k: env[k] for k in R50_CHANGES} == R50_CHANGES
     assert env["SHENGJI_BOT"] == RELEASE50
@@ -146,7 +160,7 @@ def test_fly_toml_is_release49_plus_the_r50_changes():
 
 
 def test_the_volume_paths_derive_the_served_name(monkeypatch):
-    """The name the server registers from fly.toml as written (volume paths, hashes
+    """The name the server registers from release 50's env (volume paths, hashes
     stood in for the files): the package paths do not enter it, only their hashes."""
     from shengji.ai import cwv_policy
     from shengji.train import pv_search_policy as pv
@@ -219,7 +233,7 @@ def test_healthz_reports_the_value_package_and_the_latency_switches(release50_pa
 
 def test_served_lead_runs_on_the_release50_packages_through_the_server_path(
         release50_packages, tmp_path, monkeypatch):
-    """One lead by the served bot, built with fly.toml's [env] in the process
+    """One lead by the release-50 bot, built with its [env] in the process
     environment, through ``_paced_bot_step`` / ``_commit_bot_turn``: the worlds are
     proposed by the real B1a model with no fallback, the FT1 prior and the G3 A value
     package are the ones the record names, and both lead rules run.

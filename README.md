@@ -9,10 +9,15 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 50** (since 2026-11-04 15:24 EST): release 49 on the G3 Stage A value package, the FT1 card-play
-prior, the B1a belief package and belief-drawn bury worlds (bbw). New duels and screens compare against it.
-**Release 51**, prepared for deploy, is release 50 with lcc32 off: cheaper per play, at a measured strength cost on
-cloud (−0.0133 [−0.0232, −0.0033], lccC) that Fly, where the rule rarely completes, has not measured. Release 49 is
+**Live: release 51** (since 2026-11-06 ~02:10 EST, Fly v61; [deploy record](https://github.com/jerryyyu/shengji/pull/1312#issuecomment-6679669956)):
+release 50 with the held-out lead confirmation (lcc32) off, `SHENGJI_PV_LEAD_CONFIRM = '0'`; every package, rule and
+budget is release 50's. It is cheaper per play (Fly CPU per play ×0.552, S91) at a measured strength cost on cloud
+(lccC, lcc off − on: −0.0133 [−0.0232, −0.0033], KEEP_LCC); the M5 Ultra read loo (+0.0079 [−0.0069, +0.0221],
+DROP_SAFE) disagrees, and Fly, where the stage rarely completes, has not been measured. Jerry chose it with lccC's
+cost in view, for cheaper serving and data generation. New duels and screens compare against release 51 as served
+(lcc off on both sides). **Release 50** (the cbaC stack, served 2026-11-04 to 11-06, Fly v57–v60, and the rollback
+target) is release 49 on the G3 Stage A value package, the FT1 card-play prior, the B1a belief package and
+belief-drawn bury worlds (bbw). Release 49 is
 release 48 plus two lead rules, the singleton challenger (sc8) and the held-out lead confirmation (lcc32). Release 48 is release 46 with
 the S58 belief package, dtrx and the guarded greedy-finished value leaf (lgf, lgfx, lgfd2000). Release 46 is the combo: belief-model worlds + exact
 endgame at 7 cards + every-chance first-round value declaration, on release 45. Release 45 is the SMV3
@@ -43,15 +48,18 @@ Rule tokens used in the figures and tables:
 - **bwv**: wide value-only bury (64 candidate kitties)
 - **dtrx**: dtr never overrides a complete exact lead stage (release 48)
 - **lgf / lgfx / lgfd2000**: finish the trick with greedy replies before the value pass; skip it where an exact stage is eligible; stop it past 2 s (release 48)
+- **bbw**: the wide bury scores its candidate kitties on belief-drawn worlds (release 50)
 - **sc8**: singleton challenger: a single the policy left off the ballot can take its last slot (release 49)
-- **lcc32**: lead confirmation: screen extra leads up to a 32-action total budget on the base worlds, then confirm at most two challengers on fresh worlds before replacing the served lead (release 49); off in release 51
+- **lcc32**: lead confirmation: screen extra leads up to a 32-action total budget on the base worlds, then confirm at most two challengers on fresh worlds before replacing the served lead (releases 49 and 50); off since release 51
 
-<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 49 vs 48 is +0.0270 on the screen and +0.0306 on the confirmation (paired head-to-head duels, a different instrument); release 48 vs 46 is +0.0765 on the screen and +0.0843 on the confirmation; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation; every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Rows up to release 48 are contrasts through a common MC-LCB control; separate contrasts; not additive." width="100%">
+<img src="docs/visuals/release-ladder.svg" alt="Forest plot of served results by release in levels per round with 95% confidence intervals; release 51 (lead confirmation off) vs 50 is −0.0133 on the cloud confirmation lccC and +0.0079 on the M5 Ultra duel loo, not measured on Fly; release 50 vs 49 is +0.0695 on the screen (one-sided 80% lower bound +0.0631) and +0.0618 on the confirmation; release 49 vs 48 is +0.0270 on the screen and +0.0306 on the confirmation (releases 49 to 51: paired head-to-head duels, a different instrument); release 48 vs 46 is +0.0765 on the screen and +0.0843 on the confirmation; release 46 vs 45 is +0.2167 on the screen and +0.2284 on the confirmation; every earlier step lies between +0.01 and +0.05. Each rule token is glossed under its row. Rows up to release 48 are contrasts through a common MC-LCB control; separate contrasts; not additive." width="100%">
 
 **Served results** (signed levels per round, 95% CI; each row names its method: indirect contrasts through a common MC-LCB control unless the row says paired duels):
 
 | change | against | result | reading | vs Sol, actor-only | vs PT-Sol |
 |---|---|---|---|---|---|
+| lead confirmation off (release 51; paired head-to-head duels, lcc off − on inside release 50) | release 50 | lccC −0.0133 [−0.0232, −0.0033] (confirmation, cloud); loo +0.0079 [−0.0069, +0.0221] (M5 Ultra) | KEEP_LCC (lccC) and DROP_SAFE (loo): the reads disagree; shipped for CPU (Fly ×0.552 per play, S91) on Jerry's word; Fly strength not measured | — | — |
+| G3 Stage A value + FT1 prior + B1a belief + bbw (release 50; paired head-to-head duels) | release 49 | screen +0.0695 (one-sided 80% lower bound +0.0631); confirmation +0.0618 [+0.0507, +0.0729] | SCREEN_PASS and CONFIRMED (cbaf arm a, cbaC); four changes at once; AI_POLICIES ladder row 19 has the one within-run attribution | — | — |
 | sc8 + lcc32 (release 49; paired head-to-head duels, not the MC-LCB scale) | release 48 | +0.0270 [+0.0135, +0.0408]; confirmation +0.0306 [+0.0167, +0.0441] | DEV_PASS and CONFIRMED (combo3y, combo3yc) | — | — |
 | S58 belief + dtrx + guarded greedy finish (release 48) | release 46 | +0.0765 [+0.0571, +0.0958]; confirmation +0.0843 [+0.0575, +0.1111] | POSITIVE and CONFIRMED (r48cloud, r48confirm) | — | — |
 | the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) | +0.55 [+0.25, +0.90] (S47) | pending (S47-PT) |
@@ -79,7 +87,7 @@ Open work: the board issue (see AGENTS.md) and [RL_PLAN.md](RL_PLAN.md#planned-w
 
 <img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, DEV test with a predeclared bar, screen duel of 3,920 seat-swapped deals, confirmation duel of 7,840 fresh deals, latency gate on one core, reviewed release PR with green CI, deploy on Jerry&#39;s word, Fly check. Inside one duel, the candidate plays the served release head to head, each deal twice with the seats swapped; example cbaC, a confirmation of the release-50 candidate: +0.0618 [+0.0507, +0.0729] levels per round vs release 49 as served, CONFIRMED because the mean is at least +0.005 and the 95% lower bound is above zero." width="100%">
 
-Screens and confirmations are paired, seat-swapped head-to-head duels against the served release (release 49):
+Screens and confirmations are paired, seat-swapped head-to-head duels against the served release (release 51):
 each deal is played twice with the seats swapped, and the read is signed levels per round with a deal bootstrap.
 A screen of 3,920 deals passes when the mean is at least +0.005 and the one-sided 80% lower bound is above zero; a
 screen pass earns a 7,840-deal fresh-seed confirmation (mean at least +0.005, 95% lower bound above zero) or a

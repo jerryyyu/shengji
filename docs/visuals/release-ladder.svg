@@ -1,115 +1,149 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 711" width="1000" height="711" role="img" aria-label="Forest plot of served results by release, levels per round with 95% CI: release 49 sc8 + lcc32 vs 48 +0.0270 [+0.0135, +0.0408], confirmation +0.0306 [+0.0167, +0.0441] (paired head-to-head duels, a different instrument); release 48 S58 belief + dtrx + guarded greedy finish vs 46 +0.0765 [+0.0571, +0.0958], confirmation +0.0843 [+0.0575, +0.1111]; release 46 combo vs 45 +0.2167 [+0.1923, +0.2412], confirmation +0.2284 [+0.2046, +0.2521]; release 45 wide bury vs 44 +0.0488 [+0.0286, +0.0690]; release 44 value declaration vs 43 +0.0497 [+0.0379, +0.0615]; div+rc+tb vs release 36 +0.0461 [+0.0242, +0.0681]; +la +0.0106 [+0.0006, +0.0205]; release 36 SMV3 outcome head vs 30 +0.0393 [+0.0033, +0.0752]; release 29 policy/value search vs 28 +0.049 [+0.003, +0.095]. Each rule token is glossed under its row. Rows up to release 48 are contrasts through a common MC-LCB control; separate contrasts; not additive.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 873" width="1000" height="873" role="img" aria-label="Forest plot of served results by release, levels per round with 95% CI: release 51 lead confirmation off vs 50, lccC −0.0133 [−0.0232, −0.0033] on cloud and loo +0.0079 [−0.0069, +0.0221] on the M5 Ultra, Fly not measured (paired duels); release 50 cbaC stack vs 49, screen +0.0695 (one-sided 80% lower bound +0.0631), confirmation +0.0618 [+0.0507, +0.0729] (paired duels); release 49 sc8 + lcc32 vs 48 +0.0270 [+0.0135, +0.0408], confirmation +0.0306 [+0.0167, +0.0441] (paired head-to-head duels, a different instrument); release 48 S58 belief + dtrx + guarded greedy finish vs 46 +0.0765 [+0.0571, +0.0958], confirmation +0.0843 [+0.0575, +0.1111]; release 46 combo vs 45 +0.2167 [+0.1923, +0.2412], confirmation +0.2284 [+0.2046, +0.2521]; release 45 wide bury vs 44 +0.0488 [+0.0286, +0.0690]; release 44 value declaration vs 43 +0.0497 [+0.0379, +0.0615]; div+rc+tb vs release 36 +0.0461 [+0.0242, +0.0681]; +la +0.0106 [+0.0006, +0.0205]; release 36 SMV3 outcome head vs 30 +0.0393 [+0.0033, +0.0752]; release 29 policy/value search vs 28 +0.049 [+0.003, +0.095]. Each rule token is glossed under its row. Shaded rows (releases 49 to 51) are paired duels; rows up to release 48 are contrasts through a common MC-LCB control; separate contrasts; not additive.">
 <style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;fill:#e6ebf0;font-size:13px}.bg{fill:#1d242c}.mut{fill:#98a4b0}.b{font-weight:600}.ttl{font-size:20px;font-weight:600}.h{font-size:15px;font-weight:600}.hdr{font-size:12.5px;font-weight:600;letter-spacing:.06em;fill:#98a4b0}.sm{font-size:12.5px}.it{font-style:italic}.edge{stroke:#323c47;stroke-width:1.5;fill:none}.edge.strong{stroke:#aab8c8}.edgebel{stroke:#b39cf0;stroke-width:1.5;fill:none}.edgeex{stroke:#ef8fbe;stroke-width:1.5;fill:none}.arrow{stroke:#aab8c8;stroke-width:1.6;fill:none}.ah{fill:#aab8c8}.world{fill:#2b3642;stroke:#aab8c8;stroke-width:1.3}.worldx{fill:#1d242c;stroke:#323c47;stroke-width:1.3}.thumb{stroke:#aab8c8;stroke-width:1.6;stroke-linecap:round}.xmark{stroke:#e07a6c;stroke-width:2;stroke-linecap:round}.badt{fill:#e07a6c}.goodt{fill:#6fc491}.cand{fill:#1d242c;stroke:#e6ebf0;stroke-width:1.5}.card{fill:#1d242c;stroke:#aab8c8;stroke-width:1}.red{fill:#f08a80}.play{fill:#e0b25a}.playtrack{fill:#3f321a}.net{fill:#4fc1b9}.nett{fill:#4fc1b9}.root{fill:#e6ebf0}.inkf{fill:#e6ebf0}.mutf{fill:#98a4b0}.rulef{fill:#323c47}.paperf{fill:#151a20}.panelf{fill:#1d242c}.bel{fill:#b39cf0}.belt{fill:#b39cf0}.belsoft{fill:#2c2442;stroke:#b39cf0;stroke-width:1.3}.ex{fill:#ef8fbe}.ext{fill:#ef8fbe}.exsoft{fill:#3f1f2e;stroke:#ef8fbe;stroke-width:1.3}.exline{stroke:#ef8fbe;stroke-width:1.5;fill:none}.exnode{fill:#1d242c;stroke:#ef8fbe;stroke-width:1.5}.vd{fill:#7fb8ef}.vdt{fill:#7fb8ef}.vdsoft{fill:#1b2e44;stroke:#7fb8ef;stroke-width:1.3}.wd{fill:#aab8c8}.wdt{fill:#aab8c8}.wdsoft{fill:#2b3642;stroke:#aab8c8;stroke-width:1.3}.axis{stroke:#98a4b0;stroke-width:1;fill:none}.grid{stroke:#323c47;stroke-width:1;fill:none}.zero{stroke:#e6ebf0;stroke-width:1.3;fill:none}.ring{fill:none;stroke:#e6ebf0;stroke-width:1.8}.ringex{fill:none;stroke:#ef8fbe;stroke-width:2}.panelbox{fill:#151a20;stroke:#323c47;stroke-width:1}.dash{fill:#1d242c;stroke:#aab8c8;stroke-width:1.5;stroke-dasharray:5 4}.stage{fill:#1d242c;stroke:#aab8c8;stroke-width:1.4}.stagej{fill:#2b3642;stroke:#aab8c8;stroke-width:1.4}.lineink{stroke:#e6ebf0;stroke-width:2.2;fill:none}.linemut{stroke:#98a4b0;stroke-width:1.2;fill:none}.linebel{stroke:#b39cf0;stroke-width:2.2;fill:none}.linevd{stroke:#7fb8ef;stroke-width:2.2;fill:none}.linewd{stroke:#aab8c8;stroke-width:2.2;fill:none}.lineex{stroke:#ef8fbe;stroke-width:2.2;fill:none}.linenet{stroke:#4fc1b9;stroke-width:2.2;fill:none}.chipt{font-size:12.5px;font-weight:700;letter-spacing:.05em;fill:#1d242c}.netbox{fill:#173f3d;stroke:#4fc1b9;stroke-width:1.5}.netlayer{stroke:#4fc1b9;stroke-width:3;stroke-linecap:round}.netwire{stroke:#4fc1b9;stroke-width:0.8;opacity:.6}.cardatt{fill:#1d242c;stroke:#e07a6c;stroke-width:1.3}.cone{fill:#323c47;fill-opacity:.35}.conel{stroke:#98a4b0;stroke-width:1;stroke-dasharray:3 3;fill:none}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
 <defs><marker id="ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
-<rect x="0.0" y="0.0" width="1000.0" height="711.0" class="bg"/>
+<rect x="0.0" y="0.0" width="1000.0" height="873.0" class="bg"/>
 <text x="24.0" y="36.0" class="ttl">Served results by release</text>
 <text x="24.0" y="60.0" class="mut">Each row: one release against its predecessor, levels per round, 95% CI. Separate contrasts, not additive.</text>
-<rect x="16.0" y="86.0" width="968.0" height="77.0" rx="6" class="paperf"/>
-<text x="24.0" y="106.0" class="b">release 49 · sc8 + lcc32 <tspan class="mut" style="font-weight:400">· vs release 48, paired duels</tspan></text>
-<text x="24.0" y="124.0" class="sm mut"><tspan class="b">sc8</tspan>: a single the policy left off the ballot can take its last slot</text>
-<text x="24.0" y="141.0" class="sm mut"><tspan class="b">lcc32</tspan>: screen extra leads (32-action budget), confirm ≤ 2 on fresh worlds</text>
-<text x="24.0" y="158.0" class="sm mut"><tspan class="b">duels</tspan>: seat-swapped, 3,920 fresh deals each; not the MC-LCB scale</text>
-<line x1="521.8" y1="114.5" x2="547.1" y2="114.5" class="lineink"/>
-<line x1="521.8" y1="109.5" x2="521.8" y2="119.5" class="lineink"/>
-<line x1="547.1" y1="109.5" x2="547.1" y2="119.5" class="lineink"/>
-<circle cx="534.3" cy="114.5" r="5" class="inkf"/>
-<text x="557.1" y="119.0" class="sm mut">screen</text>
-<text x="976.0" y="119.0" class="mono sm b" text-anchor="end">+0.0270 [+0.0135, +0.0408]</text>
-<line x1="524.8" y1="134.5" x2="550.2" y2="134.5" class="lineink"/>
-<line x1="524.8" y1="129.5" x2="524.8" y2="139.5" class="lineink"/>
-<line x1="550.2" y1="129.5" x2="550.2" y2="139.5" class="lineink"/>
-<path d="M537.6,128.5 L543.6,134.5 L537.6,140.5 L531.6,134.5 z" class="panelf"/>
-<path d="M537.6,128.5 L543.6,134.5 L537.6,140.5 L531.6,134.5 z" class="ring"/>
-<text x="560.2" y="139.0" class="sm mut">confirm</text>
-<text x="976.0" y="139.0" class="mono sm b" text-anchor="end">+0.0306 [+0.0167, +0.0441]</text>
-<text x="24.0" y="187.0" class="b">release 48 · S58 belief + dtrx + guarded greedy finish <tspan class="mut" style="font-weight:400">· vs release 46</tspan></text>
-<text x="24.0" y="205.0" class="sm mut"><tspan class="b">bw</tspan>: hidden hands from the S58 belief model (S17 in release 46)</text>
-<text x="24.0" y="222.0" class="sm mut"><tspan class="b">dtrx</tspan>: dtr never overrides a complete exact lead stage</text>
-<text x="24.0" y="239.0" class="sm mut"><tspan class="b">lgf / lgfx / lgfd2000</tspan>: greedy trick finish, not where exact applies, cut at 2 s</text>
-<line x1="562.2" y1="195.5" x2="598.0" y2="195.5" class="linenet"/>
-<line x1="562.2" y1="190.5" x2="562.2" y2="200.5" class="linenet"/>
-<line x1="598.0" y1="190.5" x2="598.0" y2="200.5" class="linenet"/>
-<circle cx="580.1" cy="195.5" r="5" class="net"/>
-<text x="608.0" y="200.0" class="sm mut">screen</text>
-<text x="976.0" y="200.0" class="mono sm" text-anchor="end">+0.0765 [+0.0571, +0.0958]</text>
-<line x1="562.5" y1="215.5" x2="612.2" y2="215.5" class="linenet"/>
-<line x1="562.5" y1="210.5" x2="562.5" y2="220.5" class="linenet"/>
-<line x1="612.2" y1="210.5" x2="612.2" y2="220.5" class="linenet"/>
-<path d="M587.4,209.5 L593.4,215.5 L587.4,221.5 L581.4,215.5 z" class="panelf"/>
-<path d="M587.4,209.5 L593.4,215.5 L587.4,221.5 L581.4,215.5 z" class="ring"/>
-<text x="622.2" y="220.0" class="sm mut">confirm</text>
-<text x="976.0" y="220.0" class="mono sm" text-anchor="end">+0.0843 [+0.0575, +0.1111]</text>
-<line x1="509.3" y1="84.0" x2="509.3" y2="641.0" class="zero"/>
-<text x="509.3" y="661.0" class="sm mut" text-anchor="middle">0</text>
-<line x1="555.6" y1="84.0" x2="555.6" y2="641.0" class="grid"/>
-<text x="555.6" y="661.0" class="sm mut" text-anchor="middle">+0.05</text>
-<line x1="601.9" y1="84.0" x2="601.9" y2="641.0" class="grid"/>
-<text x="601.9" y="661.0" class="sm mut" text-anchor="middle">+0.10</text>
-<line x1="648.1" y1="84.0" x2="648.1" y2="641.0" class="grid"/>
-<text x="648.1" y="661.0" class="sm mut" text-anchor="middle">+0.15</text>
-<line x1="694.4" y1="84.0" x2="694.4" y2="641.0" class="grid"/>
-<text x="694.4" y="661.0" class="sm mut" text-anchor="middle">+0.20</text>
-<line x1="740.7" y1="84.0" x2="740.7" y2="641.0" class="grid"/>
-<text x="740.7" y="661.0" class="sm mut" text-anchor="middle">+0.25</text>
-<text x="625.0" y="683.0" class="sm mut" text-anchor="middle">levels per round (positive: newer wins more)</text>
-<text x="24.0" y="268.0" class="b">release 46 · the combo <tspan class="mut" style="font-weight:400">· vs release 45</tspan></text>
-<text x="24.0" y="286.0" class="sm mut"><tspan class="b">bw</tspan>: hidden hands proposed by the S17 belief model</text>
-<text x="24.0" y="303.0" class="sm mut"><tspan class="b">ele / ed7 / xf7</tspan>: exact endgame search for leads and follows at ≤ 7 cards</text>
-<text x="24.0" y="320.0" class="sm mut"><tspan class="b">vdef</tspan>: in round 1, consult the value head at every declare chance</text>
-<line x1="687.3" y1="276.5" x2="732.6" y2="276.5" class="lineink"/>
-<line x1="687.3" y1="271.5" x2="687.3" y2="281.5" class="lineink"/>
-<line x1="732.6" y1="271.5" x2="732.6" y2="281.5" class="lineink"/>
-<circle cx="709.9" cy="276.5" r="5" class="inkf"/>
-<text x="677.3" y="281.0" class="sm mut" text-anchor="end">screen</text>
-<text x="976.0" y="281.0" class="mono sm b" text-anchor="end">+0.2167 [+0.1923, +0.2412]</text>
-<line x1="698.7" y1="296.5" x2="742.7" y2="296.5" class="lineink"/>
-<line x1="698.7" y1="291.5" x2="698.7" y2="301.5" class="lineink"/>
-<line x1="742.7" y1="291.5" x2="742.7" y2="301.5" class="lineink"/>
-<path d="M720.7,290.5 L726.7,296.5 L720.7,302.5 L714.7,296.5 z" class="panelf"/>
-<path d="M720.7,290.5 L726.7,296.5 L720.7,302.5 L714.7,296.5 z" class="ring"/>
-<text x="688.7" y="301.0" class="sm mut" text-anchor="end">confirm</text>
-<text x="976.0" y="301.0" class="mono sm b" text-anchor="end">+0.2284 [+0.2046, +0.2521]</text>
-<text x="24.0" y="349.0" class="b">release 45 · wide bury <tspan class="mut" style="font-weight:400">· vs release 44</tspan></text>
-<text x="24.0" y="367.0" class="sm mut"><tspan class="b">bwv</tspan>: wide value-only bury (64 candidate kitties)</text>
-<line x1="535.7" y1="350.5" x2="573.1" y2="350.5" class="linenet"/>
-<line x1="535.7" y1="345.5" x2="535.7" y2="355.5" class="linenet"/>
-<line x1="573.1" y1="345.5" x2="573.1" y2="355.5" class="linenet"/>
-<circle cx="554.4" cy="350.5" r="5" class="net"/>
-<text x="976.0" y="355.0" class="mono sm" text-anchor="end">+0.0488 [+0.0286, +0.0690]</text>
-<text x="24.0" y="396.0" class="b">release 44 · value declaration <tspan class="mut" style="font-weight:400">· vs 43, first-round deals</tspan></text>
-<text x="24.0" y="414.0" class="sm mut"><tspan class="b">vd</tspan>: value-guided trump declaration</text>
-<line x1="544.4" y1="397.5" x2="566.2" y2="397.5" class="linenet"/>
-<line x1="544.4" y1="392.5" x2="544.4" y2="402.5" class="linenet"/>
-<line x1="566.2" y1="392.5" x2="566.2" y2="402.5" class="linenet"/>
-<circle cx="555.3" cy="397.5" r="5" class="net"/>
-<text x="976.0" y="402.0" class="mono sm" text-anchor="end">+0.0497 [+0.0379, +0.0615]</text>
-<text x="24.0" y="443.0" class="b">div + rc + tb <tspan class="mut" style="font-weight:400">· vs release 36</tspan></text>
-<text x="24.0" y="461.0" class="sm mut"><tspan class="b">div</tspan>: diversify candidates (at most 2 of the same shape)</text>
-<text x="24.0" y="478.0" class="sm mut"><tspan class="b">rc</tspan>: keep only worlds where this round&#x27;s refused throws stay refusable</text>
-<text x="24.0" y="495.0" class="sm mut"><tspan class="b">tb</tspan>: tie-break near-equal moves by points won this trick</text>
-<line x1="531.7" y1="461.5" x2="572.3" y2="461.5" class="linenet"/>
-<line x1="531.7" y1="456.5" x2="531.7" y2="466.5" class="linenet"/>
-<line x1="572.3" y1="456.5" x2="572.3" y2="466.5" class="linenet"/>
-<circle cx="551.9" cy="461.5" r="5" class="net"/>
-<text x="976.0" y="466.0" class="mono sm" text-anchor="end">+0.0461 [+0.0242, +0.0681]</text>
-<text x="24.0" y="524.0" class="b">+ la <tspan class="mut" style="font-weight:400">· vs div + rc + tb</tspan></text>
-<text x="24.0" y="542.0" class="sm mut"><tspan class="b">la</tspan>: lead anchor: on a weak-single lead, admit the strongest pair/tractor as candidate zero</text>
-<line x1="509.8" y1="525.5" x2="528.2" y2="525.5" class="linenet"/>
-<line x1="509.8" y1="520.5" x2="509.8" y2="530.5" class="linenet"/>
-<line x1="528.2" y1="520.5" x2="528.2" y2="530.5" class="linenet"/>
-<circle cx="519.1" cy="525.5" r="5" class="net"/>
-<text x="976.0" y="530.0" class="mono sm" text-anchor="end">+0.0106 [+0.0006, +0.0205]</text>
-<text x="24.0" y="571.0" class="b">release 36 · SMV3 outcome head <tspan class="mut" style="font-weight:400">· vs release 30</tspan></text>
-<line x1="512.3" y1="572.0" x2="578.9" y2="572.0" class="linenet"/>
-<line x1="512.3" y1="567.0" x2="512.3" y2="577.0" class="linenet"/>
-<line x1="578.9" y1="567.0" x2="578.9" y2="577.0" class="linenet"/>
-<circle cx="545.6" cy="572.0" r="5" class="net"/>
-<text x="976.0" y="576.5" class="mono sm" text-anchor="end">+0.0393 [+0.0033, +0.0752]</text>
-<text x="24.0" y="617.0" class="b">release 29 · policy/value search <tspan class="mut" style="font-weight:400">· vs release 28</tspan></text>
-<line x1="512.0" y1="618.0" x2="597.2" y2="618.0" class="linenet"/>
-<line x1="512.0" y1="613.0" x2="512.0" y2="623.0" class="linenet"/>
-<line x1="597.2" y1="613.0" x2="597.2" y2="623.0" class="linenet"/>
-<circle cx="554.6" cy="618.0" r="5" class="net"/>
-<text x="976.0" y="622.5" class="mono sm" text-anchor="end">+0.049 [+0.003, +0.095]</text>
-<text x="984.0" y="701.0" class="mut sm" text-anchor="end">release 49 · 2026-11-04 · docs/visuals/release-ladder.svg</text>
+<rect x="16.0" y="86.0" width="968.0" height="239.0" rx="6" class="paperf"/>
+<text x="24.0" y="106.0" class="b">release 51 · lead confirmation off <tspan class="mut" style="font-weight:400">· vs release 50, paired duels</tspan></text>
+<text x="24.0" y="124.0" class="sm mut"><tspan class="b">lcc32 off</tspan>: no held-out lead confirmation; cheaper per play</text>
+<text x="24.0" y="141.0" class="sm mut"><tspan class="b">reads</tspan>: lccC on cloud, loo on the M5 Ultra; Fly not measured</text>
+<line x1="487.8" y1="114.5" x2="506.2" y2="114.5" class="lineink"/>
+<line x1="487.8" y1="109.5" x2="487.8" y2="119.5" class="lineink"/>
+<line x1="506.2" y1="109.5" x2="506.2" y2="119.5" class="lineink"/>
+<path d="M497.0,108.5 L503.0,114.5 L497.0,120.5 L491.0,114.5 z" class="panelf"/>
+<path d="M497.0,108.5 L503.0,114.5 L497.0,120.5 L491.0,114.5 z" class="ring"/>
+<text x="516.2" y="119.0" class="sm mut">lccC</text>
+<text x="976.0" y="119.0" class="mono sm b" text-anchor="end">−0.0133 [−0.0232, −0.0033]</text>
+<line x1="502.9" y1="134.5" x2="529.8" y2="134.5" class="lineink"/>
+<line x1="502.9" y1="129.5" x2="502.9" y2="139.5" class="lineink"/>
+<line x1="529.8" y1="129.5" x2="529.8" y2="139.5" class="lineink"/>
+<circle cx="516.6" cy="134.5" r="5" class="inkf"/>
+<text x="539.8" y="139.0" class="sm mut">loo</text>
+<text x="976.0" y="139.0" class="mono sm b" text-anchor="end">+0.0079 [−0.0069, +0.0221]</text>
+<text x="24.0" y="170.0" class="b">release 50 · the cbaC stack <tspan class="mut" style="font-weight:400">· vs release 49, paired duels</tspan></text>
+<text x="24.0" y="188.0" class="sm mut"><tspan class="b">value</tspan>: G3 Stage A value package (f4f4127e) at every stage</text>
+<text x="24.0" y="205.0" class="sm mut"><tspan class="b">prior</tspan>: FT1 card-play prior (1fa201b2) admits the candidates</text>
+<text x="24.0" y="222.0" class="sm mut"><tspan class="b">bw</tspan>: hidden hands from the B1a belief model (S58 before)</text>
+<text x="24.0" y="239.0" class="sm mut"><tspan class="b">bbw</tspan>: the wide bury scores its kitties on belief-drawn worlds</text>
+<line x1="567.7" y1="178.5" x2="573.6" y2="178.5" class="lineink"/>
+<line x1="567.7" y1="173.5" x2="567.7" y2="183.5" class="lineink"/>
+<circle cx="573.6" cy="178.5" r="5" class="inkf"/>
+<text x="583.6" y="183.0" class="sm mut">screen (80% lower bound)</text>
+<text x="976.0" y="183.0" class="mono sm b" text-anchor="end">+0.0695 (LB +0.0631)</text>
+<line x1="556.2" y1="198.5" x2="576.8" y2="198.5" class="lineink"/>
+<line x1="556.2" y1="193.5" x2="556.2" y2="203.5" class="lineink"/>
+<line x1="576.8" y1="193.5" x2="576.8" y2="203.5" class="lineink"/>
+<path d="M566.5,192.5 L572.5,198.5 L566.5,204.5 L560.5,198.5 z" class="panelf"/>
+<path d="M566.5,192.5 L572.5,198.5 L566.5,204.5 L560.5,198.5 z" class="ring"/>
+<text x="586.8" y="203.0" class="sm mut">confirm</text>
+<text x="976.0" y="203.0" class="mono sm b" text-anchor="end">+0.0618 [+0.0507, +0.0729]</text>
+<text x="24.0" y="268.0" class="b">release 49 · sc8 + lcc32 <tspan class="mut" style="font-weight:400">· vs release 48, paired duels</tspan></text>
+<text x="24.0" y="286.0" class="sm mut"><tspan class="b">sc8</tspan>: a single the policy left off the ballot can take its last slot</text>
+<text x="24.0" y="303.0" class="sm mut"><tspan class="b">lcc32</tspan>: screen extra leads (32-action budget), confirm ≤ 2 on fresh worlds</text>
+<text x="24.0" y="320.0" class="sm mut"><tspan class="b">duels</tspan>: seat-swapped, 3,920 fresh deals each; not the MC-LCB scale</text>
+<line x1="521.8" y1="276.5" x2="547.1" y2="276.5" class="lineink"/>
+<line x1="521.8" y1="271.5" x2="521.8" y2="281.5" class="lineink"/>
+<line x1="547.1" y1="271.5" x2="547.1" y2="281.5" class="lineink"/>
+<circle cx="534.3" cy="276.5" r="5" class="inkf"/>
+<text x="557.1" y="281.0" class="sm mut">screen</text>
+<text x="976.0" y="281.0" class="mono sm b" text-anchor="end">+0.0270 [+0.0135, +0.0408]</text>
+<line x1="524.8" y1="296.5" x2="550.2" y2="296.5" class="lineink"/>
+<line x1="524.8" y1="291.5" x2="524.8" y2="301.5" class="lineink"/>
+<line x1="550.2" y1="291.5" x2="550.2" y2="301.5" class="lineink"/>
+<path d="M537.6,290.5 L543.6,296.5 L537.6,302.5 L531.6,296.5 z" class="panelf"/>
+<path d="M537.6,290.5 L543.6,296.5 L537.6,302.5 L531.6,296.5 z" class="ring"/>
+<text x="560.2" y="301.0" class="sm mut">confirm</text>
+<text x="976.0" y="301.0" class="mono sm b" text-anchor="end">+0.0306 [+0.0167, +0.0441]</text>
+<text x="24.0" y="349.0" class="b">release 48 · S58 belief + dtrx + guarded greedy finish <tspan class="mut" style="font-weight:400">· vs release 46</tspan></text>
+<text x="24.0" y="367.0" class="sm mut"><tspan class="b">bw</tspan>: hidden hands from the S58 belief model (S17 in release 46)</text>
+<text x="24.0" y="384.0" class="sm mut"><tspan class="b">dtrx</tspan>: dtr never overrides a complete exact lead stage</text>
+<text x="24.0" y="401.0" class="sm mut"><tspan class="b">lgf / lgfx / lgfd2000</tspan>: greedy trick finish, not where exact applies, cut at 2 s</text>
+<line x1="562.2" y1="357.5" x2="598.0" y2="357.5" class="linenet"/>
+<line x1="562.2" y1="352.5" x2="562.2" y2="362.5" class="linenet"/>
+<line x1="598.0" y1="352.5" x2="598.0" y2="362.5" class="linenet"/>
+<circle cx="580.1" cy="357.5" r="5" class="net"/>
+<text x="608.0" y="362.0" class="sm mut">screen</text>
+<text x="976.0" y="362.0" class="mono sm" text-anchor="end">+0.0765 [+0.0571, +0.0958]</text>
+<line x1="562.5" y1="377.5" x2="612.2" y2="377.5" class="linenet"/>
+<line x1="562.5" y1="372.5" x2="562.5" y2="382.5" class="linenet"/>
+<line x1="612.2" y1="372.5" x2="612.2" y2="382.5" class="linenet"/>
+<path d="M587.4,371.5 L593.4,377.5 L587.4,383.5 L581.4,377.5 z" class="panelf"/>
+<path d="M587.4,371.5 L593.4,377.5 L587.4,383.5 L581.4,377.5 z" class="ring"/>
+<text x="622.2" y="382.0" class="sm mut">confirm</text>
+<text x="976.0" y="382.0" class="mono sm" text-anchor="end">+0.0843 [+0.0575, +0.1111]</text>
+<line x1="509.3" y1="84.0" x2="509.3" y2="803.0" class="zero"/>
+<text x="509.3" y="823.0" class="sm mut" text-anchor="middle">0</text>
+<line x1="555.6" y1="84.0" x2="555.6" y2="803.0" class="grid"/>
+<text x="555.6" y="823.0" class="sm mut" text-anchor="middle">+0.05</text>
+<line x1="601.9" y1="84.0" x2="601.9" y2="803.0" class="grid"/>
+<text x="601.9" y="823.0" class="sm mut" text-anchor="middle">+0.10</text>
+<line x1="648.1" y1="84.0" x2="648.1" y2="803.0" class="grid"/>
+<text x="648.1" y="823.0" class="sm mut" text-anchor="middle">+0.15</text>
+<line x1="694.4" y1="84.0" x2="694.4" y2="803.0" class="grid"/>
+<text x="694.4" y="823.0" class="sm mut" text-anchor="middle">+0.20</text>
+<line x1="740.7" y1="84.0" x2="740.7" y2="803.0" class="grid"/>
+<text x="740.7" y="823.0" class="sm mut" text-anchor="middle">+0.25</text>
+<text x="625.0" y="845.0" class="sm mut" text-anchor="middle">levels per round (positive: newer wins more)</text>
+<text x="24.0" y="430.0" class="b">release 46 · the combo <tspan class="mut" style="font-weight:400">· vs release 45</tspan></text>
+<text x="24.0" y="448.0" class="sm mut"><tspan class="b">bw</tspan>: hidden hands proposed by the S17 belief model</text>
+<text x="24.0" y="465.0" class="sm mut"><tspan class="b">ele / ed7 / xf7</tspan>: exact endgame search for leads and follows at ≤ 7 cards</text>
+<text x="24.0" y="482.0" class="sm mut"><tspan class="b">vdef</tspan>: in round 1, consult the value head at every declare chance</text>
+<line x1="687.3" y1="438.5" x2="732.6" y2="438.5" class="lineink"/>
+<line x1="687.3" y1="433.5" x2="687.3" y2="443.5" class="lineink"/>
+<line x1="732.6" y1="433.5" x2="732.6" y2="443.5" class="lineink"/>
+<circle cx="709.9" cy="438.5" r="5" class="inkf"/>
+<text x="677.3" y="443.0" class="sm mut" text-anchor="end">screen</text>
+<text x="976.0" y="443.0" class="mono sm b" text-anchor="end">+0.2167 [+0.1923, +0.2412]</text>
+<line x1="698.7" y1="458.5" x2="742.7" y2="458.5" class="lineink"/>
+<line x1="698.7" y1="453.5" x2="698.7" y2="463.5" class="lineink"/>
+<line x1="742.7" y1="453.5" x2="742.7" y2="463.5" class="lineink"/>
+<path d="M720.7,452.5 L726.7,458.5 L720.7,464.5 L714.7,458.5 z" class="panelf"/>
+<path d="M720.7,452.5 L726.7,458.5 L720.7,464.5 L714.7,458.5 z" class="ring"/>
+<text x="688.7" y="463.0" class="sm mut" text-anchor="end">confirm</text>
+<text x="976.0" y="463.0" class="mono sm b" text-anchor="end">+0.2284 [+0.2046, +0.2521]</text>
+<text x="24.0" y="511.0" class="b">release 45 · wide bury <tspan class="mut" style="font-weight:400">· vs release 44</tspan></text>
+<text x="24.0" y="529.0" class="sm mut"><tspan class="b">bwv</tspan>: wide value-only bury (64 candidate kitties)</text>
+<line x1="535.7" y1="512.5" x2="573.1" y2="512.5" class="linenet"/>
+<line x1="535.7" y1="507.5" x2="535.7" y2="517.5" class="linenet"/>
+<line x1="573.1" y1="507.5" x2="573.1" y2="517.5" class="linenet"/>
+<circle cx="554.4" cy="512.5" r="5" class="net"/>
+<text x="976.0" y="517.0" class="mono sm" text-anchor="end">+0.0488 [+0.0286, +0.0690]</text>
+<text x="24.0" y="558.0" class="b">release 44 · value declaration <tspan class="mut" style="font-weight:400">· vs 43, first-round deals</tspan></text>
+<text x="24.0" y="576.0" class="sm mut"><tspan class="b">vd</tspan>: value-guided trump declaration</text>
+<line x1="544.4" y1="559.5" x2="566.2" y2="559.5" class="linenet"/>
+<line x1="544.4" y1="554.5" x2="544.4" y2="564.5" class="linenet"/>
+<line x1="566.2" y1="554.5" x2="566.2" y2="564.5" class="linenet"/>
+<circle cx="555.3" cy="559.5" r="5" class="net"/>
+<text x="976.0" y="564.0" class="mono sm" text-anchor="end">+0.0497 [+0.0379, +0.0615]</text>
+<text x="24.0" y="605.0" class="b">div + rc + tb <tspan class="mut" style="font-weight:400">· vs release 36</tspan></text>
+<text x="24.0" y="623.0" class="sm mut"><tspan class="b">div</tspan>: diversify candidates (at most 2 of the same shape)</text>
+<text x="24.0" y="640.0" class="sm mut"><tspan class="b">rc</tspan>: keep only worlds where this round&#x27;s refused throws stay refusable</text>
+<text x="24.0" y="657.0" class="sm mut"><tspan class="b">tb</tspan>: tie-break near-equal moves by points won this trick</text>
+<line x1="531.7" y1="623.5" x2="572.3" y2="623.5" class="linenet"/>
+<line x1="531.7" y1="618.5" x2="531.7" y2="628.5" class="linenet"/>
+<line x1="572.3" y1="618.5" x2="572.3" y2="628.5" class="linenet"/>
+<circle cx="551.9" cy="623.5" r="5" class="net"/>
+<text x="976.0" y="628.0" class="mono sm" text-anchor="end">+0.0461 [+0.0242, +0.0681]</text>
+<text x="24.0" y="686.0" class="b">+ la <tspan class="mut" style="font-weight:400">· vs div + rc + tb</tspan></text>
+<text x="24.0" y="704.0" class="sm mut"><tspan class="b">la</tspan>: lead anchor: on a weak-single lead, admit the strongest pair/tractor as candidate zero</text>
+<line x1="509.8" y1="687.5" x2="528.2" y2="687.5" class="linenet"/>
+<line x1="509.8" y1="682.5" x2="509.8" y2="692.5" class="linenet"/>
+<line x1="528.2" y1="682.5" x2="528.2" y2="692.5" class="linenet"/>
+<circle cx="519.1" cy="687.5" r="5" class="net"/>
+<text x="976.0" y="692.0" class="mono sm" text-anchor="end">+0.0106 [+0.0006, +0.0205]</text>
+<text x="24.0" y="733.0" class="b">release 36 · SMV3 outcome head <tspan class="mut" style="font-weight:400">· vs release 30</tspan></text>
+<line x1="512.3" y1="734.0" x2="578.9" y2="734.0" class="linenet"/>
+<line x1="512.3" y1="729.0" x2="512.3" y2="739.0" class="linenet"/>
+<line x1="578.9" y1="729.0" x2="578.9" y2="739.0" class="linenet"/>
+<circle cx="545.6" cy="734.0" r="5" class="net"/>
+<text x="976.0" y="738.5" class="mono sm" text-anchor="end">+0.0393 [+0.0033, +0.0752]</text>
+<text x="24.0" y="779.0" class="b">release 29 · policy/value search <tspan class="mut" style="font-weight:400">· vs release 28</tspan></text>
+<line x1="512.0" y1="780.0" x2="597.2" y2="780.0" class="linenet"/>
+<line x1="512.0" y1="775.0" x2="512.0" y2="785.0" class="linenet"/>
+<line x1="597.2" y1="775.0" x2="597.2" y2="785.0" class="linenet"/>
+<circle cx="554.6" cy="780.0" r="5" class="net"/>
+<text x="976.0" y="784.5" class="mono sm" text-anchor="end">+0.049 [+0.003, +0.095]</text>
+<text x="24.0" y="863.0" class="mut sm">Shaded: paired seat-swapped duels, not the MC-LCB scale.</text>
+<text x="984.0" y="863.0" class="mut sm" text-anchor="end">release 51 · 2026-11-06 · docs/visuals/release-ladder.svg</text>
 </svg>

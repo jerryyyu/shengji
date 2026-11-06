@@ -2,16 +2,14 @@
 
 Last reconciled: **2026-11-01**.
 
-**Production is release 50** (live 2026-11-04 15:24 EST, Fly v57, redeployed unchanged as v58 and v59; Jerry
-2026-11-04: "I'm good to ship and we can manage what to do with lcc after"): release 49 with the G3 Stage A value
+**Production is release 51** (live 2026-11-06, Fly v61; ladder row 20): release 50 with `lcc32` off (Jerry, in
+session 2026-11-06, knowing lccC's cost: "im good to turn off lcc, bc for new data gens, etc it will be cheaper").
+Release 50 (row 19; live 2026-11-04 15:24 EST, Fly v57) is its rollback: release 49 with the G3 Stage A value
 package `f4f4127e`, the FT1 card-play prior `1fa201b2`, the B1a belief package `028131a0` and belief bury worlds
-`bbw` (ladder row 19). **Release 51**, prepared for deploy (ladder row 20), is release 50 with `lcc32` off (Jerry,
-in session 2026-11-06, knowing lccC's cost: "im good to turn off lcc, bc for new data gens, etc it will be
-cheaper"); release 50 is its rollback and release 49 (row 18: release 48 plus `sc8` and `lcc32`) the one below
-(`DEPLOY.md`). **New duels and screens compare against release 50 as served** (Jerry, in session 2026-11-04, "Yes
-move comparator"; before that release 49, 2026-11-01, release 48, 2026-10-24, release 46, 2026-10-16, and release
-45, 2026-10-13), and against release 51 as served once it is deployed, with lcc off on both sides. Confirmations
-keep their parent's comparator; screens already read keep their declared comparator.
+`bbw`. Release 49 (row 18: release 48 plus `sc8` and `lcc32`) is the one below (`DEPLOY.md`). **New duels and
+screens compare against release 51 as served**, lcc off on both sides (the release 51 deploy record, #1312; before
+that release 50, 2026-11-04, release 49, 2026-11-01, release 48, 2026-10-24, release 46, 2026-10-16, and release
+45, 2026-10-13). Confirmations keep their parent's comparator; screens already read keep their declared comparator.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The

@@ -222,3 +222,70 @@ def test_lower_cap_reaches_minimax_and_keeps_baseline_on_expiry(
     else:
         assert state['exact_lead_status'] == 'complete'
         assert state['exact_lead_worlds_completed'] == 1
+
+
+@pytest.mark.parametrize("candidate, expected", [(False, ["D3"]), (True, ["HQ"])])
+def test_combo_lead_keeps_serving_budgets_through_server_commit(
+        release50_packages, tmp_path, monkeypatch, candidate, expected):
+    """The candidate corrects the replayed lead through a budgeted server turn."""
+    import asyncio
+    import random
+    import time
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from test_release46_fly_config import fly_env as production_env
+    from test_release50_fly_config import local_env
+    from shengji.eval.served_config import registry_name
+
+    env = {**production_env(), TIE: "1", FLAG: "1",
+           "SHENGJI_PV_EXACT_LEAD_MAX_SECONDS": "1.6",
+           "SHENGJI_PV_WORLD_HISTORY_THROWS": "1",
+           "SHENGJI_PV_REFUSAL_EVENT_COMPLETE": "1"}
+    if not candidate:
+        env = production_env()
+    env["SHENGJI_BOT"] = registry_name(local_env(release50_packages, env))
+    name, bot = served_bot(release50_packages, monkeypatch, env=env, seed=P.SEED)
+    assert bot.serving_budget_seconds == 3.0
+    if candidate:
+        assert bot.exact_lead_max_seconds == 1.6
+    assert bot.leaf_greedy_deadline_ms == 2000
+    rnd = P.replay(*MISPRICED)
+    seat = rnd.turn
+
+    async def scenario():
+        game = Game(random.Random(0))
+        game.round = rnd
+        room = srv.Room(code="COMBO", game=game, bot=bot,
+                        seats=[srv.Seat(str(s), is_bot=True) for s in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        room.log_event = lambda kind, **data: None
+        before = list(rnd.hands[seat])
+        start = time.monotonic()
+        prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+        elapsed = time.monotonic() - start
+        assert prepared is not None
+        searched = prepared.decision.snapshot.bot_copy
+        record = searched.last_decision_record
+        cards = list(prepared.decision.cards)
+        print({"candidate": candidate, "elapsed": elapsed, "cards": cards,
+               "exact_seconds": record.get("exact_lead_seconds"),
+               "worlds": record.get("exact_lead_worlds_completed")})
+        assert searched.policy_name == name
+        assert searched.serving_budget_seconds == 3.0
+        if candidate:
+            assert searched.exact_lead_max_seconds == 1.6
+        assert srv._commit_bot_turn(room, prepared)
+        assert len(rnd.hands[seat]) == len(before) - len(cards)
+        assert cards == expected
+        assert record["exact_lead_status"] == "complete"
+        assert record["exact_lead_worlds_completed"] == 64
+        if candidate:
+            assert record["exact_lead_first_trick"] == "minimax"
+            assert record["exact_lead_base_played"] == ["D3"]
+            assert record["exact_lead_changed"]
+        else:
+            assert "exact_lead_first_trick" not in record
+        assert record["belief_fallback"] == 0
+
+    asyncio.run(scenario())

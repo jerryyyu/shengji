@@ -16,7 +16,7 @@ from test_pv_search_serving import package  # noqa: F401
 
 
 @pytest.mark.parametrize('mode', ['historical', 'served', 'fallback', 'served_round',
-                                  'served_stop', 'served_error'])
+                                  'served_stop', 'served_error', 'calibration'])
 def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path, monkeypatch, mode):
     events = json.loads((Path(__file__).parent / 'fixtures/xmtj_round1.json').read_text())
     plays = [e for e in events if e['e'] == 'play']
@@ -30,13 +30,19 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
     class Bot:
         def __init__(self):
             self.sampler = Sampler()
+            self.worlds = 1
             self._refusals = RefusalLedger()
+
+        def _worlds(self, root, seat):
+            return [(copy.deepcopy(root.hands), list(root.buried))], 1
 
         def decide_play(self, root, seat):
             nonlocal cursor
             if mode == 'served_error' and cursor == 4:
                 raise RuntimeError('injected later decision failure')
             self._refusals.observe(root)
+            if mode == "calibration" and not root.trick.plays:
+                self._worlds(root, seat)
             event = plays[cursor]
             assert event['seat'] == seat
             cursor += 1
@@ -44,7 +50,7 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
                 (tmp_path / 'stop').touch()
             self._cap = ([event['attempted'], ['fixture-only']],)
             self._probe = True
-            self.last_decision_record = dict(work_complete=mode != 'fallback', played=list(event['attempted']))
+            self.last_decision_record = dict(schema='pv-search-decision-v1', work_complete=mode != 'fallback', played=list(event['attempted']))
             return list(event['attempted'])
 
     class Game:
@@ -80,8 +86,10 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         snapshot = tmp_path / 'env.json'
         snapshot.write_text('{}')
         args = ['--served-env', str(snapshot), *args]
+    if mode == 'calibration':
+        args = ['--throw-calibration', *args]
     costs = tmp_path / 'costs.jsonl'
-    if mode.startswith('served_'):
+    if mode.startswith('served_') or mode == 'calibration':
         args = ['--max-rounds', '1', '--cost-out', str(costs), *args]
         # A round cap, not the lead cap, must stop the next deal.
         args[args.index('16')] = '128'
@@ -111,6 +119,25 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
         assert journal[-1]['rounds'] == 1
     assert cursor == len(plays) == 64
     assert len(rows) == 16
+    if mode == 'calibration':
+        from scripts.throw_calibration_summary import summarize
+        summary = summarize(rows)
+        assert summary['counts']['leads'] == 16
+        assert summary['verdict'] == 'INSUFFICIENT'
+        assert summary['overprediction'] == 0
+        from scripts.throw_calibration_summary import main as read_calibration
+        report = tmp_path / 'calibration.json'
+        read_calibration([str(out), str(report), '--journal', str(costs)])
+        assert json.loads(report.read_text())['counts'] == summary['counts']
+        for row in rows:
+            measured = row['throw_calibration']
+            root, _ = restore_with_ledger(row['replay'])
+            root.play(root.turn, row['attempted'])
+            assert measured['accepted'] == root.trick.plays[-1].cards
+            if measured['is_throw']:
+                assert measured['predicted_success'] == float(measured['succeeded'])
+                assert measured['worlds'] == 1
+        assert any(x['throw_calibration']['is_throw'] and not x['throw_calibration']['succeeded'] for x in rows)
     if mode != 'historical':
         from scripts.lead_finish_classify import main as classify
         classified = tmp_path / 'classified.json'
@@ -142,7 +169,7 @@ def test_collector_saves_pre_analysis_decision_and_every_committed_play(tmp_path
 
 
 @pytest.mark.parametrize('flags', [['--max-rounds', '0'], ['--max-rounds', '-1'],
-                                   ['--cost-out', 'unused']])
+                                   ['--cost-out', 'unused'], ['--throw-calibration']])
 def test_cost_diagnostic_rejects_invalid_mode_before_constructing_bots(flags, monkeypatch):
     monkeypatch.setattr(collector, 'make_pv_search_bot',
                         lambda *a, **kw: pytest.fail('must reject before construction'))
@@ -210,9 +237,11 @@ def test_finish_pool_observation_preserves_real_decision_and_rng(package, budget
     root, direct_root = roots
     bot, direct = bots
     assert '_legal' not in vars(bot)
-    with observe_finish_pool(bot, root, root.turn) as evidence:
+    from shengji.train.throw_calibration import observe_worlds
+    with observe_worlds(bot) as draws, observe_finish_pool(bot, root, root.turn) as evidence:
         action = bot.decide_play(root, root.turn)
     assert '_legal' not in vars(bot)
+    assert '_worlds' not in vars(bot)
     assert action == direct.decide_play(direct_root, direct_root.turn)
     assert bot.sampler.rng.getstate() == direct.sampler.rng.getstate()
     def stable(record):
@@ -288,3 +317,93 @@ def test_non_refused_finish_is_not_declared_a_ranking_error(monkeypatch):
     assert result['whole_hand_refused_true_deal'] is False
     assert result['whole_hand_played'] is False
     assert result['ranking_or_horizon_error'] is None
+
+
+def test_throw_forecast_uses_sampled_worlds_and_checks_partner():
+    from types import SimpleNamespace
+    from shengji.engine.cards import Ordering
+    from shengji.train.throw_calibration import forecast, committed
+    hand = ['S4', 'S4', 'SJ']
+    rnd = SimpleNamespace(phase='play', trick=SimpleNamespace(plays=[]), turn=0,
+                          hands=[hand, ['SA'], ['SA'], ['SA']], banker=1,
+                          history=[], ordering=Ordering('C', '2'))
+    # No true hidden hand or kitty may affect the probability. Only one sampled
+    # world has a beating card, held by the partner rather than an opponent.
+    worlds = [([hand, ['H3'], ['SA'], ['D3']], []),
+              ([hand, ['H3'], ['H4'], ['D3']], [])]
+    record = dict(schema='pv-search-decision-v1', work_complete=True, played=hand)
+    measured = forecast(rnd, 0, hand, [worlds], record, 2)
+    assert measured['predicted_success'] == 0.5
+    rnd.hands[1:] = [None, None, None]
+    assert forecast(rnd, 0, hand, [worlds], record, 2) == measured
+    assert not committed(measured, ['SJ'])['succeeded']
+    assert committed(measured, hand)['succeeded']
+    assert forecast(rnd, 0, hand, [worlds[:1]], record, 2)['unavailable']
+    assert forecast(rnd, 0, hand, [worlds, worlds], record, 2)['unavailable']
+    assert forecast(rnd, 0, hand, [worlds], {**record, 'work_complete': False}, 2)['unavailable']
+    with pytest.raises(ValueError, match='action drift'):
+        forecast(rnd, 0, hand, [worlds], {**record, 'played': ['SJ']}, 2)
+
+
+def test_throw_summary_refuses_bad_evidence_and_does_not_promote_small_samples(tmp_path):
+    from scripts.throw_calibration_summary import summarize, main
+    rec = dict(schema='throw-calibration-v1', attempted=['S4', 'SJ'], accepted=['S4'],
+               is_throw=True, succeeded=False, worlds=64, predicted_success=0.5,
+               unseen_union_risky=True, unavailable=None)
+    row = dict(seed=1, game='1:0', round=0, trick=1, seat=0,
+               attempted=rec['attempted'], throw_calibration=rec, collection={'policy': 'test'})
+    assert summarize([row])['verdict'] == 'INSUFFICIENT'
+    with pytest.raises(ValueError, match='duplicate'):
+        summarize([row, row])
+    rows = [dict(row, round=i) for i in range(1000)]
+    assert summarize(rows)['verdict'] == 'CALIBRATION_GAP'
+    bad = copy.deepcopy(row)
+    bad['throw_calibration']['unavailable'] = 'incomplete_decision'
+    assert summarize([bad])['verdict'] == 'INCOMPLETE'
+    bad['throw_calibration']['succeeded'] = True
+    with pytest.raises(ValueError, match='outcome'):
+        summarize([bad])
+    source, output = tmp_path/'rows.jsonl', tmp_path/'summary.json'
+    source.write_text(json.dumps(row)+'\n')
+    journal = tmp_path/'journal.jsonl'
+    entries = [dict(kind='start', identity=row['collection'], seed=1),
+               dict(kind='decision', lead=True, round=0, seat=0, played=row['attempted']),
+               dict(kind='terminal', positions=1, rounds=1, reason='max_rounds')]
+    journal.write_text(''.join(json.dumps(e)+'\n' for e in entries))
+    main([str(source), str(output), '--journal', str(journal)])
+    assert json.loads(output.read_text())['overprediction'] == 0.5
+    with pytest.raises(FileExistsError):
+        main([str(source), str(output), '--journal', str(journal)])
+
+
+def test_throw_summary_refuses_partial_or_misbound_journal():
+    from scripts.throw_calibration_summary import validated_summary
+    row = dict(seed=1, collection={'policy': 'test'}, round=0, seat=0, attempted=['S4'])
+    journal = [dict(kind='start', identity=row['collection'], seed=1),
+               dict(kind='decision', lead=True, round=0, seat=0, played=['S4']),
+               dict(kind='terminal', reason='deadline', positions=1)]
+    with pytest.raises(ValueError, match='did not complete'):
+        validated_summary([row], journal)
+    with pytest.raises(ValueError, match='missing collection terminal'):
+        validated_summary([row], journal[:-1])
+    journal[-1]['reason'] = 'max_positions'
+    journal[-1]['positions'] = 2
+    with pytest.raises(ValueError, match='count drift'):
+        validated_summary([row], journal)
+    journal[-1]['positions'] = 1
+    journal[1]['played'] = ['SA']
+    with pytest.raises(ValueError, match='decision drift'):
+        validated_summary([row], journal)
+
+
+def test_throw_world_hook_restores_existing_override_after_failure():
+    from types import SimpleNamespace
+    from shengji.train.throw_calibration import observe_worlds
+    def fail(*args):
+        raise RuntimeError('draw refused')
+    bot = SimpleNamespace(_worlds=fail)
+    with pytest.raises(RuntimeError, match='draw refused'):
+        with observe_worlds(bot) as draws:
+            bot._worlds(None, 0)
+    assert bot._worlds is fail
+    assert draws == []

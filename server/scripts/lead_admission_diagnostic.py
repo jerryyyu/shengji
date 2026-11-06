@@ -41,6 +41,7 @@ import copy
 import argparse
 import json, os, random, sys, time
 from shengji.train.lead_root_capture import LeadCapture, normalized, observe_finish_pool
+from shengji.train.throw_calibration import observe_worlds, forecast, committed
 from contextlib import nullcontext
 import numpy as np
 from shengji.engine.game import Game
@@ -260,11 +261,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--served-env', help='JSON environment snapshot: capture only, including fallback leads')
     parser.add_argument('--max-rounds', type=int, help='Stop after this many complete rounds (served capture only)')
+    parser.add_argument('--throw-calibration', action='store_true',
+                        help='Capture throw forecasts from actual decision worlds and committed outcomes; no extra draws')
     parser.add_argument('--cost-out', help='New score-free JSONL journal of all decision costs, flushed per turn')
     parser.add_argument('args', nargs=8, metavar='ARG')
     options = parser.parse_args(sys.argv[1:] if argv is None else argv)
-    if (options.max_rounds is not None or options.cost_out) and not options.served_env:
-        parser.error('--max-rounds/--cost-out require --served-env')
+    if (options.max_rounds is not None or options.cost_out or options.throw_calibration) and not options.served_env:
+        parser.error('--max-rounds/--cost-out/--throw-calibration require --served-env')
+    if options.throw_calibration and not options.cost_out:
+        parser.error('--throw-calibration requires --cost-out for completion evidence')
     if options.max_rounds is not None and options.max_rounds <= 0:
         parser.error('--max-rounds must be positive')
     args = options.args
@@ -318,8 +323,10 @@ def main(argv=None):
                 if is_lead:
                     trick += 1
                     check()
+                row = None
                 started = time.perf_counter()
-                with (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
+                with (observe_worlds(bot) if options.throw_calibration and is_lead
+                      else nullcontext(None)) as draws, (observe_finish_pool(bot, rnd, seat) if identity is not None and is_lead
                       else nullcontext(None)) as finish_pool:
                     cards = bot.decide_play(rnd, seat)
                 decision_seconds = time.perf_counter() - started
@@ -341,10 +348,18 @@ def main(argv=None):
                                    finish_pool=finish_pool)
                     else:
                         row.update(analyze(bot, rnd, seat, copy.deepcopy(rec), dict(bot._t), samplers[seat]))
-                    out.write(json.dumps(row) + "\n")
-                    out.flush()
+                    if options.throw_calibration:
+                        row["throw_calibration"] = forecast(rnd, seat, cards, draws, rec, bot.worlds)
+                    else:
+                        out.write(json.dumps(row) + "\n")
+                        out.flush()
                     n += 1
                 rnd.play(seat, cards)
+                if options.throw_calibration and row is not None:
+                    trick_after = rnd.trick if rnd.trick and rnd.trick.plays else rnd.last_trick
+                    row['throw_calibration'] = committed(row['throw_calibration'], trick_after.plays[-1].cards)
+                    out.write(json.dumps(row, allow_nan=False) + '\n')
+                    out.flush()
                 capture.committed(rnd, seat, cards)
                 env.observe_committed_play(rnd, bots)
             game.finish_round()

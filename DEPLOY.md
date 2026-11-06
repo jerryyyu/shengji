@@ -32,7 +32,7 @@ budget and the latency switches are release 50's. Deployed 2026-11-06 as Fly v61
 | deployed | 2026-11-06 02:10 EST (~07:10Z) at 0 rooms. Jerry's word: in session 2026-11-06 ~03:35Z, knowing lccC's measured cost, "im good to turn off lcc, bc for new data gens, etc it will be cheaper" |
 | Fly version | v61 (rollback v60: release 50 + web #1305/#1306) |
 | image | `registry.fly.io/shengji:deployment-01M6QW43KBFT3ZDDZWM298WPM3` (main `1490b72b`) |
-| source | this release PR's squash merge on main (fill in the sha after merge) |
+| source | main `1490b72bf186180b1480c95ed825d1d3e7696737` (#1312), deployed from a clean worktree at that commit |
 | evidence | `AI_POLICIES.md` ladder row 20 (lccC KEEP_LCC on cloud; loo DROP_SAFE on the M5 Ultra; S91 Fly CPU) |
 | deploy record | [#1312 issuecomment-6679669956](https://github.com/jerryyyu/shengji/pull/1312#issuecomment-6679669956): `/healthz` release-51 name, `fast: true`, value `f4f4127e…`, budget 3 s; in-machine `True compiled 028131a0`; first-room reader pending the first live room |
 | comparator | release 50 as served until the deploy[^cmp]; after it, release 51 as served (lcc off on both sides of future duels and screens, per Jerry's 2026-11-06 word) |

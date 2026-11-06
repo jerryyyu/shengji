@@ -14,3 +14,9 @@ if _os.environ.get("SHENGJI_FAST") == "1":
     assert _fast.activate(), (
         "SHENGJI_FAST=1 but shengji/engine/_fast is not built; run: "
         "uv run python setup.py build_ext --inplace")
+
+if _os.environ.get("SHENGJI_RULES_PROFILE"):
+    # after the compiled engine: a profile wraps the Round methods it installed
+    from .engine import rules_profile as _rules_profile
+
+    _rules_profile.install_from_env()

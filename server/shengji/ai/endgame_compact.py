@@ -60,6 +60,7 @@ from ..engine import round as _round
 from ..engine.legal import IllegalPlay
 from ..engine.cards import Ordering
 from ..engine.round import KITTY_MULTIPLIER, Round
+from ..engine import rules_profile as _rules_profile
 from . import endgame as _endgame
 from .endgame import (ExactEndgameBudgetExceeded, ExactEndgameRefusal,
                       ExactEndgameResult, _context_key)
@@ -119,6 +120,7 @@ class _CompactSolver:
         self.ordering = None
         self.banker_parity = 0
         self.kitty_points = 0
+        self.kitty_profile = _rules_profile.DEFAULT
         self._sorted: dict[tuple, tuple] = {}
         self._moves: dict[tuple, list] = {}
         self._removed: dict[tuple, tuple] = {}
@@ -131,6 +133,8 @@ class _CompactSolver:
         self.ordering = rnd.ordering
         self.banker_parity = rnd.banker % 2
         self.kitty_points = _round.total_points(rnd.buried)
+        # a rules profile scores the kitty by the lead's largest component
+        self.kitty_profile = _rules_profile.active()
 
     # Memoized rule queries.
 
@@ -302,8 +306,12 @@ class _CompactSolver:
             points += pts
         if not (hands[0] or hands[1] or hands[2] or hands[3]):
             if attacker:
-                points += (self.kitty_points * KITTY_MULTIPLIER
-                           * len(plays[0][1]))
+                if self.kitty_profile:
+                    points += self.kitty_points * _rules_profile.kitty_multiplier(
+                        plays[0][1], self.ordering, self.kitty_profile)
+                else:
+                    points += (self.kitty_points * KITTY_MULTIPLIER
+                               * len(plays[0][1]))
             return hands, None, points, None, ()
         return hands, winner, points, winner, ()
 
@@ -413,6 +421,9 @@ class CompactWorldSession:
         self._root = rnd
         if self.backend == "compiled" and type(rnd.ordering) is not Ordering:
             self.backend = "python"     # the compiled tables rebuild an Ordering
+        if (self.backend == "compiled" and _rules_profile.active()
+                and _round.total_points(rnd.buried)):
+            self.backend = "python"     # the compiled tables score our kitty rule
         if self.backend == "python":
             self.solver = self._python_solver()
         else:

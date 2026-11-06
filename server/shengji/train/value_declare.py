@@ -61,6 +61,7 @@ from collections import Counter
 from ..ai.cwv_policy import default_finisher
 from ..ai.heuristic import HeuristicBot
 from ..engine.cards import card_suit, is_joker, make_deck
+from ..engine import rules_profile
 from ..engine.round import HAND_SIZE, KITTY_SIZE
 
 SCHEMA = "pv-value-declare-v1"
@@ -85,11 +86,12 @@ class ValueDeclareError(RuntimeError):
 def outcome_key(rnd, seat: int, option) -> tuple:
     """``(banker, trump)`` after the declare window closes with ``option``
     (None = PASS) and no later declaration; trump ``"flip"`` when the kitty
-    decides it."""
+    decides it (``"NT"`` under a rules profile that plays it without trump)."""
     if option is None:
         declaration = rnd.declaration
         if declaration is None:
-            return (rnd.banker if rnd.banker is not None else 0, "flip")
+            return (rnd.banker if rnd.banker is not None else 0,
+                    rules_profile.no_declaration_trump())
         declarer, code = declaration["seat"], declaration["cards"][0]
     else:
         declarer, code = seat, option[0]

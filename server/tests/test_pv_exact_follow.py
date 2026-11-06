@@ -18,7 +18,9 @@ import pytest
 from shengji.ai.endgame import exhaustive_legal_actions
 from shengji.engine.cards import Ordering
 from shengji.engine.round import Round, Trick, TrickPlay
-from shengji.train.pv_exact_follow import ExactFollowRefusal, rerank_follow
+from shengji.train.pv_exact_follow import (ExactFollowRefusal, ExactFollowResult,
+                                           PointsTieBreakResult,
+                                           rerank_follow, rerank_follow_points)
 from shengji.train import pv_search_policy as pv
 from test_pv_admission_rules import predict, ZeroEvaluator
 from test_endgame import _round
@@ -341,16 +343,19 @@ def disagreement():
                   plays=[(0, ["C5"])], attacker_points=35)
 
 
-def search_case(deadline=None, on=True, max_nodes=10000, preferred='D3'):
+def search_case(deadline=None, on=True, max_nodes=10000, preferred='D3',
+                exact_follow_points=False, attacker_points=35):
     """Real enumeration/admission/search/engine, with a controlled value head.
 
     This isolates the mechanism; it is not a measured production-model mistake.
     """
     rnd = disagreement()
+    rnd.attacker_points = attacker_points
     policy = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
         config=pv.PVSearchConfig(checkpoint_sha256='f' * 64, worlds=2,
             candidates=8, cap=4000, exact_follow=on,
-            exact_follow_max_nodes=max_nodes), checkpoint='/dev/null', seed=7)
+            exact_follow_max_nodes=max_nodes, exact_follow_points=exact_follow_points),
+        checkpoint='/dev/null', seed=7)
     worlds = [(copy.deepcopy(rnd.hands), []) for _ in range(2)]
     policy._worlds = lambda *args: (worlds, 2)
     policy.scores = lambda r, s, actions, w: np.zeros((len(w), len(actions)))
@@ -419,6 +424,41 @@ def test_exact_follow_publication_checks_deadline_even_if_action_unchanged(monke
     assert 'exact_follow_worlds' not in record
 
 
+def test_points_stage_real_search_changes_tie_without_changing_levels():
+    off, (before, _) = search_case(attacker_points=5)
+    on, (after, _) = search_case(attacker_points=5, exact_follow_points=True)
+    assert before == ['D3'] and after == ['HJ']
+    assert on.last_decision_record['exact_follow_points_applied']
+    assert on.last_decision_record['exact_follow_scores'] == off.last_decision_record['exact_follow_scores']
+    assert on.last_decision_record['admitted'] == off.last_decision_record['admitted']
+    assert on.last_decision_record['worlds'] == off.last_decision_record['worlds']
+
+
+def test_points_stage_refusal_preserves_completed_primary_winner(monkeypatch):
+    from shengji.train import pv_exact_follow
+    original = pv_exact_follow.rerank_follow
+
+    def force_level_tie(*args, **kwargs):
+        result = original(*args, **kwargs)
+        return replace(result, scores=(1.0,) * len(result.scores))
+
+    def refuse_points(*args, **kwargs):
+        raise ExactFollowRefusal('secondary point solve refused')
+
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow', force_level_tie)
+    monkeypatch.setattr(pv_exact_follow, 'rerank_follow_points', refuse_points)
+    bot, result = search_case(preferred='D3', exact_follow_points=True)
+    # The primary exact stage picked HJ; the secondary stage must not roll back
+    # to the pre-exact D3 decision when its own solve refuses.
+    assert result[0] == ['HJ']
+    record = bot.last_decision_record
+    assert record['exact_follow_applied']
+    assert record['exact_follow_points_attempted']
+    assert record['exact_follow_points_applied'] is False
+    assert record['exact_follow_points_abandoned'] == 'error'
+    assert record['exact_follow_points_error'] == 'ExactFollowRefusal'
+
+
 def test_recipe_identity_and_own_hand_multiset():
     config = pv.PVSearchConfig(checkpoint_sha256='f' * 64)
     assert 'exact_follow' not in pv.recipe_payload(config)
@@ -433,6 +473,97 @@ def test_recipe_identity_and_own_hand_multiset():
     hands[1][0] = 'C2'
     with pytest.raises(ExactFollowRefusal, match='acting hand'):
         rerank_follow(rnd, 1, actions, [(hands, [])])
+
+
+def test_points_tiebreak_is_opt_in_and_keeps_default_identity():
+    off = pv.PVSearchConfig(checkpoint_sha256='f' * 64, exact_follow=True)
+    on = replace(off, exact_follow_points=True)
+    assert pv.recipe_payload(off) == pv.recipe_payload(replace(off, exact_follow_points=False))
+    assert 'xfpt' not in pv.pv_policy_name('ffffffff', off)
+    assert pv.pv_policy_name('ffffffff', on).split('-').count('xfpt') == 1
+    with pytest.raises(pv.PVSearchPolicyError, match='needs exact_follow'):
+        pv.recipe_payload(replace(off, exact_follow=False, exact_follow_points=True))
+
+
+def test_points_tiebreak_uses_real_engine_and_retains_primary_levels():
+    rnd = _follow_round()
+    # Duplicate admitted actions are a small synthetic tie fixture: the real
+    # engine still validates and solves each candidate independently.
+    actions = [['C4'], ['C4']]
+    worlds = [([list(hand) for hand in rnd.hands], [])]
+    primary = rerank_follow(rnd, 1, actions, worlds, max_nodes=10_000,
+                            solver='compact-level', retain_world_scores=True)
+    assert primary.scores[0] == primary.scores[1]
+    points = rerank_follow_points(primary, rnd, 1, actions, worlds,
+                                  max_nodes=10_000, solver='compact-level')
+    assert isinstance(points, PointsTieBreakResult)
+    assert points.winner == primary.winner == 0
+    assert points.point_scores[0] == points.point_scores[1]
+
+
+def test_points_tiebreak_rejects_primary_without_world_witness():
+    rnd = _follow_round()
+    actions = [['C4'], ['C4']]
+    worlds = [([list(hand) for hand in rnd.hands], [])]
+    primary = rerank_follow(rnd, 1, actions, worlds, max_nodes=10_000,
+                            solver='compact-level')
+    with pytest.raises(ExactFollowRefusal, match='per-world'):
+        rerank_follow_points(primary, rnd, 1, actions, worlds,
+                             max_nodes=10_000, solver='compact-level')
+
+
+def test_env_registry_wires_points_flag_into_bot(pinned_production_package):
+    env = follow_env(pinned_production_package, exact_cards=6)
+    env['SHENGJI_PV_EXACT_FOLLOW_POINTS'] = '1'
+    recipe = pv.pv_env_recipe(env)
+    assert recipe['exact_follow_points'] is True
+    name, factory = next(iter(pv.pv_registry_entries(**recipe).items()))
+    bot = factory(seed=7)
+    assert bot.exact_follow_points is True
+    assert '-xfpt' in name
+
+
+@pytest.mark.parametrize('seat, expected, winner', [(1, -2.5, 1), (2, 2.5, 0)])
+def test_points_tiebreak_sign_prefers_attacker_max_or_defender_min(monkeypatch,
+                                                                    seat, expected, winner):
+    """The secondary objective is side-signed while level remains unchanged."""
+    from shengji.train import pv_exact_follow
+
+    rnd = _follow_round()
+    rnd.hands[seat] = ['C4', 'C5']
+    rnd.turn = seat
+    rnd.deck = sum(rnd.hands, [])
+    actions = [['C4'], ['C5']]
+    worlds = [([list(hand) for hand in rnd.hands], [])]
+    primary = ExactFollowResult(winner=0, scores=(expected, expected), worlds=1,
+                                nodes=0, world_scores=((expected, expected),))
+
+    class PointSession:
+        def __init__(self, *args, **kwargs):
+            self.nodes = 0
+
+        def solve_points(self, child):
+            self.nodes += 1
+            return 5 if child.trick.plays[-1].cards == ['C4'] else 10
+
+    monkeypatch.setattr(pv_exact_follow, 'CompactWorldSession', PointSession)
+    result = rerank_follow_points(primary, rnd, seat, actions, worlds,
+                                  max_nodes=10_000, solver='compact-level')
+    assert result.winner == winner
+    assert result.point_scores == (5.0, 10.0)
+
+
+def test_points_tiebreak_checks_each_world_level_witness():
+    from shengji.train import pv_exact_follow
+
+    rnd = _follow_round()
+    actions = [['C4'], ['C4']]
+    worlds = [([list(hand) for hand in rnd.hands], [])]
+    primary = ExactFollowResult(winner=0, scores=(-3.5, -3.5), worlds=1,
+                                nodes=0, world_scores=((-3.5, -2.5),))
+    with pytest.raises(ExactFollowRefusal, match='disagrees'):
+        rerank_follow_points(primary, rnd, 1, actions, worlds,
+                             max_nodes=10_000, solver='compact-level')
 
 
 def _follow_round():

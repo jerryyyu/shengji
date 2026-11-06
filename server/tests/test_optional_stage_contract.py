@@ -24,7 +24,9 @@ from test_pv_doomed_throw_reselect import (DECISIONS, draw, served as dtr_served
                                            yjqj)
 from test_pv_value_declare import NT_CASE, NTEvaluator, served as vd_served, state_at
 from test_pv_declare_wait import WAIT_CASE, OtherDeclarerEvaluator, bot as vdw_bot
-from test_pv_exact_follow import search_case as ef_search
+from test_pv_exact_follow import search_case as ef_search, disagreement
+from test_pv_admission_rules import predict, ZeroEvaluator
+from shengji.train.pv_search_policy import PVSearchConfig
 from shengji.train import pv_exact_follow
 
 
@@ -165,7 +167,30 @@ def _lcc_abandon(bot):
     return record["lead_confirm_abandon_reason"], record["lead_confirm_abandon_error"]
 
 
+def _follow_points_run(deadline):
+    rnd = disagreement()
+    rnd.attacker_points = 5
+    admitted = [['D3'], ['HJ'], ['S8']]
+    worlds = [(copy.deepcopy(rnd.hands), [])]
+    primary = pv_exact_follow.rerank_follow(
+        rnd, 1, admitted, worlds, max_nodes=10_000, retain_world_scores=True)
+    assert primary.winner == 0 and len(set(primary.scores)) == 1
+    bot = PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
+        config=PVSearchConfig(checkpoint_sha256='f' * 64, exact_follow=True,
+            exact_follow_points=True, exact_follow_max_nodes=10_000),
+        checkpoint='/dev/null', seed=7)
+    winner, record = bot._exact_follow_points_stage(
+        rnd, 1, admitted, worlds, primary, check_budget=deadline, soft_deadline=None)
+    bot.last_decision_record = record
+    return bot, winner
+
+
 CASES = [
+    StageCase("exact_follow_points", run=_follow_points_run, base=lambda: 0,
+              abandon=lambda bot: (
+                  bot.last_decision_record.get('exact_follow_points_abandoned'),
+                  bot.last_decision_record.get('exact_follow_points_error')),
+              abandons_errors=True, nested=(pv_exact_follow, 'rerank_follow_points')),
     StageCase("lead_confirm", run=_lcc_run,
               base=lambda: _lcc_run(Deadline(), on=False)[1],
               abandon=_lcc_abandon, abandons_errors=True,

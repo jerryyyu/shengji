@@ -1008,6 +1008,7 @@ _LEAD_CONFIRM_EXCLUSIVE = ("lead_confirm does not combine with the tree or adapt
 FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
 EXACT_FOLLOW_RULE = {"EXACT_FOLLOW": "exact_follow"}
+EXACT_FOLLOW_POINTS_RULE = {"EXACT_FOLLOW_POINTS": "exact_follow_points"}
 #: its two optional variants (module docstring); each requires ``exact_lead_endgame``
 EXACT_LEAD_VARIANT_RULES = {"EXACT_LEAD_TIE_BASELINE": "exact_lead_tie_baseline",
                             "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first"}
@@ -1196,7 +1197,7 @@ RULE_FLAGS = {**ADMISSION_RULES, **SAMPLER_RULES, **TIEBREAK_RULE, **ADAPTIVE_K_
               **LEAF_GREEDY_EXACT_SKIP_RULE,
               **FINISH_LEAD_RULE, **ORACLE_WORLDS_RULE, **EXACT_LEAD_RULE,
               **EXACT_LEAD_VARIANT_RULES, **EXACT_LEAD_FULL_MINIMAX_RULE,
-              **EXACT_FOLLOW_RULE}
+              **EXACT_FOLLOW_RULE, **EXACT_FOLLOW_POINTS_RULE}
 RULES = RULE_FLAGS
 RULE_TOKENS = ADMISSION_TOKENS + SAMPLER_TOKENS + (("tiebreak_points", "tb"),
                                                    ("finish_lead_admission", "fla"),
@@ -1528,6 +1529,8 @@ class PVSearchConfig:
     # `pv_exact_follow.SOLVERS`) and hand-card bound
     exact_follow_solver: str = "reference"
     exact_follow_max_cards: int = 4
+    # DEV-only secondary points tie-break among equal exact level follows.
+    exact_follow_points: bool = False
     # the exact stages' world subset (module docstring): 0 = every world; a
     # subset at least ``worlds`` wide is the same search and ABSENT from the payload
     exact_world_subset: int = 0
@@ -1672,6 +1675,10 @@ def _check_exact_follow_params(config: PVSearchConfig) -> None:
             or type(config.exact_follow_max_cards) is not int
             or not 1 <= config.exact_follow_max_cards <= 8):
         raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")
+    if type(config.exact_follow_points) is not bool:
+        raise PVSearchPolicyError("exact_follow_points must be a bool")
+    if config.exact_follow_points and not config.exact_follow:
+        raise PVSearchPolicyError("exact_follow_points needs exact_follow (SHENGJI_PV_EXACT_FOLLOW=1)")
 
 
 def _check_exact_world_subset(config) -> int:
@@ -2020,6 +2027,8 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
         rules += f"-xf{config.exact_follow_max_cards}"
         if config.exact_follow_solver != "reference":
             rules += f"-xf{config.exact_follow_solver.replace('-', '')}"
+        if config.exact_follow_points:
+            rules += "-xfpt"
     subset = _check_exact_world_subset(config)
     if subset:
         rules += f"-{EXACT_WORLD_SUBSET_TOKEN}{subset}"
@@ -2403,6 +2412,11 @@ class PVSearchBot(PolicyValueBot):
             raise PVSearchPolicyError("exact_follow_max_cards must be an int in [1, 8]")
         self.exact_follow_solver = config.exact_follow_solver
         self.exact_follow_max_cards = config.exact_follow_max_cards
+        if type(config.exact_follow_points) is not bool:
+            raise PVSearchPolicyError("exact_follow_points must be a bool")
+        if config.exact_follow_points and not config.exact_follow:
+            raise PVSearchPolicyError("exact_follow_points needs exact_follow")
+        self.exact_follow_points = config.exact_follow_points
         subset = _check_exact_world_subset(config)
         if subset:
             # instance state only when active: an inactive bot's attributes are unchanged
@@ -3745,7 +3759,8 @@ class PVSearchBot(PolicyValueBot):
                     max_nodes=self.exact_follow_max_nodes,
                     max_hand_cards=self.exact_follow_max_cards,
                     solver=self.exact_follow_solver,
-                    check_budget=stage.guard)
+                    check_budget=stage.guard,
+                    retain_world_scores=self.exact_follow_points)
                 stage.raise_if_tripped()
                 changed = exact.winner != baseline_winner
                 if changed:
@@ -3773,6 +3788,19 @@ class PVSearchBot(PolicyValueBot):
                 }
             if solved is not worlds:
                 exact_follow_record["exact_follow_subset_worlds"] = len(solved)
+            # The optional point tie-break is a second transaction.  It is deliberately
+            # after the primary exact stage's publish, so any deadline/refusal
+            # restores the already-finalized exact level winner rather than the
+            # pre-exact PV decision.
+            if (self.exact_follow_points and not stage.abandoned
+                    and exact is not None
+                    and sum(value == max(exact.scores) for value in exact.scores) >= 2):
+                winner, points_record = self._exact_follow_points_stage(
+                    rnd, seat, admitted, solved, exact,
+                    check_budget=check_budget, soft_deadline=soft_deadline)
+                played = list(admitted[winner])
+                exact_follow_record.update(points_record)
+                exact_follow_record["exact_follow_applied"] = winner != baseline_winner
         self.last_decision_record = {
             "schema": RECORD_SCHEMA, "policy": getattr(self, "policy_name", None),
             "worlds": len(worlds), "sample_attempts": attempts, "actions": len(actions),
@@ -3982,6 +4010,39 @@ class PVSearchBot(PolicyValueBot):
         if not n or len(worlds) <= n:
             return worlds
         return list(worlds[:n])
+
+    def _exact_follow_points_stage(self, rnd, seat, admitted, solved, exact, *,
+                                   check_budget, soft_deadline):
+        """Publish a complete secondary ranking or preserve the exact winner."""
+        from .pv_exact_follow import rerank_follow_points
+        stage = OptionalStage(
+            self, (), hard_check=check_budget,
+            budget_errors=PVSearchBudgetExceeded,
+            soft_deadline=soft_deadline, clock=time.perf_counter,
+            soft_error=PVSearchBudgetExceeded, final_check=check_budget)
+        winner = exact.winner
+        with stage:
+            if stage.guard is not None:
+                stage.guard()
+            points = rerank_follow_points(
+                exact, rnd, seat, admitted, solved, baseline_index=exact.winner,
+                max_nodes=self.exact_follow_max_nodes,
+                max_hand_cards=self.exact_follow_max_cards,
+                solver=self.exact_follow_solver, check_budget=stage.guard)
+            stage.raise_if_tripped()
+            stage.publish()
+            winner = points.winner
+        record = {"exact_follow_points_attempted": True}
+        if stage.abandoned:
+            record.update(exact_follow_points_applied=False,
+                          exact_follow_points_abandoned=stage.reason,
+                          exact_follow_points_error=stage.error)
+        else:
+            record.update(exact_follow_points_applied=winner != exact.winner,
+                          exact_follow_points_abandoned=None,
+                          exact_follow_points_scores=list(points.point_scores),
+                          exact_follow_points_nodes=points.nodes)
+        return winner, record
 
     def _exact_follow_eligible(self, rnd, admitted):
         """The exact follow stage's gate: on, a follow with more than one
@@ -4677,6 +4738,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        exact_follow_max_nodes: int = 250_000,
                        exact_follow_solver: str = "reference",
                        exact_follow_max_cards: int = 4,
+                       exact_follow_points: bool = False,
                        exact_world_subset: int = 0,
                        doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                        doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
@@ -4764,6 +4826,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             exact_follow_max_nodes=exact_follow_max_nodes,
                             exact_follow_solver=exact_follow_solver,
                             exact_follow_max_cards=exact_follow_max_cards,
+                            exact_follow_points=exact_follow_points,
                             exact_world_subset=exact_world_subset,
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
@@ -4902,6 +4965,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         exact_follow_max_nodes: int = 250_000,
                         exact_follow_solver: str = "reference",
                         exact_follow_max_cards: int = 4,
+                        exact_follow_points: bool = False,
                         exact_world_subset: int = 0,
                         doomed_throw_reselect: bool = DOOMED_THROW_RESELECT_DEFAULTS["doomed_throw_reselect"],
                         doomed_throw_reselect_exact_guard: bool = DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS["doomed_throw_reselect_exact_guard"],
@@ -4970,6 +5034,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             exact_follow_max_nodes=exact_follow_max_nodes,
                             exact_follow_solver=exact_follow_solver,
                             exact_follow_max_cards=exact_follow_max_cards,
+                            exact_follow_points=exact_follow_points,
                             exact_world_subset=exact_world_subset,
                             doomed_throw_reselect=doomed_throw_reselect,
                             doomed_throw_reselect_exact_guard=doomed_throw_reselect_exact_guard,
@@ -5101,6 +5166,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                exact_follow_max_nodes=config.exact_follow_max_nodes,
                                exact_follow_solver=config.exact_follow_solver,
                                exact_follow_max_cards=config.exact_follow_max_cards,
+                               exact_follow_points=config.exact_follow_points,
                                exact_world_subset=config.exact_world_subset,
                                doomed_throw_reselect=config.doomed_throw_reselect,
                                doomed_throw_reselect_exact_guard=config.doomed_throw_reselect_exact_guard,
@@ -5253,12 +5319,22 @@ def pv_env_recipe(environ=None) -> dict:
                 recipe[key] = int(raw)
             except ValueError:
                 raise PVSearchPolicyError(f"{ENV_PREFIX}{suffix} is not an int: {raw!r}") from None
+    raw = env.get(ENV_PREFIX + "EXACT_FOLLOW_POINTS")
+    if raw not in (None, ""):
+        if raw not in ("0", "1"):
+            raise PVSearchPolicyError(f"{ENV_PREFIX}EXACT_FOLLOW_POINTS must be 0 or 1, not {raw!r}")
+        if raw == "1" and not recipe.get("exact_follow"):
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}EXACT_FOLLOW_POINTS needs {ENV_PREFIX}EXACT_FOLLOW=1")
+        if raw == "1":
+            recipe["exact_follow_points"] = True
     follow_config = PVSearchConfig(
         checkpoint_sha256=recipe["sha256"],
         exact_follow=bool(recipe.get("exact_follow", False)),
         exact_follow_max_nodes=recipe.get("exact_follow_max_nodes", 250_000),
         exact_follow_solver=recipe.get("exact_follow_solver", "reference"),
         exact_follow_max_cards=recipe.get("exact_follow_max_cards", 4),
+        exact_follow_points=recipe.get("exact_follow_points", False),
     )
     _check_exact_follow_params(follow_config)
     # the soft oracle's parameters (diagnostic; module docstring): unset, empty

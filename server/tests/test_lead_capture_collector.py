@@ -430,3 +430,54 @@ def test_throw_world_hook_restores_existing_override_after_failure():
             bot._worlds(None, 0)
     assert bot._worlds is fail
     assert draws == []
+
+
+def test_calibration_shards_require_every_planned_collection(tmp_path):
+    from scripts.throw_calibration_shards import aggregate, main
+
+    def shard(seed):
+        rec = dict(schema='throw-calibration-v1', attempted=['S4', 'SJ'],
+                   accepted=['S4'], is_throw=True, succeeded=False, worlds=64,
+                   predicted_success=0.5, unseen_union_risky=True, unavailable=None)
+        identity = dict(policy='same', seat_seeds=[seed * 10 + s for s in range(4)])
+        rows = [dict(seed=seed, game='same-game', round=0, trick=1, seat=0,
+                     attempted=rec['attempted'], throw_calibration=rec, collection=identity)]
+        journal = [dict(kind='start', seed=seed, identity=identity, max_rounds=1),
+                   dict(kind='decision', lead=True, round=0, seat=0, played=rec['attempted']),
+                   dict(kind='terminal', reason='max_rounds', rounds=1, positions=1)]
+        return [seed, 1, rows, journal]
+
+    first, second = shard(100), shard(200)
+    result = aggregate([first, second])
+    assert result['counts']['throws'] == 2
+    assert result['risky_rounds'] == 2
+    assert result['verdict'] == 'INSUFFICIENT'
+    assert first[2][0]['collection']['seat_seeds'] == [1000, 1001, 1002, 1003]
+    with pytest.raises(ValueError, match='duplicate shard seed'):
+        aggregate([first, first])
+    for change, message in [
+        (lambda s: s[3].pop(), 'terminal'),
+        (lambda s: s.__setitem__(0, 201), 'unplanned seed'),
+        (lambda s: s.__setitem__(1, 2), 'planned rounds'),
+        (lambda s: s[2][0]['collection'].__setitem__('policy', 'other'), 'mixed policy'),
+        (lambda s: s[2][0]['collection'].__setitem__('seat_seeds', [0]*4), 'seat seed'),
+    ]:
+        bad = copy.deepcopy(second)
+        change(bad)
+        with pytest.raises(ValueError, match=message):
+            aggregate([first, bad])
+    entries = []
+    for seed, rounds, rows, journal in [first, second]:
+        for name, values in [('rows', rows), ('journal', journal)]:
+            (tmp_path/f'{seed}.{name}').write_text(''.join(json.dumps(v)+'\n' for v in values))
+        entries.append(dict(seed=seed, rounds=rounds, rows=f'{seed}.rows', journal=f'{seed}.journal'))
+    manifest, output = tmp_path/'manifest.json', tmp_path/'summary.json'
+    manifest.write_text(json.dumps(dict(schema='throw-calibration-shards-v1', shards=entries)))
+    main([str(manifest), str(output)])
+    assert json.loads(output.read_text()) == result
+    with pytest.raises(FileExistsError):
+        main([str(manifest), str(output)])
+    (tmp_path/'200.journal').unlink()
+    with pytest.raises(FileNotFoundError):
+        main([str(manifest), str(tmp_path/'partial.json')])
+    assert not (tmp_path/'partial.json').exists()

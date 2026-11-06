@@ -1,0 +1,14 @@
+{
+ "name": "bceil-lane-248910910",
+ "purpose": "screen",
+ "seed0": 248910910,
+ "clusters": 600,
+ "span": [
+  248910910,
+  248911510
+ ],
+ "created_at": "2026-11-06T17:30:00Z",
+ "host": "ultra",
+ "git_head": "df45962d137b0df3b1e701407bf968f2d1317217",
+ "note": "bceil BELIEF CEILING on the M5 Ultra (board #1263, Jerry 2026-11-06 'Yes' to both tests as one Ultra packet): five exploiter arms, each vs release 51 as served (fly.toml at df45962d), ALL ON THIS SAME BLOCK (paired across arms): C = R51 minus the rules the oracle excludes (exact lead endgame + dtrx + ed7, history-legal draw + belief worlds + bbw), O = C + SHENGJI_PV_ORACLE_WORLDS=1 (true deal, play only), P/Q/R = C + SHENGJI_PV_ORACLE_PIN_Q=0.25/0.5/0.75; DIAGNOSTIC ONLY, never served; tree = origin/main df45962d; packet ~/shengji-archive/2026-11-06-bceil-packet. 600 paired seat-swapped r2 deals per arm, descriptive (mean + 95% CI), one look. RESERVED BEFORE DEALING."
+}

@@ -564,8 +564,8 @@
   },
   {
    "release": 50,
-   "status": "production",
-   "since": "2026-11-04 15:24 ET",
+   "status": "superseded",
+   "since": "2026-11-04 15:24 ET → 2026-11-06 02:10 ET",
    "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8",
    "head": "FT1 1fa201b2 (card-play prior); the value is G3 Stage A f4f4127e",
    "package": "value g3a-e04-f4f4127e.npz (sha256 f4f4127e…), card-play prior p0-ft1-1fa201b2.npz (sha256 1fa201b2…), belief b1a-028131a0.npz (sha256 028131a0…); JS-M1 js-m1-0d17fd03.npz unchanged",
@@ -608,6 +608,52 @@
     "Fly timing is the S79 timing run (#1263 issuecomment-6660235834), not a strength read",
     "comparator for NEW duels and screens: release 50 as served (Jerry, in session 2026-11-04: 'Yes move comparator'); cbaC, cbaf, rtF and hb50 keep release 49",
     "rollback: redeploy Fly v56, image deployment-01M6AX9WCDG3YMGWZPDE9PSM12 (release 49)"
+   ]
+  },
+  {
+   "release": 51,
+   "status": "production",
+   "since": "2026-11-06 02:10 ET",
+   "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8",
+   "head": "FT1 1fa201b2 (card-play prior); the value is G3 Stage A f4f4127e (unchanged from release 50)",
+   "package": "unchanged from release 50: value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, belief b1a-028131a0.npz, JS-M1 js-m1-0d17fd03.npz; nothing uploaded",
+   "oneline": "Release 50 with the held-out lead confirmation off (lcc32 -> 0), cheaper to serve and to generate data with. Vs release 50 on cloud: lccC −0.0133.",
+   "recipe": "release 50 exactly (packages, stage table, sc8, every other rule, budget and latency switch) with one fly.toml value changed: SHENGJI_PV_LEAD_CONFIRM '32' -> '0'; -lcc32 leaves the name, the play digest moves rb3477266 -> r30ff6f0f and the bury suffix b6262940978b -> 73a716a9bf72 (server/releases/r51.json). Built from main 1490b72b (#1312). Jerry, in session 2026-11-06 ~03:35Z, with lccC's cost in view: 'im good to turn off lcc, bc for new data gens, etc it will be cheaper'.",
+   "evidence": [
+    {
+     "what": "lccC: lcc32 off vs release 50 as served, 7,840 fresh seat-swapped deal pairs (cloud, from 247410910), KEEP_LCC: turning lcc32 off costs strength on cloud (#1263 issuecomment-6650211305)",
+     "point": -0.0133,
+     "lo": -0.0232,
+     "hi": -0.0033,
+     "ref": "lccC"
+    },
+    {
+     "what": "loo: lcc32 off vs release 50 as served, 3,920 deal pairs (M5 Ultra), DROP_SAFE; the two reads disagree",
+     "point": 0.0079,
+     "lo": -0.0069,
+     "hi": 0.0221,
+     "ref": "loo"
+    },
+    {
+     "what": "S91 Fly CPU at 0 rooms: unthrottled CPU per play 0.2592 s lcc off vs 0.4692 s on (x0.552); single-room decision p95 0.84-0.91 s off vs 2.01-2.02 s on; on Fly the stage applied on only 1-2% of non-exact leads",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "readouts/S91-fly-lccoff; #1312"
+    },
+    {
+     "what": "merged-tree full-round smoke (10 rounds, server path, cloud): validator PASS; 704 plays, 0 play / belief / bury fallbacks, no lcc stage, sc8 applied 47, no abandons",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "#1312 issuecomment-6679669956; ~/shengji-archive/2026-11-06-r51-smoke-merged/"
+    }
+   ],
+   "caveats": [
+    "deployed 2026-11-06 ~07:10Z (02:10 ET) as Fly v61 at 0 rooms from main 1490b72b (#1312 issuecomment-6679669956)",
+    "no zero-cost claim: lccC measured −0.0133 on cloud; the strength effect on Fly is not measured (expected smaller, since the stage rarely changed a Fly lead)",
+    "comparator for NEW duels and screens: release 51 as served (lcc off on both sides, Jerry 2026-11-06); elm16C and loosc8 keep release 50",
+    "rollback: Fly v60 (release 50, lcc32), or set SHENGJI_PV_LEAD_CONFIRM='32' and restore release 50's name from the fly.toml comment (DEPLOY.md)"
    ]
   }
  ],
@@ -3909,6 +3955,160 @@
    "takeaway": "DROP_SAFE +0.004 [−0.009, +0.017], but failed throws nearly triple without dtr (9,068 vs 3,145); Jerry kept dtr.",
    "note": "Sealed 11-06 01:34Z. Read history: reader r2 refused before any outcome (bury timing check), r3 computed the bar and then refused at its output-wording guard (exposing the numbers), r4 was the Codex-scoped deterministic recovery, matching exactly. VALID: 0 fallbacks of 262,690 decisions per side. Non-inferiority, not a gain claim. Archive readouts/LOO-dtr.",
    "ref": "https://github.com/jerryyyu/shengji/pull/1300#issuecomment-6674798488"
+  },
+  {
+   "id": "elm16C",
+   "date": "2026-11-06",
+   "status": "sealed",
+   "box": "cloud",
+   "title": "S83 elt+elm+els1600, fresh-seed confirmation",
+   "candidate": "release 50 + elt + elm + els1600 (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1, SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=1.6); cloud. The confirmation of elm16.",
+   "comparator": "release 50 as served (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + B1a belief 028131a0 + bbw, lcc32 on: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8), head to head",
+   "vs": 50,
+   "vs_group": "release 50 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "7,840 fresh seat-swapped deal pairs from 247810910 (r2 rank-mixed plan per deal), candidate vs release 50 head to head; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host cloud; predeclared bar (two-stage duel bar, confirmation stage): CONFIRMED iff mean >= +0.005 AND one-sided 95% bootstrap lower bound > 0; fresh seeds, judged alone, never pooled with the screen",
+   "seeds": "247810910 (cloud)",
+   "confidence": 0.95,
+   "point": 0.0422,
+   "lo": 0.0367,
+   "hi": 0.0477,
+   "takeaway": "CONFIRMED +0.042 [+0.037, +0.048] vs release 50: the exact-lead tie baseline + full minimax at a 1.6 s cap holds on fresh seeds.",
+   "note": "Read once 11-06 05:05Z (reader 93b737e6, host mode). Result line: 'CONFIRMED: elt + elm + els1600 - control +0.0422 levels/round (>= +0.005) and one-sided 95% lower bound +0.0376 (> 0) (deal bootstrap 10000, seed 1); 95% CI [+0.0367, +0.0477] (descriptive)'. VALID: 0 play, belief, bury fallbacks of 520,700 decisions per side. Gain sits in late leads (tricks 11-15). Timing as elm16: exact-lead p99 1.6 s, abandon 2.4%. Archive readouts/S83-elm16C/ (receipt.json, SHA256SUMS).",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1297#issuecomment-6677396832"
+  },
+  {
+   "id": "loosc8",
+   "date": "2026-11-06",
+   "status": "unavailable",
+   "box": "mini",
+   "title": "Leave-one-out: sc8 off in release 50",
+   "candidate": "release 50 with the singleton challenger off (SHENGJI_PV_SINGLETON_CHALLENGER=0; the base pv-search entry, no -sc8 suffix), nothing else differing; Mac mini",
+   "comparator": "release 50 as served (Y + G3 Stage A value f4f4127e + FT1 prior 1fa201b2 + B1a belief 028131a0 + bbw, lcc32 on: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8), head to head",
+   "vs": 50,
+   "vs_group": "release 50 as served, head to head: a leave-one-out non-inferiority duel",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3,920 seat-swapped deal pairs from 248010910 (r2 rank-mixed plan per deal), sc8 off vs release 50 as served; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host Mac mini; predeclared non-inferiority bar: KEEP_SC8 iff 95% CI upper < 0, else DROP_SAFE iff CI lower >= −0.010, else INCONCLUSIVE; fault ceilings checked before any outcome",
+   "seeds": "248010910 (mini)",
+   "confidence": 0.95,
+   "point": null,
+   "lo": null,
+   "hi": null,
+   "takeaway": "DEV_INVALID, no estimate: one belief fallback on one side broke the predeclared zero ceiling; whether sc8 can be dropped is unread.",
+   "note": "Read 11-06 06:20Z (reader dd0bee24, host mode; a first attempt refused at input binding before any outcome). Result line: 'Non-inferiority bar (predeclared): DEV_INVALID (no outcome is read).' Reason: arm_fault_ceilings: belief_fallback 1 of 258,496 search decisions on one side > predeclared ceiling 0; no outcome computed. No strength claim either way. Archive readouts/LOO-sc8/ (receipt.json, SHA256SUMS).",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1300"
+  },
+  {
+   "id": "combo51",
+   "date": "2026-11-06",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "Combo: fix e (elt+elm+els1600) + wht + rcec",
+   "candidate": "release 51 + elt + elm + els1600 + wht + rcec (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1, SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=1.6, SHENGJI_PV_WORLD_HISTORY_THROWS=1, SHENGJI_PV_REFUSAL_EVENT_COMPLETE=1); M5 Ultra",
+   "comparator": "release 51 as served (release 50 with lcc32 off, Fly v61: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8), head to head",
+   "vs": 51,
+   "vs_group": "release 51 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3,920 seat-swapped deal pairs from 248310910 (r2 rank-mixed plan per deal), combo vs release 51 head to head; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host M5 Ultra; predeclared bar (two-stage duel bar, screen stage): SCREEN_PASS iff mean >= +0.005 AND one-sided 80% bootstrap lower bound > 0; exact-lead timing descriptive",
+   "seeds": "248310910 (ultra)",
+   "confidence": 0.95,
+   "point": 0.0418,
+   "lo": 0.0332,
+   "hi": 0.0506,
+   "takeaway": "SCREEN_PASS +0.042 [+0.033, +0.051] vs release 51; confirmation combo51C next.",
+   "note": "Read once 11-06 11:36Z (reader 3557a655, pinned). Result line: 'SCREEN_PASS: the combo (fix e + wht + rcec) - release 51 +0.0418 levels/round, 95% CI [+0.0332, +0.0506], one-sided 80% lower bound +0.0381 (deal bootstrap 10000, seed 1)'. VALID: 0 play, belief, bury fallbacks of 261,840 decisions per side. Exact-lead timing (descriptive): p99 1.6 s, abandoned 1.6% of 16,475 stages. Archive readouts/combo51/ (receipt.json, SHA256SUMS).",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1313"
+  },
+  {
+   "id": "combo51C",
+   "date": "2026-11-06",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "Combo fix e + wht + rcec, fresh-seed confirmation",
+   "candidate": "release 51 + elt + elm + els1600 + wht + rcec (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE=1, SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX=1, SHENGJI_PV_EXACT_LEAD_MAX_SECONDS=1.6, SHENGJI_PV_WORLD_HISTORY_THROWS=1, SHENGJI_PV_REFUSAL_EVENT_COMPLETE=1); M5 Ultra. The confirmation of combo51.",
+   "comparator": "release 51 as served (release 50 with lcc32 off, Fly v61: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8), head to head",
+   "vs": 51,
+   "vs_group": "release 51 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "7,840 fresh seat-swapped deal pairs from 248410910 (r2 rank-mixed plan per deal), combo vs release 51 head to head; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host M5 Ultra; predeclared bar (two-stage duel bar, confirmation stage): CONFIRMED iff mean >= +0.005 AND one-sided 95% bootstrap lower bound > 0; fresh seeds, judged alone, never pooled with the screen",
+   "seeds": "248410910 (ultra)",
+   "confidence": 0.95,
+   "point": 0.0438,
+   "lo": 0.0381,
+   "hi": 0.0497,
+   "takeaway": "CONFIRMED +0.044 [+0.038, +0.050] vs release 51 on fresh seeds; a release candidate, deploy is Jerry's call.",
+   "note": "Read once 11-06 14:21Z (reader 4d190a77, pinned). Result line: 'CONFIRMED: the combo (fix e + wht + rcec) - release 51 +0.0438 levels/round, 95% CI [+0.0381, +0.0497], one-sided 95% lower bound +0.0389 (deal bootstrap 10000, seed 1)'. VALID: 0 play, belief, bury fallbacks of 525,484 decisions per side. Exact-lead timing (descriptive): p99 1.6 s, abandoned 1.6% of 33,184 stages. Duel-host timing, not Fly. Archive readouts/combo51C/ (receipt.json, SHA256SUMS).",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1315"
+  },
+  {
+   "id": "g4s",
+   "date": "2026-11-06",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "G4 e03-ema value swapped into release 51",
+   "candidate": "release 51 with the value package swapped to G4 e03-ema (SHENGJI_PV_CKPT=g4-e03-bd616b38.npz), nothing else differing; M5 Ultra. Jerry overrode the failed offline A1 gate to screen it.",
+   "comparator": "release 51 as served (release 50 with lcc32 off, Fly v61: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8), head to head",
+   "vs": 51,
+   "vs_group": "release 51 as served, head to head: a seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "3,920 seat-swapped deal pairs from 248510910 (r2 rank-mixed plan per deal), G4 value vs release 51 head to head; served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host M5 Ultra; predeclared bar (two-stage duel bar, screen stage): SCREEN_PASS iff mean >= +0.005 AND one-sided 80% bootstrap lower bound > 0",
+   "seeds": "248510910 (ultra)",
+   "confidence": 0.95,
+   "point": 0.0051,
+   "lo": -0.0088,
+   "hi": 0.0193,
+   "takeaway": "SCREEN_FAIL +0.005 [−0.009, +0.019]: the G4 value retrain shows no resolved gain over release 51's value.",
+   "note": "Read once 11-06 16:06Z (reader af58fc01). Result line: 'SCREEN_FAIL: release 51 with the G4 e03-ema value - release 51 +0.0051 levels/round, 95% CI [-0.0088, +0.0193], one-sided 80% lower bound -0.0010 (deal bootstrap 10000, seed 1)'. VALID: 0 play, belief, bury fallbacks of 262,662 decisions per side. Archive readouts/g4s/ (receipt.json, SHA256SUMS); offline bars readouts/G4/.",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1317"
+  },
+  {
+   "id": "x1a",
+   "date": "2026-11-06",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "X1 teacher A: combo + W256/K16 + lcc32, no time cap",
+   "candidate": "TEACHER, not servable: candidate A = the combo (fix e + wht + rcec) + lcc32 + 256 worlds / 16 candidates, budgets lifted (120 s play, 60 s exact lead and bury); latency unbounded; M5 Ultra",
+   "comparator": "release 51 as served (release 50 with lcc32 off, Fly v61: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8), head to head",
+   "vs": 51,
+   "vs_group": "release 51 as served, head to head: an unbounded-time teacher certification (X1), not a servable candidate",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "600 seat-swapped deal pairs from 248710910 (r2 rank-mixed plan per deal), teacher A vs release 51 at its served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host M5 Ultra; predeclared X1 teacher bar (board #1263 row X1): EXPERT_CERTIFIED iff mean >= +0.15 AND 95% lower bound > 0",
+   "seeds": "248710910 (ultra)",
+   "confidence": 0.95,
+   "point": 0.0992,
+   "lo": 0.0608,
+   "hi": 0.1375,
+   "takeaway": "EXPERT_NOT_CERTIFIED +0.099 [+0.061, +0.138]: more search time helps, but short of the +0.15 teacher bar.",
+   "note": "Read once 11-06 19:20Z (reader 39235317). Result line: 'EXPERT_NOT_CERTIFIED: candidate A (fix e + wht + rcec, W256/K16, lcc32, budgets lifted) - release 51 +0.0992 levels/round, 95% CI [+0.0608, +0.1375], 95% lower bound +0.0608 (deal bootstrap 10000, seed 1)'. VALID: 0 play, belief, bury fallbacks of 39,950 decisions per side. Exact-lead p99 8.8 s: a teacher read, never a serving or latency claim. Archive readouts/x1a/ (receipt.json, SHA256SUMS).",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1321"
+  },
+  {
+   "id": "x1b",
+   "date": "2026-11-06",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "X1 teacher B: A + exact endgame 8 cards",
+   "candidate": "TEACHER, not servable: candidate B = teacher A + exact endgame at 8 cards (deep and follow), 2e8 node caps, 256 declare worlds; latency unbounded; M5 Ultra",
+   "comparator": "release 51 as served (release 50 with lcc32 off, Fly v61: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8), head to head",
+   "vs": 51,
+   "vs_group": "release 51 as served, head to head: an unbounded-time teacher certification (X1), not a servable candidate",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "600 seat-swapped deal pairs from 248810910 (r2 rank-mixed plan per deal), teacher B vs release 51 at its served budgets; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host M5 Ultra; predeclared X1 teacher bar (board #1263 row X1): EXPERT_CERTIFIED iff mean >= +0.15 AND 95% lower bound > 0",
+   "seeds": "248810910 (ultra)",
+   "confidence": 0.95,
+   "point": 0.0783,
+   "lo": 0.04,
+   "hi": 0.1167,
+   "takeaway": "EXPERT_NOT_CERTIFIED +0.078 [+0.040, +0.117]: the deeper exact endgame adds nothing resolved over teacher A.",
+   "note": "Read once 11-06 19:50Z (reader a29763b5). Result line: 'EXPERT_NOT_CERTIFIED: candidate B (A + exact endgame 8 cards, 2e8 node caps, declare W256) - release 51 +0.0783 levels/round, 95% CI [+0.0400, +0.1167], 95% lower bound +0.0400 (deal bootstrap 10000, seed 1)'. VALID: 0 play, belief, bury fallbacks of 39,960 decisions per side. Exact-lead p99 54 s: a teacher read, never a serving or latency claim. B vs A is not a within-run contrast (independent seeds). Archive readouts/x1b/ (receipt.json, SHA256SUMS).",
+   "ref": "https://github.com/jerryyyu/shengji/pull/1321"
   }
  ],
  "context_screens": [
@@ -4216,6 +4416,15 @@
    "val_ce": null,
    "regret": null,
    "status": "Offline (read once by Claude 2026-11-04, tier-i log-loss and calibration only) on 360,064 test rows: log-loss gain over S58 all +2.24 pp [+2.17, +2.33], hands +2.37 pp, kitty +1.81 pp; ECE 0.00058 (S58 0.00126). SERVED on the A + FT1 stack vs release 49 as served: b1aU +0.0561 [+0.0416, +0.0712] SCREEN_PASS; cbaf contrast a - s (B1a over S58, both with bbw) +0.0228, 97.5% CI [+0.0010, +0.0448]; the full release-50 stack cbaC +0.0618 [+0.0507, +0.0729] CONFIRMED. Shipped in release 50. Archive readouts/b1a/."
+  },
+  {
+   "name": "G4 value e03-ema (not served)",
+   "ck": "bd616b38",
+   "date": "2026-11-06",
+   "recipe": "Value retrain on Y + the 80k-round release-50 self-play corpus (G4); the select pick is the EMA export of epoch 3 (g4-e03-bd616b38.npz), the rank candidate e01-ema.",
+   "val_ce": null,
+   "regret": null,
+   "status": "Offline G3-A bars, read once 2026-11-06 08:58Z (reader bfad5f4c; NLL and calibration only, A3/A4 not read): select pick e03-ema A1 FAIL dNLL -0.0037 [-0.0052, -0.0022], A2 PASS bias +0.0414 vs base +0.0485; rank candidate e01-ema A1 FAIL, A2 PASS; verdict FAIL. Screened anyway on Jerry's override vs release 51 as served: g4s +0.0051 [-0.0088, +0.0193] SCREEN_FAIL. Not served. Archive readouts/G4/ and readouts/g4s/."
   }
  ],
  "data": [
@@ -4431,8 +4640,8 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran — Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once — which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 50,
+  "release": 51,
   "status": "confirmed",
-  "note": "New screens compare against release 50 as served (Jerry, in session 2026-11-04: 'Yes move comparator'). Before that release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
+  "note": "New screens compare against release 51 as served (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312). Before that release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  }
 }

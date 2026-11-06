@@ -1,6 +1,6 @@
 """Release 50 with its opt-in rules off is main's release 50, name and decisions.
 
-The served bot is built from the repo's ``fly.toml`` env exactly as the server
+The served bot is built from release 50's env (``fly.toml`` with release 51 undone) exactly as the server
 builds it (`test_release50_fly_config.served_bot`) on the hash-pinned
 release-50 packages, and decides the ten fixed production positions of
 `r50_flag_positions`.  Its played cards, base worlds and decision record (less
@@ -18,7 +18,7 @@ import math
 import pytest
 
 import r50_flag_positions as P
-from test_release46_fly_config import fly_env
+from test_release50_fly_config import fly_env  # release 50's env, lcc32 on
 from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA,  # noqa: F401
                                        PRIOR_VOLUME_PATH, RELEASE50, VALUE_SHA, VALUE_VOLUME_PATH,
                                        release50_packages, served_bot)

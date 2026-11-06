@@ -2,13 +2,16 @@
 
 Last reconciled: **2026-11-01**.
 
-**Production is release 50** (live 2026-11-04 15:24 EST, Fly v57; Jerry 2026-11-04: "I'm good to ship and we can
-manage what to do with lcc after"): release 49 with the G3 Stage A value package `f4f4127e`, the FT1 card-play prior
-`1fa201b2`, the B1a belief package `028131a0` and belief bury worlds `bbw` (ladder row 19). Release 49 (row 18:
-release 48 plus `sc8` and `lcc32`) is the rollback (`DEPLOY.md`). **New duels and screens compare against release 50
-as served** (Jerry, in session 2026-11-04, "Yes move comparator"; before that release 49, 2026-11-01, release 48,
-2026-10-24, release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator;
-screens already read keep their declared comparator.
+**Production is release 50** (live 2026-11-04 15:24 EST, Fly v57, redeployed unchanged as v58 and v59; Jerry
+2026-11-04: "I'm good to ship and we can manage what to do with lcc after"): release 49 with the G3 Stage A value
+package `f4f4127e`, the FT1 card-play prior `1fa201b2`, the B1a belief package `028131a0` and belief bury worlds
+`bbw` (ladder row 19). **Release 51**, prepared for deploy (ladder row 20), is release 50 with `lcc32` off (Jerry,
+in session 2026-11-06, knowing lccC's cost: "im good to turn off lcc, bc for new data gens, etc it will be
+cheaper"); release 50 is its rollback and release 49 (row 18: release 48 plus `sc8` and `lcc32`) the one below
+(`DEPLOY.md`). **New duels and screens compare against release 50 as served** (Jerry, in session 2026-11-04, "Yes
+move comparator"; before that release 49, 2026-11-01, release 48, 2026-10-24, release 46, 2026-10-16, and release
+45, 2026-10-13), and against release 51 as served once it is deployed, with lcc off on both sides. Confirmations
+keep their parent's comparator; screens already read keep their declared comparator.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The
@@ -18,7 +21,7 @@ long-form text this file carried until 2026-10-16 is verbatim in
 
 ## Production contract
 
-Release 49 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are what it adds to release 48, and the entries marked 50 are release 50's changes on deploy. Rule tokens (and the release that added
+Release 49 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are what it adds to release 48, and the entries marked 50 are release 50's changes on deploy. Release 51 turns the lead-confirmation row off. Rule tokens (and the release that added
 each) are in parentheses; rules are off by default in source and on in production (#676).
 
 | phase | stage | budget and fallback |
@@ -29,7 +32,7 @@ each) are in parentheses; rules are off by default in source and on in productio
 | play: admit | Policy head admits 8: at most 2 per structural key, near-duplicates skipped, back-fill (`div`, 38; #680); on a lead whose heuristic anchor is a non-trump single that is not the top live card, slot 0 is the highest plain pair/tractor, else the policy's top action (`la`, 38; #694). | 3 s per play; on expiry, the heuristic anchor. |
 | play: price | Value head prices each afterstate in each world, after finishing the trick with greedy replies (`lgf`, 48), except on decisions an exact stage is eligible for (`lgfx`, 48); within 0.02 level of the best mean, most root-team points from the current trick wins (`tb`, 38; #682). | Past 2 s into a decision the greedy finish stops and the remaining leaves are plain (`lgfd2000`, 48). |
 | play: singleton challenger | On a lead where some hand holds more than 7 cards, the singles left off the ballot are priced on 8 worlds with heuristic-finished leaves; the best replaces the ballot's last slot only when it beats every admitted candidate (`sc8`, 49). | Inside the 3 s; the 64-world search still chooses. |
-| play: lead confirmation | On a lead with no exact stage, the policy's next actions up to 32 are screened on 32 base worlds; at most 2 that beat the served lead are re-priced on two fresh 64-world draws and one replaces it only when its paired margin exceeds one standard error (`lcc32`, 49). | Starts only before 40% of the 3 s budget, stops at 80%; a finish cut by its 2 s deadline abandons; any abandon plays the base lead. |
+| play: lead confirmation (releases 49–50; off in 51) | On a lead with no exact stage, the policy's next actions up to 32 are screened on 32 base worlds; at most 2 that beat the served lead are re-priced on two fresh 64-world draws and one replaces it only when its paired margin exceeds one standard error (`lcc32`, 49). | Starts only before 40% of the 3 s budget, stops at 80%; a finish cut by its 2 s deadline abandons; any abandon plays the base lead. |
 | play: doomed throw | A lead the engine refuses in every world with the same forced component is excluded with that component; the bot re-selects (`dtr`, 43; #946, replacing 42's swap `dts`, #830); the re-select never overrides a complete exact lead stage (`dtrx`, 48; #1120). | Abandonment keeps the first selection; all excluded plays the forced component. |
 | play: ≤ 7 cards | Lead with > 1 candidate: exact level-mode minimax per world after the first-trick leaf (`ele`, `ed7`). Follow: exact re-rank on the compiled compact-level solver, 50M nodes (`xf7`, `xfcompactlevel`) (46; #1066). | Inside the 3 s; expiry or error keeps the baseline choice. |
 
@@ -81,6 +84,7 @@ fixes. Row numbers are stable; other documents cite them.
 
 | row | rel. | change (token) | vs | result [95% CI] | status | reading | vs Sol, actor-only [95% CI] | vs PT-Sol [95% CI] | pointer |
 |---:|---:|---|---|---|---|---|---|---|---|
+| 20 | 51 | lead confirmation off (`lcc32` removed; `SHENGJI_PV_LEAD_CONFIRM = '0'`) | 50 | lccC **−0.0133 [−0.0232, −0.0033]**; loo +0.0079 [−0.0069, +0.0221] | KEEP_LCC (lccC), DROP_SAFE (loo); shipped for cost on Jerry's word | Paired seat-swapped duels of release 50 with lcc32 off against release 50 with it on, each judged alone: lccC 7,840 fresh deals on cloud (the stage applied on 14.7% of searched leads there), loo 3,920 deals on the M5 Ultra. The reads disagree; on cloud turning lcc32 off costs strength. Not measured on Fly, where the stage applied on 1–2% of non-exact leads (S91) and so is expected to cost less; no zero-cost claim. Latency: S91 on Fly, unthrottled CPU per play ×0.552 (0.2592 vs 0.4692 s), single-room decision p95 0.84–0.91 s vs 2.01–2.02 s; both arms throttle at the same minute of a two-room drain (Codex audit: lcc off cuts CPU, does not fix throttled serving). | — | — | archives `readouts/{lccC,loo,S91-fly-lccoff}/`; audit #1263 issuecomment-6673552894 |
 | 19 | 50 | G3 Stage A value (`f4f4127e`) + FT1 card-play prior (`1fa201b2`) + B1a belief (`028131a0`) + belief bury worlds (`bbw`) | 49 | cbaf arm a **+0.0695** (one-sided 80% lower bound +0.0631); cbaC **+0.0618 [+0.0507, +0.0729]** | SCREEN_PASS, CONFIRMED | Paired seat-swapped duels against release 49 as served: cbaf 3,920 deals on the M5 Ultra, cbaC 7,840 fresh deals on cloud, each judged alone. Four changes at once; the only within-run attribution is cbaf's a − s, B1a over S58 on this stack, +0.0228 (97.5% CI [+0.0010, +0.0448]); FT2X4 in place of FT1 is UNRESOLVED (+0.0047) and not shipped. lcc32 stays on: loo (lcc32 off − on) +0.0079 [−0.0069, +0.0221], DROP_SAFE, the lcc decision deferred. Red team rtF (expert-budget Y vs this stack) −0.0433 [−0.0842, −0.0042], DEFENDER_AHEAD. 0 play, belief, bury and bury-belief fallbacks. Latency: +1.4% compute over release 49 on a cloud core (R50 speed profile); not timed on Fly; the half-budget duel hb50 (both sides at half the served budgets on cloud, a cloud-core proxy for Fly, not a Fly measurement): HALF_BUDGET_PASS +0.0520 [+0.0362, +0.0679] vs release 49 at half budget, 0 budget fallbacks on either side (#1171 issuecomment-6641693008, audit issuecomment-6641811291). | — | — | cbaC #1171 issuecomment-6629156672; Codex audit 6629239690; cbaf 6637319197; archives `readouts/{cbaC,cbaf,rtF,loo}/`, `2026-11-04-r50-speed-profile/` |
 | 18 | 49 | singleton challenger (`sc8`) + held-out lead confirmation at 32 (`lcc32`) | 48 | **+0.0270 [+0.0135, +0.0408]** combo3y; combo3yc **+0.0306 [+0.0167, +0.0441]** | DEV_PASS, CONFIRMED | Different instrument: paired seat-swapped head-to-head duels against release 48 as served, 3,920 fresh deals each, not the MC-LCB screen scale. Two rules at once; the increment over `lcc32` alone is +0.0102 [−0.0086, +0.0291] (independent runs), so sc8's share is unresolved. 0 play, belief and bury fallbacks. Latency: sc8 v107sc8lat QUALIFIED on perf; lcc32 on Fly (s71fly) leads p95 2.01 s unthrottled and self-limiting under throttle; the pair is not timed on Fly. | — | — | combo3y #1075 issuecomment-6475680068; combo3yc 6479431994; Codex audit 6480355443; s71fly 6469399580; v107sc8lat archive `readouts/v107sc8lat/` |
 | 17 | 48 | S58 belief package (`42444515`, stored T) + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches | 46 | **+0.0765 [+0.0571, +0.0958]**; r48confirm **+0.0843 [+0.0575, +0.1111]** | POSITIVE, CONFIRMED | Four changes screened as one recipe (no per-change attribution); 0 play and 0 belief fallbacks on both reads; v105lat QUALIFIED (play p95 0.566 s). | — | — | r48cloud #1075 issuecomment-6383298163; r48confirm 6384251320; v105lat 6384912469 |

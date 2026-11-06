@@ -1,0 +1,140 @@
+{
+  "schema": "shengji-release-manifest-v1",
+  "release": 51,
+  "bot_name": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8",
+  "env": {
+    "SHENGJI_BOT": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8",
+    "SHENGJI_PV_ADMISSION_DIVERSITY": "1",
+    "SHENGJI_PV_REFUSAL_CONSTRAINTS": "1",
+    "SHENGJI_PV_TIEBREAK_POINTS": "1",
+    "SHENGJI_PV_LEAD_ANCHOR": "1",
+    "SHENGJI_PV_DOOMED_THROW_RESELECT": "1",
+    "SHENGJI_PV_DOOMED_THROW_RESELECT_EXACT_GUARD": "1",
+    "SHENGJI_PV_VALUE_DECLARE": "1",
+    "SHENGJI_PV_LEAF_GREEDY_FINISH": "1",
+    "SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP": "1",
+    "SHENGJI_PV_LEAF_GREEDY_DEADLINE": "2",
+    "SHENGJI_PV_SINGLETON_CHALLENGER": "1",
+    "SHENGJI_PV_LEAD_CONFIRM": "0",
+    "SHENGJI_PV_ENCODE_PREFIX_CACHE": "1",
+    "SHENGJI_PV_LEAF_GREEDY_STREAM": "1",
+    "SHENGJI_PV_ENCODE_BATCH_FAST": "1",
+    "SHENGJI_PV_ENCODE_NATIVE": "1",
+    "SHENGJI_PV_LEGAL_NATIVE": "1",
+    "SHENGJI_PV_LEAF_CACHE_RELEASE": "1",
+    "SHENGJI_PV_LEAF_CLONE_FAST": "1",
+    "SHENGJI_PV_LEAF_TRICK_CACHE": "1",
+    "SHENGJI_PV_WORLD_FAST": "1",
+    "SHENGJI_PV_WORLD_HISTORY_LEGAL": "1",
+    "SHENGJI_PV_WORLD_HISTORY_DRAW": "1",
+    "SHENGJI_PV_BELIEF_WORLDS": "1",
+    "SHENGJI_PV_BELIEF_CKPT": "/data/models/b1a-028131a0.npz",
+    "SHENGJI_PV_BELIEF_SHA256": "028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8",
+    "SHENGJI_PV_EXACT_LEAD_ENDGAME": "1",
+    "SHENGJI_PV_EXACT_DEEP_CARDS": "7",
+    "SHENGJI_PV_EXACT_FOLLOW": "1",
+    "SHENGJI_PV_EXACT_FOLLOW_SOLVER": "compact-level",
+    "SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS": "7",
+    "SHENGJI_PV_EXACT_FOLLOW_MAX_NODES": "50000000",
+    "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST": "1",
+    "SHENGJI_PV_CKPT": "/data/models/g3a-e04-f4f4127e.npz",
+    "SHENGJI_PV_SHA256": "f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd",
+    "SHENGJI_PV_PRIOR_CKPT": "/data/models/p0-ft1-1fa201b2.npz",
+    "SHENGJI_PV_PRIOR_SHA256": "1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf",
+    "SHENGJI_PV_WORLDS": "64",
+    "SHENGJI_PV_CANDIDATES": "8",
+    "SHENGJI_PV_CAP": "4000",
+    "SHENGJI_PV_BATCH_SIZE": "128",
+    "SHENGJI_PV_SERVING_BUDGET_SECONDS": "3",
+    "SHENGJI_PV_BURY_ARM": "hybrid",
+    "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "2",
+    "SHENGJI_PV_BURY_WIDE_VALUE": "1",
+    "SHENGJI_PV_BURY_WIDE_K": "64",
+    "SHENGJI_PV_BURY_BELIEF_WORLDS": "1",
+    "SHENGJI_CWV_SHORTLIST_CKPT": "/data/models/js-m1-0d17fd03.npz",
+    "SHENGJI_CWV_PRIOR_CKPT": "/data/models/js-m1-0d17fd03.npz",
+    "SHENGJI_CWV_PRIOR_SHA256": "0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747",
+    "SHENGJI_CWV_PRIOR_THRESHOLD": "1000",
+    "SHENGJI_CWV_PRIOR_TOP": "256",
+    "SHENGJI_CWV_BURY_ARM": "hybrid",
+    "SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS": "2",
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "SHENGJI_MODEL_SEARCH_CONCURRENCY": "1",
+    "SHENGJI_FAST": "1"
+  },
+  "packages": {
+    "g3a-e04-f4f4127e": {
+      "sha256": "f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd",
+      "basename": "g3a-e04-f4f4127e.npz",
+      "env_path": [
+        "SHENGJI_PV_CKPT"
+      ],
+      "env_sha256": [
+        "SHENGJI_PV_SHA256"
+      ]
+    },
+    "p0-ft1-1fa201b2": {
+      "sha256": "1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf",
+      "basename": "p0-ft1-1fa201b2.npz",
+      "env_path": [
+        "SHENGJI_PV_PRIOR_CKPT"
+      ],
+      "env_sha256": [
+        "SHENGJI_PV_PRIOR_SHA256"
+      ]
+    },
+    "b1a-028131a0": {
+      "sha256": "028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8",
+      "basename": "b1a-028131a0.npz",
+      "env_path": [
+        "SHENGJI_PV_BELIEF_CKPT"
+      ],
+      "env_sha256": [
+        "SHENGJI_PV_BELIEF_SHA256"
+      ]
+    },
+    "js-m1-0d17fd03": {
+      "sha256": "0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747",
+      "basename": "js-m1-0d17fd03.npz",
+      "env_path": [
+        "SHENGJI_CWV_SHORTLIST_CKPT",
+        "SHENGJI_CWV_PRIOR_CKPT"
+      ],
+      "env_sha256": [
+        "SHENGJI_CWV_PRIOR_SHA256"
+      ],
+      "why": "The release-28 rollback keys: the server registers the mc-shortlist and CWV bury names from them at boot, and the served pv-search bot never consults them."
+    }
+  },
+  "stages": {
+    "declare": {
+      "value": "g3a-e04-f4f4127e",
+      "prior": null,
+      "worlds": "uniform-declare",
+      "why": "The heuristic declaration is the base; the value rule (vd, vdef) scores each outcome on uniform deals given the seat's hand and the current declaration (value_declare.sample_declare_world), with the heuristic bury and first trick inside each world. No policy head: the lpft rule is off."
+    },
+    "bury": {
+      "value": "g3a-e04-f4f4127e",
+      "prior": null,
+      "worlds": "belief:b1a-028131a0",
+      "why": "The wide value chooser (bwv, k 64) scores heuristic, structured-ballot and swap candidates on 32 worlds drawn by the belief package on the bury state's trick-1 twin (bbw); a failed draw falls back, for that decision, to the mc-s0-report-lcb helper's MCBot split sampler. The leaf's first trick is the heuristic. No policy head: the lpft rule is off."
+    },
+    "lead": {
+      "value": "g3a-e04-f4f4127e",
+      "prior": "p0-ft1-1fa201b2",
+      "worlds": "belief:b1a-028131a0"
+    },
+    "follow": {
+      "value": "g3a-e04-f4f4127e",
+      "prior": "p0-ft1-1fa201b2",
+      "worlds": "belief:b1a-028131a0"
+    },
+    "endgame": {
+      "value": "g3a-e04-f4f4127e",
+      "prior": "p0-ft1-1fa201b2",
+      "worlds": "belief:b1a-028131a0",
+      "why": "At 7 cards or fewer the admitted ballot is still value-scored first (value and prior as in play); the exact lead and exact follow solves on the same belief worlds use no net."
+    }
+  }
+}

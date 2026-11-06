@@ -53,9 +53,12 @@ data, with production's latency tail bounded. The standing goal is +0.05 levels/
   The previous comparators were release 49 (Jerry, in session 2026-11-01), release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod policy of
   r48"), release 46 (Jerry 2026-10-16, recorded on #1075) and release 45 (Jerry 2026-10-13, #988
   issuecomment-6142666693).
-- **Next cost candidate:** release 50 with `lcc32` off. The S82 leave-one-out inside release 50 read DROP_SAFE,
-  +0.0079 [−0.0069, +0.0221] (off − on), and at half budget the stage abandons on about 23% of search leads (hb50; descriptive). It needs a
-  confirmation against release 50 and Jerry's word.
+- **Release 51 (prepared for deploy):** release 50 with `lcc32` off, same packages (`AI_POLICIES.md` row 20).
+  The confirmation lccC read KEEP_LCC, off − on −0.0133 [−0.0232, −0.0033] on cloud (the S82 leave-one-out loo read
+  DROP_SAFE, +0.0079 [−0.0069, +0.0221], on the M5 Ultra); on Fly the stage applied on 1–2% of non-exact leads and
+  lcc off used 0.55× the CPU per play (S91). Jerry chose it for the CPU, in serving and data generation, with the
+  cloud cost in view (in session 2026-11-06). Its strength effect on Fly is not measured. After the deploy, new
+  duels and screens run lcc off on both sides.
 
 | evidence label | supports |
 |---|---|

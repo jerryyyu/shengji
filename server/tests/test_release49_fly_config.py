@@ -42,15 +42,16 @@ Y_CHANGES = {"SHENGJI_PV_SINGLETON_CHALLENGER": "1", "SHENGJI_PV_LEAD_CONFIRM": 
 
 
 def release49_env(env: dict) -> dict:
-    """Production's env with release 50's rollback applied: its three lines removed, the
-    release-49 value and belief pairs and the release-49 name restored."""
+    """Production's env with the rollbacks of releases 51 and 50 applied: lcc32 back on,
+    release 50's three lines removed, the release-49 value and belief pairs and the
+    release-49 name restored."""
     env = undo_release50(env)
     env["SHENGJI_BOT"] = RELEASE49
     return env
 
 
 def fly_env() -> dict:
-    """Release 49's ``fly.toml`` ``[env]``: the repo's, rolled back from release 50."""
+    """Release 49's ``fly.toml`` ``[env]``: the repo's, rolled back from release 51."""
     return release49_env(production_env())
 
 

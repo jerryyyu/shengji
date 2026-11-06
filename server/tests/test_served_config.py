@@ -62,7 +62,7 @@ def served_already(name: str) -> bool:
 
 
 def test_named_overrides_touch_only_their_keys():
-    assert served_already("sc8") and served_already("lcc32")
+    assert served_already("sc8") and not served_already("lcc32")
     for name, keys in sc.NAMED_OVERRIDES.items():
         assert keys and all(k.startswith("SHENGJI_PV_") for k in keys), name
         changed = set(sc.env_diff(sc.apply_overrides(FLY, [name]), FLY))
@@ -248,7 +248,7 @@ def test_singleton_stack_is_named_and_explicitly_registered(monkeypatch, pinned_
     monkeypatch.setattr(registry, 'make_bot', lambda name, seed: registry.REGISTRY[name])
     base = {**sc.served_env(mappings=MAP), 'SHENGJI_PV_SINGLETON_CHALLENGER': '0'}
     base['SHENGJI_BOT'] = sc.registry_name(base)
-    candidate = sc.served_env(mappings=MAP, overrides=['sc8', 'lcc32'])
+    candidate = sc.served_env(mappings=MAP, overrides=['sc8'])
     assert candidate == sc.served_env(mappings=MAP)
     assert candidate['SHENGJI_BOT'] == base['SHENGJI_BOT'] + '-sc8'
     name, factory = sc.build_served_bot(candidate)

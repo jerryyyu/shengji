@@ -29,7 +29,7 @@ def test_recipe_keeps_served_budgets_and_latency_switches(tmp_path):
     ("SHENGJI_PV_SERVING_BUDGET_SECONDS = '3'", "SHENGJI_PV_SERVING_BUDGET_SECONDS = '0'"),
     ("SHENGJI_PV_CANDIDATES = '8'", "SHENGJI_PV_CANDIDATES = '24'"),
     ("SHENGJI_PV_SINGLETON_CHALLENGER = '1'", "SHENGJI_PV_SINGLETON_CHALLENGER = '0'"),
-    ("SHENGJI_PV_LEAD_CONFIRM = '32'", "SHENGJI_PV_LEAD_CONFIRM = '0'"),
+    ("SHENGJI_PV_LEAD_CONFIRM = '0'", "SHENGJI_PV_LEAD_CONFIRM = '32'"),
     ("/data/models/g3a-e04-f4f4127e.npz", "/data/models/../g3a-e04-f4f4127e.npz"),
 ])
 def test_recipe_refuses_budget_width_and_model_path_drift(tmp_path, old, new):
@@ -66,7 +66,7 @@ def test_runner_constructs_exact_served_bot(release50_packages, tmp_path, captur
     result = subprocess.run([
         sys.executable, str(_PATH), "--fly", str(fly), "--models", str(models),
         "--seed-registry", str(registry), *options,
-    ], env={"PATH": os.environ["PATH"], "SHENGJI_PV_LEAD_CONFIRM": "0",
+    ], env={"PATH": os.environ["PATH"], "SHENGJI_PV_LEAD_CONFIRM": "32",
             "SHENGJI_PV_SINGLETON_CHALLENGER": "0"}, text=True,
         capture_output=True, timeout=180)
     assert result.returncode == 0, result.stderr

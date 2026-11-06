@@ -24,7 +24,7 @@ from shengji.rl.value_afterstate import category_signed_level, signed_level_cate
 from shengji.train import pv_search_policy as pv
 from shengji.train.cwv_prior_admission import root_clone
 from shengji.train.pv_exact_deep import exact_root_means
-from test_release46_fly_config import fly_env
+from test_release50_fly_config import fly_env  # release 50's env, lcc32 on
 from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA,  # noqa: F401
                                        PRIOR_VOLUME_PATH, RELEASE50, VALUE_SHA, VALUE_VOLUME_PATH,
                                        release50_packages, served_bot)
@@ -46,7 +46,7 @@ PINNED_PICK = json.loads(P.PINNED.read_text())["decisions"][P.label(*MISPRICED)]
 
 
 def names(monkeypatch, extra):
-    """The served name the registry derives from fly.toml plus ``extra``
+    """The name the registry derives from release 50's env plus ``extra``
     (package hashes stood in for the files)."""
     from shengji.ai import cwv_policy
 

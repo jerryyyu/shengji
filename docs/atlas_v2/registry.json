@@ -4084,7 +4084,7 @@
    "point": 0.0992,
    "lo": 0.0608,
    "hi": 0.1375,
-   "takeaway": "EXPERT_NOT_CERTIFIED +0.099 [+0.061, +0.138]: more search time helps, but short of the +0.15 teacher bar.",
+   "takeaway": "EXPERT_NOT_CERTIFIED +0.099 [+0.061, +0.138]: the candidate A bundle beats R51 but misses the +0.15 teacher bar.",
    "note": "Read once 11-06 19:20Z (reader 39235317). Result line: 'EXPERT_NOT_CERTIFIED: candidate A (fix e + wht + rcec, W256/K16, lcc32, budgets lifted) - release 51 +0.0992 levels/round, 95% CI [+0.0608, +0.1375], 95% lower bound +0.0608 (deal bootstrap 10000, seed 1)'. VALID: 0 play, belief, bury fallbacks of 39,950 decisions per side. Exact-lead p99 8.8 s: a teacher read, never a serving or latency claim. Archive readouts/x1a/ (receipt.json, SHA256SUMS).",
    "ref": "https://github.com/jerryyyu/shengji/pull/1321"
   },
@@ -4106,7 +4106,7 @@
    "point": 0.0783,
    "lo": 0.04,
    "hi": 0.1167,
-   "takeaway": "EXPERT_NOT_CERTIFIED +0.078 [+0.040, +0.117]: the deeper exact endgame adds nothing resolved over teacher A.",
+   "takeaway": "EXPERT_NOT_CERTIFIED +0.078 [+0.040, +0.117]: candidate B beats R51 but misses the +0.15 teacher bar; no isolated B-over-A gain is established.",
    "note": "Read once 11-06 19:50Z (reader a29763b5). Result line: 'EXPERT_NOT_CERTIFIED: candidate B (A + exact endgame 8 cards, 2e8 node caps, declare W256) - release 51 +0.0783 levels/round, 95% CI [+0.0400, +0.1167], 95% lower bound +0.0400 (deal bootstrap 10000, seed 1)'. VALID: 0 play, belief, bury fallbacks of 39,960 decisions per side. Exact-lead p99 54 s: a teacher read, never a serving or latency claim. B vs A is not a within-run contrast (independent seeds). Archive readouts/x1b/ (receipt.json, SHA256SUMS).",
    "ref": "https://github.com/jerryyyu/shengji/pull/1321"
   }

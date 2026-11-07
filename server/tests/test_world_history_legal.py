@@ -397,7 +397,8 @@ def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, t
     asyncio.run(scenario())
 
 
-def test_belief_proposal_retains_caps_after_history_budget(monkeypatch):
+@pytest.mark.parametrize("enabled", [False, True])
+def test_belief_proposal_retains_caps_after_history_budget(monkeypatch, enabled):
     _, rnd, seat = fixture()
     mem = Memory(rnd, seat, own_kitty=True)
     sampler = MCBot(seed=SEED)
@@ -439,9 +440,16 @@ def test_belief_proposal_retains_caps_after_history_budget(monkeypatch):
         return bad, buried
 
     returned, _, stats = HL.sample_worlds_history_legal(
-        sampler, rnd, seat, 2, mem=mem, propose=propose,
+        sampler, rnd, seat, 2, mem=mem, propose=propose, proposal_caps=enabled,
         complete=lambda rnd, seat, hands, **kw: hands)
+    if not enabled:
+        assert len(calls) == 4
+        assert returned == [(bad, sorted(buried))] * 2
+        assert stats['history_unchecked_worlds'] == 2
+        assert 'history_cap_rejected' not in stats
+        return
     assert len(calls) == 6
+    assert stats['history_cap_rejected'] == 4
     assert len(returned) == 2
     assert stats['history_unchecked_worlds'] == 0
     assert stats['history_fill_worlds'] == 2
@@ -466,3 +474,22 @@ def test_current_run_cap_rejects_tractor_without_pair_cap():
 def _run_length(cards, ordering):
     from shengji.engine.combos import decompose
     return decompose(cards, ordering).max_pair_run()
+
+
+def test_proposal_caps_recipe_defaults_and_plumbing():
+    from dataclasses import replace
+    config = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA)
+    assert not config.proposal_caps
+    assert "proposal_caps" not in pv.recipe_payload(config)
+    assert not pv.pv_env_recipe(PRODUCTION_ENV).get('proposal_caps', False)
+    recipe = pv.pv_env_recipe({**PRODUCTION_ENV, 'SHENGJI_PV_PROPOSAL_CAPS': '1'})
+    assert recipe['proposal_caps']
+    with pytest.raises(pv.PVSearchPolicyError, match='proposal_caps requires'):
+        pv.recipe_payload(replace(config, proposal_caps=True))
+    on = replace(config, proposal_caps=True, belief_worlds=True, world_history_legal=True,
+                 world_history_draw=True, belief_sha256='a' * 64)
+    assert pv.recipe_payload(on)['proposal_caps'] is True
+    bot = served(proposal_caps=True, belief_worlds=True, world_history_legal=True,
+                 world_history_draw=True, belief_sha256='a' * 64)
+    assert bot._history_throws_kw() == {'proposal_caps': True}
+    assert served()._history_throws_kw() == {}

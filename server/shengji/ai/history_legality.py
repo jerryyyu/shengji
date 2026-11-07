@@ -251,7 +251,7 @@ def _current_caps_hold(world, seat, mem, ordering):
 
 def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem,
                                 check_budget=None, propose=None, constrain=False,
-                                complete=None, throws=False):
+                                complete=None, throws=False, proposal_caps=False):
     """``n`` worlds by production's draw, each history-legal while the history
     test's attempt budget lasts and consistent with every refusal in
     ``refusals`` (`ai.refusal`, the same test and pinning as
@@ -264,7 +264,8 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     with refusals, the refusal rule's own fields.  ``history_fallback_worlds``
     sums two kinds: ``history_unchecked_worlds``, drawn by ``draw`` (a belief
     proposal when one is passed) and kept without full history validation once
-    its budget is spent; proposals still obey current-hand pair/run caps.
+    its budget is spent. With ``proposal_caps`` on, these proposals still obey
+    current-hand pair/run caps.
     ``history_fill_worlds``, the shortfall after the attempt cap
     filled by plain `cwv_policy.sample_worlds` (never a proposal).
 
@@ -299,6 +300,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     rejected = 0
     throw_rejected = 0
     unchecked = 0
+    cap_rejected = 0
     by_age: Counter[int] = Counter()
     constraints = draw_constraints(rnd, seat, events) if constrain and propose is None else {}
     if propose is not None:
@@ -332,7 +334,8 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
                 throw_rejected += 1
                 continue
         elif events or thrown:
-            if propose is not None and not _current_caps_hold(world, seat, mem, ordering):
+            if proposal_caps and propose is not None and not _current_caps_hold(world, seat, mem, ordering):
+                cap_rejected += 1
                 continue
             unchecked += 1
         worlds.append((world, sorted(buried)))
@@ -349,6 +352,8 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
              "history_fallback_worlds": unchecked + fill,
              "history_unchecked_worlds": unchecked, "history_fill_worlds": fill,
              "history_rejections_by_age": {str(k): v for k, v in sorted(by_age.items())}}
+    if proposal_caps:
+        stats["history_cap_rejected"] = cap_rejected
     if throws:
         stats.update(history_throw_events=len(thrown), history_throw_rejections=throw_rejected)
     if constrain:

@@ -167,6 +167,21 @@ def production_release(reg):
     """The one production baseline's release number (checked above)."""
     return [b for b in reg["baseline"] if b["status"] == "production"][0]["release"]
 
+def prod_release_on(reg, date):
+    """The release serving production on ``date`` (YYYY-MM-DD): the latest baseline whose takeover date
+    (the first token of ``since``) is on or before it; a day production changed maps to the new release."""
+    if not date:
+        return None
+    starts = sorted((b["since"].split(" ")[0], b["release"]) for b in reg["baseline"])
+    live = [rel for start, rel in starts if start <= date]
+    return live[-1] if live else None
+
+
+def prod_release_label(reg, date):
+    rel = prod_release_on(reg, date)
+    return f"r{rel}" if rel is not None else "\u2014"
+
+
 def comparator_release(reg):
     """The release NEW screens are read against. It equals production unless the registry's
     ``screen_comparator`` says otherwise (e.g. a new production release whose adoption as the
@@ -286,7 +301,7 @@ SVG = "\n".join(svg)
 def screens_table(items, ctx=False):
     """One short row per screen (what was tested, the read, what we learned); the full registry text --
     candidate, comparator, instrument, seeds and note -- sits in a closed toggle under the row."""
-    out = ['<div class="tablewrap"><table class="screens"><thead><tr><th>lane</th><th>what was tested</th><th class="num">read</th><th>what we learned</th><th>status</th></tr></thead><tbody>']
+    out = ['<div class="tablewrap"><table class="screens"><thead><tr><th>lane</th><th title="the release serving production on the screen date; on a day production changed, the release that took over that day">prod release</th><th>what was tested</th><th class="num">read</th><th>what we learned</th><th>status</th></tr></thead><tbody>']
     for s in items:
         cells = []
         for r in results_of(s):
@@ -295,10 +310,10 @@ def screens_table(items, ctx=False):
             cells.append(f'{lab}{esc(iv(r["point"], r["lo"], r["hi"]))}<br><span class="{cls}">{v}</span>')
         fam = f'<dt>family</dt><dd>{esc(s["family"])}</dd>' if s.get("family") else ""
         ref = f'<dt>ref</dt><dd>{esc(s["ref"])}</dd>' if s.get("ref") else ""
-        out.append(f'<tr class="lead"><td class="mono">{esc(s["id"])}<br><span class="sub">{esc(s.get("date", ""))}</span></td><td>{esc(s["title"])}</td>'
+        out.append(f'<tr class="lead"><td class="mono">{esc(s["id"])}<br><span class="sub">{esc(s.get("date", ""))}</span></td><td class="num">{esc(prod_release_label(R, s.get("date", "")))}</td><td>{esc(s["title"])}</td>'
                    f'<td class="num">{"<br>".join(cells)}</td><td>{esc(s["takeaway"])}</td>'
                    f'<td><span class="chip {esc(s["status"])}">{esc(s["status"])}</span>{("<br><small>" + esc(s.get("eta","")) + "</small>") if s.get("eta") else ""}</td></tr>')
-        out.append(f'<tr class="more"><td></td><td colspan="4"><details><summary>full record</summary><dl>'
+        out.append(f'<tr class="more"><td></td><td colspan="5"><details><summary>full record</summary><dl>'
                    f'<dt>candidate</dt><dd>{esc(s["candidate"])}</dd><dt>compared to</dt><dd>{esc(s["comparator"])}</dd>'
                    f'<dt>instrument</dt><dd>{esc(s["form"])} · {esc(s["instrument"])} <span class="sub">[{esc(s["instrument_kind"])}]</span></dd>'
                    f'<dt>seeds</dt><dd class="mono">{esc(s.get("seeds","")) or "—"}</dd>{fam}<dt>note</dt><dd>{esc(s["note"])}</dd>{ref}</dl></details></td></tr>')

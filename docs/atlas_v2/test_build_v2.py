@@ -409,3 +409,17 @@ def test_archive_shas_open_only_allowlisted_provenance(tmp_path, monkeypatch):
     (tmp_path / "linked").symlink_to(lane)
     errs, checked, _ = b.check_archive_shas(note(digest, "linked"), archive=tmp_path)
     assert checked == 0 and len(errs) == 1 and "symlink" in errs[0]
+
+
+def test_prod_release_column_maps_dates_to_the_live_release():
+    """The prod-release column names the release live on the row's date; a changeover day maps to the new one."""
+    b = _load()
+    reg = {"baseline": [{"release": 50, "since": "2026-11-04 15:24 ET → 2026-11-06 02:10 ET", "status": "superseded"},
+                        {"release": 51, "since": "2026-11-06 02:10 ET", "status": "production"}]}
+    assert b.prod_release_on(reg, "2026-11-05") == 50
+    assert b.prod_release_on(reg, "2026-11-06") == 51
+    assert b.prod_release_on(reg, "2026-11-07") == 51
+    assert b.prod_release_on(reg, "2026-11-01") is None
+    assert b.prod_release_label(reg, "2026-11-05") == "r50"
+    html = (HERE / "atlas_v2.html").read_text()
+    assert "<th title=" in html and "prod release</th>" in html

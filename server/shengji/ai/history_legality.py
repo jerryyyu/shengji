@@ -231,6 +231,24 @@ def constrained_draw(bot, constraints):
     return propose
 
 
+def _current_caps_hold(world, seat, mem, ordering):
+    """Belief proposals must retain current-hand caps after full history checks stop."""
+    for other, hand in enumerate(world):
+        if other == seat:
+            continue
+        suits = {}
+        for card in hand:
+            suits.setdefault(ordering.eff_suit(card), []).append(card)
+        for suit, cards in suits.items():
+            pairs = mem.max_pairs(other, suit)
+            if pairs is not None and sum(n // 2 for n in Counter(cards).values()) > pairs:
+                return False
+            run = mem.max_run(other, suit)
+            if run is not None and _combos.decompose(cards, ordering).max_pair_run() > run:
+                return False
+    return True
+
+
 def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem,
                                 check_budget=None, propose=None, constrain=False,
                                 complete=None, throws=False):
@@ -245,8 +263,9 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     history budget ran out (``history_fallback_worlds``: drawn as today) and,
     with refusals, the refusal rule's own fields.  ``history_fallback_worlds``
     sums two kinds: ``history_unchecked_worlds``, drawn by ``draw`` (a belief
-    proposal when one is passed) and kept untested once the history budget is
-    spent, and ``history_fill_worlds``, the shortfall after the attempt cap
+    proposal when one is passed) and kept without full history validation once
+    its budget is spent; proposals still obey current-hand pair/run caps.
+    ``history_fill_worlds``, the shortfall after the attempt cap
     filled by plain `cwv_policy.sample_worlds` (never a proposal).
 
     ``propose(rnd, seat, mem) -> (hands, buried) | None`` replaces
@@ -313,6 +332,8 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
                 throw_rejected += 1
                 continue
         elif events or thrown:
+            if propose is not None and not _current_caps_hold(world, seat, mem, ordering):
+                continue
             unchecked += 1
         worlds.append((world, sorted(buried)))
     fill = 0

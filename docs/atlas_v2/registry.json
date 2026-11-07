@@ -4174,7 +4174,8 @@
    "hi": 0.0525,
    "takeaway": "FAIL +0.018 [−0.016, +0.053] vs x1a, not R51: doubling x1a's candidates (K32/lcc64, W stays 256) misses the +0.02 bar; no cost to strength shown.",
    "note": "Read once 11-07 ~13:57Z (reader s117_read.py 12ed8de7...). Comparator is x1a, not release 51: this row is a teacher-width contrast and says nothing directly about release 51. Mean +0.0183, 95% CI [-0.0158, +0.0525], one-sided 80% LB +0.0033 (LB clause met, mean clause missed). VALID: 1,200/1,200 rows, worlds 256 both sides, declare 64/64. Cost B/A mean decide_play 1.63x. Candidate doubling only; W512 untested. Archive readouts/s117/ SHA256SUMS sha256 822af063ea22aa7bfcd9050d197e608935d1e4955c135d9249ad5277de8d64ab (REPORT.md, receipt.json, s117_result.json, read stdout, status, lane manifest).",
-   "ref": "https://github.com/jerryyyu/shengji/issues/1263"
+   "ref": "https://github.com/jerryyyu/shengji/issues/1263",
+   "named_comparator": "x1a teacher A (W256/K16, lcc32, budgets lifted)"
   }
  ],
  "context_screens": [

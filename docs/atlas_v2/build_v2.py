@@ -217,12 +217,14 @@ PROD_SINCE = next(b["since"] for b in R["baseline"] if b["release"] == CMP).spli
 # The releases that screens were read against before the current one, in order ("29, then 30, then 36, ").
 _COMPARATORS = sorted({s["vs"] for s in R["screens"] if s["vs"] != CMP} | {29})
 EARLIER_PRODS = ", then ".join(str(r) for r in _COMPARATORS) + (", " if _COMPARATORS else "")
-SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == CMP]
+SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == CMP and not s.get("named_comparator")]
+#: rows whose estimate is against a named non-release comparator (e.g. a teacher); banded with their release era but never counted as vs that release
+SCREENS_NAMED = [s for s in R["screens"] if s.get("named_comparator")]
 CMP_ROLE = "the current production" if CMP == PROD else f"the screen comparator; production is release {PROD}"
 _SC = R.get("screen_comparator")
 COMPARATOR_NOTE = (f" <b>Production is release {PROD}</b>; {esc(_SC['note'])}" if _SC and CMP != PROD
                    else (f" {esc(_SC['note'])}" if _SC else ""))
-SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != CMP]
+SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != CMP and not s.get("named_comparator")]
 EARLIER_RELEASES = sorted({s["vs"] for s in SCREENS_EARLIER})
 def _reads(n): return f"{n} read" + ("" if n == 1 else "s")
 def comparator_sections(reg):
@@ -257,9 +259,9 @@ H = TOP + ROWH * len(rows) + SEPH * len(SECTIONS) + 40
 lo_all = min([r[4] for r in rows if r[4] is not None] + [-0.05]); hi_all = max([r[5] for r in rows if r[5] is not None] + [0.10])
 lo_all, hi_all = min(lo_all, -0.02) - 0.01, hi_all + 0.01
 def X(v): return LEFT + (v - lo_all) / (hi_all - lo_all) * (W - LEFT - RIGHT)
-svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" role="img" aria-label="Screens against the current production release: point and interval at the confidence each row declares (95% single reads, 97.5% per primary in a multi-arm family)">']
+svg = [f'<svg viewBox="0 0 {W} {H}" width="100%" role="img" aria-label="Screens against the comparator named in each band (a release, or a named teacher where the band says so): point and interval at the confidence each row declares (95% single reads, 97.5% per primary in a multi-arm family)">']
 svg.append(f'<line x1="{X(0):.1f}" y1="{TOP-18}" x2="{X(0):.1f}" y2="{H-30}" class="zero"/>')
-svg.append(f'<text x="{X(0):.1f}" y="{TOP-24}" class="lab" text-anchor="middle">production parity</text>')
+svg.append(f'<text x="{X(0):.1f}" y="{TOP-24}" class="lab" text-anchor="middle">comparator parity</text>')
 STEP = 0.02 if hi_all - lo_all <= 0.25 else 0.05                      # keep the tick labels apart on a wide axis
 for t in [round(STEP * i, 2) for i in range(int(lo_all / STEP) - 1, int(hi_all / STEP) + 2) if lo_all <= STEP * i <= hi_all]:
     if abs(t) < 1e-9: continue
@@ -417,7 +419,7 @@ a{{color:var(--accent)}}
 <h2>Data generation on the search</h2>
 <div class="tablewrap"><table><thead><tr><th>store</th><th>box</th><th>seed0</th><th>clusters</th><th>status</th></tr></thead><tbody>{data_rows}</tbody></table></div>
 
-<p class="foot">Built {esc(built)} from registry.json by build_v2.py · {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_EARLIER)} vs the era's earlier releases, {len(R["context_screens"])} context reads, {len(R["models"])} models · {esc(R["history"]["note"])}</p>
+<p class="foot">Built {esc(built)} from registry.json by build_v2.py · {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_NAMED)} vs a named non-release comparator, {len(SCREENS_EARLIER)} vs the era's earlier releases, {len(R["context_screens"])} context reads, {len(R["models"])} models · {esc(R["history"]["note"])}</p>
 </main>
 '''
 def _stable(p):
@@ -522,7 +524,7 @@ if __name__ == "__main__":
         sha_errs, sha_checked, sha_skipped = check_archive_shas(R)
         if sha_errs:
             print("ARCHIVE SHA ERRORS:\n  " + "\n  ".join(sha_errs)); sys.exit(1)
-        print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
+        print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_NAMED)} vs a named non-release comparator, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")
         print(f"archive shas: {sha_checked} rows' cited hashes present in their archives' provenance, {sha_skipped} archives not on this machine")
     else:
         out.write_text(page)

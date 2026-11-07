@@ -1,0 +1,14 @@
+{
+ "name": "x2-pilot-mini-1004190000",
+ "purpose": "trajectory",
+ "seed0": 1004190000,
+ "clusters": 10,
+ "span": [
+  1004190000,
+  1004190010
+ ],
+ "created_at": "2026-11-07T19:55:00Z",
+ "host": "jerrys-mac-mini",
+ "git_head": "5ec556f1939bc79cf207ee596c56b960332b15c9",
+ "note": "The Mac mini 20-round timing pilot (dealt 2026-11-07 19:49Z, before this PR). X2 pilot stage 1 (board #1263 row X2, Jerry 2026-11-07 \"Yes\"): x1a self-play corpus, all four seats x1a (pv-search-f4f4127e-prior-1fa201b2-w256-k16-...-lcc32-r959f561c-bury-hybrid-bwv-bbw-5d189e27e294-sc8, budgets lifted: play 120 s, bury 60 s, lgfd 60 s, exact lead 60 s), --round-mix sampled, explore 0, cap 256, served-budget capture with declare records; archive ~/shengji-archive/2026-11-07-x2-distill. Distillation training corpus for the X2 prior/value fine-tune; a screen must not reuse these deals. Pilot block: dealt minutes before this reservation, from a runtime registry copy of main (disjoint from every registered window, seed_windows.py check rc 0). The host's runtime registry must not contain this entry (the producer registers its own run_id window)."
+}

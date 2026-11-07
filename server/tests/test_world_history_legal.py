@@ -395,3 +395,101 @@ def test_pinned_serving_factory_snapshot_and_commit(pinned_production_package, t
         assert any(kind == 'model_search' for kind, _ in events)
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_belief_proposal_retains_caps_after_history_budget(monkeypatch, enabled):
+    _, rnd, seat = fixture()
+    mem = Memory(rnd, seat, own_kitty=True)
+    sampler = MCBot(seed=SEED)
+    worlds, _ = sample_worlds(sampler, rnd, seat, 1, mem=mem)
+    hands, buried = worlds[0]
+    bad = copy.deepcopy(hands)
+    changed = False
+    for other in range(4):
+        if other == seat:
+            continue
+        for card in bad[other]:
+            suit = rnd.ordering.eff_suit(card)
+            if mem.max_pairs(other, suit) != 0:
+                continue
+            for donor in range(4):
+                if donor in (seat, other) or card not in bad[donor]:
+                    continue
+                replacement = next((c for c in bad[other] if c != card), None)
+                if replacement is None:
+                    continue
+                bad[other].remove(replacement)
+                bad[other].append(card)
+                bad[donor].remove(card)
+                bad[donor].append(replacement)
+                changed = True
+                break
+            if changed:
+                break
+        if changed:
+            break
+    assert changed and not HL._current_caps_hold(bad, seat, mem, rnd.ordering)
+    monkeypatch.setattr(HL, 'HISTORY_ATTEMPT_FACTOR', 1)
+    monkeypatch.setattr(sampler, 'SAMPLE_ATTEMPT_FACTOR', 3)
+    monkeypatch.setattr(HL, 'first_violation', lambda *args: 0)
+    calls = []
+
+    def propose(*args):
+        calls.append(1)
+        return bad, buried
+
+    returned, _, stats = HL.sample_worlds_history_legal(
+        sampler, rnd, seat, 2, mem=mem, propose=propose, proposal_caps=enabled,
+        complete=lambda rnd, seat, hands, **kw: hands)
+    if not enabled:
+        assert len(calls) == 4
+        assert returned == [(bad, sorted(buried))] * 2
+        assert stats['history_unchecked_worlds'] == 2
+        assert 'history_cap_rejected' not in stats
+        return
+    assert len(calls) == 6
+    assert stats['history_cap_rejected'] == 4
+    assert len(returned) == 2
+    assert stats['history_unchecked_worlds'] == 0
+    assert stats['history_fill_worlds'] == 2
+    assert all(HL._current_caps_hold(h, seat, mem, rnd.ordering) for h, _ in returned)
+
+
+def test_current_run_cap_rejects_tractor_without_pair_cap():
+    from types import SimpleNamespace
+    _, rnd, seat = fixture()
+    other = (seat + 1) % 4
+    hand = ['H6', 'H6', 'H7', 'H7']
+    assert _run_length(hand, rnd.ordering) == 2
+    mem = SimpleNamespace(max_pairs=lambda s, suit: None,
+                          max_run=lambda s, suit: 1 if s == other else None)
+    world = [[] for _ in range(4)]
+    world[other] = hand
+    assert not HL._current_caps_hold(world, seat, mem, rnd.ordering)
+    world[other] = ['H6', 'H6', 'H7']
+    assert HL._current_caps_hold(world, seat, mem, rnd.ordering)
+
+
+def _run_length(cards, ordering):
+    from shengji.engine.combos import decompose
+    return decompose(cards, ordering).max_pair_run()
+
+
+def test_proposal_caps_recipe_defaults_and_plumbing():
+    from dataclasses import replace
+    config = pv.PVSearchConfig(checkpoint_sha256=PRODUCTION_SHA)
+    assert not config.proposal_caps
+    assert "proposal_caps" not in pv.recipe_payload(config)
+    assert not pv.pv_env_recipe(PRODUCTION_ENV).get('proposal_caps', False)
+    recipe = pv.pv_env_recipe({**PRODUCTION_ENV, 'SHENGJI_PV_PROPOSAL_CAPS': '1'})
+    assert recipe['proposal_caps']
+    with pytest.raises(pv.PVSearchPolicyError, match='proposal_caps requires'):
+        pv.recipe_payload(replace(config, proposal_caps=True))
+    on = replace(config, proposal_caps=True, belief_worlds=True, world_history_legal=True,
+                 world_history_draw=True, belief_sha256='a' * 64)
+    assert pv.recipe_payload(on)['proposal_caps'] is True
+    bot = served(proposal_caps=True, belief_worlds=True, world_history_legal=True,
+                 world_history_draw=True, belief_sha256='a' * 64)
+    assert bot._history_throws_kw() == {'proposal_caps': True}
+    assert served()._history_throws_kw() == {}

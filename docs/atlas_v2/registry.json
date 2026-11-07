@@ -4153,6 +4153,28 @@
    "takeaway": "FAIL −0.032 [−0.055, −0.008]: this K = 8, uniform-world playout-declare teacher loses to R51; B1a worlds and larger K are untested.",
    "note": "Read once 11-07 ~09:45Z (reader s116_read.r2.py 5340b3d2cbb56c6a9000c25f0257f8af365d1830b7f71d5ef83ba18abe25c6dd, Codex's repair of the HELD original; adopted before any read). Result: mean -0.0317 levels/round, 95% CI [-0.0550, -0.0083] (deal bootstrap 10000, seed 1); FAIL on both clauses. VALID: 1,200 rows, 0 play, belief, bury fallbacks, 0 declare abandons; 1,571 teacher decisions all completed at K = 8, 0 cap or error fallbacks. Descriptive: the teacher changed 29.6% of evaluated declare chances (465 of 1,571); changed deals (332) -0.0572 [-0.0979, -0.0151]; unchanged deals exactly 0. Tests this implementation only (uniform worlds, K = 8, the served gate's chances); a DEV teacher read, never a serving or latency claim. Archive readouts/s116/ (REPORT.md c0c820143b341d20f92c2dffc5fc460aab533ea164e7dfe03f89ca82f4444ada; SHA256SUMS sha256 c6ca8ae1b5e63482892fa934050e639a01893c63cdbb355b98532612b6eda4d5, the lane manifest; result json 5b12d75a32536f307efb23e5245095dbc8fa3a95e3d51b34f7846fe0a0b20165).",
    "ref": "https://github.com/jerryyyu/shengji/issues/1263"
+  },
+  {
+   "id": "s117",
+   "date": "2026-11-07",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "S117 x1a at K32/lcc64 vs x1a (not vs R51)",
+   "candidate": "TEACHER, not servable: x1a (candidate A: combo + W256/K16 + lcc32, budgets lifted) with candidates 16->32 and lead_confirm 32->64, nothing else (worlds stay 256: the code caps worlds at 256 and needs lcc > K); latency unbounded; M5 Ultra",
+   "comparator": "x1a teacher A (pv-search-f4f4127e-prior-1fa201b2-w256-k16-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd60000-ed7-els60000-xf7-xfcompactlevel-lcc32-r959f561c-bury-hybrid-bwv-bbw-5d189e27e294-sc8, budgets lifted), NOT release 51; head to head",
+   "vs": 51,
+   "vs_group": "x1a teacher A (W256/K16, lcc32, budgets lifted), NOT release 51: a teacher-width DEV duel (S117)",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "600 seat-swapped deal pairs from 249870000 (r2 rank-mixed plan per deal), arm B (K32/lcc64) vs arm A (x1a), both budgets lifted; paired level utility, deal bootstrap (10000 reps, seed 1); one look; host M5 Ultra; predeclared S117 bar (board #1263 row S117, revised before any run): PASS iff mean >= +0.02 AND one-sided 80% lower bound > 0",
+   "seeds": "249870000 (ultra)",
+   "confidence": 0.95,
+   "point": 0.0183,
+   "lo": -0.0158,
+   "hi": 0.0525,
+   "takeaway": "FAIL +0.018 [−0.016, +0.053] vs x1a, not R51: doubling x1a's candidates (K32/lcc64, W stays 256) misses the +0.02 bar; no cost to strength shown.",
+   "note": "Read once 11-07 ~13:57Z (reader s117_read.py 12ed8de7...). Comparator is x1a, not release 51: this row is a teacher-width contrast and says nothing directly about release 51. Mean +0.0183, 95% CI [-0.0158, +0.0525], one-sided 80% LB +0.0033 (LB clause met, mean clause missed). VALID: 1,200/1,200 rows, worlds 256 both sides, declare 64/64. Cost B/A mean decide_play 1.63x. Candidate doubling only; W512 untested. Archive readouts/s117/ SHA256SUMS sha256 822af063ea22aa7bfcd9050d197e608935d1e4955c135d9249ad5277de8d64ab (REPORT.md, receipt.json, s117_result.json, read stdout, status, lane manifest).",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1263"
   }
  ],
  "context_screens": [

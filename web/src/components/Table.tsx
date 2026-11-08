@@ -88,6 +88,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   // a tap or long press shows the whole name; only the phone layout draws it
   const [fullName, setFullName] = useState(false);
   const pressTimer = useRef<number | null>(null);
+  const longPressed = useRef(false);
   useEffect(() => {
     if (!fullName) return;
     const t = window.setTimeout(() => setFullName(false), FULL_NAME_MS);
@@ -106,10 +107,16 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   return (
     <div className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}
          data-name-len={nameWidthClass(player.name)}
-         onClick={() => setFullName((v) => !v)}
+         onClick={() => {
+           if (longPressed.current) { longPressed.current = false; return; }
+           setFullName((v) => !v);
+         }}
          onPointerDown={() => {
            endPress();
-           pressTimer.current = window.setTimeout(() => { pressTimer.current = null; setFullName(true); }, LONG_PRESS_MS);
+           longPressed.current = false;
+           pressTimer.current = window.setTimeout(() => {
+             pressTimer.current = null; longPressed.current = true; setFullName(true);
+           }, LONG_PRESS_MS);
          }}
          onPointerUp={endPress}
          onPointerLeave={endPress}

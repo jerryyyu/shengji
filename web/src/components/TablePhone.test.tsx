@@ -121,3 +121,27 @@ describe("bury hand size", () => {
     expect(host.querySelector<HTMLElement>(".hand")!.classList.contains("small-cards")).toBe(false);
   });
 });
+
+it("keeps a long-pressed name visible after pointer release and its click", () => {
+  vi.useFakeTimers();
+  try {
+    render(state());
+    const seat = host.querySelector<HTMLElement>(".opponent.pos-left")!;
+    act(() => seat.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    act(() => vi.advanceTimersByTime(450));
+    expect(seat.querySelector(".opp-fullname")).not.toBeNull();
+    act(() => seat.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    act(() => seat.click());
+    expect(seat.querySelector(".opp-fullname")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(2499));
+    expect(seat.querySelector(".opp-fullname")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(seat.querySelector(".opp-fullname")).toBeNull();
+    act(() => seat.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    act(() => seat.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    act(() => seat.click());
+    expect(seat.querySelector(".opp-fullname")).not.toBeNull();
+    act(() => seat.click());
+    expect(seat.querySelector(".opp-fullname")).toBeNull();
+  } finally { vi.useRealTimers(); }
+});

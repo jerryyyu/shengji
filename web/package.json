@@ -9,13 +9,17 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "capture:lobby": "node scripts/capture_lobby.mjs"
+    "capture:lobby": "node scripts/capture_lobby.mjs",
+    "ios:sync": "npm run build && cap sync ios"
   },
   "dependencies": {
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

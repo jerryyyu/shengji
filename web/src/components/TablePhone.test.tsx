@@ -99,28 +99,25 @@ describe("phone turn cue and haptics", () => {
   });
 });
 
-describe("two-row hand", () => {
+describe("bury hand size", () => {
   const renderHand = (n: number) => act(() => root.render(
     <Hand hand={cards(n)} selected={new Set()} selectable onToggle={() => {}} />));
 
-  it("keeps up to 25 cards in one row", () => {
+  it("keeps up to 25 cards at full size", () => {
     renderHand(25);
     const hand = host.querySelector<HTMLElement>(".hand")!;
-    expect(hand.classList.contains("two-rows")).toBe(false);
+    expect(hand.classList.contains("small-cards")).toBe(false);
     expect(hand.style.getPropertyValue("--n")).toBe("25");
-    expect(host.querySelector<HTMLElement>(".hand-slot")!.style.gridRow).toBe("");
   });
 
-  it("places 33 cards as a back row of 17 and a front row of 16, in sort order", () => {
+  it("draws 33 cards smaller in one row, in sort order, and returns to full size at 25", () => {
     renderHand(33);
     const hand = host.querySelector<HTMLElement>(".hand")!;
-    expect(hand.classList.contains("two-rows")).toBe(true);
-    expect(hand.style.getPropertyValue("--cols")).toBe("17");
-    const slots = [...host.querySelectorAll<HTMLElement>(".hand-slot")];
-    expect(slots.filter((s) => s.style.gridRow === "1")).toHaveLength(17);
-    expect(slots.filter((s) => s.classList.contains("front"))).toHaveLength(16);
-    expect(slots[16].style.gridColumn).toBe("17");
-    expect(slots[17].style.gridRow).toBe("2");
-    expect(slots[17].style.gridColumn).toBe("1");
+    expect(hand.classList.contains("small-cards")).toBe(true);
+    expect(hand.style.getPropertyValue("--n")).toBe("33");
+    const ids = [...host.querySelectorAll<HTMLElement>(".hand-slot")].map((el) => Number(el.dataset.id));
+    expect(ids).toEqual(cards(33).map((c) => c.id));
+    renderHand(25);
+    expect(host.querySelector<HTMLElement>(".hand")!.classList.contains("small-cards")).toBe(false);
   });
 });

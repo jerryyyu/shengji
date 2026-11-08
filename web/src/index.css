@@ -1273,6 +1273,12 @@ textarea:focus-visible {
   display: flex;
 }
 
+/* no box of its own: the name and controls stay items of the you-area; the
+   phone layout makes it a centred row */
+.you-row {
+  display: contents;
+}
+
 /* the deal's deck: only the phone layout draws it */
 .deal-deck {
   display: none;
@@ -1731,12 +1737,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      so a wider phone gets bigger cards instead of empty felt. The regions:
        - a header row (y 6..38): one strip with levels, trump and points at the
          left, the top seat's label in the middle, the `…` menu at the right;
-       - the trick cross, centred between the header and the hand; each side
+       - the trick cross, centred between the header and your row; each side
          seat's label sits on top of its own trick slot;
        - the hand, the only thing in the bottom band, running 16px under the
          home indicator; a turn shows as a gold glow along its top edge;
-       - the action zone bottom-right, clear of the cross, in thumb reach;
-         messages pass in the matching bottom-left corner.
+       - your row, centred just above the hand: your name, then Play, Bury
+         or the declare options; the cross sits above it;
+       - messages pass in the bottom-left corner above your row.
      Desktop and iPad never match this block. */
   .table-screen {
     position: relative;         /* the floating HUD's frame */
@@ -1748,16 +1755,18 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --hand-cw: clamp(58px, calc(var(--safe-w) / 11.5), 76px);
     --hand-under: max(0px, calc(var(--safe-b) - 16px));
     --lift: 18px;               /* a selected card's rise; the hand's top padding */
-    --back-row: 0px;            /* the visible strip of a second (back) row */
-    --hand-h: calc(var(--hand-cw) * 1.4 + var(--back-row) + var(--hand-under));
+    --hand-h: calc(var(--hand-cw) * 1.4 + var(--hand-under));
     --trick-cw: clamp(44px, 6vw, 60px);
     --trick-ch: calc(var(--trick-cw) * 1.4);
     --slot-dx: clamp(130px, 18vw, 190px);
-    --slot-dy: clamp(66px, 18vh, 90px);
+    /* as far apart as the felt between the header and your row allows */
+    --slot-dy: min(clamp(54px, 18vh, 90px),
+      calc((100vh - var(--trick-top) - var(--cross-bottom) - var(--trick-ch)) / 2));
     --trick-top: calc(env(safe-area-inset-top, 0px) + 10px + var(--header-h));
     --trick-bottom: calc(var(--hand-h) + var(--lift));
-    --zone-bottom: calc(var(--trick-bottom) + 8px);
-    --zone-r: calc(var(--safe-r) + 8px);
+    --row-h: 50px;              /* one 44px button row and its padding */
+    --zone-bottom: calc(var(--trick-bottom) + 4px);
+    --cross-bottom: calc(var(--zone-bottom) + var(--row-h) + 4px);
     --corner-l: calc(var(--safe-l) + 8px);
     /* a long press on a name or label must not select text or raise the
        Copy / Look Up callout over the table */
@@ -1773,10 +1782,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     -webkit-touch-callout: default;
   }
 
-  /* the banker's 33 cards take two rows; everything above moves up with them */
-  .table-screen:has(.hand.two-rows) {
-    --back-row: 34px;
-    --slot-dy: clamp(54px, 14vh, 80px);
+  /* The banker's 33 cards fit one row by shrinking to about 52px tall; the
+     row and the cross move down with the shorter hand. Back to full size
+     once the bury leaves 25. */
+  .table-screen:has(.hand.small-cards) {
+    --hand-cw: 37px;
   }
 
   /* --- HUD: no bar; one strip top-left, the menu top-right --- */
@@ -2139,7 +2149,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* a side seat's label stands just above its trick slot */
   .opponent.pos-left,
   .opponent.pos-right {
-    top: calc((var(--trick-top) + 100% - var(--trick-bottom)) / 2 - var(--trick-ch) / 2 - 6px);
+    top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 - var(--trick-ch) / 2 - 6px);
     right: auto;
     transform: translate(-50%, -100%);
   }
@@ -2150,7 +2160,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* --- Trick cross: centred between the header and the hand --- */
   .trick-area {
     top: var(--trick-top);
-    bottom: var(--trick-bottom);
+    bottom: var(--cross-bottom);
     left: 50%;
     width: calc(var(--slot-dx) * 2 + var(--trick-cw) * 2);
     height: auto;
@@ -2259,6 +2269,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: 8px;
   }
 
+  /* a declaration in the top or your slot takes the middle; the seat counts
+     and your hand still show the deal's progress */
+  .trick-area:has(.declaration.pos-top, .declaration.pos-bottom) .deal-deck {
+    display: none;
+  }
+
   .deal-deck-stack {
     --cw: var(--trick-cw);
     position: relative;
@@ -2316,45 +2332,55 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     pointer-events: auto;
   }
 
-  /* No pill in the cross: your turn is the glow along the hand. Your own
-     label appears only to carry the banker's crown, in the bottom-left. */
-  .you-tagline {
-    display: none;
+  /* --- Your row: your name and your action, centred above the hand ---
+     Four columns: two equal flexible edges and, between them, your name and
+     your action (Play or Bury), so the pair is centred on the table; a lone
+     name is centred too. Clear stands just outside the pair on the right, so
+     it never moves it. Declare options, which can be many, are one centred
+     row instead. */
+  .you-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: var(--zone-bottom);
+    z-index: 3;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+    align-items: center;
+    min-height: var(--row-h);
+    padding: 0 calc(var(--safe-r) + 8px) 0 calc(var(--safe-l) + 8px);
+    pointer-events: none;
   }
 
-  .you-tagline:has(.banker-crown) {
-    display: flex;
-    position: absolute;
-    left: var(--corner-l);
-    bottom: var(--zone-bottom);
-    height: 28px;
+  .you-row > *,
+  .you-row .action-bar > * {
+    pointer-events: auto;
+  }
+
+  /* your turn is the glow along the hand; the pill just names you */
+  .you-tagline {
+    grid-column: 2;
+    height: 32px;
     padding: 0 12px;
     font-size: 12px;
+    white-space: nowrap;
     background: rgba(8, 20, 14, 0.72);
     box-shadow: none;
   }
 
-  .you-tagline .your-turn-tag,
-  .you-tagline .ready-tag {
+  .you-tagline .your-turn-tag {
     display: none;
   }
 
-  /* --- The action zone: bottom-right, clear of the cross, in thumb reach --- */
   .action-bar {
-    position: absolute;
-    right: var(--zone-r);
-    bottom: var(--zone-bottom);
-    z-index: 3;
-    max-width: calc(50% - var(--zone-r) - var(--trick-cw) * 1.2);
+    grid-column: 3;
     min-height: 0;
-    margin: 0;
-    padding: 3px;
+    max-width: none;
+    margin: 0 0 0 8px;
+    padding: 3px 0;
     gap: 8px;
     flex-wrap: nowrap;
-    justify-content: flex-start;
-    overflow-x: auto;
-    scrollbar-width: none;
-    pointer-events: auto;
+    justify-content: center;
   }
 
   .action-bar:empty {
@@ -2365,36 +2391,49 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     flex: 0 0 auto;
   }
 
-  /* declare options may be four plus Pass: the row reaches back to the
-     banker's label in the bottom-left before it scrolls */
+  /* in play Play joins your name and Clear sits just outside, to the right */
+  .phase-play .action-bar {
+    display: contents;
+  }
+
+  .phase-play .action-bar .btn.primary {
+    grid-column: 3;
+    min-width: 88px;
+    margin-left: 8px;
+  }
+
+  .phase-play .action-bar .btn.subtle {
+    grid-column: 4;
+    justify-self: start;
+    margin-left: 8px;
+  }
+
+  /* setup: the name and every declare option (plus Pass) as one centred row
+     that scrolls sideways rather than leave the screen */
+  .phase-deal .you-row,
+  .phase-declare .you-row {
+    display: flex;
+    justify-content: safe center;   /* centred while it fits, scrollable when not */
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .phase-deal .you-row > *,
+  .phase-declare .you-row > * {
+    flex: 0 0 auto;
+  }
+
+  /* the options and Pass are items of the row itself */
   .phase-deal .action-bar,
   .phase-declare .action-bar {
-    max-width: calc(100% - var(--zone-r) - var(--corner-l) - 140px);
-  }
-
-  /* right-aligned while it fits; scrolls from the left when it does not */
-  .action-bar > :first-child {
-    margin-left: auto;
-  }
-
-  /* Play at the right edge, Clear to its left */
-  .phase-play .action-bar {
-    flex-direction: row-reverse;
-    transition: opacity 160ms ease;
-  }
-
-  .phase-play .action-bar > :first-child {
-    margin-left: 0;
+    display: contents;
   }
 
   .action-bar .btn {
     min-height: 44px; /* touch target */
     padding: 6px 16px;
     font-size: 14px;
-  }
-
-  .phase-play .action-bar .btn.primary {
-    min-width: 88px;
   }
 
   /* a disabled Clear is not information */
@@ -2458,11 +2497,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* The hit area per card is its visible sliver over the card's height plus
-     16px above the hand; neighbours never steal each other's taps. */
+     the lift above it; neighbours never steal each other's taps. */
   .hand .card::after {
     content: "";
     position: absolute;
-    top: -16px;
+    top: calc(-1 * var(--lift));
     bottom: 0;
     left: 0;
     right: 0;
@@ -2490,38 +2529,35 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     animation: turn-glow 1.6s ease-in-out infinite alternate;
   }
 
-  /* Over 25 cards (the banker with the kitty): two rows, the back row showing
-     its top strip, the front row offset half a card like bricks. */
-  .hand.two-rows {
-    display: grid;
+  /* Over 25 cards (the banker with the kitty) the cards are smaller, so all
+     of them fit one row; a short slide in and out of that size */
+  .hand.small-cards {
     --pitch: min(calc(var(--hand-cw) * 0.8),
-      calc((var(--safe-w) - 16px - var(--hand-cw)) / max(1, calc(var(--cols) - 1))));
-    grid-template-columns: repeat(var(--cols), var(--pitch));
-    grid-template-rows: var(--back-row) auto;
-    justify-content: center;
-    /* the last card overhangs its column by a card less a pitch */
-    padding-right: calc(8px + var(--safe-r) + var(--hand-cw) - var(--pitch));
+      calc((var(--safe-w) - 16px - var(--hand-cw)) / max(1, calc(var(--n, 25) - 1))));
   }
 
-  .hand.two-rows .hand-slot {
-    width: auto;
-    margin: 0;
+  .hand .card {
+    transition: transform var(--dur-fast) ease-out, box-shadow var(--dur-fast), width 150ms ease-out;
   }
 
-  .hand.two-rows .hand-slot.front {
-    translate: calc(var(--pitch) / 2) 0;
+  /* the index stays readable on the smaller cards */
+  .hand.small-cards .card .corner-rank {
+    font-size: 11px;
   }
 
-  .hand.two-rows::before {
-    width: calc((var(--cols) - 1) * var(--pitch) + var(--hand-cw));
-    translate: calc(-50% - (var(--hand-cw) - var(--pitch)) / 2) -2px;
+  .hand.small-cards .card .corner-suit {
+    font-size: 10px;
   }
 
-  /* --- Messages pass in the bottom-left corner, mirroring the action zone --- */
+  .hand-slot {
+    transition: flex-basis 150ms ease-out, width 150ms ease-out;
+  }
+
+  /* --- Messages pass in the bottom-left corner, above your row --- */
   .hud-message {
     position: fixed;
     left: var(--corner-l);
-    bottom: calc(var(--zone-bottom) + 36px);
+    bottom: calc(var(--cross-bottom) + 6px);
     max-width: calc(50% - var(--corner-l) - 96px);
     margin: 0;
     padding: 5px 12px;
@@ -2535,7 +2571,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .hud-notice {
     position: fixed;
     left: var(--corner-l);
-    bottom: calc(var(--zone-bottom) + 36px);
+    bottom: calc(var(--cross-bottom) + 6px);
     z-index: 11;
     width: calc(50% - var(--corner-l) - 96px);
     max-width: 360px;

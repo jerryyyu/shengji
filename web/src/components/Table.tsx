@@ -331,6 +331,8 @@ export default function Table({ state }: { state: GameState }) {
         />
 
         <div className="you-area">
+          {/* your name and your controls; a phone centres them as one row */}
+          <div className="you-row">
           <div className={`you-tagline team${me?.team ?? 0}${myTurn ? " on-turn" : ""}`}>
             {iAmBanker ? <span className="banker-crown" title="Banker">👑</span> : null}
             <span className="you-name">{me?.name ?? "You"}</span>
@@ -340,6 +342,7 @@ export default function Table({ state }: { state: GameState }) {
             ) : null}
           </div>
           <div className="action-bar">{actionBar}</div>
+          </div>
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
                 rects={handRects} />
         </div>

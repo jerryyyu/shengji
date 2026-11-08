@@ -12,18 +12,22 @@ import TrickArea, { seatPos } from "./TrickArea";
 import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
 import { haptic } from "../native";
+import { nameWidthClass } from "../nameWidth";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
 // table never waits on it.
 const SWEEP_AFTER_MS = LAST_TRICK_MS - DUR.sweep - 40;
 
-function declareLabel(ids: number[], hand: HandCard[]): string {
+/** "Declare ♠2 pair", plus the bare "♠2 pair" that a phone shows after one
+ *  "Declare" label for the whole row. */
+function declareLabel(ids: number[], hand: HandCard[]): ReactNode {
   const codes = ids.map((id) => hand.find((c) => c.id === id)?.code ?? "?");
   const first = codes[0] ?? "?";
-  if (first === "LJ" || first === "BJ") return "Declare NT";
-  const label = shortLabel(first);
-  return codes.length === 2 ? `Declare ${label} pair` : `Declare ${label}`;
+  const what = first === "LJ" || first === "BJ"
+    ? "NT"
+    : codes.length === 2 ? `${shortLabel(first)} pair` : shortLabel(first);
+  return <><span className="declare-full">{`Declare ${what}`}</span><span className="declare-short">{what}</span></>;
 }
 
 /** Local countdown: the server sends seconds-remaining with each state, and
@@ -75,8 +79,24 @@ function BotThinking({ phase }: { phase: "bury" | "play" }) {
   );
 }
 
+/** How long the full-name popover stays up after a tap or long press. */
+const FULL_NAME_MS = 2500;
+const LONG_PRESS_MS = 450;
+
 function OpponentPanel({ player, state }: { player: StatePlayer; state: GameState }) {
   const pos = seatPos(player.seat, state.you);
+  // a tap or long press shows the whole name; only the phone layout draws it
+  const [fullName, setFullName] = useState(false);
+  const pressTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (!fullName) return;
+    const t = window.setTimeout(() => setFullName(false), FULL_NAME_MS);
+    return () => window.clearTimeout(t);
+  }, [fullName]);
+  useEffect(() => () => { if (pressTimer.current !== null) window.clearTimeout(pressTimer.current); }, []);
+  const endPress = () => {
+    if (pressTimer.current !== null) { window.clearTimeout(pressTimer.current); pressTimer.current = null; }
+  };
   const takeover = useCountdown(player.takeover_in ?? null);
   const onTurn = state.turn === player.seat;
   const actionPhase = state.phase === "bury" || state.phase === "play";
@@ -84,10 +104,20 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   const hasPassed = state.phase === "declare" && state.passed.includes(player.seat);
   const backs = Math.min(player.cards_left, 5);
   return (
-    <div className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}>
+    <div className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}
+         data-name-len={nameWidthClass(player.name)}
+         onClick={() => setFullName((v) => !v)}
+         onPointerDown={() => {
+           endPress();
+           pressTimer.current = window.setTimeout(() => { pressTimer.current = null; setFullName(true); }, LONG_PRESS_MS);
+         }}
+         onPointerUp={endPress}
+         onPointerLeave={endPress}
+         onPointerCancel={endPress}>
+      {fullName ? <span className="opp-fullname" role="tooltip">{player.name}</span> : null}
       <div className="opp-name">
         {player.is_banker ? <span className="banker-crown" title="Banker">👑</span> : null}
-        <span>{player.name}</span>
+        <span className="opp-name-text">{player.name}</span>
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
         {!player.connected && !player.is_bot ? (

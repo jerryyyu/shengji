@@ -122,6 +122,8 @@ const smallRule = rule(block, ".hand.small-cards");
 // the Dynamic Island, the bottom one the home indicator); and the same sizes
 // as a browser draws them, with no insets.
 const PHONES: Record<string, Viewport> = {
+  "iPhone SE 667x375": { w: 667, h: 375, left: 0, right: 0, bottom: 0, top: 0 },
+  "iPhone 13 mini 812x375": { w: 812, h: 375, left: 50, right: 50, bottom: 21, top: 0 },
   "iPhone 14 Pro 852x393": { w: 852, h: 393, left: 59, right: 59, bottom: 21, top: 0 },
   "iPhone 18 Pro 874x402": { w: 874, h: 402, left: 62, right: 62, bottom: 21, top: 0 },
   "iPhone 18 Pro Max 956x440": { w: 956, h: 440, left: 62, right: 62, bottom: 21, top: 0 },
@@ -134,28 +136,60 @@ const FRAMES: [string, Viewport][] = Object.entries(PHONES).flatMap(([name, vp])
 interface Rect { x0: number; y0: number; x1: number; y1: number }
 const overlaps = (a: Rect, b: Rect) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
+/** Evaluates a CSS position with its percentages taken of `base` px. */
+function evalPos(expr: string, base: number, vp: Viewport, vars: Record<string, string>): number {
+  return evalLength(expr.replace(/(-?[\d.]+)%/g, (_, n) => `${(Number(n) * base) / 100}px`), vp, vars);
+}
+
+/** A translate() of percentages, as fractions of the element's own size. */
+function translateFrac(transform: string | undefined): [number, number] {
+  const m = /translate\((-?[\d.]+)%?,\s*(-?[\d.]+)%?\)/.exec(transform ?? "");
+  return m ? [Number(m[1]) / 100, Number(m[2]) / 100] : [0, 0];
+}
+
+const PILL_H = 36;   // a two-line side label: 12px name over 11px count, 5px padding
+
 /** The table's regions at one viewport, from the tokens and the rules below. */
-function geometry(vp: Viewport, vars: Record<string, string>) {
+function geometry(vp: Viewport, vars: Record<string, string>, cards = 4) {
   const L = (name: string) => evalLength(vars[name], vp, vars);
   const tcw = L("--trick-cw");
   const tch = L("--trick-ch");
-  const dx = L("--slot-dx");
   const dy = L("--slot-dy");
   const trickTop = L("--trick-top");
   const liftLine = vp.h - L("--trick-bottom");        // the hand's lift line
   const crossBottom = vp.h - L("--cross-bottom");
   const cx = vp.w / 2;
   const cy = (trickTop + crossBottom) / 2;
-  const width = (cards: number) => tcw + (cards - 1) * tcw * 0.72;
-  const slots: Record<string, Rect> = {
-    top: { x0: cx - width(2) / 2, x1: cx + width(2) / 2, y0: cy - dy - tch / 2, y1: cy - dy + tch / 2 },
-    // your slot holds up to a four-card throw
-    bottom: { x0: cx - width(4) / 2, x1: cx + width(4) / 2, y0: cy + dy - tch / 2, y1: cy + dy + tch / 2 },
-    left: { x1: cx - dx + tcw / 2, x0: cx - dx + tcw / 2 - width(2), y0: cy - tch / 2, y1: cy + tch / 2 },
-    right: { x0: cx + dx - tcw / 2, x1: cx + dx - tcw / 2 + width(2), y0: cy - tch / 2, y1: cy + tch / 2 },
+  const width = (n: number) => tcw + (n - 1) * tcw * 0.72;
+  // side slots from their own rules: anchored by whichever edge is set
+  const areaW = evalLength(rule(block, ".trick-area").width, vp, vars);
+  const areaX0 = cx - areaW / 2;
+  const side = (sel: string): Rect => {
+    const r = rule(block, sel);
+    if (r.left && r.left !== "auto") {
+      const x0 = areaX0 + evalPos(r.left, areaW, vp, vars);
+      return { x0, x1: x0 + width(cards), y0: cy - tch / 2, y1: cy + tch / 2 };
+    }
+    const x1 = areaX0 + areaW - evalPos(r.right, areaW, vp, vars);
+    return { x0: x1 - width(cards), x1, y0: cy - tch / 2, y1: cy + tch / 2 };
   };
-  // the side seats' labels: 28px tall, 6px above their slot, ~110px wide
-  const pill = (x: number): Rect => ({ x0: x - 55, x1: x + 55, y0: cy - tch / 2 - 6 - 28, y1: cy - tch / 2 - 6 });
+  const slots: Record<string, Rect> = {
+    top: { x0: cx - width(cards) / 2, x1: cx + width(cards) / 2, y0: cy - dy - tch / 2, y1: cy - dy + tch / 2 },
+    bottom: { x0: cx - width(cards) / 2, x1: cx + width(cards) / 2, y0: cy + dy - tch / 2, y1: cy + dy + tch / 2 },
+    left: side(".trick-play.pos-left"),
+    right: side(".trick-play.pos-right"),
+  };
+  // side seats' labels from their rules, at their widest (--pill-max)
+  // (84px, the cap, when a layout has no such token)
+  const pillW = vars["--pill-max"] ? L("--pill-max") : 84;
+  const shared = rule(block, ".opponent.pos-left, .opponent.pos-right");
+  const pill = (sel: string): Rect => {
+    const r = { ...shared, ...rule(block, sel) };
+    const [fx, fy] = translateFrac(r.transform);
+    const x = evalPos(r.left, vp.w, vp, vars) + fx * pillW;
+    const y = evalPos(r.top, vp.h, vp, vars) + fy * PILL_H;
+    return { x0: x, x1: x + pillW, y0: y, y1: y + PILL_H };
+  };
   // your row: Play (88) centred between the row's symmetric paddings, Clear
   // (8 + 76) just right of it, the banker's crown (28) 8px left of it
   const padL = L("--safe-l") + 8;
@@ -166,20 +200,35 @@ function geometry(vp: Viewport, vars: Record<string, string>) {
   const row: Rect = { x0: rowCentre - 44, x1: rowCentre + 44 + 84, y0: rowY0, y1: rowB };
   const crown: Rect = { x0: rowCentre - 44 - 8 - 28, x1: rowCentre - 44 - 8, y0: rowB - 25 - 14, y1: rowB - 25 + 14 };
   const header = 6 + vp.top + L("--header-h");
-  return { tcw, cx, cy, slots, pills: [pill(cx - dx), pill(cx + dx)], row, crown, rowCentre, header, liftLine,
-    crossBottom, handTop: vp.h - L("--hand-h"), safeW: L("--safe-w"), handCw: L("--hand-cw") };
+  return { tcw, cx, cy, slots, pills: { left: pill(".opponent.pos-left"), right: pill(".opponent.pos-right") }, pillW,
+    row, crown, rowCentre, header, liftLine, crossBottom, handTop: vp.h - L("--hand-h"), safeW: L("--safe-w"),
+    handCw: L("--hand-cw") };
 }
+
+const gap = (a: Rect, b: Rect) => Math.max(b.x0 - a.x1, a.x0 - b.x1, b.y0 - a.y1, a.y0 - b.y1);
 
 describe("phone table geometry", () => {
   it("lays the trick out from the tokens", () => {
     expect(rule(block, ".trick-area").top).toBe("var(--trick-top)");
     expect(rule(block, ".trick-area").bottom).toBe("var(--cross-bottom)");
     expect(rule(block, ".trick-cards")["--cw"]).toBe("var(--trick-cw)");
-    expect(rule(block, ".trick-cards .card + .card")["margin-left"]).toBe("calc(var(--trick-cw) * -0.28)");
+    expect(rule(block, ".trick-cards .card + .card")["margin-left"]).toBe("calc(var(--t-pitch) - var(--trick-cw))");
+    // up to four cards at a 72% pitch; longer plays pack into four cards' span
+    const tp = rule(block, ".trick-play")["--t-pitch"];
+    const vp14 = PHONES["iPhone 14 Pro 852x393"];
+    const cw = evalLength(tokens["--trick-cw"], vp14, tokens);
+    for (const n of [1, 2, 4, 8, 12]) {
+      const pitch = evalLength(tp, vp14, tokens, { n });
+      expect(cw + (n - 1) * pitch).toBeLessThanOrEqual(cw * 3.16 + 0.01);
+      if (n <= 4) expect(pitch).toBeCloseTo(cw * 0.72, 5);
+    }
     expect(rule(block, ".trick-play.pos-top").translate).toBe("-50% calc(-50% - var(--slot-dy))");
     expect(rule(block, ".trick-play.pos-bottom").translate).toBe("-50% calc(-50% + var(--slot-dy))");
-    expect(rule(block, ".trick-play.pos-left").right).toBe("calc(50% + var(--slot-dx) - var(--trick-cw) / 2)");
-    expect(rule(block, ".trick-play.pos-right").left).toBe("calc(50% + var(--slot-dx) - var(--trick-cw) / 2)");
+    // side slots are anchored at their outer edge and grow inward
+    expect(rule(block, ".trick-play.pos-left").left).toBe("calc(50% - var(--side-out))");
+    expect(rule(block, ".trick-play.pos-left").right).toBe("auto");
+    expect(rule(block, ".trick-play.pos-right").right).toBe("calc(50% - var(--side-out))");
+    expect(rule(block, ".trick-play.pos-right").left).toBe("auto");
     const row = rule(block, ".you-row");
     expect([row.position, row.left, row.right, row.bottom]).toEqual(["absolute", "0", "0", "var(--zone-bottom)"]);
     expect(row.padding).toBe("0 calc(var(--safe-r) + 8px) 0 calc(var(--safe-l) + 8px)");
@@ -193,10 +242,8 @@ describe("phone table geometry", () => {
     const crown = rule(block, ".you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown)");
     expect([crown["grid-column"], crown["justify-self"], crown.width]).toEqual(["1", "end", "28px"]);
     expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-h) + 4px)");
-    expect(rule(block, ".opponent.pos-left").left).toBe("calc(50% - var(--slot-dx))");
-    expect(rule(block, ".opponent.pos-right").left).toBe("calc(50% + var(--slot-dx))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right").top)
-      .toBe("calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 - var(--trick-ch) / 2 - 6px)");
+      .toBe("calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2)");
   });
 
   it("reserves exactly the hand's height: lift above, card, 16px under the home indicator", () => {
@@ -213,18 +260,35 @@ describe("phone table geometry", () => {
       const g = geometry(vp, tokens);
 
       const checkRegions = (g: ReturnType<typeof geometry>) => {
-        // the cross between the header and your row
+        const slots = Object.values(g.slots);
+        const pills = [g.pills.left, g.pills.right];
+        // the cross between the header and your row; no two slots meet, even
+        // with a four-card throw in every one
         expect(g.slots.top.y0).toBeGreaterThanOrEqual(g.header);
         expect(g.slots.bottom.y1).toBeLessThanOrEqual(g.crossBottom);
-        for (const p of g.pills) {
-          expect(p.y0).toBeGreaterThanOrEqual(g.header);
-          for (const slot of Object.values(g.slots)) expect(overlaps(p, slot)).toBe(false);
+        for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
+          expect(gap(slots[i], slots[j])).toBeGreaterThanOrEqual(4);
         }
-        // your row: centred, clear of every slot and seat, above the hand's lift
+        // side labels: outside their slot, centred on it, clear of the
+        // header, every slot, your row and the safe-area edges
+        expect(g.pills.left.x1).toBeLessThanOrEqual(g.slots.left.x0 - 4);
+        expect(g.pills.right.x0).toBeGreaterThanOrEqual(g.slots.right.x1 + 4);
+        for (const [p, s] of [[g.pills.left, g.slots.left], [g.pills.right, g.slots.right]] as const) {
+          expect(Math.abs((p.y0 + p.y1) / 2 - (s.y0 + s.y1) / 2)).toBeLessThanOrEqual(1);
+        }
+        for (const p of pills) {
+          expect(p.y0).toBeGreaterThanOrEqual(g.header);
+          for (const slot of slots) expect(gap(p, slot)).toBeGreaterThanOrEqual(4);
+          for (const r of [g.row, g.crown]) expect(gap(p, r)).toBeGreaterThanOrEqual(4);
+          expect(p.x0).toBeGreaterThanOrEqual(vp.left + 4);
+          expect(p.x1).toBeLessThanOrEqual(vp.w - vp.right - 4);
+        }
+        // a label always has room for a short name
+        expect(g.pillW).toBeGreaterThanOrEqual(60);
+        // your row: centred, clear of every slot and label, above the hand's lift
         expect(Math.abs(g.rowCentre - g.cx)).toBeLessThanOrEqual(2);
         for (const r of [g.row, g.crown]) {
-          for (const slot of Object.values(g.slots)) expect(overlaps(r, slot)).toBe(false);
-          for (const p of g.pills) expect(overlaps(r, p)).toBe(false);
+          for (const slot of slots) expect(overlaps(r, slot)).toBe(false);
           expect(r.y1).toBeLessThanOrEqual(g.liftLine);
         }
         expect(overlaps(g.crown, g.row)).toBe(false);
@@ -235,14 +299,14 @@ describe("phone table geometry", () => {
 
       it("keeps the cross, the seats, your centred row and the hand apart", () => checkRegions(g));
 
-      it("scales the trick cards with the width (about 48px on a 14 Pro)", () => {
+      it("scales the trick cards with the width (about 57px on a 14 Pro)", () => {
         expect(g.tcw).toBeGreaterThanOrEqual(48);
-        expect(g.tcw).toBeLessThanOrEqual(60);
+        expect(g.tcw).toBeLessThanOrEqual(64);
       });
 
-      it("fits a 25-card hand in one row at a pitch of at least 27px", () => {
+      it("fits a 25-card hand in one row at a pitch of at least 27px (24 on SE and mini)", () => {
         const pitch = evalLength(handRule["--pitch"], vp, tokens, { n: 25 });
-        expect(pitch).toBeGreaterThanOrEqual(27);
+        expect(pitch).toBeGreaterThanOrEqual(vp.w >= 852 ? 27 : 24);
         expect(24 * pitch + g.handCw).toBeLessThanOrEqual(g.safeW - 16 + 0.01);
         // a short hand stays at the capped pitch and centres
         expect(evalLength(handRule["--pitch"], vp, tokens, { n: 12 })).toBeCloseTo(g.handCw * 0.55, 5);
@@ -254,8 +318,9 @@ describe("phone table geometry", () => {
         const pitch = evalLength(smallRule["--pitch"], vp, smallTokens, { n: 33 });
         expect(32 * pitch + gs.handCw).toBeLessThanOrEqual(gs.safeW - 16 + 0.01);
         // 24px slivers wherever the safe width allows; inside a 14 Pro's or an
-        // 18 Pro's landscape safe area 33 cards leave about 21px
-        expect(pitch).toBeGreaterThanOrEqual(vp.left === 0 || vp.w >= 956 ? 24 : 21);
+        // 18 Pro's landscape safe area 33 cards leave about 21px, on an SE or
+        // a mini about 19px
+        expect(pitch).toBeGreaterThanOrEqual((vp.left === 0 && vp.w >= 852) || vp.w >= 956 ? 24 : vp.w >= 852 ? 21 : 19);
         checkRegions(gs);
       });
     });
@@ -284,6 +349,21 @@ describe("phone controls", () => {
     expect(px(modalBtn["min-height"])).toBeGreaterThanOrEqual(44);
     // a card's tap area runs the full card height plus 16px above the hand
     expect(rule(block, ".hand .card::after").top).toBe("calc(-1 * var(--lift))");
+  });
+
+  it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
+    expect(tokens["--pill-max"]).toBe("min(84px, calc(50vw - var(--side-out) - 10px - max(var(--safe-l), var(--safe-r))))");
+    expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");
+    expect(rule(block, ".opponent.pos-top")["max-width"]).toContain("min(200px");
+    const text = rule(block, ".opp-name-text");
+    expect([text.overflow, text["text-overflow"], text["white-space"], text["min-width"]])
+      .toEqual(["hidden", "ellipsis", "nowrap", "0"]);
+    // a long name steps down no smaller than 10px
+    expect(px(rule(block, '.opponent[data-name-len="m"] .opp-name')["font-size"])).toBe(11);
+    expect(px(rule(block, '.opponent[data-name-len="l"] .opp-name')["font-size"])).toBe(10);
+    // the whole name is a tap away, drawn only by the phone layout
+    expect(rule(block, ".opp-fullname").display).toBe("block");
+    expect(rule(css.replace(block, ""), ".opp-fullname").display).toBe("none");
   });
 
   it("keeps table text at 10px or more", () => {

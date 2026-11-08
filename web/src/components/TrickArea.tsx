@@ -161,7 +161,8 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
         const key = playKey(play);
         return (
           <div key={key} data-play={key} data-seat={play.seat}
-               className={`trick-play pos-${pos}${isWinner ? " winner" : ""}`}>
+               className={`trick-play pos-${pos}${isWinner ? " winner" : ""}`}
+               style={{ "--n": play.cards.length } as CSSProperties}>
             <div className="trick-cards">
               {play.cards.map((code, i) => (
                 <Card key={i} code={code} />
@@ -176,7 +177,8 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
       })}
 
       {declaration ? (
-        <div className={`trick-play declaration pos-${seatPos(declaration.seat, state.you)}`}>
+        <div className={`trick-play declaration pos-${seatPos(declaration.seat, state.you)}`}
+             style={{ "--n": declaration.cards.length } as CSSProperties}>
           <div className="trick-cards">
             {declaration.cards.map((code, i) => (
               <Card key={i} code={code} />

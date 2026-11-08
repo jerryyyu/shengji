@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef } from "react";
-import type { RefObject } from "react";
+import type { CSSProperties, RefObject } from "react";
 import type { HandCard } from "../protocol";
 import type { Box } from "../motion";
 import { DUR, EASE, canAnimate, currentTranslate } from "../motion";
@@ -9,6 +9,10 @@ import Card from "./Card";
 const MAX_ARRIVALS = 8;
 /** Gap between the flights of cards that arrive together (the kitty). */
 const ARRIVAL_STAGGER = 40;
+/** A longer hand (the banker's 33 with the kitty) is laid out in two rows on
+ *  a phone, so each card keeps a thumb-sized sliver. The grid placement is
+ *  inert elsewhere: only the phone layout makes `.hand.two-rows` a grid. */
+export const ONE_ROW_MAX = 25;
 
 /** Last drawn position of each hand card, by card id. A card that has just
  *  left the hand keeps its entry, marked `departed`, through one more commit
@@ -36,14 +40,18 @@ interface SlotProps {
   code: string;
   selected: boolean;
   onToggle: ((id: number) => void) | undefined;
+  /** Grid cell in the two-row layout (back row 1, front row 2). */
+  row?: number;
+  col?: number;
 }
 
 /** One card in the hand. Props are primitives plus the stable onToggle, so a
  *  server update or a tap re-renders only the slots whose card or selection
  *  changed, not all 25. */
-const HandSlot = memo(function HandSlot({ id, code, selected, onToggle }: SlotProps) {
+const HandSlot = memo(function HandSlot({ id, code, selected, onToggle, row, col }: SlotProps) {
   return (
-    <div className="hand-slot" data-id={id}>
+    <div className={row === 2 ? "hand-slot front" : "hand-slot"} data-id={id}
+         style={row ? { gridRow: row, gridColumn: col } : undefined}>
       <Card code={code} selected={selected} onClick={onToggle ? () => onToggle(id) : undefined} />
     </div>
   );
@@ -169,11 +177,18 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
   }, [empty, rects]);
 
   if (empty) return null;
+  const twoRows = hand.length > ONE_ROW_MAX;
+  // back row first, in sort order; the front row is one card shorter on an odd count
+  const backCount = Math.ceil(hand.length / 2);
+  const style = { "--n": hand.length, "--cols": backCount } as CSSProperties;
   return (
-    <div className={`hand${selectable ? " selectable" : ""}`} ref={handRef}>
-      {hand.map((c) => (
+    <div className={`hand${selectable ? " selectable" : ""}${twoRows ? " two-rows" : ""}`}
+         ref={handRef} style={style}>
+      {hand.map((c, i) => (
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
-                  onToggle={selectable ? onToggle : undefined} />
+                  onToggle={selectable ? onToggle : undefined}
+                  row={twoRows ? (i < backCount ? 1 : 2) : undefined}
+                  col={twoRows ? (i < backCount ? i + 1 : i - backCount + 1) : undefined} />
       ))}
     </div>
   );

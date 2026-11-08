@@ -11,6 +11,7 @@ import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
 import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
+import { haptic } from "../native";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -105,7 +106,8 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
             <Card key={i} className="stacked" />
           ))}
         </div>
-        <span className="card-count">{player.cards_left}</span>
+        {/* keyed so each dealt card restarts the phone's count tick */}
+        <span className="card-count" key={player.cards_left}>{player.cards_left}</span>
       </div>
       {onTurn && actionPhase && botControlled ? (
         <BotThinking key={`${state.room}:${state.phase}:${player.cards_left}`} phase={state.phase as "bury" | "play"} />
@@ -113,6 +115,36 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
       {onTurn && actionPhase && !botControlled ? <div className="their-turn">their turn</div> : null}
     </div>
   );
+}
+
+/** Whether the table is waiting on you: your play, or your bury as banker. */
+function isYourTurnCue(state: GameState): boolean {
+  if (state.turn !== state.you) return false;
+  if (state.phase === "play") return true;
+  return state.phase === "bury" && (state.players.find((p) => p.seat === state.you)?.is_banker ?? false);
+}
+
+/** Haptic ticks on the moments that matter (no-ops outside the iOS app):
+ *  your turn arriving, a declare option appearing, your team taking a trick
+ *  or the round. Each fires on the transition, never on a repeat state. */
+function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
+  const turn = isYourTurnCue(state);
+  const canDeclare = (state.phase === "deal" || state.phase === "declare") && state.declare_options.length > 0;
+  const myTeam = state.players.find((p) => p.seat === state.you)?.team ?? null;
+  const prev = useRef({ turn, canDeclare });
+  useEffect(() => {
+    if (turn && !prev.current.turn) haptic("turn");
+    if (canDeclare && !prev.current.canDeclare) haptic("declare");
+    prev.current = { turn, canDeclare };
+  }, [turn, canDeclare]);
+  useEffect(() => {
+    if (!shownLastTrick || myTeam === null) return;
+    if (state.players.find((p) => p.seat === shownLastTrick.winner)?.team === myTeam) haptic("won");
+  }, [shownLastTrick]);   // once per finished trick, not on every state
+  const result = state.round_result;
+  useEffect(() => {
+    if (result && myTeam !== null && result.winner_team === myTeam) haptic("won");
+  }, [result]);           // once per round result
 }
 
 export default function Table({ state }: { state: GameState }) {
@@ -187,8 +219,11 @@ export default function Table({ state }: { state: GameState }) {
   const selectable =
     (state.phase === "bury" && iAmBanker) || state.phase === "play";
 
+  useTableHaptics(state, shownLastTrick);
+
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
+    haptic("select");
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -249,7 +284,7 @@ export default function Table({ state }: { state: GameState }) {
       <button
         className="btn primary"
         disabled={selectedIds.length !== 8}
-        onClick={() => conn.send({ type: "bury", card_ids: selectedIds })}
+        onClick={() => { haptic("play"); conn.send({ type: "bury", card_ids: selectedIds }); }}
       >
         Bury 8 cards ({selectedIds.length}/8)
       </button>
@@ -260,7 +295,7 @@ export default function Table({ state }: { state: GameState }) {
         <button
           className="btn primary"
           disabled={selectedIds.length === 0}
-          onClick={() => conn.send({ type: "play", card_ids: selectedIds })}
+          onClick={() => { haptic("play"); conn.send({ type: "play", card_ids: selectedIds }); }}
         >
           Play {selectedIds.length > 0 ? `(${selectedIds.length})` : ""}
         </button>
@@ -279,7 +314,7 @@ export default function Table({ state }: { state: GameState }) {
   }
 
   return (
-    <div className={`table-screen phase-${state.phase}${showingLast ? " showing-last" : ""}`}>
+    <div className={`table-screen phase-${state.phase}${showingLast ? " showing-last" : ""}${isYourTurnCue(state) ? " my-turn" : ""}`}>
       <Hud state={state} />
       <div className="felt">
         {opponents.map((p) => (

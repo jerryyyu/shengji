@@ -34,6 +34,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
     }
 
+    // The root view controller's mask decides, so the shell's per-screen
+    // orientation locks hold. Scene-safe: with a SceneDelegate, `self.window`
+    // is nil, so the window comes from the argument.
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        guard let vc = window?.rootViewController as? CAPBridgeViewController else { return .all }
+        return vc.supportedInterfaceOrientations
+    }
+
     func application(_ application: UIApplication,
                      configurationForConnecting connectingSceneSession: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {

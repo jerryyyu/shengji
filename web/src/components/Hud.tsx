@@ -7,6 +7,7 @@ import { SUIT_SYMBOL, shortLabel } from "./Card";
 import MuteButton from "./MuteButton";
 import LeaveButton from "./LeaveButton";
 import HudMenu from "./HudMenu";
+import { formatTableMessage } from "../messageCopy";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -192,7 +193,7 @@ export default function Hud({ state }: { state: GameState }) {
           double up, so the notice wins while it is on screen. */}
       {state.message && !state.notice ? (
         <div className="hud-message" key={state.message}>
-          {state.message}
+          {formatTableMessage(state.message, state.players, state.you)}
         </div>
       ) : null}
     </div>

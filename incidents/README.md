@@ -16,7 +16,7 @@ the rules these incidents produced; this folder keeps the reasoning.
 
 | id | date | severity | title | detected by |
 |---|---|---|---|---|
-| [INC-23](INC-20261108-23-cleanup-deleted-pinned-ft1-checkpoint.md) | 11-08 | S3 | Home cleanup deleted the only training checkpoint of the served prior (FT1) | X2 stage-two packet build |
+| [INC-23](INC-20261108-23-cleanup-deleted-pinned-ft1-checkpoint.md) | 11-08 | S3 | Home cleanup deleted the only known training checkpoint of the served prior (FT1) | X2 stage-two packet build |
 | [INC-22](INC-20260830-22-v2-capacity-artifact-altitude.md) | 08-30 | S3 | Value V2 capacity compared the wrong inference artifact | finite refusal-vocabulary hash |
 | [INC-21](INC-20260829-21-r4-confirmatory-before-signal.md) | 08-29 | S3 | R4 paid confirmatory costs before establishing BELIEF signal — the process failure behind the 2026-09-04 program reset (ledger `0088544f`) | critical-path audit |
 | [INC-20](INC-20260824-20-r5-cache-resource-misdiagnosis.md) | 08-24 | S2 | R5 cache resource-cap dimension was misdiagnosed | freeze limits vs systemd MemoryPeak |

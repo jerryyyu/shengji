@@ -1,4 +1,4 @@
-# INC-23: Home cleanup deleted the only training checkpoint of the served prior
+# INC-23: Home cleanup deleted the only known training checkpoint of the served prior
 
 **Date**: 2026-11-08
 
@@ -7,7 +7,7 @@ pinned input was lost, and X2 stage two waits until it is rebuilt and reviewed.
 
 **Status**: open. The served export survives, and a rebuild from it is in
 progress. The pin check now runs inside `safe_rm.py` (outside the repo), with
-four new witness cases; `test_safe_rm.sh` reports 11 passed and 0 failed.
+seven new witness cases; `test_safe_rm.sh` reports 14 passed and 0 failed.
 
 ## What happened
 
@@ -15,7 +15,10 @@ On 2026-11-08 at 04:24Z, a Mini home-folder cleanup deleted `~/mrt-b0` (897 MB)
 with `safe_rm.py`. Claude had proposed the folder list and Jerry approved it.
 The folder held `p0train/FT1/best.pt`, sha256 `0def7b31…`. That file is the
 train_cwv checkpoint of FT1, the policy prior served in releases 50 and 51.
-Nothing else on the Mini or the Ultra hashes to it.
+No other copy has been located in the inventories checked:
+- the Ultra's 238 `.pt` files, hashed;
+- the external SSD, searched by name;
+- a `/usr/bin/find` of the Mini home. Its 766 `.pt` files were matched by name only, not hashed. The one FT1-named candidate, `~/shengji-scratch/ft2/reh/p0-orig-e1/FT1/best.pt`, hashes to `f7eb71b3…`.
 
 Packets that pinned the path or the hash:
 
@@ -65,6 +68,12 @@ source of the served value net `f4f4127e`, was also deleted. Its
 - Before any cleanup delete, `safe_rm.py` hashes every model and data file
   over 1 MB under the target. It refuses the delete if a hash or path appears
   in an archived packet's `commands.json`, `slots*.json`, `source-pins.json`,
-  `SHA256SUMS`, `stage_*.sh` or `launch.py`.
+  `SHA256SUMS`, `stage_*.sh`, `*.sh` or `launch.py`.
+- The pin files it reads are those under `~/shengji-archive/*/` and
+  `~/fleet/*/`, one level deep.
+- It matches a path written absolute or as `~/`, `$HOME/` or `${HOME}/`.
+- It hashes only files of 1 MB or more with a model or data extension
+  (`.pt .npz .ckpt .safetensors .bin .npy .jsonl .tar`). Smaller pinned files
+  are protected by path only.
 - To delete a pinned file, copy it first to
   `~/shengji-archive/<date>-pinned-inputs/` and re-hash the copy.

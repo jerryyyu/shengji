@@ -1741,8 +1741,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
          seat's label sits on top of its own trick slot;
        - the hand, the only thing in the bottom band, running 16px under the
          home indicator; a turn shows as a gold glow along its top edge;
-       - your row, centred just above the hand: your name, then Play, Bury
-         or the declare options; the cross sits above it;
+       - your row, centred just above the hand: Play, Bury or the declare
+         options (the banker's crown beside them); the cross sits above it;
        - messages pass in the bottom-left corner above your row.
      Desktop and iPad never match this block. */
   .table-screen {
@@ -2332,12 +2332,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     pointer-events: auto;
   }
 
-  /* --- Your row: your name and your action, centred above the hand ---
-     Four columns: two equal flexible edges and, between them, your name and
-     your action (Play or Bury), so the pair is centred on the table; a lone
-     name is centred too. Clear stands just outside the pair on the right, so
-     it never moves it. Declare options, which can be many, are one centred
-     row instead. */
+  /* --- Your row: your action, centred on the table above the hand ---
+     Three columns, the middle one centred: Play, Bury or the declare row
+     sits in it. Clear stands just right of Play and the banker's crown just
+     left of the action, both outside the middle column, so neither moves the
+     action. No action, no row: your turn is the glow along the hand. */
   .you-row {
     position: absolute;
     left: 0;
@@ -2345,42 +2344,56 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: var(--zone-bottom);
     z-index: 3;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     min-height: var(--row-h);
     padding: 0 calc(var(--safe-r) + 8px) 0 calc(var(--safe-l) + 8px);
     pointer-events: none;
   }
 
-  .you-row > *,
   .you-row .action-bar > * {
     pointer-events: auto;
   }
 
-  /* your turn is the glow along the hand; the pill just names you */
+  /* no name pill at the table: only the banker's crown, beside an action */
   .you-tagline {
-    grid-column: 2;
-    height: 32px;
-    padding: 0 12px;
-    font-size: 12px;
-    white-space: nowrap;
+    display: none;
+  }
+
+  .you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown) {
+    display: flex;
+    grid-column: 1;
+    justify-self: end;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 0 8px 0 0;
+    padding: 0;
+    gap: 0;
+    border: 0;
+    border-radius: 999px;
     background: rgba(8, 20, 14, 0.72);
     box-shadow: none;
   }
 
-  .you-tagline .your-turn-tag {
+  .you-tagline .you-name,
+  .you-tagline .your-turn-tag,
+  .you-tagline .ready-tag {
     display: none;
   }
 
   .action-bar {
-    grid-column: 3;
+    grid-column: 2;
     min-height: 0;
-    max-width: none;
-    margin: 0 0 0 8px;
+    max-width: calc(100vw - var(--safe-l) - var(--safe-r) - 16px);
+    margin: 0;
     padding: 3px 0;
     gap: 8px;
     flex-wrap: nowrap;
-    justify-content: center;
+    justify-content: safe center;   /* centred while it fits, scrollable when not */
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
   .action-bar:empty {
@@ -2391,43 +2404,20 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     flex: 0 0 auto;
   }
 
-  /* in play Play joins your name and Clear sits just outside, to the right */
+  /* in play Play is the middle column itself and Clear sits to its right */
   .phase-play .action-bar {
     display: contents;
   }
 
   .phase-play .action-bar .btn.primary {
-    grid-column: 3;
+    grid-column: 2;
     min-width: 88px;
-    margin-left: 8px;
   }
 
   .phase-play .action-bar .btn.subtle {
-    grid-column: 4;
+    grid-column: 3;
     justify-self: start;
     margin-left: 8px;
-  }
-
-  /* setup: the name and every declare option (plus Pass) as one centred row
-     that scrolls sideways rather than leave the screen */
-  .phase-deal .you-row,
-  .phase-declare .you-row {
-    display: flex;
-    justify-content: safe center;   /* centred while it fits, scrollable when not */
-    gap: 8px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .phase-deal .you-row > *,
-  .phase-declare .you-row > * {
-    flex: 0 0 auto;
-  }
-
-  /* the options and Pass are items of the row itself */
-  .phase-deal .action-bar,
-  .phase-declare .action-bar {
-    display: contents;
   }
 
   .action-bar .btn {

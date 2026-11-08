@@ -4,8 +4,9 @@
 // 500px)` block). jsdom does no layout, so this evaluates the block's own
 // size tokens (calc, clamp, min, max, env, vw, vh) at real iPhone sizes and
 // checks the regions the layout promises to keep apart: the trick cross sits
-// between the header and your row, your name and action are centred on the
-// table and never meet a trick slot, a seat or the hand, the hand fits one
+// between the header and your row, your action is centred on the table and,
+// with the banker's crown beside it, never meets a trick slot, a seat or the
+// hand, the hand fits one
 // row at a thumb-sized pitch, and every control keeps a 44px hit area. Rendered checks live in the PR's screenshot sweep.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -155,15 +156,17 @@ function geometry(vp: Viewport, vars: Record<string, string>) {
   };
   // the side seats' labels: 28px tall, 6px above their slot, ~110px wide
   const pill = (x: number): Rect => ({ x0: x - 55, x1: x + 55, y0: cy - tch / 2 - 6 - 28, y1: cy - tch / 2 - 6 });
-  // your row: the pair (name ~110 + 8 + Play 88) centred between the row's
-  // symmetric paddings, Clear (8 + 76) just right of it
+  // your row: Play (88) centred between the row's symmetric paddings, Clear
+  // (8 + 76) just right of it, the banker's crown (28) 8px left of it
   const padL = L("--safe-l") + 8;
   const padR = L("--safe-r") + 8;
   const rowCentre = (padL + vp.w - padR) / 2;
   const rowB = vp.h - L("--zone-bottom");
-  const row: Rect = { x0: rowCentre - 103, x1: rowCentre + 103 + 84, y0: rowB - L("--row-h"), y1: rowB };
+  const rowY0 = rowB - L("--row-h");
+  const row: Rect = { x0: rowCentre - 44, x1: rowCentre + 44 + 84, y0: rowY0, y1: rowB };
+  const crown: Rect = { x0: rowCentre - 44 - 8 - 28, x1: rowCentre - 44 - 8, y0: rowB - 25 - 14, y1: rowB - 25 + 14 };
   const header = 6 + vp.top + L("--header-h");
-  return { tcw, cx, cy, slots, pills: [pill(cx - dx), pill(cx + dx)], row, rowCentre, header, liftLine,
+  return { tcw, cx, cy, slots, pills: [pill(cx - dx), pill(cx + dx)], row, crown, rowCentre, header, liftLine,
     crossBottom, handTop: vp.h - L("--hand-h"), safeW: L("--safe-w"), handCw: L("--hand-cw") };
 }
 
@@ -180,12 +183,15 @@ describe("phone table geometry", () => {
     const row = rule(block, ".you-row");
     expect([row.position, row.left, row.right, row.bottom]).toEqual(["absolute", "0", "0", "var(--zone-bottom)"]);
     expect(row.padding).toBe("0 calc(var(--safe-r) + 8px) 0 calc(var(--safe-l) + 8px)");
-    // equal flexible edges around [name][action]: the pair is centred
-    expect(row["grid-template-columns"]).toBe("minmax(0, 1fr) auto auto minmax(0, 1fr)");
-    expect(rule(block, ".you-tagline")["grid-column"]).toBe("2");
-    expect(rule(block, ".action-bar")["grid-column"]).toBe("3");
-    expect(rule(block, ".phase-play .action-bar .btn.primary")["grid-column"]).toBe("3");
-    expect(rule(block, ".phase-play .action-bar .btn.subtle")["grid-column"]).toBe("4");
+    // equal flexible edges around the action: the action alone is centred
+    expect(row["grid-template-columns"]).toBe("minmax(0, 1fr) auto minmax(0, 1fr)");
+    expect(rule(block, ".action-bar")["grid-column"]).toBe("2");
+    expect(rule(block, ".action-bar")["justify-content"]).toBe("safe center");
+    expect(rule(block, ".phase-play .action-bar .btn.primary")["grid-column"]).toBe("2");
+    expect(rule(block, ".phase-play .action-bar .btn.subtle")["grid-column"]).toBe("3");
+    // the crown stands outside the middle column, so it never moves the action
+    const crown = rule(block, ".you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown)");
+    expect([crown["grid-column"], crown["justify-self"], crown.width]).toEqual(["1", "end", "28px"]);
     expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-h) + 4px)");
     expect(rule(block, ".opponent.pos-left").left).toBe("calc(50% - var(--slot-dx))");
     expect(rule(block, ".opponent.pos-right").left).toBe("calc(50% + var(--slot-dx))");
@@ -216,9 +222,12 @@ describe("phone table geometry", () => {
         }
         // your row: centred, clear of every slot and seat, above the hand's lift
         expect(Math.abs(g.rowCentre - g.cx)).toBeLessThanOrEqual(2);
-        for (const slot of Object.values(g.slots)) expect(overlaps(g.row, slot)).toBe(false);
-        for (const p of g.pills) expect(overlaps(g.row, p)).toBe(false);
-        expect(g.row.y1).toBeLessThanOrEqual(g.liftLine);
+        for (const r of [g.row, g.crown]) {
+          for (const slot of Object.values(g.slots)) expect(overlaps(r, slot)).toBe(false);
+          for (const p of g.pills) expect(overlaps(r, p)).toBe(false);
+          expect(r.y1).toBeLessThanOrEqual(g.liftLine);
+        }
+        expect(overlaps(g.crown, g.row)).toBe(false);
         expect(g.liftLine).toBeLessThanOrEqual(g.handTop);
         expect(g.row.x1).toBeLessThanOrEqual(vp.w - vp.right);
         expect(g.row.x0).toBeGreaterThanOrEqual(vp.left);
@@ -290,7 +299,9 @@ describe("phone controls", () => {
   });
 
   it("shows your turn as the hand's glow, not a pill in the trick", () => {
-    expect(rule(block, ".you-tagline .your-turn-tag").display).toBe("none");
+    // no name pill on the phone table, ever
+    expect(rule(block, ".you-tagline").display).toBe("none");
+    expect(rule(block, ".you-tagline .you-name, .you-tagline .your-turn-tag, .you-tagline .ready-tag").display).toBe("none");
     expect(rule(block, ".my-turn .hand::before").opacity).toBe("1");
     expect(rule(block, ".hand::before").opacity).toBe("0");
   });

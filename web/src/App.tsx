@@ -13,6 +13,7 @@ import GamesList from "./components/GamesList";
 import { useGamesRoute } from "./replay/route";
 import HowTo from "./howto/HowTo";
 import { useHowtoRoute } from "./howto/route";
+import { hideSplash, lockFor } from "./native";
 
 const TOAST_MS = 4000;
 
@@ -130,6 +131,13 @@ export default function App() {
     };
   }, []);
 
+  // The iOS app keeps lobby screens portrait and the table landscape on an
+  // iPhone; everywhere else these are no-ops.
+  const atTable = game !== null && !gamesRoute && !howtoRoute;
+  useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
+  // the launch splash covers the WebView until the first screen has painted
+  useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
+
   let screen: ReactNode;
   if (howtoRoute) {
     screen = <HowTo route={howtoRoute} />;
@@ -168,8 +176,11 @@ export default function App() {
       ) : null}
       {game && !gamesRoute ? (
         <div className="rotate-hint">
-          <div className="rotate-icon" aria-hidden="true">📱</div>
+          <div className="rotate-card" aria-hidden="true">升级</div>
           <div>Rotate your phone to play</div>
+          <button className="btn subtle rotate-leave" onClick={() => conn.send({ type: "leave_room" })}>
+            Leave game
+          </button>
         </div>
       ) : null}
     </div>

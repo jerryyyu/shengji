@@ -166,7 +166,16 @@ primary_region = 'ewr'
   # is not measured (DEPLOY.md, Release 51). Rollback: set SHENGJI_PV_LEAD_CONFIRM back to
   # '32' and restore the release-50 name:
   # RELEASE 50 name: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-lcc32-rb3477266-bury-hybrid-bwv-bbw-b6262940978b-sc8
-  SHENGJI_BOT = 'pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8'
+  # RELEASE 52 (Jerry 2026-11-09, in session: "I'm good to release it"): release 51 with the
+  # combo51 search rules: the exact-lead tie baseline, full minimax and 1.6 s cap (elt, elm,
+  # els1600), history-legal throws in the play worlds (wht) and event-complete refusals
+  # (rcec). Same packages, every other rule, budget and switch unchanged. Evidence (paired,
+  # seat-swapped duels against release 51 as served, M5 Ultra): combo51 SCREEN_PASS +0.0418
+  # [+0.0332, +0.0506] on 3,920 deals; combo51C CONFIRMED +0.0438 [+0.0381, +0.0497] on 7,840
+  # fresh deals (DEPLOY.md, Release 52). Rollback: delete the five "Release 52" lines below
+  # and restore the release-51 name:
+  # RELEASE 51 name: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8
+  SHENGJI_BOT = 'pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-hybrid-bwv-bbw-7a9a430fe690-sc8'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
@@ -215,6 +224,13 @@ primary_region = 'ewr'
   SHENGJI_PV_EXACT_FOLLOW_SOLVER = 'compact-level'
   SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS = '7'
   SHENGJI_PV_EXACT_FOLLOW_MAX_NODES = '50000000'
+  # Release 52: the exact-lead tie baseline, full minimax and 1.6 s cap (elt, elm, els1600),
+  # history-legal throws in the play worlds (wht) and event-complete refusals (rcec).
+  SHENGJI_PV_EXACT_LEAD_TIE_BASELINE = '1'
+  SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX = '1'
+  SHENGJI_PV_EXACT_LEAD_MAX_SECONDS = '1.6'
+  SHENGJI_PV_WORLD_HISTORY_THROWS = '1'
+  SHENGJI_PV_REFUSAL_EVENT_COMPLETE = '1'
   # The value-guided declaration at every first-round declare chance.
   SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST = '1'
   # Release 50: the value package (G3 Stage A) and, as the card-play prior, the FT1 policy

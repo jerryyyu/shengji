@@ -41,26 +41,30 @@ describe("the phone overflow menu (#651)", () => {
     v.unmount();
   });
 
-  it("leave needs TWO taps, and the first one keeps the menu open", () => {
+  it("leave asks first: Leave game? with Stay and Leave, and the menu stays open", () => {
     const v = render();
     act(() => btn(v.host).click());
-    const leave = () => rows(v.host)[3] as HTMLButtonElement;
-    act(() => leave().click());
+    const leave = () => rows(v.host)[3] as HTMLElement;
+    act(() => (leave() as HTMLButtonElement).click());
     expect(sent).toEqual([]);
     expect(v.host.querySelector(".hud-menu")).not.toBeNull();
     expect(leave().textContent).toContain("Leave game?");
-    act(() => leave().click());
+    const choices = () => Array.from(leave().querySelectorAll<HTMLButtonElement>(".hud-menu-choice"));
+    expect(choices().map((b) => b.textContent)).toEqual(["Stay", "Leave"]);
+    act(() => choices()[1].click());
     expect(sent).toEqual([{ type: "leave_room" }]);
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     v.unmount();
   });
 
-  it("an armed leave reverts after 3 s without a second tap", () => {
+  it("the confirm has no timer: it waits, and Stay puts the row back", () => {
     vi.useFakeTimers();
     const v = render();
     act(() => btn(v.host).click());
     act(() => (rows(v.host)[3] as HTMLButtonElement).click());
-    act(() => { vi.advanceTimersByTime(3100); });
+    act(() => { vi.advanceTimersByTime(30_000); });
+    expect(rows(v.host)[3].textContent).toContain("Leave game?");
+    act(() => rows(v.host)[3].querySelector<HTMLButtonElement>(".hud-menu-choice")!.click());
     expect(rows(v.host)[3].textContent).toContain("Leave game…");
     expect(sent).toEqual([]);
     v.unmount();

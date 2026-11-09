@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import type { RefObject } from "react";
+import type { CSSProperties, RefObject } from "react";
 import type { Declaration, GameState, Trick, TrickPlay } from "../protocol";
 import type { Box } from "../motion";
 import { DUR, EASE, canAnimate, centerDelta, clamp, flightKeyframes, sweepKeyframes, unionBox } from "../motion";
@@ -7,6 +7,9 @@ import Card from "./Card";
 import type { HandRects } from "./Hand";
 
 type SidePos = "bottom" | "left" | "top" | "right";
+
+/** Cards dealt to each player in a four-player round (two decks less the kitty). */
+const HAND_SIZE = 25;
 
 /** Relative position of a seat from your point of view. You are always bottom;
  * (you+1)%4 is left, (you+2)%4 is top, (you+3)%4 is right. */
@@ -158,7 +161,8 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
         const key = playKey(play);
         return (
           <div key={key} data-play={key} data-seat={play.seat}
-               className={`trick-play pos-${pos}${isWinner ? " winner" : ""}`}>
+               className={`trick-play pos-${pos}${isWinner ? " winner" : ""}`}
+               style={{ "--n": play.cards.length } as CSSProperties}>
             <div className="trick-cards">
               {play.cards.map((code, i) => (
                 <Card key={i} code={code} />
@@ -173,7 +177,8 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
       })}
 
       {declaration ? (
-        <div className={`trick-play declaration pos-${seatPos(declaration.seat, state.you)}`}>
+        <div className={`trick-play declaration pos-${seatPos(declaration.seat, state.you)}`}
+             style={{ "--n": declaration.cards.length } as CSSProperties}>
           <div className="trick-cards">
             {declaration.cards.map((code, i) => (
               <Card key={i} code={code} />
@@ -186,6 +191,20 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
       ) : null}
 
       {!trick?.plays.length && !declaration ? <div className="table-emblem">升级</div> : null}
+
+      {/* The deck the deal comes from, with your share so far. Only the
+          phone layout draws it; dealt cards fly into the hand from here. */}
+      {state.phase === "deal" ? (
+        <div className="deal-deck" aria-hidden="true"
+             style={{ "--dealt": Math.min(1, state.hand.length / HAND_SIZE) } as CSSProperties}>
+          <div className="deal-deck-stack">
+            <Card className="deal-deck-card" />
+            <Card className="deal-deck-card" />
+            <Card className="deal-deck-card" />
+          </div>
+          <div className="deal-deck-count">{state.hand.length}<span> / {HAND_SIZE}</span></div>
+        </div>
+      ) : null}
     </div>
   );
 }

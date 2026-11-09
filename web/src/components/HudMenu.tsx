@@ -8,9 +8,8 @@ import NameEditForm from "./NameEditForm";
 /** The phone's `…` overflow: kitty count, sound, invite link and leave —
  * none of them a mid-trick decision, so on a small screen they share one
  * button instead of four chips. Desktop keeps its chips (this is hidden by CSS
- * there). Leave keeps the table's two-tap confirm; a menu that closes on the
- * first tap would make the confirm impossible, so an armed Leave holds the
- * menu open until it fires or times out. */
+ * there). Leave asks first: its row turns into "Leave game? Stay / Leave"
+ * and waits, with no timer, until one is chosen or the menu is closed. */
 export default function HudMenu({ room, kittyCount }: { room: string; kittyCount: number }) {
   const [open, setOpen] = useState(false);
   const [muted, toggleSound] = useMuted();
@@ -19,10 +18,7 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   const [editingName, setEditingName] = useState(false);
   const account = useAuth();
   const [signOutError, setSignOutError] = useState(false);
-  const timer = useRef<number | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current); }, []);
 
   // outside tap / Escape closes; an armed Leave reverts too
   useEffect(() => {
@@ -43,7 +39,6 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
     setOpen(false);
     setArmed(false);
     setEditingName(false);
-    if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; }
   };
 
   const copyInvite = () => {
@@ -53,12 +48,6 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   };
 
   const leave = () => {
-    if (!armed) {
-      setArmed(true);
-      timer.current = window.setTimeout(() => { timer.current = null; setArmed(false); }, 3000);
-      return;
-    }
-    if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; }
     setArmed(false);
     setOpen(false);
     conn.send({ type: "leave_room" });
@@ -119,9 +108,19 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
               </button>
             </>
           ) : null}
-          <button className={`hud-menu-row leave${armed ? " armed" : ""}`} role="menuitem" onClick={leave}>
-            <span>{armed ? "Leave game?" : "Leave game…"}</span>
-          </button>
+          {armed ? (
+            <div className="hud-menu-row leave armed" role="group" aria-label="Leave game?">
+              <span>Leave game?</span>
+              <span className="hud-menu-confirm">
+                <button className="hud-menu-choice" onClick={() => setArmed(false)}>Stay</button>
+                <button className="hud-menu-choice danger" onClick={leave}>Leave</button>
+              </span>
+            </div>
+          ) : (
+            <button className="hud-menu-row leave" role="menuitem" onClick={() => setArmed(true)}>
+              <span>Leave game…</span>
+            </button>
+          )}
         </div>
       ) : null}
     </div>

@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef } from "react";
-import type { RefObject } from "react";
+import type { CSSProperties, RefObject } from "react";
 import type { HandCard } from "../protocol";
 import type { Box } from "../motion";
 import { DUR, EASE, canAnimate, currentTranslate } from "../motion";
@@ -9,6 +9,10 @@ import Card from "./Card";
 const MAX_ARRIVALS = 8;
 /** Gap between the flights of cards that arrive together (the kitty). */
 const ARRIVAL_STAGGER = 40;
+/** A longer hand (the banker's 33 with the kitty) is drawn with smaller
+ *  cards on a phone, so it still fits one row; only the phone layout styles
+ *  `.hand.small-cards`. */
+export const FULL_SIZE_MAX = 25;
 
 /** Last drawn position of each hand card, by card id. A card that has just
  *  left the hand keeps its entry, marked `departed`, through one more commit
@@ -169,8 +173,11 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
   }, [empty, rects]);
 
   if (empty) return null;
+  const small = hand.length > FULL_SIZE_MAX;
+  const style = { "--n": hand.length } as CSSProperties;
   return (
-    <div className={`hand${selectable ? " selectable" : ""}`} ref={handRef}>
+    <div className={`hand${selectable ? " selectable" : ""}${small ? " small-cards" : ""}`}
+         ref={handRef} style={style}>
       {hand.map((c) => (
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
                   onToggle={selectable ? onToggle : undefined} />

@@ -224,6 +224,12 @@ def test_lower_cap_reaches_minimax_and_keeps_baseline_on_expiry(
         assert state['exact_lead_worlds_completed'] == 1
 
 
+#: the five combo51 lines: the candidate arm adds them, the control arm is the env without
+#: them (release 51), whichever of the two the served fly.toml carries
+COMBO51 = {TIE: "1", FLAG: "1", "SHENGJI_PV_EXACT_LEAD_MAX_SECONDS": "1.6",
+           "SHENGJI_PV_WORLD_HISTORY_THROWS": "1", "SHENGJI_PV_REFUSAL_EVENT_COMPLETE": "1"}
+
+
 @pytest.mark.parametrize("candidate, expire, expected", [
     (False, False, ["D3"]), (True, False, ["HQ"]), (True, True, ["D3"]),
 ])
@@ -239,12 +245,9 @@ def test_combo_lead_keeps_serving_budgets_through_server_commit(
     from test_release50_fly_config import local_env
     from shengji.eval.served_config import registry_name
 
-    env = {**production_env(), TIE: "1", FLAG: "1",
-           "SHENGJI_PV_EXACT_LEAD_MAX_SECONDS": "1.6",
-           "SHENGJI_PV_WORLD_HISTORY_THROWS": "1",
-           "SHENGJI_PV_REFUSAL_EVENT_COMPLETE": "1"}
-    if not candidate:
-        env = production_env()
+    control = {k: v for k, v in production_env().items() if k not in COMBO51}
+    env = {**control, **COMBO51} if candidate else control
+    assert candidate or not set(COMBO51) & set(env)
     env["SHENGJI_BOT"] = registry_name(local_env(release50_packages, env))
     name, bot = served_bot(release50_packages, monkeypatch, env=env, seed=P.SEED)
     assert bot.serving_budget_seconds == 3.0

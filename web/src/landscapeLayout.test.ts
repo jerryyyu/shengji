@@ -415,6 +415,21 @@ describe("phone controls", () => {
     expect(rule(block, ".hand .card::after").top).toBe("calc(-1 * var(--lift))");
   });
 
+  it("gives the in-play notice's close a 44px box that the notice does not clip", () => {
+    const close = rule(block, ".phase-play .hud-notice .hud-notice-close");
+    for (const k of ["width", "height", "min-width", "min-height"]) expect(px(close[k]), k).toBe(44);
+    // the glyph is the 24px content box, drawn in the notice's top right corner
+    expect(px(close.width) - 2 * px(close.padding)).toBe(24);
+    expect(close.position).toBe("absolute");
+    // the box overhangs the notice's corner, so only the text may be clipped
+    expect(px(close.top)).toBeLessThan(0);
+    expect(px(close.right)).toBeLessThan(0);
+    expect(rule(block, ".phase-play .hud-notice").overflow).toBeUndefined();
+    expect(rule(block, ".phase-play .hud-message, .phase-play .hud-notice").overflow).toBeUndefined();
+    expect(rule(block, ".phase-play .hud-notice .hud-notice-body").overflow).toBe("hidden");
+    expect(rule(block, ".phase-play .hud-message").overflow).toBe("hidden");
+  });
+
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
     expect(tokens["--pill-max"]).toBe("min(96px, calc(50vw - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");

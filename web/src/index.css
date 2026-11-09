@@ -2754,6 +2754,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     width: auto;
     max-width: calc(50% - var(--corner-l) - 88px);
     max-height: calc(var(--cross-avail) / 2 - var(--trick-ch) / 2 - 26px);
+  }
+
+  .phase-play .hud-message {
     overflow: hidden;
   }
 
@@ -2763,22 +2766,30 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     padding-right: 30px;
   }
 
-  /* the notice's close is drawn small in its corner and keeps a 44px tap */
-  .phase-play .hud-notice .hud-notice-close {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 24px;
-    height: 24px;
-    min-width: 24px;
-    min-height: 24px;
-    padding: 0;
+  /* Only the text is clipped to the band: clipping the notice itself would
+     also clip the close button's tap area, which overhangs the corner. */
+  .phase-play .hud-notice .hud-notice-body {
+    align-self: stretch;
+    min-height: 0;
+    overflow: hidden;
   }
 
-  .phase-play .hud-notice .hud-notice-close::after {
-    content: "";
+  /* The close is a full 44px button whose glyph sits in the notice's top
+     right 24px corner; the 10px of tap area around the glyph overhangs the
+     notice's top and right edges by 8px instead of making a short notice
+     taller. */
+  .phase-play .hud-notice .hud-notice-close {
     position: absolute;
-    inset: -10px;
+    top: -8px;
+    right: -8px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 10px;
+    line-height: 24px;
+    background-clip: content-box;
   }
 
   @media (prefers-reduced-motion: reduce) {

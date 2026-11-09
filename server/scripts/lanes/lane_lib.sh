@@ -119,23 +119,45 @@ lane_arm() {   # computes LANE_ARMED_ID (unless inherited from a parent) and adm
   lane_admit arming
 }
 
-lane_terminal_ok() {   # LINE: does it end a predecessor (or released duel) run, successfully or not
-  echo "$1" | grep -qE "${LANE_TERMINAL_RE:-(^| )(DONE|FAILED|ABORT|REFUSING:?)( |$)}"
+# The current attempt's state line of a status file: its last non-empty line that is not post-terminal housekeeping.
+# lane_lock_release writes UNLOCKED (or WARNING) after the terminal line, so a finished lane_lib run ends
+# "DONE ... / UNLOCKED ..."; skipping those keeps DONE visible.  A newer START is not housekeeping, so an older DONE
+# never stands for a later attempt.  The status word is the 2nd field (lane_lib) or the 3rd (<utc> <lane> <WORD>).
+# Defaults live in variables: a "{1,2}" inside ${VAR:-...} would end the expansion at its "}".
+LANE_WORD_AT='^([^ ]+ ){1,2}'
+LANE_HOUSEKEEPING_RE=${LANE_HOUSEKEEPING_RE:-"${LANE_WORD_AT}(UNLOCKED|WARNING)( |\$)"}
+LANE_TERMINAL_RE=${LANE_TERMINAL_RE:-"${LANE_WORD_AT}(DONE|FAILED|ABORT|PAUSED|REFUSING:?)( |\$)"}
+
+lane_last_state() {
+  grep -v '^[[:space:]]*$' "$1" 2>/dev/null | grep -vE "$LANE_HOUSEKEEPING_RE" | tail -1
+}
+
+lane_is_paused() { echo "$1" | grep -qE "${LANE_WORD_AT}PAUSED( |\$)"; }
+
+# LINE: has that run stopped (DONE, FAILED, ABORT, REFUSING or PAUSED)?  PAUSED counts as stopped for yielding: a
+# paused run has released the lock and must be re-admitted like any other.  Only the status word field is read, so
+# a START or WAIT line that quotes DONE is still a running attempt.
+lane_terminal_ok() {
+  echo "$1" | grep -qE "$LANE_TERMINAL_RE"
 }
 
 # Gates.  rc 0 admitted, 1 wait, 2 a predecessor ended without success.  LANE_MSG says why.
-#   LANE_GATES       lines "<status file> <ERE>": the file's last non-empty line must match ERE (anchor it: a bare
-#                    word also matches an ABORT line that quotes it).  A last line matching LANE_GATE_FAIL_RE stops.
+#   LANE_GATES       lines "<status file> <ERE>": the file's current state line (lane_last_state) must match ERE
+#                    (anchor it: a bare word also matches an ABORT line that quotes it).  A PAUSED predecessor never
+#                    satisfies a gate and is waited on (it is resumable); a state matching LANE_GATE_FAIL_RE stops.
 #   LANE_GATE_PROCEED  an operator file that opens the LANE_GATES predecessors (never the yield check).
 #   LANE_YIELD_DIR + LANE_YIELD_GLOB (a find -name pattern): any <x>.RELEASE there other than LANE_RELEASE whose
-#                    <x>.status last line is not terminal (lane_terminal_ok) is a released run that goes first.
+#                    <x>.status state line is not terminal (lane_terminal_ok) is a released run that goes first.
 lane_gate() {
   local line file re last r st
   if [ -z "${LANE_GATE_PROCEED:-}" ] || [ ! -f "$LANE_GATE_PROCEED" ]; then
     while IFS= read -r line; do
       [ -n "$line" ] || continue
       file=${line%% *}; re=${line#* }
-      last=$(grep -v '^[[:space:]]*$' "$file" 2>/dev/null | tail -1)
+      last=$(lane_last_state "$file")
+      if lane_is_paused "$last"; then
+        LANE_MSG="predecessor $file is paused (resumable): $(echo "$last" | cut -c1-90)"; return 1
+      fi
       if echo "$last" | grep -qE "$re"; then continue; fi
       if [ -n "$last" ] && echo "$last" | grep -qE "${LANE_GATE_FAIL_RE:-(^| )(ABORT|REFUSING:?|FAILED)( |$)}"; then
         LANE_MSG="predecessor $file ended without success: $(echo "$last" | cut -c1-120)"; return 2
@@ -150,7 +172,7 @@ EOF
       [ -n "$r" ] || continue
       [ "$r" = "${LANE_RELEASE:-}" ] && continue
       st=${r%.RELEASE}.status
-      lane_terminal_ok "$(grep -v '^[[:space:]]*$' "$st" 2>/dev/null | tail -1)" && continue
+      lane_terminal_ok "$(lane_last_state "$st")" && continue
       LANE_MSG="yielding to released run $(basename "$r") (its status is not terminal)"; return 1
     done <<EOF
 $(find "$LANE_YIELD_DIR" -maxdepth 1 -type f -name "${LANE_YIELD_GLOB:-*.RELEASE}" 2>/dev/null | LC_ALL=C sort)

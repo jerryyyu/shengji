@@ -333,6 +333,97 @@ def test_yield_to_a_released_run_but_not_to_itself_or_a_finished_one(lane, tmp_p
     assert p.wait(30) == 0 and ln.invocations() == 1
 
 
+def gate_of(**cfg):
+    """rc and message of lane_gate under CFG, in a bare shell with the library sourced."""
+    sets = "; ".join(f"{k}={v}" for k, v in cfg.items())
+    out = subprocess.run([BASH, "-c", f'. "{LIB}"; {sets}; lane_gate; echo "$? $LANE_MSG"'],
+                         capture_output=True, text=True, check=True).stdout.strip()
+    rc, _, msg = out.partition(" ")
+    return int(rc), msg
+
+
+def finished_lane(lane, **overrides):
+    """A real lane run to its terminal: the status file the library itself wrote, ending in UNLOCKED."""
+    ln = lane(**overrides); ln.arm()
+    rc = ln.run()
+    assert ln.words()[-1] == "UNLOCKED", ln.lines()
+    return ln, rc
+
+
+SUCCESS = "'^TL DONE '"
+
+
+def test_real_done_then_unlocked_opens_the_successor_gate(lane):
+    ln, rc = finished_lane(lane)
+    assert rc == 0 and ln.words()[-2] == "DONE"
+    assert gate_of(LANE_GATES=f"'{ln.status} ^TL DONE '")[0] == 0
+
+
+def test_real_done_then_unlocked_lets_a_waiting_successor_run(lane, tmp_path):
+    pred, _ = finished_lane(lane)
+    succ_root = tmp_path / "succ"; succ_root.mkdir()
+    succ = Lane(succ_root, LANE_NAME="t2", LANE_GATES=f"'{pred.status} ^TL DONE '")
+    succ.arm()
+    assert succ.run() == 0 and "DONE" in succ.terminal() and succ.invocations() == 1
+
+
+def test_real_abort_then_unlocked_stops_the_successor(lane):
+    ln, rc = finished_lane(lane, **{"export STUB_RC": "3"})
+    assert rc == 3 and ln.words()[-2] == "ABORT"
+    assert gate_of(LANE_GATES=f"'{ln.status} ^TL DONE '")[0] == 2
+
+
+def test_real_wall_ceiling_pause_then_unlocked_is_waited_on_never_admitted(lane):
+    ln, rc = finished_lane(lane, DELAY="5", LANE_MAX_SECONDS="1")
+    assert rc == 1 and ln.words()[-2] == "PAUSED"
+    g, msg = gate_of(LANE_GATES=f"'{ln.status} ^TL (DONE|PAUSED) '")
+    assert g == 1 and "paused" in msg
+    assert gate_of(LANE_GATES=f"'{ln.status} ^TL DONE '")[0] == 1
+
+
+def test_new_start_after_an_earlier_done_hides_the_old_done(lane):
+    ln, _ = finished_lane(lane)
+    with open(ln.status, "a") as f:
+        f.write("TL START t1 2026-11-09T23:00:00Z pid=1 host=x\n")
+    g, msg = gate_of(LANE_GATES=f"'{ln.status} ^TL DONE '")
+    assert g == 1 and "START" in msg
+
+
+def test_failure_that_quotes_done_is_a_failure(lane, tmp_path):
+    st = tmp_path / "pred.status"
+    st.write_text("TL ABORT t0 2026-11-09T23:00:00Z rc=4 reason=no TL DONE shards\n"
+                  "TL UNLOCKED t0 2026-11-09T23:00:01Z /lock\n")
+    assert gate_of(LANE_GATES=f"'{st} ^TL DONE '")[0] == 2
+    assert gate_of(LANE_GATES=f"'{st} DONE'")[0] == 0  # an unanchored ERE is the caller's error, as documented
+
+
+def _released(tmp_path, name, status_text):
+    q = tmp_path / "queue"; q.mkdir(exist_ok=True)
+    (q / f"{name}.RELEASE").write_text("tok\n")
+    if status_text is not None:
+        (q / f"{name}.status").write_text(status_text)
+    return q
+
+
+def test_yield_releases_a_real_done_then_unlocked_run(lane, tmp_path):
+    ln, _ = finished_lane(lane)
+    q = _released(tmp_path, "other", ln.status.read_text())
+    assert gate_of(LANE_YIELD_DIR=str(q))[0] == 0
+
+
+def test_yield_releases_a_real_paused_then_unlocked_run(lane, tmp_path):
+    ln, _ = finished_lane(lane, DELAY="5", LANE_MAX_SECONDS="1")
+    q = _released(tmp_path, "other", ln.status.read_text())
+    assert gate_of(LANE_YIELD_DIR=str(q))[0] == 0
+
+
+def test_yield_waits_for_a_new_attempt_after_an_old_done(lane, tmp_path):
+    ln, _ = finished_lane(lane)
+    q = _released(tmp_path, "other", ln.status.read_text() + "TL START t1 2026-11-09T23:00:00Z note=DONE\n")
+    g, msg = gate_of(LANE_YIELD_DIR=str(q))
+    assert g == 1 and "other.RELEASE" in msg
+
+
 def test_held_lock_waits_then_takes_it_with_an_owner_line(lane):
     ln = lane(DELAY="0.5"); ln.arm(); ln.fake_lock()
     p = ln.start()

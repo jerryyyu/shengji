@@ -1,0 +1,166 @@
+"""Witness for scripts/safe_rm.py, the fleet cleanup delete tool.
+
+Every case runs the script as a subprocess inside a private tmp tree, with HOME,
+SAFE_RM_ROOTS, SAFE_RM_LAUNCHERS, SAFE_RM_PINS and SAFE_RM_KEEP pointed into that
+tree, so no real path, keep file, launcher, packet or log is read or written.
+"""
+
+import hashlib
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "safe_rm.py"
+
+
+@pytest.fixture
+def world(tmp_path):
+    w = Path(os.path.realpath(tmp_path))
+    for d in ("root/ij-tree/server/.venv/bin", "root/gen-hybrid/server", "root/old-run",
+              "fleet", "busy", "archive/pk", "home"):
+        (w / d).mkdir(parents=True)
+    (w / "root/gen-hybrid/server/.venv").symlink_to(w / "root/ij-tree/server/.venv")
+    return w
+
+
+def run(w, *args, home=None):
+    env = dict(os.environ)
+    env.update(
+        HOME=str(home or w / "home"),
+        SAFE_RM_ROOTS=str(w / "root"),
+        SAFE_RM_LAUNCHERS=str(w / "fleet/*.sh"),
+        SAFE_RM_PINS=f"{w}/archive/*/commands.json {w}/archive/*/SHA256SUMS",
+        SAFE_RM_KEEP=str(w / "home/.safe_rm.keep"),
+    )
+    p = subprocess.run([sys.executable, str(SCRIPT), *map(str, args)], env=env,
+                       capture_output=True, text=True, timeout=300)
+    return p.returncode, p.stdout + p.stderr
+
+
+def big_file(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(os.urandom(2_000_000))
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_live_link_refuses(world):
+    rc, out = run(world, world / "root/ij-tree")
+    assert rc == 1 and "live-link" in out and (world / "root/ij-tree").is_dir()
+
+
+def test_deletes_once_the_link_is_gone(world):
+    (world / "root/gen-hybrid/server/.venv").unlink()
+    rc, out = run(world, world / "root/ij-tree")
+    assert rc == 0 and not (world / "root/ij-tree").exists()
+
+
+def test_launcher_reference_refuses(world):
+    (world / "fleet/claude_x.sh").write_text(f"PYM={world}/root/old-run/bin/python\n")
+    rc, out = run(world, world / "root/old-run")
+    assert rc == 1 and "referenced" in out and (world / "root/old-run").is_dir()
+
+
+def test_in_use_cwd_refuses(world):
+    sleeper = subprocess.Popen(["sleep", "60"], cwd=world / "busy")
+    try:
+        time.sleep(1)
+        rc, out = run(world, world / "busy")
+    finally:
+        sleeper.kill()
+        sleeper.wait()
+    assert rc == 1 and "in-use" in out and (world / "busy").is_dir()
+
+
+def test_protected_refuses(world):
+    rc, out = run(world, "/")
+    assert rc == 1 and "protected" in out
+
+
+def test_dry_run_keeps(world):
+    rc, out = run(world, "--dry-run", world / "root/old-run")
+    assert rc == 0 and "WOULD DELETE" in out and (world / "root/old-run").is_dir()
+
+
+def test_plain_delete(world):
+    rc, out = run(world, world / "root/old-run")
+    assert rc == 0 and not (world / "root/old-run").exists()
+
+
+def test_hash_pinned_checkpoint_refuses(world):
+    h = big_file(world / "root/mrt/p0/best.pt")
+    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}"}}\n')
+    rc, out = run(world, world / "root/mrt")
+    assert rc == 1 and "pinned" in out and "sha256" in out
+    assert (world / "root/mrt/p0/best.pt").is_file()
+
+
+def test_path_pinned_folder_refuses(world):
+    (world / "root/mrt/p0").mkdir(parents=True)
+    (world / "archive/pk/commands.json").write_text(f'{{}}\n"{world}/root/mrt/p0/x.npz"\n')
+    rc, out = run(world, world / "root/mrt")
+    assert rc == 1 and "pinned" in out and "names" in out and (world / "root/mrt").is_dir()
+
+
+def test_a_packets_own_sha256sums_does_not_pin_itself(world):
+    pk = world / "archive/pk"
+    (pk / "commands.json").write_text("{}\n")
+    h = big_file(pk / "m.npz")
+    (pk / "SHA256SUMS").write_text(f"{h}  m.npz\n")
+    rc, out = run(world, pk)
+    assert rc == 0 and not pk.exists()
+
+
+def _small_pinned_home_relative(world, text):
+    (world / "root/mrt/p0").mkdir(parents=True)
+    (world / "root/mrt/p0/small.pt").write_text("small\n")
+    (world / "archive/pk2").mkdir()
+    (world / "archive/pk2/commands.json").write_text(text)
+
+
+def test_tilde_path_refuses_below_hash_threshold(world):
+    _small_pinned_home_relative(world, '{"x": "~/mrt/p0/small.pt"}\n')
+    rc, out = run(world, world / "root/mrt", home=world / "root")
+    assert rc == 1 and "names ~/mrt" in out and (world / "root/mrt/p0/small.pt").is_file()
+
+
+def test_dollar_home_path_refuses(world):
+    _small_pinned_home_relative(world, '{"x": "$HOME/mrt/p0/small.pt"}\n')
+    rc, out = run(world, world / "root/mrt", home=world / "root")
+    assert rc == 1 and "pinned" in out and (world / "root/mrt").is_dir()
+
+
+def test_a_sibling_with_a_longer_name_does_not_pin(world):
+    _small_pinned_home_relative(world, '{"x": "~/mrtx/other.pt"}\n')
+    rc, out = run(world, "--dry-run", world / "root/mrt", home=world / "root")
+    assert rc == 0 and "WOULD DELETE" in out and (world / "root/mrt").is_dir()
+
+
+def test_deletes_once_unpinned(world):
+    _small_pinned_home_relative(world, '{"x": "~/mrtx/other.pt"}\n')
+    rc, out = run(world, world / "root/mrt")
+    assert rc == 0 and not (world / "root/mrt").exists()
+
+
+def _deep_sibling(world):
+    pkt = world / "root/arch/pkt"
+    (pkt / "data/ultra/s").mkdir(parents=True)
+    (pkt / "data/ultra/s/f").write_text("x\n")
+    (pkt / "views/u1/a/b/c/d").mkdir(parents=True)
+    return pkt
+
+
+def test_deep_sibling_link_refuses(world):
+    pkt = _deep_sibling(world)
+    (pkt / "views/u1/a/b/c/d/link").symlink_to(pkt / "data/ultra/s/f")
+    rc, out = run(world, "--dry-run", pkt / "data/ultra")
+    assert rc == 1 and "live-link" in out and (pkt / "data/ultra").is_dir()
+
+
+def test_no_deep_link_would_delete(world):
+    pkt = _deep_sibling(world)
+    rc, out = run(world, "--dry-run", pkt / "data/ultra")
+    assert rc == 0 and "WOULD DELETE" in out

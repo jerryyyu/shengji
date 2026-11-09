@@ -221,6 +221,7 @@ jobs:
           tests/test_check_doc_claims.py
           tests/test_ci_review_ledger_step.py
           tests/test_receipt_summary.py
+          tests/test_safe_rm.py
           tests/test_seed_windows_dir.py
           tests/test_paired_window_stats.py
           tests/test_comparator_bank.py
@@ -277,7 +278,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/shengji-packages
-          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/smv3out-491ee4bf.npz "$PACKAGE_URL"
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/smv3out-491ee4bf.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/smv3out-491ee4bf.npz" | sha256sum -c -
       # The served belief-worlds proposal binds its own hash-pinned package: the same
       # release, the same fail-closed rule.
@@ -288,7 +289,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/shengji-packages
-          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/s17long-e2-763b5e05.npz "$PACKAGE_URL"
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/s17long-e2-763b5e05.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/s17long-e2-763b5e05.npz" | sha256sum -c -
       # Release 48's belief package (S58); the S17 package above stays for the release-46
       # rollback, which is built on real bytes too.
@@ -299,7 +300,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/shengji-packages
-          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/s58-e6-42444515.npz "$PACKAGE_URL"
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/s58-e6-42444515.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/s58-e6-42444515.npz" | sha256sum -c -
       # Release 50's three packages: the G3 Stage A value package, the FT1 card-play prior
       # and the B1a belief package; the release-49 packages above stay for its rollback.
@@ -310,7 +311,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/shengji-packages
-          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/g3a-e04-f4f4127e.npz "$PACKAGE_URL"
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/g3a-e04-f4f4127e.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/g3a-e04-f4f4127e.npz" | sha256sum -c -
       - name: Fetch the pinned release-50 package p0-ft1-1fa201b2
         env:
@@ -319,7 +320,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/shengji-packages
-          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/p0-ft1-1fa201b2.npz "$PACKAGE_URL"
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/p0-ft1-1fa201b2.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/p0-ft1-1fa201b2.npz" | sha256sum -c -
       - name: Fetch the pinned release-50 package b1a-028131a0
         env:
@@ -328,7 +329,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/shengji-packages
-          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/b1a-028131a0.npz "$PACKAGE_URL"
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/b1a-028131a0.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/b1a-028131a0.npz" | sha256sum -c -
       - name: Load the production package on this tree
         env:
@@ -394,7 +395,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/shengji-packages
-          curl -sSL --fail --retry 3 -o /tmp/shengji-packages/smv3out-491ee4bf.npz "$PACKAGE_URL"
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/smv3out-491ee4bf.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/smv3out-491ee4bf.npz" | sha256sum -c -
       - name: Screen deadline child on the production package (differential must run)
         env:

@@ -1611,6 +1611,7 @@ class _FakeSocket:
         self.client_state = WebSocketState.CONNECTED
         self._message = message
         self.accepted = False
+        self.query_params = {}
 
     async def accept(self):
         self.accepted = True

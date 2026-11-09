@@ -200,18 +200,22 @@ and, from release 50, the bury search's worlds (`bbw`).
 | model | sha | warm start → recipe | read | served |
 |---|---|---|---|---|
 | S17 | — | first history-input belief net | soft-oracle probe v83sorc45 +0.309 (diagnostic); its e8 package v95s17e8 +0.006, inconclusive | its worlds (v86bw45 +0.117 [+0.091, +0.142] vs release 45) shipped in release 46 |
-| S43, S46 r3 | — | rank-mixed corpora; S46 wider (d192) | s43t +0.022 (T 1.35); s46screen +0.024, s46c +0.021 inconclusive | release-47 candidate, held; release 48 used S58 |
+| S43, S46 r3 | — | rank-mixed corpora; S46 wider (d192) | screens positive: s43t +0.022 (T 1.35), s46screen +0.024; the S46 confirmation s46c +0.021 inconclusive | release-47 candidate, held; release 48 used S58 |
 | S58 | 42444515 | S46 r3 continued 6 epochs, rank-mixed | calib log-loss −0.0135 nats vs S46 r3; with dtrx v103s58 +0.033 [+0.015, +0.052] | releases 48–49 |
-| B1a | 028131a0 | S58 fine-tuned on the four Y stores (10.3M rows), 2 epochs, T 1.019 | log-loss +2.24 pp over S58; cbaf B1a over S58 +0.023 [+0.001, +0.045] | releases 50–51 |
-| X2B | 621dc9e2 | B1a fine-tuned on 30k x1a self-play rounds (1.7M rows), 2 epochs | X2H log-loss 1.0021 → 0.9895; DEV vs release 51 +0.024 [−0.006, +0.053], LB80 +0.011, DEV pass | not yet; two-stage screen next |
-| X2BY | 85ec5fc3 | B1a on 50% X2 + 50% Y rows | X2H 0.9918; Y holdout 0.989 vs B1a 0.986 | not duelled |
+| B1a | 028131a0 | S58 fine-tuned on the four Y stores (10.3M rows), 2 epochs, T 1.019 | test log-loss 2.24 pp lower than S58 (relative to the uniform baseline); cbaf B1a over S58 +0.023 [+0.001, +0.045] | releases 50–51 |
+| X2B | 621dc9e2 | B1a fine-tuned on 30k x1a self-play rounds (1.7M rows), 2 epochs | X2H log-loss vs B1a 1.0021 → 0.9895⁴; DEV vs release 51 +0.024 [−0.006, +0.053], LB80 +0.011, DEV pass | not yet; two-stage screen next |
+| X2BY | 85ec5fc3 | B1a on 50% X2 + 50% Y rows | X2H 0.9918; Y holdout 0.989 vs B1a 0.986⁴ | not duelled |
 
 Lineage lessons, as read so far:
 - The confirmed PV gains came from new data and new label sources (Y self-play for value, expert-search labels for the
   prior), not from architecture or capacity changes.
 - Distilling a stronger teacher's choices into the prior raised agreement with that teacher but did not raise served
   play; the x1a-distilled priors were even (warm from the served prior) or worse (warm from G3 A or SMV3) vs release 51.
-- Belief has gained with each fresher corpus, in steps near +0.02 that each need a confirmation.
+- Earlier served belief updates (S58, B1a) improved play in confirmed screens; some belief variants (S17 e8, S46 at T 1.30)
+  did not. X2B has a +0.0235 DEV pass that still awaits its formal screen and confirmation.
+
+⁴ Recalibrated offline NLL comparisons: each model's temperature is refit on X2 calib (B1a T 1.102, X2B T 1.034, X2BY
+T 1.031), not B1a's served T 1.019.
 
 ### Search
 

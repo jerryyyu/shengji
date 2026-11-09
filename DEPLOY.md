@@ -163,19 +163,58 @@ served from main `1490b72b`. Its packages are release 52's. Release 51's served 
 pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8
 ```
 
-**Option 1, redeploy the image that served release 51** (no build). Before the release-52 deploy, confirm the image
-of the release then live with `fly releases -a shengji --image` (v63 unless a later deploy replaced it; v61's image
-`deployment-01M6QW43KBFT3ZDDZWM298WPM3` has release 51's bot with the older web client) and write it into the deploy
-record. Then:
+**Option 1, restore v63's image and configuration** (no build). An image-only deploy still applies the
+caller's `fly.toml`; it would leave the release-52 flags enabled. Prepare this rollback pair before deploying
+release 52, from a clean release worktree with its Python environment installed:
 
 ```bash
-flyctl deploy --app shengji --ha=false --image registry.fly.io/shengji:<the release-51 image>
+rollback_dir=$(mktemp -d "$HOME/shengji-archive/r51-rollback.XXXXXX")
+rollback_config="$rollback_dir/fly.toml"
+rollback_image='registry.fly.io/shengji:deployment-01M7059VAETQFCMM6Z3ADYKRPM'
+git show ae1ef0abfb41ad63cf6c987d8ffd30f55722696c:fly.toml > "$rollback_config"
+PYTHONPATH=server server/.venv/bin/python - "$rollback_config" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+from shengji import releases
+
+config = Path(sys.argv[1])
+assert hashlib.sha256(config.read_bytes()).hexdigest() == (
+    "217f40e70604157f882f00212e5cb4ec05fed188df2e66923f91c1bead16a0dd"
+)
+env = releases.fly_env(config)
+r51 = releases.load(51)
+assert env == r51["env"]
+assert env["SHENGJI_BOT"] == r51["bot_name"]
+assert not any(key in env for key in (
+    "SHENGJI_PV_EXACT_LEAD_TIE_BASELINE", "SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX",
+    "SHENGJI_PV_EXACT_LEAD_MAX_SECONDS", "SHENGJI_PV_WORLD_HISTORY_THROWS",
+    "SHENGJI_PV_REFUSAL_EVENT_COMPLETE",
+))
+print("Verified release-51 rollback configuration:", config.resolve())
+PY
 ```
 
-**Option 2, edit `fly.toml`:** delete the five "Release 52" lines and set `SHENGJI_BOT` to the release-51 name kept
-in the comment above it, then `fly deploy --ha=false`; `/healthz` must show the release-51 name. Rolling back also
-rolls the manifest check back: `test_release_manifests.py` then compares `fly.toml` with `server/releases/r51.json`.
-`test_release51_fly_config.py` builds this rollback env on the release-50 packages.
+Stop if extraction or verification fails. Confirm the recorded v63 image against `fly releases -a shengji --image`
+and preserve the absolute config path and image in the deploy record. If that image is unavailable, stop and
+prepare a separately reviewed replacement; do not substitute main's config. Keep the rollback directory with the
+release evidence. When resuming in a new shell, recover the recorded absolute path and image and verify again.
+
+Only on Jerry's rollback decision, at 0 rooms (or his explicit instruction to drop idle rooms), execute the paired
+rollback; this command is not part of preparation:
+
+```bash
+flyctl deploy --app shengji --ha=false --config "$rollback_config" --image "$rollback_image"
+```
+
+Afterward `/healthz` must be healthy, compiled and show the exact release-51 name above, with the unchanged pinned
+packages. Record the new Fly version and both the image and config used; no automatic rollback or retry is implied.
+
+**Option 2, rebuild the release-51 source:** use a clean worktree at
+`ae1ef0abfb41ad63cf6c987d8ffd30f55722696c`, including its `fly.toml`, to retain v63's web client. Run the release-51
+qualification checks there before any authorized deploy. Editing only release 52's `fly.toml` does not switch
+`test_release_manifests.py` to r51: that test explicitly loads r52. The explicit r51 manifest comparison above
+validates the rollback configuration without changing the release-52 manifest or its tests.
 
 ## Current production
 

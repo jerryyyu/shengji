@@ -1,6 +1,6 @@
 # Learning and search research plan
 
-As of 2026-11-04. Production is release 50; new duels and screens compare against release 50 as served (Jerry 2026-11-04),
+As of 2026-11-09. Production is release 52; new duels and screens compare against release 52 as served (deployed 2026-11-09),
 read against the two-stage duel bar (2026-11-03).
 
 This file owns the research architecture, the estimands, the process rules for compute and measurement, and the
@@ -25,7 +25,7 @@ lessons that shape planned work. Everything else lives on its canonical surface:
 | **window** | one 520-cluster mirrored screen block of fresh deal seeds |
 | **MDE80** | minimum detectable effect at 80% power for that readout |
 | **as served** | the full production bot path, including declare, bury and budgets |
-| **comparator** | the champion a new strength claim must beat; now release 50 as served |
+| **comparator** | the champion a new strength claim must beat; now release 52 as served |
 | **MC-LCB** | the confirmed Monte Carlo search; the common control inside each ten-window screen (through 2026-10-25), not the comparator |
 | **duel** | the default screen since 2026-10-25: the candidate plays the served release head to head on the same deals, seats swapped |
 | **SCREEN_PASS / CONFIRMED** | the two duel-bar verdicts (3,920-deal screen; 7,840-deal fresh-seed confirmation); "Duel bar" below |
@@ -44,21 +44,18 @@ beat the served bot on fresh mirrored whole games with one learned model that ke
 data, with production's latency tail bounded. The standing goal is +0.05 levels/round over the served release
 (Jerry 2026-10-15; board #1075).
 
-- **Production:** release 50, deployed 2026-11-04 15:24 EST (Fly v57): release 49 with the G3 Stage A value
-  package, the FT1 card-play prior, the B1a belief package and belief bury worlds (`bbw`), vs release 49 confirmed
-  +0.0618 [+0.0507, +0.0729] (cbaC, 7,840 fresh paired deals; `AI_POLICIES.md` row 19). Release 49 ("Y": release 48
-  plus `sc8` and `lcc32`) is the rollback. Exact contract: `AI_POLICIES.md` "Production contract".
-- **Comparator:** new duels and screens compare against release 50 as served (Jerry, in session 2026-11-04,
-  "Yes move comparator"). Confirmations keep their parent's comparator; historical reads keep their original labels.
-  The previous comparators were release 49 (Jerry, in session 2026-11-01), release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod policy of
+- **Production:** release 52, deployed 2026-11-09 17:25 EST (Fly v64; Jerry, in session 2026-11-09, "I'm good to
+  release it"): release 51 plus the combo51 search rules (`elt`, `elm`, `els1600`, `wht`, `rcec`), same packages and
+  budgets; vs release 51 screen combo51 +0.0418 [+0.0332, +0.0506] (SCREEN_PASS) and confirmation combo51C +0.0438
+  [+0.0381, +0.0497] (CONFIRMED, 7,840 fresh paired deals), both on the M5 Ultra (`AI_POLICIES.md` row 21). Its
+  strength on Fly is not measured; its Fly latency is measured for one game at a time only. Release 51 (release 50
+  with `lcc32` off; row 20) is the rollback. Exact contract: `AI_POLICIES.md` "Production contract".
+- **Comparator:** new duels and screens compare against release 52 as served (Jerry approved release 52 in session
+  2026-11-09; deployed Fly v64). Confirmations keep their parent's comparator; historical reads keep their original
+  labels. The previous comparators were release 51 (2026-11-06, with the lcc-off release; lcc off on both sides),
+  release 50 (Jerry, in session 2026-11-04, "Yes move comparator"), release 49 (Jerry, in session 2026-11-01), release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod policy of
   r48"), release 46 (Jerry 2026-10-16, recorded on #1075) and release 45 (Jerry 2026-10-13, #988
   issuecomment-6142666693).
-- **Release 51 (prepared for deploy):** release 50 with `lcc32` off, same packages (`AI_POLICIES.md` row 20).
-  The confirmation lccC read KEEP_LCC, off − on −0.0133 [−0.0232, −0.0033] on cloud (the S82 leave-one-out loo read
-  DROP_SAFE, +0.0079 [−0.0069, +0.0221], on the M5 Ultra); on Fly the stage applied on 1–2% of non-exact leads and
-  lcc off used 0.55× the CPU per play (S91). Jerry chose it for the CPU, in serving and data generation, with the
-  cloud cost in view (in session 2026-11-06). Its strength effect on Fly is not measured. After the deploy, new
-  duels and screens run lcc off on both sides.
 
 | evidence label | supports |
 |---|---|
@@ -127,8 +124,9 @@ The two-stage rule applies only to runs not yet started when it was adopted (202
 
 ## Planned work
 
-**What changes production next:** a change that passes the duel bar against release 50 as served (a screen, then a
-fresh-seed confirmation), then the `DEPLOY.md` release checklist and Jerry's word. Release 50 shipped on a fresh-seed
+**What changes production next:** a change that passes the duel bar against release 52 as served (a screen, then a
+fresh-seed confirmation), then the `DEPLOY.md` release checklist and Jerry's word. Release 52 shipped on a screen
+(combo51) and a fresh-seed confirmation (combo51C) against release 51 plus a single-game Fly timing run. Release 50 shipped on a fresh-seed
 confirmation against release 49 (cbaC) plus a duel screen (cbaf) and the R50 speed profile; release 49 shipped on a duel
 plus a fresh-seed confirmation (combo3y, combo3yc) and latency reads (v107sc8lat, s71fly). Correctness fixes may ship
 with no strength claim when the served screen is not demonstrated negative (releases 42, 43).

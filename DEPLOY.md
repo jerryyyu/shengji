@@ -20,25 +20,25 @@ Release records through release 46 in full: [docs_archive/deploy-through-2026-10
 
 Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 
-## Release 52 (prepared for deploy)
+## Current production
 
-**Release 52** (prepared): release 51 with the combo51 search rules. The exact lead keeps the baseline lead unless the exact
+**Release 52**: release 51 with the combo51 search rules. The exact lead keeps the baseline lead unless the exact
 pass is strictly better (`elt`), solves its own first trick by full minimax (`elm`) and stops at 1.6 s
 (`els1600`); the play worlds keep every earlier accepted throw legal (`wht`); refusals are recorded from every
 committed play (`rcec`). Same packages, same stage table (`server/releases/r52.json`), and sc8, lcc off, every other
-rule, every budget and the latency switches are release 51's. Prepared for deploy; until `/healthz` shows the name
-below, production is release 51 ("Current production", below), served by Fly v63. At the deploy, this section
-becomes "Current production" and release 51's moves under "Rollback" (Release checklist, step 11).
+rule, every budget and the latency switches are release 51's. Live since 2026-11-09 17:25 EST (22:25Z, Fly v64);
+the first-room qualification (Release checklist, steps 9–10) is pending the first live room. Release 51's record is
+under "Rollback".
 
 | field | value |
 |---|---|
-| deployed | pending deploy (fill in: ET and Z time, room count). Jerry's word: in session 2026-11-09, "I'm good to release it" |
-| Fly version | pending deploy (rollback: v63 for release 51 with the current web client; v61 for release 51's original deploy) |
-| image | pending deploy |
-| source | the release-52 branch head, release 51's `1490b72b` server (below), deployed from a clean worktree at that commit |
+| deployed | 2026-11-09 17:24–17:25 EST (22:24–22:25Z) at 0 rooms. Jerry's word: in session 2026-11-09, "I'm good to release it"; for the Fly timing gate he chose, in session, to ship on the single-game (k=1) Fly timing (Latency, below) |
+| Fly version | v64 (rollback: v63 for release 51 with the current web client; v61 for release 51's original deploy) |
+| image | `registry.fly.io/shengji:deployment-01M716JX8M23QWSN0RTM7T20HR` |
+| source | #1347's reviewed head `99338c7ec5ed55c977cb557dda826896629f74eb`, release 51's `1490b72b` server (below), deployed with `flyctl deploy --app shengji --ha=false` from a clean worktree at that commit; squash-merged to main as `754018ac`, whose tree also carries main's later commits and is not the deployed tree |
 | evidence | combo51 SCREEN_PASS and combo51C CONFIRMED against release 51, Fly v61's bot (Evidence, below) |
-| deploy record | pending deploy |
-| comparator | release 51 as served until the deploy[^cmp]; after it, release 52 as served |
+| deploy record | [#1263 issuecomment-6753130529](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6753130529): `/healthz` ok, rooms 0, `fast: true`, bot equal to the release-52 `SHENGJI_BOT` in `fly.toml`, value `f4f4127e…`, prior `0d17fd03…`, budget 3 s, bury hybrid at 2 s; in-machine `True compiled 028131a0`; first-room reader pending the first live room |
+| comparator | release 52 as served for new duels and screens from the deploy[^cmp]; release 51 as served before it |
 
 **Source.** The release tree is release 51's commit `1490b72bf186180b1480c95ed825d1d3e7696737` with three
 changes: `fly.toml` gains the five lines below and the release-52 name; `web/` is main's (the client Fly v63
@@ -104,18 +104,21 @@ alone, never pooled.
 Validity on both sides in both reads: 0 play, belief and bury fallbacks, 0 declare abandons. combo51C's
 first-divergence locator finds its three largest gain cells at leads in tricks 11 and later (the exact stage's
 range), +0.0249 of the +0.0438 together. These are
-duel-host reads; **the strength and the latency of release 52 on Fly are not measured.**
+duel-host reads; **the strength of release 52 on Fly is not measured**, and its Fly latency is measured for one
+game at a time only (Latency, below).
 
 ### Latency
 
 | read | what | result | pointer |
 |---|---|---|---|
 | combo51C (M5 Ultra duel host, descriptive) | exact-lead stage, combo vs release 51 | stage seconds p50/p95/p99/max 0.013/0.685/1.6/1.601 vs 0.014/0.206/0.486/2.25; abandoned 532 of 33,184 started (1.6%, all at the cap) vs 5 of 31,356; lead decision p99 0.858 vs 0.367 s; mean decision time ratio 1.059 | `readouts/combo51C/` |
-| Fly timing | the exact-lead tail on the production machine at 0 rooms | **pending** (a packet is in preparation) | — |
+| Fly timing, run 2 (production machine at 0 rooms, one game, k=1) | all-scope decision seconds, release 52 vs release 51 | p95 0.855 vs 0.835, p99 0.943 vs 0.941, max 1.011 vs 1.064; 0 fallbacks; exact lead 16 started, 0 abandoned, max 0.75 s; child memory high-water mark 172 vs 174 MB. The run as a whole is INSUFFICIENT: its k=2 cell ended on the 80 MiB MemAvailable floor because the harness runs beside the live server on the 512 MiB machine, so **latency with 2 or 4 concurrent games on Fly is not measured**. Run 1 was INSUFFICIENT (a player joined). | `~/shengji-archive/2026-11-09-combo51-fly-run2/` |
 
 The exact-lead tail is the release's cost: leads that reach the stage can now run to the 1.6 s cap where release 51
 mostly finished under 0.5 s. A Fly core is slower than the duel host, so the share of stages that hit the cap is
-expected to be higher on Fly; the Fly timing read measures it before the deploy.
+expected to be higher on Fly. In the single-game Fly run none of the 16 started stages reached the cap (max
+0.75 s); 16 stages do not settle the cap rate, and with concurrent games or under the CPU-credit throttle it is not
+measured. Jerry chose to ship on the single-game read.
 
 ### Pre-deploy smoke (release tree, this host)
 
@@ -144,7 +147,9 @@ cold-boot case (Release checklist, step 9), on a contended host.
 
 Release 51's rows of the first-room rollback triggers (Release checklist, step 9). New for release 52: the
 exact-lead tail. Record the share of started exact-lead stages that abandon (`exact_lead_status == "abandoned"`,
-reason `soft_budget` at the cap) and the exact-lead decision p95/max; any other abandon reason is a defect.
+reason `soft_budget` at the cap) and the exact-lead decision p95/max; any other abandon reason is a defect. Fly
+latency with 2 or more concurrent games is unmeasured: read decision p95/max and fallbacks from the first rooms that
+overlap.
 
 ### Release note: what a player will notice
 
@@ -153,7 +158,9 @@ reason `soft_budget` at the cap) and the exact-lead decision p95/max; any other 
 - **Slower endgame leads, sometimes.** Those leads can take up to about 1.6 s of thinking.
 - **Fewer impossible card reads.** The bot no longer imagines hands that contradict a throw that stood.
 
-### Rollback to release 51
+## Rollback
+
+### To release 51 (the rollback target)
 
 Release 51 as served before release 52: Fly v63 (web-only redeploy of release 51 with main's client, tree
 `claude/deploy-r51-web-ios` at `ae1ef0abfb41ad63cf6c987d8ffd30f55722696c`), whose bot is the one Fly v61 first
@@ -216,12 +223,12 @@ qualification checks there before any authorized deploy. Editing only release 52
 `test_release_manifests.py` to r51: that test explicitly loads r52. The explicit r51 manifest comparison above
 validates the rollback configuration without changing the release-52 manifest or its tests.
 
-## Current production
+#### Release 51 record
 
 **Release 51**: release 50 with the held-out lead confirmation off (`SHENGJI_PV_LEAD_CONFIRM = '0'`; `lcc32`
 leaves the name). Same packages, same stage table (`server/releases/r51.json`), and sc8, every other rule, every
-budget and the latency switches are release 50's. Deployed 2026-11-06 as Fly v61; release 50 (its record is under
-"Rollback") is the rollback target.
+budget and the latency switches are release 50's. Production from 2026-11-06 02:10 EST (Fly v61) until release
+52's deploy; Fly v63 redeployed it with main's web client and the same served name.
 
 | field | value |
 |---|---|
@@ -244,11 +251,11 @@ and the play digest (`rb3477266` → `r30ff6f0f`) and the bury suffix (`b6262940
 play identity. It is byte for byte the lcc-off arm lccC and loo duelled against release 50
 (`test_release51_fly_config.py` derives it from the `/data/models/` paths).
 
-### Packages
+##### Packages
 
 Release 50's, unchanged; nothing to upload. Keep every release-50 and release-49 package on the volume.
 
-### `fly.toml` keys
+##### `fly.toml` keys
 
 | change | `fly.toml` | name token |
 |---|---|---|
@@ -262,7 +269,7 @@ also builds the release-50 rollback (lcc32 back on). `test_release_manifests.py`
 `server/scripts/y_trajectory.py`, the served-recipe data runner, now requires the lead confirmation off, so new
 served-budget self-play data is generated without lcc32.
 
-### What changes at serving time
+##### What changes at serving time
 
 - **Leads.** On a lead with no exact stage, release 50 screened up to 32 of the policy's next actions on 32 base
   worlds and re-priced up to two challengers on fresh worlds before keeping or replacing the searched lead. Release
@@ -272,7 +279,7 @@ served-budget self-play data is generated without lcc32.
 - **CPU.** On Fly, lcc-off plays took 0.55× the CPU per play of lcc-on (S91, below); data generation on the served
   recipe is cheaper by about the same share.
 
-### Evidence
+##### Evidence
 
 Paired, seat-swapped head-to-head duels inside release 50, its stack with lcc32 off against the same stack with
 lcc32 on, at the 3 s play and 2 s bury budgets.
@@ -300,14 +307,14 @@ fallbacks 40 of 170 against 26 of 153. The Codex saved-result audit
 cuts CPU but does not fix throttled serving; these are descriptive rates (rows share rooms and credit history).
 `readouts/S91-fly-lccoff/`.
 
-### Latency
+##### Latency
 
 | read | what | result | pointer |
 |---|---|---|---|
 | S91 (Fly, unthrottled k=1) | lcc off vs on, same release-50 packages | CPU per play ×0.552; decision p95 0.84–0.91 s off vs 2.01–2.02 s on; 0 play-budget, belief and bury fallbacks in both unthrottled single-room cells | `readouts/S91-fly-lccoff/` |
 | loo (M5 Ultra duel host, descriptive) | lcc off vs on | lead p95 0.305 s off vs 0.830 s on; decide_play p95 0.272 vs 0.702 s; mean decision time ratio 0.567 | `readouts/loo/` |
 
-### Pre-deploy smoke (release tree, this host)
+##### Pre-deploy smoke (release tree, this host)
 
 `smoke_release45_bury.py --rounds 10 --full-round` on the release branch (head `71865ee7`, clean) with sha-verified
 local packages (the three release-50 `serving-packages` assets and JS-M1), Mac mini M4, compiled engine, run
@@ -323,22 +330,20 @@ position: leads (176) p50 0.152 / p95 0.217 / max 0.454 s (release 50's smoke: `
 (528) p95 0.098 s. A niced test process shared the host during the smoke. These are M4 timings, not Fly's. Re-run
 on the merged tree before the deploy (Release checklist, step 3).
 
-### Watch list
+##### Watch list
 
 Release 50's rows of the first-room rollback triggers (Release checklist, step 9), with every decision p95
 against the 1.5 s row (no `lcc` leads remain); no record carries `lead_confirm_status` (any one means the stage
 ran: examine); bury-belief fallbacks; the `/healthz` `activity` counters (step 10).
 
-### Release note: what a player will notice
+##### Release note: what a player will notice
 
 - **Faster leads.** Early leads no longer spend up to 2 s on the confirmation stage; on Fly most such stages
   were abandoned anyway.
 - **Rarely a different lead.** Where the stage completed and replaced the lead (about 1–2% of Fly's non-exact
   leads in S91), release 51 plays the search's own choice.
 
-## Rollback
-
-### To release 50 (the rollback target)
+### To release 50
 
 Release 50 as served before release 51: Fly v59, image `deployment-01M6NVJGMKP9G0AKFPY9MZ8668`, main `26924ef7`
 (the release-50 recipe of #1260 with later decision-identical deploys of main). Its packages are release 51's.
@@ -1119,7 +1124,8 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
-| 51 | 2026-11-06 (Fly v61) | release 50 with the held-out lead confirmation off (`SHENGJI_PV_LEAD_CONFIRM = '0'`); lccC (off − on) −0.0133 [−0.0232, −0.0033] on cloud, loo +0.0079 [−0.0069, +0.0221]; S91: CPU per play ×0.55 on Fly | flag | this PR | `deployment-01M6QW43KBFT3ZDDZWM298WPM3` (v61) |
+| 52 | 2026-11-09 17:25 EST | combo51 on release 51: exact lead keeps the baseline on ties (`elt`), minimax first trick (`elm`), 1.6 s cap (`els1600`), history-legal throws in the play worlds (`wht`), event-complete refusals (`rcec`); duels vs release 51 on the M5 Ultra: combo51 +0.0418 [+0.0332, +0.0506] SCREEN_PASS, combo51C +0.0438 [+0.0381, +0.0497] CONFIRMED (7,840 fresh deals); Fly: single-game timing only, strength not measured | flags | #1347 | v64, `deployment-01M716JX8M23QWSN0RTM7T20HR`, head `99338c7e` |
+| 51 | 2026-11-06 (Fly v61) | release 50 with the held-out lead confirmation off (`SHENGJI_PV_LEAD_CONFIRM = '0'`); lccC (off − on) −0.0133 [−0.0232, −0.0033] on cloud, loo +0.0079 [−0.0069, +0.0221]; S91: CPU per play ×0.55 on Fly | flag | #1312 | `deployment-01M6QW43KBFT3ZDDZWM298WPM3` (v61) |
 | 50 | 2026-11-04 15:24 EST | the cbaC stack: G3 Stage A value + FT1 card-play prior + B1a belief + belief bury worlds (`bbw`) on release 49; evidence [cbaC](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629156672) (audit [6629239690](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629239690)), [cbaf](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6637319197), rtF; latency: the R50 speed profile, Fly timing pending | new value `f4f4127e…`, prior `1fa201b2…`, belief `028131a0…` | #1260 | v57, `deployment-01M6M3PX2A43CPZ65RBQPRY8AB` |
 | 49 | 2026-11-01 01:39 EST | board combo3 arm Y: singleton challenger (`sc8`) + held-out lead confirmation (`lcc32`) on release 48; evidence [combo3y](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6475680068), [combo3yc](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6479431994), latency s71fly + v107sc8lat | flags | #1194 | `deployment-01M6AX9WCDG3YMGWZPDE9PSM12` (v56), main `d2a6346a` |
 | 48 | 2026-10-24 10:18 | S58 belief package + `dtrx` + guarded greedy finish (`lgf lgfx lgfd2000`) + latency switches; evidence [r48cloud](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6383298163), [r48confirm](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384251320), [v105lat](https://github.com/jerryyyu/shengji/issues/1075#issuecomment-6384912469) | new belief package `42444515…` | #1147 | `deployment-01M5Q4ACYEJ901SQB3BNMPC55A` (v47), main `f14ace15` |
@@ -1235,7 +1241,9 @@ Policy cost, not the rules engine, sets CPU capacity.
 - Load-test the chosen policy and room mix before advertising capacity. Memory per room is small; more than one
   process would need external state and room-affinity routing.
 
-[^cmp]: Jerry, in session 2026-11-04 ("Yes move comparator"): duels and screens move to release 50 as served. Before that, release 49 (Y; Jerry, in session 2026-11-01), release 48
+[^cmp]: Duels and screens move to release 52 as served at its deploy (2026-11-09), as release 52's reviewed record
+    set out; before that release 51 (2026-11-06, lcc off on both sides, per Jerry's 2026-11-06 word). Jerry, in
+    session 2026-11-04 ("Yes move comparator"): release 50 as served. Before that, release 49 (Y; Jerry, in session 2026-11-01), release 48
     (Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48"), release 46
     (Jerry 2026-10-16, #707 issuecomment-6223485189), and before that release 45 (Jerry 2026-10-13, #988 issuecomment-6142666693). Confirmations keep their parent's comparator.
 [^belief]: Registration refuses a missing or mismatched belief file, so a served bot at all means the sha matched;

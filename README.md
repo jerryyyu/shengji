@@ -9,14 +9,19 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 51** (since 2026-11-06 ~02:10 EST, Fly v61; [deploy record](https://github.com/jerryyyu/shengji/pull/1312#issuecomment-6679669956)):
-release 50 with the held-out lead confirmation (lcc32) off, `SHENGJI_PV_LEAD_CONFIRM = '0'`; every package, rule and
-budget is release 50's. It is cheaper per play (Fly CPU per play ×0.552, S91) at a measured strength cost on cloud
-(lccC, lcc off − on: −0.0133 [−0.0232, −0.0033], KEEP_LCC); the M5 Ultra read loo (+0.0079 [−0.0069, +0.0221],
-DROP_SAFE) disagrees, and Fly, where the stage rarely completes, has not been measured. Jerry chose it with lccC's
-cost in view, for cheaper serving and data generation. New duels and screens compare against release 51 as served
-(lcc off on both sides). **Release 50** (the cbaC stack, served 2026-11-04 to 11-06, Fly v57–v60, and the rollback
-target) is release 49 on the G3 Stage A value package, the FT1 card-play prior, the B1a belief package and
+**Live: release 52** (since 2026-11-09 17:25 EST, Fly v64; [deploy record](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6753130529);
+[DEPLOY.md](DEPLOY.md#current-production)): release 51 plus the combo51 search rules. The exact lead keeps the
+baseline unless the exact pass is strictly better (elt), solves its own first trick by full minimax (elm) and stops
+at 1.6 s (els1600); the play worlds keep every earlier accepted throw legal (wht); refused throws are recorded after
+every committed play (rcec). Same packages and budgets. Against release 51 (paired, seat-swapped duels on the M5
+Ultra): screen combo51 +0.0418 [+0.0332, +0.0506] (SCREEN_PASS), confirmation combo51C +0.0438 [+0.0381, +0.0497]
+on 7,840 fresh deals (CONFIRMED). Its strength on Fly is not measured; on Fly, one game at a time, its decision p95
+was 0.855 s against release 51's 0.835 s, and latency with 2 or 4 concurrent games there is not measured. New duels
+and screens compare against release 52 as served. **Release 51** (served 2026-11-06 to 11-09, Fly v61 then v63, and the
+rollback target) is release 50 with the held-out lead confirmation (lcc32) off, `SHENGJI_PV_LEAD_CONFIRM = '0'`:
+cheaper per play (Fly CPU per play ×0.552, S91) at a measured strength cost on cloud (lccC, lcc off − on: −0.0133
+[−0.0232, −0.0033], KEEP_LCC); the M5 Ultra read loo (+0.0079 [−0.0069, +0.0221], DROP_SAFE) disagrees, and Fly
+has not been measured. Jerry chose it with lccC's cost in view, for cheaper serving and data generation. **Release 50** (the cbaC stack, served 2026-11-04 to 11-06, Fly v57–v60) is release 49 on the G3 Stage A value package, the FT1 card-play prior, the B1a belief package and
 belief-drawn bury worlds (bbw). Release 49 is
 release 48 plus two lead rules, the singleton challenger (sc8) and the held-out lead confirmation (lcc32). Release 48 is release 46 with
 the S58 belief package, dtrx and the guarded greedy-finished value leaf (lgf, lgfx, lgfd2000). Release 46 is the combo: belief-model worlds + exact
@@ -26,13 +31,6 @@ outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (
 (release 44) and the wide value-only bury (release 45). The model owns declaration, bury and card
 play; the heuristic is the anchor and the fallback. Colour marks what release 46 added: violet belief,
 berry exact endgame, blue declaration.
-
-**Release 52**, prepared for deploy ([DEPLOY.md](DEPLOY.md#release-52-prepared-for-deploy)), is release 51 plus the
-combo51 search rules: the exact lead keeps the baseline unless the exact pass is strictly better (elt), solves its
-own first trick by full minimax (elm) and stops at 1.6 s (els1600); the play worlds keep every earlier accepted throw
-legal (wht); refused throws are recorded after every committed play (rcec). Same packages and budgets. Against
-release 51 (paired, seat-swapped duels on the M5 Ultra): screen combo51 +0.0418 [+0.0332, +0.0506] (SCREEN_PASS),
-confirmation combo51C +0.0438 [+0.0381, +0.0497] on 7,840 fresh deals (CONFIRMED). Fly timing is pending.
 
 <img src="docs/visuals/release46-bot-turn.svg" alt="One release-46 play decision drawn from a live lead in room ADKY: seat 3 holds seven cards; the S17 belief model gives each hidden card&#39;s holder probabilities as a heatmap (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in every world (rows candidates, columns worlds: 512 positions (values) sent as 4 forward calls, batches of 128) and the mean picks the ace of clubs (1.799); then the exact endgame, in five steps (belief worlds; play each candidate; try each one with all hands face up to the round's end; average over the 64 worlds; pick the best average), with alpha-beta pruning and a transposition-table cache (429,026 positions tried, 173,315 reused, 0.197 s), switches to the jack of diamonds (mean 1.797 vs 1.719), played in 0.49 s. One world, the true deal, is drawn: the jack of diamonds and the ace of clubs both end with attackers on 45 (+1 level), the 5-8-ace of clubs on 80, a lost deal." width="100%">
 
@@ -68,6 +66,7 @@ Rule tokens used in the figures and tables:
 
 | change | against | result | reading | vs Sol, actor-only | vs PT-Sol |
 |---|---|---|---|---|---|
+| combo51: elt + elm + els1600 + wht + rcec (release 52; paired head-to-head duels) | release 51 | screen +0.0418 [+0.0332, +0.0506]; confirmation +0.0438 [+0.0381, +0.0497] (7,840 fresh deals) | SCREEN_PASS and CONFIRMED (combo51, combo51C), M5 Ultra; Fly strength not measured | — | — |
 | lead confirmation off (release 51; paired head-to-head duels, lcc off − on inside release 50) | release 50 | lccC −0.0133 [−0.0232, −0.0033] (confirmation, cloud); loo +0.0079 [−0.0069, +0.0221] (M5 Ultra) | KEEP_LCC (lccC) and DROP_SAFE (loo): the reads disagree; shipped for CPU (Fly ×0.552 per play, S91) on Jerry's word; Fly strength not measured | — | — |
 | G3 Stage A value + FT1 prior + B1a belief + bbw (release 50; paired head-to-head duels) | release 49 | screen +0.0695 (one-sided 80% lower bound +0.0631); confirmation +0.0618 [+0.0507, +0.0729] | SCREEN_PASS and CONFIRMED (cbaf arm a, cbaC); four changes at once; AI_POLICIES ladder row 19 has the one within-run attribution | — | — |
 | sc8 + lcc32 (release 49; paired head-to-head duels, not the MC-LCB scale) | release 48 | +0.0270 [+0.0135, +0.0408]; confirmation +0.0306 [+0.0167, +0.0441] | DEV_PASS and CONFIRMED (combo3y, combo3yc) | — | — |
@@ -97,7 +96,7 @@ Open work: the board issue (see AGENTS.md) and [RL_PLAN.md](RL_PLAN.md#planned-w
 
 <img src="docs/visuals/how-a-change-ships.svg" alt="How a change ships: idea, DEV test with a predeclared bar, screen duel of 3,920 seat-swapped deals, confirmation duel of 7,840 fresh deals, latency gate on one core, reviewed release PR with green CI, deploy on Jerry&#39;s word, Fly check. Inside one duel, the candidate plays the served release head to head, each deal twice with the seats swapped; example cbaC, a confirmation of the release-50 candidate: +0.0618 [+0.0507, +0.0729] levels per round vs release 49 as served, CONFIRMED because the mean is at least +0.005 and the 95% lower bound is above zero." width="100%">
 
-Screens and confirmations are paired, seat-swapped head-to-head duels against the served release (release 51):
+Screens and confirmations are paired, seat-swapped head-to-head duels against the served release (release 52):
 each deal is played twice with the seats swapped, and the read is signed levels per round with a deal bootstrap.
 A screen of 3,920 deals passes when the mean is at least +0.005 and the one-sided 80% lower bound is above zero; a
 screen pass earns a 7,840-deal fresh-seed confirmation (mean at least +0.005, 95% lower bound above zero) or a

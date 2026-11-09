@@ -1,0 +1,14 @@
+{
+ "name": "x4-mini-1007100000",
+ "purpose": "trajectory",
+ "seed0": 1007100000,
+ "clusters": 20000,
+ "span": [
+  1007100000,
+  1007120000
+ ],
+ "created_at": "2026-11-09T13:00:00Z",
+ "host": "jerrys-mac-mini",
+ "git_head": "5ec556f1939bc79cf207ee596c56b960332b15c9",
+ "note": "The Mac mini share (up to 40,000 rounds; legs shipped to the Ultra after each one ends). X4 (Jerry 2026-11-09, in session: \"I think we should aim to gen 100k of that\"; standing data-gen authorization): 100,000 rounds (50,000 clusters) of x1a self-play, all four seats x1a (pv-search-f4f4127e-prior-1fa201b2-w256-k16-...-lcc32-r959f561c-bury-hybrid-bwv-bbw-5d189e27e294-sc8, budgets lifted: play 120 s, bury 60 s, lgfd 60 s, exact lead 60 s), the X2 generator byte-for-byte (runner x2_gen.py c01a2f92, trajectory.py DEV 1cb6b06b on main 5ec556f1, fly.toml 217f40e7, packages f4f4127e / 1fa201b2 / 028131a0), --round-mix sampled, explore 0, cap 256, served-budget capture (--capture-budgets 120,60) with declare records; two rounds per cluster; archive ~/shengji-archive/2026-11-09-x4-gen. Distillation corpus (prior / value / belief consumers of the X2 format); a screen must not reuse these deals. RESERVED BEFORE DEALING. The host's runtime registry must not contain this entry (the producer registers its own run_id window)."
+}

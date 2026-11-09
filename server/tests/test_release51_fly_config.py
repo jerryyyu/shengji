@@ -1,11 +1,13 @@
-"""Release 51: the shipping ``fly.toml`` serves release 50 with the lead confirmation off.
+"""Release 51, the rollback of release 52: release 50 with the lead confirmation off.
 
 Release 51 changes one value in release 50's environment and nothing else:
 ``SHENGJI_PV_LEAD_CONFIRM`` is ``'0'`` instead of ``'32'``, so the held-out lead
 confirmation (``lcc32``) never runs.  The name loses ``-lcc32`` and its two digests
 move; the packages, the stage table, sc8, every other rule, budget and latency switch
 are release 50's.  Release 50's env is this one with lcc32 restored
-(``release50_env``, the documented rollback).
+(``release50_env``, the documented rollback).  Release 52 adds five lines and changes
+nothing else, so release 51's env is the repo's ``fly.toml`` with them removed
+(``release51_env``).
 
 The served bot is built from the repo's ``fly.toml`` environment exactly as the
 server builds it (the registry's import-time registration, then
@@ -20,7 +22,7 @@ import os
 import random
 
 from shengji import releases
-from test_release46_fly_config import fly_env as production_env
+from test_release46_fly_config import fly_env as production_env, undo_release52
 from test_release48_fly_config import LATENCY_KEYS
 from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA, PRIOR_VOLUME_PATH,
                                        RELEASE50, VALUE_SHA, VALUE_VOLUME_PATH, release50_env,
@@ -36,15 +38,27 @@ RELEASE51 = ("pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-
 R51_CHANGES = {"SHENGJI_PV_LEAD_CONFIRM": "0"}
 
 
-def test_fly_toml_is_release50_with_lcc_off():
-    env = production_env()
+def release51_env(env: dict) -> dict:
+    """Production's env with release 52's rollback applied: its five lines removed and
+    the release-51 name restored."""
+    return {**undo_release52(env), "SHENGJI_BOT": RELEASE51}
+
+
+def fly_env() -> dict:
+    """Release 51's ``fly.toml`` ``[env]``: the repo's, rolled back from release 52."""
+    return release51_env(production_env())
+
+
+def test_release51_is_release50_with_lcc_off():
+    env = fly_env()
     assert env["SHENGJI_BOT"] == RELEASE51
     assert {k: env[k] for k in R51_CHANGES} == R51_CHANGES
     r50 = release50_env(env)
     changed = {k for k in set(env) | set(r50) if env.get(k) != r50.get(k)}
     assert changed == {"SHENGJI_BOT", *R51_CHANGES}
     assert r50["SHENGJI_BOT"] == RELEASE50 and r50["SHENGJI_PV_LEAD_CONFIRM"] == "32"
-    # the rollback is release 50's manifest env, key for key
+    # release 51 (the rollback of release 52) and its own rollback are their manifests' envs
+    assert {k: v for k, v in env.items() if k not in releases.NON_BOT_KEYS} == releases.load(51)["env"]
     assert {k: v for k, v in r50.items() if k not in releases.NON_BOT_KEYS} == releases.load(50)["env"]
     assert env["SHENGJI_PV_SINGLETON_CHALLENGER"] == "1"
 
@@ -58,7 +72,7 @@ def test_the_volume_paths_derive_the_served_name(monkeypatch):
     by_path = {VALUE_VOLUME_PATH: VALUE_SHA, PRIOR_VOLUME_PATH: PRIOR_SHA, BELIEF_VOLUME_PATH: BELIEF_SHA}
     monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: by_path[str(path)][:8])
     monkeypatch.setattr(pv, "file_sha256", lambda path: by_path[str(path)])
-    env = production_env()
+    env = fly_env()
     assert not pv.pv_env_recipe(env).get("lead_confirm")
     assert pv.pv_env_recipe(release50_env(env))["lead_confirm"] == 32
     assert list(pv.singleton_registry_entries(**pv.pv_env_recipe(env))) == [env["SHENGJI_BOT"]] == [RELEASE51]
@@ -72,7 +86,7 @@ def test_served_bot_is_release51(release50_packages, monkeypatch):
     from shengji.eval.served_config import registry_name
     from shengji.eval.singleton_challenger import SingletonChallengerBuryBot
 
-    env = production_env()
+    env = fly_env()
     name, bot = served_bot(release50_packages, monkeypatch, env=env)
     assert name == bot.policy_name == RELEASE51
     assert registry_name({**env, "SHENGJI_PV_CKPT": str(release50_packages["value"]),
@@ -100,7 +114,7 @@ def test_served_lead_runs_without_lead_confirmation_through_the_server_path(
     from shengji.train import pv_search_policy as pv
 
     monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
-    name, bot = served_bot(release50_packages, monkeypatch, env=production_env(), seed=7)
+    name, bot = served_bot(release50_packages, monkeypatch, env=fly_env(), seed=7)
     assert name == RELEASE51
     bot.leaf_greedy_deadline_ms = 0
     bot.serving_budget_seconds = None
@@ -135,7 +149,7 @@ def test_served_lead_runs_without_lead_confirmation_through_the_server_path(
 
 
 def test_rollback_to_release50_restores_lcc32(release50_packages, monkeypatch):
-    name, bot = served_bot(release50_packages, monkeypatch, env=release50_env(production_env()))
+    name, bot = served_bot(release50_packages, monkeypatch, env=release50_env(fly_env()))
     assert name == bot.policy_name == RELEASE50
     assert bot.lead_confirm == 32 and bot.config.lead_confirm == 32
     expected = "compiled" if os.environ.get("SHENGJI_FAST") == "1" else "python"

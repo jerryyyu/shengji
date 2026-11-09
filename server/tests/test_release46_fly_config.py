@@ -1,4 +1,4 @@
-"""Release 46, the fourth rollback of release 51: the combo screened as v92combo45.
+"""Release 46, the fifth rollback of release 52: the combo screened as v92combo45.
 
 The combo is release 45 plus history-legal, belief-proposed play worlds (``-whl
 -whd -bw``, the S17 belief package), the exact endgame search at 7 cards (``-ele
@@ -6,8 +6,9 @@ The combo is release 45 plus history-legal, belief-proposed play worlds (``-whl
 first-round chance (``-vdef``).  Release 48 changes the belief pair and adds
 the lines in ``RELEASE48_ADDED_KEYS``, release 49 adds ``RELEASE49_ADDED_KEYS``, and
 release 50 adds ``RELEASE50_ADDED_KEYS`` and changes the value and belief pairs, and
-release 51 turns the lead confirmation off (``undo_release50`` undoes both), so release
-46's env is the repo's ``fly.toml`` environment with the four changes undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
+release 51 turns the lead confirmation off, and release 52 adds ``RELEASE52_ADDED_KEYS``
+(``undo_release50`` undoes all three), so release
+46's env is the repo's ``fly.toml`` environment with the five changes undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
 (``pv_env_recipe`` ->
 ``pv_registry_entries`` -> the factory) on the hash-pinned production and belief
 packages, so the registry name, every combo knob, the bound belief model and the
@@ -89,9 +90,24 @@ COMBO_KEYS = tuple(V92_CANDIDATE_ENV) + RELEASE48_ADDED_KEYS + RELEASE49_ADDED_K
 RELEASE50_LEAD_CONFIRM = {"SHENGJI_PV_LEAD_CONFIRM": "32"}
 
 
+#: the lines release 52 adds to release 51's env (besides the name): the combo51 exact-lead
+#: rules (elt, elm, els1600), history-legal throws (wht) and event-complete refusals (rcec)
+RELEASE52_ADDED_KEYS = ("SHENGJI_PV_EXACT_LEAD_TIE_BASELINE", "SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX",
+                        "SHENGJI_PV_EXACT_LEAD_MAX_SECONDS", "SHENGJI_PV_WORLD_HISTORY_THROWS",
+                        "SHENGJI_PV_REFUSAL_EVENT_COMPLETE")
+
+
+def undo_release52(env: dict) -> dict:
+    """``env`` with release 52's rollback applied (its five lines removed); the name is
+    left to the caller.  An env of release 51 or earlier is returned as is."""
+    return {k: v for k, v in env.items() if k not in RELEASE52_ADDED_KEYS}
+
+
 def undo_release51(env: dict) -> dict:
-    """``env`` with release 51's rollback applied (the lead confirmation back at 32);
-    the name is left to the caller.  An env of release 50 or earlier is returned as is."""
+    """``env`` with the rollbacks of releases 52 and 51 applied (the lead confirmation
+    back at 32); the name is left to the caller.  An env of release 50 or earlier is
+    returned as is."""
+    env = undo_release52(env)
     if env.get("SHENGJI_PV_LEAD_CONFIRM") != "0":
         return dict(env)
     return {**env, **RELEASE50_LEAD_CONFIRM}
@@ -130,7 +146,7 @@ BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
 
 
 def fly_env() -> dict:
-    """The repo's ``fly.toml`` ``[env]`` as written (production's, release 51)."""
+    """The repo's ``fly.toml`` ``[env]`` as written (production's, release 52)."""
     return tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
 
 

@@ -27,6 +27,13 @@ outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (
 play; the heuristic is the anchor and the fallback. Colour marks what release 46 added: violet belief,
 berry exact endgame, blue declaration.
 
+**Release 52**, prepared for deploy ([DEPLOY.md](DEPLOY.md#release-52-prepared-for-deploy)), is release 51 plus the
+combo51 search rules: the exact lead keeps the baseline unless the exact pass is strictly better (elt), solves its
+own first trick by full minimax (elm) and stops at 1.6 s (els1600); the play worlds keep every earlier accepted throw
+legal (wht); refused throws are recorded after every committed play (rcec). Same packages and budgets. Against
+release 51 (paired, seat-swapped duels on the M5 Ultra): screen combo51 +0.0418 [+0.0332, +0.0506] (SCREEN_PASS),
+confirmation combo51C +0.0438 [+0.0381, +0.0497] on 7,840 fresh deals (CONFIRMED). Fly timing is pending.
+
 <img src="docs/visuals/release46-bot-turn.svg" alt="One release-46 play decision drawn from a live lead in room ADKY: seat 3 holds seven cards; the S17 belief model gives each hidden card&#39;s holder probabilities as a heatmap (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in every world (rows candidates, columns worlds: 512 positions (values) sent as 4 forward calls, batches of 128) and the mean picks the ace of clubs (1.799); then the exact endgame, in five steps (belief worlds; play each candidate; try each one with all hands face up to the round's end; average over the 64 worlds; pick the best average), with alpha-beta pruning and a transposition-table cache (429,026 positions tried, 173,315 reused, 0.197 s), switches to the jack of diamonds (mean 1.797 vs 1.719), played in 0.49 s. One world, the true deal, is drawn: the jack of diamonds and the ace of clubs both end with attackers on 45 (+1 level), the 5-8-ace of clubs on 80, a lost deal." width="100%">
 
 <img src="docs/visuals/release46-played-out.svg" alt="How the J of diamonds played out live in room ADKY: six tricks from the lead at 7 cards each, with the human in seat 0; the banker team (bots 1 and 3) won every trick, the attackers stayed on 35 points, and the banker team went up 2 levels." width="100%">
@@ -37,14 +44,17 @@ Rule tokens used in the figures and tables:
 
 - **div**: diversify candidates (at most 2 of the same shape)
 - **rc**: keep only worlds where this round's refused throws stay refusable
+- **rcec**: record each refused throw after every committed play, not only on the bot's own turns (release 52)
 - **la**: lead anchor: on a weak-single lead, admit the strongest pair/tractor as candidate zero
 - **tb**: tie-break near-equal moves by points won this trick
 - **dtr**: drop a lead throw the engine would refuse in every world
 - **vd**: value-guided trump declaration
 - **vdef**: in round 1, consult the value head at every declare chance
 - **whl / whd**: sampled worlds must be consistent with every earlier follow (history-legal)
+- **wht**: sampled worlds must also leave every earlier accepted throw unrefusable (release 52)
 - **bw**: hidden hands proposed by the belief model (S17 in release 46, S58 since release 48)
 - **ele / ed7 / xf7**: exact endgame search for leads and follows at ≤7 cards
+- **elt / elm / els1600**: the exact lead keeps the baseline lead unless strictly better, solves its own first trick by minimax, and stops at 1.6 s (release 52)
 - **bwv**: wide value-only bury (64 candidate kitties)
 - **dtrx**: dtr never overrides a complete exact lead stage (release 48)
 - **lgf / lgfx / lgfd2000**: finish the trick with greedy replies before the value pass; skip it where an exact stage is eligible; stop it past 2 s (release 48)

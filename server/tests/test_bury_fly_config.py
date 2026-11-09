@@ -13,7 +13,8 @@ from test_release50_fly_config import (BELIEF_SHA as R50_BELIEF_SHA, BELIEF_VOLU
                                        PRIOR_SHA as R50_PRIOR_SHA, PRIOR_VOLUME_PATH as R50_PRIOR_PATH,
                                        R50_CHANGES, RELEASE50, VALUE_SHA as R50_VALUE_SHA,
                                        VALUE_VOLUME_PATH as R50_VALUE_PATH, release50_env)
-from test_release51_fly_config import R51_CHANGES, RELEASE51
+from test_release51_fly_config import R51_CHANGES, RELEASE51, release51_env
+from test_release52_fly_config import R52_CHANGES, RELEASE52
 
 # The shipping package (#425/#435, Jerry's go 2026-09-15 23:4x ET): the from-scratch joint
 # net JS-M1 a5248cc5 as ONE NumPy package (0d17fd03…) that is both the value net and, via
@@ -88,12 +89,15 @@ def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     # package and the belief bury worlds, R50_CHANGES; the name is the one cbaC confirmed.
     # Release 51: release 50 with the lead confirmation off, R51_CHANGES; the name is the
     # lcc-off arm lccC and loo duelled.
+    # Release 52: release 51 plus the combo51 lines (elt, elm, els1600, wht, rcec),
+    # R52_CHANGES; the name is the one combo51 and combo51C screened.
     for flag in ("ADMISSION_DIVERSITY", "REFUSAL_CONSTRAINTS", "TIEBREAK_POINTS", "LEAD_ANCHOR",
                  "DOOMED_THROW_RESELECT", "VALUE_DECLARE"):
         assert pv_recipe["SHENGJI_PV_" + flag] == "1"
     assert {k: pv_recipe[k] for k in R50_CHANGES} == R50_CHANGES
     assert {k: release49_env(env)[k] for k in R48_CANDIDATE_CHANGES} == R48_CANDIDATE_CHANGES
     assert {k: pv_recipe[k] for k in R51_CHANGES} == R51_CHANGES
+    assert {k: pv_recipe[k] for k in R52_CHANGES} == R52_CHANGES
     assert {k: release50_env(env)[k] for k in Y_CHANGES} == Y_CHANGES
     assert {k: release46_env(env)[k] for k in V92_CANDIDATE_ENV} == V92_CANDIDATE_ENV
     # The served name is the one the server derives from this env (pv_env_recipe ->
@@ -113,8 +117,15 @@ def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     recipe = pv.pv_env_recipe(env)
     checkpoint = recipe.pop("checkpoint")
     sc8_names = list(pv.singleton_registry_entries(checkpoint=checkpoint, **recipe))
-    assert sc8_names == [env["SHENGJI_BOT"]] == [RELEASE51] == [names[0] + "-sc8"]
-    assert RELEASE51.startswith("pv-search-f4f4127e-prior-1fa201b2-") and "-bwv-bbw-" in RELEASE51
+    assert sc8_names == [env["SHENGJI_BOT"]] == [RELEASE52] == [names[0] + "-sc8"]
+    assert RELEASE52.startswith("pv-search-f4f4127e-prior-1fa201b2-") and "-bwv-bbw-" in RELEASE52
+    # Rollback to release 51: release 52's five lines removed. They enter the play token
+    # and digest, and the bury suffix digests the play identity with them.
+    release51 = release51_env(env)
+    recipe = pv.pv_env_recipe(release51)
+    checkpoint = recipe.pop("checkpoint")
+    assert list(pv.singleton_registry_entries(checkpoint=checkpoint, **recipe)) == [RELEASE51]
+    assert "-bwv-bbw-" in RELEASE51 and "lcc" not in RELEASE51
     # Rollback to release 50: lcc32 back on. It enters the play token and digest, and the
     # bury suffix digests the play identity with it.
     release50 = release50_env(env)

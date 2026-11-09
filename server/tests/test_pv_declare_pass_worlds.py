@@ -44,7 +44,7 @@ from test_pv_admission_rules import names, production_package  # noqa: F401
 from test_pv_search_serving import package  # noqa: F401
 from test_pv_value_declare import NT_CASE, drive, fresh, state_at
 from test_release46_fly_config import without_combo
-from test_release51_fly_config import RELEASE51
+from test_release52_fly_config import RELEASE52
 
 FLAG = "SHENGJI_PV_VALUE_DECLARE_PASS_WORLDS"
 HEURISTIC = HeuristicBot()
@@ -63,10 +63,10 @@ def fly_env():
     import tomllib
     from pathlib import Path
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
-    # production is release 51 (release 45 + the combo + the changes of releases 48 to
-    # 51); the release-45 base is the documented rollback, the env without the lines
+    # production is release 52 (release 45 + the combo + the changes of releases 48 to
+    # 52); the release-45 base is the documented rollback, the env without the lines
     # above it and with the release-36 value package restored
-    assert env["SHENGJI_BOT"] == RELEASE51
+    assert env["SHENGJI_BOT"] == RELEASE52
     return without_combo(env)
 
 

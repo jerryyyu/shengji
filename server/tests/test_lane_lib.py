@@ -417,6 +417,74 @@ def test_hold_while_running_pauses(lane):
     assert w.index("STUBEXIT") < w.index("PAUSED") < w.index("UNLOCKED")
 
 
+def disk_probe(lane, tmp_path, mode, **overrides):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    state = tmp_path / "disk-mode"
+    state.write_text(mode)
+    df = bin_dir / "df"
+    df.write_text("#!/bin/bash\n"
+                  f'mode=$(cat "{state}")\n'
+                  'case "$mode" in\n'
+                  ' failed) exit 1;;\n'
+                  ' empty) exit 0;;\n'
+                  ' malformed) free=unknown;;\n'
+                  ' low) free=0;;\n'
+                  ' *) free=10485760;;\n'
+                  'esac\n'
+                  'printf "Filesystem 1024-blocks Used Available Capacity Mounted on\\n"\n'
+                  'printf "disk 20971520 10485760 %s 50%% /\\n" "$free"\n')
+    df.chmod(0o755)
+    ln = lane(PATH=f"'{bin_dir}:{os.environ['PATH']}'", LANE_DISK_DIR=str(tmp_path),
+              LANE_MIN_FREE_GIB="1", **overrides)
+    ln.arm()
+    return ln, state
+
+
+@pytest.mark.parametrize("mode", ["failed", "empty", "malformed", "low"])
+def test_disk_guard_refuses_before_producer(lane, tmp_path, mode):
+    ln, _ = disk_probe(lane, tmp_path, mode)
+    assert ln.run() == 1
+    assert ln.invocations() == 0 and ln.shards() == 0
+    assert "PAUSED" in ln.terminal() and "disk free" in ln.terminal()
+    assert ln.words().index("PAUSED") < ln.words().index("UNLOCKED")
+    assert not ln.lock.exists()
+
+
+def test_disk_guard_rejects_missing_real_path(lane, tmp_path):
+    ln = lane(LANE_DISK_DIR=str(tmp_path / "missing"), LANE_MIN_FREE_GIB="1")
+    ln.arm()
+    assert ln.run() == 1 and ln.invocations() == 0
+    assert "disk free unavailable" in ln.terminal() and not ln.lock.exists()
+
+
+def test_disk_guard_healthy_reading_completes(lane, tmp_path):
+    ln, _ = disk_probe(lane, tmp_path, "healthy")
+    assert ln.run() == 0 and ln.shards() == 4
+    assert "DONE" in ln.terminal() and not ln.lock.exists()
+
+
+@pytest.mark.parametrize("mode", ["failed", "empty", "malformed", "low"])
+def test_disk_guard_runtime_failure_stops_group_before_unlock(lane, tmp_path, mode):
+    ln, state = disk_probe(lane, tmp_path, "healthy", SHARDS="200", DELAY="0.2")
+    p = ln.start()
+    try:
+        wait_for(lambda: ln.shards() >= 2)
+        pgid = ln.pgid()
+        child = int((ln.w / "PRODUCER_INVOKED.child").read_text())
+        state.write_text(mode)
+        assert p.wait(30) == 1
+        assert group_members(pgid) == 0 and not pid_alive(child)
+        assert "PAUSED" in ln.terminal() and "disk free" in ln.terminal()
+        words = ln.words()
+        assert words.index("STUBEXIT") < words.index("PAUSED") < words.index("UNLOCKED")
+        assert not ln.lock.exists() and 2 <= ln.shards() < 200
+    finally:
+        if p.poll() is None:
+            p.terminate()
+            p.wait(30)
+
+
 # ---------------------------------------------------------------- deletion and counting
 
 DELETER = textwrap.dedent("""\

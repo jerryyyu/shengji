@@ -247,7 +247,26 @@ lane_init() {   # traps and the START line; call once, before any wait
   lane_say START "pid=$$ host=$(hostname) ${1:-}"
 }
 
-lane_free_gib() { df -k "$1" | awk 'NR==2{printf "%d", $4/1048576}'; }
+lane_free_gib() {
+  local out
+  out=$(LC_ALL=C df -Pk "$1" 2>/dev/null) || return 1
+  printf '%s\n' "$out" | awk '
+    NR==2 && $4 ~ /^[0-9]+$/ { available=$4; valid=1 }
+    END { if (NR != 2 || !valid) exit 1; printf "%.0f\n", int(available/1048576) }'
+}
+
+lane_disk_check() {
+  local free floor=${LANE_MIN_FREE_GIB:-0}
+  [ -n "${LANE_DISK_DIR:-}" ] || return 0
+  case "$floor" in *[!0-9]*|'') LANE_MSG="invalid disk floor: $floor"; return 1;; esac
+  free=$(lane_free_gib "$LANE_DISK_DIR") || {
+    LANE_MSG="disk free unavailable for $LANE_DISK_DIR"; return 1
+  }
+  if ! [ "$free" -ge "$floor" ] 2>/dev/null; then
+    LANE_MSG="disk free $free GiB below $floor GiB"; return 1
+  fi
+  return 0
+}
 
 # Runs CMD... as its own process group (setsid through LANE_PY) and watches it.  HOLD, LANE_MAX_SECONDS or the disk
 # floor (LANE_DISK_DIR below LANE_MIN_FREE_GIB) stop the group and write PAUSED (exit 1); a signal does the same through
@@ -255,6 +274,7 @@ lane_free_gib() { df -k "$1" | awk 'NR==2{printf "%d", $4/1048576}'; }
 lane_supervise() {
   local t0 why="" rc
   [ "$#" -gt 0 ] || lane_abort 2 "lane_supervise: no command"
+  lane_disk_check || lane_pause "$LANE_MSG"
   "${LANE_PY:-python3}" -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@" \
     >> "${LANE_LOG:-/dev/null}" 2>&1 < /dev/null &
   LANE_GPID=$!
@@ -263,8 +283,8 @@ lane_supervise() {
   while kill -0 "$LANE_GPID" 2>/dev/null; do
     if lane_hold_present; then why=$LANE_MSG
     elif [ $(( $(date +%s) - t0 )) -ge "${LANE_MAX_SECONDS:-86400}" ]; then why="timeout: wall ceiling ${LANE_MAX_SECONDS:-86400}s reached"
-    elif [ -n "${LANE_DISK_DIR:-}" ] && [ "$(lane_free_gib "$LANE_DISK_DIR")" -lt "${LANE_MIN_FREE_GIB:-0}" ]; then
-      why="disk free below ${LANE_MIN_FREE_GIB} GiB"
+    elif ! lane_disk_check; then
+      why=$LANE_MSG
     fi
     if [ -n "$why" ]; then lane_stop_group; lane_pause "$why${LANE_PAUSE_NOTE:+; $LANE_PAUSE_NOTE}"; fi
     lane_nap "${LANE_MON_POLL:-10}"

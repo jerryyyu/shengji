@@ -1878,3 +1878,31 @@ def test_a_finished_game_start_records_the_deal_and_bot_tasks(client):
         assert room.task_exits.get("deal_task") == "returned"
         assert room.bot_task is not None
         assert srv.rooms[code] is room
+
+
+def test_negotiated_heartbeat_before_and_after_room_attach(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws?heartbeat=1") as ws:
+        assert _drain(ws, "heartbeat_ready") == {"type": "heartbeat_ready"}
+        ws.send_json({"type": "ping", "nonce": 1})
+        assert _drain(ws, "pong") == {"type": "pong", "nonce": 1}
+        assert not srv.rooms
+        code = _room_with_bots(ws)
+        ws.send_json({"type": "ping", "nonce": 2})
+        assert _drain(ws, "pong") == {"type": "pong", "nonce": 2}
+        seats = tuple(srv.rooms[code].seats)
+        assert len(seats) == 4
+        ws.send_json({"type": "ping", "nonce": 3})
+        assert _drain(ws, "pong") == {"type": "pong", "nonce": 3}
+        assert tuple(srv.rooms[code].seats) == seats
+        assert srv.rooms[code].round is None
+
+
+def test_heartbeat_ignores_invalid_nonce_without_breaking_next_request(client):
+    with client.websocket_connect("/ws?heartbeat=1") as ws:
+        _drain(ws, "heartbeat_ready")
+        for nonce in (None, True, -1, "large", 9007199254740992):
+            ws.send_json({"type": "ping", "nonce": nonce})
+        ws.send_json({"type": "ping", "nonce": 7})
+        assert _drain(ws, "pong") == {"type": "pong", "nonce": 7}

@@ -21,7 +21,8 @@ function wsUrl(): string {
   return `${scheme}://${location.host}/ws`;
 }
 
-const WS_URL = wsUrl();
+const WS_URL = `${wsUrl()}?heartbeat=1`;
+const HEARTBEAT_MS = 15_000;
 
 const OFFLINE_KEY = "shengji.offline";
 
@@ -112,6 +113,7 @@ class Connection {
   /** Opens the transport: the game server's WebSocket, or offline the
    *  in-page server's look-alike (set once its module has loaded). */
   private makeSocket: () => WebSocket = () => new WebSocket(WS_URL);
+  private stopHeartbeat: (() => void) | null = null;
   /** The next reconnect is deliberate (a sign-in or sign-out): open it at
    *  once instead of after the failure backoff. */
   private immediate = false;
@@ -187,6 +189,7 @@ class Connection {
   reconnect(): void {
     if (!this.started) return;
     this.immediate = true;
+    this.stopHeartbeat?.();
     const ws = this.ws;
     if (ws) {
       ws.close();     // onclose -> scheduleReconnect (immediately, see above)
@@ -240,8 +243,34 @@ class Connection {
     this.setStatus("connecting");
     const ws = this.makeSocket();
     this.ws = ws;
+    let timer: number | null = null;
+    let nonce = 0;
+    let awaiting: number | null = null;
+    let enabled = false;
+    const stop = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+    };
+    this.stopHeartbeat = stop;
+    const schedulePing = () => {
+      stop();
+      timer = window.setTimeout(() => {
+        if (this.ws !== ws || ws.readyState !== WebSocket.OPEN) return;
+        awaiting = ++nonce;
+        try {
+          ws.send(JSON.stringify({ type: "ping", nonce: awaiting } satisfies ClientMsg));
+        } catch {
+          this.reconnect();
+          return;
+        }
+        timer = window.setTimeout(() => {
+          if (this.ws === ws && awaiting !== null) this.reconnect();
+        }, HEARTBEAT_MS);
+      }, HEARTBEAT_MS);
+    };
 
     ws.onopen = () => {
+      if (this.ws !== ws) return;
       this.backoff = 500;
       this.generation += 1;
       // Report "open" and stop there. Deciding WHETHER to rejoin, and which
@@ -257,6 +286,19 @@ class Connection {
       try {
         msg = JSON.parse(ev.data as string) as ServerMsg;
       } catch {
+        return;
+      }
+      // Negotiate before sending probes so an older server never receives
+      // unknown actions. Heartbeats are transport-only, not game messages.
+      if (msg.type === "heartbeat_ready") {
+        if (!enabled) { enabled = true; schedulePing(); }
+        return;
+      }
+      if (msg.type === "pong") {
+        if (awaiting !== null && msg.nonce === awaiting) {
+          awaiting = null;
+          schedulePing();
+        }
         return;
       }
       if (this.leavingWs === ws) {
@@ -308,6 +350,7 @@ class Connection {
     };
 
     ws.onclose = () => {
+      stop();
       if (this.leavingWs === ws) this.endLeave();
       if (this.ws !== ws) return;
       this.ws = null;

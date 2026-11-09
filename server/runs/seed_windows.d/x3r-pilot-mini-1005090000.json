@@ -1,0 +1,14 @@
+{
+ "name": "x3r-pilot-mini-1005090000",
+ "purpose": "trajectory",
+ "seed0": 1005090000,
+ "clusters": 200,
+ "span": [
+  1005090000,
+  1005090200
+ ],
+ "created_at": "2026-11-09T05:35:00Z",
+ "host": "jerrys-mac-mini",
+ "git_head": "5670f571257b143ed6474f36bdc79afe378cbf69",
+ "note": "Smoke and timing pilot block: [1005090000, 1005090102) dealt 2026-11-09 05:24-05:33Z before this PR (4-round smoke, 196-round 8-worker pilot with a HOLD/resume leg, 4-round smoke of the final wrapper), from a runtime registry copy of main (seed_windows.py check rc 0). Never pooled into training without its own note. X3R (Jerry 2026-11-09, standing data-gen authorization): release 51 as served (pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8) self-play, all four seats, exact served budgets (3 s play / 2 s bury) via server/scripts/y_trajectory.py on main 5670f571 (fly.toml identical to the release-51 tree 1490b72b), --round-mix sampled, explore 0, cap 256, served-budget capture; archive ~/shengji-archive/2026-11-09-x3r-datagen. Belief-training corpus (true hands + public history at every play decision); a screen must not reuse these deals. The host's runtime registry must not contain this entry (the producer registers its own run_id window)."
+}

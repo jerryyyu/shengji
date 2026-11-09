@@ -816,6 +816,8 @@ receipt is `smoke51.jsonl`, and its records carry no `lcc` statuses.
 6. From a clean worktree at the merge commit, when the room count is 0 (or on Jerry's word to drop idle rooms):
    `fly deploy --ha=false`.
 
+Web-only deploys: `server/scripts/deploy_web_only.sh`.
+
 **After the deploy**
 
 7. **`/healthz`.** `bot` is the new served name, `fast: true`, `pv_search.sha256` `f4f4127e…`, `prior`

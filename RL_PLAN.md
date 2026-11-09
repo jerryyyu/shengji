@@ -172,6 +172,47 @@ Each lesson summarises Atlas v2 and scaling-page rows. Superseded wording is in 
 null as packages); the served W64 screens can. The M1 two-head recipe was the one shortlist-era confirmed model
 gain, +0.021 [+0.004, +0.039].
 
+### Model lineage
+
+Each served model is a warm-started descendant of the one before. Sources are the Atlas v2 `models` and `screens` rows;
+numbers are levels/round against the release named, as served. DEV duels are tier i (1,000 or 3,920 deals) and do not
+replace the two-stage screen.
+
+**Value and policy (the PV packages).** Until release 48 one package carried the trunk, the outcome (value) head and
+the policy head. From release 50 the value package and a separate card-play prior package are served side by side.
+
+| model | sha | warm start → recipe | read | served |
+|---|---|---|---|---|
+| soft head | 8ecd4fea | gen-3-warm recipe with the search's per-candidate values as soft policy targets, 256k deals | production head | release 29 |
+| gen-4 runs 1–4 | 3f83bfb7 … 23ad5c3f | one-variable tests on 336k deals: hard vs soft targets, grid trunk, depth 6 | all cross zero vs release 30 (v34r1–r5) | no |
+| gen-5 arms A–F | 9f4c9658 … e2645ec2 | 8ecd4fea retrained with corpus, warm-start and target changes (256k–496k deals) | A worse (−0.061); C, D, F cross zero | no |
+| SMV3 | 3e89e86f | arm F + search-mean head trained on sidecar v3 (496k deals, 55M policy rows) | head vs release 30 v36a2 +0.039, confirmed | releases 36–49, as `smv3out-491ee4bf` |
+| SMV3 variants, C11–C16 | b0bdf33d, 218bcf5c, 3a4e3d70, 801772f3 … | head weight, batch fraction, rollout labels, encoder v7 / 880k deals | inconclusive or failed; the PV fine-tune line parked (M13) | no |
+| FT1 prior | 1fa201b2 | policy net fine-tuned toward ~37.8k expert-search labels (M30 P0) | m30yc +0.016 [+0.002, +0.031] vs release 49, confirmed | releases 50–51, as the separate prior |
+| G3 Stage A value | f4f4127e | SMV3's served trunk retrained on all Y self-play (200k rounds), EMA epoch 4 | with FT1: g3dsc +0.035 [+0.020, +0.049] vs release 49, confirmed | releases 50–51 |
+| G4 value | bd616b38 | G3 A + the 80k-round release-50 corpus | offline A1 failed; g4s +0.005 [−0.009, +0.019] vs release 51 | no |
+| X2 prior arms PA, PF, PS | 54c3f2f4, 9a3d3395, 574f2409 | warm from G3 A, rebuilt FT1, SMV3; Y + R50 + 30k x1a self-play rows (x1a ×3), soft targets | X2H top-1 vs x1a +0.044–0.047 over FT1; DEV vs release 51: PA −0.042 [−0.072, −0.010], PF −0.006 [−0.038, +0.026], PS −0.040 [−0.070, −0.010] | no |
+| X2 value V | ff4199f7 | G3 A + G4 mix + x1a outcomes (×3) | DEV vs release 51 −0.017 [−0.045, +0.012]; with PA −0.026 [−0.057, +0.006] | no |
+
+**Belief (hidden-hand model).** Served beside the PV packages since release 46; it draws the search's worlds (`bw`)
+and, from release 50, the bury search's worlds (`bbw`).
+
+| model | sha | warm start → recipe | read | served |
+|---|---|---|---|---|
+| S17 | — | first history-input belief net | soft-oracle probe v83sorc45 +0.309 (diagnostic); its e8 package v95s17e8 +0.006, inconclusive | its worlds (v86bw45 +0.117 [+0.091, +0.142] vs release 45) shipped in release 46 |
+| S43, S46 r3 | — | rank-mixed corpora; S46 wider (d192) | s43t +0.022 (T 1.35); s46screen +0.024, s46c +0.021 inconclusive | release-47 candidate, held; release 48 used S58 |
+| S58 | 42444515 | S46 r3 continued 6 epochs, rank-mixed | calib log-loss −0.0135 nats vs S46 r3; with dtrx v103s58 +0.033 [+0.015, +0.052] | releases 48–49 |
+| B1a | 028131a0 | S58 fine-tuned on the four Y stores (10.3M rows), 2 epochs, T 1.019 | log-loss +2.24 pp over S58; cbaf B1a over S58 +0.023 [+0.001, +0.045] | releases 50–51 |
+| X2B | 621dc9e2 | B1a fine-tuned on 30k x1a self-play rounds (1.7M rows), 2 epochs | X2H log-loss 1.0021 → 0.9895; DEV vs release 51 +0.024 [−0.006, +0.053], LB80 +0.011, DEV pass | not yet; two-stage screen next |
+| X2BY | 85ec5fc3 | B1a on 50% X2 + 50% Y rows | X2H 0.9918; Y holdout 0.989 vs B1a 0.986 | not duelled |
+
+Lineage lessons, as read so far:
+- The confirmed PV gains came from new data and new label sources (Y self-play for value, expert-search labels for the
+  prior), not from architecture or capacity changes.
+- Distilling a stronger teacher's choices into the prior raised agreement with that teacher but did not raise served
+  play; the x1a-distilled priors were even (warm from the served prior) or worse (warm from G3 A or SMV3) vs release 51.
+- Belief has gained with each fresher corpus, in steps near +0.02 that each need a confirmation.
+
 ### Search
 
 | lesson | evidence | status |

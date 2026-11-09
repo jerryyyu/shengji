@@ -148,39 +148,59 @@ function translateFrac(transform: string | undefined): [number, number] {
 }
 
 
-/** The table's regions at one viewport, from the tokens and the rules below. */
-function geometry(vp: Viewport, vars: Record<string, string>, cards = 4) {
+/** The table's regions at one viewport, from the tokens and the rules below.
+ *  `phase` picks the play layout (your slot is your row) or the setup one
+ *  (the row sits under the cross). Every slot holds a `cards`-card play. */
+function geometry(vp: Viewport, vars0: Record<string, string>, phase: "play" | "setup" = "play", cards = 4) {
+  const vars = phase === "play" ? { ...vars0, ...rule(block, ".table-screen.phase-play") } : vars0;
   const L = (name: string) => evalLength(vars[name], vp, vars);
+  const has = (name: string) => vars[name] !== undefined;
   const tcw = L("--trick-cw");
   const tch = L("--trick-ch");
-  const dy = L("--slot-dy");
+  const dyTop = has("--dy-top") ? L("--dy-top") : L("--slot-dy");
+  const dyBottom = has("--dy-bottom") ? L("--dy-bottom") : L("--slot-dy");
+  const sideDy = has("--side-dy") ? L("--side-dy") : 0;
   const trickTop = L("--trick-top");
   const liftLine = vp.h - L("--trick-bottom");        // the hand's lift line
   const crossBottom = vp.h - L("--cross-bottom");
   const cx = vp.w / 2;
   const cy = (trickTop + crossBottom) / 2;
-  const width = (n: number) => tcw + (n - 1) * tcw * 0.72;
+  const tPitch = rule(block, ".trick-play")["--t-pitch"];
+  const pitch = tPitch ? evalLength(tPitch, vp, vars, { n: cards }) : tcw * 0.72;
+  const width = tcw + (cards - 1) * pitch;
+  const card = (xc: number, yc: number): Rect => ({ x0: xc - width / 2, x1: xc + width / 2, y0: yc - tch / 2, y1: yc + tch / 2 });
   // side slots from their own rules: anchored by whichever edge is set
   const areaW = evalLength(rule(block, ".trick-area").width, vp, vars);
   const areaX0 = cx - areaW / 2;
   const side = (sel: string): Rect => {
     const r = rule(block, sel);
+    const yc = cy + sideDy;
     if (r.left && r.left !== "auto") {
       const x0 = areaX0 + evalPos(r.left, areaW, vp, vars);
-      return { x0, x1: x0 + width(cards), y0: cy - tch / 2, y1: cy + tch / 2 };
+      return { x0, x1: x0 + width, y0: yc - tch / 2, y1: yc + tch / 2 };
     }
     const x1 = areaX0 + areaW - evalPos(r.right, areaW, vp, vars);
-    return { x0: x1 - width(cards), x1, y0: cy - tch / 2, y1: cy + tch / 2 };
+    return { x0: x1 - width, x1, y0: yc - tch / 2, y1: yc + tch / 2 };
   };
-  const slots: Record<string, Rect> = {
-    top: { x0: cx - width(cards) / 2, x1: cx + width(cards) / 2, y0: cy - dy - tch / 2, y1: cy - dy + tch / 2 },
-    bottom: { x0: cx - width(cards) / 2, x1: cx + width(cards) / 2, y0: cy + dy - tch / 2, y1: cy + dy + tch / 2 },
-    left: side(".trick-play.pos-left"),
-    right: side(".trick-play.pos-right"),
+  const cardsAt: Record<string, Rect> = {
+    top: card(cx, cy - dyTop), bottom: card(cx, cy + dyBottom),
+    left: side(".trick-play.pos-left"), right: side(".trick-play.pos-right"),
   };
-  // side seats' labels from their rules, at their widest (--pill-max)
-  // (84px, the cap, when a layout has no such token); one line, the header's height
-  const pillW = vars["--pill-max"] ? L("--pill-max") : 84;
+  // each slot's tag line (LEAD + WINS side by side: about 90 x 16) from the tag rule
+  const tagRule = rule(block, ".trick-tag");
+  const below = (tagRule.top ?? "").includes("100%");
+  const tag = (c: Rect): Rect => {
+    const xc = (c.x0 + c.x1) / 2;
+    return below ? { x0: xc - 45, x1: xc + 45, y0: c.y1 + 4, y1: c.y1 + 20 } : { x0: xc - 45, x1: xc + 45, y0: c.y1 - 20, y1: c.y1 - 4 };
+  };
+  const tags = Object.fromEntries(Object.entries(cardsAt).map(([k, c]) => [k, tag(c)])) as Record<string, Rect>;
+  const foot = (k: string): Rect => {
+    const c = cardsAt[k], t = tags[k];
+    return { x0: Math.min(c.x0, t.x0), x1: Math.max(c.x1, t.x1), y0: Math.min(c.y0, t.y0), y1: Math.max(c.y1, t.y1) };
+  };
+  const slots = Object.fromEntries(Object.keys(cardsAt).map((k) => [k, foot(k)])) as Record<string, Rect>;
+  // side seats' labels from their rules, at their widest (--pill-max; 84 when absent)
+  const pillW = has("--pill-max") ? L("--pill-max") : 84;
   const pillH = L("--header-h");
   const shared = rule(block, ".opponent.pos-left, .opponent.pos-right");
   const pill = (sel: string): Rect => {
@@ -195,17 +215,15 @@ function geometry(vp: Viewport, vars: Record<string, string>, cards = 4) {
   const padL = L("--safe-l") + 8;
   const padR = L("--safe-r") + 8;
   const rowCentre = (padL + vp.w - padR) / 2;
-  const rowB = vp.h - L("--zone-bottom");
+  const rowRule = { ...rule(block, ".you-row"), ...(phase === "play" ? rule(block, ".phase-play .you-row") : {}) };
+  const rowB = vp.h - evalLength(rowRule.bottom, vp, vars);
   const rowY0 = rowB - L("--row-h");
   const row: Rect = { x0: rowCentre - 44, x1: rowCentre + 44 + 84, y0: rowY0, y1: rowB };
   const crown: Rect = { x0: rowCentre - 44 - 8 - 28, x1: rowCentre - 44 - 8, y0: rowB - 25 - 14, y1: rowB - 25 + 14 };
   const header = 6 + vp.top + L("--header-h");
-  // where the top seat's label ends: the header row's bottom
-  const topLabelBottom = header;
-  return { tcw, cx, cy, slots, pills: { left: pill(".opponent.pos-left"), right: pill(".opponent.pos-right") }, pillW,
-    topLabelBottom,
-    row, crown, rowCentre, header, liftLine, crossBottom, handTop: vp.h - L("--hand-h"), safeW: L("--safe-w"),
-    handCw: L("--hand-cw") };
+  return { tcw, cx, cy, cards: cardsAt, tags, slots, pills: { left: pill(".opponent.pos-left"), right: pill(".opponent.pos-right") },
+    pillW, topLabelBottom: header, row, crown, rowCentre, header, liftLine, crossBottom,
+    zoneTop: vp.h - L("--zone-bottom"), handTop: vp.h - L("--hand-h"), safeW: L("--safe-w"), handCw: L("--hand-cw") };
 }
 
 const gap = (a: Rect, b: Rect) => Math.max(b.x0 - a.x1, a.x0 - b.x1, b.y0 - a.y1, a.y0 - b.y1);
@@ -216,17 +234,17 @@ describe("phone table geometry", () => {
     expect(rule(block, ".trick-area").bottom).toBe("var(--cross-bottom)");
     expect(rule(block, ".trick-cards")["--cw"]).toBe("var(--trick-cw)");
     expect(rule(block, ".trick-cards .card + .card")["margin-left"]).toBe("calc(var(--t-pitch) - var(--trick-cw))");
-    // up to four cards at a 72% pitch; longer plays pack into four cards' span
+    // up to four cards at a 60% pitch; longer plays pack into four cards' span
     const tp = rule(block, ".trick-play")["--t-pitch"];
     const vp14 = PHONES["iPhone 14 Pro 852x393"];
     const cw = evalLength(tokens["--trick-cw"], vp14, tokens);
     for (const n of [1, 2, 4, 8, 12]) {
       const pitch = evalLength(tp, vp14, tokens, { n });
-      expect(cw + (n - 1) * pitch).toBeLessThanOrEqual(cw * 3.16 + 0.01);
-      if (n <= 4) expect(pitch).toBeCloseTo(cw * 0.72, 5);
+      expect(cw + (n - 1) * pitch).toBeLessThanOrEqual(cw * 2.8 + 0.01);
+      if (n <= 4) expect(pitch).toBeCloseTo(cw * 0.6, 5);
     }
-    expect(rule(block, ".trick-play.pos-top").translate).toBe("-50% calc(-50% - var(--slot-dy))");
-    expect(rule(block, ".trick-play.pos-bottom").translate).toBe("-50% calc(-50% + var(--slot-dy))");
+    expect(rule(block, ".trick-play.pos-top").translate).toBe("-50% calc(-50% - var(--dy-top))");
+    expect(rule(block, ".trick-play.pos-bottom").translate).toBe("-50% calc(-50% + var(--dy-bottom))");
     // side slots are anchored at their outer edge and grow inward
     expect(rule(block, ".trick-play.pos-left").left).toBe("calc(50% - var(--side-out))");
     expect(rule(block, ".trick-play.pos-left").right).toBe("auto");
@@ -244,9 +262,10 @@ describe("phone table geometry", () => {
     // the crown stands outside the middle column, so it never moves the action
     const crown = rule(block, ".you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown)");
     expect([crown["grid-column"], crown["justify-self"], crown.width]).toEqual(["1", "end", "28px"]);
-    expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-h) + var(--gap-v))");
+    expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-reserve) + var(--gap-v))");
+    expect(rule(block, ".table-screen.phase-play")["--row-reserve"]).toBe("0px");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right").top)
-      .toBe("calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2)");
+      .toBe("calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy))");
   });
 
   it("reserves exactly the hand's height: lift above, card, 16px under the home indicator", () => {
@@ -260,96 +279,119 @@ describe("phone table geometry", () => {
 
   for (const [name, vp] of FRAMES) {
     describe(name, () => {
-      const g = geometry(vp, tokens);
+      const play = geometry(vp, tokens, "play");
+      const setup = geometry(vp, tokens, "setup");
 
-      const checkRegions = (g: ReturnType<typeof geometry>) => {
+      const checkRegions = (g: ReturnType<typeof geometry>, phase: "play" | "setup") => {
         const slots = Object.values(g.slots);
         const pills = [g.pills.left, g.pills.right];
-        // the cross between the header and your row; no two slots meet, even
-        // with a four-card throw in every one
-        expect(g.slots.top.y0).toBeGreaterThanOrEqual(g.header);
-        expect(g.slots.bottom.y1).toBeLessThanOrEqual(g.crossBottom);
+        // the cross between the header and the hand; no two slots (cards and
+        // their tag line) come within 8pt, even with a four-card play in each
+        expect(g.slots.top.y0).toBeGreaterThanOrEqual(g.header + 8 - 0.01);
         for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
-          expect(gap(slots[i], slots[j])).toBeGreaterThanOrEqual(4);
+          expect(gap(slots[i], slots[j])).toBeGreaterThanOrEqual(8 - 0.01);
         }
-        // side labels: outside their slot, centred on it, clear of the
-        // header, every slot, your row and the safe-area edges
-        expect(g.pills.left.x1).toBeLessThanOrEqual(g.slots.left.x0 - 4);
-        expect(g.pills.right.x0).toBeGreaterThanOrEqual(g.slots.right.x1 + 4);
-        for (const [p, s] of [[g.pills.left, g.slots.left], [g.pills.right, g.slots.right]] as const) {
+        // side labels: outside their slot, centred on its cards, 8pt clear of
+        // every slot, the header, your row and the safe-area edges
+        expect(g.pills.left.x1).toBeLessThanOrEqual(g.cards.left.x0 - 8 + 0.01);
+        expect(g.pills.right.x0).toBeGreaterThanOrEqual(g.cards.right.x1 + 8 - 0.01);
+        for (const [p, s] of [[g.pills.left, g.cards.left], [g.pills.right, g.cards.right]] as const) {
           expect(Math.abs((p.y0 + p.y1) / 2 - (s.y0 + s.y1) / 2)).toBeLessThanOrEqual(1);
         }
         for (const p of pills) {
           expect(p.y0).toBeGreaterThanOrEqual(g.header);
-          for (const slot of slots) expect(gap(p, slot)).toBeGreaterThanOrEqual(4);
-          for (const r of [g.row, g.crown]) expect(gap(p, r)).toBeGreaterThanOrEqual(4);
-          expect(p.x0).toBeGreaterThanOrEqual(vp.left + 4);
-          expect(p.x1).toBeLessThanOrEqual(vp.w - vp.right - 4);
+          for (const k of ["top", "bottom"]) expect(gap(p, g.slots[k])).toBeGreaterThanOrEqual(8 - 0.01);
+          expect(gap(p, g.row)).toBeGreaterThanOrEqual(8 - 0.01);
+          expect(p.x0).toBeGreaterThanOrEqual(vp.left + 4 - 0.01);
+          expect(p.x1).toBeLessThanOrEqual(vp.w - vp.right - 4 + 0.01);
         }
-        // a label always has room for a short name
+        // a label always has room for a crown and a short name
         expect(g.pillW).toBeGreaterThanOrEqual(60);
-        // your row: centred, clear of every slot and label, above the hand's lift
+        // your row: centred, above the hand's lift, clear of the side slots
         expect(Math.abs(g.rowCentre - g.cx)).toBeLessThanOrEqual(2);
         for (const r of [g.row, g.crown]) {
-          for (const slot of slots) expect(overlaps(r, slot)).toBe(false);
+          for (const k of ["left", "right", "top"]) expect(gap(r, g.slots[k])).toBeGreaterThanOrEqual(8 - 0.01);
           expect(r.y1).toBeLessThanOrEqual(g.liftLine);
         }
+        if (phase === "setup") expect(gap(g.row, g.slots.bottom)).toBeGreaterThanOrEqual(8 - 0.01);
         expect(overlaps(g.crown, g.row)).toBe(false);
         expect(g.liftLine).toBeLessThanOrEqual(g.handTop);
         expect(g.row.x1).toBeLessThanOrEqual(vp.w - vp.right);
         expect(g.row.x0).toBeGreaterThanOrEqual(vp.left);
       };
 
-      it("keeps the cross, the seats, your centred row and the hand apart", () => checkRegions(g));
+      it("keeps the cross, the seats, your row and the hand apart, in play and while setting up", () => {
+        checkRegions(play, "play");
+        checkRegions(setup, "setup");
+      });
 
-      it("spaces the cross evenly: header, top slot, your slot and your row a gap apart", () => {
-        const gaps = [g.slots.top.y0 - g.header, g.slots.bottom.y0 - g.slots.top.y1, g.row.y0 - g.slots.bottom.y1];
-        for (const x of gaps) expect(Math.abs(x - gaps[0])).toBeLessThanOrEqual(2);
-        expect(gaps[0]).toBeGreaterThanOrEqual(12 - 0.01);
+      it("puts no tag over any card: every tag sits in its slot's line under the cards", () => {
+        for (const g of [play, setup]) {
+          for (const t of Object.values(g.tags)) for (const c of Object.values(g.cards)) expect(overlaps(t, c)).toBe(false);
+        }
+      });
+
+      it("in play, your row is your slot: Play stands where your cards land", () => {
+        // the row overlaps your cards' place and ends at the hand's lift, not under the cross
+        expect(overlaps(play.row, play.cards.bottom)).toBe(true);
+        expect(play.row.y0).toBeGreaterThanOrEqual(play.cards.bottom.y0 - 0.5);
+        expect(play.row.y1).toBeLessThanOrEqual(play.zoneTop + 0.5);
+      });
+
+      it("spaces the cross evenly: the header, the slots and the row (or the hand) a gap apart", () => {
+        const playGaps = [play.slots.top.y0 - play.header, play.slots.bottom.y0 - play.slots.top.y1,
+          play.zoneTop - play.slots.bottom.y1];
+        const setupGaps = [setup.slots.top.y0 - setup.header, setup.slots.bottom.y0 - setup.slots.top.y1,
+          setup.row.y0 - setup.slots.bottom.y1];
+        for (const gaps of [playGaps, setupGaps]) {
+          for (const x of gaps) expect(Math.abs(x - gaps[0])).toBeLessThanOrEqual(2);
+          expect(gaps[0]).toBeGreaterThanOrEqual(8 - 0.01);
+        }
         // the side slots sit at the cross's vertical centre, left and right alike
-        const mid = ((g.slots.top.y0 + g.slots.top.y1) / 2 + (g.slots.bottom.y0 + g.slots.bottom.y1) / 2) / 2;
-        for (const s of [g.slots.left, g.slots.right]) expect(Math.abs((s.y0 + s.y1) / 2 - mid)).toBeLessThanOrEqual(1);
-        expect(Math.abs((g.cx - g.slots.left.x0) - (g.slots.right.x1 - g.cx))).toBeLessThanOrEqual(1);
+        for (const g of [play, setup]) {
+          const mid = (g.slots.top.y0 + g.slots.bottom.y1) / 2;
+          for (const s of [g.slots.left, g.slots.right]) expect(Math.abs((s.y0 + s.y1) / 2 - mid)).toBeLessThanOrEqual(1);
+          expect(Math.abs((g.cx - g.cards.left.x0) - (g.cards.right.x1 - g.cx))).toBeLessThanOrEqual(1);
+        }
       });
 
       it("keeps every seat's label the same distance from its cards", () => {
-        const top = g.slots.top.y0 - g.topLabelBottom;
-        const left = g.slots.left.x0 - g.pills.left.x1;
-        const right = g.pills.right.x0 - g.slots.right.x1;
-        expect(Math.abs(left - top)).toBeLessThanOrEqual(1);
-        expect(Math.abs(right - top)).toBeLessThanOrEqual(1);
+        for (const g of [play, setup]) {
+          const top = g.cards.top.y0 - g.topLabelBottom;
+          expect(Math.abs((g.cards.left.x0 - g.pills.left.x1) - top)).toBeLessThanOrEqual(1);
+          expect(Math.abs((g.pills.right.x0 - g.cards.right.x1) - top)).toBeLessThanOrEqual(1);
+        }
       });
 
-      it("sizes the trick cards by width and height (about 54px on a 14 Pro)", () => {
+      it("sizes the trick cards by width and height (about 62px on a 14 Pro)", () => {
         // the short browser frames, with their larger hand, give the cross less height
-        expect(g.tcw).toBeGreaterThanOrEqual(44);
-        expect(g.tcw).toBeLessThanOrEqual(64);
+        expect(play.tcw).toBeGreaterThanOrEqual(44);
+        expect(play.tcw).toBeLessThanOrEqual(72);
+        expect(play.tcw).toBeGreaterThanOrEqual(setup.tcw - 0.01);
       });
 
       it("fits a 25-card hand in one row at a pitch of at least 27px (24 on SE and mini)", () => {
         const pitch = evalLength(handRule["--pitch"], vp, tokens, { n: 25 });
         expect(pitch).toBeGreaterThanOrEqual(vp.w >= 852 ? 27 : 24);
-        expect(24 * pitch + g.handCw).toBeLessThanOrEqual(g.safeW - 16 + 0.01);
+        expect(24 * pitch + play.handCw).toBeLessThanOrEqual(play.safeW - 16 + 0.01);
         // a short hand stays at the capped pitch and centres
-        expect(evalLength(handRule["--pitch"], vp, tokens, { n: 12 })).toBeCloseTo(g.handCw * 0.55, 5);
+        expect(evalLength(handRule["--pitch"], vp, tokens, { n: 12 })).toBeCloseTo(play.handCw * 0.55, 5);
       });
 
-      it("fits the 33-card bury hand in one row of ~52px cards", () => {
-        const gs = geometry(vp, smallTokens);
-        expect(gs.handCw * 1.4).toBeCloseTo(52, 0);
+      it("fits the 33-card bury hand in one row, larger than 37px wherever the width allows", () => {
+        const gs = geometry(vp, smallTokens, "setup");
+        expect(gs.handCw).toBeGreaterThanOrEqual(44);
+        expect(gs.handCw).toBeLessThanOrEqual(56);
         const pitch = evalLength(smallRule["--pitch"], vp, smallTokens, { n: 33 });
         expect(32 * pitch + gs.handCw).toBeLessThanOrEqual(gs.safeW - 16 + 0.01);
-        // 24px slivers wherever the safe width allows; inside a 14 Pro's or an
-        // 18 Pro's landscape safe area 33 cards leave about 21px, on an SE or
-        // a mini about 19px
-        expect(pitch).toBeGreaterThanOrEqual((vp.left === 0 && vp.w >= 852) || vp.w >= 956 ? 24 : vp.w >= 852 ? 21 : 19);
-        checkRegions(gs);
+        expect(pitch).toBeGreaterThanOrEqual(18);
+        checkRegions(gs, "setup");
       });
     });
   }
 
   it("shrinks the hand's cards above 25, briefly animated", () => {
-    expect(rule(block, ".table-screen:has(.hand.small-cards)")["--hand-cw"]).toBe("37px");
+    expect(rule(block, ".table-screen:has(.hand.small-cards)")["--hand-cw"]).toBe("clamp(37px, calc(var(--safe-w) * 0.07), 56px)");
     expect(rule(block, ".hand .card").transition).toContain("width 150ms");
   });
 });
@@ -371,6 +413,21 @@ describe("phone controls", () => {
     expect(px(modalBtn["min-height"])).toBeGreaterThanOrEqual(44);
     // a card's tap area runs the full card height plus 16px above the hand
     expect(rule(block, ".hand .card::after").top).toBe("calc(-1 * var(--lift))");
+  });
+
+  it("gives the in-play notice's close a 44px box that the notice does not clip", () => {
+    const close = rule(block, ".phase-play .hud-notice .hud-notice-close");
+    for (const k of ["width", "height", "min-width", "min-height"]) expect(px(close[k]), k).toBe(44);
+    // the glyph is the 24px content box, drawn in the notice's top right corner
+    expect(px(close.width) - 2 * px(close.padding)).toBe(24);
+    expect(close.position).toBe("absolute");
+    // the box overhangs the notice's corner, so only the text may be clipped
+    expect(px(close.top)).toBeLessThan(0);
+    expect(px(close.right)).toBeLessThan(0);
+    expect(rule(block, ".phase-play .hud-notice").overflow).toBeUndefined();
+    expect(rule(block, ".phase-play .hud-message, .phase-play .hud-notice").overflow).toBeUndefined();
+    expect(rule(block, ".phase-play .hud-notice .hud-notice-body").overflow).toBe("hidden");
+    expect(rule(block, ".phase-play .hud-message").overflow).toBe("hidden");
   });
 
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
@@ -400,14 +457,21 @@ describe("phone controls", () => {
     expect(rule(block, ".table-screen input, .table-screen textarea")["-webkit-user-select"]).toBe("text");
   });
 
-  it("puts LEAD / WINS by one rule for every seat, inside the cards' bottom edge", () => {
+  it("puts LEAD / WINS / declares by one rule for every seat, just under the cards", () => {
     const tag = rule(block, ".trick-tag");
-    expect([tag.position, tag.bottom, tag.left, tag.translate, tag.top]).toEqual(["absolute", "var(--space-xs)", "50%", "-50% 0", "auto"]);
+    expect([tag.position, tag.top, tag.bottom, tag.left, tag.translate]).toEqual(["absolute", "calc(100% + var(--space-xs))", "auto", "50%", "-50% 0"]);
+    expect(tag["flex-direction"]).toBe("row");
+    expect(px(tokens["--tag-s"])).toBeGreaterThanOrEqual(20);
     // no seat overrides it
     expect(/\.trick-play\.pos-\w+[^{]*\.trick-tag/.test(block)).toBe(false);
   });
 
-  it("draws no glow on the seats or the winning cards, and no card counts", () => {
+  it("draws no glow anywhere: not on the hand, the seats, the crown or the winning cards", () => {
+    expect(block.includes(".hand::before")).toBe(false);
+    expect(/box-shadow:[^;]*(gold|242, 193, 78)/.test(block)).toBe(false);
+    expect(rule(block, ".banker-crown").filter).toBe("none");
+    expect(rule(block, ".victory-crown").filter).toBe("none");
+    expect(rule(block, ".level-chip.level-up").animation).toBe("none");
     expect(rule(block, ".opponent.on-turn")["box-shadow"]).toBe("none");
     expect(block.includes(".opponent.on-turn::after")).toBe(false);
     expect(rule(block, ".trick-play.winner .trick-cards").animation).toBe("none");
@@ -431,12 +495,16 @@ describe("phone controls", () => {
     expect(["--space-xs", "--space-s", "--space-m", "--space-l"].map((t) => px(tokens[t]))).toEqual([4, 8, 12, 16]);
   });
 
-  it("shows your turn as the hand's glow, not a pill in the trick", () => {
+  it("shows your turn as Play reading \"Your turn\", fully opaque, not a glow", () => {
     // no name pill on the phone table, ever
     expect(rule(block, ".you-tagline").display).toBe("none");
     expect(rule(block, ".you-tagline .you-name, .you-tagline .your-turn-tag, .you-tagline .ready-tag").display).toBe("none");
-    expect(rule(block, ".my-turn .hand::before").opacity).toBe("1");
-    expect(rule(block, ".hand::before").opacity).toBe("0");
+    expect(rule(block, ".phase-play .action-bar .btn.primary.your-turn .your-turn-text").display).toBe("inline");
+    expect(rule(block, ".phase-play .action-bar .btn.primary.your-turn .play-text").display).toBe("none");
+    expect(rule(block, ".phase-play .action-bar .btn.primary.your-turn:disabled").opacity).toBe("1");
+    expect(rule(css.replace(block, ""), ".your-turn-text").display).toBe("none");
+    // the row steps aside while a finished trick lingers on your slot
+    expect(rule(block, ".phase-play.showing-last .you-row").visibility).toBe("hidden");
   });
 
   it("floats messages and the failed-throw notice in the bottom-left corner", () => {

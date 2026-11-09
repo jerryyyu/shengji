@@ -366,11 +366,13 @@ export default function Table({ state }: { state: GameState }) {
     actionBar = (
       <>
         <button
-          className="btn primary"
+          className={`btn primary${selectedIds.length === 0 && pending === null ? " your-turn" : ""}`}
           disabled={selectedIds.length === 0 || pending !== null || !online}
           onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
         >
-          Play {selectedIds.length > 0 ? `(${selectedIds.length})` : ""}
+          {/* a phone shows "Your turn" on Play until you choose a card */}
+          <span className="play-text">{`Play ${selectedIds.length > 0 ? `(${selectedIds.length})` : ""}`}</span>
+          <span className="your-turn-text">Your turn</span>
         </button>
         <button
           className="btn subtle"

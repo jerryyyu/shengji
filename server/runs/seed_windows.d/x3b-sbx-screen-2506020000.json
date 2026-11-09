@@ -1,0 +1,14 @@
+{
+ "name": "x3b-sbx-screen-2506020000",
+ "purpose": "screen",
+ "seed0": 2506020000,
+ "clusters": 3920,
+ "span": [
+  2506020000,
+  2506023920
+ ],
+ "created_at": "2026-11-09T00:00:00Z",
+ "host": "jerrys-mac-studio",
+ "git_head": "6fc1686733cc813719779d3d6452dea9a914b81f",
+ "note": "SCREEN stage: 3,920 fresh deals; bar mean >= +0.005 levels/round AND one-sided 80% LB > 0. X3B belief (B1a-lineage belief net trained on the X3R R51 self-play corpus [1005000000, 1005020000); Jerry approved; board #1263) goes straight to the two-stage duel bar (Jerry 2026-11-03; a 1,000-deal DEV pass is noise after SBEL). Exploiter = R51 with only SHENGJI_PV_BELIEF_CKPT / _SHA256 swapped to the X3B package (bound to its STATUS 'X3B DONE package=... sha256=...' line and its launcher sha); defender = release 51 as served; paired, seat-swapped, r2 rank-mixed plan, served budgets; archive ~/shengji-archive/2026-11-08-x2-stage2-packet (duel-r5, make_duel_r5.py SBX / CBX --tag x3b). seed_windows.py check rc 0 at 6fc16867; clear rc 0 vs Ae04 a09cef7c + ft1-rebuilt 7f028824 (--follow-init); 0 deal keys shared with the X3R corpus, the X2 corpus and pilots, or the 2505000000..2505007000 DEV duel / SBEL / CBEL blocks. RESERVED BEFORE DEALING."
+}

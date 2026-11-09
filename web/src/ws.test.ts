@@ -406,6 +406,11 @@ describe("negotiated connection heartbeat", () => {
       vi.advanceTimersByTime(60_000);
       expect(fresh.sent).toEqual([]);
       expect(conn.status).toBe("open");
+      fresh.deliver({ type: "heartbeat_ready" });
+      vi.advanceTimersByTime(15_000);
+      expect(fresh.sent).toEqual([{ type: "ping", nonce: 1 }]);
+      fresh.deliver({ type: "pong", nonce: 1 });
+      expect(conn.status).toBe("open");
       fresh.close();
     } finally { vi.useRealTimers(); }
   });

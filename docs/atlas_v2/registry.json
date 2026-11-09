@@ -612,8 +612,8 @@
   },
   {
    "release": 51,
-   "status": "production",
-   "since": "2026-11-06 02:10 ET",
+   "status": "superseded",
+   "since": "2026-11-06 02:10 ET → 2026-11-09 17:25 ET",
    "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8",
    "head": "FT1 1fa201b2 (card-play prior); the value is G3 Stage A f4f4127e (unchanged from release 50)",
    "package": "unchanged from release 50: value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, belief b1a-028131a0.npz, JS-M1 js-m1-0d17fd03.npz; nothing uploaded",
@@ -652,8 +652,54 @@
    "caveats": [
     "deployed 2026-11-06 ~07:10Z (02:10 ET) as Fly v61 at 0 rooms from main 1490b72b (#1312 issuecomment-6679669956)",
     "no zero-cost claim: lccC measured −0.0133 on cloud; the strength effect on Fly is not measured (expected smaller, since the stage rarely changed a Fly lead)",
-    "comparator for NEW duels and screens: release 51 as served (lcc off on both sides, Jerry 2026-11-06); elm16C and loosc8 keep release 50",
+    "comparator for duels and screens 2026-11-06 to 2026-11-09: release 51 as served (lcc off on both sides, Jerry 2026-11-06); elm16C and loosc8 keep release 50",
     "rollback: Fly v60 (release 50, lcc32), or set SHENGJI_PV_LEAD_CONFIRM='32' and restore release 50's name from the fly.toml comment (DEPLOY.md)"
+   ]
+  },
+  {
+   "release": 52,
+   "status": "production",
+   "since": "2026-11-09 17:25 ET",
+   "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-hybrid-bwv-bbw-7a9a430fe690-sc8",
+   "head": "FT1 1fa201b2 (card-play prior); the value is G3 Stage A f4f4127e (unchanged from release 51)",
+   "package": "unchanged from release 51: value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, belief b1a-028131a0.npz, JS-M1 js-m1-0d17fd03.npz; nothing uploaded",
+   "oneline": "Release 51 + combo51 (exact-lead fixes elt/elm/els1600, throw-legal worlds wht, refusals rcec). Vs release 51 head to head: combo51C confirmed +0.0438.",
+   "recipe": "release 51 exactly (packages, stage table, sc8, lcc off, every other rule, budget and latency switch) with five fly.toml lines: elt (SHENGJI_PV_EXACT_LEAD_TIE_BASELINE), elm (SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX), els1600 (SHENGJI_PV_EXACT_LEAD_MAX_SECONDS 1.6), wht (SHENGJI_PV_WORLD_HISTORY_THROWS), rcec (SHENGJI_PV_REFUSAL_EVENT_COMPLETE); play digest r12e81e0c, bury suffix 7a9a430fe690 (server/releases/r52.json). Server tree is release 51's 1490b72b byte for byte; web/ from main (v63 client). Deployed from #1347 head 99338c7e, merged as 754018ac. Jerry, in session 2026-11-09: 'I'm good to release it as we haven't found anything to combo wirh'.",
+   "evidence": [
+    {
+     "what": "combo51: screen vs release 51 as served, 3,920 seat-swapped deal pairs (M5 Ultra), SCREEN_PASS",
+     "point": 0.0418,
+     "lo": 0.0332,
+     "hi": 0.0506,
+     "ref": "combo51"
+    },
+    {
+     "what": "combo51C: confirmation vs release 51 as served, 7,840 fresh seat-swapped deal pairs (M5 Ultra), CONFIRMED",
+     "point": 0.0438,
+     "lo": 0.0381,
+     "hi": 0.0497,
+     "ref": "combo51C"
+    },
+    {
+     "what": "Fly timing run 2 on the production machine at 0 rooms: completed k=1 cells only; the overall read is INSUFFICIENT. k=1: decision p95 0.855 s vs 0.835 s for release 51, p99 0.943 vs 0.941, 0 fallbacks, exact lead 16 started / 0 abandoned / max 0.75 s, child HWM 172,336 vs 173,888 KiB (about 168.3 vs 169.8 MiB). B-k2 started and aborted at the 80 MiB MemAvailable floor (336 decisions); A-k2 and both k4 cells were not run, so there is no completed paired k2/k4 capacity comparison. Context: the harness process runs beside the live server on the 512 MiB machine",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-11-09-combo51-fly-run2/; #1313"
+    },
+    {
+     "what": "server-path smoke on the release tree: validator PASS; post-deploy /healthz name exact and in-machine 'True compiled 028131a0'",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-11-09-r52-smoke/; #1263 issuecomment-6753130529"
+    }
+   ],
+   "caveats": [
+    "deployed 2026-11-09 22:25Z (17:25 ET) as Fly v64 at 0 rooms from #1347 head 99338c7e (#1263 issuecomment-6753130529)",
+    "strength measured on the M5 Ultra duel host, not on Fly; Fly timing completed for one game at a time only (Jerry chose to ship on it); no completed 2- or 4-game comparison on Fly",
+    "comparator for NEW duels and screens: release 52 as served (Jerry 2026-11-09, with the deploy)",
+    "rollback: the v63 image deployment-01M7059VAETQFCMM6Z3ADYKRPM with release 51's verified fly.toml (DEPLOY.md, Rollback to release 51)"
    ]
   }
  ],
@@ -4888,8 +4934,8 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran — Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once — which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 51,
+  "release": 52,
   "status": "confirmed",
-  "note": "New screens compare against release 51 as served (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312). Before that release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
+  "note": "New screens compare against release 52 as served (Jerry, in session 2026-11-09, with release 52's deploy, #1347). Before that release 51 (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312), release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  }
 }

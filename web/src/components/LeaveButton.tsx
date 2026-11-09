@@ -7,10 +7,12 @@ interface LeaveButtonProps {
   variant?: "hud" | "dialog";
 }
 
-/** Leave control with a confirm step: first tap arms ("Leave game?"),
- * second tap within 3s sends leave_room; otherwise it reverts. */
+/** Leave control with a confirm step. The top-bar pill arms on the first tap
+ * ("Leave game?") and sends leave_room on a second tap within 3s; the dialog
+ * button opens a Stay / Leave choice that waits. */
 export default function LeaveButton({ variant = "hud" }: LeaveButtonProps) {
   const [armed, setArmed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const timer = useRef<number | null>(null);
 
   useEffect(
@@ -36,14 +38,27 @@ export default function LeaveButton({ variant = "hud" }: LeaveButtonProps) {
   };
 
   if (variant === "dialog") {
+    // In a dialog Leave asks and waits: no timer, so a slow second tap never
+    // re-arms it instead of leaving.
+    if (confirming) {
+      return (
+        <div className="dialog-leave-confirm" role="group" aria-label="Leave game?">
+          <span className="dialog-leave-q">Leave game?</span>
+          <button type="button" className="btn subtle" onClick={() => setConfirming(false)}>Stay</button>
+          <button type="button" className="btn subtle danger" onClick={() => conn.send({ type: "leave_room" })}>
+            Leave
+          </button>
+        </div>
+      );
+    }
     return (
       <button
         type="button"
-        className={`btn subtle danger dialog-leave-btn${armed ? " armed" : ""}`}
-        onClick={click}
+        className="btn subtle danger dialog-leave-btn"
+        onClick={() => setConfirming(true)}
         title="Leave the game (a bot takes over your seat)"
       >
-        {armed ? "Tap again to leave" : "Leave game"}
+        Leave game
       </button>
     );
   }

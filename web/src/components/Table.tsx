@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
+import type { ConnStatus } from "../ws";
 import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
 import type { HandRects } from "./Hand";
@@ -216,6 +217,31 @@ export default function Table({ state }: { state: GameState }) {
     });
   }, [state.hand]);
 
+  // A play or bury you sent is in flight until the server answers: your hand
+  // changes or the turn moves on (then the whole selection clears, including
+  // cards a failed throw handed back), or an error comes back (then the
+  // selection stays, to be corrected). Play, Bury and Clear wait meanwhile.
+  const [pending, setPending] = useState<{ handKey: string; turn: number | null } | null>(null);
+  const handKey = state.hand.map((c) => c.id).join(",");
+  useEffect(() => {
+    if (!pending) return;
+    if (handKey !== pending.handKey || state.turn !== pending.turn) {
+      setPending(null);
+      setSelected(new Set());
+    }
+  }, [handKey, state.turn, pending]);
+  useEffect(() => conn.subscribe((msg: ServerMsg) => {
+    if (msg.type === "error") setPending(null);
+  }), []);
+  const [status, setStatus] = useState<ConnStatus>(conn.status);
+  useEffect(() => conn.subscribeStatus(setStatus), []);
+  const online = status === "open";
+  const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
+    if (!conn.send(msg)) return;
+    haptic("play");
+    setPending({ handKey, turn: state.turn });
+  };
+
   // When the trick resets and last_trick changed, linger on the finished trick
   // briefly. Derived during render, so the frame that delivers the reset
   // already shows the finished trick instead of an empty table.
@@ -319,8 +345,8 @@ export default function Table({ state }: { state: GameState }) {
     actionBar = (
       <button
         className="btn primary"
-        disabled={selectedIds.length !== 8}
-        onClick={() => { haptic("play"); conn.send({ type: "bury", card_ids: selectedIds }); }}
+        disabled={selectedIds.length !== 8 || pending !== null || !online}
+        onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
       >
         Bury 8 cards ({selectedIds.length}/8)
       </button>
@@ -330,14 +356,14 @@ export default function Table({ state }: { state: GameState }) {
       <>
         <button
           className="btn primary"
-          disabled={selectedIds.length === 0}
-          onClick={() => { haptic("play"); conn.send({ type: "play", card_ids: selectedIds }); }}
+          disabled={selectedIds.length === 0 || pending !== null || !online}
+          onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
         >
           Play {selectedIds.length > 0 ? `(${selectedIds.length})` : ""}
         </button>
         <button
           className="btn subtle"
-          disabled={selectedIds.length === 0}
+          disabled={selectedIds.length === 0 || pending !== null}
           onClick={() => setSelected(new Set())}
         >
           Clear

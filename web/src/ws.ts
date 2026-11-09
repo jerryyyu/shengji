@@ -110,10 +110,14 @@ class Connection {
     this.open();
   }
 
-  send(msg: ClientMsg): void {
+  /** Sends when the socket is open; returns whether it did, so a caller can
+   *  confirm an action (a haptic, a pending state) only for a real send. */
+  send(msg: ClientMsg): boolean {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+      return true;
     }
+    return false;
   }
 
   /** Leave the current room and go straight back to the lobby, keeping this

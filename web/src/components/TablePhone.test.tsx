@@ -6,9 +6,26 @@ import type { GameState, HandCard, StatePlayer } from "../protocol";
 const haptics: string[] = [];
 vi.mock("../native", () => ({ haptic: (k: string) => { haptics.push(k); } }));
 const sent: unknown[] = [];
-vi.mock("../ws", () => ({
-  conn: { send: (m: unknown) => { sent.push(m); }, subscribe: () => () => {}, chatHistory: () => [] },
+// a stand-in connection: open unless a test says otherwise, and able to
+// deliver a server message to whoever subscribed
+const link = vi.hoisted(() => ({
+  status: "open" as string,
+  listeners: new Set<(m: unknown) => void>(),
 }));
+vi.mock("../ws", () => ({
+  conn: {
+    get status() { return link.status; },
+    send: (m: unknown) => {
+      if (link.status !== "open") return false;
+      sent.push(m);
+      return true;
+    },
+    subscribe: (fn: (m: unknown) => void) => { link.listeners.add(fn); return () => link.listeners.delete(fn); },
+    subscribeStatus: (fn: (s: string) => void) => { fn(link.status); return () => {}; },
+    chatHistory: () => [],
+  },
+}));
+const serverSays = (m: unknown) => act(() => { for (const fn of link.listeners) fn(m); });
 
 const { default: Table } = await import("./Table");
 const { default: Hand } = await import("./Hand");
@@ -40,6 +57,7 @@ let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   haptics.length = 0;
   sent.length = 0;
+  link.status = "open";
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -144,4 +162,50 @@ it("keeps a long-pressed name visible after pointer release and its click", () =
     act(() => seat.click());
     expect(seat.querySelector(".opp-fullname")).toBeNull();
   } finally { vi.useRealTimers(); }
+});
+
+describe("sending a play", () => {
+  const myTurn = (over: Partial<GameState> = {}) =>
+    state({ turn: 0, trick: { leader: 0, plays: [] }, ...over });
+  const pick = (n: number) => act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[n].click());
+  const play = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+  const selectedCount = () => host.querySelectorAll(".hand .card.selected").length;
+
+  it("clears the whole selection once the server answers, even cards a failed throw hands back", () => {
+    render(myTurn());
+    pick(0); pick(1); pick(2);
+    act(() => play().click());
+    expect(sent).toEqual([{ type: "play", card_ids: [1, 2, 3] }]);
+    // the throw failed: the server forced card 1 and handed 2 and 3 back
+    render(myTurn({ hand: cards(25).filter((c) => c.id !== 1), turn: 1,
+      trick: { leader: 0, plays: [{ seat: 0, cards: ["S2"] }] } }));
+    expect(selectedCount()).toBe(0);
+    render(myTurn({ hand: cards(25).filter((c) => c.id !== 1) }));
+    expect(selectedCount()).toBe(0);
+  });
+
+  it("waits after one send: a second tap sends nothing until the server answers", () => {
+    render(myTurn());
+    pick(4);
+    act(() => play().click());
+    expect(play().disabled).toBe(true);
+    act(() => play().click());
+    expect(sent).toHaveLength(1);
+    expect(host.querySelector<HTMLButtonElement>(".action-bar .btn.subtle")!.disabled).toBe(true);
+    // an illegal play comes back as an error: the selection stays to be fixed
+    serverSays({ type: "error", code: "illegal", message: "You must follow suit." });
+    expect(play().disabled).toBe(false);
+    expect(selectedCount()).toBe(1);
+  });
+
+  it("does not send, buzz or wait while the connection is down", () => {
+    link.status = "closed";
+    render(myTurn());
+    pick(4);
+    haptics.length = 0;
+    expect(play().disabled).toBe(true);
+    act(() => play().click());
+    expect(sent).toEqual([]);
+    expect(haptics).toEqual([]);
+  });
 });

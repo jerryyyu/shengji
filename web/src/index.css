@@ -1278,6 +1278,19 @@ textarea:focus-visible {
   display: none;
 }
 
+/* The round-end dialog's Leave asks first, with no timer: Stay / Leave. */
+.dialog-leave-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dialog-leave-confirm .dialog-leave-q {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
 /* a seat's full name on tap: only the phone layout, which shortens long
    names, draws it */
 .opp-fullname {
@@ -2846,10 +2859,31 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 13px;
   }
 
+  /* an error passes in the header band, never over Play and Clear */
   .toast {
-    bottom: 120px;
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    bottom: auto;
+    max-width: calc(100vw - 2 * max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) - 32px);
     font-size: 13px;
-    padding: 8px 16px;
+    padding: 7px 16px;
+  }
+
+  /* chat sits in the header, beside the menu button, clear of the hand
+     (the extra class outranks the base rule later in the file) */
+  .table-screen .chat-launch {
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    right: calc(var(--safe-r) + 4px + 36px + var(--space-s));
+    bottom: auto;
+    width: 40px;
+    height: var(--header-h);
+    border-radius: 999px;
+    font-size: 15px;
+  }
+
+  .table-screen .chat-launch::after {
+    content: "";
+    position: absolute;
+    inset: -6px -2px;
   }
 
   .reconnect-banner {

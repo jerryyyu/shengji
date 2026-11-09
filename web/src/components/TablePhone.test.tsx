@@ -8,20 +8,30 @@ vi.mock("../native", () => ({ haptic: (k: string) => { haptics.push(k); } }));
 const sent: unknown[] = [];
 // a stand-in connection: open unless a test says otherwise, and able to
 // deliver a server message to whoever subscribed
+// The connection's generation bumps on each transition to open, as the real
+// socket's does.
 const link = vi.hoisted(() => ({
-  status: "open" as string,
+  current: "open" as string,
+  generation: 1,
+  get status() { return this.current; },
+  set status(v: string) {
+    if (v === "open" && this.current !== "open") this.generation += 1;
+    this.current = v;
+  },
+  statusListeners: new Set<(s: string) => void>(),
   listeners: new Set<(m: unknown) => void>(),
 }));
 vi.mock("../ws", () => ({
   conn: {
     get status() { return link.status; },
+    get generation() { return link.generation; },
     send: (m: unknown) => {
       if (link.status !== "open") return false;
       sent.push(m);
       return true;
     },
     subscribe: (fn: (m: unknown) => void) => { link.listeners.add(fn); return () => link.listeners.delete(fn); },
-    subscribeStatus: (fn: (s: string) => void) => { fn(link.status); return () => {}; },
+    subscribeStatus: (fn: (s: string) => void) => { link.statusListeners.add(fn); fn(link.status); return () => link.statusListeners.delete(fn); },
     chatHistory: () => [],
   },
 }));
@@ -207,5 +217,95 @@ describe("sending a play", () => {
     act(() => play().click());
     expect(sent).toEqual([]);
     expect(haptics).toEqual([]);
+  });
+});
+
+
+it("recovers an unanswered play after reconnecting to the unchanged authoritative state", () => {
+  const unchanged = state({ turn: 0, trick: { leader: 0, plays: [] } });
+  render(unchanged);
+  act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[0].click());
+  const play = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+  act(() => play().click());
+  expect(sent).toHaveLength(1);
+  for (const status of ["closed", "connecting", "open"]) {
+    act(() => { link.status = status; for (const fn of link.statusListeners) fn(status); });
+  }
+  serverSays({ ...unchanged, type: "state" });
+  render({ ...unchanged });
+  expect(play().disabled).toBe(false);
+});
+
+describe("a pending action across a reconnect", () => {
+  const reconnect = () => {
+    for (const status of ["closed", "connecting", "open"]) {
+      act(() => { link.status = status; for (const fn of link.statusListeners) fn(status); });
+    }
+  };
+  const pick = (n: number) => act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[n].click());
+  const primary = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+  const selected = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")]
+    .filter((slot) => slot.querySelector(".card.selected")).map((slot) => Number(slot.dataset.id));
+
+  const playing = (over: Partial<GameState> = {}) => state({ turn: 0, trick: { leader: 0, plays: [] }, ...over });
+  const burying = (over: Partial<GameState> = {}) => state({
+    phase: "bury", turn: 0, hand: cards(33), banker: 0,
+    players: [player(0, { is_banker: true, cards_left: 33 }), player(1), player(2), player(3)], ...over });
+
+  it("play that never committed: Play waits through the reconnect, then the same state frees it with the selection kept", () => {
+    render(playing());
+    pick(2); pick(3);
+    act(() => primary().click());
+    expect(sent).toEqual([{ type: "play", card_ids: [3, 4] }]);
+    reconnect();
+    // open alone settles nothing: still waiting for the server's state
+    expect(primary().disabled).toBe(true);
+    render(playing());
+    expect(primary().disabled).toBe(false);
+    expect(selected()).toEqual([3, 4]);
+  });
+
+  it("play that committed: the first state after the reconnect shows it, and the selection clears", () => {
+    render(playing());
+    pick(2); pick(3);
+    act(() => primary().click());
+    reconnect();
+    render(playing({ hand: cards(25).filter((c) => c.id !== 3 && c.id !== 4), turn: 1,
+      trick: { leader: 0, plays: [{ seat: 0, cards: ["S4", "S5"] }] } }));
+    expect(selected()).toEqual([]);
+    render(playing({ hand: cards(25).filter((c) => c.id !== 3 && c.id !== 4) }));
+    expect(primary().disabled).toBe(true);    // nothing selected, nothing pending
+    expect(selected()).toEqual([]);
+  });
+
+  it("bury that never committed: Bury waits through the reconnect, then the same state frees it with the eight kept", () => {
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    act(() => primary().click());
+    expect(sent).toEqual([{ type: "bury", card_ids: [1, 2, 3, 4, 5, 6, 7, 8] }]);
+    reconnect();
+    expect(primary().disabled).toBe(true);
+    render(burying());
+    expect(primary().disabled).toBe(false);
+    expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("bury that committed: the first state after the reconnect is play, and nothing stays selected", () => {
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    act(() => primary().click());
+    reconnect();
+    render(playing({ hand: cards(33).slice(8), banker: 0,
+      players: [player(0, { is_banker: true, cards_left: 25 }), player(1), player(2), player(3)] }));
+    expect(selected()).toEqual([]);
+  });
+
+  it("a same-hand broadcast on the same connection does not free a pending play", () => {
+    render(playing());
+    pick(2);
+    act(() => primary().click());
+    render(playing({ attacker_points: 5 }));
+    expect(primary().disabled).toBe(true);
+    expect(sent).toHaveLength(1);
   });
 });

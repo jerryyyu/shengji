@@ -217,19 +217,30 @@ export default function Table({ state }: { state: GameState }) {
     });
   }, [state.hand]);
 
-  // A play or bury you sent is in flight until the server answers: your hand
-  // changes or the turn moves on (then the whole selection clears, including
-  // cards a failed throw handed back), or an error comes back (then the
-  // selection stays, to be corrected). Play, Bury and Clear wait meanwhile.
-  const [pending, setPending] = useState<{ handKey: string; turn: number | null } | null>(null);
+  // A play or bury you sent is in flight until the server answers, and Play,
+  // Bury and Clear wait meanwhile. Pending belongs to the connection it was
+  // sent on, and only a state settles it:
+  // - your hand changed or the turn moved on: it committed, so the whole
+  //   selection clears, including cards a failed throw handed back;
+  // - the first state after a reconnect still shows the same hand and turn:
+  //   it never committed (or its answer was lost), so pending clears and the
+  //   selection stays for a retry;
+  // - an error comes back: pending clears and the selection stays.
+  // The socket opening alone settles nothing, and neither does a same-hand
+  // broadcast on the connection the play was sent on.
+  const [pending, setPending] = useState<{ handKey: string; turn: number | null; generation: number } | null>(null);
   const handKey = state.hand.map((c) => c.id).join(",");
   useEffect(() => {
     if (!pending) return;
     if (handKey !== pending.handKey || state.turn !== pending.turn) {
       setPending(null);
       setSelected(new Set());
+    } else if (conn.generation !== pending.generation) {
+      setPending(null);
     }
-  }, [handKey, state.turn, pending]);
+    // settles on each new state, so a re-render of the same state is no answer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
     if (msg.type === "error") setPending(null);
   }), []);
@@ -239,7 +250,7 @@ export default function Table({ state }: { state: GameState }) {
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
     haptic("play");
-    setPending({ handKey, turn: state.turn });
+    setPending({ handKey, turn: state.turn, generation: conn.generation });
   };
 
   // When the trick resets and last_trick changed, linger on the finished trick

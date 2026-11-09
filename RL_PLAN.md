@@ -420,6 +420,10 @@ links and every reported number, is in `docs_archive/rl-plan-through-2026-10-16.
   clue, not permission.
 - Interval overlap is not a difference test: superiority between two arms needs a contrast that clears zero on a
   common opponent or paired deals.
+- A 1,000-deal DEV duel selects what gets screened; it does not establish a gain. X2B's DEV pass (+0.0235,
+  LB80 +0.011) read −0.0084 [−0.0224, +0.0054] on its 3,920-deal fresh-seed screen (#1263, 2026-11-09). A candidate
+  whose DEV point sits within about one DEV standard error of the bar goes to the screen before anything is built on it;
+  when a screen is affordable, a lane may skip the DEV duel and go straight to the screen.
 
 **Window rule (ten-window MC-LCB instrument only)**
 

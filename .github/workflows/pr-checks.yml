@@ -120,6 +120,10 @@ jobs:
       # with a reason, in server/tests/ci_selection_exclusions.txt (a ratchet).
       - name: Check every test module is selected by a CI job
         run: python3 server/scripts/check_ci_test_selection.py
+      # Lane shell scripts: no ls-glob counts piped to wc; launchers under server/scripts/lanes source lane_lib.sh.
+      - name: Check lane scripts
+        if: ${{ !cancelled() }}
+        run: python3 server/scripts/check_lane_scripts.py
 
   comment-provenance:
     if: github.event_name == 'pull_request'
@@ -220,6 +224,8 @@ jobs:
           tests/test_check_ci_test_selection.py
           tests/test_check_comment_provenance.py
           tests/test_check_doc_claims.py
+          tests/test_check_lane_scripts.py
+          tests/test_lane_lib.py
           tests/test_ci_review_ledger_step.py
           tests/test_receipt_summary.py
           tests/test_seed_windows_dir.py

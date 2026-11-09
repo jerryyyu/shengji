@@ -3,6 +3,7 @@
 # (Mini + Air + the optional local SSH aliases `shengji-cloud`, `shengji-perf`
 # (retiring) and `ultra`). Public addresses never belong in this repository.
 # Probes LIVE state — no registry to go stale. Run from any directory.
+# lane-lib: exempt read-only status report; it reads host locks and starts no producer.
 #
 # Job identification: our compute jobs are python processes in the
 # server venv; heredoc-launched ones have opaque cmdlines ("python3 -"),

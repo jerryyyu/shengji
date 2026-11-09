@@ -1,6 +1,6 @@
 """Per-release model manifests (`shengji.releases`, ``server/releases/r<N>.json``).
 
-* ``fly.toml``'s served env is release 51's manifest env, key for key: editing one
+* ``fly.toml``'s served env is release 52's manifest env, key for key: editing one
   without the other fails here.
 * The schema refuses a manifest whose null value, null prior or non-belief worlds
   carry no ``why``, that names an unknown package, or whose hashes disagree with
@@ -10,7 +10,7 @@
   table: no package reaches a stage the manifest does not list, none it lists is
   missing, and every decision record's ``model_ids`` agree.  Release 49's witness
   runs on the hash-pinned CI packages and fails, never skips, under
-  ``SHENGJI_REQUIRE_PV_PACKAGE=1``.  The witnesses of releases 50 and 51 run on their
+  ``SHENGJI_REQUIRE_PV_PACKAGE=1``.  The witnesses of releases 50, 51 and 52 run on their
   three ``serving-packages`` assets (``test_release50_fly_config``'s pinned paths, or
   ``SHENGJI_RELEASE_PACKAGE_DIR``) and fails, never skips, under the same flag.
 """
@@ -35,8 +35,8 @@ def r49():
     return releases.load(49)
 
 
-def test_fly_toml_env_is_release51_manifest_env():
-    manifest = releases.load(51)
+def test_fly_toml_env_is_release52_manifest_env():
+    manifest = releases.load(52)
     assert releases.fly_env(FLY_TOML) == manifest["env"]
     assert manifest["bot_name"] == manifest["env"]["SHENGJI_BOT"]
 
@@ -50,7 +50,7 @@ def _edited_fly(tmp_path, old, new):
 
 
 def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
-    manifest = releases.load(51)
+    manifest = releases.load(52)
     # fly.toml edited, manifest not
     fly = _edited_fly(tmp_path, "SHENGJI_PV_WORLDS = '64'", "SHENGJI_PV_WORLDS = '48'")
     assert releases.fly_env(fly) != manifest["env"]
@@ -66,7 +66,7 @@ def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
         releases.NON_BOT_KEYS)
 
 
-@pytest.mark.parametrize("release", [49, 50, 51])
+@pytest.mark.parametrize("release", [49, 50, 51, 52])
 def test_manifests_validate_and_name_their_packages(release):
     manifest = releases.load(release)
     assert manifest["release"] == release
@@ -103,6 +103,25 @@ def test_release51_is_release50_with_lead_confirmation_off():
     assert "-lcc32-" in a["bot_name"] and "lcc" not in b["bot_name"]
     # same packages, same stage table
     assert (a["packages"], a["stages"]) == (b["packages"], b["stages"])
+
+
+def test_release52_is_release51_with_the_combo51_lines():
+    a, b = releases.load(51), releases.load(52)
+    changed = {k for k in set(a["env"]) | set(b["env"]) if a["env"].get(k) != b["env"].get(k)}
+    assert changed == {"SHENGJI_BOT", "SHENGJI_PV_EXACT_LEAD_TIE_BASELINE",
+                       "SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX", "SHENGJI_PV_EXACT_LEAD_MAX_SECONDS",
+                       "SHENGJI_PV_WORLD_HISTORY_THROWS", "SHENGJI_PV_REFUSAL_EVENT_COMPLETE"}
+    assert not set(b["env"]) - changed - set(a["env"]) and set(a["env"]) <= set(b["env"])
+    assert {k: b["env"][k] for k in changed - {"SHENGJI_BOT"}} == {
+        "SHENGJI_PV_EXACT_LEAD_TIE_BASELINE": "1", "SHENGJI_PV_EXACT_LEAD_FULL_MINIMAX": "1",
+        "SHENGJI_PV_EXACT_LEAD_MAX_SECONDS": "1.6", "SHENGJI_PV_WORLD_HISTORY_THROWS": "1",
+        "SHENGJI_PV_REFUSAL_EVENT_COMPLETE": "1"}
+    assert "-elt-elm-" in b["bot_name"] and "-els1600-" in b["bot_name"]
+    # same packages, same stage worlds and packages
+    assert a["packages"] == b["packages"]
+    for stage in releases.STAGES:
+        drop = lambda row: {k: v for k, v in row.items() if k != "why"}
+        assert drop(a["stages"][stage]) == drop(b["stages"][stage])
 
 
 def _refused(manifest, match):
@@ -212,7 +231,7 @@ def test_release49_wiring_matches_its_manifest(pinned_production_package,
     _check_wiring(manifest, paths)
 
 
-@pytest.mark.parametrize("release", [50, 51])
+@pytest.mark.parametrize("release", [50, 51, 52])
 def test_release50_package_wiring_matches_its_manifest(release50_packages, release):
     manifest = releases.load(release)
     paths = {"g3a-e04-f4f4127e": release50_packages["value"],

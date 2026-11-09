@@ -146,13 +146,33 @@ describe("leaving from the round-end screen", () => {
     expect(leave!.disabled).toBe(false);
   });
 
-  it("sends leave_room only on the confirming second tap", () => {
+  const choice = (label: string) =>
+    [...host.querySelectorAll(".dialog-leave-confirm button")].find((b) => b.textContent === label) as
+      HTMLButtonElement | undefined;
+
+  it("asks Leave game? with Stay and Leave, and sends leave_room only on Leave", () => {
     renderModal(makeResult(), waiting);
     act(() => { leaveButton()!.click(); });
     expect(sent).toEqual([]);
-    expect(leaveButton()!.textContent).toBe("Tap again to leave");
-    act(() => { leaveButton()!.click(); });
+    expect(host.querySelector(".dialog-leave-confirm")!.textContent).toContain("Leave game?");
+    act(() => { choice("Leave")!.click(); });
     expect(sent).toEqual([{ type: "leave_room" }]);
+  });
+
+  it("has no timer: the question waits, and Stay puts the button back", () => {
+    vi.useFakeTimers();
+    try {
+      renderModal(makeResult(), waiting);
+      act(() => { leaveButton()!.click(); });
+      act(() => { vi.advanceTimersByTime(30_000); });
+      expect(host.querySelector(".dialog-leave-confirm")).not.toBeNull();
+      act(() => { choice("Stay")!.click(); });
+      expect(host.querySelector(".dialog-leave-confirm")).toBeNull();
+      expect(leaveButton()!.textContent).toBe("Leave game");
+      expect(sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is also available before you confirm the next round", () => {

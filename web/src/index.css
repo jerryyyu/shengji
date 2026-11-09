@@ -1278,6 +1278,19 @@ textarea:focus-visible {
   display: none;
 }
 
+/* The round-end dialog's Leave asks first, with no timer: Stay / Leave. */
+.dialog-leave-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dialog-leave-confirm .dialog-leave-q {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
 /* a seat's full name on tap: only the phone layout, which shortens long
    names, draws it */
 .opp-fullname {
@@ -1763,26 +1776,37 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --safe-b: env(safe-area-inset-bottom, 0px);
     --safe-w: calc(100vw - var(--safe-l) - var(--safe-r));
     --header-h: 32px;
+    /* one spacing scale for the whole table */
+    --space-xs: 4px;
+    --space-s: 8px;
+    --space-m: 12px;
+    --space-l: 16px;
     --hand-cw: clamp(58px, calc(var(--safe-w) / 11.5), 76px);
     --hand-under: max(0px, calc(var(--safe-b) - 16px));
     --lift: 18px;               /* a selected card's rise; the hand's top padding */
     --hand-h: calc(var(--hand-cw) * 1.4 + var(--hand-under));
-    --trick-cw: clamp(48px, 6.7vw, 64px);
+    --header-bottom: calc(env(safe-area-inset-top, 0px) + 6px + var(--header-h));
+    /* The felt between the header and your row holds the cross: three equal
+       gaps (header, top slot, your slot, your row) and two card heights. The
+       cards take the width-based size unless that leaves gaps under --space-m. */
+    --cross-avail: calc(100vh - var(--header-bottom) - var(--zone-bottom) - var(--row-h));
+    --trick-cw: min(clamp(48px, 6.7vw, 64px),
+      calc((var(--cross-avail) - 3 * var(--space-m)) / 2.8));
     --trick-ch: calc(var(--trick-cw) * 1.4);
+    --gap-v: calc((var(--cross-avail) - 2 * var(--trick-ch)) / 3);
     /* a side slot's outer edge, from the centre: room for a four-card throw
        growing inward that still clears a four-card throw in the top or your
        slot (4 cards span 3.16 card widths at the -0.28 overlap) */
     --side-out: calc(var(--trick-cw) * 4.74 + 6px);
     /* a side seat's label sits outside its slot and never reaches the safe area */
-    --pill-max: min(84px, calc(50vw - var(--side-out) - 10px - max(var(--safe-l), var(--safe-r))));
-    /* as far apart as the felt between the header and your row allows */
-    --slot-dy: min(clamp(54px, 18vh, 90px),
-      calc((100vh - var(--trick-top) - var(--cross-bottom) - var(--trick-ch)) / 2));
-    --trick-top: calc(env(safe-area-inset-top, 0px) + 10px + var(--header-h));
+    --pill-max: min(96px, calc(50vw - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))));
+    /* top and your slot centres sit a card and a gap apart */
+    --slot-dy: calc((var(--trick-ch) + var(--gap-v)) / 2);
+    --trick-top: calc(var(--header-bottom) + var(--gap-v));
     --trick-bottom: calc(var(--hand-h) + var(--lift));
     --row-h: 50px;              /* one 44px button row and its padding */
-    --zone-bottom: calc(var(--trick-bottom) + 4px);
-    --cross-bottom: calc(var(--zone-bottom) + var(--row-h) + 4px);
+    --zone-bottom: calc(var(--trick-bottom) + var(--space-xs));
+    --cross-bottom: calc(var(--zone-bottom) + var(--row-h) + var(--gap-v));
     --corner-l: calc(var(--safe-l) + 8px);
     /* a long press on a name or label must not select text or raise the
        Copy / Look Up callout over the table */
@@ -2059,14 +2083,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     color: #fff;
   }
 
-  /* --- Seats: one-line labels; the side ones stand on their trick slots --- */
+  /* --- Seats: one-line labels of one height, radius and type size --- */
   .opponent {
     flex-direction: row;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-s);
     min-width: 0;
-    height: 28px;
-    padding: 0 12px 0 10px;
+    height: var(--header-h);
+    padding: 0 var(--space-m) 0 var(--space-s);
     border: 0;
     border-left: 3px solid var(--panel-edge);   /* the team colour lives here, once */
     border-radius: 999px;
@@ -2077,9 +2101,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .opponent.team0 { border-left-color: var(--team0); }
   .opponent.team1 { border-left-color: var(--team1); }
 
+  /* whose turn: the seat's edge turns gold, without a glow */
   .opponent.on-turn {
     border-left-color: var(--gold);
-    box-shadow: 0 0 0 1.5px var(--gold), 0 0 16px 2px var(--gold-soft);
+    box-shadow: none;
   }
 
   .opp-name {
@@ -2091,7 +2116,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 12px;
   }
 
-  .opp-cards { gap: 0; }
+  /* the card count is not shown at the table */
+  .opp-cards {
+    display: none;
+  }
 
   .back-stack,
   .bot-tag,          /* every seat but yours is a bot at most tables; the tag is noise */
@@ -2100,25 +2128,34 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     display: none;
   }
 
-  .card-count {
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .opponent.on-turn .card-count { color: var(--gold); }
-
-  /* each dealt card ticks the seat's count */
-  .phase-deal .card-count {
-    animation: count-tick 220ms ease-out;
-  }
-
   .you-tag,
   .host-tag,
-  .off-tag,
-  .ready-tag {
+  .off-tag {
     font-size: 10px;
     padding: 1px 5px;
-    margin-left: 4px;
+    margin-left: var(--space-xs);
+  }
+
+  /* ready to play: a small check after the name, so the name keeps its room
+     (the word stays for screen readers) */
+  .opponent .ready-tag {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    padding: 0;
+    border-radius: 999px;
+    background: #2f7a4f;
+    font-size: 0;
+    line-height: 14px;
+    text-align: center;
+  }
+
+  .opponent .ready-tag::before {
+    content: "\2713";
+    color: #e9f7ee;
+    font-size: 10px;
+    font-weight: 800;
   }
 
   .thinking,
@@ -2126,7 +2163,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 11px;
   }
 
-  /* A bot's turn shows as its seat breathing gold, not a sentence on the felt.
+  /* A bot's turn shows as its seat's gold edge, not a sentence on the felt.
      The status text stays in the accessibility tree as a visually hidden live
      region. */
   .opponent .thinking {
@@ -2138,18 +2175,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     white-space: nowrap;
   }
 
-  .opponent.on-turn::after {
-    content: "";
-    position: absolute;
-    inset: -3px;
-    border-radius: inherit;
-    pointer-events: none;
-    box-shadow: 0 0 12px 3px var(--gold-soft);
-    animation: thinking-pulse 1.1s ease-in-out infinite alternate;
-  }
-
-  /* the top seat's label is centred in the header row, over its slot: one
-     line, so it keeps the header's height */
+  /* the top seat's label is centred in the header row, over its slot */
   .opponent.pos-top {
     top: calc(6px + env(safe-area-inset-top, 0px));
     left: 50%;
@@ -2159,50 +2185,32 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     transform: translateX(-50%);
   }
 
-  /* the name gives way to an ellipsis; the count never wraps or shrinks */
+  /* the name gives way to an ellipsis */
   .opponent .opp-name {
     min-width: 0;
-  }
-
-  .opponent .opp-cards {
-    flex-shrink: 0;
-  }
-
-  .card-count {
-    white-space: nowrap;
+    max-width: 100%;
+    gap: var(--space-xs);
   }
 
   /* A side seat's label stands on the outer side of its trick slot, centred
-     on it: name over card count. Long names step down a size, then end in an
-     ellipsis; a tap or long press shows the whole name. */
+     on it, as far from its cards as the top seat's label is from its card.
+     Long names step down a size, then end in an ellipsis; a tap or long press
+     shows the whole name. */
   .opponent.pos-left,
   .opponent.pos-right {
     top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2);
     right: auto;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    height: auto;
     max-width: var(--pill-max);
-    padding: 5px 8px;
-    border-radius: 12px;
   }
 
   .opponent.pos-left {
-    left: calc(50% - var(--side-out) - 6px);
+    left: calc(50% - var(--side-out) - var(--gap-v));
     transform: translate(-100%, -50%);
   }
 
   .opponent.pos-right {
-    left: calc(50% + var(--side-out) + 6px);
+    left: calc(50% + var(--side-out) + var(--gap-v));
     transform: translate(0, -50%);
-  }
-
-  .opponent.pos-left .opp-name,
-  .opponent.pos-right .opp-name {
-    max-width: 100%;
-    font-size: 12px;
-    gap: 3px;
   }
 
   .opp-name-text {
@@ -2215,28 +2223,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .opponent[data-name-len="m"] .opp-name { font-size: 11px; }
   .opponent[data-name-len="l"] .opp-name { font-size: 10px; }
 
-  .opponent.pos-left .card-count,
-  .opponent.pos-right .card-count {
-    font-size: 11px;
-  }
-
-  /* the count reads as cards: a small card outline before the number */
-  .card-count::before {
-    content: "";
-    display: inline-block;
-    width: 6px;
-    height: 9px;
-    margin: 0 4px 0 0;
-    border: 1.5px solid currentColor;
-    border-radius: 2px;
-    opacity: 0.7;
-    vertical-align: -1px;
-  }
-
   .opp-fullname {
     display: block;
     position: absolute;
-    top: calc(100% + 6px);
+    top: calc(100% + var(--space-s));
     left: 50%;
     translate: -50% 0;
     z-index: 20;
@@ -2316,30 +2306,31 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     translate: 0 -50%;
   }
 
+  /* One rule for every seat: LEAD / WINS sit centred inside the cards'
+     bottom edge, so a tag takes no room of its own and never lands between
+     two slots. */
   .trick-tag {
     position: absolute;
-    top: 100%;
+    top: auto;
+    bottom: var(--space-xs);
     left: 50%;
     translate: -50% 0;
-    margin-top: 3px;
+    margin: 0;
     min-height: 0;
     white-space: nowrap;
+    /* LEAD and WINS on one card stack, so they stay within its width */
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
   }
 
-  /* your slot is the lowest, so its tag goes beside it, level with the cards'
-     bottom edge, below the right slot; the top slot's hangs into the empty
-     centre, clear of the side seats' labels */
-  .trick-play.pos-bottom .trick-tag {
-    top: auto;
-    bottom: 0;
-    left: 100%;
-    translate: 5px 0;
-    margin: 0;
-  }
-
-  /* the winner grows in place instead of lifting into a seat label */
+  /* the winner is marked by its WINS tag alone: no glow, no lift */
   .trick-play.winner .trick-cards {
-    animation-name: win-grow;
+    animation: none;
+  }
+
+  .trick-play.winner .trick-cards .card {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   }
 
   /* felt text sits on the HUD's dark pill, so it stays readable */
@@ -2716,7 +2707,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
     .my-turn .hand::before,
     .deal-deck-stack .card,
-    .phase-deal .card-count,
     .phase-deal .action-bar .btn.gold,
     .phase-declare .action-bar .btn.gold {
       animation: none;
@@ -2869,10 +2859,31 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 13px;
   }
 
+  /* an error passes in the header band, never over Play and Clear */
   .toast {
-    bottom: 120px;
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    bottom: auto;
+    max-width: calc(100vw - 2 * max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) - 32px);
     font-size: 13px;
-    padding: 8px 16px;
+    padding: 7px 16px;
+  }
+
+  /* chat sits in the header, beside the menu button, clear of the hand
+     (the extra class outranks the base rule later in the file) */
+  .table-screen .chat-launch {
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    right: calc(var(--safe-r) + 4px + 36px + var(--space-s));
+    bottom: auto;
+    width: 40px;
+    height: var(--header-h);
+    border-radius: 999px;
+    font-size: 15px;
+  }
+
+  .table-screen .chat-launch::after {
+    content: "";
+    position: absolute;
+    inset: -6px -2px;
   }
 
   .reconnect-banner {
@@ -2889,18 +2900,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   100% { opacity: 0; visibility: hidden; }
 }
 
-@keyframes win-grow {
-  to {
-    transform: scale(1.06);
-  }
-}
-
 /* Phone table motion (see the short landscape block). */
-@keyframes count-tick {
-  0% { color: var(--gold); }
-  100% { color: inherit; }
-}
-
 @keyframes deck-pulse {
   to { translate: 0 -2px; }
 }

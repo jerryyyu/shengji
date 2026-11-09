@@ -147,7 +147,6 @@ function translateFrac(transform: string | undefined): [number, number] {
   return m ? [Number(m[1]) / 100, Number(m[2]) / 100] : [0, 0];
 }
 
-const PILL_H = 36;   // a two-line side label: 12px name over 11px count, 5px padding
 
 /** The table's regions at one viewport, from the tokens and the rules below. */
 function geometry(vp: Viewport, vars: Record<string, string>, cards = 4) {
@@ -180,15 +179,16 @@ function geometry(vp: Viewport, vars: Record<string, string>, cards = 4) {
     right: side(".trick-play.pos-right"),
   };
   // side seats' labels from their rules, at their widest (--pill-max)
-  // (84px, the cap, when a layout has no such token)
+  // (84px, the cap, when a layout has no such token); one line, the header's height
   const pillW = vars["--pill-max"] ? L("--pill-max") : 84;
+  const pillH = L("--header-h");
   const shared = rule(block, ".opponent.pos-left, .opponent.pos-right");
   const pill = (sel: string): Rect => {
     const r = { ...shared, ...rule(block, sel) };
     const [fx, fy] = translateFrac(r.transform);
     const x = evalPos(r.left, vp.w, vp, vars) + fx * pillW;
-    const y = evalPos(r.top, vp.h, vp, vars) + fy * PILL_H;
-    return { x0: x, x1: x + pillW, y0: y, y1: y + PILL_H };
+    const y = evalPos(r.top, vp.h, vp, vars) + fy * pillH;
+    return { x0: x, x1: x + pillW, y0: y, y1: y + pillH };
   };
   // your row: Play (88) centred between the row's symmetric paddings, Clear
   // (8 + 76) just right of it, the banker's crown (28) 8px left of it
@@ -200,7 +200,10 @@ function geometry(vp: Viewport, vars: Record<string, string>, cards = 4) {
   const row: Rect = { x0: rowCentre - 44, x1: rowCentre + 44 + 84, y0: rowY0, y1: rowB };
   const crown: Rect = { x0: rowCentre - 44 - 8 - 28, x1: rowCentre - 44 - 8, y0: rowB - 25 - 14, y1: rowB - 25 + 14 };
   const header = 6 + vp.top + L("--header-h");
+  // where the top seat's label ends: the header row's bottom
+  const topLabelBottom = header;
   return { tcw, cx, cy, slots, pills: { left: pill(".opponent.pos-left"), right: pill(".opponent.pos-right") }, pillW,
+    topLabelBottom,
     row, crown, rowCentre, header, liftLine, crossBottom, handTop: vp.h - L("--hand-h"), safeW: L("--safe-w"),
     handCw: L("--hand-cw") };
 }
@@ -241,7 +244,7 @@ describe("phone table geometry", () => {
     // the crown stands outside the middle column, so it never moves the action
     const crown = rule(block, ".you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown)");
     expect([crown["grid-column"], crown["justify-self"], crown.width]).toEqual(["1", "end", "28px"]);
-    expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-h) + 4px)");
+    expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-h) + var(--gap-v))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right").top)
       .toBe("calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2)");
   });
@@ -299,8 +302,27 @@ describe("phone table geometry", () => {
 
       it("keeps the cross, the seats, your centred row and the hand apart", () => checkRegions(g));
 
-      it("scales the trick cards with the width (about 57px on a 14 Pro)", () => {
-        expect(g.tcw).toBeGreaterThanOrEqual(48);
+      it("spaces the cross evenly: header, top slot, your slot and your row a gap apart", () => {
+        const gaps = [g.slots.top.y0 - g.header, g.slots.bottom.y0 - g.slots.top.y1, g.row.y0 - g.slots.bottom.y1];
+        for (const x of gaps) expect(Math.abs(x - gaps[0])).toBeLessThanOrEqual(2);
+        expect(gaps[0]).toBeGreaterThanOrEqual(12 - 0.01);
+        // the side slots sit at the cross's vertical centre, left and right alike
+        const mid = ((g.slots.top.y0 + g.slots.top.y1) / 2 + (g.slots.bottom.y0 + g.slots.bottom.y1) / 2) / 2;
+        for (const s of [g.slots.left, g.slots.right]) expect(Math.abs((s.y0 + s.y1) / 2 - mid)).toBeLessThanOrEqual(1);
+        expect(Math.abs((g.cx - g.slots.left.x0) - (g.slots.right.x1 - g.cx))).toBeLessThanOrEqual(1);
+      });
+
+      it("keeps every seat's label the same distance from its cards", () => {
+        const top = g.slots.top.y0 - g.topLabelBottom;
+        const left = g.slots.left.x0 - g.pills.left.x1;
+        const right = g.pills.right.x0 - g.slots.right.x1;
+        expect(Math.abs(left - top)).toBeLessThanOrEqual(1);
+        expect(Math.abs(right - top)).toBeLessThanOrEqual(1);
+      });
+
+      it("sizes the trick cards by width and height (about 54px on a 14 Pro)", () => {
+        // the short browser frames, with their larger hand, give the cross less height
+        expect(g.tcw).toBeGreaterThanOrEqual(44);
         expect(g.tcw).toBeLessThanOrEqual(64);
       });
 
@@ -352,7 +374,7 @@ describe("phone controls", () => {
   });
 
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
-    expect(tokens["--pill-max"]).toBe("min(84px, calc(50vw - var(--side-out) - 10px - max(var(--safe-l), var(--safe-r))))");
+    expect(tokens["--pill-max"]).toBe("min(96px, calc(50vw - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");
     expect(rule(block, ".opponent.pos-top")["max-width"]).toContain("min(200px");
     const text = rule(block, ".opp-name-text");
@@ -367,7 +389,7 @@ describe("phone controls", () => {
   });
 
   it("keeps table text at 10px or more", () => {
-    for (const sel of [".lead-tag, .win-tag", ".declare-tag", ".you-tag, .host-tag, .off-tag, .ready-tag", ".action-hint", ".chip"]) {
+    for (const sel of [".lead-tag, .win-tag", ".declare-tag", ".you-tag, .host-tag, .off-tag", ".action-hint", ".chip"]) {
       expect(px(rule(block, sel)["font-size"])).toBeGreaterThanOrEqual(10);
     }
   });
@@ -376,6 +398,37 @@ describe("phone controls", () => {
     expect(tokens["-webkit-touch-callout"]).toBe("none");
     expect(tokens["-webkit-user-select"]).toBe("none");
     expect(rule(block, ".table-screen input, .table-screen textarea")["-webkit-user-select"]).toBe("text");
+  });
+
+  it("puts LEAD / WINS by one rule for every seat, inside the cards' bottom edge", () => {
+    const tag = rule(block, ".trick-tag");
+    expect([tag.position, tag.bottom, tag.left, tag.translate, tag.top]).toEqual(["absolute", "var(--space-xs)", "50%", "-50% 0", "auto"]);
+    // no seat overrides it
+    expect(/\.trick-play\.pos-\w+[^{]*\.trick-tag/.test(block)).toBe(false);
+  });
+
+  it("draws no glow on the seats or the winning cards, and no card counts", () => {
+    expect(rule(block, ".opponent.on-turn")["box-shadow"]).toBe("none");
+    expect(block.includes(".opponent.on-turn::after")).toBe(false);
+    expect(rule(block, ".trick-play.winner .trick-cards").animation).toBe("none");
+    expect(rule(block, ".trick-play.winner .trick-cards .card")["box-shadow"]).not.toContain("gold");
+    expect(rule(block, ".opp-cards").display).toBe("none");
+  });
+
+  it("gives every seat label one height, radius and type size; ready is a small check", () => {
+    const o = rule(block, ".opponent");
+    expect([o.height, o["border-radius"]]).toEqual(["var(--header-h)", "999px"]);
+    for (const sel of [".opponent.pos-left, .opponent.pos-right", ".opponent.pos-left", ".opponent.pos-right", ".opponent.pos-top"]) {
+      expect(rule(block, sel).height ?? "var(--header-h)").toBe("var(--header-h)");
+      expect(rule(block, sel)["border-radius"]).toBeUndefined();
+      expect(rule(block, sel)["font-size"]).toBeUndefined();
+    }
+    const ready = rule(block, ".opponent .ready-tag");
+    expect([ready["font-size"], ready.width, ready["flex-shrink"]]).toEqual(["0", "14px", "0"]);
+  });
+
+  it("uses one spacing scale", () => {
+    expect(["--space-xs", "--space-s", "--space-m", "--space-l"].map((t) => px(tokens[t]))).toEqual([4, 8, 12, 16]);
   });
 
   it("shows your turn as the hand's glow, not a pill in the trick", () => {

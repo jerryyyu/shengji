@@ -143,8 +143,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
             <Card key={i} className="stacked" />
           ))}
         </div>
-        {/* keyed so each dealt card restarts the phone's count tick */}
-        <span className="card-count" key={player.cards_left}>{player.cards_left}</span>
+        <span className="card-count">{player.cards_left}</span>
       </div>
       {onTurn && actionPhase && botControlled ? (
         <BotThinking key={`${state.room}:${state.phase}:${player.cards_left}`} phase={state.phase as "bury" | "play"} />

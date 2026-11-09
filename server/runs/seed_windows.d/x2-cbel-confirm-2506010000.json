@@ -1,0 +1,14 @@
+{
+ "name": "x2-cbel-confirm-2506010000",
+ "purpose": "screen",
+ "seed0": 2506010000,
+ "clusters": 7840,
+ "span": [
+  2506010000,
+  2506017840
+ ],
+ "created_at": "2026-11-09T00:00:00Z",
+ "host": "jerrys-mac-studio",
+ "git_head": "5670f571257b143ed6474f36bdc79afe378cbf69",
+ "note": "CONFIRMATION stage (only after a SCREEN PASS): 7,840 fresh deals; bar mean >= +0.005 AND one-sided 95% LB > 0. X2B belief pilot (board #1263 row X2; Jerry 2026-11-08 tier-i pilot) passed its DEV duel DBEL (R51 with only the belief package swapped to X2B 621dc9e2 vs R51 as served, seeds 2505005000+1000). Jerry 2026-11-03 two-stage duel bar. Exploiter = R51 with SHENGJI_PV_BELIEF_CKPT / _SHA256 -> x2b-621dc9e2.npz (pv-search-f4f4127e-prior-1fa201b2-...-r51d051a1-bury-hybrid-bwv-bbw-29aea52a8c2d-sc8); defender = release 51 as served; paired, seat-swapped, r2 rank-mixed plan, served budgets; archive ~/shengji-archive/2026-11-08-x2-stage2-packet (duel-r4). seed_windows.py clear rc 0 vs Ae04 a09cef7c + ft1-rebuilt 7f028824 (--follow-init); 0 deal keys shared with the X2 corpus, its pilots or the 2505000000..2505007000 DEV duel blocks. RESERVED BEFORE DEALING."
+}

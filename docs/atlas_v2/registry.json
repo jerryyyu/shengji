@@ -681,7 +681,7 @@
      "ref": "combo51C"
     },
     {
-     "what": "Fly timing run 2 on the production machine at 0 rooms, one game at a time (k=1): decision p95 0.855 s vs 0.835 s for release 51, p99 0.943 vs 0.941, 0 fallbacks, exact lead 16 started / 0 abandoned / max 0.75 s, child HWM 172 vs 174 MB; the 2- and 4-game cells did not run (80 MiB floor: the harness process beside the live server)",
+     "what": "Fly timing run 2 on the production machine at 0 rooms: completed k=1 cells only; the overall read is INSUFFICIENT. k=1: decision p95 0.855 s vs 0.835 s for release 51, p99 0.943 vs 0.941, 0 fallbacks, exact lead 16 started / 0 abandoned / max 0.75 s, child HWM 172,336 vs 173,888 KiB (about 168.3 vs 169.8 MiB). B-k2 started and aborted at the 80 MiB MemAvailable floor (336 decisions); A-k2 and both k4 cells were not run, so there is no completed paired k2/k4 capacity comparison. Context: the harness process runs beside the live server on the 512 MiB machine",
      "point": null,
      "lo": null,
      "hi": null,
@@ -697,7 +697,7 @@
    ],
    "caveats": [
     "deployed 2026-11-09 22:25Z (17:25 ET) as Fly v64 at 0 rooms from #1347 head 99338c7e (#1263 issuecomment-6753130529)",
-    "strength measured on the M5 Ultra duel host, not on Fly; Fly timing measured with one game at a time only (Jerry chose to ship on it); 2-4 concurrent games on Fly not measured",
+    "strength measured on the M5 Ultra duel host, not on Fly; Fly timing completed for one game at a time only (Jerry chose to ship on it); no completed 2- or 4-game comparison on Fly",
     "comparator for NEW duels and screens: release 52 as served (Jerry 2026-11-09, with the deploy)",
     "rollback: the v63 image deployment-01M7059VAETQFCMM6Z3ADYKRPM with release 51's verified fly.toml (DEPLOY.md, Rollback to release 51)"
    ]

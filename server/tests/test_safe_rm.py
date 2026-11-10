@@ -27,7 +27,25 @@ def world(tmp_path):
     return w
 
 
-def run(w, *args, home=None):
+def invocation(w, *args, processes=()):
+    """Keep procfs integration checks on test-owned processes, not unrelated host services."""
+    wrapper = w / "invoke.py"
+    wrapper.write_text("""import glob, os, runpy, sys
+original_glob = glob.glob
+pids = [os.getpid()] + [int(p) for p in sys.argv[2].split(',') if p]
+def controlled_glob(pattern, *args, **kwargs):
+    if pattern == '/proc/[0-9]*':
+        return [f'/proc/{pid}' for pid in pids]
+    return original_glob(pattern, *args, **kwargs)
+glob.glob = controlled_glob
+script = sys.argv[1]
+sys.argv = [script] + sys.argv[3:]
+runpy.run_path(script, run_name='__main__')
+""")
+    return [sys.executable, str(wrapper), str(SCRIPT), ','.join(map(str, processes)), *map(str, args)]
+
+
+def run(w, *args, home=None, processes=()):
     env = dict(os.environ)
     env.update(
         HOME=str(home or w / "home"),
@@ -36,7 +54,7 @@ def run(w, *args, home=None):
         SAFE_RM_PINS=f"{w}/archive/*/commands.json {w}/archive/*/SHA256SUMS",
         SAFE_RM_KEEP=str(w / "home/.safe_rm.keep"),
     )
-    p = subprocess.run([sys.executable, str(SCRIPT), *map(str, args)], env=env,
+    p = subprocess.run(invocation(w, *args, processes=processes), env=env,
                        capture_output=True, text=True, timeout=300)
     return p.returncode, p.stdout + p.stderr
 
@@ -68,7 +86,7 @@ def test_in_use_cwd_refuses(world):
     sleeper = subprocess.Popen(["sleep", "60"], cwd=world / "busy")
     try:
         time.sleep(1)
-        rc, out = run(world, world / "busy")
+        rc, out = run(world, world / "busy", processes=[sleeper.pid])
     finally:
         sleeper.kill()
         sleeper.wait()
@@ -194,8 +212,10 @@ def test_launching_shell_with_the_path_in_its_argv_is_exempt(world):
            "SAFE_RM_LAUNCHERS": str(world / "fleet/*.sh"),
            "SAFE_RM_PINS": f"{world}/archive/*/commands.json {world}/archive/*/SHA256SUMS",
            "SAFE_RM_KEEP": str(world / "home/.safe_rm.keep")}
+    import shlex
+    command = shlex.join(invocation(world, "--dry-run", target))
     out = subprocess.run(
-        ["/bin/bash", "-c", f'"{sys.executable}" "{SCRIPT}" --dry-run "{target}"; echo "rc=$?"'],
+        ["/bin/bash", "-c", command + '; echo "rc=$?"'],
         capture_output=True, text=True, env=env, cwd=world / "busy", timeout=120,
     ).stdout
     assert "WOULD DELETE" in out and "rc=0" in out and target.is_dir()
@@ -280,11 +300,11 @@ def test_inventory_timeout_refuses_without_waiting_a_minute(monkeypatch, tool):
 
 
 @pytest.mark.parametrize("failure,refuses", [
-    (PermissionError, False),    # another user's or a non-dumpable process: only its argv can be checked
+    (PermissionError, True),    # unreadable live process: argv cannot establish its cwd
     (FileNotFoundError, False),  # exited process or kernel thread
     (OSError, True),             # any other procfs failure leaves the inventory untrusted
 ])
-def test_procfs_inventory_tolerates_only_unreadable_or_exited(monkeypatch, failure, refuses):
+def test_procfs_inventory_refuses_unreadable_and_tolerates_exited(monkeypatch, failure, refuses):
     import importlib.util
     spec = importlib.util.spec_from_file_location("safe_rm_procfs", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
@@ -302,3 +322,31 @@ def test_procfs_inventory_tolerates_only_unreadable_or_exited(monkeypatch, failu
         assert len(reasons) == 2 and all("inventory unavailable" in r for r in reasons)
     else:
         assert reasons == []
+
+
+def test_unreadable_consumer_refuses_before_delete(world, monkeypatch, capsys):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("safe_rm_refusal", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    monkeypatch.setenv("HOME", str(world / "home"))
+    monkeypatch.setenv("SAFE_RM_ROOTS", str(world / "root"))
+    monkeypatch.setenv("SAFE_RM_LAUNCHERS", str(world / "fleet/*.sh"))
+    monkeypatch.setenv("SAFE_RM_PINS", str(world / "archive/*/commands.json"))
+    monkeypatch.setenv("SAFE_RM_KEEP", str(world / "home/.safe_rm.keep"))
+    monkeypatch.setattr(mod, "process_inventory", lambda cmd: (f"{os.getpid()} 1 python\n123 1 python worker.py\n", None))
+    real_isdir, real_glob, real_readlink = mod.os.path.isdir, mod.glob.glob, mod.os.readlink
+    monkeypatch.setattr(mod.os.path, "isdir", lambda p: True if p == "/proc" else real_isdir(p))
+    monkeypatch.setattr(mod.glob, "glob", lambda p: ["/proc/123"] if p == "/proc/[0-9]*" else real_glob(p))
+
+    def readlink(p, *args, **kwargs):
+        if str(p).startswith("/proc/123/"):
+            raise PermissionError(p)
+        return real_readlink(p, *args, **kwargs)
+
+    monkeypatch.setattr(mod.os, "readlink", readlink)
+    target = world / "root/old-run"
+    assert mod.main([str(target)]) == 1
+    assert target.is_dir()
+    out = capsys.readouterr().out
+    assert "inventory unavailable" in out and "DELETED" not in out

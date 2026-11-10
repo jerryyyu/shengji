@@ -150,10 +150,6 @@ def in_use(r, typed):
                 except (FileNotFoundError, ProcessLookupError):
                     # Exited processes and kernel threads have no cwd/exe link.
                     continue
-                except PermissionError:
-                    # Other users' processes, and this user's non-dumpable ones (sudo, agents), hide cwd/exe
-                    # from a non-root caller on every normal Linux host; their argv is still checked above.
-                    continue
                 except OSError as exc:
                     hits.append(f"inventory unavailable ({pd}/{k}: {type(exc).__name__})")
     else:

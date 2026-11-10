@@ -1022,6 +1022,8 @@ the designed stop (it plays the searched lead), not a failure; any other abandon
    51's `1490b72b`, so main's merge commit would also carry main's later, unscreened bot-path commits (Current
    production, Source).
 
+Web-only deploys: `server/scripts/deploy_web_only.sh`.
+
 **After the deploy**
 
 7. **`/healthz`.** `bot` is the new served name, `fast: true`, `pv_search.sha256` `f4f4127e…`, `prior`

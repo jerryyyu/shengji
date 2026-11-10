@@ -185,3 +185,70 @@ def test_process_argument_containing_safe_rm_is_not_exempt(world):
     finally:
         worker.terminate()
         worker.wait(timeout=5)
+
+
+@pytest.mark.parametrize("tool", ["ps", "lsof"])
+@pytest.mark.parametrize("mode", ["missing", "failed", "empty", "malformed"])
+def test_unavailable_inventory_refuses_cli_dry_run(world, monkeypatch, tool, mode):
+    if tool == "lsof" and Path("/proc").is_dir():
+        pytest.skip("Linux uses procfs for cwd/exe inventory")
+    bin_dir = world / "bin"
+    bin_dir.mkdir()
+    scripts = {"ps": 'echo "$PPID python"', "lsof": "printf 'p1\\nn/tmp\\n'"}
+    for name, body in scripts.items():
+        if name == tool:
+            if mode == "missing":
+                continue
+            body = {"failed": "exit 2", "empty": "exit 0", "malformed": "echo invalid"}[mode]
+        path = bin_dir / name
+        path.write_text("#!/bin/sh\n" + body + "\n")
+        path.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    target = world / "root/old-run"
+    rc, out = run(world, "--dry-run", target)
+    assert rc == 1 and "inventory unavailable" in out and tool in out
+    assert "WOULD DELETE" not in out and target.is_dir()
+
+
+@pytest.mark.parametrize("tool", ["ps", "lsof"])
+def test_inventory_timeout_refuses_without_waiting_a_minute(monkeypatch, tool):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("safe_rm_timeout", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    observed = []
+
+    def inventory(command, **kwargs):
+        observed.append(command[0])
+        assert kwargs["timeout"] == 60
+        if command[0] == tool:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return subprocess.CompletedProcess(command, 0, f"{os.getpid()} python\n", "")
+
+    monkeypatch.setattr(mod.subprocess, "run", inventory)
+    monkeypatch.setattr(mod.os.path, "isdir", lambda path: False)
+    reasons = mod.in_use("/unused/target", "/unused/target")
+    assert tool in observed
+    assert any("inventory unavailable" in r and tool in r and "TimeoutExpired" in r for r in reasons)
+
+
+@pytest.mark.parametrize("failure", [PermissionError, FileNotFoundError])
+def test_procfs_inventory_distinguishes_unreadable_from_exited(monkeypatch, failure):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("safe_rm_procfs", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    monkeypatch.setattr(mod, "process_inventory", lambda command: (f"{os.getpid()} python\n", None))
+    monkeypatch.setattr(mod.os.path, "isdir", lambda path: True)
+    monkeypatch.setattr(mod.glob, "glob", lambda pattern: ["/proc/123"])
+
+    def readlink(path):
+        raise failure(path)
+
+    monkeypatch.setattr(mod.os, "readlink", readlink)
+    reasons = mod.in_use("/unused/target", "/unused/target")
+    if failure is PermissionError:
+        assert len(reasons) == 2
+        assert all("inventory unavailable" in reason for reason in reasons)
+    else:
+        assert reasons == []

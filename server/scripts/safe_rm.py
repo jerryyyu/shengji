@@ -101,33 +101,57 @@ def live_links(r):
     return list(dict.fromkeys(hits))
 
 
+def process_inventory(command):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"inventory unavailable ({command[0]}: {type(exc).__name__})"
+    if result.returncode != 0:
+        return None, f"inventory unavailable ({command[0]} rc={result.returncode})"
+    if not result.stdout.strip():
+        return None, f"inventory unavailable ({command[0]} empty output)"
+    return result.stdout, None
+
+
 def in_use(r, typed):
     hits = []
-    try:
-        ps = subprocess.run(["ps", "-axww", "-o", "pid=,command="], capture_output=True, text=True).stdout
-    except OSError:
-        ps = ""
+    ps, error = process_inventory(["ps", "-axww", "-o", "pid=,command="])
+    if error:
+        return [error]
     me = str(os.getpid())
+    saw_self = False
     for line in ps.splitlines():
-        pid, _, cmd = line.strip().partition(" ")
+        fields = line.strip().split(None, 1)
+        if len(fields) != 2 or not fields[0].isdigit():
+            return ["inventory unavailable (ps malformed output)"]
+        pid, cmd = fields
         if pid == me:
+            saw_self = True
             continue
         if r in cmd or typed in cmd:
             hits.append(f"pid {pid}: {cmd[:120]}")
+    if not saw_self:
+        return hits + ["inventory unavailable (ps omitted current process)"]
     if os.path.isdir("/proc"):
         for pd in glob.glob("/proc/[0-9]*"):
             for k in ("cwd", "exe"):
                 try:
-                    if under(os.path.realpath(os.path.join(pd, k)), r):
+                    target = os.readlink(os.path.join(pd, k))
+                    if under(os.path.realpath(target), r):
                         hits.append(f"pid {os.path.basename(pd)} {k} under R")
-                except OSError:
-                    pass
+                except (FileNotFoundError, ProcessLookupError):
+                    # Exited processes and kernel threads have no cwd/exe link.
+                    continue
+                except OSError as exc:
+                    hits.append(f"inventory unavailable ({pd}/{k}: {type(exc).__name__})")
     else:
-        try:
-            out = subprocess.run(["lsof", "-a", "-d", "cwd,txt", "-Fn"], capture_output=True, text=True, timeout=60).stdout
-            hits += [f"lsof {l[1:]}" for l in out.splitlines() if l.startswith("n") and under(l[1:], r)][:5]
-        except (OSError, subprocess.TimeoutExpired):
-            pass
+        out, error = process_inventory(["lsof", "-a", "-d", "cwd,txt", "-Fn"])
+        if error:
+            return hits + [error]
+        names = [line[1:] for line in out.splitlines() if line.startswith("n")]
+        if not names:
+            return hits + ["inventory unavailable (lsof missing file records)"]
+        hits += [f"lsof {name}" for name in names if under(name, r)][:5]
     return hits
 
 

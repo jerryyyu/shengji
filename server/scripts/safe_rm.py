@@ -113,6 +113,13 @@ def process_inventory(command):
     return result.stdout, None
 
 
+def proc_owner(pd):
+    try:
+        return os.stat(pd).st_uid
+    except OSError:
+        return None
+
+
 def in_use(r, typed):
     hits = []
     ps, error = process_inventory(["ps", "-axww", "-o", "pid=,ppid=,command="])
@@ -150,6 +157,12 @@ def in_use(r, typed):
                 except (FileNotFoundError, ProcessLookupError):
                     # Exited processes and kernel threads have no cwd/exe link.
                     continue
+                except PermissionError as exc:
+                    # Another user's process cannot be inspected without root; its argv is still checked
+                    # above. An unreadable process of this user (or anything, as root) is not trusted.
+                    if os.geteuid() != 0 and proc_owner(pd) not in (None, os.geteuid()):
+                        continue
+                    hits.append(f"inventory unavailable ({pd}/{k}: {type(exc).__name__})")
                 except OSError as exc:
                     hits.append(f"inventory unavailable ({pd}/{k}: {type(exc).__name__})")
     else:

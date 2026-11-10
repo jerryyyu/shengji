@@ -295,7 +295,7 @@ describe("the lobby preview clip and the How to play entry", () => {
     expect(v.loop).toBe(true);
     expect(v.autoplay).toBe(true);
     expect(v.hasAttribute("playsinline")).toBe(true);
-    expect(v.getAttribute("preload")).toBe("none");
+    expect(v.getAttribute("preload")).toBe("auto");
     expect(v.getAttribute("poster")).toBe("/og/preview.jpg");
     expect(v.getAttribute("src")).toBe("/og/preview.mp4");
     expect(v.getAttribute("aria-hidden")).toBe("true");
@@ -315,6 +315,34 @@ describe("the lobby preview clip and the How to play entry", () => {
       host.remove();
     }
     await render(); // afterEach unmounts once more
+  });
+
+  it("mutes and starts the clip itself, and keeps it when the browser plays it", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    try {
+      await render();
+      await act(async () => { await Promise.resolve(); });
+      const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
+      expect(play).toHaveBeenCalled();
+      expect(v.muted && v.defaultMuted).toBe(true);
+    } finally {
+      play.mockRestore();
+    }
+  });
+
+  it("falls back to the still frame when the browser refuses to autoplay (iOS Low Power Mode)", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play")
+      .mockImplementation(() => Promise.reject(new DOMException("blocked", "NotAllowedError")));
+    try {
+      await render();
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(host.querySelector("video")).toBeNull();
+      expect(host.querySelector<HTMLImageElement>("img.lobby-preview")!.getAttribute("src")).toBe("/og/preview.jpg");
+    } finally {
+      play.mockRestore();
+    }
   });
 
   it("reduced motion shows the poster still, not the video", async () => {

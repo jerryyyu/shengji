@@ -379,7 +379,6 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           <span className="play-text">{`Play ${selectedIds.length > 0 ? `(${selectedIds.length})` : ""}`}</span>
           <span className="your-turn-text">Your turn</span>
           {/* a phone says what to do under it until a card is chosen */}
-          {choosing ? <span className="lead-hint">Tap cards, then Play</span> : null}
         </button>
         <button
           className="btn subtle"

@@ -484,7 +484,7 @@ describe("phone controls", () => {
     expect(rule(block, ".opponent .seat-dot.t0").background).toBe("var(--team0)");
     expect(rule(block, ".opponent .seat-dot.t1").background).toBe("var(--team1)");
     // off the phone neither mark is drawn
-    expect(rule(css.replace(block, ""), ".seat-dot, .turn-dots, .lead-hint").display).toBe("none");
+    expect(rule(css.replace(block, ""), ".seat-dot, .turn-dots").display).toBe("none");
   });
 
   it("gives a seat's label a 44px tall tap area", () => {
@@ -494,14 +494,12 @@ describe("phone controls", () => {
     expect(32 + 2 * vertical).toBeGreaterThanOrEqual(44);
   });
 
-  it("says what to do under Your turn until a card is chosen, without taking taps", () => {
-    const hint = rule(block, ".phase-play .action-bar .btn.primary.your-turn .lead-hint");
-    expect([hint.display, hint.position, hint["pointer-events"]]).toEqual(["block", "absolute", "none"]);
-    expect(px(hint["font-size"])).toBe(12);
-    expect(hint.top).toBe("calc(100% + 3px)");
-    // it fits the band between the row's button and the hand's cards: 3px of
-    // row padding, the zone's 4px and the 18px lift
-    expect(3 + px(hint["line-height"])).toBeLessThanOrEqual(3 + 4 + 18);
+  it("draws no hint under Your turn", () => {
+    expect(css).not.toContain("lead-hint");
+  });
+
+  it("lets the banker's crown stand in for its team dot, so a short name fits beside the crown", () => {
+    expect(rule(block, ".opponent:has(.banker-crown) .seat-dot").display).toBe("none");
   });
 
   it("tells a declaration once, by its tag, not again in the corner", () => {

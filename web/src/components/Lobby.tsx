@@ -22,16 +22,30 @@ interface LobbyProps {
 // keeps the clip's 1200:630 shape before it loads, so nothing below it moves;
 // reduced motion gets the still frame instead.
 function PreviewVideo() {
-  return prefersReducedMotion() ? (
+  // React leaves the muted attribute unset on first render, and iOS autoplays only a muted clip, so the
+  // clip is muted and started here. When the browser still refuses (iOS Low Power Mode blocks every
+  // autoplay), the still frame replaces it rather than leaving the system play button over the box.
+  const ref = useRef<HTMLVideoElement>(null);
+  const [still, setStill] = useState(prefersReducedMotion());
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    v.muted = true;
+    v.defaultMuted = true;
+    const started = v.play();
+    if (started && typeof started.catch === "function") started.catch(() => setStill(true));
+  }, []);
+  return still ? (
     <img className="lobby-preview" src="/og/preview.jpg" alt="" aria-hidden="true" />
   ) : (
     <video
+      ref={ref}
       className="lobby-preview"
       muted
       loop
       playsInline
       autoPlay
-      preload="none"
+      preload="auto"
       poster="/og/preview.jpg"
       src="/og/preview.mp4"
       aria-hidden="true"

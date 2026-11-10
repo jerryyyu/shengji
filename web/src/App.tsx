@@ -29,6 +29,8 @@ export default function App() {
   const autoFill = useRef(false);
   // Whether the announcer has been seeded with a first game state.
   const seededRef = useRef(false);
+  // True from an automatic resume of the saved room until the server answers it.
+  const resumingRef = useRef(false);
   // "My games" pages (hash routes) sit over whatever screen is live; the
   // socket and any game in progress keep running underneath.
   const gamesRoute = useGamesRoute();
@@ -74,11 +76,12 @@ export default function App() {
       });
       if (intent.kind !== "resume") return;   // Lobby owns invite + pending
       const join = intentToJoin(intent);
-      if (join) conn.send(join as never);
+      if (join) { resumingRef.current = true; conn.send(join as never); }
     });
     const unsubMsg = conn.subscribe((msg) => {
       switch (msg.type) {
         case "room":
+          resumingRef.current = false;
           setRoom(msg);
           // "room" is only sent while the room is in lobby state, so any
           // previously rendered game is stale (e.g. rejoined after the game
@@ -98,17 +101,23 @@ export default function App() {
           }
           break;
         case "state":
+          resumingRef.current = false;
           announceState(msg, !seededRef.current);
           seededRef.current = true;
           setGame(msg);
           break;
         case "error":
+          const wasResuming = resumingRef.current;
+          resumingRef.current = false;
           autoFill.current = false; // abort single-player orchestration
           if (msg.code === "room_not_found") {
             // The room no longer exists (server restart / expiry). Stop
             // retrying it on reconnect and return to the lobby (name kept).
             resetToLobby();
-            showToast("That game has ended.");
+            // A silent resume of a room that expired or was dropped by a restart is not news to the
+            // player; only a join they asked for gets told.
+            if (!wasResuming) showToast("That game has ended.");
+            resumingRef.current = false;
           } else {
             showToast(msg.message);
           }

@@ -330,25 +330,14 @@ describe("whose turn on a seat's label", () => {
   });
 });
 
-describe("the hint under Your turn", () => {
-  const hint = () => host.querySelector(".action-bar .btn.primary .lead-hint");
-  it("shows on your turn while nothing is chosen, and goes once a card is", () => {
+describe("Your turn on a lead", () => {
+  it("carries no hint line under the button", () => {
     render(state({ turn: 0 }));
-    expect(hint()?.textContent).toBe("Tap cards, then Play");
-    act(() => host.querySelectorAll<HTMLElement>(".hand .card")[0].click());
-    expect(hint()).toBeNull();
-    act(() => host.querySelectorAll<HTMLElement>(".hand .card")[0].click());
-    expect(hint()).not.toBeNull();
-  });
-
-  it("is not shown on another seat's turn or while burying", () => {
-    render(state({ turn: 1 }));
-    expect(hint()).toBeNull();
-    render(state({ phase: "bury", turn: 0, hand: cards(33),
-      players: [0, 1, 2, 3].map((s) => player(s, { is_banker: s === 0 })) }));
-    expect(hint()).toBeNull();
+    expect(host.querySelector(".lead-hint")).toBeNull();
+    expect(host.textContent).not.toContain("Tap cards, then Play");
   });
 });
+
 
 it("draws the error toast inside the table, where its rows are", () => {
   act(() => root.render(<Table state={state({ turn: 0 })} toast="You must follow suit." />));

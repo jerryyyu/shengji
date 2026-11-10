@@ -2197,6 +2197,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   /* the fill outranks the team dot for its moment, and its room goes to the
      "…" so a crowned name still fits beside a side slot */
+  /* the banker's crown already marks its team, and the pill has no room for both */
+  .opponent:has(.banker-crown) .seat-dot {
+    display: none;
+  }
+
   .opponent.on-turn .seat-dot {
     display: none;
   }
@@ -2603,30 +2608,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-weight: 700;
   }
 
-  /* A disabled button alone reads as "wait": one line under it says what to
-     do until a card is chosen. It sits in the hand's lift band and lets taps
-     through to the cards. */
-  .phase-play .action-bar .btn.primary.your-turn {
-    position: relative;
-  }
-
-  .phase-play .action-bar .btn.primary.your-turn .lead-hint {
-    display: block;
-    position: absolute;
-    top: calc(100% + 3px);
-    left: 50%;
-    translate: -50% 0;
-    color: var(--text);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 15px;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-    pointer-events: none;
-  }
-
-
-
   /* no name pill at the table: only the banker's crown, beside an action */
   .you-tagline {
     display: none;
@@ -2773,7 +2754,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     justify-content: flex-start;
     max-width: var(--view-w);
     padding: var(--lift) calc(8px + var(--safe-r)) var(--hand-under) calc(8px + var(--safe-l));
-    overflow-x: auto;           /* a safety net only: the pitch always fits */
+    /* no overflow clip: any non-visible overflow also clips vertically, and a lifted card's gold ring
+       rises past the top padding; the pitch always fits, so nothing scrolls */
+    overflow: visible;
   }
 
   /* a finger slides across the hand to choose a run of cards, so the hand
@@ -3054,8 +3037,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: 0;
     min-height: 44px;
     padding: 8px 16px;
-    margin-bottom: 12px;
     box-shadow: 0 -10px 12px var(--panel);
+  }
+
+  /* the card's own 8px gap separates Next round from Leave, and Leave keeps
+     the same 12px from the bottom edge as the title has from the top */
+  .modal > .dialog-leave-btn,
+  .modal > .dialog-leave-confirm {
+    margin: 0 auto 12px;
   }
 
   .victory-crown {
@@ -3192,8 +3181,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* the seat label's team dot and turn mark, and the hint under Your turn,
    belong to the phone table only */
 .seat-dot,
-.turn-dots,
-.lead-hint {
+.turn-dots {
   display: none;
 }
 

@@ -685,3 +685,11 @@ describe("the round-end dialog in a turned portrait game", () => {
     }
   });
 });
+
+describe("the phone hand", () => {
+  it("does not clip a selected card's gold ring above the lift band", () => {
+    const hand = rule(phoneBlock(), ".hand");
+    expect(hand.overflow).toBe("visible");
+    expect(hand["overflow-x"]).toBeUndefined();
+  });
+});

@@ -2754,7 +2754,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     justify-content: flex-start;
     max-width: var(--view-w);
     padding: var(--lift) calc(8px + var(--safe-r)) var(--hand-under) calc(8px + var(--safe-l));
-    overflow-x: auto;           /* a safety net only: the pitch always fits */
+    /* no overflow clip: any non-visible overflow also clips vertically, and a lifted card's gold ring
+       rises past the top padding; the pitch always fits, so nothing scrolls */
+    overflow: visible;
   }
 
   /* a finger slides across the hand to choose a run of cards, so the hand

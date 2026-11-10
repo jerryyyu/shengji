@@ -76,3 +76,26 @@ it("a join the player starts still reports a room that has ended", async () => {
   act(() => ws.deliver({ type: "error", code: "room_not_found", message: "Room not found" }));
   expect(host.textContent).toContain("That game has ended.");
 });
+
+it("reports an explicit missing-room join after an automatic resume was refused", async () => {
+  const { default: App } = await import("./App");
+  const { saveRoom, saveName } = await import("./ws");
+  saveName("Me");
+  saveRoom("ABCD");
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  act(() => root.render(<App />));
+  const ws = FakeWS.all[0];
+  act(() => ws.onopen?.());
+  act(() => ws.deliver({ type: "error", code: "room_full", message: "Room is full" }));
+  const input = host.querySelector<HTMLInputElement>(".room-input")!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "WXYZ");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  act(() => host.querySelector<HTMLButtonElement>(".join-row button")!.click());
+  expect(ws.sent.at(-1)).toMatchObject({ type: "peek_room", room: "WXYZ" });
+  act(() => ws.deliver({ type: "error", code: "room_not_found", message: "Room not found" }));
+  expect(host.textContent).toContain("That game has ended.");
+});

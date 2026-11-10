@@ -107,6 +107,8 @@ export default function App() {
           setGame(msg);
           break;
         case "error":
+          const wasResuming = resumingRef.current;
+          resumingRef.current = false;
           autoFill.current = false; // abort single-player orchestration
           if (msg.code === "room_not_found") {
             // The room no longer exists (server restart / expiry). Stop
@@ -114,7 +116,7 @@ export default function App() {
             resetToLobby();
             // A silent resume of a room that expired or was dropped by a restart is not news to the
             // player; only a join they asked for gets told.
-            if (!resumingRef.current) showToast("That game has ended.");
+            if (!wasResuming) showToast("That game has ended.");
             resumingRef.current = false;
           } else {
             showToast(msg.message);

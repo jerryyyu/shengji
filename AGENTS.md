@@ -173,6 +173,7 @@ against a rule marked *none* counts as a repeat.
 | correctness, performance, calibration and strength are separate claims | none | reviewer |
 | inconclusive reads are not written as absolute claims; docs name the current comparator | `check_doc_claims.py` on the lines a PR adds to `AI_POLICIES.md`, `RL_PLAN.md`, `README.md`, `DEPLOY.md`; a line keeps such text only with `claim-ok: <reason>` | CI `comment-provenance` |
 | never `git add .`; preserve unrelated changes | none | judgement |
+| a cleanup deletes only through `server/scripts/safe_rm.py` (live links, in-use, launcher, keep and packet pins refuse); the fleet copy equals the repo copy | `tests/test_safe_rm.py` | CI `server` |
 
 ## Project records
 

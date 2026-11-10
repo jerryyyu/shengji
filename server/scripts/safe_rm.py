@@ -10,9 +10,6 @@ A path is REFUSED, with the reason printed, when any of these holds for it or it
               skipping Library, .Trash, .git, node_modules).  The KEEP lane python /root/gen-hybrid/server/.venv ->
               /root/ij-tree/server/.venv is this case.
   in-use      a running process has R (or the path as typed) in its command line, or its cwd/exe under R.
-              On Linux every /proc/<pid>/cwd|exe must be readable, so a non-root run refuses wherever other
-              users' or non-dumpable processes exist (run as root there). SAFE_RM_PROC_ROOT replaces /proc
-              (tests); a missing one refuses.
   referenced  an installed launcher, waiter or crontab names R, the typed path, or a live-link into R
               (globs in SAFE_RM_LAUNCHERS, default ~/fleet/*.sh ~/fleet/*/*.sh ~/claude_*.sh /root/claude_*.sh
               /root/fleet/*.sh /root/fleet/*/*.sh, plus `crontab -l`).
@@ -143,11 +140,8 @@ def in_use(r, typed):
             continue
         if r in cmd or typed in cmd:
             hits.append(f"pid {pid}: {cmd[:120]}")
-    proc = os.environ.get("SAFE_RM_PROC_ROOT") or "/proc"
-    if os.environ.get("SAFE_RM_PROC_ROOT") and not os.path.isdir(proc):
-        return hits + [f"inventory unavailable (SAFE_RM_PROC_ROOT {proc} missing)"]
-    if os.path.isdir(proc):
-        for pd in glob.glob(os.path.join(proc, "[0-9]*")):
+    if os.path.isdir("/proc"):
+        for pd in glob.glob("/proc/[0-9]*"):
             for k in ("cwd", "exe"):
                 try:
                     target = os.readlink(os.path.join(pd, k))

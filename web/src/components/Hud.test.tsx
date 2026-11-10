@@ -141,6 +141,15 @@ describe("failed-throw notice", () => {
     expect(view.host.querySelector(".hud-message")!.textContent).toBe("Robin declared Hearts");
     view.unmount();
   });
+
+  it("marks a declaration message, which the phone tells only by the tag under the cards", () => {
+    const view = render(makeState({ message: "Seat 1 declared H2" }));
+    expect(view.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(true);
+    view.unmount();
+    const other = render(makeState({ message: "Robin declared Hearts" }));
+    expect(other.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(false);
+    other.unmount();
+  });
 });
 
 describe("points chip", () => {

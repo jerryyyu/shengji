@@ -14,6 +14,7 @@ import { useGamesRoute } from "./replay/route";
 import HowTo from "./howto/HowTo";
 import { useHowtoRoute } from "./howto/route";
 import { hideSplash, lockFor } from "./native";
+import { usePhoneLayout } from "./phoneLayout";
 
 const TOAST_MS = 4000;
 
@@ -135,6 +136,8 @@ export default function App() {
   // iPhone; everywhere else these are no-ops.
   const atTable = game !== null && !gamesRoute && !howtoRoute;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
+  // a portrait phone browser gets the table turned sideways instead
+  const { rotated } = usePhoneLayout(atTable);
   // the launch splash covers the WebView until the first screen has painted
   useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
 
@@ -144,7 +147,8 @@ export default function App() {
   } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} inGame={room !== null || game !== null} />;
   } else if (game) {
-    screen = <Table state={game} />;
+    // at the table the toast is placed against the table's own rows
+    screen = <Table state={game} toast={toast} />;
   } else if (room) {
     screen = <Room room={room} />;
   } else {
@@ -162,25 +166,16 @@ export default function App() {
   const inRoom = room !== null || game !== null;
 
   return (
-    <div className="app">
+    <div className={`app${rotated ? " rotated" : ""}`}>
       {screen}
       {status !== "open" && inRoom ? (
         <div className="reconnect-banner">
           <span className="conn-dot" /> Reconnecting…
         </div>
       ) : null}
-      {toast && inRoom ? (
+      {toast && inRoom && !atTable ? (
         <div className="toast" key={toast}>
           {toast}
-        </div>
-      ) : null}
-      {game && !gamesRoute ? (
-        <div className="rotate-hint">
-          <div className="rotate-card" aria-hidden="true">升级</div>
-          <div>Rotate your phone to play</div>
-          <button className="btn subtle rotate-leave" onClick={() => conn.send({ type: "leave_room" })}>
-            Leave game
-          </button>
         </div>
       ) : null}
     </div>

@@ -1,9 +1,10 @@
 // Hand cards are memoized; these pin that they still follow the props that
 // matter (selection, selectability, the cards themselves) and that a tap
-// reports the right card id through the stable callback.
-import { act } from "react";
+// reports the right card id through the stable callback. A finger slid
+// across the hand chooses a run of cards.
+import { act, useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Hand from "./Hand";
 
 let host: HTMLDivElement;
@@ -39,4 +40,84 @@ it("memoized hand cards still update on selection, selectability and hand change
   expect(cards().every((c) => c.tagName === "DIV" && !c.classList.contains("clickable"))).toBe(true);
   act(() => cards()[0].click());
   expect(onToggle).toHaveBeenCalledTimes(1);
+});
+
+/** A pointer event as a finger sends it, at a hand slot found by `at`. */
+function finger(type: string, target: Element, x: number, pointerType = "touch") {
+  const e = new Event(type, { bubbles: true, cancelable: true });
+  Object.assign(e, { pointerId: 7, pointerType, clientX: x, clientY: 10, isPrimary: true });
+  act(() => { target.dispatchEvent(e); });
+}
+
+describe("drag-select", () => {
+  // one card per 10px along the hand; the hit test is what a browser's would be
+  const at = (x: number) => host.querySelectorAll(".hand-slot")[Math.floor(x / 10)] ?? null;
+  let restore: () => void;
+  beforeEach(() => {
+    const real = document.elementFromPoint;
+    document.elementFromPoint = (x: number) => at(x)?.querySelector(".card") ?? null;
+    restore = () => { document.elementFromPoint = real; };
+  });
+  afterEach(() => restore());
+
+  /** A stateful hand: the parent applies each toggle, as Table does. */
+  function Harness({ codes, initial = [] }: { codes: string[]; initial?: number[] }) {
+    const [sel, setSel] = useState(new Set(initial));
+    const toggle = useCallback((id: number) => setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    }), []);
+    return <Hand hand={hand(codes)} selected={sel} selectable onToggle={toggle} />;
+  }
+  const picked = () => cards().map((c) => c.classList.contains("selected"));
+
+  it("a slide from one card across the next three selects all four, each once", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3", "S4", "S5", "S6", "S7"]} />));
+    finger("pointerdown", cards()[1], 15);
+    for (const x of [16, 22, 25, 31, 38, 42, 44]) finger("pointermove", cards()[1], x);
+    finger("pointerup", cards()[1], 44);
+    // the click a browser may still send for the first card is not a tap
+    act(() => cards()[1].click());
+    expect(picked()).toEqual([false, true, true, true, true, false]);
+  });
+
+  it("a slide that starts on a chosen card clears the run, and leaves the others", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3", "S4", "S5", "S6"]} initial={[0, 2, 3]} />));
+    finger("pointerdown", cards()[2], 25);
+    finger("pointermove", cards()[2], 35);
+    finger("pointermove", cards()[2], 45);
+    finger("pointerup", cards()[2], 45);
+    expect(picked()).toEqual([true, false, false, false, false]);
+  });
+
+  it("a tap without a slide still toggles one card, and the next tap is not swallowed", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3", "S4"]} />));
+    finger("pointerdown", cards()[0], 5);
+    finger("pointermove", cards()[0], 6);   // still on the same card
+    finger("pointerup", cards()[0], 6);
+    act(() => cards()[0].click());
+    expect(picked()).toEqual([true, false, false]);
+    finger("pointerdown", cards()[2], 25);
+    finger("pointerup", cards()[2], 25);
+    act(() => cards()[2].click());
+    expect(picked()).toEqual([true, false, true]);
+  });
+
+  it("a mouse drag and a hand that cannot be chosen from change nothing", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3", "S4"]} />));
+    finger("pointerdown", cards()[0], 5, "mouse");
+    finger("pointermove", cards()[0], 25, "mouse");
+    finger("pointerup", cards()[0], 25, "mouse");
+    expect(picked()).toEqual([false, false, false]);
+    const onToggle = vi.fn();
+    act(() => root.render(<Hand hand={hand(["S2", "S3"])} selected={new Set()} selectable={false} onToggle={onToggle} />));
+    finger("pointerdown", cards()[0], 5);
+    finger("pointermove", cards()[0], 15);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
 });

@@ -725,6 +725,34 @@ textarea:focus-visible {
   color: var(--text-dim);
 }
 
+/* a touch screen is tapped, not clicked */
+.room-code-label .copy-tap {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .room-code-label .copy-click {
+    display: none;
+  }
+
+  .room-code-label .copy-tap {
+    display: inline;
+  }
+}
+
+/* A phone's room: the caption keeps clear of the 44px mute button in the
+   panel's corner, and the seat tags read at 12px. */
+@media (max-width: 600px) and (pointer: coarse) {
+  .room-panel > .room-code-label {
+    padding: 0 48px;
+  }
+
+  .seat-name .you-tag,
+  .seat-name .host-tag {
+    font-size: 12px;
+  }
+}
+
 .room-code {
   position: relative;
   appearance: none;
@@ -1758,9 +1786,15 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 /* ============ Mobile landscape (short viewports) ============ */
 /* Phones held horizontally: ~740-930 x 360-430. Everything must fit with no
-   page scrolling. Desktop rules above are untouched. */
+   page scrolling. Desktop rules above are untouched.
+   The block is keyed on the root's `phone-landscape` class, which
+   phoneLayout.ts sets for a viewport under 500px tall (the media query
+   `(max-height: 500px)`) and for a portrait phone at the table, whose table
+   is drawn turned a quarter turn (.app.rotated). A media query cannot see
+   the rotated frame, a class can. :where() adds no specificity, so every
+   rule weighs what it would on its own; the build flattens the nesting. */
 
-@media (max-height: 500px) {
+:where(.phone-landscape) {
   /* Phone table (short landscape).
      Every size derives from the viewport through the tokens on .table-screen,
      so a wider phone gets bigger cards instead of empty felt. The regions:
@@ -1778,10 +1812,15 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      Desktop and iPad never match this block. */
   .table-screen {
     position: relative;         /* the floating HUD's frame */
-    --safe-l: env(safe-area-inset-left, 0px);
-    --safe-r: env(safe-area-inset-right, 0px);
-    --safe-b: env(safe-area-inset-bottom, 0px);
-    --safe-w: calc(100vw - var(--safe-l) - var(--safe-r));
+    /* The frame the table is laid out in: the viewport, or the rotated
+       frame's size and its safe areas turned with it (--frame-*). */
+    --view-w: var(--frame-w, 100vw);
+    --view-h: var(--frame-h, 100vh);
+    --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
+    --safe-l: var(--frame-safe-l, env(safe-area-inset-left, 0px));
+    --safe-r: var(--frame-safe-r, env(safe-area-inset-right, 0px));
+    --safe-b: var(--frame-safe-b, env(safe-area-inset-bottom, 0px));
+    --safe-w: calc(var(--view-w) - var(--safe-l) - var(--safe-r));
     --header-h: 32px;
     /* one spacing scale for the whole table */
     --space-xs: 4px;
@@ -1792,7 +1831,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --hand-under: max(0px, calc(var(--safe-b) - 16px));
     --lift: 18px;               /* a selected card's rise; the hand's top padding */
     --hand-h: calc(var(--hand-cw) * 1.4 + var(--hand-under));
-    --header-bottom: calc(env(safe-area-inset-top, 0px) + 6px + var(--header-h));
+    --header-bottom: calc(var(--safe-t) + 6px + var(--header-h));
     /* A slot's footprint is its cards plus a tag line under them (LEAD, WINS,
        "… declares"), so a tag never covers a card's index. */
     --tag-s: 20px;
@@ -1804,10 +1843,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        as the felt allows: the width-based size unless that leaves gaps under
        --space-s, or leaves a side seat's label under 64px beside a
        four-card throw. */
-    --cross-avail: calc(100vh - var(--header-bottom) - var(--zone-bottom) - var(--row-reserve));
-    --trick-cw: min(clamp(48px, 7.5vw, 72px),
+    --cross-avail: calc(var(--view-h) - var(--header-bottom) - var(--zone-bottom) - var(--row-reserve));
+    --trick-cw: min(clamp(48px, calc(var(--view-w) * 0.075), 72px),
       calc((var(--cross-avail) - 3 * var(--space-s) - 2 * var(--tag-s)) / 2.8),
-      calc((50vw - max(var(--safe-l), var(--safe-r)) - var(--space-xs) - 2 * var(--space-s) - 70px) / 4.2));
+      calc((var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--space-xs) - 2 * var(--space-s) - 70px) / 4.2));
     --trick-ch: calc(var(--trick-cw) * 1.4);
     --foot: calc(var(--trick-ch) + var(--tag-s));
     --gap-v: calc((var(--cross-avail) - 2 * var(--foot)) / 3);
@@ -1816,7 +1855,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        slot (4 cards span 2.8 card widths at a 60% pitch) */
     --side-out: calc(var(--trick-cw) * 4.2 + var(--space-s));
     /* a side seat's label sits outside its slot and never reaches the safe area */
-    --pill-max: min(96px, calc(50vw - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))));
+    --pill-max: min(120px, calc(var(--view-w) / 2 - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))));
     /* card centres from the cross's centre: the top slot's footprint ends a
        half gap above it, yours starts a half gap below; side cards sit so
        their footprint is centred */
@@ -1866,7 +1905,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     background: none;
     border-bottom: 0;
     pointer-events: none;     /* only the chips themselves take taps */
-    padding: calc(6px + env(safe-area-inset-top, 0px)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
+    padding: calc(6px + var(--safe-t)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
   }
 
   .hud-bar {
@@ -2117,21 +2156,56 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-s);
     min-width: 0;
     height: var(--header-h);
-    padding: 0 var(--space-m) 0 var(--space-s);
+    padding: 0 10px 0 7px;     /* the team dot sits in the label: a little less padding */
     border: 0;
-    border-left: 3px solid var(--panel-edge);   /* the team colour lives here, once */
     border-radius: 999px;
     background: rgba(8, 20, 14, 0.72);
     z-index: 2;
   }
 
-  .opponent.team0 { border-left-color: var(--team0); }
-  .opponent.team1 { border-left-color: var(--team1); }
+  /* The label is the only way to read a long name (a tap shows it whole),
+     so its tap area reaches 44px tall, as the menu button's does. */
+  .opponent::after {
+    content: "";
+    position: absolute;
+    inset: -6px -4px;
+  }
 
-  /* whose turn: the seat's edge turns gold, without a glow */
+  /* the team colour is a dot inside the label, the same for every seat */
+  .opponent .seat-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+  }
+
+  .opponent .seat-dot.t0 { background: var(--team0); }
+  .opponent .seat-dot.t1 { background: var(--team1); }
+
+  /* Whose turn: the seat's label fills gold and its name ends in "…". A
+     solid fill, no glow and no motion. */
   .opponent.on-turn {
-    border-left-color: var(--gold);
+    padding-right: var(--space-s);
+    background: var(--gold);
     box-shadow: none;
+  }
+
+  .opponent.on-turn .opp-name {
+    color: #1a1a1a;
+  }
+
+  /* the fill outranks the team dot for its moment, and its room goes to the
+     "…" so a crowned name still fits beside a side slot */
+  .opponent.on-turn .seat-dot {
+    display: none;
+  }
+
+  .opponent .turn-dots {
+    display: inline;
+    flex-shrink: 0;
+    margin-left: -2px;
+    font-weight: 800;
   }
 
   .opp-name {
@@ -2168,7 +2242,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .you-tag,
   .host-tag,
   .off-tag {
-    font-size: 10px;
+    font-size: 11px;
     padding: 1px 5px;
     margin-left: var(--space-xs);
   }
@@ -2195,9 +2269,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-weight: 800;
   }
 
-  .thinking,
-  .their-turn {
+  .thinking {
     font-size: 11px;
+  }
+
+  /* a human's turn is the label's fill too; the label stays one line */
+  .opponent .their-turn {
+    display: none;
   }
 
   /* A bot's turn shows as its seat's gold edge, not a sentence on the felt.
@@ -2214,11 +2292,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   /* the top seat's label is centred in the header row, over its slot */
   .opponent.pos-top {
-    top: calc(6px + env(safe-area-inset-top, 0px));
+    top: calc(6px + var(--safe-t));
     left: 50%;
     height: var(--header-h);
     /* between the level strip (about 260px from the safe edge) and the menu */
-    max-width: min(200px, calc(100vw - 2 * max(var(--safe-l), var(--safe-r)) - 528px));
+    max-width: min(200px, calc(var(--view-w) - 2 * max(var(--safe-l), var(--safe-r)) - 528px));
     transform: translateX(-50%);
   }
 
@@ -2257,8 +2335,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     white-space: nowrap;
   }
 
-  .opponent[data-name-len="m"] .opp-name { font-size: 11px; }
-  .opponent[data-name-len="l"] .opp-name { font-size: 10px; }
+  /* a long name steps down once, to 12px, then ends in an ellipsis */
+  .opponent[data-name-len="m"] .opp-name,
+  .opponent[data-name-len="l"] .opp-name { font-size: 12px; }
 
   .opp-fullname {
     display: block;
@@ -2267,7 +2346,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     left: 50%;
     translate: -50% 0;
     z-index: 20;
-    max-width: 60vw;
+    max-width: calc(var(--view-w) * 0.6);
     padding: 5px 10px;
     border: 1px solid var(--panel-edge);
     border-radius: 8px;
@@ -2372,7 +2451,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* felt text sits on the HUD's dark pill, so it stays readable */
   .lead-tag,
   .win-tag {
-    font-size: 10px;
+    font-size: 11px;
     padding: 2px 7px;
   }
 
@@ -2524,6 +2603,28 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-weight: 700;
   }
 
+  /* A disabled button alone reads as "wait": one line under it says what to
+     do until a card is chosen. It sits in the hand's lift band and lets taps
+     through to the cards. */
+  .phase-play .action-bar .btn.primary.your-turn {
+    position: relative;
+  }
+
+  .phase-play .action-bar .btn.primary.your-turn .lead-hint {
+    display: block;
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 50%;
+    translate: -50% 0;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 15px;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+  }
+
 
 
   /* no name pill at the table: only the banker's crown, beside an action */
@@ -2548,6 +2649,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     box-shadow: none;
   }
 
+  /* burying, the Bury button is yours alone; a bare crown beside it would
+     read as a second button */
+  .phase-bury .you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown) {
+    display: none;
+  }
+
   .you-tagline .you-name,
   .you-tagline .your-turn-tag,
   .you-tagline .ready-tag {
@@ -2557,7 +2664,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .action-bar {
     grid-column: 2;
     min-height: 0;
-    max-width: calc(100vw - var(--safe-l) - var(--safe-r) - 16px);
+    max-width: calc(var(--view-w) - var(--safe-l) - var(--safe-r) - 16px);
     margin: 0;
     padding: 3px 0;
     gap: 8px;
@@ -2664,9 +2771,15 @@ dialog.modal-backdrop::backdrop { background: transparent; }
       calc((var(--safe-w) - 16px - var(--hand-cw)) / max(1, calc(var(--n, 25) - 1))));
     position: relative;
     justify-content: flex-start;
-    max-width: 100vw;
+    max-width: var(--view-w);
     padding: var(--lift) calc(8px + var(--safe-r)) var(--hand-under) calc(8px + var(--safe-l));
     overflow-x: auto;           /* a safety net only: the pitch always fits */
+  }
+
+  /* a finger slides across the hand to choose a run of cards, so the hand
+     never pans (it always fits) */
+  .hand.selectable {
+    touch-action: none;
   }
 
   .hand-slot {
@@ -2758,6 +2871,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .phase-play .hud-message {
     overflow: hidden;
+  }
+
+  /* a declaration is told once, by its tag under the declared cards */
+  .hud-message.declare-message {
+    display: none;
   }
 
   .phase-play .hud-notice {
@@ -2872,6 +2990,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* --- Round end: a compact card; Next round always on screen --- */
   .modal {
     width: min(380px, 100%);
+    max-width: 100%;
     padding: 12px 16px 0;
     gap: 8px;
     max-height: 100%;
@@ -2951,7 +3070,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 13px;
   }
 
-  /* an error passes in the header band, never over Play and Clear */
+  /* off the table, an error passes in the header band */
   .toast {
     top: calc(env(safe-area-inset-top, 0px) + 6px);
     bottom: auto;
@@ -2960,10 +3079,23 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     padding: 7px 16px;
   }
 
+  /* At the table an error passes just above your row, centred, close to the
+     hand it is about: never over a seat's label, Play, Clear or the hand. It
+     stays inside the cross's width, between the side seats' labels. */
+  .table-screen .toast {
+    top: auto;
+    bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-xs));
+    max-width: calc(2 * var(--side-out) - 2 * var(--space-s));
+    font-size: 13px;
+    line-height: 17px;
+    padding: 6px 14px;
+    text-align: center;
+  }
+
   /* chat sits in the header, beside the menu button, clear of the hand
      (the extra class outranks the base rule later in the file) */
   .table-screen .chat-launch {
-    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    top: calc(var(--safe-t) + 6px);
     right: calc(var(--safe-r) + 4px + 36px + var(--space-s));
     bottom: auto;
     width: 40px;
@@ -3001,66 +3133,68 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   from { opacity: 0; transform: scale(0.85); }
 }
 
-/* ============ Portrait phones: rotate hint ============ */
-
-/* A browser fallback: the iOS app turns the phone to landscape itself. */
-.rotate-hint {
-  display: none;
+/* The game is always played sideways. A phone browser held upright at the
+   table (App sets .rotated; the iOS app turns itself instead) draws the table
+   a quarter turn clockwise in a frame the screen's long side wide, so the
+   phone layout applies to it unchanged. The frame's left edge lies along
+   the screen's top, so its safe areas turn with it. Hit testing follows the
+   transform, so a tap lands on the card under the finger. */
+.app.rotated {
   position: fixed;
-  inset: 0;
-  z-index: 100;
-  background:
-    radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
-  padding: 24px;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  overflow: hidden;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
 }
 
-.rotate-card {
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 90px;
-  border-radius: 8px;
-  background: linear-gradient(160deg, #fdfdf7 0%, #f1f0e6 100%);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  color: var(--card-red);
-  font-size: 18px;
-  font-weight: 800;
-  animation: rotate-nudge 1.8s ease-in-out infinite;
+/* the chat and the round-end card measure the turned frame, not the
+   viewport */
+.app.rotated .chat-panel {
+  right: calc(12px + var(--frame-safe-r));
+  bottom: calc(68px + var(--frame-safe-b));
+  width: min(320px, calc(var(--frame-w) * 0.82));
+  max-height: min(380px, calc(var(--frame-h) - 80px - var(--frame-safe-t) - var(--frame-safe-b)));
 }
 
-.rotate-leave {
-  min-height: 44px;
+.app.rotated .modal-backdrop {
+  padding: max(12px, var(--frame-safe-t)) max(12px, var(--frame-safe-r))
+    max(12px, var(--frame-safe-b)) max(12px, var(--frame-safe-l));
 }
 
-@keyframes rotate-nudge {
-  0%,
-  20% {
-    transform: rotate(0deg);
-  }
-  60%,
-  100% {
-    transform: rotate(90deg);
-  }
+/* A dialog opened with showModal() lives in the browser's top layer, which
+   ignores the .app transform, so it takes the same quarter turn itself and
+   reads the same turned frame. */
+.app.rotated dialog.modal-backdrop:modal {
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
 }
 
-@media (orientation: portrait) and (max-width: 600px) {
-  .rotate-hint {
-    display: flex;
-  }
-
-  /* the table's no-wrap HUD widened the layout viewport, which put the fixed
-     hint off-screen; out of layout, the hint centres */
-  .table-screen {
-    display: none;
-  }
+/* the seat label's team dot and turn mark, and the hint under Your turn,
+   belong to the phone table only */
+.seat-dot,
+.turn-dots,
+.lead-hint {
+  display: none;
 }
 
 /* Touch screens: the lobby's dice and How to play link keep their drawn size
@@ -3386,7 +3520,7 @@ button.room-chip:focus-visible::after { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .hud-message { animation: none; }
-  .modal, .modal-backdrop, .hud-notice, .trick-play, .rotate-card { animation: none; }
+  .modal, .modal-backdrop, .hud-notice, .trick-play { animation: none; }
   .trick-play.winner .trick-cards, .trick-play.winner .win-tag, .level-chip.level-up { animation: none; }
   .opponent.on-turn::after { animation: none; }
   .hand .card, .btn, .seat-option { transition: none; }

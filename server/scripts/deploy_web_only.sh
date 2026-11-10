@@ -164,6 +164,29 @@ print(json.dumps({k: h[k] for k in ("bot", "fast", "prior", "pv_search")}, sort_
 ' "$1" "${2:-after}"
 }
 
+# Preserve the supplied served tree configuration independently of the deploy worktree.
+prepare_rollback() {
+  python3 - "$REPO" "$SERVED_SHA" "$RECEIPT" "$APP" "$FLY_IMAGE_BEFORE" <<'PYROLLBACK'
+import os, pathlib, shlex, subprocess, sys
+repo, served, receipt, app, image = sys.argv[1:]
+if not image.strip():
+    raise ValueError("previous image is unavailable")
+config = subprocess.run(["git", "-C", repo, "show", served + ":fly.toml"],
+                        check=True, capture_output=True).stdout
+if not config.strip():
+    raise ValueError("served fly.toml is empty")
+path = pathlib.Path(receipt).absolute().with_name(pathlib.Path(receipt).name + ".rollback.fly.toml")
+path.parent.mkdir(parents=True, exist_ok=True)
+with path.open("xb") as handle:
+    handle.write(config)
+    handle.flush()
+    os.fsync(handle.fileno())
+path.chmod(0o444)
+print(shlex.join(["fly", "deploy", "--app", app, "--ha=false", "--image", image,
+                  "--config", str(path)]))
+PYROLLBACK
+}
+
 fetch_healthz() {
   curl -fsS --max-time 20 "$URL/healthz"
 }
@@ -298,8 +321,7 @@ main() {
   FLY_VERSION_BEFORE=${rel%% *}
   FLY_IMAGE_BEFORE=${rel#* }
   BUNDLES_BEFORE=$(served_bundles | tr '\n' ' ' || true)
-  ROLLBACK_CMD="fly deploy --app $APP --ha=false --image $FLY_IMAGE_BEFORE"
-  [ -n "$FLY_IMAGE_BEFORE" ] || ROLLBACK_CMD="fly deploy --app $APP --ha=false --image <image of v$FLY_VERSION_BEFORE from: fly releases -a $APP --image>"
+  ROLLBACK_CMD=$(prepare_rollback) || refuse "could not preserve previous image/config for rollback"
   say "fly v$FLY_VERSION_BEFORE ($FLY_IMAGE_BEFORE); rollback: $ROLLBACK_CMD"
 
   if [ "$DRY_RUN" = 1 ]; then

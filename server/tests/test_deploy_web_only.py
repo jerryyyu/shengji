@@ -6,6 +6,7 @@ for `fly deploy`, copies the site's `after/` files over the live ones.
 import json
 import os
 import shutil
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -238,8 +239,10 @@ def test_dry_run_checks_everything_but_neither_pushes_nor_deploys(repo, tmp_path
     assert data["fly_version_before"] == data["fly_version_after"] == 63
     assert data["started_machines"] == 1
     assert data["marker_found"] is False
-    assert data["rollback_command"] == \
-        "fly deploy --app shengji --ha=false --image registry.fly.io/shengji:old"
+    assert shlex.split(data["rollback_command"]) == [
+        "fly", "deploy", "--app", "shengji", "--ha=false", "--image",
+        "registry.fly.io/shengji:old", "--config",
+        str(tmp_path / "receipt.json.rollback.fly.toml")]
     assert not data["pushed"] and not data["fly_deploy_ran"]
 
 
@@ -347,3 +350,52 @@ def test_identity_requires_each_package_field(env, section, key):
     del health[section][key]
     result = _call("healthz_identity", json.dumps(health), "before", env=env)
     assert result.returncode != 0
+
+
+def test_rollback_command_uses_preserved_config_from_foreign_cwd(repo, tmp_path, env):
+    root = tmp_path / "receipt space's"
+    root.mkdir()
+    site = _site(root)
+    r, data, _ = _run(repo, root, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
+    assert r.returncode == 0, r.stderr
+    args = shlex.split(data["rollback_command"])
+    config = Path(args[args.index("--config") + 1])
+    expected = _git(repo["work"], "show", repo["served"] + ":fly.toml", env=env) + "\n"
+    assert config.is_absolute() and config.read_text() == expected
+    foreign = root / "foreign"
+    foreign.mkdir()
+    (foreign / "fly.toml").write_text("app = 'different'\n[env]\nBOT = 'candidate'\n")
+    (root / "wt/fly.toml").write_text("app = 'modified-worktree'\n")
+    stub = root / "bin/fly"
+    stub.write_text("#!/usr/bin/env python3\nimport json, pathlib, sys\na=sys.argv[1:]\np=pathlib.Path(a[a.index('--config')+1])\nprint(json.dumps({'args':a,'config':p.read_text()}))\n")
+    result = subprocess.run([BASH, "-c", data["rollback_command"]], cwd=foreign,
+                            env=dict(env, PATH=str(root / "bin") + os.pathsep + env["PATH"]),
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    recovered = json.loads(result.stdout)
+    assert recovered["config"] == expected
+    assert recovered["args"][recovered["args"].index("--image") + 1] == "registry.fly.io/shengji:old"
+
+
+@pytest.mark.parametrize("missing", ["image", "config", "existing-snapshot"])
+def test_missing_rollback_inputs_refuse_before_push_or_deploy(repo, tmp_path, env, missing):
+    site = _site(tmp_path)
+    if missing == "image":
+        (site / "releases.json").write_text(json.dumps([{"Version": 63}]))
+    elif missing == "config":
+        _git(repo["work"], "rm", "fly.toml", env=env)
+        _git(repo["work"], "commit", "-qm", "missing config", env=env)
+        repo["served"] = _git(repo["work"], "rev-parse", "HEAD", env=env)
+        _write(repo["work"], "web/src/App.tsx", "another web change\n")
+        _git(repo["work"], "commit", "-qam", "web change", env=env)
+        _git(repo["work"], "push", "-q", "origin", "main", env=env)
+    else:
+        (tmp_path / "receipt.json.rollback.fly.toml").write_text("do not overwrite\n")
+    r, data, log = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
+    assert r.returncode == 1, r.stderr
+    assert "could not preserve" in data["status"]
+    assert not data["pushed"] and not data["fly_deploy_ran"]
+    assert "claude/deploy-web-test" not in _remote_branches(repo, env)
+    assert "deploy --ha=false" not in log
+    if missing == "existing-snapshot":
+        assert (tmp_path / "receipt.json.rollback.fly.toml").read_text() == "do not overwrite\n"

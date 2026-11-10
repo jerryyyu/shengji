@@ -187,6 +187,36 @@ def test_process_argument_containing_safe_rm_is_not_exempt(world):
         worker.wait(timeout=5)
 
 
+def test_launching_shell_with_the_path_in_its_argv_is_exempt(world):
+    """A compound command keeps its shell alive with the target in argv; that ancestor is the caller, not a user."""
+    target = world / "root/old-run"
+    env = {**os.environ, "HOME": str(world / "home"), "SAFE_RM_ROOTS": str(world / "root"),
+           "SAFE_RM_LAUNCHERS": str(world / "fleet/*.sh"),
+           "SAFE_RM_PINS": f"{world}/archive/*/commands.json {world}/archive/*/SHA256SUMS",
+           "SAFE_RM_KEEP": str(world / "home/.safe_rm.keep")}
+    out = subprocess.run(
+        ["/bin/bash", "-c", f'"{sys.executable}" "{SCRIPT}" --dry-run "{target}"; echo "rc=$?"'],
+        capture_output=True, text=True, env=env, cwd=world / "busy", timeout=120,
+    ).stdout
+    assert "WOULD DELETE" in out and "rc=0" in out and target.is_dir()
+
+
+def test_a_non_ancestor_shell_naming_the_path_still_refuses(world):
+    target = world / "root/old-run"
+    marker = world / "shell-ready"
+    holder = subprocess.Popen(
+        ["/bin/bash", "-c", f'touch "{marker}"; sleep 60; echo "{target}" safe_rm.py'], cwd=world / "busy")
+    try:
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        rc, out = run(world, "--dry-run", target)
+        assert rc == 1 and f"in-use pid {holder.pid}:" in out and target.is_dir()
+    finally:
+        holder.terminate()
+        holder.wait(timeout=5)
+
+
 @pytest.mark.parametrize("tool", ["ps", "lsof"])
 @pytest.mark.parametrize("mode", ["missing", "failed", "empty", "malformed"])
 def test_unavailable_inventory_refuses_cli_dry_run(world, monkeypatch, tool, mode):
@@ -194,7 +224,7 @@ def test_unavailable_inventory_refuses_cli_dry_run(world, monkeypatch, tool, mod
         pytest.skip("Linux uses procfs for cwd/exe inventory")
     bin_dir = world / "bin"
     bin_dir.mkdir()
-    scripts = {"ps": 'echo "$PPID python"', "lsof": "printf 'p1\\nn/tmp\\n'"}
+    scripts = {"ps": 'echo "$PPID 1 python"', "lsof": "printf 'p1\\nn/tmp\\n'"}
     for name, body in scripts.items():
         if name == tool:
             if mode == "missing":
@@ -223,7 +253,7 @@ def test_inventory_timeout_refuses_without_waiting_a_minute(monkeypatch, tool):
         assert kwargs["timeout"] == 60
         if command[0] == tool:
             raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-        return subprocess.CompletedProcess(command, 0, f"{os.getpid()} python\n", "")
+        return subprocess.CompletedProcess(command, 0, f"{os.getpid()} 1 python\n", "")
 
     monkeypatch.setattr(mod.subprocess, "run", inventory)
     monkeypatch.setattr(mod.os.path, "isdir", lambda path: False)
@@ -238,7 +268,7 @@ def test_procfs_inventory_distinguishes_unreadable_from_exited(monkeypatch, fail
     spec = importlib.util.spec_from_file_location("safe_rm_procfs", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    monkeypatch.setattr(mod, "process_inventory", lambda command: (f"{os.getpid()} python\n", None))
+    monkeypatch.setattr(mod, "process_inventory", lambda command: (f"{os.getpid()} 1 python\n", None))
     monkeypatch.setattr(mod.os.path, "isdir", lambda path: True)
     monkeypatch.setattr(mod.glob, "glob", lambda pattern: ["/proc/123"])
 

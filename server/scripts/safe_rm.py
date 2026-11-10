@@ -115,23 +115,31 @@ def process_inventory(command):
 
 def in_use(r, typed):
     hits = []
-    ps, error = process_inventory(["ps", "-axww", "-o", "pid=,command="])
+    ps, error = process_inventory(["ps", "-axww", "-o", "pid=,ppid=,command="])
     if error:
         return [error]
     me = str(os.getpid())
-    saw_self = False
+    rows = []
     for line in ps.splitlines():
-        fields = line.strip().split(None, 1)
-        if len(fields) != 2 or not fields[0].isdigit():
+        fields = line.strip().split(None, 2)
+        if len(fields) < 2 or not fields[0].isdigit() or not fields[1].isdigit():
             return ["inventory unavailable (ps malformed output)"]
-        pid, cmd = fields
-        if pid == me:
-            saw_self = True
+        rows.append((fields[0], fields[1], fields[2] if len(fields) == 3 else ""))
+    parent = {pid: ppid for pid, ppid, _ in rows}
+    if me not in parent:
+        return ["inventory unavailable (ps omitted current process)"]
+    # The shells that launched this run carry the target path in their own argv; only this process's ancestor
+    # chain is exempt, never another process that merely mentions safe_rm.
+    launchers = set()
+    pid = me
+    while pid in parent and pid not in launchers and pid != "0":
+        launchers.add(pid)
+        pid = parent[pid]
+    for pid, _, cmd in rows:
+        if pid in launchers:
             continue
         if r in cmd or typed in cmd:
             hits.append(f"pid {pid}: {cmd[:120]}")
-    if not saw_self:
-        return hits + ["inventory unavailable (ps omitted current process)"]
     if os.path.isdir("/proc"):
         for pd in glob.glob("/proc/[0-9]*"):
             for k in ("cwd", "exe"):

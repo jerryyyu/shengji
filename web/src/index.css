@@ -3170,6 +3170,25 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     max(12px, var(--frame-safe-b)) max(12px, var(--frame-safe-l));
 }
 
+/* A dialog opened with showModal() lives in the browser's top layer, which
+   ignores the .app transform, so it takes the same quarter turn itself and
+   reads the same turned frame. */
+.app.rotated dialog.modal-backdrop:modal {
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
+}
+
 /* the seat label's team dot and turn mark, and the hint under Your turn,
    belong to the phone table only */
 .seat-dot,

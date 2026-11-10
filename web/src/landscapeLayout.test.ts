@@ -674,3 +674,16 @@ describe("the error toast at the table", () => {
     });
   }
 });
+
+describe("the round-end dialog in a turned portrait game", () => {
+  it("takes the table's quarter turn itself, since the top layer ignores the .app transform", () => {
+    const app = css.match(/\.app\.rotated \{[^}]*\}/)?.[0] ?? "";
+    const modal = css.match(/\.app\.rotated dialog\.modal-backdrop:modal \{[^}]*\}/)?.[0] ?? "";
+    const turn = /transform:\s*([^;]+);/;
+    expect(modal).not.toBe("");
+    expect(modal.match(turn)?.[1]).toBe(app.match(turn)?.[1]);
+    for (const decl of ["width: 100dvh", "height: 100dvw", "transform-origin: top left", "--frame-w: 100dvh"]) {
+      expect(modal).toContain(decl);
+    }
+  });
+});

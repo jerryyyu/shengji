@@ -14,6 +14,7 @@ import { useGamesRoute } from "./replay/route";
 import HowTo from "./howto/HowTo";
 import { useHowtoRoute } from "./howto/route";
 import { hideSplash, lockFor } from "./native";
+import { usePhoneLayout } from "./phoneLayout";
 
 const TOAST_MS = 4000;
 
@@ -28,6 +29,8 @@ export default function App() {
   const autoFill = useRef(false);
   // Whether the announcer has been seeded with a first game state.
   const seededRef = useRef(false);
+  // True from an automatic resume of the saved room until the server answers it.
+  const resumingRef = useRef(false);
   // "My games" pages (hash routes) sit over whatever screen is live; the
   // socket and any game in progress keep running underneath.
   const gamesRoute = useGamesRoute();
@@ -73,11 +76,12 @@ export default function App() {
       });
       if (intent.kind !== "resume") return;   // Lobby owns invite + pending
       const join = intentToJoin(intent);
-      if (join) conn.send(join as never);
+      if (join) { resumingRef.current = true; conn.send(join as never); }
     });
     const unsubMsg = conn.subscribe((msg) => {
       switch (msg.type) {
         case "room":
+          resumingRef.current = false;
           setRoom(msg);
           // "room" is only sent while the room is in lobby state, so any
           // previously rendered game is stale (e.g. rejoined after the game
@@ -97,17 +101,23 @@ export default function App() {
           }
           break;
         case "state":
+          resumingRef.current = false;
           announceState(msg, !seededRef.current);
           seededRef.current = true;
           setGame(msg);
           break;
         case "error":
+          const wasResuming = resumingRef.current;
+          resumingRef.current = false;
           autoFill.current = false; // abort single-player orchestration
           if (msg.code === "room_not_found") {
             // The room no longer exists (server restart / expiry). Stop
             // retrying it on reconnect and return to the lobby (name kept).
             resetToLobby();
-            showToast("That game has ended.");
+            // A silent resume of a room that expired or was dropped by a restart is not news to the
+            // player; only a join they asked for gets told.
+            if (!wasResuming) showToast("That game has ended.");
+            resumingRef.current = false;
           } else {
             showToast(msg.message);
           }
@@ -135,6 +145,8 @@ export default function App() {
   // iPhone; everywhere else these are no-ops.
   const atTable = game !== null && !gamesRoute && !howtoRoute;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
+  // a portrait phone browser gets the table turned sideways instead
+  const { rotated } = usePhoneLayout(atTable);
   // the launch splash covers the WebView until the first screen has painted
   useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
 
@@ -144,7 +156,8 @@ export default function App() {
   } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} inGame={room !== null || game !== null} />;
   } else if (game) {
-    screen = <Table state={game} />;
+    // at the table the toast is placed against the table's own rows
+    screen = <Table state={game} toast={toast} />;
   } else if (room) {
     screen = <Room room={room} />;
   } else {
@@ -162,25 +175,16 @@ export default function App() {
   const inRoom = room !== null || game !== null;
 
   return (
-    <div className="app">
+    <div className={`app${rotated ? " rotated" : ""}`}>
       {screen}
       {status !== "open" && inRoom ? (
         <div className="reconnect-banner">
           <span className="conn-dot" /> Reconnecting…
         </div>
       ) : null}
-      {toast && inRoom ? (
+      {toast && inRoom && !atTable ? (
         <div className="toast" key={toast}>
           {toast}
-        </div>
-      ) : null}
-      {game && !gamesRoute ? (
-        <div className="rotate-hint">
-          <div className="rotate-card" aria-hidden="true">升级</div>
-          <div>Rotate your phone to play</div>
-          <button className="btn subtle rotate-leave" onClick={() => conn.send({ type: "leave_room" })}>
-            Leave game
-          </button>
         </div>
       ) : null}
     </div>

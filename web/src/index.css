@@ -725,6 +725,34 @@ textarea:focus-visible {
   color: var(--text-dim);
 }
 
+/* a touch screen is tapped, not clicked */
+.room-code-label .copy-tap {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .room-code-label .copy-click {
+    display: none;
+  }
+
+  .room-code-label .copy-tap {
+    display: inline;
+  }
+}
+
+/* A phone's room: the caption keeps clear of the 44px mute button in the
+   panel's corner, and the seat tags read at 12px. */
+@media (max-width: 600px) and (pointer: coarse) {
+  .room-panel > .room-code-label {
+    padding: 0 48px;
+  }
+
+  .seat-name .you-tag,
+  .seat-name .host-tag {
+    font-size: 12px;
+  }
+}
+
 .room-code {
   position: relative;
   appearance: none;
@@ -1291,6 +1319,11 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
+/* Play's "Your turn" wording: only the phone layout shows it */
+.your-turn-text {
+  display: none;
+}
+
 /* a seat's full name on tap: only the phone layout, which shortens long
    names, draws it */
 .opp-fullname {
@@ -1753,28 +1786,41 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 /* ============ Mobile landscape (short viewports) ============ */
 /* Phones held horizontally: ~740-930 x 360-430. Everything must fit with no
-   page scrolling. Desktop rules above are untouched. */
+   page scrolling. Desktop rules above are untouched.
+   The block is keyed on the root's `phone-landscape` class, which
+   phoneLayout.ts sets for a viewport under 500px tall (the media query
+   `(max-height: 500px)`) and for a portrait phone at the table, whose table
+   is drawn turned a quarter turn (.app.rotated). A media query cannot see
+   the rotated frame, a class can. :where() adds no specificity, so every
+   rule weighs what it would on its own; the build flattens the nesting. */
 
-@media (max-height: 500px) {
+:where(.phone-landscape) {
   /* Phone table (short landscape).
      Every size derives from the viewport through the tokens on .table-screen,
      so a wider phone gets bigger cards instead of empty felt. The regions:
        - a header row (y 6..38): one strip with levels, trump and points at the
          left, the top seat's label in the middle, the `…` menu at the right;
-       - the trick cross, centred between the header and your row; each side
-         seat's label sits on top of its own trick slot;
+       - the trick cross between the header and the hand: each slot is its
+         cards plus a tag line under them, a gap apart; each side seat's label
+         stands outside its slot;
+       - in play your slot is also your row: Play (with "Your turn") sits where
+         your cards will land, just above the hand; while declaring and burying
+         the row sits under the cross;
        - the hand, the only thing in the bottom band, running 16px under the
-         home indicator; a turn shows as a gold glow along its top edge;
-       - your row, centred just above the hand: Play, Bury or the declare
-         options (the banker's crown beside them); the cross sits above it;
-       - messages pass in the bottom-left corner above your row.
+         home indicator;
+       - messages pass in the bottom-left corner.
      Desktop and iPad never match this block. */
   .table-screen {
     position: relative;         /* the floating HUD's frame */
-    --safe-l: env(safe-area-inset-left, 0px);
-    --safe-r: env(safe-area-inset-right, 0px);
-    --safe-b: env(safe-area-inset-bottom, 0px);
-    --safe-w: calc(100vw - var(--safe-l) - var(--safe-r));
+    /* The frame the table is laid out in: the viewport, or the rotated
+       frame's size and its safe areas turned with it (--frame-*). */
+    --view-w: var(--frame-w, 100vw);
+    --view-h: var(--frame-h, 100vh);
+    --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
+    --safe-l: var(--frame-safe-l, env(safe-area-inset-left, 0px));
+    --safe-r: var(--frame-safe-r, env(safe-area-inset-right, 0px));
+    --safe-b: var(--frame-safe-b, env(safe-area-inset-bottom, 0px));
+    --safe-w: calc(var(--view-w) - var(--safe-l) - var(--safe-r));
     --header-h: 32px;
     /* one spacing scale for the whole table */
     --space-xs: 4px;
@@ -1785,28 +1831,42 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --hand-under: max(0px, calc(var(--safe-b) - 16px));
     --lift: 18px;               /* a selected card's rise; the hand's top padding */
     --hand-h: calc(var(--hand-cw) * 1.4 + var(--hand-under));
-    --header-bottom: calc(env(safe-area-inset-top, 0px) + 6px + var(--header-h));
-    /* The felt between the header and your row holds the cross: three equal
-       gaps (header, top slot, your slot, your row) and two card heights. The
-       cards take the width-based size unless that leaves gaps under --space-m. */
-    --cross-avail: calc(100vh - var(--header-bottom) - var(--zone-bottom) - var(--row-h));
-    --trick-cw: min(clamp(48px, 6.7vw, 64px),
-      calc((var(--cross-avail) - 3 * var(--space-m)) / 2.8));
+    --header-bottom: calc(var(--safe-t) + 6px + var(--header-h));
+    /* A slot's footprint is its cards plus a tag line under them (LEAD, WINS,
+       "… declares"), so a tag never covers a card's index. */
+    --tag-s: 20px;
+    /* While declaring and burying a row of controls sits under the cross; in
+       play your slot is the row (see .phase-play). */
+    --row-reserve: var(--row-h);
+    /* The felt between the header and the hand (less the row, if any) holds
+       the cross: two footprints and three equal gaps. The cards are as large
+       as the felt allows: the width-based size unless that leaves gaps under
+       --space-s, or leaves a side seat's label under 64px beside a
+       four-card throw. */
+    --cross-avail: calc(var(--view-h) - var(--header-bottom) - var(--zone-bottom) - var(--row-reserve));
+    --trick-cw: min(clamp(48px, calc(var(--view-w) * 0.075), 72px),
+      calc((var(--cross-avail) - 3 * var(--space-s) - 2 * var(--tag-s)) / 2.8),
+      calc((var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--space-xs) - 2 * var(--space-s) - 70px) / 4.2));
     --trick-ch: calc(var(--trick-cw) * 1.4);
-    --gap-v: calc((var(--cross-avail) - 2 * var(--trick-ch)) / 3);
+    --foot: calc(var(--trick-ch) + var(--tag-s));
+    --gap-v: calc((var(--cross-avail) - 2 * var(--foot)) / 3);
     /* a side slot's outer edge, from the centre: room for a four-card throw
        growing inward that still clears a four-card throw in the top or your
-       slot (4 cards span 3.16 card widths at the -0.28 overlap) */
-    --side-out: calc(var(--trick-cw) * 4.74 + 6px);
+       slot (4 cards span 2.8 card widths at a 60% pitch) */
+    --side-out: calc(var(--trick-cw) * 4.2 + var(--space-s));
     /* a side seat's label sits outside its slot and never reaches the safe area */
-    --pill-max: min(96px, calc(50vw - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))));
-    /* top and your slot centres sit a card and a gap apart */
-    --slot-dy: calc((var(--trick-ch) + var(--gap-v)) / 2);
+    --pill-max: min(120px, calc(var(--view-w) / 2 - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))));
+    /* card centres from the cross's centre: the top slot's footprint ends a
+       half gap above it, yours starts a half gap below; side cards sit so
+       their footprint is centred */
+    --dy-top: calc(var(--trick-ch) / 2 + var(--tag-s) + var(--gap-v) / 2);
+    --dy-bottom: calc(var(--trick-ch) / 2 + var(--gap-v) / 2);
+    --side-dy: calc(var(--tag-s) / -2);
     --trick-top: calc(var(--header-bottom) + var(--gap-v));
     --trick-bottom: calc(var(--hand-h) + var(--lift));
     --row-h: 50px;              /* one 44px button row and its padding */
     --zone-bottom: calc(var(--trick-bottom) + var(--space-xs));
-    --cross-bottom: calc(var(--zone-bottom) + var(--row-h) + var(--gap-v));
+    --cross-bottom: calc(var(--zone-bottom) + var(--row-reserve) + var(--gap-v));
     --corner-l: calc(var(--safe-l) + 8px);
     /* a long press on a name or label must not select text or raise the
        Copy / Look Up callout over the table */
@@ -1822,11 +1882,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     -webkit-touch-callout: default;
   }
 
-  /* The banker's 33 cards fit one row by shrinking to about 52px tall; the
-     row and the cross move down with the shorter hand. Back to full size
-     once the bury leaves 25. */
+  /* in play your slot is your row, so nothing is reserved under the cross */
+  .table-screen.phase-play {
+    --row-reserve: 0px;
+  }
+
+  /* The banker's 33 cards fit one row by drawing smaller, as large as the
+     width allows (about 51px wide on a 14 Pro, 56 at most); the row and the
+     cross move down with the shorter hand. Back to full size once the bury
+     leaves 25. */
   .table-screen:has(.hand.small-cards) {
-    --hand-cw: 37px;
+    --hand-cw: clamp(37px, calc(var(--safe-w) * 0.07), 56px);
   }
 
   /* --- HUD: no bar; one strip top-left, the menu top-right --- */
@@ -1839,7 +1905,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     background: none;
     border-bottom: 0;
     pointer-events: none;     /* only the chips themselves take taps */
-    padding: calc(6px + env(safe-area-inset-top, 0px)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
+    padding: calc(6px + var(--safe-t)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
   }
 
   .hud-bar {
@@ -2090,21 +2156,61 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-s);
     min-width: 0;
     height: var(--header-h);
-    padding: 0 var(--space-m) 0 var(--space-s);
+    padding: 0 10px 0 7px;     /* the team dot sits in the label: a little less padding */
     border: 0;
-    border-left: 3px solid var(--panel-edge);   /* the team colour lives here, once */
     border-radius: 999px;
     background: rgba(8, 20, 14, 0.72);
     z-index: 2;
   }
 
-  .opponent.team0 { border-left-color: var(--team0); }
-  .opponent.team1 { border-left-color: var(--team1); }
+  /* The label is the only way to read a long name (a tap shows it whole),
+     so its tap area reaches 44px tall, as the menu button's does. */
+  .opponent::after {
+    content: "";
+    position: absolute;
+    inset: -6px -4px;
+  }
 
-  /* whose turn: the seat's edge turns gold, without a glow */
+  /* the team colour is a dot inside the label, the same for every seat */
+  .opponent .seat-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+  }
+
+  .opponent .seat-dot.t0 { background: var(--team0); }
+  .opponent .seat-dot.t1 { background: var(--team1); }
+
+  /* Whose turn: the seat's label fills gold and its name ends in "…". A
+     solid fill, no glow and no motion. */
   .opponent.on-turn {
-    border-left-color: var(--gold);
+    padding-right: var(--space-s);
+    background: var(--gold);
     box-shadow: none;
+  }
+
+  .opponent.on-turn .opp-name {
+    color: #1a1a1a;
+  }
+
+  /* the fill outranks the team dot for its moment, and its room goes to the
+     "…" so a crowned name still fits beside a side slot */
+  /* the banker's crown already marks its team, and the pill has no room for both */
+  .opponent:has(.banker-crown) .seat-dot {
+    display: none;
+  }
+
+  .opponent.on-turn .seat-dot {
+    display: none;
+  }
+
+  .opponent .turn-dots {
+    display: inline;
+    flex-shrink: 0;
+    margin-left: -2px;
+    font-weight: 800;
   }
 
   .opp-name {
@@ -2112,8 +2218,18 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     white-space: nowrap;
   }
 
+  /* no glow anywhere on the phone table */
   .banker-crown {
     font-size: 12px;
+    filter: none;
+  }
+
+  .level-chip.level-up {
+    animation: none;
+  }
+
+  .victory-crown {
+    filter: none;
   }
 
   /* the card count is not shown at the table */
@@ -2131,7 +2247,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .you-tag,
   .host-tag,
   .off-tag {
-    font-size: 10px;
+    font-size: 11px;
     padding: 1px 5px;
     margin-left: var(--space-xs);
   }
@@ -2158,9 +2274,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-weight: 800;
   }
 
-  .thinking,
-  .their-turn {
+  .thinking {
     font-size: 11px;
+  }
+
+  /* a human's turn is the label's fill too; the label stays one line */
+  .opponent .their-turn {
+    display: none;
   }
 
   /* A bot's turn shows as its seat's gold edge, not a sentence on the felt.
@@ -2177,11 +2297,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   /* the top seat's label is centred in the header row, over its slot */
   .opponent.pos-top {
-    top: calc(6px + env(safe-area-inset-top, 0px));
+    top: calc(6px + var(--safe-t));
     left: 50%;
     height: var(--header-h);
     /* between the level strip (about 260px from the safe edge) and the menu */
-    max-width: min(200px, calc(100vw - 2 * max(var(--safe-l), var(--safe-r)) - 528px));
+    max-width: min(200px, calc(var(--view-w) - 2 * max(var(--safe-l), var(--safe-r)) - 528px));
     transform: translateX(-50%);
   }
 
@@ -2198,7 +2318,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      shows the whole name. */
   .opponent.pos-left,
   .opponent.pos-right {
-    top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2);
+    top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy));
     right: auto;
     max-width: var(--pill-max);
   }
@@ -2220,8 +2340,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     white-space: nowrap;
   }
 
-  .opponent[data-name-len="m"] .opp-name { font-size: 11px; }
-  .opponent[data-name-len="l"] .opp-name { font-size: 10px; }
+  /* a long name steps down once, to 12px, then ends in an ellipsis */
+  .opponent[data-name-len="m"] .opp-name,
+  .opponent[data-name-len="l"] .opp-name { font-size: 12px; }
 
   .opp-fullname {
     display: block;
@@ -2230,7 +2351,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     left: 50%;
     translate: -50% 0;
     z-index: 20;
-    max-width: 60vw;
+    max-width: calc(var(--view-w) * 0.6);
     padding: 5px 10px;
     border: 1px solid var(--panel-edge);
     border-radius: 8px;
@@ -2262,12 +2383,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --cw: var(--trick-cw);
   }
 
-  /* Up to four cards overlap by 28%; a longer play (a tractor of four pairs,
-     a big throw) packs tighter so it never spans more than four would, the
-     room the cross keeps between its slots. */
+  /* Up to four cards sit at a 60% pitch (each index stays clear); a longer
+     play (a tractor of four pairs, a big throw) packs tighter so it never
+     spans more than four would, the room the cross keeps between its slots. */
   .trick-play {
-    --t-pitch: min(calc(var(--trick-cw) * 0.72),
-      calc(var(--trick-cw) * 2.16 / max(1, calc(var(--n, 1) - 1))));
+    --t-pitch: min(calc(var(--trick-cw) * 0.6),
+      calc(var(--trick-cw) * 1.8 / max(1, calc(var(--n, 1) - 1))));
   }
 
   .trick-cards .card + .card {
@@ -2289,37 +2410,36 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     left: 50%;
   }
 
-  .trick-play.pos-top { translate: -50% calc(-50% - var(--slot-dy)); }
-  .trick-play.pos-bottom { translate: -50% calc(-50% + var(--slot-dy)); }
+  .trick-play.pos-top { translate: -50% calc(-50% - var(--dy-top)); }
+  .trick-play.pos-bottom { translate: -50% calc(-50% + var(--dy-bottom)); }
 
   .trick-play.pos-left {
     top: 50%;
     left: calc(50% - var(--side-out));
     right: auto;
-    translate: 0 -50%;
+    translate: 0 calc(-50% + var(--side-dy));
   }
 
   .trick-play.pos-right {
     top: 50%;
     left: auto;
     right: calc(50% - var(--side-out));
-    translate: 0 -50%;
+    translate: 0 calc(-50% + var(--side-dy));
   }
 
-  /* One rule for every seat: LEAD / WINS sit centred inside the cards'
-     bottom edge, so a tag takes no room of its own and never lands between
-     two slots. */
+  /* One rule for every seat: LEAD / WINS / "… declares" sit centred just
+     under the cards, in the tag line each slot keeps, so no card's index is
+     covered; LEAD and WINS on one card stand side by side. */
   .trick-tag {
     position: absolute;
-    top: auto;
-    bottom: var(--space-xs);
+    top: calc(100% + var(--space-xs));
+    bottom: auto;
     left: 50%;
     translate: -50% 0;
     margin: 0;
     min-height: 0;
     white-space: nowrap;
-    /* LEAD and WINS on one card stack, so they stay within its width */
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     gap: var(--space-xs);
   }
@@ -2336,7 +2456,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* felt text sits on the HUD's dark pill, so it stays readable */
   .lead-tag,
   .win-tag {
-    font-size: 10px;
+    font-size: 11px;
     padding: 2px 7px;
   }
 
@@ -2458,6 +2578,36 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     pointer-events: auto;
   }
 
+  /* In play the row is the bottom of your slot, just above the hand: Play
+     stands where your cards land, and once you have played the row is empty
+     and your cards show there. While the finished trick lingers the row
+     steps aside. */
+  .phase-play .you-row {
+    bottom: var(--zone-bottom);
+  }
+
+  .phase-play.showing-last .you-row {
+    visibility: hidden;
+  }
+
+  /* Your turn, nothing chosen yet: Play reads "Your turn", fully opaque, in
+     place of a glow. It turns back into Play once a card is chosen. */
+  .phase-play .action-bar .btn.primary.your-turn .play-text {
+    display: none;
+  }
+
+  .phase-play .action-bar .btn.primary.your-turn .your-turn-text {
+    display: inline;
+  }
+
+  .phase-play .action-bar .btn.primary.your-turn:disabled {
+    opacity: 1;
+    border-color: var(--gold);
+    background: rgba(8, 20, 14, 0.85);
+    color: var(--gold);
+    font-weight: 700;
+  }
+
   /* no name pill at the table: only the banker's crown, beside an action */
   .you-tagline {
     display: none;
@@ -2480,6 +2630,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     box-shadow: none;
   }
 
+  /* burying, the Bury button is yours alone; a bare crown beside it would
+     read as a second button */
+  .phase-bury .you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown) {
+    display: none;
+  }
+
   .you-tagline .you-name,
   .you-tagline .your-turn-tag,
   .you-tagline .ready-tag {
@@ -2489,7 +2645,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .action-bar {
     grid-column: 2;
     min-height: 0;
-    max-width: calc(100vw - var(--safe-l) - var(--safe-r) - 16px);
+    max-width: calc(var(--view-w) - var(--safe-l) - var(--safe-r) - 16px);
     margin: 0;
     padding: 3px 0;
     gap: 8px;
@@ -2596,9 +2752,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
       calc((var(--safe-w) - 16px - var(--hand-cw)) / max(1, calc(var(--n, 25) - 1))));
     position: relative;
     justify-content: flex-start;
-    max-width: 100vw;
+    max-width: var(--view-w);
     padding: var(--lift) calc(8px + var(--safe-r)) var(--hand-under) calc(8px + var(--safe-l));
-    overflow-x: auto;           /* a safety net only: the pitch always fits */
+    /* no overflow clip: any non-visible overflow also clips vertically, and a lifted card's gold ring
+       rises past the top padding; the pitch always fits, so nothing scrolls */
+    overflow: visible;
+  }
+
+  /* a finger slides across the hand to choose a run of cards, so the hand
+     never pans (it always fits) */
+  .hand.selectable {
+    touch-action: none;
   }
 
   .hand-slot {
@@ -2624,28 +2788,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: 0;
     left: 0;
     right: 0;
-  }
-
-  /* Your turn: a gold glow along the top edge of the hand */
-  .hand::before {
-    content: "";
-    position: absolute;
-    top: var(--lift);
-    left: 50%;
-    width: calc((var(--n, 25) - 1) * var(--pitch) + var(--hand-cw));
-    height: 3px;
-    translate: -50% -2px;
-    border-radius: 3px;
-    background: var(--gold);
-    box-shadow: 0 0 10px 3px var(--gold-soft), 0 -4px 22px 8px rgba(242, 193, 78, 0.22);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 200ms ease;
-  }
-
-  .my-turn .hand::before {
-    opacity: 1;
-    animation: turn-glow 1.6s ease-in-out infinite alternate;
   }
 
   /* Over 25 cards (the banker with the kitty) the cards are smaller, so all
@@ -2699,13 +2841,64 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 12px;
   }
 
+  /* In play the corner beside your row is free: messages and the
+     failed-throw notice pass there, left of the crown, no taller than the band
+     under the left seat's slot. */
+  .phase-play .hud-message,
+  .phase-play .hud-notice {
+    bottom: calc(var(--zone-bottom) + var(--space-s));
+    width: auto;
+    max-width: calc(50% - var(--corner-l) - 88px);
+    max-height: calc(var(--cross-avail) / 2 - var(--trick-ch) / 2 - 26px);
+  }
+
+  .phase-play .hud-message {
+    overflow: hidden;
+  }
+
+  /* a declaration is told once, by its tag under the declared cards */
+  .hud-message.declare-message {
+    display: none;
+  }
+
+  .phase-play .hud-notice {
+    font-size: 11px;
+    line-height: 1.3;
+    padding-right: 30px;
+  }
+
+  /* Only the text is clipped to the band: clipping the notice itself would
+     also clip the close button's tap area, which overhangs the corner. */
+  .phase-play .hud-notice .hud-notice-body {
+    align-self: stretch;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* The close is a full 44px button whose glyph sits in the notice's top
+     right 24px corner; the 10px of tap area around the glyph overhangs the
+     notice's top and right edges by 8px instead of making a short notice
+     taller. */
+  .phase-play .hud-notice .hud-notice-close {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 10px;
+    line-height: 24px;
+    background-clip: content-box;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .hand .card,
     .hand-slot {
       transition: none;
     }
 
-    .my-turn .hand::before,
     .deal-deck-stack .card,
     .phase-deal .action-bar .btn.gold,
     .phase-declare .action-bar .btn.gold {
@@ -2780,6 +2973,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* --- Round end: a compact card; Next round always on screen --- */
   .modal {
     width: min(380px, 100%);
+    max-width: 100%;
     padding: 12px 16px 0;
     gap: 8px;
     max-height: 100%;
@@ -2843,8 +3037,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: 0;
     min-height: 44px;
     padding: 8px 16px;
-    margin-bottom: 12px;
     box-shadow: 0 -10px 12px var(--panel);
+  }
+
+  /* the card's own 8px gap separates Next round from Leave, and Leave keeps
+     the same 12px from the bottom edge as the title has from the top */
+  .modal > .dialog-leave-btn,
+  .modal > .dialog-leave-confirm {
+    margin: 0 auto 12px;
   }
 
   .victory-crown {
@@ -2859,7 +3059,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 13px;
   }
 
-  /* an error passes in the header band, never over Play and Clear */
+  /* off the table, an error passes in the header band */
   .toast {
     top: calc(env(safe-area-inset-top, 0px) + 6px);
     bottom: auto;
@@ -2868,10 +3068,23 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     padding: 7px 16px;
   }
 
+  /* At the table an error passes just above your row, centred, close to the
+     hand it is about: never over a seat's label, Play, Clear or the hand. It
+     stays inside the cross's width, between the side seats' labels. */
+  .table-screen .toast {
+    top: auto;
+    bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-xs));
+    max-width: calc(2 * var(--side-out) - 2 * var(--space-s));
+    font-size: 13px;
+    line-height: 17px;
+    padding: 6px 14px;
+    text-align: center;
+  }
+
   /* chat sits in the header, beside the menu button, clear of the hand
      (the extra class outranks the base rule later in the file) */
   .table-screen .chat-launch {
-    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    top: calc(var(--safe-t) + 6px);
     right: calc(var(--safe-r) + 4px + 36px + var(--space-s));
     bottom: auto;
     width: 40px;
@@ -2909,71 +3122,67 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   from { opacity: 0; transform: scale(0.85); }
 }
 
-@keyframes turn-glow {
-  from { opacity: 0.65; }
-  to { opacity: 1; }
-}
-
-/* ============ Portrait phones: rotate hint ============ */
-
-/* A browser fallback: the iOS app turns the phone to landscape itself. */
-.rotate-hint {
-  display: none;
+/* The game is always played sideways. A phone browser held upright at the
+   table (App sets .rotated; the iOS app turns itself instead) draws the table
+   a quarter turn clockwise in a frame the screen's long side wide, so the
+   phone layout applies to it unchanged. The frame's left edge lies along
+   the screen's top, so its safe areas turn with it. Hit testing follows the
+   transform, so a tap lands on the card under the finger. */
+.app.rotated {
   position: fixed;
-  inset: 0;
-  z-index: 100;
-  background:
-    radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
-  padding: 24px;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  overflow: hidden;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
 }
 
-.rotate-card {
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 90px;
-  border-radius: 8px;
-  background: linear-gradient(160deg, #fdfdf7 0%, #f1f0e6 100%);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  color: var(--card-red);
-  font-size: 18px;
-  font-weight: 800;
-  animation: rotate-nudge 1.8s ease-in-out infinite;
+/* the chat and the round-end card measure the turned frame, not the
+   viewport */
+.app.rotated .chat-panel {
+  right: calc(12px + var(--frame-safe-r));
+  bottom: calc(68px + var(--frame-safe-b));
+  width: min(320px, calc(var(--frame-w) * 0.82));
+  max-height: min(380px, calc(var(--frame-h) - 80px - var(--frame-safe-t) - var(--frame-safe-b)));
 }
 
-.rotate-leave {
-  min-height: 44px;
+.app.rotated .modal-backdrop {
+  padding: max(12px, var(--frame-safe-t)) max(12px, var(--frame-safe-r))
+    max(12px, var(--frame-safe-b)) max(12px, var(--frame-safe-l));
 }
 
-@keyframes rotate-nudge {
-  0%,
-  20% {
-    transform: rotate(0deg);
-  }
-  60%,
-  100% {
-    transform: rotate(90deg);
-  }
+/* A dialog opened with showModal() lives in the browser's top layer, which
+   ignores the .app transform, so it takes the same quarter turn itself and
+   reads the same turned frame. */
+.app.rotated dialog.modal-backdrop:modal {
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
 }
 
-@media (orientation: portrait) and (max-width: 600px) {
-  .rotate-hint {
-    display: flex;
-  }
-
-  /* the table's no-wrap HUD widened the layout viewport, which put the fixed
-     hint off-screen; out of layout, the hint centres */
-  .table-screen {
-    display: none;
-  }
+/* the seat label's team dot and turn mark, and the hint under Your turn,
+   belong to the phone table only */
+.seat-dot,
+.turn-dots {
+  display: none;
 }
 
 /* Touch screens: the lobby's dice and How to play link keep their drawn size
@@ -3299,7 +3508,7 @@ button.room-chip:focus-visible::after { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .hud-message { animation: none; }
-  .modal, .modal-backdrop, .hud-notice, .trick-play, .rotate-card { animation: none; }
+  .modal, .modal-backdrop, .hud-notice, .trick-play { animation: none; }
   .trick-play.winner .trick-cards, .trick-play.winner .win-tag, .level-chip.level-up { animation: none; }
   .opponent.on-turn::after { animation: none; }
   .hand .card, .btn, .seat-option { transition: none; }

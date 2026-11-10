@@ -124,8 +124,12 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
          onPointerCancel={endPress}>
       {fullName ? <span className="opp-fullname" role="tooltip">{player.name}</span> : null}
       <div className="opp-name">
+        {/* the phone pill carries the team as a dot and the turn as a gold
+            fill ending in "…" */}
+        <span className={`seat-dot t${player.team}`} aria-hidden="true" />
         {player.is_banker ? <span className="banker-crown" title="Banker">👑</span> : null}
         <span className="opp-name-text">{player.name}</span>
+        {onTurn && actionPhase ? <span className="turn-dots" aria-hidden="true">…</span> : null}
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
         {!player.connected && !player.is_bot ? (
@@ -184,7 +188,7 @@ function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
   }, [result]);           // once per round result
 }
 
-export default function Table({ state }: { state: GameState }) {
+export default function Table({ state, toast = null }: { state: GameState; toast?: string | null }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -363,14 +367,18 @@ export default function Table({ state }: { state: GameState }) {
       </button>
     );
   } else if (state.phase === "play" && myTurn) {
+    const choosing = selectedIds.length === 0 && pending === null;
     actionBar = (
       <>
         <button
-          className="btn primary"
+          className={`btn primary${choosing ? " your-turn" : ""}`}
           disabled={selectedIds.length === 0 || pending !== null || !online}
           onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
         >
-          Play {selectedIds.length > 0 ? `(${selectedIds.length})` : ""}
+          {/* a phone shows "Your turn" on Play until you choose a card */}
+          <span className="play-text">{`Play ${selectedIds.length > 0 ? `(${selectedIds.length})` : ""}`}</span>
+          <span className="your-turn-text">Your turn</span>
+          {/* a phone says what to do under it until a card is chosen */}
         </button>
         <button
           className="btn subtle"
@@ -434,6 +442,7 @@ export default function Table({ state }: { state: GameState }) {
       )}
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
+      {toast ? <div className="toast" key={toast}>{toast}</div> : null}
     </div>
   );
 }

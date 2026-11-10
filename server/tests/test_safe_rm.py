@@ -27,8 +27,30 @@ def world(tmp_path):
     return w
 
 
+def mirror_readable_proc(w):
+    """Linux: a non-root caller cannot read other users' or non-dumpable /proc/<pid>/cwd|exe, and safe_rm
+    refuses on any unreadable one. Tests scan a mirror of the readable entries (their own processes)."""
+    proc = w / f"proc-{time.monotonic_ns()}"
+    proc.mkdir()
+    for pd in Path("/proc").glob("[0-9]*"):
+        links = {}
+        for k in ("cwd", "exe"):
+            try:
+                links[k] = os.readlink(pd / k)
+            except OSError:
+                links = None
+                break
+        if links:
+            (proc / pd.name).mkdir()
+            for k, target in links.items():
+                (proc / pd.name / k).symlink_to(target)
+    return str(proc)
+
+
 def run(w, *args, home=None):
     env = dict(os.environ)
+    if Path("/proc").is_dir():
+        env["SAFE_RM_PROC_ROOT"] = mirror_readable_proc(w)
     env.update(
         HOME=str(home or w / "home"),
         SAFE_RM_ROOTS=str(w / "root"),
@@ -166,6 +188,17 @@ def test_no_deep_link_would_delete(world):
     assert rc == 0 and "WOULD DELETE" in out
 
 
+def test_missing_proc_root_override_refuses(world, monkeypatch):
+    monkeypatch.setenv("SAFE_RM_PROC_ROOT", str(world / "no-such-proc"))
+    env_run = dict(os.environ)
+    target = world / "root/old-run"
+    p = subprocess.run([sys.executable, str(SCRIPT), "--dry-run", str(target)], capture_output=True, text=True,
+                       env={**env_run, "HOME": str(world / "home"), "SAFE_RM_ROOTS": str(world / "root"),
+                            "SAFE_RM_LAUNCHERS": str(world / "fleet/*.sh"),
+                            "SAFE_RM_KEEP": str(world / "home/.safe_rm.keep")}, timeout=300)
+    assert p.returncode == 1 and "SAFE_RM_PROC_ROOT" in p.stdout and target.is_dir()
+
+
 def test_process_argument_containing_safe_rm_is_not_exempt(world):
     target = world / "root/old-run"
     marker = world / "trainer-ready"
@@ -194,6 +227,8 @@ def test_launching_shell_with_the_path_in_its_argv_is_exempt(world):
            "SAFE_RM_LAUNCHERS": str(world / "fleet/*.sh"),
            "SAFE_RM_PINS": f"{world}/archive/*/commands.json {world}/archive/*/SHA256SUMS",
            "SAFE_RM_KEEP": str(world / "home/.safe_rm.keep")}
+    if Path("/proc").is_dir():
+        env["SAFE_RM_PROC_ROOT"] = mirror_readable_proc(world)
     out = subprocess.run(
         ["/bin/bash", "-c", f'"{sys.executable}" "{SCRIPT}" --dry-run "{target}"; echo "rc=$?"'],
         capture_output=True, text=True, env=env, cwd=world / "busy", timeout=120,
@@ -279,12 +314,8 @@ def test_inventory_timeout_refuses_without_waiting_a_minute(monkeypatch, tool):
     assert any("inventory unavailable" in r and tool in r and "TimeoutExpired" in r for r in reasons)
 
 
-@pytest.mark.parametrize("failure,refuses", [
-    (PermissionError, False),    # another user's or a non-dumpable process: only its argv can be checked
-    (FileNotFoundError, False),  # exited process or kernel thread
-    (OSError, True),             # any other procfs failure leaves the inventory untrusted
-])
-def test_procfs_inventory_tolerates_only_unreadable_or_exited(monkeypatch, failure, refuses):
+@pytest.mark.parametrize("failure", [PermissionError, FileNotFoundError])
+def test_procfs_inventory_distinguishes_unreadable_from_exited(monkeypatch, failure):
     import importlib.util
     spec = importlib.util.spec_from_file_location("safe_rm_procfs", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
@@ -298,7 +329,8 @@ def test_procfs_inventory_tolerates_only_unreadable_or_exited(monkeypatch, failu
 
     monkeypatch.setattr(mod.os, "readlink", readlink)
     reasons = mod.in_use("/unused/target", "/unused/target")
-    if refuses:
-        assert len(reasons) == 2 and all("inventory unavailable" in r for r in reasons)
+    if failure is PermissionError:
+        assert len(reasons) == 2
+        assert all("inventory unavailable" in reason for reason in reasons)
     else:
         assert reasons == []

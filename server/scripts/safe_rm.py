@@ -110,7 +110,7 @@ def in_use(r, typed):
     me = str(os.getpid())
     for line in ps.splitlines():
         pid, _, cmd = line.strip().partition(" ")
-        if pid == me or "safe_rm" in cmd:
+        if pid == me:
             continue
         if r in cmd or typed in cmd:
             hits.append(f"pid {pid}: {cmd[:120]}")

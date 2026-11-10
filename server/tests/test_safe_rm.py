@@ -164,3 +164,24 @@ def test_no_deep_link_would_delete(world):
     pkt = _deep_sibling(world)
     rc, out = run(world, "--dry-run", pkt / "data/ultra")
     assert rc == 0 and "WOULD DELETE" in out
+
+
+def test_process_argument_containing_safe_rm_is_not_exempt(world):
+    target = world / "root/old-run"
+    marker = world / "trainer-ready"
+    worker = subprocess.Popen([
+        sys.executable, "-c",
+        "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); time.sleep(60)",
+        str(marker), "training_label=safe_rm", str(target),
+    ], cwd=world / "busy")
+    try:
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert marker.exists() and worker.poll() is None
+        rc, out = run(world, "--dry-run", target)
+        assert rc == 1 and f"in-use pid {worker.pid}:" in out
+        assert "WOULD DELETE" not in out and target.is_dir()
+    finally:
+        worker.terminate()
+        worker.wait(timeout=5)

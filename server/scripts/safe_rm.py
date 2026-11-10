@@ -122,9 +122,9 @@ def in_use(r, typed):
     rows = []
     for line in ps.splitlines():
         fields = line.strip().split(None, 2)
-        if len(fields) < 2 or not fields[0].isdigit() or not fields[1].isdigit():
+        if len(fields) != 3 or not fields[0].isdigit() or not fields[1].isdigit() or not fields[2].strip():
             return ["inventory unavailable (ps malformed output)"]
-        rows.append((fields[0], fields[1], fields[2] if len(fields) == 3 else ""))
+        rows.append((fields[0], fields[1], fields[2]))
     parent = {pid: ppid for pid, ppid, _ in rows}
     if me not in parent:
         return ["inventory unavailable (ps omitted current process)"]

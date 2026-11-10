@@ -217,6 +217,23 @@ def test_a_non_ancestor_shell_naming_the_path_still_refuses(world):
         holder.wait(timeout=5)
 
 
+def test_ps_row_without_a_command_refuses_cli_dry_run(world, monkeypatch):
+    """A pid/ppid-only row would skip the argv check for that process, so the inventory is not trusted."""
+    if Path("/proc").is_dir():
+        pytest.skip("the lsof stub stands in for macOS only")
+    bin_dir = world / "bin"
+    bin_dir.mkdir()
+    for name, body in {"ps": 'echo "$PPID 1 python"; echo "999999 1"', "lsof": "printf 'p1\\nn/tmp\\n'"}.items():
+        path = bin_dir / name
+        path.write_text("#!/bin/sh\n" + body + "\n")
+        path.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    target = world / "root/old-run"
+    rc, out = run(world, "--dry-run", target)
+    assert rc == 1 and "ps malformed output" in out
+    assert "WOULD DELETE" not in out and target.is_dir()
+
+
 @pytest.mark.parametrize("tool", ["ps", "lsof"])
 @pytest.mark.parametrize("mode", ["missing", "failed", "empty", "malformed"])
 def test_unavailable_inventory_refuses_cli_dry_run(world, monkeypatch, tool, mode):

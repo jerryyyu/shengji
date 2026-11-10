@@ -20,24 +20,6 @@ class FakeWS {
   deliver(msg: unknown) { this.onmessage?.({ data: JSON.stringify(msg) }); }
 }
 
-const player = (seat: number, name: string) => ({
-  seat, name, is_bot: seat !== 0, connected: true, team: seat % 2, cards_left: 0,
-  is_banker: seat === 0, takeover_in: null, controller: seat ? "bot" : "human",
-  reserved_for: null, reserved_secs: null,
-});
-const gameOver = {
-  type: "state", room: "ABCD", you: 0, phase: "game_over",
-  players: [player(0, "Me"), player(1, "Bot 1"), player(2, "Bot 2"), player(3, "Bot 3")],
-  hand: [], levels: ["A", "5"], games_won: [1, 0], banker: 0,
-  trump: { suit: "S", rank: "A", declarer: 0 }, turn: null, declare_options: [],
-  current_declaration: null, passed: [], trick: { leader: 0, plays: [] }, last_trick: null,
-  attacker_points: 30, kitty_count: 8, message: null, notice: null,
-  round_result: {
-    attacker_points: 30, kitty_points: 0, kitty_cards: [], winner_team: 0, level_change: 3,
-    next_banker: 2, new_levels: ["2", "2"], games_won: [1, 0], point_scored: true, game_over: true,
-  },
-};
-
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const reload = vi.fn();

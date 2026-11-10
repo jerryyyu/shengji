@@ -1,7 +1,7 @@
 // @vitest-environment node
 /// <reference types="node" />
-// Guards the phone table geometry in index.css (the `@media (max-height:
-// 500px)` block). jsdom does no layout, so this evaluates the block's own
+// Guards the phone table geometry in index.css (the `:where(.phone-landscape)`
+// block, which applies under 500px of height and to the rotated portrait table). jsdom does no layout, so this evaluates the block's own
 // size tokens (calc, clamp, min, max, env, vw, vh) at real iPhone sizes and
 // checks the regions the layout promises to keep apart: the trick cross sits
 // between the header and your row, your action is centred on the table and,
@@ -13,9 +13,11 @@ import { readFileSync } from "node:fs";
 
 const css = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 
-/** Body of the first `@media (max-height: 500px)` block, braces balanced. */
+const PHONE_BLOCK = ":where(.phone-landscape) {";
+
+/** Body of the phone block, braces balanced. */
 function phoneBlock(): string {
-  const start = css.indexOf("@media (max-height: 500px)");
+  const start = css.indexOf(PHONE_BLOCK);
   expect(start).toBeGreaterThan(-1);
   const open = css.indexOf("{", start);
   let depth = 0;
@@ -73,14 +75,25 @@ function evalLength(expr: string, vp: Viewport, vars: Record<string, string>, in
     if (eat(/^clamp\(/)) { const [lo, v, hi] = args(); return Math.min(Math.max(v, lo), hi); }
     const env = eat(/^env\(safe-area-inset-(left|right|top|bottom)(,\s*[-\d.]+px)?\)/);
     if (env) return vp[/inset-(\w+)/.exec(env)![1] as "left"];
-    const v = eat(/^var\(--[\w-]+(,\s*[-\d.]+)?\)/);
+    const v = eat(/^var\(--[\w-]+/);
     if (v) {
-      const name = /--[\w-]+/.exec(v)![0];
+      const name = v.slice(4);
+      // the fallback, if any, runs to this var()'s closing parenthesis
+      let fallback: string | null = null;
+      if (eat(/^,/)) {
+        let depth = 0;
+        const from = pos;
+        for (; pos < s.length; pos++) {
+          if (s[pos] === "(") depth++;
+          else if (s[pos] === ")" && depth-- === 0) break;
+        }
+        fallback = s.slice(from, pos);
+      }
+      if (!eat(/^\)/)) throw new Error(`expected ) in ${s}`);
       const key = name.slice(2);
       if (key in ints) return ints[key];
       if (name in vars) return evalLength(vars[name], vp, vars, ints);
-      const fallback = /,\s*([-\d.]+)/.exec(v);
-      if (fallback) return Number(fallback[1]);
+      if (fallback !== null) return evalLength(fallback, vp, vars, ints);
       throw new Error(`unknown ${name}`);
     }
     const num = eat(/^-?[\d.]+(px|vw|vh)?/);
@@ -431,24 +444,76 @@ describe("phone controls", () => {
   });
 
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
-    expect(tokens["--pill-max"]).toBe("min(96px, calc(50vw - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))))");
+    expect(tokens["--pill-max"]).toBe("min(120px, calc(var(--view-w) / 2 - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");
     expect(rule(block, ".opponent.pos-top")["max-width"]).toContain("min(200px");
     const text = rule(block, ".opp-name-text");
     expect([text.overflow, text["text-overflow"], text["white-space"], text["min-width"]])
       .toEqual(["hidden", "ellipsis", "nowrap", "0"]);
-    // a long name steps down no smaller than 10px
-    expect(px(rule(block, '.opponent[data-name-len="m"] .opp-name')["font-size"])).toBe(11);
-    expect(px(rule(block, '.opponent[data-name-len="l"] .opp-name')["font-size"])).toBe(10);
+    // a long name steps down once, never below 12px
+    expect(px(rule(block, ".opp-name")["font-size"])).toBe(13);
+    expect(px(rule(block, '.opponent[data-name-len="m"] .opp-name, .opponent[data-name-len="l"] .opp-name')["font-size"])).toBe(12);
+    for (const m of block.matchAll(/\.opp-name[^{]*\{([^}]*)\}/g)) {
+      const size = /font-size:\s*([\d.]+)px/.exec(m[1]);
+      if (size) expect(Number(size[1])).toBeGreaterThanOrEqual(12);
+    }
+    // a human's turn is the fill, not a second line of text
+    expect(rule(block, ".opponent .their-turn").display).toBe("none");
     // the whole name is a tap away, drawn only by the phone layout
     expect(rule(block, ".opp-fullname").display).toBe("block");
     expect(rule(css.replace(block, ""), ".opp-fullname").display).toBe("none");
   });
 
-  it("keeps table text at 10px or more", () => {
+  it("keeps table text at 11px or more", () => {
     for (const sel of [".lead-tag, .win-tag", ".declare-tag", ".you-tag, .host-tag, .off-tag", ".action-hint", ".chip"]) {
-      expect(px(rule(block, sel)["font-size"])).toBeGreaterThanOrEqual(10);
+      expect(px(rule(block, sel)["font-size"])).toBeGreaterThanOrEqual(11);
     }
+  });
+
+  it("shows whose turn as a filled gold label ending in \u2026, the team as a dot inside it", () => {
+    const on = rule(block, ".opponent.on-turn");
+    expect(on.background).toBe("var(--gold)");
+    expect(on["box-shadow"]).toBe("none");
+    expect(on.animation).toBeUndefined();
+    expect(rule(block, ".opponent.on-turn .opp-name").color).toBe("#1a1a1a");
+    expect(rule(block, ".opponent .turn-dots").display).toBe("inline");
+    // on turn the fill stands for the seat; the dot's room goes to the "…"
+    expect(rule(block, ".opponent.on-turn .seat-dot").display).toBe("none");
+    // no coloured edge: the team is the dot
+    expect(/\.opponent[^{]*\{[^}]*border-left/.test(block)).toBe(false);
+    expect(rule(block, ".opponent .seat-dot.t0").background).toBe("var(--team0)");
+    expect(rule(block, ".opponent .seat-dot.t1").background).toBe("var(--team1)");
+    // off the phone neither mark is drawn
+    expect(rule(css.replace(block, ""), ".seat-dot, .turn-dots, .lead-hint").display).toBe("none");
+  });
+
+  it("gives a seat's label a 44px tall tap area", () => {
+    const hit = rule(block, ".opponent::after");
+    expect(hit.position).toBe("absolute");
+    const [vertical] = hit.inset.split(" ").map((x) => -px(x));
+    expect(32 + 2 * vertical).toBeGreaterThanOrEqual(44);
+  });
+
+  it("says what to do under Your turn until a card is chosen, without taking taps", () => {
+    const hint = rule(block, ".phase-play .action-bar .btn.primary.your-turn .lead-hint");
+    expect([hint.display, hint.position, hint["pointer-events"]]).toEqual(["block", "absolute", "none"]);
+    expect(px(hint["font-size"])).toBe(12);
+    expect(hint.top).toBe("calc(100% + 3px)");
+    // it fits the band between the row's button and the hand's cards: 3px of
+    // row padding, the zone's 4px and the 18px lift
+    expect(3 + px(hint["line-height"])).toBeLessThanOrEqual(3 + 4 + 18);
+  });
+
+  it("tells a declaration once, by its tag, not again in the corner", () => {
+    expect(rule(block, ".hud-message.declare-message").display).toBe("none");
+  });
+
+  it("hides the lone crown beside Bury", () => {
+    expect(rule(block, ".phase-bury .you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown)").display).toBe("none");
+  });
+
+  it("lets a finger slide across the hand without panning it", () => {
+    expect(rule(block, ".hand.selectable")["touch-action"]).toBe("none");
   });
 
   it("turns the table's long-press callout and text selection off, except in text fields", () => {
@@ -534,17 +599,78 @@ describe("desktop and iPad are untouched", () => {
     expect(rule(outside, ".deal-deck").display).toBe("none");
   });
 
-  it("keys the phone layout on height, never on a coarse pointer alone", () => {
-    expect(css.indexOf("@media (max-height: 500px) {")).toBeGreaterThan(-1);
-    expect(css.match(/@media \(max-height: 500px\)/g)).toHaveLength(1);
+  it("keys the phone layout on one root class, never on a media query of its own", () => {
+    expect(css.split(PHONE_BLOCK)).toHaveLength(2);
+    // phoneLayout.ts sets the class from the height query
+    expect(css.includes("@media (max-height: 500px)")).toBe(false);
   });
 });
 
-describe("portrait phones in a browser", () => {
-  it("takes the table out of layout so the rotate hint centres, and offers Leave", () => {
-    const start = css.indexOf("@media (orientation: portrait) and (max-width: 600px)");
-    const body = css.slice(start, css.indexOf("\n}\n", start));
-    expect(rule(body + "}", ".table-screen").display).toBe("none");
-    expect(rule(css, ".rotate-hint").background).toContain("var(--felt-");
+describe("the table's frame", () => {
+  it("reads the viewport and safe areas only through the frame tokens", () => {
+    // every vw, vh and env() in the block is a frame token's fallback, or the
+    // off-table toast (a lobby screen is never rotated)
+    const offTable = rule(block, ".toast");
+    const stripped = block
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/--(view-[wh]|safe-[tlrb]):[^;]*;/g, "")
+      .replace(/\.toast \{[^}]*\}/, "");
+    expect(stripped).not.toMatch(/\d(vw|vh)\b|env\(/);
+    expect(offTable.top).toContain("env(safe-area-inset-top");
   });
+
+  it("turns a portrait phone's table a quarter turn into a landscape frame, safe areas with it", () => {
+    const r = rule(css, ".app.rotated");
+    expect([r.position, r.width, r.height, r["transform-origin"], r.transform])
+      .toEqual(["fixed", "100dvh", "100dvw", "top left", "translateX(100dvw) rotate(90deg)"]);
+    // the frame's left edge lies along the screen's top, its right along the bottom
+    expect(r["--frame-safe-l"]).toBe("env(safe-area-inset-top, 0px)");
+    expect(r["--frame-safe-r"]).toBe("env(safe-area-inset-bottom, 0px)");
+    expect(r["--frame-safe-t"]).toBe("env(safe-area-inset-right, 0px)");
+    expect(r["--frame-safe-b"]).toBe("env(safe-area-inset-left, 0px)");
+    expect([r["--frame-w"], r["--frame-h"]]).toEqual(["100dvh", "100dvw"]);
+    // no rotate card any more
+    expect(css.includes(".rotate-hint")).toBe(false);
+  });
+
+  it("lays the rotated table out exactly as the same phone held sideways", () => {
+    // a 14 Pro held upright: 393 x 852, the island on top, the home indicator below
+    const portrait: Viewport = { w: 393, h: 852, left: 0, right: 0, bottom: 34, top: 59 };
+    const frame = { "--frame-w": "852px", "--frame-h": "393px", "--frame-safe-t": "0px",
+      "--frame-safe-l": "59px", "--frame-safe-r": "34px", "--frame-safe-b": "0px" };
+    const sideways: Viewport = { w: 852, h: 393, left: 59, right: 34, bottom: 0, top: 0 };
+    const a = geometry(portrait, { ...tokens, ...frame }, "play");
+    const b = geometry(sideways, tokens, "play");
+    expect(a.tcw).toBeCloseTo(b.tcw, 6);
+    expect(a.handCw).toBeCloseTo(b.handCw, 6);
+    expect(a.safeW).toBeCloseTo(b.safeW, 6);
+    expect(a.pillW).toBeCloseTo(b.pillW, 6);
+  });
+});
+
+describe("the error toast at the table", () => {
+  const t = rule(block, ".table-screen .toast");
+  it("passes just above your row, centred, inside the cross's width", () => {
+    expect(t.top).toBe("auto");
+    expect(t.bottom).toBe("calc(var(--zone-bottom) + var(--row-h) + var(--space-xs))");
+    expect(t["max-width"]).toBe("calc(2 * var(--side-out) - 2 * var(--space-s))");
+  });
+
+  for (const [name, vp] of FRAMES) {
+    it(`covers no seat label, your row or the hand: ${name}`, () => {
+      for (const phase of ["play", "setup"] as const) {
+        const g = geometry(vp, tokens, phase);
+        const vars = phase === "play" ? { ...tokens, ...rule(block, ".table-screen.phase-play") } : tokens;
+        const L = (e: string) => evalLength(e, vp, vars);
+        const y1 = vp.h - L(t.bottom);
+        // two lines at most: 2 x 17 + 12 of padding
+        const toast: Rect = { x0: g.cx - L(t["max-width"]) / 2, x1: g.cx + L(t["max-width"]) / 2, y0: y1 - 46, y1 };
+        expect(y1).toBeLessThanOrEqual(vp.h - L("var(--zone-bottom)") - L("var(--row-h)"));
+        expect(y1).toBeLessThanOrEqual(g.handTop);
+        expect(overlaps(toast, g.row)).toBe(false);
+        expect(toast.y0).toBeGreaterThanOrEqual(g.header);
+        for (const p of [g.pills.left, g.pills.right]) expect(overlaps(toast, p)).toBe(false);
+      }
+    });
+  }
 });

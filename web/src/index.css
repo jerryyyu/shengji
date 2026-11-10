@@ -3037,8 +3037,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: 0;
     min-height: 44px;
     padding: 8px 16px;
-    margin-bottom: 12px;
     box-shadow: 0 -10px 12px var(--panel);
+  }
+
+  /* the card's own 8px gap separates Next round from Leave, and Leave keeps
+     the same 12px from the bottom edge as the title has from the top */
+  .modal > .dialog-leave-btn,
+  .modal > .dialog-leave-confirm {
+    margin: 0 auto 12px;
   }
 
   .victory-crown {

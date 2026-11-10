@@ -693,3 +693,12 @@ describe("the phone hand", () => {
     expect(hand["overflow-x"]).toBeUndefined();
   });
 });
+
+describe("the round-end card on a phone", () => {
+  it("spaces Next round and Leave by the card's gap and keeps Leave 12px off the bottom", () => {
+    const block = phoneBlock();
+    expect(rule(block, ".modal > .btn.big")["margin-bottom"]).toBeUndefined();
+    expect(rule(block, ".modal").gap).toBe("8px");
+    expect(rule(block, ".modal > .dialog-leave-btn, .modal > .dialog-leave-confirm").margin).toBe("0 auto 12px");
+  });
+});

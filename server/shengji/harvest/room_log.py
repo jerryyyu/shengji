@@ -468,6 +468,47 @@ def _human_team_report(rounds: list[dict]) -> dict:
     }
 
 
+def _game_situation_report(rounds: list[dict]) -> dict:
+    """Describe observed game-progress strata using the same matchup eligibility."""
+    policies: dict[str, dict] = {}
+    excluded: dict[str, int] = defaultdict(int)
+    for row in rounds:
+        eligible = _human_team_report([row])
+        if not eligible["eligible_rounds"]:
+            for reason, count in eligible["excluded_rounds"].items():
+                excluded[reason] += count
+            continue
+        situation = row.get("game_situation", {})
+        near = situation.get("either_team_within_two_ranks_of_ace")
+        if situation.get("status") != "observed" or type(near) is not bool:
+            excluded["unknown_game_situation"] += 1
+            continue
+        policy, value = next(iter(eligible["by_observed_policy"].items()))
+        strata = policies.setdefault(policy, {})
+        bucket = strata.setdefault("near_ace" if near else "other", {
+            "rounds": 0, "bot_wins": 0, "bot_signed_levels": 0})
+        for key in ("rounds", "bot_wins", "bot_signed_levels"):
+            bucket[key] += value[key]
+    for strata in policies.values():
+        for bucket in strata.values():
+            bucket["bot_levels_per_round"] = bucket["bot_signed_levels"] / bucket["rounds"]
+    return {
+        "schema": "observed-game-situation-report-v1",
+        "completed_rounds": len(rounds),
+        "eligible_rounds": sum(b["rounds"] for s in policies.values() for b in s.values()),
+        "excluded_rounds": dict(sorted(excluded.items())),
+        "by_observed_policy": {p: dict(sorted(s.items())) for p, s in sorted(policies.items())},
+        "observational_only": True,
+        "interpretation": (
+            "Near A means either team's observed starting level is Q, K or A. "
+            "Other means neither team is within two rank steps of A; unknown "
+            "situations are excluded. Full-team controller and policy eligibility "
+            "matches human_team_report. These are descriptive round counts and "
+            "means, not verified humans, independent samples, confidence intervals "
+            "or a game-aware strength verdict."),
+    }
+
+
 def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 256,
                       registry: InputRegistry | None = None,
                       repo: Path = REPO,
@@ -519,6 +560,8 @@ def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 
     result.extras["rejections"] = dict(sorted(rejections.items()))
     result.extras["per_directory"] = {k: per_dir[k] for k in sorted(per_dir)}
     result.extras["human_team_report"] = _human_team_report(
+        result.extras["completed_rounds"])
+    result.extras["game_situation_report"] = _game_situation_report(
         result.extras["completed_rounds"])
     result.inputs = registry.rows()
     result.notes.append("decisions = play records; bury records are counted "

@@ -458,3 +458,44 @@ def test_missing_game_situation_is_unknown_not_midgame(levels):
     assert _game_situation({"levels": levels}) == {
         "status": "unknown", "reason": "missing_or_invalid_team_levels"}
     assert _game_situation({})["status"] == "unknown"
+
+
+@pytest.mark.parametrize("bot_team", [0, 1])
+def test_game_situation_report_uses_verified_outcome_and_controller_gate(tmp_path, bot_team):
+    events = _completed_round()
+    events[0]["levels"] = ["2", "Q"]
+    for event in _play_events(events):
+        event["bot"] = event["seat"] % 2 == bot_team
+        event["decision"] = {"policy": "exact-policy"}
+    result, summary = _summary_for(tmp_path, events)
+    report = result.extras["game_situation_report"]
+    win = summary["outcome"]["winner_team"] == bot_team
+    assert report["eligible_rounds"] == 1
+    assert report["by_observed_policy"] == {"exact-policy": {"near_ace": {
+        "rounds": 1, "bot_wins": int(win),
+        "bot_signed_levels": (1 if win else -1) * summary["outcome"]["level_change"],
+        "bot_levels_per_round": (1 if win else -1) * summary["outcome"]["level_change"],
+    }}}
+    write_source(tmp_path / "out", result, cap=256)
+    saved = json.loads((tmp_path / "out" / "room-log.manifest.json").read_text())
+    assert saved["extras"]["game_situation_report"] == report
+
+
+def test_game_situation_report_separates_unknown_takeover_and_zero_outcomes():
+    from copy import deepcopy
+    from shengji.harvest.room_log import _game_situation_report
+    row = {"human_seats": [0, 2], "bot_seats": [1, 3],
+           "unknown_seats": [], "mixed_controller_seats": [],
+           "bot_policies": {"1": ["p"], "3": ["p"]},
+           "unknown_policy_count": {"1": 0, "3": 0},
+           "outcome": {"winner_team": 1, "level_change": 0},
+           "game_situation": {"status": "observed", "either_team_within_two_ranks_of_ace": False}}
+    near = deepcopy(row); near["game_situation"]["either_team_within_two_ranks_of_ace"] = True
+    near["outcome"]["level_change"] = 2
+    unknown = deepcopy(row); unknown["game_situation"] = {"status": "unknown"}
+    takeover = deepcopy(near); takeover["mixed_controller_seats"] = [0]
+    report = _game_situation_report([row, near, unknown, takeover])
+    assert report["completed_rounds"] == 4 and report["eligible_rounds"] == 2
+    assert report["excluded_rounds"] == {"mixed_controller": 1, "unknown_game_situation": 1}
+    assert report["by_observed_policy"]["p"]["other"]["bot_levels_per_round"] == 0
+    assert report["by_observed_policy"]["p"]["near_ace"]["bot_levels_per_round"] == 2

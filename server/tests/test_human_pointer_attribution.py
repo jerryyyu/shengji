@@ -427,3 +427,34 @@ def test_team_metric_preserves_zero_levels_and_policy_populations():
     assert report["by_observed_policy"]["a"]["bot_signed_levels"] == -2
     assert report["by_observed_policy"]["a"]["bot_levels_per_round"] == -1
     assert report["by_observed_policy"]["b"]["bot_levels_per_round"] == 3
+
+
+@pytest.mark.parametrize("levels,gap,near", [
+    (["2", "2"], 0, [False, False]),
+    (["J", "Q"], -1, [False, True]),
+    (["A", "2"], 12, [True, False]),
+    (["K", "A"], -1, [True, True]),
+])
+def test_game_situation_reaches_replayed_round_manifest(tmp_path, levels, gap, near):
+    events = _completed_round()
+    events[0]["levels"] = levels
+    result, summary = _summary_for(tmp_path, events)
+    assert summary["game_situation"] == {
+        "status": "observed", "team_levels": levels,
+        "team0_minus_team1_rank_steps": gap,
+        "team_within_two_ranks_of_ace": near,
+        "either_team_within_two_ranks_of_ace": any(near),
+    }
+    write_source(tmp_path / "out", result, cap=256)
+    raw = json.loads((tmp_path / "out" / "room-log.manifest.json").read_text())
+    assert raw["extras"]["completed_rounds"][0]["game_situation"] == summary["game_situation"]
+    levels[0] = "3"
+    assert summary["game_situation"]["team_levels"] != levels
+
+
+@pytest.mark.parametrize("levels", [None, [], ["Q"], ["2"] * 4, ["2", "BJ"], [2, "A"]])
+def test_missing_game_situation_is_unknown_not_midgame(levels):
+    from shengji.harvest.room_log import _game_situation
+    assert _game_situation({"levels": levels}) == {
+        "status": "unknown", "reason": "missing_or_invalid_team_levels"}
+    assert _game_situation({})["status"] == "unknown"

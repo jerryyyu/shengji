@@ -30,6 +30,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
+from ..engine.cards import RANKS
 from ..engine.round import Round
 from ..rl.replay_log import rebuild_round
 from .common import (REPO, ROOM_LOG_GLOBS, ExtractResult, InputRegistry,
@@ -313,6 +314,23 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
     return records, counts
 
 
+def _game_situation(start: dict) -> dict[str, Any]:
+    """Preserve observed team progress without inferring absent or malformed levels."""
+    levels = start.get("levels")
+    if (not isinstance(levels, list) or len(levels) != 2
+            or any(not isinstance(rank, str) or rank not in RANKS for rank in levels)):
+        return {"status": "unknown", "reason": "missing_or_invalid_team_levels"}
+    indices = [RANKS.index(rank) for rank in levels]
+    near_ace = [len(RANKS) - 1 - index <= 2 for index in indices]
+    return {
+        "status": "observed",
+        "team_levels": list(levels),
+        "team0_minus_team1_rank_steps": indices[0] - indices[1],
+        "team_within_two_ranks_of_ace": near_ace,
+        "either_team_within_two_ranks_of_ace": any(near_ace),
+    }
+
+
 def _completed_round_summary(ref: str, round_no: int, events: list[dict],
                              records: list[dict]) -> dict[str, Any]:
     """Summarize observed play controllers after a round has replayed."""
@@ -367,6 +385,7 @@ def _completed_round_summary(ref: str, round_no: int, events: list[dict],
     return {
         "source_ref": ref,
         "round": round_no,
+        "game_situation": _game_situation(start),
         "seat_counts": {str(seat): seats[seat] for seat in range(4)},
         "bot_policies": {str(seat): sorted(bot_policies[seat])
                           for seat in range(4)},

@@ -130,10 +130,38 @@ check_clean_worktree() {
 # healthz_identity JSON: the fields a web-only deploy must leave unchanged.
 healthz_identity() {
   python3 -c '
-import json, sys
+import json, math, re, sys
 h = json.loads(sys.argv[1])
-print(json.dumps({k: h.get(k) for k in ("bot", "fast", "prior", "pv_search")}, sort_keys=True))
-' "$1"
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+def integer(value, minimum):
+    return type(value) is int and value >= minimum
+require(isinstance(h, dict), "health must be an object")
+require(h.get("ok") is True and h.get("fast") is True, "healthy compiled engine required")
+require(isinstance(h.get("bot"), str) and h["bot"].startswith("pv-search-") and len(h["bot"]) > 10, "pv-search bot identity required")
+require(integer(h.get("rooms"), 0), "rooms must be a nonnegative integer")
+if sys.argv[2] == "before":
+    require(h["rooms"] == 0, "rooms = %s (need 0)" % h["rooms"])
+for key in ("prior", "pv_search"):
+    package = h.get(key)
+    require(isinstance(package, dict) and "error" not in package, key + " package required")
+    require(isinstance(package.get("sha256"), str) and re.fullmatch(r"[0-9a-f]{64}", package["sha256"]), key + " full sha256 required")
+for key, fields in (("prior", ("threshold", "top")), ("pv_search", ("worlds", "candidates"))):
+    for field in fields:
+        require(integer(h[key].get(field), 1), key + "." + field + " must be positive integer")
+pv = h["pv_search"]
+require(isinstance(pv.get("bury_arm"), str) and bool(pv["bury_arm"].strip()), "bury_arm required")
+for key in ("budget_seconds", "bury_budget_seconds"):
+    require(key in pv, key + " required")
+    value = pv[key]
+    if value is not None:
+        require(type(value) in (str, int, float), key + " must be numeric or null")
+        require(math.isfinite(float(value)) and float(value) > 0, key + " must be finite and positive")
+require(isinstance(pv.get("latency_switches"), dict) and bool(pv["latency_switches"]), "latency_switches required")
+require(all(type(v) is bool for v in pv["latency_switches"].values()), "latency switches must be boolean")
+print(json.dumps({k: h[k] for k in ("bot", "fast", "prior", "pv_search")}, sort_keys=True))
+' "$1" "${2:-after}"
 }
 
 fetch_healthz() {
@@ -262,12 +290,8 @@ main() {
   check_clean_worktree "$WORKTREE" || refuse "dirty worktree $WORKTREE"
 
   HEALTHZ_BEFORE=$(fetch_healthz) || refuse "could not read $URL/healthz"
-  local rooms
-  rooms=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("rooms"))' "$HEALTHZ_BEFORE") \
-    || refuse "/healthz is not JSON"
-  [ "$rooms" = 0 ] || refuse "rooms = $rooms (need 0)"
   local identity_before identity_after
-  identity_before=$(healthz_identity "$HEALTHZ_BEFORE") || refuse "/healthz is not JSON"
+  identity_before=$(healthz_identity "$HEALTHZ_BEFORE" before) || refuse "invalid /healthz before deployment"
   say "healthz before: rooms 0, identity $identity_before"
   local rel
   rel=$(fly_release) || refuse "could not read fly releases"
@@ -302,7 +326,7 @@ main() {
     waited=$((waited + 5))
   done
   identity_after=$(healthz_identity "$HEALTHZ_AFTER") \
-    || refuse "/healthz after the deploy is not JSON; rollback: $ROLLBACK_CMD"
+    || refuse "invalid /healthz after deployment; rollback: $ROLLBACK_CMD"
   if [ "$identity_after" != "$identity_before" ]; then
     say "healthz identity before: $identity_before"
     say "healthz identity after:  $identity_after"

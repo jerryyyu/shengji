@@ -44,8 +44,11 @@ cat "$file"
 """
 
 IDENTITY = {"bot": "pv-search-r51", "fast": True,
-            "prior": {"sha256": "0d17fd03", "threshold": 1, "top": 3},
-            "pv_search": {"sha256": "f4f4127e", "worlds": 8}}
+            "prior": {"sha256": "0d17fd03" * 8, "threshold": 1, "top": 3},
+            "pv_search": {"sha256": "f4f4127e" * 8, "worlds": 8, "candidates": 8,
+                          "budget_seconds": "1.0", "bury_arm": "heuristic",
+                          "bury_budget_seconds": None,
+                          "latency_switches": {"single_candidate_fast": False}}}
 
 
 def _git(cwd, *args, env=None):
@@ -288,3 +291,59 @@ def test_real_mode_refuses_when_the_marker_is_not_served(repo, tmp_path, env):
     assert r.returncode == 1
     assert "lacks the marker" in r.stderr
     assert data["marker_found"] is False
+
+
+@pytest.mark.parametrize("phase", ["before", "after"])
+@pytest.mark.parametrize("bad", [
+    {"rooms": 0},
+    {"ok": False},
+    {"fast": False},
+    {"bot": ""},
+    {"rooms": False},
+    {"rooms": "0"},
+    {"rooms": -1},
+    {"prior": None},
+    {"prior": {"error": "missing package"}},
+    {"pv_search": {"sha256": "truncated"}},
+])
+def test_invalid_health_refuses_real_cli(repo, tmp_path, env, phase, bad):
+    site = _site(tmp_path)
+    path = site / ("healthz.json" if phase == "before" else "after/healthz.json")
+    health = json.loads(path.read_text())
+    if bad == {"rooms": 0}:
+        health = bad
+    else:
+        health.update(bad)
+    path.write_text(json.dumps(health))
+    r, data, log = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
+    assert r.returncode == 1, r.stderr
+    assert data["status"].startswith("refused: invalid /healthz")
+    assert data["fly_deploy_ran"] == (phase == "after")
+    assert data["pushed"] == (phase == "after")
+    assert ("claude/deploy-web-test" in _remote_branches(repo, env)) == (phase == "after")
+    assert log.count("deploy --ha=false") == (1 if phase == "after" else 0)
+
+
+def test_new_room_after_deploy_does_not_invalidate_identity(repo, tmp_path, env):
+    site = _site(tmp_path)
+    path = site / "after/healthz.json"
+    health = json.loads(path.read_text())
+    health["rooms"] = 1
+    path.write_text(json.dumps(health))
+    r, data, _ = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
+    assert r.returncode == 0, r.stderr
+    assert data["status"] == "deployed"
+
+
+@pytest.mark.parametrize("section,key", [
+    ("prior", "sha256"), ("prior", "threshold"), ("prior", "top"),
+    ("pv_search", "sha256"), ("pv_search", "worlds"),
+    ("pv_search", "candidates"), ("pv_search", "budget_seconds"),
+    ("pv_search", "bury_arm"), ("pv_search", "bury_budget_seconds"),
+    ("pv_search", "latency_switches"),
+])
+def test_identity_requires_each_package_field(env, section, key):
+    health = json.loads(json.dumps({"ok": True, "rooms": 0, **IDENTITY}))
+    del health[section][key]
+    result = _call("healthz_identity", json.dumps(health), "before", env=env)
+    assert result.returncode != 0

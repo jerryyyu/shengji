@@ -279,12 +279,12 @@ def test_inventory_timeout_refuses_without_waiting_a_minute(monkeypatch, tool):
     assert any("inventory unavailable" in r and tool in r and "TimeoutExpired" in r for r in reasons)
 
 
-@pytest.mark.parametrize("failure,owner,refuses", [
-    (PermissionError, "self", True),      # this user's process unreadable: not trusted
-    (PermissionError, "other", False),    # another user's process: only its argv can be checked without root
-    (FileNotFoundError, "self", False),   # exited process or kernel thread
+@pytest.mark.parametrize("failure,refuses", [
+    (PermissionError, False),    # another user's or a non-dumpable process: only its argv can be checked
+    (FileNotFoundError, False),  # exited process or kernel thread
+    (OSError, True),             # any other procfs failure leaves the inventory untrusted
 ])
-def test_procfs_inventory_distinguishes_unreadable_from_exited(monkeypatch, failure, owner, refuses):
+def test_procfs_inventory_tolerates_only_unreadable_or_exited(monkeypatch, failure, refuses):
     import importlib.util
     spec = importlib.util.spec_from_file_location("safe_rm_procfs", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
@@ -292,8 +292,6 @@ def test_procfs_inventory_distinguishes_unreadable_from_exited(monkeypatch, fail
     monkeypatch.setattr(mod, "process_inventory", lambda command: (f"{os.getpid()} 1 python\n", None))
     monkeypatch.setattr(mod.os.path, "isdir", lambda path: True)
     monkeypatch.setattr(mod.glob, "glob", lambda pattern: ["/proc/123"])
-    monkeypatch.setattr(mod.os, "geteuid", lambda: 1000)
-    monkeypatch.setattr(mod, "proc_owner", lambda pd: 1000 if owner == "self" else 0)
 
     def readlink(path):
         raise failure(path)

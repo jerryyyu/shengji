@@ -302,13 +302,19 @@ def stats(store: accounts.Store, user_id: int, now: float | None = None) -> dict
         g = games.setdefault(e["game_id"], {"started_at": e["created_at"], "rounds": 0,
                                             "delta": 0.0, "games_won": 0})
         g["ended_at"] = e["created_at"]
+        g["_last_event"] = e["id"]
         g["rounds"] += 1
         g["delta"] += e["delta"]
         g["games_won"] += e["game_won"]
         g["partner"] = None if e["partner_bot"] else e["partner"]
         g["partner_bot"] = bool(e["partner_bot"])
         g["opponents_bots"] = e["opponents_bots"]
-    recent = sorted(games.values(), key=lambda g: g["ended_at"], reverse=True)[:RECENT_GAMES]
+    # Events share a whole-second timestamp, so the last event's id breaks ties:
+    # within a second, the game that ended later still lists first.
+    recent = sorted(games.values(), key=lambda g: (g["ended_at"], g["_last_event"]),
+                    reverse=True)[:RECENT_GAMES]
+    for g in games.values():
+        del g["_last_event"]
     for g in recent:
         g["delta"] = int(round(g["delta"]))
     week_delta = sum(e["delta"] for e in events if e["created_at"] >= t - WEEK_SECONDS)

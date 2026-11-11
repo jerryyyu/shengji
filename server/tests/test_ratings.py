@@ -394,6 +394,41 @@ def test_recent_games_split_at_each_game_boundary_losses_included(env, monkeypat
     assert [g["games_won"] for g in games] == [0, 1, 0]
 
 
+def _three_games(srv, store, uid, monkeypatch, clock):
+    """A lost game (1 round), a won game (2 rounds), then one round of a third,
+    with each rating write stamped by ``clock``."""
+    from types import SimpleNamespace
+
+    from shengji.api import ratings
+
+    stamps = iter(clock)
+    monkeypatch.setattr(ratings, "time", SimpleNamespace(time=lambda: next(stamps)))
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.room.game.level_idx = [0, 12]
+    table.play_round(banker=1)                 # lost: the bots hold on Ace
+    table.play_round(banker=0)
+    table.room.game.level_idx[0] = 12
+    table.play_round(banker=0)                 # won: the player holds on Ace
+    table.play_round(banker=0)                 # the third game's first round
+    return ratings.stats(store, uid, now=10_000)["recent_games"]
+
+
+@pytest.mark.parametrize("clock", [
+    [777, 777, 777, 777],                      # every game ended in the same second
+    [100, 200, 200, 200],                      # the later two share a second
+    [100, 100, 100, 200],                      # the earlier two share a second
+])
+def test_recent_games_list_latest_first_even_within_one_second(env, monkeypatch, clock):
+    srv, store, _ = env
+    uid, _ = _user(store, "ties")
+    games = _three_games(srv, store, uid, monkeypatch, clock)
+    # latest first: the third game (a won round), the won game, the lost game
+    assert [(g["rounds"], g["games_won"]) for g in games] == [(1, 0), (2, 1), (1, 0)]
+    assert games[0]["delta"] > 0 and games[2]["delta"] < 0
+    assert all("_last_event" not in g for g in games)
+
+
 def test_leave_room_over_the_socket_marks_the_round_abandoned(env, keypair):
     srv, store, client = env
     private_pem, _ = keypair

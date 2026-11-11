@@ -29,7 +29,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, saved_games, support
+from . import accounts, ratings, saved_games, support
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
@@ -295,6 +295,9 @@ class Room:
     # The saved-game link of the running game (``saved_games.GameLink``), or
     # None. Server-only: it enters no state frame and no log record.
     saved_game: Any = field(default=None, init=False, repr=False)
+    # The running game's rating state (``ratings.RoomRatings``), or None.
+    # Server-only: a state frame carries only the receiving seat's own line.
+    ratings: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.bot is None:
@@ -615,6 +618,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "game_over": result.game_over,
             "games_won": list(result.games_won),
             "point_scored": result.point_scored,
+            **ratings.round_payload(room, seat),
         } if result else None),
         "message": rnd.message,
         "notice": rnd.notice,
@@ -909,6 +913,7 @@ async def advance_if_all_ready(room: Room) -> bool:
     room.index_round()
     _log_round_start(room)
     saved_games.round_started(room)
+    ratings.round_started(room)
     _spawn_room_task(room, "deal_task", run_deal(room))
     return True
 
@@ -947,6 +952,7 @@ def _log_round_end(room: Room) -> None:
                    game_over=r.game_over, games_won=list(r.games_won),
                    point_scored=r.point_scored)
     saved_games.round_ended(room, r)
+    ratings.round_ended(room, r)
 
 
 def bot_step(room: Room, seat: int) -> bool:
@@ -1628,6 +1634,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         room.game.start_round()
         room.index_round()
         saved_games.start(room, _log_round_start(room), LOG_DIR)
+        ratings.start(room)
         _spawn_room_task(room, "deal_task", run_deal(room))
         if room.watchdog_task is None or room.watchdog_task.done():
             room.watchdog_task = asyncio.create_task(watchdog(room))
@@ -1963,6 +1970,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if t == "leave_room":
                 async with room.lock:
                     chat_system(room, f"{me.name} left")
+                    if me in room.seats:
+                        ratings.seat_left(room, room.seats.index(me))
                     _detach(me, room, my_gen)
                     if room.game is None:
                         # lobby: free the seat entirely
@@ -2134,6 +2143,7 @@ accounts.USER_DELETED_HOOKS.append(detach_deleted_user)
 # page handler never shadows them.
 accounts.register_accounts(app)
 saved_games.register_saved_games(app)
+ratings.register_ratings(app)
 
 # ------------------------------------------------------------------ static
 class WebFiles(StaticFiles):

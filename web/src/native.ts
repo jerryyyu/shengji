@@ -96,7 +96,9 @@ export function hapticCall(kind: HapticKind): { method: string; opts?: Record<st
     case "select": return { method: "selectionChanged" };
     case "play": return { method: "impact", opts: { style: "LIGHT" } };
     case "won": return { method: "notification", opts: { type: "SUCCESS" } };
-    case "turn":
+    // a turn comes about 25 times a round, so it is light; a declare chance
+    // is rare and racing, so it is the one medium tap
+    case "turn": return { method: "impact", opts: { style: "LIGHT" } };
     case "declare": return { method: "impact", opts: { style: "MEDIUM" } };
   }
 }

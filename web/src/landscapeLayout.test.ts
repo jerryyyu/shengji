@@ -313,11 +313,11 @@ describe("phone table geometry", () => {
         for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
           expect(gap(slots[i], slots[j])).toBeGreaterThanOrEqual(8 - 0.01);
         }
-        // side labels: over their slot, flush with its outer edge, above its
+        // side labels: centred over their slot's first card, above its
         // cards; at their widest 8pt clear of the top and bottom slots, your
         // row and the safe-area edges, and under the header
-        expect(g.pills.left.x0).toBeCloseTo(g.cards.left.x0, 5);
-        expect(g.pills.right.x1).toBeCloseTo(g.cards.right.x1, 5);
+        expect((g.pills.left.x0 + g.pills.left.x1) / 2).toBeCloseTo(g.cards.left.x0 + g.tcw / 2, 5);
+        expect((g.pills.right.x0 + g.pills.right.x1) / 2).toBeCloseTo(g.cards.right.x1 - g.tcw / 2, 5);
         for (const [p, s] of [[g.pills.left, g.cards.left], [g.pills.right, g.cards.right]] as const) {
           expect(p.y1).toBeLessThanOrEqual(s.y0 + 0.01);
         }
@@ -460,7 +460,7 @@ describe("phone controls", () => {
   });
 
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
-    expect(tokens["--pill-max"]).toBe("min(200px, calc(var(--side-out) - var(--top-reach) - var(--space-s)))");
+    expect(tokens["--pill-max"]).toContain("calc(2 * (var(--side-out) - var(--top-reach) - var(--space-s)) - var(--trick-cw))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");
     expect(rule(block, ".opponent.pos-top")["max-width"]).toContain("min(200px");
     const text = rule(block, ".opp-name-text");

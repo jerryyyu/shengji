@@ -378,35 +378,4 @@ describe("following a lead", () => {
     expect(primary().disabled).toBe(false);
     expect(primary().querySelector(".play-text")?.textContent).toBe("Play (1)");
   });
-
-  it("dims the cards no legal follow can hold; a tap on one picks nothing and ticks nothing", () => {
-    render(pairLed());
-    // holding the D9 pair, the pair must go: DJ (no twin) and S3 (trump) are out
-    expect(slot(3).classList.contains("unplayable")).toBe(true);
-    expect(slot(4).classList.contains("unplayable")).toBe(true);
-    expect(slot(3).getAttribute("aria-disabled")).toBe("true");
-    expect(slot(1).classList.contains("unplayable")).toBe(false);
-    haptics.length = 0;
-    act(() => slot(3).click());
-    expect(slot(3).classList.contains("selected")).toBe(false);
-    expect(haptics).toEqual([]);
-    act(() => slot(1).click());
-    expect(slot(1).classList.contains("selected")).toBe(true);
-    expect(haptics).toEqual(["select"]);
-  });
-
-  it("a card picked before the lead came can still be put back", () => {
-    render(state({ turn: 1, hand: followHand, trump: SPADES_7, trick: null }));
-    act(() => slot(4).click());
-    expect(slot(4).classList.contains("selected")).toBe(true);
-    render(pairLed({ turn: 1 }));
-    expect(slot(4).classList.contains("unplayable")).toBe(true);
-    act(() => slot(4).click());
-    expect(slot(4).classList.contains("selected")).toBe(false);
-  });
-
-  it("dims nothing for a throw (the server decides those)", () => {
-    render(pairLed({ trick: { leader: 1, plays: [{ seat: 1, cards: ["DQ", "DQ", "DA"] }] } }));
-    expect(host.querySelectorAll(".hand .card.unplayable")).toHaveLength(0);
-  });
 });

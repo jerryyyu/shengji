@@ -70,15 +70,6 @@ describe("the turned table on a phone browser", () => {
   });
 });
 
-describe("a card no legal follow can hold", () => {
-  it("is veiled, not see-through, and keeps its tap area", () => {
-    const veil = decls(".hand .card.unplayable::before");
-    expect(veil).toMatch(/background: rgba\(20, 23, 30, 0\.55\)/);
-    expect(veil).toMatch(/pointer-events: none/);
-    expect(css).not.toMatch(/\.unplayable[^{]*\{[^}]*opacity/);
-  });
-});
-
 describe("text size", () => {
   it("scales chrome text with 1rem, from the default up to 1.3x", () => {
     expect(decls(":root")).toContain("--tu: calc(1rem / 16);");

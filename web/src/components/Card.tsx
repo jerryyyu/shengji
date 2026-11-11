@@ -30,21 +30,17 @@ interface CardProps {
   /** Card code ("S2", "H10", "BJ"...). Omit for a face-down back. */
   code?: string;
   selected?: boolean;
-  /** No legal play can hold this card now: dimmed, and its tap does nothing. */
-  unplayable?: boolean;
   onClick?: () => void;
   className?: string;
 }
 
-function Card({ code, selected = false, unplayable = false, onClick, className }: CardProps) {
+function Card({ code, selected = false, onClick, className }: CardProps) {
   const Face = onClick ? "button" : "div";
   const accessibility = onClick
-    ? { type: "button" as const, "aria-pressed": selected, "aria-label": code ? codeLabel(code) : undefined,
-        ...(unplayable ? { "aria-disabled": true } : {}) }
+    ? { type: "button" as const, "aria-pressed": selected, "aria-label": code ? codeLabel(code) : undefined }
     : {};
   const cls = (extra: string) =>
-    ["card", extra, selected ? "selected" : "", onClick ? "clickable" : "", unplayable ? "unplayable" : "",
-     className ?? ""]
+    ["card", extra, selected ? "selected" : "", onClick ? "clickable" : "", className ?? ""]
       .filter(Boolean)
       .join(" ");
 

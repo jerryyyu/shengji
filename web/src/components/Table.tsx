@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
@@ -16,7 +16,7 @@ import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
 import type { Toast } from "../toast";
 import ToastView from "./ToastView";
-import { leadToFollow, unplayableIds } from "../follow";
+import { leadToFollow } from "../follow";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -300,22 +300,12 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const selectable =
     (state.phase === "bury" && iAmBanker) || state.phase === "play";
 
-  // Following a single or a pair, the cards no legal play can hold are dimmed
-  // and cannot be picked (one already picked can still be put back).
   const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
-  const blockedKey = lead ? [...unplayableIds(state.hand, lead, state.trump)].join(",") : "";
-  const blocked = useMemo(
-    () => new Set(blockedKey ? blockedKey.split(",").map(Number) : []), [blockedKey]);
-  const blockedRef = useRef(blocked);
-  blockedRef.current = blocked;
-  const selectedRef = useRef(selected);
-  selectedRef.current = selected;
 
   useTableHaptics(state, shownLastTrick);
 
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
-    if (blockedRef.current.has(id) && !selectedRef.current.has(id)) return;
     haptic("select");
     setSelected((prev) => {
       const next = new Set(prev);
@@ -447,7 +437,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           <div className="action-bar">{actionBar}</div>
           </div>
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} blocked={blocked} />
+                rects={handRects} />
         </div>
       </div>
 

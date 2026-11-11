@@ -1730,10 +1730,6 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   .hand.selectable .card.selected:hover {
     transform: translateY(-22px);
   }
-
-  .hand.selectable .card.unplayable:not(.selected):hover {
-    transform: none;
-  }
 }
 
 .hand .card.selected {
@@ -1772,30 +1768,6 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 
 .card.clickable:active {
   filter: brightness(0.92); /* no transform: preserve selected-card lift */
-}
-
-/* A card no legal follow can hold: veiled so it reads as faded, while the
-   card under it in the fanned hand does not show through. It keeps its tap
-   area; the tap does nothing. */
-.hand .card.unplayable::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  z-index: 2;
-  border-radius: inherit;
-  background: rgba(20, 23, 30, 0.55);
-  pointer-events: none;
-}
-
-/* its own stacking context, so the veil darkens this card only, never the
-   next card fanned over it */
-.hand .card.unplayable {
-  isolation: isolate;
-  cursor: default;
-}
-
-.hand .card.unplayable:active {
-  filter: none;
 }
 
 .card.red {
@@ -2100,12 +2072,15 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        growing inward that still clears a four-card throw in the top or your
        slot (4 cards span 2.8 card widths at a 60% pitch) */
     --side-out: calc(var(--trick-cw) * 4.2 + var(--space-s));
-    /* A side seat's label stands over its slot, from the slot's outer edge
-       inward, and stops short of where the widest top play can reach: half
-       of 2.8 card widths in play, half of a two-card declaration while
-       setting up. That holds a crowned 13-letter name on an SE. */
+    /* A side seat's label is centred over its slot's first card. Inward it
+       stops short of where the widest top play can reach: half of 2.8 card
+       widths in play, half of a two-card declaration while setting up.
+       Outward it stops short of the safe edge. */
     --top-reach: calc(var(--trick-cw) * 1.4);
-    --pill-max: min(200px, calc(var(--side-out) - var(--top-reach) - var(--space-s)));
+    --pill-max: min(200px,
+      calc(2 * (var(--side-out) - var(--top-reach) - var(--space-s)) - var(--trick-cw)),
+      calc(2 * (var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--side-out) - var(--space-s))
+        + var(--trick-cw)));
     /* card centres from the cross's centre: the top slot's footprint ends a
        half gap above it, yours starts a half gap below; side cards sit so
        their footprint is centred */
@@ -2575,30 +2550,25 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-xs);
   }
 
-  /* A side seat's label stands over its trick slot, flush with the slot's
-     outer edge, a small gap above where its cards' tops are (the slot's
-     centre less half a card), and never higher than just under the header.
-     A play grows inward and downward from there, so no play reaches it.
-     Long names step down a size, then end in an ellipsis; a tap or long press
-     shows the whole name. */
+  /* A side seat's label stands centred over its slot's first card, a small
+     gap above where its cards' tops are (the slot's centre less half a card),
+     and never higher than just under the header. A play grows inward and
+     downward from there, so no play reaches it. Its width keeps it short of
+     the widest top play inward and of the safe edge outward. Long names step
+     down a size, then end in an ellipsis; a tap or long press shows the
+     whole name. */
   .opponent.pos-left,
   .opponent.pos-right {
     top: max(calc(var(--header-bottom) + var(--space-xs)),
       calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy)
         - var(--trick-ch) / 2 - var(--space-s) - var(--header-h)));
-    max-width: var(--pill-max);
-    transform: none;
-  }
-
-  .opponent.pos-left {
-    left: calc(50% - var(--side-out));
     right: auto;
+    max-width: var(--pill-max);
+    transform: translate(-50%, 0);
   }
 
-  .opponent.pos-right {
-    left: auto;
-    right: calc(50% - var(--side-out));
-  }
+  .opponent.pos-left { left: calc(50% - var(--side-out) + var(--trick-cw) / 2); }
+  .opponent.pos-right { left: calc(50% + var(--side-out) - var(--trick-cw) / 2); }
 
   .opp-name-text {
     min-width: 0;

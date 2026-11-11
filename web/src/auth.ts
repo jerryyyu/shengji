@@ -5,6 +5,7 @@
 // sends on its own, to `/api/*` and on the `/ws` handshake alike.
 
 import { useEffect, useState } from "react";
+import { forgetPrivateSession } from "./home/session";
 import { nativeGoogleSignOut } from "./nativeAuth";
 import { conn } from "./ws";
 
@@ -270,6 +271,7 @@ class AuthStore {
   /** A login the server confirmed (the cookie is set). The open socket
    *  still carries the guest handshake, so it is replaced. */
   signedIn(user: AuthUser): void {
+    forgetPrivateSession();
     this.set({ status: "in", user });
     conn.reconnect();
   }
@@ -290,6 +292,7 @@ class AuthStore {
       /* GIS not loaded */
     }
     void nativeGoogleSignOut();
+    forgetPrivateSession();
     this.set({ status: "out", user: null });
     conn.reconnect();
   }
@@ -303,6 +306,7 @@ class AuthStore {
       /* GIS not loaded */
     }
     void nativeGoogleSignOut();
+    forgetPrivateSession();
     this.set({ status: "out", user: null });
     conn.reconnect();
   }

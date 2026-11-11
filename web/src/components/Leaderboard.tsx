@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "../auth";
 import { deltaText, fetchLeaderboard } from "../ratings/api";
 import type { Leaderboard as Board, LeaderRow, Loaded, Period } from "../ratings/api";
 import { Segmented } from "../home/HomeShell";
-import { cached, remember, tabMemory, useTabScroll } from "../home/session";
+import { tabMemory, useCachedLoad, useTabScroll, viewerScope } from "../home/session";
 import GoogleSignIn from "./GoogleSignIn";
 
 const PERIODS = [
@@ -68,25 +68,14 @@ function SignInToRank({ clientId }: { clientId: string }) {
  *  Guests read it too; the viewer's own row (or, for a guest, a sign-in
  *  card) is pinned to the bottom when it is not among the rows shown.
  *  This week on the first visit; after that the period last chosen, with
- *  the last board shown at once while a fresh one loads. */
+ *  the last board shown at once while a fresh one loads. The board carries
+ *  the viewer's own row, so it is cached per viewer and reloads when the
+ *  viewer changes. */
 export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   const account = useAuth();
   const [period, setPeriodState] = useState<Period>(tabMemory.period);
   const setPeriod = (p: Period) => { tabMemory.period = p; setPeriodState(p); };
-  const key = `board:${period}`;
-  const [res, setRes] = useState<Loaded<Board> | null>(() => cached<Loaded<Board>>(key) ?? null);
-  useEffect(() => {
-    let live = true;
-    const shown = cached<Loaded<Board>>(key);
-    setRes(shown ?? null);
-    fetchLeaderboard(period).then((r) => {
-      if (!live) return;
-      // a failed refresh keeps the board already on screen
-      if (r.ok || !shown) setRes(r);
-      if (r.ok) remember(key, r);
-    });
-    return () => { live = false; };
-  }, [key, period]);
+  const res = useCachedLoad<Loaded<Board>>(`${viewerScope(account)}:board:${period}`, () => fetchLeaderboard(period));
   const scroller = useTabScroll(`leaderboard:${period}`, res !== null);
 
   let body;

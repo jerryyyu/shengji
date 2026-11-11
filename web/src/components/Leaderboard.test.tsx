@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Leaderboard from "./Leaderboard";
 import { auth } from "../auth";
 import { forgetHomeSession } from "../home/session";
@@ -40,7 +40,9 @@ beforeEach(() => {
     calls.push(url);
     if (url === "/api/auth/config") return { status: 200, json: async () => ({ google_client_id: "cid" }) } as Response;
     if (url === "/api/me") return { status: 401, json: async () => ({}) } as Response;
-    const body = url.endsWith("period=week") ? (signedIn ? week : guestWeek)
+    // like the server, `me` is the account the session cookie belongs to
+    const who = auth.state.status === "in" && auth.state.user ? auth.state.user.name_shown : "Jerry";
+    const body = url.endsWith("period=week") ? (signedIn ? { ...week, me: { ...week.me!, name: who } } : guestWeek)
       : { ...week, period: "all", players: [row({ rank: 1, name: "Jerry", you: true })], me: row({ rank: 1, name: "Jerry", you: true }) };
     return { status: 200, json: async () => body } as Response;
   }) as typeof fetch;
@@ -125,4 +127,175 @@ it("over a game it offers the way back", async () => {
   const btn = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "‹ Back to game")!;
   act(() => btn.click());
   expect(back).toHaveBeenCalledTimes(1);
+});
+
+it("review: account change must not reuse another viewer's personalized board", async () => {
+  auth.signedIn({name:"Jerry",email:"j@x",picture:null,display_name:null,name_shown:"Jerry"});
+  await render();
+  expect(host.textContent).toContain("Jerry (you)");
+  await act(async () => { auth.signedIn({name:"Alice",email:"a@x",picture:null,display_name:null,name_shown:"Alice"}); });
+  expect(host.textContent).not.toContain("Jerry (you)");
+});
+
+describe("viewer changes", () => {
+  const user = (name: string) => ({ name, email: `${name.toLowerCase()}@x`, picture: null, display_name: null,
+                                    name_shown: name });
+  // the board as the server personalises it: the cookie's account owns `me`
+  let viewer: string | null = null;
+  const boardFor = (who: string | null): Board =>
+    who === null ? guestWeek : { ...week, me: row({ rank: 26, name: who, rating: 1210, you: true }) };
+  type Pending = { resolve: (r: Response) => void };
+  let pending: Pending[] = [];
+  let mode: "serve" | "hold" | "fail" = "serve";
+  const ok = (body: unknown) => ({ status: 200, json: async () => body }) as Response;
+  beforeEach(() => {
+    viewer = null;
+    pending = [];
+    mode = "serve";
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === "/api/auth/config") return ok({ google_client_id: "cid" });
+      if (url === "/api/me") return { status: 401, json: async () => ({}) } as Response;
+      if (url === "/api/auth/logout") return ok({});
+      const body = boardFor(viewer);
+      if (mode === "fail") return { status: 503, json: async () => ({}) } as Response;
+      if (mode === "hold") return new Promise<Response>((resolve) => pending.push({ resolve }));
+      return ok(body);
+    }) as typeof fetch;
+  });
+  const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  const pinnedName = () => host.querySelector(".lb-pin .lb-name-text")?.textContent ?? null;
+  const signIn = async (name: string) => {
+    viewer = name;
+    await act(async () => { auth.signedIn(user(name)); });
+    await settle();
+  };
+  const signOut = async () => {
+    viewer = null;
+    await act(async () => { await auth.signOut(); });
+    await settle();
+  };
+
+  it("guest to account: the board reloads with the new account's own row", async () => {
+    await act(async () => { await auth.init(); });
+    await render();
+    expect(host.querySelector(".lb-pin .signin-card")).not.toBeNull();
+    expect(lbCalls()).toHaveLength(1);
+    await signIn("Jerry");
+    expect(lbCalls()).toHaveLength(2);
+    expect(pinnedName()).toBe("Jerry (you)");
+    expect(host.querySelector(".signin-card")).toBeNull();
+  });
+
+  it("account A, guest, account B: each sees only their own row", async () => {
+    await act(async () => { await auth.init(); });
+    await signIn("Jerry");
+    await render();
+    expect(pinnedName()).toBe("Jerry (you)");
+    await signOut();
+    expect(host.textContent).not.toContain("(you)");
+    expect(host.querySelector(".lb-pin .signin-card")).not.toBeNull();
+    await signIn("Alice");
+    expect(pinnedName()).toBe("Alice (you)");
+    expect(host.textContent).not.toContain("Jerry (you)");
+  });
+
+  it("a slow refresh after a viewer change shows loading, not the previous viewer's board", async () => {
+    await signIn("Jerry");
+    await render();
+    expect(pinnedName()).toBe("Jerry (you)");
+    mode = "hold";
+    await signIn("Alice");
+    expect(host.textContent).not.toContain("Jerry (you)");
+    expect(host.querySelector(".lb-note[role=status]")?.textContent).toBe("Loading…");
+    await act(async () => { pending.forEach((p) => p.resolve(ok(boardFor("Alice")))); });
+    await settle();
+    expect(pinnedName()).toBe("Alice (you)");
+  });
+
+  it("a failed refresh after a viewer change shows the failure, not the previous viewer's board", async () => {
+    await signIn("Jerry");
+    await render();
+    expect(pinnedName()).toBe("Jerry (you)");
+    mode = "fail";
+    await signIn("Alice");
+    expect(host.textContent).not.toContain("Jerry (you)");
+    expect(host.querySelector(".lobby-error")?.textContent).toBe("Could not load the leaderboard (503).");
+    // remounting while the server still fails does not bring Jerry's board back
+    act(() => root.unmount());
+    host.remove();
+    await render();
+    expect(host.textContent).not.toContain("Jerry (you)");
+    expect(host.querySelector(".lobby-error")).not.toBeNull();
+  });
+
+  it("a late response for the previous viewer is ignored", async () => {
+    await signIn("Jerry");
+    mode = "hold";
+    await render();
+    expect(pending).toHaveLength(1);
+    const jerrys = pending[0];
+    await signIn("Alice");
+    expect(pending).toHaveLength(2);
+    await act(async () => { pending[1].resolve(ok(boardFor("Alice"))); });
+    await settle();
+    expect(pinnedName()).toBe("Alice (you)");
+    await act(async () => { jerrys.resolve(ok(boardFor("Jerry"))); });
+    await settle();
+    expect(pinnedName()).toBe("Alice (you)");
+    // nor was it cached for Alice: a remount draws Alice's board at once
+    act(() => root.unmount());
+    host.remove();
+    await render();
+    expect(pinnedName()).toBe("Alice (you)");
+    expect(host.textContent).not.toContain("Jerry (you)");
+  });
+
+  it("signing out and back in as the same account does not draw the old session's board", async () => {
+    await signIn("Jerry");
+    await render();
+    expect(pinnedName()).toBe("Jerry (you)");
+    act(() => root.unmount());
+    host.remove();
+    await signOut();
+    mode = "hold";
+    viewer = "Jerry";
+    await act(async () => { auth.signedIn(user("Jerry")); });
+    await render();
+    expect(host.textContent).not.toContain("(you)");
+    expect(host.querySelector(".lb-note[role=status]")?.textContent).toBe("Loading…");
+  });
+
+  it("the same account gets its period and last board back at once on return", async () => {
+    await signIn("Jerry");
+    await render();
+    const all = () => [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "All time")!;
+    await act(async () => { all().click(); });
+    await settle();
+    expect(host.querySelector(".lb-row.me .lb-name-text")?.textContent).toBe("Jerry (you)");
+    act(() => root.unmount());
+    host.remove();
+    mode = "hold";
+    await render();
+    expect(all().getAttribute("aria-pressed")).toBe("true");
+    expect(lbCalls().at(-1)).toBe("/api/leaderboard?period=all");
+    expect(host.querySelector(".lb-row.me .lb-name-text")?.textContent).toBe("Jerry (you)");
+    expect(host.querySelector(".lb-note[role=status]")).toBeNull();
+  });
+
+  it("signing out keeps the chosen period but forgets the board", async () => {
+    await signIn("Jerry");
+    await render();
+    const all = () => [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "All time")!;
+    await act(async () => { all().click(); });
+    await settle();
+    act(() => root.unmount());
+    host.remove();
+    await signOut();
+    mode = "hold";
+    await render();
+    expect(all().getAttribute("aria-pressed")).toBe("true");
+    expect(host.textContent).not.toContain("(you)");
+  });
 });

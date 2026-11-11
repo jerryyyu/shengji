@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, Ref } from "react";
 import type { ReactNode } from "react";
 import { auth, deleteAccount, effectiveName, useAuth } from "../auth";
@@ -9,7 +9,7 @@ import { openHowto } from "../howto/route";
 import { followInfoLink } from "../support/route";
 import { Avatar, Segmented } from "../home/HomeShell";
 import { EDIT_NAME_EVENT, openTab, takeNameEditRequest } from "../home/route";
-import { cached, remember, tabMemory, useTabScroll } from "../home/session";
+import { cached, remember, tabMemory, useCachedLoad, useTabScroll, viewerScope } from "../home/session";
 import type { MeSection } from "../home/route";
 import GoogleSignIn from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
@@ -194,7 +194,7 @@ function InfoRows() {
 /** The account's rows, under both Stats and Games. The leaderboard switch
  *  moves on the tap and says it is saving; a refused save puts it back and
  *  says why next to it. */
-function Settings({ user, stats }: { user: AuthUser; stats: Stats | null }) {
+function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | null; statsKey: string }) {
   const [visible, setVisible] = useState<boolean | null>(stats?.visible ?? null);
   const [saving, setSaving] = useState(false);
   // a stats refresh that lands mid-save does not undo the tap
@@ -220,8 +220,8 @@ function Settings({ user, stats }: { user: AuthUser; stats: Stats | null }) {
     setVisibility(!before)
       .then((stored) => {
         setVisible(stored);
-        const shown = cached<Loaded<Stats>>(statsKey(user));
-        if (shown?.ok) remember(statsKey(user), { ...shown, data: { ...shown.data, visible: stored } });
+        const shown = cached<Loaded<Stats>>(statsKey);
+        if (shown?.ok) remember(statsKey, { ...shown, data: { ...shown.data, visible: stored } });
       })
       .catch((e: Error) => { setVisible(before); setSaveError(e.message); })
       .finally(() => setSaving(false));
@@ -285,32 +285,19 @@ function GuestMe({ clientId }: { clientId: string | null }) {
   );
 }
 
-function statsKey(user: AuthUser): string {
-  return `stats:${user.email}`;
-}
-
 /** The Me tab: who you are, your stats or your saved games, and the
  *  account's settings below either. Leaving and coming back keeps the
- *  section, the scroll position and the last stats while fresh ones load. */
+ *  section, the scroll position and the last stats while fresh ones load;
+ *  a different viewer or session starts from nothing. */
 export default function MePage({ section, onBack }: { section: MeSection; onBack?: () => void }) {
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
   useEffect(() => { tabMemory.meSection = section; }, [section]);
-  const [res, setRes] = useState<Loaded<Stats> | null>(() => (user ? cached<Loaded<Stats>>(statsKey(user)) ?? null : null));
-  useEffect(() => {
-    if (!user) return;
-    let live = true;
-    const key = statsKey(user);
-    const shown = cached<Loaded<Stats>>(key);
-    if (shown) setRes(shown);
-    fetchStats().then((r) => {
-      if (!live) return;
-      // a failed refresh keeps the stats already on screen
-      if (r.ok || !shown) setRes(r);
-      if (r.ok) remember(key, r);
-    });
-    return () => { live = false; };
-  }, [user]);
+  // everything shown for an account is keyed by who is viewing and in which
+  // session, so another account's stats are never drawn while these load
+  const scope = viewerScope(account);
+  const statsKey = `${scope}:stats`;
+  const res = useCachedLoad<Loaded<Stats>>(user ? statsKey : null, fetchStats, user);
   const stats = res && res.ok ? res.data : null;
   const [gamesReady, setGamesReady] = useState(false);
   useEffect(() => { if (section !== "games") setGamesReady(false); }, [section]);
@@ -326,18 +313,18 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
   else {
     let content: ReactNode;
     if (section === "games") {
-      content = <SavedGames onPlay={() => openTab("play")} cacheKey={`games:${user.email}`} onReady={markGamesReady} />;
+      content = <SavedGames onPlay={() => openTab("play")} cacheKey={`${scope}:games`} onReady={markGamesReady} />;
     } else if (res === null) content = <p className="lb-note" role="status">Loading…</p>;
     else if (!res.ok) {
       content = <p className="lobby-error" role="alert">Could not load your stats ({res.status || "no connection"}).</p>;
     } else content = <StatsBody stats={res.data} />;
     body = (
-      <>
+      <Fragment key={scope}>
         <Identity user={user} stats={stats} />
         <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />
         {content}
-        <Settings user={user} stats={stats} />
-      </>
+        <Settings user={user} stats={stats} statsKey={statsKey} />
+      </Fragment>
     );
   }
   return (

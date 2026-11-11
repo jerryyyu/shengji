@@ -19,7 +19,7 @@ vi.mock("../auth", async (importOriginal) => {
 
 import MePage from "./MePage";
 import { openNameEditor } from "../home/route";
-import { forgetHomeSession } from "../home/session";
+import { forgetHomeSession, forgetPrivateSession } from "../home/session";
 
 const JERRY = { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" };
 const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional: false, levels_per_round: 0.41,
@@ -251,5 +251,165 @@ describe("a guest", () => {
     expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/support"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
+  });
+});
+
+it("review: a new account must not render previous account stats while loading", async () => {
+  authState.current = {status:"in",clientId:"cid",user:JERRY};
+  await render();
+  expect(host.textContent).toContain("1532");
+  globalThis.fetch = vi.fn(() => new Promise<Response>(() => {}));
+  authState.current = {status:"out",clientId:"cid",user:null};
+  await act(async () => {root.render(<MePage section="stats" />);});
+  authState.current = {status:"in",clientId:"cid",user:{...JERRY,email:"a@x",name_shown:"Alice"}};
+  await act(async () => {root.render(<MePage section="stats" />);});
+  expect(host.textContent).not.toContain("1532");
+});
+
+describe("account changes", () => {
+  const ALICE = { ...JERRY, name: "Alice Li", email: "a@x", name_shown: "Alice" };
+  const ALICE_STATS = { ...STATS, name: "Alice", rating: 1404, rank: 30, rounds: 77, week_delta: -3, visible: false };
+  const ok = (body: unknown) => ({ status: 200, json: async () => body }) as Response;
+  let held: ((r: Response) => void)[] = [];
+  let statsMode: "serve" | "hold" = "serve";
+  let statsFor: typeof STATS = STATS;
+  beforeEach(() => {
+    held = [];
+    statsMode = "serve";
+    statsFor = STATS;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push({ url, method: "GET" });
+      if (url.startsWith("/api/me/games?")) return ok({ games: [GAME], next_before: null });
+      if (url !== "/api/me/stats") return { status: 404, json: async () => ({}) } as Response;
+      if (statsMode === "hold") return new Promise<Response>((resolve) => held.push(resolve));
+      return ok(statsFor);
+    }) as typeof fetch;
+  });
+  const as = async (state: AuthState, section: "stats" | "games" = "stats") => {
+    authState.current = state;
+    await act(async () => { root.render(<MePage section={section} />); });
+    await settle();
+  };
+  const IN = (user: typeof JERRY): AuthState => ({ status: "in", clientId: "cid", user });
+  const OUT: AuthState = { status: "out", clientId: "cid", user: null };
+  const sub = () => host.querySelector(".me-sub")?.textContent;
+
+  it("guest to account: the account's own stats load", async () => {
+    authState.current = OUT;
+    await render();
+    expect(host.querySelector(".me-name")?.textContent).toBe("Guest");
+    await as(IN(JERRY));
+    expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
+    expect(sub()).toContain("1532");
+    expect(calls.filter((c) => c.url === "/api/me/stats")).toHaveLength(1);
+  });
+
+  it("account A, guest, account B: B sees only B's stats, settings and games", async () => {
+    authState.current = IN(JERRY);
+    await render();
+    expect(sub()).toContain("1532");
+    await as(OUT);
+    expect(host.textContent).not.toContain("1532");
+    statsMode = "hold";
+    await as(IN(ALICE));
+    expect(host.querySelector(".me-name")?.textContent).toBe("Alice");
+    expect(host.textContent).not.toContain("1532");
+    await act(async () => { held.forEach((r) => r(ok(ALICE_STATS))); });
+    await settle();
+    expect(sub()).toContain("1404");
+    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("412");
+    expect(host.querySelector(".me-visible")?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("a slow refresh for a new account shows loading, with no stats or settings of the previous one", async () => {
+    authState.current = IN(JERRY);
+    await render();
+    expect(host.querySelector(".me-visible")?.getAttribute("aria-checked")).toBe("true");
+    statsMode = "hold";
+    await as(OUT);
+    await as(IN(ALICE));
+    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("412");
+    expect(host.querySelector(".lb-note[role=status]")?.textContent).toBe("Loading…");
+    expect(host.querySelector(".me-visible")?.getAttribute("aria-checked")).toBe("false");
+    expect(host.querySelector<HTMLButtonElement>(".me-visible")?.disabled).toBe(true);
+    await act(async () => { held.forEach((r) => r(ok(ALICE_STATS))); });
+    await settle();
+    expect(sub()).toContain("1404");
+  });
+
+  it("a failed refresh for a new account says so instead of showing the previous one's stats", async () => {
+    authState.current = IN(JERRY);
+    await render();
+    statsMode = "hold";
+    await as(IN(ALICE));
+    expect(host.textContent).not.toContain("1532");
+    await act(async () => { held.forEach((r) => r({ status: 503, json: async () => ({}) } as Response)); });
+    await settle();
+    expect(host.textContent).not.toContain("1532");
+    expect(host.querySelector(".lobby-error")?.textContent).toBe("Could not load your stats (503).");
+  });
+
+  it("a late response for the previous account is ignored and not cached", async () => {
+    authState.current = IN(JERRY);
+    await render();
+    act(() => root.unmount());
+    host.remove();
+    // Jerry's cached stats are drawn while his refresh is still out
+    statsMode = "hold";
+    await render();
+    expect(sub()).toContain("1532");
+    expect(held).toHaveLength(1);
+    const jerrys = held[0];
+    await as(IN(ALICE));
+    expect(held).toHaveLength(2);
+    expect(host.textContent).not.toContain("1532");
+    await act(async () => { held[1](ok(ALICE_STATS)); });
+    await settle();
+    expect(sub()).toContain("1404");
+    await act(async () => { jerrys(ok(STATS)); });
+    await settle();
+    expect(sub()).toContain("1404");
+    expect(host.textContent).not.toContain("1532");
+    act(() => root.unmount());
+    host.remove();
+    await render();
+    expect(sub()).toContain("1404");
+  });
+
+  it("a response from a session that ended is dropped even for the same account", async () => {
+    statsMode = "hold";
+    authState.current = IN(JERRY);
+    await render();
+    expect(held).toHaveLength(1);
+    // what a confirmed sign-out does, before the page has drawn it
+    forgetPrivateSession();
+    await act(async () => { held[0](ok(STATS)); });
+    await settle();
+    expect(host.textContent).not.toContain("1532");
+    expect(host.querySelector(".lb-note[role=status]")?.textContent).toBe("Loading…");
+  });
+
+  it("the same account gets its section and last stats back at once on return", async () => {
+    authState.current = IN(JERRY);
+    await render();
+    act(() => root.unmount());
+    host.remove();
+    statsMode = "hold";
+    await render();
+    expect(sub()).toContain("1532");
+    expect(host.querySelector(".me-tile")).not.toBeNull();
+    expect(host.querySelector(".lb-note[role=status]")).toBeNull();
+  });
+
+  it("the games list belongs to the account that loaded it", async () => {
+    authState.current = IN(JERRY);
+    await render("games");
+    expect(host.querySelector(".games-row-title")).not.toBeNull();
+    globalThis.fetch = vi.fn(() => new Promise<Response>(() => {})) as typeof fetch;
+    await as(IN(ALICE), "games");
+    expect(host.querySelector(".games-row-title")).toBeNull();
   });
 });

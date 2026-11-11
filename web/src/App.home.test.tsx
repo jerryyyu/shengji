@@ -173,6 +173,74 @@ describe("the bars", () => {
   });
 });
 
+describe("tab context", () => {
+  // jsdom keeps scrollTop but fires no scroll event; this sets both
+  const scrollTo = (el: Element, top: number) =>
+    act(() => { el.scrollTop = top; el.dispatchEvent(new Event("scroll")); });
+  const tab = (label: string) =>
+    [...host.querySelectorAll<HTMLButtonElement>(".tabbar-item")].find((b) => b.textContent === label)!;
+  const go = (label: string) => act(async () => { tab(label).click(); await new Promise((r) => setTimeout(r, 0)); });
+  const seg = (label: string) =>
+    [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === label)!;
+
+  it("returning to a tab resumes its section, period and scroll, with the last data drawn at once", async () => {
+    await renderApp();
+    await go("Me");
+    expect(seg("Stats").getAttribute("aria-pressed")).toBe("true");
+    await act(async () => { seg("Games").click(); await new Promise((r) => setTimeout(r, 0)); });
+    await go("Leaderboard");
+    expect(seg("This week").getAttribute("aria-pressed")).toBe("true");
+    await act(async () => { seg("All time").click(); await new Promise((r) => setTimeout(r, 0)); });
+    scrollTo(host.querySelector(".lb-page")!, 240);
+    await go("Me");
+    expect(window.location.hash).toBe("#/me/games");
+    expect(seg("Games").getAttribute("aria-pressed")).toBe("true");
+    // the next board request never answers: the cached board stays drawn
+    const real = globalThis.fetch;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith("/api/leaderboard") ? new Promise<Response>(() => {}) : real(input, init)) as typeof fetch;
+    await go("Leaderboard");
+    expect(seg("All time").getAttribute("aria-pressed")).toBe("true");
+    expect(host.querySelector(".lb-row.anchor")).not.toBeNull();
+    expect(host.querySelector(".lb-page [role=status]")).toBeNull();
+    expect(host.querySelector(".lb-page")!.scrollTop).toBe(240);
+    // tapping the selected tab again goes back to the top
+    await go("Leaderboard");
+    expect(window.location.hash).toBe("#/leaderboard");
+    expect(host.querySelector(".lb-page")!.scrollTop).toBe(0);
+  });
+});
+
+describe("the account menu's keys", () => {
+  it("opens on its first row, moves with the arrows, Home and End, and Escape returns to the chip", async () => {
+    viewport(true);
+    await renderApp();
+    const chip = host.querySelector<HTMLButtonElement>(".topbar-account")!;
+    chip.focus();
+    act(() => chip.click());
+    const focused = () => (document.activeElement as HTMLElement).textContent?.trim();
+    expect(focused()).toBe("Me");
+    const key = (k: string) =>
+      act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })); });
+    key("ArrowDown");
+    expect(focused()).toBe("Edit name");
+    key("End");
+    expect(focused()).toBe("Sign out");
+    key("ArrowDown");
+    expect(focused()).toBe("Me");
+    key("ArrowUp");
+    expect(focused()).toBe("Sign out");
+    key("Home");
+    expect(focused()).toBe("Me");
+    key("Escape");
+    expect(host.querySelector(".topbar-menu")).toBeNull();
+    expect(document.activeElement).toBe(chip);
+    // ArrowUp on the closed chip opens the menu on its last row
+    key("ArrowUp");
+    expect(focused()).toBe("Sign out");
+  });
+});
+
 describe("deep links", () => {
   const cases: [string, string, string | null][] = [
     ["#/leaderboard", "Leaderboard", null],

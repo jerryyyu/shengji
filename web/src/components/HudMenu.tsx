@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useMenuKeys } from "../useMenuKeys";
 import { useMuted } from "../useMuted";
 import { conn } from "../ws";
 import { auth, effectiveName, useAuth } from "../auth";
@@ -30,11 +30,10 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   // the row to focus after the next render
   const focusNext = useRef<"first" | "last" | "stay" | "leave" | null>(null);
 
-  /** The rows a keyboard can act on, in order: the kitty row is information
-   *  only, and an open name field keeps its own arrow keys. */
-  const items = (): HTMLElement[] => Array.from(menuRef.current?.querySelectorAll<HTMLElement>(
-    "[role='menuitem']:not([aria-disabled='true']), [role='menuitemcheckbox'], .hud-menu-choice",
-  ) ?? []);
+  // the rows a keyboard can act on, in order: the kitty row is information
+  // only, and an open name field keeps its own arrow keys
+  const { items, onKeyDown: onMenuKey } = useMenuKeys(
+    menuRef, "[role='menuitem']:not([aria-disabled='true']), [role='menuitemcheckbox'], .hud-menu-choice");
 
   useEffect(() => {
     const want = focusNext.current;
@@ -47,22 +46,6 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
       : list[0];
     target?.focus();
   });
-
-  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    const t = e.target as HTMLElement;
-    if (t.closest("input, textarea, select")) return;
-    const list = items();
-    if (list.length === 0) return;
-    const at = list.indexOf(document.activeElement as HTMLElement);
-    let next: number | null = null;
-    if (e.key === "ArrowDown") next = at < 0 ? 0 : (at + 1) % list.length;
-    else if (e.key === "ArrowUp") next = at < 0 ? list.length - 1 : (at - 1 + list.length) % list.length;
-    else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = list.length - 1;
-    if (next === null) return;
-    e.preventDefault();
-    list[next].focus();
-  };
 
   // outside tap / Escape closes; an armed Leave reverts too. Escape hands
   // focus back to the `…` button; an outside tap leaves focus where it lands.

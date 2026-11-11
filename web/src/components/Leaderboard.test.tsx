@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Leaderboard from "./Leaderboard";
 import { auth } from "../auth";
+import { forgetHomeSession } from "../home/session";
 import type { Leaderboard as Board, LeaderRow } from "../ratings/api";
 
 vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
@@ -30,6 +31,7 @@ const calls: string[] = [];
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
+  forgetHomeSession();
   calls.length = 0;
   signedIn = true;
   auth.reset();

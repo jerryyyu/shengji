@@ -3,6 +3,7 @@ import { useAuth } from "../auth";
 import { deltaText, fetchLeaderboard } from "../ratings/api";
 import type { Leaderboard as Board, LeaderRow, Loaded, Period } from "../ratings/api";
 import { Segmented } from "../home/HomeShell";
+import { cached, remember, tabMemory, useTabScroll } from "../home/session";
 import GoogleSignIn from "./GoogleSignIn";
 
 const PERIODS = [
@@ -65,17 +66,28 @@ function SignInToRank({ clientId }: { clientId: string }) {
 
 /** The Leaderboard tab: rated players by rating, this week or all time.
  *  Guests read it too; the viewer's own row (or, for a guest, a sign-in
- *  card) is pinned to the bottom when it is not among the rows shown. */
+ *  card) is pinned to the bottom when it is not among the rows shown.
+ *  This week on the first visit; after that the period last chosen, with
+ *  the last board shown at once while a fresh one loads. */
 export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   const account = useAuth();
-  const [period, setPeriod] = useState<Period>("week");
-  const [res, setRes] = useState<Loaded<Board> | null>(null);
+  const [period, setPeriodState] = useState<Period>(tabMemory.period);
+  const setPeriod = (p: Period) => { tabMemory.period = p; setPeriodState(p); };
+  const key = `board:${period}`;
+  const [res, setRes] = useState<Loaded<Board> | null>(() => cached<Loaded<Board>>(key) ?? null);
   useEffect(() => {
     let live = true;
-    setRes(null);
-    fetchLeaderboard(period).then((r) => { if (live) setRes(r); });
+    const shown = cached<Loaded<Board>>(key);
+    setRes(shown ?? null);
+    fetchLeaderboard(period).then((r) => {
+      if (!live) return;
+      // a failed refresh keeps the board already on screen
+      if (r.ok || !shown) setRes(r);
+      if (r.ok) remember(key, r);
+    });
     return () => { live = false; };
-  }, [period]);
+  }, [key, period]);
+  const scroller = useTabScroll(`leaderboard:${period}`, res !== null);
 
   let body;
   let pinned = null;
@@ -102,7 +114,7 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   if (account.status === "out" && account.clientId) pinned = <SignInToRank clientId={account.clientId} />;
 
   return (
-    <div className="screen home-page lb-page">
+    <div className="screen home-page lb-page" ref={scroller}>
       <div className="home-col">
         {onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}
         <h1 className="large-title">Leaderboard</h1>

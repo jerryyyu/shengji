@@ -19,6 +19,7 @@ vi.mock("../auth", async (importOriginal) => {
 
 import MePage from "./MePage";
 import { openNameEditor } from "../home/route";
+import { forgetHomeSession } from "../home/session";
 
 const JERRY = { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" };
 const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional: false, levels_per_round: 0.41,
@@ -33,6 +34,7 @@ const GAME = { id: "g1", room_code: "KQ4X", started_at: Math.floor(Date.now() / 
 let calls: { url: string; method: string }[];
 let deleteStatus = 204;
 beforeEach(() => {
+  forgetHomeSession();
   calls = [];
   deleteStatus = 204;
   signOut.mockClear();
@@ -103,7 +105,51 @@ describe("signed in", () => {
     expect(row.querySelector(".games-row-title")?.textContent).toBe("Room KQ4X · with Sam, Mei, Wen");
     expect(row.querySelector(".games-replay")?.textContent).toBe("Replay");
     expect(host.querySelector(".me-tile")).toBeNull();
-    expect(host.querySelector(".me-delete")).toBeNull();
+  });
+
+  it("the account's settings and help rows sit under Games too, below the games", async () => {
+    await render("games");
+    expect(rowLabels()).toEqual(["Show me on the leaderboard", "Edit name", "How to play", "Privacy policy",
+      "Support", "Sign out", "Delete account"]);
+    const list = host.querySelector(".games-day-row")!;
+    const settings = host.querySelector(".me-visible")!;
+    expect(list.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("the leaderboard switch moves on the tap, says it is saving, and takes one save at a time", async () => {
+    await render();
+    let answer!: (r: Response) => void;
+    const real = globalThis.fetch;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) !== "/api/me/leaderboard-visibility") return real(input, init);
+      calls.push({ url: String(input), method: init?.method ?? "GET" });
+      return new Promise<Response>((r) => { answer = r; });
+    }) as typeof fetch;
+    const sw = host.querySelector<HTMLButtonElement>(".me-visible")!;
+    act(() => sw.click());
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    expect(sw.querySelector(".ios-switch")?.classList.contains("on")).toBe(false);
+    expect(sw.getAttribute("aria-busy")).toBe("true");
+    expect(sw.disabled).toBe(false);
+    act(() => sw.click());
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    await act(async () => { answer({ status: 503, json: async () => ({}) } as Response); await new Promise((r) => setTimeout(r, 0)); });
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    expect(sw.getAttribute("aria-busy")).toBeNull();
+    const err = host.querySelector(`#${sw.getAttribute("aria-describedby")}`)!;
+    expect(err.getAttribute("role")).toBe("alert");
+    expect(err.textContent).toBe("Could not save (503).");
+  });
+
+  it("a saved switch stays saved when Me is opened again", async () => {
+    await render();
+    await act(async () => { host.querySelector<HTMLButtonElement>(".me-visible")!.click(); await new Promise((r) => setTimeout(r, 0)); });
+    act(() => root.unmount());
+    host.remove();
+    globalThis.fetch = vi.fn(() => new Promise<Response>(() => {})) as typeof fetch;
+    await render();
+    expect(host.querySelector(".me-visible")?.getAttribute("aria-checked")).toBe("false");
+    expect(host.querySelector(".me-tile")).not.toBeNull();
   });
 
   it("the leaderboard switch saves and follows the stored choice", async () => {
@@ -151,6 +197,32 @@ describe("signed in", () => {
     expect(window.location.hash).toBe("");
   });
 
+  it("the delete confirmation is a dialog that takes focus, keeps Tab inside and gives it back", async () => {
+    await render();
+    const deleteRow = rowNamed("Delete account");
+    deleteRow.focus();
+    act(() => deleteRow.click());
+    const dialog = host.querySelector<HTMLElement>(".me-delete-confirm")!;
+    const yes = dialog.querySelector<HTMLButtonElement>(".me-delete-yes")!;
+    const no = dialog.querySelector<HTMLButtonElement>(".me-delete-no")!;
+    expect(document.activeElement).toBe(no);
+    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toContain("can’t be undone");
+    const key = (k: string, shift = false) =>
+      act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: k, shiftKey: shift, bubbles: true })); });
+    key("Tab");
+    expect(document.activeElement).toBe(yes);
+    key("Tab");
+    expect(document.activeElement).toBe(no);
+    key("Tab", true);
+    expect(document.activeElement).toBe(yes);
+    key("Escape");
+    expect(host.querySelector(".me-delete-confirm")).toBeNull();
+    expect(document.activeElement).toBe(rowNamed("Delete account"));
+    act(() => rowNamed("Delete account").click());
+    act(() => host.querySelector<HTMLButtonElement>(".me-delete-no")!.click());
+    expect(document.activeElement).toBe(rowNamed("Delete account"));
+  });
+
   it("a refused delete keeps the account and says why", async () => {
     deleteStatus = 500;
     await render();
@@ -165,16 +237,16 @@ describe("signed in", () => {
 });
 
 describe("a guest", () => {
-  it("sees the sign-in card with Google, Apple dimmed as coming soon, and the help rows", async () => {
+  it("sees the sign-in card with Google only, and the help rows", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     expect(host.querySelector(".me-name")?.textContent).toBe("Guest");
     expect(host.querySelector(".me-sub")?.textContent).toBe("Not rated");
     const card = host.querySelector(".signin-card")!;
     expect(card.querySelector(".google-signin")).not.toBeNull();
-    const apple = card.querySelector<HTMLButtonElement>(".apple-signin")!;
-    expect(apple.disabled).toBe(true);
-    expect(card.textContent).toContain("Coming soon");
+    expect(card.querySelector(".apple-signin")).toBeNull();
+    expect(card.querySelectorAll("button:disabled")).toHaveLength(0);
+    expect(card.textContent).not.toContain("Apple");
     expect(rowLabels()).toEqual(["How to play", "Privacy policy", "Support"]);
     expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/support"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);

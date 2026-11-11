@@ -3,6 +3,7 @@
 // Play is the bare URL; `#/leaderboard`, `#/me` and `#/me/games` name the
 // other two. The older `#/stats` and `#/games` links land on the Me tab.
 import { useEffect, useState } from "react";
+import { tabMemory } from "./session";
 
 export type Tab = "play" | "leaderboard" | "me";
 export type MeSection = "stats" | "games";
@@ -30,9 +31,10 @@ function currentHash(): string {
   }
 }
 
-/** Go to a tab: Play clears the hash, the others set theirs. */
-export function openTab(tab: Tab, section: MeSection = "stats"): void {
-  const hash = homeHash(tab, section);
+/** Go to a tab: Play clears the hash, the others set theirs. Me opens on
+ *  the section named, else the one it last showed this session. */
+export function openTab(tab: Tab, section?: MeSection): void {
+  const hash = homeHash(tab, section ?? tabMemory.meSection);
   try {
     if (hash) {
       if (currentHash() !== hash) window.location.hash = hash;

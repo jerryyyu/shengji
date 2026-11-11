@@ -5,7 +5,9 @@ import { openHowto } from "../howto/route";
 import { openInfoPage } from "../support/route";
 import type { AuthUser } from "../auth";
 import { useMediaQuery } from "../phoneLayout";
+import { useMenuKeys } from "../useMenuKeys";
 import { openNameEditor, openTab } from "./route";
+import { scrollActiveTabToTop } from "./session";
 import type { Tab } from "./route";
 
 /** At this width and up (an iPad either way round, a desktop window) the
@@ -58,13 +60,19 @@ const TABS: { tab: Tab; label: string; icon: () => ReactNode }[] = [
   { tab: "me", label: "Me", icon: PersonIcon },
 ];
 
+/** Open a tab; the one already showing scrolls back to its top instead. */
+function goTab(tab: Tab, active: Tab): void {
+  if (tab === active) scrollActiveTabToTop();
+  else openTab(tab);
+}
+
 /** A phone's bottom tab bar: 49 pt over the home-indicator inset. */
 export function TabBar({ active }: { active: Tab }) {
   return (
     <nav className="tabbar" aria-label="Main">
       {TABS.map(({ tab, label, icon: Icon }) => (
         <button key={tab} type="button" className={`tabbar-item${tab === active ? " on" : ""}`}
-                aria-current={tab === active ? "page" : undefined} onClick={() => openTab(tab)}>
+                aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
           <Icon />
           <span>{label}</span>
         </button>
@@ -74,14 +82,33 @@ export function TabBar({ active }: { active: Tab }) {
 }
 
 /** The top bar's account chip and its menu: Me, Edit name, How to play,
- *  Privacy, Support and Sign out. */
+ *  Privacy, Support and Sign out.
+ *
+ *  Keyboard: opening moves focus to the first row (ArrowUp on the closed chip
+ *  to the last), the arrows, Home and End move between rows, and Escape
+ *  closes the menu and returns focus to the chip. Tabbing out closes it. */
 function AccountMenu({ user, active }: { user: AuthUser; active: boolean }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const menu = useRef<HTMLDivElement | null>(null);
+  const focusNext = useRef<"first" | "last" | null>(null);
+  const { items, onKeyDown } = useMenuKeys(menu, "[role='menuitem']");
+  useEffect(() => {
+    const want = focusNext.current;
+    if (!open || want === null) return;
+    focusNext.current = null;
+    const list = items();
+    (want === "last" ? list[list.length - 1] : list[0])?.focus();
+  });
   useEffect(() => {
     if (!open) return;
     const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      trigger.current?.focus();
+    };
     document.addEventListener("pointerdown", away);
     document.addEventListener("keydown", key);
     return () => {
@@ -89,17 +116,24 @@ function AccountMenu({ user, active }: { user: AuthUser; active: boolean }) {
       document.removeEventListener("keydown", key);
     };
   }, [open]);
+  const show = (at: "first" | "last") => { focusNext.current = at; setOpen(true); };
   const pick = (go: () => void) => () => { setOpen(false); go(); };
   return (
-    <div className="topbar-menu-box" ref={box}>
-      <button type="button" className={`topbar-account${active ? " on" : ""}`} aria-haspopup="menu"
-              aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+    <div className="topbar-menu-box" ref={box}
+         onBlur={(e) => { if (open && e.relatedTarget && !box.current?.contains(e.relatedTarget as Node)) setOpen(false); }}>
+      <button ref={trigger} type="button" className={`topbar-account${active ? " on" : ""}`} aria-haspopup="menu"
+              aria-expanded={open} onClick={() => { if (open) setOpen(false); else show("first"); }}
+              onKeyDown={(e) => {
+                if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+                e.preventDefault();
+                show(e.key === "ArrowDown" ? "first" : "last");
+              }}>
         <Avatar user={user} />
         <span className="topbar-account-name">{effectiveName(user) || user.email}</span>
         <span className="topbar-caret" aria-hidden="true">▾</span>
       </button>
       {open ? (
-        <div className="topbar-menu" role="menu">
+        <div className="topbar-menu" role="menu" aria-label="Account" ref={menu} onKeyDown={onKeyDown}>
           <button type="button" role="menuitem" onClick={pick(() => openTab("me"))}>Me</button>
           <button type="button" role="menuitem" onClick={pick(openNameEditor)}>Edit name</button>
           <hr />
@@ -131,7 +165,7 @@ export function TopBar({ active }: { active: Tab }) {
   } else if (account.status === "off") {
     end = (
       <button type="button" className={`topbar-tab${active === "me" ? " on" : ""}`}
-              aria-current={active === "me" ? "page" : undefined} onClick={() => openTab("me")}>Me</button>
+              aria-current={active === "me" ? "page" : undefined} onClick={() => goTab("me", active)}>Me</button>
     );
   }
   return (
@@ -142,7 +176,7 @@ export function TopBar({ active }: { active: Tab }) {
       <nav className="topbar-tabs" aria-label="Main">
         {TABS.filter((t) => t.tab !== "me").map(({ tab, label }) => (
           <button key={tab} type="button" className={`topbar-tab${tab === active ? " on" : ""}`}
-                  aria-current={tab === active ? "page" : undefined} onClick={() => openTab(tab)}>
+                  aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
             {label}
           </button>
         ))}

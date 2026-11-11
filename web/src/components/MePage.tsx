@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, Ref } from "react";
 import type { ReactNode } from "react";
 import { auth, deleteAccount, effectiveName, useAuth } from "../auth";
 import type { AuthUser } from "../auth";
@@ -8,6 +9,7 @@ import { openHowto } from "../howto/route";
 import { followInfoLink } from "../support/route";
 import { Avatar, Segmented } from "../home/HomeShell";
 import { EDIT_NAME_EVENT, openTab, takeNameEditRequest } from "../home/route";
+import { cached, remember, tabMemory, useTabScroll } from "../home/session";
 import type { MeSection } from "../home/route";
 import GoogleSignIn from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
@@ -28,16 +30,16 @@ function deltaClass(delta: number): string {
 
 /** One 44 pt row of an inset-grouped list: a label and, at the end, a value
  *  or a chevron. A row with an action is a button. */
-function Row({ label, value, chevron, onClick, className = "", children }: {
+function Row({ label, value, chevron, onClick, className = "", children, buttonRef }: {
   label: ReactNode; value?: ReactNode; chevron?: boolean; onClick?: () => void; className?: string;
-  children?: ReactNode;
+  children?: ReactNode; buttonRef?: Ref<HTMLButtonElement>;
 }) {
   const end = value !== undefined || chevron
     ? <span className={`grp-value${chevron ? " chev" : ""}`}>{value}</span> : null;
   if (onClick) {
     return (
       <li>
-        <button type="button" className={`grp-row ${className}`} onClick={onClick}>
+        <button ref={buttonRef} type="button" className={`grp-row ${className}`} onClick={onClick}>
           <span className="grp-label">{label}</span>{end}
         </button>
         {children}
@@ -99,12 +101,26 @@ function StatsBody({ stats }: { stats: Stats }) {
 }
 
 /** Delete account: the first tap opens an in-page confirmation, and only
- *  its own Delete button calls the server. */
+ *  its own Delete button calls the server. The confirmation is a dialog:
+ *  opening it focuses Cancel, Tab stays inside it, and Cancel or Escape
+ *  closes it with focus back on the Delete account row. */
 function DeleteAccount() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const row = useRef<HTMLButtonElement | null>(null);
+  const cancelBtn = useRef<HTMLButtonElement | null>(null);
+  const dialog = useRef<HTMLDivElement | null>(null);
+  const returning = useRef(false);
+  useEffect(() => {
+    if (confirming) cancelBtn.current?.focus();
+    else if (returning.current) {
+      returning.current = false;
+      row.current?.focus();
+    }
+  }, [confirming]);
   const confirm = () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     deleteAccount()
@@ -115,22 +131,45 @@ function DeleteAccount() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
+  const cancel = () => {
+    if (busy) return;
+    returning.current = true;
+    setConfirming(false);
+    setError(null);
+  };
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancel();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const stops = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button") ?? []);
+    if (stops.length === 0) return;
+    const at = stops.indexOf(document.activeElement as HTMLElement);
+    const next = e.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at + 1) % stops.length;
+    e.preventDefault();
+    stops[next].focus();
+  };
   if (!confirming) {
     return (
       <ul className="grp">
-        <Row label="Delete account" chevron className="destructive me-delete" onClick={() => setConfirming(true)} />
+        <Row label="Delete account" chevron className="destructive me-delete" buttonRef={row}
+             onClick={() => setConfirming(true)} />
       </ul>
     );
   }
+  // busy buttons are aria-disabled rather than disabled, so focus stays put
   return (
-    <div className="grp me-delete-confirm" role="alertdialog" aria-labelledby="me-delete-title">
+    <div className="grp me-delete-confirm" role="alertdialog" aria-modal="true" ref={dialog} onKeyDown={onKey}
+         aria-labelledby="me-delete-title" aria-describedby="me-delete-desc">
       <h3 id="me-delete-title">Delete your account?</h3>
-      <p>Your rating, your place on the leaderboard and your saved games are removed for good. This can’t be undone.</p>
-      <button type="button" className="btn big danger me-delete-yes" disabled={busy} onClick={confirm}>
+      <p id="me-delete-desc">Your rating, your place on the leaderboard and your saved games are removed for good. This can’t be undone.</p>
+      <button type="button" className="btn big danger me-delete-yes" aria-disabled={busy || undefined} onClick={confirm}>
         {busy ? "Deleting…" : "Delete account"}
       </button>
-      <button type="button" className="btn big subtle me-delete-no" disabled={busy}
-              onClick={() => { setConfirming(false); setError(null); }}>
+      <button ref={cancelBtn} type="button" className="btn big subtle me-delete-no" aria-disabled={busy || undefined}
+              onClick={cancel}>
         Cancel
       </button>
       {error ? <div className="lobby-error" role="alert">{error}</div> : null}
@@ -152,10 +191,16 @@ function InfoRows() {
   );
 }
 
+/** The account's rows, under both Stats and Games. The leaderboard switch
+ *  moves on the tap and says it is saving; a refused save puts it back and
+ *  says why next to it. */
 function Settings({ user, stats }: { user: AuthUser; stats: Stats | null }) {
   const [visible, setVisible] = useState<boolean | null>(stats?.visible ?? null);
-  useEffect(() => { if (stats) setVisible(stats.visible); }, [stats]);
   const [saving, setSaving] = useState(false);
+  // a stats refresh that lands mid-save does not undo the tap
+  const savingNow = useRef(false);
+  savingNow.current = saving;
+  useEffect(() => { if (stats && !savingNow.current) setVisible(stats.visible); }, [stats]);
   const [editing, setEditing] = useState(false);
   useEffect(() => {
     const open = () => { if (takeNameEditRequest()) setEditing(true); };
@@ -165,13 +210,20 @@ function Settings({ user, stats }: { user: AuthUser; stats: Stats | null }) {
   }, []);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const toggle = () => {
-    if (visible === null) return;
+    if (visible === null || saving) return;
+    const before = visible;
+    setVisible(!before);
     setSaving(true);
-    setError(null);
-    setVisibility(!visible)
-      .then((stored) => setVisible(stored))
-      .catch((e: Error) => setError(e.message))
+    setSaveError(null);
+    setVisibility(!before)
+      .then((stored) => {
+        setVisible(stored);
+        const shown = cached<Loaded<Stats>>(statsKey(user));
+        if (shown?.ok) remember(statsKey(user), { ...shown, data: { ...shown.data, visible: stored } });
+      })
+      .catch((e: Error) => { setVisible(before); setSaveError(e.message); })
       .finally(() => setSaving(false));
   };
   const signOut = () => {
@@ -186,10 +238,13 @@ function Settings({ user, stats }: { user: AuthUser; stats: Stats | null }) {
       <ul className="grp">
         <li>
           <button type="button" className="grp-row me-visible" role="switch" aria-checked={visible === true}
-                  disabled={visible === null || saving} onClick={toggle}>
+                  disabled={visible === null} aria-disabled={saving || undefined} aria-busy={saving || undefined}
+                  aria-describedby={saveError ? "me-visible-error" : undefined} onClick={toggle}>
             <span className="grp-label">Show me on the leaderboard</span>
+            {saving ? <span className="grp-value me-saving">Saving…</span> : null}
             <span className={`ios-switch${visible ? " on" : ""}`} aria-hidden="true" />
           </button>
+          {saveError ? <p className="grp-error" id="me-visible-error" role="alert">{saveError}</p> : null}
         </li>
         <Row label="Edit name" value={effectiveName(user)} chevron className="me-edit"
              onClick={() => setEditing((v) => !v)}>
@@ -223,10 +278,6 @@ function GuestMe({ clientId }: { clientId: string | null }) {
           <p>Sign in to save every game with replay, start at rating 1000 and appear on the leaderboard.
             Guest play stays free and needs no account.</p>
           <GoogleSignIn clientId={clientId} />
-          <button type="button" className="apple-signin" disabled aria-describedby="apple-soon">
-            Sign in with Apple
-          </button>
-          <p className="signin-foot" id="apple-soon">Coming soon</p>
         </div>
       ) : null}
       <InfoRows />
@@ -234,27 +285,49 @@ function GuestMe({ clientId }: { clientId: string | null }) {
   );
 }
 
+function statsKey(user: AuthUser): string {
+  return `stats:${user.email}`;
+}
+
 /** The Me tab: who you are, your stats or your saved games, and the
- *  account's settings. */
+ *  account's settings below either. Leaving and coming back keeps the
+ *  section, the scroll position and the last stats while fresh ones load. */
 export default function MePage({ section, onBack }: { section: MeSection; onBack?: () => void }) {
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
-  const [res, setRes] = useState<Loaded<Stats> | null>(null);
+  useEffect(() => { tabMemory.meSection = section; }, [section]);
+  const [res, setRes] = useState<Loaded<Stats> | null>(() => (user ? cached<Loaded<Stats>>(statsKey(user)) ?? null : null));
   useEffect(() => {
     if (!user) return;
     let live = true;
-    fetchStats().then((r) => { if (live) setRes(r); });
+    const key = statsKey(user);
+    const shown = cached<Loaded<Stats>>(key);
+    if (shown) setRes(shown);
+    fetchStats().then((r) => {
+      if (!live) return;
+      // a failed refresh keeps the stats already on screen
+      if (r.ok || !shown) setRes(r);
+      if (r.ok) remember(key, r);
+    });
     return () => { live = false; };
   }, [user]);
   const stats = res && res.ok ? res.data : null;
+  const [gamesReady, setGamesReady] = useState(false);
+  useEffect(() => { if (section !== "games") setGamesReady(false); }, [section]);
+  const markGamesReady = useCallback(() => setGamesReady(true), []);
+  const ready = account.status === "loading" ? false
+    : !user ? true
+    : section === "games" ? gamesReady : res !== null;
+  const scroller = useTabScroll(`me:${section}`, ready);
 
   let body: ReactNode;
   if (account.status === "loading") body = <p className="lb-note" role="status">Loading…</p>;
   else if (!user) body = <GuestMe clientId={account.status === "out" ? account.clientId : null} />;
   else {
     let content: ReactNode;
-    if (section === "games") content = <SavedGames onPlay={() => openTab("play")} />;
-    else if (res === null) content = <p className="lb-note" role="status">Loading…</p>;
+    if (section === "games") {
+      content = <SavedGames onPlay={() => openTab("play")} cacheKey={`games:${user.email}`} onReady={markGamesReady} />;
+    } else if (res === null) content = <p className="lb-note" role="status">Loading…</p>;
     else if (!res.ok) {
       content = <p className="lobby-error" role="alert">Could not load your stats ({res.status || "no connection"}).</p>;
     } else content = <StatsBody stats={res.data} />;
@@ -263,12 +336,12 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
         <Identity user={user} stats={stats} />
         <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />
         {content}
-        {section === "stats" ? <Settings user={user} stats={stats} /> : null}
+        <Settings user={user} stats={stats} />
       </>
     );
   }
   return (
-    <div className="screen home-page me-page">
+    <div className="screen home-page me-page" ref={scroller}>
       <div className="home-col">
         {onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}
         <h1 className="large-title">Me</h1>

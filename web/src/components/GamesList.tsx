@@ -6,6 +6,7 @@ import type { GamesRoute } from "../replay/route";
 import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesStatus";
 import ReplayView from "./ReplayView";
 import { dayLabel } from "../home/dayLabel";
+import { cached, remember } from "../home/session";
 
 function when(unix: number): string {
   return new Date(unix * 1000).toLocaleString(undefined, {
@@ -176,20 +177,39 @@ function byDay(games: GameRow[]): { label: string; games: GameRow[] }[] {
 }
 
 /** The signed-in account's saved games, newest first and grouped by day;
- *  a row opens the game, whose rounds each have a Replay. */
-export function SavedGames({ onPlay }: { onPlay: () => void }) {
-  const [list, setList] = useState<ListState>({ status: "loading" });
+ *  a row opens the game, whose rounds each have a Replay. With a
+ *  `cacheKey` the last list shown is drawn at once on return and refreshed
+ *  underneath; `onReady` fires once the list (or its failure) is drawn. */
+export function SavedGames({ onPlay, cacheKey, onReady }: {
+  onPlay: () => void; cacheKey?: string; onReady?: () => void;
+}) {
+  const [list, setList] = useState<ListState>(
+    () => (cacheKey ? cached<ListState>(cacheKey) : undefined) ?? { status: "loading" });
 
   useEffect(() => {
     let live = true;
     fetchGames(null).then((r) => {
       if (!live) return;
-      setList(r.ok
-        ? { status: "ready", games: r.data.games, next: r.data.next_before, more: false, moreError: false }
-        : { status: "failed", reason: r.reason, code: r.status });
+      setList((cur) => {
+        if (!r.ok) return cur.status === "ready" ? cur : { status: "failed", reason: r.reason, code: r.status };
+        const fresh = r.data.games;
+        // pages loaded past the first stay, below the refreshed first page
+        const ids = new Set(fresh.map((g) => g.id));
+        const oldest = fresh.length ? fresh[fresh.length - 1].started_at : Infinity;
+        const older = cur.status === "ready"
+          ? cur.games.filter((g) => !ids.has(g.id) && g.started_at < oldest) : [];
+        return { status: "ready", games: [...fresh, ...older], next: older.length && cur.status === "ready"
+          ? cur.next : r.data.next_before, more: false, moreError: false };
+      });
     });
     return () => { live = false; };
   }, []);
+
+  useEffect(() => {
+    if (list.status === "loading") return;
+    if (cacheKey && list.status === "ready" && !list.more) remember(cacheKey, list);
+    onReady?.();
+  }, [list, cacheKey, onReady]);
 
   const loadMore = () => {
     if (list.status !== "ready" || list.next === null || list.more) return;

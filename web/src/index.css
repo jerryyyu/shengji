@@ -171,7 +171,8 @@ textarea:focus-visible {
 }
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.4;
   cursor: default;
 }
@@ -4754,6 +4755,9 @@ button.games-row { cursor: pointer; }
   cursor: pointer;
 }
 .topbar-account.on { border-color: var(--gold-soft); }
+/* drawn 36px tall; ::before makes the tap area 44px inside the 56px bar */
+.topbar-account { position: relative; }
+.topbar-account::before { content: ""; position: absolute; inset: -5px 0; }
 .topbar-account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-caret { color: var(--muted-2); font-size: 11px; }
 .topbar-menu {
@@ -4772,7 +4776,7 @@ button.games-row { cursor: pointer; }
 }
 .topbar-menu button {
   appearance: none;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 12px;
   border: 0;
   border-radius: 8px;
@@ -4871,7 +4875,10 @@ button.games-row { cursor: pointer; }
   color: #fff;
 }
 .segmented { flex: none; display: flex; height: 32px; padding: 2px; border-radius: 9px; background: var(--grp); }
+/* the buttons draw 28px inside the 32px track; ::before stretches each tap
+   area to 44px, 6px past the track, which the 14px column gap leaves clear */
 .segmented-btn {
+  position: relative;
   appearance: none;
   flex: 1;
   border: 0;
@@ -4882,6 +4889,7 @@ button.games-row { cursor: pointer; }
   font-weight: 500;
   cursor: pointer;
 }
+.segmented-btn::before { content: ""; position: absolute; inset: -8px 0; }
 .segmented-btn.on { background: var(--seg-on); color: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
 
 .grp { flex: none; list-style: none; margin: 0; padding: 0; border-radius: 12px; overflow: hidden; background: var(--grp); }
@@ -4920,6 +4928,9 @@ button.grp-row:disabled { cursor: default; }
 }
 .grp-value.chev::after { content: "›"; color: var(--muted-2); font-size: 22px; line-height: 1; }
 .grp-row.destructive { color: var(--destructive); }
+.grp-row[aria-busy="true"] { cursor: progress; }
+.me-saving { font-size: var(--fs-15); }
+.grp-error { margin: 0; padding: 0 16px 10px; font-size: var(--fs-13); line-height: 1.35; color: var(--destructive); }
 .grp-head { margin: 4px 16px -6px; font-size: var(--fs-13); font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
 .grp-foot { margin: -4px 16px 0; font-size: var(--fs-13); line-height: 1.35; color: var(--muted); }
 .grp-inset { padding: 4px 16px 12px; }
@@ -4972,22 +4983,6 @@ button.grp-row:disabled { cursor: default; }
 .signin-card .google-signin { display: flex; flex-direction: column; align-items: center; }
 .signin-card .google-signin-slot { width: 100%; display: flex; justify-content: center; }
 .signin-card p.signin-foot { margin-top: -4px; font-size: var(--fs-12); color: var(--muted-2); }
-.apple-signin {
-  appearance: none;
-  height: 44px;
-  width: 100%;
-  max-width: 400px;
-  align-self: center;
-  border: 0;
-  border-radius: 999px;
-  background: #000;
-  box-shadow: inset 0 0 0 1px #3a3f4a;
-  color: #fff;
-  font-size: var(--fs-15);
-  font-weight: 600;
-  opacity: 0.45;
-}
-
 .me-who { display: flex; align-items: center; gap: 14px; }
 .me-who-text { min-width: 0; }
 .me-name { font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; line-height: 1.15; color: #fff; overflow-wrap: anywhere; }

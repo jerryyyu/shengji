@@ -54,10 +54,10 @@ from . import accounts
 
 log = logging.getLogger(__name__)
 
-START_RATING = 1500.0
+START_RATING = accounts.START_RATING
 # The served release's fixed rating. Every bot seat is rated this, so a
 # stronger release gets a higher constant from its measured duel margin.
-BOT_RATING = 1500.0
+BOT_RATING = 1000.0
 # A guest has no rating; their seat counts like a bot's.
 GUEST_RATING = BOT_RATING
 # Holding the deal (the kitty, the first lead and the defence threshold of

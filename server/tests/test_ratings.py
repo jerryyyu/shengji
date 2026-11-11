@@ -111,10 +111,10 @@ def env(accounts_on, client):
 def test_expected_score_and_round_score_worked_numbers():
     from shengji.api import ratings as r
 
-    assert r.expected_score(1500, 1500) == pytest.approx(0.5)
+    assert r.expected_score(1000, 1000) == pytest.approx(0.5)
     # 40 points of banker advantage between otherwise equal teams
-    assert r.expected_score(1540, 1500) == pytest.approx(0.557312, abs=1e-6)
-    assert r.expected_score(1500, 1900) == pytest.approx(1 / 11, abs=1e-9)
+    assert r.expected_score(1040, 1000) == pytest.approx(0.557312, abs=1e-6)
+    assert r.expected_score(1000, 1400) == pytest.approx(1 / 11, abs=1e-9)
     assert r.round_score(True, 1) == pytest.approx(2 / 3)
     assert r.round_score(True, 2) == pytest.approx(5 / 6)
     assert r.round_score(True, 3) == pytest.approx(1.0)
@@ -130,8 +130,14 @@ def test_expected_score_and_round_score_worked_numbers():
 def test_team_strength_is_the_seat_mean_plus_the_banker_side():
     from shengji.api import ratings as r
 
-    assert r.team_strengths([1600, 1500, 1500, 1500], banker_team=0) == (1590.0, 1500.0)
-    assert r.team_strengths([1600, 1500, 1500, 1500], banker_team=1) == (1550.0, 1540.0)
+    assert r.team_strengths([1100, 1000, 1000, 1000], banker_team=0) == (1090.0, 1000.0)
+    assert r.team_strengths([1100, 1000, 1000, 1000], banker_team=1) == (1050.0, 1040.0)
+
+
+def test_new_accounts_bots_and_guests_all_start_at_1000():
+    from shengji.api import accounts, ratings as r
+
+    assert r.START_RATING == r.BOT_RATING == r.GUEST_RATING == accounts.START_RATING == 1000.0
 
 
 def test_engine_level_change_is_zero_for_an_attacker_takeover(monkeypatch):
@@ -162,7 +168,9 @@ def test_a_signed_in_player_vs_bots_gets_the_worked_delta(env, monkeypatch):
     assert event["actual"] == pytest.approx(5 / 6)
     assert event["k"] == 40
     assert event["delta"] == pytest.approx(40 * (5 / 6 - 0.557312), abs=1e-4)   # +11.04
-    assert event["rating_after"] == pytest.approx(1500 + event["delta"])
+    assert event["delta"] == pytest.approx(11.04, abs=0.005)
+    assert event["rating_before"] == 1000
+    assert event["rating_after"] == pytest.approx(1000 + event["delta"])
     assert store.user(uid)["rating"] == pytest.approx(event["rating_after"])
     assert store.user(uid)["rated_rounds"] == 1
     assert event["levels"] == 2 and event["won"] == 1 and event["partner_bot"] == 1
@@ -186,8 +194,8 @@ def test_partners_move_in_lockstep_and_bots_and_guests_are_never_rated(env, monk
     srv, store, _ = env
     a, _ = _user(store, "alice")
     b, _ = _user(store, "bob")
-    _set(store, a, 1600, rounds=30)
-    _set(store, b, 1500, rounds=30)
+    _set(store, a, 1100, rounds=30)
+    _set(store, b, 1000, rounds=30)
     _force_outcome(monkeypatch, 130)           # attackers 130: they win 1 level
     table = Table(srv, [a, None, b, "bot"])
     result = table.play_round(banker=1)
@@ -196,15 +204,15 @@ def test_partners_move_in_lockstep_and_bots_and_guests_are_never_rated(env, monk
     assert sorted(e["user_id"] for e in events) == [a, b]
     da, db = (e["delta"] for e in sorted(events, key=lambda e: e["user_id"]))
     assert da == pytest.approx(db)
-    # team 0 = (1600 + 1500) / 2 = 1550; team 1 = guest 1500 + bot 1500, banker +40
-    exp = 1 / (1 + 10 ** ((1540 - 1550) / 400))
+    # team 0 = (1100 + 1000) / 2 = 1050; team 1 = guest 1000 + bot 1000, banker +40
+    exp = 1 / (1 + 10 ** ((1040 - 1050) / 400))
     assert events[0]["expected"] == pytest.approx(exp)
     assert da == pytest.approx(20 * (2 / 3 - exp))
     with closing(sqlite3.connect(store.path)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 2
 
 
-def test_a_guest_seat_counts_1500_whatever_the_guest_is_called(env, monkeypatch):
+def test_a_guest_seat_counts_1000_whatever_the_guest_is_called(env, monkeypatch):
     srv, store, _ = env
     uid, _ = _user(store, "host")
     _force_outcome(monkeypatch, 30)
@@ -218,7 +226,7 @@ def test_a_provisional_player_moves_faster_than_an_established_partner(env, monk
     srv, store, _ = env
     new, _ = _user(store, "newbie")
     old, _ = _user(store, "veteran")
-    _set(store, old, 1500, rounds=40)
+    _set(store, old, 1000, rounds=40)
     _force_outcome(monkeypatch, 30)
     Table(srv, [new, "bot", old, "bot"]).play_round(banker=0)
     by = {e["user_id"]: e for e in _events(store)}
@@ -331,7 +339,7 @@ def test_a_bot_seat_claimed_mid_round_is_rated_from_the_next_round(env, monkeypa
     _claim(table.room.seats[1], late, "Late")
     table.finish()
     assert [e["user_id"] for e in _events(store)] == [host]
-    assert store.user(late)["rated_rounds"] == 0 and store.user(late)["rating"] == 1500
+    assert store.user(late)["rated_rounds"] == 0 and store.user(late)["rating"] == 1000
     # Seated when the next round starts, the claimant is rated for it.
     table.play_round()
     second = sorted(e["user_id"] for e in _events(store) if e["round_no"] == 2)
@@ -553,7 +561,7 @@ def test_leaderboard_orders_by_rating_with_top_20_and_the_viewers_own_row(env):
     assert ratings_shown == sorted(ratings_shown, reverse=True)
     assert board["me"]["rank"] == 26 and board["me"]["rating"] == 1100
     assert board["me"]["provisional"] is True and board["me"]["levels_per_round"] == -1.0
-    assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1500}
+    assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1000}
     week = ratings.leaderboard(store, "week", None, now=now)
     assert "Stale" not in [r["name"] for r in week["players"]] and week["me"] is None
     assert week["players"][0]["week_delta"] == 50       # 25 rounds of +2 this week
@@ -599,11 +607,11 @@ def test_api_leaderboard_stats_and_visibility(env, monkeypatch):
     assert stats["defender_won_pct"] == 100.0 and stats["attacker_won_pct"] is None
     assert stats["best_streak"] == 3 and stats["levels_per_round"] == 2.0
     assert stats["games_won"] == 0 and stats["visible"] is True
-    assert len(stats["history"]) == 4 and stats["history"][0] == 1500
-    assert stats["history"][-1] == stats["rating"] > 1500
+    assert len(stats["history"]) == 4 and stats["history"][0] == 1000
+    assert stats["history"][-1] == stats["rating"] > 1000
     [game] = stats["recent_games"]
     assert game["rounds"] == 3 and game["partner_bot"] is True and game["opponents_bots"] == 2
-    assert abs(game["delta"] - (stats["rating"] - 1500)) <= 1
+    assert abs(game["delta"] - (stats["rating"] - 1000)) <= 1
 
     off = client.post("/api/me/leaderboard-visibility", json={"visible": False}, headers=headers)
     assert off.json() == {"visible": False}
@@ -633,18 +641,125 @@ def test_a_v3_database_gains_the_rating_tables_idempotently(accounts_on, tmp_pat
     real = list(accounts_on.SCHEMA)
     accounts_on.SCHEMA[:] = real[:3]
     try:
-        old.upsert_user(_claims(sub="before"))
         assert old.schema_version() == 3
+        # A v3 database has no rating column, so its row is written by hand.
+        with closing(sqlite3.connect(path)) as db:
+            db.execute("""INSERT INTO users(google_sub, email, name, picture, created_at,
+                                            last_login_at) VALUES ('before', NULL, 'B', NULL, 1, 1)""")
+            db.commit()
     finally:
         accounts_on.SCHEMA[:] = real
     store = accounts_on.Store(path)
-    assert store.schema_version() == len(real) == 4
+    assert store.schema_version() == len(real) == 5
     row = store.user(1)
-    assert row["rating"] == 1500 and row["rated_rounds"] == 0 and row["leaderboard_visible"] == 1
+    assert row["rating"] == 1000 and row["rated_rounds"] == 0 and row["leaderboard_visible"] == 1
     with closing(sqlite3.connect(path)) as db:
         db.row_factory = sqlite3.Row
         accounts_on._migrate_v4(db)            # a re-run changes nothing
         db.commit()
         names = {r[0] for r in db.execute("SELECT name FROM sqlite_master")}
     assert {"rating_events", "rating_events_user", "rating_events_created"} <= names
-    assert accounts_on.Store(path).schema_version() == 4
+    assert accounts_on.Store(path).schema_version() == 5
+
+
+def _v4_database(accounts_on, path, ratings_by_sub):
+    """A database at schema v4 (the 1500 scale) holding one user per
+    ``ratings_by_sub`` entry and one rated round for each rated user."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    real = list(accounts_on.SCHEMA)
+    accounts_on.SCHEMA[:] = real[:4]
+    try:
+        old = accounts_on.Store(path)
+        ids = {}
+        for sub, rating in ratings_by_sub.items():
+            uid = old.upsert_user(_claims(sub=sub))["id"]
+            ids[sub] = uid
+            with closing(sqlite3.connect(path)) as db:
+                db.execute("UPDATE users SET rating = ? WHERE id = ?", (rating, uid))
+                if rating != 1500:
+                    delta = rating - 1500
+                    db.execute(
+                        """INSERT INTO rating_events(game_id, round_no, user_id, created_at,
+                               team, banker_team, won, levels, expected, actual, k,
+                               rating_before, rating_after, delta)
+                           VALUES ('g1', 1, ?, 1, 0, 0, ?, 2, 0.557312, 0.8333, 40, 1500, ?, ?)""",
+                        (uid, int(delta > 0), rating, delta))
+                db.commit()
+        assert old.schema_version() == 4
+    finally:
+        accounts_on.SCHEMA[:] = real
+    return ids
+
+
+def test_a_v4_database_moves_to_the_1000_scale_once(accounts_on, tmp_path):
+    from shengji.api import ratings
+
+    path = tmp_path / "v4" / "accounts.sqlite3"
+    ids = _v4_database(accounts_on, path, {"even": 1500, "up": 1532, "down": 1471})
+    before = {e["user_id"]: e for e in _events_at(path)}
+    with closing(sqlite3.connect(path)) as db:
+        assert db.execute("SELECT rating FROM users WHERE id = ?", (ids["even"],)).fetchone()[0] == 1500
+
+    store = accounts_on.Store(path)
+    assert store.schema_version() == 5
+    assert [store.user(ids[s])["rating"] for s in ("even", "up", "down")] == [1000, 1032, 971]
+    after = {e["user_id"]: e for e in _events_at(path)}
+    assert set(after) == {ids["up"], ids["down"]}
+    for uid, event in after.items():
+        old = before[uid]
+        assert event["rating_before"] == old["rating_before"] - 500 == 1000
+        assert event["rating_after"] == old["rating_after"] - 500
+        for unchanged in ("delta", "expected", "actual", "k"):
+            assert event[unchanged] == old[unchanged]
+        assert event["rating_after"] - event["rating_before"] == pytest.approx(event["delta"])
+
+    # A second open, a direct re-run of the step and a lost version row each
+    # leave the shift applied exactly once.
+    assert accounts_on.Store(path).schema_version() == 5
+    with closing(sqlite3.connect(path)) as db:
+        db.row_factory = sqlite3.Row
+        accounts_on._migrate_v5(db)
+        db.execute("UPDATE schema_version SET version = 4")
+        db.commit()
+    again = accounts_on.Store(path)
+    assert again.schema_version() == 5
+    assert [again.user(ids[s])["rating"] for s in ("even", "up", "down")] == [1000, 1032, 971]
+    assert {e["user_id"]: e["rating_after"] for e in _events_at(path)} == {
+        uid: e["rating_after"] for uid, e in after.items()}
+
+    newcomer = again.upsert_user(_claims(sub="after-the-move"))
+    assert newcomer["rating"] == 1000 and newcomer["rated_rounds"] == 0
+    board = ratings.leaderboard(again, "all", None)
+    assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1000}
+
+
+def test_the_scale_move_keeps_every_delta():
+    """Expected scores depend only on rating gaps, so a migrated player meets
+    the 1000 bots exactly as they met the 1500 bots."""
+    from shengji.api import ratings as r
+
+    for rating in (1532, 1471, 1500, 1900):
+        for banker in (0, 1):
+            for won, levels in ((True, 2), (False, 1), (True, 0)):
+                deltas = []
+                for shift, bot in ((0, 1500), (500, r.BOT_RATING)):
+                    team, opp = r.team_strengths([rating - shift, bot, bot, bot], banker)
+                    deltas.append(r.k_factor(0) * (r.round_score(won, levels)
+                                                   - r.expected_score(team, opp)))
+                assert deltas[1] == pytest.approx(deltas[0], abs=1e-12)
+
+
+def test_a_fresh_database_starts_new_accounts_at_1000(accounts_on):
+    store = accounts_on.STORE
+    assert store.schema_version() == 5
+    assert store.upsert_user(_claims(sub="fresh"))["rating"] == 1000
+    # A returning login never resets a moved rating.
+    uid = store.upsert_user(_claims(sub="fresh"))["id"]
+    _set(store, uid, 1044)
+    assert store.upsert_user(_claims(sub="fresh"))["rating"] == 1044
+
+
+def _events_at(path):
+    with closing(sqlite3.connect(path)) as db:
+        db.row_factory = sqlite3.Row
+        return [dict(r) for r in db.execute("SELECT * FROM rating_events ORDER BY id")]

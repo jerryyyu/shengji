@@ -220,7 +220,7 @@ function GuestMe({ clientId }: { clientId: string | null }) {
       {clientId ? (
         <div className="signin-card">
           <h3>Keep your games and get a rating</h3>
-          <p>Sign in to save every game with replay, start at rating 1500 and appear on the leaderboard.
+          <p>Sign in to save every game with replay, start at rating 1000 and appear on the leaderboard.
             Guest play stays free and needs no account.</p>
           <GoogleSignIn clientId={clientId} />
           <button type="button" className="apple-signin" disabled aria-describedby="apple-soon">

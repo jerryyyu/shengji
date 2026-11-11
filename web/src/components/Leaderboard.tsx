@@ -56,7 +56,7 @@ function SignInToRank({ clientId }: { clientId: string }) {
   return (
     <div className="signin-card compact">
       <h3>Sign in to be ranked</h3>
-      <p>Your games as a guest aren’t rated. Sign in and your first rated game starts you at 1500.</p>
+      <p>Your games as a guest aren’t rated. Sign in and your first rated game starts you at 1000.</p>
       <GoogleSignIn clientId={clientId} />
       <p className="signin-foot">Sign in with Apple is coming soon</p>
     </div>

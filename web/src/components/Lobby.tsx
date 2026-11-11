@@ -1,6 +1,5 @@
 import type { RoomSeats, ServerMsg } from "../protocol";
 import { openHowto } from "../howto/route";
-import { prefersReducedMotion } from "../motion";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
@@ -10,59 +9,13 @@ import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
 import GoogleSignIn from "./GoogleSignIn";
+import LobbyPreview from "./LobbyPreview";
 
 interface LobbyProps {
   status: ConnStatus;
   error: string | null;
   /** Arm App's fill-with-bots-then-start orchestration before creating a room. */
   onArmAutoFill: () => void;
-}
-
-// Signed-out visitors see a few seconds of real play under the title. The box
-// keeps the clip's 1200:630 shape before it loads, so nothing below it moves;
-// reduced motion gets the still frame instead.
-function PreviewVideo() {
-  // React leaves the muted attribute unset on first render, and iOS autoplays only a muted clip, so the
-  // clip is muted and started here. When the browser still refuses (iOS Low Power Mode blocks every
-  // autoplay), the still frame replaces it rather than leaving the system play button over the box.
-  const ref = useRef<HTMLVideoElement>(null);
-  const [still, setStill] = useState(prefersReducedMotion());
-  useEffect(() => {
-    const v = ref.current;
-    if (!v) return;
-    v.muted = true;
-    v.defaultMuted = true;
-    const start = () => {
-      const started = v.play();
-      if (started && typeof started.catch === "function") started.catch(() => setStill(true));
-    };
-    start();
-    // iOS pauses a page's video when the app goes to the background and does not resume it, and a
-    // looped clip can freeze at the seam in a web view: restart it on return and loop it here.
-    const onVisible = () => { if (document.visibilityState === "visible" && v.paused) start(); };
-    const onEnded = () => { v.currentTime = 0; start(); };
-    document.addEventListener("visibilitychange", onVisible);
-    v.addEventListener("ended", onEnded);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisible);
-      v.removeEventListener("ended", onEnded);
-    };
-  }, []);
-  return still ? (
-    <img className="lobby-preview" src="/og/preview.jpg" alt="" aria-hidden="true" />
-  ) : (
-    <video
-      ref={ref}
-      className="lobby-preview"
-      muted
-      playsInline
-      autoPlay
-      preload="auto"
-      poster="/og/preview.jpg"
-      src="/og/preview.mp4"
-      aria-hidden="true"
-    />
-  );
 }
 
 const STATUS_LABEL: Record<ConnStatus, string> = {
@@ -269,7 +222,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
         <p className="game-subtitle">Tractor · two decks</p>
-        <PreviewVideo />
+        <LobbyPreview />
 
         {account.status === "in" && account.user ? (
           <AccountChip user={account.user} />

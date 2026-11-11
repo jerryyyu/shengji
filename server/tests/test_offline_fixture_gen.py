@@ -1,7 +1,9 @@
-"""The offline-engine fixtures are current, deterministic and complete.
+"""The offline-engine and offline-bot fixtures are current, deterministic and complete.
 
 ``web/src/offline/fixtures`` holds what ``scripts/gen_offline_engine_fixtures.py``
-records from this engine; the TypeScript port is tested against it in vitest.
+records from this engine and what ``scripts/gen_offline_bot_fixtures.py``
+records from SmartBot and HeuristicBot; the TypeScript ports are tested
+against them in vitest.
 Regenerating here and comparing byte for byte catches an engine or bot change
 that leaves the committed fixtures stale, and under ``SHENGJI_FAST=1`` also
 holds the compiled engine to the same recorded verdicts.
@@ -14,6 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import gen_offline_bot_fixtures as botgen  # noqa: E402
 import gen_offline_engine_fixtures as gen  # noqa: E402
 
 from shengji.engine.cards import Ordering, make_deck  # noqa: E402
@@ -58,6 +61,7 @@ def test_committed_fixtures_exercise_every_rule_area():
                 "You must play all your cards of the led suit."):
         assert msg in probe_errors, msg
     assert sorted(f.name for f in FIXTURES.iterdir()) == [
+        "bot_primitives.json.gz", "bot_rounds.jsonl.gz",
         "primitives.json.gz", "rounds.jsonl.gz"]
     assert sum(f.stat().st_size for f in FIXTURES.iterdir()) < 5_000_000
 
@@ -79,3 +83,36 @@ def test_enumeration_counts_match_enumerations():
         leads = gen.lead_candidates(hand, o)
         assert len(leads) == gen.count_lead_candidates(hand, o)
         assert all(len({o.eff_suit(c) for c in p}) == 1 for p in leads)
+
+
+def test_committed_bot_rounds_regenerate_identically():
+    text = _committed("bot_rounds.jsonl.gz")
+    header = json.loads(text.split("\n", 1)[0])
+    assert header["format"] == botgen.FORMAT
+    assert botgen.rounds_text(header["rounds"], header["mixed"],
+                              header["seed"]) == text
+
+
+def test_committed_bot_primitives_regenerate_identically():
+    assert botgen.primitives_text() == _committed("bot_primitives.json.gz")
+
+
+def test_committed_bot_fixtures_cover_both_bots_and_every_decision():
+    text = _committed("bot_rounds.jsonl.gz")
+    header = json.loads(text.split("\n", 1)[0])
+    assert header["rounds"] >= 200 and header["mixed"] >= 50
+    stats = header["stats"]
+    for kind in ("smart", "heuristic"):
+        for key in ("declare_decisions", "declares", "bury", "lead",
+                    "follow"):
+            assert stats[f"{kind}_{key}"] > 0, (kind, key)
+    rounds = [json.loads(line) for line in text.splitlines()[1:]]
+    assert any(r["trump"][0] is None for r in rounds), "no no-trump round"
+    prim = json.loads(_committed("bot_primitives.json.gz"))
+    outcomes = [c[5] for c in prim["cheapest"]]
+    assert any(isinstance(o, list) for o in outcomes)
+    assert any(o is None for o in outcomes)
+
+
+def test_bot_generation_is_deterministic():
+    assert botgen.rounds_text(2, 1, 7) == botgen.rounds_text(2, 1, 7)

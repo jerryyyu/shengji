@@ -14,6 +14,9 @@ import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
 import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
+import type { Toast } from "../toast";
+import ToastView from "./ToastView";
+import { leadToFollow } from "../follow";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -129,7 +132,8 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         <span className={`seat-dot t${player.team}`} aria-hidden="true" />
         {player.is_banker ? <span className="banker-crown" title="Banker">👑</span> : null}
         <span className="opp-name-text">{player.name}</span>
-        {onTurn && actionPhase ? <span className="turn-dots" aria-hidden="true">…</span> : null}
+        {/* always drawn, so the label's width never changes with the turn */}
+        <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
         {!player.connected && !player.is_bot ? (
@@ -188,7 +192,7 @@ function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
   }, [result]);           // once per round result
 }
 
-export default function Table({ state, toast = null }: { state: GameState; toast?: string | null }) {
+export default function Table({ state, toast = null }: { state: GameState; toast?: Toast | null }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -296,6 +300,8 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const selectable =
     (state.phase === "bury" && iAmBanker) || state.phase === "play";
 
+  const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
+
   useTableHaptics(state, shownLastTrick);
 
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
@@ -368,15 +374,21 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     );
   } else if (state.phase === "play" && myTurn) {
     const choosing = selectedIds.length === 0 && pending === null;
+    // following, a play is exactly as many cards as the lead
+    const need = lead ? lead.length : null;
+    const countWrong = need !== null && selectedIds.length !== need;
+    const playLabel = selectedIds.length === 0
+      ? "Play"
+      : need !== null && need > 1 ? `Play (${selectedIds.length}/${need})` : `Play (${selectedIds.length})`;
     actionBar = (
       <>
         <button
           className={`btn primary${choosing ? " your-turn" : ""}`}
-          disabled={selectedIds.length === 0 || pending !== null || !online}
+          disabled={selectedIds.length === 0 || countWrong || pending !== null || !online}
           onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
         >
           {/* a phone shows "Your turn" on Play until you choose a card */}
-          <span className="play-text">{`Play ${selectedIds.length > 0 ? `(${selectedIds.length})` : ""}`}</span>
+          <span className="play-text">{playLabel}</span>
           <span className="your-turn-text">Your turn</span>
           {/* a phone says what to do under it until a card is chosen */}
         </button>
@@ -442,7 +454,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       )}
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
-      {toast ? <div className="toast" key={toast}>{toast}</div> : null}
+      {toast ? <ToastView key={toast.id} toast={toast} /> : null}
     </div>
   );
 }

@@ -44,7 +44,11 @@ function rule(block: string, selector: string): Record<string, string> {
 }
 
 const block = phoneBlock();
-const px = (v: string) => Number(/(-?[\d.]+)px/.exec(v)![1]);
+/** A length in px; a chrome text token (var(--fs-N)) is N px at the default text size. */
+const px = (v: string) => {
+  const token = /var\(--fs-(\d+)\)/.exec(v);
+  return token ? Number(token[1]) : Number(/(-?[\d.]+)px/.exec(v)![1]);
+};
 
 interface Viewport { w: number; h: number; left: number; right: number; bottom: number; top: number }
 
@@ -163,9 +167,12 @@ function translateFrac(transform: string | undefined): [number, number] {
 
 /** The table's regions at one viewport, from the tokens and the rules below.
  *  `phase` picks the play layout (your slot is your row) or the setup one
- *  (the row sits under the cross). Every slot holds a `cards`-card play. */
-function geometry(vp: Viewport, vars0: Record<string, string>, phase: "play" | "setup" = "play", cards = 4) {
-  const vars = phase === "play" ? { ...vars0, ...rule(block, ".table-screen.phase-play") } : vars0;
+ *  (the row sits under the cross). Every slot holds a `cards`-card play: four
+ *  in play, a two-card declaration while setting up. */
+function geometry(vp: Viewport, vars0: Record<string, string>, phase: "play" | "setup" = "play",
+                  cards = phase === "play" ? 4 : 2) {
+  const vars = phase === "play" ? { ...vars0, ...rule(block, ".table-screen.phase-play") }
+    : { ...vars0, ...rule(block, ".table-screen.phase-deal, .table-screen.phase-declare, .table-screen.phase-bury") };
   const L = (name: string) => evalLength(vars[name], vp, vars);
   const has = (name: string) => vars[name] !== undefined;
   const tcw = L("--trick-cw");
@@ -219,7 +226,9 @@ function geometry(vp: Viewport, vars0: Record<string, string>, phase: "play" | "
   const pill = (sel: string): Rect => {
     const r = { ...shared, ...rule(block, sel) };
     const [fx, fy] = translateFrac(r.transform);
-    const x = evalPos(r.left, vp.w, vp, vars) + fx * pillW;
+    const x = r.left && r.left !== "auto"
+      ? evalPos(r.left, vp.w, vp, vars) + fx * pillW
+      : vp.w - evalPos(r.right, vp.w, vp, vars) - pillW + fx * pillW;
     const y = evalPos(r.top, vp.h, vp, vars) + fy * pillH;
     return { x0: x, x1: x + pillW, y0: y, y1: y + pillH };
   };
@@ -278,7 +287,7 @@ describe("phone table geometry", () => {
     expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-reserve) + var(--gap-v))");
     expect(rule(block, ".table-screen.phase-play")["--row-reserve"]).toBe("0px");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right").top)
-      .toBe("calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy))");
+      .toBe("max(calc(var(--header-bottom) + var(--space-xs)), calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy) - var(--trick-ch) / 2 - var(--space-s) - var(--header-h)))");
   });
 
   it("reserves exactly the hand's height: lift above, card, 16px under the home indicator", () => {
@@ -304,22 +313,28 @@ describe("phone table geometry", () => {
         for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
           expect(gap(slots[i], slots[j])).toBeGreaterThanOrEqual(8 - 0.01);
         }
-        // side labels: outside their slot, centred on its cards, 8pt clear of
-        // every slot, the header, your row and the safe-area edges
-        expect(g.pills.left.x1).toBeLessThanOrEqual(g.cards.left.x0 - 8 + 0.01);
-        expect(g.pills.right.x0).toBeGreaterThanOrEqual(g.cards.right.x1 + 8 - 0.01);
+        // side labels: centred over their slot's first card, above its
+        // cards; at their widest 8pt clear of the top and bottom slots, your
+        // row and the safe-area edges, and under the header
+        expect((g.pills.left.x0 + g.pills.left.x1) / 2).toBeCloseTo(g.cards.left.x0 + g.tcw / 2, 5);
+        expect((g.pills.right.x0 + g.pills.right.x1) / 2).toBeCloseTo(g.cards.right.x1 - g.tcw / 2, 5);
         for (const [p, s] of [[g.pills.left, g.cards.left], [g.pills.right, g.cards.right]] as const) {
-          expect(Math.abs((p.y0 + p.y1) / 2 - (s.y0 + s.y1) / 2)).toBeLessThanOrEqual(1);
+          expect(p.y1).toBeLessThanOrEqual(s.y0 + 0.01);
         }
         for (const p of pills) {
-          expect(p.y0).toBeGreaterThanOrEqual(g.header);
-          for (const k of ["top", "bottom"]) expect(gap(p, g.slots[k])).toBeGreaterThanOrEqual(8 - 0.01);
+          expect(p.y0).toBeGreaterThanOrEqual(g.header + 4 - 0.01);
+          // the cards and the tag line under them, each on its own
+          for (const k of ["top", "bottom"]) {
+            expect(gap(p, g.cards[k])).toBeGreaterThanOrEqual(8 - 0.01);
+            expect(gap(p, g.tags[k])).toBeGreaterThanOrEqual(8 - 0.01);
+          }
           expect(gap(p, g.row)).toBeGreaterThanOrEqual(8 - 0.01);
           expect(p.x0).toBeGreaterThanOrEqual(vp.left + 4 - 0.01);
           expect(p.x1).toBeLessThanOrEqual(vp.w - vp.right - 4 + 0.01);
         }
-        // a label always has room for a crown and a short name
-        expect(g.pillW).toBeGreaterThanOrEqual(60);
+        // a label has room for a crown and a 13-letter name (138px); the
+        // 13 mini, narrow between its insets, for about 11 letters
+        expect(g.pillW).toBeGreaterThanOrEqual(name.includes("mini") ? 120 : 138);
         // your row: centred, above the hand's lift, clear of the side slots
         expect(Math.abs(g.rowCentre - g.cx)).toBeLessThanOrEqual(2);
         for (const r of [g.row, g.crown]) {
@@ -368,11 +383,12 @@ describe("phone table geometry", () => {
         }
       });
 
-      it("keeps every seat's label the same distance from its cards", () => {
+      it("keeps a side seat's label above its cards, never closer than the top seat's label is to its own", () => {
         for (const g of [play, setup]) {
-          const top = g.cards.top.y0 - g.topLabelBottom;
-          expect(Math.abs((g.cards.left.x0 - g.pills.left.x1) - top)).toBeLessThanOrEqual(1);
-          expect(Math.abs((g.pills.right.x0 - g.cards.right.x1) - top)).toBeLessThanOrEqual(1);
+          const top = Math.min(8, g.cards.top.y0 - g.topLabelBottom);
+          for (const [p, c] of [[g.pills.left, g.cards.left], [g.pills.right, g.cards.right]] as const) {
+            expect(c.y0 - p.y1).toBeGreaterThanOrEqual(Math.min(4, top) - 0.01);
+          }
         }
       });
 
@@ -444,7 +460,7 @@ describe("phone controls", () => {
   });
 
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
-    expect(tokens["--pill-max"]).toBe("min(120px, calc(var(--view-w) / 2 - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))))");
+    expect(tokens["--pill-max"]).toContain("calc(2 * (var(--side-out) - var(--top-reach) - var(--space-s)) - var(--trick-cw))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");
     expect(rule(block, ".opponent.pos-top")["max-width"]).toContain("min(200px");
     const text = rule(block, ".opp-name-text");
@@ -454,7 +470,7 @@ describe("phone controls", () => {
     expect(px(rule(block, ".opp-name")["font-size"])).toBe(13);
     expect(px(rule(block, '.opponent[data-name-len="m"] .opp-name, .opponent[data-name-len="l"] .opp-name')["font-size"])).toBe(12);
     for (const m of block.matchAll(/\.opp-name[^{]*\{([^}]*)\}/g)) {
-      const size = /font-size:\s*([\d.]+)px/.exec(m[1]);
+      const size = /font-size:\s*(?:var\(--fs-)?([\d.]+)/.exec(m[1]);
       if (size) expect(Number(size[1])).toBeGreaterThanOrEqual(12);
     }
     // a human's turn is the fill, not a second line of text
@@ -470,21 +486,42 @@ describe("phone controls", () => {
     }
   });
 
+  it("draws the trick tags at 12px inside the slot's 20px tag line", () => {
+    for (const sel of [".lead-tag, .win-tag", ".declare-tag"]) {
+      const r = rule(block, sel);
+      expect(px(r["font-size"])).toBeGreaterThanOrEqual(12);
+      const [py] = r.padding.split(" ").map(px);
+      expect(px(r["line-height"]) + 2 * py).toBeLessThanOrEqual(20);
+    }
+  });
+
   it("shows whose turn as a filled gold label ending in \u2026, the team as a dot inside it", () => {
     const on = rule(block, ".opponent.on-turn");
     expect(on.background).toBe("var(--gold)");
     expect(on["box-shadow"]).toBe("none");
     expect(on.animation).toBeUndefined();
     expect(rule(block, ".opponent.on-turn .opp-name").color).toBe("#1a1a1a");
-    expect(rule(block, ".opponent .turn-dots").display).toBe("inline");
-    // on turn the fill stands for the seat; the dot's room goes to the "…"
-    expect(rule(block, ".opponent.on-turn .seat-dot").display).toBe("none");
+    expect(rule(block, ".opponent .turn-dots").display).toBe("inline-block");
+    // on turn the fill stands for the seat: the dot is hidden but keeps its room
+    expect(rule(block, ".opponent.on-turn .seat-dot").visibility).toBe("hidden");
     // no coloured edge: the team is the dot
     expect(/\.opponent[^{]*\{[^}]*border-left/.test(block)).toBe(false);
     expect(rule(block, ".opponent .seat-dot.t0").background).toBe("var(--team0)");
     expect(rule(block, ".opponent .seat-dot.t1").background).toBe("var(--team1)");
     // off the phone neither mark is drawn
     expect(rule(css.replace(block, ""), ".seat-dot, .turn-dots").display).toBe("none");
+  });
+
+  it("keeps a seat's label one width on and off turn, so its neighbours never shift", () => {
+    // on turn the padding does not change
+    expect(rule(block, ".opponent.on-turn").padding).toBeUndefined();
+    expect(rule(block, ".opponent.on-turn")["padding-right"]).toBeUndefined();
+    // the dot and the "…" both keep their room in both states; only visibility changes
+    const dots = rule(block, ".opponent .turn-dots");
+    expect([dots.display, dots.width, dots.visibility]).toEqual(["inline-block", "10px", "hidden"]);
+    expect(rule(block, ".opponent .turn-dots.shown").visibility).toBe("visible");
+    expect(rule(block, ".opponent.on-turn .seat-dot").display).toBeUndefined();
+    expect(block).not.toMatch(/\.turn-dots[^{]*\{[^}]*display: none/);
   });
 
   it("gives a seat's label a 44px tall tap area", () => {
@@ -703,9 +740,9 @@ describe("the round-end card on a phone", () => {
   });
 });
 
-describe("the lobby on a phone held upright", () => {
+describe("the lobby on a phone, upright or sideways", () => {
   it("fills the screen with the panel colour instead of a card on felt", () => {
-    const i = css.indexOf("@media (max-width: 600px) and (pointer: coarse) {\n  .lobby-screen,");
+    const i = css.indexOf("@media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {\n  .lobby-screen,");
     expect(i).toBeGreaterThan(-1);
     const block = css.slice(i, css.indexOf("\n}\n", i));
     expect(block).toContain("background: linear-gradient(180deg, var(--panel)");

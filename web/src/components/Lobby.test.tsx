@@ -292,7 +292,7 @@ describe("the lobby preview clip and the How to play entry", () => {
     const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
     expect(v).not.toBeNull();
     expect(v.muted).toBe(true);
-    expect(v.loop).toBe(true);
+    expect(v.loop).toBe(false);   // looped in code: the attribute can freeze at the seam on iOS
     expect(v.autoplay).toBe(true);
     expect(v.hasAttribute("playsinline")).toBe(true);
     expect(v.getAttribute("preload")).toBe("auto");
@@ -340,6 +340,24 @@ describe("the lobby preview clip and the How to play entry", () => {
       await act(async () => { await Promise.resolve(); await Promise.resolve(); });
       expect(host.querySelector("video")).toBeNull();
       expect(host.querySelector<HTMLImageElement>("img.lobby-preview")!.getAttribute("src")).toBe("/og/preview.jpg");
+    } finally {
+      play.mockRestore();
+    }
+  });
+
+  it("restarts the clip when the app comes back to the foreground, and at its end", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    try {
+      await render();
+      const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
+      const calls = play.mock.calls.length;
+      Object.defineProperty(v, "paused", { configurable: true, get: () => true });
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+      expect(play.mock.calls.length).toBe(calls + 1);
+      act(() => { v.dispatchEvent(new Event("ended")); });
+      expect(play.mock.calls.length).toBe(calls + 2);
     } finally {
       play.mockRestore();
     }

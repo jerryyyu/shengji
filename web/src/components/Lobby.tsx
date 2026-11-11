@@ -32,8 +32,21 @@ function PreviewVideo() {
     if (!v) return;
     v.muted = true;
     v.defaultMuted = true;
-    const started = v.play();
-    if (started && typeof started.catch === "function") started.catch(() => setStill(true));
+    const start = () => {
+      const started = v.play();
+      if (started && typeof started.catch === "function") started.catch(() => setStill(true));
+    };
+    start();
+    // iOS pauses a page's video when the app goes to the background and does not resume it, and a
+    // looped clip can freeze at the seam in a web view: restart it on return and loop it here.
+    const onVisible = () => { if (document.visibilityState === "visible" && v.paused) start(); };
+    const onEnded = () => { v.currentTime = 0; start(); };
+    document.addEventListener("visibilitychange", onVisible);
+    v.addEventListener("ended", onEnded);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      v.removeEventListener("ended", onEnded);
+    };
   }, []);
   return still ? (
     <img className="lobby-preview" src="/og/preview.jpg" alt="" aria-hidden="true" />
@@ -42,7 +55,6 @@ function PreviewVideo() {
       ref={ref}
       className="lobby-preview"
       muted
-      loop
       playsInline
       autoPlay
       preload="auto"

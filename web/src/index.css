@@ -740,6 +740,29 @@ textarea:focus-visible {
   }
 }
 
+/* A phone held upright has no room for a card on felt: the thin green margin
+   reads as a border. The lobby, room and saved-games screens fill the screen
+   with the panel's own colour instead; the felt stays for the table. */
+@media (max-width: 600px) and (pointer: coarse) {
+  .lobby-screen,
+  .room-screen,
+  .games-screen {
+    background: linear-gradient(180deg, var(--panel) 0%, #171b22 100%);
+  }
+
+  .lobby-screen > .panel,
+  .room-screen > .panel,
+  .games-screen > .panel {
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
 /* A phone's room: the caption keeps clear of the 44px mute button in the
    panel's corner, and the seat tags read at 12px. */
 @media (max-width: 600px) and (pointer: coarse) {

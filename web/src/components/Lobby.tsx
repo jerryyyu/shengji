@@ -8,9 +8,7 @@ import { needsSeatPicker } from "../seatPicker";
 import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
-import GoogleSignIn from "./GoogleSignIn";
 import LobbyPreview from "./LobbyPreview";
-import { followInfoLink } from "../support/route";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -282,11 +280,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
         <p className="game-subtitle">Tractor · two decks</p>
+        {signedIn ? <AccountChip user={signedIn} /> : null}
         <LobbyPreview />
-
-        {account.status === "in" && account.user ? (
-          <AccountChip user={account.user} />
-        ) : null}
 
         {signedIn ? null : (
           <div className="field">
@@ -379,13 +374,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
         {error ? <div className="lobby-error">{error}</div> : null}
 
-        {account.status === "out" && account.clientId ? (
-          <>
-            <p className="signin-upsell">Sign in to save your games and join the leaderboard.</p>
-            <GoogleSignIn clientId={account.clientId} />
-          </>
-        ) : null}
-
         <p className="howto-entry">
           New to Sheng Ji?{" "}
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
@@ -403,11 +391,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             {STATUS_LABEL[status]}
           </div>
         )}
-
-        <nav className="info-links" aria-label="About">
-          <a href="/support" onClick={(e) => followInfoLink(e, "support")}>Support</a>
-          <a href="/privacy" onClick={(e) => followInfoLink(e, "privacy")}>Privacy</a>
-        </nav>
       </div>
     </div>
   );

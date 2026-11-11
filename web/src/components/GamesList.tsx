@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchGame, fetchGames, removeGame, teamPair } from "../replay/api";
 import type { Fetched, GameDetail, GameRow } from "../replay/api";
 import { navigate } from "../replay/route";
 import type { GamesRoute } from "../replay/route";
 import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesStatus";
 import ReplayView from "./ReplayView";
+import { dayLabel } from "../home/dayLabel";
 
 function when(unix: number): string {
   return new Date(unix * 1000).toLocaleString(undefined, {
@@ -59,7 +60,7 @@ function roundLine(seat: number, result: Record<string, unknown> | undefined): s
     + (pts !== undefined ? ` · attackers ${String(pts)}` : "");
 }
 
-function GameView({ id, onRemoved }: { id: string; onRemoved: (id: string) => void }) {
+function GameView({ id }: { id: string }) {
   const [res, setRes] = useState<Fetched<GameDetail> | null>(null);
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -83,7 +84,7 @@ function GameView({ id, onRemoved }: { id: string; onRemoved: (id: string) => vo
     setBusy(true);
     setError(null);
     removeGame(id)
-      .then(() => { onRemoved(id); navigate({ page: "list" }); })
+      .then(() => navigate({ page: "list" }))
       .catch((e: Error) => { setError(e.message); setArmed(false); })
       .finally(() => setBusy(false));
   };
@@ -143,9 +144,40 @@ type ListState =
   | { status: "failed"; reason: "signed_out" | "not_found" | "error"; code: number }
   | { status: "ready"; games: GameRow[]; next: string | null; more: boolean; moreError: boolean };
 
-/** "My games": the signed-in account's history, its games, and replays of
- *  their rounds. The list survives a visit to a game, so back is instant. */
-export default function GamesList({ route, inGame }: { route: GamesRoute; inGame: boolean }) {
+function clock(unix: number): string {
+  return new Date(unix * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+/** "Room ABCD · with Ann, Bot 1, Bea": the other three seats. */
+function gameTitle(game: GameRow): string {
+  const others = [1, 2, 3].map((k) => nameAt(game, (game.seat + k) % 4));
+  return `Room ${game.room_code} · with ${others.join(", ")}`;
+}
+
+function gameSub(game: GameRow): string {
+  const mine = game.seat % 2;
+  const levels = teamPair(game.final_levels);
+  const n = game.rounds.length;
+  const parts = [clock(game.started_at), `${n} round${n === 1 ? "" : "s"}`];
+  if (levels) parts.push(`Levels ${levels[mine]}–${levels[1 - mine]}`);
+  return parts.join(" · ");
+}
+
+/** Consecutive games that started on the same local day. */
+function byDay(games: GameRow[]): { label: string; games: GameRow[] }[] {
+  const out: { label: string; games: GameRow[] }[] = [];
+  for (const g of games) {
+    const label = dayLabel(g.started_at);
+    const last = out[out.length - 1];
+    if (last && last.label === label) last.games.push(g);
+    else out.push({ label, games: [g] });
+  }
+  return out;
+}
+
+/** The signed-in account's saved games, newest first and grouped by day;
+ *  a row opens the game, whose rounds each have a Replay. */
+export function SavedGames({ onPlay }: { onPlay: () => void }) {
   const [list, setList] = useState<ListState>({ status: "loading" });
 
   useEffect(() => {
@@ -174,58 +206,58 @@ export default function GamesList({ route, inGame }: { route: GamesRoute; inGame
     });
   };
 
-  const onRemoved = useCallback((id: string) => {
-    setList((cur) => (cur.status === "ready" ? { ...cur, games: cur.games.filter((g) => g.id !== id) } : cur));
-  }, []);
-
-  let page;
-  if (route.page === "replay") page = <ReplayView id={route.id} round={route.round} />;
-  else if (route.page === "game") page = <GameView id={route.id} onRemoved={onRemoved} />;
-  else {
-    let body;
-    if (list.status === "loading") body = <GamesNotice title="Loading…" />;
-    else if (list.status === "failed") {
-      body = list.reason === "signed_out" ? <SignInPrompt />
-        : <p className="lobby-error" role="alert">Could not load your games ({list.code || "no connection"}).</p>;
-    } else {
-      body = (
-        <>
-          {list.games.length === 0 ? (
-            <GamesNotice title="No saved games yet">
-              <p>Games you play while signed in appear here.</p>
-              <button className="btn gold big games-cta" onClick={() => navigate(null)}>
-                {inGame ? "Back to game" : "Play a game"}
-              </button>
-            </GamesNotice>
-          ) : (
-            <ul className="games-list">
-              {list.games.map((g) => (
-                <li key={g.id}>
-                  <button className="games-row" onClick={() => navigate({ page: "game", id: g.id })}>
-                    <span className="games-when">{when(g.started_at)}</span>
-                    <Teams game={g} />
-                    <Summary game={g} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {list.next !== null ? (
-            <button className="btn games-more" disabled={list.more} onClick={loadMore}>
-              {list.more ? "Loading…" : "Load more"}
-            </button>
-          ) : null}
-          {list.moreError ? <div className="lobby-error" role="alert">Could not load more games.</div> : null}
-        </>
-      );
-    }
-    page = (
-      <div className="panel games-panel">
-        <GamesHead back={inGame ? "Back to game" : "Lobby"} onBack={() => navigate(null)} title="My games"
-                   sub="Games you played while signed in" />
-        {body}
-      </div>
+  if (list.status === "loading") return <GamesNotice title="Loading…" />;
+  if (list.status === "failed") {
+    return list.reason === "signed_out" ? <SignInPrompt />
+      : <p className="lobby-error" role="alert">Could not load your games ({list.code || "no connection"}).</p>;
+  }
+  if (list.games.length === 0) {
+    return (
+      <GamesNotice title="No saved games yet">
+        <p>Games you play while signed in appear here.</p>
+        <button className="btn gold big games-cta" onClick={onPlay}>Play a game</button>
+      </GamesNotice>
     );
   }
+  return (
+    <div className="games-days">
+      {byDay(list.games).map((d) => (
+        <section key={`${d.label}-${d.games[0].id}`} className="grp-section">
+          <h3 className="grp-head">{d.label}</h3>
+          <ul className="grp games-day-list">
+            {d.games.map((g) => (
+              <li key={g.id}>
+                <button className="grp-row games-day-row" onClick={() => navigate({ page: "game", id: g.id })}>
+                  <span className="games-row-main">
+                    <span className="games-row-title">{gameTitle(g)}</span>
+                    <span className="games-row-sub">
+                      {gameSub(g)}
+                      {g.incomplete ? <span className="games-tag">incomplete</span> : null}
+                    </span>
+                  </span>
+                  <span className="grp-value chev games-replay">Replay</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {list.next !== null ? (
+        <button className="btn games-more" disabled={list.more} onClick={loadMore}>
+          {list.more ? "Loading…" : "Load more"}
+        </button>
+      ) : null}
+      {list.moreError ? <div className="lobby-error" role="alert">Could not load more games.</div> : null}
+    </div>
+  );
+}
+
+/** A saved game's rounds and the replay of one; the list itself is the Me
+ *  tab's Games section. */
+export default function GamesList({ route }: { route: GamesRoute }) {
+  let page;
+  if (route.page === "replay") page = <ReplayView id={route.id} round={route.round} />;
+  else if (route.page === "game") page = <GameView id={route.id} />;
+  else page = null;
   return <div className="screen games-screen">{page}</div>;
 }

@@ -24,7 +24,30 @@ const STATUS_LABEL: Record<ConnStatus, string> = {
   closed: "Disconnected — retrying…",
 };
 
+/** After this long without a connection the lobby says so and offers Retry. */
+export const STALL_MS = 4000;
+
+/** Whether `status` has stayed short of "open" for STALL_MS, and a retry
+ *  that reconnects at once and starts the wait over. */
+function useStalled(status: ConnStatus): [boolean, () => void] {
+  const [stalled, setStalled] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const open = status === "open";
+  useEffect(() => {
+    setStalled(false);
+    if (open) return;
+    const t = window.setTimeout(() => setStalled(true), STALL_MS);
+    return () => window.clearTimeout(t);
+  }, [open, attempt]);
+  const retry = useCallback(() => {
+    setAttempt((n) => n + 1);
+    conn.reconnect();
+  }, []);
+  return [stalled && !open, retry];
+}
+
 export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
+  const [stalled, retry] = useStalled(status);
   const [name, setName] = useState(getSavedName());
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
@@ -106,12 +129,20 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     }
   }), [joinSeat]);
 
-  const ready = status === "open" && playerName.length > 0;
+  // An empty name never blocks a start: Play vs bots, Create room and Join
+  // each fill the field with a random name and go, the same as the dice.
+  const ready = status === "open";
   const testReady = !w32Selected || testAccessKey.trim().length > 0;
+  const nameOrRandom = () => {
+    if (playerName) return playerName;
+    const picked = randomName();
+    setName(picked);
+    return picked;
+  };
 
   const create = () => {
     if (!ready || !testReady) return;
-    const trimmed = playerName;
+    const trimmed = nameOrRandom();
     const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
     if (!payload) return;
     rememberName(trimmed);
@@ -121,8 +152,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   };
 
   const playBots = () => {
-    if (status !== "open" || !testReady) return;
-    const trimmed = playerName || randomName();
+    if (!ready || !testReady) return;
+    const trimmed = nameOrRandom();
     const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
     if (!payload) return;
     rememberName(trimmed);
@@ -144,6 +175,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const join = () => {
     const code = roomCode.trim().toUpperCase();
     if (!ready || code.length !== 4) return;
+    nameOrRandom();
     // Ask who's sitting where first; the subscriber shows a picker when
     // needsSeatPicker() says so, otherwise joins straight through.
     lastPeek.current = code;
@@ -277,7 +309,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           </div>
         ) : null}
 
-        <button className="btn gold big" disabled={!testReady || status !== "open"} onClick={playBots}>
+        <button className="btn gold big" disabled={!ready || !testReady} onClick={playBots}>
           Play vs bots
         </button>
 
@@ -328,10 +360,18 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
         </p>
 
-        <div className={`conn-status ${status}`}>
-          <span className="conn-dot" />
-          {STATUS_LABEL[status]}
-        </div>
+        {stalled ? (
+          <div className={`conn-status ${status} stalled`} role="status">
+            <span className="conn-dot" />
+            <span>Can’t reach the server. Check your network.</span>
+            <button className="btn conn-retry" onClick={retry}>Retry</button>
+          </div>
+        ) : (
+          <div className={`conn-status ${status}`}>
+            <span className="conn-dot" />
+            {STATUS_LABEL[status]}
+          </div>
+        )}
       </div>
     </div>
   );

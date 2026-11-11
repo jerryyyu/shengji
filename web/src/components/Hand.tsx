@@ -9,6 +9,8 @@ import Card from "./Card";
 const MAX_ARRIVALS = 8;
 /** Gap between the flights of cards that arrive together (the kitty). */
 const ARRIVAL_STAGGER = 40;
+/** Stacking of a card while it flies in: above your row (z-index 3). */
+export const ARRIVAL_Z = 4;
 /** A longer hand (the banker's 33 with the kitty) is drawn with smaller
  *  cards on a phone, so it still fits one row; only the phone layout styles
  *  `.hand.small-cards`. */
@@ -33,22 +35,26 @@ interface HandProps {
   onToggle: (id: number) => void;
   /** Filled with card positions for the trick area's play flights. */
   rects?: RefObject<HandRects>;
+  /** Cards no legal play can hold right now: drawn dimmed, not pickable. */
+  blocked?: Set<number>;
 }
 
 interface SlotProps {
   id: number;
   code: string;
   selected: boolean;
+  blocked: boolean;
   onToggle: ((id: number) => void) | undefined;
 }
 
 /** One card in the hand. Props are primitives plus the stable onToggle, so a
  *  server update or a tap re-renders only the slots whose card or selection
  *  changed, not all 25. */
-const HandSlot = memo(function HandSlot({ id, code, selected, onToggle }: SlotProps) {
+const HandSlot = memo(function HandSlot({ id, code, selected, blocked, onToggle }: SlotProps) {
   return (
     <div className="hand-slot" data-id={id}>
-      <Card code={code} selected={selected} onClick={onToggle ? () => onToggle(id) : undefined} />
+      <Card code={code} selected={selected} unplayable={blocked}
+            onClick={onToggle ? () => onToggle(id) : undefined} />
     </div>
   );
 });
@@ -96,7 +102,9 @@ interface Drag {
   moved: boolean;
 }
 
-export default function Hand({ hand, selected, selectable, onToggle, rects }: HandProps) {
+const NONE: Set<number> = new Set();
+
+export default function Hand({ hand, selected, selectable, onToggle, rects, blocked = NONE }: HandProps) {
   const handRef = useRef<HTMLDivElement>(null);
   // Drag-select: a finger pressed on a card and slid across the hand sets
   // each card it enters, once, to the first card's flipped state. A tap with
@@ -191,10 +199,16 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
           const r = slot.getBoundingClientRect();
           const dx = origin.left + origin.width / 2 - (r.left + r.width / 2);
           const dy = origin.top + origin.height / 2 - (r.top + r.height / 2);
-          slot.animate(
+          const flight = slot.animate(
             [{ transform: `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(0.6)`, opacity: 0 },
              { transform: "none", opacity: 1 }],
             { duration: DUR.flight, easing: EASE.outExpo, delay: i * ARRIVAL_STAGGER, fill: "backwards" });
+          // a card in flight passes over your row (Declare, Bury), not under it
+          slot.style.position = "relative";
+          slot.style.zIndex = String(ARRIVAL_Z);
+          const land = () => { slot.style.position = ""; slot.style.zIndex = ""; };
+          flight.onfinish = land;
+          flight.oncancel = land;
         });
       }
     }
@@ -240,6 +254,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
          onPointerUp={endDrag} onPointerCancel={endDrag} onClickCapture={onClickCapture}>
       {hand.map((c) => (
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
+                  blocked={selectable && blocked.has(c.id)}
                   onToggle={selectable ? onToggle : undefined} />
       ))}
     </div>

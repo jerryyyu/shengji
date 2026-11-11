@@ -29,6 +29,35 @@
   --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Chrome text (lobby, buttons, labels, menus, seat labels, toasts) follows
+     the reader's text size, up to 1.3x; card faces and the table's geometry
+     stay in px. --tu is one px at the default size: 1rem is the browser's
+     default (16px), or in WebKit the Dynamic Type body size (17px at the
+     default setting, see the @supports block below). */
+  --tu: calc(1rem / 16);
+  --fs-10: clamp(10px, calc(10 * var(--tu)), 13px);
+  --fs-11: clamp(11px, calc(11 * var(--tu)), 14.3px);
+  --fs-12: clamp(12px, calc(12 * var(--tu)), 15.6px);
+  --fs-13: clamp(13px, calc(13 * var(--tu)), 16.9px);
+  --fs-14: clamp(14px, calc(14 * var(--tu)), 18.2px);
+  --fs-15: clamp(15px, calc(15 * var(--tu)), 19.5px);
+  --fs-16: clamp(16px, calc(16 * var(--tu)), 20.8px);
+  --fs-17: clamp(17px, calc(17 * var(--tu)), 22.1px);
+  --fs-18: clamp(18px, calc(18 * var(--tu)), 23.4px);
+  --fs-20: clamp(20px, calc(20 * var(--tu)), 26px);
+}
+
+/* WebKit reports Dynamic Type through the system body font; the root takes
+   it so 1rem follows the setting. */
+@supports (font: -apple-system-body) {
+  html {
+    font: -apple-system-body;
+  }
+
+  :root {
+    --tu: calc(1rem / 17);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
 }
 
 * {
@@ -43,6 +72,7 @@ body,
 }
 
 body {
+  font-size: var(--fs-16);
   background: var(--chrome);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -129,7 +159,7 @@ textarea:focus-visible {
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--fs-14);
   letter-spacing: 0.02em;
   transition: background 150ms ease, transform var(--dur-fast) var(--ease-out), box-shadow 150ms ease;
 }
@@ -200,7 +230,7 @@ textarea:focus-visible {
   background: transparent;
   border: 1px solid var(--panel-edge);
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 600;
   padding: 4px 11px;
   border-radius: 999px;
@@ -233,7 +263,7 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--fs-14);
   line-height: 1;
   padding: 0;
   cursor: pointer;
@@ -255,7 +285,7 @@ textarea:focus-visible {
 
 .btn.big {
   padding: 12px 24px;
-  font-size: 16px;
+  font-size: var(--fs-16);
   border-radius: 12px;
 }
 
@@ -280,7 +310,7 @@ textarea:focus-visible {
 .host-tag,
 .off-tag,
 .ready-tag {
-  font-size: 10px;
+  font-size: var(--fs-10);
   font-weight: 700;
   letter-spacing: 0.08em;
   padding: 2px 6px;
@@ -338,7 +368,8 @@ textarea:focus-visible {
   border-radius: 10px;
   font-weight: 600;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  animation: toast-in 0.2s ease-out, toast-out 0.4s ease-in 3.6s forwards;
+  /* the fade ends as the toast unmounts: --toast-ms is the state timer */
+  animation: toast-in 0.2s ease-out, toast-out 0.4s ease-in calc(var(--toast-ms, 4000ms) - 0.4s) forwards;
   z-index: 60;
   pointer-events: none;
 }
@@ -366,7 +397,7 @@ textarea:focus-visible {
   color: var(--gold);
   padding: 7px 16px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
   z-index: 70;
 }
@@ -402,7 +433,7 @@ textarea:focus-visible {
 .game-subtitle {
   margin: -8px 0 8px;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
 }
 
 .lobby-preview {
@@ -574,7 +605,7 @@ textarea:focus-visible {
 }
 
 .field-label {
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -593,11 +624,14 @@ textarea:focus-visible {
   transition: border-color 0.15s;
 }
 
+/* a field's focus is its border alone: one ring, not the border plus the
+   outline (a tapped field also matches :focus-visible) */
 .field input:focus,
 .field select:focus,
 .start-level-row select:focus,
 .room-input:focus {
   border-color: var(--team0);
+  outline: none;
 }
 
 .field select,
@@ -639,7 +673,7 @@ textarea:focus-visible {
   border: 0;
   border-radius: 8px;
   background: none;
-  font-size: 17px;
+  font-size: var(--fs-17);
   line-height: 1;
   opacity: 0.7;
   cursor: pointer;
@@ -652,7 +686,7 @@ textarea:focus-visible {
 .name-reroll:focus-visible { opacity: 1; outline: 2px solid var(--gold); outline-offset: 1px; }
 
 .field-hint {
-  font-size: 12px;
+  font-size: var(--fs-12);
   line-height: 1.45;
   color: var(--text-dim);
 }
@@ -680,7 +714,7 @@ textarea:focus-visible {
 .signin-upsell {
   margin: 4px 0 -4px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--fs-13);
   color: var(--text-dim);
 }
 .divider {
@@ -688,7 +722,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 12px;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-12);
   letter-spacing: 0.15em;
   text-transform: uppercase;
 }
@@ -712,7 +746,7 @@ textarea:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.4em;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--fs-18);
   text-align: center;
 }
 
@@ -770,7 +804,7 @@ textarea:focus-visible {
   justify-content: center;
   color: var(--gold);
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--fs-14);
 }
 .account-name {
   flex: 1;
@@ -782,13 +816,13 @@ textarea:focus-visible {
 }
 .account-actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   gap: 6px;
 }
 .account-actions .btn { padding: 9px 6px; border-radius: 12px; white-space: normal; }
 .account-actions .btn.subtle { border-color: transparent; color: var(--text-dim); }
 .account-card .name-edit { padding: 0 4px 4px; }
-.account-error { font-size: 13px; }
+.account-error { font-size: var(--fs-13); }
 .account-block { display: flex; flex-direction: column; gap: 8px; }
 /* The display-name editor (NameEditForm): one input, Save / Cancel, a
    message line. The same form sits in the lobby chip and the phone menu. */
@@ -810,11 +844,11 @@ textarea:focus-visible {
 }
 .name-edit-input:focus { border-color: var(--team0); outline: none; }
 .name-edit-actions { display: flex; gap: 8px; }
-.name-edit-actions .btn { padding: 6px 12px; font-size: 13px; }
-.name-edit-error { color: #f0a0aa; font-size: 12px; }
+.name-edit-actions .btn { padding: 6px 12px; font-size: var(--fs-13); }
+.name-edit-error { color: #f0a0aa; font-size: var(--fs-12); }
 .hud-menu-row.account-edit .account-avatar { width: 20px; height: 20px; }
 .hud-menu-row.hud-menu-edit { display: block; cursor: default; min-width: 220px; }
-.hud-menu-row.hud-menu-edit .name-edit-input { font-size: 14px; }
+.hud-menu-row.hud-menu-edit .name-edit-input { font-size: var(--fs-14); }
 .hud-menu-account-name {
   flex: 1;
   min-width: 0;
@@ -829,12 +863,12 @@ textarea:focus-visible {
   color: #ffd7dc;
   border-radius: 10px;
   padding: 9px 12px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
 }
 
 .conn-status {
-  font-size: 13px;
+  font-size: var(--fs-13);
   color: var(--text-dim);
 }
 
@@ -848,6 +882,22 @@ textarea:focus-visible {
 
 .conn-status.closed {
   color: var(--danger);
+}
+
+/* no connection for a while: say so, with a way to try again now */
+.conn-status.stalled {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 10px;
+  color: var(--danger);
+  text-align: center;
+}
+
+.conn-status.stalled .conn-retry {
+  min-height: 44px;
+  padding: 0 18px;
 }
 
 /* ---------- Room ---------- */
@@ -883,10 +933,11 @@ textarea:focus-visible {
   }
 }
 
-/* A phone held upright has no room for a card on felt: the thin green margin
-   reads as a border. The lobby, room and saved-games screens fill the screen
-   with the panel's own colour instead; the felt stays for the table. */
-@media (max-width: 600px) and (pointer: coarse) {
+/* A phone has no room for a card on felt: the thin green margin reads as a
+   border, and held sideways the card runs off the bottom. The lobby, room
+   and saved-games screens fill the screen with the panel's own colour
+   instead, in either orientation; the felt stays for the table. */
+@media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
   .lobby-screen,
   .room-screen,
   .games-screen {
@@ -897,6 +948,7 @@ textarea:focus-visible {
   .room-screen > .panel,
   .games-screen > .panel {
     width: 100%;
+    max-width: 520px;          /* a sideways phone keeps a column, not a 850px row */
     background: none;
     border: 0;
     border-radius: 0;
@@ -908,14 +960,14 @@ textarea:focus-visible {
 
 /* A phone's room: the caption keeps clear of the 44px mute button in the
    panel's corner, and the seat tags read at 12px. */
-@media (max-width: 600px) and (pointer: coarse) {
+@media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
   .room-panel > .room-code-label {
     padding: 0 48px;
   }
 
   .seat-name .you-tag,
   .seat-name .host-tag {
-    font-size: 12px;
+    font-size: var(--fs-12);
   }
 }
 
@@ -944,7 +996,7 @@ textarea:focus-visible {
   position: absolute;
   top: -12px;
   right: 10px;
-  font-size: 12px;
+  font-size: var(--fs-12);
   letter-spacing: 0.05em;
   background: var(--gold);
   color: #201703;
@@ -989,7 +1041,7 @@ textarea:focus-visible {
 }
 
 .seat-num {
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--text-dim);
@@ -1023,7 +1075,7 @@ textarea:focus-visible {
   display: flex;
   justify-content: center;
   gap: 24px;
-  font-size: 12px;
+  font-size: var(--fs-12);
   color: var(--text-dim);
 }
 
@@ -1039,7 +1091,7 @@ textarea:focus-visible {
 
 .room-hint {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-style: italic;
 }
 
@@ -1081,7 +1133,7 @@ textarea:focus-visible {
   border: 1px solid var(--panel-edge);
   border-radius: 999px;
   padding: 5px 13px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1095,7 +1147,7 @@ textarea:focus-visible {
 .phase-chip {
   color: var(--text-dim);
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: var(--fs-11);
   letter-spacing: 0.12em;
 }
 
@@ -1126,23 +1178,23 @@ textarea:focus-visible {
 
 .trump-chip {
   border-color: var(--gold-soft);
-  font-size: 15px;
+  font-size: var(--fs-15);
 }
 
 .trump-chip.none {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-style: italic;
 }
 
 .trump-suit.red {
   color: #ff6b7c;
-  font-size: 18px;
+  font-size: var(--fs-18);
 }
 
 .trump-suit.black {
   color: #f4f6fa;
-  font-size: 18px;
+  font-size: var(--fs-18);
 }
 
 .trump-suit.nt {
@@ -1154,7 +1206,7 @@ textarea:focus-visible {
 .trump-rank {
   color: var(--gold);
   font-weight: 800;
-  font-size: 16px;
+  font-size: var(--fs-16);
 }
 
 .points-chip {
@@ -1162,7 +1214,7 @@ textarea:focus-visible {
 }
 
 .points-big {
-  font-size: 20px;
+  font-size: var(--fs-20);
   font-weight: 800;
   color: var(--team1);
 }
@@ -1174,7 +1226,7 @@ textarea:focus-visible {
 
 .points-target {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-12);
 }
 
 .kitty-icon {
@@ -1187,7 +1239,7 @@ textarea:focus-visible {
 
 .hud-message {
   text-align: center;
-  font-size: 13px;
+  font-size: var(--fs-13);
   color: #ffe9b0;
   padding: 4px 0 2px;
   animation: message-in 0.25s ease-out;
@@ -1208,7 +1260,7 @@ textarea:focus-visible {
   border-radius: 6px;
   background: rgba(40, 30, 12, 0.92);
   color: #ffe9b0;
-  font-size: 13px;
+  font-size: var(--fs-13);
   line-height: 1.35;
   text-align: left;
   animation: message-in 0.25s ease-out;
@@ -1228,7 +1280,7 @@ textarea:focus-visible {
   border-radius: 4px;
   background: transparent;
   color: #ffe9b0;
-  font-size: 16px;
+  font-size: var(--fs-16);
   line-height: 1.2;
   cursor: pointer;
   opacity: 0.7;
@@ -1327,11 +1379,11 @@ textarea:focus-visible {
   align-items: center;
   gap: 6px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--fs-15);
 }
 
 .banker-crown {
-  font-size: 15px;
+  font-size: var(--fs-15);
   filter: drop-shadow(0 0 6px rgba(242, 193, 78, 0.8));
 }
 
@@ -1361,7 +1413,7 @@ textarea:focus-visible {
    for as long as a bot thought (~8% of a 4x-throttled phone CPU, measured);
    opacity animates on the compositor. */
 .thinking {
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-style: italic;
   color: #d5dbe5;
   animation: thinking-pulse 1.4s ease-in-out infinite alternate;
@@ -1369,7 +1421,7 @@ textarea:focus-visible {
 
 .bot-banter {
   max-width: 160px;
-  font-size: 10px;
+  font-size: var(--fs-10);
   color: var(--text-dim);
   line-height: 1.3;
 }
@@ -1411,7 +1463,7 @@ textarea:focus-visible {
 }
 
 .their-turn {
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-style: italic;
   color: var(--gold);
 }
@@ -1598,7 +1650,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   border-radius: 999px;
   padding: 5px 16px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--fs-14);
 }
 
 .you-tagline.team0 {
@@ -1619,7 +1671,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 }
 
 .your-turn-tag {
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1638,7 +1690,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 
 .action-hint {
   color: rgba(233, 236, 242, 0.75);
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-style: italic;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
@@ -1678,6 +1730,10 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   .hand.selectable .card.selected:hover {
     transform: translateY(-22px);
   }
+
+  .hand.selectable .card.unplayable:not(.selected):hover {
+    transform: none;
+  }
 }
 
 .hand .card.selected {
@@ -1716,6 +1772,30 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 
 .card.clickable:active {
   filter: brightness(0.92); /* no transform: preserve selected-card lift */
+}
+
+/* A card no legal follow can hold: veiled so it reads as faded, while the
+   card under it in the fanned hand does not show through. It keeps its tap
+   area; the tap does nothing. */
+.hand .card.unplayable::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 2;
+  border-radius: inherit;
+  background: rgba(20, 23, 30, 0.55);
+  pointer-events: none;
+}
+
+/* its own stacking context, so the veil darkens this card only, never the
+   next card fanned over it */
+.hand .card.unplayable {
+  isolation: isolate;
+  cursor: default;
+}
+
+.hand .card.unplayable:active {
+  filter: none;
 }
 
 .card.red {
@@ -1878,19 +1958,19 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 .result-label {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
 }
 
 .result-value {
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--fs-14);
   text-align: right;
 }
 
 .result-label.total,
 .result-value.total {
   color: var(--gold);
-  font-size: 15px;
+  font-size: var(--fs-15);
   border-top: 1px solid var(--panel-edge);
   padding-top: 8px;
 }
@@ -1898,12 +1978,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .result-note {
   color: var(--text-dim);
   font-weight: 400;
-  font-size: 12px;
+  font-size: var(--fs-12);
 }
 
 .result-verdict {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
   margin: 10px 0 0;
 }
 
@@ -2020,8 +2100,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        growing inward that still clears a four-card throw in the top or your
        slot (4 cards span 2.8 card widths at a 60% pitch) */
     --side-out: calc(var(--trick-cw) * 4.2 + var(--space-s));
-    /* a side seat's label sits outside its slot and never reaches the safe area */
-    --pill-max: min(120px, calc(var(--view-w) / 2 - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))));
+    /* A side seat's label stands over its slot, from the slot's outer edge
+       inward, and stops short of where the widest top play can reach: half
+       of 2.8 card widths in play, half of a two-card declaration while
+       setting up. That holds a crowned 13-letter name on an SE. */
+    --top-reach: calc(var(--trick-cw) * 1.4);
+    --pill-max: min(200px, calc(var(--side-out) - var(--top-reach) - var(--space-s)));
     /* card centres from the cross's centre: the top slot's footprint ends a
        half gap above it, yours starts a half gap below; side cards sit so
        their footprint is centred */
@@ -2051,6 +2135,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* in play your slot is your row, so nothing is reserved under the cross */
   .table-screen.phase-play {
     --row-reserve: 0px;
+  }
+
+  /* while setting up the top slot holds a declaration, two cards at most */
+  .table-screen.phase-deal,
+  .table-screen.phase-declare,
+  .table-screen.phase-bury {
+    --top-reach: calc(var(--trick-cw) * 0.8);
   }
 
   /* The banker's 33 cards fit one row by drawing smaller, as large as the
@@ -2106,30 +2197,30 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .chip {
     padding: 2px 9px;
-    font-size: 12px;
+    font-size: var(--fs-12);
     gap: 5px;
   }
 
   .trump-chip {
-    font-size: 13px;
+    font-size: var(--fs-13);
   }
 
   .trump-suit.red,
   .trump-suit.black {
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
   .trump-rank {
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
   .points-big {
-    font-size: 16px;
+    font-size: var(--fs-16);
     font-variant-numeric: tabular-nums;
   }
 
   .hud-message {
-    font-size: 12px;
+    font-size: var(--fs-12);
     padding: 2px 0 1px;
   }
 
@@ -2203,7 +2294,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .leave-btn {
-    font-size: 10px;
+    font-size: var(--fs-10);
     padding: 3px 9px;
     min-height: 26px;
   }
@@ -2211,7 +2302,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .mute-btn {
     width: 26px;
     height: 26px;
-    font-size: 12px;
+    font-size: var(--fs-12);
   }
 
   .hud-more {
@@ -2233,7 +2324,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border: 1px solid var(--panel-edge);
     background: rgba(16, 19, 26, 0.82);
     color: var(--text);
-    font-size: 16px;
+    font-size: var(--fs-16);
     font-weight: 700;
     letter-spacing: 0.08em;
     line-height: 1;
@@ -2276,7 +2367,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 8px;
     background: none;
     color: var(--text);
-    font: 500 13px inherit;
+    font: 500 var(--fs-13) inherit;
     font-family: inherit;
     text-align: left;
     cursor: pointer;
@@ -2304,7 +2395,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 8px;
     background: var(--panel);
     color: var(--text);
-    font: 600 13px inherit;
+    font: 600 var(--fs-13) inherit;
     font-family: inherit;
     cursor: pointer;
   }
@@ -2352,7 +2443,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* Whose turn: the seat's label fills gold and its name ends in "…". A
      solid fill, no glow and no motion. */
   .opponent.on-turn {
-    padding-right: var(--space-s);
     background: var(--gold);
     box-shadow: none;
   }
@@ -2361,32 +2451,39 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     color: #1a1a1a;
   }
 
-  /* the fill outranks the team dot for its moment, and its room goes to the
-     "…" so a crowned name still fits beside a side slot */
+  /* Nothing in or beside the label moves when the turn comes: the team dot
+     and the "…" both always hold their room, and the turn only shows one and
+     hides the other. */
   /* the banker's crown already marks its team, and the pill has no room for both */
   .opponent:has(.banker-crown) .seat-dot {
     display: none;
   }
 
   .opponent.on-turn .seat-dot {
-    display: none;
+    visibility: hidden;
   }
 
   .opponent .turn-dots {
-    display: inline;
+    display: inline-block;
     flex-shrink: 0;
+    width: 10px;
     margin-left: -2px;
     font-weight: 800;
+    visibility: hidden;
+  }
+
+  .opponent .turn-dots.shown {
+    visibility: visible;
   }
 
   .opp-name {
-    font-size: 13px;
+    font-size: var(--fs-13);
     white-space: nowrap;
   }
 
   /* no glow anywhere on the phone table */
   .banker-crown {
-    font-size: 12px;
+    font-size: var(--fs-12);
     filter: none;
   }
 
@@ -2413,7 +2510,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .you-tag,
   .host-tag,
   .off-tag {
-    font-size: 11px;
+    font-size: var(--fs-11);
     padding: 1px 5px;
     margin-left: var(--space-xs);
   }
@@ -2441,7 +2538,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .thinking {
-    font-size: 11px;
+    font-size: var(--fs-11);
   }
 
   /* a human's turn is the label's fill too; the label stays one line */
@@ -2478,25 +2575,29 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-xs);
   }
 
-  /* A side seat's label stands on the outer side of its trick slot, centred
-     on it, as far from its cards as the top seat's label is from its card.
+  /* A side seat's label stands over its trick slot, flush with the slot's
+     outer edge, a small gap above where its cards' tops are (the slot's
+     centre less half a card), and never higher than just under the header.
+     A play grows inward and downward from there, so no play reaches it.
      Long names step down a size, then end in an ellipsis; a tap or long press
      shows the whole name. */
   .opponent.pos-left,
   .opponent.pos-right {
-    top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy));
-    right: auto;
+    top: max(calc(var(--header-bottom) + var(--space-xs)),
+      calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy)
+        - var(--trick-ch) / 2 - var(--space-s) - var(--header-h)));
     max-width: var(--pill-max);
+    transform: none;
   }
 
   .opponent.pos-left {
-    left: calc(50% - var(--side-out) - var(--gap-v));
-    transform: translate(-100%, -50%);
+    left: calc(50% - var(--side-out));
+    right: auto;
   }
 
   .opponent.pos-right {
-    left: calc(50% + var(--side-out) + var(--gap-v));
-    transform: translate(0, -50%);
+    left: auto;
+    right: calc(50% - var(--side-out));
   }
 
   .opp-name-text {
@@ -2508,7 +2609,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   /* a long name steps down once, to 12px, then ends in an ellipsis */
   .opponent[data-name-len="m"] .opp-name,
-  .opponent[data-name-len="l"] .opp-name { font-size: 12px; }
+  .opponent[data-name-len="l"] .opp-name { font-size: var(--fs-12); }
 
   .opp-fullname {
     display: block;
@@ -2523,7 +2624,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 8px;
     background: #0a0c11;
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-12);
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -2620,9 +2721,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* felt text sits on the HUD's dark pill, so it stays readable */
+  /* 12px with a 15px line keeps a tag inside the slot's 20px tag line */
   .lead-tag,
   .win-tag {
-    font-size: 11px;
+    font-size: 12px;
+    line-height: 15px;
     padding: 2px 7px;
   }
 
@@ -2632,8 +2735,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .declare-tag {
-    font-size: 11px;
-    padding: 3px 9px;
+    font-size: 12px;
+    line-height: 15px;
+    padding: 2px 9px;
     background: rgba(8, 20, 14, 0.78);
   }
 
@@ -2848,7 +2952,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .action-bar .btn {
     min-height: 44px; /* touch target */
     padding: 6px 16px;
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
   /* a disabled Clear is not information */
@@ -2872,7 +2976,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 999px;
     background: rgba(8, 20, 14, 0.78);
     color: var(--gold);
-    font-size: 12px;
+    font-size: var(--fs-12);
     font-weight: 700;
   }
 
@@ -2893,7 +2997,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 999px;
     background: rgba(8, 20, 14, 0.78);
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-12);
     font-style: normal;
     text-shadow: none;
   }
@@ -3004,7 +3108,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     max-width: 360px;
     margin: 0;
     padding: 6px 8px;
-    font-size: 12px;
+    font-size: var(--fs-12);
   }
 
   /* In play the corner beside your row is free: messages and the
@@ -3028,7 +3132,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .phase-play .hud-notice {
-    font-size: 11px;
+    font-size: var(--fs-11);
     line-height: 1.3;
     padding-right: 30px;
   }
@@ -3065,7 +3169,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
       transition: none;
     }
 
-    .deal-deck-stack .card,
+    /* :nth-child(n) matches the pulsing card's own selector weight */
+    .deal-deck-stack .card:nth-child(n),
     .phase-deal .action-bar .btn.gold,
     .phase-declare .action-bar .btn.gold {
       animation: none;
@@ -3114,7 +3219,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .btn.big {
     padding: 9px 18px;
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
   .room-code {
@@ -3128,12 +3233,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .seat-row {
     padding: 5px 12px;
-    font-size: 13px;
+    font-size: var(--fs-13);
   }
 
   .team-legend {
     gap: 16px;
-    font-size: 11px;
+    font-size: var(--fs-11);
   }
 
   /* --- Round end: a compact card; Next round always on screen --- */
@@ -3147,7 +3252,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .modal-title {
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
   .modal-title .title-team {
@@ -3168,14 +3273,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: 2px 0;
   }
 
-  /* `.result-grid` in front outranks the rem text sizes at the end of the file */
+  /* `.result-grid` in front outranks the text sizes at the end of the file */
   .result-grid .result-label {
-    font-size: 12px;
+    font-size: var(--fs-12);
     line-height: 1.35;
   }
 
   .result-grid .result-value {
-    font-size: 13px;
+    font-size: var(--fs-13);
     line-height: 1.35;
     padding-left: 12px;
   }
@@ -3230,7 +3335,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     top: calc(env(safe-area-inset-top, 0px) + 6px);
     bottom: auto;
     max-width: calc(100vw - 2 * max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) - 32px);
-    font-size: 13px;
+    font-size: var(--fs-13);
     padding: 7px 16px;
   }
 
@@ -3241,7 +3346,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     top: auto;
     bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-xs));
     max-width: calc(2 * var(--side-out) - 2 * var(--space-s));
-    font-size: 13px;
+    font-size: var(--fs-13);
     line-height: 17px;
     padding: 6px 14px;
     text-align: center;
@@ -3256,7 +3361,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     width: 40px;
     height: var(--header-h);
     border-radius: 999px;
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
   .table-screen .chat-launch::after {
@@ -3309,6 +3414,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   --frame-safe-l: env(safe-area-inset-top, 0px);
   --frame-safe-r: env(safe-area-inset-bottom, 0px);
   --frame-safe-b: env(safe-area-inset-left, 0px);
+}
+
+/* The turned table's bottom is the phone's left edge, which has no inset
+   in portrait: the hand keeps 8px off it instead of touching the glass. */
+.app.rotated .table-screen {
+  --hand-under: max(8px, calc(var(--safe-b) - 16px));
 }
 
 /* the chat and the round-end card measure the turned frame, not the
@@ -3539,7 +3650,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* Round-end readiness (all humans must confirm before advancing) */
 .ready-status {
   margin-top: 10px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   opacity: 0.75;
   text-align: center;
 }
@@ -3551,7 +3662,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   width: 46px; height: 46px; border-radius: 50%;
   background: rgba(20, 28, 22, 0.92); border: 1px solid rgba(255,255,255,0.18);
-  font-size: 20px; cursor: pointer;
+  font-size: var(--fs-20); cursor: pointer;
 }
 .chat-badge {
   position: absolute; top: -4px; right: -4px;
@@ -3572,13 +3683,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .chat-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.12);
-  font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: var(--fs-13); letter-spacing: 0.04em; text-transform: uppercase;
   opacity: 0.85;
 }
-.chat-close { background: none; border: none; color: #eee; font-size: 20px; cursor: pointer; }
-.chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: 14px; }
+.chat-close { background: none; border: none; color: #eee; font-size: var(--fs-20); cursor: pointer; }
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: var(--fs-14); }
 .chat-head, .chat-input { flex-shrink: 0; }
-.chat-empty { opacity: 0.5; font-size: 13px; }
+.chat-empty { opacity: 0.5; font-size: var(--fs-13); }
 .chat-msg { margin: 4px 0; word-break: break-word; }
 .chat-msg .chat-name { opacity: 0.65; margin-right: 6px; font-weight: 600; }
 .chat-msg.mine .chat-name { color: #8fd18f; }
@@ -3614,7 +3725,7 @@ button.room-chip.copied {
 .chat-msg.system {
   opacity: 0.55;
   font-style: italic;
-  font-size: 13px;
+  font-size: var(--fs-13);
   text-align: center;
   margin: 6px 0;
 }
@@ -3630,7 +3741,7 @@ button.room-chip::after {
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 12px; font-style: normal; letter-spacing: 0;
+  font-size: var(--fs-12); font-style: normal; letter-spacing: 0;
   opacity: 0; pointer-events: none; transition: opacity 0.12s ease;
   z-index: 50;
 }
@@ -3640,7 +3751,7 @@ button.room-chip::after {
 button.room-chip:focus-visible::after { opacity: 1; }
 
 /* Seat picker for mid-game joins */
-.seat-hint { opacity: 0.7; font-size: 14px; margin: 4px 0 14px; }
+.seat-hint { opacity: 0.7; font-size: var(--fs-14); margin: 4px 0 14px; }
 .seat-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;
 }
@@ -3656,12 +3767,12 @@ button.room-chip:focus-visible::after { opacity: 1; }
 @media (hover: hover) and (pointer: fine) {
   .seat-option:not(:disabled):hover { background: rgba(255,255,255,0.12); }
 }
-.seat-num { font-weight: 600; font-size: 13px; }
-.seat-who { font-size: 13px; opacity: 0.8; }
+.seat-num { font-weight: 600; font-size: var(--fs-13); }
+.seat-who { font-size: var(--fs-13); opacity: 0.8; }
 .seat-option { min-width: 0; }
 .seat-who { overflow-wrap: anywhere; }
-.seat-team { font-size: 11px; opacity: 0.55; letter-spacing: 0.06em; }
-.seat-take { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+.seat-team { font-size: var(--fs-11); opacity: 0.55; letter-spacing: 0.06em; }
+.seat-take { font-size: var(--fs-11); opacity: 0.7; margin-top: 2px; }
 
 /* A phone-only message toast; the element remounts per message (key=message),
    so the animation restarts for each new line and the last one fades out. */
@@ -3680,7 +3791,7 @@ button.room-chip:focus-visible::after { opacity: 1; }
   .hand .card, .btn, .seat-option { transition: none; }
   .btn:active:not(:disabled), .seat-option:active:not(:disabled) { transform: none; }
   /* Preserve the toast's dismissal timing, without its slide-in movement. */
-  .toast { animation: toast-out 0.01ms linear 3.6s forwards; }
+  .toast { animation: toast-out 0.01ms linear calc(var(--toast-ms, 4000ms) - 0.01ms) forwards; }
 }
 
 /* A phone's controls need finger-sized targets, not desktop icon bounds. */
@@ -3691,7 +3802,7 @@ button.room-chip:focus-visible::after { opacity: 1; }
     min-width: 44px;
   }
   .field input, .field select, .start-level-row select, .room-input,
-  .chat-input input { font-size: 16px; }
+  .chat-input input { font-size: var(--fs-16); }
 }
 
 .mute-btn:active, .leave-btn:active, .hud-more-btn:active,
@@ -3706,11 +3817,11 @@ button.room-chip:active { background-color: #394452; }
 
 /* Text-heavy surfaces scale with the user's default text size. Card geometry
    stays independent so changing text size cannot change a hand's hit mapping. */
-.lobby-panel { width: 24rem; }
+.lobby-panel { width: 384px; }
 .field, .chat-log, .result-grid, .result-verdict, .ready-status { line-height: 1.5; }
-.field > span, .result-label, .ready-status { font-size: 0.875rem; }
-.field input, .field select, .chat-input input { font-size: max(16px, 1rem); }
-.chat-log, .result-value, .result-verdict { font-size: 0.9375rem; }
+.field > span, .result-label, .ready-status { font-size: var(--fs-14); }
+.field input, .field select, .chat-input input { font-size: var(--fs-16); }
+.chat-log, .result-value, .result-verdict { font-size: var(--fs-15); }
 .modal-title, .victory-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .result-grid { min-width: 0; }
 .result-grid > * { min-width: 0; overflow-wrap: anywhere; }
@@ -3832,15 +3943,15 @@ button.room-chip:active { background-color: #394452; }
    page is a lobby-sized panel: same width, padding, height and type scale. */
 
 .games-panel {
-  width: 24rem;
+  width: 384px;
   max-width: 100%;
-  min-height: min(100%, 40rem);
+  min-height: min(100%, 640px);
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
 }
-.games-panel.wide { width: 32rem; }
+.games-panel.wide { width: 512px; }
 .games-head {
   display: flex;
   flex-direction: column;
@@ -3866,11 +3977,11 @@ button.room-chip:active { background-color: #394452; }
   padding: 16px 0;
   text-align: center;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: var(--fs-14);
   line-height: 1.5;
 }
 .games-status p { margin: 0; }
-.games-status .games-status-title { color: var(--text); font-size: 16px; font-weight: 600; }
+.games-status .games-status-title { color: var(--text); font-size: var(--fs-16); font-weight: 600; }
 .games-cta { align-self: stretch; margin-top: 16px; }
 .games-section { display: flex; flex-direction: column; gap: 8px; }
 .games-list, .games-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -3894,20 +4005,20 @@ button.games-row { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) {
   button.games-row:hover { border-color: var(--gold-soft); }
 }
-.games-when { font-size: 0.8125rem; color: var(--text-dim); }
+.games-when { font-size: var(--fs-13); color: var(--text-dim); }
 .games-teams { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .games-team { border-bottom: 2px solid transparent; }
 .games-team.team0 { border-bottom-color: var(--team0); }
 .games-team.team1 { border-bottom-color: var(--team1); }
 .games-team.mine { color: var(--gold); }
-.games-vs { color: var(--text-dim); font-weight: 400; font-size: 0.8125rem; }
-.games-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.8125rem; color: var(--text-dim); }
+.games-vs { color: var(--text-dim); font-weight: 400; font-size: var(--fs-13); }
+.games-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-13); color: var(--text-dim); }
 .games-tag {
   color: var(--gold);
   border: 1px solid var(--gold-soft);
   border-radius: 999px;
   padding: 0 8px;
-  font-size: 0.75rem;
+  font-size: var(--fs-12);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -3920,14 +4031,14 @@ button.games-row { cursor: pointer; }
   border-radius: 10px;
 }
 .games-round-n { font-weight: 700; white-space: nowrap; }
-.games-round-res { flex: 1; min-width: 0; color: var(--text-dim); font-size: 0.875rem; }
-.games-round .btn { padding: 5px 12px; font-size: 13px; }
+.games-round-res { flex: 1; min-width: 0; color: var(--text-dim); font-size: var(--fs-14); }
+.games-round .btn { padding: 5px 12px; font-size: var(--fs-13); }
 .games-more, .games-remove { align-self: stretch; }
 .games-remove { margin-top: auto; }
 
 .replay { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .replay-info { display: flex; flex-wrap: wrap; gap: 6px; }
-.replay-info .chip { padding: 3px 10px; font-size: 12px; }
+.replay-info .chip { padding: 3px 10px; font-size: var(--fs-12); }
 .replay-red { color: var(--card-red); }
 .replay-seats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .replay-seat {
@@ -3939,7 +4050,7 @@ button.games-row { cursor: pointer; }
   border-radius: 999px;
   background: rgba(16, 19, 26, 0.6);
   border: 1px solid var(--panel-edge);
-  font-size: 13px;
+  font-size: var(--fs-13);
 }
 .replay-seat.team0 { border-left: 3px solid var(--team0); }
 .replay-seat.team1 { border-left: 3px solid var(--team1); }
@@ -3964,7 +4075,7 @@ button.games-row { cursor: pointer; }
 .replay-felt .trick-cards { --cw: 40px; }
 .replay-felt .trick-cards .card + .card { margin-left: -24px; }
 .replay-felt .table-emblem { top: 50%; font-size: 64px; }
-.replay-caption { margin: 0; min-height: 2.6em; font-size: 0.875rem; line-height: 1.3; overflow-wrap: anywhere; }
+.replay-caption { margin: 0; min-height: 2.6em; font-size: var(--fs-14); line-height: 1.3; overflow-wrap: anywhere; }
 .replay-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto repeat(2, minmax(0, 1fr));
@@ -3972,7 +4083,7 @@ button.games-row { cursor: pointer; }
   gap: 6px;
 }
 .replay-controls .btn { padding: 6px 0; }
-.replay-step { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; min-width: 4.5em; text-align: center; }
+.replay-step { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: var(--fs-13); min-width: 4.5em; text-align: center; }
 .replay-jump {
   grid-column: 1 / -1;
   width: 100%;
@@ -3981,7 +4092,7 @@ button.games-row { cursor: pointer; }
   border: 1px solid var(--panel-edge);
   border-radius: 10px;
   padding: 8px 12px;
-  font-size: max(16px, 1rem);
+  font-size: var(--fs-16);
 }
 .replay-hand { overflow: hidden; }
 .replay-hand .hand { --cw: 48px; padding: 8px 4px 4px; max-width: 100%; }
@@ -3993,13 +4104,13 @@ button.games-row { cursor: pointer; }
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--panel-edge);
-  font-size: 0.875rem;
+  font-size: var(--fs-14);
 }
 .replay-result.won { border-color: var(--gold); }
-.replay-result-head { font-weight: 700; font-size: 1rem; }
+.replay-result-head { font-weight: 700; font-size: var(--fs-16); }
 .replay-mini-cards { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; --cw: 28px; }
-.replay-mini-label { font-size: 12px; color: var(--text-dim); margin-right: 6px; min-width: 4em; }
-.replay-note { margin: 0; color: var(--text-dim); font-size: 14px; }
+.replay-mini-label { font-size: var(--fs-12); color: var(--text-dim); margin-right: 6px; min-width: 4em; }
+.replay-note { margin: 0; color: var(--text-dim); font-size: var(--fs-14); }
 .replay-all { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 
 /* How to play: a lobby-sized panel of short steps, each a headline, a line
@@ -4020,7 +4131,7 @@ button.games-row { cursor: pointer; }
   text-underline-offset: 3px;
 }
 
-.howto-panel { min-height: min(100%, 46rem); }
+.howto-panel { min-height: min(100%, 736px); }
 .howto-head {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -4035,7 +4146,7 @@ button.games-row { cursor: pointer; }
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.howto-count { justify-self: end; padding-right: 18px; font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.howto-count { justify-self: end; padding-right: 18px; font-size: var(--fs-13); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .howto-step { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .howto-step > .howto-visual { flex: 1; justify-content: center; }
 .howto-title { margin: 0; font-size: 22px; line-height: 1.25; color: var(--gold); text-align: center; }
@@ -4048,7 +4159,7 @@ button.games-row { cursor: pointer; }
 }
 /* The text slots keep one height on every step (three body lines, two caption
    lines, empty or not), so the picture, the dots and the buttons never jump. */
-.howto-body { font-size: 14px; line-height: 1.5; min-height: 4.5em; color: var(--text); }
+.howto-body { font-size: var(--fs-14); line-height: 1.5; min-height: 4.5em; color: var(--text); }
 .howto-caption { font-size: 13px; line-height: 1.45; min-height: 2.9em; color: var(--text-dim); }
 
 .howto-visual {
@@ -4205,17 +4316,26 @@ button.games-row { cursor: pointer; }
 .howto-band-pts { font-variant-numeric: tabular-nums; font-weight: 700; }
 
 .howto-nav { display: flex; flex-direction: column; gap: 12px; }
-.howto-dots { display: flex; justify-content: center; gap: 2px; }
+/* Each dot is drawn 8px but takes a 44px-tall tap, as wide as the row allows
+   (44px, or a tenth of a phone's width): the dots share the row edge to edge. */
+.howto-dots { display: flex; justify-content: center; gap: 0; }
 .howto-dot {
   appearance: none;
+  flex: 1 1 0;
+  max-width: 44px;
+  min-height: 44px;
   border: 0;
   background: none;
-  padding: 6px 4px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 .howto-dot::before {
   content: "";
   display: block;
+  flex-shrink: 0;
   width: 8px;
   height: 8px;
   border-radius: 999px;
@@ -4229,9 +4349,11 @@ button.games-row { cursor: pointer; }
    parts. Parts that appear later keep their space while hidden. */
 .howto-visual { position: relative; }
 .howto-frame { display: contents; }
-.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }
+/* 30px buttons 14px apart: each one's 44px tap (the ::after) meets the next's */
+.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 14px; }
 .howto-anim-btn {
   appearance: none;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4244,6 +4366,11 @@ button.games-row { cursor: pointer; }
   color: var(--text-dim);
   cursor: pointer;
   transition: color 150ms ease, background 150ms ease;
+}
+.howto-anim-btn::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
 }
 .howto-anim-btn svg { width: 14px; height: 14px; fill: currentColor; }
 .howto-anim-btn svg[fill="none"] { fill: none; }
@@ -4346,17 +4473,17 @@ button.games-row { cursor: pointer; }
    spans every text row, so it keeps one size on every step and the text
    needs no reserved height. */
 @media (min-width: 900px) {
-  .howto-panel { width: 58rem; gap: 20px; }
+  .howto-panel { width: 928px; gap: 20px; }
   .howto-step {
     display: grid;
-    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 256px) minmax(0, 1fr);
     grid-template-rows: 1fr auto auto auto 1fr;
     grid-template-areas: ". visual" "title visual" "body visual" "caption visual" ". visual";
     column-gap: 36px;
     row-gap: 12px;
     /* Tall enough for the scoring table; shorter on a 720px-tall laptop so
        the panel still fits without scrolling. */
-    min-height: clamp(28rem, 100dvh - 14rem, 34rem);
+    min-height: clamp(448px, 100dvh - 224px, 544px);
   }
   .howto-step > .howto-visual { grid-area: visual; padding: 24px 20px; gap: 14px; }
   .howto-title { grid-area: title; text-align: left; }
@@ -4364,7 +4491,7 @@ button.games-row { cursor: pointer; }
   .howto-caption { grid-area: body; margin: 0; max-width: none; min-height: 0; text-align: left; text-wrap: pretty; }
   .howto-caption { grid-area: caption; font-size: 14px; }
   .howto-caption:empty { display: none; }
-  .howto-body { font-size: 16px; line-height: 1.55; }
+  .howto-body { font-size: var(--fs-16); line-height: 1.55; }
 
   .howto-cards { --cw: 72px; }
   .howto-cards.sm { --cw: 52px; }
@@ -4403,7 +4530,7 @@ button.games-row { cursor: pointer; }
 
   /* Dots on the left, the two buttons at their phone width on the right. */
   .howto-nav { flex-direction: row; align-items: center; justify-content: space-between; }
-  .howto-buttons { width: 22rem; }
+  .howto-buttons { width: 352px; }
 }
 
 /* Leave from inside a modal result screen; quieter than the primary action */

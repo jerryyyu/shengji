@@ -4,7 +4,7 @@ import type { GameState, RoomMsg } from "./protocol";
 import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
-import { announceState, resetAnnouncer } from "./audio";
+import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
 import { auth } from "./auth";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
@@ -13,16 +13,17 @@ import GamesList from "./components/GamesList";
 import { useGamesRoute } from "./replay/route";
 import HowTo from "./howto/HowTo";
 import { useHowtoRoute } from "./howto/route";
-import { hideSplash, lockFor } from "./native";
+import { haptic, hideSplash, lockFor } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
-
-const TOAST_MS = 4000;
+import { TOAST_MS, makeToast } from "./toast";
+import type { Toast } from "./toast";
+import ToastView from "./components/ToastView";
 
 export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
   const [room, setRoom] = useState<RoomMsg | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<number | null>(null);
   // Single-player orchestration: when armed (via Lobby's "Play vs bots"),
   // each lobby `room` message advances the fill-with-bots-then-start chain.
@@ -38,7 +39,9 @@ export default function App() {
 
   useEffect(() => {
     const showToast = (message: string) => {
-      setToast(message);
+      // a fresh id per showing: the same error again is shown again
+      setToast(makeToast(message));
+      haptic("select");
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
       toastTimer.current = window.setTimeout(() => {
         toastTimer.current = null;
@@ -149,6 +152,8 @@ export default function App() {
   const { rotated } = usePhoneLayout(atTable);
   // the launch splash covers the WebView until the first screen has painted
   useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
+  // the audio context costs a long task to create: make it before any tap
+  useEffect(() => { prewarmAudio(); }, []);
 
   let screen: ReactNode;
   if (howtoRoute) {
@@ -164,7 +169,7 @@ export default function App() {
     screen = (
       <Lobby
         status={status}
-        error={toast}
+        error={toast?.text ?? null}
         onArmAutoFill={() => {
           autoFill.current = true;
         }}
@@ -182,11 +187,7 @@ export default function App() {
           <span className="conn-dot" /> Reconnecting…
         </div>
       ) : null}
-      {toast && inRoom && !atTable ? (
-        <div className="toast" key={toast}>
-          {toast}
-        </div>
-      ) : null}
+      {toast && inRoom && !atTable ? <ToastView key={toast.id} toast={toast} /> : null}
     </div>
   );
 }

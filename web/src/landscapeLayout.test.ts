@@ -462,7 +462,7 @@ describe("phone controls", () => {
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
     expect(tokens["--pill-max"]).toContain("calc(2 * (var(--side-out) - var(--top-reach) - var(--space-s)) - var(--trick-cw))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");
-    expect(rule(block, ".opponent.pos-top")["max-width"]).toContain("min(200px");
+    expect(rule(block, ".opponent.pos-top")["--top-w"]).toContain("min(200px");
     const text = rule(block, ".opp-name-text");
     expect([text.overflow, text["text-overflow"], text["white-space"], text["min-width"]])
       .toEqual(["hidden", "ellipsis", "nowrap", "0"]);
@@ -729,6 +729,60 @@ describe("the phone hand", () => {
     expect(hand.overflow).toBe("visible");
     expect(hand["overflow-x"]).toBeUndefined();
   });
+});
+
+describe("the header row on a phone", () => {
+  // The level-and-points strip's width as drawn in Chromium: levels 10/J with
+  // 65 points, levels 10/10 with 105 points, the same with games-won stars
+  // (3 and 2), and the first and last at the 1.3x text cap.
+  const STRIPS = { "10/J 65": 259, "10/10 105": 287, "10/10 105 stars": 350, "1.3x text": 290, "1.3x stars": 400 };
+  const top = rule(block, ".opponent.pos-top");
+  const chat = rule(block, ".table-screen .chat-launch");
+  /** The top label at its widest, the strip and Chat, for a strip `stripW` wide. */
+  function header(vp: Viewport, stripW: number) {
+    const vars = { ...tokens, ...top, "--hud-strip-w": `${stripW}px` };
+    const L = (e: string) => evalLength(e, vp, vars);
+    const w = Math.max(0, L(top["max-width"]));
+    const left = L(top.left);
+    const safeL = L("var(--safe-l)");
+    const stripEnd = safeL + 4 + stripW;
+    const chatX0 = vp.w - L(chat.right) - px(chat.width);
+    return { label: { x0: left - w / 2, x1: left + w / 2 }, w, stripEnd, chatX0, centre: vp.w / 2 };
+  }
+  const turns = (vp: Viewport): [string, Viewport][] => [
+    ["", vp],
+    // the other landscape direction, and a lopsided inset either way
+    [" turned", { ...vp, left: vp.right, right: vp.left }],
+    [" inset left only", { ...vp, right: 0 }],
+    [" inset right only", { ...vp, left: 0 }],
+  ];
+
+  it("places the top label from the measured strip, inside its own stretch", () => {
+    expect(top["max-width"]).toBe("var(--top-w)");
+    expect(top["--top-from"]).toBe("calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s))");
+    expect(top.transform).toBe("translateX(-50%)");
+    expect(chat.right).toBe("calc(var(--safe-r) + 4px + 36px + var(--space-s))");
+  });
+
+  for (const [name, vp0] of FRAMES) for (const [turn, vp] of turns(vp0)) {
+    it(`${name}${turn}: the strip, the top label and Chat keep an 8px gap`, () => {
+      for (const [content, stripW] of Object.entries(STRIPS)) {
+        const h = header(vp, stripW);
+        if (h.w === 0) continue;
+        expect(h.label.x0 - h.stripEnd, content).toBeGreaterThanOrEqual(8 - 0.01);
+        expect(h.chatX0 - h.label.x1, content).toBeGreaterThanOrEqual(8 - 0.01);
+      }
+      // the label always keeps room for a name, and is centred over its slot
+      // whenever the strip leaves it the room
+      for (const content of Object.keys(STRIPS) as (keyof typeof STRIPS)[]) {
+        const h = header(vp, STRIPS[content]);
+        expect(h.w, content).toBeGreaterThanOrEqual(64);
+        if (h.centre - h.stripEnd - 8 >= h.w / 2 && h.chatX0 - 8 - h.centre >= h.w / 2) {
+          expect((h.label.x0 + h.label.x1) / 2, content).toBeCloseTo(h.centre, 5);
+        }
+      }
+    });
+  }
 });
 
 describe("the round-end card on a phone", () => {

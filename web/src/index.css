@@ -2533,13 +2533,20 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     white-space: nowrap;
   }
 
-  /* the top seat's label is centred in the header row, over its slot */
+  /* The top seat's label shares the header row. Its stretch runs from a gap
+     past the level strip (the strip's measured width, --hud-strip-w, from
+     the safe edge) to a gap before Chat. It is centred over its slot when
+     the stretch allows; otherwise it takes up to 96px of the stretch off
+     centre, and the name ends in an ellipsis. */
   .opponent.pos-top {
+    --top-from: calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s));
+    --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - 40px - var(--space-s));
+    --top-w: min(200px, max(calc(2 * min(var(--view-w) / 2 - var(--top-from), var(--top-to) - var(--view-w) / 2)),
+      min(96px, calc(var(--top-to) - var(--top-from)))));
     top: calc(6px + var(--safe-t));
-    left: 50%;
+    left: clamp(calc(var(--top-from) + var(--top-w) / 2), calc(var(--view-w) / 2), calc(var(--top-to) - var(--top-w) / 2));
     height: var(--header-h);
-    /* between the level strip (about 260px from the safe edge) and the menu */
-    max-width: min(200px, calc(var(--view-w) - 2 * max(var(--safe-l), var(--safe-r)) - 528px));
+    max-width: var(--top-w);
     transform: translateX(-50%);
   }
 
@@ -4286,22 +4293,11 @@ button.games-row { cursor: pointer; }
 .howto-band-pts { font-variant-numeric: tabular-nums; font-weight: 700; }
 
 .howto-nav { display: flex; flex-direction: column; gap: 12px; }
-/* Each dot is drawn 8px but takes a 44px-tall tap, as wide as the row allows
-   (44px, or a tenth of a phone's width): the dots share the row edge to edge. */
-.howto-dots { display: flex; justify-content: center; gap: 0; }
-.howto-dot {
-  appearance: none;
-  flex: 1 1 0;
-  max-width: 44px;
-  min-height: 44px;
-  border: 0;
-  background: none;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
+/* The dots are a page indicator, not buttons: Back and Next (44px and up)
+   and the swipe move between steps, so no tap target is narrower than a
+   finger. */
+.howto-dots { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 16px; pointer-events: none; }
+.howto-dot { display: flex; align-items: center; justify-content: center; }
 .howto-dot::before {
   content: "";
   display: block;
@@ -4319,8 +4315,12 @@ button.games-row { cursor: pointer; }
    parts. Parts that appear later keep their space while hidden. */
 .howto-visual { position: relative; }
 .howto-frame { display: contents; }
-/* 30px buttons 14px apart: each one's 44px tap (the ::after) meets the next's */
+/* 30px buttons 14px apart: each one's 44px tap (the ::after) meets the next's.
+   They sit in a strip of their own across the picture's top, 44px tall so
+   even the taps end above the picture, which therefore never draws a seat
+   name or a card under them, at any width or text size. */
 .howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 14px; }
+.howto-visual:has(> .howto-anim-controls) { padding-top: 44px; }
 .howto-anim-btn {
   appearance: none;
   position: relative;
@@ -4456,6 +4456,7 @@ button.games-row { cursor: pointer; }
     min-height: clamp(448px, 100dvh - 224px, 544px);
   }
   .howto-step > .howto-visual { grid-area: visual; padding: 24px 20px; gap: 14px; }
+  .howto-step > .howto-visual:has(> .howto-anim-controls) { padding-top: 44px; }
   .howto-title { grid-area: title; text-align: left; }
   .howto-body,
   .howto-caption { grid-area: body; margin: 0; max-width: none; min-height: 0; text-align: left; text-wrap: pretty; }

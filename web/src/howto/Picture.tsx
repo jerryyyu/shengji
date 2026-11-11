@@ -2,8 +2,10 @@
 // is a function of a frame state: the timeline steps through `frames`, and
 // `still` is the state of the static picture (the timeline's last frame).
 // The still shows under reduced motion, when the viewer switches to it, and
-// whenever the animation throws, so a slide never ends up blank.
-import { Component, useState } from "react";
+// whenever the animation throws, so a slide never ends up blank. Turning
+// Reduce Motion on while a picture plays switches it to the still at once;
+// Replay or Play still runs the animation on request.
+import { Component, useEffect, useRef, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { prefersReducedMotion } from "../motion";
 import TimelineControls from "./TimelineControls";
@@ -39,6 +41,24 @@ export class StillOnError extends Component<{ fallback: ReactNode; children: Rea
 function Player<S>({ frames, still, render }: PictureProps<S>) {
   const [stillOn, setStillOn] = useState(prefersReducedMotion);
   const tl = useTimeline(frames, !stillOn);
+  const pause = useRef(tl.pause);
+  pause.current = tl.pause;
+  useEffect(() => {
+    let mql: MediaQueryList;
+    try {
+      mql = window.matchMedia("(prefers-reduced-motion: reduce)");
+    } catch {
+      return;
+    }
+    if (typeof mql?.addEventListener !== "function") return;
+    const onChange = (e: MediaQueryListEvent) => {
+      if (!e.matches) return;
+      pause.current();
+      setStillOn(true);
+    };
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
   const animate = () => { setStillOn(false); tl.replay(); };
   const controls = (
     <TimelineControls

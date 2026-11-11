@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMuted } from "../useMuted";
 import { conn } from "../ws";
 import { auth, effectiveName, useAuth } from "../auth";
@@ -9,7 +10,12 @@ import NameEditForm from "./NameEditForm";
  * none of them a mid-trick decision, so on a small screen they share one
  * button instead of four chips. Desktop keeps its chips (this is hidden by CSS
  * there). Leave asks first: its row turns into "Leave game? Stay / Leave"
- * and waits, with no timer, until one is chosen or the menu is closed. */
+ * and waits, with no timer, until one is chosen or the menu is closed.
+ *
+ * Keyboard: opening moves focus to the first actionable row, ArrowUp and
+ * ArrowDown move between rows (wrapping), Home and End go to the ends, and
+ * Escape closes the menu and returns focus to the `…` button. Arming Leave
+ * focuses Stay, the safe choice; Stay puts focus back on the Leave row. */
 export default function HudMenu({ room, kittyCount }: { room: string; kittyCount: number }) {
   const [open, setOpen] = useState(false);
   const [muted, toggleSound] = useMuted();
@@ -19,14 +25,57 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   const account = useAuth();
   const [signOutError, setSignOutError] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  // the row to focus after the next render
+  const focusNext = useRef<"first" | "last" | "stay" | "leave" | null>(null);
 
-  // outside tap / Escape closes; an armed Leave reverts too
+  /** The rows a keyboard can act on, in order: the kitty row is information
+   *  only, and an open name field keeps its own arrow keys. */
+  const items = (): HTMLElement[] => Array.from(menuRef.current?.querySelectorAll<HTMLElement>(
+    "[role='menuitem']:not([aria-disabled='true']), [role='menuitemcheckbox'], .hud-menu-choice",
+  ) ?? []);
+
+  useEffect(() => {
+    const want = focusNext.current;
+    if (!open || want === null) return;
+    focusNext.current = null;
+    const list = items();
+    const target = want === "stay" ? menuRef.current?.querySelector<HTMLElement>(".hud-menu-choice")
+      : want === "leave" ? menuRef.current?.querySelector<HTMLElement>(".hud-menu-row.leave")
+      : want === "last" ? list[list.length - 1]
+      : list[0];
+    target?.focus();
+  });
+
+  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const t = e.target as HTMLElement;
+    if (t.closest("input, textarea, select")) return;
+    const list = items();
+    if (list.length === 0) return;
+    const at = list.indexOf(document.activeElement as HTMLElement);
+    let next: number | null = null;
+    if (e.key === "ArrowDown") next = at < 0 ? 0 : (at + 1) % list.length;
+    else if (e.key === "ArrowUp") next = at < 0 ? list.length - 1 : (at - 1 + list.length) % list.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = list.length - 1;
+    if (next === null) return;
+    e.preventDefault();
+    list[next].focus();
+  };
+
+  // outside tap / Escape closes; an armed Leave reverts too. Escape hands
+  // focus back to the `…` button; an outside tap leaves focus where it lands.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) close();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      close();
+      triggerRef.current?.focus();
+    };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -56,17 +105,29 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   return (
     <div className="hud-more" ref={rootRef}>
       <button
+        ref={triggerRef}
         className="hud-more-btn"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="More"
         title="Kitty, sound, invite, leave"
-        onClick={() => (open ? close() : setOpen(true))}
+        onClick={() => {
+          if (open) { close(); return; }
+          focusNext.current = "first";
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          // ArrowDown / ArrowUp on the closed button open the menu at its first / last row
+          if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+          e.preventDefault();
+          focusNext.current = e.key === "ArrowDown" ? "first" : "last";
+          setOpen(true);
+        }}
       >
         …
       </button>
       {open ? (
-        <div className="hud-menu" role="menu">
+        <div className="hud-menu" role="menu" aria-label="More" ref={menuRef} onKeyDown={onMenuKey}>
           <div className="hud-menu-row" role="menuitem" aria-disabled="true">
             <span>Kitty</span><span className="hud-menu-k">{kittyCount} cards</span>
           </div>
@@ -112,12 +173,13 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
             <div className="hud-menu-row leave armed" role="group" aria-label="Leave game?">
               <span>Leave game?</span>
               <span className="hud-menu-confirm">
-                <button className="hud-menu-choice" onClick={() => setArmed(false)}>Stay</button>
+                <button className="hud-menu-choice" onClick={() => { focusNext.current = "leave"; setArmed(false); }}>Stay</button>
                 <button className="hud-menu-choice danger" onClick={leave}>Leave</button>
               </span>
             </div>
           ) : (
-            <button className="hud-menu-row leave" role="menuitem" onClick={() => setArmed(true)}>
+            <button className="hud-menu-row leave" role="menuitem"
+                    onClick={() => { focusNext.current = "stay"; setArmed(true); }}>
               <span>Leave game…</span>
             </button>
           )}

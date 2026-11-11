@@ -48,11 +48,16 @@ describe("How to play targets", () => {
     expect(decls(".howto-anim-controls")).toMatch(/gap: 14px/);
   });
 
-  it("gives each step dot a 44px-tall tap up to 44px wide", () => {
-    const dot = decls(".howto-dot");
-    expect(dot).toMatch(/min-height: 44px/);
-    expect(dot).toMatch(/max-width: 44px/);
-    expect(dot).toMatch(/flex: 1 1 0/);
+  it("keeps the picture's content out of the controls' strip, taps included", () => {
+    // top 6px + 30px button + 7px of tap below it ends at 43px
+    expect(decls(".howto-anim-controls")).toMatch(/top: 6px/);
+    expect(decls(".howto-visual:has(> .howto-anim-controls)")).toMatch(/padding-top: 44px/);
+    expect(css).toMatch(/\.howto-step > \.howto-visual:has\(> \.howto-anim-controls\) \{ padding-top: 44px; \}/);
+  });
+
+  it("draws the step dots as an indicator that takes no taps", () => {
+    expect(decls(".howto-dots")).toMatch(/pointer-events: none/);
+    expect(decls(".howto-dot")).not.toMatch(/cursor: pointer/);
   });
 });
 

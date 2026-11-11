@@ -43,3 +43,16 @@ it("the lobby offers My games only to a signed-in player", () => {
   act(() => auth.signedIn(user));
   expect(host.querySelector(".account-games")).not.toBeNull();
 });
+
+it("the leaderboard and My stats entries appear only to a signed-in player", () => {
+  const host = render(<Lobby status="open" error={null} onArmAutoFill={() => {}} />);
+  expect(host.querySelector(".account-leaderboard")).toBeNull();
+  expect(host.querySelector(".account-stats")).toBeNull();
+  act(() => auth.signedIn(user));
+  const board = host.querySelector<HTMLButtonElement>(".account-leaderboard")!;
+  expect(board.textContent).toBe("Leaderboard");
+  act(() => board.click());
+  expect(window.location.hash).toBe("#/leaderboard");
+  act(() => host.querySelector<HTMLButtonElement>(".account-stats")!.click());
+  expect(window.location.hash).toBe("#/stats");
+});

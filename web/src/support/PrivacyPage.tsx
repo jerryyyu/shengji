@@ -46,7 +46,6 @@ export default function PrivacyPage() {
             improve the computer players, including as training data for them. They have no fixed
             expiry.
           </p>
-          <p>There are no ratings or leaderboards.</p>
         </Section>
 
         <Section title="Signing in with Google">
@@ -71,6 +70,23 @@ export default function PrivacyPage() {
             For a signed-in player we link your account to the seat and rounds you played, with each
             game’s final levels and wins, so you can see your games and replay them. Saved games are
             kept for twelve months. You can remove any game from your history in My games.
+          </p>
+        </Section>
+
+        <Section title="Ratings and the leaderboard">
+          <p>
+            Signed-in players get a rating; guests are not rated. For your account we store your
+            current rating, how many rated rounds it rests on, and one entry per rated round: the
+            game and round, your team and whether it won, the levels it moved, your rating before
+            and after and the change, whether the round was abandoned, your partner’s name at the
+            table (or that the partner was a computer player) and how many opponents were computer
+            players.
+          </p>
+          <p>
+            The leaderboard shows your display name with your rating, rated rounds, levels per round
+            and this week’s change, and anyone who opens it can see it. It never shows your email or
+            account id. You can leave the leaderboard with “Show me on the leaderboard” in My stats;
+            your rating keeps updating either way.
           </p>
         </Section>
 
@@ -101,9 +117,10 @@ export default function PrivacyPage() {
 
         <Section title="Deleting your account">
           <p>
-            Deleting an account removes your account record, your sessions and your saved-game links.
-            The game records stay, because they never held your account; they still carry the name
-            you played under. To delete your account, send a message through the{" "}
+            Deleting an account removes your account record, your sessions, your saved-game links,
+            your rating and your rating history. The game records stay, because they never held your
+            account; they still carry the name you played under, and so does the rating history of
+            any signed-in partner you played with. To delete your account, send a message through the{" "}
             <SupportLink /> with the topic Account while you are signed in, and we will delete it.
             You can remove single games from your history yourself in My games.
           </p>

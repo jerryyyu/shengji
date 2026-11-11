@@ -269,6 +269,50 @@ def _migrate_v3(conn: sqlite3.Connection) -> None:
         raise sqlite3.IntegrityError(f"foreign key check failed after v3: {len(problems)} rows")
 
 
+# Ratings (``ratings.py``): each user's current rating, how many rounds it
+# rests on and whether they show on the leaderboard live on ``users``; every
+# rated round adds one ``rating_events`` row per rated account, so stats and
+# weekly deltas are derived rather than stored twice.
+_RATINGS_V4 = """
+    CREATE TABLE IF NOT EXISTS rating_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_id TEXT NOT NULL,
+        round_no INTEGER NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        team INTEGER NOT NULL,
+        banker_team INTEGER NOT NULL,
+        won INTEGER NOT NULL,
+        levels INTEGER NOT NULL,
+        game_won INTEGER NOT NULL DEFAULT 0,
+        abandoned INTEGER NOT NULL DEFAULT 0,
+        expected REAL NOT NULL,
+        actual REAL NOT NULL,
+        k REAL NOT NULL,
+        rating_before REAL NOT NULL,
+        rating_after REAL NOT NULL,
+        delta REAL NOT NULL,
+        partner TEXT NULL,
+        partner_bot INTEGER NOT NULL DEFAULT 0,
+        opponents_bots INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (game_id, round_no, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS rating_events_user ON rating_events(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS rating_events_created ON rating_events(created_at)
+"""
+
+
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    """Add the rating columns and the per-round rating log. Every step checks
+    or uses ``IF NOT EXISTS``, so a re-run on a database that already has
+    them changes nothing."""
+    _add_column_if_missing(conn, "users", "rating", "REAL NOT NULL DEFAULT 1500")
+    _add_column_if_missing(conn, "users", "rated_rounds", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "users", "leaderboard_visible", "INTEGER NOT NULL DEFAULT 1")
+    for statement in filter(None, (s.strip() for s in _RATINGS_V4.split(";"))):
+        conn.execute(statement)
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -298,6 +342,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _migrate_v2,
     # version 3: account ids that are never reused, and saved games.
     _migrate_v3,
+    # version 4: player ratings and the leaderboard opt-out.
+    _migrate_v4,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest

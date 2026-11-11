@@ -5,7 +5,7 @@ import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
-import { auth } from "./auth";
+import { auth, useAuth } from "./auth";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
 import Table from "./components/Table";
@@ -16,6 +16,9 @@ import { useHowtoRoute } from "./howto/route";
 import SupportPage from "./support/SupportPage";
 import PrivacyPage from "./support/PrivacyPage";
 import { useInfoRoute } from "./support/route";
+import Leaderboard from "./components/Leaderboard";
+import MyStats from "./components/MyStats";
+import { useRatingsRoute } from "./ratings/route";
 import { haptic, hideSplash, lockFor } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
 import { TOAST_MS, makeToast } from "./toast";
@@ -40,6 +43,11 @@ export default function App() {
   const gamesRoute = useGamesRoute();
   const howtoRoute = useHowtoRoute();
   const infoRoute = useInfoRoute();
+  // The leaderboard and My stats exist only for a signed-in account; a
+  // guest who lands on their hash sees the usual screen instead.
+  const account = useAuth();
+  const ratingsPage = useRatingsRoute();
+  const ratingsRoute = account.status === "in" ? ratingsPage : null;
 
   useEffect(() => {
     const showToast = (message: string) => {
@@ -150,7 +158,8 @@ export default function App() {
 
   // The iOS app keeps lobby screens portrait and the table landscape on an
   // iPhone; everywhere else these are no-ops.
-  const atTable = game !== null && !gamesRoute && !howtoRoute && !infoRoute;
+  const atTable =
+    game !== null && !gamesRoute && !howtoRoute && !infoRoute && !ratingsRoute;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
   // a portrait phone browser gets the table turned sideways instead
   const { rotated } = usePhoneLayout(atTable);
@@ -164,6 +173,10 @@ export default function App() {
     screen = infoRoute === "support" ? <SupportPage /> : <PrivacyPage />;
   } else if (howtoRoute) {
     screen = <HowTo route={howtoRoute} />;
+  } else if (ratingsRoute === "leaderboard") {
+    screen = <Leaderboard inGame={room !== null || game !== null} />;
+  } else if (ratingsRoute === "stats") {
+    screen = <MyStats inGame={room !== null || game !== null} />;
   } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} inGame={room !== null || game !== null} />;
   } else if (game) {

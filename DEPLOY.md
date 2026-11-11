@@ -20,6 +20,8 @@ Release records through release 46 in full: [docs_archive/deploy-through-2026-10
 
 Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 
+Google sign-in is on when `GOOGLE_CLIENT_ID` (the web client) is set; the optional comma-separated `GOOGLE_IOS_CLIENT_IDS` adds native-app client ids that the login endpoint also accepts as a token audience. Set it as a Fly secret, since a `fly.toml` `[env]` line would need a `NON_BOT_KEYS` entry in `server/shengji/releases.py` first.
+
 ## Current production
 
 **Release 52**: release 51 with the combo51 search rules. The exact lead keeps the baseline lead unless the exact

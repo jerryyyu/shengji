@@ -395,6 +395,59 @@ def test_feature_off_when_the_client_id_is_unset(accounts_on, keypair, client, m
     assert client.get("/healthz").json()["accounts"] == {"google_sign_in": True}
 
 
+IOS_CLIENT_ID = "1234567890-ios.apps.googleusercontent.com"
+
+
+def test_an_ios_audience_is_accepted_only_when_listed(accounts_on, keypair, client, monkeypatch):
+    private_pem, _ = keypair
+    ios_token = _sign(private_pem, _claims(aud=IOS_CLIENT_ID, azp=IOS_CLIENT_ID))
+    monkeypatch.delenv("GOOGLE_IOS_CLIENT_IDS", raising=False)
+    assert accounts_on.accepted_audiences() == (CLIENT_ID,)
+    resp = _login(client, ios_token)
+    assert resp.status_code == 401 and "bad_audience" in resp.json()["detail"]
+
+    monkeypatch.setenv("GOOGLE_IOS_CLIENT_IDS", f" other.apps.googleusercontent.com , {IOS_CLIENT_ID},,")
+    assert accounts_on.accepted_audiences() == (
+        CLIENT_ID, "other.apps.googleusercontent.com", IOS_CLIENT_ID)
+    assert _login(client, ios_token).status_code == 200
+    # the nonce check applies to a native token exactly as to a web one
+    native = _sign(private_pem, _claims(aud=IOS_CLIENT_ID, nonce="n-ios"))
+    assert _login(client, native, nonce="n-other").status_code == 401
+    assert _login(client, native, nonce="n-ios").status_code == 200
+    # the list widens the audience only; issuer and expiry still refuse
+    for over, reason in (({"iss": "https://evil.example"}, "bad_issuer"),
+                         ({"exp": int(time.time()) - 600, "iat": int(time.time()) - 4200}, "expired")):
+        resp = _login(client, _sign(private_pem, _claims(aud=IOS_CLIENT_ID, **over)))
+        assert resp.status_code == 401 and reason in resp.json()["detail"]
+    resp = _login(client, _sign(private_pem, _claims(aud="someone-else.apps.googleusercontent.com")))
+    assert resp.status_code == 401 and "bad_audience" in resp.json()["detail"]
+
+
+def test_a_web_audience_token_is_unchanged_by_the_ios_list(accounts_on, keypair, client, monkeypatch):
+    private_pem, _ = keypair
+    for listed in (None, IOS_CLIENT_ID):
+        if listed is None:
+            monkeypatch.delenv("GOOGLE_IOS_CLIENT_IDS", raising=False)
+        else:
+            monkeypatch.setenv("GOOGLE_IOS_CLIENT_IDS", listed)
+        claims = accounts_on.verify_google_id_token(_sign(private_pem, _claims()),
+                                                    accounts_on.accepted_audiences())
+        assert claims["aud"] == CLIENT_ID
+        assert _login(client, _sign(private_pem, _claims())).status_code == 200
+
+
+def test_the_ios_list_alone_does_not_turn_sign_in_on(accounts_on, keypair, client, monkeypatch):
+    private_pem, _ = keypair
+    monkeypatch.delenv("GOOGLE_CLIENT_ID")
+    monkeypatch.setenv("GOOGLE_IOS_CLIENT_IDS", IOS_CLIENT_ID)
+    assert accounts_on.accepted_audiences() == ()
+    assert client.get("/api/auth/config").json() == {"google_client_id": None}
+    assert _login(client, _sign(private_pem, _claims(aud=IOS_CLIENT_ID))).status_code == 404
+    with pytest.raises(accounts_on.AuthError) as info:
+        accounts_on.verify_google_id_token(_sign(private_pem, _claims(aud=IOS_CLIENT_ID)), ())
+    assert info.value.reason == "bad_audience"
+
+
 # -------------------------------------------------------------- websocket
 def _session_cookie(accounts_on, client, private_pem, **claims) -> str:
     resp = _login(client, _sign(private_pem, _claims(**claims)))

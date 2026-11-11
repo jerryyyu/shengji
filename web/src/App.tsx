@@ -13,6 +13,9 @@ import GamesList from "./components/GamesList";
 import { useGamesRoute } from "./replay/route";
 import HowTo from "./howto/HowTo";
 import { useHowtoRoute } from "./howto/route";
+import SupportPage from "./support/SupportPage";
+import PrivacyPage from "./support/PrivacyPage";
+import { useInfoRoute } from "./support/route";
 import { haptic, hideSplash, lockFor } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
 import { TOAST_MS, makeToast } from "./toast";
@@ -36,6 +39,7 @@ export default function App() {
   // socket and any game in progress keep running underneath.
   const gamesRoute = useGamesRoute();
   const howtoRoute = useHowtoRoute();
+  const infoRoute = useInfoRoute();
 
   useEffect(() => {
     const showToast = (message: string) => {
@@ -146,7 +150,7 @@ export default function App() {
 
   // The iOS app keeps lobby screens portrait and the table landscape on an
   // iPhone; everywhere else these are no-ops.
-  const atTable = game !== null && !gamesRoute && !howtoRoute;
+  const atTable = game !== null && !gamesRoute && !howtoRoute && !infoRoute;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
   // a portrait phone browser gets the table turned sideways instead
   const { rotated } = usePhoneLayout(atTable);
@@ -156,7 +160,9 @@ export default function App() {
   useEffect(() => { prewarmAudio(); }, []);
 
   let screen: ReactNode;
-  if (howtoRoute) {
+  if (infoRoute) {
+    screen = infoRoute === "support" ? <SupportPage /> : <PrivacyPage />;
+  } else if (howtoRoute) {
     screen = <HowTo route={howtoRoute} />;
   } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} inGame={room !== null || game !== null} />;

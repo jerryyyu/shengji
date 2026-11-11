@@ -29,7 +29,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, saved_games
+from . import accounts, saved_games, support
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
@@ -2153,6 +2153,7 @@ class WebFiles(StaticFiles):
 
 
 dist = Path(__file__).resolve().parents[3] / "web" / "dist"
+support.register_support(app, dist)
 if dist.is_dir():
     app.mount("/", WebFiles(directory=dist, html=True), name="web")
 

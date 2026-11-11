@@ -5,6 +5,7 @@
 // sends on its own, to `/api/*` and on the `/ws` handshake alike.
 
 import { useEffect, useState } from "react";
+import { nativeGoogleSignOut } from "./nativeAuth";
 import { conn } from "./ws";
 
 export interface AuthUser {
@@ -274,6 +275,7 @@ class AuthStore {
     } catch {
       /* GIS not loaded */
     }
+    void nativeGoogleSignOut();
     this.set({ status: "out", user: null });
     conn.reconnect();
   }

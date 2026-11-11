@@ -1,12 +1,18 @@
-import { useEffect, useState } from "react";
-import { deltaText, fetchLeaderboard, signed } from "../ratings/api";
+import { useState } from "react";
+import { useAuth } from "../auth";
+import { deltaText, fetchLeaderboard } from "../ratings/api";
 import type { Leaderboard as Board, LeaderRow, Loaded, Period } from "../ratings/api";
-import { closeRatings, openRatings } from "../ratings/route";
-import { GamesHead, GamesNotice } from "./GamesStatus";
+import { Segmented } from "../home/HomeShell";
+import { tabMemory, useCachedLoad, useTabScroll, viewerScope } from "../home/session";
+import GoogleSignIn from "./GoogleSignIn";
 
-function meta(row: LeaderRow): string {
-  const rounds = `${row.rounds} round${row.rounds === 1 ? "" : "s"}`;
-  return row.provisional ? `${rounds} · provisional` : `${rounds} · ${signed(row.levels_per_round)} lv/round`;
+const PERIODS = [
+  { value: "week", label: "This week" },
+  { value: "all", label: "All time" },
+] as const;
+
+function deltaClass(delta: number): string {
+  return delta > 0 ? "delta-up" : delta < 0 ? "delta-dn" : "delta-flat";
 }
 
 export function Row({ row }: { row: LeaderRow }) {
@@ -14,76 +20,72 @@ export function Row({ row }: { row: LeaderRow }) {
   return (
     <li className={`lb-row${row.you ? " me" : ""}`}>
       <span className={`lb-rank${top ? " top" : ""}`}>{row.rank ?? "—"}</span>
+      <span className="avatar avatar-sm" aria-hidden="true">{row.name.slice(0, 1).toUpperCase()}</span>
       <span className="lb-name">
-        <span className="lb-name-text">{row.you ? "You" : row.name}</span>
+        <span className="lb-name-text">{row.you ? `${row.name} (you)` : row.name}</span>
         {row.provisional ? <span className="lb-new" title="Fewer than 20 rated rounds">new</span> : null}
-        <span className="lb-meta">{meta(row)}</span>
       </span>
-      <span className="lb-rating">
-        {row.rating}
-        <small className={row.week_delta > 0 ? "delta-up" : row.week_delta < 0 ? "delta-dn" : "delta-flat"}
-               title="Change this week">
-          {deltaText(row.week_delta)}
-        </small>
+      <span className="lb-rating">{row.rating}</span>
+      <span className={`lb-delta ${deltaClass(row.week_delta)}`} title="Change this week">
+        {deltaText(row.week_delta)}
       </span>
     </li>
   );
 }
 
+/** The bot anchor: a divider at its rating, not a competitor with a rank. */
 function Anchor({ name, rating }: { name: string; rating: number }) {
-  return (
-    <li className="lb-row anchor">
-      <span className="lb-rank">—</span>
-      <span className="lb-name">
-        <span className="lb-name-text">{name}</span>
-        <span className="lb-meta">fixed anchor</span>
-      </span>
-      <span className="lb-rating">{rating}</span>
-    </li>
-  );
+  return <li className="lb-row anchor"><span className="lb-anchor-text">{name} · {rating}</span></li>;
 }
 
-/** The top players with the bot anchor placed where its rating falls, and
- *  the viewer's own row pinned below when it is not among them. */
+/** The top players with the bot anchor placed where its rating falls. */
 function Rows({ board }: { board: Board }) {
-  const { players, me, anchor } = board;
+  const { players, anchor } = board;
   const at = players.findIndex((p) => p.rating < anchor.rating);
   const split = at === -1 ? players.length : at;
-  const pinned = me !== null && !players.some((p) => p.you);
   return (
-    <ul className="lb-list">
+    <ul className="grp lb-list">
       {players.slice(0, split).map((p, i) => <Row key={`a${i}`} row={p} />)}
       <Anchor {...anchor} />
       {players.slice(split).map((p, i) => <Row key={`b${i}`} row={p} />)}
-      {pinned ? (
-        <>
-          <li className="lb-gap" aria-hidden="true">· · ·</li>
-          <Row row={me} />
-        </>
-      ) : null}
     </ul>
   );
 }
 
-/** The leaderboard: signed-in players by rating, this week or all time. */
-export default function Leaderboard({ inGame }: { inGame: boolean }) {
-  const [period, setPeriod] = useState<Period>("week");
-  const [res, setRes] = useState<Loaded<Board> | null>(null);
-  useEffect(() => {
-    let live = true;
-    setRes(null);
-    fetchLeaderboard(period).then((r) => { if (live) setRes(r); });
-    return () => { live = false; };
-  }, [period]);
+/** Where a guest's own row would be: what signing in buys, and the button. */
+function SignInToRank({ clientId }: { clientId: string }) {
+  return (
+    <div className="signin-card compact">
+      <h3>Sign in to be ranked</h3>
+      <p>Your games as a guest aren’t rated. Sign in and your first rated game starts you at 1000.</p>
+      <GoogleSignIn clientId={clientId} />
+      <p className="signin-foot">Sign in with Apple is coming soon</p>
+    </div>
+  );
+}
+
+/** The Leaderboard tab: rated players by rating, this week or all time.
+ *  Guests read it too; the viewer's own row (or, for a guest, a sign-in
+ *  card) is pinned to the bottom when it is not among the rows shown.
+ *  This week on the first visit; after that the period last chosen, with
+ *  the last board shown at once while a fresh one loads. The board carries
+ *  the viewer's own row, so it is cached per viewer and reloads when the
+ *  viewer changes. */
+export default function Leaderboard({ onBack }: { onBack?: () => void }) {
+  const account = useAuth();
+  const [period, setPeriodState] = useState<Period>(tabMemory.period);
+  const setPeriod = (p: Period) => { tabMemory.period = p; setPeriodState(p); };
+  const res = useCachedLoad<Loaded<Board>>(`${viewerScope(account)}:board:${period}`, () => fetchLeaderboard(period));
+  const scroller = useTabScroll(`leaderboard:${period}`, res !== null);
 
   let body;
-  if (res === null) body = <GamesNotice title="Loading…" />;
+  let pinned = null;
+  if (res === null) body = <p className="lb-note" role="status">Loading…</p>;
   else if (!res.ok) {
-    body = res.reason === "signed_out"
-      ? <GamesNotice title="Sign in to see the leaderboard." />
-      : <p className="lobby-error" role="alert">Could not load the leaderboard ({res.status || "no connection"}).</p>;
+    body = <p className="lobby-error" role="alert">Could not load the leaderboard ({res.status || "no connection"}).</p>;
   } else {
-    const empty = res.data.players.length === 0 && res.data.me === null;
+    const { players, me } = res.data;
+    const empty = players.length === 0;
     body = (
       <>
         <Rows board={res.data} />
@@ -94,22 +96,20 @@ export default function Leaderboard({ inGame }: { inGame: boolean }) {
         ) : null}
       </>
     );
+    if (me !== null && !players.some((p) => p.you)) {
+      pinned = <ul className="grp lb-list"><Row row={me} /></ul>;
+    }
   }
+  if (account.status === "out" && account.clientId) pinned = <SignInToRank clientId={account.clientId} />;
+
   return (
-    <div className="screen games-screen">
-      <div className="panel games-panel lb-panel">
-        <GamesHead back={inGame ? "Back to game" : "Lobby"} onBack={closeRatings} title="Leaderboard"
-                   sub="Signed-in players, rated every round" />
-        <div className="lb-seg" role="group" aria-label="Period">
-          {(["week", "all"] as const).map((p) => (
-            <button key={p} className={`lb-seg-btn${period === p ? " on" : ""}`} aria-pressed={period === p}
-                    onClick={() => setPeriod(p)}>
-              {p === "week" ? "This week" : "All time"}
-            </button>
-          ))}
-        </div>
+    <div className="screen home-page lb-page" ref={scroller}>
+      <div className="home-col">
+        {onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}
+        <h1 className="large-title">Leaderboard</h1>
+        <Segmented label="Period" options={PERIODS} value={period} onChange={setPeriod} />
         {body}
-        <button className="btn big lb-stats-link" onClick={() => openRatings("stats")}>My stats</button>
+        {pinned ? <div className="lb-pin">{pinned}</div> : null}
       </div>
     </div>
   );

@@ -2,8 +2,8 @@
 /// <reference types="node" />
 // Guards chrome rules in index.css that jsdom cannot render: the toast's fade
 // timing, Reduce Motion on the deal deck, How to play tap areas, one focus
-// ring on fields, the turned table's hand inset, the dimmed-card veil and the
-// capped text scale.
+// ring on fields, the turned table's hand inset, the dimmed-card veil, the
+// capped text scale and the home tabs' touch targets.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -48,11 +48,16 @@ describe("How to play targets", () => {
     expect(decls(".howto-anim-controls")).toMatch(/gap: 14px/);
   });
 
-  it("gives each step dot a 44px-tall tap up to 44px wide", () => {
-    const dot = decls(".howto-dot");
-    expect(dot).toMatch(/min-height: 44px/);
-    expect(dot).toMatch(/max-width: 44px/);
-    expect(dot).toMatch(/flex: 1 1 0/);
+  it("keeps the picture's content out of the controls' strip, taps included", () => {
+    // top 6px + 30px button + 7px of tap below it ends at 43px
+    expect(decls(".howto-anim-controls")).toMatch(/top: 6px/);
+    expect(decls(".howto-visual:has(> .howto-anim-controls)")).toMatch(/padding-top: 44px/);
+    expect(css).toMatch(/\.howto-step > \.howto-visual:has\(> \.howto-anim-controls\) \{ padding-top: 44px; \}/);
+  });
+
+  it("draws the step dots as an indicator that takes no taps", () => {
+    expect(decls(".howto-dots")).toMatch(/pointer-events: none/);
+    expect(decls(".howto-dot")).not.toMatch(/cursor: pointer/);
   });
 });
 
@@ -94,5 +99,28 @@ describe("the boot page", () => {
     expect(html).toMatch(/padding: max\(16px, env\(safe-area-inset-top\)\)/);
     expect(html).toContain("Connecting… check your network");
     expect(html).toMatch(/setTimeout\(function \(\) \{[\s\S]*boot-retry[\s\S]*\}, 4000\)/);
+  });
+});
+
+describe("home touch targets", () => {
+  const px = (body: string, prop: string) => Number(new RegExp(`(?:^|[;\\s])${prop}:\\s*(-?\\d+)px`).exec(body)?.[1]);
+  it("the segmented buttons draw 28px in a 32px track and reach 44px with ::before", () => {
+    const track = px(decls(".segmented"), "height");
+    const padding = px(decls(".segmented"), "padding");
+    const drawn = track - 2 * padding;
+    expect(drawn).toBe(28);
+    expect(decls(".segmented-btn")).toContain("position: relative");
+    const inset = /inset:\s*-(\d+)px 0/.exec(decls(".segmented-btn::before"))!;
+    expect(drawn + 2 * Number(inset[1])).toBeGreaterThanOrEqual(44);
+    // the overhang stays inside the gap to the column's next item
+    expect(Number(inset[1]) - padding).toBeLessThan(px(decls(".home-col"), "gap") / 2);
+  });
+
+  it("the account chip reaches 44px inside the 56px top bar, and its menu rows are 44px", () => {
+    const chip = px(decls(".topbar-account"), "height");
+    const inset = /inset:\s*-(\d+)px 0/.exec(decls(".topbar-account::before"))!;
+    expect(chip + 2 * Number(inset[1])).toBeGreaterThanOrEqual(44);
+    expect(chip + 2 * Number(inset[1])).toBeLessThanOrEqual(56);
+    expect(px(decls(".topbar-menu button"), "min-height")).toBeGreaterThanOrEqual(44);
   });
 });

@@ -379,3 +379,75 @@ describe("following a lead", () => {
     expect(primary().querySelector(".play-text")?.textContent).toBe("Play (1)");
   });
 });
+
+describe("Play and Bury say they are sending", () => {
+  const pick = (n: number) => act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[n].click());
+  const primary = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+  const label = () => (primary().querySelector(".play-text") ?? primary()).textContent;
+  const handIds = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")].map((slot) => Number(slot.dataset.id));
+  const selected = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")]
+    .filter((slot) => slot.querySelector(".card.selected")).map((slot) => Number(slot.dataset.id));
+  const setStatus = (s: string) => act(() => { link.status = s; for (const fn of link.statusListeners) fn(s); });
+  const playing = (over: Partial<GameState> = {}) => state({ turn: 0, trick: { leader: 0, plays: [] }, ...over });
+  const burying = (over: Partial<GameState> = {}) => state({
+    phase: "bury", turn: 0, hand: cards(33), banker: 0,
+    players: [player(0, { is_banker: true, cards_left: 33 }), player(1), player(2), player(3)], ...over });
+
+  it("a delayed play: Sending… and aria-busy at once, the cards stay in the hand, one send", () => {
+    render(playing());
+    pick(0);
+    expect(label()).toBe("Play (1)");
+    expect(primary().getAttribute("aria-busy")).toBeNull();
+    act(() => primary().click());
+    expect(label()).toBe("Sending…");
+    expect(primary().getAttribute("aria-busy")).toBe("true");
+    expect(handIds()).toHaveLength(25);          // nothing leaves before the server says so
+    expect(selected()).toEqual([1]);
+    act(() => primary().click());
+    expect(sent).toHaveLength(1);
+    setStatus("closed");                         // the connection drops meanwhile
+    expect(label()).toBe("Reconnecting…");
+    expect(primary().getAttribute("aria-busy")).toBe("true");
+    setStatus("connecting");
+    setStatus("open");
+    render(playing({ hand: cards(25).slice(1), turn: 1, trick: { leader: 0, plays: [{ seat: 0, cards: ["S2"] }] } }));
+    expect(host.querySelector(".action-bar .btn.primary")?.getAttribute("aria-busy") ?? null).toBeNull();
+  });
+
+  it("a rejected play: the label and selection come back, nothing resent", () => {
+    render(playing());
+    pick(0); pick(1);
+    act(() => primary().click());
+    expect(label()).toBe("Sending…");
+    serverSays({ type: "error", code: "illegal", message: "Not a legal play." });
+    expect(label()).toBe("Play (2)");
+    expect(primary().getAttribute("aria-busy")).toBeNull();
+    expect(selected()).toEqual([1, 2]);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a delayed bury: Sending… and aria-busy, the eight stay, one send", () => {
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    expect(label()).toBe("Bury 8 cards (8/8)");
+    act(() => primary().click());
+    expect(label()).toBe("Sending…");
+    expect(primary().getAttribute("aria-busy")).toBe("true");
+    act(() => primary().click());
+    expect(sent).toHaveLength(1);
+    expect(handIds()).toHaveLength(33);
+    expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("a rejected bury: Bury comes back with the eight still chosen", () => {
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    act(() => primary().click());
+    serverSays({ type: "error", code: "illegal", message: "Bury exactly 8 cards." });
+    expect(label()).toBe("Bury 8 cards (8/8)");
+    expect(primary().getAttribute("aria-busy")).toBeNull();
+    expect(primary().disabled).toBe(false);
+    expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(sent).toHaveLength(1);
+  });
+});

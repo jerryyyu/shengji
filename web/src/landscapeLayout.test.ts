@@ -702,3 +702,13 @@ describe("the round-end card on a phone", () => {
     expect(rule(block, ".modal > .dialog-leave-btn, .modal > .dialog-leave-confirm").margin).toBe("0 auto 12px");
   });
 });
+
+describe("the lobby on a phone held upright", () => {
+  it("fills the screen with the panel colour instead of a card on felt", () => {
+    const i = css.indexOf("@media (max-width: 600px) and (pointer: coarse) {\n  .lobby-screen,");
+    expect(i).toBeGreaterThan(-1);
+    const block = css.slice(i, css.indexOf("\n}\n", i));
+    expect(block).toContain("background: linear-gradient(180deg, var(--panel)");
+    expect(block).toMatch(/\.lobby-screen > \.panel,[\s\S]*border: 0;[\s\S]*box-shadow: none;/);
+  });
+});

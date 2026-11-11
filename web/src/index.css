@@ -405,24 +405,6 @@ textarea:focus-visible {
   font-size: 13px;
 }
 
-.lobby-preview {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1200 / 630;
-  object-fit: cover;
-  border-radius: 10px;
-  border: 1px solid var(--panel-edge);
-  margin-top: -4px;
-}
-
-/* The clip costs ~165px; a slightly tighter panel keeps the signed-out lobby
-   inside a 1280x800 laptop screen and a 390x844 phone without scrolling. */
-.lobby-panel:has(.lobby-preview) {
-  gap: 12px;
-  padding-top: 24px;
-  padding-bottom: 24px;
-}
-
 .field {
   display: flex;
   flex-direction: column;
@@ -737,6 +719,29 @@ textarea:focus-visible {
 
   .room-code-label .copy-tap {
     display: inline;
+  }
+}
+
+/* A phone held upright has no room for a card on felt: the thin green margin
+   reads as a border. The lobby, room and saved-games screens fill the screen
+   with the panel's own colour instead; the felt stays for the table. */
+@media (max-width: 600px) and (pointer: coarse) {
+  .lobby-screen,
+  .room-screen,
+  .games-screen {
+    background: linear-gradient(180deg, var(--panel) 0%, #171b22 100%);
+  }
+
+  .lobby-screen > .panel,
+  .room-screen > .panel,
+  .games-screen > .panel {
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }
 
@@ -2929,11 +2934,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .game-subtitle {
     margin: -4px 0 0;
-  }
-
-  /* no room for the signed-out clip above the form */
-  .lobby-preview {
-    display: none;
   }
 
   .field input,

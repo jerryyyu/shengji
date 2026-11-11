@@ -283,81 +283,22 @@ describe("signed out, the guest names themselves", () => {
   });
 });
 
-describe("the lobby preview clip and the How to play entry", () => {
+describe("the lobby without a preview clip, and the How to play entry", () => {
   const preview = () => host.querySelector(".lobby-preview");
 
-  it("plays the muted, looping clip", async () => {
-    authState.current = { status: "out", clientId: "cid", user: null };
-    await render();
-    const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
-    expect(v).not.toBeNull();
-    expect(v.muted).toBe(true);
-    expect(v.loop).toBe(true);
-    expect(v.autoplay).toBe(true);
-    expect(v.hasAttribute("playsinline")).toBe(true);
-    expect(v.getAttribute("preload")).toBe("auto");
-    expect(v.getAttribute("poster")).toBe("/og/preview.jpg");
-    expect(v.getAttribute("src")).toBe("/og/preview.mp4");
-    expect(v.getAttribute("aria-hidden")).toBe("true");
-  });
-
-  it("shows the clip signed in, signed out, while loading and with sign-in off", async () => {
+  it("shows no preview clip or still, signed in or out", async () => {
     for (const state of [
       { status: "in", clientId: "cid", user: JERRY },
       { status: "out", clientId: "cid", user: null },
-      { status: "loading", clientId: null, user: null },
-      { status: "off", clientId: null, user: null },
     ] as AuthState[]) {
       authState.current = state;
       await render();
-      expect(preview()).not.toBeNull();
+      expect(host.querySelector("video")).toBeNull();
+      expect(preview()).toBeNull();
       act(() => root.unmount());
       host.remove();
     }
     await render(); // afterEach unmounts once more
-  });
-
-  it("mutes and starts the clip itself, and keeps it when the browser plays it", async () => {
-    authState.current = { status: "out", clientId: "cid", user: null };
-    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
-    try {
-      await render();
-      await act(async () => { await Promise.resolve(); });
-      const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
-      expect(play).toHaveBeenCalled();
-      expect(v.muted && v.defaultMuted).toBe(true);
-    } finally {
-      play.mockRestore();
-    }
-  });
-
-  it("falls back to the still frame when the browser refuses to autoplay (iOS Low Power Mode)", async () => {
-    authState.current = { status: "out", clientId: "cid", user: null };
-    const play = vi.spyOn(HTMLMediaElement.prototype, "play")
-      .mockImplementation(() => Promise.reject(new DOMException("blocked", "NotAllowedError")));
-    try {
-      await render();
-      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-      expect(host.querySelector("video")).toBeNull();
-      expect(host.querySelector<HTMLImageElement>("img.lobby-preview")!.getAttribute("src")).toBe("/og/preview.jpg");
-    } finally {
-      play.mockRestore();
-    }
-  });
-
-  it("reduced motion shows the poster still, not the video", async () => {
-    authState.current = { status: "out", clientId: "cid", user: null };
-    const mm = window.matchMedia;
-    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
-    try {
-      await render();
-    } finally {
-      window.matchMedia = mm;
-    }
-    expect(host.querySelector("video")).toBeNull();
-    const img = host.querySelector<HTMLImageElement>("img.lobby-preview")!;
-    expect(img.getAttribute("src")).toBe("/og/preview.jpg");
-    expect(img.getAttribute("alt")).toBe("");
   });
 
   it("New to Sheng Ji? How to play opens #/howto", async () => {

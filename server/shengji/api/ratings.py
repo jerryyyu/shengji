@@ -338,6 +338,9 @@ class RoomRatings:
     and a state frame carries only the receiving seat's own line."""
     game_id: str
     round_no: int = 0
+    # games completed at this table; a rated round's game id is the table id
+    # plus this count, so each game to a held Ace is its own Recent games row
+    game_no: int = 0
     # seat -> account connected there when the round started
     present: dict[int, int] = field(default_factory=dict)
     # account -> seat it left from while the round was in play
@@ -424,14 +427,17 @@ def participants(room: Any, tracker: RoomRatings) -> list[Participant]:
             del tracker.left[uid]           # left and came back before the end
         if uid in tracker.left:
             continue
+        if tracker.present.get(s) != uid:
+            continue                        # sat down mid-round: rated from the next round
         if seat.connected:
             found[uid] = Participant(uid, s)
-        elif tracker.present.get(s) == uid:
+        else:
             # Disconnected at the end: a blip inside the takeover window is
             # still their round; a bot playing on for them is an abandon.
             found[uid] = Participant(uid, s, abandoned=bool(seat.bot_announced))
     for uid, s in tracker.left.items():
-        if uid not in found and not accounts.is_deleted(uid):
+        if (uid not in found and tracker.present.get(s) == uid
+                and not accounts.is_deleted(uid)):
             found[uid] = Participant(uid, s, abandoned=True)
     for s, uid in tracker.present.items():
         if uid not in found and not accounts.is_deleted(uid) and _signed_in(room.seats[s]) != uid:
@@ -461,7 +467,7 @@ def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | 
         if p.abandoned and seat_users[p.seat] is None:
             seat_users[p.seat] = p.user_id
     return RoundRecord(
-        game_id=tracker.game_id, round_no=room.game.round_no,
+        game_id=f"{tracker.game_id}/{tracker.game_no}", round_no=room.game.round_no,
         banker_team=rnd.banker % 2, winner_team=int(result.winner_team),
         level_change=int(result.level_change), point_scored=bool(result.point_scored),
         seat_users=seat_users,
@@ -495,9 +501,11 @@ def round_ended(room: Any, result: Any) -> None:
     if tracker is None:
         return
     rec = build_record(room, tracker, result)
+    game_over = bool(result.game_over)
+    if result.point_scored or game_over:
+        tracker.game_no += 1            # the same boundary that resets game_delta
     if rec is None:
         return
-    game_over = bool(result.game_over)
     store = accounts.STORE
     try:
         loop = asyncio.get_running_loop()

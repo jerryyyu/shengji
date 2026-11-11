@@ -312,6 +312,88 @@ def test_leaving_and_returning_before_the_round_ends_is_not_an_abandon(env, monk
     assert event["abandoned"] == 0
 
 
+def _claim(seat, uid, name):
+    """What the server's mid-game seat claim does to the seat it hands over."""
+    seat.bot_announced = False
+    seat.is_bot = False
+    seat.name = name
+    seat.user_id = uid
+    seat.connected = True
+
+
+def test_a_bot_seat_claimed_mid_round_is_rated_from_the_next_round(env, monkeypatch):
+    srv, store, _ = env
+    host, _ = _user(store, "host")
+    late, _ = _user(store, "latecomer")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [host, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    _claim(table.room.seats[1], late, "Late")
+    table.finish()
+    assert [e["user_id"] for e in _events(store)] == [host]
+    assert store.user(late)["rated_rounds"] == 0 and store.user(late)["rating"] == 1500
+    # Seated when the next round starts, the claimant is rated for it.
+    table.play_round()
+    second = sorted(e["user_id"] for e in _events(store) if e["round_no"] == 2)
+    assert second == sorted([host, late])
+    assert store.user(late)["rated_rounds"] == 1
+
+
+def test_a_dropped_seat_taken_over_mid_round_rates_only_the_original_abandon(env, monkeypatch):
+    srv, store, _ = env
+    orig, _ = _user(store, "original")
+    taker, _ = _user(store, "taker")
+    _force_outcome(monkeypatch, 30)            # the seat's team wins by 2
+    table = Table(srv, [orig, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    seat = table.room.seats[0]
+    seat.connected = False
+    seat.bot_announced = True
+    _claim(seat, taker, "Taker")
+    table.finish()
+    [event] = _events(store)
+    assert event["user_id"] == orig and event["abandoned"] == 1 and event["actual"] == 0.0
+    assert store.user(taker)["rated_rounds"] == 0
+    table.play_round()
+    assert [e["user_id"] for e in _events(store) if e["round_no"] == 2] == [taker]
+
+
+def test_a_late_claimant_who_leaves_mid_round_is_not_rated(env, monkeypatch):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    host, _ = _user(store, "host")
+    late, _ = _user(store, "passer")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [host, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    _claim(table.room.seats[1], late, "Passer")
+    ratings.seat_left(table.room, 1)
+    table.room.seats[1].connected = False
+    table.finish()
+    assert [e["user_id"] for e in _events(store)] == [host]
+
+
+def test_recent_games_split_at_each_game_boundary_losses_included(env, monkeypatch):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "tabler")
+    _force_outcome(monkeypatch, 30)            # the bankers always hold
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.room.game.level_idx = [0, 12]        # the bots defend on Ace and win the game
+    first = table.play_round(banker=1)
+    assert first.point_scored
+    table.play_round(banker=0)                 # the next game at the same table
+    table.room.game.level_idx[0] = 12
+    table.play_round(banker=0)                 # holding Ace: the player wins that game
+    table.play_round(banker=0)                 # and a third game begins
+    games = ratings.stats(store, uid)["recent_games"]
+    assert len(games) == 3
+    assert [g["rounds"] for g in games] == [1, 2, 1]
+    assert [g["games_won"] for g in games] == [0, 1, 0]
+
+
 def test_leave_room_over_the_socket_marks_the_round_abandoned(env, keypair):
     srv, store, client = env
     private_pem, _ = keypair

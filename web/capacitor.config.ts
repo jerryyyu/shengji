@@ -10,6 +10,12 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // CAP_SERVER_URL points a local build at a test server instead, for example
 // `CAP_SERVER_URL=http://192.168.1.20:8765 npx cap sync ios`. Cleartext is
 // allowed only for such an http override; the committed default never changes.
+//
+// Offline: when the live site cannot load (no network), the WebView loads
+// `errorPath` from the bundled build at capacitor://localhost instead
+// (Capacitor's WebViewDelegationHandler does so on a failed or failed
+// provisional navigation, also with a remote server.url). That origin puts
+// the client in offline mode: a local game against bots, no server.
 const serverUrl = process.env.CAP_SERVER_URL || "https://shengji.fly.dev";
 
 // The felt's edge colour: the launch screen, the splash and the WebView behind
@@ -23,6 +29,7 @@ const config: CapacitorConfig = {
   server: {
     url: serverUrl,
     cleartext: serverUrl.startsWith("http://"),
+    errorPath: "index.html",
   },
   ios: {
     contentInset: "never",

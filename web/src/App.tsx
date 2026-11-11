@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, RoomMsg } from "./protocol";
 import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
-import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
+import { OFFLINE, clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
 import { auth } from "./auth";
 import Lobby from "./components/Lobby";
@@ -21,6 +21,10 @@ import { usePhoneLayout } from "./phoneLayout";
 import { TOAST_MS, makeToast } from "./toast";
 import type { Toast } from "./toast";
 import ToastView from "./components/ToastView";
+
+// Offline play (no game server): its lobby and badge load with the local server.
+const OfflineLobby = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineLobby })));
+const OfflineBadge = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineBadge })));
 
 export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
@@ -140,7 +144,8 @@ export default function App() {
       }
     });
     conn.start();
-    void auth.init();   // one config + me round trip; a server without sign-in answers "off"
+    // one config + me round trip; a server without sign-in answers "off"
+    if (!OFFLINE) void auth.init();
     return () => {
       unsubStatus();
       unsubMsg();
@@ -171,6 +176,13 @@ export default function App() {
     screen = <Table state={game} toast={toast} />;
   } else if (room) {
     screen = <Room room={room} />;
+  } else if (OFFLINE) {
+    screen = (
+      <Suspense fallback={null}>
+        <OfflineLobby status={status} error={toast?.text ?? null}
+                      onArmAutoFill={() => { autoFill.current = true; }} />
+      </Suspense>
+    );
   } else {
     screen = (
       <Lobby
@@ -186,8 +198,9 @@ export default function App() {
   const inRoom = room !== null || game !== null;
 
   return (
-    <div className={`app${rotated ? " rotated" : ""}`}>
+    <div className={`app${rotated ? " rotated" : ""}${OFFLINE ? " offline" : ""}`}>
       {screen}
+      {OFFLINE && atTable ? <Suspense fallback={null}><OfflineBadge /></Suspense> : null}
       {status !== "open" && inRoom ? (
         <div className="reconnect-banner">
           <span className="conn-dot" /> Reconnecting…

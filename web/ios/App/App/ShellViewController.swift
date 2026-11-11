@@ -1,13 +1,68 @@
 import UIKit
 import Capacitor
+import WebKit
 
 /// The app's root view controller: Capacitor's bridge plus the shell's own
 /// plugin. CAPBridgeViewController keeps the orientation mask in
 /// `supportedOrientations`, which the ScreenOrientation plugin also writes, so
 /// both plugins steer the same state.
 class ShellViewController: CAPBridgeViewController {
+    private var navigationGate: OfflineFallbackGate?
+
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(ShengjiShellPlugin())
+        // WKWebView holds its navigation delegate weakly, so the gate lives here.
+        if let webView = webView, let inner = webView.navigationDelegate {
+            let gate = OfflineFallbackGate(inner: inner)
+            navigationGate = gate
+            webView.navigationDelegate = gate
+        }
+    }
+}
+
+/// Sits in front of Capacitor's navigation delegate. Capacitor loads the
+/// bundled offline page (`server.errorPath`) on every failed navigation,
+/// including a load that was merely cancelled or replaced; that would drop an
+/// online player into offline mode. The gate passes a failure through only when
+/// the server cannot be reached, and forwards every other callback unchanged.
+final class OfflineFallbackGate: NSObject, WKNavigationDelegate {
+    private let inner: WKNavigationDelegate
+
+    init(inner: WKNavigationDelegate) {
+        self.inner = inner
+    }
+
+    override func responds(to aSelector: Selector!) -> Bool {
+        super.responds(to: aSelector) || inner.responds(to: aSelector)
+    }
+
+    override func forwardingTarget(for aSelector: Selector!) -> Any? {
+        inner.responds(to: aSelector) ? inner : nil
+    }
+
+    static func meansUnreachable(_ error: Error) -> Bool {
+        let e = error as NSError
+        guard e.domain == NSURLErrorDomain else { return false }
+        return [NSURLErrorNotConnectedToInternet, NSURLErrorTimedOut, NSURLErrorCannotFindHost,
+                NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed,
+                NSURLErrorInternationalRoamingOff, NSURLErrorDataNotAllowed, NSURLErrorSecureConnectionFailed]
+            .contains(e.code)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        if OfflineFallbackGate.meansUnreachable(error) {
+            inner.webView?(webView, didFail: navigation, withError: error)
+        } else {
+            CAPLog.print("⚡️  Navigation ended without a network failure: \(error.localizedDescription)")
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if OfflineFallbackGate.meansUnreachable(error) {
+            inner.webView?(webView, didFailProvisionalNavigation: navigation, withError: error)
+        } else {
+            CAPLog.print("⚡️  Provisional navigation ended without a network failure: \(error.localizedDescription)")
+        }
     }
 }
 

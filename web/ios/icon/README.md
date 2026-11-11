@@ -1,6 +1,6 @@
 # App icon
 
-`tractor-icon.svg` is the source of the iOS app icon: a gold vintage tractor on full-bleed green felt.
+`tractor-icon.svg` is the source of the iOS app icon: a gold vintage tractor, one solid glyph with the wheels cut out, on a bright green gradient.
 `App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` is it rendered at 1024×1024 and flattened to
 an opaque PNG (the App Store rejects an icon with an alpha channel):
 

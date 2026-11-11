@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState } from "../auth";
 import { NAME_ADJECTIVES, NAME_NOUNS } from "../randomName";
 
-const { sent, authState, signOut, updated, updateDisplayName, gis } = vi.hoisted(() => ({
+const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects } = vi.hoisted(() => ({
   sent: [] as unknown[],
+  reconnects: { n: 0 },
   authState: { current: { status: "loading", clientId: null, user: null } as AuthState },
   signOut: vi.fn(() => Promise.resolve()),
   updated: vi.fn(),
@@ -13,7 +14,8 @@ const { sent, authState, signOut, updated, updateDisplayName, gis } = vi.hoisted
   gis: { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect: vi.fn() },
 }));
 vi.mock("../ws", () => ({
-  conn: { send: (m: unknown) => { sent.push(m); }, subscribe: () => () => {}, generation: 0 },
+  conn: { send: (m: unknown) => { sent.push(m); }, subscribe: () => () => {}, generation: 0,
+          reconnect: () => { reconnects.n += 1; } },
   getSavedName: () => localStorage.getItem("shengji.name") ?? "",
   saveName: (n: string) => localStorage.setItem("shengji.name", n),
   getResumeToken: () => null,
@@ -279,29 +281,67 @@ describe("signed out, the guest names themselves", () => {
     type(nameInput(), "");
     await rerender();
     expect(nameInput().value).toBe("");
-    expect(buttonNamed("Create room").disabled).toBe(true);
+  });
+
+  it("with the name cleared, Create room and Play vs bots both stay enabled and pick a random name", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    await render();
+    type(nameInput(), "");
+    expect(buttonNamed("Create room").disabled).toBe(false);
+    expect(buttonNamed("Play vs bots").disabled).toBe(false);
+    act(() => buttonNamed("Create room").click());
+    expect(isRandom(sentName())).toBe(true);
+    expect(nameInput().value).toBe(sentName());          // the field shows the name it went with
+    await remount();
+    type(nameInput(), "   ");
+    act(() => buttonNamed("Play vs bots").click());
+    expect(isRandom(sentName())).toBe(true);
+    expect(nameInput().value).toBe(sentName());
   });
 });
 
-describe("the lobby preview clip and the How to play entry", () => {
+describe("no connection", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("says Connecting… first, then after 4 s that the server is unreachable, with a Retry that reconnects", async () => {
+    vi.useFakeTimers();
+    authState.current = { status: "off", clientId: null, user: null };
+    reconnects.n = 0;
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => root.render(<Lobby status="connecting" error={null} onArmAutoFill={() => {}} />));
+    expect(host.querySelector(".conn-status")?.textContent).toContain("Connecting…");
+    expect(buttonNamed("Retry")).toBeUndefined();
+    await act(async () => { vi.advanceTimersByTime(3999); });
+    expect(buttonNamed("Retry")).toBeUndefined();
+    await act(async () => { vi.advanceTimersByTime(1); });
+    expect(host.querySelector(".conn-status.stalled")?.textContent).toContain("Can’t reach the server");
+    act(() => buttonNamed("Retry").click());
+    expect(reconnects.n).toBe(1);
+    // the wait starts over after a retry
+    expect(buttonNamed("Retry")).toBeUndefined();
+    await act(async () => { vi.advanceTimersByTime(4000); });
+    expect(buttonNamed("Retry")).toBeDefined();
+    // a connection clears it at once
+    await act(async () => root.render(<Lobby status="open" error={null} onArmAutoFill={() => {}} />));
+    expect(buttonNamed("Retry")).toBeUndefined();
+    expect(host.querySelector(".conn-status")?.textContent).toContain("Connected");
+  });
+});
+
+describe("the lobby preview and the How to play entry", () => {
   const preview = () => host.querySelector(".lobby-preview");
 
-  it("plays the muted, looping clip", async () => {
+  it("draws a live trick with the table's cards, not a video", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
-    const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
-    expect(v).not.toBeNull();
-    expect(v.muted).toBe(true);
-    expect(v.loop).toBe(true);
-    expect(v.autoplay).toBe(true);
-    expect(v.hasAttribute("playsinline")).toBe(true);
-    expect(v.getAttribute("preload")).toBe("none");
-    expect(v.getAttribute("poster")).toBe("/og/preview.jpg");
-    expect(v.getAttribute("src")).toBe("/og/preview.mp4");
-    expect(v.getAttribute("aria-hidden")).toBe("true");
+    expect(host.querySelector("video")).toBeNull();
+    expect(preview()!.getAttribute("aria-hidden")).toBe("true");
+    expect(preview()!.querySelectorAll(".card").length).toBeGreaterThan(0);
   });
 
-  it("shows the clip signed in, signed out, while loading and with sign-in off", async () => {
+  it("shows the preview signed in, signed out, while loading and with sign-in off", async () => {
     for (const state of [
       { status: "in", clientId: "cid", user: JERRY },
       { status: "out", clientId: "cid", user: null },
@@ -317,7 +357,7 @@ describe("the lobby preview clip and the How to play entry", () => {
     await render(); // afterEach unmounts once more
   });
 
-  it("reduced motion shows the poster still, not the video", async () => {
+  it("reduced motion shows one still frame", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     const mm = window.matchMedia;
     window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
@@ -327,9 +367,7 @@ describe("the lobby preview clip and the How to play entry", () => {
       window.matchMedia = mm;
     }
     expect(host.querySelector("video")).toBeNull();
-    const img = host.querySelector<HTMLImageElement>("img.lobby-preview")!;
-    expect(img.getAttribute("src")).toBe("/og/preview.jpg");
-    expect(img.getAttribute("alt")).toBe("");
+    expect(preview()!.getAttribute("data-still")).toBe("true");
   });
 
   it("New to Sheng Ji? How to play opens #/howto", async () => {

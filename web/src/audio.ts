@@ -37,6 +37,30 @@ function ensureCtx(): AudioContext {
   return ctx;
 }
 
+/** Creates the audio context while the lobby is idle. Creating one is a long
+ *  task (100 ms and more on a phone); done inside the first tap it lands on
+ *  Play vs bots and stalls the table's first frames. A context made outside a
+ *  gesture starts suspended, and the unlock below resumes it on the next tap. */
+export function prewarmAudio(): void {
+  if (ctx || typeof window === "undefined") return;
+  const AC = window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return;
+  const make = () => {
+    if (ctx) return;
+    try {
+      ctx = new AC();
+    } catch {
+      /* no audio here; the unlock path tries again on a tap */
+    }
+  };
+  const idle = (window as unknown as {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  }).requestIdleCallback;
+  if (idle) idle(make, { timeout: 2000 });
+  else window.setTimeout(make, 500);
+}
+
 /** Resolve once the context is running, or immediately if it stays blocked. */
 async function ensureRunning(): Promise<AudioContext> {
   const c = ensureCtx();

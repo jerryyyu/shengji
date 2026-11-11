@@ -126,6 +126,24 @@ describe("failed-throw notice", () => {
     view.unmount();
   });
 
+  it("goes away by itself once the trick after the failed throw is over", () => {
+    const trickA = { leader: 0, plays: [], winner: 0 } as unknown as GameState["last_trick"];
+    const trickB = { leader: 1, plays: [], winner: 1 } as unknown as GameState["last_trick"];
+    const trickC = { leader: 2, plays: [], winner: 2 } as unknown as GameState["last_trick"];
+    const notice = failedThrow(3);
+    const view = render(makeState({ notice, last_trick: trickA }));
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickA }));     // more plays in the same trick
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickB }));     // the throw's trick ends
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickC }));     // one more trick ends
+    expect(view.host.querySelector(".hud-notice")).toBeNull();
+    view.rerender(makeState({ notice: failedThrow(4), last_trick: trickC }));   // a new failed throw shows
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.unmount();
+  });
+
   it("does not double up the one-play message with the notice", () => {
     const view = render(makeState({
       notice: failedThrow(),
@@ -140,6 +158,15 @@ describe("failed-throw notice", () => {
     const view = render(makeState({ message: "Robin declared Hearts" }));
     expect(view.host.querySelector(".hud-message")!.textContent).toBe("Robin declared Hearts");
     view.unmount();
+  });
+
+  it("marks a declaration message, which the phone tells only by the tag under the cards", () => {
+    const view = render(makeState({ message: "Seat 1 declared H2" }));
+    expect(view.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(true);
+    view.unmount();
+    const other = render(makeState({ message: "Robin declared Hearts" }));
+    expect(other.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(false);
+    other.unmount();
   });
 });
 

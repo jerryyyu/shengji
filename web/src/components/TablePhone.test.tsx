@@ -309,3 +309,73 @@ describe("a pending action across a reconnect", () => {
     expect(sent).toHaveLength(1);
   });
 });
+
+describe("whose turn on a seat's label", () => {
+  it("marks only the seat on turn with the turn class and its …, and gives every seat its team dot", () => {
+    render(state({ turn: 2, players: [0, 1, 2, 3].map((s) => player(s, s === 3 ? { is_bot: false, controller: "human" } : {})) }));
+    const opp = (seat: number) => host.querySelectorAll<HTMLElement>(".opponent")[seat - 1];
+    expect(opp(2).classList.contains("on-turn")).toBe(true);
+    expect(opp(2).querySelector(".opp-name .turn-dots.shown")?.textContent).toBe("…");
+    for (const s of [1, 3]) {
+      expect(opp(s).classList.contains("on-turn")).toBe(false);
+      // drawn unseen, so the label keeps its width when the turn comes
+      expect(opp(s).querySelector(".turn-dots")).not.toBeNull();
+      expect(opp(s).querySelector(".turn-dots.shown")).toBeNull();
+    }
+    for (const s of [1, 2, 3]) expect(opp(s).querySelector(`.opp-name .seat-dot.t${s % 2}`)).not.toBeNull();
+    // a human on turn gets the same mark
+    render(state({ turn: 3, players: [0, 1, 2, 3].map((s) => player(s, s === 3 ? { is_bot: false, controller: "human" } : {})) }));
+    expect(opp(3).querySelector(".turn-dots.shown")).not.toBeNull();
+    // outside bury and play nobody is on turn
+    render(state({ phase: "declare", turn: 2 }));
+    expect(host.querySelector(".turn-dots.shown")).toBeNull();
+  });
+});
+
+describe("Your turn on a lead", () => {
+  it("carries no hint line under the button", () => {
+    render(state({ turn: 0 }));
+    expect(host.querySelector(".lead-hint")).toBeNull();
+    expect(host.textContent).not.toContain("Tap cards, then Play");
+  });
+});
+
+
+it("draws the error toast inside the table, where its rows are", () => {
+  act(() => root.render(<Table state={state({ turn: 0 })} toast={{ id: 1, text: "You must follow suit." }} />));
+  expect(host.querySelector(".table-screen > .toast")?.textContent).toBe("You must follow suit.");
+  act(() => root.render(<Table state={state({ turn: 0 })} toast={null} />));
+  expect(host.querySelector(".toast")).toBeNull();
+});
+
+describe("following a lead", () => {
+  const SPADES_7 = { suit: "S", rank: "7", declarer: 1 };
+  const followHand: HandCard[] = [
+    { id: 1, code: "D9" }, { id: 2, code: "D9" }, { id: 3, code: "DJ" }, { id: 4, code: "S3" },
+  ];
+  const pairLed = (over: Partial<GameState> = {}) => state({
+    turn: 0, hand: followHand, trump: SPADES_7,
+    trick: { leader: 1, plays: [{ seat: 1, cards: ["DQ", "DQ"] }] }, ...over,
+  });
+  const slot = (id: number) => host.querySelector<HTMLButtonElement>(`.hand-slot[data-id="${id}"] .card`)!;
+  const primary = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+
+  it("keeps Play off until the selection is as many cards as the lead, and says the count", () => {
+    render(pairLed());
+    act(() => slot(1).click());
+    expect(primary().disabled).toBe(true);
+    expect(primary().querySelector(".play-text")?.textContent).toBe("Play (1/2)");
+    act(() => slot(2).click());
+    expect(primary().disabled).toBe(false);
+    expect(primary().querySelector(".play-text")?.textContent).toBe("Play (2/2)");
+    act(() => primary().click());
+    expect(sent).toEqual([{ type: "play", card_ids: [1, 2] }]);
+  });
+
+  it("leading, any count may go", () => {
+    render(state({ turn: 0, hand: followHand, trump: SPADES_7, trick: { leader: 0, plays: [] } }));
+    act(() => slot(3).click());
+    expect(primary().disabled).toBe(false);
+    expect(primary().querySelector(".play-text")?.textContent).toBe("Play (1)");
+  });
+});

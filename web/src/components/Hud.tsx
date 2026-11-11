@@ -7,7 +7,7 @@ import { SUIT_SYMBOL, shortLabel } from "./Card";
 import MuteButton from "./MuteButton";
 import LeaveButton from "./LeaveButton";
 import HudMenu from "./HudMenu";
-import { formatTableMessage } from "../messageCopy";
+import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -49,7 +49,15 @@ function NoticeBanner({ notice, state }: { notice: Notice; state: GameState }) {
   // Dismissal is keyed by the notice id, not by a boolean: the next failed
   // throw must appear even if you dismissed the last one.
   const [dismissed, setDismissed] = useState<number | null>(null);
-  if (dismissed === notice.id) return null;
+  // The notice is about one trick: it stays through the trick it happened in and one more, then goes.
+  const tricks = useRef<{ id: number; last: string; ended: number }>({ id: notice.id, last: "", ended: 0 });
+  const lastKey = JSON.stringify(state.last_trick);
+  if (tricks.current.id !== notice.id) tricks.current = { id: notice.id, last: lastKey, ended: 0 };
+  else if (tricks.current.last === "") tricks.current.last = lastKey;
+  else if (lastKey !== tricks.current.last) {
+    tricks.current = { ...tricks.current, last: lastKey, ended: tricks.current.ended + 1 };
+  }
+  if (dismissed === notice.id || tricks.current.ended >= 2) return null;
   const who = notice.seat === state.you
     ? "You"
     : state.players.find((p) => p.seat === notice.seat)?.name ?? "A player";
@@ -192,7 +200,7 @@ export default function Hud({ state }: { state: GameState }) {
       {/* `message` restates the notice for one play; showing both would
           double up, so the notice wins while it is on screen. */}
       {state.message && !state.notice ? (
-        <div className="hud-message" key={state.message}>
+        <div className={`hud-message${isDeclareMessage(state.message) ? " declare-message" : ""}`} key={state.message}>
           {formatTableMessage(state.message, state.players, state.you)}
         </div>
       ) : null}

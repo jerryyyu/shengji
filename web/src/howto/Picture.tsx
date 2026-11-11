@@ -20,7 +20,7 @@ function Still<S>({ still, render }: Pick<PictureProps<S>, "still" | "render">) 
   return <div className="howto-visual howto-still" data-still="true">{render(still)}</div>;
 }
 
-class StillOnError extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+export class StillOnError extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
   static getDerivedStateFromError() {

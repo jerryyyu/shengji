@@ -17,7 +17,7 @@ const serverUrl = process.env.CAP_SERVER_URL || "https://shengji.fly.dev";
 const FELT = "#123a26";
 
 const config: CapacitorConfig = {
-  appId: "org.shengji.app",
+  appId: "com.jerryyu.shengji",
   appName: "Sheng Ji",
   webDir: "dist",
   server: {
@@ -33,6 +33,13 @@ const config: CapacitorConfig = {
     allowsLinkPreview: false,
   },
   plugins: {
+    // Google sign-in runs natively in the app because Google refuses its web
+    // sign-in inside an embedded WebView. Only the Google provider is bundled;
+    // the plugin's sync hook drops the other SDKs from its Swift package.
+    SocialLogin: {
+      providers: { google: true, apple: false, facebook: false, twitter: false },
+      logLevel: 1,
+    },
     SplashScreen: {
       // The page hides the splash on its first paint (src/native.ts); this is
       // the fallback for a page that never does.

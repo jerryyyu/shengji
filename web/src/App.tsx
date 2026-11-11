@@ -4,7 +4,7 @@ import type { GameState, RoomMsg } from "./protocol";
 import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
-import { announceState, resetAnnouncer } from "./audio";
+import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
 import { auth } from "./auth";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
@@ -13,29 +13,39 @@ import GamesList from "./components/GamesList";
 import { useGamesRoute } from "./replay/route";
 import HowTo from "./howto/HowTo";
 import { useHowtoRoute } from "./howto/route";
-import { hideSplash, lockFor } from "./native";
-
-const TOAST_MS = 4000;
+import SupportPage from "./support/SupportPage";
+import PrivacyPage from "./support/PrivacyPage";
+import { useInfoRoute } from "./support/route";
+import { haptic, hideSplash, lockFor } from "./native";
+import { usePhoneLayout } from "./phoneLayout";
+import { TOAST_MS, makeToast } from "./toast";
+import type { Toast } from "./toast";
+import ToastView from "./components/ToastView";
 
 export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
   const [room, setRoom] = useState<RoomMsg | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<number | null>(null);
   // Single-player orchestration: when armed (via Lobby's "Play vs bots"),
   // each lobby `room` message advances the fill-with-bots-then-start chain.
   const autoFill = useRef(false);
   // Whether the announcer has been seeded with a first game state.
   const seededRef = useRef(false);
+  // True from an automatic resume of the saved room until the server answers it.
+  const resumingRef = useRef(false);
   // "My games" pages (hash routes) sit over whatever screen is live; the
   // socket and any game in progress keep running underneath.
   const gamesRoute = useGamesRoute();
   const howtoRoute = useHowtoRoute();
+  const infoRoute = useInfoRoute();
 
   useEffect(() => {
     const showToast = (message: string) => {
-      setToast(message);
+      // a fresh id per showing: the same error again is shown again
+      setToast(makeToast(message));
+      haptic("select");
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
       toastTimer.current = window.setTimeout(() => {
         toastTimer.current = null;
@@ -73,11 +83,12 @@ export default function App() {
       });
       if (intent.kind !== "resume") return;   // Lobby owns invite + pending
       const join = intentToJoin(intent);
-      if (join) conn.send(join as never);
+      if (join) { resumingRef.current = true; conn.send(join as never); }
     });
     const unsubMsg = conn.subscribe((msg) => {
       switch (msg.type) {
         case "room":
+          resumingRef.current = false;
           setRoom(msg);
           // "room" is only sent while the room is in lobby state, so any
           // previously rendered game is stale (e.g. rejoined after the game
@@ -97,17 +108,23 @@ export default function App() {
           }
           break;
         case "state":
+          resumingRef.current = false;
           announceState(msg, !seededRef.current);
           seededRef.current = true;
           setGame(msg);
           break;
         case "error":
+          const wasResuming = resumingRef.current;
+          resumingRef.current = false;
           autoFill.current = false; // abort single-player orchestration
           if (msg.code === "room_not_found") {
             // The room no longer exists (server restart / expiry). Stop
             // retrying it on reconnect and return to the lobby (name kept).
             resetToLobby();
-            showToast("That game has ended.");
+            // A silent resume of a room that expired or was dropped by a restart is not news to the
+            // player; only a join they asked for gets told.
+            if (!wasResuming) showToast("That game has ended.");
+            resumingRef.current = false;
           } else {
             showToast(msg.message);
           }
@@ -133,25 +150,32 @@ export default function App() {
 
   // The iOS app keeps lobby screens portrait and the table landscape on an
   // iPhone; everywhere else these are no-ops.
-  const atTable = game !== null && !gamesRoute && !howtoRoute;
+  const atTable = game !== null && !gamesRoute && !howtoRoute && !infoRoute;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
+  // a portrait phone browser gets the table turned sideways instead
+  const { rotated } = usePhoneLayout(atTable);
   // the launch splash covers the WebView until the first screen has painted
   useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
+  // the audio context costs a long task to create: make it before any tap
+  useEffect(() => { prewarmAudio(); }, []);
 
   let screen: ReactNode;
-  if (howtoRoute) {
+  if (infoRoute) {
+    screen = infoRoute === "support" ? <SupportPage /> : <PrivacyPage />;
+  } else if (howtoRoute) {
     screen = <HowTo route={howtoRoute} />;
   } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} inGame={room !== null || game !== null} />;
   } else if (game) {
-    screen = <Table state={game} />;
+    // at the table the toast is placed against the table's own rows
+    screen = <Table state={game} toast={toast} />;
   } else if (room) {
     screen = <Room room={room} />;
   } else {
     screen = (
       <Lobby
         status={status}
-        error={toast}
+        error={toast?.text ?? null}
         onArmAutoFill={() => {
           autoFill.current = true;
         }}
@@ -162,27 +186,14 @@ export default function App() {
   const inRoom = room !== null || game !== null;
 
   return (
-    <div className="app">
+    <div className={`app${rotated ? " rotated" : ""}`}>
       {screen}
       {status !== "open" && inRoom ? (
         <div className="reconnect-banner">
           <span className="conn-dot" /> Reconnecting…
         </div>
       ) : null}
-      {toast && inRoom ? (
-        <div className="toast" key={toast}>
-          {toast}
-        </div>
-      ) : null}
-      {game && !gamesRoute ? (
-        <div className="rotate-hint">
-          <div className="rotate-card" aria-hidden="true">升级</div>
-          <div>Rotate your phone to play</div>
-          <button className="btn subtle rotate-leave" onClick={() => conn.send({ type: "leave_room" })}>
-            Leave game
-          </button>
-        </div>
-      ) : null}
+      {toast && inRoom && !atTable ? <ToastView key={toast.id} toast={toast} /> : null}
     </div>
   );
 }

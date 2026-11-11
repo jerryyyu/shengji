@@ -6,12 +6,13 @@ no button. Guest play never touches this module beyond one cookie read on the
 websocket handshake, and only when a ``sj_session`` cookie is present.
 
 Trust boundary: the browser posts a Google ID token (a JWT the Google Identity
-Services button handed it). The server verifies the RS256 signature against
-Google's published certificates, the issuer, the audience (our client id), the
-validity window and ``email_verified`` before it will mint a session. The
-session token is 32 random bytes; the database stores only its SHA-256, so a
-copy of the database cannot be replayed as a login. No client secret exists
-anywhere: the client id is public by design.
+Services button handed it, or, in the iOS app, the native Google sign-in). The
+server verifies the RS256 signature against Google's published certificates,
+the issuer, the audience (our web client id, or an iOS client id listed in
+``GOOGLE_IOS_CLIENT_IDS``), the validity window and ``email_verified`` before
+it will mint a session. The session token is 32 random bytes; the database
+stores only its SHA-256, so a copy of the database cannot be replayed as a
+login. No client secret exists anywhere: client ids are public by design.
 
 Database access is synchronous ``sqlite3`` (WAL) on a fresh connection per
 call, run off the event loop with ``run_in_executor`` so a slow disk cannot
@@ -34,7 +35,7 @@ import unicodedata
 import urllib.request
 from collections import deque
 from contextlib import closing
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -132,6 +133,17 @@ def client_id() -> str | None:
     Read per request so a test (or a restart) can turn the feature on or off."""
     value = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     return value or None
+
+
+def accepted_audiences() -> tuple[str, ...]:
+    """The ``aud`` values a login token may carry: the web client id, then any
+    native-app client ids in the comma-separated ``GOOGLE_IOS_CLIENT_IDS``.
+    Empty when sign-in is off, whatever the iOS list says."""
+    web = client_id()
+    if web is None:
+        return ()
+    native = (part.strip() for part in os.environ.get("GOOGLE_IOS_CLIENT_IDS", "").split(","))
+    return tuple(dict.fromkeys([web, *(part for part in native if part)]))
 
 
 def data_dir() -> Path:
@@ -729,19 +741,22 @@ def _header_kid(token: str) -> str | None:
     return str(kid) if kid else None
 
 
-def verify_google_id_token(token: str, audience: str,
+def verify_google_id_token(token: str, audience: str | Collection[str],
                            certs: GoogleCerts | None = None) -> dict:
     """Verify a Google ID token and return its claims, or raise ``AuthError``.
 
     Checks, in order: a well-formed RS256 JWT whose ``kid`` names one of
     Google's current certificates (a miss asks for one bounded refresh, for
-    key rotation; see ``GoogleCerts``); the signature; ``aud`` equal to our client id; ``iat``/``exp``
-    within the clock skew; ``iss`` one of Google's two issuers; a ``sub``; and
+    key rotation; see ``GoogleCerts``); the signature; ``aud`` one of our client
+    ids (``audience``: one id or several); ``iat``/``exp`` within the clock skew; ``iss`` one of Google's two issuers; a ``sub``; and
     ``email_verified`` true."""
     from google.auth import exceptions as google_exceptions
     from google.auth import jwt as google_jwt
 
     certs = certs or CERTS
+    audiences = (audience,) if isinstance(audience, str) else tuple(audience)
+    if not audiences:
+        raise AuthError("bad_audience")
     if not isinstance(token, str) or not token or len(token) > 8192:
         raise AuthError("malformed")
     try:
@@ -752,7 +767,7 @@ def verify_google_id_token(token: str, audience: str,
     if kid is not None and kid not in current:
         current = certs.get(force=True)
     try:
-        claims = google_jwt.decode(token, certs=current, audience=audience,
+        claims = google_jwt.decode(token, certs=current, audience=list(audiences),
                                    clock_skew_in_seconds=CLOCK_SKEW_SECONDS)
     except google_exceptions.InvalidValue as exc:
         text = str(exc).lower()
@@ -767,7 +782,7 @@ def verify_google_id_token(token: str, audience: str,
         raise AuthError("malformed") from exc
     if claims.get("iss") not in GOOGLE_ISSUERS:
         raise AuthError("bad_issuer")
-    if claims.get("aud") != audience:
+    if claims.get("aud") not in audiences:
         raise AuthError("bad_audience")
     if not claims.get("sub"):
         raise AuthError("no_subject")
@@ -871,14 +886,14 @@ async def auth_config() -> dict:
 
 @router.post("/auth/google")
 async def auth_google(body: GoogleLogin, request: Request, response: Response) -> dict:
-    audience = client_id()
-    if audience is None:
+    audiences = accepted_audiences()
+    if not audiences:
         raise HTTPException(status_code=404, detail="Sign-in is not enabled.")
     if not LIMITER.allow(client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many sign-in attempts; try again in a minute.")
     loop = asyncio.get_running_loop()
     try:
-        claims = await loop.run_in_executor(None, verify_google_id_token, body.credential, audience)
+        claims = await loop.run_in_executor(None, verify_google_id_token, body.credential, audiences)
     except AuthError as exc:
         raise HTTPException(status_code=401, detail=f"Sign-in rejected ({exc.reason}).") from exc
     if body.nonce is not None and claims.get("nonce") != body.nonce:

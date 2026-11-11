@@ -407,15 +407,158 @@ textarea:focus-visible {
 
 .lobby-preview {
   display: block;
+  position: relative;
   width: 100%;
   aspect-ratio: 1200 / 630;
-  object-fit: cover;
+  overflow: hidden;
   border-radius: 10px;
   border: 1px solid var(--panel-edge);
   margin-top: -4px;
+  container-type: inline-size;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  background:
+    radial-gradient(ellipse 130% 100% at 50% 30%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.5);
 }
 
-/* The clip costs ~165px; a slightly tighter panel keeps the signed-out lobby
+/* The live preview: a 1200x630 stage in units of --u, so it scales with the
+   box. Everything is placed at the stage's top-left and moved by transform
+   alone; only transform and opacity ever transition. */
+.lp-stage {
+  --u: calc(100cqw / 1200);
+  --cw: calc(var(--u) * 104);
+  position: absolute;
+  inset: 0;
+}
+
+.lp-fan,
+.lp-x,
+.lp-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+
+.lp-fan-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 160%;
+}
+
+.lp-fan .card {
+  box-shadow: 0 calc(var(--u) * 6) calc(var(--u) * 14) rgba(0, 0, 0, 0.35);
+}
+
+.lp-flip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-style: preserve-3d;
+}
+
+.lp-flip .card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 calc(var(--u) * 12) calc(var(--u) * 26) rgba(0, 0, 0, 0.36),
+    0 calc(var(--u) * 2) calc(var(--u) * 6) rgba(0, 0, 0, 0.3);
+}
+
+.lp-flip .lp-back {
+  rotate: y 180deg;
+}
+
+/* The winner's gold ring is drawn once and faded in, never animated as a shadow. */
+.lp-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--cw);
+  aspect-ratio: 5 / 7;
+  translate: -50% -50%;
+  border-radius: calc(var(--cw) * 0.11);
+  box-shadow: 0 0 0 calc(var(--u) * 3) var(--gold), 0 0 calc(var(--u) * 30) rgba(242, 193, 78, 0.7);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  opacity: 0;
+  transition: opacity var(--dur-reflow) var(--ease-out);
+}
+
+.lp-flip.win .lp-ring {
+  opacity: 1;
+}
+
+.lp-chip .win-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  font-size: max(8px, calc(var(--u) * 13));
+  padding: max(2px, calc(var(--u) * 4)) max(6px, calc(var(--u) * 12));
+  white-space: nowrap;
+  box-shadow: 0 calc(var(--u) * 4) calc(var(--u) * 12) rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity var(--dur-fast) ease-in, transform var(--dur-fast) ease-in;
+}
+
+.lp-chip .win-tag.shown {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity var(--dur-reflow) var(--ease-back) 80ms, transform var(--dur-reflow) var(--ease-back) 80ms;
+}
+
+/* A card's flight: x and y ease differently so the path bows, while the
+   card turns face up. The second card of a pair leaves a beat later. */
+.lp-stage[data-phase="play"] .lp-x,
+.lp-stage[data-phase="won"] .lp-x {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="play"] .lp-y,
+.lp-stage[data-phase="won"] .lp-y {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out-expo) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="play"] .lp-flip {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="won"] .lp-flip {
+  transition: transform var(--dur-lift) var(--ease-back);
+}
+
+/* The finished trick gathers on the winner, then slides off to their hand. */
+.lp-stage[data-phase="gather"] .lp-x,
+.lp-stage[data-phase="gather"] .lp-y,
+.lp-stage[data-phase="gather"] .lp-flip {
+  transition: transform var(--dur-reflow) var(--ease-in-out) calc(var(--k) * 25ms);
+}
+
+.lp-stage[data-phase="gone"] .lp-x {
+  transition: transform var(--dur-sweep) ease-in, opacity var(--dur-sweep) ease-in;
+}
+
+.lp-stage[data-phase="gone"] .lp-y {
+  transition: transform var(--dur-sweep) ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-stage *,
+  .lp-stage .win-tag.shown {
+    transition: none !important;
+  }
+}
+
+/* The preview costs ~165px; a slightly tighter panel keeps the signed-out lobby
    inside a 1280x800 laptop screen and a 390x844 phone without scrolling. */
 .lobby-panel:has(.lobby-preview) {
   gap: 12px;
@@ -2954,7 +3097,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin: -4px 0 0;
   }
 
-  /* no room for the signed-out clip above the form */
+  /* no room for the preview above the form */
   .lobby-preview {
     display: none;
   }

@@ -167,6 +167,13 @@ function Looping() {
   const tl = useTimeline(FRAMES, true);
   const { status, replay, pause, resume, rootRef } = tl;
   const [onScreen, setOnScreen] = useState(true);
+  const [pageHidden, setPageHidden] = useState(() => document.hidden);
+
+  useEffect(() => {
+    const onVisibility = () => setPageHidden(document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   // Off screen (scrolled away, or hidden by a layout) the loop sleeps.
   useEffect(() => {
@@ -181,13 +188,13 @@ function Looping() {
   // off-screen pause and the loop. The last frame is the empty table, so a
   // restart from the first frame is seamless.
   useEffect(() => {
-    if (!onScreen) {
+    if (!onScreen || pageHidden) {
       if (status === "playing") pause();
-    } else if (!document.hidden) {
+    } else {
       if (status === "paused") resume();
       else if (status === "done") replay();
     }
-  }, [onScreen, status, pause, resume, replay]);
+  }, [onScreen, pageHidden, status, pause, resume, replay]);
 
   return (
     <div className="lobby-preview" ref={rootRef} aria-hidden="true" data-status={status}>

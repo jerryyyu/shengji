@@ -113,6 +113,26 @@ describe("the lobby preview", () => {
     expect(box().dataset.status).toBe("playing");
   });
 
+  it("resumes when returning to a visible preview that was paused off screen", () => {
+    mount();
+    advance(300);
+    act(() => observed!([{ isIntersecting: false }]));
+    setHidden(true);
+    act(() => observed!([{ isIntersecting: true }]));
+    expect(box().dataset.status).toBe("paused");
+    setHidden(false);
+    expect(box().dataset.status).toBe("playing");
+  });
+
+  it("starts paused when mounted in a hidden page", () => {
+    hidden = true;
+    mount();
+    expect(box().dataset.status).toBe("paused");
+    expect(vi.getTimerCount()).toBe(0);
+    setHidden(false);
+    expect(box().dataset.status).toBe("playing");
+  });
+
   it("under reduced motion shows one still frame and runs no timer", () => {
     reduced = true;
     mount();

@@ -13,7 +13,7 @@ Release records through release 46 in full: [docs_archive/deploy-through-2026-10
 | card-play prior | the policy net that admits the card-play candidates, under `SHENGJI_PV_PRIOR_*`: FT1's `p0-ft1-1fa201b2.npz` in release 50 (releases 36–49 used the play package's own head) |
 | prior (`/healthz` `prior`) | the JS-M1 package `js-m1-0d17fd03.npz`, kept under the `SHENGJI_CWV_PRIOR_*` keys for the release-28 rollback; the served `pv-search` bot does not consult it |
 | belief package | the hidden-hand model: B1a's `b1a-028131a0.npz` in release 50; S58's `s58-e6-42444515.npz` in releases 48 and 49; S17's `s17long-e2-763b5e05.npz` in release 46 |
-| volume | the Fly volume mounted at `/data`; packages in `/data/models`, room logs in `/data/logs` |
+| volume | the Fly volume mounted at `/data`; packages in `/data/models`, room logs in `/data/logs`, support-form messages appended to `/data/support_messages.jsonl` (one JSON line each; nothing is emailed) |
 | image | `registry.fly.io/shengji:<image>`; Fly numbers each deploy `vNN` |
 | smoke | a run of the served bot through the server path (`_paced_bot_step` / `_commit_bot_turn`) |
 | first-room reader | the Python snippet in step 9 of the Release checklist, run once on the first live room's log |

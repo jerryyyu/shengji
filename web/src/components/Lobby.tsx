@@ -10,6 +10,7 @@ import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
 import GoogleSignIn from "./GoogleSignIn";
 import LobbyPreview from "./LobbyPreview";
+import { followInfoLink } from "../support/route";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -372,6 +373,11 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             {STATUS_LABEL[status]}
           </div>
         )}
+
+        <nav className="info-links" aria-label="About">
+          <a href="/support" onClick={(e) => followInfoLink(e, "support")}>Support</a>
+          <a href="/privacy" onClick={(e) => followInfoLink(e, "privacy")}>Privacy</a>
+        </nav>
       </div>
     </div>
   );

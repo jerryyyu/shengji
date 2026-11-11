@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState } from "../auth";
 import { NAME_ADJECTIVES, NAME_NOUNS } from "../randomName";
 
-const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects } = vi.hoisted(() => ({
+const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects, link } = vi.hoisted(() => ({
   sent: [] as unknown[],
+  link: { generation: 0, listeners: new Set<(m: unknown) => void>() },
   reconnects: { n: 0 },
   authState: { current: { status: "loading", clientId: null, user: null } as AuthState },
   signOut: vi.fn(() => Promise.resolve()),
@@ -14,7 +15,9 @@ const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects } 
   gis: { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect: vi.fn() },
 }));
 vi.mock("../ws", () => ({
-  conn: { send: (m: unknown) => { sent.push(m); }, subscribe: () => () => {}, generation: 0,
+  conn: { send: (m: unknown) => { sent.push(m); return true; },
+          subscribe: (fn: (m: unknown) => void) => { link.listeners.add(fn); return () => link.listeners.delete(fn); },
+          get generation() { return link.generation; },
           reconnect: () => { reconnects.n += 1; } },
   getSavedName: () => localStorage.getItem("shengji.name") ?? "",
   saveName: (n: string) => localStorage.setItem("shengji.name", n),
@@ -66,6 +69,8 @@ function type(input: HTMLInputElement, value: string) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
+/** The server answers the outstanding start (here with an error), so the next start may go. */
+const answered = () => act(() => { for (const fn of [...link.listeners]) fn({ type: "error", code: "x", message: "x" }); });
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
@@ -173,6 +178,7 @@ describe("signed in, the player plays under the account name", () => {
     expect(host.textContent).not.toContain("Your name");
     expect(host.querySelector(".account-name")?.textContent).toBe("Captain");
     act(() => buttonNamed("Create room").click());
+    answered();
     act(() => buttonNamed("Play vs bots").click());
     expect(sent.map((m) => (m as { type: string }).type)).toEqual(["create_room", "create_room"]);
     expect([sentName(0), sentName(1)]).toEqual(["Captain", "Captain"]);
@@ -185,6 +191,7 @@ describe("signed in, the player plays under the account name", () => {
     expect(sentName()).toBe("Jerry");
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await rerender();
+    answered();
     act(() => buttonNamed("Create room").click());
     expect(sentName(1)).toBe("Captain");
   });
@@ -381,5 +388,63 @@ describe("the lobby preview and the How to play entry", () => {
     } finally {
       window.history.replaceState(null, "", "/");
     }
+  });
+});
+
+describe("starting a game waits for the server", () => {
+  const button = (text: RegExp) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => text.test(b.textContent ?? ""))!;
+  const serverSays = (m: unknown) => act(() => { for (const fn of [...link.listeners]) fn(m); });
+  async function renderWith(status: "open" | "closed" | "connecting") {
+    await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
+  }
+
+  for (const [start, busy] of [[/^Play vs bots$/, "Starting…"], [/^Create room$/, "Creating…"]] as const) {
+    it(`${busy} shows at once, and a second tap sends nothing; an error allows a retry`, async () => {
+      await render();
+      act(() => button(start).click());
+      expect(sent).toHaveLength(1);
+      const b = button(new RegExp(busy));
+      expect(b.getAttribute("aria-busy")).toBe("true");
+      expect(b.disabled).toBe(true);
+      act(() => b.click());
+      expect(sent).toHaveLength(1);
+      // every other start waits too
+      expect(button(/^(Play vs bots|Create room)$/).disabled).toBe(true);
+      serverSays({ type: "error", code: "busy", message: "Server busy." });
+      expect(button(start).disabled).toBe(false);
+      expect(button(start).getAttribute("aria-busy")).toBeNull();
+      act(() => button(start).click());
+      expect(sent).toHaveLength(2);
+    });
+  }
+
+  it("a reconnect frees a start that was never answered, for a deliberate retry", async () => {
+    await render();
+    act(() => button(/^Play vs bots$/).click());
+    expect(button(/Starting…/).disabled).toBe(true);
+    await renderWith("closed");
+    link.generation += 1;
+    await renderWith("open");
+    expect(button(/^Play vs bots$/).disabled).toBe(false);
+    act(() => button(/^Play vs bots$/).click());
+    expect(sent).toHaveLength(2);
+    link.generation = 0;
+  });
+
+  it("Join says Joining… while the room is looked up, and an error frees it", async () => {
+    await render();
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room code']")!;
+    type(code, "ABCD");
+    act(() => button(/^Join$/).click());
+    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
+    expect(button(/Joining…/).getAttribute("aria-busy")).toBe("true");
+    act(() => button(/Joining…/).click());
+    expect(sent).toHaveLength(1);
+    // straight through when there is no seat to choose: still joining, one join
+    serverSays({ type: "room_seats", room: "ABCD", seats: [] });
+    expect(sent.filter((m) => (m as { type: string }).type === "join_room")).toHaveLength(1);
+    expect(button(/Joining…/).disabled).toBe(true);
+    serverSays({ type: "error", code: "room_not_found", message: "No such room." });
+    expect(button(/^Join$/).disabled).toBe(false);
   });
 });

@@ -17,7 +17,7 @@ const serverUrl = process.env.CAP_SERVER_URL || "https://shengji.fly.dev";
 const FELT = "#123a26";
 
 const config: CapacitorConfig = {
-  appId: "org.shengji.app",
+  appId: "com.jerryyu.shengji",
   appName: "Sheng Ji",
   webDir: "dist",
   server: {

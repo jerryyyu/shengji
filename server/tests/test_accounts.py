@@ -808,7 +808,7 @@ def test_a_v2_database_upgrades_to_v3_once_and_keeps_its_rows(accounts_on, tmp_p
         db.commit()
     assert "games" not in _tables(path)
     store = accounts_on.Store(path)
-    assert store.schema_version() == 3 == len(accounts_on.SCHEMA)
+    assert store.schema_version() == len(accounts_on.SCHEMA)
     assert {"games", "game_players", "game_players_user", "games_started",
             "sessions_user", "sessions_expires"} <= _tables(path)
     assert "users_v2" not in _tables(path) and "sessions_v3" not in _tables(path)
@@ -827,7 +827,7 @@ def test_a_v2_database_upgrades_to_v3_once_and_keeps_its_rows(accounts_on, tmp_p
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     assert _columns(path, "users") == [
         "id", "google_sub", "email", "name", "picture", "created_at", "last_login_at",
-        "display_name"]
+        "display_name", "rating", "rated_rounds", "leaderboard_visible"]
     # The sessions still follow their users, and the highest id is never
     # handed out again after its account is deleted.
     store.link_seat(_game(), 2, 0, 1)
@@ -843,7 +843,7 @@ def test_a_v2_database_upgrades_to_v3_once_and_keeps_its_rows(accounts_on, tmp_p
         accounts_on._migrate_v3(db)
         db.commit()
     again = accounts_on.Store(path)
-    assert again.schema_version() == 3
+    assert again.schema_version() == len(accounts_on.SCHEMA)
     assert again.user(1)["display_name"] == "Oldie"
     with accounts_sqlite(path) as db:
         assert db.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 1

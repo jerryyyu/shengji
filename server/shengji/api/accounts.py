@@ -58,6 +58,12 @@ CLOCK_SKEW_SECONDS = 10
 RATE_LIMIT = 10
 RATE_WINDOW = 60.0
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# A new account's rating; ``ratings.START_RATING`` reads it from here. The
+# ``users.rating`` column default predates the 1000 scale, so every insert
+# sets the rating itself.
+START_RATING = 1000.0
+# The schema v5 scale move: every stored absolute rating drops by this much.
+RATING_SCALE_SHIFT = 500.0
 # A chosen display name: 1..20 characters after trimming and collapsing
 # whitespace runs; any script, no control characters, no line breaks.
 DISPLAY_NAME_MAX = 20
@@ -313,6 +319,25 @@ def _migrate_v4(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v5(conn: sqlite3.Connection) -> None:
+    """Move the rating scale from 1500 to 1000: every account's rating and
+    every absolute rating in ``rating_events`` (``rating_before``,
+    ``rating_after``) drops by ``RATING_SCALE_SHIFT``, so gaps, deltas,
+    expected and actual scores are unchanged. The ``rating_scale`` row marks
+    the shift as done, so a re-run (a lost version row) never shifts twice."""
+    done = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='rating_scale'").fetchone()
+    if done:
+        return
+    conn.execute("CREATE TABLE rating_scale (start_rating REAL NOT NULL)")
+    conn.execute("INSERT INTO rating_scale(start_rating) VALUES (?)", (START_RATING,))
+    conn.execute("UPDATE users SET rating = rating - ?", (RATING_SCALE_SHIFT,))
+    conn.execute(
+        """UPDATE rating_events SET rating_before = rating_before - ?,
+                                    rating_after = rating_after - ?""",
+        (RATING_SCALE_SHIFT, RATING_SCALE_SHIFT))
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -344,6 +369,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _migrate_v3,
     # version 4: player ratings and the leaderboard opt-out.
     _migrate_v4,
+    # version 5: the rating scale moves from 1500 to 1000.
+    _migrate_v5,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -438,14 +465,15 @@ class Store:
         picture = claims.get("picture")
         with closing(self._open()) as conn:
             conn.execute(
-                """INSERT INTO users(google_sub, email, name, picture, created_at, last_login_at)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                """INSERT INTO users(google_sub, email, name, picture, created_at,
+                                     last_login_at, rating)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(google_sub) DO UPDATE SET
                        email = excluded.email,
                        name = COALESCE(excluded.name, users.name),
                        picture = COALESCE(excluded.picture, users.picture),
                        last_login_at = excluded.last_login_at""",
-                (sub, email, name, picture, t, t))
+                (sub, email, name, picture, t, t, START_RATING))
             row = conn.execute("SELECT * FROM users WHERE google_sub = ?", (sub,)).fetchone()
             return dict(row)
 

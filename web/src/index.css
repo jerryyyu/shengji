@@ -4814,6 +4814,10 @@ button.games-row { cursor: pointer; }
 /* Play: the lobby's sections sit a little further apart, and a signed-in
    player's rating chip is centred under the title. */
 .home .lobby-panel:has(.lobby-preview) { gap: 16px; }
+/* The centred lobby starts lower under the status bar or the top bar: twice
+   the shift in top padding, since centring splits it. */
+.home-narrow .screen.lobby-screen { padding-top: calc(max(12px, env(safe-area-inset-top, 0px)) + 40px); }
+.home-wide .home-body > .screen.lobby-screen { padding-top: 44px; }
 .rating-chip {
   appearance: none;
   align-self: center;
@@ -4832,6 +4836,8 @@ button.games-row { cursor: pointer; }
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
+.rating-chip { position: relative; }
+.rating-chip::before { content: ""; position: absolute; inset: -6px 0; }
 .rating-chip .avatar { width: 22px; height: 22px; font-size: 11px; }
 .rating-chip-chev { margin-left: -2px; color: var(--muted-2); font-weight: 400; }
 

@@ -115,10 +115,18 @@ describe("the bars", () => {
     expect(account.textContent).toContain("Jerry");
     act(() => account.click());
     const items = [...host.querySelectorAll<HTMLButtonElement>(".topbar-menu [role=menuitem]")];
-    expect(items.map((b) => b.textContent)).toEqual(["Me", "My games", "How to play", "Privacy", "Support"]);
+    expect(items.map((b) => b.textContent?.trim())).toEqual(
+      ["Me", "Edit name", "How to play", "Privacy", "Support", "Sign out"]);
     await act(async () => { items[0].click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(window.location.hash).toBe("#/me");
     expect(host.querySelector(".me-page")).not.toBeNull();
+    expect(host.querySelector(".name-edit")).toBeNull();
+    // Edit name opens Me with the editor open, also when Me is already showing
+    act(() => host.querySelector<HTMLButtonElement>(".topbar-account")!.click());
+    const edit = [...host.querySelectorAll<HTMLButtonElement>(".topbar-menu [role=menuitem]")]
+      .find((b) => b.textContent === "Edit name")!;
+    await act(async () => { edit.click(); await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector<HTMLInputElement>(".name-edit-input")?.value).toBe("Jerry");
   });
 
   it("a guest at 700px gets a Sign in button that opens Me", async () => {

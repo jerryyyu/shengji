@@ -7,7 +7,7 @@ import type { Loaded, MyStats as Stats } from "../ratings/api";
 import { openHowto } from "../howto/route";
 import { followInfoLink } from "../support/route";
 import { Avatar, Segmented } from "../home/HomeShell";
-import { openTab } from "../home/route";
+import { EDIT_NAME_EVENT, openTab, takeNameEditRequest } from "../home/route";
 import type { MeSection } from "../home/route";
 import GoogleSignIn from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
@@ -157,6 +157,12 @@ function Settings({ user, stats }: { user: AuthUser; stats: Stats | null }) {
   useEffect(() => { if (stats) setVisible(stats.visible); }, [stats]);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    const open = () => { if (takeNameEditRequest()) setEditing(true); };
+    open();
+    window.addEventListener(EDIT_NAME_EVENT, open);
+    return () => window.removeEventListener(EDIT_NAME_EVENT, open);
+  }, []);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toggle = () => {

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { effectiveName, useAuth } from "../auth";
+import { auth, effectiveName, useAuth } from "../auth";
 import { openHowto } from "../howto/route";
 import { openInfoPage } from "../support/route";
 import type { AuthUser } from "../auth";
 import { useMediaQuery } from "../phoneLayout";
-import { openTab } from "./route";
+import { openNameEditor, openTab } from "./route";
 import type { Tab } from "./route";
 
 /** At this width and up (an iPad either way round, a desktop window) the
@@ -73,8 +73,8 @@ export function TabBar({ active }: { active: Tab }) {
   );
 }
 
-/** The top bar's account chip and its menu: Me, then How to play, Privacy
- *  and Support. */
+/** The top bar's account chip and its menu: Me, Edit name, How to play,
+ *  Privacy, Support and Sign out. */
 function AccountMenu({ user, active }: { user: AuthUser; active: boolean }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
@@ -101,11 +101,15 @@ function AccountMenu({ user, active }: { user: AuthUser; active: boolean }) {
       {open ? (
         <div className="topbar-menu" role="menu">
           <button type="button" role="menuitem" onClick={pick(() => openTab("me"))}>Me</button>
-          <button type="button" role="menuitem" onClick={pick(() => openTab("me", "games"))}>My games</button>
+          <button type="button" role="menuitem" onClick={pick(openNameEditor)}>Edit name</button>
           <hr />
           <button type="button" role="menuitem" onClick={pick(() => openHowto())}>How to play</button>
           <button type="button" role="menuitem" onClick={pick(() => openInfoPage("privacy"))}>Privacy</button>
           <button type="button" role="menuitem" onClick={pick(() => openInfoPage("support"))}>Support</button>
+          <hr />
+          <button type="button" role="menuitem" onClick={pick(() => { auth.signOut().catch(() => openTab("me")); })}>
+            Sign out
+          </button>
         </div>
       ) : null}
     </div>

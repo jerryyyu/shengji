@@ -58,3 +58,21 @@ export function useHomeRoute(): HomeRoute | null {
   }, []);
   return route;
 }
+
+let editNamePending = false;
+export const EDIT_NAME_EVENT = "shengji:edit-name";
+
+/** Open Me with its name editor open (the account menu's Edit name): a Me
+ *  that mounts takes the request, one already showing hears the event. */
+export function openNameEditor(): void {
+  editNamePending = true;
+  openTab("me");
+  window.dispatchEvent(new Event(EDIT_NAME_EVENT));
+}
+
+/** Whether Me should open its name editor now; asking clears the request. */
+export function takeNameEditRequest(): boolean {
+  const pending = editNamePending;
+  editNamePending = false;
+  return pending;
+}

@@ -18,6 +18,7 @@ vi.mock("../auth", async (importOriginal) => {
 });
 
 import MePage from "./MePage";
+import { openNameEditor } from "../home/route";
 
 const JERRY = { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" };
 const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional: false, levels_per_round: 0.41,
@@ -112,6 +113,12 @@ describe("signed in", () => {
     await act(async () => { sw.click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(calls.filter((c) => c.method === "POST").map((c) => c.url)).toEqual(["/api/me/leaderboard-visibility"]);
     expect(sw.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("the account menu's Edit name opens Me with the form already open", async () => {
+    openNameEditor();
+    await render();
+    expect(host.querySelector<HTMLInputElement>(".name-edit-input")?.value).toBe("Jerry");
   });
 
   it("Edit name opens the inline form; Sign out signs out", async () => {

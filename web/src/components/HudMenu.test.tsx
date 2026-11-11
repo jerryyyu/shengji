@@ -176,3 +176,77 @@ describe("the My games row", () => {
     auth.reset();
   });
 });
+
+describe("keyboard focus in the menu", () => {
+  const key = (el: Element, k: string) => act(() => {
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+  });
+  const focused = () => (document.activeElement as HTMLElement | null)?.textContent ?? "";
+
+  it("opening focuses the first actionable row; arrows wrap, Home and End go to the ends", () => {
+    const v = render();
+    const trigger = btn(v.host);
+    trigger.focus();
+    act(() => trigger.click());
+    expect(focused()).toContain("Sound");             // the kitty row is information only
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Copy invite link");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Leave game");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Sound");             // wraps
+    key(document.activeElement!, "ArrowUp");
+    expect(focused()).toContain("Leave game");
+    key(document.activeElement!, "Home");
+    expect(focused()).toContain("Sound");
+    key(document.activeElement!, "End");
+    expect(focused()).toContain("Leave game");
+    v.unmount();
+  });
+
+  it("ArrowDown and ArrowUp on the closed button open it at the first and last row", () => {
+    const v = render();
+    btn(v.host).focus();
+    key(btn(v.host), "ArrowDown");
+    expect(v.host.querySelector(".hud-menu")).not.toBeNull();
+    expect(focused()).toContain("Sound");
+    key(document.activeElement!, "Escape");
+    key(btn(v.host), "ArrowUp");
+    expect(focused()).toContain("Leave game");
+    v.unmount();
+  });
+
+  it("Escape closes the menu and returns focus to the More button", () => {
+    const v = render();
+    act(() => btn(v.host).click());
+    key(document.activeElement!, "ArrowDown");
+    key(document.activeElement!, "Escape");
+    expect(v.host.querySelector(".hud-menu")).toBeNull();
+    expect(document.activeElement).toBe(btn(v.host));
+    v.unmount();
+  });
+
+  it("arming Leave focuses Stay; Stay returns focus to the Leave row; arrows reach Leave", () => {
+    const v = render();
+    act(() => btn(v.host).click());
+    key(document.activeElement!, "End");
+    act(() => (document.activeElement as HTMLButtonElement).click());
+    expect(v.host.querySelector(".hud-menu-row.leave.armed")).not.toBeNull();
+    expect(focused()).toBe("Stay");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toBe("Leave");
+    key(document.activeElement!, "ArrowUp");
+    act(() => (document.activeElement as HTMLButtonElement).click());
+    expect(focused()).toContain("Leave game…");
+    expect(sent).toEqual([]);
+    v.unmount();
+  });
+
+  it("an outside tap still closes it", () => {
+    const v = render();
+    act(() => btn(v.host).click());
+    act(() => { document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
+    expect(v.host.querySelector(".hud-menu")).toBeNull();
+    v.unmount();
+  });
+});

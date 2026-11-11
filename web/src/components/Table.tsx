@@ -255,6 +255,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
   const online = status === "open";
+  // What Play or Bury says while its send is unanswered: the cards stay put
+  // until the server's state moves them, and a dropped connection says so
+  // instead of waiting silently.
+  const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
     haptic("play");
@@ -367,9 +371,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       <button
         className="btn primary"
         disabled={selectedIds.length !== 8 || pending !== null || !online}
+        aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
       >
-        Bury 8 cards ({selectedIds.length}/8)
+        {pendingLabel ?? `Bury 8 cards (${selectedIds.length}/8)`}
       </button>
     );
   } else if (state.phase === "play" && myTurn) {
@@ -385,10 +390,11 @@ export default function Table({ state, toast = null }: { state: GameState; toast
         <button
           className={`btn primary${choosing ? " your-turn" : ""}`}
           disabled={selectedIds.length === 0 || countWrong || pending !== null || !online}
+          aria-busy={pending !== null || undefined}
           onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
         >
           {/* a phone shows "Your turn" on Play until you choose a card */}
-          <span className="play-text">{playLabel}</span>
+          <span className="play-text">{pendingLabel ?? playLabel}</span>
           <span className="your-turn-text">Your turn</span>
           {/* a phone says what to do under it until a card is chosen */}
         </button>

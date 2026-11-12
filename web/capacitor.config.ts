@@ -18,9 +18,11 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // the client in offline mode: a local game against bots, no server.
 const serverUrl = process.env.CAP_SERVER_URL || "https://shengji.fly.dev";
 
-// The felt's edge colour: the launch screen, the splash and the WebView behind
-// the first paint all match the lobby, so launch shows no black or blank frame.
-const FELT = "#123a26";
+// The lobby's chrome colour (--chrome in src/index.css): the launch screen, the
+// splash and the WebView behind the first paint all match the lobby the app
+// opens on, so launch shows no black, blank or off-colour frame. The launch
+// storyboard and the Splash image asset carry the same colour.
+const CHROME = "#14171e";
 
 const config: CapacitorConfig = {
   appId: "com.jerryyu.shengji",
@@ -33,7 +35,7 @@ const config: CapacitorConfig = {
   },
   ios: {
     contentInset: "never",
-    backgroundColor: FELT,
+    backgroundColor: CHROME,
     limitsNavigationsToAppBoundDomains: false,
     // no outer scroll view behind the page, and no link previews on a long press
     scrollEnabled: false,
@@ -47,13 +49,19 @@ const config: CapacitorConfig = {
       providers: { google: true, apple: false, facebook: false, twitter: false },
       logLevel: 1,
     },
+    // "native" shrinks the WebView to the space above the keyboard, so the
+    // focused field stays in view and the page is never shoved up past the top;
+    // the tab bar steps aside while the keyboard is up (body.keyboard-open).
+    Keyboard: {
+      resize: "native",
+    },
     SplashScreen: {
       // The page hides the splash on its first paint (src/native.ts); this is
       // the fallback for a page that never does.
       launchShowDuration: 10000,
       launchAutoHide: true,
       launchFadeOutDuration: 200,
-      backgroundColor: FELT,
+      backgroundColor: CHROME,
       showSpinner: false,
     },
   },

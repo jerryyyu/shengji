@@ -4665,6 +4665,8 @@ button.games-row { cursor: pointer; }
   backdrop-filter: blur(20px);
   border-top: 0.5px solid rgba(255, 255, 255, 0.14);
 }
+/* the iOS app's keyboard shrinks the page; the tab bar would ride above it */
+body.keyboard-open .tabbar { display: none; }
 .tabbar-item {
   appearance: none;
   flex: 1;

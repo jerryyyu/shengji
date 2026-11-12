@@ -1,5 +1,11 @@
+/// <reference types="node" />
 import { afterEach, describe, expect, it } from "vitest";
-import { haptic, hapticCall, hideSplash, isNative, isPhone, lockFor, resetNativeForTests, setBackGesture } from "./native";
+import { readFileSync } from "node:fs";
+import { TAB_TOP_EVENT } from "./home/session";
+import {
+  KEYBOARD_OPEN_CLASS, STATUS_TAP_EVENT, haptic, hapticCall, hideSplash, isNative, isPhone, lockFor,
+  resetNativeForTests, setBackGesture, setGameMode, startShell,
+} from "./native";
 
 type Calls = [string, string, unknown][];
 
@@ -32,6 +38,80 @@ describe("native bridge", () => {
     await lockFor("game");
     haptic("turn");
     hideSplash();   // nothing to call, nothing thrown
+    await setGameMode(true);
+    startShell();
+    window.dispatchEvent(new Event("keyboardWillShow"));
+    expect(document.body.classList.contains(KEYBOARD_OPEN_CLASS)).toBe(false);
+    let tops = 0;
+    const onTop = () => { tops += 1; };
+    window.addEventListener(TAB_TOP_EVENT, onTop);
+    window.dispatchEvent(new Event(STATUS_TAP_EVENT));
+    window.removeEventListener(TAB_TOP_EVENT, onTop);
+    expect(tops).toBe(0);
+  });
+
+  it("turns game mode on and off through the shell and SystemBars, only when it changes", async () => {
+    const calls = fakeShell("pad");
+    await setGameMode(true);
+    await setGameMode(true);
+    await setGameMode(false);
+    expect(calls).toEqual([
+      ["ShengjiShell", "setGameMode", { on: true }],
+      ["SystemBars", "hide", { bar: "NavigationBar" }],
+      ["ShengjiShell", "setGameMode", { on: false }],
+      ["SystemBars", "show", { bar: "NavigationBar" }],
+    ]);
+  });
+
+  it("hides the keyboard accessory bar once at startup", () => {
+    const calls = fakeShell("phone");
+    startShell();
+    startShell();
+    expect(calls).toEqual([["Keyboard", "setAccessoryBarVisible", { isVisible: false }]]);
+  });
+
+  it("hides the tab bar while the keyboard is up", () => {
+    // jsdom's URL is not node's, so the path is built from the directory
+    const css = readFileSync(`${import.meta.dirname}/index.css`, "utf8");
+    const rule = css.match(/body\.keyboard-open \.tabbar \{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    const style = document.createElement("style");
+    style.textContent = rule![0];
+    document.head.appendChild(style);
+    const tabbar = document.createElement("nav");
+    tabbar.className = "tabbar";
+    document.body.appendChild(tabbar);
+    try {
+      fakeShell("phone");
+      startShell();
+      expect(getComputedStyle(tabbar).display).not.toBe("none");
+      window.dispatchEvent(new Event("keyboardWillShow"));
+      expect(document.body.classList.contains(KEYBOARD_OPEN_CLASS)).toBe(true);
+      expect(getComputedStyle(tabbar).display).toBe("none");
+      window.dispatchEvent(new Event("keyboardWillHide"));
+      expect(document.body.classList.contains(KEYBOARD_OPEN_CLASS)).toBe(false);
+      expect(getComputedStyle(tabbar).display).not.toBe("none");
+    } finally {
+      tabbar.remove();
+      style.remove();
+    }
+  });
+
+  it("scrolls the active tab to the top on a status-bar tap", () => {
+    fakeShell("phone");
+    startShell();
+    let tops = 0;
+    const onTop = () => { tops += 1; };
+    window.addEventListener(TAB_TOP_EVENT, onTop);
+    try {
+      window.dispatchEvent(new Event(STATUS_TAP_EVENT));
+      expect(tops).toBe(1);
+      resetNativeForTests();      // listeners come off with the shell
+      window.dispatchEvent(new Event(STATUS_TAP_EVENT));
+      expect(tops).toBe(1);
+    } finally {
+      window.removeEventListener(TAB_TOP_EVENT, onTop);
+    }
   });
 
   it("locks an iPhone: the table to both landscapes, the lobby to portrait", async () => {

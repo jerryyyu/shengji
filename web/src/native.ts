@@ -9,6 +9,8 @@
 // the lobby in portrait and the game in landscape (either side); an iPad, even
 // in a narrow Split View, is never locked.
 
+import { scrollActiveTabToTop } from "./home/session";
+
 export type ScreenKind = "lobby" | "game";
 export type HapticKind = "select" | "turn" | "declare" | "won" | "error";
 
@@ -131,6 +133,42 @@ export async function setBackGesture(enabled: boolean): Promise<void> {
   await call("ShengjiShell", "setBackGesture", { enabled });
 }
 
+let lastGameMode: boolean | null = null;
+
+/** At the table: the screen stays awake, the bottom edge defers the home
+ *  gesture (a card drag near it needs a second swipe to leave) and the home
+ *  indicator hides; away from it all three are the system's again. Any
+ *  device, since an iPad has the same edge and indicator. */
+export async function setGameMode(on: boolean): Promise<void> {
+  if (!isNative() || lastGameMode === on) return;
+  lastGameMode = on;
+  await Promise.all([
+    call("ShengjiShell", "setGameMode", { on }),
+    call("SystemBars", on ? "hide" : "show", { bar: "NavigationBar" }),
+  ]);
+}
+
+/** Set on <body> while the keyboard is up, so the tab bar steps aside. */
+export const KEYBOARD_OPEN_CLASS = "keyboard-open";
+/** The shell dispatches this on window when the status bar is tapped. */
+export const STATUS_TAP_EVENT = "statusTap";
+
+const onKeyboardShow = () => document.body.classList.add(KEYBOARD_OPEN_CLASS);
+const onKeyboardHide = () => document.body.classList.remove(KEYBOARD_OPEN_CLASS);
+let shellStarted = false;
+
+/** Startup wiring for the app: no web Previous/Next/Done bar over the
+ *  keyboard, the keyboard-open class from the Keyboard plugin's window events,
+ *  and a status-bar tap scrolling the active tab to the top. */
+export function startShell(): void {
+  if (shellStarted || !isNative()) return;
+  shellStarted = true;
+  void call("Keyboard", "setAccessoryBarVisible", { isVisible: false });
+  window.addEventListener("keyboardWillShow", onKeyboardShow);
+  window.addEventListener("keyboardWillHide", onKeyboardHide);
+  window.addEventListener(STATUS_TAP_EVENT, scrollActiveTabToTop);
+}
+
 let splashHidden = false;
 
 /** Fades the launch splash out once the first screen has painted. */
@@ -148,4 +186,12 @@ export function resetNativeForTests(): void {
   selectionPrimed = false;
   splashHidden = false;
   lastBackGesture = null;
+  lastGameMode = null;
+  if (shellStarted) {
+    window.removeEventListener("keyboardWillShow", onKeyboardShow);
+    window.removeEventListener("keyboardWillHide", onKeyboardHide);
+    window.removeEventListener(STATUS_TAP_EVENT, scrollActiveTabToTop);
+    shellStarted = false;
+  }
+  document.body.classList.remove(KEYBOARD_OPEN_CLASS);
 }

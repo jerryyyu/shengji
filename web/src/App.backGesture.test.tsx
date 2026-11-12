@@ -33,12 +33,17 @@ const playing = {
   last_trick: null, attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
 };
 
+/** setGameMode's `on`, in call order, from the last fakeShell. */
+let gameMode: boolean[] = [];
+
 /** The app's shell, recording each setBackGesture call's `enabled`. */
 function fakeShell(): boolean[] {
   const gesture: boolean[] = [];
+  gameMode = [];
   const plugin = (name: string) => new Proxy({}, {
-    get: (_t, method: string) => (opts?: { enabled?: boolean }) => {
+    get: (_t, method: string) => (opts?: { enabled?: boolean; on?: boolean }) => {
       if (name === "ShengjiShell" && method === "setBackGesture") gesture.push(opts!.enabled!);
+      if (name === "ShengjiShell" && method === "setGameMode") gameMode.push(opts!.on!);
       return Promise.resolve(name === "ShengjiShell" && method === "idiom" ? { idiom: "phone" } : undefined);
     },
   });
@@ -113,6 +118,18 @@ describe("the app's edge swipe back", () => {
     await flush();
     expect(host.querySelector(".room-screen")).not.toBeNull();
     expect(gesture).toEqual([true, false, true, false, true]);
+  });
+
+  it("game mode (screen awake, deferred home edge) is on only at the table", async () => {
+    fakeShell();
+    const ws = await mountApp();
+    expect(gameMode).toEqual([false]);
+    act(() => ws.deliver(playing));
+    await flush();
+    expect(host.querySelector(".table-screen")).not.toBeNull();
+    expect(gameMode).toEqual([false, true]);
+    await act(async () => { window.location.hash = "#/howto"; await new Promise((r) => setTimeout(r, 0)); });
+    expect(gameMode).toEqual([false, true, false]);
   });
 
   it("is never asked for in a browser", async () => {

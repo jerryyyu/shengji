@@ -487,6 +487,12 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
+      # The two engine modes start at once and each pytest session's ledger
+      # guard fetches the PR base when it is missing; running the guard here
+      # first leaves it present, so the concurrent sessions never race on git.
+      - name: Review ledger guard (fetches the PR base once)
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
       - name: Test CWV consumers in both engine modes
         run: bash scripts/ci_cwv_modes.sh
 
@@ -509,6 +515,12 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
+      # The two engine modes start at once and each pytest session's ledger
+      # guard fetches the PR base when it is missing; running the guard here
+      # first leaves it present, so the concurrent sessions never race on git.
+      - name: Review ledger guard (fetches the PR base once)
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
       - name: Test policy-head training and search in both engine modes
         run: bash scripts/ci_policy_modes.sh
 

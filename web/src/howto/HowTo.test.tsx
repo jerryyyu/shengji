@@ -57,27 +57,35 @@ describe("parseHowto", () => {
 });
 
 describe("the stepped guide", () => {
-  it("#/howto opens step 1 with Back disabled", async () => {
+  it("#/howto opens step 1 under a nav bar with the title after ‹ Back", async () => {
     await open("#/howto");
     expect(title()).toBe("Climb from 2 to Ace");
     expect(counter()).toBe("1 of 10");
-    expect(button("Back")!.disabled).toBe(true);
+    const bar = [...host.querySelector(".howto-head")!.children];
+    expect(bar.map((el) => el.textContent)).toEqual(["‹ Back", "How to play", "1 of 10"]);
+    expect(bar[1].tagName).toBe("H1");
     expect(host.querySelectorAll(".howto-dot")).toHaveLength(10);
     expect(host.querySelectorAll(".howto-dot.on")).toHaveLength(1);
   });
 
-  it("Next and Back walk the steps through the hash", async () => {
+  it("Next walks forward through the hash and is the only button under the step", async () => {
     await open("#/howto");
     await click(button("Next"));
     expect(window.location.hash).toBe("#/howto/2");
     expect(title()).toBe("Trump beats everything");
     await click(button("Next"));
     expect(counter()).toBe("3 of 10");
-    await click(button("Back"));
-    expect(window.location.hash).toBe("#/howto/2");
-    await click(button("Back"));
-    expect(window.location.hash).toBe("#/howto");
-    expect(title()).toBe("Climb from 2 to Ace");
+    expect([...host.querySelectorAll(".howto-nav button")].map((b) => b.textContent)).toEqual(["Next"]);
+    expect(button("Back")).toBeUndefined();
+  });
+
+  it("the header's ‹ Back is the only way out on every step", async () => {
+    for (const step of [1, 5, 10]) {
+      if (step > 1) { act(() => root.unmount()); host.remove(); }
+      await open(`#/howto/${step}`);
+      const backs = [...host.querySelectorAll("button")].filter((b) => /Back/.test(b.textContent ?? ""));
+      expect(backs.map((b) => b.textContent)).toEqual(["‹ Back"]);
+    }
   });
 
   it("the dots show the step and are not buttons", async () => {

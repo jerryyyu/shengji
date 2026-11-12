@@ -2,7 +2,7 @@
 // rows, and the two-step Delete account.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState } from "../auth";
 
 const { authState, signOut, deleted, updated } = vi.hoisted(() => ({
@@ -21,6 +21,8 @@ import MePage from "./MePage";
 import GamesList from "./GamesList";
 import { openNameEditor } from "../home/route";
 import { forgetHomeSession, forgetPrivateSession } from "../home/session";
+import { hapticsEnabled, setHapticsEnabled } from "../native";
+import { isMuted, setMuted } from "../audio";
 
 const JERRY = { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" };
 const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional: false, levels_per_round: 0.41,
@@ -31,6 +33,12 @@ const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional:
 const GAME = { id: "g1", room_code: "KQ4X", started_at: Math.floor(Date.now() / 1000) - 60, ended_at: null, seat: 0,
                players: ["Jerry", "Sam", "Mei", "Wen"], rounds: [1, 2], final_levels: ["4", "3"],
                games_won: [0, 0], incomplete: false };
+
+// the Sound row loads the audio module, whose first tap unlocks an AudioContext
+beforeAll(() => {
+  class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
+  (window as unknown as { AudioContext: unknown }).AudioContext = SilentAudioContext;
+});
 
 let calls: { url: string; method: string }[];
 let deleteStatus = 204;
@@ -85,8 +93,8 @@ describe("signed in", () => {
     const tiles = [...host.querySelectorAll(".me-tile")].map((t) => t.textContent);
     expect(tiles).toEqual(["58%rounds won", "+0.41levels / round", "7best streak"]);
     expect(rowLabels()).toEqual(["Games won", "Rounds played", "Won as defenders", "Won as attackers",
-      "Queue with a friend", "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy", "Support",
-      "Sign out", "Delete account"]);
+      "Queue with a friend", "Sound", "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy",
+      "Support", "Sign out", "Delete account"]);
     expect(host.textContent).not.toContain("With a bot partner");
     expect(host.querySelector(".me-delete")?.className).toContain("destructive");
     expect(host.querySelector(".segmented-btn[aria-pressed=true]")?.textContent).toBe("Stats");
@@ -110,8 +118,8 @@ describe("signed in", () => {
 
   it("the account's settings and help rows sit under Games too, below the games", async () => {
     await render("games");
-    expect(rowLabels()).toEqual(["Queue with a friend", "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy",
-      "Support", "Sign out", "Delete account"]);
+    expect(rowLabels()).toEqual(["Queue with a friend", "Sound", "Show me on the leaderboard", "Edit name", "How to play",
+      "Privacy policy", "Support", "Sign out", "Delete account"]);
     const list = host.querySelector(".games-day-row")!;
     const settings = host.querySelector(".me-visible")!;
     expect(list.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -248,7 +256,7 @@ describe("a guest", () => {
     expect(card.querySelector(".apple-signin")).toBeNull();
     expect(card.querySelectorAll("button:disabled")).toHaveLength(0);
     expect(card.textContent).not.toContain("Apple");
-    expect(rowLabels()).toEqual(["How to play", "Privacy policy", "Support"]);
+    expect(rowLabels()).toEqual(["Sound", "How to play", "Privacy policy", "Support"]);
     expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/support"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
@@ -497,5 +505,79 @@ describe("pull to refresh", () => {
     expect(count("/api/me/games?")).toBe(2);
     expect(count("/api/me/stats")).toBe(2);
     expect(host.querySelector(".games-day-row .games-row-title")?.textContent).toBe("Room KQ4X · with Sam, Mei, Wen");
+  });
+});
+
+describe("the Settings group", () => {
+  const native = (on: boolean) => {
+    if (on) (window as unknown as { Capacitor: unknown }).Capacitor = { isNativePlatform: () => true };
+    else delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  };
+  afterEach(() => {
+    native(false);
+    setHapticsEnabled(true);
+    setMuted(false);
+  });
+  const head = () => host.querySelector(".grp-head#me-settings-head");
+  const group = () => host.querySelector("ul.me-settings")!;
+  const groupLabels = () => [...group().querySelectorAll(".grp-label")].map((e) => e.textContent);
+
+  it("in the app: Sound, Haptics, the leaderboard switch and Edit name, under a Settings heading", async () => {
+    native(true);
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    expect(head()?.textContent).toBe("Settings");
+    expect(group().getAttribute("aria-labelledby")).toBe("me-settings-head");
+    expect(groupLabels()).toEqual(["Sound", "Haptics", "Show me on the leaderboard", "Edit name"]);
+  });
+
+  it("Haptics is a switch that turns haptic() off and is remembered", async () => {
+    native(true);
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    const sw = () => host.querySelector<HTMLButtonElement>(".me-haptics")!;
+    expect(sw().getAttribute("role")).toBe("switch");
+    expect(sw().getAttribute("aria-checked")).toBe("true");
+    act(() => sw().click());
+    expect(sw().getAttribute("aria-checked")).toBe("false");
+    expect(hapticsEnabled()).toBe(false);
+    expect(localStorage.getItem("shengji.haptics")).toBe("0");
+    act(() => sw().click());
+    expect(hapticsEnabled()).toBe(true);
+    expect(localStorage.getItem("shengji.haptics")).toBe("1");
+  });
+
+  it("Sound is a switch on the shared mute store", async () => {
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    const sw = () => host.querySelector<HTMLButtonElement>(".me-sound")!;
+    expect(sw().getAttribute("aria-checked")).toBe("true");
+    act(() => sw().click());
+    expect(isMuted()).toBe(true);
+    expect(sw().getAttribute("aria-checked")).toBe("false");
+    act(() => setMuted(false));
+    expect(sw().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("a browser has no Haptics row; a guest gets the device rows only", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    expect(groupLabels()).toEqual(["Sound"]);
+    native(true);
+    act(() => root.unmount());
+    host.remove();
+    await render();
+    expect(groupLabels()).toEqual(["Sound", "Haptics"]);
+  });
+
+  it("a guest's sign-in card links to the leaderboard's explanation of rated games instead of repeating it", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    const card = host.querySelector(".signin-card")!;
+    expect(card.textContent).not.toContain("1000");
+    const link = card.querySelector<HTMLButtonElement>(".me-rated-link")!;
+    expect(link.textContent?.trim()).toBe("How rated games work");
+    act(() => link.click());
+    expect(window.location.hash).toBe("#/leaderboard");
   });
 });

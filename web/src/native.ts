@@ -113,10 +113,44 @@ export function hapticCall(kind: HapticKind): { method: string; opts?: Record<st
   }
 }
 
+const HAPTICS_KEY = "shengji.haptics";
+
+function storedHaptics(): boolean {
+  try {
+    return localStorage.getItem(HAPTICS_KEY) !== "0"; // default: on
+  } catch {
+    return true;
+  }
+}
+
+let hapticsOn = storedHaptics();
+const hapticsListeners = new Set<(on: boolean) => void>();
+
+/** Whether haptics play: the Me tab's Haptics switch, kept in localStorage
+ *  beside the sound setting. Off makes `haptic()` a no-op everywhere. */
+export function hapticsEnabled(): boolean {
+  return hapticsOn;
+}
+
+export function setHapticsEnabled(on: boolean): void {
+  hapticsOn = on;
+  try {
+    localStorage.setItem(HAPTICS_KEY, on ? "1" : "0");
+  } catch {
+    /* storage blocked; the choice holds for this session */
+  }
+  for (const cb of hapticsListeners) cb(on);
+}
+
+export function subscribeHaptics(cb: (on: boolean) => void): () => void {
+  hapticsListeners.add(cb);
+  return () => { hapticsListeners.delete(cb); };
+}
+
 let selectionPrimed = false;
 
 export function haptic(kind: HapticKind): void {
-  if (!isNative()) return;
+  if (!hapticsOn || !isNative()) return;
   const { method, opts } = hapticCall(kind);
   if (method === "selectionChanged" && !selectionPrimed) {
     // The selection generator exists only between selectionStart and
@@ -247,6 +281,7 @@ export function resetNativeForTests(): void {
   phone = null;
   lastLock = null;
   selectionPrimed = false;
+  hapticsOn = storedHaptics();
   splashHidden = false;
   lastBackGesture = null;
   lastGameMode = null;

@@ -20,6 +20,61 @@ function nameAt(game: GameRow, seat: number): string {
   return game.players[seat] ?? `Seat ${seat + 1}`;
 }
 
+/** Placeholder rows while a list loads, built from the real rows' own
+ *  classes so each is the height of the row that replaces it. Screen readers
+ *  hear "Loading…" once; the bars are hidden from them. */
+export function SkeletonRows({ kind, rows = 3 }: { kind: "games" | "rounds" | "board"; rows?: number }) {
+  const keys = Array.from({ length: rows }, (_, k) => k);
+  let list;
+  if (kind === "board") {
+    list = (
+      <ul className="grp lb-list skel-list" aria-hidden="true">
+        {keys.map((k) => (
+          <li key={k} className="lb-row skel-row">
+            <span className="lb-rank"><span className="skel skel-rank" /></span>
+            <span className="avatar avatar-sm skel" />
+            <span className="lb-name"><span className="skel skel-name" /></span>
+            <span className="lb-rating"><span className="skel skel-num" /></span>
+          </li>
+        ))}
+      </ul>
+    );
+  } else if (kind === "rounds") {
+    list = (
+      <ul className="games-rounds skel-list" aria-hidden="true">
+        {keys.map((k) => (
+          <li key={k} className="games-round skel-row">
+            <span className="games-round-n"><span className="skel skel-name" /></span>
+            <span className="games-round-res"><span className="skel skel-sub" /></span>
+            <span className="btn subtle skel-ghost">Replay</span>
+          </li>
+        ))}
+      </ul>
+    );
+  } else {
+    list = (
+      <ul className="grp games-day-list skel-list" aria-hidden="true">
+        {keys.map((k) => (
+          <li key={k} className="games-day-item">
+            <div className="grp-row games-day-row skel-row">
+              <span className="games-row-main">
+                <span><span className="skel skel-title" /></span>
+                <span className="games-row-sub"><span className="skel skel-sub" /></span>
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <div className="skel-wrap" role="status">
+      <span className="skel-sr">Loading…</span>
+      {list}
+    </div>
+  );
+}
+
 /** "You & Partner vs A, B", with the viewer's team marked. */
 function Teams({ game }: { game: GameRow }) {
   const me = game.seat;
@@ -117,7 +172,7 @@ function GameView({ id }: { id: string }) {
 
   let body;
   let sub: string | undefined;
-  if (res === null) body = <GamesNotice title="Loading…" />;
+  if (res === null) body = <SkeletonRows kind="rounds" />;
   else if (!res.ok) {
     body = res.reason === "signed_out" ? <SignInPrompt />
       : res.reason === "not_found" ? <GamesUnavailable />
@@ -302,7 +357,7 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
     });
   };
 
-  if (list.status === "loading") return <GamesNotice title="Loading…" />;
+  if (list.status === "loading") return <SkeletonRows kind="games" />;
   if (list.status === "failed") {
     return list.reason === "signed_out" ? <SignInPrompt />
       : <p className="lobby-error" role="alert">Could not load your games ({list.code || "no connection"}).</p>;

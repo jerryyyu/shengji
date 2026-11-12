@@ -2001,3 +2001,111 @@ def test_swap_after_start_is_refused(client):
         a.send_json({"type": "swap_seats", "a": 0, "b": 1})
         assert "started" in _drain(a, "error", tries=200)["message"]
         assert [s.name for s in room.seats] == names
+
+
+def _host_guest_and_third(client, a, b, c):
+    """Host at seat 0, `james` at 1, `amy` at 2, all in the lobby."""
+    code = _host_and_guest(client, a, b)
+    c.send_json({"type": "join_room", "room": code, "name": "amy"})
+    assert _drain(c, "room")["you"] == 2
+    return code
+
+
+def test_host_removes_a_guest(client):
+    from shengji.api import server as srv
+    with (client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b,
+          client.websocket_connect("/ws") as c):
+        code = _host_guest_and_third(client, a, b, c)
+        room = srv.rooms[code]
+        token = room.seats[1].token
+        a.send_json({"type": "remove_player", "seat": 1})
+        left = _drain(b, "left")
+        assert left["reason"] == "removed" and "removed" in left["message"]
+        assert [s.name for s in room.seats] == ["jerry", "amy"]
+        assert room.host == 0
+        st = _drain(c, "room")
+        while len(st["players"]) != 2:
+            st = _drain(c, "room")
+        assert st["you"] == 1
+        # The removed socket is back in the lobby: a room action is refused
+        # as from a lobby socket, not applied to the room.
+        b.send_json({"type": "add_bot"})
+        assert _drain(b, "error")["message"] == "Join a room first."
+        assert len(room.seats) == 2
+        # Its old token reclaims nothing: a join with it is a new arrival.
+        with client.websocket_connect("/ws") as again:
+            again.send_json({"type": "join_room", "room": code, "name": "james", "token": token})
+            st = _drain(again, "room")
+            assert st["you"] == 2
+            assert room.seats[2].token != token
+        assert all(s.token != token for s in room.seats)
+
+
+def test_host_removes_a_signed_in_player(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        code = _host_and_guest(client, a, b)
+        room = srv.rooms[code]
+        room.seats[1].user_id = 4242
+        a.send_json({"type": "remove_player", "seat": 1})
+        assert _drain(b, "left")["reason"] == "removed"
+        assert [s.user_id for s in room.seats] == [None]
+
+
+def test_removing_a_seat_before_the_host_keeps_the_host(client):
+    from shengji.api import server as srv
+    with (client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b,
+          client.websocket_connect("/ws") as c):
+        code = _host_guest_and_third(client, a, b, c)
+        room = srv.rooms[code]
+        a.send_json({"type": "swap_seats", "a": 0, "b": 2})
+        st = _drain(a, "room")
+        while st["you"] != 2:
+            st = _drain(a, "room")
+        a.send_json({"type": "remove_player", "seat": 1})
+        _drain(b, "left")
+        st = _drain(a, "room")
+        while len(st["players"]) != 2:
+            st = _drain(a, "room")
+        assert st["you"] == st["host"] == 1
+        assert room.seats[room.host].name == "jerry"
+
+
+def test_non_host_cannot_remove(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        code = _host_and_guest(client, a, b)
+        b.send_json({"type": "remove_player", "seat": 0})
+        assert "host" in _drain(b, "error")["message"]
+        assert [s.name for s in srv.rooms[code].seats] == ["jerry", "james"]
+
+
+@pytest.mark.parametrize("bad", [0, 2, -1, "1", True, None])
+def test_bad_remove_is_refused(client, bad):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        code = _host_and_guest(client, a, b)
+        a.send_json({"type": "remove_player", "seat": bad})
+        _drain(a, "error")
+        assert [s.name for s in srv.rooms[code].seats] == ["jerry", "james"]
+
+
+def test_remove_after_start_is_refused(client):
+    with client.websocket_connect("/ws") as a:
+        _code, room = _start_game(client, a)
+        names = [s.name for s in room.seats]
+        a.send_json({"type": "remove_player", "seat": 1})
+        assert "started" in _drain(a, "error", tries=200)["message"]
+        assert [s.name for s in room.seats] == names
+
+
+def test_start_fills_empty_seats_with_bots(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        code = _host_and_guest(client, a, b)
+        a.send_json({"type": "start_game"})
+        st = _drain(b, "state", tries=60)
+        assert st["you"] == 1
+        room = srv.rooms[code]
+        assert [s.is_bot for s in room.seats] == [False, False, True, True]
+        assert room.game is not None

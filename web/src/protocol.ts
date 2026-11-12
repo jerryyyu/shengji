@@ -41,6 +41,8 @@ export type ClientMsg =
   | { type: "remove_bot" }
   /** Host only, before the game starts: exchange the occupants of two taken seats. */
   | { type: "swap_seats"; a: number; b: number }
+  /** Host only, before the game starts: send the person in this seat out of the room. */
+  | { type: "remove_player"; seat: number }
   | { type: "start_game" }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window
@@ -226,6 +228,9 @@ export interface EventMsg {
 /** Confirmation of leave_room; the connection may create/join rooms again. */
 export interface LeftMsg {
   type: "left";
+  /** Present when the host removed this player rather than the player leaving. */
+  reason?: "removed";
+  message?: string;
 }
 
 export type ServerMsg =

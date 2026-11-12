@@ -243,6 +243,9 @@ class Seat:
     # took this seat carried; None for a guest. Server-only: it enters no
     # state frame, no log record and no game decision.
     user_id: int | None = None
+    # Set when the host removed this occupant before the game: the seat is no
+    # longer in the room, and the socket that held it returns to the lobby.
+    removed: bool = False
 
 
 @dataclass
@@ -1624,6 +1627,39 @@ def _swap_seats(room: Room, seat: int, msg: dict) -> None:
     room.ready = {b if s == a else a if s == b else s for s in room.ready}
 
 
+def _remove_player(room: Room, seat: int, msg: dict) -> None:
+    """Host-only lobby removal: the occupant of ``msg["seat"]`` leaves.
+
+    The seat goes the way a lobby leave does (the later seats close up, as
+    the list fills in join order), the removed socket is told and returns to
+    the lobby on its next frame, and its resume token is replaced so it can
+    never reclaim a seat of this room.
+    """
+    if seat != room.host:
+        raise IllegalPlay("Only the host can remove players.")
+    if room.game:
+        raise IllegalPlay("Players are fixed once the game has started.")
+    if room.resume is not None or room.evaluation is not None:
+        raise IllegalPlay("Seats are fixed at this table.")
+    target = msg.get("seat")
+    if type(target) is not int or not 0 <= target < len(room.seats):
+        raise IllegalPlay("Invalid seat.")
+    if target == seat:
+        raise IllegalPlay("Use Leave to leave the room.")
+    host = room.seats[seat]
+    gone = room.seats.pop(target)
+    room.ids.pop(target)
+    room.ids.append({})
+    room.host = room.seats.index(host)
+    room.ready.clear()
+    gone.removed = True
+    gone.token = secrets.token_urlsafe(12)
+    if not gone.is_bot:
+        enqueue(gone, {"type": "left", "reason": "removed",
+                       "message": "The host removed you from the room."})
+        chat_system(room, f"{gone.name} was removed by the host")
+
+
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
     if room.evaluation is not None and room.evaluation_invalidated:
@@ -1652,6 +1688,8 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         room.seats.pop()
     elif t == "swap_seats":
         _swap_seats(room, seat, msg)
+    elif t == "remove_player":
+        _remove_player(room, seat, msg)
     elif t == "set_start_level":
         # Jerry 09-26: the selector lives in the room screen, not the lobby.
         # Host-only, and only while no game exists -- Game() reads the level
@@ -1668,10 +1706,11 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     elif t == "start_game":
         if seat != room.host:
             raise IllegalPlay("Only the host can start.")
-        if len(room.seats) != 4:
-            raise IllegalPlay("Need exactly 4 players.")
         if room.game:
             raise IllegalPlay("Game already started.")
+        # A bot plays every seat nobody took.
+        while len(room.seats) < 4:
+            room.seats.append(Seat(name=f"Bot {len(room.seats)}", is_bot=True))
         validate_human_evaluation_start(room)
         # games_to_win=None: a table keeps playing. Holding A scores a
         # point and the levels restart, rather than ending the session.
@@ -1802,6 +1841,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 conn.adopted = None
             if room is not None and room.aborted:
                 room, me = None, None
+            if me is not None and me.removed:
+                # the host removed this seat: back to the lobby, no room
+                _detach(me)
+                room, me = None, None
+                MATCHMAKER.return_to_lobby(conn)
             if t == "ping":
                 nonce = msg.get("nonce")
                 if type(nonce) is int and 0 <= nonce <= 9007199254740991:
@@ -2135,7 +2179,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
             room, me, my_gen = conn.adopted
             conn.adopted = None
         MATCHMAKER.disconnect(conn)
-        if room is not None and me is not None:
+        if me is not None and me.removed:
+            _detach(me)
+        elif room is not None and me is not None:
             async with room.lock:
                 if not me.is_bot and me.connected:
                     chat_system(room, f"{me.name} disconnected")

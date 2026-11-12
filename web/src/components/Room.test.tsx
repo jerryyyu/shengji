@@ -65,11 +65,11 @@ describe("layout", () => {
     expect(card(3).className).toContain("pos-left");
     expect(card(0).className).toContain("pos-top");
     expect(card(1).className).toContain("pos-right");
-    expect(card(0).textContent).toContain("Partner");
+    expect(card(0).querySelector(".seat-card-role")?.textContent).toBe("Partner · Host");
+    expect(card(2).querySelector(".seat-card-role")?.textContent).toBe("You");
+    expect(card(1).querySelector(".seat-card-role")?.textContent).toBe("Bot · Opponent");
     expect(card(3).textContent).toContain("Empty");
-    expect(card(0).querySelector(".host-tag")).not.toBeNull();
-    expect(card(2).querySelector(".you-tag")).not.toBeNull();
-    expect(card(1).querySelector(".bot-tag")).not.toBeNull();
+    expect(card(0).querySelector(".conn-pip.on")).not.toBeNull();
     expect(host.textContent).not.toContain("Team seats");
   });
 
@@ -92,7 +92,7 @@ describe("layout", () => {
     render(room());
     expect(host.textContent).not.toContain("Drag to swap seats");
     const seats = [...host.querySelectorAll<HTMLButtonElement>("button.seat-card")];
-    expect(seats).toHaveLength(3);
+    expect(seats).toHaveLength(4);
     const hint = document.getElementById(seats[0].getAttribute("aria-describedby")!)!;
     expect(hint.hidden).toBe(true);
     expect(hint.textContent).toContain("to swap them");
@@ -119,7 +119,7 @@ describe("host drag", () => {
     expect(card(0).className).not.toContain("lifted");
     // the release's click is not a tap that selects the seat
     act(() => card(2).click());
-    expect(card(2).getAttribute("aria-pressed")).toBe("false");
+    expect(sheet()).toBeNull();
   });
 
   it("does not prevent default or lift before the move threshold", () => {
@@ -175,10 +175,17 @@ describe("host drag", () => {
   });
 });
 
+const sheet = () => document.querySelector<HTMLElement>(".room-sheet");
+const sheetButton = (label: string) =>
+  [...document.querySelectorAll<HTMLButtonElement>(".room-sheet button")].find((b) => b.textContent === label);
+
 describe("tap to swap", () => {
-  it("selects one seat, then swaps with the next one tapped", () => {
+  it("opens the seat, chooses Swap seats, then swaps with the next seat tapped", () => {
     render(room());
     act(() => card(1).click());
+    expect(sheet()?.textContent).toContain("Bot 1");
+    act(() => sheetButton("Swap seats")!.click());
+    expect(sheet()).toBeNull();
     expect(card(1).getAttribute("aria-pressed")).toBe("true");
     const hint = document.getElementById(card(1).getAttribute("aria-describedby")!)!;
     expect(hint.textContent).toContain("Selected Bot 1");
@@ -190,19 +197,119 @@ describe("tap to swap", () => {
   it("deselects on a second tap of the same seat or on Escape", () => {
     render(room());
     act(() => card(1).click());
+    act(() => sheetButton("Swap seats")!.click());
     act(() => card(1).click());
     expect(card(1).getAttribute("aria-pressed")).toBe("false");
+    expect(sheet()).toBeNull();
     act(() => card(0).click());
+    act(() => sheetButton("Swap seats")!.click());
     act(() => { card(0).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     expect(card(0).getAttribute("aria-pressed")).toBe("false");
     expect(swaps()).toEqual([]);
   });
 
-  it("is reachable by keyboard: seats are buttons in the tab order", () => {
+  it("is reachable by keyboard: every seat is a button in the tab order", () => {
     render(room());
     const buttons = [...host.querySelectorAll<HTMLButtonElement>("button.seat-card")];
-    expect(buttons.map((b) => b.dataset.seat).sort()).toEqual(["0", "1", "2"]);
+    expect(buttons.map((b) => b.dataset.seat).sort()).toEqual(["0", "1", "2", "3"]);
     expect(buttons.every((b) => b.type === "button" && b.tabIndex === 0)).toBe(true);
+  });
+});
+
+describe("seat menu", () => {
+  afterEach(() => { delete (navigator as { share?: unknown }).share; });
+
+  it("removes a person from the room", () => {
+    render(room());
+    act(() => card(2).click());
+    expect(sheet()?.getAttribute("role")).toBe("dialog");
+    act(() => sheetButton("Remove from room")!.click());
+    expect(sent).toContainEqual({ type: "remove_player", seat: 2 });
+    expect(sheet()).toBeNull();
+  });
+
+  it("offers no Remove on the host's own seat", () => {
+    render(room());
+    act(() => card(0).click());
+    expect(sheetButton("Remove from room")).toBeUndefined();
+    expect(sheetButton("Swap seats")).toBeDefined();
+  });
+
+  it("closes on Cancel with nothing sent", () => {
+    render(room());
+    act(() => card(2).click());
+    act(() => sheetButton("Cancel")!.click());
+    expect(sheet()).toBeNull();
+    expect(sent).toEqual([]);
+  });
+
+  it("invites a friend from an empty seat through the share sheet", async () => {
+    const share = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { share });
+    render(room());
+    act(() => card(3).click());
+    expect(sheet()?.textContent).toContain("Empty seat");
+    expect(sheet()?.textContent).toContain("A bot plays here unless a friend joins first.");
+    await act(async () => sheetButton("Invite a friend")!.click());
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({ url: `${window.location.origin}/?code=ABCD` }));
+    expect(sheet()).toBeNull();
+    expect(sent).toEqual([]);
+  });
+
+  it("gives a non-host no seat actions", () => {
+    render(room({ you: 2 }));
+    for (const s of [0, 1, 2, 3]) act(() => card(s).click());
+    expect(sheet()).toBeNull();
+    expect(sent).toEqual([]);
+  });
+});
+
+describe("room screen", () => {
+  afterEach(() => { delete (navigator as { share?: unknown }).share; });
+
+  it("has a Leave control, an UNRANKED title and no bot buttons", () => {
+    render(room());
+    expect(host.querySelector(".room-title")?.textContent).toBe("RoomUNRANKED");
+    expect(host.textContent).not.toContain("Add bot");
+    expect(host.textContent).not.toContain("Remove bot");
+    act(() => host.querySelector<HTMLButtonElement>(".room-leave")!.click());
+    expect(sent).toEqual([{ type: "leave_room" }]);
+  });
+
+  it("drops the copy captions and labels the code box", () => {
+    render(room());
+    expect(host.textContent).not.toMatch(/click to copy|Tap to copy/i);
+    expect(host.querySelector(".room-code")?.getAttribute("aria-label")).toBe("Room code A B C D");
+  });
+
+  it("shows empty seats as a bot's", () => {
+    render(room());
+    expect(card(3).textContent).toBe("Emptya bot plays");
+  });
+
+  it("labels the host's button Start whether or not seats are empty", () => {
+    render(room());
+    const start = () => host.querySelector<HTMLButtonElement>(".room-start")!;
+    expect(start().textContent).toBe("Start");
+    act(() => start().click());
+    expect(sent).toEqual([{ type: "start_game" }]);
+    render(room({ players: [0, 1, 2, 3].map((seat) => ({ seat, name: `P${seat}`, is_bot: false, connected: true })) }));
+    expect(start().textContent).toBe("Start");
+  });
+
+  it("gives a non-host no start button", () => {
+    render(room({ you: 2 }));
+    expect(host.querySelector(".room-start")).toBeNull();
+    expect(host.textContent).toContain("Waiting for the host to start");
+  });
+
+  it("copies the invite link where there is no share sheet", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(room());
+    await act(async () => host.querySelector<HTMLButtonElement>(".room-invite")!.click());
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/?code=ABCD`);
+    expect(host.querySelector(".copied-tag")?.className).toContain("show");
   });
 });
 

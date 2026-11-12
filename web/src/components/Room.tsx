@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
-import type { Rank, RoomMsg } from "../protocol";
+import { useEffect, useId, useRef, useState } from "react";
+import type { KeyboardEvent, MouseEvent, PointerEvent, ReactNode } from "react";
+import type { Rank, RoomMsg, RoomPlayer } from "../protocol";
 import { RANKS } from "../protocol";
 import { conn } from "../ws";
 import { prefersReducedMotion } from "../motion";
@@ -16,16 +16,62 @@ type Lifted = { seat: number; dx: number; dy: number; over: number | null };
 
 const ROLE = { bottom: "You", top: "Partner", left: "Opponent", right: "Opponent" } as const;
 
+/** The room's invite: the system share sheet where there is one, else the
+ *  link on the clipboard. Resolves true when the link was copied. */
+function shareInvite(code: string): Promise<boolean> {
+  const url = codeLink(code);
+  if (typeof navigator.share === "function") {
+    return navigator.share({ title: "Sheng Ji", text: `Join my Sheng Ji room: ${code}`, url })
+      .then(() => false, () => false);   // a dismissed share sheet is not an error
+  }
+  if (!navigator.clipboard) return Promise.resolve(false);
+  return navigator.clipboard.writeText(url).then(() => true, () => false);
+}
+
+/** An action sheet: a titled group of actions over a scrim, Cancel apart
+ *  below it. Escape or a tap on the scrim closes it. */
+function ActionSheet({ title, children, onClose }: {
+  title: string; children: ReactNode; onClose: () => void;
+}) {
+  const titleId = useId();
+  const box = useRef<HTMLDivElement | null>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const key = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") close.current(); };
+    document.addEventListener("keydown", key);
+    box.current?.focus();
+    return () => document.removeEventListener("keydown", key);
+  }, []);
+  return (
+    <div className="q-layer room-sheet-layer">
+      <div className="q-scrim" onClick={onClose} />
+      <div className="room-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}
+           tabIndex={-1} ref={box}>
+        <div className="room-sheet-group">
+          <div className="room-sheet-title" id={titleId}>{title}</div>
+          {children}
+        </div>
+        <button type="button" className="room-sheet-btn room-sheet-cancel" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+type Menu = { seat: number; player: RoomPlayer | null };
+
 /** The four seats around the table as the game draws it: you at the bottom,
  *  your partner across, the opponents left and right. The host rearranges
- *  people by dragging one seat onto another (touch or mouse), or by tapping
- *  one seat then another, which the keyboard reaches too. Only occupied seats
- *  swap: the room's seats fill in join order, so an empty seat has no place
- *  to leave behind. A drag starts after SEAT_DRAG_START px, captures the
- *  pointer only then, and ends with nothing sent on a second touch, a
- *  pointercancel or a release away from every seat. */
-function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
+ *  people by dragging one seat onto another (touch or mouse); a tap opens the
+ *  seat's actions, where "Swap seats" then a tap on another seat does the
+ *  same by touch or keyboard. Only occupied seats swap: the room's seats fill
+ *  in join order, so an empty seat has no place to leave behind. A drag
+ *  starts after SEAT_DRAG_START px, captures the pointer only then, and ends
+ *  with nothing sent on a second touch, a pointercancel or a release away
+ *  from every seat. */
+function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean; onInvite: () => void }) {
   const [selected, setSelected] = useState<number | null>(null);
+  const [menu, setMenu] = useState<Menu | null>(null);
   const [lifted, setLifted] = useState<Lifted | null>(null);
   const drag = useRef<Drag | null>(null);
   const swallowClick = useRef(false);
@@ -110,9 +156,9 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
     e.preventDefault();
   };
   const onTap = (seat: number) => {
-    if (!occupied(seat)) return;
-    if (pick === null) setSelected(seat);
-    else if (pick === seat) setSelected(null);
+    const player = room.players.find((p) => p.seat === seat) ?? null;
+    if (pick === null) setMenu({ seat, player });
+    else if (pick === seat || !player) setSelected(null);
     else swap(pick, seat);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -122,11 +168,12 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
   const pickName = room.players.find((p) => p.seat === pick)?.name;
   const hintId = `seat-swap-hint-${room.room}`;
   const animate = !prefersReducedMotion();
+  const roomMenu = menu && (menu.player === null || occupied(menu.seat)) ? menu : null;
   return (
     <>
       <div
         ref={clockRef}
-        className={`seat-clock${isHost ? " can-swap" : ""}${lifted ? " dragging" : ""}${animate ? "" : " still"}`}
+        className={`seat-clock${isHost ? " can-swap" : ""}${lifted ? " dragging" : ""}${animate ? "" : " still"}${pick !== null ? " picking" : ""}`}
         data-no-tab-swipe=""
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -139,7 +186,6 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
         onClickCapture={onClickCapture}
         onKeyDown={onKeyDown}
       >
-        <div className="seat-clock-table" aria-hidden="true" />
         {[0, 1, 2, 3].map((seat) => {
           const p = room.players.find((pl) => pl.seat === seat);
           const pos = seatPos(seat, room.you);
@@ -150,27 +196,29 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
             `${pick === seat ? " selected" : ""}${isLifted ? " lifted" : ""}` +
             `${lifted && lifted.over === seat ? " drop-target" : ""}` +
             `${pick !== null && pick !== seat && p ? " swap-target" : ""}`;
-          const body = (
+          const caption = p
+            ? [p.is_bot ? "Bot" : null, pos === "bottom" ? "You" : ROLE[pos],
+               seat === room.host ? "Host" : null].filter(Boolean).join(" · ")
+            : "";
+          const body = p ? (
             <>
-              <span className="seat-card-name">
-                {p ? p.name : "Empty"}
-              </span>
-              <span className="seat-card-tags">
-                {p && p.is_bot ? <span className="bot-tag">BOT</span> : null}
-                {seat === room.you ? <span className="you-tag">you</span> : null}
-                {p && seat === room.host ? <span className="host-tag">host</span> : null}
-                {pos !== "bottom" ? <span className="seat-role">{ROLE[pos]}</span> : null}
-              </span>
-              {p ? <span className={`conn-pip${p.connected || p.is_bot ? " on" : ""}`} /> : null}
+              <span className="seat-card-name">{p.name}</span>
+              <span className="seat-card-role">{caption}</span>
+              <span className={`conn-pip${p.connected || p.is_bot ? " on" : ""}`} />
+            </>
+          ) : (
+            <>
+              <span className="seat-card-name">Empty</span>
+              <span className="seat-card-note">a bot plays</span>
             </>
           );
           const style = isLifted
             ? { transform: `translate(${lifted.dx}px, ${lifted.dy}px)` }
             : undefined;
           const label = p
-            ? `Seat ${seat}, ${p.name}${p.is_bot ? ", bot" : ""}, ${seat === room.you ? "you" : ROLE[pos].toLowerCase()}`
-            : `Seat ${seat}, empty`;
-          return isHost && p ? (
+            ? `Seat ${seat}, ${p.name}, ${caption.toLowerCase()}`
+            : `Seat ${seat}, empty, a bot plays`;
+          return isHost ? (
             <button
               key={seat}
               type="button"
@@ -178,8 +226,9 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
               className={cls}
               style={style}
               aria-label={label}
-              aria-pressed={pick === seat}
-              aria-describedby={hintId}
+              aria-haspopup={pick === null ? "dialog" : undefined}
+              aria-pressed={p ? pick === seat : undefined}
+              aria-describedby={p ? hintId : undefined}
               onClick={() => onTap(seat)}
             >
               {body}
@@ -195,8 +244,30 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
         <span id={hintId} hidden>
           {pick !== null
             ? `Selected ${pickName}. Choose another seat to swap with, or this one again to cancel.`
-            : "Drag onto another seat, or select it and then another seat, to swap them."}
+            : "Drag onto another seat, or open it and choose Swap seats, to swap them."}
         </span>
+      ) : null}
+      {roomMenu && roomMenu.player ? (
+        <ActionSheet title={roomMenu.player.name} onClose={() => setMenu(null)}>
+          <button type="button" className="room-sheet-btn"
+                  onClick={() => { setSelected(roomMenu.seat); setMenu(null); }}>
+            Swap seats
+          </button>
+          {roomMenu.seat !== room.host ? (
+            <button type="button" className="room-sheet-btn danger"
+                    onClick={() => { conn.send({ type: "remove_player", seat: roomMenu.seat }); setMenu(null); }}>
+              Remove from room
+            </button>
+          ) : null}
+        </ActionSheet>
+      ) : roomMenu ? (
+        <ActionSheet title="Empty seat" onClose={() => setMenu(null)}>
+          <p className="room-sheet-note">A bot plays here unless a friend joins first.</p>
+          <button type="button" className="room-sheet-btn invite"
+                  onClick={() => { onInvite(); setMenu(null); }}>
+            Invite a friend
+          </button>
+        </ActionSheet>
       ) : null}
     </>
   );
@@ -205,33 +276,42 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
 export default function Room({ room }: { room: RoomMsg }) {
   const [copied, setCopied] = useState(false);
   const isHost = room.you === room.host;
-  const full = room.players.length === 4;
-  const hasBot = room.players.some((p) => p.is_bot);
 
-  const copyCode = () => {
-    navigator.clipboard
-      .writeText(codeLink(room.room))   // invite LINK, not just the code
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1200);
-      })
-      .catch(() => {
-        /* clipboard unavailable; ignore */
-      });
+  const invite = () => {
+    void shareInvite(room.room).then((didCopy) => {
+      if (!didCopy) return;
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    });
   };
 
   return (
     <div className="screen room-screen">
       <div className="panel room-panel">
-        <MuteButton />
-        <div className="room-code-label">
-          <span className="copy-click">Room code — click to copy invite link</span>
-          <span className="copy-tap">Tap to copy invite link</span>
+        <div className="room-head">
+          <button type="button" className="room-leave" onClick={() => conn.send({ type: "leave_room" })}>
+            <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor"
+                 strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M9 3l-6 7 6 7" /></svg>
+            Leave
+          </button>
+          <span className="room-title">
+            Room{room.matched ? null : <span className="unranked-tag">UNRANKED</span>}
+          </span>
+          <span className="room-head-end"><MuteButton /></span>
         </div>
-        <button className="room-code" onClick={copyCode} title="Copy room code">
-          {room.room}
-          <span className={`copied-tag${copied ? " show" : ""}`}>Copied!</span>
-        </button>
+        <div className="room-code-row">
+          <span className="room-code" aria-label={`Room code ${room.room.split("").join(" ")}`}>
+            {room.room}
+            <span className={`copied-tag${copied ? " show" : ""}`}>Link copied</span>
+          </span>
+          <button type="button" className="room-invite" onClick={invite}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 3v12M7 8l5-5 5 5" /><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+            </svg>
+            Invite
+          </button>
+        </div>
         {isHost ? (
           <div className="start-level-row">
             <span className="field-label">Starting level</span>
@@ -258,34 +338,16 @@ export default function Room({ room }: { room: RoomMsg }) {
           <span className="chip experimental-marker">Experimental W32</span>
         ) : null}
 
-        <SeatClock key={room.room} room={room} isHost={isHost} />
+        <SeatClock key={room.room} room={room} isHost={isHost} onInvite={invite} />
 
         {isHost ? (
-          <div className="room-actions">
-            <button className="btn" disabled={full} onClick={() => conn.send({ type: "add_bot" })}>
-              Add bot
-            </button>
-            <button className="btn" disabled={!hasBot} onClick={() => conn.send({ type: "remove_bot" })}>
-              Remove bot
-            </button>
-            <button
-              className="btn primary"
-              disabled={!full}
-              onClick={() => conn.send({ type: "start_game" })}
-            >
-              Start game
-            </button>
-          </div>
+          // the server seats a bot in every empty seat when the game starts
+          <button type="button" className="btn room-start" onClick={() => conn.send({ type: "start_game" })}>
+            Start
+          </button>
         ) : (
           <div className="room-hint">Waiting for the host to start…</div>
         )}
-
-        <button
-          className="btn subtle danger leave-room-btn"
-          onClick={() => conn.send({ type: "leave_room" })}
-        >
-          Leave room
-        </button>
       </div>
     </div>
   );

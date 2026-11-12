@@ -8,7 +8,6 @@ import errno
 import json
 import logging
 import random
-import string
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -29,7 +28,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, saved_games
+from . import accounts, matchmaking, ratings, reports, saved_games, support
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
@@ -244,12 +243,19 @@ class Seat:
     # took this seat carried; None for a guest. Server-only: it enters no
     # state frame, no log record and no game decision.
     user_id: int | None = None
+    # Set when the host removed this occupant before the game: the seat is no
+    # longer in the room, and the socket that held it returns to the lobby.
+    removed: bool = False
 
 
 @dataclass
 class Room:
     code: str
-    seats: list[Seat] = field(default_factory=list)
+    # Index = seat position. Before the game starts a position may be None
+    # (empty: a person left, was removed or moved away), never as the last
+    # entry; start_game seats a bot in every empty position, so once a game
+    # exists the list is four Seats and nothing past the lobby sees a None.
+    seats: list[Seat | None] = field(default_factory=list)
     host: int = 0
     game: Game | None = None
     # Rank both teams start at. Chosen by the creator; applied when the game
@@ -295,6 +301,18 @@ class Room:
     # The saved-game link of the running game (``saved_games.GameLink``), or
     # None. Server-only: it enters no state frame and no log record.
     saved_game: Any = field(default=None, init=False, repr=False)
+    # The running game's rating state (``ratings.RoomRatings``), or None.
+    # Server-only: a state frame carries only the receiving seat's own line.
+    ratings: Any = field(default=None, init=False, repr=False)
+    # Built by the matchmaking queue rather than by a player's create_room.
+    matched: bool = False
+    # A matched room whose start failed and was unwound: no socket may act
+    # in it, and a receive loop still holding it drops it.
+    aborted: bool = field(default=False, init=False, repr=False)
+    # A table continuing a saved game: the ``saved_games.resume_point`` its
+    # creator's account was given, applied once at ``start_game`` (both
+    # teams' levels and the first banker). Server-only.
+    resume: dict | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.bot is None:
@@ -615,9 +633,11 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "game_over": result.game_over,
             "games_won": list(result.games_won),
             "point_scored": result.point_scored,
+            **ratings.round_payload(room, seat),
         } if result else None),
         "message": rnd.message,
         "notice": rnd.notice,
+        **({"matched": True} if room.matched else {}),
     }
 
 
@@ -627,10 +647,11 @@ def room_json(room: Room, seat: int) -> dict:
         "start_level": room.start_level,
         **({"experimental_policy": room.experimental_policy}
            if room.experimental_policy else {}),
+        **({"matched": True} if room.matched else {}),
         "ready": sorted(room.ready),
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
-                    for i, s in enumerate(room.seats)],
+                    for i, s in enumerate(room.seats) if s is not None],
     }
 
 
@@ -656,7 +677,8 @@ def chat_post(room: Room, entry: dict) -> None:
     room.chat.append(entry)
     del room.chat[:-CHAT_KEEP]
     for sd in room.seats:
-        enqueue(sd, {"type": "chat", **entry})
+        if sd is not None:
+            enqueue(sd, {"type": "chat", **entry})
 
 
 def chat_snapshot(room: Room) -> dict:
@@ -801,7 +823,7 @@ async def _writer(ws: WebSocket, queue: asyncio.Queue,
 
 async def broadcast(room: Room) -> None:
     for i, seat in enumerate(room.seats):
-        if seat.connected and not seat.is_bot:
+        if seat is not None and seat.connected and not seat.is_bot:
             if room.game and room.round:
                 enqueue(seat, state_for(room, i))
             else:
@@ -909,6 +931,7 @@ async def advance_if_all_ready(room: Room) -> bool:
     room.index_round()
     _log_round_start(room)
     saved_games.round_started(room)
+    ratings.round_started(room)
     _spawn_room_task(room, "deal_task", run_deal(room))
     return True
 
@@ -947,6 +970,7 @@ def _log_round_end(room: Room) -> None:
                    game_over=r.game_over, games_won=list(r.games_won),
                    point_scored=r.point_scored)
     saved_games.round_ended(room, r)
+    ratings.round_ended(room, r)
 
 
 def bot_step(room: Room, seat: int) -> bool:
@@ -1339,7 +1363,7 @@ async def cleanup_room(room: Room) -> None:
     refresh or network blip can reclaim the seat and resume the game."""
     await asyncio.sleep(ROOM_TTL)
     async with room.lock:
-        if any(s.connected for s in room.seats if not s.is_bot):
+        if any(s.connected for s in room.seats if s is not None and not s.is_bot):
             return
         rooms.pop(room.code, None)
         for task in (room.bot_task, room.deal_task, room.watchdog_task):
@@ -1538,10 +1562,10 @@ async def run_deal(room: Room) -> None:
 
 # ------------------------------------------------------------------ actions
 def new_code() -> str:
-    while True:
-        code = "".join(random.choices(string.ascii_uppercase, k=4))
-        if code not in rooms:
-            return code
+    # The module RNG, as before: choices() draws once per character whatever
+    # the alphabet, so the stream that seeded fixtures read is unchanged.
+    return matchmaking.new_code(
+        lambda c: c in rooms or MATCHMAKER.has_party_code(c), random)
 
 
 def _card_ids(msg: dict) -> list[int]:
@@ -1574,6 +1598,116 @@ def validate_human_evaluation_start(room: Room) -> None:
         raise IllegalPlay("Evaluation requires bots at seats 1 and 3.")
 
 
+def _empty_position(room: Room) -> int | None:
+    """The lowest empty seat position before the game, or None when full."""
+    for i, sd in enumerate(room.seats):
+        if sd is None:
+            return i
+    return len(room.seats) if len(room.seats) < 4 else None
+
+
+def _seat_at(room: Room, position: int, occupant: Seat | None) -> None:
+    """Put ``occupant`` (None: empty) at a lobby position, keeping the list
+    free of trailing empties so a room nobody rearranged is a plain list."""
+    while len(room.seats) <= position:
+        room.seats.append(None)
+    room.seats[position] = occupant
+    while room.seats and room.seats[-1] is None:
+        room.seats.pop()
+
+
+def _occupant(room: Room, position: int) -> Seat | None:
+    return room.seats[position] if position < len(room.seats) else None
+
+
+class SeatChanged(IllegalPlay):
+    """A lobby action named an occupant who is no longer in that seat."""
+
+
+def _check_expected(room: Room, position: int, expected: Any) -> None:
+    """Refuse when the client said whom it meant at ``position`` and that is
+    no longer so. ``expected`` is the occupant as the room frame showed it,
+    ``{"name": ..., "is_bot": ...}``, or None for an empty seat: the frame
+    carries no other identity, and the offline server's frames must match."""
+    sd = _occupant(room, position)
+    seen = {"name": sd.name, "is_bot": sd.is_bot} if sd is not None else None
+    if expected != seen:
+        raise SeatChanged("That seat just changed. Try again.")
+
+
+def _swap_seats(room: Room, seat: int, msg: dict) -> None:
+    """Host-only lobby move: exchange what is in two seat positions, a
+    person, a bot or nothing.
+
+    Everything a connection owns (socket, queue, writer, generation, resume
+    token, account) lives on the ``Seat`` object, and a socket finds its seat
+    by identity on every action, so moving the objects moves the people. The
+    only per-POSITION state before a game exists is the host seat, the ready
+    set and the per-seat card-id maps, which follow the move here. A
+    saved-game continuation binds its creator's team and banker to seat
+    numbers, and an evaluation room fixes its seating, so neither can be
+    rearranged.
+    """
+    if seat != room.host:
+        raise IllegalPlay("Only the host can move seats.")
+    if room.game:
+        raise IllegalPlay("Seats are fixed once the game has started.")
+    if room.resume is not None or room.evaluation is not None:
+        raise IllegalPlay("Seats are fixed at this table.")
+    a, b = msg.get("a"), msg.get("b")
+    if (type(a) is not int or type(b) is not int or a == b
+            or not (0 <= a < 4 and 0 <= b < 4)):
+        raise IllegalPlay("Invalid seats.")
+    if "expect" in msg:
+        expect = msg["expect"]
+        if not isinstance(expect, list) or len(expect) != 2:
+            raise IllegalPlay("Invalid seats.")
+        _check_expected(room, a, expect[0])
+        _check_expected(room, b, expect[1])
+    first, second = _occupant(room, a), _occupant(room, b)
+    if first is None and second is None:
+        raise IllegalPlay("Both seats are empty.")
+    _seat_at(room, a, second)
+    _seat_at(room, b, first)
+    room.ids[a], room.ids[b] = room.ids[b], room.ids[a]
+    if room.host in (a, b):
+        room.host = b if room.host == a else a
+    room.ready = {b if s == a else a if s == b else s for s in room.ready}
+
+
+def _remove_player(room: Room, seat: int, msg: dict) -> None:
+    """Host-only lobby removal: the occupant of ``msg["seat"]`` leaves.
+
+    The position becomes empty and nobody else moves; the removed socket is
+    told and returns to the lobby on its next frame, and its resume token is
+    replaced so it can never reclaim a seat of this room.
+    """
+    if seat != room.host:
+        raise IllegalPlay("Only the host can remove players.")
+    if room.game:
+        raise IllegalPlay("Players are fixed once the game has started.")
+    if room.resume is not None or room.evaluation is not None:
+        raise IllegalPlay("Seats are fixed at this table.")
+    target = msg.get("seat")
+    if (type(target) is not int or not 0 <= target < 4
+            or _occupant(room, target) is None):
+        raise IllegalPlay("Invalid seat.")
+    if target == seat:
+        raise IllegalPlay("Use Leave to leave the room.")
+    if "expect" in msg:
+        _check_expected(room, target, msg["expect"])
+    gone = room.seats[target]
+    assert gone is not None
+    _seat_at(room, target, None)
+    room.ready.discard(target)
+    gone.removed = True
+    gone.token = secrets.token_urlsafe(12)
+    if not gone.is_bot:
+        enqueue(gone, {"type": "left", "reason": "removed",
+                       "message": "The host removed you from the room."})
+        chat_system(room, f"{gone.name} was removed by the host")
+
+
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
     if room.evaluation is not None and room.evaluation_invalidated:
@@ -1591,15 +1725,21 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         return
 
     if t == "add_bot":
-        if seat != room.host or len(room.seats) >= 4:
+        free = _empty_position(room) if room.game is None else None
+        if seat != room.host or free is None:
             raise IllegalPlay("Cannot add a bot now.")
-        room.seats.append(Seat(name=f"Bot {len(room.seats)}", is_bot=True))
+        _seat_at(room, free, Seat(name=f"Bot {free}", is_bot=True))
     elif t == "remove_bot":
-        if seat != room.host or not room.seats or not room.seats[-1].is_bot:
+        last = room.seats[-1] if room.seats else None
+        if seat != room.host or last is None or not last.is_bot:
             raise IllegalPlay("No bot to remove.")
         if room.game:
             raise IllegalPlay("Game already started.")
-        room.seats.pop()
+        _seat_at(room, len(room.seats) - 1, None)
+    elif t == "swap_seats":
+        _swap_seats(room, seat, msg)
+    elif t == "remove_player":
+        _remove_player(room, seat, msg)
     elif t == "set_start_level":
         # Jerry 09-26: the selector lives in the room screen, not the lobby.
         # Host-only, and only while no game exists -- Game() reads the level
@@ -1616,18 +1756,26 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     elif t == "start_game":
         if seat != room.host:
             raise IllegalPlay("Only the host can start.")
-        if len(room.seats) != 4:
-            raise IllegalPlay("Need exactly 4 players.")
         if room.game:
             raise IllegalPlay("Game already started.")
+        # A bot plays every seat nobody took, in that seat.
+        room.seats = [sd if sd is not None else Seat(name=f"Bot {i}", is_bot=True)
+                      for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
         validate_human_evaluation_start(room)
         # games_to_win=None: a table keeps playing. Holding A scores a
         # point and the levels restart, rather than ending the session.
         room.game = Game(start_level=room.start_level, games_to_win=None)
+        if room.resume is not None:
+            # The engine reads a game's levels and banker only through these
+            # two fields, so setting them before the first round starts the
+            # table exactly where the saved game left off.
+            room.game.level_idx = [RANKS.index(level) for level in room.resume["levels"]]
+            room.game.banker = room.resume["banker"]
         ACTIVITY.games_started += 1
         room.game.start_round()
         room.index_round()
         saved_games.start(room, _log_round_start(room), LOG_DIR)
+        ratings.start(room)
         _spawn_room_task(room, "deal_task", run_deal(room))
         if room.watchdog_task is None or room.watchdog_task.done():
             room.watchdog_task = asyncio.create_task(watchdog(room))
@@ -1685,10 +1833,21 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         _log_round_end(room)
 
 
+async def _resume_point(user_id: int | None, game_id: Any, options: dict) -> dict | None:
+    """The ``create_room`` ``resume_from`` option: a saved game of the
+    signed-in caller's own account, in an ordinary room. None refuses it
+    (a guest, another account's game, an unknown id, no level data)."""
+    if user_id is None or options or not isinstance(game_id, str):
+        return None
+    return await accounts.STORE.run(saved_games.resume_point, user_id, game_id)
+
+
 # --------------------------------------------------------------- websocket
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
+    if ws.query_params.get("heartbeat") == "1":
+        await send(ws, {"type": "heartbeat_ready"})
     room: Room | None = None
     me: Seat | None = None  # seat OBJECT — indexes shift when lobby seats leave
     my_gen = 0              # connection generation this socket owns
@@ -1708,6 +1867,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
     def player_name(raw: Any) -> str:
         return str(raw or (default_name if account_id() is not None else "") or "Player")
 
+    conn = matchmaking.Conn(ws, user_id, default_name)
+    MATCHMAKER.connect(conn)
+
     try:
         while True:
             try:
@@ -1724,231 +1886,280 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if not isinstance(msg, dict):
                 continue
             t = msg.get("type")
+            if conn.adopted is not None:       # the queue seated this socket
+                room, me, my_gen = conn.adopted
+                conn.adopted = None
+            if room is not None and room.aborted:
+                room, me = None, None
+            if me is not None and me.removed:
+                # the host removed this seat: back to the lobby, no room
+                _detach(me)
+                room, me = None, None
+                MATCHMAKER.return_to_lobby(conn)
+            if t == "ping":
+                nonce = msg.get("nonce")
+                if type(nonce) is int and 0 <= nonce <= 9007199254740991:
+                    await send(ws, {"type": "pong", "nonce": nonce})
+                continue
+            if t == "code_lookup":
+                await send(ws, MATCHMAKER.code_lookup(conn, msg, account_id()))
+                continue
             if room is None or me is None:
-                if t == "create_room":
-                    try:
-                        options = SHORTLIST_TEST_ROOMS.room_options(msg, rooms, LOG_DIR)
-                    except TestRoomUnavailable as error:
-                        await send(ws, {"type": "error", "code": "test_room_unavailable",
-                                        "message": str(error)})
-                        continue
-                    # Absent means "the standard game"; PRESENT AND WRONG is
-                    # refused rather than coerced, so a client sending a level
-                    # this server does not know cannot silently get a game at
-                    # rank 2 while its own UI claims otherwise.
-                    start_level = msg.get("start_level")
-                    if start_level is None:
-                        start_level = RANKS[0]
-                    elif start_level not in RANKS:
-                        await send(ws, {"type": "error", "code": "bad_start_level",
-                                        "message": "Unknown starting level."})
-                        continue
-                    room = Room(code=new_code(), start_level=start_level, **options)
-                    rooms[room.code] = room
-                    ACTIVITY.rooms_created += 1
-                    # Through _attach like every other path: hand-rolling the
-                    # queue/writer here skipped the generation bump AND the
-                    # resume token, so a creator had no identity and an
-                    # overlapping refresh appended them as a SECOND seat
-                    # (Codex, 2026-08-04).
-                    me = Seat(name=player_name(msg.get("name")), user_id=account_id())
-                    room.seats.append(me)
-                    my_gen = _attach(room, me, ws)
-                    await broadcast(room)
-                elif t == "peek_room":
-                    # Who is sitting where, WITHOUT joining — the lobby uses
-                    # this to offer a seat picker for a game in progress.
-                    target = rooms.get(str(msg.get("room", "")).upper())
-                    if target is None:
-                        await send(ws, {"type": "error", "code": "room_not_found",
-                                        "message": "Room not found."})
-                        continue
-                    await send(ws, {
-                        "type": "room_seats",
-                        "room": target.code,
-                        "in_game": target.game is not None,
-                        "seats": [{"seat": i, "name": sd.name,
-                                   "is_bot": sd.is_bot,
-                                   "connected": sd.connected,
-                                   "team": i % 2,
-                                   # What the lobby actually needs to know:
-                                   # a dropped human's seat can be taken too.
-                                   "claimable": sd.is_bot or (
-                                       not sd.connected
-                                       and not _reserved(target, i)),
-                                   "reserved_secs": (_takeover_in(target, i)
-                                                     if _reserved(target, i)
-                                                     else None),
-                                   "controller": ("bot" if sd.is_bot else
-                                                  "human" if sd.connected
-                                                  else "bot_cover")}
-                                  for i, sd in enumerate(target.seats)],
-                    })
-                elif t == "join_room":
-                    # Per-JOIN, not per-socket: these were read back via
-                    # locals(), so a player who claimed a bot seat in one room
-                    # kept claimed_from_bot/took_from set and the NEXT room
-                    # announced a stale bot's name (Codex case 8).
-                    claimed_from_bot = False
-                    took_from = ""
-                    took_over_human = False
-                    code = str(msg.get("room", "")).upper()
-                    target = rooms.get(code)
-                    if target is None:
-                        await send(ws, {"type": "error", "code": "room_not_found",
-                                        "message": "Room not found."})
-                        continue
-                    async with target.lock:
-                        name = player_name(msg.get("name"))
-                        # Match on a normalised name: an exact-only match
-                        # locked people out of their own seat whenever they
-                        # came back on another device or retyped their name
-                        # with different capitalisation (Jerry, 2026-08-03).
-                        # Identity order: TOKEN first (the only real identity;
-                        # it also lets a player resume while their stale socket
-                        # is still open — the newest connection wins), then a
-                        # normalised name among DISCONNECTED seats.
-                        tok = msg.get("token")
-                        reclaim = None
-                        if isinstance(tok, str) and tok:
-                            reclaim = next(
-                                (s for s in target.seats
-                                 if not s.is_bot and secrets.compare_digest(
-                                     s.token, tok)), None)
-                        by_name = False
-                        if reclaim is None:
-                            key = name.strip().casefold()
-                            reclaim = next(
-                                (s for s in target.seats
-                                 if not s.is_bot and not s.connected
-                                 and s.name.strip().casefold() == key),
-                                None)
-                            by_name = reclaim is not None
-                        if reclaim is not None:
-                            me = reclaim
-                            # The seat's account follows the socket that now
-                            # owns it: a sign-in reconnect brings one, a
-                            # sign-out reconnect (or a guest's by-name
-                            # re-entry) brings none and clears it.
-                            me.user_id = account_id()
-                            saved_games.seat_changed(target, target.seats.index(me))
-                        elif len(target.seats) < 4 and target.game is None:
-                            me = Seat(name=name, user_id=account_id())
-                            target.seats.append(me)
+                if t in matchmaking.QUEUE_MESSAGES:
+                    await MATCHMAKER.handle(conn, msg, account_id())
+                    continue
+                if t in ("create_room", "join_room"):
+                    MATCHMAKER.enter_room(conn)
+                try:
+                    if t == "create_room":
+                        try:
+                            options = SHORTLIST_TEST_ROOMS.room_options(msg, rooms, LOG_DIR)
+                        except TestRoomUnavailable as error:
+                            await send(ws, {"type": "error", "code": "test_room_unavailable",
+                                            "message": str(error)})
+                            continue
+                        # Absent means "the standard game"; PRESENT AND WRONG is
+                        # refused rather than coerced, so a client sending a level
+                        # this server does not know cannot silently get a game at
+                        # rank 2 while its own UI claims otherwise.
+                        start_level = msg.get("start_level")
+                        if start_level is None:
+                            start_level = RANKS[0]
+                        elif start_level not in RANKS:
+                            await send(ws, {"type": "error", "code": "bad_start_level",
+                                            "message": "Unknown starting level."})
+                            continue
+                        resume = None
+                        if "resume_from" in msg:
+                            resume = await _resume_point(account_id(), msg.get("resume_from"), options)
+                            if resume is None:
+                                await send(ws, {"type": "error", "code": "resume_unavailable",
+                                                "message": "That game can't be continued."})
+                                continue
+                        room = Room(code=new_code(), start_level=start_level, resume=resume, **options)
+                        rooms[room.code] = room
+                        ACTIVITY.rooms_created += 1
+                        # Through _attach like every other path: hand-rolling the
+                        # queue/writer here skipped the generation bump AND the
+                        # resume token, so a creator had no identity and an
+                        # overlapping refresh appended them as a SECOND seat.
+                        me = Seat(name=player_name(msg.get("name")), user_id=account_id())
+                        if resume is None:
+                            room.seats.append(me)
                         else:
-                            # Take over a BOT's seat, mid-game if need be —
-                            # the hand already exists, so a late arrival can
-                            # sit down without restarting (Jerry, 2026-08-03).
-                            # Safe under the room lock: pump_bots re-checks
-                            # is_bot after every BOT_DELAY and exits cleanly
-                            # when a seat stops being a bot.
-                            want = msg.get("seat")
-                            # Claimable = bot seats, plus seats whose human has
-                            # dropped (a bot is covering those anyway). Without
-                            # the second group a 4-human game with one player
-                            # offline reported "room full" and NOBODY could
-                            # take the seat — not even that player under a
-                            # different name (Jerry, 2026-08-03).
-                            botseats = [i for i, sd in enumerate(target.seats)
-                                        if sd.is_bot]
-                            # A dropped seat is RESERVED for its owner during
-                            # the grace window: anyone could previously claim
-                            # it the instant a player blipped. After the window
-                            # the bot is covering and the seat is open to all.
-                            dropped = [i for i, sd in enumerate(target.seats)
-                                       if not sd.is_bot and not sd.connected
-                                       and not _reserved(target, i)]
-                            claimable = botseats + dropped
-                            if isinstance(want, bool) or not (
-                                    want is None or isinstance(want, int)):
-                                want = None          # malformed: treat as "any"
-                            if want is not None and want not in claimable:
-                                # Two people can pick the same seat between the
-                                # peek and the join. Silently seating the loser
-                                # somewhere else puts them on a team they did
-                                # not choose — refuse and let them re-pick.
-                                await send(ws, {
-                                    "type": "error", "code": "seat_unavailable",
-                                    "message": "That seat was just taken — "
-                                               "pick another."})
-                                continue
-                            pick = want if want is not None else (
-                                botseats[0] if botseats else None)
-                            if pick is None:
-                                reserved = [i for i, sd in enumerate(target.seats)
-                                            if _reserved(target, i)]
-                                if reserved and not dropped:
-                                    secs = max((_takeover_in(target, i) or 0)
-                                               for i in reserved)
-                                    await send(ws, {
-                                        "type": "error", "code": "seat_reserved",
-                                        "message": f"A player just dropped — "
-                                                   f"their seat is held for "
-                                                   f"{secs:.0f}s in case they "
-                                                   f"come back."})
-                                elif dropped:
-                                    # Seats exist, but each belongs to someone
-                                    # who may be reconnecting: make the caller
-                                    # choose one deliberately.
-                                    await send(ws, {
-                                        "type": "error", "code": "choose_seat",
-                                        "message": "Every seat is taken, but "
-                                                   "a player is offline — pick "
-                                                   "their seat to take over."})
-                                else:
-                                    await send(ws, {
-                                        "type": "error", "code": "room_full",
-                                        "message": "Room is full — every seat "
-                                                   "is taken by a human."})
-                                continue
-                            me = target.seats[pick]
-                            # Name whoever they replaced: "took Bot 1's seat"
-                            # says WHICH seat far better than "a bot's seat".
-                            took_from = me.name
-                            took_over_human = not me.is_bot
-                            me.bot_announced = False
-                            # New owner => new identity. Keeping the old token
-                            # would let the previous owner present it later and
-                            # displace the person who took the seat.
-                            me.token = secrets.token_urlsafe(12)
-                            me.is_bot = False
-                            me.name = name
-                            me.user_id = account_id()
-                            saved_games.seat_changed(target, pick)
-                            target.log_event("seat_claimed", seat=pick,
-                                             name=name, bot=False)
-                            claimed_from_bot = True
-                        room = target
-                        if by_name:
-                            # HOUSE TRUST MODEL, stated plainly: a dropped
-                            # seat can be re-entered by anyone who types that
-                            # player's name. It is the same permission the
-                            # seat picker already grants deliberately, so the
-                            # name path grants no MORE access — but it must
-                            # not hand over the original owner's token, or an
-                            # impersonator could later displace the real owner
-                            # (Codex, 2026-08-04).
-                            me.token = secrets.token_urlsafe(12)
+                            # the creator back in their saved seat, a bot in each other
+                            bots = iter(range(1, 4))
+                            room.seats = [me if i == resume["seat"]
+                                          else Seat(name=f"Bot {next(bots)}", is_bot=True)
+                                          for i in range(4)]
+                            room.host = resume["seat"]
                         my_gen = _attach(room, me, ws)
-                        if reclaim is not None:
-                            chat_system(
-                                room,
-                                f"{name} reconnected"
-                                + (" — taking over from the bot"
-                                   if me.bot_announced else ""))
-                            me.bot_announced = False
-                        elif claimed_from_bot:
-                            chat_system(
-                                room,
-                                f"{name} took over for {took_from} (offline)"
-                                if took_over_human
-                                else f"{name} took {took_from}'s seat")
-                        else:
-                            chat_system(room, f"{name} joined")
-                        kick_bots(room)      # remaining bot seats keep playing
                         await broadcast(room)
-                else:
-                    await send(ws, {"type": "error", "message": "Join a room first."})
+                    elif t == "peek_room":
+                        # Who is sitting where, WITHOUT joining — the lobby uses
+                        # this to offer a seat picker for a game in progress.
+                        target = rooms.get(str(msg.get("room", "")).upper())
+                        if target is None:
+                            await send(ws, {"type": "error", "code": "room_not_found",
+                                            "message": "Room not found."})
+                            continue
+                        await send(ws, {
+                            "type": "room_seats",
+                            "room": target.code,
+                            "in_game": target.game is not None,
+                            "seats": [{"seat": i, "name": sd.name,
+                                       "is_bot": sd.is_bot,
+                                       "connected": sd.connected,
+                                       "team": i % 2,
+                                       # What the lobby actually needs to know:
+                                       # a dropped human's seat can be taken too.
+                                       "claimable": sd.is_bot or (
+                                           not sd.connected
+                                           and not _reserved(target, i)),
+                                       "reserved_secs": (_takeover_in(target, i)
+                                                         if _reserved(target, i)
+                                                         else None),
+                                       "controller": ("bot" if sd.is_bot else
+                                                      "human" if sd.connected
+                                                      else "bot_cover")}
+                                      for i, sd in enumerate(target.seats)
+                                      if sd is not None],
+                        })
+                    elif t == "join_room":
+                        # Per-JOIN, not per-socket: these were read back via
+                        # locals(), so a player who claimed a bot seat in one room
+                        # kept claimed_from_bot/took_from set and the NEXT room
+                        # announced a stale bot's name.
+                        claimed_from_bot = False
+                        took_from = ""
+                        took_over_human = False
+                        code = str(msg.get("room", "")).upper()
+                        target = rooms.get(code)
+                        if target is None:
+                            await send(ws, {"type": "error", "code": "room_not_found",
+                                            "message": "Room not found."})
+                            continue
+                        async with target.lock:
+                            name = player_name(msg.get("name"))
+                            # Match on a normalised name: an exact-only match
+                            # locked people out of their own seat whenever they
+                            # came back on another device or retyped their name
+                            # with different capitalisation.
+                            # Identity order: TOKEN first (the only real identity;
+                            # it also lets a player resume while their stale socket
+                            # is still open — the newest connection wins), then a
+                            # normalised name among DISCONNECTED seats.
+                            tok = msg.get("token")
+                            reclaim = None
+                            if isinstance(tok, str) and tok:
+                                reclaim = next(
+                                    (s for s in target.seats
+                                     if s is not None and not s.is_bot
+                                     and secrets.compare_digest(
+                                         s.token, tok)), None)
+                            by_name = False
+                            if reclaim is None:
+                                key = name.strip().casefold()
+                                reclaim = next(
+                                    (s for s in target.seats
+                                     if s is not None and not s.is_bot
+                                     and not s.connected
+                                     and s.name.strip().casefold() == key),
+                                    None)
+                                by_name = reclaim is not None
+                            if reclaim is not None:
+                                me = reclaim
+                                # The seat's account follows the socket that now
+                                # owns it: a sign-in reconnect brings one, a
+                                # sign-out reconnect (or a guest's by-name
+                                # re-entry) brings none and clears it.
+                                me.user_id = account_id()
+                                saved_games.seat_changed(target, target.seats.index(me))
+                            elif (target.game is None
+                                  and (free := _empty_position(target)) is not None):
+                                me = Seat(name=name, user_id=account_id())
+                                _seat_at(target, free, me)
+                            else:
+                                # Take over a BOT's seat, mid-game if need be —
+                                # the hand already exists, so a late arrival can
+                                # sit down without restarting.
+                                # Safe under the room lock: pump_bots re-checks
+                                # is_bot after every BOT_DELAY and exits cleanly
+                                # when a seat stops being a bot.
+                                want = msg.get("seat")
+                                # Claimable = bot seats, plus seats whose human has
+                                # dropped (a bot is covering those anyway). Without
+                                # the second group a 4-human game with one player
+                                # offline reported "room full" and NOBODY could
+                                # take the seat — not even that player under a
+                                # different name.
+                                botseats = [i for i, sd in enumerate(target.seats)
+                                            if sd.is_bot]
+                                # A dropped seat is RESERVED for its owner during
+                                # the grace window, so nobody can claim it the
+                                # instant a player blips. After the window
+                                # the bot is covering and the seat is open to all.
+                                dropped = [i for i, sd in enumerate(target.seats)
+                                           if not sd.is_bot and not sd.connected
+                                           and not _reserved(target, i)]
+                                claimable = botseats + dropped
+                                if isinstance(want, bool) or not (
+                                        want is None or isinstance(want, int)):
+                                    want = None          # malformed: treat as "any"
+                                if want is not None and want not in claimable:
+                                    # Two people can pick the same seat between the
+                                    # peek and the join. Silently seating the loser
+                                    # somewhere else puts them on a team they did
+                                    # not choose — refuse and let them re-pick.
+                                    await send(ws, {
+                                        "type": "error", "code": "seat_unavailable",
+                                        "message": "That seat was just taken — "
+                                                   "pick another."})
+                                    continue
+                                pick = want if want is not None else (
+                                    botseats[0] if botseats else None)
+                                if pick is None:
+                                    reserved = [i for i, sd in enumerate(target.seats)
+                                                if _reserved(target, i)]
+                                    if reserved and not dropped:
+                                        secs = max((_takeover_in(target, i) or 0)
+                                                   for i in reserved)
+                                        await send(ws, {
+                                            "type": "error", "code": "seat_reserved",
+                                            "message": f"A player just dropped — "
+                                                       f"their seat is held for "
+                                                       f"{secs:.0f}s in case they "
+                                                       f"come back."})
+                                    elif dropped:
+                                        # Seats exist, but each belongs to someone
+                                        # who may be reconnecting: make the caller
+                                        # choose one deliberately.
+                                        await send(ws, {
+                                            "type": "error", "code": "choose_seat",
+                                            "message": "Every seat is taken, but "
+                                                       "a player is offline — pick "
+                                                       "their seat to take over."})
+                                    else:
+                                        await send(ws, {
+                                            "type": "error", "code": "room_full",
+                                            "message": "Room is full — every seat "
+                                                       "is taken by a human."})
+                                    continue
+                                me = target.seats[pick]
+                                # Name whoever they replaced: "took Bot 1's seat"
+                                # says WHICH seat far better than "a bot's seat".
+                                took_from = me.name
+                                took_over_human = not me.is_bot
+                                me.bot_announced = False
+                                # New owner => new identity. Keeping the old token
+                                # would let the previous owner present it later and
+                                # displace the person who took the seat.
+                                me.token = secrets.token_urlsafe(12)
+                                me.is_bot = False
+                                me.name = name
+                                me.user_id = account_id()
+                                saved_games.seat_changed(target, pick)
+                                target.log_event("seat_claimed", seat=pick,
+                                                 name=name, bot=False)
+                                claimed_from_bot = True
+                            room = target
+                            if by_name:
+                                # HOUSE TRUST MODEL, stated plainly: a dropped
+                                # seat can be re-entered by anyone who types that
+                                # player's name. It is the same permission the
+                                # seat picker already grants deliberately, so the
+                                # name path grants no MORE access — but it must
+                                # not hand over the original owner's token, or an
+                                # impersonator could later displace the real owner.
+                                me.token = secrets.token_urlsafe(12)
+                            my_gen = _attach(room, me, ws)
+                            if reclaim is not None:
+                                chat_system(
+                                    room,
+                                    f"{name} reconnected"
+                                    + (" — taking over from the bot"
+                                       if me.bot_announced else ""))
+                                me.bot_announced = False
+                            elif claimed_from_bot:
+                                chat_system(
+                                    room,
+                                    f"{name} took over for {took_from} (offline)"
+                                    if took_over_human
+                                    else f"{name} took {took_from}'s seat")
+                            else:
+                                chat_system(room, f"{name} joined")
+                            kick_bots(room)      # remaining bot seats keep playing
+                            await broadcast(room)
+                    else:
+                        await send(ws, {"type": "error", "message": "Join a room first."})
+                finally:
+                    # A failed create or join returns the socket to the lobby;
+                    # a seat taken elsewhere ends its queue entry.
+                    if t in ("create_room", "join_room"):
+                        if room is None or me is None:
+                            MATCHMAKER.return_to_lobby(conn)
+                        else:
+                            MATCHMAKER.leave_for_room(conn)
                 continue
 
             # A socket that has been displaced by a newer connection owns
@@ -1963,17 +2174,22 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if t == "leave_room":
                 async with room.lock:
                     chat_system(room, f"{me.name} left")
+                    if me in room.seats:
+                        ratings.seat_left(room, room.seats.index(me))
                     _detach(me, room, my_gen)
                     if room.game is None:
-                        # lobby: free the seat entirely
+                        # lobby: the seat empties and nobody else moves
                         if me in room.seats:
-                            room.seats.remove(me)
+                            gone = room.seats.index(me)
+                            _seat_at(room, gone, None)
+                            room.ready.discard(gone)
                         humans = [i for i, x in enumerate(room.seats)
-                                  if not x.is_bot]
+                                  if x is not None and not x.is_bot]
                         if not humans:
                             rooms.pop(room.code, None)
                         else:
-                            room.host = humans[0]
+                            if _occupant(room, room.host) is None:
+                                room.host = humans[0]
                             await broadcast(room)
                     else:
                         # mid-game: seat stays (reclaimable); bots cover it
@@ -1991,12 +2207,20 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             await broadcast(room)
                 await send(ws, {"type": "left"})
                 room, me = None, None
+                MATCHMAKER.return_to_lobby(conn)
+                continue
+            if t in matchmaking.QUEUE_MESSAGES:
+                await MATCHMAKER.handle(conn, msg, account_id())
+                continue
+            if t == "report_player":
+                await _report_player(room, me, account_id(), msg)
                 continue
             async with room.lock:
                 try:
                     seat_idx = room.seats.index(me)
                 except ValueError:  # seat vanished — shouldn't happen mid-game
                     room, me = None, None
+                    MATCHMAKER.return_to_lobby(conn)
                     await send(ws, {"type": "error", "code": "room_not_found",
                                     "message": "Seat no longer exists."})
                     continue
@@ -2004,6 +2228,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await handle_action(room, seat_idx, msg)
                     await broadcast(room)
                     kick_bots(room)
+                except SeatChanged as e:
+                    enqueue(me, {"type": "error", "code": "seat_changed", "message": str(e)})
                 except IllegalPlay as e:
                     enqueue(me, {"type": "error", "message": str(e)})
                 except Exception:  # malformed input must not kill the socket
@@ -2011,18 +2237,113 @@ async def ws_endpoint(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        if room is not None and me is not None:
+        if conn.adopted is not None:
+            room, me, my_gen = conn.adopted
+            conn.adopted = None
+        MATCHMAKER.disconnect(conn)
+        if me is not None and me.removed:
+            _detach(me)
+        elif room is not None and me is not None:
             async with room.lock:
                 if not me.is_bot and me.connected:
                     chat_system(room, f"{me.name} disconnected")
                 _detach(me, room, my_gen)
-                if not any(x.connected for x in room.seats if not x.is_bot):
+                if not any(x.connected for x in room.seats
+                           if x is not None and not x.is_bot):
                     if room.cleanup_task is None or room.cleanup_task.done():
                         room.cleanup_task = asyncio.create_task(cleanup_room(room))
                 else:
                     if not await advance_if_all_ready(room):
                         await broadcast(room)
 
+
+
+async def _report_player(room: Room, me: Seat, account: int | None, msg: dict) -> None:
+    """Store a report on another seat and confirm it to the reporter only.
+    The record is built under the room lock and written off the event loop;
+    nothing about the report reaches the other seats or the room state."""
+    async with room.lock:
+        if me not in room.seats:
+            return
+        try:
+            record = reports.build(room, room.seats.index(me), account, msg)
+        except reports.ReportRefused as refused:
+            enqueue(me, {"type": "error", "code": refused.code, "message": str(refused)})
+            return
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, reports.store, record)
+    except OSError:
+        enqueue(me, {"type": "error", "code": "report_not_stored",
+                     "message": "The report could not be sent. Try again later."})
+        return
+    enqueue(me, {"type": "report_received", "seat": record["reported"]["seat"],
+                 "message": f"Thanks. {record['reported']['name']} was reported for review."})
+
+
+async def start_matched_room(match_id: str | None, slots: list,
+                             conns: dict) -> str:
+    """Build, seat and start the room for a queue match (``match_id``) or a
+    ``queue_start_bots`` game (``None``). Slots arrive in seat order; every
+    human's socket is bound to its seat here, before anything awaits, so the
+    socket's receive loop adopts the room on its next message.
+
+    The start is all or nothing: if anything fails once the room is
+    registered, the room is unregistered and aborted, every attached seat is
+    detached and every socket is back in the lobby with no adoption pending,
+    before the error reaches the matchmaker that requeues these players."""
+    room = Room(code=new_code(), matched=True)
+    rooms[room.code] = room
+    attached: list[tuple[Seat, Any, int]] = []
+    try:
+        humans = []
+        for i, slot in enumerate(slots):
+            if slot.user_id is None:
+                room.seats.append(Seat(name=f"Bot {i}", is_bot=True))
+            else:
+                seat = Seat(name=slot.name or "Player", user_id=slot.user_id)
+                room.seats.append(seat)
+                humans.append((seat, conns[slot.user_id]))
+        room.host = room.seats.index(humans[0][0])
+        async with room.lock:
+            for seat, conn in humans:
+                gen = _attach(room, seat, conn.ws)
+                attached.append((seat, conn, gen))
+                conn.adopted = (room, seat, gen)
+                MATCHMAKER.enter_room(conn)
+                enqueue(seat, {"type": "match_started", "match_id": match_id,
+                               "room": room.code, "rated": ratings.eligible(room)})
+            await broadcast(room)
+            await handle_action(room, room.host, {"type": "start_game"})
+            await broadcast(room)
+            kick_bots(room)
+    except BaseException:
+        _unwind_matched_room(room, attached, conns.values())
+        raise
+    ACTIVITY.rooms_created += 1
+    return room.code
+
+
+def _unwind_matched_room(room: Room, attached: list, conns) -> None:
+    room.aborted = True
+    if room.game is not None:       # start_game ran: undo its durable effects
+        ACTIVITY.games_started -= 1
+        saved_games.abort(room)
+        room.ratings = None
+    if rooms.get(room.code) is room:
+        del rooms[room.code]
+    for task in (room.bot_task, room.deal_task, room.watchdog_task, room.cleanup_task):
+        if task is not None:
+            task.cancel()
+    for seat, _conn, gen in attached:
+        _detach(seat, room, gen)
+    for conn in conns:
+        if conn.adopted is not None and conn.adopted[0] is room:
+            conn.adopted = None
+        MATCHMAKER.return_to_lobby(conn)
+
+
+MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
+                                    room_live=lambda code: code in rooms)
 
 
 def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
@@ -2124,7 +2445,7 @@ def detach_deleted_user(user_id: int) -> None:
     round or game links that id."""
     for room in list(rooms.values()):
         for index, seat in enumerate(room.seats):
-            if seat.user_id == user_id:
+            if seat is not None and seat.user_id == user_id:
                 seat.user_id = None
                 saved_games.seat_changed(room, index)
 
@@ -2134,6 +2455,7 @@ accounts.USER_DELETED_HOOKS.append(detach_deleted_user)
 # page handler never shadows them.
 accounts.register_accounts(app)
 saved_games.register_saved_games(app)
+ratings.register_ratings(app)
 
 # ------------------------------------------------------------------ static
 class WebFiles(StaticFiles):
@@ -2153,6 +2475,7 @@ class WebFiles(StaticFiles):
 
 
 dist = Path(__file__).resolve().parents[3] / "web" / "dist"
+support.register_support(app, dist)
 if dist.is_dir():
     app.mount("/", WebFiles(directory=dist, html=True), name="web")
 

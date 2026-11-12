@@ -121,10 +121,11 @@ export interface StatePlayer {
   reserved_secs: number | null;
   /** Move timer (ranked tables): seconds this seat has left for the decision
    *  it owes (a play, a bury or the round-end Next); null when no clock runs
-   *  for it. Tick it down locally, like takeover_in. Absent offline. */
+   *  for it. Tick it down locally, like takeover_in. Absent at a table
+   *  without the move timer (casual and offline). */
   turn_deadline?: number | null;
   /** The move timer ran out too often: the bot is playing every decision for
-   *  this present player until they are back. */
+   *  this present player until they are back. Absent where turn_deadline is. */
   away?: boolean;
 }
 

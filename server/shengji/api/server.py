@@ -668,6 +668,19 @@ def _auto_mode(room: Room, seat: int) -> str | None:
     return None
 
 
+def _move_timer_fields(room: Room, seat: int) -> dict[str, Any]:
+    """Per-seat move-timer fields, sent only in a room with the move timer:
+    a casual room's frames stay identical to the offline local server's,
+    which has no move timer."""
+    return {
+        # Seconds this seat has left on the move timer; null when no clock
+        # runs for it. Ticked down locally, like takeover_in.
+        "turn_deadline": _turn_deadline(room, seat),
+        # The bot is playing every decision for this present player.
+        "away": room.seats[seat].away,
+    }
+
+
 def state_for(room: Room, seat: int) -> dict[str, Any]:
     game = room.game
     rnd = room.round
@@ -736,11 +749,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             # deadline the takeover countdown shows, so they cannot disagree.
             "reserved_secs": (_takeover_in(room, s)
                               if _reserved(room, s) else None),
-            # Seconds this seat has left on the move timer; null when no
-            # clock runs for it. Ticked down locally, like takeover_in.
-            "turn_deadline": _turn_deadline(room, s),
-            # The bot is playing every decision for this present player.
-            "away": bool(room.move_timer and room.seats[s].away),
+            **(_move_timer_fields(room, s) if room.move_timer else {}),
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),

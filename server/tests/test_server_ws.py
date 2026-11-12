@@ -2315,6 +2315,17 @@ def _timer_game(client, a, monkeypatch, on=True):
     code, room = _start_game(client, a, to_play=True)
     room.move_timer = on
     _wait_for(lambda: _my_turn(room))
+    # The turn passes to seat 0 inside the pump's commit; the pump is idle
+    # only once its task ends, and a test may then set seat state directly.
+    _wait_for(lambda: room.bot_task is None or room.bot_task.done())
+
+    # A real room has the flag from creation; here it was set mid-round, so
+    # send one state that reflects it (the pump's last one may predate it).
+    async def _broadcast():
+        async with room.lock:
+            await srv.broadcast(room)
+
+    client.portal.call(_broadcast)
     return code, room
 
 
@@ -2338,14 +2349,26 @@ def _tick(client, room):
     return client.portal.call(srv.move_timer_tick, room)
 
 
-def _real_play(a, room, seat=0):
-    """Send a legal play for ``seat`` through the socket, as the player would."""
+def _real_play(client, a, room, seat=0):
+    """Send a legal play for ``seat`` through the socket, as the player would,
+    and return once the server has finished handling it."""
     import copy
 
     codes = copy.deepcopy(room.bot).decide_play(copy.deepcopy(room.round), seat)
     before = _plays_by(room, seat)
     a.send_json({"type": "play", "card_ids": room.ids_for_codes(seat, codes)})
     _wait_for(lambda: _plays_by(room, seat) == before + 1)
+    # The card lands mid-handler; the handler's bookkeeping after it (such as
+    # clearing away) is done once it releases the room lock.
+    _settled(client, room)
+
+
+def _settled(client, room):
+    async def _acquire():
+        async with room.lock:
+            pass
+
+    client.portal.call(_acquire)
 
 
 def _time_out_once(client, room, clock, seat=0):
@@ -2367,7 +2390,7 @@ def test_move_timer_bot_plays_one_move_at_zero(client, clock, monkeypatch):
         clock["v"] += srv.MOVE_TIMER - 1
         assert _tick(client, room) is False
         assert _plays_by(room, 0) == before and room.round.turn == 0
-        state = _state_until(a, lambda m: m["players"][0]["turn_deadline"] is not None)
+        state = _state_until(a, lambda m: m["players"][0].get("turn_deadline") is not None)
         assert state["players"][0]["away"] is False
         assert all(p["turn_deadline"] is None for p in state["players"][1:])
         clock["v"] += 2
@@ -2392,7 +2415,7 @@ def test_two_timeouts_in_a_row_mark_the_seat_away(client, clock, monkeypatch):
         # away: the bot plays seat 0's next turn with no clock running out
         before = _plays_by(room, 0)
         _wait_for(lambda: _plays_by(room, 0) > before)
-        state = _state_until(a, lambda m: m["players"][0]["away"])
+        state = _state_until(a, lambda m: m["players"][0].get("away"))
         assert state["players"][0]["turn_deadline"] is None
 
 
@@ -2405,7 +2428,7 @@ def test_three_timeouts_in_one_round_mark_the_seat_away(client, clock, monkeypat
             if n < 2:
                 assert not room.seats[0].away
                 _wait_for(lambda: _my_turn(room))
-                _real_play(a, room)                   # breaks the run
+                _real_play(client, a, room)                   # breaks the run
                 assert room.seats[0].timeouts_in_row == 0
                 _wait_for(lambda: _my_turn(room))
         assert room.seats[0].timeouts_in_round == 3
@@ -2421,10 +2444,10 @@ def test_im_back_and_a_real_move_clear_away(client, clock, monkeypatch):
         a.send_json({"type": "im_back"})
         _wait_for(lambda: not seat.away)
         assert seat.timeouts_in_row == 0
-        state = _state_until(a, lambda m: m["players"][0]["turn_deadline"] is not None)
+        state = _state_until(a, lambda m: m["players"][0].get("turn_deadline") is not None)
         assert state["players"][0]["away"] is False
         seat.away, seat.timeouts_in_row = True, 2
-        _real_play(a, room)
+        _real_play(client, a, room)
         assert not seat.away and seat.timeouts_in_row == 0
 
 
@@ -2474,7 +2497,7 @@ def test_a_casual_room_has_no_move_timer(client, clock, monkeypatch):
         assert _tick(client, room) is False
         assert _plays_by(room, 0) == before and room.round.turn == 0
         state = _drain(a, "state", tries=200)
-        assert all(p["turn_deadline"] is None and p["away"] is False
+        assert all("turn_deadline" not in p and "away" not in p
                    for p in state["players"])
         assert room.seats[0].turn_started is None
 

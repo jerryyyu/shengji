@@ -1,4 +1,5 @@
 import { effectiveName, useAuth } from "../auth";
+import Sheet from "./Sheet";
 import { clock, queue, useNow, useQueue } from "./store";
 import type { OfferView } from "./store";
 
@@ -84,11 +85,10 @@ export default function OpenTableOffer() {
   const yours = [(o.pick + 2) % 4, o.pick];
   const theirs = [(o.pick + 1) % 4, (o.pick + 3) % 4];
   return (
-    <div className="q-layer ot-layer">
-      <div className="q-scrim" aria-hidden="true" />
-      <div className="q-sheet ot-sheet" role="dialog" aria-label="Table open">
-        <span className="q-grab" aria-hidden="true" />
-        <h2 className="ot-title">Table open</h2>
+    // Escape, the scrim and a drag down are Wait; none of them while a Join
+    // waits for the server's answer
+    <Sheet title="Table open" className="ot-sheet" cancel={null} dismissible={!busy}
+           onClose={() => queue.offerWait()}>
         <p className="ot-sub">
           {o.roundEnd ? "Joins next round · ranked" : "Game in progress · first round is unranked"}
         </p>
@@ -108,7 +108,6 @@ export default function OpenTableOffer() {
         <button type="button" className="ot-wait" disabled={busy} onClick={() => queue.offerWait()}>
           Wait
         </button>
-      </div>
-    </div>
+    </Sheet>
   );
 }

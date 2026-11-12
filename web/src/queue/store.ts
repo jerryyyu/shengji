@@ -402,7 +402,8 @@ export class QueueStore {
 
   /** Keep queuing; the bar keeps a way back while the table is joinable. */
   offerWait(): void {
-    if (!this.view.offer) return;
+    // a Join in flight is answered by the server first
+    if (!this.view.offer || this.view.pending === "offer") return;
     if (this.send({ type: "open_table_wait" })) this.set({ offer: null });
   }
 

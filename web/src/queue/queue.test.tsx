@@ -1023,8 +1023,8 @@ describe("open tables", () => {
     await open();
     fakeClock();
     tell(queued({ offer: offer(), bots_paused: true, bots_at: null }));
-    expect(sheet()?.getAttribute("aria-label")).toBe("Table open");
-    expect(q(".ot-title")?.textContent).toBe("Table open");
+    const labelledBy = sheet()?.getAttribute("aria-labelledby");
+    expect(labelledBy && document.getElementById(labelledBy)?.textContent).toBe("Table open");
     expect(q(".ot-sub")?.textContent).toBe("Game in progress · first round is unranked");
     const [ours, theirs] = [...document.querySelectorAll(".ot-col")];
     expect([...ours.querySelectorAll(".ot-name")].map((n) => n.textContent)).toEqual(["Jerry", "You"]);
@@ -1207,5 +1207,91 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     expect(q(".ot-pair")?.textContent).toBe("Two seats for you and Lee");
     click(button(/^Join · /));
     expect(lastSent()).toEqual({ type: "open_table_join", room: "OPEN", seat: 3 });
+  });
+});
+
+describe("the open-table offer is a modal sheet", () => {
+  const open = async () => {
+    await renderApp();
+    act(() => { for (const w of FakeWS.all) if (w !== ws()) w.onopen?.(); });
+    await settle();
+  };
+  const tell = (msg: unknown) => act(() => { for (const w of FakeWS.all) w.deliver(msg); });
+  const offered = () => ({
+    type: "queue_state", queued: true, count: 1, since: nowSecs(), front: false, party_id: null, leader: true,
+    bots_at: null, bots_paused: true, open_tables: 0, table: null,
+    offer: { room: "OPEN", pick: 2, partner: null, expires_at: nowSecs() + 10, round_end: false,
+             seats: [{ name: "Jerry", bot: false, open: false }, { name: "Bot 1", bot: true, open: true },
+                     { name: "Bot 2", bot: true, open: true }, { name: "Bot 3", bot: true, open: true }] },
+  });
+  const dialog = () => q(".ot-sheet");
+  const escape = () => act(() => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  const waits = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "open_table_wait").length;
+  function touch(type: string, y: number, el: Element) {
+    const e = new Event(type, { bubbles: true, cancelable: true });
+    const ended = type === "touchend" || type === "touchcancel";
+    Object.defineProperty(e, "touches", { value: ended ? [] : [{ clientX: 200, clientY: y }] });
+    Object.defineProperty(e, "changedTouches", { value: [{ clientX: 200, clientY: y }] });
+    act(() => { el.dispatchEvent(e); });
+  }
+  function dragDown(el: Element) {
+    vi.spyOn(dialog()!, "getBoundingClientRect").mockReturnValue({ height: 400 } as DOMRect);
+    touch("touchstart", 100, el);
+    for (let i = 1; i <= 10; i++) touch("touchmove", 100 + 30 * i, el);
+    touch("touchend", 400, el);
+  }
+
+  it("takes focus from a background control, is aria-modal with the page inert, and Escape is Wait", async () => {
+    await open();
+    const create = button("Create room")!;
+    act(() => create.focus());
+    expect(document.activeElement).toBe(create);
+    tell(offered());
+    expect(dialog()?.getAttribute("aria-modal")).toBe("true");
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+    expect(create.closest("[inert]")).not.toBeNull();
+    escape();
+    expect(lastSent()).toEqual({ type: "open_table_wait" });
+    expect(dialog()).toBeNull();
+    await settle();
+    expect(create.closest("[inert]")).toBeNull();
+    expect(document.activeElement).toBe(create);         // focus goes back to the opener
+  });
+
+  it("a tap on the scrim is Wait", async () => {
+    await open();
+    tell(offered());
+    click(q(".q-scrim"));
+    expect(lastSent()).toEqual({ type: "open_table_wait" });
+    expect(dialog()).toBeNull();
+  });
+
+  it("a drag down is Wait", async () => {
+    await open();
+    tell(offered());
+    dragDown(q(".ot-sheet .q-grab")!);
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(waits()).toBe(1);
+    expect(dialog()).toBeNull();
+  });
+
+  it("once Join is sent, Escape, the scrim and a drag wait for the server's answer", async () => {
+    await open();
+    tell(offered());
+    click(button(/^Join · /));
+    expect(lastSent()).toEqual({ type: "open_table_join", room: "OPEN", seat: 2 });
+    escape();
+    click(q(".q-scrim"));
+    dragDown(q(".ot-sheet .q-grab")!);
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(waits()).toBe(0);
+    expect(dialog()).not.toBeNull();
+    expect(button("Joining…")?.disabled).toBe(true);
+    // the server's answer settles it: a refusal hands dismissal back
+    tell({ type: "error", code: "seat_taken", message: "That seat was just taken. Pick another." });
+    escape();
+    expect(waits()).toBe(1);
   });
 });

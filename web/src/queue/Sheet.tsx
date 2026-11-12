@@ -65,20 +65,26 @@ function exitGhost(layer: HTMLElement): HTMLElement | null {
 }
 
 /** A bottom sheet on a phone, a centred dialog from 700px: a scrim, a title
- *  and Cancel over a body that scrolls when the screen is short. Escape and a
- *  tap on the scrim close it, and on a phone so does dragging the sheet down.
+ *  and Cancel (`cancel`; null leaves the header to the title) over a body
+ *  that scrolls when the screen is short. Escape and a tap on the scrim close
+ *  it, and on a phone so does dragging the sheet down; none of them do while
+ *  `dismissible` is false.
  *  It slides in and out (fades in from 700px) and is modal: the page behind
  *  is inert, Tab cycles inside it, and on closing focus goes back to the
  *  control that opened it. A sheet that replaces another in the same render
  *  takes its place without sliding and inherits its opener. */
-export default function Sheet({ title, onClose, children, className = "" }: {
+export default function Sheet({ title, onClose, children, className = "", cancel = "Cancel",
+                               dismissible = true }: {
   title: string; onClose: () => void; children: ReactNode; className?: string;
+  cancel?: string | null; dismissible?: boolean;
 }) {
   const titleId = useId();
   const layer = useRef<HTMLDivElement | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
+  const canClose = useRef(dismissible);
+  canClose.current = dismissible;
   const close = useRef(onClose);
-  close.current = onClose;
+  close.current = () => { if (canClose.current) onClose(); };
   // Once per opening: a parent re-render hands a new onClose, and refocusing
   // the sheet then would pull focus out of an input mid-typing.
   useLayoutEffect(() => {
@@ -144,17 +150,19 @@ export default function Sheet({ title, onClose, children, className = "" }: {
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   }, []);
-  useSheetDrag(layer, box, close);
+  useSheetDrag(layer, box, close, canClose);
   return (
     <div className="q-layer" ref={layer}>
-      <div className="q-scrim" onClick={onClose} />
+      <div className="q-scrim" onClick={() => close.current()} />
       <div className={`q-sheet ${className}`} role="dialog" aria-modal="true" aria-labelledby={titleId}
            tabIndex={-1} ref={box}>
         <div className="q-grab" aria-hidden="true" />
         <div className="q-sheet-head">
-          <button type="button" className="q-link" onClick={onClose}>Cancel</button>
+          {cancel !== null ? (
+            <button type="button" className="q-link" onClick={() => close.current()}>{cancel}</button>
+          ) : <span aria-hidden="true" />}
           <h2 id={titleId}>{title}</h2>
-          <span className="q-link q-hidden" aria-hidden="true">Cancel</span>
+          <span className="q-link q-hidden" aria-hidden="true">{cancel ?? ""}</span>
         </div>
         <div className="q-sheet-body">{children}</div>
       </div>

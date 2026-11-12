@@ -4,7 +4,7 @@
 // (drawn at once and refreshed underneath). Nothing here is persisted.
 // Cached data is personal (stats, games, the board's own row), so it is
 // stored under the viewer's scope and dropped whenever the session changes.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AuthState } from "../auth";
 import type { Period } from "../ratings/api";
 import type { MeSection } from "./route";
@@ -61,28 +61,65 @@ export function forgetPrivateSession(): void {
 export function useCachedLoad<T extends { ok: boolean }>(
   key: string | null, load: () => Promise<T>, refresh: unknown = null,
 ): T | null {
+  return useCachedResource(key, load, refresh).value;
+}
+
+// The newest load started for each key: a response from any older load of
+// that key (a slow mount-time load landing after a pull to refresh) is stale
+// and neither drawn nor cached.
+let loadTicket = 0;
+const latestLoad = new Map<string, number>();
+
+/** useCachedLoad, plus `reload`: the same load again on demand (a pull to
+ *  refresh), under the same rules, settling once its result is applied or
+ *  dropped. */
+export function useCachedResource<T extends { ok: boolean }>(
+  key: string | null, load: () => Promise<T>, refresh: unknown = null,
+): { value: T | null; reload: () => Promise<void> } {
   const [held, setHeld] = useState<{ key: string; value: T } | null>(() => {
     const shown = key === null ? undefined : cached<T>(key);
     return key !== null && shown !== undefined ? { key, value: shown } : null;
   });
   const loadRef = useRef(load);
   loadRef.current = load;
+  const keyRef = useRef(key);
+  keyRef.current = key;
+  // one load, applied only while its key and session are still the live ones
+  // and no later load of the same key has started
+  const run = useRef((k: string, isLive: () => boolean): Promise<void> => {
+    const gen = generation;
+    const shown = cached<T>(k);
+    const ticket = ++loadTicket;
+    latestLoad.set(k, ticket);
+    return loadRef.current().then((r) => {
+      if (!isLive() || gen !== generation || keyRef.current !== k || latestLoad.get(k) !== ticket) return;
+      if (r.ok || shown === undefined) setHeld({ key: k, value: r });
+      if (r.ok) remember(k, r);
+    }, () => {});
+  }).current;
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   useEffect(() => {
     if (key === null) return;
     let live = true;
-    const gen = generation;
     const shown = cached<T>(key);
     setHeld((cur) => (shown !== undefined ? { key, value: shown } : cur?.key === key ? cur : null));
-    loadRef.current().then((r) => {
-      if (!live || gen !== generation) return;
-      if (r.ok || shown === undefined) setHeld({ key, value: r });
-      if (r.ok) remember(key, r);
-    });
+    void run(key, () => live);
     return () => { live = false; };
-  }, [key, refresh]);
-  if (key === null) return null;
-  if (held !== null && held.key === key) return held.value;
-  return cached<T>(key) ?? null;
+  }, [key, refresh, run]);
+  const reload = useCallback((): Promise<void> => {
+    const k = keyRef.current;
+    if (k === null) return Promise.resolve();
+    return run(k, () => mounted.current);
+  }, [run]);
+  let value: T | null;
+  if (key === null) value = null;
+  else if (held !== null && held.key === key) value = held.value;
+  else value = cached<T>(key) ?? null;
+  return { value, reload };
 }
 
 /** Back to a fresh page load: first-visit defaults, no cache, no scroll. */

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import { fetchGame, fetchGames, removeGame, teamPair } from "../replay/api";
 import type { Fetched, GameDetail, GameRow } from "../replay/api";
 import { navigate } from "../replay/route";
@@ -222,9 +223,11 @@ function byDay(games: GameRow[]): { label: string; games: GameRow[] }[] {
 /** The signed-in account's saved games, newest first and grouped by day;
  *  a row opens the game, whose rounds each have a Replay, and offers
  *  Continue and Replay itself. With a `cacheKey` the last list shown is
- *  drawn at once on return and refreshed underneath; `onReady` fires once the list (or its failure) is drawn. */
-export function SavedGames({ onPlay, cacheKey, onReady }: {
+ *  drawn at once on return and refreshed underneath; `onReady` fires once the list (or its failure) is drawn.
+ *  `refreshRef` receives the first-page reload, for a pull to refresh. */
+export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
   onPlay: () => void; cacheKey?: string; onReady?: () => void;
+  refreshRef?: MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const [list, setList] = useState<ListState>(
     () => (cacheKey ? cached<ListState>(cacheKey) : undefined) ?? { status: "loading" });
@@ -239,10 +242,15 @@ export function SavedGames({ onPlay, cacheKey, onReady }: {
     return () => { shownLists.delete(drop); };
   }, []);
 
-  useEffect(() => {
-    let live = true;
-    fetchGames(null).then((r) => {
-      if (!live) return;
+  // the first page, merged over what is shown: on mount, and on a pull to
+  // refresh. Only the newest request is merged, so an older one landing after
+  // a pull to refresh cannot put stale rows back.
+  const live = useRef(false);
+  const firstPageTicket = useRef(0);
+  const loadFirstPage = useCallback((): Promise<void> => {
+    const ticket = ++firstPageTicket.current;
+    return fetchGames(null).then((r) => {
+      if (!live.current || ticket !== firstPageTicket.current) return;
       setList((cur) => {
         if (!r.ok) return cur.status === "ready" ? cur : { status: "failed", reason: r.reason, code: r.status };
         const fresh = r.data.games;
@@ -259,8 +267,19 @@ export function SavedGames({ onPlay, cacheKey, onReady }: {
           ? cur.next : r.data.next_before, more: false, moreError: false };
       });
     });
-    return () => { live = false; };
   }, []);
+
+  useEffect(() => {
+    live.current = true;
+    void loadFirstPage();
+    return () => { live.current = false; };
+  }, [loadFirstPage]);
+
+  useEffect(() => {
+    if (!refreshRef) return;
+    refreshRef.current = loadFirstPage;
+    return () => { if (refreshRef.current === loadFirstPage) refreshRef.current = null; };
+  }, [refreshRef, loadFirstPage]);
 
   useEffect(() => {
     if (list.status === "loading") return;

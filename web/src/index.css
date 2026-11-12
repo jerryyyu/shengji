@@ -4884,6 +4884,99 @@ body.keyboard-open .tabbar { display: none; }
   letter-spacing: -0.4px;
   color: #fff;
 }
+/* A phone's home pages: a 44 pt bar, sticky at the top of the page's own
+   scroller and over the safe-area inset, empty while the large title shows
+   below it; once that title has scrolled under it, the bar fades in the
+   compact title and its hairline (LargeTitlePage.tsx). The bar spans the
+   scroller's side padding. */
+.home-body > .screen.home-page.has-nav { position: relative; padding-top: 0; }
+.nav-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(44px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 56px 0;
+  margin: 0 calc(-1 * max(16px, env(safe-area-inset-right, 0px))) 0
+    calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+  background: var(--page);
+  border-bottom: 0.5px solid transparent;
+}
+.nav-bar.collapsed {
+  background: rgba(22, 26, 34, 0.94);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+.nav-bar-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 17px/1.2 system-ui, -apple-system, sans-serif;
+  color: #fff;
+  opacity: 0;
+}
+.nav-bar.collapsed .nav-bar-title { opacity: 1; }
+.nav-animate .nav-bar { transition: background-color 200ms ease, border-color 200ms ease; }
+.nav-animate .nav-bar-title { transition: opacity 200ms ease; }
+
+/* Pull to refresh (usePullToRefresh.ts): the hook writes the pull, after
+   resistance, to --ptr and its share of the threshold to --ptr-p. The column
+   follows the finger and the spinner shows in the gap under the bar. The
+   column is moved only while a pull is on (ptr-on), so at rest it keeps no
+   transform; it follows the finger at once and eases back once let go. */
+.has-nav .ptr {
+  position: absolute;
+  z-index: 2;
+  top: calc(44px + env(safe-area-inset-top, 0px));
+  left: 0;
+  right: 0;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.ptr-spinner {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  margin-top: calc(var(--ptr, 0px) / 2 - 14px);
+  opacity: var(--ptr-p, 0);
+}
+.has-nav:not(.ptr-on) .ptr-spinner { visibility: hidden; }
+.ptr-spinner i {
+  position: absolute;
+  left: 12.5px;
+  top: 2px;
+  width: 3px;
+  height: 7.5px;
+  border-radius: 1.5px;
+  background: #c5ccd8;
+  transform-origin: 1.5px 12px;
+}
+/* the brightest spoke leads clockwise, the dimmer ones trail behind it */
+.ptr-spinner i:nth-child(1) { opacity: 1; }
+.ptr-spinner i:nth-child(2) { opacity: 0.24; }
+.ptr-spinner i:nth-child(3) { opacity: 0.3; }
+.ptr-spinner i:nth-child(4) { opacity: 0.38; }
+.ptr-spinner i:nth-child(5) { opacity: 0.48; }
+.ptr-spinner i:nth-child(6) { opacity: 0.6; }
+.ptr-spinner i:nth-child(7) { opacity: 0.72; }
+.ptr-spinner i:nth-child(8) { opacity: 0.86; }
+.ptr-refreshing .ptr-spinner { opacity: 1; }
+.has-nav.ptr-on .home-col { transform: translateY(var(--ptr, 0px)); }
+.nav-animate.ptr-on:not(.ptr-drag) .home-col { transition: transform 300ms var(--ease-out); }
+.nav-animate.ptr-on:not(.ptr-drag) .ptr-spinner { transition: margin-top 300ms var(--ease-out), opacity 300ms ease; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+.nav-animate.ptr-refreshing .ptr-spinner { animation: ptr-spin 800ms steps(8) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-bar,
+  .nav-bar-title,
+  .ptr-spinner,
+  .has-nav .home-col { transition: none !important; animation: none !important; }
+}
 .segmented { flex: none; display: flex; height: 32px; padding: 2px; border-radius: 9px; background: var(--grp); }
 /* the buttons draw 28px inside the 32px track; ::before stretches each tap
    area to 44px, 6px past the track, which the 14px column gap leaves clear */

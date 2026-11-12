@@ -3,7 +3,10 @@ import { useAuth } from "../auth";
 import { deltaText, fetchLeaderboard } from "../ratings/api";
 import type { Leaderboard as Board, LeaderRow, Loaded, Period } from "../ratings/api";
 import { Segmented } from "../home/HomeShell";
-import { tabMemory, useCachedLoad, useTabScroll, viewerScope } from "../home/session";
+import { tabMemory, useCachedResource, useTabScroll, viewerScope } from "../home/session";
+import { WIDE } from "../home/route";
+import LargeTitlePage from "../home/LargeTitlePage";
+import { useMediaQuery } from "../phoneLayout";
 import GoogleSignIn from "./GoogleSignIn";
 
 const PERIODS = [
@@ -75,7 +78,9 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   const account = useAuth();
   const [period, setPeriodState] = useState<Period>(tabMemory.period);
   const setPeriod = (p: Period) => { tabMemory.period = p; setPeriodState(p); };
-  const res = useCachedLoad<Loaded<Board>>(`${viewerScope(account)}:board:${period}`, () => fetchLeaderboard(period));
+  const { value: res, reload } = useCachedResource<Loaded<Board>>(
+    `${viewerScope(account)}:board:${period}`, () => fetchLeaderboard(period));
+  const phone = !useMediaQuery(WIDE);
   const scroller = useTabScroll(`leaderboard:${period}`, res !== null);
 
   let body;
@@ -103,14 +108,11 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   if (account.status === "out" && account.clientId) pinned = <SignInToRank clientId={account.clientId} />;
 
   return (
-    <div className="screen home-page lb-page" ref={scroller}>
-      <div className="home-col">
-        {onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}
-        <h1 className="large-title">Leaderboard</h1>
-        <Segmented label="Period" options={PERIODS} value={period} onChange={setPeriod} />
-        {body}
-        {pinned ? <div className="lb-pin">{pinned}</div> : null}
-      </div>
-    </div>
+    <LargeTitlePage className="lb-page" scroller={scroller} title="Leaderboard" phone={phone} onRefresh={reload}
+                    before={onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}>
+      <Segmented label="Period" options={PERIODS} value={period} onChange={setPeriod} />
+      {body}
+      {pinned ? <div className="lb-pin">{pinned}</div> : null}
+    </LargeTitlePage>
   );
 }

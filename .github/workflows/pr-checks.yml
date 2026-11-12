@@ -492,8 +492,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.train == 'true'
     runs-on: ubuntu-latest
-    # both engine modes of about 1,400 tests, one core each
-    timeout-minutes: 40
+    # Both engine modes of about 1,400 tests, one core each, in two shards
+    # balanced by measured per-file time (a pure session of the whole
+    # selection took about 19 minutes); ci_cwv_modes.sh puts every module in
+    # exactly one shard. A timeout shows as "cancelled", not "failed".
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     defaults:
       run:
         working-directory: server
@@ -514,8 +521,8 @@ jobs:
       - name: Review ledger guard (fetches the PR base once)
         working-directory: server/tests
         run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
-      - name: Test CWV consumers in both engine modes
-        run: bash scripts/ci_cwv_modes.sh
+      - name: Test CWV consumers in both engine modes (shard ${{ matrix.shard }} of 2)
+        run: bash scripts/ci_cwv_modes.sh ${{ matrix.shard }}
 
   train-policy:
     needs: changes

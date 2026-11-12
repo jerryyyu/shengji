@@ -158,7 +158,7 @@ describe("the queue bar", () => {
     await renderApp();
     fakeClock();
     say(queued());
-    expect(q(".q-bar b")?.textContent).toBe("Finding a game");
+    expect(q(".q-bar b")?.textContent).toBe("Finding a ranked game");
     expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
     tick(6000);
     expect(q(".q-bar small")?.textContent).toBe("Bots in 0:54 · 3 in queue");
@@ -205,14 +205,14 @@ describe("the queue bar", () => {
     say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
     expect(q(".q-bar")).toBeNull();
     const chip = q(".topbar .q-chip")!;
-    expect(chip.textContent).toContain("Finding a game · 0:24 · Bots in 0:36 · 3 in queue");
+    expect(chip.textContent).toContain("Finding a ranked game · 0:24 · Bots in 0:36 · 3 in queue");
     expect(chip.getAttribute("title")).toBe("Waiting 0:24");
     expect(button("Play bots", chip)).toBeDefined();
     expect(button("Cancel", chip)).toBeDefined();
     click(button("Wait for real players", chip));
     expect(lastSent()).toEqual({ type: "queue_wait_players" });
     expect(button("Wait for real players", chip)?.getAttribute("aria-checked")).toBe("true");
-    expect(chip.textContent).toContain("Finding a game · 0:24 · 3 in queue");
+    expect(chip.textContent).toContain("Finding a ranked game · 0:24 · 3 in queue");
     expect(chip.textContent).not.toContain("Bots in");
   });
 
@@ -261,27 +261,35 @@ describe("the ready check", () => {
     say(queued());
     fakeClock();
     say(match());
-    const dlg = q(".q-dlg")!;
-    expect(dlg.textContent).toContain("Match found");
-    expect(q(".q-big")?.textContent).toBe("Ready?");
-    expect(q(".q-ring-n")?.textContent).toBe("10");
-    expect(dlg.querySelectorAll(".q-pips i")).toHaveLength(4);
-    expect(q(".q-bar")).toBeNull();          // the bar steps aside for the dialog
+    const sheet = q(".q-rc")!;
+    expect(sheet.querySelector("h2")?.textContent).toBe("Ranked match found");
+    expect(sheet.getAttribute("role")).toBe("alertdialog");
+    expect(button("Accept · 0:10")).toBeDefined();
+    expect(button("Decline", sheet)).toBeDefined();
+    expect(sheet.querySelectorAll(".q-rc-seat")).toHaveLength(4);
+    expect(sheet.querySelectorAll(".q-rc-av.team0")).toHaveLength(2);
+    expect(sheet.querySelectorAll(".q-rc-av.team1")).toHaveLength(2);
+    expect(q(".q-bar")).toBeNull();          // the bar steps aside for the sheet
     tick(3000);
-    expect(q(".q-ring-n")?.textContent).toBe("7");
-    click(button("Accept"));
+    click(button("Accept · 0:07"));
     expect(lastSent()).toEqual({ type: "match_accept", match_id: "m1" });
-    expect(q(".q-big")?.textContent).toBe("You're ready");
+    expect(q(".q-rc-sub")?.textContent).toContain("You're ready.");
+    expect(q(".q-rc-seat.you .q-rc-ok")).not.toBeNull();
     say({ type: "match_ready", match_id: "m1", accepted: 2, of: 4 });
-    expect(button("2 of 4 ready")?.disabled).toBe(true);
-    expect(q(".q-dlg")?.querySelectorAll(".q-pips i.ok")).toHaveLength(2);
-    expect(q(".q-dlg")?.textContent).not.toContain("Mei");
-    expect(q(".q-sub")?.textContent).toBe("Names are shown when everyone has accepted.");
+    expect(button("2 of 4 ready · 0:07")?.disabled).toBe(true);
+    expect(q(".q-rc")?.querySelectorAll(".q-rc-ok")).toHaveLength(1);   // counts only, never who
+    expect(q(".q-rc")?.textContent).not.toContain("Mei");
+    expect(q(".q-rc-sub")?.textContent).toContain("Names are shown when everyone has accepted.");
     say({ type: "match_ready", match_id: "m1", accepted: 4, of: 4, names: ["Mei", "Wen", "Jerry", "Hao"] });
-    expect(q(".q-big")?.textContent).toBe("Starting…");
-    expect(q(".q-names")?.textContent).toBe("Mei · Wen · you · Hao");
+    expect(button("Starting…")?.disabled).toBe(true);
+    expect(q(".q-rc-names")?.textContent).toBe("Mei · Wen · you · Hao");
+    // seat order: Jerry at seat 2 partners Mei at seat 0
+    const [mine, theirs] = [...document.querySelectorAll(".q-rc-side")].map((e) => e.textContent);
+    expect(mine).toContain("Mei");
+    expect(theirs).toContain("Wen");
+    expect(theirs).toContain("Hao");
     say({ type: "match_started", match_id: "m1", room: "ABCD", rated: true });
-    expect(q(".q-dlg")).toBeNull();
+    expect(q(".q-rc")).toBeNull();
   });
 
   it("Accept is disabled at zero", async () => {
@@ -289,9 +297,8 @@ describe("the ready check", () => {
     fakeClock();
     say(match());
     tick(10_000);
-    expect(q(".q-ring-n")?.textContent).toBe("0");
-    expect(button("Accept")?.disabled).toBe(true);
-    click(button("Accept"));
+    expect(button("Accept · 0:00")?.disabled).toBe(true);
+    click(button("Accept · 0:00"));
     expect(sentTypes()).not.toContain("match_accept");
   });
 
@@ -302,7 +309,7 @@ describe("the ready check", () => {
     say(match());
     click(button("Decline"));
     expect(lastSent()).toEqual({ type: "match_decline", match_id: "m1" });
-    expect(q(".q-dlg")).toBeNull();
+    expect(q(".q-rc")).toBeNull();
     say({ type: "queue_removed", reason: "declined", cooldown_until: nowSecs() + 30, match_id: "m1" });
     expect(q(".q-dlg")).toBeNull();           // no "missed" dialog for your own decline
     expect(findBtn().textContent).toBe("Queue again in 0:30");
@@ -334,9 +341,10 @@ describe("the ready check", () => {
     await renderApp();
     say(queued({ since: nowSecs() - 30 }));
     say(match());
-    click(button("Accept"));
+    click(button(/^Accept/));
     say({ type: "match_cancelled", match_id: "m1", reason: "player_missed" });
     say(queued({ since: nowSecs() - 30, front: true }));
+    expect(q(".q-rc")).toBeNull();
     expect(q(".q-dlg")).toBeNull();
     expect(q(".q-toast")?.textContent).toContain("A player didn't accept.");
     expect(q(".q-toast")?.textContent).toContain("You're back in the queue and keep your place.");
@@ -351,14 +359,14 @@ describe("the ready check", () => {
     say({ type: "match_cancelled", match_id: "m1", reason: "player_missed" });
     say(queued());
     expect(q(".q-toast")?.textContent).toContain("You're still in the queue.");
-    expect(q(".q-bar b")?.textContent).toBe("Finding a game");
+    expect(q(".q-bar b")?.textContent).toBe("Finding a ranked game");
   });
 
   it("a pair whose partner had not answered keeps its place but not the front", async () => {
     await renderApp();
     say(queued({ party_id: "p1" }));
     say(match({ party_id: "p1" }));
-    click(button("Accept"));
+    click(button(/^Accept/));
     say({ type: "match_cancelled", match_id: "m1", reason: "player_missed" });
     say(queued({ party_id: "p1", front: false }));
     expect(q(".q-toast")?.textContent).toContain("You're still in the queue.");
@@ -379,7 +387,7 @@ describe("the ready check", () => {
     await renderApp();
     say(queued());
     say(match());
-    click(button("Accept"));
+    click(button(/^Accept/));
     say({ type: "match_ready", match_id: "m1", accepted: 4, of: 4, names: ["Jerry", "Mei", "Wen", "Hao"] });
     say({ type: "match_started", match_id: "m1", room: "ABCD", rated: true });
     say({ type: "resume", token: "t1", gen: 1 });
@@ -413,17 +421,17 @@ describe("the ready check", () => {
     await renderApp();
     say(queued({ since: nowSecs() - 60 }));
     say(match({ match_id: "m2", size: 2, bots: 2 }));
-    const dlg = q(".q-dlg")!;
-    expect(dlg.querySelector("h3")?.textContent).toBe("Not enough players");
-    expect(q(".q-big")?.textContent).toBe("Starting with 2 bots");
-    expect(dlg.querySelectorAll(".q-pips i.bot")).toHaveLength(2);
+    const sheet = q(".q-rc")!;
+    expect(sheet.querySelector("h2")?.textContent).toBe("Ranked match found");
+    expect(q(".q-rc-sub")?.textContent).toContain("Starting with 2 bots");
+    expect(sheet.querySelectorAll(".q-rc-seat.bot")).toHaveLength(2);
     expect(button("Decline")).toBeUndefined();
     click(button("Keep waiting"));
     expect(lastSent()).toEqual({ type: "match_decline", match_id: "m2", keep_waiting: true });
-    expect(q(".q-dlg")).toBeNull();
+    expect(q(".q-rc")).toBeNull();
     say({ type: "match_cancelled", match_id: "m2", reason: "keep_waiting" });
     say(queued());
-    expect(q(".q-bar b")?.textContent).toBe("Finding a game");
+    expect(q(".q-bar b")?.textContent).toBe("Finding a ranked game");
   });
 });
 
@@ -458,10 +466,12 @@ describe("with a friend", () => {
     fakeClock();
     say(queued({ party_id: "p1" }));
     tick(12_000);
-    expect(q(".q-bar b")?.textContent).toBe("You + Sam · 0:12");
+    expect(q(".q-bar b")?.textContent).toBe("You + Sam");
+    expect(q(".q-bar-time")?.textContent).toBe("0:12");
     expect(q(".q-bar small")?.textContent).toBe("Bots in 0:48 · 3 in queue");
     say(match({ party_id: "p1", size: 4 }));
-    expect(q(".q-big")?.textContent).toBe("Ready? Both of you");
+    expect(q(".q-rc-sub")?.textContent).toBe("Sam must accept too. If either of you misses it, the pair is out for 30 s.");
+    expect([...document.querySelectorAll(".q-rc-side")][0].textContent).toContain("Sam");
   });
 
   it("joins a friend's pair by code from Me; the member cannot start or cancel", async () => {

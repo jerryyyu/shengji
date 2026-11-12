@@ -12,7 +12,7 @@ function barText(q: QueueView, now: number): BarText {
   const botsIn = q.botsAt !== null && !q.waitPlayers ? q.botsAt - now : Infinity;
   const warn = botsIn <= BOTS_WARN_MS;
   const partner = q.partyId ? partnerName(q.party) : null;
-  const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a game";
+  const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a ranked game";
   const count = `${q.count} in queue`;
   const sub = q.waitPlayers ? (q.leader ? count : `Waiting for real players · ${count}`)
     : botsIn <= 0 ? "Adding bots…"
@@ -51,34 +51,37 @@ function Actions({ q, compact }: { q: QueueView; compact?: boolean }) {
 
 /** The leader's switch: on, the entry waits for real players and no bots
  *  join; off, the bot countdown runs. A pair's other member only sees the
- *  state in the sub-line. */
+ *  state in the sub-line. The bar puts the switch after its label, the chip
+ *  before it. */
 function WaitToggle({ q }: { q: QueueView }) {
   if (!q.leader) return null;
   return (
     <button type="button" role="switch" aria-checked={q.waitPlayers} className="q-wait"
             disabled={q.pending !== null}
             onClick={() => (q.waitPlayers ? queue.allowBots() : queue.waitForPlayers())}>
+      <span className="q-wait-label">Wait for real players</span>
       <span className="q-switch" aria-hidden="true" />
-      Wait for real players
     </button>
   );
 }
 
-/** A phone's queue bar, pinned above the tab bar on every tab: the title and
- *  actions on top, the countdown and the wait switch underneath. */
+/** A phone's queue bar, pinned above the tab bar on every tab, in four
+ *  rows: who is searching and for how long; the countdown and queue count;
+ *  the leader's wait switch; Play bots and Cancel side by side. */
 export default function QueueBar() {
   const { q, text } = useBar();
   if (!text) return null;
   return (
     <div className={`q-bar${text.warn ? " warn" : ""}`} role="status" aria-live="polite"
          title={`Waiting ${text.waited}`}>
-      <b className="q-bar-title">{q.partyId ? `${text.label} · ${text.waited}` : text.label}</b>
-      <span className="q-bar-acts"><Actions q={q} /></span>
-      <span className="q-bar-sub">
-        <span className="q-spin" aria-hidden="true" />
-        <small>{text.sub}</small>
-        <WaitToggle q={q} />
-      </span>
+      <div className="q-bar-head">
+        <span className="q-bar-dot" aria-hidden="true" />
+        <b className="q-bar-title">{text.label}</b>
+        <span className="q-bar-time">{text.waited}</span>
+      </div>
+      <small className="q-bar-sub">{text.sub}</small>
+      <WaitToggle q={q} />
+      <div className="q-bar-acts"><Actions q={q} /></div>
     </div>
   );
 }

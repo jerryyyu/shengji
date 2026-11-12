@@ -186,6 +186,9 @@ describe("the queue bar", () => {
   it("Play bots sends queue_start_bots; Cancel leaves", async () => {
     await renderApp();
     say(queued());
+    // notices are lifted over the bar while it shows
+    const clear = () => document.documentElement.style.getPropertyValue("--q-bar-clear");
+    expect(clear()).toMatch(/^\d+px$/);
     click(button("Play bots"));
     expect(lastSent()).toEqual({ type: "queue_start_bots" });
     expect(button("Starting…")).toBeDefined();
@@ -197,6 +200,7 @@ describe("the queue bar", () => {
     say({ type: "queue_state", queued: false, count: 0 });
     expect(q(".q-bar")).toBeNull();
     expect(findBtn().textContent).toBe("Find a game");
+    expect(clear()).toBe("");
   });
 
   it("at 700px and up the bar is a chip in the top bar", async () => {
@@ -263,6 +267,7 @@ describe("the ready check", () => {
     say(match());
     const sheet = q(".q-rc")!;
     expect(sheet.querySelector("h2")?.textContent).toBe("Ranked match found");
+    expect(q(".q-rc-sub")).toBeNull();       // the deadline is in Accept's label
     expect(sheet.getAttribute("role")).toBe("alertdialog");
     expect(button("Accept · 0:10")).toBeDefined();
     expect(button("Decline", sheet)).toBeDefined();

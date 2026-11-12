@@ -128,9 +128,10 @@ function CheckDialog({ check }: { check: Check }) {
       </MatchSheet>
     );
   }
+  // The deadline is in Accept's own label, so a solo check needs no line.
   const sub = fill ? `Starting with ${bots}, each counted as 1000.`
     : partner ? "Both of you must accept."
-    : "Accept before the timer runs out.";
+    : undefined;
   return (
     <MatchSheet title="Ranked match found" sub={sub}>
       <TeamsView check={check} me={me} partner={partner} />

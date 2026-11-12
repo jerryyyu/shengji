@@ -119,21 +119,16 @@ function CheckDialog({ check }: { check: Check }) {
     );
   }
   if (check.mine === "accepted") {
-    const waiting = partner && check.accepted < 2 ? `Waiting for ${partner}…` : "Waiting for the others…";
     return (
-      <MatchSheet title="Ranked match found" sub={waiting}>
+      <MatchSheet title="Ranked match found">
         <TeamsView check={check} me={me} partner={partner} />
         <button type="button" className="q-rc-accept" disabled>{check.accepted} of {check.of} ready · {secs}</button>
         <button type="button" className="q-rc-plain" onClick={() => queue.decline()}>Cancel</button>
       </MatchSheet>
     );
   }
-  // The deadline is in Accept's own label, so a solo check needs no line.
-  const sub = fill ? `Starting with ${bots}, each counted as 1000.`
-    : partner ? "Both of you must accept."
-    : undefined;
   return (
-    <MatchSheet title="Ranked match found" sub={sub}>
+    <MatchSheet title="Ranked match found">
       <TeamsView check={check} me={me} partner={partner} />
       <button type="button" className="q-rc-accept" disabled={left <= 0} onClick={() => queue.accept()} autoFocus>
         Accept · {secs}
@@ -147,15 +142,16 @@ function CheckDialog({ check }: { check: Check }) {
   );
 }
 
-/** The ready check: a bottom sheet on a phone, a centred dialog from 700px. */
-function MatchSheet({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
+/** The ready check: a bottom sheet on a phone, a centred dialog from 700px.
+ *  No line under the title: the teams show who plays, bots included, and
+ *  the button carries the deadline and the ready count. */
+function MatchSheet({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="q-layer q-rc-layer">
       <div className="q-scrim" />
-      <div className="q-rc" role="alertdialog" aria-modal="true" aria-label={sub ? `${title}. ${sub}` : title}>
+      <div className="q-rc" role="alertdialog" aria-modal="true" aria-label={title}>
         <span className="q-rc-grab" aria-hidden="true" />
         <h2>{title}</h2>
-        {sub ? <p className="q-rc-sub">{sub}</p> : null}
         {children}
       </div>
     </div>

@@ -5444,7 +5444,6 @@ span.q-party-main { cursor: default; }
 }
 .q-rc-grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #4a5262; }
 .q-rc h2 { margin: 0; text-align: center; font-size: 22px; font-weight: 700; color: #fff; }
-.q-rc-sub { margin: -8px 0 0; text-align: center; font-size: var(--fs-14); line-height: 1.4; color: var(--text-dim); }
 .q-rc-teams { display: grid; grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); gap: 8px; align-items: center; }
 .q-rc-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .q-rc-seat {

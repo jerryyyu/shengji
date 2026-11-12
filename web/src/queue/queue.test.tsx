@@ -267,7 +267,7 @@ describe("the ready check", () => {
     say(match());
     const sheet = q(".q-rc")!;
     expect(sheet.querySelector("h2")?.textContent).toBe("Ranked match found");
-    expect(q(".q-rc-sub")).toBeNull();       // the deadline is in Accept's label
+    expect(q(".q-rc-sub")).toBeNull();       // no subtext: the deadline is in Accept's label
     expect(sheet.getAttribute("role")).toBe("alertdialog");
     expect(button("Accept · 0:10")).toBeDefined();
     expect(button("Decline", sheet)).toBeDefined();
@@ -278,7 +278,6 @@ describe("the ready check", () => {
     tick(3000);
     click(button("Accept · 0:07"));
     expect(lastSent()).toEqual({ type: "match_accept", match_id: "m1" });
-    expect(q(".q-rc-sub")?.textContent).toBe("Waiting for the others…");
     expect(q(".q-rc-seat.you .q-rc-ok")).not.toBeNull();
     say({ type: "match_ready", match_id: "m1", accepted: 2, of: 4 });
     expect(button("2 of 4 ready · 0:07")?.disabled).toBe(true);
@@ -427,7 +426,7 @@ describe("the ready check", () => {
     say(match({ match_id: "m2", size: 2, bots: 2 }));
     const sheet = q(".q-rc")!;
     expect(sheet.querySelector("h2")?.textContent).toBe("Ranked match found");
-    expect(q(".q-rc-sub")?.textContent).toContain("Starting with 2 bots");
+    expect(q(".q-rc-sub")).toBeNull();
     expect(sheet.querySelectorAll(".q-rc-seat.bot")).toHaveLength(2);
     expect(button("Decline")).toBeUndefined();
     click(button("Keep waiting"));
@@ -474,7 +473,7 @@ describe("with a friend", () => {
     expect(q(".q-bar-time")?.textContent).toBe("0:12");
     expect(q(".q-bar small")?.textContent).toBe("Bots in 0:48 · 3 in queue");
     say(match({ party_id: "p1", size: 4 }));
-    expect(q(".q-rc-sub")?.textContent).toBe("Both of you must accept.");
+    expect(q(".q-rc-sub")).toBeNull();
     expect([...document.querySelectorAll(".q-rc-side")][0].textContent).toContain("Sam");
   });
 

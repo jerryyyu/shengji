@@ -258,7 +258,7 @@ def test_experimental_rooms_are_not_rated(env, monkeypatch):
 
 
 # ------------------------------------------------------------------ abandon
-def test_leaving_mid_round_is_a_loss_for_that_round_only(env, monkeypatch):
+def test_leaving_mid_round_rates_that_round_only_with_a_winning_result_capped(env, monkeypatch):
     from shengji.api import ratings
 
     srv, store, _ = env
@@ -272,13 +272,44 @@ def test_leaving_mid_round_is_a_loss_for_that_round_only(env, monkeypatch):
     seat.connected = False
     table.finish()
     by = {e["user_id"]: e for e in _events(store)}
-    assert by[quitter]["abandoned"] == 1 and by[quitter]["actual"] == 0.0
-    assert by[quitter]["won"] == 0 and by[quitter]["delta"] < 0
+    assert by[quitter]["abandoned"] == 1 and by[quitter]["actual"] == ratings.LEAVER_SCORE_CAP
+    assert by[quitter]["won"] == 0
     assert by[partner]["abandoned"] == 0 and by[partner]["delta"] > 0
+    assert by[quitter]["delta"] < by[partner]["delta"]
     # The next round, with the bot covering the absent seat, rates only the partner.
     seat.bot_announced = True
     table.play_round()
     assert [e["user_id"] for e in _events(store) if e["round_no"] == 2] == [partner]
+
+
+@pytest.mark.parametrize("leaver_seat, attacker_points, actual", [
+    # banker team (seats 0 and 2) defends; the leaver's real result, capped at 0.5
+    (0, 0, 0.5),          # defenders +3: a 1.0 win, capped
+    (0, 35, 0.5),         # defenders +2: 0.833, capped
+    (0, 90, 0.4),         # attackers take over: a loss counts as it happened
+    (0, 165, 1 / 6),      # attackers +2
+    (1, 60, 1 / 3),       # attacker leaves, defenders +1
+    (1, 0, 0.0),          # attacker leaves, defenders +3
+    (1, 100, 0.5),        # attackers take over: 0.6, capped
+    (1, 210, 0.5),        # attackers +3: 1.0, capped
+])
+def test_a_leaver_scores_the_real_result_capped_at_a_draw(env, monkeypatch, leaver_seat,
+                                                          attacker_points, actual):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "leaver")
+    _force_outcome(monkeypatch, attacker_points)
+    users = ["bot", "bot", "bot", "bot"]
+    users[leaver_seat] = uid
+    table = Table(srv, users)
+    table.start_round(banker=0)
+    ratings.seat_left(table.room, leaver_seat)
+    table.room.seats[leaver_seat].connected = False
+    table.finish()
+    [event] = _events(store)
+    assert event["abandoned"] == 1 and event["won"] == 0
+    assert event["actual"] == pytest.approx(actual)
 
 
 def test_a_bot_takeover_after_a_disconnect_is_an_abandon(env, monkeypatch):
@@ -291,7 +322,7 @@ def test_a_bot_takeover_after_a_disconnect_is_an_abandon(env, monkeypatch):
     table.room.seats[0].bot_announced = True
     table.finish()
     [event] = _events(store)
-    assert event["abandoned"] == 1 and event["actual"] == 0.0
+    assert event["abandoned"] == 1 and event["actual"] == 0.5    # a 2-level win, capped
 
 
 def test_a_blip_inside_the_takeover_window_is_still_a_normal_round(env, monkeypatch):
@@ -360,7 +391,7 @@ def test_a_dropped_seat_taken_over_mid_round_rates_only_the_original_abandon(env
     _claim(seat, taker, "Taker")
     table.finish()
     [event] = _events(store)
-    assert event["user_id"] == orig and event["abandoned"] == 1 and event["actual"] == 0.0
+    assert event["user_id"] == orig and event["abandoned"] == 1 and event["actual"] == 0.5
     assert store.user(taker)["rated_rounds"] == 0
     table.play_round()
     assert [e["user_id"] for e in _events(store) if e["round_no"] == 2] == [taker]

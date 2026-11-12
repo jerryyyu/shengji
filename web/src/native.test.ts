@@ -73,6 +73,8 @@ describe("native bridge", () => {
   it("hides the tab bar while the keyboard is up", () => {
     // jsdom's URL is not node's, so the path is built from the directory
     const css = readFileSync(`${import.meta.dirname}/index.css`, "utf8");
+    // the page follows the shrunken WebView, not 100dvh, while the keyboard is up
+    expect(css).toMatch(/body\.keyboard-open \.app \{ height: 100%; \}/);
     const rule = css.match(/body\.keyboard-open \.tabbar \{[^}]*\}/);
     expect(rule).not.toBeNull();
     const style = document.createElement("style");
@@ -94,6 +96,44 @@ describe("native bridge", () => {
     } finally {
       tabbar.remove();
       style.remove();
+    }
+  });
+
+  it("brings the focused field into view when the keyboard shrinks the page", () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const scrolled: unknown[] = [];
+    input.scrollIntoView = (opts?: unknown) => { scrolled.push(opts); };
+    try {
+      fakeShell("phone");
+      startShell();
+      input.focus();
+      window.dispatchEvent(new Event("resize"));        // no keyboard: left alone
+      expect(scrolled).toEqual([]);
+      window.dispatchEvent(new Event("keyboardWillShow"));
+      window.dispatchEvent(new Event("resize"));
+      expect(scrolled).toEqual([{ block: "center" }]);
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("scrolls a scrolled screen without tab scroll memory (the Play lobby) to the top", () => {
+    const screen = document.createElement("div");
+    screen.className = "screen";
+    document.body.appendChild(screen);
+    const calls: unknown[] = [];
+    screen.scrollTo = ((opts: unknown) => { calls.push(opts); }) as typeof screen.scrollTo;
+    try {
+      fakeShell("phone");
+      startShell();
+      window.dispatchEvent(new Event(STATUS_TAP_EVENT));   // at the top already
+      expect(calls).toEqual([]);
+      Object.defineProperty(screen, "scrollTop", { value: 67, configurable: true });
+      window.dispatchEvent(new Event(STATUS_TAP_EVENT));
+      expect(calls).toEqual([{ top: 0, behavior: "smooth" }]);
+    } finally {
+      screen.remove();
     }
   });
 

@@ -4665,7 +4665,10 @@ button.games-row { cursor: pointer; }
   backdrop-filter: blur(20px);
   border-top: 0.5px solid rgba(255, 255, 255, 0.14);
 }
-/* the iOS app's keyboard shrinks the page; the tab bar would ride above it */
+/* The iOS app's keyboard shrinks the WebView, but 100dvh keeps the old height
+   there, so the page follows the shrunken frame instead and its screen can
+   scroll the focused field into view; the tab bar would ride above the keys. */
+body.keyboard-open .app { height: 100%; }
 body.keyboard-open .tabbar { display: none; }
 .tabbar-item {
   appearance: none;

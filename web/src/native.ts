@@ -155,18 +155,36 @@ export const STATUS_TAP_EVENT = "statusTap";
 
 const onKeyboardShow = () => document.body.classList.add(KEYBOARD_OPEN_CLASS);
 const onKeyboardHide = () => document.body.classList.remove(KEYBOARD_OPEN_CLASS);
+/** The WebView shrinks only after the keyboard has risen, too late for
+ *  WebKit's own scroll to the focused field, so the field is brought into
+ *  view again once the page has its new height. */
+const revealFocused = () => {
+  if (!document.body.classList.contains(KEYBOARD_OPEN_CLASS)) return;
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el !== document.body) el.scrollIntoView?.({ block: "center" });
+};
+/** A tab page with remembered scroll answers scrollActiveTabToTop; any other
+ *  scrolled screen (the Play lobby, a room) is scrolled up here. */
+const onStatusTap = () => {
+  scrollActiveTabToTop();
+  for (const el of document.querySelectorAll<HTMLElement>(".screen")) {
+    if (el.scrollTop > 0) el.scrollTo?.({ top: 0, behavior: "smooth" });
+  }
+};
 let shellStarted = false;
 
 /** Startup wiring for the app: no web Previous/Next/Done bar over the
  *  keyboard, the keyboard-open class from the Keyboard plugin's window events,
- *  and a status-bar tap scrolling the active tab to the top. */
+ *  the focused field kept in view as the page shrinks, and a status-bar tap
+ *  scrolling the active tab to the top. */
 export function startShell(): void {
   if (shellStarted || !isNative()) return;
   shellStarted = true;
   void call("Keyboard", "setAccessoryBarVisible", { isVisible: false });
   window.addEventListener("keyboardWillShow", onKeyboardShow);
   window.addEventListener("keyboardWillHide", onKeyboardHide);
-  window.addEventListener(STATUS_TAP_EVENT, scrollActiveTabToTop);
+  window.addEventListener("resize", revealFocused);
+  window.addEventListener(STATUS_TAP_EVENT, onStatusTap);
 }
 
 let splashHidden = false;
@@ -190,7 +208,8 @@ export function resetNativeForTests(): void {
   if (shellStarted) {
     window.removeEventListener("keyboardWillShow", onKeyboardShow);
     window.removeEventListener("keyboardWillHide", onKeyboardHide);
-    window.removeEventListener(STATUS_TAP_EVENT, scrollActiveTabToTop);
+    window.removeEventListener("resize", revealFocused);
+    window.removeEventListener(STATUS_TAP_EVENT, onStatusTap);
     shellStarted = false;
   }
   document.body.classList.remove(KEYBOARD_OPEN_CLASS);

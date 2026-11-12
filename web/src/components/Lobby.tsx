@@ -9,6 +9,7 @@ import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
 import LobbyPreview from "./LobbyPreview";
+import FindGame from "../queue/FindGame";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -339,10 +340,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           </div>
         ) : null}
 
-        <button className="btn gold big" disabled={!ready || !testReady} onClick={playBots}
-                aria-busy={starting?.kind === "bots" || undefined}>
-          {starting?.kind === "bots" ? STARTING_LABEL.bots : "Play vs bots"}
-        </button>
+        <FindGame ready={ready && testReady} onPlayBots={playBots} botsBusy={starting?.kind === "bots"} />
 
         <button className="btn primary big" disabled={!ready || !testReady} onClick={create}
                 aria-busy={starting?.kind === "create" || undefined}>

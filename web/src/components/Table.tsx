@@ -16,6 +16,7 @@ import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
 import type { Toast } from "../toast";
 import ToastView from "./ToastView";
+import MatchedNote from "../queue/MatchedNote";
 import { leadToFollow } from "../follow";
 
 const LAST_TRICK_MS = 1500;
@@ -416,6 +417,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   return (
     <div className={`table-screen phase-${state.phase}${showingLast ? " showing-last" : ""}${isYourTurnCue(state) ? " my-turn" : ""}`}>
       <Hud state={state} />
+      {state.matched ? <MatchedNote /> : null}
       <div className="felt">
         {opponents.map((p) => (
           <OpponentPanel key={p.seat} player={p} state={state} />

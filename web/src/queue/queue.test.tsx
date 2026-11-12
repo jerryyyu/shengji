@@ -332,6 +332,7 @@ describe("the ready check", () => {
 
   it("someone else missed it: back in the queue at the front, and you keep your place", async () => {
     await renderApp();
+    fakeClock();
     say(queued({ since: nowSecs() - 30 }));
     say(match());
     click(button("Accept"));

@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
-import { clock, partnerName, queue, useNow, useQueue } from "./store";
+import { partnerName, queue, useQueue } from "./store";
 import Sheet from "./Sheet";
 
 /** The ranked mark: a trophy. */
@@ -63,8 +63,6 @@ export function RankedSection({ online }: {
   const account = useAuth();
   const [signingIn, setSigningIn] = useState(false);
   const labelId = useId();
-  const cooling = q.cooldownUntil !== null && !q.queued;
-  const now = useNow(cooling, 250);
   if (account.status !== "in" && account.status !== "out") return null;
 
   let body;
@@ -76,13 +74,11 @@ export function RankedSection({ online }: {
       </button>
     );
   } else {
-    const coolLeft = cooling ? q.cooldownUntil! - now : 0;
     const pair = q.party && q.party.members.length === 2 ? q.party : null;
     const searching = q.queued || q.pending === "join";
     let label = "Play";
     let disabled = !online;
     if (searching) { label = "Searching…"; disabled = true; }
-    else if (coolLeft > 0) { label = `Queue again in ${clock(coolLeft, true)}`; disabled = true; }
     else if (pair && !pair.you_lead) disabled = true;
     body = (
       <>

@@ -324,6 +324,11 @@ class Room:
     ratings: Any = field(default=None, init=False, repr=False)
     # Built by the matchmaking queue rather than by a player's create_room.
     matched: bool = False
+    # The waiting table this matched room was formed from (its id; None for
+    # a game one entry started alone with bots) and how many people sat at
+    # it. Server-only: what an open-table offer reads to find bot seats.
+    waiting_table: str | None = field(default=None, repr=False)
+    table_humans: int = field(default=0, repr=False)
     # Per-decision clock for connected humans (MOVE_TIMER). On for ranked
     # rooms; a casual room keeps it off.
     move_timer: bool = False
@@ -2530,8 +2535,9 @@ async def _report_player(room: Room, me: Seat, account: int | None, msg: dict) -
 
 async def start_matched_room(match_id: str | None, slots: list,
                              conns: dict) -> str:
-    """Build, seat and start the room for a queue match (``match_id``) or a
-    ``queue_start_bots`` game (``None``). Slots arrive in seat order; every
+    """Build, seat and start the room for a waiting table (``match_id`` is
+    the table's id) or an entry that starts alone with bots (``None``).
+    Slots arrive in seat order; every
     human's socket is bound to its seat here, before anything awaits, so the
     socket's receive loop adopts the room on its next message.
 
@@ -2539,7 +2545,8 @@ async def start_matched_room(match_id: str | None, slots: list,
     registered, the room is unregistered and aborted, every attached seat is
     detached and every socket is back in the lobby with no adoption pending,
     before the error reaches the matchmaker that requeues these players."""
-    room = Room(code=new_code(), matched=True, move_timer=True)
+    room = Room(code=new_code(), matched=True, move_timer=True, waiting_table=match_id,
+                table_humans=sum(1 for slot in slots if slot.user_id is not None))
     rooms[room.code] = room
     attached: list[tuple[Seat, Any, int]] = []
     try:

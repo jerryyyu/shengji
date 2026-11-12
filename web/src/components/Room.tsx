@@ -61,11 +61,10 @@ function ActionSheet({ title, children, onClose }: {
 type Menu = { seat: number; player: RoomPlayer | null };
 
 /** The four seats around the table as the game draws it: you at the bottom,
- *  your partner across, the opponents left and right. The host rearranges
- *  people by dragging one seat onto another (touch or mouse); a tap opens the
- *  seat's actions, where "Swap seats" then a tap on another seat does the
- *  same by touch or keyboard. Only occupied seats swap: the room's seats fill
- *  in join order, so an empty seat has no place to leave behind. A drag
+ *  your partner across, the opponents left and right. The host moves people
+ *  by dragging a seat onto another, taken or empty (touch or mouse); a tap
+ *  opens the seat's actions, where "Swap seats" then a tap on another seat
+ *  does the same by touch or keyboard. A drag
  *  starts after SEAT_DRAG_START px, captures the pointer only then, and ends
  *  with nothing sent on a second touch, a pointercancel or a release away
  *  from every seat. */
@@ -83,12 +82,12 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
     conn.send({ type: "swap_seats", a, b });
     setSelected(null);
   };
-  /** The occupied seat (other than `from`) whose card is under the point. */
+  /** The seat (other than `from`, taken or empty) whose card is under the point. */
   const seatAt = (x: number, y: number, from: number): number | null => {
     const cards = clockRef.current?.querySelectorAll<HTMLElement>("[data-seat]") ?? [];
     for (const el of cards) {
       const seat = Number(el.dataset.seat);
-      if (seat === from || !occupied(seat)) continue;
+      if (seat === from) continue;
       const r = el.getBoundingClientRect();
       if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return seat;
     }
@@ -158,7 +157,7 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
   const onTap = (seat: number) => {
     const player = room.players.find((p) => p.seat === seat) ?? null;
     if (pick === null) setMenu({ seat, player });
-    else if (pick === seat || !player) setSelected(null);
+    else if (pick === seat) setSelected(null);
     else swap(pick, seat);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -195,7 +194,7 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
             `seat-card pos-${pos} team${team}${p ? "" : " empty"}` +
             `${pick === seat ? " selected" : ""}${isLifted ? " lifted" : ""}` +
             `${lifted && lifted.over === seat ? " drop-target" : ""}` +
-            `${pick !== null && pick !== seat && p ? " swap-target" : ""}`;
+            `${pick !== null && pick !== seat ? " swap-target" : ""}`;
           const caption = p
             ? [p.is_bot ? "Bot" : null, pos === "bottom" ? "You" : ROLE[pos],
                seat === room.host ? "Host" : null].filter(Boolean).join(" · ")
@@ -228,7 +227,7 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
               aria-label={label}
               aria-haspopup={pick === null ? "dialog" : undefined}
               aria-pressed={p ? pick === seat : undefined}
-              aria-describedby={p ? hintId : undefined}
+              aria-describedby={p || pick !== null ? hintId : undefined}
               onClick={() => onTap(seat)}
             >
               {body}

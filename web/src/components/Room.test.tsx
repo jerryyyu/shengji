@@ -164,13 +164,23 @@ describe("host drag", () => {
     expect(swaps()).toEqual([]);
   });
 
-  it("never drops on an empty seat", () => {
-    const a = centre(0);
+  it("drops on an empty seat, moving the person there", () => {
+    const a = centre(2);
     const e = centre(3);
-    pointer("pointerdown", card(0), a.x, a.y);
-    pointer("pointermove", card(0), e.x, e.y);
-    expect(card(3).className).not.toContain("drop-target");
+    pointer("pointerdown", card(2), a.x, a.y);
+    pointer("pointermove", card(2), e.x, e.y);
+    expect(card(3).className).toContain("drop-target");
     pointer("pointerup", card(3), e.x, e.y);
+    expect(swaps()).toEqual([{ type: "swap_seats", a: 2, b: 3 }]);
+  });
+
+  it("does not drag an empty seat", () => {
+    const e = centre(3);
+    const b = centre(2);
+    pointer("pointerdown", card(3), e.x, e.y);
+    pointer("pointermove", card(3), b.x, b.y);
+    expect(card(3).className).not.toContain("lifted");
+    pointer("pointerup", card(2), b.x, b.y);
     expect(swaps()).toEqual([]);
   });
 });
@@ -192,6 +202,16 @@ describe("tap to swap", () => {
     act(() => card(2).click());
     expect(swaps()).toEqual([{ type: "swap_seats", a: 1, b: 2 }]);
     expect(card(1).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("moves the chosen person into an empty seat", () => {
+    render(room());
+    act(() => card(2).click());
+    act(() => sheetButton("Swap seats")!.click());
+    expect(card(3).className).toContain("swap-target");
+    act(() => card(3).click());
+    expect(swaps()).toEqual([{ type: "swap_seats", a: 2, b: 3 }]);
+    expect(sheet()).toBeNull();
   });
 
   it("deselects on a second tap of the same seat or on Escape", () => {

@@ -1967,13 +1967,99 @@ def test_swap_moves_both_clients_and_the_host(client):
         assert len(srv.rooms[code].seats) == 3
 
 
-def test_swap_with_an_empty_seat_is_refused(client):
+def _names(room):
+    return [s.name if s is not None else None for s in room.seats]
+
+
+def _room_until(ws, pred):
+    st = _drain(ws, "room")
+    while not pred(st):
+        st = _drain(ws, "room")
+    return st
+
+
+def test_two_players_move_the_second_into_the_partner_seat(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        code = _host_and_guest(client, a, b)
+        a.send_json({"type": "swap_seats", "a": 1, "b": 2})
+        st = _room_until(b, lambda m: m["you"] == 2)
+        assert [p["seat"] for p in st["players"]] == [0, 2]
+        assert _names(srv.rooms[code]) == ["jerry", None, "james"]
+        # and back out to an end seat: the list keeps no trailing empties
+        a.send_json({"type": "swap_seats", "a": 2, "b": 3})
+        _room_until(b, lambda m: m["you"] == 3)
+        assert _names(srv.rooms[code]) == ["jerry", None, None, "james"]
+        a.send_json({"type": "swap_seats", "a": 3, "b": 1})
+        _room_until(b, lambda m: m["you"] == 1)
+        assert _names(srv.rooms[code]) == ["jerry", "james"]
+
+
+def test_swapping_two_empty_seats_is_refused(client):
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        _host_and_guest(client, a, b)
+        a.send_json({"type": "swap_seats", "a": 2, "b": 3})
+        assert _drain(a, "error")["message"] == "Both seats are empty."
+
+
+def test_join_fills_the_lowest_empty_seat(client):
     from shengji.api import server as srv
     with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
         code = _host_and_guest(client, a, b)
         a.send_json({"type": "swap_seats", "a": 1, "b": 3})
-        assert "taken" in _drain(a, "error")["message"]
-        assert [s.name for s in srv.rooms[code].seats] == ["jerry", "james"]
+        _room_until(b, lambda m: m["you"] == 3)
+        with client.websocket_connect("/ws") as c:
+            c.send_json({"type": "join_room", "room": code, "name": "amy"})
+            assert _drain(c, "room")["you"] == 1
+            with client.websocket_connect("/ws") as d:
+                d.send_json({"type": "join_room", "room": code, "name": "ben"})
+                assert _drain(d, "room")["you"] == 2
+        assert _names(srv.rooms[code])[:2] == ["jerry", "amy"]
+
+
+def test_start_fills_gaps_with_bots_in_those_seats(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        code = _host_and_guest(client, a, b)
+        a.send_json({"type": "swap_seats", "a": 1, "b": 2})
+        _room_until(b, lambda m: m["you"] == 2)
+        a.send_json({"type": "start_game"})
+        st = _drain(b, "state", tries=60)
+        assert st["you"] == 2
+        room = srv.rooms[code]
+        assert len(room.seats) == 4 and all(s is not None for s in room.seats)
+        assert [s.is_bot for s in room.seats] == [False, True, False, True]
+        assert [s.name for s in room.seats] == ["jerry", "Bot 1", "james", "Bot 3"]
+
+
+def test_resume_after_a_move_keeps_the_moved_seat(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a:
+        with client.websocket_connect("/ws") as b:
+            code = _host_and_guest(client, a, b)
+            a.send_json({"type": "swap_seats", "a": 1, "b": 2})
+            _room_until(b, lambda m: m["you"] == 2)
+            token = srv.rooms[code].seats[2].token
+        with client.websocket_connect("/ws") as again:
+            again.send_json({"type": "join_room", "room": code, "name": "whoever", "token": token})
+            assert _drain(again, "room")["you"] == 2
+        assert _names(srv.rooms[code]) == ["jerry", None, "james"]
+
+
+def test_a_room_with_a_gap_keeps_the_existing_payloads(client):
+    """Clients that predate empty seats read players and room_seats by each
+    entry's seat number; a gap is simply a seat with no entry, as an unfilled
+    seat at the end always was."""
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        code = _host_and_guest(client, a, b)
+        a.send_json({"type": "swap_seats", "a": 1, "b": 2})
+        st = _room_until(a, lambda m: [p["seat"] for p in m["players"]] == [0, 2])
+        assert set(st) >= {"type", "room", "you", "host", "start_level", "ready", "players"}
+        assert all(set(p) == {"seat", "name", "is_bot", "connected"} for p in st["players"])
+        with client.websocket_connect("/ws") as c:
+            c.send_json({"type": "peek_room", "room": code})
+            seats = _drain(c, "room_seats")["seats"]
+        assert [(x["seat"], x["name"], x["team"]) for x in seats] == [(0, "jerry", 0), (2, "james", 0)]
 
 
 def test_non_host_cannot_swap(client):
@@ -2021,23 +2107,22 @@ def test_host_removes_a_guest(client):
         a.send_json({"type": "remove_player", "seat": 1})
         left = _drain(b, "left")
         assert left["reason"] == "removed" and "removed" in left["message"]
-        assert [s.name for s in room.seats] == ["jerry", "amy"]
+        # the middle seat empties; amy does not shift
+        assert _names(room) == ["jerry", None, "amy"]
         assert room.host == 0
-        st = _drain(c, "room")
-        while len(st["players"]) != 2:
-            st = _drain(c, "room")
-        assert st["you"] == 1
+        st = _room_until(c, lambda m: len(m["players"]) == 2)
+        assert st["you"] == 2
         # The removed socket is back in the lobby: a room action is refused
         # as from a lobby socket, not applied to the room.
         b.send_json({"type": "add_bot"})
         assert _drain(b, "error")["message"] == "Join a room first."
-        assert len(room.seats) == 2
+        assert _names(room) == ["jerry", None, "amy"]
         # Its old token reclaims nothing: a join with it is a new arrival.
         with client.websocket_connect("/ws") as again:
             again.send_json({"type": "join_room", "room": code, "name": "james", "token": token})
             st = _drain(again, "room")
-            assert st["you"] == 2
-            assert room.seats[2].token != token
+            assert st["you"] == 1
+            assert room.seats[1].token != token
         assert all(s.token != token for s in room.seats)
 
 
@@ -2049,10 +2134,10 @@ def test_host_removes_a_signed_in_player(client):
         room.seats[1].user_id = 4242
         a.send_json({"type": "remove_player", "seat": 1})
         assert _drain(b, "left")["reason"] == "removed"
-        assert [s.user_id for s in room.seats] == [None]
+        assert [s.user_id if s else "empty" for s in room.seats] == [None]
 
 
-def test_removing_a_seat_before_the_host_keeps_the_host(client):
+def test_removing_a_seat_beside_the_host_keeps_the_host(client):
     from shengji.api import server as srv
     with (client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b,
           client.websocket_connect("/ws") as c):
@@ -2064,11 +2149,9 @@ def test_removing_a_seat_before_the_host_keeps_the_host(client):
             st = _drain(a, "room")
         a.send_json({"type": "remove_player", "seat": 1})
         _drain(b, "left")
-        st = _drain(a, "room")
-        while len(st["players"]) != 2:
-            st = _drain(a, "room")
-        assert st["you"] == st["host"] == 1
-        assert room.seats[room.host].name == "jerry"
+        st = _room_until(a, lambda m: len(m["players"]) == 2)
+        assert st["you"] == st["host"] == 2
+        assert _names(room) == ["amy", None, "jerry"]
 
 
 def test_non_host_cannot_remove(client):
@@ -2109,3 +2192,25 @@ def test_start_fills_empty_seats_with_bots(client):
         room = srv.rooms[code]
         assert [s.is_bot for s in room.seats] == [False, False, True, True]
         assert room.game is not None
+
+
+def test_a_lobby_leave_empties_the_seat_without_shifting(client):
+    from shengji.api import server as srv
+    with (client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b,
+          client.websocket_connect("/ws") as c):
+        code = _host_guest_and_third(client, a, b, c)
+        room = srv.rooms[code]
+        b.send_json({"type": "leave_room"})
+        _drain(b, "left")
+        st = _room_until(c, lambda m: len(m["players"]) == 2)
+        assert st["you"] == 2 and st["host"] == 0
+        assert _names(room) == ["jerry", None, "amy"]
+        # the host leaving hands the room to the first person left
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left")
+        st = _room_until(c, lambda m: len(m["players"]) == 1)
+        assert st["you"] == st["host"] == 2
+        assert _names(room) == [None, None, "amy"]
+        c.send_json({"type": "add_bot"})
+        st = _room_until(c, lambda m: len(m["players"]) == 2)
+        assert [p["seat"] for p in st["players"]] == [0, 2]

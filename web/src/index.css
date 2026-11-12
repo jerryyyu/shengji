@@ -475,6 +475,11 @@ textarea:focus-visible {
   height: 0;
 }
 
+/* above every played card (their z-index tops out at 20 for the winner) */
+.lp-chip {
+  z-index: 30;
+}
+
 .lp-fan-card {
   position: absolute;
   left: 0;

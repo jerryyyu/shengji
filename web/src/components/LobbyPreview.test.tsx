@@ -5,6 +5,9 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LobbyPreview, { FRAMES, STILL, TRICKS } from "./LobbyPreview";
+import { winTagAt, SEATS, PAIR_GAP } from "./LobbyPreview";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -147,3 +150,33 @@ describe("the lobby preview", () => {
     expect(box().innerHTML).toBe(html);
   });
 });
+
+describe("the preview's win tag", () => {
+  // stage units: a card is 104 x 146; the tag is at most 90 x 28
+  const box = (x: number, y: number, w: number, h: number) => ({ x0: x - w / 2, x1: x + w / 2, y0: y - h / 2, y1: y + h / 2 });
+  const overlaps = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) =>
+    a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  const seats = ["bottom", "left", "top", "right"] as const;
+
+  it("sits under the winner and clear of every other seat's cards, single or pair", () => {
+    for (const winner of seats) {
+      const t = winTagAt(winner);
+      expect(t.x).toBe(SEATS[winner].play.x);
+      expect(t.y).toBeGreaterThan(SEATS[winner].play.y + 73);
+      const tag = box(t.x, t.y, 90, 28);
+      for (const other of seats) {
+        if (other === winner) continue;
+        for (const off of [0, -PAIR_GAP / 2, PAIR_GAP / 2]) {
+          const p = SEATS[other].play;
+          expect(overlaps(tag, box(p.x + off, p.y, 104, 146)), `${winner} tag vs ${other}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("is layered above the played cards", () => {
+    const css = readFileSync(join(__dirname, "..", "index.css"), "utf8");
+    expect(css).toMatch(/\.lp-chip \{\s*z-index: 30;/);
+  });
+});
+

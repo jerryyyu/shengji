@@ -20,14 +20,16 @@ type Seat = "bottom" | "left" | "top" | "right";
 interface Point { x: number; y: number; r: number }
 
 // Where each hand sits (partly off the edge) and where its plays land.
-const SEATS: Record<Seat, { pile: Point; play: Point }> = {
+export const SEATS: Record<Seat, { pile: Point; play: Point }> = {
   bottom: { pile: { x: 600, y: 668, r: 0 }, play: { x: 600, y: 410, r: -2 } },
   left: { pile: { x: -34, y: 315, r: 90 }, play: { x: 428, y: 318, r: -5 } },
   top: { pile: { x: 600, y: -38, r: 180 }, play: { x: 600, y: 222, r: 3 } },
   right: { pile: { x: 1234, y: 315, r: -90 }, play: { x: 772, y: 318, r: 5 } },
 };
 const SEAT_ORDER: Seat[] = ["bottom", "left", "top", "right"];
-const PAIR_GAP = 58;
+export const PAIR_GAP = 58;
+// card centre to tag centre: half a card (73) plus a small gap
+const WIN_TAG_DROP = 92;
 const FAN = 7;
 
 interface Trick { order: Seat[]; cards: Record<Seat, string[]>; winner: Seat }
@@ -99,6 +101,12 @@ function Hands() {
   );
 }
 
+/** Where the win tag is centred: under the middle of the winner's play. */
+export function winTagAt(winner: Seat): Point {
+  const p = SEATS[winner].play;
+  return { x: p.x, y: p.y + WIN_TAG_DROP, r: 0 };
+}
+
 function PlayedCard({ code, seat, i, n, order, f, winner }: {
   code: string; seat: Seat; i: number; n: number; order: number; f: PreviewState; winner: Seat;
 }) {
@@ -140,11 +148,9 @@ function PlayedCard({ code, seat, i, n, order, f, winner }: {
 
 function Scene({ f }: { f: PreviewState }) {
   const trick = TRICKS[f.trick];
-  const winCards = trick.cards[trick.winner];
-  const ws = SEATS[trick.winner];
-  const last = (winCards.length - 1) / 2 * PAIR_GAP;
-  const rad = (ws.play.r * Math.PI) / 180;
-  const chip = { x: ws.play.x + last * Math.cos(rad) + 34, y: ws.play.y + last * Math.sin(rad) + 92 };
+  // The win tag sits centred just under the winning cards, as on the table,
+  // so it never reaches into a neighbouring seat's play.
+  const chip = winTagAt(trick.winner);
   return (
     <div className="lp-stage" data-phase={f.phase}>
       <Hands />

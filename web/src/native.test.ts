@@ -1,5 +1,11 @@
+/// <reference types="node" />
 import { afterEach, describe, expect, it } from "vitest";
-import { haptic, hapticCall, hideSplash, isNative, isPhone, lockFor, resetNativeForTests } from "./native";
+import { readFileSync } from "node:fs";
+import { TAB_TOP_EVENT } from "./home/session";
+import {
+  KEYBOARD_OPEN_CLASS, STATUS_TAP_EVENT, haptic, hapticCall, hideSplash, isNative, isPhone, lockFor,
+  resetNativeForTests, setBackGesture, setGameMode, startShell,
+} from "./native";
 
 type Calls = [string, string, unknown][];
 
@@ -30,8 +36,122 @@ describe("native bridge", () => {
     expect(isNative()).toBe(false);
     expect(await isPhone()).toBe(false);
     await lockFor("game");
-    haptic("play");
+    haptic("turn");
     hideSplash();   // nothing to call, nothing thrown
+    await setGameMode(true);
+    startShell();
+    window.dispatchEvent(new Event("keyboardWillShow"));
+    expect(document.body.classList.contains(KEYBOARD_OPEN_CLASS)).toBe(false);
+    let tops = 0;
+    const onTop = () => { tops += 1; };
+    window.addEventListener(TAB_TOP_EVENT, onTop);
+    window.dispatchEvent(new Event(STATUS_TAP_EVENT));
+    window.removeEventListener(TAB_TOP_EVENT, onTop);
+    expect(tops).toBe(0);
+  });
+
+  it("turns game mode on and off through the shell and SystemBars, only when it changes", async () => {
+    const calls = fakeShell("pad");
+    await setGameMode(true);
+    await setGameMode(true);
+    await setGameMode(false);
+    expect(calls).toEqual([
+      ["ShengjiShell", "setGameMode", { on: true }],
+      ["SystemBars", "hide", { bar: "NavigationBar" }],
+      ["ShengjiShell", "setGameMode", { on: false }],
+      ["SystemBars", "show", { bar: "NavigationBar" }],
+    ]);
+  });
+
+  it("hides the keyboard accessory bar once at startup", () => {
+    const calls = fakeShell("phone");
+    startShell();
+    startShell();
+    expect(calls).toEqual([["Keyboard", "setAccessoryBarVisible", { isVisible: false }]]);
+  });
+
+  it("hides the tab bar while the keyboard is up", () => {
+    // jsdom's URL is not node's, so the path is built from the directory
+    const css = readFileSync(`${import.meta.dirname}/index.css`, "utf8");
+    // the page follows the shrunken WebView, not 100dvh, while the keyboard is up
+    expect(css).toMatch(/body\.keyboard-open \.app \{ height: 100%; \}/);
+    const rule = css.match(/body\.keyboard-open \.tabbar \{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    const style = document.createElement("style");
+    style.textContent = rule![0];
+    document.head.appendChild(style);
+    const tabbar = document.createElement("nav");
+    tabbar.className = "tabbar";
+    document.body.appendChild(tabbar);
+    try {
+      fakeShell("phone");
+      startShell();
+      expect(getComputedStyle(tabbar).display).not.toBe("none");
+      window.dispatchEvent(new Event("keyboardWillShow"));
+      expect(document.body.classList.contains(KEYBOARD_OPEN_CLASS)).toBe(true);
+      expect(getComputedStyle(tabbar).display).toBe("none");
+      window.dispatchEvent(new Event("keyboardWillHide"));
+      expect(document.body.classList.contains(KEYBOARD_OPEN_CLASS)).toBe(false);
+      expect(getComputedStyle(tabbar).display).not.toBe("none");
+    } finally {
+      tabbar.remove();
+      style.remove();
+    }
+  });
+
+  it("brings the focused field into view when the keyboard shrinks the page", () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const scrolled: unknown[] = [];
+    input.scrollIntoView = (opts?: unknown) => { scrolled.push(opts); };
+    try {
+      fakeShell("phone");
+      startShell();
+      input.focus();
+      window.dispatchEvent(new Event("resize"));        // no keyboard: left alone
+      expect(scrolled).toEqual([]);
+      window.dispatchEvent(new Event("keyboardWillShow"));
+      window.dispatchEvent(new Event("resize"));
+      expect(scrolled).toEqual([{ block: "center" }]);
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("scrolls a scrolled screen without tab scroll memory (the Play lobby) to the top", () => {
+    const screen = document.createElement("div");
+    screen.className = "screen";
+    document.body.appendChild(screen);
+    const calls: unknown[] = [];
+    screen.scrollTo = ((opts: unknown) => { calls.push(opts); }) as typeof screen.scrollTo;
+    try {
+      fakeShell("phone");
+      startShell();
+      window.dispatchEvent(new Event(STATUS_TAP_EVENT));   // at the top already
+      expect(calls).toEqual([]);
+      Object.defineProperty(screen, "scrollTop", { value: 67, configurable: true });
+      window.dispatchEvent(new Event(STATUS_TAP_EVENT));
+      expect(calls).toEqual([{ top: 0, behavior: "smooth" }]);
+    } finally {
+      screen.remove();
+    }
+  });
+
+  it("scrolls the active tab to the top on a status-bar tap", () => {
+    fakeShell("phone");
+    startShell();
+    let tops = 0;
+    const onTop = () => { tops += 1; };
+    window.addEventListener(TAB_TOP_EVENT, onTop);
+    try {
+      window.dispatchEvent(new Event(STATUS_TAP_EVENT));
+      expect(tops).toBe(1);
+      resetNativeForTests();      // listeners come off with the shell
+      window.dispatchEvent(new Event(STATUS_TAP_EVENT));
+      expect(tops).toBe(1);
+    } finally {
+      window.removeEventListener(TAB_TOP_EVENT, onTop);
+    }
   });
 
   it("locks an iPhone: the table to both landscapes, the lobby to portrait", async () => {
@@ -45,6 +165,18 @@ describe("native bridge", () => {
     ]);
   });
 
+  it("sets the edge swipe back only when it changes, on any device", async () => {
+    await setBackGesture(false);    // a browser: nothing to call
+    const calls = fakeShell("pad");
+    await setBackGesture(true);
+    await setBackGesture(true);
+    await setBackGesture(false);
+    expect(calls).toEqual([
+      ["ShengjiShell", "setBackGesture", { enabled: true }],
+      ["ShengjiShell", "setBackGesture", { enabled: false }],
+    ]);
+  });
+
   it("never locks an iPad", async () => {
     const calls = fakeShell("pad");
     await lockFor("game");
@@ -53,10 +185,11 @@ describe("native bridge", () => {
   });
 
   it("maps each table event to a UIKit feedback style", async () => {
-    expect(hapticCall("play")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
-    expect(hapticCall("turn")).toEqual({ method: "impact", opts: { style: "MEDIUM" } });
+    expect(hapticCall("turn")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
     expect(hapticCall("declare")).toEqual({ method: "impact", opts: { style: "MEDIUM" } });
     expect(hapticCall("won")).toEqual({ method: "notification", opts: { type: "SUCCESS" } });
+    expect(hapticCall("error")).toEqual({ method: "notification", opts: { type: "ERROR" } });
+    expect(hapticCall("sheet")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
     const calls = fakeShell("phone");
     haptic("select");
     await flush();

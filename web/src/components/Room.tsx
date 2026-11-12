@@ -3,6 +3,7 @@ import type { Rank, RoomMsg } from "../protocol";
 import { RANKS } from "../protocol";
 import { conn } from "../ws";
 import MuteButton from "./MuteButton";
+import { codeLink } from "../codes";
 
 export default function Room({ room }: { room: RoomMsg }) {
   const [copied, setCopied] = useState(false);
@@ -12,7 +13,7 @@ export default function Room({ room }: { room: RoomMsg }) {
 
   const copyCode = () => {
     navigator.clipboard
-      .writeText(`${window.location.origin}/?room=${room.room}`)   // invite LINK, not just the code
+      .writeText(codeLink(room.room))   // invite LINK, not just the code
       .then(() => {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1200);
@@ -26,7 +27,10 @@ export default function Room({ room }: { room: RoomMsg }) {
     <div className="screen room-screen">
       <div className="panel room-panel">
         <MuteButton />
-        <div className="room-code-label">Room code — click to copy invite link</div>
+        <div className="room-code-label">
+          <span className="copy-click">Room code — click to copy invite link</span>
+          <span className="copy-tap">Tap to copy invite link</span>
+        </div>
         <button className="room-code" onClick={copyCode} title="Copy room code">
           {room.room}
           <span className={`copied-tag${copied ? " show" : ""}`}>Copied!</span>

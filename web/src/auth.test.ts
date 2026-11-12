@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  auth, checkDisplayName, effectiveName, fetchAuthConfig, fetchMe, firstName, loadGis, loginWithGoogle,
-  logout, NameRejected, newNonce, updateDisplayName,
+  auth, checkDisplayName, effectiveName, fetchAuthConfig, fetchMe, firstName, loadGis, loginWithApple,
+  loginWithGoogle, logout, NameRejected, newNonce, sha256Hex, updateDisplayName,
 } from "./auth";
 
 const { reconnect } = vi.hoisted(() => ({ reconnect: vi.fn() }));
@@ -86,6 +86,26 @@ describe("the API wrappers", () => {
     await expect(loginWithGoogle("tok", "n1")).rejects.toThrow("bad_audience");
     routes.set("POST /api/auth/google", { status: 404 });
     await expect(loginWithGoogle("tok", "n1")).rejects.toThrow("404");
+  });
+  it("Apple login posts the token, raw nonce, code and first-sign-in name; a refusal throws", async () => {
+    routes.set("POST /api/auth/apple", { status: 200, body: {
+      name: "Ann Lee", email: "r@privaterelay.appleid.com", picture: null, display_name: null, name_shown: "Ann" } });
+    const user = await loginWithApple({
+      identityToken: "apple.jwt", nonce: "raw-n", authorizationCode: "code-1", givenName: "Ann", familyName: "Lee",
+    });
+    expect(user.name_shown).toBe("Ann");
+    const post = calls.find((c) => c.url === "/api/auth/apple")!;
+    expect(post.init?.credentials).toBe("same-origin");
+    expect(JSON.parse(post.init!.body as string)).toEqual({
+      identity_token: "apple.jwt", nonce: "raw-n", authorization_code: "code-1", given_name: "Ann", family_name: "Lee",
+    });
+    routes.set("POST /api/auth/apple", { status: 401, body: { detail: "Sign-in rejected (nonce)." } });
+    await expect(loginWithApple({
+      identityToken: "t", nonce: "n", authorizationCode: null, givenName: null, familyName: null,
+    })).rejects.toThrow("nonce");
+  });
+  it("sha256Hex is the lowercase hex digest", async () => {
+    expect(await sha256Hex("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   });
 });
 

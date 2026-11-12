@@ -137,8 +137,8 @@ textarea:focus-visible {
     max(12px, env(safe-area-inset-right, 0px))
     max(12px, env(safe-area-inset-bottom, 0px))
     max(12px, env(safe-area-inset-left, 0px));
-  background:
-    radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+  /* the redesign's charcoal page; the felt is only for the table itself */
+  background: var(--page);
 }
 
 .panel {
@@ -5094,3 +5094,47 @@ button[role="switch"]:active .ios-switch {
   .hud-menu.pop-out,
   .chat-panel.pop-out { animation: none; }
 }
+
+/* A saved game's row: the row opens the game; Continue and Replay sit at its
+   end, or on a line of their own when the row is too narrow for both. */
+.games-day-item { display: flex; flex-wrap: wrap; align-items: center; }
+.games-day-item > .games-day-row { flex: 1 1 240px; width: auto; min-width: 0; }
+.games-row-actions { display: flex; gap: 8px; margin-left: auto; padding: 0 16px 10px; }
+@media (min-width: 700px) {
+  .games-row-actions { padding: 0 16px 0 0; }
+}
+.games-row-actions .btn { min-height: 36px; padding: 6px 14px; font-size: var(--fs-13); }
+.games-actions { display: flex; gap: 10px; }
+.games-actions .btn { flex: 1; min-height: 44px; }
+
+/* My games and the replay on the redesign's charcoal: a top-aligned column
+   with grouped surfaces, no card; the replay's felt stays green. */
+.screen.games-screen { background: var(--page); align-items: flex-start; }
+.games-screen > .panel {
+  margin: 0 auto;
+  width: 560px;
+  max-width: 100%;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 16px 4px;
+}
+.games-screen .games-row.static,
+.games-screen .games-round,
+.games-screen .replay-result,
+.games-screen .replay-seat,
+.games-screen .replay-info .chip,
+.games-screen .replay-jump {
+  background: var(--grp);
+  border-color: var(--grp-edge);
+}
+.games-screen .replay-result.won { border-color: var(--gold); }
+.games-screen .replay-seat.team0 { border-left-color: var(--team0); }
+.games-screen .replay-seat.team1 { border-left-color: var(--team1); }
+.games-screen .replay-seat.on-turn { border-color: var(--gold); }
+.games-screen .btn.subtle:not(.games-back) {
+  background: var(--grp);
+  border-color: var(--grp-edge);
+}
+.games-screen .btn.subtle:not(.games-back):disabled { opacity: 0.45; }

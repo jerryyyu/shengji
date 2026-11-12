@@ -27,6 +27,10 @@ export type ClientMsg =
       /** Experimental W32 is available only through the guarded lobby UI. */
       test_policy?: "w32";
       test_access_key?: string;
+      /** Continue this saved game of the signed-in account: the room is made
+       *  with the account in its saved seat and bots in the other three, and
+       *  starts at that game's last levels with its next banker. */
+      resume_from?: string;
     }
   | { type: "add_bot" }
   /** Host only, before the game starts: the rank both teams begin at. */
@@ -231,6 +235,7 @@ export type ErrorCode =
   | "seat_reserved"
   | "test_room_unavailable"
   | "bad_start_level"
+  | "resume_unavailable"
   | "stale_connection";
 
 /** "human" — a connected person; "bot" — a permanent bot seat;

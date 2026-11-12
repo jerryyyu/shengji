@@ -93,7 +93,7 @@ describe("the games list", () => {
     expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("Room ABCD · with Bot 1, Bea, Bot 3");
     expect(rows[0].textContent).toContain("3 rounds");
     expect(rows[0].textContent).toContain("Levels 5–3");
-    expect(rows[0].querySelector(".games-replay")?.textContent).toBe("Replay");
+    expect(rows[0].parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
     expect(rows[0].querySelector(".games-tag")).toBeNull();
     // seat 1: the others are seats 2, 3 and 0
     expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("Room ABCD · with Bea, Bot 3, Ana");

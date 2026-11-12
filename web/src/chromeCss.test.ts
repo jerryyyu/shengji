@@ -124,3 +124,48 @@ describe("home touch targets", () => {
     expect(px(decls(".topbar-menu button"), "min-height")).toBeGreaterThanOrEqual(44);
   });
 });
+
+describe("the charcoal page", () => {
+  /** Every rule as [selector, body], media blocks included. */
+  const rules = (): [string, string][] => {
+    const out: [string, string][] = [];
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    for (let m = re.exec(css); m; m = re.exec(css)) {
+      out.push([m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/\s+/g, " "), m[2]]);
+    }
+    return out;
+  };
+
+  it("is the redesign's charcoal token", () => {
+    expect(css).toMatch(/--page: #1b1f27;/);
+    expect(decls(".home")).toMatch(/background: var\(--page\)/);
+  });
+
+  it("is every screen's ground at every width, the replay and saved games included", () => {
+    expect(decls(".screen")).toMatch(/background: var\(--page\);/);
+    expect(decls(".screen")).not.toMatch(/--felt/);
+    expect(decls(".screen.games-screen")).toMatch(/background: var\(--page\);/);
+    expect(decls(".games-screen > .panel")).toMatch(/background: none;/);
+  });
+
+  it("leaves no lobby, room, games, how-to or info screen on the felt", () => {
+    const pages = /(^|[\s,])\.(screen|lobby-screen|room-screen|games-screen|howto-screen|info-screen|home|home-body|home-wide)\b/;
+    for (const [selector, body] of rules()) {
+      if (!pages.test(selector) || /table-screen/.test(selector)) continue;
+      expect(body, selector).not.toMatch(/background[^;]*--felt/);
+    }
+  });
+
+  it("keeps the felt for the table itself, the replay's table and the lobby preview", () => {
+    expect(decls(".felt")).toMatch(/var\(--felt-1\)/);
+    expect(decls(".replay-felt")).toMatch(/var\(--felt-1\)/);
+    expect(decls(".lobby-preview")).toMatch(/var\(--felt-1\)/);
+  });
+
+  it("draws the replay's chrome on the grouped surface, not the old dark card", () => {
+    const chrome = rules().find(([s]) => s.startsWith(".games-screen .games-row.static,"));
+    expect(chrome?.[0]).toContain(".games-screen .replay-seat");
+    expect(chrome?.[0]).toContain(".games-screen .replay-jump");
+    expect(chrome?.[1]).toMatch(/background: var\(--grp\);/);
+  });
+});

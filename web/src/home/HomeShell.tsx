@@ -6,13 +6,11 @@ import { openInfoPage } from "../support/route";
 import type { AuthUser } from "../auth";
 import { useMediaQuery } from "../phoneLayout";
 import { useMenuKeys } from "../useMenuKeys";
-import { openNameEditor, openTab } from "./route";
+import { WIDE, openNameEditor, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
-import type { Tab } from "./route";
+import type { MeSection, Tab } from "./route";
 
-/** At this width and up (an iPad either way round, a desktop window) the
- *  tabs sit in a top bar; below it, a phone's bottom tab bar. */
-export const WIDE = "(min-width: 700px)";
+export { WIDE };
 
 /** The account's picture, or its initial on a plain disc. */
 export function Avatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "lg" }) {
@@ -81,13 +79,13 @@ export function TabBar({ active }: { active: Tab }) {
   );
 }
 
-/** The top bar's account chip and its menu: Me, Edit name, How to play,
- *  Privacy, Support and Sign out.
+/** The top bar's account chip and its menu: Edit name, How to play,
+ *  Privacy, Support and Sign out (Stats and Games are tabs beside it).
  *
  *  Keyboard: opening moves focus to the first row (ArrowUp on the closed chip
  *  to the last), the arrows, Home and End move between rows, and Escape
  *  closes the menu and returns focus to the chip. Tabbing out closes it. */
-function AccountMenu({ user, active }: { user: AuthUser; active: boolean }) {
+function AccountMenu({ user }: { user: AuthUser }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
@@ -121,7 +119,7 @@ function AccountMenu({ user, active }: { user: AuthUser; active: boolean }) {
   return (
     <div className="topbar-menu-box" ref={box}
          onBlur={(e) => { if (open && e.relatedTarget && !box.current?.contains(e.relatedTarget as Node)) setOpen(false); }}>
-      <button ref={trigger} type="button" className={`topbar-account${active ? " on" : ""}`} aria-haspopup="menu"
+      <button ref={trigger} type="button" className="topbar-account" aria-haspopup="menu"
               aria-expanded={open} onClick={() => { if (open) setOpen(false); else show("first"); }}
               onKeyDown={(e) => {
                 if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
@@ -134,14 +132,13 @@ function AccountMenu({ user, active }: { user: AuthUser; active: boolean }) {
       </button>
       {open ? (
         <div className="topbar-menu" role="menu" aria-label="Account" ref={menu} onKeyDown={onKeyDown}>
-          <button type="button" role="menuitem" onClick={pick(() => openTab("me"))}>Me</button>
           <button type="button" role="menuitem" onClick={pick(openNameEditor)}>Edit name</button>
           <hr />
           <button type="button" role="menuitem" onClick={pick(() => openHowto())}>How to play</button>
           <button type="button" role="menuitem" onClick={pick(() => openInfoPage("privacy"))}>Privacy</button>
           <button type="button" role="menuitem" onClick={pick(() => openInfoPage("support"))}>Support</button>
           <hr />
-          <button type="button" role="menuitem" onClick={pick(() => { auth.signOut().catch(() => openTab("me")); })}>
+          <button type="button" role="menuitem" onClick={pick(() => { auth.signOut().catch(() => openTab("me", "stats")); })}>
             Sign out
           </button>
         </div>
@@ -150,34 +147,42 @@ function AccountMenu({ user, active }: { user: AuthUser; active: boolean }) {
   );
 }
 
-/** The wide layout's top bar: the wordmark, Play and Leaderboard, and the
- *  account (or Sign in) at the end, which opens Me. */
-export function TopBar({ active }: { active: Tab }) {
+/** The wide layout's four tabs: Me's two sections are tabs of their own. */
+const WIDE_TABS: { tab: Tab; section?: MeSection; label: string }[] = [
+  { tab: "play", label: "Play" },
+  { tab: "leaderboard", label: "Leaderboard" },
+  { tab: "me", section: "stats", label: "Stats" },
+  { tab: "me", section: "games", label: "Games" },
+];
+
+/** The wide layout's top bar: the wordmark, Play, Leaderboard, Stats and
+ *  Games, and the account's menu (or Sign in) at the end. */
+export function TopBar({ active, section = "stats" }: { active: Tab; section?: MeSection }) {
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
   let end: ReactNode = null;
   if (user) {
-    end = <AccountMenu user={user} active={active === "me"} />;
+    end = <AccountMenu user={user} />;
   } else if (account.status === "out") {
     end = (
-      <button type="button" className="btn topbar-signin" onClick={() => openTab("me")}>Sign in</button>
-    );
-  } else if (account.status === "off") {
-    end = (
-      <button type="button" className={`topbar-tab${active === "me" ? " on" : ""}`}
-              aria-current={active === "me" ? "page" : undefined} onClick={() => goTab("me", active)}>Me</button>
+      <button type="button" className="btn topbar-signin" onClick={() => openTab("me", "stats")}>Sign in</button>
     );
   }
+  const on = (t: (typeof WIDE_TABS)[number]) => t.tab === active && (t.tab !== "me" || t.section === section);
+  const go = (t: (typeof WIDE_TABS)[number]) => {
+    if (on(t)) scrollActiveTabToTop();
+    else openTab(t.tab, t.section);
+  };
   return (
     <header className="topbar">
       <button type="button" className="topbar-mark" aria-label="Sheng Ji: Play" onClick={() => openTab("play")}>
         <b>升级</b><span>Sheng Ji</span>
       </button>
       <nav className="topbar-tabs" aria-label="Main">
-        {TABS.filter((t) => t.tab !== "me").map(({ tab, label }) => (
-          <button key={tab} type="button" className={`topbar-tab${tab === active ? " on" : ""}`}
-                  aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
-            {label}
+        {WIDE_TABS.map((t) => (
+          <button key={t.label} type="button" className={`topbar-tab${on(t) ? " on" : ""}`}
+                  aria-current={on(t) ? "page" : undefined} onClick={() => go(t)}>
+            {t.label}
           </button>
         ))}
       </nav>
@@ -189,11 +194,13 @@ export function TopBar({ active }: { active: Tab }) {
 /** The home screen's frame: the active tab's page with the tabs above it
  *  (wide) or below it (a phone). A game, a replay and How to play are drawn
  *  without it. */
-export default function HomeShell({ active, children }: { active: Tab; children: ReactNode }) {
+export default function HomeShell({ active, section, children }: {
+  active: Tab; section?: MeSection; children: ReactNode;
+}) {
   const wide = useMediaQuery(WIDE);
   return (
     <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
-      {wide ? <TopBar active={active} /> : null}
+      {wide ? <TopBar active={active} section={section} /> : null}
       <div className="home-body">{children}</div>
       {wide ? null : <TabBar active={active} />}
     </div>

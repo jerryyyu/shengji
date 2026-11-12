@@ -26,6 +26,7 @@ import { usePhoneLayout } from "./phoneLayout";
 import { TOAST_MS, makeToast } from "./toast";
 import type { Toast } from "./toast";
 import ToastView from "./components/ToastView";
+import QueueLayer from "./queue/QueueLayer";
 
 // Offline play (no game server): its lobby and badge load with the local server.
 const OfflineLobby = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineLobby })));
@@ -251,6 +252,7 @@ export default function App() {
         </div>
       ) : null}
       {toast && inRoom && !atTable ? <ToastView key={toast.id} toast={toast} /> : null}
+      <QueueLayer status={status} />
     </div>
   );
 }

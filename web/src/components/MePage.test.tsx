@@ -85,7 +85,7 @@ describe("signed in", () => {
     const tiles = [...host.querySelectorAll(".me-tile")].map((t) => t.textContent);
     expect(tiles).toEqual(["58%rounds won", "+0.41levels / round", "7best streak"]);
     expect(rowLabels()).toEqual(["Games won", "Rounds played", "Won as defenders", "Won as attackers",
-      "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy", "Support",
+      "Queue with a friend", "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy", "Support",
       "Sign out", "Delete account"]);
     expect(host.textContent).not.toContain("With a bot partner");
     expect(host.querySelector(".me-delete")?.className).toContain("destructive");
@@ -110,7 +110,7 @@ describe("signed in", () => {
 
   it("the account's settings and help rows sit under Games too, below the games", async () => {
     await render("games");
-    expect(rowLabels()).toEqual(["Show me on the leaderboard", "Edit name", "How to play", "Privacy policy",
+    expect(rowLabels()).toEqual(["Queue with a friend", "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy",
       "Support", "Sign out", "Delete account"]);
     const list = host.querySelector(".games-day-row")!;
     const settings = host.querySelector(".me-visible")!;

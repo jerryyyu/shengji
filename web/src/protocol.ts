@@ -2,6 +2,8 @@
 // Card codes: suited = suit letter (S H D C) + rank ("S2".."SA", "H10", ...);
 // jokers = "LJ" (little/black) and "BJ" (big/red).
 
+import type { QueueClientMsg, QueueErrorCode, QueueServerMsg } from "./queue/messages";
+
 export interface HandCard {
   id: number;
   code: string;
@@ -45,7 +47,8 @@ export type ClientMsg =
   | { type: "chat"; text: string }
   | { type: "peek_room"; room: string }
   | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
-  | { type: "leave_room" }; // anytime after joining; server replies {type:"left"}
+  | { type: "leave_room" } // anytime after joining; server replies {type:"left"}
+  | QueueClientMsg;
 
 // ---------- Server -> Client ----------
 
@@ -74,6 +77,8 @@ export interface RoomMsg {
   start_level: Rank;
   /** Present only for rooms explicitly created with the W32 test policy. */
   experimental_policy?: "w32";
+  /** Built by the matchmaking queue: a rated game between strangers. */
+  matched?: boolean;
 }
 
 export interface StatePlayer {
@@ -161,6 +166,8 @@ export interface GameState {
   you: number;
   /** Present only for rooms explicitly created with the W32 test policy. */
   experimental_policy?: "w32";
+  /** Built by the matchmaking queue: a rated game between strangers. */
+  matched?: boolean;
   phase: Phase;
   ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];
@@ -223,7 +230,8 @@ export type ServerMsg =
   | RoomSeats
   | ChatMsg
   | ChatHistory
-  | ResumeMsg;
+  | ResumeMsg
+  | QueueServerMsg;
 
 /** Every coded error the server can send. Keep in sync with server.py —
  *  an unlisted code silently falls through to a generic toast. */
@@ -236,7 +244,8 @@ export type ErrorCode =
   | "test_room_unavailable"
   | "bad_start_level"
   | "resume_unavailable"
-  | "stale_connection";
+  | "stale_connection"
+  | QueueErrorCode;
 
 /** "human" — a connected person; "bot" — a permanent bot seat;
  *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */

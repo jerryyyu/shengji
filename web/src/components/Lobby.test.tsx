@@ -38,6 +38,7 @@ vi.mock("../auth", async (importOriginal) => {
 });
 
 import Lobby from "./Lobby";
+import { queue } from "../queue/store";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -52,6 +53,7 @@ const nameInput = () => host.querySelector<HTMLInputElement>("input[autocomplete
 
 beforeEach(() => {
   sent.length = 0;
+  queue.reset();
   localStorage.clear();
   gis.initialize.mockClear();
   gis.renderButton.mockClear();
@@ -85,7 +87,8 @@ describe("the lobby with sign-in OFF", () => {
     expect(gis.initialize).not.toHaveBeenCalled();
     expect(nameInput().value).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);   // a random name
     const labels = Array.from(host.querySelectorAll("button")).map((b) => b.textContent);
-    expect(labels).toContain("Play vs bots");
+    expect(labels).toContain("Find a game");
+    expect(labels).not.toContain("Play vs bots");
     expect(labels).toContain("Create room");
   });
   it("while loading, nothing about accounts shows either", async () => {
@@ -155,6 +158,13 @@ describe("the lobby with sign-in ON", () => {
 
 const rerender = () => act(async () => root.render(<Lobby status="open" error={null} onArmAutoFill={() => {}} />));
 const buttonNamed = (label: string) => Array.from(host.querySelectorAll("button")).find((b) => b.textContent === label)!;
+/** A guest's bots game: Find a game, then Play vs bots now in its sheet. */
+const playBots = () => {
+  act(() => buttonNamed("Find a game").click());
+  const now = [...document.querySelectorAll<HTMLButtonElement>(".q-sheet button")]
+    .find((b) => b.textContent?.startsWith("Play vs bots now"))!;
+  act(() => now.click());
+};
 const sentName = (k = 0) => (sent[k] as { name: string }).name;
 const isRandom = (v: string) => {
   const [adj, noun] = v.split(" ");
@@ -170,7 +180,7 @@ async function remount() {
 describe("signed in, the player plays under the account name", () => {
   const CAPTAIN = { ...JERRY, display_name: "Captain", name_shown: "Captain" };
 
-  it("shows no name field and no 'Save as my name'; Create and Play vs bots send the account name", async () => {
+  it("shows no name field and no 'Save as my name'; Create sends the account name; no Play vs bots", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await render();
     expect(nameInput()).toBeNull();
@@ -178,9 +188,12 @@ describe("signed in, the player plays under the account name", () => {
     expect(host.textContent).not.toContain("Your name");
     act(() => buttonNamed("Create room").click());
     answered();
-    act(() => buttonNamed("Play vs bots").click());
-    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["create_room", "create_room"]);
-    expect([sentName(0), sentName(1)]).toEqual(["Captain", "Captain"]);
+    expect(buttonNamed("Play vs bots")).toBeUndefined();
+    // signed in, Find a game asks Solo or With a friend; it sends nothing yet
+    act(() => buttonNamed("Find a game").click());
+    expect(queue.view.sheet).toBe("solo");
+    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["create_room"]);
+    expect(sentName(0)).toBe("Captain");
   });
 
   it("without a display name the first name is used, and a rename is followed at once", async () => {
@@ -231,7 +244,7 @@ describe("signed out, the guest names themselves", () => {
     await remount();
     expect(nameInput().value).toBe("Deuce");
     type(nameInput(), "Trey");
-    act(() => buttonNamed("Play vs bots").click());
+    playBots();
     expect(sentName()).toBe("Trey");
     expect(localStorage.getItem("shengji.name")).toBe("Trey");
   });
@@ -293,13 +306,13 @@ describe("signed out, the guest names themselves", () => {
     await render();
     type(nameInput(), "");
     expect(buttonNamed("Create room").disabled).toBe(false);
-    expect(buttonNamed("Play vs bots").disabled).toBe(false);
+    expect(buttonNamed("Find a game").disabled).toBe(false);
     act(() => buttonNamed("Create room").click());
     expect(isRandom(sentName())).toBe(true);
     expect(nameInput().value).toBe(sentName());          // the field shows the name it went with
     await remount();
     type(nameInput(), "   ");
-    act(() => buttonNamed("Play vs bots").click());
+    playBots();
     expect(isRandom(sentName())).toBe(true);
     expect(nameInput().value).toBe(sentName());
   });
@@ -410,10 +423,16 @@ describe("starting a game waits for the server", () => {
     await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
   }
 
-  for (const [start, busy] of [[/^Play vs bots$/, "Starting…"], [/^Create room$/, "Creating…"]] as const) {
+  beforeEach(() => { authState.current = { status: "off", clientId: null, user: null }; });
+  // a guest's bots game starts from the Find a game sheet
+  const tapStart = (start: RegExp) => {
+    if (start.source.includes("Find a game")) playBots();
+    else act(() => button(start).click());
+  };
+  for (const [start, busy] of [[/^Find a game$/, "Starting…"], [/^Create room$/, "Creating…"]] as const) {
     it(`${busy} shows at once, and a second tap sends nothing; an error allows a retry`, async () => {
       await render();
-      act(() => button(start).click());
+      tapStart(start);
       expect(sent).toHaveLength(1);
       const b = button(new RegExp(busy));
       expect(b.getAttribute("aria-busy")).toBe("true");
@@ -421,24 +440,24 @@ describe("starting a game waits for the server", () => {
       act(() => b.click());
       expect(sent).toHaveLength(1);
       // every other start waits too
-      expect(button(/^(Play vs bots|Create room)$/).disabled).toBe(true);
+      expect(button(/^(Find a game|Create room)$/).disabled).toBe(true);
       serverSays({ type: "error", code: "busy", message: "Server busy." });
       expect(button(start).disabled).toBe(false);
       expect(button(start).getAttribute("aria-busy")).toBeNull();
-      act(() => button(start).click());
+      tapStart(start);
       expect(sent).toHaveLength(2);
     });
   }
 
   it("a reconnect frees a start that was never answered, for a deliberate retry", async () => {
     await render();
-    act(() => button(/^Play vs bots$/).click());
+    playBots();
     expect(button(/Starting…/).disabled).toBe(true);
     await renderWith("closed");
     link.generation += 1;
     await renderWith("open");
-    expect(button(/^Play vs bots$/).disabled).toBe(false);
-    act(() => button(/^Play vs bots$/).click());
+    expect(button(/^Find a game$/).disabled).toBe(false);
+    playBots();
     expect(sent).toHaveLength(2);
     link.generation = 0;
   });

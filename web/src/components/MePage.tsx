@@ -15,6 +15,7 @@ import type { MeSection } from "../home/route";
 import GoogleSignIn from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
 import { SavedGames } from "./GamesList";
+import QueueFriendRow from "../queue/QueueFriendRow";
 
 const SECTIONS = [
   { value: "stats", label: "Stats" },
@@ -330,7 +331,12 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
         {wide ? null
           : <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />}
         {content}
-        {gamesTab ? null : <Settings user={user} stats={stats} statsKey={statsKey} />}
+        {gamesTab ? null : (
+          <>
+            <QueueFriendRow />
+            <Settings user={user} stats={stats} statsKey={statsKey} />
+          </>
+        )}
       </Fragment>
     );
   }

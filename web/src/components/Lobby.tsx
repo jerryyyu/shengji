@@ -386,6 +386,10 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
         </p>
 
+        <p className="howto-entry">
+          <a className="howto-link" href="?offline=1">Practice offline</a>
+        </p>
+
         {stalled ? (
           <div className={`conn-status ${status} stalled`} role="status">
             <span className="conn-dot" />

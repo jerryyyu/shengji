@@ -191,6 +191,8 @@ jobs:
           tests/test_heuristic_suit_groups.py
           tests/test_prepared_play_error_hook.py
           tests/test_engine_parity.py
+          tests/test_offline_fixture_gen.py
+          tests/test_offline_server_fixture_gen.py
           tests/test_action_semantics.py
           tests/test_game.py
           tests/test_memory.py
@@ -259,6 +261,8 @@ jobs:
           tests/test_benchmark_terminal.py
           tests/test_engine_parity.py
           tests/test_fast_parity.py
+          tests/test_offline_fixture_gen.py
+          tests/test_offline_server_fixture_gen.py
           tests/test_action_semantics.py
           tests/test_game.py
           tests/test_banker_sampler.py

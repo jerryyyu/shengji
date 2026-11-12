@@ -173,6 +173,9 @@ export class BotGate {
         },
         () => {
           this.inFlight = false;
+          // Rejection does not establish delivery. Settlement is idempotent,
+          // so replay this batch before any newer verdicts, even after timeout.
+          this.verdicts = [...(sent.settle ?? []), ...this.verdicts];
           if (settled) return;
           this.stats.error += 1;
           this.failures += 1;

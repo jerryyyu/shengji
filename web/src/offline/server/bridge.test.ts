@@ -234,7 +234,7 @@ describe("SmartBot takes over when the release bot cannot answer", () => {
     expect(remote!.requests.length).toBe(MAX_FAILURES);
     expect(server.remote!.stats.error).toBe(MAX_FAILURES);
     const verdicts = verdictsOf(remote!.requests, server);
-    expect(remote!.requests.map((r) => verdicts.get(r.token!)?.join())).toEqual(["false", "false", "false"]);
+    expect(remote!.requests.map((r) => verdicts.get(r.token!)?.join())).toEqual(["false,false,false", "false,false", "false"]);
     expect(frames.map(digest)).toEqual(want.map(digest));
   }, 60_000);
 

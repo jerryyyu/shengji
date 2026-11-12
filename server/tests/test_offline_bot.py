@@ -175,3 +175,20 @@ def test_served_bot_offline_matches_server(tmp_path):
         if out["cards"] != r["cards"] and not clock and not r["clock"]:
             unexplained.append((r["request"]["kind"], out["cards"], r["cards"]))
     assert len(records) > 100 and unexplained == []
+
+
+def test_replayed_commit_does_not_replace_a_later_pending_copy(mc_games):
+    records = [r for r in mc_games[0] if r["request"]["kind"] == "play"]
+    offline_bot.start_session(make_bot("mc", seed=BOT_SEED))
+    _ask(records[0]["request"], "accepted")
+    committed = offline_bot._STATE["pending"]["accepted"]["bot"]
+    _ask({**records[1]["request"], "settle": [["accepted", True]]}, "lost-response")
+    assert offline_bot._STATE["bot"] is committed
+    # The transport cannot tell whether the request reached Python.
+    _ask({**records[1]["request"], "settle": [["accepted", True], ["lost-response", False]]}, "next")
+    assert offline_bot._STATE["bot"] is committed
+    pending = offline_bot._STATE["pending"]["next"]["bot"]
+    assert not _settle("accepted", True)["adopted"]
+    assert offline_bot._STATE["pending"]["next"]["bot"] is pending
+    assert _settle("next", True)["adopted"]
+    assert offline_bot._STATE["bot"] is pending

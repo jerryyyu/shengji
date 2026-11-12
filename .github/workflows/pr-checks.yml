@@ -23,6 +23,7 @@ jobs:
     outputs:
       code: ${{ steps.classify.outputs.code }}
       luna: ${{ steps.classify.outputs.luna }}
+      train: ${{ steps.classify.outputs.train }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,7 +45,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python3 - <<'PY'
-          import os, re, subprocess, sys
+          import ast, glob, os, re, subprocess, sys
 
           # Documentation that no CI job reads. HANDOFF_REVIEW.md is not here:
           # the conftest review-ledger guard checks it on every PR test session.
@@ -55,6 +56,38 @@ jobs:
                   return False
               return path.endswith(".md") or path.startswith(DOC_PREFIXES)
 
+          def imported_test_modules(name):
+              # Test modules `server/tests/<name>.py` imports, by its syntax tree:
+              # `import test_x`, `from test_x import ...`, `import tests.test_x`,
+              # `from tests.test_x import ...` and `from tests import test_x`.
+              tree = ast.parse(open(f"server/tests/{name}.py").read())
+              found = set()
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      modules = [alias.name for alias in node.names]
+                  elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                      modules = [node.module]
+                      if node.module == "tests":
+                          modules = [f"tests.{alias.name}" for alias in node.names]
+                  else:
+                      continue
+                  for module in modules:
+                      leaf = module.removeprefix("tests.")
+                      if "." not in leaf and leaf.startswith("test_"):
+                          found.add(leaf)
+              return {leaf for leaf in found if os.path.exists(f"server/tests/{leaf}.py")}
+
+          def with_helpers(names):
+              # `names` plus every test module they import, transitively.
+              names = set(names)
+              todo = list(names)
+              while todo:
+                  for name in imported_test_modules(todo.pop()):
+                      if name not in names:
+                          names.add(name)
+                          todo.append(name)
+              return names
+
           def luna_test_modules():
               # Test modules the luna-profiles job selects, plus the sibling test
               # modules they import (helpers shared through `from test_x import`).
@@ -63,14 +96,47 @@ jobs:
               names = set(re.findall(r"tests/(test_\w+)\.py", block.group(1)))
               if not names:
                   raise RuntimeError("no luna-profiles test modules found")
-              todo = list(names)
-              while todo:
-                  source = open(f"server/tests/{todo.pop()}.py").read()
-                  for name in re.findall(r"^\s*(?:from|import) (test_\w+)", source, re.M):
-                      if name not in names and os.path.exists(f"server/tests/{name}.py"):
-                          names.add(name)
-                          todo.append(name)
+              names = with_helpers(names)
               return {f"server/tests/{name}.py" for name in names}
+
+          TRAIN_JOBS = ("train-cwv", "train-policy", "train-deadline")
+
+          def train_inputs():
+              # Test modules the train-* jobs select (their run lines and the
+              # ci_*_modes.sh scripts they call), the sibling test modules those
+              # import, and every web/ file those modules name: a web change
+              # reaches the training suites only through such a literal path.
+              text = open(".github/workflows/pr-checks.yml").read()
+              selection = ""
+              for job in TRAIN_JOBS:
+                  block = re.search(rf"\n  {job}:\n(.*?)(?=\n  [A-Za-z_-]+:\n|\Z)", text, re.S)
+                  selection += block.group(1)
+                  for script in re.findall(r"scripts/(ci_\w+\.sh)", block.group(1)):
+                      selection += open(f"server/scripts/{script}").read()
+              names = set()
+              for pattern in re.findall(r"tests/(test_[\w*?]+)\.py", selection):
+                  for found in glob.glob(f"server/tests/{pattern}.py"):
+                      names.add(os.path.basename(found)[:-3])
+              if not names:
+                  raise RuntimeError("no train-* test modules found")
+              names = with_helpers(names)
+              web = set()
+              for name in names:
+                  source = open(f"server/tests/{name}.py").read()
+                  web.update(re.findall(r"""['"/](web/[\w./-]+)""", source))
+              return {f"server/tests/{name}.py" for name in names}, web
+
+          def reaches_train(path, train_tests, train_web):
+              # The training suites import most of server/shengji (the API server
+              # included) and read fixtures and scripts; documentation, web files
+              # they never name and other server test modules are out.
+              if is_doc(path):
+                  return False
+              if path.startswith("web/"):
+                  return path in train_web
+              if re.fullmatch(r"server/tests/test_\w+\.py", path):
+                  return path in train_tests
+              return True
 
           def reaches_luna(path, luna_tests):
               # The luna-profiles suites import nearly every shengji package, the
@@ -84,29 +150,32 @@ jobs:
 
           def classify():
               if os.environ["EVENT_NAME"] != "pull_request":
-                  return True, True, "not a pull request"
+                  return True, True, True, "not a pull request"
               base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
               out = subprocess.run(
                   ["git", "diff", "--name-only", "--no-renames", f"{base}...{head}"],
                   check=True, capture_output=True, text=True).stdout
               paths = [line for line in out.splitlines() if line]
               if not paths:
-                  return True, True, "empty diff"
+                  return True, True, True, "empty diff"
               luna_tests = luna_test_modules()
+              train_tests, train_web = train_inputs()
               code = any(not is_doc(path) for path in paths)
               luna = any(reaches_luna(path, luna_tests) for path in paths)
+              train = any(reaches_train(path, train_tests, train_web) for path in paths)
               for path in paths:
                   print(f"{'doc ' if is_doc(path) else 'code'} "
-                        f"{'luna' if reaches_luna(path, luna_tests) else '    '} {path}")
-              return code, luna, f"{len(paths)} changed paths"
+                        f"{'luna' if reaches_luna(path, luna_tests) else '    '} "
+                        f"{'train' if reaches_train(path, train_tests, train_web) else '     '} {path}")
+              return code, luna, train, f"{len(paths)} changed paths"
 
           try:
-              code, luna, why = classify()
+              code, luna, train, why = classify()
           except Exception as error:
-              code, luna, why = True, True, f"classification failed, running everything: {error!r}"
-          print(f"code={str(code).lower()} luna={str(luna).lower()} ({why})")
+              code, luna, train, why = True, True, True, f"classification failed, running everything: {error!r}"
+          print(f"code={str(code).lower()} luna={str(luna).lower()} train={str(train).lower()} ({why})")
           with open(os.environ.get("GITHUB_OUTPUT", "/dev/stdout"), "a") as output:
-              output.write(f"code={str(code).lower()}\nluna={str(luna).lower()}\n")
+              output.write(f"code={str(code).lower()}\nluna={str(luna).lower()}\ntrain={str(train).lower()}\n")
           PY
 
   test-selection:
@@ -235,6 +304,7 @@ jobs:
           tests/test_check_lane_scripts.py
           tests/test_lane_lib.py
           tests/test_ci_review_ledger_step.py
+          tests/test_ci_path_classifier.py
           tests/test_receipt_summary.py
           tests/test_safe_rm.py
           tests/test_seed_windows_dir.py
@@ -376,11 +446,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # This job installs the rl group (torch), builds the engine, walks every
-    # module AND runs scripts/ci_cwv_modes.sh; on a shared runner that has been
-    # hitting the old 15-minute ceiling (a timeout shows as "cancelled", not
-    # "failed"). Give it the same room as the server job.
-    timeout-minutes: 40
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: server
@@ -397,10 +463,86 @@ jobs:
         run: uv run python setup.py build_ext --inplace
       - name: Import every shengji module
         run: uv run python -P -B -m pytest -q tests/test_import_walk.py
+
+  # The training-pipeline suites, one job each so they run side by side. They
+  # run when a change can reach them (the changes job's `train` output): any
+  # server path except other test modules, plus the web files they read.
+  train-cwv:
+    needs: changes
+    if: needs.changes.outputs.train == 'true'
+    runs-on: ubuntu-latest
+    # both engine modes of about 1,400 tests, one core each
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked development and RL environment
+        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
+      - name: Build compiled engine
+        run: uv run python setup.py build_ext --inplace
+      # The two engine modes start at once and each pytest session's ledger
+      # guard fetches the PR base when it is missing; running the guard here
+      # first leaves it present, so the concurrent sessions never race on git.
+      - name: Review ledger guard (fetches the PR base once)
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
       - name: Test CWV consumers in both engine modes
         run: bash scripts/ci_cwv_modes.sh
+
+  train-policy:
+    needs: changes
+    if: needs.changes.outputs.train == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked development and RL environment
+        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
+      - name: Build compiled engine
+        run: uv run python setup.py build_ext --inplace
+      # The two engine modes start at once and each pytest session's ledger
+      # guard fetches the PR base when it is missing; running the guard here
+      # first leaves it present, so the concurrent sessions never race on git.
+      - name: Review ledger guard (fetches the PR base once)
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
       - name: Test policy-head training and search in both engine modes
         run: bash scripts/ci_policy_modes.sh
+
+  train-deadline:
+    needs: changes
+    if: needs.changes.outputs.train == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked development and RL environment
+        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
+      - name: Build compiled engine
+        run: uv run python setup.py build_ext --inplace
       # The screen harness imports torch, so the real-package deadline-child
       # differential (release 45, flag off vs on, byte-identical shards) runs in
       # this job: the same pinned asset and hash as the server job's gate, and

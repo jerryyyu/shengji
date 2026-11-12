@@ -26,7 +26,7 @@ function TrumpChip({ state }: { state: GameState }) {
     return (
       <span className="chip trump-chip none">
         <span className="trump-none-long">No trump yet</span>
-        <span className="trump-none-short">Trump ?</span>
+        <span className="trump-none-short">No trump</span>
       </span>
     );
   }
@@ -87,6 +87,29 @@ function NoticeBanner({ notice, state }: { notice: Notice; state: GameState }) {
       </button>
     </div>
   );
+}
+
+/** How long a "+10" floats by the points counter. */
+export const POINTS_POP_MS = 1100;
+
+/** A short "+10" by the counter each time the attackers' points go up, so a
+ *  scoring trick is seen where the score lives. None under reduced motion. */
+function PointsPop({ points }: { points: number }) {
+  const [pop, setPop] = useState<{ n: number; gain: number } | null>(null);
+  const prev = useRef(points);
+  useEffect(() => {
+    const gain = points - prev.current;
+    prev.current = points;
+    if (gain <= 0 || prefersReducedMotion()) {
+      setPop(null);
+      return;
+    }
+    setPop((p) => ({ n: (p?.n ?? 0) + 1, gain }));
+    const t = window.setTimeout(() => setPop(null), POINTS_POP_MS);
+    return () => window.clearTimeout(t);
+  }, [points]);
+  if (!pop) return null;
+  return <span className="points-pop" key={pop.n} aria-hidden="true">+{pop.gain}</span>;
 }
 
 /** Index of a level in RANKS, so a level can roll like a number. */
@@ -226,6 +249,7 @@ export default function Hud({ state }: { state: GameState }) {
             {/* keyed so a new score is a new box: WebKit would keep the old width */}
             <span className="points-big" key={shownPoints}>{shownPoints}</span>
             <span className="points-target">/ 80</span>
+            <PointsPop points={state.attacker_points} />
             {/* the phone draws progress to 80 as a bar under the number; hidden on desktop */}
             <span
               className="points-bar"

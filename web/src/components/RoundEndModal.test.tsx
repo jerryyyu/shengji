@@ -234,3 +234,40 @@ describe("round end rating line", () => {
     expect(host.querySelector(".rating-guest")).toBeNull();
   });
 });
+
+describe("headline first, details behind a disclosure", () => {
+  it("leads with the level change and new levels; the score grid and kitty wait under Details", () => {
+    renderModal(makeResult({ new_levels: ["5", "2"], attacker_points: 30,
+      kitty_cards: ["S5", "HK", "D10", "C3", "C4", "C6", "C7", "C8"] }));
+    const modal = host.querySelector(".modal")!;
+    const headline = modal.querySelector(".result-headline")!;
+    expect(headline.querySelector(".result-change")!.textContent).toBe("+3 levels");
+    expect(headline.textContent).toContain("Now");
+    expect(headline.textContent).toContain("5");
+    expect(headline.textContent).toContain("Attackers 30 of 80");
+    const details = modal.querySelector<HTMLDetailsElement>("details.result-details")!;
+    expect(details.open).toBe(false);
+    expect(details.querySelector("summary")!.textContent).toBe("Details");
+    expect(details.querySelector(".result-grid")).not.toBeNull();
+    expect(details.querySelector(".kitty-reveal")).not.toBeNull();
+    expect(details.querySelector(".result-verdict")).not.toBeNull();
+    // the headline comes before the details, and Next round and Leave stay outside them
+    expect(headline.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const next = [...modal.querySelectorAll("button")].find((b) => b.textContent === "Next round")!;
+    expect(details.contains(next)).toBe(false);
+    act(() => next.click());
+    expect(sent).toEqual([{ type: "next_round" }]);
+    const leave = [...modal.querySelectorAll("button")].find((b) => /leave/i.test(b.textContent ?? ""));
+    expect(leave && details.contains(leave)).toBe(false);
+  });
+
+  it("says one level, and a won game, in the headline", () => {
+    renderModal(makeResult({ level_change: 1 }));
+    expect(host.querySelector(".result-change")!.textContent).toBe("+1 level");
+    act(() => root.unmount());
+    host.remove();
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
+    expect(host.querySelector(".result-change")!.textContent).toBe("Game won");
+    expect(host.querySelector(".result-headline")!.textContent).toContain("Levels restart at");
+  });
+});

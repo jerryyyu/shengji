@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent, PointerEvent, RefObject } from "react";
 import type { HandCard } from "../protocol";
 import type { Box } from "../motion";
@@ -41,15 +41,17 @@ interface SlotProps {
   id: number;
   code: string;
   selected: boolean;
+  /** Under a finger that is down: the card lifts until the finger lifts. */
+  pressed: boolean;
   onToggle: ((id: number) => void) | undefined;
 }
 
 /** One card in the hand. Props are primitives plus the stable onToggle, so a
  *  server update or a tap re-renders only the slots whose card or selection
  *  changed, not all 25. */
-const HandSlot = memo(function HandSlot({ id, code, selected, onToggle }: SlotProps) {
+const HandSlot = memo(function HandSlot({ id, code, selected, pressed, onToggle }: SlotProps) {
   return (
-    <div className="hand-slot" data-id={id}>
+    <div className={`hand-slot${pressed ? " pressed" : ""}`} data-id={id}>
       <Card code={code} selected={selected} onClick={onToggle ? () => onToggle(id) : undefined} />
     </div>
   );
@@ -100,6 +102,9 @@ interface Drag {
 
 export default function Hand({ hand, selected, selectable, onToggle, rects }: HandProps) {
   const handRef = useRef<HTMLDivElement>(null);
+  // The card under a finger that is down lifts at once, before the tap's
+  // click commits the choice on release; a slide carries the lift along.
+  const [pressed, setPressed] = useState<number | null>(null);
   // Drag-select: a finger pressed on a card and slid across the hand sets
   // each card it enters, once, to the first card's flipped state. A tap with
   // no slide stays an ordinary click on one card.
@@ -118,11 +123,13 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
     if (!slot) return;
     const id = Number(slot.dataset.id);
     drag.current = { pointerId: e.pointerId, start: id, target: !selectedRef.current.has(id), seen: new Set([id]), moved: false };
+    setPressed(id);
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointerId || !handRef.current) return;
     const id = slotIdAt(handRef.current, e.clientX, e.clientY);
+    if (id !== null) setPressed(id);
     if (id === null || d.seen.has(id)) return;
     if (!d.moved) {
       d.moved = true;
@@ -135,6 +142,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
     // a slide ends without the tap's click; if one still comes, it is not a tap
     if (drag.current?.moved) swallowClick.current = true;
     drag.current = null;
+    setPressed(null);
   };
   const onClickCapture = (e: MouseEvent<HTMLDivElement>) => {
     if (!swallowClick.current) return;
@@ -249,6 +257,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
          onPointerUp={endDrag} onPointerCancel={endDrag} onClickCapture={onClickCapture}>
       {hand.map((c) => (
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
+                  pressed={selectable && pressed === c.id}
                   onToggle={selectable ? onToggle : undefined} />
       ))}
     </div>

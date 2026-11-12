@@ -18,6 +18,7 @@ const link = vi.hoisted(() => ({
     if (v === "open" && this.current !== "open") this.generation += 1;
     this.current = v;
   },
+  reconnects: 0,
   statusListeners: new Set<(s: string) => void>(),
   listeners: new Set<(m: unknown) => void>(),
 }));
@@ -33,6 +34,7 @@ vi.mock("../ws", () => ({
     subscribe: (fn: (m: unknown) => void) => { link.listeners.add(fn); return () => link.listeners.delete(fn); },
     subscribeStatus: (fn: (s: string) => void) => { link.statusListeners.add(fn); fn(link.status); return () => link.statusListeners.delete(fn); },
     chatHistory: () => [],
+    reconnect: () => { link.reconnects += 1; },
   },
 }));
 const serverSays = (m: unknown) => act(() => { for (const fn of link.listeners) fn(m); });
@@ -477,5 +479,75 @@ describe("Play and Bury say they are sending", () => {
     expect(primary().disabled).toBe(false);
     expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("following", () => {
+  // you hold S2..S10 twice over plus a heart; Bot 1 led a spade pair
+  const mixed: HandCard[] = [...cards(24), { id: 25, code: "HA" }];
+  const following = (over: Partial<GameState> = {}) => state({
+    turn: 0, hand: mixed, trump: { suit: "H", rank: "J", declarer: 1 },
+    trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }] }, ...over });
+  const wrap = () => host.querySelector<HTMLElement>(".play-wrap")!;
+
+  it("a tap on a Play that cannot go says what the follow needs and buzzes", () => {
+    render(following());
+    act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[0].click());
+    haptics.length = 0;
+    expect(host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.disabled).toBe(true);
+    act(() => wrap().click());
+    expect(host.querySelector(".follow-hint")?.textContent).toBe("Follow ♠: play 2 cards");
+    expect(haptics).toEqual(["error"]);
+    expect(sent).toEqual([]);
+    // choosing another card clears it
+    act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[1].click());
+    expect(host.querySelector(".follow-hint")).toBeNull();
+  });
+
+  it("an enabled Play sends without a hint, and a hint fades on its own", () => {
+    vi.useFakeTimers();
+    try {
+      render(following());
+      act(() => wrap().click());
+      expect(host.querySelector(".follow-hint")).not.toBeNull();
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect(host.querySelector(".follow-hint")).toBeNull();
+      act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[0].click());
+      act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[9].click());
+      haptics.length = 0;
+      act(() => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.click());
+      expect(sent).toHaveLength(1);
+      expect(host.querySelector(".follow-hint")).toBeNull();
+      expect(haptics).not.toContain("error");
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("leading, a tap on an empty Play asks for cards", () => {
+    render(state({ turn: 0, trick: { leader: 0, plays: [] } }));
+    act(() => wrap().click());
+    expect(host.querySelector(".follow-hint")?.textContent).toBe("Choose the cards to lead");
+  });
+});
+
+describe("a stalled connection at the table", () => {
+  it("offers Retry after the lobby's wait, and Retry reconnects at once", () => {
+    vi.useFakeTimers();
+    try {
+      link.reconnects = 0;
+      render(state());
+      act(() => { link.status = "closed"; for (const fn of link.statusListeners) fn("closed"); });
+      act(() => { vi.advanceTimersByTime(3900); });
+      expect(host.querySelector(".table-stalled")).toBeNull();
+      act(() => { vi.advanceTimersByTime(200); });
+      const retry = host.querySelector<HTMLButtonElement>(".table-stalled .conn-retry")!;
+      expect(retry.textContent).toBe("Retry");
+      act(() => retry.click());
+      expect(link.reconnects).toBe(1);
+      // the wait starts over
+      expect(host.querySelector(".table-stalled")).toBeNull();
+      act(() => { link.status = "open"; for (const fn of link.statusListeners) fn("open"); });
+      act(() => { vi.advanceTimersByTime(5000); });
+      expect(host.querySelector(".table-stalled")).toBeNull();
+    } finally { vi.useRealTimers(); }
   });
 });

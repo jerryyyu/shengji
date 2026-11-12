@@ -1371,10 +1371,11 @@ textarea:focus-visible {
   font-size: var(--fs-15);
 }
 
+/* a plain statement, light enough to read at 4.5:1 or more on the strip */
 .trump-chip.none {
-  color: var(--text-dim);
+  color: #d3d9e2;
   font-size: var(--fs-12);
-  font-style: italic;
+  font-weight: 600;
 }
 
 .trump-suit.red {
@@ -1415,8 +1416,39 @@ textarea:focus-visible {
 }
 
 .points-target {
-  color: var(--text-dim);
+  color: #c4ccd8;
   font-size: var(--fs-12);
+}
+
+.points-chip {
+  position: relative;
+}
+
+/* "+10" rises into the counter as a trick's points land */
+.points-pop {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  z-index: 12;
+  pointer-events: none;
+  color: var(--team1);
+  font-size: var(--fs-15);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  animation: points-pop 1100ms var(--ease-out) forwards;
+}
+
+@keyframes points-pop {
+  0% { opacity: 0; transform: translate(-50%, 18px) scale(0.8); }
+  20% { opacity: 1; transform: translate(-50%, 8px) scale(1.1); }
+  70% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -4px) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .points-pop { display: none; }
 }
 
 .kitty-icon {
@@ -1927,6 +1959,74 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 
+/* the card under a finger that is down rises and grows a little, over its
+   neighbours, until the finger lifts */
+.hand .hand-slot.pressed .card {
+  transform: translateY(-12px) scale(1.08);
+  z-index: 5;
+}
+
+.hand .hand-slot.pressed .card.selected {
+  transform: translateY(-26px) scale(1.08);
+}
+
+/* a disabled Play takes no taps; its wrapper hears them and explains why */
+.play-wrap {
+  display: inline-flex;
+}
+
+.play-wrap > .btn:disabled {
+  pointer-events: none;
+}
+
+.follow-hint {
+  align-self: center;
+  margin: 0 auto 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(8, 20, 14, 0.88);
+  border: 1px solid var(--gold-soft);
+  color: var(--text);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: follow-hint-in 160ms var(--ease-out) both;
+}
+
+@keyframes follow-hint-in {
+  from { opacity: 0; }
+}
+
+/* the lobby's stalled line, at the table: the server has been out of reach
+   for a while, and Retry tries again now */
+.table-stalled {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 104px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 71;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 4px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--danger);
+  background: rgba(20, 23, 30, 0.95);
+  color: var(--text);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table-stalled .conn-retry {
+  padding: 4px 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .follow-hint { animation: none; }
+}
+
 /* ---------- Cards ---------- */
 
 .card {
@@ -2147,6 +2247,80 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   color: var(--text-dim);
   font-size: var(--fs-13);
   margin: 10px 0 0;
+}
+
+/* round end: the outcome in one glance, how it was scored behind Details */
+.result-headline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.result-change {
+  font-size: var(--fs-20);
+  font-weight: 800;
+}
+
+.result-change.team0 { color: var(--team0); }
+.result-change.team1 { color: var(--team1); }
+
+.result-levels {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-15);
+  font-weight: 700;
+}
+
+.result-levels .team-dot.t1 {
+  margin-left: 8px;
+}
+
+.result-score {
+  color: #c4ccd8;
+  font-size: var(--fs-13);
+}
+
+.result-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}
+
+.result-details > summary {
+  align-self: center;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #c4ccd8;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+}
+
+.result-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.result-details > summary::after {
+  content: "›";
+  font-size: 1.2em;
+  transition: transform var(--dur-fast) ease-out;
+}
+
+.result-details[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.result-details[open] > .kitty-reveal,
+.result-details[open] > .result-grid {
+  margin-bottom: 10px;
 }
 
 .kitty-reveal {
@@ -2477,7 +2651,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     pointer-events: auto;
   }
 
-  /* drawn 36x32 to match the strip; ::after keeps a 44px hit area. The
+  /* drawn 36x32 to match the strip; ::after gives it a 48px hit area (44px
+     at least, wherever the screen edge does not stop it first). The
      extra class outranks the coarse-pointer 44px minimum later in the file. */
   .hud-bar .hud-more-btn {
     position: relative;
@@ -2499,7 +2674,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .hud-bar .hud-more-btn::after {
     content: "";
     position: absolute;
-    inset: -6px -4px;
+    inset: -8px -6px;
   }
 
   .hud-more-btn[aria-expanded="true"] {
@@ -3249,6 +3424,42 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .hand-slot {
     transition: flex-basis 150ms ease-out, width 150ms ease-out;
+  }
+
+  /* a refused Play's hint stands just above your row, over the hand */
+  .follow-hint {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-xs));
+    z-index: 4;
+    margin: 0;
+    font-size: var(--fs-12);
+    transform: translateX(-50%);
+  }
+
+  .phase-play .action-bar .play-wrap {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  .table-stalled {
+    top: calc(var(--header-bottom) + 44px);
+  }
+
+  .result-change {
+    font-size: var(--fs-17);
+  }
+
+  .result-levels {
+    font-size: var(--fs-13);
+  }
+
+  .result-score {
+    font-size: var(--fs-12);
+  }
+
+  .result-details > summary {
+    font-size: var(--fs-13);
   }
 
   /* --- Messages pass in the bottom-left corner, above your row --- */

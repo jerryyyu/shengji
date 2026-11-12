@@ -120,4 +120,37 @@ describe("drag-select", () => {
     finger("pointermove", cards()[0], 15);
     expect(onToggle).not.toHaveBeenCalled();
   });
+
+  it("a finger down lifts the card under it, a slide carries the lift, and lifting the finger drops it", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3", "S4", "S5"]} />));
+    const pressed = () => [...host.querySelectorAll(".hand-slot")].map((s) => s.classList.contains("pressed"));
+    finger("pointerdown", cards()[1], 15);
+    expect(pressed()).toEqual([false, true, false, false]);
+    // nothing is chosen until the finger comes up
+    expect(picked()).toEqual([false, false, false, false]);
+    finger("pointermove", cards()[1], 35);
+    expect(pressed()).toEqual([false, false, false, true]);
+    finger("pointerup", cards()[1], 35);
+    expect(pressed()).toEqual([false, false, false, false]);
+  });
+
+  it("a tap still commits on release, through the click", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3"]} />));
+    finger("pointerdown", cards()[0], 5);
+    expect(host.querySelector(".hand-slot.pressed")).not.toBeNull();
+    expect(picked()).toEqual([false, false]);
+    finger("pointerup", cards()[0], 5);
+    act(() => cards()[0].click());
+    expect(picked()).toEqual([true, false]);
+    expect(host.querySelector(".hand-slot.pressed")).toBeNull();
+  });
+
+  it("a mouse press does not lift; the hover does that", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3"]} />));
+    finger("pointerdown", cards()[0], 5, "mouse");
+    expect(host.querySelector(".hand-slot.pressed")).toBeNull();
+  });
 });

@@ -194,6 +194,7 @@ jobs:
           tests/test_offline_fixture_gen.py
           tests/test_offline_server_fixture_gen.py
           tests/test_offline_bot.py
+          tests/test_pybot_inputs.py
           tests/test_action_semantics.py
           tests/test_game.py
           tests/test_memory.py

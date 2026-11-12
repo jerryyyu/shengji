@@ -478,7 +478,9 @@ export class LocalServer {
       const cursor = phase === "play" ? `${rnd.history.length}:${rnd.trick!.plays.length}` : null;
       if (phase !== "bury" && phase !== "play") return;
       let cards: Card[];
-      if (room.seats[seat].isBot && this.remote?.usable()) cards = await this.remoteTurn(room, rnd, seat, phase);
+      // the release bot's answer, until it is committed or dropped
+      let token: string | null = null;
+      if (room.seats[seat].isBot && this.remote?.usable()) ({ cards, token } = await this.remoteTurn(room, rnd, seat, phase));
       else if (phase === "bury") cards = room.bot.bury(viewFor(rnd, seat));
       else cards = room.bot.play(viewFor(rnd, seat));
       const pacing = Math.max(0, BOT_DELAY - (this.clock.now() - started));
@@ -493,6 +495,7 @@ export class LocalServer {
         this.currentActor(room) !== seat ||
         !this.drives(room, seat)
       ) {
+        if (token) this.remote!.drop(token, "stale");
         return;
       }
       try {
@@ -506,9 +509,11 @@ export class LocalServer {
           room.logAction(["play", seat, [...cards]]);
           room.removeCodes(seat, played);
         }
+        if (token) this.remote!.commit(token);
         // the play just made may have ended the round
         if ((rnd.phase as string) === "round_end" && game.result === null) finishRound(game);
       } catch (e) {
+        if (token) this.remote!.drop(token, "invalid");
         if (!(e instanceof IllegalPlay)) throw e;
         rnd.message = `Bot error at seat ${seat}: ${e.message}`;
         return;
@@ -519,15 +524,12 @@ export class LocalServer {
 
   /** The release bot's bury or play for `seat`, or SmartBot's when the bot is
    *  unavailable, too slow, or answers something the engine refuses. */
-  private async remoteTurn(room: LocalRoom, rnd: RoundState, seat: number, phase: "bury" | "play"): Promise<Card[]> {
+  private async remoteTurn(room: LocalRoom, rnd: RoundState, seat: number, phase: "bury" | "play"): Promise<{ cards: Card[]; token: string | null }> {
     const gate = this.remote!;
     const res = await gate.ask(requestFor(rnd, room.actions, phase, seat));
-    if (res.ok && res.cards && this.acceptable(rnd, seat, phase, res.cards)) {
-      gate.noteAccepted();
-      return res.cards;
-    }
-    if (res.ok) gate.noteInvalid();
-    return phase === "bury" ? room.bot.bury(viewFor(rnd, seat)) : room.bot.play(viewFor(rnd, seat));
+    if (res.ok && res.cards && this.acceptable(rnd, seat, phase, res.cards)) return { cards: res.cards, token: res.token };
+    if (res.ok) gate.drop(res.token, "invalid");
+    return { cards: phase === "bury" ? room.bot.bury(viewFor(rnd, seat)) : room.bot.play(viewFor(rnd, seat)), token: null };
   }
 
   /** Whether the engine would take `cards` from `seat` now (a failing throw counts). */
@@ -560,15 +562,19 @@ export class LocalServer {
       const gate = this.remote;
       const res = gate?.usable() ? await gate.ask(requestFor(rnd, room.actions, "declare", s, final)) : null;
       if (room.closed || room.round !== rnd || rnd.phase !== phase || rnd.declaration !== declaration || !room.seats[s].isBot) {
+        // a human declaration (or a closed room) overtook this decision
+        if (res?.ok) gate!.drop(res.token, "stale");
         complete = false;
         continue;
       }
       let cards: Card[] | null;
+      // the release bot's answer, until it is committed or dropped
+      let token: string | null = null;
       if (res?.ok && (res.cards === null || isDeclareOption(rnd, s, res.cards))) {
-        gate!.noteAccepted();
         cards = res.cards;
+        token = res.token;
       } else {
-        if (res?.ok) gate!.noteInvalid();
+        if (res?.ok) gate!.drop(res.token, "invalid");
         cards = room.bot.declare(viewFor(rnd, s), final);
       }
       if (cards) {
@@ -576,9 +582,13 @@ export class LocalServer {
           declare(rnd, s, cards);
           room.logAction(["declare", s, [...cards]]);
         } catch (e) {
+          if (token) gate!.drop(token, "invalid");
+          token = null;
           if (!(e instanceof IllegalPlay)) throw e;
         }
       }
+      // no declaration is a decision too: its bot copy is kept like any other
+      if (token) gate!.commit(token);
     }
     return complete;
   }

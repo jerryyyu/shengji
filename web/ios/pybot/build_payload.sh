@@ -2,11 +2,15 @@
 # Assemble the offline bot that the iOS app bundles (all outputs gitignored;
 # every download and weight file is checked against MANIFEST.sha256).
 #
-#   web/ios/pybot/build_payload.sh WEIGHTS_DIR [DL_DIR]
+#   web/ios/pybot/build_payload.sh [WEIGHTS_DIR [DL_DIR]]
 #
 # WEIGHTS_DIR holds the four release weight files fly.toml names
 # (g3a-e04-f4f4127e.npz, p0-ft1-1fa201b2.npz, b1a-028131a0.npz,
-# js-m1-0d17fd03.npz). DL_DIR (default web/ios/pybot/dl) caches the downloads.
+# js-m1-0d17fd03.npz); without it (or with "-") the weights of the payload
+# already built are reused, checked again. DL_DIR (default web/ios/pybot/dl)
+# caches the downloads; the xcframework and numpy are unpacked only once.
+# The payload records its inputs (inputs.sh), and the Xcode phase refuses a
+# payload whose server/shengji sources or fly.toml have changed since.
 # Outputs:
 #   Python.xcframework            BeeWare Python-Apple-support 3.14-b14
 #   payload/                      shengji package + fly.toml + offline_bot.py + models/
@@ -23,7 +27,8 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
-WEIGHTS="${1:?weights dir}"
+WEIGHTS="${1:-}"
+[ "$WEIGHTS" != "-" ] || WEIGHTS=""
 DL="${2:-$HERE/dl}"
 MAN="$HERE/MANIFEST.sha256"
 PAS_URL="https://github.com/beeware/Python-Apple-support/releases/download/3.14-b14/Python-3.14-iOS-support.b14.tar.gz"
@@ -48,25 +53,35 @@ for p in iphoneos iphonesimulator; do
         "numpy-2.5.2.post1-cp314-cp314-ios_13_0_arm64_$p.whl"
 done
 
-rm -rf "$HERE/Python.xcframework" "$HERE/payload" "$HERE/site"
-X=$(mktemp -d); tar -xzf "$DL/Python-3.14-iOS-support.b14.tar.gz" -C "$X"
-mv "$X/Python.xcframework" "$HERE/Python.xcframework"; rm -rf "$X"
-
+# The compiled engine (fast/) is built against this xcframework, so it is
+# unpacked once and kept.
+if [ ! -d "$HERE/Python.xcframework" ]; then
+  X=$(mktemp -d); tar -xzf "$DL/Python-3.14-iOS-support.b14.tar.gz" -C "$X"
+  mv "$X/Python.xcframework" "$HERE/Python.xcframework"; rm -rf "$X"
+fi
 for p in iphoneos iphonesimulator; do
-  mkdir -p "$HERE/site/$p"
-  (cd "$HERE/site/$p" && unzip -q "$DL/numpy-2.5.2.post1-cp314-cp314-ios_13_0_arm64_$p.whl")
+  if [ ! -d "$HERE/site/$p" ]; then
+    mkdir -p "$HERE/site/$p"
+    (cd "$HERE/site/$p" && unzip -q "$DL/numpy-2.5.2.post1-cp314-cp314-ios_13_0_arm64_$p.whl")
+  fi
 done
 
 P="$HERE/payload"
-mkdir -p "$P/models"
-rsync -a --exclude '__pycache__' --exclude '*.so' --exclude '*.c' --exclude '*.pyx' \
-  "$REPO/server/shengji" "$P/"
-cp "$REPO/fly.toml" "$P/fly.toml"
-cp "$HERE/offline_bot.py" "$P/offline_bot.py"
+NEW="$HERE/payload.new"
+rm -rf "$NEW"
+mkdir -p "$NEW/models"
 for f in g3a-e04-f4f4127e.npz p0-ft1-1fa201b2.npz b1a-028131a0.npz js-m1-0d17fd03.npz; do
-  check "$WEIGHTS/$f" "$f"
-  cp "$WEIGHTS/$f" "$P/models/$f"
+  src="${WEIGHTS:-$P/models}/$f"
+  [ -f "$src" ] || { echo "no $f: pass the weights dir (no built payload to reuse)" >&2; exit 2; }
+  check "$src" "$f"
+  cp "$src" "$NEW/models/$f"
 done
-# compiled engine extensions (optional): build_fast_ext.sh drops them in fast/<sdk>/
+rsync -a --exclude '__pycache__' --exclude '*.so' --exclude '*.c' --exclude '*.pyx' \
+  --exclude '.DS_Store' "$REPO/server/shengji" "$NEW/"
+cp "$REPO/fly.toml" "$NEW/fly.toml"
+cp "$HERE/offline_bot.py" "$NEW/offline_bot.py"
+"$HERE/inputs.sh" record payload "$NEW"
+rm -rf "$P"
+mv "$NEW" "$P"
 du -sh "$HERE/Python.xcframework" "$HERE/site/"* "$P" "$P/models"
-echo "payload ready"
+echo "payload ready: inputs $("$HERE/inputs.sh" identity "$P")"

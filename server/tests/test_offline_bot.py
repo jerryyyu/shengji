@@ -38,9 +38,22 @@ BOT_SEED = 7
 GAMES = [(41_000 + g, {"startLevel": "A" if g == 2 else None, "throws": g == 1}) for g in range(3)]
 
 
+def _ask(req: dict, token: str) -> dict:
+    return json.loads(offline_bot.decide(json.dumps({**req, "token": token})))
+
+
+def _settle(token: str, accepted: bool) -> dict:
+    return json.loads(offline_bot.settle(token, accepted))
+
+
 def _replay(records, bot):
+    """Every recorded decision asked and committed in order, as the server committed it."""
     offline_bot.start_session(bot)
-    return [json.loads(offline_bot.decide(json.dumps(r["request"])))["cards"] for r in records]
+    out = []
+    for i, r in enumerate(records):
+        out.append(_ask(r["request"], f"t{i}")["cards"])
+        assert _settle(f"t{i}", True)["adopted"]
+    return out
 
 
 @pytest.fixture(scope="module")
@@ -70,12 +83,12 @@ def test_replay_is_incremental_and_rebuilds_on_a_different_round(mc_games):
     records = [r for r in mc_games[0] if r["request"]["kind"] == "play"]
     offline_bot.start_session(make_bot("mc", seed=BOT_SEED))
     first, later = records[0]["request"], records[5]["request"]
-    offline_bot.decide(json.dumps(first))
+    _ask(first, "a")
     cached = offline_bot._STATE["replay"]["round"]
-    offline_bot.decide(json.dumps(later))
+    _ask(later, "b")
     assert offline_bot._STATE["replay"]["round"] is cached
     # a log that does not extend the cached one is replayed from the deal
-    offline_bot.decide(json.dumps(first))
+    _ask(first, "c")
     assert offline_bot._STATE["replay"]["round"] is not cached
     rnd = offline_bot._STATE["replay"]["round"]
     assert rnd.turn == first["seat"] and rnd.phase == "play"
@@ -86,11 +99,53 @@ def test_a_request_for_a_seat_not_on_turn_is_refused(mc_games):
     req["seat"] = (req["seat"] + 1) % 4
     offline_bot.start_session(make_bot("mc", seed=BOT_SEED))
     with pytest.raises(offline_bot.RequestError):
-        offline_bot.decide(json.dumps(req))
+        _ask(req, "x")
     bad = copy.deepcopy(req)
     bad["deck"] = bad["deck"][:-1] + ["S2"]
     with pytest.raises(offline_bot.RequestError):
-        offline_bot.decide(json.dumps(bad))
+        _ask(bad, "y")
+    with pytest.raises(offline_bot.RequestError):
+        offline_bot.decide(json.dumps(req))  # no token
+
+
+def test_a_dropped_decision_leaves_the_bot_as_the_server_left_it(mc_games):
+    """Every decision is first asked under a token the page drops (a late,
+    refused or overtaken answer), then asked again and committed, with the
+    verdicts carried on the next request as the page sends them.  The dropped
+    searches draw from copies only, so every committed choice is still the
+    server's."""
+    records = mc_games[0]
+    offline_bot.start_session(make_bot("mc", seed=BOT_SEED))
+    got, verdicts = [], []
+    for i, r in enumerate(records):
+        _ask({**r["request"], "settle": verdicts}, f"late{i}")
+        got.append(_ask({**r["request"], "settle": [[f"late{i}", False]]}, f"t{i}")["cards"])
+        verdicts = [[f"t{i}", True]]
+    assert got == [r["cards"] for r in records]
+
+
+def test_the_dropped_copy_is_the_one_that_searched(mc_games):
+    records = [r for r in mc_games[0] if r["request"]["kind"] == "play"]
+    offline_bot.start_session(make_bot("mc", seed=BOT_SEED))
+    bot = offline_bot._STATE["bot"]
+    _ask(records[0]["request"], "late")
+    assert offline_bot._STATE["bot"] is bot and set(offline_bot._STATE["pending"]) == {"late"}
+    assert _settle("late", False) == {"token": "late", "adopted": False, "held": True}
+    assert offline_bot._STATE["bot"] is bot and offline_bot._STATE["pending"] == {}
+
+
+def test_an_unsettled_decision_is_dropped_once_the_log_moves_past_it(mc_games):
+    records = [r for r in mc_games[0] if r["request"]["kind"] == "play"]
+    offline_bot.start_session(make_bot("mc", seed=BOT_SEED))
+    bot = offline_bot._STATE["bot"]
+    _ask(records[0]["request"], "stale")
+    _ask(records[1]["request"], "next")
+    assert set(offline_bot._STATE["pending"]) == {"next"}
+    # its verdict arrives too late to matter
+    assert _settle("stale", True) == {"token": "stale", "adopted": False, "held": False}
+    assert offline_bot._STATE["bot"] is bot
+    assert _settle("next", True)["adopted"] and offline_bot._STATE["bot"] is not bot
+    assert offline_bot._STATE["pending"] == {}
 
 
 def test_committed_bridge_fixture_regenerates_identically():
@@ -113,8 +168,9 @@ def test_served_bot_offline_matches_server(tmp_path):
     records, _ = bridge_harness.record_session(seed, 1, config, make)
     offline_bot.start_session(make())
     unexplained = []
-    for r in records:
-        out = json.loads(offline_bot.decide(json.dumps(r["request"])))
+    for i, r in enumerate(records):
+        out = _ask(r["request"], f"t{i}")
+        _settle(f"t{i}", True)
         clock = {k: out[k] for k in ("fallback", "exact_lead", "leaf_deadline") if k in out}
         if out["cards"] != r["cards"] and not clock and not r["clock"]:
             unexplained.append((r["request"]["kind"], out["cards"], r["cards"]))

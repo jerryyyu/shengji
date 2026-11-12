@@ -20,19 +20,24 @@ handed the same ``Round`` the server hands it:
   ``["play", seat, cards]`` with the cards as submitted (the engine records a
   failed throw's forced part itself);
 * ``kind`` (``declare``, ``bury`` or ``play``), ``seat`` and, for a declare,
-  ``final``.
+  ``final``;
+* ``token``: the page's name for this decision, and ``settle``: the page's
+  verdicts on earlier decisions, ``[token, committed]`` in the order it
+  reached them, applied before this decision (``settle``).
 
 The bot object lives for the whole session, as the server's room bot lives for
 the room: its RNG and its public-notice ledger carry over between decisions and
 rounds.  As on the server, every committed play is shown to it
-(``observe_public``), a bury or play is searched on a copy of the bot and the
-round that then becomes the bot, and a declare runs on the bot inline unless
-the bot's own declare gate sends it to a copied search.  The round is rebuilt
+(``observe_public``), and each decision is searched on a copy of the bot that
+becomes the bot only once the decision is committed (a bury or play also on a
+copy of the round, and a declare on one when the bot's own declare gate sends
+it to a search).  The round is rebuilt
 by replaying the log, and replay is incremental: a request whose log extends
 the previous one applies only the new actions.
 
 Calls from the native plugin (JSON strings in and out): ``call(name, args)``
-with ``init(payload_dir, out_dir, seed)`` and ``decide(request_json)``.
+with ``init(payload_dir, out_dir, seed)``, ``decide(request_json)`` and
+``settle(token, accepted)``.
 """
 from __future__ import annotations
 
@@ -113,8 +118,12 @@ def init(payload_dir: str, out_dir: str, seed: int = 13) -> str:
     if "torch" in sys.modules:
         raise RuntimeError("torch was imported on the served bot path")
     start_session(bot)
+    inputs_file = os.path.join(payload_dir, "BUNDLE_INPUTS")
+    bundle_inputs = open(inputs_file).read().strip() if os.path.exists(inputs_file) else None
     ident = {
         "bot": name,
+        # the digest the build phase printed over the sources this bundle was built from
+        "bundle_inputs": bundle_inputs,
         "matches_fly_toml": name == fly["SHENGJI_BOT"],
         "seed": int(seed),
         "worlds": int(env["SHENGJI_PV_WORLDS"]),
@@ -137,6 +146,7 @@ def start_session(bot) -> None:
     _STATE.clear()
     _STATE["bot"] = bot
     _STATE["decisions"] = 0
+    _STATE["pending"] = {}
 
 
 def clock_flags(bot, kind: str) -> dict:
@@ -254,16 +264,46 @@ def _round_for(req: dict, bot):
     return rnd
 
 
+def _position(req: dict) -> str:
+    """The committed position a request was decided at: its round and its log."""
+    return json.dumps([req.get("deck"), req.get("trump_rank"), req.get("banker"), req.get("log")],
+                      separators=(",", ":"))
+
+
 def decide(request_json: str) -> str:
-    """The bot's action for the request's seat: ``{"cards": [...] | null, "seconds": s}``."""
+    """The bot's action for the request's seat: ``{"cards": [...] | null, "seconds": s}``.
+
+    The decision runs on a copy of the bot, held under the request's ``token``
+    until the page settles it (``settle``): the copy becomes the session's bot
+    only when the page committed the decision, as ``server.py`` keeps a turn's
+    copied bot only when ``_commit_bot_turn`` (or a gated declare) commits it.
+    A held copy whose position the log has moved past is dropped unsettled."""
     req = json.loads(request_json)
     bot = _STATE.get("bot")
     if bot is None:
         raise RuntimeError("the bot is not built yet")
+    token = req.get("token")
+    if not isinstance(token, str) or not token:
+        raise RequestError("a request needs a token")
     kind, seat = req.get("kind"), _seat(req.get("seat"))
     t0 = time.perf_counter()
+    # the page's verdicts on earlier decisions come first, in the order it reached them
+    verdicts = req.get("settle") or []
+    if not isinstance(verdicts, list):
+        raise RequestError("settle must be a list of [token, committed]")
+    for verdict in verdicts:
+        if not (isinstance(verdict, list) and len(verdict) == 2 and isinstance(verdict[0], str)
+                and isinstance(verdict[1], bool)):
+            raise RequestError(f"bad verdict {verdict!r}")
+        settle(verdict[0], verdict[1])
+    bot = _STATE["bot"]
+    position = _position(req)
+    pending = _STATE.setdefault("pending", {})
+    for old in [t for t, p in pending.items() if p["position"] != position]:
+        del pending[old]
     rnd = _round_for(req, bot)
     t_replay = time.perf_counter()
+    bot_copy = copy.deepcopy(bot)
     if kind == "declare":
         if rnd.phase not in ("deal", "declare"):
             raise RequestError(f"declare asked during {rnd.phase}")
@@ -271,36 +311,47 @@ def decide(request_json: str) -> str:
         value_declare = getattr(bot, "value_declare", False)
         gate = getattr(bot, "declare_gate", None)
         gated = value_declare and (not callable(gate) or gate(rnd, seat, final)[1])
-        if gated:
-            # the server searches a gated declare on copies, then keeps the copied bot
-            bot_copy = copy.deepcopy(bot)
-            cards = bot_copy.decide_declare(copy.deepcopy(rnd), seat, final=final)
-            _STATE["bot"] = bot_copy
-        else:
-            cards = bot.decide_declare(rnd, seat, final=final)
+        # the server searches a gated declare on a copied round; an inline one sees the live round
+        cards = bot_copy.decide_declare(copy.deepcopy(rnd) if gated else rnd, seat, final=final)
         cards = list(cards) if cards else None
     elif kind in ("bury", "play"):
         if rnd.phase != kind or rnd.turn != seat:
             raise RequestError(f"{kind} asked for seat {seat} during {rnd.phase}, turn {rnd.turn}")
-        # the server's turn snapshot: the search runs on copies and the copied bot is kept
-        bot_copy, round_copy = copy.deepcopy(bot), copy.deepcopy(rnd)
+        round_copy = copy.deepcopy(rnd)
         if kind == "bury":
             cards = list(bot_copy.decide_bury(round_copy, seat))
         else:
             cards = list(bot_copy.decide_play(round_copy, seat))
-        _STATE["bot"] = bot_copy
     else:
         raise RequestError(f"unknown decision kind {kind!r}")
+    pending[token] = {"bot": bot_copy, "position": position}
     t_end = time.perf_counter()
     _STATE["decisions"] += 1
     out = {"cards": cards, "seconds": round(t_end - t0, 4),
            "replay_seconds": round(t_replay - t0, 4), "n": _STATE["decisions"]}
-    out.update(clock_flags(_STATE["bot"], kind))
+    out.update(clock_flags(bot_copy, kind))
     return json.dumps(out)
+
+
+def settle(token: str, accepted: bool) -> str:
+    """The page's verdict on a decision: committed (``accepted``) or dropped.
+
+    A committed decision's bot copy becomes the session's bot and every other
+    held copy is dropped, since each was copied from the bot it replaces.  A
+    dropped decision's copy is discarded, so a late, refused or overtaken
+    answer leaves no trace in the bot.  A token no longer held (already
+    settled, or passed by the log) changes nothing."""
+    pending = _STATE.setdefault("pending", {})
+    held = pending.pop(token, None)
+    adopted = bool(accepted) and held is not None
+    if adopted:
+        _STATE["bot"] = held["bot"]
+        pending.clear()
+    return json.dumps({"token": token, "adopted": adopted, "held": held is not None})
 
 
 def call(name: str, args_json: str) -> str:
     """The native bridge's single entry: ``name(*json.loads(args_json))``."""
-    if name not in ("init", "decide"):
+    if name not in ("init", "decide", "settle"):
         raise ValueError(f"unknown pybot call {name!r}")
     return globals()[name](*json.loads(args_json))

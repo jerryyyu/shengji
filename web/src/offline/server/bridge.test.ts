@@ -56,6 +56,20 @@ function canonical(msg: unknown): string {
 
 const digest = (msg: unknown) => createHash("sha256").update(canonical(msg)).digest("hex").slice(0, 8);
 
+/** A request as the round describes it: without its token and the verdicts it carries. */
+function roundPart(req: DecisionRequest): DecisionRequest {
+  const { token: _token, settle: _settle, ...rest } = req;
+  return rest;
+}
+
+/** Every verdict the gate reached, in order: those sent on requests and those still queued. */
+function verdictsOf(requests: DecisionRequest[], server: LocalServer): Map<string, boolean[]> {
+  const out = new Map<string, boolean[]>();
+  const all = [...requests.flatMap((r) => r.settle ?? []), ...server.remote!.unsent()];
+  for (const [token, committed] of all) out.set(token, [...(out.get(token) ?? []), committed]);
+  return out;
+}
+
 function normalize(msg: Frame): Frame {
   const out: Frame = { ...msg };
   if ("room" in out) out.room = "ROOM";
@@ -150,7 +164,7 @@ describe("release-bot requests vs server.py's rounds", () => {
     for (const line of lines) {
       const rec = JSON.parse(line) as GameRecord;
       let remote: ReturnType<typeof standIn> | null = null;
-      const { frames } = await playSession(rec.seed, rec.rounds, rec.config, (server) => {
+      const { frames, server } = await playSession(rec.seed, rec.rounds, rec.config, (server) => {
         const answer = smartAnswer(server);
         remote = standIn((req) => Promise.resolve(answer(req)));
         return remote;
@@ -162,12 +176,16 @@ describe("release-bot requests vs server.py's rounds", () => {
         counts[r.kind] = (counts[r.kind] ?? 0) + 1;
         expect(r.seat).not.toBe(HUMAN_SEAT);
       }
-      const got = requests.map(digest).join("");
+      const got = requests.map((r) => digest(roundPart(r))).join("");
+      // every answer was played, so every decision is committed, exactly once
+      const verdicts = verdictsOf(requests, server);
+      expect(requests.every((r) => verdicts.get(r.token!)?.join() === "true")).toBe(true);
+      expect(server.remote!.open.size).toBe(0);
       if (got !== rec.digests) {
         let i = 0;
         while (i < requests.length && got.slice(8 * i, 8 * i + 8) === rec.digests.slice(8 * i, 8 * i + 8)) i++;
         mismatches.push(`seed ${rec.seed}: ${requests.length}/${rec.requests} requests, first difference at ${i}: ` +
-          (i < requests.length ? canonical(requests[i]).slice(0, 400) : "(none)"));
+          (i < requests.length ? canonical(roundPart(requests[i])).slice(0, 400) : "(none)"));
       }
       // the bridge leaves the game itself exactly as server.py plays it
       const session = sessions.get(rec.seed)!;
@@ -201,6 +219,8 @@ describe("SmartBot takes over when the release bot cannot answer", () => {
     expect(remote!.requests.length).toBe(1);
     expect(server.remote!.stats.timeout).toBe(1);
     expect(server.remote!.stats.busy).toBe(0);
+    // the stalled decision is dropped; its verdict waits for the next request
+    expect(server.remote!.unsent()).toEqual([[remote!.requests[0].token, false]]);
     expect(frames.some((f) => f.type === "state" && f.phase === "round_end")).toBe(true);
   }, 60_000);
 
@@ -213,6 +233,8 @@ describe("SmartBot takes over when the release bot cannot answer", () => {
     });
     expect(remote!.requests.length).toBe(MAX_FAILURES);
     expect(server.remote!.stats.error).toBe(MAX_FAILURES);
+    const verdicts = verdictsOf(remote!.requests, server);
+    expect(remote!.requests.map((r) => verdicts.get(r.token!)?.join())).toEqual(["false", "false", "false"]);
     expect(frames.map(digest)).toEqual(want.map(digest));
   }, 60_000);
 
@@ -227,6 +249,9 @@ describe("SmartBot takes over when the release bot cannot answer", () => {
     const plays = remote!.requests.filter((r) => r.kind === "play").length;
     expect(plays).toBe(MAX_FAILURES);
     expect(server.remote!.stats.invalid).toBe(MAX_FAILURES);
+    // declarations were played and committed; the illegal plays were dropped
+    const verdicts = verdictsOf(remote!.requests, server);
+    for (const r of remote!.requests) expect(verdicts.get(r.token!)).toEqual([r.kind !== "play"]);
     expect(frames.map(digest)).toEqual(want.map(digest));
   }, 60_000);
 
@@ -251,6 +276,11 @@ describe("SmartBot takes over when the release bot cannot answer", () => {
     expect(stats.timeout).toBe(1);
     expect(stats.answered).toBeGreaterThan(50);
     expect(stats.answered + stats.timeout + stats.busy).toBe(stats.asked);
+    // the late play is dropped, every other answer committed, each exactly once
+    const late = remote!.requests.find((r) => r.kind === "play")!;
+    const verdicts = verdictsOf(remote!.requests, server);
+    for (const r of remote!.requests) expect(verdicts.get(r.token!)).toEqual([r !== late]);
+    expect(server.remote!.open.size).toBe(0);
     expect(frames.some((f) => f.type === "state" && f.phase === "round_end")).toBe(true);
   }, 60_000);
 

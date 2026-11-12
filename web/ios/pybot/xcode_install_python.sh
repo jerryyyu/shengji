@@ -3,8 +3,9 @@
 # bot payload (shengji package, fly.toml, weights), offline_bot.py and the
 # SDK's numpy into App.app/python, then turns every .so into a signed framework
 # (Python-Apple-support's utils.sh), the layout the App Store accepts.
-# build_payload.sh (and build_fast_ext.sh for the compiled engine) must have
-# run first; the build stops here with the command to run if they have not.
+# build_payload.sh and build_fast_ext.sh must have run, from the sources of
+# this checkout: the build stops here, before packaging anything, when a part
+# is missing or was built from inputs that have since changed (inputs.sh).
 set -euo pipefail
 PYBOT="$PROJECT_DIR/../pybot"
 if [ ! -d "$PYBOT/Python.xcframework" ] || [ ! -d "$PYBOT/payload" ]; then
@@ -20,6 +21,16 @@ if [ ! -d "$PYBOT/fast/$SITE" ]; then
   echo "error: the compiled engine for $SITE is not built; run web/ios/pybot/build_fast_ext.sh <cython>"
   exit 1
 fi
+if ! "$PYBOT/inputs.sh" check payload "$PYBOT/payload"; then
+  echo "error: rerun web/ios/pybot/build_payload.sh (with no argument it reuses the built weights)"
+  exit 1
+fi
+if ! "$PYBOT/inputs.sh" check fast "$PYBOT/fast"; then
+  echo "error: rerun web/ios/pybot/build_fast_ext.sh <cython>"
+  exit 1
+fi
+IDENTITY="$("$PYBOT/inputs.sh" identity "$PYBOT/payload" "$PYBOT/fast" "$PYBOT/offline_bot.py")"
+echo "pybot bundle: inputs $IDENTITY (payload $("$PYBOT/inputs.sh" identity "$PYBOT/payload"), fast $("$PYBOT/inputs.sh" identity "$PYBOT/fast"))"
 # A simulator build with signing off still needs ad-hoc signatures on arm64.
 export EXPANDED_CODE_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
 [ -n "$EXPANDED_CODE_SIGN_IDENTITY" ] || EXPANDED_CODE_SIGN_IDENTITY=-
@@ -38,6 +49,7 @@ for d in test idlelib tkinter turtledemo ensurepip; do
 done
 rsync -a --delete --exclude '__pycache__' "$PYBOT/payload/" "$DEST/app/"
 cp "$PYBOT/offline_bot.py" "$DEST/app/offline_bot.py"
+echo "$IDENTITY" > "$DEST/app/BUNDLE_INPUTS"
 rsync -a --delete --exclude '__pycache__' --exclude 'tests/' "$PYBOT/site/$SITE/" "$DEST/app_packages/"
 rsync -a "$PYBOT/fast/$SITE/" "$DEST/app/"
 process_dylibs "$REL" "python/lib/$PYVER/lib-dynload"

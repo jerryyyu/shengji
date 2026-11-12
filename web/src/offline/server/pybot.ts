@@ -7,6 +7,14 @@
 // starting banker and every committed action so far. The bot answers with the
 // cards to declare (or none), bury or play.
 //
+// Every decision is settled: the bot searches on a copy of itself, and the
+// copy becomes the bot only when the page commits that decision (the engine
+// took it, for the live turn), as server.py keeps a turn's copied bot only on
+// commit. A decision that timed out, failed, was illegal, or was overtaken
+// before it could be played is dropped, so it leaves no trace in the bot. The
+// verdicts ride on the next request, ahead of its decision, so they reach the
+// bot in order.
+//
 // SmartBot stays the fallback for every decision: in a browser (no plugin),
 // while the interpreter is still starting, after it failed to start, when a
 // call fails or answers something illegal, and when a decision runs past its
@@ -40,6 +48,10 @@ export interface DecisionRequest {
   banker: number | null;
   log: ActionEntry[];
   final?: boolean;
+  /** This decision's name, for its verdict. */
+  token?: string;
+  /** Verdicts on earlier decisions, oldest first: [token, committed]. */
+  settle?: [string, boolean][];
 }
 
 /** Seconds a decision may take before SmartBot plays it instead. */
@@ -69,7 +81,7 @@ export function requestFor(rnd: RoundState, log: readonly ActionEntry[], kind: D
 }
 
 export type AskResult =
-  | { ok: true; cards: Card[] | null; seconds: number }
+  | { ok: true; cards: Card[] | null; seconds: number; token: string }
   | { ok: false; reason: "unavailable" | "busy" | "timeout" | "error"; seconds: number };
 
 export interface BotStats {
@@ -92,6 +104,11 @@ export class BotGate {
   };
   private inFlight = false;
   private failures = 0;
+  private nextToken = 0;
+  /** Verdicts not yet sent; the next request carries them. */
+  private verdicts: [string, boolean][] = [];
+  /** Tokens sent whose decision has no verdict yet. */
+  readonly open = new Set<string>();
   private remote: RemoteBot;
   private clock: Clock;
 
@@ -118,9 +135,13 @@ export class BotGate {
       return Promise.resolve({ ok: false, reason: "busy", seconds: 0 });
     }
     this.inFlight = true;
+    const token = `d${++this.nextToken}`;
+    const sent: DecisionRequest = { ...req, token, settle: this.verdicts };
+    this.verdicts = [];
+    this.open.add(token);
     let call: Promise<Card[] | null>;
     try {
-      call = this.remote.decide(req);
+      call = this.remote.decide(sent);
     } catch (e) {
       call = Promise.reject(e);
     }
@@ -135,6 +156,7 @@ export class BotGate {
         if (settled) return;
         this.stats.timeout += 1;
         this.failures += 1;
+        this.verdict(token, false);
         finish({ ok: false, reason: "timeout", seconds: elapsed() });
       }, DECISION_LIMIT[req.kind]);
       call.then(
@@ -147,28 +169,45 @@ export class BotGate {
           k.total += s;
           k.max = Math.max(k.max, s);
           this.stats.answered += 1;
-          finish({ ok: true, cards, seconds: s });
+          finish({ ok: true, cards, seconds: s, token });
         },
         () => {
           this.inFlight = false;
           if (settled) return;
           this.stats.error += 1;
           this.failures += 1;
+          this.verdict(token, false);
           finish({ ok: false, reason: "error", seconds: elapsed() });
         },
       );
     });
   }
 
-  /** An answer the engine took: the failure count starts over. */
-  noteAccepted(): void {
+  /** The answer was played: its copy of the bot becomes the bot, and the
+   *  failure count starts over. */
+  commit(token: string): void {
     this.failures = 0;
+    this.verdict(token, true);
   }
 
-  /** An answer the engine refused; it counts as a failed call. */
-  noteInvalid(): void {
-    this.stats.invalid += 1;
-    this.failures += 1;
+  /** The answer was not played: refused by the engine (`invalid`, which counts
+   *  as a failed call) or overtaken before it could be (`stale`). */
+  drop(token: string, why: "invalid" | "stale"): void {
+    if (why === "invalid") {
+      this.stats.invalid += 1;
+      this.failures += 1;
+    }
+    this.verdict(token, false);
+  }
+
+  /** Verdicts the next request will carry. */
+  unsent(): readonly [string, boolean][] {
+    return this.verdicts;
+  }
+
+  private verdict(token: string, committed: boolean): void {
+    if (!this.open.delete(token)) return;
+    this.verdicts.push([token, committed]);
   }
 }
 

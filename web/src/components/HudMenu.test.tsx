@@ -276,6 +276,32 @@ describe("a ranked game's leave alert", () => {
 });
 
 describe("the offline menu", () => {
+  it("Leave ends practice: a short alert, then leave_room (App's start screen takes the player home)", () => {
+    goOnline.mockClear();
+    const v = render({ offline: true });
+    act(() => btn(v.host).click());
+    act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
+    const alert = v.host.querySelector("[role='alertdialog']")!;
+    expect(alert.querySelector("h2")!.textContent).toBe("Leave this game?");
+    expect(alert.querySelector("p")!.textContent).toBe("This practice game ends.");
+    expect(goOnline).not.toHaveBeenCalled();
+    act(() => alert.querySelector<HTMLButtonElement>(".leave-alert-leave")!.click());
+    expect(sent).toEqual([{ type: "leave_room" }]);
+    expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
+    v.unmount();
+  });
+
+  it("Keep playing stays in the practice game", () => {
+    goOnline.mockClear();
+    const v = render({ offline: true });
+    act(() => btn(v.host).click());
+    act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
+    act(() => v.host.querySelector<HTMLButtonElement>(".leave-alert-keep")!.click());
+    expect(sent).toEqual([]);
+    expect(goOnline).not.toHaveBeenCalled();
+    v.unmount();
+  });
+
   it("has no invite link; Play online appears while the device is online", () => {
     goOnline.mockClear();
     const v = render({ offline: true });

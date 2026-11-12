@@ -132,7 +132,7 @@ export default function HudMenu({ room, kittyCount, ranked = false, offline = OF
         </div>
       ) : null}
       {asking ? (
-        <LeaveAlert ranked={ranked} onKeep={() => setAsking(false)} onLeft={() => setAsking(false)} />
+        <LeaveAlert ranked={ranked} practice={offline} onKeep={() => setAsking(false)} onLeft={() => setAsking(false)} />
       ) : null}
     </div>
   );

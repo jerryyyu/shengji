@@ -2,8 +2,10 @@ import { useEffect, useId, useRef } from "react";
 import { conn } from "../ws";
 
 /** The two lines a leave alert shows: a ranked game warns about the result,
- *  any other game only that a bot plays on. */
-export function leaveCopy(ranked: boolean): { title: string; body: string } {
+ *  a practice game on this device simply ends, any other game plays on with
+ *  a bot in your seat. */
+export function leaveCopy(ranked: boolean, practice = false): { title: string; body: string } {
+  if (practice) return { title: "Leave this game?", body: "This practice game ends." };
   return ranked
     ? { title: "Leave this ranked game?", body: "A bot takes your seat, and this round counts as at best a draw." }
     : { title: "Leave this game?", body: "A bot takes your seat and the others keep playing." };
@@ -11,6 +13,8 @@ export function leaveCopy(ranked: boolean): { title: string; body: string } {
 
 interface LeaveAlertProps {
   ranked: boolean;
+  /** Offline practice: the game ends (the start screen then sends the player home). */
+  practice?: boolean;
   /** Closes the alert without leaving: Keep playing, Escape. */
   onKeep: () => void;
   /** Runs after leave_room is sent, for the caller to tidy up. */
@@ -20,12 +24,12 @@ interface LeaveAlertProps {
 /** A centred alert that asks before leaving the game. It is a modal dialog,
  *  so focus stays inside it and the table under it is inert; Keep playing is
  *  focused first, and Escape keeps playing. Leave sends leave_room. */
-export default function LeaveAlert({ ranked, onKeep, onLeft }: LeaveAlertProps) {
+export default function LeaveAlert({ ranked, practice = false, onKeep, onLeft }: LeaveAlertProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const bodyId = useId();
-  const { title, body } = leaveCopy(ranked);
+  const { title, body } = leaveCopy(ranked, practice);
 
   useEffect(() => {
     const dialog = ref.current!;

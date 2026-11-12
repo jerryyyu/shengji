@@ -1,5 +1,6 @@
 import { useState } from "react";
 import LeaveAlert from "./LeaveAlert";
+import { OFFLINE } from "../offlineMode";
 
 interface LeaveButtonProps {
   /** "hud" is the small pill in the top bar; "dialog" is a full-size secondary
@@ -7,13 +8,15 @@ interface LeaveButtonProps {
   variant?: "hud" | "dialog";
   /** A matched game: the alert says what leaving does to the result. */
   ranked?: boolean;
+  /** Offline practice; defaults to the page's mode. */
+  practice?: boolean;
 }
 
 /** Leave control: a tap opens the leave alert, which waits for Keep playing
  *  or Leave. */
-export default function LeaveButton({ variant = "hud", ranked = false }: LeaveButtonProps) {
+export default function LeaveButton({ variant = "hud", ranked = false, practice = OFFLINE }: LeaveButtonProps) {
   const [asking, setAsking] = useState(false);
-  const alert = asking ? <LeaveAlert ranked={ranked} onKeep={() => setAsking(false)} onLeft={() => setAsking(false)} /> : null;
+  const alert = asking ? <LeaveAlert ranked={ranked} practice={practice} onKeep={() => setAsking(false)} onLeft={() => setAsking(false)} /> : null;
 
   if (variant === "dialog") {
     return (

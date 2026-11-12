@@ -303,7 +303,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
             {state.kitty_count}
           </span>
           <MuteButton />
-          <LeaveButton ranked={mode === "ranked"} />
+          <LeaveButton ranked={mode === "ranked"} practice={practice} />
           <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked"} offline={practice} />
         </div>
       </div>

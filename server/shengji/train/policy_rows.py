@@ -24,6 +24,8 @@ from .policy_prior import (ENC_VERSION, INPUT_DIM, MAX_LEGAL, _rank_rows, _repor
                            input_dim, listwise_loss)
 
 SCHEMA = "shengji-policy-rows-v1"
+#: the chunk arrays of off-ballot legal negatives (``policy_prior.negative_tensors``)
+NEGATIVE_ARRAYS = ("negs", "neg_mask", "neg_logw")
 
 
 def _file_sha256(path: str | Path) -> str:
@@ -147,6 +149,10 @@ def _to_device(batch: Mapping[str, Any], device, copy=None) -> dict[str, torch.T
         out["vals"] = t(np.asarray(batch["vals"], dtype=np.float32))
     if batch.get("explore_flag") is not None:
         out["explore_flag"] = t(np.asarray(batch["explore_flag"], dtype=np.int8), torch.long)
+    if batch.get("negs") is not None:
+        out["negs"] = t(batch["negs"])
+        out["neg_mask"] = t(batch["neg_mask"], torch.bool)
+        out["neg_logw"] = t(np.asarray(batch["neg_logw"], dtype=np.float32))
     return out
 
 
@@ -231,6 +237,9 @@ class PolicyRowsStream:
     the corpus can train the head without a memory cap.  Rows on ``exclude``
     deals are dropped per chunk; ``limit`` caps the rows drawn per pass."""
 
+    #: off-ballot negatives per row (0 = none); the constructor sets it from the manifest
+    legal_negatives = 0
+
     def __init__(self, directory: str | Path, *, limit: int | None = None,
                  exclude: set[str] | frozenset[str] = frozenset(), window: int = 4,
                  version: int = ENC_VERSION):
@@ -263,6 +272,9 @@ class PolicyRowsStream:
         # Exploration tags: an extract carries them only when the manifest says so AND
         # every chunk has the arrays; otherwise the stream reads the flag as 0 on every row.
         self.explore_tags = bool(man.get("explore_tags", False))
+        # Off-ballot legal negatives (served_policy_rows --legal-negatives): every chunk
+        # must carry them when the manifest says so; a stream without them has none.
+        self.legal_negatives = int(man.get("legal_negatives") or 0)
         flag_counts = np.zeros(3, dtype=np.int64)
         for c in self.chunks:
             path = self._paths[c["file"]]
@@ -283,6 +295,11 @@ class PolicyRowsStream:
                 raise ValueError(f"policy rows stream: {c['file']} exploration tags are not row-aligned with the manifest")
             if "explore_flag" not in d.files:
                 self.explore_tags = False
+            if self.legal_negatives and (
+                    any(k not in d.files for k in NEGATIVE_ARRAYS) or d["negs"].shape[0] != n
+                    or d["neg_mask"].shape != d["negs"].shape[:2] or d["neg_logw"].shape != (n,)):
+                raise ValueError(f"policy rows stream: {c['file']} lacks row-aligned legal negatives "
+                                 "though the manifest declares them")
             verified.append(actual)
             dk = d["deal_key"].astype(str); keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
             keys.update(dk[keep].tolist()); excluded.update(dk[~keep].tolist())
@@ -308,6 +325,8 @@ class PolicyRowsStream:
                          "explore_tags": self.explore_tags,
                          "explore_flag_counts": {str(k): int(flag_counts[k]) for k in range(3)},
                          "split": man.get("split")}
+        if self.legal_negatives:
+            self.identity["legal_negatives"] = self.legal_negatives
         if path_map:
             self.identity["path_map"] = [[str(old), str(new)] for old, new in path_map]
 
@@ -332,6 +351,9 @@ class PolicyRowsStream:
             else:
                 out["explore_flag"] = np.zeros(int(keep.sum()), np.int8)
                 out["explore_margin"] = np.full(int(keep.sum()), np.nan, np.float32)
+            if self.legal_negatives:
+                for k in NEGATIVE_ARRAYS:
+                    out[k] = selected(k)
             return out
 
     def batches(self, batch_size: int, rng: np.random.Generator):
@@ -353,6 +375,11 @@ class PolicyRowsStream:
                                     float32_when_narrow=True)
             eflag = np.concatenate([p["explore_flag"] for p in parts])
             emargin = np.concatenate([p["explore_margin"] for p in parts])
+            negs = neg_mask = neg_logw = None
+            if self.legal_negatives:
+                negs = _pad_concat([p["negs"] for p in parts], -1)
+                neg_mask = _pad2_concat([p["neg_mask"] for p in parts], negs.shape[1], False)
+                neg_logw = np.concatenate([p["neg_logw"] for p in parts]).astype(np.float32, copy=False)
             del parts
             perm = rng.permutation(len(X))
             out = None
@@ -367,9 +394,14 @@ class PolicyRowsStream:
                        "explore_flag": eflag[idx], "explore_margin": emargin[idx]}
                 if vals is not None:
                     out["vals"] = vals[idx]
+                if negs is not None:
+                    width = int(neg_mask[idx].sum(1).max(initial=0))     # trim the window's padding
+                    out["negs"] = negs[idx, :width]
+                    out["neg_mask"] = neg_mask[idx, :width]
+                    out["neg_logw"] = neg_logw[idx]
                 yield out
             # Do not retain a completed window while the next window is loaded.
-            del X, Y, ball, mask, tgt, vals, eflag, emargin, perm, out
+            del X, Y, ball, mask, tgt, vals, eflag, emargin, perm, out, negs, neg_mask, neg_logw
 
     @staticmethod
     def tensors(batch: Mapping[str, Any], device, copy=None) -> dict[str, torch.Tensor]:
@@ -461,7 +493,7 @@ def scale_trunk_gradient(features: torch.Tensor, scale: float) -> torch.Tensor:
 
 def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: float, detach: bool = False,
                   soft_targets: bool = False, soft_temperature: float = 1.0, row_weight=None,
-                  trunk_grad_scale: float = 1.0, rows=None):
+                  trunk_grad_scale: float = 1.0, rows=None, legal_negatives: bool = False):
     """``(bce, listwise, logits)`` of the policy head on one root batch.  With
     ``detach`` the head reads the trunk features through a stop-gradient: the
     policy loss trains the head only and never moves the shared trunk (the head's
@@ -476,7 +508,10 @@ def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: floa
     tower and head keep the full gradient.  1.0 is the unscaled code path.
     ``rows`` (optional) is ``policy_prior.ballot_rows`` of the batch's ``tgt``
     as an int64 tensor on the device; the listwise term then selects its rows
-    without waiting for the device (same rows, same values)."""
+    without waiting for the device (same rows, same values).
+    ``legal_negatives`` puts the batch's off-ballot legal actions (``negs``) in the
+    listwise normaliser (``policy_prior.listwise_loss_legal``); False is the
+    ballot-only loss, unchanged."""
     features = model.features_flat(t["x"])
     if detach:
         features = features.detach()
@@ -491,6 +526,15 @@ def policy_losses(model, t: Mapping[str, torch.Tensor], *, listwise_weight: floa
         bce = _weighted_row_mean(per_row, row_weight)
     if listwise_weight <= 0:
         lw = logits.sum() * 0.0
+    elif legal_negatives:
+        if "negs" not in t:
+            raise ValueError("legal_negatives: this root batch carries no off-ballot negatives")
+        from .policy_prior import listwise_loss_legal
+        lw = listwise_loss_legal(logits, t["ball"], t["mask"], t["tgt"],
+                                 t["vals"] if soft_targets else None,
+                                 t["negs"], t["neg_mask"], t["neg_logw"],
+                                 temperature=float(soft_temperature), row_weight=row_weight,
+                                 rows=rows)
     elif soft_targets:
         from .policy_prior import listwise_loss_soft
         lw = listwise_loss_soft(logits, t["ball"], t["mask"], t["tgt"], t["vals"],

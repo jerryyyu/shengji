@@ -22,6 +22,11 @@ decisions:
   ``vals`` slot NaN: the trainer's soft loss then takes its hard fallback,
   cross-entropy on the played slot, with no trainer change.
 * every other play record is excluded and counted by reason (``EXCLUSION_REASONS``).
+* opt-in ``--legal-negatives CAP``: each row also carries up to CAP legal actions
+  OFF the ballot (uniform draw, seeded per record), from the served scored set --
+  ``harvest.legal.enumerate_legal`` at ``MAX_LEGAL`` with the played action and the
+  ballot forced in -- plus the sampled-softmax correction log(off / kept), for
+  ``train_cwv --policy-legal-negatives`` (``policy_prior.listwise_loss_legal``).
 * opt-in lead transforms add an int8 ``lead_type`` array (follow, single, pair,
   tractor, throw); selected throw leads can become ``hard_played`` rows with
   all-NaN values, or hard-LCC throw rows can be dropped.
@@ -67,13 +72,15 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
+from ..harvest.legal import enumerate_legal
 from ..harvest.rebuild import state_for_record
 from ..engine import combos
 from ..rl.encode import CARD_INDEX, N_CARDS
 from .data import ShardRef, deal_key, discover_store, iter_records
-from .policy_prior import (CHUNK_SCHEMA, EXPLORE_FLAG_NAMES, NO_SEARCH_VALUES, ballot_tensors,
+from .policy_prior import (CHUNK_SCHEMA, EXPLORE_FLAG_NAMES, MAX_LEGAL, NO_SEARCH_VALUES, ballot_tensors,
                            ballot_value_tensor, cards_to_idx, explore_flag_counts, explore_tag_arrays,
-                           explore_tags_of, flat_input, input_dim, root_tensors)
+                           explore_tags_of, flat_input, input_dim, negative_tensors, root_tensors,
+                           sample_legal_negatives)
 
 SUMMARY_SCHEMA = "shengji-served-policy-rows-summary-v1"
 PRODUCER = "shengji.train.served_policy_rows"
@@ -98,6 +105,8 @@ EXCLUSION_REASONS = (
     "played_not_on_ballot", "played_unpriced_without_lcc", "lcc_record_inconsistent",
     "rebuild_failed", "turn_mismatch",
 )
+#: further reasons, counted only by a ``--legal-negatives`` build
+NEGATIVE_EXCLUSION_REASONS = ("legal_enumeration_failed",)
 _ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
 
@@ -228,7 +237,8 @@ def _record_deal_key(record: Mapping[str, Any]) -> str | None:
 
 def _shard_rows(args: tuple) -> tuple[list[tuple], dict]:
     """Rows and counters of one shard, in record order."""
-    path, version, intervals, excluded_keys, lead_types, hard_lead_types, drop_hard_lcc_lead_types = args
+    (path, version, intervals, excluded_keys, lead_types, hard_lead_types, drop_hard_lcc_lead_types,
+     neg_cap, neg_seed) = args
     rows: list[tuple] = []
     counts: Counter = Counter()
     lcc_status: Counter = Counter()
@@ -280,6 +290,17 @@ def _shard_rows(args: tuple) -> tuple[list[tuple], dict]:
             excluded_seen.add(root_key)
             continue
         raw_ballot = rec.get("ballot") or []
+        negatives = None
+        if neg_cap:
+            try:
+                legal = enumerate_legal(root, seat, cap=MAX_LEGAL,
+                                        must_include=[rec["action"]] + [a for a in raw_ballot if a]).actions
+            except ValueError:
+                counts["excluded:legal_enumeration_failed"] += 1
+                continue
+            rng = random.Random(f"{neg_seed}|{rec.get('record_sha256') or rec.get('source_ref')}")
+            negatives = sample_legal_negatives([cards_to_idx(a) for a in legal],
+                                               [cards_to_idx(a) for a in raw_ballot if a], neg_cap, rng)
         lead_type = None
         if lead_types:
             lead_type = _lead_type(root, rec["action"])
@@ -304,6 +325,11 @@ def _shard_rows(args: tuple) -> tuple[list[tuple], dict]:
                 "source_ref": rec.get("source_ref"), "round_seed": rec.get("round_seed")}
         if lead_type is not None:
             meta["lead_type"] = lead_type
+        if negatives is not None:
+            meta["negs"], meta["n_off"], meta["neg_logw"] = negatives
+            counts["negatives:rows_with"] += int(bool(negatives[0]))
+            counts["negatives:kept"] += len(negatives[0])
+            counts["negatives:off_ballot"] += negatives[1]
         rows.append((x, y, meta))
         counts[f"rows:{target}"] += 1
     return rows, {"counts": dict(counts), "lcc_status": dict(lcc_status),
@@ -361,6 +387,10 @@ def write_chunk(out_dir: Path, index: int, X, Y, meta) -> dict:
         "target_kind": kinds}
     if any("lead_type" in m for m in meta):
         arrays["lead_type"] = np.asarray([m["lead_type"] for m in meta], np.int8)
+    if meta and all("negs" in m for m in meta):
+        arrays["negs"], arrays["neg_mask"], arrays["neg_logw"] = negative_tensors(meta)
+    elif any("negs" in m for m in meta):
+        raise ServedPolicyRowsError("a chunk mixes rows with and without legal negatives")
     path = out_dir / f"chunk-{index:05d}.npz"
     sha = save_npz_deterministic(path, arrays)
     target_kinds = {name: int((kinds == kind).sum())
@@ -550,7 +580,7 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
             seed: int = 1, partition: tuple[int, int] | None = None,
             replace_incomplete: bool = False, lead_types: bool = False,
             hard_lead_types: Sequence[str] = (),
-            drop_hard_lcc_lead_types: Sequence[str] = ()) -> dict:
+            drop_hard_lcc_lead_types: Sequence[str] = (), legal_negatives: int = 0) -> dict:
     """Write the chunked root rows of ``corpora`` to the new directory ``out``
     and return the summary (also written to ``out/summary.json``).
 
@@ -558,7 +588,13 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     starting at I: the N partitions are disjoint, cover every shard, and each
     is a complete output of its own that ``combine`` later joins.  A partition
     may hold no rows (all its records excluded).  ``replace_incomplete``
-    removes an interrupted build at ``out`` first (``_remove_incomplete``)."""
+    removes an interrupted build at ``out`` first (``_remove_incomplete``).
+    ``legal_negatives`` > 0 adds up to that many off-ballot legal actions per row
+    (0 = none, the default output byte for byte); it builds whole outputs only."""
+    if type(legal_negatives) is not int or legal_negatives < 0:
+        raise ServedPolicyRowsError("legal_negatives must be an integer >= 0")
+    if legal_negatives and partition is not None:
+        raise ServedPolicyRowsError("legal_negatives builds one whole output; combine does not carry them")
     if type(lead_types) is not bool:
         raise ServedPolicyRowsError("lead_types must be a bool")
     hard_lead_types = _normalize_lead_types(hard_lead_types, "hard_lead_types")
@@ -624,7 +660,7 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     excluded_seen: set[str] = set()
     deals: set[str] = set()
     args = ((p, version, tuple(intervals), excluded_keys, lead_types,
-             hard_lead_types, drop_hard_lcc_lead_types) for p in paths)
+             hard_lead_types, drop_hard_lcc_lead_types, legal_negatives, seed) for p in paths)
 
     def flush(n: int) -> None:
         nonlocal total
@@ -665,7 +701,8 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     if deals & (excluded_keys | excluded_seen):
         raise ServedPolicyRowsError("an excluded deal key reached the output")
     excluded = {k.split(":", 1)[1]: v for k, v in sorted(counts.items()) if k.startswith("excluded:")}
-    for reason in EXCLUSION_REASONS + (("hard_lcc_lead_type",) if transform else ()):
+    for reason in (EXCLUSION_REASONS + (("hard_lcc_lead_type",) if transform else ())
+                   + (NEGATIVE_EXCLUSION_REASONS if legal_negatives else ())):
         excluded.setdefault(reason, 0)
     target_rows = {name: sum(c["target_kinds"].get(name, 0) for c in chunks)
                    for name in ("soft", "hard_lcc")}
@@ -697,6 +734,12 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
     }
     if transform is not None:
         summary["lead_type_transform"] = transform
+    if legal_negatives:
+        summary["legal_negatives"] = {
+            "cap": int(legal_negatives), "legal_cap": MAX_LEGAL,
+            "rows_with_negatives": int(counts["negatives:rows_with"]),
+            "negatives_kept": int(counts["negatives:kept"]),
+            "off_ballot_legal": int(counts["negatives:off_ballot"])}
     if part_info is not None:
         # the excluded deals themselves, so ``combine`` can count their union
         summary["partition"] = dict(part_info, excluded_deals=sorted(excluded_seen))
@@ -713,6 +756,8 @@ def produce(out: str | Path, corpora: Sequence[str | Path], *, version: int,
                 "target_kind_names": {str(k): v for k, v in TARGET_KINDS.items()
                                       if k != TARGET_HARD_PLAYED or "hard_played" in target_rows},
                 "producer": {k: v for k, v in summary.items() if k not in ("schema", "out")}}
+    if legal_negatives:
+        manifest["legal_negatives"] = int(legal_negatives)
     if transform is not None:
         manifest["lead_type_transform"] = transform
         manifest["lead_type_names"] = {str(k): v for k, v in LEAD_TYPE_NAMES.items()}
@@ -916,6 +961,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="make matching soft rows hard_played (repeatable; enables lead types)")
     p.add_argument("--drop-hard-lcc-lead-types", action="append", default=[], metavar="TYPE",
                    help="drop matching hard_lcc rows with counted exclusions (repeatable)")
+    p.add_argument("--legal-negatives", type=int, default=0, metavar="CAP",
+                   help="add up to CAP off-ballot legal actions per row for train_cwv "
+                        "--policy-legal-negatives (0 = none)")
     return p
 
 
@@ -935,7 +983,8 @@ def main(argv: list[str] | None = None) -> int:
                           partition=None if a.partition is None else parse_partition(a.partition),
                           replace_incomplete=a.replace_incomplete, lead_types=a.lead_types,
                           hard_lead_types=a.hard_lead_types,
-                          drop_hard_lcc_lead_types=a.drop_hard_lcc_lead_types)
+                          drop_hard_lcc_lead_types=a.drop_hard_lcc_lead_types,
+                          legal_negatives=a.legal_negatives)
     except ServedPolicyRowsError as exc:
         print(f"served_policy_rows: {exc}", file=sys.stderr)
         return 2

@@ -597,6 +597,94 @@ def listwise_loss_soft(logits, ball, mask, tgt, vals, temperature: float = 1.0, 
     return _weighted_row_mean(per_row, row_weight[ok])
 
 
+def sample_legal_negatives(legal: Sequence[Sequence[int]], ballot: Sequence[Sequence[int]], cap: int,
+                           rng: random.Random) -> tuple[list[list[int]], int, float]:
+    """``(kept, n_off, logw)``: the legal actions OFF the ballot, as negatives for
+    ``listwise_loss_legal``.  Actions are card-index lists compared as multisets.
+    At most ``cap`` are kept, drawn uniformly without replacement; ``logw`` =
+    log(n_off / kept) is the sampled-softmax correction that makes the kept
+    negatives stand in for all ``n_off`` in the loss's normaliser (0.0 when every
+    off-ballot action is kept or there is none)."""
+    if type(cap) is not int or cap < 1:
+        raise PolicyPriorError("the negative cap must be a positive integer")
+    on = {tuple(sorted(a)) for a in ballot if a}
+    off: list[list[int]] = []
+    seen: set[tuple[int, ...]] = set()
+    for a in legal:
+        k = tuple(sorted(a))
+        if k in on or k in seen:
+            continue
+        seen.add(k)
+        off.append(list(a))
+    kept = rng.sample(off, cap) if len(off) > cap else off
+    logw = math.log(len(off) / len(kept)) if kept else 0.0
+    return kept, len(off), logw
+
+
+def negative_tensors(meta: Sequence[Mapping[str, Any]]):
+    """Padded negatives of ``sample_legal_negatives`` per row: card indices
+    ``negs`` (int8 [n, N, C], -1 = none), a slot mask ``neg_mask`` (bool [n, N])
+    and the per-row correction ``neg_logw`` (float32 [n]).  N and C are the
+    widest row's; a row with no negative has an all-False mask."""
+    n = len(meta)
+    rows = [[list(a) for a in m.get("negs") or []] for m in meta]
+    n_max = max((len(r) for r in rows), default=0)
+    c_max = max((len(a) for r in rows for a in r), default=1) or 1
+    negs = np.full((n, n_max, c_max), -1, np.int8)
+    neg_mask = np.zeros((n, n_max), bool)
+    neg_logw = np.zeros(n, np.float32)
+    for i, (m, r) in enumerate(zip(meta, rows)):
+        for j, a in enumerate(r):
+            negs[i, j, :len(a)] = a
+            neg_mask[i, j] = True
+        neg_logw[i] = float(m.get("neg_logw") or 0.0)
+    return negs, neg_mask, neg_logw
+
+
+def listwise_loss_legal(logits, ball, mask, tgt, vals, negs, neg_mask, neg_logw,
+                        temperature: float = 1.0, row_weight=None, *, rows=None):
+    """Listwise CE whose normaliser spans the ballot AND the off-ballot legal actions.
+
+    The target is ``listwise_loss_soft``'s: the search's softmax over the ballot's
+    finite means, or the played slot where fewer than two are finite (or ``vals``
+    is None).  Off-ballot legal actions take zero target mass but sit in the
+    softmax denominator, so every step pushes them below the ballot instead of
+    leaving the rest of the legal set unconstrained -- the served prior ranks the
+    whole legal set, not the ballot.  ``negs`` (b, N, C) card indices or -1,
+    ``neg_mask`` (b, N), ``neg_logw`` (b,) the sampled-softmax correction added to
+    each kept negative's score.  With no negative on a row the loss equals
+    ``listwise_loss_soft`` (or ``listwise_loss`` with ``vals`` None) on that row."""
+    import torch
+    ok = _ballot_selector(tgt, rows)
+    if ok is None:
+        return logits.sum() * 0.0
+    lo = logits[ok]
+    b = ball[ok].long()
+    gathered = lo.gather(1, b.clamp(min=0).reshape(b.shape[0], -1)).reshape(b.shape)
+    gathered = gathered * (b >= 0)
+    m = mask[ok]
+    scores = gathered.sum(2).masked_fill(~m, -1e9)
+    hard = torch.zeros_like(scores)
+    hard[torch.arange(hard.shape[0], device=hard.device), tgt[ok]] = 1.0
+    if vals is None:
+        target = hard
+    else:
+        soft, usable = soft_ballot_targets(vals[ok], m, temperature)
+        target = torch.where(usable.unsqueeze(1), soft, hard)
+    nb = negs[ok].long()
+    if nb.shape[1] > 0:
+        ng = lo.gather(1, nb.clamp(min=0).reshape(nb.shape[0], -1)).reshape(nb.shape)
+        nscore = (ng * (nb >= 0)).sum(2) + neg_logw[ok].to(lo.dtype).unsqueeze(1)
+        nscore = nscore.masked_fill(~neg_mask[ok], -1e9)
+        logz = torch.logsumexp(torch.cat([scores, nscore], 1), dim=1, keepdim=True)
+    else:
+        logz = torch.logsumexp(scores, dim=1, keepdim=True)
+    per_row = -(target * (scores - logz)).sum(1)
+    if row_weight is None:
+        return per_row.mean()
+    return _weighted_row_mean(per_row, row_weight[ok])
+
+
 def listwise_loss(logits, ball, mask, tgt, row_weight=None, *, rows=None):
     """Cross-entropy over the ballot's factorised scores, rows whose played action is
     in the ballot only.  ``logits`` (b, 54); ``ball`` (b, B, C) card indices or -1.

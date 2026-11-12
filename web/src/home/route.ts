@@ -3,10 +3,9 @@
 // Play is the bare URL. A phone has three tabs, Play, Leaderboard and Me, with
 // Me's Stats and Games as segments; at 700px and up the top bar shows Stats and
 // Games as tabs of their own. `#/stats`, `#/me` and `#/me/stats` name Stats,
-// `#/games` and `#/me/games` name Games, at any width. Switching tabs replaces
-// the current history entry, as a native tab bar keeps no back stack: back (or
-// the app's edge swipe) leaves a sub-page such as How to play or a replay,
-// never walks the tabs.
+// `#/games` and `#/me/games` name Games, at any width. Switching tabs adds a
+// history entry, so back (or the app's edge swipe) returns to the tab before,
+// as it does from a sub-page such as How to play or a replay.
 import { useEffect, useState } from "react";
 import { tabMemory } from "./session";
 
@@ -52,14 +51,15 @@ function currentHash(): string {
   }
 }
 
-/** Go to a tab in place of the current history entry: Play clears the hash,
- *  the others set theirs. Me opens on the section named, else the one it last
- *  showed this session. */
+/** Go to a tab as a new history entry: Play clears the hash, the others set
+ *  theirs; reopening the current tab adds nothing. Me opens on the section
+ *  named, else the one it last showed this session. */
 export function openTab(tab: Tab, section?: MeSection): void {
   const hash = homeHash(tab, section ?? tabMemory.meSection, isWide());
   try {
     if (hash && currentHash() === hash) return;
-    window.history.replaceState(null, "", window.location.pathname + window.location.search + hash);
+    if (!hash && !currentHash()) return;
+    window.history.pushState(null, "", window.location.pathname + window.location.search + hash);
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   } catch {
     /* a sandboxed location */

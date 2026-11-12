@@ -1,7 +1,7 @@
 // Which moves add a history entry. The browser's back button and the iOS
 // app's edge swipe walk exactly these entries, so a sub-page (How to play, a
-// saved game, a replay, Privacy, Support) is one, while switching tabs
-// replaces the current entry the way a native tab bar keeps no back stack.
+// saved game, a replay, Privacy, Support) is one, and so is each tab switch,
+// so back returns to the tab before.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openTab, parseHome } from "./home/route";
 import { openHowto } from "./howto/route";
@@ -26,16 +26,21 @@ function added(move: () => void): number {
 }
 
 describe("history entries", () => {
-  it("switching tabs replaces the entry and still announces the route", () => {
-    expect(added(() => openTab("leaderboard"))).toBe(0);
+  it("switching tabs adds an entry and announces the route", () => {
+    expect(added(() => openTab("leaderboard"))).toBe(1);
     expect(parseHome(window.location.hash)).toEqual({ tab: "leaderboard" });
-    expect(added(() => openTab("me", "games"))).toBe(0);
+    expect(added(() => openTab("me", "games"))).toBe(1);
     expect(window.location.hash).toBe("#/me/games");
-    expect(added(() => openTab("me", "stats"))).toBe(0);
+    expect(added(() => openTab("me", "stats"))).toBe(1);
     expect(window.location.hash).toBe("#/me");
-    expect(added(() => openTab("play"))).toBe(0);
+    expect(added(() => openTab("play"))).toBe(1);
     expect(window.location.pathname + window.location.hash).toBe("/");
     expect(hashChanges).toBe(4);
+  });
+
+  it("Play from Play adds nothing", () => {
+    expect(added(() => openTab("play"))).toBe(0);
+    expect(hashChanges).toBe(0);
   });
 
   it("the tab already showing is not announced again", () => {

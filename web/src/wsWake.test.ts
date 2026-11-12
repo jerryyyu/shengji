@@ -75,3 +75,40 @@ it("wakes closed reconnect backoff once, preserves identity, and leaves live soc
     vi.useRealTimers();
   }
 });
+
+it("keeps browser wake events off the offline transport while it loads", async () => {
+  const network = vi.fn();
+  const local = vi.fn();
+  let resolveModule!: (value: { LocalSocket: new () => object }) => void;
+  const module = new Promise<{ LocalSocket: new () => object }>((resolve) => { resolveModule = resolve; });
+  vi.doMock("./offline/server", () => module);
+  vi.stubGlobal("WebSocket", network);
+  sessionStorage.setItem("shengji.offline", "1");
+  try {
+    vi.resetModules();
+    const { conn, OFFLINE } = await import("./ws");
+    expect(OFFLINE).toBe(true);
+    conn.start(); conn.start();
+    const wake = () => {
+      window.dispatchEvent(new Event("online"));
+      window.dispatchEvent(new Event("pageshow"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+    wake();
+    expect(network).not.toHaveBeenCalled();
+    class LocalSocket {
+      readyState = 0;
+      constructor() { local(); }
+    }
+    resolveModule({ LocalSocket });
+    await vi.waitFor(() => expect(local).toHaveBeenCalledTimes(1));
+    wake();
+    expect(local).toHaveBeenCalledTimes(1);
+    expect(network).not.toHaveBeenCalled();
+  } finally {
+    sessionStorage.removeItem("shengji.offline");
+    vi.doUnmock("./offline/server");
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  }
+});

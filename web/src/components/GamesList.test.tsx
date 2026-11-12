@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GamesList, { SavedGames } from "./GamesList";
+import { remember } from "../home/session";
 import { dayLabel } from "../home/dayLabel";
 import { navigate, useGamesRoute } from "../replay/route";
 import roundFixture from "../replay/round.fixture.json";
@@ -235,5 +236,70 @@ describe("the replay page", () => {
   it("a round outside the account's interval is unavailable (404)", async () => {
     await mount({ page: "replay", id: "g1", round: 9 });
     expect(q(".games-status")?.textContent).toContain("This game isn't available");
+  });
+});
+
+it("review: an authoritative empty refresh removes the last deleted cached game", async () => {
+  const key = "review:deleted-game";
+  remember(key, {status:"ready", games:[row("deleted",100)], next:null, more:false, moreError:false});
+  routes["GET /api/me/games?limit=20"] = {status:200,body:{games:[],next_before:null}};
+  host=document.createElement("div"); document.body.appendChild(host); root=createRoot(host);
+  await act(async()=>{root.render(<SavedGames cacheKey={key} onPlay={()=>{}} />);});
+  await settle();
+  expect(host.textContent).toContain("No saved games yet");
+  expect(host.textContent).not.toContain("Room ABCD");
+});
+
+it("review: remove last game through cached Me history reaches empty state", async () => {
+  function CachedHost() {
+    const route=useGamesRoute();
+    return route?.page === "list" ? <SavedGames cacheKey="review:actual-delete" onPlay={()=>{}} /> : route ? <GamesList route={route} /> : null;
+  }
+  routes["GET /api/me/games?limit=20"]={status:200,body:{games:[row("g1",1790000000)],next_before:null}};
+  routes["GET /api/me/games/g1"]={status:200,body:{...row("g1",1790000000),round_results:[]}};
+  routes["DELETE /api/me/games/g1"]={status:204};
+  act(()=>navigate({page:"list"}));
+  host=document.createElement("div");document.body.appendChild(host);root=createRoot(host);
+  await act(async()=>{root.render(<CachedHost />);});await settle();
+  await click(qa(".games-day-row")[0]);
+  await click(button("Remove from my history"));
+  routes["GET /api/me/games?limit=20"]={status:200,body:{games:[],next_before:null}};
+  await click(button("Tap again to remove"));
+  expect(calls.some(c=>c.method === "DELETE")).toBe(true);
+  expect(host.textContent).toContain("No saved games yet");
+});
+
+describe("a cached list on refresh", () => {
+  const ready = (games: GameRow[], next: string | null) =>
+    ({ status: "ready", games, next, more: false, moreError: false });
+  const renderList = async (key: string) => {
+    act(() => navigate({ page: "list" }));
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => { root.render(<SavedGames cacheKey={key} onPlay={() => {}} />); });
+    await settle();
+  };
+
+  it("a first page with a continuation keeps the older pages already loaded and their cursor", async () => {
+    const key = "test:continuation";
+    remember(key, ready([row("new", 300), row("mid", 200), row("old", 100)], "c-old"));
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [row("new", 300)], next_before: "c-new" } };
+    await renderList(key);
+    expect(qa(".games-day-row")).toHaveLength(3);
+    routes["GET /api/me/games?limit=20&before=c-old"] = { status: 200, body: { games: [row("oldest", 50)], next_before: null } };
+    await click(button("Load more"));
+    expect(calls.map((c) => c.url)).toContain("/api/me/games?limit=20&before=c-old");
+    expect(qa(".games-day-row")).toHaveLength(4);
+    expect(button("Load more")).toBeUndefined();
+  });
+
+  it("a final first page replaces the cached rows, dropping ones the server no longer has", async () => {
+    const key = "test:final";
+    remember(key, ready([row("keep", 300), row("gone", 200)], "c1"));
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [row("keep", 300)], next_before: null } };
+    await renderList(key);
+    expect(qa(".games-day-row")).toHaveLength(1);
+    expect(button("Load more")).toBeUndefined();
   });
 });

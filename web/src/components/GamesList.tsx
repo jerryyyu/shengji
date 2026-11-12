@@ -85,7 +85,7 @@ function GameView({ id }: { id: string }) {
     setBusy(true);
     setError(null);
     removeGame(id)
-      .then(() => navigate({ page: "list" }))
+      .then(() => { forgetRemovedGame(id); navigate({ page: "list" }); })
       .catch((e: Error) => { setError(e.message); setArmed(false); })
       .finally(() => setBusy(false));
   };
@@ -145,6 +145,24 @@ type ListState =
   | { status: "failed"; reason: "signed_out" | "not_found" | "error"; code: number }
   | { status: "ready"; games: GameRow[]; next: string | null; more: boolean; moreError: boolean };
 
+// Every cache key a list has been shown under, and the lists on screen, so a
+// removed game leaves all of them (every loaded page) and never reappears
+// from a cached copy.
+const listKeys = new Set<string>();
+const shownLists = new Set<(id: string) => void>();
+
+function withoutGame(list: ListState, id: string): ListState {
+  return list.status === "ready" ? { ...list, games: list.games.filter((g) => g.id !== id) } : list;
+}
+
+function forgetRemovedGame(id: string): void {
+  for (const key of listKeys) {
+    const list = cached<ListState>(key);
+    if (list) remember(key, withoutGame(list, id));
+  }
+  for (const drop of shownLists) drop(id);
+}
+
 function clock(unix: number): string {
   return new Date(unix * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
@@ -187,12 +205,26 @@ export function SavedGames({ onPlay, cacheKey, onReady }: {
     () => (cacheKey ? cached<ListState>(cacheKey) : undefined) ?? { status: "loading" });
 
   useEffect(() => {
+    if (cacheKey) listKeys.add(cacheKey);
+  }, [cacheKey]);
+
+  useEffect(() => {
+    const drop = (id: string) => setList((cur) => withoutGame(cur, id));
+    shownLists.add(drop);
+    return () => { shownLists.delete(drop); };
+  }, []);
+
+  useEffect(() => {
     let live = true;
     fetchGames(null).then((r) => {
       if (!live) return;
       setList((cur) => {
         if (!r.ok) return cur.status === "ready" ? cur : { status: "failed", reason: r.reason, code: r.status };
         const fresh = r.data.games;
+        // a first page with no continuation is the whole list
+        if (r.data.next_before === null) {
+          return { status: "ready", games: fresh, next: null, more: false, moreError: false };
+        }
         // pages loaded past the first stay, below the refreshed first page
         const ids = new Set(fresh.map((g) => g.id));
         const oldest = fresh.length ? fresh[fresh.length - 1].started_at : Infinity;

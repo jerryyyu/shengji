@@ -15,6 +15,8 @@ import { QUEUE_ERROR_CODES } from "./messages";
 
 /** From this long before the bot fill the bar turns amber. */
 export const BOTS_WARN_MS = 10_000;
+/** The server's bot fill delay (BOT_FILL_SECS); `bots_at` from the server wins. */
+export const BOT_FILL_MS = 60_000;
 /** After a reconnect, how long the server has to hand a queued entry back
  *  before the client concludes it was dropped while away. */
 export const RESYNC_MS = 2500;
@@ -52,7 +54,10 @@ export interface QueueView {
   queued: boolean;
   /** Local ms. */
   since: number | null;
+  /** Local ms of the bot fill; null when none is due. */
   botsAt: number | null;
+  /** The entry waits for real players only: no bot fill. */
+  waitPlayers: boolean;
   front: boolean;
   leader: boolean;
   partyId: string | null;
@@ -70,7 +75,7 @@ export interface QueueView {
 }
 
 const EMPTY: QueueView = {
-  count: 0, queued: false, since: null, botsAt: null, front: false, leader: true,
+  count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
   partyId: null, pending: null, check: null, missed: null, cooldownUntil: null,
   party: null, partyError: null, sheet: null, joinCode: "", note: null,
 };
@@ -206,7 +211,7 @@ export class QueueStore {
         if (!held && !this.view.pending) return;
         const signedIn = auth.state?.status === "in";
         this.joinSentAt = null;
-        this.set({ queued: false, check: null, pending: null, since: null, botsAt: null, front: false });
+        this.set({ queued: false, check: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false });
         if (held && signedIn) this.notify("You left the queue while away.", "Tap Find a game to queue again; no cooldown.");
       }, RESYNC_MS);
     }
@@ -224,7 +229,7 @@ export class QueueStore {
         this.clearResync();
         if (!msg.queued) {
           const wasQueued = this.view.queued;
-          this.set({ queued: false, count: msg.count, since: null, botsAt: null, front: false,
+          this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
                      pending: null, check: this.view.check });
           if (msg.replaced && wasQueued) this.notify("Your search moved to another window.");
           break;
@@ -243,7 +248,8 @@ export class QueueStore {
         this.set({
           queued: true, count: msg.count,
           since: msg.since !== undefined ? this.local(msg.since) : now,
-          botsAt: msg.bots_at !== undefined ? this.local(msg.bots_at) : null,
+          botsAt: msg.bots_at != null ? this.local(msg.bots_at) : null,
+          waitPlayers: msg.wait_players === true,
           front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
           pending: this.view.pending === "bots" ? "bots" : null,
           missed: null, cooldownUntil: null,
@@ -272,7 +278,7 @@ export class QueueStore {
       case "match_started":
         this.clearResync();
         this.set({ queued: false, check: null, pending: null, sheet: null, missed: null,
-                   since: null, botsAt: null, front: false, note: null });
+                   since: null, botsAt: null, waitPlayers: false, front: false, note: null });
         break;
       case "match_cancelled": {
         const c = this.view.check?.id === msg.match_id ? this.view.check : null;
@@ -290,7 +296,7 @@ export class QueueStore {
         const me = myName();
         const by = msg.by && msg.by !== me ? msg.by : null;
         const next: Partial<QueueView> = {
-          queued: false, check: null, pending: null, since: null, botsAt: null, front: false,
+          queued: false, check: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false,
           cooldownUntil: msg.cooldown_until !== null ? this.local(msg.cooldown_until) : null,
         };
         if (msg.reason === "missed" || (msg.reason === "declined" && !mine)) {
@@ -342,7 +348,7 @@ export class QueueStore {
           this.set({ pending: null, partyError: msg.message });
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
-          this.set({ pending: null, queued: false, since: null, botsAt: null, front: false });
+          this.set({ pending: null, queued: false, since: null, botsAt: null, waitPlayers: false, front: false });
         } else {
           this.set({ pending: null });
         }
@@ -371,6 +377,18 @@ export class QueueStore {
 
   startBots(): void {
     if (this.send({ type: "queue_start_bots" })) this.set({ pending: "bots" });
+  }
+
+  /** Turn the bot fill off; the server's queue_state confirms it. */
+  waitForPlayers(): void {
+    if (this.send({ type: "queue_wait_players" })) this.set({ waitPlayers: true, botsAt: null });
+  }
+
+  /** Turn the bot fill back on, due a minute from now. */
+  allowBots(): void {
+    if (this.send({ type: "queue_allow_bots" })) {
+      this.set({ waitPlayers: false, botsAt: Date.now() + BOT_FILL_MS });
+    }
   }
 
   accept(): void {

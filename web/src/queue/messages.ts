@@ -8,6 +8,8 @@ export type QueueClientMsg =
   | { type: "match_accept"; match_id: string }
   | { type: "match_decline"; match_id: string; keep_waiting?: boolean }
   | { type: "queue_start_bots" }
+  | { type: "queue_wait_players" }
+  | { type: "queue_allow_bots" }
   | { type: "party_create" }
   | { type: "party_join"; code: string }
   | { type: "party_leave" };
@@ -20,7 +22,9 @@ export interface QueueStateMsg {
   front?: boolean;
   party_id?: string | null;
   leader?: boolean;
-  bots_at?: number;
+  /** Null while the entry waits for real players only. */
+  bots_at?: number | null;
+  wait_players?: boolean;
   replaced?: boolean;
 }
 

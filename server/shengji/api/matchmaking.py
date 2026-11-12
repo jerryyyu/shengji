@@ -13,7 +13,11 @@ The matcher (``tick``, every ``TICK_INTERVAL`` seconds):
 2. the anchor is the first of them; the other entries whose rating lies in
    the anchor's window (``window_for`` its wait) are taken closest first
    until four players are found; a pair prefers another pair, else solos;
-3. after ``BOT_FILL_SECS`` the anchor's match is completed with bots;
+3. at the anchor's ``bots_at`` (``BOT_FILL_SECS`` after joining) its match
+   is completed with bots. An entry that chose to wait for real players
+   (``queue_wait_players``) has no ``bots_at``: it is never bot-filled nor
+   taken into another anchor's bot fill, and when it anchors without four
+   humans the next entry anchors instead, so it never holds up the line;
 4. teams are the valid pairing with the smallest gap in team-average rating
    (``choose_teams``): a pair always sits together, and with bots the humans
    are spread across both teams where possible;
@@ -64,7 +68,7 @@ PARTY_CODE_LEN = 4
 
 QUEUE_MESSAGES = frozenset({
     "queue_join", "queue_leave", "match_accept", "match_decline",
-    "queue_start_bots", "party_create", "party_invite", "party_join",
+    "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_create", "party_invite", "party_join",
     "party_leave",
 })
 # The only queue message a seated socket may send: leaving a pair.
@@ -116,6 +120,9 @@ class Entry:
     front: bool = False
     party_id: str | None = None
     match_id: str | None = None
+    # When the matcher may complete this entry's match with bots; None while
+    # the entry waits for real players only.
+    bots_at: float | None = None
 
     @property
     def size(self) -> int:
@@ -345,7 +352,7 @@ class Matchmaker:
         return {"type": "queue_state", "queued": True, "since": e.since,
                 "count": self.count(), "front": e.front,
                 "party_id": e.party_id, "leader": e.leader == uid,
-                "bots_at": e.since + BOT_FILL_SECS}
+                "bots_at": e.bots_at, "wait_players": e.bots_at is None}
 
     def _send_state(self, e: Entry) -> None:
         for u in e.members:
@@ -476,6 +483,8 @@ class Matchmaker:
                     self._decline(user_id, msg)
                 elif t == "queue_start_bots":
                     await self._start_bots(user_id)
+                elif t in ("queue_wait_players", "queue_allow_bots"):
+                    self._set_bot_fill(user_id, t == "queue_allow_bots")
         except QueueError as err:
             self._error(conn, err)
         self.ensure_running()
@@ -517,9 +526,10 @@ class Matchmaker:
         if pid is not None and (self.party_of.get(uid) != pid
                                 or self.parties[pid].members != members):
             raise QueueError("party_changed", "Your party changed; try again.")
+        since = self.clock()
         e = Entry(id=secrets.token_hex(6), seq=next(self._seq), members=members,
-                  leader=uid, member_ratings=member_ratings, since=self.clock(),
-                  party_id=pid)
+                  leader=uid, member_ratings=member_ratings, since=since,
+                  party_id=pid, bots_at=since + BOT_FILL_SECS)
         self.entries[e.id] = e
         for m in members:
             self.entry_of[m] = e.id
@@ -539,6 +549,22 @@ class Matchmaker:
         self._remove(e)
         self._send_state(e)
         self._flush_count()
+
+    def _set_bot_fill(self, uid: int, allow: bool) -> None:
+        """Turn the entry's bot fill off (wait for real players) or back on,
+        due ``BOT_FILL_SECS`` from now. Only the matcher reads ``bots_at``, so
+        the entry keeps its wait, its window and its place in line."""
+        e = self._entry(uid)
+        if e is None:
+            raise QueueError("not_queued", "Queue first.")
+        if e.leader != uid:
+            raise QueueError("not_leader", "Only the party leader can change this.")
+        if allow:
+            if e.bots_at is None:
+                e.bots_at = self.clock() + BOT_FILL_SECS
+        else:
+            e.bots_at = None
+        self._send_state(e)
 
     def _current_match(self, uid: int, msg: dict) -> Match:
         """The ready check an accept or decline answers. The deadline is
@@ -595,6 +621,7 @@ class Matchmaker:
                 continue
             if keep_waiting:
                 e.front, e.since = False, now
+                e.bots_at = now + BOT_FILL_SECS
                 for u in e.members:
                     self._send(u, {"type": "match_cancelled", "match_id": m.id,
                                    "reason": "keep_waiting"})
@@ -826,20 +853,29 @@ class Matchmaker:
                 if e.match_id is None and all(self._available(u) for u in e.members)]
         pool.sort(key=lambda e: (not e.front, e.since, e.seq))
         formed: list[Match] = []
-        while pool:
-            anchor = pool[0]
+        # Entries waiting for real players that could not anchor a match this
+        # tick: still candidates for later anchors' human matches.
+        passed: list[Entry] = []
+        while len(passed) < len(pool):
+            anchor = pool[len(passed)]
             wait = now - anchor.since
             width = window_for(wait)
             others = sorted(
-                (e for e in pool[1:] if abs(e.rating - anchor.rating) <= width),
+                (e for e in pool if e is not anchor
+                 and abs(e.rating - anchor.rating) <= width),
                 key=lambda e: (abs(e.rating - anchor.rating), not e.front, e.since, e.seq))
             picked = self._pick(anchor, others, fill=False)
-            if picked is None and wait >= BOT_FILL_SECS:
-                picked = self._pick(anchor, others, fill=True)
+            if picked is None and anchor.bots_at is not None and now >= anchor.bots_at:
+                picked = self._pick(anchor, [e for e in others if e.bots_at is not None],
+                                    fill=True)
             if picked is None:
-                break
+                if anchor.bots_at is not None:
+                    break
+                passed.append(anchor)
+                continue
             formed.append(self._open_match(picked, now))
             pool = [e for e in pool if e not in picked]
+            passed = [e for e in passed if e not in picked]
         return formed
 
     @staticmethod

@@ -31,6 +31,7 @@ class ShellViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         webView?.allowsBackForwardNavigationGestures = true
         bridge?.registerPluginInstance(ShengjiShellPlugin())
+        bridge?.registerPluginInstance(ShengjiBotPlugin())
         // WKWebView holds its navigation delegate weakly, so the gate lives here.
         if let webView = webView, let inner = webView.navigationDelegate {
             let gate = OfflineFallbackGate(inner: inner)

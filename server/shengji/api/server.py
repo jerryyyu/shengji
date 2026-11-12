@@ -28,7 +28,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, matchmaking, ratings, saved_games, support
+from . import accounts, matchmaking, ratings, reports, saved_games, support
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
@@ -2212,6 +2212,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if t in matchmaking.QUEUE_MESSAGES:
                 await MATCHMAKER.handle(conn, msg, account_id())
                 continue
+            if t == "report_player":
+                await _report_player(room, me, account_id(), msg)
+                continue
             async with room.lock:
                 try:
                     seat_idx = room.seats.index(me)
@@ -2253,6 +2256,28 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     if not await advance_if_all_ready(room):
                         await broadcast(room)
 
+
+
+async def _report_player(room: Room, me: Seat, account: int | None, msg: dict) -> None:
+    """Store a report on another seat and confirm it to the reporter only.
+    The record is built under the room lock and written off the event loop;
+    nothing about the report reaches the other seats or the room state."""
+    async with room.lock:
+        if me not in room.seats:
+            return
+        try:
+            record = reports.build(room, room.seats.index(me), account, msg)
+        except reports.ReportRefused as refused:
+            enqueue(me, {"type": "error", "code": refused.code, "message": str(refused)})
+            return
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, reports.store, record)
+    except OSError:
+        enqueue(me, {"type": "error", "code": "report_not_stored",
+                     "message": "The report could not be sent. Try again later."})
+        return
+    enqueue(me, {"type": "report_received", "seat": record["reported"]["seat"],
+                 "message": f"Thanks. {record['reported']['name']} was reported for review."})
 
 
 async def start_matched_room(match_id: str | None, slots: list,

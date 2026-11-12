@@ -51,12 +51,16 @@ export type ClientMsg =
   | { type: "play"; card_ids: number[] }
   | { type: "next_round" }
   | { type: "chat"; text: string }
+  /** Report another seat's player; the server answers report_received or a coded error. */
+  | { type: "report_player"; seat: number; reason: ReportReason }
   | { type: "peek_room"; room: string }
   /** Which kind of thing a typed or linked code names (PROTOCOL.md "Codes"). */
   | { type: "code_lookup"; code: string }
   | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
   | { type: "leave_room" } // anytime after joining; server replies {type:"left"}
   | QueueClientMsg;
+
+export type ReportReason = "abuse" | "spam" | "cheating" | "other";
 
 // ---------- Server -> Client ----------
 
@@ -250,7 +254,15 @@ export type ServerMsg =
   | ChatMsg
   | ChatHistory
   | ResumeMsg
+  | ReportReceivedMsg
   | QueueServerMsg;
+
+/** The server stored this viewer's report; ``message`` is shown as a toast. */
+export interface ReportReceivedMsg {
+  type: "report_received";
+  seat: number;
+  message: string;
+}
 
 /** Every coded error the server can send. Keep in sync with server.py —
  *  an unlisted code silently falls through to a generic toast. */
@@ -264,6 +276,13 @@ export type ErrorCode =
   | "bad_start_level"
   | "resume_unavailable"
   | "stale_connection"
+  | "report_sign_in"
+  | "report_bad_seat"
+  | "report_bad_reason"
+  | "report_bot"
+  | "report_guest"
+  | "report_rate_limited"
+  | "report_not_stored"
   | QueueErrorCode;
 
 /** "human" — a connected person; "bot" — a permanent bot seat;

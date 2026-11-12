@@ -3,6 +3,7 @@ import type { ChatMsg } from "../protocol";
 import { useEffect, useRef, useState } from "react";
 import { conn } from "../ws";
 import { usePresence } from "../usePresence";
+import { useMutes } from "../chatMute";
 
 /** Toggled overlay, not a side panel: in landscape the table already fills
  *  the screen, so chat slides over it and closes again. Unread count lives
@@ -22,6 +23,9 @@ export default function ChatPanel({
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const presence = usePresence(open);
+  // a muted seat's lines stay hidden for this viewer; system lines never mute
+  const isMuted = useMutes();
+  const shown = messages.filter((m) => m.seat === -1 || !isMuted(m.room, m.seat));
 
   useEffect(() => {
     if (open) {
@@ -58,8 +62,8 @@ export default function ChatPanel({
         </button>
       </div>
       <div className="chat-log" role="log" aria-label="Messages" aria-relevant="additions">
-        {messages.length === 0 && <div className="chat-empty">No messages yet</div>}
-        {messages.map((m, i) =>
+        {shown.length === 0 && <div className="chat-empty">No messages yet</div>}
+        {shown.map((m, i) =>
           m.seat === -1 ? (            // system line: joins, leaves, seat claims
             <div key={i} className="chat-msg system">
               {m.text}

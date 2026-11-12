@@ -35,7 +35,7 @@ export function OfflineLobby({ status, error, onArmAutoFill }: OfflineLobbyProps
         </h1>
         <p className="game-subtitle">Tractor · two decks</p>
         <LobbyPreview />
-        <p className="offline-note">You’re offline. Practice against three bots on this device.</p>
+        <p className="offline-note">Practice vs bots on this device.</p>
         <button className="btn gold big" disabled={!ready} onClick={play}>
           Play offline vs bots
         </button>
@@ -46,7 +46,7 @@ export function OfflineLobby({ status, error, onArmAutoFill }: OfflineLobbyProps
         </p>
         <p className="offline-online">
           {inApp ? (
-            <a href={ONLINE_URL}>Back online? Play with people</a>
+            <a href={ONLINE_URL}>Play with people online</a>
           ) : (
             <a href="?offline=0">Back to online play</a>
           )}
@@ -59,7 +59,7 @@ export function OfflineLobby({ status, error, onArmAutoFill }: OfflineLobbyProps
 export function OfflineBadge() {
   return (
     <div className="offline-badge" role="status">
-      Offline · practice bots
+      Practice · bots on this device
     </div>
   );
 }

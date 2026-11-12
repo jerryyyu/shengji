@@ -115,7 +115,7 @@ it("a guest reads the board, with a sign-in card where their own row would be", 
   const card = host.querySelector(".lb-pin .signin-card")!;
   expect(card.querySelector("h3")?.textContent).toBe("Sign in to be ranked");
   expect(card.querySelector(".google-signin")).not.toBeNull();
-  expect(card.textContent).toContain("Sign in with Apple is coming soon");
+  expect(card.textContent).not.toMatch(/coming soon/i);
 });
 
 it("over a game it offers the way back", async () => {

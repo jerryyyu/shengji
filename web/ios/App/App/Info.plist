@@ -84,8 +84,6 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sheng Ji connects to a game server on your local network only when a test build points it there.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

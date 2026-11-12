@@ -64,9 +64,14 @@ export class CodeStore {
   }
 
   private onStatus(s: ConnStatus): void {
-    // the answer, if any, died with the socket
+    // The answer, if any, died with the socket. A link's lookup is asked
+    // again on the next open socket; one that was answered is not.
     if (s !== "open") {
-      if (this.view.pending) this.set({ pending: null });
+      const p = this.view.pending;
+      if (p) {
+        if (p.from === "link") this.linkTaken = false;
+        this.set({ pending: null });
+      }
       return;
     }
     if (this.linkTaken) return;
@@ -99,10 +104,13 @@ export class CodeStore {
   private onMessage(msg: ServerMsg): void {
     const p = this.view.pending;
     if (!p) return;
+    // rate_limited is the one refusal code_lookup has; any other error
+    // answers some other request and leaves the lookup waiting.
     if (msg.type === "error") {
-      // a refused lookup (rate_limited) ends it; the box shows the message
+      if (msg.code !== "rate_limited") return;
       this.set({ pending: null });
       if (p.from === "pair") queue.showPartyError(msg.message);
+      else this.set({ playError: msg.message });
       return;
     }
     if (msg.type !== "code_kind" || msg.code !== p.code) return;

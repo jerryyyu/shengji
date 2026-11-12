@@ -688,3 +688,83 @@ describe("one code for rooms and pairs", () => {
     expect(clipboard.at(-1)).toBe(`${window.location.origin}/?code=WXYZ`);
   });
 });
+
+describe("a code lookup that is interrupted or refused", () => {
+  const typeInto = (input: HTMLInputElement, value: string) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  };
+  const lookups = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "code_lookup");
+  const LIMITED = { type: "error", code: "rate_limited", message: "Too many requests; wait a minute." };
+  const reconnect = () => {
+    fakeClock();
+    act(() => ws().close());
+    tick(600);                 // the reconnect backoff
+    act(() => ws().onopen?.());
+    vi.useRealTimers();
+  };
+
+  it("a ?code= link whose lookup died with the socket is asked once more, then joins", async () => {
+    signedIn = false;
+    window.history.replaceState(null, "", "/?code=WXYZ&name=Ann");
+    await renderApp();
+    expect(lookups()).toHaveLength(1);
+    reconnect();
+    await settle();
+    expect(lookups()).toHaveLength(2);
+    expect(ws().sent).toEqual([{ type: "code_lookup", code: "WXYZ" }]);
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    await settle();
+    expect(lastSent()).toEqual({ type: "join_room", room: "WXYZ", name: "Ann" });
+  });
+
+  it("a ?code= link already answered and joined is not looked up or joined again on reconnect", async () => {
+    signedIn = false;
+    window.history.replaceState(null, "", "/?code=WXYZ&name=Ann");
+    await renderApp();
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    await settle();
+    const joins = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "join_room");
+    expect(joins()).toHaveLength(1);
+    reconnect();
+    await settle();
+    expect(lookups()).toHaveLength(1);
+    expect(joins()).toHaveLength(1);
+  });
+
+  it("a rate-limited Play lookup says so under the Play box", async () => {
+    await renderApp();
+    typeInto(q("input[aria-label='Game or pair code']") as HTMLInputElement, "WXYZ");
+    click(button(/^Join$/, q(".join-row")!));
+    say(LIMITED);
+    expect(q(".lobby-error")?.textContent).toBe("Too many requests; wait a minute.");
+    expect(button(/^Join$/, q(".join-row")!)?.disabled).toBe(false);
+  });
+
+  it("a rate-limited ?code= lookup says so under the Play box", async () => {
+    window.history.replaceState(null, "", "/?code=WXYZ");
+    await renderApp();
+    say(LIMITED);
+    await settle();
+    expect(q(".lobby-error")?.textContent).toBe("Too many requests; wait a minute.");
+  });
+
+  it("a rate-limited pair-sheet lookup says so in the sheet", async () => {
+    await renderApp();
+    click(findBtn());
+    click(button(/^With a friend…/));
+    typeInto(q("#q-join-code") as HTMLInputElement, "WXYZ");
+    click(button("Join", q(".q-join")!));
+    say(LIMITED);
+    expect(q(".q-sheet .q-error")?.textContent).toBe("Too many requests; wait a minute.");
+  });
+
+  it("an unrelated error while a lookup waits does not cancel it", async () => {
+    await renderApp();
+    typeInto(q("input[aria-label='Game or pair code']") as HTMLInputElement, "WXYZ");
+    click(button(/^Join$/, q(".join-row")!));
+    say({ type: "error", code: "room_full", message: "Room is full." });
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+  });
+});

@@ -5324,6 +5324,14 @@ button[role="switch"]:active .ios-switch {
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5); outline: none;
 }
 .q-grab { width: 36px; height: 5px; margin: 0 auto 2px; border-radius: 3px; background: #4a5263; }
+/* A phone sheet dragged down: it follows --sheet-drag-y and the scrim fades
+   with --sheet-scrim, both only while data-sheet-drag is set on the layer. */
+.q-layer[data-sheet-drag] .q-sheet { transform: translate3d(0, var(--sheet-drag-y, 0px), 0); will-change: transform; }
+.q-layer[data-sheet-drag] .q-scrim { opacity: var(--sheet-scrim, 1); }
+.q-layer[data-sheet-drag="settle"] .q-sheet,
+.q-layer[data-sheet-drag="out"] .q-sheet { transition: transform 200ms var(--ease-out); }
+.q-layer[data-sheet-drag="settle"] .q-scrim,
+.q-layer[data-sheet-drag="out"] .q-scrim { transition: opacity 200ms var(--ease-out); }
 .q-sheet-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px; }
 .q-sheet-head h2 { margin: 0; font-size: var(--fs-17); font-weight: 600; color: #fff; }
 .q-link { appearance: none; justify-self: start; min-height: 44px; padding: 0 8px; border: 0; background: none; color: var(--gold); font: inherit; font-size: var(--fs-17); cursor: pointer; }
@@ -5415,4 +5423,6 @@ span.q-party-main { cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   .q-spin { animation: none; }
   .q-ring-arc { transition: none; }
+  .q-layer[data-sheet-drag] .q-sheet { transform: none; transition: none; }
+  .q-layer[data-sheet-drag] .q-scrim { opacity: 1; transition: none; }
 }

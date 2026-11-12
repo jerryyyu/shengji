@@ -1,12 +1,15 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
+import { useSheetDrag } from "./useSheetDrag";
 
 /** A bottom sheet on a phone, a centred dialog from 700px: a scrim, a title
- *  and Cancel. Escape and a tap on the scrim close it. */
+ *  and Cancel. Escape and a tap on the scrim close it, and on a phone so does
+ *  dragging the sheet down. */
 export default function Sheet({ title, onClose, children, className = "" }: {
   title: string; onClose: () => void; children: ReactNode; className?: string;
 }) {
   const titleId = useId();
+  const layer = useRef<HTMLDivElement | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -18,8 +21,9 @@ export default function Sheet({ title, onClose, children, className = "" }: {
     box.current?.focus();
     return () => document.removeEventListener("keydown", key);
   }, []);
+  useSheetDrag(layer, box, close);
   return (
-    <div className="q-layer">
+    <div className="q-layer" ref={layer}>
       <div className="q-scrim" onClick={onClose} />
       <div className={`q-sheet ${className}`} role="dialog" aria-modal="true" aria-labelledby={titleId}
            tabIndex={-1} ref={box}>

@@ -5037,6 +5037,8 @@ button.games-row { cursor: pointer; }
 .home-narrow .home-body > .screen { padding-bottom: var(--tabbar-clear); }
 .home-narrow .home-body > .screen.home-page { padding-bottom: 0; }
 .home-narrow .home-col { padding-bottom: var(--tabbar-clear); }
+/* a pinned row sticks just above the pill, not under it */
+.home-narrow .lb-pin { bottom: calc(var(--tabbar-h) + var(--tabbar-bottom)); }
 /* the queue bar rides just above the pill */
 .home-narrow > .q-bar { margin-bottom: calc(var(--tabbar-h) + var(--tabbar-bottom) + 8px); }
 .home-narrow:has(> .q-bar) .home-body > .screen { padding-bottom: 12px; }
@@ -5578,6 +5580,7 @@ button.grp-row:disabled { cursor: default; }
   text-align: center;
 }
 .signin-card.compact { gap: 10px; padding: 16px 16px 14px; }
+.lb-page .lb-rated { margin-top: 16px; }
 .signin-card h3 { margin: 0; font-size: var(--fs-20); font-weight: 700; line-height: 1.2; color: #fff; }
 .signin-card p { margin: 0; font-size: var(--fs-15); line-height: 1.35; color: #9aa3b2; }
 /* The one explanation of ranked play is the Leaderboard's sign-in card; other

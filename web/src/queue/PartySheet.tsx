@@ -3,6 +3,7 @@ import { partnerName, queue, useQueue } from "./store";
 import Sheet from "./Sheet";
 import { codes, useCodes } from "../codeJoin";
 import { codeLink } from "../codes";
+import { RankedChip } from "./Ranked";
 
 function UsersIcon() {
   return (
@@ -27,7 +28,7 @@ export function SoloSheet() {
         <li>
           <button type="button" className="grp-row q-friend-row" onClick={() => queue.openParty()}>
             <UsersIcon />
-            <span className="grp-label">With a friend…<small>Invite by code or link; you are always partners</small></span>
+            <span className="grp-label">With a friend…</span>
             <span className="grp-value chev" />
           </button>
         </li>
@@ -44,7 +45,7 @@ function JoinByCode() {
     // that room as the Play box would.
     <form className="q-join" onSubmit={(e) => { e.preventDefault(); if (!waiting) codes.lookup(q.joinCode, "pair"); }}>
       <label className="q-join-label" htmlFor="q-join-code">
-        Got a code from a friend?<small>A pair code or a game code</small>
+        Join with a code
       </label>
       <div className="join-row">
         <input id="q-join-code" className="room-input" value={q.joinCode} maxLength={4} placeholder="CODE"
@@ -59,8 +60,9 @@ function JoinByCode() {
   );
 }
 
-/** Queue with a friend: your pair code and link, or a friend's code to join;
- *  once the friend is in, the pair queues from here or from Play. */
+/** Duo: ranked play with a friend as your partner. Your pair code and link,
+ *  or a friend's code to join; once the friend is in, the pair queues from
+ *  here or from Play. */
 export function PartySheet() {
   const q = useQueue();
   const [copied, setCopied] = useState<string | null>(null);
@@ -87,7 +89,7 @@ export function PartySheet() {
         <div className="q-sheet-pad">
           {p.you_lead ? (
             <button type="button" className="btn gold big q-find" disabled={q.queued}
-                    onClick={() => queue.join()}>Find a game as a pair</button>
+                    onClick={() => queue.join()}>Play</button>
           ) : (
             <button type="button" className="btn big q-dis" disabled>{other} starts the search</button>
           )}
@@ -98,30 +100,26 @@ export function PartySheet() {
   } else if (p) {
     body = (
       <>
-        <div className="q-codebox"><small>Pair code · share it or the link</small><b>{p.code}</b></div>
+        <div className="q-codebox"><small>Code</small><b>{p.code}</b></div>
         <div className="q-sheet-pad">
           <button type="button" className="btn gold big" onClick={() => share(p.code)}>
-            {copied === "link" ? "Link copied" : "Share invite link"}
+            {copied === "link" ? "Link copied" : "Invite partner"}
           </button>
           <button type="button" className="btn big q-ghost" onClick={() => copy(p.code, "code")}>
             {copied === "code" ? "Code copied" : "Copy code"}
           </button>
         </div>
-        <p className="q-foot">
-          Your friend must be signed in. When they join you queue together and are always partners; your pair is
-          matched on your average rating.
-        </p>
         <JoinByCode />
       </>
     );
   } else {
     body = (
       <>
-        {q.joinCode ? null : <div className="q-codebox"><small>Pair code</small><b>····</b></div>}
+        {q.joinCode ? null : <div className="q-codebox"><small>Code</small><b>····</b></div>}
         {q.joinCode ? (
           <div className="q-sheet-pad">
             <button type="button" className="btn big q-ghost" onClick={() => queue.makeCode()}>
-              Make my own code instead
+              New code
             </button>
           </div>
         ) : null}
@@ -130,7 +128,8 @@ export function PartySheet() {
     );
   }
   return (
-    <Sheet title="Queue with a friend" onClose={() => queue.closeSheet()}>
+    <Sheet title="Duo" onClose={() => queue.closeSheet()}>
+      <div className="q-ranked-row"><RankedChip /></div>
       {body}
       {q.partyError ? <p className="q-error" role="alert">{q.partyError}</p> : null}
     </Sheet>

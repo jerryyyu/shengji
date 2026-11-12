@@ -63,3 +63,21 @@ describe("menu and chat pop", () => {
       "animation: none;", reduced)).toBe(true);
   });
 });
+
+describe("the tab bar's capsule", () => {
+  it("slides to the tapped tab over 250 ms, and jumps under Reduce Motion", () => {
+    expect(has(".tabbar-capsule", "transform: translateX(calc(var(--tab-index, 0) * 100%));")).toBe(true);
+    expect(has(".tabbar-capsule", "transition: transform 250ms var(--ease-out-expo);")).toBe(true);
+    expect(has(".tabbar-capsule", "transition: none;", reduced)).toBe(true);
+  });
+
+  it("is glass where the browser can blur, and an opaque pill where it cannot", () => {
+    expect(has(".tabbar", "backdrop-filter: blur(24px) saturate(180%);")).toBe(true);
+    const fallback = /@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\) \{([^}]*\})/.exec(css);
+    expect(fallback?.[1].replace(/\s+/g, " ")).toContain(".tabbar, .topbar-tabs { background: #1c2129; }");
+  });
+
+  it("steps aside while the keyboard is up", () => {
+    expect(has("body.keyboard-open .tabbar", "display: none;")).toBe(true);
+  });
+});

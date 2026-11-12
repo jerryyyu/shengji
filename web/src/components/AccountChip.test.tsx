@@ -22,17 +22,21 @@ async function render(status: number, body: unknown) {
   return host;
 }
 
-it("shows the rating and this week's change, and opens the Leaderboard tab", async () => {
+it("shows the avatar, the name and the rating, and a tap opens Me", async () => {
   const host = await render(200, { rating: 1468, week_delta: -6 });
-  const chip = host.querySelector<HTMLButtonElement>(".rating-chip")!;
+  const chip = host.querySelector<HTMLButtonElement>(".account-pill")!;
   expect(chip.querySelector(".avatar")?.textContent).toBe("J");
-  expect(chip.querySelector(".rating-chip-value")?.textContent).toBe("1468");
-  expect(chip.querySelector(".delta-dn")?.textContent).toBe("▼ 6");
+  expect(chip.querySelector(".account-pill-name")?.textContent).toBe("Jerry");
+  expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("1,468");
+  expect(chip.querySelector("svg")).toBeNull();   // no pencil: the name is edited on Me
+  expect(chip.getAttribute("aria-label")).toBe("Jerry, rating 1468, open profile");
   act(() => chip.click());
-  expect(window.location.hash).toBe("#/leaderboard");
+  expect(window.location.hash).toBe("#/me");
 });
 
-it("is left out while the stats cannot be read", async () => {
+it("without stats it still shows the name, and leaves the rating out", async () => {
   const host = await render(401, {});
-  expect(host.querySelector(".rating-chip")).toBeNull();
+  expect(host.querySelector(".account-pill-name")?.textContent).toBe("Jerry");
+  expect(host.querySelector(".account-pill-rating")).toBeNull();
+  expect(host.querySelector(".account-pill")?.getAttribute("aria-label")).toBe("Jerry, open profile");
 });

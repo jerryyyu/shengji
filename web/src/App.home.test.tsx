@@ -99,25 +99,47 @@ describe("the bars", () => {
     const items = [...host.querySelectorAll<HTMLButtonElement>(".tabbar .tabbar-item")];
     expect(items.map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Me"]);
     expect(items[0].getAttribute("aria-current")).toBe("page");
-    expect(items.every((b) => b.querySelector("svg"))).toBe(true);
+    expect(items.slice(0, 2).every((b) => b.querySelector("svg"))).toBe(true);
+    // signed in, Me shows the account's initial in place of the person icon
+    expect(items[2].querySelector("svg")).toBeNull();
+    expect(items[2].querySelector(".avatar")?.getAttribute("data-initial")).toBe("J");
     expect(host.querySelector(".topbar")).toBeNull();
     expect(host.querySelector(".lobby-panel")).not.toBeNull();
   });
 
-  it("at 700px and up the top bar has four tabs and the account chip, whose menu has no Me", async () => {
+  it("a guest's Me tab keeps the person icon", async () => {
+    signedIn = false;
+    await renderApp();
+    const me = [...host.querySelectorAll<HTMLButtonElement>(".tabbar .tabbar-item")][2];
+    expect(me.querySelector("svg")).not.toBeNull();
+    expect(me.querySelector(".avatar")).toBeNull();
+  });
+
+  it("the selected capsule follows the active tab", async () => {
+    await renderApp();
+    const bar = () => host.querySelector<HTMLElement>(".tabbar")!;
+    expect(bar().querySelectorAll(".tabbar-capsule")).toHaveLength(1);
+    expect(bar().style.getPropertyValue("--tab-index")).toBe("0");
+    const { openTab } = await import("./home/route");
+    await act(async () => { openTab("leaderboard"); await new Promise((r) => setTimeout(r, 0)); });
+    expect(bar().style.getPropertyValue("--tab-index")).toBe("1");
+    expect(host.querySelector(".tabbar-item.on")?.textContent).toBe("Leaderboard");
+    await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
+    expect(bar().style.getPropertyValue("--tab-index")).toBe("2");
+  });
+
+  it("at 700px and up the top bar has four tabs centred and the account chip, which opens Stats", async () => {
     viewport(true);
     await renderApp();
     expect(host.querySelector(".tabbar")).toBeNull();
     const tabs = () => [...host.querySelectorAll<HTMLButtonElement>(".topbar-tabs .topbar-tab")];
     expect(tabs().map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Stats", "Games"]);
-    expect(host.querySelector(".topbar-mark")?.textContent).toContain("升级");
-    const account = host.querySelector<HTMLButtonElement>(".topbar-account")!;
-    expect(account.textContent).toContain("Jerry");
-    act(() => account.click());
-    const items = [...host.querySelectorAll<HTMLButtonElement>(".topbar-menu [role=menuitem]")];
-    expect(items.map((b) => b.textContent?.trim())).toEqual(
-      ["Edit name", "How to play", "Privacy", "Support", "Sign out"]);
-    act(() => account.click());
+    // Play carries the title itself; the other tabs show the wordmark
+    expect(host.querySelector(".topbar-mark")).toBeNull();
+    const account = () => host.querySelector<HTMLButtonElement>(".topbar .account-pill")!;
+    expect(account().textContent).toContain("Jerry");
+    expect(account().getAttribute("aria-label")).toMatch(/^Jerry(, rating \d+)?, open profile$/);
+    expect(host.querySelector("[role=menu]")).toBeNull();
     // Stats: who you are, the stats and the account's rows, no segments
     await act(async () => { tabs()[2].click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(window.location.hash).toBe("#/stats");
@@ -127,6 +149,7 @@ describe("the bars", () => {
     expect(host.querySelector(".me-tile")).not.toBeNull();
     expect(host.querySelector(".me-visible")).not.toBeNull();
     expect(host.querySelector(".name-edit")).toBeNull();
+    expect(host.querySelector(".topbar-mark")?.textContent).toContain("升级");
     // Games: the saved games alone
     await act(async () => { tabs()[3].click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(window.location.hash).toBe("#/games");
@@ -135,13 +158,10 @@ describe("the bars", () => {
     expect(host.querySelector(".me-who")).toBeNull();
     expect(host.querySelector(".me-visible")).toBeNull();
     expect(host.querySelector(".games-status")?.textContent).toContain("No saved games yet");
-    // Edit name opens Stats with the editor open, from Games too
-    act(() => host.querySelector<HTMLButtonElement>(".topbar-account")!.click());
-    const edit = [...host.querySelectorAll<HTMLButtonElement>(".topbar-menu [role=menuitem]")]
-      .find((b) => b.textContent === "Edit name")!;
-    await act(async () => { edit.click(); await new Promise((r) => setTimeout(r, 0)); });
+    // the account chip opens Stats, where the name is edited, from Games too
+    await act(async () => { account().click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(window.location.hash).toBe("#/stats");
-    expect(host.querySelector<HTMLInputElement>(".name-edit-input")?.value).toBe("Jerry");
+    expect(tabs()[2].getAttribute("aria-current")).toBe("page");
   });
 
   it("a guest at 700px gets a Sign in button that opens Stats", async () => {
@@ -223,36 +243,6 @@ describe("tab context", () => {
     await go("Leaderboard");
     expect(window.location.hash).toBe("#/leaderboard");
     expect(host.querySelector(".lb-page")!.scrollTop).toBe(0);
-  });
-});
-
-describe("the account menu's keys", () => {
-  it("opens on its first row, moves with the arrows, Home and End, and Escape returns to the chip", async () => {
-    viewport(true);
-    await renderApp();
-    const chip = host.querySelector<HTMLButtonElement>(".topbar-account")!;
-    chip.focus();
-    act(() => chip.click());
-    const focused = () => (document.activeElement as HTMLElement).textContent?.trim();
-    expect(focused()).toBe("Edit name");
-    const key = (k: string) =>
-      act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })); });
-    key("ArrowDown");
-    expect(focused()).toBe("How to play");
-    key("End");
-    expect(focused()).toBe("Sign out");
-    key("ArrowDown");
-    expect(focused()).toBe("Edit name");
-    key("ArrowUp");
-    expect(focused()).toBe("Sign out");
-    key("Home");
-    expect(focused()).toBe("Edit name");
-    key("Escape");
-    expect(host.querySelector(".topbar-menu")).toBeNull();
-    expect(document.activeElement).toBe(chip);
-    // ArrowUp on the closed chip opens the menu on its last row
-    key("ArrowUp");
-    expect(focused()).toBe("Sign out");
   });
 });
 

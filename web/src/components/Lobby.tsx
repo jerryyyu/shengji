@@ -9,7 +9,8 @@ import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
 import LobbyPreview from "./LobbyPreview";
-import FindGame from "../queue/FindGame";
+import { GuestDuoSheet, RankedSection } from "../queue/Ranked";
+import { offlineGame } from "./offlineGame";
 import { codes, useCodes } from "../codeJoin";
 import { normalizeCode } from "../codes";
 
@@ -20,13 +21,8 @@ interface LobbyProps {
   onArmAutoFill: () => void;
 }
 
-const STATUS_LABEL: Record<ConnStatus, string> = {
-  connecting: "Connecting…",
-  open: "Connected",
-  closed: "Disconnected — retrying…",
-};
-
-/** After this long without a connection the lobby says so and offers Retry. */
+/** After this long without a connection the lobby says so, Play bots plays
+ *  on this device, and a tap on the notice retries at once. */
 export const STALL_MS = 4000;
 
 /** Whether `status` has stayed short of "open" for STALL_MS, and a retry
@@ -193,6 +189,10 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   };
 
   const playBots = () => {
+    if (stalled) {
+      offlineGame.start();
+      return;
+    }
     if (!ready || !testReady) return;
     const trimmed = nameOrRandom();
     const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
@@ -306,17 +306,62 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     );
   }
 
+  // Play bots needs no server once the connection has been gone a while:
+  // it then plays on this device. Everything else waits for the socket.
+  const botsReady = stalled || (ready && testReady);
+  const botsLabel = starting?.kind === "bots" ? STARTING_LABEL.bots : "Play bots";
+  const createLabel = starting?.kind === "create" ? STARTING_LABEL.create : "Create room";
+  // A guest, or anyone without a connection, has Play bots as the one gold
+  // button; a signed-in player online has it as a row under Create room.
+  const botsPrimary = !signedIn || stalled;
+  const casual = (
+    <section className="play-section" aria-labelledby={`${nameId}-casual`}>
+      <h2 className="play-label" id={`${nameId}-casual`}>Casual</h2>
+      {botsPrimary ? (
+        <button type="button" className="btn gold play-main" disabled={!botsReady} onClick={playBots}
+                aria-busy={starting?.kind === "bots" || undefined}>
+          {botsLabel}
+        </button>
+      ) : null}
+      <ul className="grp play-grp">
+        <li>
+          <button type="button" className="grp-row" disabled={!ready || !testReady} onClick={create}
+                  aria-busy={starting?.kind === "create" || undefined}>
+            <span className="grp-label">{createLabel}</span><span className="grp-value chev" />
+          </button>
+        </li>
+        {botsPrimary ? null : (
+          <li>
+            <button type="button" className="grp-row" disabled={!botsReady} onClick={playBots}
+                    aria-busy={starting?.kind === "bots" || undefined}>
+              <span className="grp-label">{botsLabel}</span><span className="grp-value chev" />
+            </button>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+  const ranked = <RankedSection online={status === "open"} />;
+
   return (
-    <div className="screen lobby-screen">
+    <div className="screen lobby-screen play-tab">
       <div className="panel lobby-panel">
+        {status === "open" ? null : stalled ? (
+          <div role="status" className="play-conn-row">
+            <button type="button" className="play-conn" onClick={retry} title="Retry now">
+              <span className="conn-dot" />No connection · retrying
+            </button>
+          </div>
+        ) : (
+          <div role="status" className="play-conn-row">
+            <span className="play-conn"><span className="conn-dot" />Connecting…</span>
+          </div>
+        )}
         <h1 className="game-title">
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
-        <p className="game-subtitle">Tractor · two decks</p>
-        {signedIn ? <AccountChip user={signedIn} /> : null}
         <LobbyPreview />
-
-        {signedIn ? null : (
+        {signedIn ? <AccountChip user={signedIn} /> : (
           <div className="field">
             <label className="field-label" htmlFor={nameId}>Your name</label>
             <div className="name-input">
@@ -372,16 +417,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           </div>
         ) : null}
 
-        <FindGame ready={ready && testReady} onPlayBots={playBots} botsBusy={starting?.kind === "bots"} />
-
-        <button className="btn primary big" disabled={!ready || !testReady} onClick={create}
-                aria-busy={starting?.kind === "create" || undefined}>
-          {starting?.kind === "create" ? STARTING_LABEL.create : "Create room"}
-        </button>
-
-        <div className="divider">
-          <span>or join</span>
-        </div>
+        {signedIn ? <>{ranked}{casual}</> : <>{casual}{ranked}</>}
 
         <div className="join-row">
           <input
@@ -389,7 +425,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             value={roomCode}
             maxLength={4}
             placeholder="CODE"
-            aria-label="Game or pair code"
+            aria-label="Room or duo code"
+            disabled={status !== "open"}
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
@@ -417,27 +454,10 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         ) : null}
 
         <p className="howto-entry">
-          New to Sheng Ji?{" "}
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
         </p>
-
-        <p className="howto-entry">
-          <a className="howto-link" href="?offline=1">Practice offline</a>
-        </p>
-
-        {stalled ? (
-          <div className={`conn-status ${status} stalled`} role="status">
-            <span className="conn-dot" />
-            <span>Can’t reach the server. Check your network.</span>
-            <button className="btn conn-retry" onClick={retry}>Retry</button>
-          </div>
-        ) : (
-          <div className={`conn-status ${status}`}>
-            <span className="conn-dot" />
-            {STATUS_LABEL[status]}
-          </div>
-        )}
       </div>
+      <GuestDuoSheet />
     </div>
   );
 }

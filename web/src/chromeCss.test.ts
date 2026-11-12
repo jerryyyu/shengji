@@ -116,12 +116,11 @@ describe("home touch targets", () => {
     expect(Number(inset[1]) - padding).toBeLessThan(px(decls(".home-col"), "gap") / 2);
   });
 
-  it("the account chip reaches 44px inside the 56px top bar, and its menu rows are 44px", () => {
-    const chip = px(decls(".topbar-account"), "height");
-    const inset = /inset:\s*-(\d+)px 0/.exec(decls(".topbar-account::before"))!;
+  it("the account chip reaches 44px inside the 56px top bar", () => {
+    const chip = px(decls(".account-pill"), "height");
+    const inset = /inset:\s*-(\d+)px 0/.exec(decls(".account-pill::before"))!;
     expect(chip + 2 * Number(inset[1])).toBeGreaterThanOrEqual(44);
     expect(chip + 2 * Number(inset[1])).toBeLessThanOrEqual(56);
-    expect(px(decls(".topbar-menu button"), "min-height")).toBeGreaterThanOrEqual(44);
   });
 });
 
@@ -167,5 +166,20 @@ describe("the charcoal page", () => {
     expect(chrome?.[0]).toContain(".games-screen .replay-seat");
     expect(chrome?.[0]).toContain(".games-screen .replay-jump");
     expect(chrome?.[1]).toMatch(/background: var\(--grp\);/);
+  });
+});
+
+describe("the home Play column", () => {
+  it("sits on the page with no card at any width, 420px wide and centred from 700px", () => {
+    const flat = decls(".home .play-tab > .lobby-panel");
+    expect(flat).toContain("background: none");
+    expect(flat).toContain("border: 0");
+    expect(flat).toContain("border-radius: 0");
+    expect(flat).toContain("box-shadow: none");
+    const wide = decls(".home-wide .play-tab > .lobby-panel");
+    expect(wide).toContain("width: 420px");
+    expect(wide).not.toMatch(/background|border|box-shadow/);
+    // the card the panel draws elsewhere (room, offline lobby) is still there
+    expect(decls(".panel")).toContain("box-shadow");
   });
 });

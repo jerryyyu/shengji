@@ -142,12 +142,14 @@ function offsetIn(el: HTMLElement, frame: HTMLElement): number | null {
  *  header row) is sized and placed clear of it, whatever the levels, score
  *  and text size make it. The strip starts at the safe edge, which CSS adds,
  *  so turning the phone the other way round needs no new measurement. */
-function useStripWidth(bar: RefObject<HTMLDivElement | null>) {
+function useStripWidth(bar: RefObject<HTMLDivElement | null>, rated: boolean) {
   useLayoutEffect(() => {
     const el = bar.current;
     const frame = el?.closest<HTMLElement>(".table-screen");
     if (!el || !frame) return;
-    const parts = () => [el.querySelector<HTMLElement>(".hud-group:nth-child(2)"), el.querySelector<HTMLElement>(".points-chip")]
+    // the Rated chip sits after the points in the same header row
+    const parts = () => [el.querySelector<HTMLElement>(".hud-group:nth-child(2)"), el.querySelector<HTMLElement>(".points-chip"),
+                         el.querySelector<HTMLElement>(".rated-chip")]
       .filter((x): x is HTMLElement => x !== null && x.offsetWidth > 0);
     const measure = () => {
       let start = Infinity;
@@ -165,16 +167,17 @@ function useStripWidth(bar: RefObject<HTMLDivElement | null>) {
     measure();
     if (typeof ResizeObserver !== "function") return;
     const ro = new ResizeObserver(measure);
-    for (const part of [el.querySelector(".hud-group:nth-child(2)"), el.querySelector(".points-chip"), frame]) {
+    for (const part of [el.querySelector(".hud-group:nth-child(2)"), el.querySelector(".points-chip"),
+                        el.querySelector(".rated-chip"), frame]) {
       if (part) ro.observe(part);
     }
     return () => ro.disconnect();
-  }, [bar]);
+  }, [bar, rated]);
 }
 
 export default function Hud({ state }: { state: GameState }) {
   const barRef = useRef<HTMLDivElement | null>(null);
-  useStripWidth(barRef);
+  useStripWidth(barRef, !!state.matched);
   const shownPoints = Math.round(useCountUp(state.attacker_points, { snapDown: true }));
   // Tapping the room chip mid-game copies a full invite link, so you can
   // pull someone into a game already in progress — they land on a bot's

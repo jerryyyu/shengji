@@ -8,7 +8,6 @@ import errno
 import json
 import logging
 import random
-import string
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -1555,10 +1554,10 @@ async def run_deal(room: Room) -> None:
 
 # ------------------------------------------------------------------ actions
 def new_code() -> str:
-    while True:
-        code = "".join(random.choices(string.ascii_uppercase, k=4))
-        if code not in rooms:
-            return code
+    # The module RNG, as before: choices() draws once per character whatever
+    # the alphabet, so the stream that seeded fixtures read is unchanged.
+    return matchmaking.new_code(
+        lambda c: c in rooms or MATCHMAKER.has_party_code(c), random)
 
 
 def _card_ids(msg: dict) -> list[int]:
@@ -1771,6 +1770,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 nonce = msg.get("nonce")
                 if type(nonce) is int and 0 <= nonce <= 9007199254740991:
                     await send(ws, {"type": "pong", "nonce": nonce})
+                continue
+            if t == "code_lookup":
+                await send(ws, MATCHMAKER.code_lookup(conn, msg, account_id()))
                 continue
             if room is None or me is None:
                 if t in matchmaking.QUEUE_MESSAGES:
@@ -2173,7 +2175,8 @@ def _unwind_matched_room(room: Room, attached: list, conns) -> None:
         MATCHMAKER.return_to_lobby(conn)
 
 
-MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room)
+MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
+                                    room_live=lambda code: code in rooms)
 
 
 def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:

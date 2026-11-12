@@ -39,6 +39,7 @@ vi.mock("../auth", async (importOriginal) => {
 
 import Lobby from "./Lobby";
 import { queue } from "../queue/store";
+import { codes } from "../codeJoin";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -54,6 +55,7 @@ const nameInput = () => host.querySelector<HTMLInputElement>("input[autocomplete
 beforeEach(() => {
   sent.length = 0;
   queue.reset();
+  codes.reset();
   localStorage.clear();
   gis.initialize.mockClear();
   gis.renderButton.mockClear();
@@ -464,18 +466,34 @@ describe("starting a game waits for the server", () => {
 
   it("Join says Joining… while the room is looked up, and an error frees it", async () => {
     await render();
-    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room code']")!;
-    type(code, "ABCD");
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Game or pair code']")!;
+    type(code, "abcd");
     act(() => button(/^Join$/).click());
-    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
+    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }]);
     expect(button(/Joining…/).getAttribute("aria-busy")).toBe("true");
     act(() => button(/Joining…/).click());
     expect(sent).toHaveLength(1);
+    serverSays({ type: "code_kind", code: "ABCD", kind: "room" });
+    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }, { type: "peek_room", room: "ABCD" }]);
+    expect(button(/Joining…/).disabled).toBe(true);
     // straight through when there is no seat to choose: still joining, one join
     serverSays({ type: "room_seats", room: "ABCD", seats: [] });
     expect(sent.filter((m) => (m as { type: string }).type === "join_room")).toHaveLength(1);
     expect(button(/Joining…/).disabled).toBe(true);
     serverSays({ type: "error", code: "room_not_found", message: "No such room." });
     expect(button(/^Join$/).disabled).toBe(false);
+  });
+
+  it("a code that names nothing frees Join and says so until the box changes", async () => {
+    await render();
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Game or pair code']")!;
+    type(code, "ZZZZ");
+    act(() => button(/^Join$/).click());
+    serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });
+    expect(button(/^Join$/).disabled).toBe(false);
+    expect(host.querySelector(".lobby-error")?.textContent).toBe("No game or pair has that code.");
+    expect(sent).toEqual([{ type: "code_lookup", code: "ZZZZ" }]);
+    type(code, "ZZZ");
+    expect(host.querySelector(".lobby-error")).toBeNull();
   });
 });

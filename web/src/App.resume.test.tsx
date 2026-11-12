@@ -95,6 +95,8 @@ it("reports an explicit missing-room join after an automatic resume was refused"
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   act(() => host.querySelector<HTMLButtonElement>(".join-row button")!.click());
+  expect(ws.sent.at(-1)).toEqual({ type: "code_lookup", code: "WXYZ" });
+  act(() => ws.deliver({ type: "code_kind", code: "WXYZ", kind: "room" }));
   expect(ws.sent.at(-1)).toMatchObject({ type: "peek_room", room: "WXYZ" });
   act(() => ws.deliver({ type: "error", code: "room_not_found", message: "Room not found" }));
   expect(host.textContent).toContain("That game has ended.");

@@ -106,7 +106,11 @@ export default function FindGame({ ready, onPlayBots, botsBusy }: {
               </button>
             ) : null}
           </div>
-          {account.status === "out" ? (
+          {account.status === "out" && q.joinCode ? (
+            <p className="q-foot q-center">
+              Pair code {q.joinCode} is for signed-in players. Sign in and you come back to join it.
+            </p>
+          ) : account.status === "out" ? (
             <p className="q-foot q-center">
               Rated games with people need an account. Google now; Apple is coming soon. You come back to this choice after signing in.
             </p>

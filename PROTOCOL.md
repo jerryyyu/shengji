@@ -19,6 +19,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `set_start_level` | `start_level` (same values) | host, lobby only; refused once the game has started |
 | `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | lobby, OR mid-game to claim a bot's or a dropped human's seat |
 | `peek_room` | `room` | anytime, WITHOUT joining — answered with `room_seats` |
+| `code_lookup` | `code` | anytime, guests too, WITHOUT joining — answered with `code_kind` (see "Codes") |
 | `chat` | `text` (<=300 chars) | after joining |
 | `add_bot` | — | host, in lobby or between rounds |
 | `remove_bot` | — | host, lobby (removes last bot) |
@@ -75,6 +76,10 @@ Reply to `peek_room`. Read-only: it does not seat the asker and reveals no
 private information. The lobby uses it to show a seat picker when a game is in
 progress and more than one bot seat is open — which bot you replace decides
 who your partner is.
+
+### `{type: "code_kind", code, kind}`
+
+Reply to `code_lookup`; see "Codes".
 
 ### `{type: "chat_history", room, through_id, messages[]}`
 
@@ -167,6 +172,31 @@ client may dismiss a notice early; dismissal is per-viewer and is never sent to 
 server, so one player dismissing does not blank it for anyone else.
 
 
+## Codes
+
+Room codes and pair codes are one space: 4 characters from
+`ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `I`, `O`, `0` or `1`). A new room's
+code is never the code of a live pair, and a new pair's code is never the code
+of a live room, so a code names at most one thing. Codes are compared after
+trimming and uppercasing.
+
+A client that does not know which kind a code is sends
+`{type: "code_lookup", code}` and gets `{type: "code_kind", code, kind}`, with
+`code` normalised and `kind` one of:
+
+- `"room"`: a live room. Continue with `peek_room` / `join_room`.
+- `"party"`: a live pair. Continue with `party_join`, which needs sign-in (a
+  guest gets `signed_in_only`).
+- `"none"`: nothing live has that code (or it is not 4 letters and digits).
+
+The lookup changes nothing on the server, works from a seat or the lobby,
+signed in or not, and is limited to 30 per account (a guest: per socket) per
+minute (`error` with code `rate_limited`). A room wins a code that a room and
+a pair both hold, which only codes issued before the shared space can do.
+`peek_room`, `join_room` and `party_join` are unchanged, so a client that
+never sends `code_lookup` keeps working. Invite links are `/?code=CODE`;
+`/?room=CODE` and `/?party=CODE` still open a room and a pair.
+
 ## Flow
 
 1. `create_room` → `room` message with code; others `join_room`; host `add_bot` to fill; `start_game` requires 4 seats.
@@ -200,7 +230,7 @@ seconds from the server clock; `deadline_in` is relative seconds. Refusals are
 | `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the bot fill is due 60 s from now (a new `bots_at`); the wait itself is kept |
 | `party_create` | — | create a pair party (or resend yours); answered with `party` |
 | `party_invite` | — | the same as `party_create`: the party's `code` is the invite |
-| `party_join` | `code` | join a friend's party by its code |
+| `party_join` | `code` | join a friend's party by its code (pair codes share the room code space; see "Codes") |
 | `party_leave` | — | leave the party; it dissolves and the other member is told. A queued pair leaves the queue; during a ready check it is a decline |
 
 Error codes: `signed_in_only` (guest), `in_room`, `rate_limited`

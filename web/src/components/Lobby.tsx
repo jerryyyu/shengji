@@ -10,6 +10,8 @@ import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
 import LobbyPreview from "./LobbyPreview";
 import FindGame from "../queue/FindGame";
+import { codes, useCodes } from "../codeJoin";
+import { normalizeCode } from "../codes";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -105,9 +107,16 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   );
   const [w32Selected, setW32Selected] = useState(false);
   const [testAccessKey, setTestAccessKey] = useState("");
-  const [roomCode, setRoomCode] = useState(
-    () => new URLSearchParams(window.location.search).get("room")?.toUpperCase() ?? ""
-  );
+  // A ?room= link, or a ?code= link (a room or a pair code), prefills the box.
+  const [roomCode, setRoomCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return normalizeCode(params.get("room") ?? params.get("code") ?? "");
+  });
+  const codeView = useCodes();
+  // A ?code= link that the lookup found to be a room: handled as ?room= is.
+  const [linkRoom, setLinkRoom] = useState<string | null>(null);
+  // A Play-box or link lookup still waiting for its answer holds Join.
+  const looking = codeView.pending !== null && codeView.pending.from !== "pair";
   const autoJoined = useRef(false);
   const lastPeek = useRef<string | null>(null);
   const peekGen = useRef<number | null>(null);
@@ -136,6 +145,11 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     if (peekGen.current !== null && peekGen.current !== conn.generation) {
       peekGen.current = null;
       setSeatChoice(null);
+      return;
+    }
+    // a code that named a pair or nothing: the box is free again
+    if (m?.type === "code_kind" && m.kind !== "room") {
+      setStarting(null);
       return;
     }
     if (m?.type === "room_seats") {
@@ -199,16 +213,34 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     }
   };
 
-  const join = () => {
-    const code = roomCode.trim().toUpperCase();
-    if (!ready || code.length !== 4) return;
-    nameOrRandom();
-    // Ask who's sitting where first; the subscriber shows a picker when
-    // needsSeatPicker() says so, otherwise joins straight through.
+  // Ask who's sitting where first; the subscriber shows a picker when
+  // needsSeatPicker() says so, otherwise joins straight through.
+  const peek = useCallback((code: string) => {
     lastPeek.current = code;
     peekGen.current = conn.generation;   // this transaction belongs to this socket
-    if (conn.send({ type: "peek_room", room: code })) begin("join");
+    if (conn.send({ type: "peek_room", room: code })) {
+      setStarting({ kind: "join", generation: conn.generation });
+    }
+  }, []);
+
+  // The box takes a room code or a pair code: look it up, then a room is
+  // peeked here (below) and a pair is joined by the queue.
+  const join = () => {
+    const code = normalizeCode(roomCode);
+    if (!ready || looking || code.length !== 4) return;
+    nameOrRandom();
+    if (codes.lookup(code, "play")) begin("join");
   };
+
+  // A room code from this box, the pair sheet's box or a ?code= link.
+  useEffect(() => {
+    if (!codeView.room || status !== "open") return;
+    const r = codes.takeRoom();
+    if (!r || Date.now() - r.at > START_TIMEOUT_MS) return;
+    setRoomCode(r.code);
+    if (r.from === "link") setLinkRoom(r.code);
+    else peek(r.code);
+  }, [codeView.room, status, peek]);
 
   // Invite links prefill the room code and focus the NAME field — they do
   // not auto-submit, because a returning player has a saved name and would
@@ -216,7 +248,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // only when the link carries a name too, which is
   // an explicit choice by whoever built the link; a signed-in player still
   // joins under their account name.
-  const invited = new URLSearchParams(window.location.search).get("room");
+  const invited = new URLSearchParams(window.location.search).get("room") ?? linkRoom;
   const invitedName = new URLSearchParams(window.location.search).get("name");
   useEffect(() => {
     if (autoJoined.current || status !== "open" || !invited || invited.length !== 4) return;
@@ -357,27 +389,32 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             value={roomCode}
             maxLength={4}
             placeholder="CODE"
-            aria-label="Room code"
+            aria-label="Game or pair code"
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
             enterKeyHint="go"
-            onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+            onChange={(e) => {
+              setRoomCode(e.target.value.toUpperCase());
+              codes.clearPlayError();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") join();
             }}
           />
           <button
             className="btn"
-            disabled={!ready || roomCode.trim().length !== 4}
+            disabled={!ready || looking || roomCode.trim().length !== 4}
             onClick={join}
-            aria-busy={starting?.kind === "join" || undefined}
+            aria-busy={starting?.kind === "join" || looking || undefined}
           >
-            {starting?.kind === "join" ? STARTING_LABEL.join : "Join"}
+            {starting?.kind === "join" || looking ? STARTING_LABEL.join : "Join"}
           </button>
         </div>
 
-        {error ? <div className="lobby-error">{error}</div> : null}
+        {error || codeView.playError ? (
+          <div className="lobby-error">{error ?? codeView.playError}</div>
+        ) : null}
 
         <p className="howto-entry">
           New to Sheng Ji?{" "}

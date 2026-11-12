@@ -6,6 +6,7 @@ import { conn } from "../ws";
 import { auth, effectiveName, useAuth } from "../auth";
 import { navigate } from "../replay/route";
 import NameEditForm from "./NameEditForm";
+import { codeLink } from "../codes";
 
 /** The phone's `…` overflow: kitty count, sound, invite link and leave —
  * none of them a mid-trick decision, so on a small screen they share one
@@ -76,7 +77,7 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   };
 
   const copyInvite = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/?room=${room}`)
+    navigator.clipboard.writeText(codeLink(room))
       .then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1400); })
       .catch(() => { /* clipboard blocked; leave the label as-is */ });
   };

@@ -87,7 +87,8 @@ export default function App() {
       // handled by the Lobby (it must not auto-submit without a name), so the
       // only thing to act on here is a saved resume.
       const params = new URLSearchParams(window.location.search);
-      const inviteRoom = params.get("room");
+      // a ?code= link may name a room, so it outranks a saved room as ?room= does
+      const inviteRoom = params.get("room") ?? params.get("code");
       const intent = decideIntent({
         invite: inviteRoom ? { room: inviteRoom,
                                name: params.get("name") ?? undefined } : null,

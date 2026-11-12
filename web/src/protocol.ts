@@ -47,6 +47,8 @@ export type ClientMsg =
   | { type: "next_round" }
   | { type: "chat"; text: string }
   | { type: "peek_room"; room: string }
+  /** Which kind of thing a typed or linked code names (PROTOCOL.md "Codes"). */
+  | { type: "code_lookup"; code: string }
   | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
   | { type: "leave_room" } // anytime after joining; server replies {type:"left"}
   | QueueClientMsg;
@@ -59,6 +61,8 @@ export interface ErrorMsg {
   /** Machine-readable case. Typed so a new server code cannot be handled by
    *  a stale client branch that silently falls through to a generic toast. */
   code?: ErrorCode;
+  /** Set on a refused code_lookup only: the code it was asked about. */
+  lookup?: string;
 }
 
 export interface RoomPlayer {
@@ -231,6 +235,7 @@ export type ServerMsg =
   | EventMsg
   | LeftMsg
   | RoomSeats
+  | CodeKindMsg
   | ChatMsg
   | ChatHistory
   | ResumeMsg
@@ -253,6 +258,14 @@ export type ErrorCode =
 /** "human" — a connected person; "bot" — a permanent bot seat;
  *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */
 export type Controller = "human" | "bot" | "bot_cover";
+
+/** Reply to code_lookup: room and pair codes share one space, so a code
+ *  names a live room, a live pair, or nothing. */
+export interface CodeKindMsg {
+  type: "code_kind";
+  code: string;
+  kind: "room" | "party" | "none";
+}
 
 export interface ChatHistory {
   type: "chat_history";

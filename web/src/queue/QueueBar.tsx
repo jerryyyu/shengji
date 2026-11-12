@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef } from "react";
+import type { RefObject } from "react";
 import { BOTS_WARN_MS, clock, partnerName, queue, useNow, useQueue } from "./store";
 import type { QueueView } from "./store";
 
@@ -12,9 +14,9 @@ function barText(q: QueueView, now: number): BarText {
   const botsIn = q.botsAt !== null && !q.waitPlayers ? q.botsAt - now : Infinity;
   const warn = botsIn <= BOTS_WARN_MS;
   const partner = q.partyId ? partnerName(q.party) : null;
-  const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a game";
+  const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a ranked game";
   const count = `${q.count} in queue`;
-  const sub = q.waitPlayers ? (q.leader ? count : `Waiting for real players · ${count}`)
+  const sub = q.waitPlayers ? (q.leader ? count : `Real players only · ${count}`)
     : botsIn <= 0 ? "Adding bots…"
     : botsIn !== Infinity ? `Bots in ${clock(botsIn, true)} · ${count}`
     : count;
@@ -51,34 +53,63 @@ function Actions({ q, compact }: { q: QueueView; compact?: boolean }) {
 
 /** The leader's switch: on, the entry waits for real players and no bots
  *  join; off, the bot countdown runs. A pair's other member only sees the
- *  state in the sub-line. */
+ *  state in the sub-line. The bar puts the switch after its label, the chip
+ *  before it. */
 function WaitToggle({ q }: { q: QueueView }) {
   if (!q.leader) return null;
   return (
     <button type="button" role="switch" aria-checked={q.waitPlayers} className="q-wait"
             disabled={q.pending !== null}
             onClick={() => (q.waitPlayers ? queue.allowBots() : queue.waitForPlayers())}>
+      <span className="q-wait-label">Wait for real players</span>
       <span className="q-switch" aria-hidden="true" />
-      Wait for real players
     </button>
   );
 }
 
-/** A phone's queue bar, pinned above the tab bar on every tab: the title and
- *  actions on top, the countdown and the wait switch underneath. */
+/** While the bar shows, `--q-bar-clear` on the root is the distance from
+ *  the viewport's bottom to just above the bar, so notices can sit over it
+ *  instead of on it. */
+function useBarClearance(bar: RefObject<HTMLDivElement | null>, shown: boolean) {
+  useLayoutEffect(() => {
+    const node = bar.current;
+    if (!shown || !node) return;
+    const root = document.documentElement;
+    const set = () => {
+      const clear = Math.round(window.innerHeight - node.getBoundingClientRect().top + 8);
+      root.style.setProperty("--q-bar-clear", `${clear}px`);
+    };
+    set();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(set);
+    ro?.observe(node);
+    window.addEventListener("resize", set);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", set);
+      root.style.removeProperty("--q-bar-clear");
+    };
+  }, [bar, shown]);
+}
+
+/** A phone's queue bar, pinned above the tab bar on every tab, in four
+ *  rows: who is searching and for how long; the countdown and queue count;
+ *  the leader's wait switch; Play bots and Cancel side by side. */
 export default function QueueBar() {
   const { q, text } = useBar();
+  const ref = useRef<HTMLDivElement | null>(null);
+  useBarClearance(ref, text !== null);
   if (!text) return null;
   return (
-    <div className={`q-bar${text.warn ? " warn" : ""}`} role="status" aria-live="polite"
+    <div ref={ref} className={`q-bar${text.warn ? " warn" : ""}`} role="status" aria-live="polite"
          title={`Waiting ${text.waited}`}>
-      <b className="q-bar-title">{q.partyId ? `${text.label} · ${text.waited}` : text.label}</b>
-      <span className="q-bar-acts"><Actions q={q} /></span>
-      <span className="q-bar-sub">
-        <span className="q-spin" aria-hidden="true" />
-        <small>{text.sub}</small>
-        <WaitToggle q={q} />
-      </span>
+      <div className="q-bar-head">
+        <span className="q-bar-dot" aria-hidden="true" />
+        <b className="q-bar-title">{text.label}</b>
+        <span className="q-bar-time">{text.waited}</span>
+      </div>
+      <small className="q-bar-sub">{text.sub}</small>
+      <WaitToggle q={q} />
+      <div className="q-bar-acts"><Actions q={q} /></div>
     </div>
   );
 }

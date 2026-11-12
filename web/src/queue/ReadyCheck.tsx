@@ -4,36 +4,80 @@ import { effectiveName, useAuth } from "../auth";
 import { clock, partnerName, queue, useNow, useQueue } from "./store";
 import type { ReadyCheck as Check } from "./store";
 
-const BOT_SEATS: Record<number, string> = {
-  1: "A bot takes the empty seat", 2: "Two bots take the empty seats", 3: "Three bots take the empty seats",
-};
+type TileKind = "you" | "known" | "player" | "bot";
+interface Tile { name: string; kind: TileKind }
+interface Teams { mine: [Tile, Tile]; theirs: [Tile, Tile] }
 
-const R = 42;
-const CIRC = 2 * Math.PI * R;
+const you: Tile = { name: "You", kind: "you" };
+const bot: Tile = { name: "Bot", kind: "bot" };
+const player = (name: string): Tile => ({ name, kind: "player" });
+const known = (name: string): Tile => ({ name, kind: "known" });
 
-function Ring({ label, frac, done }: { label: string; frac: number; done?: boolean }) {
+/** Who sits on which side, as far as the client can tell. The server sends
+ *  no seats before everyone accepts, then only the humans' names in seat
+ *  order (team 0 at seats 0+2), so teams are exact without bots; with bots
+ *  they follow the matcher's rules (a pair sits together, humans spread
+ *  across both teams), and a side it cannot place is shown unnamed. */
+function teams(check: Check, me: string, partner: string | null): Teams {
+  const names = check.names;
+  const others = names ? names.filter((n, i) => i !== names.indexOf(me) && n !== partner) : [];
+  const other = (i: number, label: string) => (others[i] !== undefined ? known(others[i]) : player(label));
+  if (names && check.bots === 0) {
+    const i = names.indexOf(me);
+    if (i >= 0) {
+      const at = (k: number) => known(names[(i + k) % 4]);
+      return { mine: [you, at(2)], theirs: [at(1), at(3)] };
+    }
+  }
+  const mate = partner ? known(partner) : null;
+  if (check.size === 2 && check.bots === 2) {
+    return mate ? { mine: [you, mate], theirs: [bot, bot] } : { mine: [you, bot], theirs: [other(0, "Player"), bot] };
+  }
+  if (check.size === 3 && check.bots === 1 && mate) {
+    return { mine: [you, mate], theirs: [other(0, "Player"), bot] };
+  }
+  return { mine: [you, mate ?? player("Teammate")], theirs: [player("Opponent"), player("Opponent")] };
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts.length === 1 ? parts[0].slice(0, 2) : parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function TileView({ tile, team, me, ready }: { tile: Tile; team: 0 | 1; me: string; ready: boolean }) {
+  const mark = tile.kind === "you" ? initials(me || "You") : tile.kind === "bot" ? "BOT"
+    : tile.kind === "player" ? "?" : initials(tile.name);
   return (
-    <div className={`q-ring${done ? " done" : ""}`} aria-hidden="true">
-      <svg viewBox="0 0 96 96">
-        <circle cx="48" cy="48" r={R} className="q-ring-track" />
-        <circle cx="48" cy="48" r={R} className="q-ring-arc"
-                strokeDasharray={`${(CIRC * Math.max(0, Math.min(1, frac))).toFixed(1)} ${CIRC.toFixed(1)}`} />
-      </svg>
-      <span className="q-ring-n">{label}</span>
+    <div className={`q-rc-seat ${tile.kind}`}>
+      <span className={`q-rc-av team${team}`} aria-hidden="true">{mark}</span>
+      <span className="q-rc-name">{tile.name}</span>
+      {ready ? <span className="q-rc-ok" aria-label="ready">✓</span> : null}
     </div>
   );
 }
 
-/** One pip per seat: the humans who accepted (counts only, never who), the
- *  ones still to answer, and the bots. */
-function Pips({ check }: { check: Check }) {
-  const pips = [];
-  for (let i = 0; i < check.size; i += 1) {
-    const ok = i < check.accepted;
-    pips.push(<i key={`h${i}`} className={ok ? "ok" : ""}>{ok ? "✓" : ""}</i>);
-  }
-  for (let i = 0; i < check.bots; i += 1) pips.push(<i key={`b${i}`} className="bot">BOT</i>);
-  return <div className="q-pips" aria-label={`${check.accepted} of ${check.of} ready`}>{pips}</div>;
+/** Your side, VS, the other side, each in its team's colour. Only your own
+ *  accept is marked: the others' answers are counts, never who. */
+function TeamsView({ check, me, partner }: { check: Check; me: string; partner: string | null }) {
+  const t = teams(check, me, partner);
+  const all = check.names !== null;
+  const mineReady = all || check.mine === "accepted";
+  return (
+    <div className="q-rc-teams" aria-label="Teams">
+      <div className="q-rc-side">
+        {t.mine.map((tile, i) => (
+          <TileView key={i} tile={tile} team={0} me={me} ready={tile.kind === "you" ? mineReady : all && tile.kind !== "bot"} />
+        ))}
+      </div>
+      <span className="q-rc-vs">VS</span>
+      <div className="q-rc-side">
+        {t.theirs.map((tile, i) => (
+          <TileView key={i} tile={tile} team={1} me={me} ready={all && tile.kind !== "bot"} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** While a ready check waits on a desktop player in another tab, the tab's
@@ -57,60 +101,60 @@ function CheckDialog({ check }: { check: Check }) {
   const now = useNow(true, 200);
   useTitleFlash(check.mine === "pending");
   const left = check.deadline - now;
-  const frac = left / check.window;
-  const secs = String(Math.max(0, Math.ceil(left / 1000)));
+  const secs = clock(Math.max(0, left), true);
   const fill = check.bots > 0;
   const partner = check.partyId ? partnerName(q.party) : null;
   const me = account.status === "in" && account.user ? effectiveName(account.user) : "";
+  const bots = check.bots === 1 ? "1 bot" : `${check.bots} bots`;
 
   if (check.names) {
     const names = check.names.map((n) => (n === me ? "you" : n));
-    if (check.bots) names.push(check.bots === 1 ? "1 bot" : `${check.bots} bots`);
+    if (check.bots) names.push(bots);
     return (
-      <Dialog title="Match found" big="Starting…">
-        <Ring label="✓" frac={1} done />
-        <p>Everyone accepted. Dealing in a moment.</p>
-        <Pips check={{ ...check, accepted: check.size }} />
-        <div className="q-dlg-b"><div className="btn gold q-names">{names.join(" · ")}</div></div>
-      </Dialog>
+      <MatchSheet title="Ranked match found">
+        <TeamsView check={check} me={me} partner={partner} />
+        <div className="q-rc-names">{names.join(" · ")}</div>
+        <button type="button" className="q-rc-accept" disabled>Starting…</button>
+      </MatchSheet>
     );
   }
   if (check.mine === "accepted") {
     return (
-      <Dialog title="Match found" big="You're ready">
-        <Ring label={secs} frac={frac} />
-        <p>{partner && check.accepted < 2 ? `Waiting for ${partner}…` : "Waiting for the others…"}</p>
-        <Pips check={check} />
-        <div className="q-dlg-b">
-          <button type="button" className="btn q-ghost" onClick={() => queue.decline()}>Cancel</button>
-          <button type="button" className="btn q-dis" disabled>{check.accepted} of {check.of} ready</button>
-        </div>
-        <div className="q-sub">Names are shown when everyone has accepted.</div>
-      </Dialog>
+      <MatchSheet title="Ranked match found">
+        <TeamsView check={check} me={me} partner={partner} />
+        <button type="button" className="q-rc-accept" disabled>{check.accepted} of {check.of} ready · {secs}</button>
+        <button type="button" className="q-rc-plain" onClick={() => queue.decline()}>Cancel</button>
+      </MatchSheet>
     );
   }
-  const bots = check.bots === 1 ? "1 bot" : `${check.bots} bots`;
-  const big = fill ? `Starting with ${bots}` : partner ? "Ready? Both of you" : "Ready?";
-  const text = fill
-    ? `A minute with no full table. ${BOT_SEATS[check.bots] ?? `${bots} take the empty seats`}; the game is rated and bots count as 1000.`
-    : partner ? `${partner} must accept too. If either of you misses it, the pair is out for 30 s.`
-    : "Four players found. Accept within 10 s or you go back to the lobby.";
   return (
-    <Dialog title={fill ? "Not enough players" : "Match found"} big={big}>
-      <Ring label={secs} frac={frac} />
-      <p>{text}</p>
-      <Pips check={check} />
-      <div className="q-dlg-b">
-        {fill ? (
-          <button type="button" className="btn q-ghost" onClick={() => queue.keepWaiting()}>Keep waiting</button>
-        ) : (
-          <button type="button" className="btn q-ghost" onClick={() => queue.decline()}>Decline</button>
-        )}
-        <button type="button" className="btn gold" disabled={left <= 0} onClick={() => queue.accept()} autoFocus>
-          Accept
-        </button>
+    <MatchSheet title="Ranked match found">
+      <TeamsView check={check} me={me} partner={partner} />
+      <button type="button" className="q-rc-accept" disabled={left <= 0} onClick={() => queue.accept()} autoFocus>
+        Accept · {secs}
+      </button>
+      {fill ? (
+        <button type="button" className="q-rc-plain" onClick={() => queue.keepWaiting()}>Keep waiting</button>
+      ) : (
+        <button type="button" className="q-rc-plain" onClick={() => queue.decline()}>Decline</button>
+      )}
+    </MatchSheet>
+  );
+}
+
+/** The ready check: a bottom sheet on a phone, a centred dialog from 700px.
+ *  No line under the title: the teams show who plays, bots included, and
+ *  the button carries the deadline and the ready count. */
+function MatchSheet({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="q-layer q-rc-layer">
+      <div className="q-scrim" />
+      <div className="q-rc" role="alertdialog" aria-modal="true" aria-label={title}>
+        <span className="q-rc-grab" aria-hidden="true" />
+        <h2>{title}</h2>
+        {children}
       </div>
-    </Dialog>
+    </div>
   );
 }
 
@@ -123,8 +167,8 @@ function MissedDialog() {
   const verb = missed.reason === "declined" ? "declined" : "missed it";
   const big = missed.by ? `${missed.by} ${verb}` : "You missed it";
   const text = missed.by
-    ? `${missed.by} didn't accept, so the pair is out of the queue for 30 seconds. The others kept their place.`
-    : "You didn't accept in time, so you're out of the queue for 30 seconds. The other players kept their place.";
+    ? `${missed.by} didn't accept, so the pair is out of the queue for 30 seconds.`
+    : "You didn't accept in time, so you're out of the queue for 30 seconds.";
   const waitingOnLeader = pair !== null && !pair.you_lead;
   return (
     <Dialog title="Ready check" big={big}>

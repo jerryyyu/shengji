@@ -5691,26 +5691,43 @@ button[role="switch"]:active .ios-switch {
 }
 @keyframes q-spin { to { transform: rotate(360deg); } }
 
-/* Two rows: title and actions on top; the spinner, bot countdown and
-   wait-for-players switch below, wrapping onto a further line when narrow. */
+/* Four rows: who is searching and for how long; the countdown and queue
+   count; the leader's wait switch; Play bots and Cancel as equal halves. */
 .q-bar {
-  flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "title acts" "sub sub"; align-items: center; column-gap: 8px; row-gap: 3px;
-  margin: 0 8px 8px; padding: 7px 6px 8px 12px;
-  border-radius: 14px; background: #1f5d3a; border: 1px solid #2f8a57; color: #eafbea;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); font-variant-numeric: tabular-nums; line-height: 1.2;
+  flex: none; display: flex; flex-direction: column; gap: 12px;
+  margin: 0 8px 8px; padding: 16px;
+  border-radius: 20px; background: #1f4a33; border: 1px solid #2f7a52; color: #eafbea;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); font-variant-numeric: tabular-nums; line-height: 1.2;
 }
-.q-bar .q-spin { align-self: center; width: 12px; height: 12px; }
+.q-bar-head { display: flex; align-items: center; gap: 8px; min-height: 24px; min-width: 0; }
+.q-bar-dot {
+  width: 10px; height: 10px; flex: none; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 0 4px rgba(242, 193, 78, 0.2);
+}
 .q-bar-title {
-  grid-area: title; min-width: 0; font-size: var(--fs-14); font-weight: 600; color: #fff;
-  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  flex: 1; min-width: 0; font-size: var(--fs-17); font-weight: 600; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.q-bar-acts { grid-area: acts; display: flex; gap: 8px; }
-.q-bar-acts .q-bots, .q-bar-acts .q-cancel { height: 36px; }
-.q-bar-sub { grid-area: sub; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 2px; min-width: 0; }
-.q-bar-sub small { font-size: var(--fs-13); color: #bfe9cf; white-space: nowrap; }
+.q-bar-time { flex: none; font-size: var(--fs-17); color: #fff; }
+.q-bar-sub {
+  display: block; min-width: 0; font-size: var(--fs-15); color: #bfe9cf;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .q-bar.warn, .q-chip.warn { background: #3f3415; border-color: #9a6f12; }
-.q-bar.warn .q-bar-sub small { color: var(--gold); font-weight: 600; }
+.q-bar.warn .q-bar-sub { color: var(--gold); font-weight: 600; }
+.q-bar .q-wait { justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0; font-size: var(--fs-16); }
+.q-bar .q-wait-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.q-bar .q-switch { width: 51px; height: 31px; border-radius: 16px; }
+.q-bar .q-switch::after { width: 27px; height: 27px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); }
+.q-bar .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(20px); }
+.q-bar-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.q-bar-acts .q-bots, .q-bar-acts .q-cancel {
+  height: 48px; min-width: 0; padding: 0 8px; border-radius: 14px; font-size: var(--fs-16);
+  overflow: hidden; text-overflow: ellipsis;
+}
+.q-bar-acts .q-bots { font-weight: 700; }
+.q-bar-acts .q-cancel { background: rgba(0, 0, 0, 0.3); }
+.q-bar-acts .q-led { justify-content: center; color: #bfe9cf; font-size: var(--fs-15); }
 .q-wait {
   appearance: none; flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
   padding: 2px 0; border: 0; background: none; color: #fff;
@@ -5728,6 +5745,7 @@ button[role="switch"]:active .ios-switch {
 .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(12px); }
 @media (prefers-reduced-motion: reduce) { .q-switch, .q-switch::after { transition: none; } }
 .q-wait:disabled { opacity: 0.45; cursor: default; }
+.q-chip .q-switch { order: -1; }
 .q-chip .q-wait { font-size: var(--fs-13); }
 .q-bots, .q-cancel {
   appearance: none; flex: none; height: 40px; padding: 0 8px; border: 0; border-radius: 10px;
@@ -5840,23 +5858,66 @@ span.q-party-main { cursor: default; }
 .q-dlg p.q-gap { margin-top: 12px; }
 .q-dlg-b { display: flex; gap: 10px; margin-top: 16px; }
 .q-dlg-b .btn { flex: 1; min-height: 46px; }
-.q-names { display: flex; align-items: center; justify-content: center; }
 .q-sub { margin-top: 10px; font-size: var(--fs-13); line-height: 1.35; color: #8a929f; }
-.q-ring { position: relative; width: 96px; height: 96px; margin: 10px auto 6px; }
-.q-ring svg { width: 96px; height: 96px; transform: rotate(-90deg); }
-.q-ring circle { fill: none; stroke-width: 7; }
-.q-ring-track { stroke: #2d3440; }
-.q-ring-arc { stroke: var(--gold); stroke-linecap: round; transition: stroke-dasharray 200ms linear; }
-.q-ring.done .q-ring-arc { stroke: #5fc78b; }
-.q-ring-n { position: absolute; inset: 0; display: grid; place-items: center; font-size: 36px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
-.q-ring.done .q-ring-n { color: #5fc78b; }
-.q-pips { display: flex; justify-content: center; gap: 12px; margin: 14px 0 2px; }
-.q-pips i { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #2d3440; box-shadow: inset 0 0 0 2px #3d4556; color: #5fc78b; font-size: 17px; font-style: normal; }
-.q-pips i.ok { background: #1f5d3a; box-shadow: inset 0 0 0 2px #5fc78b; }
-.q-pips i.bot { color: #9aa3b2; font-size: 11px; font-weight: 600; }
+/* The ready check: a bottom sheet with both teams, a big gold Accept that
+   counts down and a plain answer under it; a centred dialog from 700px. */
+.q-rc-layer { z-index: 80; }
+.q-rc {
+  position: relative; display: flex; flex-direction: column; gap: 16px;
+  padding: 8px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  border-radius: 20px 20px 0 0; background: var(--grp); border-top: 1px solid var(--grp-edge);
+  color: var(--text); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+}
+.q-rc-grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #4a5262; }
+.q-rc h2 { margin: 0; text-align: center; font-size: 22px; font-weight: 700; color: #fff; }
+.q-rc-teams { display: grid; grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); gap: 8px; align-items: center; }
+.q-rc-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.q-rc-seat {
+  display: flex; align-items: center; gap: 10px; height: 48px; min-width: 0; padding: 0 10px;
+  border-radius: 12px; background: var(--page); border: 1px solid var(--grp-edge);
+}
+.q-rc-av {
+  width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%;
+  font-size: 12px; font-weight: 700; color: var(--chrome);
+}
+.q-rc-av.team0 { background: var(--team0); }
+.q-rc-av.team1 { background: var(--team1); }
+.q-rc-seat.bot .q-rc-av { font-size: 8px; letter-spacing: 0.02em; }
+.q-rc-name { flex: 1; min-width: 0; font-size: var(--fs-15); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-rc-seat.you .q-rc-name { font-weight: 600; }
+.q-rc-seat.player .q-rc-name, .q-rc-seat.bot .q-rc-name { color: var(--text-dim); }
+.q-rc-ok { flex: none; color: #5fc78b; font-weight: 700; }
+.q-rc-vs { text-align: center; font-size: var(--fs-13); font-weight: 700; letter-spacing: 0.08em; color: var(--text-dim); }
+.q-rc-names { text-align: center; font-size: var(--fs-14); color: var(--text-dim); }
+.q-rc-accept {
+  appearance: none; display: flex; align-items: center; justify-content: center; height: 58px;
+  border-radius: 16px; border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219);
+  color: #ffd77a; font: inherit; font-size: var(--fs-20); font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.q-rc-accept:disabled { background: #1f242e; border-color: #2c3340; color: #8a929f; cursor: default; }
+.q-rc-plain {
+  appearance: none; min-height: 44px; margin-top: -8px; border: 0; background: none;
+  color: #c3cad6; font: inherit; font-size: var(--fs-17); font-weight: 600; cursor: pointer;
+}
+@media (max-width: 359px) {
+  .q-rc { padding-left: 12px; padding-right: 12px; }
+  .q-rc-teams { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); gap: 6px; }
+  .q-rc-seat { gap: 6px; padding: 0 6px; }
+  .q-rc-av { width: 24px; height: 24px; font-size: 11px; }
+  .q-rc-name { font-size: var(--fs-14); }
+  .q-rc-vs { font-size: var(--fs-11); letter-spacing: 0; }
+}
+@media (min-width: 700px) {
+  .q-rc-layer { justify-content: center; align-items: center; }
+  .q-rc { width: min(420px, calc(100vw - 32px)); padding-bottom: 20px; border-radius: 20px; border: 1px solid var(--grp-edge); }
+  .q-rc-grab { display: none; }
+}
 
+/* Above the tab bar, and above the queue bar while it shows (QueueBar sets
+   --q-bar-clear). */
 .q-toast {
-  position: fixed; left: 50%; bottom: calc(130px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: max(calc(130px + env(safe-area-inset-bottom, 0px)), var(--q-bar-clear, 0px));
   z-index: 75; display: flex; align-items: flex-start; gap: 10px; width: max-content; max-width: calc(100vw - 32px);
   padding: 12px 16px; border-radius: 12px; background: #262d38; border: 1px solid #3d4556; color: #fff;
   font-size: var(--fs-15); font-weight: 600; line-height: 1.3; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);

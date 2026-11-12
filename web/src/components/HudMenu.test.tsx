@@ -250,3 +250,52 @@ describe("keyboard focus in the menu", () => {
     v.unmount();
   });
 });
+
+describe("the menu's scale-and-fade", () => {
+  const reduceMotion = (on: boolean) => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: on && q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+    return () => { window.matchMedia = mm; };
+  };
+  const canAnimate = () => {
+    const had = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "animate");
+    Object.defineProperty(HTMLElement.prototype, "animate", { configurable: true, value: () => ({}) });
+    return () => {
+      if (had) Object.defineProperty(HTMLElement.prototype, "animate", had);
+      else Reflect.deleteProperty(HTMLElement.prototype, "animate");
+    };
+  };
+
+  it("pops in, stays through its fade out, then goes", () => {
+    vi.useFakeTimers();
+    const restore = [reduceMotion(false), canAnimate()];
+    try {
+      const v = render();
+      act(() => btn(v.host).click());
+      expect(v.host.querySelector(".hud-menu")!.classList.contains("pop-in")).toBe(true);
+      act(() => btn(v.host).click());
+      const menu = v.host.querySelector(".hud-menu")!;
+      expect(menu.classList.contains("pop-out")).toBe(true);
+      expect(menu.getAttribute("aria-hidden")).toBe("true");
+      act(() => { vi.advanceTimersByTime(199); });
+      expect(v.host.querySelector(".hud-menu")).not.toBeNull();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(v.host.querySelector(".hud-menu")).toBeNull();
+      v.unmount();
+    } finally { restore.forEach((r) => r()); vi.useRealTimers(); }
+  });
+
+  it("under Reduce Motion appears and goes at once, with no animation class", () => {
+    const restore = [reduceMotion(true), canAnimate()];
+    try {
+      const v = render();
+      act(() => btn(v.host).click());
+      const menu = v.host.querySelector(".hud-menu")!;
+      expect(menu.classList.contains("pop-in")).toBe(false);
+      expect(menu.classList.contains("pop-out")).toBe(false);
+      act(() => btn(v.host).click());
+      expect(v.host.querySelector(".hud-menu")).toBeNull();
+      v.unmount();
+    } finally { restore.forEach((r) => r()); }
+  });
+});

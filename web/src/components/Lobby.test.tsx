@@ -248,6 +248,21 @@ describe("signed out, the guest names themselves", () => {
     }
   });
 
+  it("the name field is a keyboard-friendly name entry that Enter puts away without submitting", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    await render();
+    const input = nameInput();
+    expect(input.getAttribute("enterkeyhint")).toBe("done");
+    expect(input.getAttribute("spellcheck")).toBe("false");
+    expect(input.getAttribute("autocapitalize")).toBe("words");
+    expect(input.getAttribute("autocorrect")).toBe("off");
+    act(() => input.focus());
+    expect(document.activeElement).toBe(input);
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(document.activeElement).not.toBe(input);
+    expect(sent).toHaveLength(0);
+  });
+
   it("the dice reroll the name, have an accessible label and never submit", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();

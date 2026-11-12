@@ -243,7 +243,8 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
   const style = { "--n": hand.length } as CSSProperties;
   return (
     <div className={`hand${selectable ? " selectable" : ""}${small ? " small-cards" : ""}`}
-         ref={handRef} style={style}
+         ref={handRef} style={style} role="group"
+         aria-label={`Your hand, ${hand.length} ${hand.length === 1 ? "card" : "cards"}`}
          onPointerDown={onPointerDown} onPointerMove={onPointerMove}
          onPointerUp={endDrag} onPointerCancel={endDrag} onClickCapture={onClickCapture}>
       {hand.map((c) => (

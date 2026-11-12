@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMenuKeys } from "../useMenuKeys";
 import { useMuted } from "../useMuted";
+import { usePresence } from "../usePresence";
 import { conn } from "../ws";
 import { auth, effectiveName, useAuth } from "../auth";
 import { navigate } from "../replay/route";
@@ -29,6 +30,7 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
   const menuRef = useRef<HTMLDivElement | null>(null);
   // the row to focus after the next render
   const focusNext = useRef<"first" | "last" | "stay" | "leave" | null>(null);
+  const presence = usePresence(open);
 
   // the rows a keyboard can act on, in order: the kitty row is information
   // only, and an open name field keeps its own arrow keys
@@ -109,8 +111,10 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
       >
         …
       </button>
-      {open ? (
-        <div className="hud-menu" role="menu" aria-label="More" ref={menuRef} onKeyDown={onMenuKey}>
+      {presence.mounted ? (
+        <div className={`hud-menu${presence.className ? ` ${presence.className}` : ""}`} role="menu"
+             aria-label="More" aria-hidden={!open || undefined} inert={!open || undefined}
+             ref={menuRef} onKeyDown={onMenuKey}>
           <div className="hud-menu-row" role="menuitem" aria-disabled="true">
             <span>Kitty</span><span className="hud-menu-k">{kittyCount} cards</span>
           </div>

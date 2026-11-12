@@ -53,7 +53,7 @@ export default function App() {
     const showToast = (message: string) => {
       // a fresh id per showing: the same error again is shown again
       setToast(makeToast(message));
-      haptic("select");
+      haptic("error");
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
       toastTimer.current = window.setTimeout(() => {
         toastTimer.current = null;

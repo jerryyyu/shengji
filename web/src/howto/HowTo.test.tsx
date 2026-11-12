@@ -110,9 +110,10 @@ describe("the stepped guide", () => {
     expect(title()).toBe("Banker and kitty");
   });
 
-  it("‹ Lobby leaves the guide", async () => {
+  it("‹ Back leaves the guide; it opens from Play, Me or the menu, so it names no one tab", async () => {
     await open("#/howto/5");
-    await click(button("‹ Lobby"));
+    expect(host.querySelector(".howto-head .games-back")!.textContent).toBe("‹ Back");
+    await click(button("‹ Back"));
     expect(window.location.hash).toBe("");
     expect(host.querySelector(".no-guide")).not.toBeNull();
   });

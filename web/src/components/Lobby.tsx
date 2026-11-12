@@ -295,7 +295,14 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
                 placeholder="e.g. Jerry"
                 autoComplete="nickname"
                 autoCorrect="off"
+                autoCapitalize="words"
+                spellCheck={false}
+                enterKeyHint="done"
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  // "done" on the keyboard puts it away; joining stays a tap
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur();
+                }}
               />
               <button type="button" className="name-reroll" aria-label="Random name"
                       title="Random name" onClick={reroll}>

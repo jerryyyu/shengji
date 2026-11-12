@@ -471,6 +471,8 @@ def _human_team_report(rounds: list[dict]) -> dict:
 def _game_situation_report(rounds: list[dict]) -> dict:
     """Describe observed game-progress strata using the same matchup eligibility."""
     policies: dict[str, dict] = {}
+    sources: dict[str, dict] = {}
+    ungrouped = 0
     excluded: dict[str, int] = defaultdict(int)
     for row in rounds:
         eligible = _human_team_report([row])
@@ -484,16 +486,27 @@ def _game_situation_report(rounds: list[dict]) -> dict:
             excluded["unknown_game_situation"] += 1
             continue
         policy, value = next(iter(eligible["by_observed_policy"].items()))
-        strata = policies.setdefault(policy, {})
-        bucket = strata.setdefault("near_ace" if near else "other", {
-            "rounds": 0, "bot_wins": 0, "bot_signed_levels": 0})
-        for key in ("rounds", "bot_wins", "bot_signed_levels"):
-            bucket[key] += value[key]
-    for strata in policies.values():
-        for bucket in strata.values():
-            bucket["bot_levels_per_round"] = bucket["bot_signed_levels"] / bucket["rounds"]
+        groups = [policies]
+        ref = row.get("source_ref")
+        if isinstance(ref, str) and ref.strip():
+            groups.append(sources.setdefault(ref, {}))
+        else:
+            ungrouped += 1
+        for group in groups:
+            strata = group.setdefault(policy, {})
+            bucket = strata.setdefault("near_ace" if near else "other", {
+                "rounds": 0, "bot_wins": 0, "bot_signed_levels": 0})
+            for key in ("rounds", "bot_wins", "bot_signed_levels"):
+                bucket[key] += value[key]
+    for group in [policies, *sources.values()]:
+        for strata in group.values():
+            for bucket in strata.values():
+                bucket["bot_levels_per_round"] = bucket["bot_signed_levels"] / bucket["rounds"]
     return {
         "schema": "observed-game-situation-report-v1",
+        "by_source_ref": {ref: {p: dict(sorted(s.items())) for p, s in sorted(group.items())}
+                          for ref, group in sorted(sources.items())},
+        "eligible_rounds_without_source_ref": ungrouped,
         "completed_rounds": len(rounds),
         "eligible_rounds": sum(b["rounds"] for s in policies.values() for b in s.values()),
         "excluded_rounds": dict(sorted(excluded.items())),
@@ -505,7 +518,10 @@ def _game_situation_report(rounds: list[dict]) -> dict:
             "situations are excluded. Full-team controller and policy eligibility "
             "matches human_team_report. These are descriptive round counts and "
             "means, not verified humans, independent samples, confidence intervals "
-            "or a game-aware strength verdict."),
+            "or a game-aware strength verdict. Source references retain log-level "
+            "grouping only: a log is not a verified full game or an independent "
+            "sample. Missing source references remain in pooled totals but are "
+            "counted separately and never combined into a synthetic source."),
     }
 
 

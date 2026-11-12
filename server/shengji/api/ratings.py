@@ -2,11 +2,18 @@
 leaderboard and the My stats page.
 
 Only signed-in human seats are rated. Bots never move: every bot seat counts
-as ``BOT_RATING``, the anchor of the served release, and a guest seat counts
-the same, so solo games against bots, games with a partner and mixed tables
-share one scale. Nothing here reads or changes a game decision; the hooks
-only observe the room at a round's start, at an explicit leave and at the
-round's end.
+as ``BOT_RATING``, the anchor of the served release, and in a casual room a
+guest seat counts the same, so solo games against bots, games with a partner
+and mixed tables share one scale. A ranked (queue-matched) room is for
+signed-in players only: a round that starts with a guest in one of its seats
+is not rated for anyone. Nothing here reads or changes a game decision; the
+hooks only observe the room at a round's start, at an explicit leave and at
+the round's end.
+
+Every seat's rating and kind (account, bot, guest) is read when the round
+starts, and the round is rated from that record: a seat that changes hands
+mid-round changes nobody's result, and the newcomer is rated from the next
+round.
 
 One rated round, for each rated account on team ``t``:
 
@@ -19,10 +26,13 @@ One rated round, for each rated account on team ``t``:
   the deal without going up a level (80 to 115 points) score
   ``TAKEOVER_WIN_SCORE`` and the bankers ``1 - TAKEOVER_WIN_SCORE``;
 * ``delta = K * (S - E)`` with ``K = K_PROVISIONAL`` for an account's first
-  ``PROVISIONAL_ROUNDS`` rated rounds and ``K_ESTABLISHED`` after.
+  ``PROVISIONAL_ROUNDS`` rated rounds and ``K_ESTABLISHED`` after, halved
+  when another rated player in the round was still provisional at its start,
+  so a stranger's uncalibrated number moves an established one less.
 
 Partners share ``R_t``, ``E`` and ``S``, so two established partners move by
-the same amount; only a provisional partner's larger ``K`` makes them differ.
+the same amount; only a provisional partner's larger ``K`` (and the halving it
+causes for the other) makes them differ.
 
 Abandoning: a signed-in player who leaves a round in play (``leave_room``),
 or whose seat the bot takes over after a disconnect and who has not
@@ -45,7 +55,7 @@ import logging
 import secrets
 import time
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import dataclass, field
 from typing import Any
@@ -61,7 +71,7 @@ START_RATING = accounts.START_RATING
 # The served release's fixed rating. Every bot seat is rated this, so a
 # stronger release gets a higher constant from its measured duel margin.
 BOT_RATING = 1000.0
-# A guest has no rating; their seat counts like a bot's.
+# A guest has no rating; in a casual room their seat counts like a bot's.
 GUEST_RATING = BOT_RATING
 # Holding the deal (the kitty, the first lead and the defence threshold of
 # 80) is worth this much team strength; the value is a starting estimate to
@@ -74,6 +84,10 @@ K_ESTABLISHED = 20.0
 TAKEOVER_WIN_SCORE = 0.6
 LEAVER_SCORE_CAP = 0.5
 MAX_SCORED_LEVELS = 3
+
+# What a seat held when the round started: a connected signed-in account, a
+# bot, a guest (a person with no account), or an account not at the table.
+ACCOUNT, BOT, GUEST, ABSENT = "account", "bot", "guest", "absent"
 
 WEEK_SECONDS = 7 * 86400
 LEADERBOARD_SIZE = 20
@@ -101,8 +115,15 @@ def round_score(won: bool, level_change: int) -> float:
     return winner if won else 1.0 - winner
 
 
-def k_factor(rated_rounds: int) -> float:
-    return K_PROVISIONAL if rated_rounds < PROVISIONAL_ROUNDS else K_ESTABLISHED
+def is_provisional(rated_rounds: int) -> bool:
+    return rated_rounds < PROVISIONAL_ROUNDS
+
+
+def k_factor(rated_rounds: int, provisional_opponent: bool = False) -> float:
+    """``provisional_opponent``: another rated player in the round, partner
+    or opponent, was provisional when it started."""
+    k = K_PROVISIONAL if is_provisional(rated_rounds) else K_ESTABLISHED
+    return k / 2 if provisional_opponent else k
 
 
 def team_strengths(seat_ratings: list[float], banker_team: int) -> tuple[float, float]:
@@ -130,11 +151,40 @@ class RoundRecord:
     winner_team: int
     level_change: int
     point_scored: bool
-    # per seat: the account whose rating stands for that seat (None = bot or guest)
-    seat_users: list[int | None]
+    # seat -> the account connected there when the round started
+    start_accounts: dict[int, int]
     seat_names: list[str]
     seat_bots: list[bool]
     participants: list[Participant]
+    # {account: (rating, rated_rounds)} read when the round started
+    # (``read_standing``); a missing or failed read falls back to the
+    # accounts' stored numbers at write time
+    standing: Future | Mapping[int, tuple[float, int]] | None = None
+
+
+def read_standing(store: accounts.Store, user_ids: list[int]) -> dict[int, tuple[float, int]]:
+    """Each existing account's ``(rating, rated_rounds)``."""
+    out: dict[int, tuple[float, int]] = {}
+    with closing(store._open()) as conn:
+        for uid in user_ids:
+            row = conn.execute("SELECT rating, rated_rounds FROM users WHERE id = ?",
+                               (uid,)).fetchone()
+            if row is not None:
+                out[uid] = (float(row["rating"]), int(row["rated_rounds"]))
+    return out
+
+
+def _frozen(standing: Any) -> Mapping[int, tuple[float, int]]:
+    if standing is None:
+        return {}
+    if not isinstance(standing, Future):
+        return standing
+    # The read was queued on the ratings worker before this round's write,
+    # so on that worker it is always done; never wait on it there.
+    if not standing.done() or standing.cancelled() or standing.exception() is not None:
+        log.warning("round-start rating read unavailable; using stored ratings")
+        return {}
+    return standing.result()
 
 
 def apply_round(store: accounts.Store, rec: RoundRecord,
@@ -142,22 +192,29 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
     """Rate one round in one transaction; returns ``{user_id: {rating,
     delta}}`` for the accounts rated. A round already stored for an account
     is skipped, so a retried write cannot rate it twice; an account that no
-    longer exists is skipped too."""
+    longer exists is skipped too.
+
+    Team strengths and the provisional test use each participant's numbers
+    from the round's start; a seat whose start account is not rated in this
+    round counts ``GUEST_RATING``, as a bot or guest seat does."""
     t = int(now if now is not None else time.time())
+    frozen = _frozen(rec.standing)
     with closing(store._open()) as conn:
         conn.execute("BEGIN IMMEDIATE")
         try:
-            ids = {u for u in rec.seat_users if u is not None}
-            ids |= {p.user_id for p in rec.participants}
+            ids = {p.user_id for p in rec.participants}
             users: dict[int, Mapping[str, Any]] = {}
             for uid in ids:
                 row = conn.execute("SELECT id, rating, rated_rounds FROM users WHERE id = ?",
                                    (uid,)).fetchone()
                 if row is not None:
                     users[uid] = row
-            seat_ratings = [float(users[u]["rating"]) if u in users else GUEST_RATING
-                            for u in rec.seat_users]
+            at_start = {uid: frozen.get(uid, (float(row["rating"]), int(row["rated_rounds"])))
+                        for uid, row in users.items()}
+            seat_ratings = [at_start[u][0] if u in at_start else GUEST_RATING
+                            for u in (rec.start_accounts.get(s) for s in range(4))]
             strengths = team_strengths(seat_ratings, rec.banker_team)
+            provisional = {uid for uid, (_, n) in at_start.items() if is_provisional(n)}
             out: dict[int, dict] = {}
             for p in rec.participants:
                 row = users.get(p.user_id)
@@ -173,7 +230,7 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                 actual = round_score(won, rec.level_change)
                 if p.abandoned:
                     actual = min(actual, LEAVER_SCORE_CAP)
-                k = k_factor(int(row["rated_rounds"]))
+                k = k_factor(int(row["rated_rounds"]), bool(provisional - {p.user_id}))
                 before = float(row["rating"])
                 delta = k * (actual - exp)
                 after = before + delta
@@ -361,6 +418,11 @@ class RoomRatings:
     game_no: int = 0
     # seat -> account connected there when the round started
     present: dict[int, int] = field(default_factory=dict)
+    # seat -> ACCOUNT, BOT, GUEST or ABSENT when the round started
+    kinds: list[str] = field(default_factory=list)
+    # the present accounts' (rating, rated_rounds) as the round started,
+    # read on the ratings worker behind the previous round's write
+    standing: Future | None = None
     # account -> seat it left from while the round was in play
     left: dict[int, int] = field(default_factory=dict)
     # account -> {"round", "rating", "delta", "game_delta"} of its latest rated round
@@ -413,10 +475,23 @@ def round_started(room: Any) -> None:
     tracker.round_no = room.game.round_no
     tracker.left = {}
     tracker.present = {}
+    tracker.kinds = []
+    tracker.standing = None
     for s, seat in enumerate(room.seats):
         uid = _signed_in(seat)
         if uid is not None and seat.connected:
             tracker.present[s] = uid
+            tracker.kinds.append(ACCOUNT)
+        elif seat.is_bot:
+            tracker.kinds.append(BOT)
+        elif seat.user_id is None:
+            tracker.kinds.append(GUEST)
+        else:
+            tracker.kinds.append(ABSENT)
+    store = accounts.STORE
+    if tracker.present and store is not None:
+        tracker.standing = _EXECUTOR.submit(read_standing, store,
+                                            sorted(set(tracker.present.values())))
 
 
 @_guarded
@@ -469,29 +544,30 @@ def participants(room: Any, tracker: RoomRatings) -> list[Participant]:
     return [p for p in found.values() if len(teams.get(p.user_id, {p.seat % 2})) == 1]
 
 
+def ranked_round_voided(room: Any, tracker: RoomRatings) -> bool:
+    """A ranked (queue-matched) room rates signed-in players only: a guest
+    seated when the round started leaves the round unrated for everyone."""
+    return bool(getattr(room, "matched", False)) and GUEST in tracker.kinds
+
+
 def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | None:
     rnd = room.round
     if rnd is None or rnd.banker is None or room.game is None:
         return None
+    if ranked_round_voided(room, tracker):
+        return None
     parts = participants(room, tracker)
     if not parts:
         return None
-    seat_users: list[int | None] = [None] * 4
-    for s, seat in enumerate(room.seats):
-        uid = _signed_in(seat)
-        if uid is not None and any(p.user_id == uid and not p.abandoned for p in parts):
-            seat_users[s] = uid
-    for p in parts:
-        if p.abandoned and seat_users[p.seat] is None:
-            seat_users[p.seat] = p.user_id
+    rated = {p.user_id for p in parts}
     return RoundRecord(
         game_id=f"{tracker.game_id}/{tracker.game_no}", round_no=room.game.round_no,
         banker_team=rnd.banker % 2, winner_team=int(result.winner_team),
         level_change=int(result.level_change), point_scored=bool(result.point_scored),
-        seat_users=seat_users,
+        start_accounts={s: uid for s, uid in tracker.present.items() if uid in rated},
         seat_names=[seat.name for seat in room.seats],
         seat_bots=[bool(seat.is_bot) for seat in room.seats],
-        participants=parts)
+        participants=parts, standing=tracker.standing)
 
 
 def _record_outcome(room: Any, tracker: RoomRatings, rec: RoundRecord,
@@ -530,6 +606,7 @@ def round_ended(room: Any, result: Any) -> None:
     except RuntimeError:
         loop = None
     if loop is None:                # off the loop (scripts, unit tests): inline
+        flush()                     # the round-start read first, as on the worker
         _record_outcome(room, tracker, rec, apply_round(store, rec), game_over)
         return
 

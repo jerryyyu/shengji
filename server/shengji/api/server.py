@@ -2001,6 +2001,27 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             continue
                         async with target.lock:
                             name = player_name(msg.get("name"))
+                            # A ranked table is rated for signed-in players
+                            # only and is filled by the queue: a guest is
+                            # refused, and an account may only come back to
+                            # the seat it already holds.
+                            held = None
+                            if target.matched:
+                                if account_id() is None:
+                                    await send(ws, {
+                                        "type": "error", "code": "ranked_sign_in",
+                                        "message": "Sign in to join a ranked game."})
+                                    continue
+                                held = next(
+                                    (s for s in target.seats
+                                     if s is not None and not s.is_bot
+                                     and s.user_id == account_id()), None)
+                                if held is None:
+                                    await send(ws, {
+                                        "type": "error", "code": "ranked_queue_only",
+                                        "message": "Ranked games are joined through "
+                                                   "the queue."})
+                                    continue
                             # Match on a normalised name: an exact-only match
                             # locked people out of their own seat whenever they
                             # came back on another device or retyped their name
@@ -2017,6 +2038,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                      if s is not None and not s.is_bot
                                      and secrets.compare_digest(
                                          s.token, tok)), None)
+                            if held is not None:
+                                reclaim = held
                             by_name = False
                             if reclaim is None:
                                 key = name.strip().casefold()

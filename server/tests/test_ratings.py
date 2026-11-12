@@ -230,8 +230,55 @@ def test_a_provisional_player_moves_faster_than_an_established_partner(env, monk
     _force_outcome(monkeypatch, 30)
     Table(srv, [new, "bot", old, "bot"]).play_round(banker=0)
     by = {e["user_id"]: e for e in _events(store)}
-    assert by[new]["k"] == 40 and by[old]["k"] == 20
-    assert by[new]["delta"] == pytest.approx(2 * by[old]["delta"])
+    # the veteran's K halves because the partner is provisional
+    assert by[new]["k"] == 40 and by[old]["k"] == 10
+    assert by[new]["delta"] == pytest.approx(4 * by[old]["delta"])
+
+
+@pytest.mark.parametrize("seats", [
+    ["me", "bot", "bot", "bot"],          # alone with bots
+    ["me", "bot", "vet", "bot"],          # an established partner
+    ["me", "vet", "bot", "vet2"],         # established opponents
+    ["me", None, "bot", "bot"],           # a guest in a casual room
+])
+def test_k_is_unchanged_when_no_other_rated_player_is_provisional(env, monkeypatch, seats):
+    srv, store, _ = env
+    ids = {}
+    for name in ("me", "vet", "vet2"):
+        ids[name], _ = _user(store, name)
+        _set(store, ids[name], 1000, rounds=40)
+    _force_outcome(monkeypatch, 30)
+    Table(srv, [ids.get(s, s) if isinstance(s, str) else s for s in seats]).play_round(banker=0)
+    assert {e["k"] for e in _events(store)} == {20}
+
+
+@pytest.mark.parametrize("other_seat", [1, 2])     # an opponent, the partner
+def test_k_halves_when_another_rated_player_is_provisional(env, monkeypatch, other_seat):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    vet, _ = _user(store, "vet")
+    newer, _ = _user(store, "newer")
+    _set(store, vet, 1000, rounds=40)
+    _set(store, newer, 1000, rounds=ratings.PROVISIONAL_ROUNDS - 1)
+    _force_outcome(monkeypatch, 30)
+    seats = [vet, "bot", "bot", "bot"]
+    seats[other_seat] = newer
+    Table(srv, seats).play_round(banker=0)
+    by = {e["user_id"]: e for e in _events(store)}
+    assert by[vet]["k"] == ratings.K_ESTABLISHED / 2
+    assert by[newer]["k"] == ratings.K_PROVISIONAL          # the veteran is established
+    assert by[vet]["delta"] == pytest.approx(ratings.K_ESTABLISHED / 2
+                                             * (by[vet]["actual"] - by[vet]["expected"]))
+
+
+def test_two_provisional_players_halve_each_other(env, monkeypatch):
+    srv, store, _ = env
+    a, _ = _user(store, "anna")
+    b, _ = _user(store, "bert")
+    _force_outcome(monkeypatch, 30)
+    Table(srv, [a, "bot", b, "bot"]).play_round(banker=0)
+    assert {e["k"] for e in _events(store)} == {20}
 
 
 def test_a_rated_round_is_never_rated_twice(env, monkeypatch):
@@ -255,6 +302,153 @@ def test_experimental_rooms_are_not_rated(env, monkeypatch):
     table.room.experimental_policy = "w32"
     table.play_round(banker=0)
     assert table.room.ratings is None and _events(store) == []
+
+
+# --------------------------------------------------------- frozen at start
+def test_seat_ratings_are_read_when_the_round_starts(env, monkeypatch):
+    """A partner's rating that moves mid-round (a round finished at another
+    table) does not change this round's expected score."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    a, _ = _user(store, "alice")
+    b, _ = _user(store, "bob")
+    _set(store, a, 1000, rounds=30)
+    _set(store, b, 1000, rounds=30)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [a, "bot", b, "bot"])
+    table.start_round(banker=0)
+    ratings.flush()                     # the round-start read has run
+    _set(store, b, 1400, rounds=31)
+    table.finish()
+    by = {e["user_id"]: e for e in _events(store)}
+    assert by[a]["expected"] == pytest.approx(0.557312, abs=1e-6)
+    assert by[b]["expected"] == pytest.approx(0.557312, abs=1e-6)
+    # each account's own rating moves from where it stands now
+    assert by[b]["rating_before"] == 1400
+
+
+def test_a_mid_round_claimant_does_not_change_the_round_for_the_others(env, monkeypatch):
+    srv, store, _ = env
+    host, _ = _user(store, "host")
+    strong, _ = _user(store, "strong")
+    _set(store, host, 1000, rounds=30)
+    _set(store, strong, 1600, rounds=5)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [host, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    _claim(table.room.seats[1], strong, "Strong")
+    table.finish()
+    [event] = _events(store)
+    assert event["user_id"] == host
+    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)   # seat 1 was a bot
+    assert event["k"] == 20             # the provisional claimant was not in the round
+
+
+def test_a_round_started_with_a_guest_at_a_ranked_table_is_not_rated(env, monkeypatch):
+    srv, store, _ = env
+    a, _ = _user(store, "alice")
+    b, _ = _user(store, "bob")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [a, None, b, "bot"])
+    table.room.matched = True
+    table.play_round(banker=0)
+    assert _events(store) == []
+    assert store.user(a)["rated_rounds"] == 0 and store.user(a)["rating"] == 1000
+    # Once the guest's seat is a bot again, the next round is rated.
+    table.room.seats[1].is_bot = True
+    table.play_round()
+    assert sorted(e["user_id"] for e in _events(store)) == sorted([a, b])
+
+
+def test_a_ranked_table_of_signed_in_players_is_rated_as_before(env, monkeypatch):
+    srv, store, _ = env
+    uid, _ = _user(store, "solo")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.room.matched = True
+    table.play_round(banker=0)
+    [event] = _events(store)
+    assert event["delta"] == pytest.approx(11.04, abs=0.005)
+
+
+# -------------------------------------------------------- ranked join
+# A ranked table is filled by the queue and rated for signed-in players only:
+# a guest is refused with ``ranked_sign_in``, another account with
+# ``ranked_queue_only``, and the account holding a seat comes back to it.
+# Casual rooms keep their open join (``test_server_ws``).
+@pytest.fixture()
+def queue_env(env):
+    """``env`` with the server's queue emptied before and after."""
+    srv = env[0]
+    srv.MATCHMAKER.reset()
+    try:
+        yield env
+    finally:
+        srv.MATCHMAKER.reset()
+
+
+def _ranked_solo(srv, a):
+    a.send_json({"type": "queue_join"})
+    _drain(a, "queue_state")
+    a.send_json({"type": "queue_start_bots"})
+    started = _drain(a, "match_started", tries=40)
+    assert started["rated"] is True
+    return started["room"], srv.rooms[started["room"]].seats[0].token
+
+
+def _seats(room):
+    return [(s.name, s.is_bot, s.user_id) for s in room.seats]
+
+
+def test_a_guest_cannot_join_a_ranked_room(queue_env):
+    srv, store, client = queue_env
+    uid, headers = _user(store, "owner", "Owner")
+    with client.websocket_connect("/ws", headers=headers) as a:
+        code, _ = _ranked_solo(srv, a)
+        room = srv.rooms[code]
+        before = _seats(room)
+        with client.websocket_connect("/ws") as g:
+            g.send_json({"type": "join_room", "room": code, "name": "Guest"})
+            assert _drain(g, "error")["code"] == "ranked_sign_in"
+            g.send_json({"type": "join_room", "room": code, "name": "Guest", "seat": 1})
+            assert _drain(g, "error")["code"] == "ranked_sign_in"
+        assert _seats(room) == before
+
+
+def test_another_account_cannot_join_a_ranked_room_by_code(queue_env):
+    srv, store, client = queue_env
+    _, h1 = _user(store, "owner", "Owner")
+    _, h2 = _user(store, "other", "Other")
+    with client.websocket_connect("/ws", headers=h1) as a:
+        code, _ = _ranked_solo(srv, a)
+        room = srv.rooms[code]
+        before = _seats(room)
+        with client.websocket_connect("/ws", headers=h2) as b:
+            b.send_json({"type": "join_room", "room": code, "name": "Other"})
+            assert _drain(b, "error")["code"] == "ranked_queue_only"
+            # typing the holder's name is not a way in either
+            b.send_json({"type": "join_room", "room": code, "name": "Owner"})
+            assert _drain(b, "error")["code"] == "ranked_queue_only"
+        assert _seats(room) == before
+
+
+def test_the_seat_holder_comes_back_with_or_without_a_token(queue_env):
+    srv, store, client = queue_env
+    uid, headers = _user(store, "owner", "Owner")
+    with client.websocket_connect("/ws", headers=headers) as a:
+        code, token = _ranked_solo(srv, a)
+    room = srv.rooms[code]
+    with client.websocket_connect("/ws", headers=headers) as again:
+        again.send_json({"type": "join_room", "room": code, "name": "Owner", "token": token})
+        state = _drain(again, "state", tries=80)
+        assert state["room"] == code and state["you"] == 0
+    with client.websocket_connect("/ws", headers=headers) as other_device:
+        other_device.send_json({"type": "join_room", "room": code, "name": "Phone"})
+        state = _drain(other_device, "state", tries=80)
+        assert state["room"] == code and state["you"] == 0
+    assert room.seats[0].user_id == uid and [s.is_bot for s in room.seats[1:]] == [True] * 3
+
 
 
 # ------------------------------------------------------------------ abandon

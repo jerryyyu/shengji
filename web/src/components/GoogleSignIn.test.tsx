@@ -110,6 +110,14 @@ async function sha256(text: string): Promise<string> {
 }
 
 describe("Sign in with Apple", () => {
+  beforeEach(() => {
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, "digest").mockImplementation(async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return digest(...args);
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
   it("shows beside the Google button on iOS and posts the token, code, raw nonce and name", async () => {
     const initialize = vi.fn((_opts: Record<string, unknown>) => Promise.resolve());
     const login = vi.fn((_opts: { provider: string; options: { nonce: string } }) => Promise.resolve({
@@ -131,7 +139,10 @@ describe("Sign in with Apple", () => {
     expect(apple.style.maxWidth).toBe(google.style.maxWidth);
     expect(apple.style.width).toBe(google.style.width);
     expect(initialize).toHaveBeenCalledWith({ apple: { useProperTokenExchange: true, redirectUrl: "" } });
-    await act(async () => apple.click());
+    await act(async () => {
+      apple.click();
+      await vi.waitFor(() => expect(signedIn).toHaveBeenCalledWith(user));
+    });
     expect(login).toHaveBeenCalledTimes(1);
     const opts = login.mock.calls[0][0];
     expect(opts.provider).toBe("apple");
@@ -154,10 +165,17 @@ describe("Sign in with Apple", () => {
     loginWithApple.mockResolvedValue({ name: "Ann Lee", email: "", picture: null, display_name: null, name_shown: "Ann" });
     await render();
     const apple = host.querySelector<HTMLButtonElement>("[data-testid='apple-signin']")!;
-    await act(async () => apple.click());
+    await act(async () => {
+      apple.click();
+      await vi.waitFor(() => expect(login).toHaveBeenCalledTimes(1));
+    });
+    expect(apple.disabled).toBe(false);
     expect(host.querySelector(".lobby-error")).toBeNull();
     expect(loginWithApple).not.toHaveBeenCalled();
-    await act(async () => apple.click());
+    await act(async () => {
+      apple.click();
+      await vi.waitFor(() => expect(signedIn).toHaveBeenCalledTimes(1));
+    });
     expect(loginWithApple.mock.calls[0][0]).toMatchObject({ authorizationCode: "code-2", givenName: null, familyName: null });
   });
 

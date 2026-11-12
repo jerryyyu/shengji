@@ -2,13 +2,18 @@
 // Connection (reconnects, leave barrier, chat buffer, resume token) runs
 // unchanged in offline mode. Frames cross it as JSON text, both ways, exactly
 // as they would cross the network.
+import { nativeRemoteBot } from "./pybot";
 import { LocalServer, type LocalConnection } from "./server";
 
 let shared: LocalServer | null = null;
 
-/** The page's one offline server: a reconnect finds its room again. */
+/** The page's one offline server: a reconnect finds its room again. In the
+ *  app, creating it starts the release bot in the background (pybot.ts). The
+ *  app sets `__shengjiOfflineAutoplay` only when launched with
+ *  -offline-autoplay (a device check of the bots, run from Xcode). */
 export function localServer(): LocalServer {
-  shared ??= new LocalServer();
+  const autoplay = (globalThis as { __shengjiOfflineAutoplay?: unknown }).__shengjiOfflineAutoplay === true;
+  shared ??= new LocalServer({ remote: nativeRemoteBot(), autoplay });
   return shared;
 }
 

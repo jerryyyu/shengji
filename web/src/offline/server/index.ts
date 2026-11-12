@@ -24,6 +24,10 @@ function installProbe(): void {
       const plays = legalPlays(h.rnd, h.seat);
       return plays ? plays.map((p) => h.room.idsForCodes(h.seat, p)) : null;
     },
+    /** The release bot's counters: decisions asked, answered, and why SmartBot took the others. */
+    botStats(): unknown {
+      return localServer().remote?.stats ?? null;
+    },
     buryIds(): number[] | null {
       const h = humanSeat();
       if (!h || h.rnd.phase !== "bury" || h.rnd.turn !== h.seat) return null;

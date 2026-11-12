@@ -200,6 +200,31 @@ export function hideSplash(): void {
   void call("SplashScreen", "hide", { fadeOutDuration: 200 });
 }
 
+/** The embedded release bot (ShengjiBot): `start` builds it once, in the
+ *  background, and resolves to its identity; `decide` takes a request as JSON
+ *  text and resolves to the response's JSON text. Both reject on any failure,
+ *  since the caller falls back per decision. Null outside the app, and in an
+ *  app build without the plugin. */
+export interface NativeBot {
+  start(): Promise<unknown>;
+  decide(request: string): Promise<string>;
+}
+
+export function nativeBot(): NativeBot | null {
+  const p = plugin("ShengjiBot");
+  const start = p?.start;
+  const decide = p?.decide;
+  if (typeof start !== "function" || typeof decide !== "function") return null;
+  return {
+    start: () => start({}),
+    decide: async (request) => {
+      const out = (await decide({ request })) as { response?: unknown } | undefined;
+      if (typeof out?.response !== "string") throw new Error("ShengjiBot.decide: no response");
+      return out.response;
+    },
+  };
+}
+
 /** Test hook: forget cached plugin lookups and state. */
 export function resetNativeForTests(): void {
   plugins.clear();

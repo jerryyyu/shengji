@@ -16,6 +16,7 @@ import {
   type RoundState,
   type Trick,
   applyPlay,
+  checkPlay,
   bury,
   dealNext,
   declare,
@@ -26,6 +27,7 @@ import {
 } from "../engine/round";
 import { SmartBot, viewFor } from "../bot";
 import { type Clock, realClock, sleep } from "./clock";
+import { type ActionEntry, BotGate, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
 
 export const BOT_DELAY = 0.7;
@@ -107,6 +109,8 @@ export class LocalRoom {
   private kittyIds = new Map<number, Card>();
   private kittyGiven = false;
   readonly bot = new SmartBot();
+  /** The round's committed actions, for the release bot's requests (pybot.ts). */
+  actions: ActionEntry[] = [];
   pumping = false;
   closed = false;
   readonly code: string;
@@ -125,6 +129,7 @@ export class LocalRoom {
 
   indexRound(): void {
     const rnd = this.round!;
+    this.actions = [];
     this.ids = [new Map(), new Map(), new Map(), new Map()];
     this.kittyIds = new Map();
     for (let i = 0; i < 8; i++) this.kittyIds.set(KITTY_FIRST_ID + i, rnd.deck[KITTY_FIRST_ID + i]);
@@ -151,6 +156,25 @@ export class LocalRoom {
       if (code === undefined) throw new IllegalPlay("Unknown card id.");
       return code;
     });
+  }
+
+  /** Log a dealt card: consecutive deals share one entry, "deal until n". */
+  logDeal(dealt: number): void {
+    const last = this.actions[this.actions.length - 1];
+    if (last && last[0] === "deal") last[1] = dealt;
+    else this.actions.push(["deal", dealt]);
+  }
+
+  logAction(entry: ActionEntry): void {
+    this.actions.push(entry);
+  }
+
+  /** A seat's pass, logged only when it is new (a pass is a set member). */
+  addPass(seat: number): void {
+    const rnd = this.round!;
+    if (rnd.passed.includes(seat)) return;
+    rnd.passed.push(seat);
+    this.logAction(["pass", seat]);
   }
 
   removeIds(seat: number, cardIds: number[]): void {
@@ -181,6 +205,11 @@ export class LocalRoom {
 function firstIdFor(pool: Map<number, Card>, code: Card): number | undefined {
   for (const [id, c] of pool) if (c === code) return id;
   return undefined;
+}
+
+function isDeclareOption(rnd: RoundState, seat: number, cards: readonly Card[]): boolean {
+  const key = [...cards].sort().join(",");
+  return declareOptions(rnd, seat).some((opt) => [...opt].sort().join(",") === key);
 }
 
 // ------------------------------------------------------------------ frames
@@ -309,6 +338,11 @@ export interface LocalServerOptions {
   clock?: Clock;
   /** Seed for a new room's deck shuffle; random by default. */
   seed?: () => number;
+  /** The release bot for the bot seats (pybot.ts); SmartBot alone when null. */
+  remote?: RemoteBot | null;
+  /** SmartBot also plays the human's seat: a whole game runs untouched, to
+   *  watch the bots and time them on a device. Never on outside that. */
+  autoplay?: boolean;
 }
 
 function randomCode(): string {
@@ -340,11 +374,21 @@ function cardIds(msg: Json): number[] {
 export class LocalServer {
   readonly rooms = new Map<string, LocalRoom>();
   readonly clock: Clock;
+  /** Guards the release bot; null when there is none. */
+  readonly remote: BotGate | null;
+  readonly autoplay: boolean;
   private seed: () => number;
 
   constructor(opts: LocalServerOptions = {}) {
     this.clock = opts.clock ?? realClock;
     this.seed = opts.seed ?? randomSeed;
+    this.remote = opts.remote ? new BotGate(opts.remote, this.clock) : null;
+    this.autoplay = opts.autoplay ?? false;
+  }
+
+  /** Whether the server moves for `seat`: a bot seat, or any seat under autoplay. */
+  drives(room: LocalRoom, seat: number): boolean {
+    return this.autoplay || room.seats[seat].isBot;
   }
 
   /** A new client connection; `deliver` receives each frame as JSON text. */
@@ -412,7 +456,7 @@ export class LocalServer {
 
   kickBots(room: LocalRoom): void {
     const seat = this.currentActor(room);
-    if (seat !== null && room.seats[seat].isBot && !room.pumping) {
+    if (seat !== null && this.drives(room, seat) && !room.pumping) {
       room.pumping = true;
       this.clock.setTimeout(() => {
         void this.pumpBots(room).finally(() => {
@@ -426,16 +470,17 @@ export class LocalServer {
     for (;;) {
       const started = this.clock.now();
       const seat = this.currentActor(room);
-      if (room.closed || seat === null || !room.seats[seat].isBot) return;
+      if (room.closed || seat === null || !this.drives(room, seat)) return;
       const game = room.game!;
       const rnd = game.round!;
       if (game.gameOver) return;
       const phase = rnd.phase;
       const cursor = phase === "play" ? `${rnd.history.length}:${rnd.trick!.plays.length}` : null;
+      if (phase !== "bury" && phase !== "play") return;
       let cards: Card[];
-      if (phase === "bury") cards = room.bot.bury(viewFor(rnd, seat));
-      else if (phase === "play") cards = room.bot.play(viewFor(rnd, seat));
-      else return;
+      if (room.seats[seat].isBot && this.remote?.usable()) cards = await this.remoteTurn(room, rnd, seat, phase);
+      else if (phase === "bury") cards = room.bot.bury(viewFor(rnd, seat));
+      else cards = room.bot.play(viewFor(rnd, seat));
       const pacing = Math.max(0, BOT_DELAY - (this.clock.now() - started));
       if (pacing) await sleep(this.clock, pacing);
       // commit only if the turn this decision was made for is still live
@@ -446,7 +491,7 @@ export class LocalServer {
         rnd.phase !== phase ||
         (phase === "play" && cursor !== `${rnd.history.length}:${rnd.trick!.plays.length}`) ||
         this.currentActor(room) !== seat ||
-        !room.seats[seat].isBot
+        !this.drives(room, seat)
       ) {
         return;
       }
@@ -454,9 +499,11 @@ export class LocalServer {
         if (phase === "bury") {
           room.syncKitty();
           bury(rnd, seat, cards);
+          room.logAction(["bury", seat, [...cards]]);
           room.removeCodes(seat, cards);
         } else {
           const played = applyPlay(rnd, seat, cards);
+          room.logAction(["play", seat, [...cards]]);
           room.removeCodes(seat, played);
         }
         // the play just made may have ended the round
@@ -470,7 +517,78 @@ export class LocalServer {
     }
   }
 
+  /** The release bot's bury or play for `seat`, or SmartBot's when the bot is
+   *  unavailable, too slow, or answers something the engine refuses. */
+  private async remoteTurn(room: LocalRoom, rnd: RoundState, seat: number, phase: "bury" | "play"): Promise<Card[]> {
+    const gate = this.remote!;
+    const res = await gate.ask(requestFor(rnd, room.actions, phase, seat));
+    if (res.ok && res.cards && this.acceptable(rnd, seat, phase, res.cards)) {
+      gate.noteAccepted();
+      return res.cards;
+    }
+    if (res.ok) gate.noteInvalid();
+    return phase === "bury" ? room.bot.bury(viewFor(rnd, seat)) : room.bot.play(viewFor(rnd, seat));
+  }
+
+  /** Whether the engine would take `cards` from `seat` now (a failing throw counts). */
+  private acceptable(rnd: RoundState, seat: number, kind: DecisionKind, cards: Card[]): boolean {
+    if (rnd.turn !== seat || rnd.phase !== kind) return false;
+    if (kind === "play") return checkPlay(rnd, seat, cards).ok;
+    if (cards.length !== 8) return false;
+    const hand = [...rnd.hands[seat]];
+    return cards.every((c) => {
+      const i = hand.indexOf(c);
+      if (i < 0) return false;
+      hand.splice(i, 1);
+      return true;
+    });
+  }
+
   // --------------------------------------------------------------- deal
+  /** Bot declarations through the release bot, as server.py's _bot_declares:
+   *  each decision sees the last committed declaration, and one that a human
+   *  declaration overtook while it was being decided is dropped (false). */
+  private async botDeclaresRemote(room: LocalRoom, seats: number[], final: boolean): Promise<boolean> {
+    const original = room.round;
+    let complete = true;
+    for (const s of seats) {
+      const rnd = room.round;
+      if (rnd !== original || rnd === null || (rnd.phase !== "deal" && rnd.phase !== "declare")) return false;
+      if (s >= room.seats.length || !room.seats[s].isBot) continue;
+      const phase = rnd.phase;
+      const declaration = rnd.declaration;
+      const gate = this.remote;
+      const res = gate?.usable() ? await gate.ask(requestFor(rnd, room.actions, "declare", s, final)) : null;
+      if (room.closed || room.round !== rnd || rnd.phase !== phase || rnd.declaration !== declaration || !room.seats[s].isBot) {
+        complete = false;
+        continue;
+      }
+      let cards: Card[] | null;
+      if (res?.ok && (res.cards === null || isDeclareOption(rnd, s, res.cards))) {
+        gate!.noteAccepted();
+        cards = res.cards;
+      } else {
+        if (res?.ok) gate!.noteInvalid();
+        cards = room.bot.declare(viewFor(rnd, s), final);
+      }
+      if (cards) {
+        try {
+          declare(rnd, s, cards);
+          room.logAction(["declare", s, [...cards]]);
+        } catch (e) {
+          if (!(e instanceof IllegalPlay)) throw e;
+        }
+      }
+    }
+    return complete;
+  }
+
+  /** Bot declarations: the release bot's when it is in use, else SmartBot's, inline. */
+  private declares(room: LocalRoom, seats: number[], final: boolean): boolean | Promise<boolean> {
+    if (this.remote?.usable()) return this.botDeclaresRemote(room, seats, final);
+    return this.botDeclares(room, seats, final);
+  }
+
   private botDeclares(room: LocalRoom, seats: number[], final: boolean): boolean {
     const original = room.round;
     for (const s of seats) {
@@ -481,6 +599,7 @@ export class LocalServer {
       if (cards) {
         try {
           declare(rnd, s, cards);
+          room.logAction(["declare", s, [...cards]]);
         } catch (e) {
           if (!(e instanceof IllegalPlay)) throw e;
         }
@@ -499,18 +618,26 @@ export class LocalServer {
     for (;;) {
       if (room.closed || room.round !== rnd) return;
       if (rnd.phase !== "deal") break;
+      const dealt = this.clock.now();
       const [seat, idx, code] = dealNext(rnd);
       room.ids[seat].set(idx, code);
-      this.botDeclares(room, [seat], false);
+      room.logDeal(rnd.dealPos);
+      const declared = this.declares(room, [seat], false);
+      if (declared instanceof Promise) {
+        await declared;
+        if (room.closed || room.round !== rnd) return;
+      }
       if (room.round !== rnd) return;
       this.broadcast(room);
-      await sleep(this.clock, DEAL_DELAY);
+      // a remote declaration's time counts toward the deal's pace
+      await sleep(this.clock, declared instanceof Promise ? Math.max(0, DEAL_DELAY - (this.clock.now() - dealt)) : DEAL_DELAY);
     }
 
-    let needsResponse = !this.botDeclares(room, [0, 1, 2, 3], true);
+    const first = this.declares(room, [0, 1, 2, 3], true);
+    let needsResponse = !(first instanceof Promise ? await first : first);
     if (room.closed || room.round !== rnd || rnd.phase !== "declare") return;
     for (let s = 0; s < 4; s++) {
-      if (room.seats[s].isBot && !needsResponse && !rnd.passed.includes(s)) rnd.passed.push(s);
+      if (this.drives(room, s) && !needsResponse) room.addPass(s);
     }
     this.broadcast(room);
     let deadline = this.clock.now() + DECLARE_GRACE;
@@ -524,7 +651,10 @@ export class LocalServer {
         deadline = Math.max(deadline, this.clock.now() + DECLARE_EXTEND);
         respond = true;
       }
-      if (respond) needsResponse = !this.botDeclares(room, [0, 1, 2, 3], true);
+      if (respond) {
+        const again = this.declares(room, [0, 1, 2, 3], true);
+        needsResponse = !(again instanceof Promise ? await again : again);
+      }
       if (room.closed || room.round !== rnd || rnd.phase !== "declare") return;
       if (needsResponse) continue;
       if (respond) {
@@ -532,12 +662,13 @@ export class LocalServer {
           deadline = Math.max(deadline, this.clock.now() + DECLARE_EXTEND);
         }
         for (let s = 0; s < 4; s++) {
-          if (room.seats[s].isBot && !rnd.passed.includes(s)) rnd.passed.push(s);
+          if (this.drives(room, s)) room.addPass(s);
         }
       }
       const humans = room.seats.flatMap((s, i) => (!s.isBot && s.connected ? [i] : []));
       if (humans.every((i) => rnd.passed.includes(i)) || this.clock.now() >= deadline) {
         finalizeDeclare(rnd);
+        room.logAction(["finalize"]);
         this.broadcast(room);
         this.kickBots(room);
         return;
@@ -601,19 +732,24 @@ export class LocalServer {
     } else if (t === "declare") {
       const codes = room.codesFor(seat, cardIds(msg));
       declare(rnd, seat, codes);
+      room.logAction(["declare", seat, [...codes]]);
     } else if (t === "pass_declare") {
+      const wasPassed = rnd.passed.includes(seat);
       passDeclare(rnd, seat);
+      if (!wasPassed) room.logAction(["pass", seat]);
     } else if (t === "bury") {
       room.syncKitty();
       const ids = cardIds(msg);
       const codes = room.codesFor(seat, ids);
       bury(rnd, seat, codes);
+      room.logAction(["bury", seat, [...codes]]);
       room.removeIds(seat, ids);
     } else if (t === "play") {
       const ids = cardIds(msg);
       const codes = room.codesFor(seat, ids);
       // a failed throw records fewer cards than were sent
       const played = applyPlay(rnd, seat, codes);
+      room.logAction(["play", seat, [...codes]]);
       const same = [...played].sort().join(",") === [...codes].sort().join(",");
       if (same) room.removeIds(seat, ids);
       else room.removeCodes(seat, played);

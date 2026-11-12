@@ -677,7 +677,11 @@ class Matchmaker:
             await self._start(None, slots, conns)
         except Exception:          # noqa: BLE001
             log.exception("bot game failed to start")
-            raise QueueError("start_failed", "Could not start the game.")
+            err = QueueError("start_failed", "Could not start the game.")
+            for m in e.members:
+                if m != uid and (c := self._live(m)) is not None:
+                    self._error(c, err)
+            raise err
 
     # ------------------------------------------------------------- parties
     def _new_code(self) -> str:

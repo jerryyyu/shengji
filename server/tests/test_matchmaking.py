@@ -360,6 +360,22 @@ def test_start_bots_as_a_pair_puts_the_bots_opposite_and_is_the_leaders_call():
     run(go())
 
 
+def test_start_bots_failure_reaches_both_members_of_a_pair():
+    async def go():
+        env = Env()
+        await env.pair(1, 2)
+        await env.send(1, "queue_join")
+
+        async def boom(match_id, slots, conns):
+            raise RuntimeError("injected start failure")
+        env.mm.start_room = boom
+        await env.send(1, "queue_start_bots")
+        assert env.conns[1].last("error")["code"] == "start_failed"
+        assert env.conns[2].last("error")["code"] == "start_failed"
+        assert env.mm._entry(1) is None and env.mm._entry(2) is None
+    run(go())
+
+
 def test_start_bots_after_a_match_formed_is_refused_with_match_pending():
     async def go():
         env = Env()

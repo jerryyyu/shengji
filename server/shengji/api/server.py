@@ -1353,6 +1353,11 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             _observe_committed_play(room)
         else:  # guarded by snapshot construction; fail closed on corruption
             return False
+        if snapshot.mode == "timeout":
+            # Counted here, once per committed action and before the round
+            # end below captures ratings: a final-card timeout that makes the
+            # seat away must be rated as away.
+            _count_timeout(room, seat)
         if rnd.phase == "round_end" and room.game.result is None:
             room.game.finish_round()
             _log_round_end(room)
@@ -1446,8 +1451,6 @@ async def pump_bots(room: Room) -> None:
             _log_bot_timing(room, prepared, acted=acted)
             if not acted:
                 return
-            if mode == "timeout":
-                _count_timeout(room, seat)
             await broadcast(room)
 
 
@@ -1537,7 +1540,6 @@ async def move_timer_tick(room: Room) -> bool:
         _log_bot_timing(room, prepared, acted=acted)
         if not acted:
             return False
-        _count_timeout(room, seat)
         await broadcast(room)
         kick_bots(room)
         return True

@@ -2497,3 +2497,31 @@ def test_a_disconnected_turn_uses_takeover_and_is_not_a_timeout(client, clock, m
         assert _plays_by(room, 0) == before + 1
         seat = room.seats[0]
         assert (seat.timeouts_in_row, seat.timeouts_in_round, seat.away) == (0, 0, False)
+
+
+def test_review_final_timeout_marks_away_before_rating_capture(client, clock, monkeypatch):
+    from shengji.api import server as srv
+    captured = []
+    monkeypatch.setattr(srv.ratings, 'round_ended', lambda room, result: captured.append([s.away for s in room.seats]))
+    with client.websocket_connect('/ws') as a:
+        _, room = _timer_game(client, a, monkeypatch)
+        async def prepare():
+            async with room.lock:
+                for _ in range(200):
+                    if sum(len(h) for h in room.round.hands) == 1:
+                        break
+                    assert srv.bot_step(room, room.round.turn)
+                assert sum(len(h) for h in room.round.hands) == 1
+                actor = room.round.turn
+                seat = room.seats[actor]
+                seat.is_bot = False
+                seat.connected = True
+                seat.timeouts_in_row = 1
+                seat.timeouts_in_round = 1
+                srv._sync_move_timer(room)
+                return actor
+        actor = client.portal.call(prepare)
+        clock['v'] += srv.MOVE_TIMER + 1
+        assert _tick(client, room)
+        assert room.seats[actor].away
+        assert captured[-1][actor], 'rating captured before final timeout marked away'

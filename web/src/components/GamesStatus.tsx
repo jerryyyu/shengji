@@ -41,7 +41,6 @@ export function SignInPrompt() {
 export function GamesUnavailable() {
   return (
     <GamesNotice title="This game isn't available.">
-      <p>It may have been removed from your history.</p>
       <button className="btn big games-cta" onClick={() => navigate({ page: "list" })}>My games</button>
     </GamesNotice>
   );

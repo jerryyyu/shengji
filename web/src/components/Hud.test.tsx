@@ -126,6 +126,24 @@ describe("failed-throw notice", () => {
     view.unmount();
   });
 
+  it("goes away by itself once the trick after the failed throw is over", () => {
+    const trickA = { leader: 0, plays: [], winner: 0 } as unknown as GameState["last_trick"];
+    const trickB = { leader: 1, plays: [], winner: 1 } as unknown as GameState["last_trick"];
+    const trickC = { leader: 2, plays: [], winner: 2 } as unknown as GameState["last_trick"];
+    const notice = failedThrow(3);
+    const view = render(makeState({ notice, last_trick: trickA }));
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickA }));     // more plays in the same trick
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickB }));     // the throw's trick ends
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickC }));     // one more trick ends
+    expect(view.host.querySelector(".hud-notice")).toBeNull();
+    view.rerender(makeState({ notice: failedThrow(4), last_trick: trickC }));   // a new failed throw shows
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.unmount();
+  });
+
   it("does not double up the one-play message with the notice", () => {
     const view = render(makeState({
       notice: failedThrow(),
@@ -140,6 +158,15 @@ describe("failed-throw notice", () => {
     const view = render(makeState({ message: "Robin declared Hearts" }));
     expect(view.host.querySelector(".hud-message")!.textContent).toBe("Robin declared Hearts");
     view.unmount();
+  });
+
+  it("marks a declaration message, which the phone tells only by the tag under the cards", () => {
+    const view = render(makeState({ message: "Seat 1 declared H2" }));
+    expect(view.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(true);
+    view.unmount();
+    const other = render(makeState({ message: "Robin declared Hearts" }));
+    expect(other.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(false);
+    other.unmount();
   });
 });
 
@@ -221,4 +248,50 @@ describe("level chip", () => {
       window.matchMedia = mm;
     }
   });
+});
+
+describe("points pop", () => {
+  it("floats the gain by the counter when the attackers score, then goes", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(makeState({ attacker_points: 0 }));
+      expect(view.host.querySelector(".points-pop")).toBeNull();
+      view.rerender(makeState({ attacker_points: 10 }));
+      const pop = view.host.querySelector(".points-chip .points-pop");
+      expect(pop?.textContent).toBe("+10");
+      expect(pop?.getAttribute("aria-hidden")).toBe("true");
+      view.rerender(makeState({ attacker_points: 25 }));
+      expect(view.host.querySelector(".points-pop")?.textContent).toBe("+15");
+      act(() => { vi.advanceTimersByTime(1200); });
+      expect(view.host.querySelector(".points-pop")).toBeNull();
+      // a new round's reset is not a gain
+      view.rerender(makeState({ attacker_points: 0 }));
+      expect(view.host.querySelector(".points-pop")).toBeNull();
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows no float under reduced motion", () => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+    try {
+      const view = render(makeState({ attacker_points: 0 }));
+      view.rerender(makeState({ attacker_points: 20 }));
+      expect(view.host.querySelector(".points-pop")).toBeNull();
+      view.unmount();
+    } finally {
+      window.matchMedia = mm;
+    }
+  });
+});
+
+it("says plainly that no trump is declared yet, with no placeholder mark", () => {
+  const view = render(makeState({ trump: null, phase: "deal" }));
+  const chip = view.host.querySelector(".trump-chip.none")!;
+  expect(chip.querySelector(".trump-none-long")!.textContent).toBe("No trump yet");
+  expect(chip.querySelector(".trump-none-short")!.textContent).toBe("No trump");
+  expect(chip.textContent).not.toContain("?");
+  view.unmount();
 });

@@ -5220,13 +5220,17 @@ body.keyboard-open .tabbar { display: none; }
 
 /* The Play tab: the title and preview, the guest's name or the account chip,
    the Ranked and Casual blocks, the code box and How to play, in one column.
-   From 700px it is the same column, 420px wide, on the page under the top bar. */
+   It sits straight on the page at every width, with no card around it; from
+   700px it is 420px wide and centred under the top bar. */
 .play-tab > .lobby-panel { gap: 16px; }
-.home-wide .play-tab > .lobby-panel {
-  width: 420px;
+.home .play-tab > .lobby-panel {
   background: none;
   border: 0;
+  border-radius: 0;
   box-shadow: none;
+}
+.home-wide .play-tab > .lobby-panel {
+  width: 420px;
   padding: 24px 0;
 }
 .home-wide .play-tab .account-pill { display: none; }

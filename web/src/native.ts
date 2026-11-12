@@ -12,7 +12,7 @@
 import { scrollActiveTabToTop } from "./home/session";
 
 export type ScreenKind = "lobby" | "game";
-export type HapticKind = "select" | "turn" | "declare" | "won" | "error" | "refresh";
+export type HapticKind = "select" | "turn" | "declare" | "won" | "error" | "refresh" | "tab";
 
 interface PluginProxy {
   [method: string]: ((opts?: Record<string, unknown>) => Promise<unknown>) | undefined;
@@ -97,12 +97,14 @@ export async function lockFor(screen: ScreenKind): Promise<void> {
  *  arriving (light), a declare chance (medium, it is racing), your team
  *  winning the round (success) and a refused action (error). A card select
  *  is a selection tick; your own play and a won trick are silent. A pull to
- *  refresh ticks lightly as it passes the point where letting go reloads. */
+ *  refresh ticks lightly as it passes the point where letting go reloads,
+ *  and a swipe that lands on the next home tab ticks lightly too. */
 export function hapticCall(kind: HapticKind): { method: string; opts?: Record<string, unknown> } {
   switch (kind) {
     case "select": return { method: "selectionChanged" };
     case "turn":
-    case "refresh": return { method: "impact", opts: { style: "LIGHT" } };
+    case "refresh":
+    case "tab": return { method: "impact", opts: { style: "LIGHT" } };
     case "declare": return { method: "impact", opts: { style: "MEDIUM" } };
     case "won": return { method: "notification", opts: { type: "SUCCESS" } };
     case "error": return { method: "notification", opts: { type: "ERROR" } };

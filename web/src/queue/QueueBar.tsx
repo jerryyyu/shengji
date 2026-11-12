@@ -14,7 +14,7 @@ function barText(q: QueueView, now: number): BarText {
   const partner = q.partyId ? partnerName(q.party) : null;
   const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a ranked game";
   const count = `${q.count} in queue`;
-  const sub = q.waitPlayers ? (q.leader ? count : `Waiting for real players · ${count}`)
+  const sub = q.waitPlayers ? (q.leader ? count : `Real players only · ${count}`)
     : botsIn <= 0 ? "Adding bots…"
     : botsIn !== Infinity ? `Bots in ${clock(botsIn, true)} · ${count}`
     : count;

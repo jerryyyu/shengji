@@ -5474,6 +5474,14 @@ span.q-party-main { cursor: default; }
   appearance: none; min-height: 44px; margin-top: -8px; border: 0; background: none;
   color: #c3cad6; font: inherit; font-size: var(--fs-17); font-weight: 600; cursor: pointer;
 }
+@media (max-width: 359px) {
+  .q-rc { padding-left: 12px; padding-right: 12px; }
+  .q-rc-teams { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); gap: 6px; }
+  .q-rc-seat { gap: 6px; padding: 0 6px; }
+  .q-rc-av { width: 24px; height: 24px; font-size: 11px; }
+  .q-rc-name { font-size: var(--fs-14); }
+  .q-rc-vs { font-size: var(--fs-11); letter-spacing: 0; }
+}
 @media (min-width: 700px) {
   .q-rc-layer { justify-content: center; align-items: center; }
   .q-rc { width: min(420px, calc(100vw - 32px)); padding-bottom: 20px; border-radius: 20px; border: 1px solid var(--grp-edge); }

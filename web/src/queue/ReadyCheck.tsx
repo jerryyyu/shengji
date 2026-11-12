@@ -4,10 +4,6 @@ import { effectiveName, useAuth } from "../auth";
 import { clock, partnerName, queue, useNow, useQueue } from "./store";
 import type { ReadyCheck as Check } from "./store";
 
-const BOT_SEATS: Record<number, string> = {
-  1: "A bot takes the empty seat", 2: "Two bots take the empty seats", 3: "Three bots take the empty seats",
-};
-
 type TileKind = "you" | "known" | "player" | "bot";
 interface Tile { name: string; kind: TileKind }
 interface Teams { mine: [Tile, Tile]; theirs: [Tile, Tile] }
@@ -115,7 +111,7 @@ function CheckDialog({ check }: { check: Check }) {
     const names = check.names.map((n) => (n === me ? "you" : n));
     if (check.bots) names.push(bots);
     return (
-      <MatchSheet title="Ranked match found" sub="Everyone accepted. Dealing in a moment.">
+      <MatchSheet title="Ranked match found">
         <TeamsView check={check} me={me} partner={partner} />
         <div className="q-rc-names">{names.join(" · ")}</div>
         <button type="button" className="q-rc-accept" disabled>Starting…</button>
@@ -125,17 +121,16 @@ function CheckDialog({ check }: { check: Check }) {
   if (check.mine === "accepted") {
     const waiting = partner && check.accepted < 2 ? `Waiting for ${partner}…` : "Waiting for the others…";
     return (
-      <MatchSheet title="Ranked match found" sub={`You're ready. ${waiting} Names are shown when everyone has accepted.`}>
+      <MatchSheet title="Ranked match found" sub={waiting}>
         <TeamsView check={check} me={me} partner={partner} />
         <button type="button" className="q-rc-accept" disabled>{check.accepted} of {check.of} ready · {secs}</button>
         <button type="button" className="q-rc-plain" onClick={() => queue.decline()}>Cancel</button>
       </MatchSheet>
     );
   }
-  const sub = fill
-    ? `Starting with ${bots}. ${BOT_SEATS[check.bots] ?? `${bots} take the empty seats`}; the game is rated and bots count as 1000.`
-    : partner ? `${partner} must accept too. If either of you misses it, the pair is out for 30 s.`
-    : "Four players found. Accept in time or you go back to the lobby.";
+  const sub = fill ? `Starting with ${bots}, each counted as 1000.`
+    : partner ? "Both of you must accept."
+    : "Accept before the timer runs out.";
   return (
     <MatchSheet title="Ranked match found" sub={sub}>
       <TeamsView check={check} me={me} partner={partner} />
@@ -152,14 +147,14 @@ function CheckDialog({ check }: { check: Check }) {
 }
 
 /** The ready check: a bottom sheet on a phone, a centred dialog from 700px. */
-function MatchSheet({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
+function MatchSheet({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
   return (
     <div className="q-layer q-rc-layer">
       <div className="q-scrim" />
-      <div className="q-rc" role="alertdialog" aria-modal="true" aria-label={`${title}. ${sub}`}>
+      <div className="q-rc" role="alertdialog" aria-modal="true" aria-label={sub ? `${title}. ${sub}` : title}>
         <span className="q-rc-grab" aria-hidden="true" />
         <h2>{title}</h2>
-        <p className="q-rc-sub">{sub}</p>
+        {sub ? <p className="q-rc-sub">{sub}</p> : null}
         {children}
       </div>
     </div>
@@ -175,8 +170,8 @@ function MissedDialog() {
   const verb = missed.reason === "declined" ? "declined" : "missed it";
   const big = missed.by ? `${missed.by} ${verb}` : "You missed it";
   const text = missed.by
-    ? `${missed.by} didn't accept, so the pair is out of the queue for 30 seconds. The others kept their place.`
-    : "You didn't accept in time, so you're out of the queue for 30 seconds. The other players kept their place.";
+    ? `${missed.by} didn't accept, so the pair is out of the queue for 30 seconds.`
+    : "You didn't accept in time, so you're out of the queue for 30 seconds.";
   const waitingOnLeader = pair !== null && !pair.you_lead;
   return (
     <Dialog title="Ready check" big={big}>

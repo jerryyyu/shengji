@@ -273,13 +273,12 @@ describe("the ready check", () => {
     tick(3000);
     click(button("Accept · 0:07"));
     expect(lastSent()).toEqual({ type: "match_accept", match_id: "m1" });
-    expect(q(".q-rc-sub")?.textContent).toContain("You're ready.");
+    expect(q(".q-rc-sub")?.textContent).toBe("Waiting for the others…");
     expect(q(".q-rc-seat.you .q-rc-ok")).not.toBeNull();
     say({ type: "match_ready", match_id: "m1", accepted: 2, of: 4 });
     expect(button("2 of 4 ready · 0:07")?.disabled).toBe(true);
     expect(q(".q-rc")?.querySelectorAll(".q-rc-ok")).toHaveLength(1);   // counts only, never who
     expect(q(".q-rc")?.textContent).not.toContain("Mei");
-    expect(q(".q-rc-sub")?.textContent).toContain("Names are shown when everyone has accepted.");
     say({ type: "match_ready", match_id: "m1", accepted: 4, of: 4, names: ["Mei", "Wen", "Jerry", "Hao"] });
     expect(button("Starting…")?.disabled).toBe(true);
     expect(q(".q-rc-names")?.textContent).toBe("Mei · Wen · you · Hao");
@@ -470,7 +469,7 @@ describe("with a friend", () => {
     expect(q(".q-bar-time")?.textContent).toBe("0:12");
     expect(q(".q-bar small")?.textContent).toBe("Bots in 0:48 · 3 in queue");
     say(match({ party_id: "p1", size: 4 }));
-    expect(q(".q-rc-sub")?.textContent).toBe("Sam must accept too. If either of you misses it, the pair is out for 30 s.");
+    expect(q(".q-rc-sub")?.textContent).toBe("Both of you must accept.");
     expect([...document.querySelectorAll(".q-rc-side")][0].textContent).toContain("Sam");
   });
 
@@ -500,7 +499,7 @@ describe("with a friend", () => {
     expect(button("Play bots")?.disabled).toBe(true);
     expect(button("Wait for real players")).toBeUndefined();
     say(queued({ party_id: "p1", leader: false, bots_at: null, wait_players: true }));
-    expect(q(".q-bar small")?.textContent).toBe("Waiting for real players · 3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Real players only · 3 in queue");
     expect(button("Wait for real players")).toBeUndefined();
   });
 

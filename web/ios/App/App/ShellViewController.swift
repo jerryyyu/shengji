@@ -31,6 +31,14 @@ class ShellViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         webView?.allowsBackForwardNavigationGestures = true
         bridge?.registerPluginInstance(ShengjiShellPlugin())
+        bridge?.registerPluginInstance(ShengjiBotPlugin())
+        // Launched from Xcode with -offline-autoplay, the offline game plays the
+        // human's seat too, so a whole round of the bots can be watched and timed.
+        if ProcessInfo.processInfo.arguments.contains("-offline-autoplay") {
+            webView?.configuration.userContentController.addUserScript(WKUserScript(
+                source: "window.__shengjiOfflineAutoplay = true;",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         // WKWebView holds its navigation delegate weakly, so the gate lives here.
         if let webView = webView, let inner = webView.navigationDelegate {
             let gate = OfflineFallbackGate(inner: inner)

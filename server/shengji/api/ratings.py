@@ -26,7 +26,10 @@ the same amount; only a provisional partner's larger ``K`` makes them differ.
 
 Abandoning: a signed-in player who leaves a round in play (``leave_room``),
 or whose seat the bot takes over after a disconnect and who has not
-returned by the round's end, scores ``ABANDON_SCORE`` for that round only.
+returned by the round's end, is rated on that round's real result (a bot
+finished their hand) with the score capped at ``LEAVER_SCORE_CAP``: a loss
+counts as it happened, a win counts no better than a draw. Leaving can then
+never earn more than playing on, and costs no more than the real result.
 Later rounds they are absent from are not rated at all.
 
 Writes run on one worker thread in a single transaction per round; a
@@ -69,7 +72,7 @@ K_PROVISIONAL = 40.0
 K_ESTABLISHED = 20.0
 # Attackers who reach 80 to 115 points take the deal but gain no level.
 TAKEOVER_WIN_SCORE = 0.6
-ABANDON_SCORE = 0.0
+LEAVER_SCORE_CAP = 0.5
 MAX_SCORED_LEVELS = 3
 
 WEEK_SECONDS = 7 * 86400
@@ -167,7 +170,9 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                 team = p.seat % 2
                 won = rec.winner_team == team
                 exp = expected_score(strengths[team], strengths[1 - team])
-                actual = ABANDON_SCORE if p.abandoned else round_score(won, rec.level_change)
+                actual = round_score(won, rec.level_change)
+                if p.abandoned:
+                    actual = min(actual, LEAVER_SCORE_CAP)
                 k = k_factor(int(row["rated_rounds"]))
                 before = float(row["rating"])
                 delta = k * (actual - exp)

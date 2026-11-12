@@ -272,6 +272,8 @@ export type ErrorCode =
   | "choose_seat"
   | "seat_unavailable"
   | "seat_reserved"
+  | "ranked_sign_in"
+  | "ranked_queue_only"
   | "test_room_unavailable"
   | "bad_start_level"
   | "resume_unavailable"

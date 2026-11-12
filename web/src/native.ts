@@ -177,12 +177,25 @@ const onStatusTap = () => {
     if (el.scrollTop > 0) el.scrollTo?.({ top: 0, behavior: "smooth" });
   }
 };
+/** Text fields and the controls a tap should reach with the keyboard still
+ *  up; a tap anywhere else puts the keyboard away. */
+const KEEPS_KEYBOARD = "input, textarea, select, button, a, label, [contenteditable], [role=button], [role=switch]";
+/** The shell hides the keyboard's Done bar, and WebKit keeps a field focused
+ *  when the tap lands on plain page, so that tap blurs the field itself. */
+const onTapAway = (e: PointerEvent) => {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement) || !el.matches("input, textarea, [contenteditable]")) return;
+  const target = e.target;
+  if (target instanceof Element && target.closest(KEEPS_KEYBOARD)) return;
+  el.blur();
+};
 let shellStarted = false;
 
 /** Startup wiring for the app: no web Previous/Next/Done bar over the
  *  keyboard, the keyboard-open class from the Keyboard plugin's window events,
- *  the focused field kept in view as the page shrinks, and a status-bar tap
- *  scrolling the active tab to the top. */
+ *  the focused field kept in view as the page shrinks, a tap on plain page
+ *  putting the keyboard away, and a status-bar tap scrolling the active tab
+ *  to the top. */
 export function startShell(): void {
   if (shellStarted || !isNative()) return;
   shellStarted = true;
@@ -191,6 +204,7 @@ export function startShell(): void {
   window.addEventListener("keyboardWillHide", onKeyboardHide);
   window.addEventListener("resize", revealFocused);
   window.addEventListener(STATUS_TAP_EVENT, onStatusTap);
+  document.addEventListener("pointerdown", onTapAway, true);
 }
 
 let splashHidden = false;
@@ -241,6 +255,7 @@ export function resetNativeForTests(): void {
     window.removeEventListener("keyboardWillHide", onKeyboardHide);
     window.removeEventListener("resize", revealFocused);
     window.removeEventListener(STATUS_TAP_EVENT, onStatusTap);
+    document.removeEventListener("pointerdown", onTapAway, true);
     shellStarted = false;
   }
   document.body.classList.remove(KEYBOARD_OPEN_CLASS);

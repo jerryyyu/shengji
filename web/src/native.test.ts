@@ -118,6 +118,43 @@ describe("native bridge", () => {
     }
   });
 
+  it("a tap on plain page puts the keyboard away; a tap on a control or field keeps it", () => {
+    const screen = document.createElement("div");
+    screen.innerHTML = '<p class="plain">text</p><input class="code"><input class="name"><button class="join">Join</button>';
+    document.body.appendChild(screen);
+    const q = (s: string) => screen.querySelector<HTMLElement>(s)!;
+    const tap = (el: Element) => el.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    try {
+      fakeShell("phone");
+      startShell();
+      q(".code").focus();
+      tap(q(".join"));
+      expect(document.activeElement).toBe(q(".code"));
+      tap(q(".name"));
+      expect(document.activeElement).toBe(q(".code"));   // focus moves on the field's own click
+      tap(q(".plain"));
+      expect(document.activeElement).toBe(document.body);
+      q(".code").focus();
+      tap(document.body);
+      expect(document.activeElement).toBe(document.body);
+    } finally {
+      screen.remove();
+    }
+  });
+
+  it("the web page leaves focus alone on a tap", () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    try {
+      startShell();
+      input.focus();
+      document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      expect(document.activeElement).toBe(input);
+    } finally {
+      input.remove();
+    }
+  });
+
   it("scrolls a scrolled screen without tab scroll memory (the Play lobby) to the top", () => {
     const screen = document.createElement("div");
     screen.className = "screen";

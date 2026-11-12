@@ -299,7 +299,7 @@ describe("room screen", () => {
   it("drops the copy captions and labels the code box", () => {
     render(room());
     expect(host.textContent).not.toMatch(/click to copy|Tap to copy/i);
-    expect(host.querySelector(".room-code")?.getAttribute("aria-label")).toBe("Room code A B C D");
+    expect(host.querySelector(".room-code")?.getAttribute("aria-label")).toBe("Room code A B C D, copy invite link");
   });
 
   it("shows empty seats as a bot's", () => {

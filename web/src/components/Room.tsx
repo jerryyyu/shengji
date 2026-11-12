@@ -284,6 +284,13 @@ export default function Room({ room }: { room: RoomMsg }) {
     });
   };
 
+  const copyLink = () => {
+    navigator.clipboard?.writeText(codeLink(room.room)).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    }, () => { /* clipboard unavailable */ });
+  };
+
   return (
     <div className="screen room-screen">
       <div className="panel room-panel">
@@ -299,10 +306,12 @@ export default function Room({ room }: { room: RoomMsg }) {
           <span className="room-head-end"><MuteButton /></span>
         </div>
         <div className="room-code-row">
-          <span className="room-code" aria-label={`Room code ${room.room.split("").join(" ")}`}>
+          {/* a tap on the code copies its invite link, as Invite does without a share sheet */}
+          <button type="button" className="room-code" onClick={copyLink}
+                  aria-label={`Room code ${room.room.split("").join(" ")}, copy invite link`}>
             {room.room}
             <span className={`copied-tag${copied ? " show" : ""}`}>Link copied</span>
-          </span>
+          </button>
           <button type="button" className="room-invite" onClick={invite}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                  strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

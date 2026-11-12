@@ -957,6 +957,9 @@ textarea:focus-visible {
 }
 
 .room-code {
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
   position: relative;
   flex: 1;
   min-width: 0;

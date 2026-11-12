@@ -523,11 +523,14 @@ def participants(room: Any, tracker: RoomRatings) -> list[Participant]:
         if tracker.present.get(s) != uid:
             continue                        # sat down mid-round: rated from the next round
         if seat.connected:
-            found[uid] = Participant(uid, s)
+            # Away at the end (the move timer handed every decision to the
+            # bot) counts as leaving; back before the end does not.
+            found[uid] = Participant(uid, s, abandoned=bool(getattr(seat, "away", False)))
         else:
             # Disconnected at the end: a blip inside the takeover window is
             # still their round; a bot playing on for them is an abandon.
-            found[uid] = Participant(uid, s, abandoned=bool(seat.bot_announced))
+            found[uid] = Participant(
+                uid, s, abandoned=bool(seat.bot_announced or getattr(seat, "away", False)))
     for uid, s in tracker.left.items():
         if (uid not in found and tracker.present.get(s) == uid
                 and not accounts.is_deleted(uid)):

@@ -294,6 +294,7 @@ textarea:focus-visible {
 .you-tag,
 .host-tag,
 .off-tag,
+.away-tag,
 .ready-tag {
   font-size: var(--fs-10);
   font-weight: 700;
@@ -328,6 +329,12 @@ textarea:focus-visible {
   background: #1f4a35;
   color: #7fdda6;
   text-transform: uppercase;
+}
+
+/* a present player the move timer marked away: the bot plays for them */
+.away-tag {
+  background: #4a3d1e;
+  color: var(--gold);
 }
 
 .conn-dot {
@@ -1950,6 +1957,101 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   padding: 4px 14px;
 }
 
+/* the move timer's last ten seconds: a ring that closes as the clock runs
+   out, beside your action (or inside Next round) */
+.move-ring {
+  --ring: #ff6b5b;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ring) 0 var(--ring-deg, 360deg), rgba(0, 0, 0, 0.35) var(--ring-deg, 360deg) 360deg);
+}
+
+.move-ring-secs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--chrome);
+  color: var(--ring);
+  font-size: var(--fs-16);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.action-bar.clock-low .btn.primary,
+.btn.primary.clock-low {
+  box-shadow: 0 0 0 3px rgba(255, 107, 91, 0.35);
+}
+
+.btn.big .move-ring {
+  width: 28px;
+  height: 28px;
+  margin: -4px 10px -4px -8px;
+  vertical-align: middle;
+}
+
+.btn.big .move-ring-secs {
+  width: 22px;
+  height: 22px;
+  font-size: var(--fs-13);
+}
+
+/* you are away: the bot plays every decision until you are back */
+.away-pill {
+  position: fixed;
+  left: 50%;
+  bottom: max(112px, 32vh);
+  transform: translateX(-50%);
+  z-index: 71;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  box-sizing: border-box;
+  padding: 0 8px 0 18px;
+  border-radius: 28px;
+  border: 1px solid #333b49;
+  background: rgba(20, 23, 30, 0.9);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+}
+
+.away-pill-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.away-pill-text b {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  color: #fff;
+}
+
+.away-pill-text span {
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+
+.btn.away-back {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1.5px solid #d6a22c;
+  border-radius: 14px;
+  background: linear-gradient(#8a6a22, #6b5219);
+  color: #ffd77a;
+  font-size: var(--fs-16);
+  font-weight: 700;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .follow-hint { animation: none; }
 }
@@ -3369,6 +3471,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .phase-play .action-bar .play-wrap {
     grid-column: 2;
     justify-self: center;
+  }
+
+  /* the move timer's ring stands just left of Play */
+  .phase-play .action-bar .move-ring {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: end;
+    margin-right: 12px;
   }
 
   .table-stalled {

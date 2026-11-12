@@ -223,6 +223,7 @@ describe("native bridge", () => {
 
   it("maps each table event to a UIKit feedback style", async () => {
     expect(hapticCall("turn")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
+    expect(hapticCall("clock")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
     expect(hapticCall("declare")).toEqual({ method: "impact", opts: { style: "MEDIUM" } });
     expect(hapticCall("won")).toEqual({ method: "notification", opts: { type: "SUCCESS" } });
     expect(hapticCall("error")).toEqual({ method: "notification", opts: { type: "ERROR" } });

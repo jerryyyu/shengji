@@ -50,6 +50,8 @@ export type ClientMsg =
   | { type: "bury"; card_ids: number[] }
   | { type: "play"; card_ids: number[] }
   | { type: "next_round" }
+  /** Ranked table: the player is back after the move timer marked them away. */
+  | { type: "im_back" }
   | { type: "chat"; text: string }
   /** Report another seat's player; the server answers report_received or a coded error. */
   | { type: "report_player"; seat: number; reason: ReportReason }
@@ -117,6 +119,14 @@ export interface StatePlayer {
    *  the window has passed and anyone may claim it. Same deadline as
    *  takeover_in, so the two can never disagree. */
   reserved_secs: number | null;
+  /** Move timer (ranked tables): seconds this seat has left for the decision
+   *  it owes (a play, a bury or the round-end Next); null when no clock runs
+   *  for it. Tick it down locally, like takeover_in. Absent at a table
+   *  without the move timer (casual and offline). */
+  turn_deadline?: number | null;
+  /** The move timer ran out too often: the bot is playing every decision for
+   *  this present player until they are back. Absent where turn_deadline is. */
+  away?: boolean;
 }
 
 export interface Trump {

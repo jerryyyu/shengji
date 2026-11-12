@@ -117,6 +117,15 @@ DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected
 TAKEOVER_AFTER = 30.0      # bot plays for a disconnected human after this long
+# Move timer (rooms with ``move_timer`` on, which today means ranked rooms):
+# a connected human has MOVE_TIMER seconds for each bury, play and round-end
+# Next; at zero the bot makes that one decision. AWAY_IN_A_ROW consecutive
+# timeouts, or AWAY_PER_ROUND in one round, mark the seat away: the bot then
+# plays every decision for it until the player is back.
+MOVE_TIMER = 60.0
+AWAY_IN_A_ROW = 2
+AWAY_PER_ROUND = 3
+MOVE_TIMER_POLL = 1.0      # watchdog period in a room with the move timer
 # Game logs (full hands!). Prod sets SHENGJI_LOG_DIR=/data/logs and those
 # files are fetched into logs/ as the HUMAN CORPUS, so a dev server must not
 # write there: local multiplayer testing would otherwise be mined as real
@@ -246,6 +255,15 @@ class Seat:
     # Set when the host removed this occupant before the game: the seat is no
     # longer in the room, and the socket that held it returns to the lobby.
     removed: bool = False
+    # Move timer state; untouched in a room without the move timer.
+    # ``turn_started`` is the ``now()`` at which this seat began owing the
+    # current decision (None when it owes none). A disconnect does not reset
+    # it, so a reconnect cannot buy a fresh minute.
+    turn_started: float | None = None
+    timeouts_in_row: int = 0
+    timeouts_in_round: int = 0
+    # The bot plays every decision for this seat until the player is back.
+    away: bool = False
 
 
 @dataclass
@@ -306,6 +324,11 @@ class Room:
     ratings: Any = field(default=None, init=False, repr=False)
     # Built by the matchmaking queue rather than by a player's create_room.
     matched: bool = False
+    # Per-decision clock for connected humans (MOVE_TIMER). On for ranked
+    # rooms; a casual room keeps it off.
+    move_timer: bool = False
+    # Which decision the seats' ``turn_started`` clocks belong to.
+    timer_key: tuple | None = field(default=None, init=False, repr=False)
     # A matched room whose start failed and was unwound: no socket may act
     # in it, and a receive loop still holding it drops it.
     aborted: bool = field(default=False, init=False, repr=False)
@@ -538,6 +561,126 @@ def _takeover_in(room: Room, seat: int) -> float | None:
     return round(max(0.0, TAKEOVER_AFTER - (now() - sd.left_at)), 1)
 
 
+def _decision_key(room: Room) -> tuple | None:
+    """Identity of the decision the table is waiting on: a new key restarts
+    every owing seat's move clock."""
+    game, rnd = room.game, room.round
+    if game is None or rnd is None or game.game_over:
+        return None
+    if rnd.phase == "round_end":
+        return (game.round_no, "round_end")
+    if rnd.phase == "bury":
+        return (game.round_no, "bury", rnd.turn)
+    if rnd.phase == "play":
+        return (game.round_no, "play", rnd.turn, len(rnd.history),
+                len(rnd.trick.plays) if rnd.trick else 0)
+    return None
+
+
+def _owing_seats(room: Room) -> set[int]:
+    """Human seats that owe the current decision, connected or not."""
+    key = _decision_key(room)
+    if key is None:
+        return set()
+    if key[1] == "round_end":
+        return {i for i, sd in enumerate(room.seats)
+                if not sd.is_bot and i not in room.ready}
+    seat = room.round.turn
+    if seat is None or room.seats[seat].is_bot:
+        return set()
+    return {seat}
+
+
+def _sync_move_timer(room: Room) -> None:
+    """Start the clock of every seat that newly owes a decision (caller holds
+    the lock). A no-op in a room without the move timer."""
+    if not room.move_timer:
+        return
+    key = _decision_key(room)
+    owing = _owing_seats(room)
+    fresh = key != room.timer_key
+    room.timer_key = key
+    for i, sd in enumerate(room.seats):
+        if sd is None:
+            continue
+        if i not in owing:
+            sd.turn_started = None
+        elif fresh or sd.turn_started is None:
+            sd.turn_started = now()
+
+
+def _timed(room: Room, seat: int) -> bool:
+    """Is this seat's move clock running? Connected humans only: a
+    disconnected seat is on TAKEOVER_AFTER instead."""
+    sd = room.seats[seat]
+    return (room.move_timer and not sd.is_bot and sd.connected
+            and sd.turn_started is not None)
+
+
+def _turn_deadline(room: Room, seat: int) -> float | None:
+    """Seconds this seat has left for the current decision (None if no clock
+    runs for it, or the bot already plays for it)."""
+    if not _timed(room, seat) or room.seats[seat].away:
+        return None
+    return round(max(0.0, MOVE_TIMER - (now() - room.seats[seat].turn_started)), 1)
+
+
+def _timed_out(room: Room, seat: int) -> bool:
+    _sync_move_timer(room)
+    return (_timed(room, seat)
+            and now() - room.seats[seat].turn_started >= MOVE_TIMER)
+
+
+def _count_timeout(room: Room, seat: int) -> None:
+    """The bot made a decision a present player let run out."""
+    sd = room.seats[seat]
+    if sd.away:
+        return
+    sd.timeouts_in_row += 1
+    sd.timeouts_in_round += 1
+    if (sd.timeouts_in_row >= AWAY_IN_A_ROW
+            or sd.timeouts_in_round >= AWAY_PER_ROUND):
+        sd.away = True
+
+
+def _player_moved(room: Room, seat: int) -> None:
+    """A real decision (or ``im_back``) from the seat's player: the seat is
+    no longer away and its run of timeouts is broken."""
+    sd = room.seats[seat]
+    sd.away = False
+    sd.timeouts_in_row = 0
+
+
+def _round_timeouts_reset(room: Room) -> None:
+    for sd in room.seats:
+        if sd is not None:
+            sd.timeouts_in_round = 0
+
+
+def _auto_mode(room: Room, seat: int) -> str | None:
+    """How the bot may act for this seat without waiting: ``"bot"`` for a bot
+    seat, ``"timeout"`` for a present player who is away."""
+    sd = room.seats[seat]
+    if sd.is_bot:
+        return "bot"
+    if room.move_timer and sd.connected and sd.away:
+        return "timeout"
+    return None
+
+
+def _move_timer_fields(room: Room, seat: int) -> dict[str, Any]:
+    """Per-seat move-timer fields, sent only in a room with the move timer:
+    a casual room's frames stay identical to the offline local server's,
+    which has no move timer."""
+    return {
+        # Seconds this seat has left on the move timer; null when no clock
+        # runs for it. Ticked down locally, like takeover_in.
+        "turn_deadline": _turn_deadline(room, seat),
+        # The bot is playing every decision for this present player.
+        "away": room.seats[seat].away,
+    }
+
+
 def state_for(room: Room, seat: int) -> dict[str, Any]:
     game = room.game
     rnd = room.round
@@ -606,6 +749,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             # deadline the takeover countdown shows, so they cannot disagree.
             "reserved_secs": (_takeover_in(room, s)
                               if _reserved(room, s) else None),
+            **(_move_timer_fields(room, s) if room.move_timer else {}),
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),
@@ -822,6 +966,8 @@ async def _writer(ws: WebSocket, queue: asyncio.Queue,
 
 
 async def broadcast(room: Room) -> None:
+    if room.game and room.round:
+        _sync_move_timer(room)
     for i, seat in enumerate(room.seats):
         if seat is not None and seat.connected and not seat.is_bot:
             if room.game and room.round:
@@ -929,6 +1075,7 @@ async def advance_if_all_ready(room: Room) -> bool:
     room.ready.clear()
     game.start_round()
     room.index_round()
+    _round_timeouts_reset(room)
     _log_round_start(room)
     saved_games.round_started(room)
     ratings.round_started(room)
@@ -1054,6 +1201,9 @@ def _turn_eligible(room: Room, seat: int, mode: str, *,
             and (owner_left_at is None or owner.left_at == owner_left_at)
             and now() - owner.left_at >= TAKEOVER_AFTER
         )
+    if mode == "timeout":
+        return (room.move_timer and not owner.is_bot and owner.connected
+                and (owner.away or _timed_out(room, seat)))
     raise ValueError(f"unknown bot-turn mode {mode!r}")
 
 
@@ -1212,6 +1362,11 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             _observe_committed_play(room)
         else:  # guarded by snapshot construction; fail closed on corruption
             return False
+        if snapshot.mode == "timeout":
+            # Counted here, once per committed action and before the round
+            # end below captures ratings: a final-card timeout that makes the
+            # seat away must be rated as away.
+            _count_timeout(room, seat)
         if rnd.phase == "round_end" and room.game.result is None:
             room.game.finish_round()
             _log_round_end(room)
@@ -1293,10 +1448,11 @@ async def pump_bots(room: Room) -> None:
         turn_started = time.perf_counter()
         async with room.lock:
             seat = current_actor(room)
-            if seat is None or not room.seats[seat].is_bot:
+            mode = None if seat is None else _auto_mode(room, seat)
+            if mode is None:
                 return
         prepared = await _paced_bot_step(
-            room, seat, turn_started=turn_started, mode="bot")
+            room, seat, turn_started=turn_started, mode=mode)
         if prepared is None:
             return
         async with room.lock:
@@ -1348,14 +1504,67 @@ async def _watchdog_body(room: Room) -> bool:
         return True
 
 
+async def move_timer_tick(room: Room) -> bool:
+    """One move-timer check. Returns True if the bot decided for a present
+    player (a play, a bury or a round-end Next). Tests drive it with an
+    injected clock."""
+    if rooms.get(room.code) is not room or not room.move_timer:
+        return False
+    async with room.lock:
+        if rooms.get(room.code) is not room:
+            return False
+        _sync_move_timer(room)
+        rnd, game = room.round, room.game
+        if rnd is None or game is None or game.game_over:
+            return False
+        if rnd.phase == "round_end":
+            readied = False
+            for s in sorted(_owing_seats(room)):
+                sd = room.seats[s]
+                if not sd.connected:
+                    continue
+                if sd.away:
+                    room.ready.add(s)
+                    readied = True
+                elif _timed_out(room, s):
+                    room.ready.add(s)
+                    _count_timeout(room, s)
+                    readied = True
+            if not readied:
+                return False
+            if not await advance_if_all_ready(room):
+                await broadcast(room)
+            return True
+        seat = current_actor(room)
+        if seat is None or not _turn_eligible(room, seat, "timeout"):
+            return False
+    prepared = await _paced_bot_step(
+        room, seat, mode="timeout", minimum_turn_seconds=0.0)
+    if prepared is None:
+        return False
+    async with room.lock:
+        if rooms.get(room.code) is not room:
+            return False
+        acted = _commit_bot_turn(room, prepared)
+        _log_bot_timing(room, prepared, acted=acted)
+        if not acted:
+            return False
+        await broadcast(room)
+        kick_bots(room)
+        return True
+
+
 async def watchdog(room: Room) -> None:
     """If the turn-holder is a disconnected human for TAKEOVER_AFTER seconds,
-    the bot plays their turn so the game can't stall forever."""
+    the bot plays their turn so the game can't stall forever. In a room with
+    the move timer it also enforces MOVE_TIMER for present players."""
     while True:
-        await asyncio.sleep(5.0)
+        await asyncio.sleep(MOVE_TIMER_POLL if room.move_timer else 5.0)
         if rooms.get(room.code) is not room:
             return
         await _watchdog_body(room)
+        if room.move_timer:
+            await move_timer_tick(room)
 
 
 async def cleanup_room(room: Room) -> None:
@@ -1373,7 +1582,7 @@ async def cleanup_room(room: Room) -> None:
 
 def kick_bots(room: Room) -> None:
     seat = current_actor(room)
-    if seat is not None and room.seats[seat].is_bot:
+    if seat is not None and _auto_mode(room, seat) is not None:
         if room.bot_task is None or room.bot_task.done():
             _spawn_room_task(room, "bot_task", pump_bots(room))
 
@@ -1774,6 +1983,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         ACTIVITY.games_started += 1
         room.game.start_round()
         room.index_round()
+        _round_timeouts_reset(room)
         saved_games.start(room, _log_round_start(room), LOG_DIR)
         ratings.start(room)
         _spawn_room_task(room, "deal_task", run_deal(room))
@@ -1781,12 +1991,22 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             room.watchdog_task = asyncio.create_task(watchdog(room))
     elif game is None or rnd is None:
         raise IllegalPlay("Game not started.")
+    elif t == "im_back":
+        # The player is back: the bot stops playing for the seat, and a
+        # decision it owes now gets a fresh clock.
+        sd = room.seats[seat]
+        was_away = sd.away
+        _player_moved(room, seat)
+        if was_away and sd.turn_started is not None:
+            sd.turn_started = now()
     elif t == "declare":
         codes = room.codes_for(seat, _card_ids(msg))
         rnd.declare(seat, codes)
         room.log_event("declare", seat=seat, cards=codes, bot=False)
+        _player_moved(room, seat)
     elif t == "pass_declare":
         rnd.pass_declare(seat)
+        _player_moved(room, seat)
     elif t == "bury":
         room.sync_kitty()
         ids = _card_ids(msg)
@@ -1794,6 +2014,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         rnd.bury(seat, codes)
         room.remove_ids(seat, ids)
         room.log_event("bury", seat=seat, cards=codes, bot=False)
+        _player_moved(room, seat)
     elif t == "play":
         ids = _card_ids(msg)
         codes = room.codes_for(seat, ids)
@@ -1814,6 +2035,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         # a human's play is a committed play too: the room bot's ledger must see
         # the notice it posts (or replaces) before the bot's next turn
         _observe_committed_play(room)
+        _player_moved(room, seat)
     elif t == "next_round":
         if rnd.phase != "round_end":
             raise IllegalPlay("Round not finished.")
@@ -1822,6 +2044,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         # Wait for EVERY connected human to confirm, so nobody's review of
         # the round gets cut short by a faster clicker (Jerry, 2026-08-03).
         room.ready.add(seat)
+        _player_moved(room, seat)
         if not await advance_if_all_ready(room):
             await broadcast(room)
     else:
@@ -2134,6 +2357,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 took_from = me.name
                                 took_over_human = not me.is_bot
                                 me.bot_announced = False
+                                _player_moved(target, pick)
+                                me.timeouts_in_round = 0
                                 # New owner => new identity. Keeping the old token
                                 # would let the previous owner present it later and
                                 # displace the person who took the seat.
@@ -2314,7 +2539,7 @@ async def start_matched_room(match_id: str | None, slots: list,
     registered, the room is unregistered and aborted, every attached seat is
     detached and every socket is back in the lobby with no adoption pending,
     before the error reaches the matchmaker that requeues these players."""
-    room = Room(code=new_code(), matched=True)
+    room = Room(code=new_code(), matched=True, move_timer=True)
     rooms[room.code] = room
     attached: list[tuple[Seat, Any, int]] = []
     try:

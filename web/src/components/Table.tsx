@@ -20,6 +20,8 @@ import ToastView from "./ToastView";
 import { leadToFollow } from "../follow";
 import { followHint } from "../followRules";
 import { STALL_MS } from "./Lobby";
+import { MoveRing } from "./MoveClock";
+import { RING_SECS, useMoveClock } from "../useMoveClock";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -175,6 +177,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
+        {player.away && player.connected ? <span className="away-tag">Away</span> : null}
         {!player.connected && !player.is_bot ? (
           <span className="off-tag">
             {takeover !== null && takeover > 0
@@ -348,6 +351,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
 
   useTableHaptics(state);
+  // your move timer (ranked tables): the ring in its last seconds, a haptic
+  // at five, and nothing before that
+  const clock = useMoveClock(me?.turn_deadline, state);
+  const away = (me?.away ?? false) && state.phase !== "game_over";
 
   // A tap on a Play that cannot go yet says why, once, above the hand.
   const [hint, setHint] = useState<{ text: string; n: number } | null>(null);
@@ -418,6 +425,8 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     );
   } else if (state.phase === "bury" && iAmBanker) {
     actionBar = (
+      <>
+      <MoveRing left={clock} />
       <button
         className="btn primary"
         disabled={selectedIds.length !== 8 || pending !== null || !online}
@@ -426,6 +435,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       >
         {pendingLabel ?? `Bury 8 cards (${selectedIds.length}/8)`}
       </button>
+      </>
     );
   } else if (state.phase === "play" && myTurn) {
     const choosing = selectedIds.length === 0 && pending === null;
@@ -445,6 +455,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     };
     actionBar = (
       <>
+        <MoveRing left={clock} />
         <span className="play-wrap" onClick={whyNot}>
           <button
             className={`btn primary${choosing ? " your-turn" : ""}`}
@@ -499,7 +510,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
               <span className="ready-tag">ready</span>
             ) : null}
           </div>
-          <div className="action-bar">{actionBar}</div>
+          <div className={`action-bar${clock !== null && clock <= RING_SECS ? " clock-low" : ""}`}>{actionBar}</div>
           </div>
           {hint ? (
             <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>
@@ -510,7 +521,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       </div>
 
       {(state.phase === "round_end" || state.phase === "game_over") && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} />
+        <RoundEndModal state={state} result={state.round_result} clock={clock} />
       ) : null}
 
       {xrayOpen ? <XrayPanel state={state} onClose={() => setXrayOpen(false)} /> : null}
@@ -522,6 +533,17 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       )}
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
+      {away ? (
+        <div className="away-pill" role="status">
+          <span className="away-pill-text">
+            <b>Away</b>
+            <span>The bot is playing for you</span>
+          </span>
+          <button className="btn away-back" onClick={() => conn.send({ type: "im_back" })}>
+            I’m back
+          </button>
+        </div>
+      ) : null}
       {stalled ? (
         <div className="table-stalled" role="status">
           <span>Can’t reach the server.</span>

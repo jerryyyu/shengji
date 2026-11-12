@@ -62,12 +62,13 @@ import statistics
 import subprocess
 import sys
 import time
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 
 SERVER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SERVER)
 
-from shengji.ai.env import RoundLog, play_round  # noqa: E402
+from shengji.ai.env import RoundLog, play_round, observe_committed_play  # noqa: E402
 from shengji.ai.registry import (make_bot, register_cwv_policies,  # noqa: E402
                                  register_scaled_policies, scaled_policy_name)
 from shengji.engine.cards import RANKS  # noqa: E402
@@ -202,6 +203,7 @@ def play_round_at(game: Game, policies: list, trump_rank: str) -> RoundLog:
     while rnd.phase == "play":
         seat = rnd.turn
         rnd.play(seat, policies[seat].decide_play(rnd, seat))
+        observe_committed_play(rnd, policies)
     result = game.finish_round()
     return RoundLog(rnd.trump_rank, rnd.banker, result.attacker_points,
                     result.winner_team, result.level_change)
@@ -219,6 +221,10 @@ class TimedPolicy:
         self.keep_states = keep_states
         self.walls: list[float] = []
         self.states: list[tuple] = []
+        self.play_health = Counter()
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
 
     def decide_declare(self, rnd, seat, **kw):
         return self.inner.decide_declare(rnd, seat, **kw)
@@ -232,6 +238,19 @@ class TimedPolicy:
         cards = self.inner.decide_play(rnd, seat)
         wall = time.perf_counter() - started
         self.walls.append(wall)
+        record = getattr(self.inner, "last_decision_record", None)
+        self.play_health["decisions"] += 1
+        if isinstance(record, dict) and record.get("schema") == "pv-search-decision-v1":
+            self.play_health["pv_complete" if record.get("work_complete") else "pv_incomplete"] += 1
+            for key in ("lead_alias_refill_applied", "lead_alias_refill_abandoned",
+                        "lead_alias_refill_replacements"):
+                self.play_health[key] += int(record.get(key, 0))
+        elif isinstance(record, dict) and record.get("schema") == "pv-search-fallback-v1":
+            self.play_health["pv_fallback"] += 1
+            reason = record.get("reason")
+            self.play_health["pv_budget" if reason == "budget" else "pv_error"] += 1
+        else:
+            self.play_health["non_pv_record"] += 1
         if snapshot is not None and getattr(self.inner, "last_decision_record", None) is not None:
             self.states.append((snapshot, seat, wall))
         return cards
@@ -698,6 +717,7 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
     return {
         "run": run_id, "label": label, "policy": policy, "seed": seed,
         "flip": flip, "won": won,
+        "winner_team": int(log.winner_team), "level_change": int(log.level_change),
         "level_utility": (1 if won else -1) * max(1, int(log.level_change)),
         "arm": arm_counters, "opp": opp_counters,
         "banker": log.banker, "trump_rank": log.trump_rank,
@@ -707,6 +727,10 @@ def _record(run_id: str, label: str, policy: str, seed: int, flip: int, log,
         "arm_play_wall_secs": round(sum(sum(t.walls) for t in arm_timers), 4),
         "opp_play_decisions": sum(len(t.walls) for t in opp_timers),
         "opp_play_wall_secs": round(sum(sum(t.walls) for t in opp_timers), 4),
+        "arm_play_max_secs": max((w for t in arm_timers for w in t.walls), default=0.0),
+        "opp_play_max_secs": max((w for t in opp_timers for w in t.walls), default=0.0),
+        "arm_play_health": dict(sum((t.play_health for t in arm_timers), Counter())),
+        "opp_play_health": dict(sum((t.play_health for t in opp_timers), Counter())),
     }
 
 
@@ -802,6 +826,7 @@ def play_shard(run_id: str, plan, clusters, seed0: int, rank_spec: str | None,
                 log, arm, opp, timers = play_pair(
                     policy, opponent, seed, flip, trump_rank=rank_for(ranks, cluster))
                 record = _record(run_id, label, policy, seed, flip, log, arm, opp, timers)
+                record["opponent"] = opponent
                 if sink is not None:
                     sink(record)
                 records.append(record)

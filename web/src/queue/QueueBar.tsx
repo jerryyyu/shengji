@@ -4,8 +4,9 @@ import type { QueueView } from "./store";
 interface BarText { label: string; waited: string; sub: string; warn: boolean }
 
 /** What the bar says: who is searching and for how long, then the bot fill
- *  countdown (amber in its last ten seconds) or that the entry waits for
- *  real players, with the queue count. */
+ *  countdown (amber in its last ten seconds), with the queue count. A pair's
+ *  other member has no switch, so its line says when the entry waits for
+ *  real players. */
 function barText(q: QueueView, now: number): BarText {
   const waited = q.since !== null ? clock(now - q.since) : "0:00";
   const botsIn = q.botsAt !== null && !q.waitPlayers ? q.botsAt - now : Infinity;
@@ -13,7 +14,7 @@ function barText(q: QueueView, now: number): BarText {
   const partner = q.partyId ? partnerName(q.party) : null;
   const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a game";
   const count = `${q.count} in queue`;
-  const sub = q.waitPlayers ? `Waiting for real players · ${count}`
+  const sub = q.waitPlayers ? (q.leader ? count : `Waiting for real players · ${count}`)
     : botsIn <= 0 ? "Adding bots…"
     : botsIn !== Infinity ? `Bots in ${clock(botsIn, true)} · ${count}`
     : count;
@@ -35,7 +36,7 @@ function Actions({ q, compact }: { q: QueueView; compact?: boolean }) {
       <button type="button" className="q-bots" disabled={!leads || q.pending !== null}
               title={leads ? undefined : `${partner ?? "Your partner"} leads`}
               onClick={() => queue.startBots()}>
-        {q.pending === "bots" ? "Starting…" : "Play with bots now"}
+        {q.pending === "bots" ? "Starting…" : "Play bots"}
       </button>
       {leads ? (
         <button type="button" className="q-cancel" disabled={q.pending !== null} onClick={() => queue.leave()}>
@@ -48,14 +49,17 @@ function Actions({ q, compact }: { q: QueueView; compact?: boolean }) {
   );
 }
 
-/** The leader's switch between waiting for real players and the bot fill;
- *  a pair's other member only sees the state in the sub-line. */
+/** The leader's switch: on, the entry waits for real players and no bots
+ *  join; off, the bot countdown runs. A pair's other member only sees the
+ *  state in the sub-line. */
 function WaitToggle({ q }: { q: QueueView }) {
   if (!q.leader) return null;
   return (
-    <button type="button" className="q-wait" disabled={q.pending !== null}
+    <button type="button" role="switch" aria-checked={q.waitPlayers} className="q-wait"
+            disabled={q.pending !== null}
             onClick={() => (q.waitPlayers ? queue.allowBots() : queue.waitForPlayers())}>
-      {q.waitPlayers ? "Allow bots" : "Wait for real players"}
+      <span className="q-switch" aria-hidden="true" />
+      Wait for real players
     </button>
   );
 }

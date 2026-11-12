@@ -183,10 +183,10 @@ describe("the queue bar", () => {
     expect(q(".q-bar")).not.toBeNull();
   });
 
-  it("Play with bots now sends queue_start_bots; Cancel leaves", async () => {
+  it("Play bots sends queue_start_bots; Cancel leaves", async () => {
     await renderApp();
     say(queued());
-    click(button("Play with bots now"));
+    click(button("Play bots"));
     expect(lastSent()).toEqual({ type: "queue_start_bots" });
     expect(button("Starting…")).toBeDefined();
     say({ type: "match_started", match_id: null, room: "BOTS", rated: true });
@@ -207,34 +207,39 @@ describe("the queue bar", () => {
     const chip = q(".topbar .q-chip")!;
     expect(chip.textContent).toContain("Finding a game · 0:24 · Bots in 0:36 · 3 in queue");
     expect(chip.getAttribute("title")).toBe("Waiting 0:24");
-    expect(button("Play with bots now", chip)).toBeDefined();
+    expect(button("Play bots", chip)).toBeDefined();
     expect(button("Cancel", chip)).toBeDefined();
     click(button("Wait for real players", chip));
     expect(lastSent()).toEqual({ type: "queue_wait_players" });
-    expect(chip.textContent).toContain("Finding a game · 0:24 · Waiting for real players · 3 in queue");
-    expect(q(".q-strip")?.textContent).toContain("Waiting for real players · 3 in queue");
+    expect(button("Wait for real players", chip)?.getAttribute("aria-checked")).toBe("true");
+    expect(chip.textContent).toContain("Finding a game · 0:24 · 3 in queue");
+    expect(chip.textContent).not.toContain("Bots in");
   });
 
-  it("Wait for real players turns the countdown off; Allow bots brings it back", async () => {
+  it("the Wait for real players switch turns the countdown off and back on", async () => {
     await renderApp();
     fakeClock();
     say(queued());
     tick(52_000);
     expect(q(".q-bar")?.className).toContain("warn");
-    click(button("Wait for real players", q(".q-bar")!));
+    const sw = () => button("Wait for real players", q(".q-bar")!)!;
+    expect(sw().getAttribute("role")).toBe("switch");
+    expect(sw().getAttribute("aria-checked")).toBe("false");
+    click(sw());
     expect(lastSent()).toEqual({ type: "queue_wait_players" });
-    expect(q(".q-bar small")?.textContent).toBe("Waiting for real players · 3 in queue");
+    expect(sw().getAttribute("aria-checked")).toBe("true");
+    expect(q(".q-bar small")?.textContent).toBe("3 in queue");
     expect(q(".q-bar")?.className).not.toContain("warn");
     say(queued({ since: nowSecs() - 52, bots_at: null, wait_players: true }));
     tick(120_000);
-    expect(q(".q-bar small")?.textContent).toBe("Waiting for real players · 3 in queue");
-    expect(button("Play with bots now")).toBeDefined();
+    expect(q(".q-bar small")?.textContent).toBe("3 in queue");
+    expect(button("Play bots")).toBeDefined();
     expect(button("Cancel", q(".q-bar")!)).toBeDefined();
-    click(button("Allow bots", q(".q-bar")!));
+    click(sw());
     expect(lastSent()).toEqual({ type: "queue_allow_bots" });
     say(queued({ since: nowSecs() - 172, bots_at: nowSecs() + 60, wait_players: false }));
     expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
-    expect(button("Wait for real players", q(".q-bar")!)).toBeDefined();
+    expect(sw().getAttribute("aria-checked")).toBe("false");
   });
 });
 
@@ -395,7 +400,7 @@ describe("the ready check", () => {
   it("a bots game that fails to start returns to the lobby, out of the queue", async () => {
     await renderApp();
     say(queued());
-    click(button("Play with bots now"));
+    click(button("Play bots"));
     say({ type: "match_started", match_id: null, room: "BOTS", rated: true });
     say({ ...TABLE_STATE, room: "BOTS" });
     say({ type: "error", code: "start_failed", message: "Could not start the game." });
@@ -480,11 +485,11 @@ describe("with a friend", () => {
     say(queued({ party_id: "p1", leader: false }));
     expect(button("Cancel", q(".q-bar")!)).toBeUndefined();
     expect(q(".q-bar")?.textContent).toContain("Sam leads");
-    expect(button("Play with bots now")?.disabled).toBe(true);
+    expect(button("Play bots")?.disabled).toBe(true);
     expect(button("Wait for real players")).toBeUndefined();
     say(queued({ party_id: "p1", leader: false, bots_at: null, wait_players: true }));
     expect(q(".q-bar small")?.textContent).toBe("Waiting for real players · 3 in queue");
-    expect(button("Allow bots")).toBeUndefined();
+    expect(button("Wait for real players")).toBeUndefined();
   });
 
   it("an invite link opens the pair sheet with its code", async () => {

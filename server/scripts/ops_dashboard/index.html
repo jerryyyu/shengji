@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Sheng Ji Ops</title>
+<style>
+  :root {
+    --bg: #0e1116; --surface: #161b22; --line: #262d36;
+    --ink: #e8edf3; --ink2: #a8b3c1; --muted: #6f7b8a;
+    --accent: #5aa9e6; --good: #3fb950; --warn: #d29922; --bad: #f85149;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px 16px 40px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  h1 { font-size: 20px; margin: 4px 0 2px; letter-spacing: -0.01em; }
+  #status { font-size: 12px; color: var(--ink2); text-align: right; }
+  #status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 5px; vertical-align: 0; background: var(--muted); }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+    margin: 22px 0 8px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  @media (min-width: 560px) { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; min-height: 76px; }
+  .tile .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em; line-height: 1.15; }
+  .tile .l { font-size: 12px; color: var(--ink2); margin-top: 2px; }
+  .tile .s { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .tile.na .v { font-size: 14px; font-weight: 500; color: var(--muted); padding-top: 6px; }
+  .wide { grid-column: 1 / -1; }
+  .tabs { display: inline-flex; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 2px; margin-bottom: 8px; }
+  .tabs button { background: none; border: 0; color: var(--ink2); font: inherit; font-size: 13px;
+    padding: 5px 14px; border-radius: 6px; cursor: pointer; }
+  .tabs button[aria-pressed="true"] { background: var(--line); color: var(--ink); }
+  .spark { width: 100%; height: 56px; display: block; margin-top: 6px; }
+  .spark .area { fill: var(--accent); opacity: 0.16; }
+  .spark .ln { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+  .spark rect.bar { fill: var(--accent); }
+  .spark rect.hit { fill: transparent; }
+  .spark rect.hit:hover + rect.bar, .spark g:hover rect.bar { opacity: 0.7; }
+  .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .note { font-size: 12px; color: var(--muted); margin: 6px 2px 0; }
+  .err { color: var(--bad); font-size: 12px; margin-top: 8px; }
+  .hum { display: flex; gap: 6px; margin-top: 6px; }
+  .hum div { flex: 1; text-align: center; background: var(--bg); border-radius: 6px; padding: 4px 0; }
+  .hum b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .hum span { font-size: 11px; color: var(--muted); }
+  #tip { position: fixed; pointer-events: none; background: #000c; color: var(--ink);
+    font-size: 12px; padding: 4px 8px; border-radius: 6px; display: none; z-index: 5; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Sheng Ji ops</h1>
+    <div id="status"><span class="dot"></span><span id="statustext">loading…</span></div>
+  </header>
+  <div id="errors" class="err"></div>
+
+  <h2>Live</h2>
+  <div class="grid" id="live"></div>
+  <div class="tile wide" style="margin-top:8px">
+    <div class="l">Open rooms, last 24 h (from /healthz, one point per snapshot)</div>
+    <svg class="spark" id="roomspark" preserveAspectRatio="none"></svg>
+    <div class="axis"><span>24 h ago</span><span>now</span></div>
+  </div>
+
+  <h2>Accounts</h2>
+  <div class="grid" id="accounts"></div>
+  <div class="tile wide" style="margin-top:8px">
+    <div class="l">Sign-ups per day, last 30 days</div>
+    <svg class="spark" id="signupspark" preserveAspectRatio="none"></svg>
+    <div class="axis"><span>30 d ago</span><span>today</span></div>
+  </div>
+
+  <h2>Activity</h2>
+  <div class="tabs" role="group" aria-label="Window">
+    <button data-w="today" aria-pressed="true">Today</button>
+    <button data-w="7d" aria-pressed="false">7 days</button>
+    <button data-w="30d" aria-pressed="false">30 days</button>
+  </div>
+  <div class="grid" id="activity"></div>
+  <p class="note">Rated rounds = rounds with at least one signed-in seat (casual or ranked; the
+    database does not mark which). Rounds and seat-rounds come from the room logs'
+    round_start records, which name no account; guest seat-rounds = human seat-rounds minus
+    signed-in seat-rounds from saved games, so it is an estimate. "Today" starts at midnight ET.</p>
+
+  <h2>Return</h2>
+  <div class="grid" id="returns"></div>
+  <p class="note">Share of accounts created in the last 60 days, at least N days ago, that
+    played (a rated round or a saved game) N or more days after signing up.</p>
+
+  <h2>Support, last 7 days</h2>
+  <div class="grid" id="support"></div>
+</main>
+<div id="tip"></div>
+<script>
+"use strict";
+const token = new URLSearchParams(location.search).get("t") || "";
+let latest = null, win = localGet("win") || "today";
+
+function localGet(k) { try { return localStorage.getItem("ops." + k); } catch (e) { return null; } }
+function localSet(k, v) { try { localStorage.setItem("ops." + k, v); } catch (e) {} }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = v => v === null || v === undefined ? "–" : (typeof v === "number" ? v.toLocaleString() : esc(v));
+const pct = v => v === null || v === undefined ? "–" : Math.round(v * 100) + "%";
+
+function tile(value, label, sub, cls) {
+  return `<div class="tile ${cls || ""}"><div class="v">${value}</div>` +
+         `<div class="l">${esc(label)}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`;
+}
+const na = (label, why) => tile(esc(why), label, "", "na");
+
+function ago(sec) {
+  if (sec === null || sec === undefined) return "–";
+  sec = Math.max(0, Math.round(sec));
+  if (sec < 90) return sec + " s";
+  if (sec < 5400) return Math.round(sec / 60) + " min";
+  if (sec < 172800) return Math.round(sec / 3600) + " h";
+  return Math.round(sec / 86400) + " d";
+}
+
+function humBreakdown(by) {
+  if (!by) return "";
+  return `<div class="hum">${["1","2","3","4"].map(k =>
+    `<div><b>${fmt(by[k])}</b><span>${k} human${k === "1" ? "" : "s"}</span></div>`).join("")}</div>`;
+}
+
+function renderLive(d) {
+  const h = d.health || {}, logs = (d.db || {}).logs || {}, now = Date.now() / 1000;
+  const live = logs.live_tables_by_humans;
+  const liveTotal = live ? ["1","2","3","4"].reduce((a, k) => a + (live[k] || 0), 0) : null;
+  document.getElementById("live").innerHTML = [
+    tile(fmt(h.rooms), "Open rooms", "server memory, now"),
+    tile(fmt(liveTotal), "Tables playing", `a round started in the last ${Math.round((logs.live_window_s || 1200) / 60)} min`),
+    tile(ago(logs.last_round_start ? now - logs.last_round_start : null), "Since last round start", "any table with a human"),
+    tile(fmt((h.activity || {}).games_started), "Games since restart", `${fmt((h.activity || {}).rounds_recorded)} rounds recorded`),
+    `<div class="tile wide"><div class="l">Tables playing now, by humans seated</div>${humBreakdown(live)}</div>`,
+    na("Players now: signed-in / guests / bots", "needs server endpoint"),
+    na("Ranked queue / waiting tables", "needs server endpoint"),
+  ].join("");
+}
+
+function renderAccounts(d) {
+  const a = (d.db || {}).accounts;
+  const el = document.getElementById("accounts");
+  if (!a) { el.innerHTML = na("Accounts", "no data"); return; }
+  el.innerHTML = [
+    tile(fmt(a.total), "Accounts", `${fmt(a.google)} Google · ${fmt(a.apple)} Apple`),
+    tile(fmt(a.new_24h), "New, last 24 h"),
+    tile(fmt(a.new_7d), "New, last 7 d"),
+    tile(fmt(a.with_rated_round), "With ≥1 rated round", `${fmt(a.with_saved_game)} with a saved game`),
+  ].join("");
+  bars(document.getElementById("signupspark"), a.signups_per_day || [], i => {
+    const n = (a.signups_per_day || []).length;
+    const day = new Date((d.today_start - (n - 1 - i) * 86400) * 1000);
+    return day.toLocaleDateString(undefined, {month: "short", day: "numeric"});
+  });
+}
+
+function renderActivity(d) {
+  const w = (((d.db || {}).windows) || {})[win];
+  const el = document.getElementById("activity");
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.w === win)));
+  if (!w) { el.innerHTML = na("Activity", "no data"); return; }
+  const logs = "log_rounds" in w;
+  el.innerHTML = [
+    tile(fmt(w.rated_rounds), "Rated rounds", `${fmt(w.rated_rounds_per_player)} per rated player`),
+    tile(fmt(w.signed_in_players), "Signed-in players", "distinct accounts that played"),
+    tile(fmt(w.saved_games_created), "Saved games created", `${fmt(w.games_per_player)} games per player`),
+    tile(fmt(w.abandoned_rounds), "Abandoned rated rounds", "a signed-in seat left"),
+    tile(pct(w.rated_rounds ? w.rated_rounds_2plus_humans / w.rated_rounds : null), "Rated rounds with 2+ humans",
+         `${fmt(w.rated_rounds_2plus_humans)} of ${fmt(w.rated_rounds)}`),
+    logs ? tile(fmt(w.log_rounds), "Rounds played (all)", `${pct(w.share_2plus_humans)} with 2+ humans`) : na("Rounds played (all)", "room logs unavailable"),
+    logs ? tile(fmt(w.guest_seat_rounds_est), "Guest seat-rounds (est.)", `of ${fmt(w.human_seat_rounds)} human seat-rounds`) : na("Guest seat-rounds", "room logs unavailable"),
+    na("Guest people", "not countable: no guest id"),
+    logs ? `<div class="tile wide"><div class="l">Rounds by humans at the table</div>${humBreakdown(w.rounds_by_humans)}</div>` : "",
+  ].join("");
+}
+
+function renderReturns(d) {
+  const r = (d.db || {}).returns || {};
+  const t = (k, label) => r[k] ? tile(pct(r[k].rate), label, `${fmt(r[k].returned)} of ${fmt(r[k].cohort)} accounts`) : na(label, "no data");
+  document.getElementById("returns").innerHTML = t("d1", "Back after ≥1 day") + t("d7", "Back after ≥7 days");
+}
+
+function renderSupport(d) {
+  const db = d.db || {};
+  document.getElementById("support").innerHTML =
+    tile(fmt(db.support_7d), "Support messages") + tile(fmt(db.reports_7d), "Player reports");
+}
+
+function renderStatus(d) {
+  const now = Date.now() / 1000;
+  const dbAt = d.db_collected_at || d.collected_at;
+  const age = now - dbAt;
+  const dot = document.querySelector("#status .dot");
+  dot.style.background = d.db_stale_from || age > 900 ? "var(--warn)" : (d.errors && d.errors.length ? "var(--bad)" : "var(--good)");
+  document.getElementById("statustext").textContent =
+    `data ${ago(age)} old · refreshed ${new Date().toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`;
+  document.getElementById("errors").textContent = (d.errors || []).length
+    ? "Last snapshot: " + d.errors.join("; ") + (d.db_stale_from ? " (showing older counts)" : "") : "";
+}
+
+const tip = document.getElementById("tip");
+function showTip(ev, text) {
+  tip.textContent = text; tip.style.display = "block";
+  const x = Math.min(ev.clientX + 12, innerWidth - tip.offsetWidth - 8);
+  tip.style.left = x + "px"; tip.style.top = (ev.clientY - 34) + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+function bars(svg, values, labelOf) {
+  const W = 300, H = 56, n = values.length || 1, max = Math.max(1, ...values);
+  const bw = W / n, gap = 2;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = values.map((v, i) => {
+    const h = v ? Math.max(3, (v / max) * (H - 4)) : 0;
+    return `<g data-i="${i}"><rect class="hit" x="${i * bw}" y="0" width="${bw}" height="${H}"></rect>` +
+      (h ? `<rect class="bar" x="${i * bw + gap / 2}" y="${H - h}" width="${bw - gap}" height="${h}" rx="1.5"></rect>` :
+           `<rect class="bar" x="${i * bw + gap / 2}" y="${H - 1}" width="${bw - gap}" height="1" opacity="0.35"></rect>`) + "</g>";
+  }).join("");
+  svg.querySelectorAll("g").forEach(g => {
+    const i = +g.dataset.i;
+    g.addEventListener("pointermove", ev => showTip(ev, `${labelOf(i)}: ${values[i]}`));
+    g.addEventListener("pointerleave", hideTip);
+  });
+}
+
+function line(svg, pts, t0, t1) {
+  const W = 300, H = 56;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  if (!pts.length) { svg.innerHTML = ""; return; }
+  const max = Math.max(1, ...pts.map(p => p.v));
+  const X = t => ((t - t0) / (t1 - t0)) * W, Y = v => H - 3 - (v / max) * (H - 8);
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join("");
+  svg.innerHTML = `<path class="area" d="${d}L${X(pts[pts.length - 1].t).toFixed(1)},${H}L${X(pts[0].t).toFixed(1)},${H}Z"></path>` +
+    `<path class="ln" d="${d}" vector-effect="non-scaling-stroke"></path>` +
+    `<circle cx="${X(pts[pts.length - 1].t).toFixed(1)}" cy="${Y(pts[pts.length - 1].v).toFixed(1)}" r="3" fill="var(--accent)"></circle>`;
+  svg.onpointermove = ev => {
+    const r = svg.getBoundingClientRect(), t = t0 + ((ev.clientX - r.left) / r.width) * (t1 - t0);
+    let best = pts[0];
+    for (const p of pts) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+    showTip(ev, `${new Date(best.t * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}: ${best.v} room${best.v === 1 ? "" : "s"}`);
+  };
+  svg.onpointerleave = hideTip;
+}
+
+async function getJSON(path) {
+  const r = await fetch(`${path}?t=${encodeURIComponent(token)}`, {cache: "no-store"});
+  if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+  return r.json();
+}
+
+async function refresh() {
+  try {
+    latest = await getJSON("api/latest");
+    renderStatus(latest); renderLive(latest); renderAccounts(latest);
+    renderActivity(latest); renderReturns(latest); renderSupport(latest);
+  } catch (e) {
+    document.getElementById("errors").textContent = "Could not load: " + e.message;
+  }
+  try {
+    const hist = await getJSON("api/history"), now = Date.now() / 1000;
+    const pts = hist.filter(h => h.t >= now - 86400 && typeof h.rooms === "number").map(h => ({t: h.t, v: h.rooms}));
+    line(document.getElementById("roomspark"), pts, now - 86400, now);
+  } catch (e) {}
+}
+
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+  win = b.dataset.w; localSet("win", win); if (latest) renderActivity(latest);
+}));
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>

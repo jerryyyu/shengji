@@ -276,6 +276,10 @@ class PolicyRowsStream:
         # must carry them when the manifest says so; a stream without them has none.
         self.legal_negatives = int(man.get("legal_negatives") or 0)
         flag_counts = np.zeros(3, dtype=np.int64)
+        # Per-chunk layout for the in-place window (``_fill_window``): kept rows and every
+        # array's dtype and padded widths, so a window is allocated once at its final size.
+        self._meta: dict[str, dict[str, Any]] = {}
+        x_codes: np.ndarray | None = np.zeros(0, np.uint16)
         for c in self.chunks:
             path = self._paths[c["file"]]
             if not path.exists():
@@ -302,6 +306,24 @@ class PolicyRowsStream:
                                  "though the manifest declares them")
             verified.append(actual)
             dk = d["deal_key"].astype(str); keep = np.fromiter((k not in self.exclude for k in dk), dtype=bool, count=len(dk))
+            X = d["X"]
+            if x_codes is not None and X.dtype == np.float16:
+                x_codes = np.union1d(x_codes, np.unique(X.view(np.uint16)))
+                if len(x_codes) > 256:
+                    x_codes = None
+            else:
+                x_codes = None
+            meta = {"rows": int(keep.sum()), "X": X.dtype, "Y": d["Y"].dtype, "tgt": d["tgt"].dtype,
+                    "ball": (d["ball"].shape, d["ball"].dtype), "mask": d["mask"].dtype,
+                    "vals": None if vals_shape is None else (vals_shape, d["vals"].dtype)}
+            if self.legal_negatives:
+                nm = d["neg_mask"]
+                counts = nm.sum(1)
+                if not np.array_equal(nm, np.arange(nm.shape[1])[None, :] < counts[:, None]):
+                    raise ValueError(f"policy rows stream: {c['file']} negatives are not left-packed")
+                meta["negs"] = (d["negs"].shape, d["negs"].dtype, nm.dtype, int(counts[keep].sum()))
+            self._meta[c["file"]] = meta
+            del X
             keys.update(dk[keep].tolist()); excluded.update(dk[~keep].tolist())
             rows_used += int(keep.sum()); in_ballot += int((d["tgt"][keep] >= 0).sum())
             if "explore_flag" in d.files:
@@ -310,6 +332,9 @@ class PolicyRowsStream:
                 flag_counts[0] += int(keep.sum())
         if rows_used < 1:
             raise ValueError("policy rows stream: every row is in an excluded deal")
+        # X as uint8 codes into its own value table when the corpus holds <= 256 distinct
+        # float16 bit patterns: the batch's X is table[codes], the same bits as stored.
+        self._x_table = None if x_codes is None else x_codes.view(np.float16)
         self.deal_keys = frozenset(keys)
         self.deals = len(self.deal_keys)
         self.n = rows_used
@@ -356,8 +381,90 @@ class PolicyRowsStream:
                     out[k] = selected(k)
             return out
 
+    def _fill_window(self, chunk_ids) -> dict[str, Any]:
+        """The window's arrays allocated once at their final size and filled one chunk at a
+        time, so no chunk outlives its copy and no concatenated duplicate exists.  Values,
+        dtypes and padding equal the concatenating path's (``_pad_concat`` / ``_pad2_concat``);
+        X is kept as uint8 codes when ``_x_table`` exists, and the negatives as a row-ordered
+        table of their real slots (``neg_rows``, ``neg_start``, ``neg_count``)."""
+        metas = [self._meta[self.chunks[i]["file"]] for i in chunk_ids]
+        n = sum(m["rows"] for m in metas)
+        B = max(m["ball"][0][1] for m in metas); C = max(m["ball"][0][2] for m in metas)
+        w: dict[str, Any] = {
+            "X": np.empty((n, self.input_dim), np.uint8 if self._x_table is not None
+                          else np.result_type(*(m["X"] for m in metas))),
+            "Y": np.empty((n, 54), np.result_type(*(m["Y"] for m in metas))),
+            "ball": np.full((n, B, C), -1, np.result_type(*(m["ball"][1] for m in metas))),
+            "mask": np.full((n, B), False, np.result_type(*(m["mask"] for m in metas))),
+            "tgt": np.empty(n, np.result_type(*(m["tgt"] for m in metas))),
+            "eflag": np.empty(n, np.int8), "emargin": np.empty(n, np.float32), "vals": None}
+        if all(m["vals"] is not None for m in metas):
+            vdt = np.result_type(*(np.float32 if m["vals"][0][1] < B else m["vals"][1] for m in metas))
+            w["vals"] = np.full((n, B), np.nan, vdt)
+        if self.legal_negatives:
+            N = max(m["negs"][0][1] for m in metas); NC = max(m["negs"][0][2] for m in metas)
+            w["neg_width"] = (N, NC, np.result_type(*(m["negs"][1] for m in metas)),
+                              np.result_type(*(m["negs"][2] for m in metas)))
+            w["neg_rows"] = np.full((sum(m["negs"][3] for m in metas), NC), -1, w["neg_width"][2])
+            w["neg_start"] = np.empty(n, np.int64); w["neg_count"] = np.empty(n, np.int64)
+            w["neg_logw"] = np.empty(n, np.float32)
+        r = k = 0
+        for i in chunk_ids:
+            p = self._load(self.chunks[i])
+            m = len(p["X"])
+            if self._x_table is not None:
+                codes = np.searchsorted(self._x_table.view(np.uint16), p["X"].view(np.uint16)).astype(np.uint8)
+                if not np.array_equal(self._x_table[codes].view(np.uint16), p["X"].view(np.uint16)):
+                    raise ValueError("policy rows stream: X changed after construction")
+                w["X"][r:r + m] = codes
+                del codes
+            else:
+                w["X"][r:r + m] = p["X"]
+            w["Y"][r:r + m] = p["Y"]
+            b = p["ball"]
+            w["ball"][r:r + m, :b.shape[1], :b.shape[2]] = b
+            w["mask"][r:r + m, :p["mask"].shape[1]] = p["mask"]
+            w["tgt"][r:r + m] = p["tgt"]
+            w["eflag"][r:r + m] = p["explore_flag"]; w["emargin"][r:r + m] = p["explore_margin"]
+            if w["vals"] is not None:
+                v = p["vals"][:, :B]
+                w["vals"][r:r + m, :v.shape[1]] = v
+            if self.legal_negatives:
+                cnt = p["neg_mask"].sum(1)
+                real = p["negs"][p["neg_mask"]]                 # row-major: row order, then slot order
+                w["neg_rows"][k:k + len(real), :real.shape[1]] = real
+                w["neg_start"][r:r + m] = k + np.cumsum(cnt) - cnt
+                w["neg_count"][r:r + m] = cnt
+                w["neg_logw"][r:r + m] = p["neg_logw"]
+                k += len(real)
+            r += m
+            del p
+        if r != n:
+            raise ValueError(f"policy rows stream: window filled {r} rows, its chunks declare {n}")
+        return w
+
+    @staticmethod
+    def _negative_batch(w, idx):
+        """``negs`` / ``neg_mask`` of rows ``idx`` exactly as the padded window sliced to the
+        batch's widest row: card slots padded to the window's widest negative with -1."""
+        counts = w["neg_count"][idx]
+        width = int(counts.max(initial=0))
+        _N, NC, ndt, mdt = w["neg_width"]
+        negs = np.full((len(idx), width, NC), -1, ndt)
+        mask = np.zeros((len(idx), width), mdt)
+        total = int(counts.sum())
+        if total:
+            rows = np.repeat(np.arange(len(idx)), counts)
+            pos = np.arange(total) - np.repeat(np.cumsum(counts) - counts, counts)
+            negs[rows, pos] = w["neg_rows"][np.repeat(w["neg_start"][idx], counts) + pos]
+            mask[rows, pos] = True
+        return negs, mask
+
     def batches(self, batch_size: int, rng: np.random.Generator):
         """One pass: chunks in a fresh order, ``window`` at a time, rows shuffled within the window."""
+        if getattr(self, "_meta", None) is not None:
+            yield from self._batches_in_place(batch_size, rng)
+            return
         order = rng.permutation(len(self.chunks)); drawn = 0
         for start in range(0, len(order), self.window):
             parts = [self._load(self.chunks[i]) for i in order[start:start + self.window]]
@@ -402,6 +509,32 @@ class PolicyRowsStream:
                 yield out
             # Do not retain a completed window while the next window is loaded.
             del X, Y, ball, mask, tgt, vals, eflag, emargin, perm, out, negs, neg_mask, neg_logw
+
+    def _batches_in_place(self, batch_size: int, rng: np.random.Generator):
+        """``batches`` over in-place windows: the same rng draws, rows and batch arrays."""
+        order = rng.permutation(len(self.chunks)); drawn = 0
+        for start in range(0, len(order), self.window):
+            w = self._fill_window(order[start:start + self.window])
+            perm = rng.permutation(len(w["X"]))
+            out = None
+            for b in range(0, len(perm), batch_size):
+                if self.limit is not None and drawn >= self.limit:
+                    return
+                idx = perm[b:b + batch_size]
+                if self.limit is not None:
+                    idx = idx[:self.limit - drawn]
+                drawn += len(idx)
+                x = w["X"][idx]
+                out = {"x": self._x_table[x] if self._x_table is not None else x, "y": w["Y"][idx],
+                       "ball": w["ball"][idx], "mask": w["mask"][idx], "tgt": w["tgt"][idx],
+                       "explore_flag": w["eflag"][idx], "explore_margin": w["emargin"][idx]}
+                if w["vals"] is not None:
+                    out["vals"] = w["vals"][idx]
+                if self.legal_negatives:
+                    out["negs"], out["neg_mask"] = self._negative_batch(w, idx)
+                    out["neg_logw"] = w["neg_logw"][idx]
+                yield out
+            del w, perm, out
 
     @staticmethod
     def tensors(batch: Mapping[str, Any], device, copy=None) -> dict[str, torch.Tensor]:

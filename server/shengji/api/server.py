@@ -1722,6 +1722,8 @@ async def _resume_point(user_id: int | None, game_id: Any, options: dict) -> dic
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
     await ws.accept()
+    if ws.query_params.get("heartbeat") == "1":
+        await send(ws, {"type": "heartbeat_ready"})
     room: Room | None = None
     me: Seat | None = None  # seat OBJECT — indexes shift when lobby seats leave
     my_gen = 0              # connection generation this socket owns
@@ -1765,6 +1767,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 conn.adopted = None
             if room is not None and room.aborted:
                 room, me = None, None
+            if t == "ping":
+                nonce = msg.get("nonce")
+                if type(nonce) is int and 0 <= nonce <= 9007199254740991:
+                    await send(ws, {"type": "pong", "nonce": nonce})
+                continue
             if room is None or me is None:
                 if t in matchmaking.QUEUE_MESSAGES:
                     await MATCHMAKER.handle(conn, msg, account_id())

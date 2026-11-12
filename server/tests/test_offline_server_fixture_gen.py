@@ -13,6 +13,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import gen_offline_server_fixtures as gen  # noqa: E402
 
@@ -56,3 +58,16 @@ def test_deck_rng_matches_its_typescript_port():
     # mulberry32's first outputs for seed 1 (web/src/offline/server/rng.ts)
     rng = gen.DeckRng(1)
     assert [rng.next_u32() for _ in range(3)] == [2693262067, 11749833, 2265367787]
+
+
+@pytest.mark.parametrize("failure", [True, False])
+def test_endpoint_failure_or_early_exit_does_not_wait_forever(monkeypatch, failure):
+    async def broken_endpoint(ws):
+        assert ws.query_params == {}
+        if failure:
+            raise ValueError("injected endpoint failure")
+    monkeypatch.setattr(gen.server, "ws_endpoint", broken_endpoint)
+    error = ValueError if failure else RuntimeError
+    message = "injected endpoint failure" if failure else "endpoint ended before"
+    with pytest.raises(error, match=message):
+        gen.play_session(12345, 1, gen.game_config(1))

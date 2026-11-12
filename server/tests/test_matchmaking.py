@@ -956,15 +956,20 @@ def _pump(client, srv):
     client.portal.call(srv.MATCHMAKER.pump)
 
 
-def test_ws_four_players_match_accept_and_land_in_a_started_rated_room(wsenv):
+@pytest.mark.parametrize("heartbeat", [False, True])
+def test_ws_four_players_match_accept_and_land_in_a_started_rated_room(wsenv, heartbeat):
     srv, store, client, clock = wsenv
     users = [_user(store, f"s{i}", f"Player{i}") for i in range(4)]
     for (uid, _), r in zip(users, (1400, 1200, 1200, 1000)):
         _set(store, uid, r)
-    with client.websocket_connect("/ws", headers=users[0][1]) as a, \
+    with client.websocket_connect("/ws?heartbeat=1" if heartbeat else "/ws", headers=users[0][1]) as a, \
             client.websocket_connect("/ws", headers=users[1][1]) as b, \
             client.websocket_connect("/ws", headers=users[2][1]) as c, \
             client.websocket_connect("/ws", headers=users[3][1]) as d:
+        if heartbeat:
+            assert _drain(a, "heartbeat_ready")["type"] == "heartbeat_ready"
+            a.send_json({"type": "ping", "nonce": 1})
+            assert _drain(a, "pong")["nonce"] == 1
         socks = [a, b, c, d]
         for ws in socks:
             ws.send_json({"type": "queue_join"})
@@ -990,6 +995,10 @@ def test_ws_four_players_match_accept_and_land_in_a_started_rated_room(wsenv):
         assert room.ratings is not None
         assert room.ratings.present == {0: uid[0], 1: uid[1], 2: uid[3], 3: uid[2]}
         # The adopted socket plays on as a seated socket: chat reaches the room.
+        if heartbeat:
+            a.send_json({"type": "ping", "nonce": 2})
+            assert _drain(a, "pong", tries=400)["nonce"] == 2
+            assert [s.user_id for s in room.seats] == by_seat
         a.send_json({"type": "chat", "text": "gl"})
         assert _drain(b, "chat", tries=400)["text"] == "gl"
         assert srv.MATCHMAKER.entries == {}

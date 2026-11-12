@@ -21,6 +21,7 @@ export type Rank = (typeof RANKS)[number];
 // ---------- Client -> Server ----------
 
 export type ClientMsg =
+  | { type: "ping"; nonce: number }
   | {
       type: "create_room";
       name: string;
@@ -222,6 +223,8 @@ export interface LeftMsg {
 }
 
 export type ServerMsg =
+  | { type: "heartbeat_ready" }
+  | { type: "pong"; nonce: number }
   | ErrorMsg
   | RoomMsg
   | GameState

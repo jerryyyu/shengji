@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { effectiveName, useAuth } from "../auth";
 import type { AuthUser } from "../auth";
 import { canAnimate } from "../motion";
@@ -65,14 +65,28 @@ function goTab(tab: Tab, active: Tab): void {
   else openTab(tab);
 }
 
-/** A phone's bottom tab bar: 49 pt over the home-indicator inset. */
+/** The Me tab's icon when signed in: the account's picture, or its initial
+ *  drawn by CSS so the tab's text stays "Me". */
+function TabAvatar({ user }: { user: AuthUser }) {
+  if (user.picture) return <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />;
+  const shown = effectiveName(user) || user.email;
+  return <span className="avatar tabbar-initial" aria-hidden="true" data-initial={shown.slice(0, 1).toUpperCase()} />;
+}
+
+/** A phone's tab bar: a floating glass pill over the page, above the home
+ *  indicator, with a lighter capsule under the active tab that slides to the
+ *  tab tapped. Signed in, Me shows the account's picture or initial. */
 export function TabBar({ active }: { active: Tab }) {
+  const account = useAuth();
+  const user = account.status === "in" ? account.user : null;
+  const index = TABS.findIndex((t) => t.tab === active);
   return (
-    <nav className="tabbar" aria-label="Main">
+    <nav className="tabbar" aria-label="Main" style={{ "--tab-index": index } as CSSProperties}>
+      <span className="tabbar-capsule" aria-hidden="true" />
       {TABS.map(({ tab, label, icon: Icon }) => (
         <button key={tab} type="button" className={`tabbar-item${tab === active ? " on" : ""}`}
                 aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
-          <Icon />
+          {tab === "me" && user ? <TabAvatar user={user} /> : <Icon />}
           <span>{label}</span>
         </button>
       ))}

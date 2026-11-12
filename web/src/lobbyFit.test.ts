@@ -1,12 +1,9 @@
 // @vitest-environment node
 /// <reference types="node" />
-// Guards the Play tab's vertical budget on a phone. jsdom does no layout, so
-// this resolves the lobby's padding, gap and tab-bar rules from index.css at
-// real iPhone sizes and adds the panel's content height as rendered in Chrome
-// (the guest lobby, the tallest: the name field instead of the rating chip).
-// The whole stack, down to the connection line, must fit between the status
-// bar and the tab bar on a 375x812 or larger phone; a shorter phone scrolls
-// inside a container that ends at the tab bar's top edge.
+// Guards the phone's tab pages against the floating tab bar. jsdom does no
+// layout, so this resolves the pill's geometry and the pages' bottom padding
+// from index.css at real iPhone insets: every page scrolls under the pill and
+// its last item ends clear of it.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -41,13 +38,6 @@ function rule(selector: string): Record<string, string> {
   return out;
 }
 
-/** The first value of a property across `selectors`, the last selector that sets it winning. */
-function cascade(prop: string, ...selectors: string[]): string | undefined {
-  let v: string | undefined;
-  for (const s of selectors) v = rule(s)[prop] ?? v;
-  return v;
-}
-
 interface Phone { name: string; w: number; h: number; top: number; bottom: number }
 
 /** A px length expression (calc, max, min, env) at a phone's safe-area insets. */
@@ -64,85 +54,54 @@ function length(expr: string, phone: Phone): number {
   return Function(`return (${js});`)() as number;
 }
 
-/** The top value of a padding shorthand, or a padding-top. */
-function topOf(padding: string): string {
-  const parts: string[] = [];
-  let depth = 0;
-  let cur = "";
-  for (const c of padding) {
-    if (c === "(") depth++;
-    if (c === ")") depth--;
-    if (c === " " && depth === 0) { if (cur) parts.push(cur); cur = ""; } else cur += c;
-  }
-  if (cur) parts.push(cur);
-  return parts[0];
-}
-
 // Phones in CSS px, portrait, with their status-bar and home-indicator insets.
 const IPHONE_15: Phone = { name: "iPhone 15/16", w: 393, h: 852, top: 59, bottom: 34 };
 const IPHONE_13_MINI: Phone = { name: "iPhone 13 mini", w: 375, h: 812, top: 50, bottom: 34 };
 const IPHONE_SE: Phone = { name: "iPhone SE", w: 375, h: 667, top: 20, bottom: 0 };
 
-/** The guest lobby panel's ten children (title down to the connection line)
- *  summed without gaps, as Chrome renders them at each width; the preview
- *  scales with the width. */
-const CONTENT: Record<number, { height: number; children: number }> = {
-  393: { height: 540.3, children: 10 },
-  375: { height: 530.9, children: 10 },
-};
-
-const PANEL = [".panel", ".lobby-panel", ".lobby-panel:has(.lobby-preview)",
-  ".home .lobby-panel:has(.lobby-preview)", ".home-narrow .lobby-panel:has(.lobby-preview)"];
-
-function lobbyTop(phone: Phone): number {
-  const narrow = rule(".home-narrow .screen.lobby-screen")["padding-top"];
-  return length(narrow ?? topOf(rule(".screen").padding), phone);
-}
-
-/** Height the Play stack needs from the top of the screen to the tab bar's bottom. */
-function needed(phone: Phone): number {
-  const panelPad = (side: "top" | "bottom") => {
-    const own = cascade(`padding-${side}`, ...PANEL);
-    const short = cascade("padding", ...PANEL);
-    return length(own ?? topOf(short!), phone);
-  };
-  const gap = length(cascade("gap", ...PANEL)!, phone);
-  const content = CONTENT[phone.w];
-  const bottomPad = length(rule(".home-narrow .home-body > .screen")["padding-bottom"], phone);
-  const tabbar = length(rule(".tabbar").height, phone);
-  return lobbyTop(phone) + panelPad("top") + content.height + gap * (content.children - 1)
-    + panelPad("bottom") + bottomPad + tabbar;
+/** The pill's top edge, measured up from the screen's bottom. */
+const pillTop = (phone: Phone) =>
+  length(rule(".home-narrow")["--tabbar-h"], phone) + length(rule(".home-narrow")["--tabbar-bottom"].replace(/var\(--[\w-]+\)/g, "0px"), phone);
+/** --tabbar-clear with the other two custom properties substituted. */
+function clear(phone: Phone): number {
+  const vars = rule(".home-narrow");
+  const expr = vars["--tabbar-clear"]
+    .replace("var(--tabbar-h)", vars["--tabbar-h"])
+    .replace("var(--tabbar-bottom)", vars["--tabbar-bottom"]);
+  return length(expr, phone);
 }
 
 describe("the Play tab on a phone", () => {
   it("keeps the plain screen's top padding above the lobby on both layouts", () => {
     expect(rule(".home-narrow .screen.lobby-screen")["padding-top"]).toBeUndefined();
-    for (const phone of [IPHONE_15, IPHONE_13_MINI, IPHONE_SE]) {
-      expect(lobbyTop(phone)).toBe(Math.max(12, phone.top));
-    }
     const wide = rule(".home-wide .home-body > .screen.lobby-screen")["padding-top"]
       ?? rule(".home-wide .home-body > .screen")["padding-top"];
     expect(wide).toBe("12px");
   });
 
-  for (const phone of [IPHONE_15, IPHONE_13_MINI]) {
-    it(`fits the whole stack above the tab bar on an ${phone.name} (${phone.w}x${phone.h})`, () => {
-      expect(needed(phone)).toBeLessThanOrEqual(phone.h);
+  it("the tab bar floats: a 64px pill, 16px in from the sides, above the home indicator", () => {
+    const bar = rule(".tabbar");
+    expect(bar.position).toBe("absolute");
+    expect(bar.height).toBe("var(--tabbar-h)");
+    expect(rule(".home-narrow")["--tabbar-h"]).toBe("64px");
+    expect(bar["border-radius"]).toBe("32px");
+    expect(bar.left).toBe("max(16px, env(safe-area-inset-left, 0px))");
+    expect(bar.right).toBe("max(16px, env(safe-area-inset-right, 0px))");
+    expect(rule(".home-narrow")["--tabbar-bottom"]).toBe("max(8px, env(safe-area-inset-bottom, 0px))");
+    expect(bar["backdrop-filter"]).toBe("blur(24px) saturate(180%)");
+    expect(bar["-webkit-backdrop-filter"]).toBe("blur(24px) saturate(180%)");
+  });
+
+  for (const phone of [IPHONE_15, IPHONE_13_MINI, IPHONE_SE]) {
+    it(`every tab page scrolls under the pill and ends clear of it on an ${phone.name}`, () => {
+      expect(pillTop(phone)).toBe(64 + Math.max(8, phone.bottom));
+      expect(clear(phone)).toBeGreaterThan(pillTop(phone));
+      expect(rule(".home-narrow .home-body > .screen")["padding-bottom"]).toBe("var(--tabbar-clear)");
+      expect(rule(".home-narrow .home-col")["padding-bottom"]).toBe("var(--tabbar-clear)");
+      // the scroller is the whole screen, so the page passes under the pill
+      expect(rule(".screen")["overflow-y"]).toBe("auto");
+      expect(rule(".home-body > .screen").height).toBe("100%");
+      expect(rule(".home-body")["min-height"]).toBe("0");
     });
   }
-
-  it("scrolls on an iPhone SE inside a container that ends at the tab bar", () => {
-    expect(needed(IPHONE_SE)).toBeGreaterThan(IPHONE_SE.h);
-    const screen = rule(".screen");
-    expect(screen["overflow-y"]).toBe("auto");
-    expect(rule(".panel").margin).toBe("auto");
-    expect(rule(".home").display).toBe("flex");
-    expect(rule(".home")["flex-direction"]).toBe("column");
-    expect(rule(".home-body")["min-height"]).toBe("0");
-    expect(rule(".home-body > .screen").height).toBe("100%");
-    const bar = rule(".tabbar");
-    expect(bar.flex).toBe("none");
-    expect(bar.position ?? "static").toBe("static");
-    expect(length(bar.height, IPHONE_15)).toBe(49 + IPHONE_15.bottom);
-  });
 });

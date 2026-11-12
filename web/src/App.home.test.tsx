@@ -99,9 +99,33 @@ describe("the bars", () => {
     const items = [...host.querySelectorAll<HTMLButtonElement>(".tabbar .tabbar-item")];
     expect(items.map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Me"]);
     expect(items[0].getAttribute("aria-current")).toBe("page");
-    expect(items.every((b) => b.querySelector("svg"))).toBe(true);
+    expect(items.slice(0, 2).every((b) => b.querySelector("svg"))).toBe(true);
+    // signed in, Me shows the account's initial in place of the person icon
+    expect(items[2].querySelector("svg")).toBeNull();
+    expect(items[2].querySelector(".avatar")?.getAttribute("data-initial")).toBe("J");
     expect(host.querySelector(".topbar")).toBeNull();
     expect(host.querySelector(".lobby-panel")).not.toBeNull();
+  });
+
+  it("a guest's Me tab keeps the person icon", async () => {
+    signedIn = false;
+    await renderApp();
+    const me = [...host.querySelectorAll<HTMLButtonElement>(".tabbar .tabbar-item")][2];
+    expect(me.querySelector("svg")).not.toBeNull();
+    expect(me.querySelector(".avatar")).toBeNull();
+  });
+
+  it("the selected capsule follows the active tab", async () => {
+    await renderApp();
+    const bar = () => host.querySelector<HTMLElement>(".tabbar")!;
+    expect(bar().querySelectorAll(".tabbar-capsule")).toHaveLength(1);
+    expect(bar().style.getPropertyValue("--tab-index")).toBe("0");
+    const { openTab } = await import("./home/route");
+    await act(async () => { openTab("leaderboard"); await new Promise((r) => setTimeout(r, 0)); });
+    expect(bar().style.getPropertyValue("--tab-index")).toBe("1");
+    expect(host.querySelector(".tabbar-item.on")?.textContent).toBe("Leaderboard");
+    await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
+    expect(bar().style.getPropertyValue("--tab-index")).toBe("2");
   });
 
   it("at 700px and up the top bar has four tabs centred and the account chip, which opens Stats", async () => {

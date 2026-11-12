@@ -5029,7 +5029,6 @@ button.games-row { cursor: pointer; }
 .home { height: 100%; display: flex; flex-direction: column; background: var(--page); }
 .home-body { flex: 1; min-height: 0; position: relative; }
 .home-body > .screen { height: 100%; }
-.home-narrow .home-body > .screen { padding-bottom: 12px; }
 /* A phone's swipe between tabs (useTabSwipe.ts) moves the page body by
    --tab-swipe-x only while data-tab-swipe is set, so at rest it keeps no
    transform; the frame clips it meanwhile so the page never scrolls sideways. */
@@ -5041,18 +5040,59 @@ button.games-row { cursor: pointer; }
 }
 .home-wide .home-body > .screen { padding-top: 12px; }
 
+/* A phone's tab bar floats over the page as a glass pill, 16px in from the
+   sides and above the home indicator; the page scrolls on under it, and every
+   tab page ends --tabbar-clear above the screen's bottom so its last item
+   clears the pill. Without backdrop-filter the pill is opaque. */
+.home-narrow {
+  position: relative;
+  --tabbar-h: 64px;
+  --tabbar-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  --tabbar-clear: calc(var(--tabbar-h) + var(--tabbar-bottom) + 16px);
+}
+.home-narrow .home-body > .screen { padding-bottom: var(--tabbar-clear); }
+.home-narrow .home-body > .screen.home-page { padding-bottom: 0; }
+.home-narrow .home-col { padding-bottom: var(--tabbar-clear); }
+/* the queue bar rides just above the pill */
+.home-narrow > .q-bar { margin-bottom: calc(var(--tabbar-h) + var(--tabbar-bottom) + 8px); }
+.home-narrow:has(> .q-bar) .home-body > .screen { padding-bottom: 12px; }
+.home-narrow:has(> .q-bar) .home-col { padding-bottom: 16px; }
 .tabbar {
-  flex: none;
+  position: absolute;
+  z-index: 40;
+  left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: var(--tabbar-bottom);
+  height: var(--tabbar-h);
   display: flex;
-  justify-content: space-around;
-  align-items: flex-start;
-  height: calc(49px + env(safe-area-inset-bottom, 0px));
-  padding: 0 max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
-    max(10px, env(safe-area-inset-left, 0px));
-  background: rgba(22, 26, 34, 0.94);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border-top: 0.5px solid rgba(255, 255, 255, 0.14);
+  align-items: stretch;
+  padding: 6px;
+  box-sizing: border-box;
+  border-radius: 32px;
+  background: rgba(28, 33, 41, 0.55);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tabbar,
+  .topbar-tabs { background: #1c2129; }
+}
+/* The active tab's capsule: one third of the pill, moved to the tab. */
+.tabbar-capsule {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 6px;
+  width: calc((100% - 12px) / 3);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateX(calc(var(--tab-index, 0) * 100%));
+  transition: transform 250ms var(--ease-out-expo);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-capsule { transition: none; }
 }
 /* The iOS app's keyboard shrinks the WebView, but 100dvh keeps the old height
    there, so the page follows the shrunken frame instead and its screen can
@@ -5061,14 +5101,15 @@ body.keyboard-open .app { height: 100%; }
 body.keyboard-open .tabbar { display: none; }
 .tabbar-item {
   appearance: none;
+  position: relative;
   flex: 1;
-  max-width: 120px;
-  height: 49px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
-  padding: 6px 0 0;
+  padding: 0;
   border: 0;
   background: none;
   color: var(--muted);
@@ -5089,6 +5130,9 @@ body.keyboard-open .tabbar { display: none; }
 .tabbar-item.on svg { fill: currentColor; stroke-width: 1.3; }
 .tabbar-item.on svg .nofill { fill: none; }
 .tabbar-item.on svg .pip { fill: #161a22; stroke: none; }
+.tabbar-item .avatar { width: 26px; height: 26px; font-size: 12px; }
+.tabbar-initial::before { content: attr(data-initial); }
+.tabbar-item.on .avatar { box-shadow: 0 0 0 1.5px var(--gold); }
 
 .topbar {
   flex: none;
@@ -5115,20 +5159,34 @@ body.keyboard-open .tabbar { display: none; }
 }
 .topbar-mark b { font-size: 24px; color: var(--gold); letter-spacing: 0.02em; }
 .topbar-mark span { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--text-dim); }
-.topbar-tabs { grid-column: 2; display: flex; gap: 6px; align-self: stretch; }
+/* The wide tabs: the same glass pill, the active tab in a lighter capsule. */
+.topbar-tabs {
+  grid-column: 2;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 22px;
+  background: rgba(28, 33, 41, 0.55);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 6px 18px rgba(0, 0, 0, 0.25);
+}
 .topbar-tab {
   appearance: none;
-  height: 56px;
-  padding: 0 16px;
+  height: 36px;
+  padding: 0 18px;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 18px;
   background: none;
   color: #aab2bf;
   font-size: var(--fs-15);
   font-weight: 500;
   cursor: pointer;
 }
-.topbar-tab.on { color: #fff; border-bottom-color: var(--gold); }
+/* drawn 36px tall; ::before makes the tap area 44px */
+.topbar-tab { position: relative; }
+.topbar-tab::before { content: ""; position: absolute; inset: -4px 0; }
+.topbar-tab.on { color: var(--gold); background: rgba(255, 255, 255, 0.1); font-weight: 600; }
 .topbar-end { grid-column: 3; justify-self: end; display: flex; align-items: center; min-width: 0; }
 .topbar-end > .topbar-tab { height: 56px; }
 .topbar-signin { min-height: 36px; }
@@ -5156,9 +5214,8 @@ body.keyboard-open .tabbar { display: none; }
 .avatar-guest { color: var(--muted); box-shadow: none; }
 
 /* Play on a phone: the lobby keeps the plain screen's top padding (the
-   status-bar inset or 12px) and drops the panel's bottom padding, so the
-   stack sits between the status bar and the tab bar. A shorter phone
-   scrolls, and the scroll ends at the tab bar's top edge. */
+   status-bar inset or 12px) and drops the panel's bottom padding; it scrolls
+   under the floating tab bar and ends clear of it. */
 .home-narrow .lobby-panel:has(.lobby-preview) { padding-bottom: 0; }
 
 /* The Play tab: the title and preview, the guest's name or the account chip,

@@ -1,13 +1,19 @@
 import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
 import Card from "./Card";
-import { useId } from "react";
+import { useId, useState } from "react";
+import { useAuth } from "../auth";
+import GoogleSignIn from "./GoogleSignIn";
 import ResultDialog from "./ResultDialog";
 import LeaveButton from "./LeaveButton";
+import { MoveRing } from "./MoveClock";
+import { RING_SECS } from "../useMoveClock";
 
 interface RoundEndModalProps {
   state: GameState;
   result: RoundResult;
+  /** Seconds left on your move timer for Next (ranked tables), else null. */
+  clock?: number | null;
 }
 
 /** Name the actual players, not the seat numbers: "Blue team (seats 0 & 2)"
@@ -37,6 +43,56 @@ function TeamTitle({ team, state, what }: { team: 0 | 1; state: GameState; what:
   return <><span className="title-team">{colour} team · </span>{members} win {what}</>;
 }
 
+function signedDelta(delta: number): string {
+  if (delta > 0) return `▲ +${delta}`;
+  if (delta < 0) return `▼ −${Math.abs(delta)}`;
+  return "±0";
+}
+
+/** The viewer's own rating after the round (the server sends it only to a
+ *  signed-in seat, once the round is stored); a guest at a deployment with
+ *  sign-in gets Sign in to be ranked in its place. ``total`` shows the whole
+ *  game's change where a game was won. */
+export function RatingLine({ result, total }: { result: RoundResult; total: boolean }) {
+  const account = useAuth();
+  const [signingIn, setSigningIn] = useState(false);
+  const rating = result.rating;
+  if (rating) {
+    const game = total && rating.game_delta !== undefined ? rating.game_delta : null;
+    const tone = (d: number) => (d > 0 ? "delta-up" : d < 0 ? "delta-dn" : "delta-flat");
+    return (
+      <div className="rating-line">
+        <span>Your rating <b>{rating.rating}</b></span>
+        <span className="rating-deltas">
+          <span className={`rating-delta ${tone(rating.delta)}`}>{signedDelta(rating.delta)}</span>
+          {game !== null ? (
+            <span className={`rating-game ${tone(game)}`}>
+              {game > 0 ? "+" : game < 0 ? "−" : "±"}{Math.abs(game)} this game
+            </span>
+          ) : null}
+        </span>
+      </div>
+    );
+  }
+  if (account.status !== "out" || !account.clientId) return null;
+  return (
+    <div className="rating-guest">
+      {signingIn ? (
+        <GoogleSignIn clientId={account.clientId} />
+      ) : (
+        <button className="rating-signin" onClick={() => setSigningIn(true)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+               strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 4h8v5a4 4 0 0 1-8 0z" />
+            <path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6" />
+          </svg>
+          Sign in to be ranked
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Card points: 5s are worth 5, 10s and kings 10, everything else 0. */
 function cardPoints(code: string): number {
   const rank = code.slice(1);
@@ -45,7 +101,7 @@ function cardPoints(code: string): number {
   return 0;
 }
 
-export default function RoundEndModal({ state, result }: RoundEndModalProps) {
+export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
   const titleId = useId();
   const nextBankerName =
     state.players.find((p) => p.seat === result.next_banker)?.name ?? `Seat ${result.next_banker}`;
@@ -73,6 +129,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           <p className="victory-sub">
             Final levels — Blue: {result.new_levels[0]} · Orange: {result.new_levels[1]}
           </p>
+          <RatingLine result={result} total />
           <button
             className="btn primary big"
             onClick={() => conn.leaveToLobby()}
@@ -84,6 +141,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
     );
   }
 
+  const levels = result.level_change === 1 ? "level" : "levels";
   return (
     <ResultDialog titleId={titleId}>
       <div className="panel modal">
@@ -91,74 +149,92 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           <TeamTitle team={result.winner_team} state={state} what="the round" />
         </h2>
 
-        {result.kitty_cards.length > 0 && (
-          <div className="kitty-reveal">
-            <div className="kitty-reveal-label">
-              {bankerName ? `Buried by ${bankerName}` : "Buried"} · {buriedPoints} pts
-            </div>
-            <div className="kitty-cards">
-              {result.kitty_cards.map((code, i) => (
-                <Card key={i} code={code} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="result-grid">
-          <span className="result-label">Trick points</span>
-          <span className="result-value">{trickPoints}</span>
-
-          {result.kitty_points > 0 && (
-            <>
-              <span className="result-label">Kitty bonus</span>
-              <span className="result-value">+{result.kitty_points}</span>
-            </>
-          )}
-
-          <span className="result-label total">Total</span>
-          <span className="result-value total">
-            {total} <span className="result-note">(80 needed)</span>
+        {/* the outcome first; how it was scored waits behind Details */}
+        <div className="result-headline">
+          <span className={`result-change team${result.winner_team}`}>
+            {result.point_scored ? "Game won" : `+${result.level_change} ${levels}`}
           </span>
-
-          <span className="result-label">
-            {result.point_scored ? "Result" : "Level change"}
-          </span>
-          <span className="result-value">
-            {result.point_scored
-              ? `${teamName(result.winner_team, state)} wins the game`
-              : `+${result.level_change}`}
-          </span>
-
-          {result.point_scored ? (
-            <>
-              <span className="result-label">Games won</span>
-              <span className="result-value">
-                <span className="team-dot t0" /> {result.games_won[0]}
-                <span className="team-dot t1" style={{ marginLeft: 12 }} />{" "}
-                {result.games_won[1]}
-              </span>
-            </>
-          ) : null}
-
-          <span className="result-label">
-            {result.point_scored ? "Levels restart at" : "New levels"}
-          </span>
-          <span className="result-value">
+          <span className="result-levels">
+            {result.point_scored ? "Levels restart at " : "Now "}
             <span className="team-dot t0" /> {result.new_levels[0]}
-            <span className="team-dot t1" style={{ marginLeft: 12 }} /> {result.new_levels[1]}
+            <span className="team-dot t1" /> {result.new_levels[1]}
           </span>
-
-          <span className="result-label">Next banker</span>
-          <span className="result-value">{nextBankerName}</span>
+          <span className="result-score">Attackers {total} of 80</span>
         </div>
 
-        <p className="result-verdict">
-          {result.point_scored
-            ? `${teamName(result.winner_team, state)} held Ace and wins the game — levels restart at ${result.new_levels[0]} and play continues.`
-            : total >= 80
-            ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
-            : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
-        </p>
+        <RatingLine result={result} total={result.point_scored} />
+
+        <details className="result-details">
+          <summary>Details</summary>
+          {result.kitty_cards.length > 0 && (
+            <div className="kitty-reveal">
+              <div className="kitty-reveal-label">
+                {bankerName ? `Buried by ${bankerName}` : "Buried"} · {buriedPoints} pts
+              </div>
+              <div className="kitty-cards">
+                {result.kitty_cards.map((code, i) => (
+                  <Card key={i} code={code} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="result-grid">
+            <span className="result-label">Trick points</span>
+            <span className="result-value">{trickPoints}</span>
+
+            {result.kitty_points > 0 && (
+              <>
+                <span className="result-label">Kitty bonus</span>
+                <span className="result-value">+{result.kitty_points}</span>
+              </>
+            )}
+
+            <span className="result-label total">Total</span>
+            <span className="result-value total">
+              {total} <span className="result-note">(80 needed)</span>
+            </span>
+
+            <span className="result-label">
+              {result.point_scored ? "Result" : "Level change"}
+            </span>
+            <span className="result-value">
+              {result.point_scored
+                ? `${teamName(result.winner_team, state)} wins the game`
+                : `+${result.level_change}`}
+            </span>
+
+            {result.point_scored ? (
+              <>
+                <span className="result-label">Games won</span>
+                <span className="result-value">
+                  <span className="team-dot t0" /> {result.games_won[0]}
+                  <span className="team-dot t1" style={{ marginLeft: 12 }} />{" "}
+                  {result.games_won[1]}
+                </span>
+              </>
+            ) : null}
+
+            <span className="result-label">
+              {result.point_scored ? "Levels restart at" : "New levels"}
+            </span>
+            <span className="result-value">
+              <span className="team-dot t0" /> {result.new_levels[0]}
+              <span className="team-dot t1" style={{ marginLeft: 12 }} /> {result.new_levels[1]}
+            </span>
+
+            <span className="result-label">Next banker</span>
+            <span className="result-value">{nextBankerName}</span>
+          </div>
+
+          <p className="result-verdict">
+            {result.point_scored
+              ? `${teamName(result.winner_team, state)} held Ace and wins the game — levels restart at ${result.new_levels[0]} and play continues.`
+              : total >= 80
+              ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
+              : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
+          </p>
+        </details>
 
         {(() => {
           // Everyone reviews the round at their own pace: the server only
@@ -172,10 +248,11 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           return (
             <>
               <button
-                className="btn primary big"
+                className={`btn primary big${!iAmReady && clock !== null && clock <= RING_SECS ? " clock-low" : ""}`}
                 disabled={iAmReady}
                 onClick={() => conn.send({ type: "next_round" })}
               >
+                {iAmReady ? null : <MoveRing left={clock} />}
                 {iAmReady ? "Waiting for others…" : "Next round"}
               </button>
               {humans.length > 1 && (
@@ -189,7 +266,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
               {/* The modal dialog makes the HUD inert, so its Leave control
                   is unreachable here; without this, a player waiting on
                   others has no way out until everyone confirms. */}
-              <LeaveButton variant="dialog" />
+              <LeaveButton variant="dialog" ranked={!!state.matched} />
             </>
           );
         })()}

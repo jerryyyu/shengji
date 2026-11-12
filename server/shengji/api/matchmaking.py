@@ -722,10 +722,12 @@ class Matchmaker:
         before choosing the room or the pair flow. A room wins a code both
         hold, which only codes issued before the shared space can do."""
         key = str(user_id) if user_id is not None else f"socket:{id(conn)}"
-        if not self.lookup_limiter.allow(key, self.clock()):
-            return {"type": "error", "code": "rate_limited",
-                    "message": "Too many requests; wait a minute."}
         code = normalize_code(msg.get("code"))
+        if not self.lookup_limiter.allow(key, self.clock()):
+            # ``lookup`` marks this refusal as the lookup's one reply; the
+            # queue and pair messages refuse with the same code untagged.
+            return {"type": "error", "code": "rate_limited", "lookup": code[:CODE_LEN * 2],
+                    "message": "Too many requests; wait a minute."}
         kind = "none"
         if len(code) == CODE_LEN and code.isascii() and code.isalnum():
             if self.room_live(code):

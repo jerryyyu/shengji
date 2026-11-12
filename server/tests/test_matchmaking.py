@@ -1177,6 +1177,7 @@ def test_code_lookup_is_rate_limited_per_account():
         assert env.mm.code_lookup(conn, {"code": "ABCD"}, 1)["type"] == "code_kind"
     refused = env.mm.code_lookup(conn, {"code": "ABCD"}, 1)
     assert refused["type"] == "error" and refused["code"] == "rate_limited"
+    assert refused["lookup"] == "ABCD"
     env.clock.advance(mm.LOOKUP_LIMIT[1] + 1)
     assert env.mm.code_lookup(conn, {"code": "ABCD"}, 1)["type"] == "code_kind"
 

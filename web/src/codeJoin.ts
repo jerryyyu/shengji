@@ -123,9 +123,10 @@ export class CodeStore {
   }
 
   private onMessage(msg: ServerMsg): void {
-    // rate_limited is the one refusal code_lookup has; any other error
-    // answers some other request and leaves the lookup waiting.
-    const answer = (msg.type === "code_kind" || (msg.type === "error" && msg.code === "rate_limited"));
+    // A lookup's one reply is its code_kind or a refusal tagged ``lookup``;
+    // any other error answers some other request and leaves it waiting.
+    const refused = msg.type === "error" && msg.lookup !== undefined;
+    const answer = msg.type === "code_kind" || refused;
     if (answer && this.stale.length > 0
         && (msg.type === "error" || msg.code === this.stale[0])) {
       this.stale.shift();
@@ -134,7 +135,7 @@ export class CodeStore {
     const p = this.view.pending;
     if (!p) return;
     if (msg.type === "error") {
-      if (msg.code !== "rate_limited") return;
+      if (!refused) return;
       this.set({ pending: null });
       if (p.from === "pair") queue.showPartyError(msg.message);
       else this.set({ playError: msg.message });

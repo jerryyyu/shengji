@@ -695,7 +695,7 @@ describe("a code lookup that is interrupted or refused", () => {
     act(() => { setter.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
   };
   const lookups = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "code_lookup");
-  const LIMITED = { type: "error", code: "rate_limited", message: "Too many requests; wait a minute." };
+  const LIMITED = { type: "error", code: "rate_limited", lookup: "FG3K", message: "Too many requests; wait a minute." };
   const reconnect = () => {
     fakeClock();
     act(() => ws().close());
@@ -784,7 +784,7 @@ describe("a pair-sheet lookup the player walks away from", () => {
     click(pairJoinButton());
     expect(lastSent()).toEqual({ type: "code_lookup", code });
   };
-  const LIMITED = { type: "error", code: "rate_limited", message: "Too many requests; wait a minute." };
+  const LIMITED = { type: "error", code: "rate_limited", lookup: "FG3K", message: "Too many requests; wait a minute." };
 
   it("Cancel, then a late pair answer: no party_join and nothing shown", async () => {
     await renderApp();

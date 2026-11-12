@@ -20,7 +20,7 @@ import { queue } from "./queue/store";
 
 const say = (m: unknown) => { for (const fn of [...link.msg]) fn(m); };
 const status = (s: string) => { for (const fn of [...link.status]) fn(s); };
-const LIMITED = { type: "error", code: "rate_limited", message: "Too many requests; wait a minute." };
+const LIMITED = { type: "error", code: "rate_limited", lookup: "FG3K", message: "Too many requests; wait a minute." };
 
 beforeEach(() => {
   sent.length = 0;
@@ -50,6 +50,26 @@ describe("a refused lookup", () => {
     say(LIMITED);
     expect(queue.view.partyError).toBe(LIMITED.message);
     expect(codes.view.playError).toBeNull();
+  });
+
+  it("a queue or pair message's own rate_limited leaves the lookup waiting", () => {
+    codes.lookup("WXYZ", "play");
+    say({ type: "error", code: "rate_limited", message: "Too many requests; wait a minute." });
+    expect(codes.view.pending).toEqual({ code: "WXYZ", from: "play" });
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(codes.view.room).toMatchObject({ code: "WXYZ", from: "play" });
+  });
+
+  it("a queue or pair message's own rate_limited is not taken for a cancelled lookup's reply", () => {
+    queue.openSheet("party");
+    codes.lookup("WXYZ", "pair");
+    codes.cancel();
+    say({ type: "error", code: "rate_limited", message: "Too many requests; wait a minute." });
+    codes.lookup("WXYZ", "play");
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(codes.view.pending).toEqual({ code: "WXYZ", from: "play" });
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(codes.view.room).toMatchObject({ code: "WXYZ", from: "play" });
   });
 
   it("an unrelated error leaves the lookup waiting", () => {

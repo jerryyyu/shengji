@@ -61,6 +61,8 @@ export interface ErrorMsg {
   /** Machine-readable case. Typed so a new server code cannot be handled by
    *  a stale client branch that silently falls through to a generic toast. */
   code?: ErrorCode;
+  /** Set on a refused code_lookup only: the code it was asked about. */
+  lookup?: string;
 }
 
 export interface RoomPlayer {

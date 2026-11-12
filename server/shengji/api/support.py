@@ -8,7 +8,8 @@ success to its sender and is not stored.
 
 ``GET /support`` and ``GET /privacy`` answer with the built page's
 ``index.html`` so a deep link or a reload lands on the page; the web app
-picks the screen from the path.
+picks the screen from the path. ``GET /rules`` and ``GET /rules/zh`` answer
+with the static rules pages, which need no script.
 """
 
 from __future__ import annotations
@@ -143,19 +144,41 @@ async def post_support(body: SupportPost, request: Request) -> dict:
     return {"ok": True}
 
 
+# Static rules pages built from web/public/rules/: each URL answers with its
+# own index.html, with or without the trailing slash, so the canonical
+# address (no slash) is a 200 rather than the static mount's redirect.
+RULES_PAGES = {"/rules": "rules/index.html", "/rules/zh": "rules/zh/index.html"}
+
+
+def _html(file: Path) -> FileResponse:
+    if not file.is_file():
+        raise HTTPException(status_code=404, detail="Not found.")
+    return FileResponse(file, media_type="text/html",
+                        headers={"Cache-Control": "no-cache"})
+
+
+def _static_page(file: Path):
+    """A handler with no parameters, so no request value can choose the file."""
+
+    def handler() -> FileResponse:
+        return _html(file)
+
+    return handler
+
+
 def register_support(app, dist: Path) -> None:
-    """The API route and the two page routes; call before the static mount,
+    """The API route and the page routes; call before the static mount,
     whose catch-all would otherwise answer ``/support`` with a 404."""
 
     def page() -> FileResponse:
-        index = dist / "index.html"
-        if not index.is_file():
-            raise HTTPException(status_code=404, detail="Not found.")
-        return FileResponse(index, media_type="text/html",
-                            headers={"Cache-Control": "no-cache"})
+        return _html(dist / "index.html")
 
     pages = APIRouter()
     for path in ("/support", "/support/", "/privacy", "/privacy/"):
         pages.add_api_route(path, page, methods=["GET", "HEAD"], include_in_schema=False)
+    for path, rel in RULES_PAGES.items():
+        for variant in (path, path + "/"):
+            pages.add_api_route(variant, _static_page(dist / rel), methods=["GET", "HEAD"],
+                                include_in_schema=False)
     app.include_router(router)
     app.include_router(pages)

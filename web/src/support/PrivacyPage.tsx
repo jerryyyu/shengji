@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 
-export const EFFECTIVE_DATE = "2026-11-11";
+export const EFFECTIVE_DATE = "2026-11-12";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -123,6 +123,16 @@ export default function PrivacyPage() {
             any signed-in partner you played with. To delete your account, send a message through the{" "}
             <SupportLink /> with the topic Account while you are signed in, and we will delete it.
             You can remove single games from your history yourself in My games.
+          </p>
+        </Section>
+
+        <Section title="Automated play">
+          <p>
+            Every seat is for a person or for one of the game’s own computer players. AI agents,
+            LLM-driven tools, browser automation and other automated clients must not create or join
+            rooms, queue for matches, play games, or act on behalf of a player, whether through this
+            page, the app or the server’s connections. Reading and linking to the public pages, such
+            as the rules, is fine.
           </p>
         </Section>
 

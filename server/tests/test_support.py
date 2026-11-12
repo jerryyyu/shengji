@@ -1,5 +1,6 @@
-"""The support form (``POST /api/support``) and the ``/support`` and
-``/privacy`` page routes (``shengji.api.support``).
+"""The support form (``POST /api/support``), the ``/support`` and
+``/privacy`` page routes, and the crawler files and static rules pages
+served from ``web/public`` (``shengji.api.support``).
 
 Messages land in a private data dir; the answer never carries what was
 stored. The page routes are checked on a bare app with a fake build, the way
@@ -8,6 +9,8 @@ the static mount is checked in ``test_web_cache_headers``.
 from __future__ import annotations
 
 import json
+import shutil
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -176,3 +179,93 @@ def test_the_pages_are_404_without_a_build(tmp_path):
     assert c.get("/support").status_code == 404
     assert c.get("/privacy").status_code == 404
 
+
+
+PUBLIC = Path(__file__).resolve().parents[2] / "web" / "public"
+AGENT_CLAUSE = "must not create or join rooms"
+
+
+def _public_client(tmp_path):
+    """The real ``web/public`` files in a fake build, as Vite copies them."""
+    shutil.copytree(PUBLIC, tmp_path, dirs_exist_ok=True)
+    return _page_client(tmp_path)
+
+
+@pytest.mark.parametrize("path, content_type, first", [
+    ("/robots.txt", "text/plain", "# Sheng Ji"),
+    ("/llms.txt", "text/plain", "# Sheng Ji"),
+    ("/sitemap.xml", "xml", "<?xml"),
+    ("/rules", "text/html", "<!doctype html>"),
+    ("/rules/", "text/html", "<!doctype html>"),
+    ("/rules/zh", "text/html", "<!doctype html>"),
+    ("/rules/zh/", "text/html", "<!doctype html>"),
+])
+def test_crawler_files_and_rules_pages_are_served(tmp_path, path, content_type, first):
+    r = _public_client(tmp_path).get(path, follow_redirects=False)
+    assert r.status_code == 200, path
+    assert content_type in r.headers["content-type"]
+    assert r.text.startswith(first)
+
+
+def test_the_app_is_still_served_at_the_root(tmp_path):
+    r = _public_client(tmp_path).get("/")
+    assert r.status_code == 200
+    assert "<title>Sheng Ji</title>" in r.text
+
+
+def test_robots_points_to_the_sitemap_and_keeps_crawlers_off_the_api(tmp_path):
+    text = _public_client(tmp_path).get("/robots.txt").text
+    directives = [line for line in text.splitlines() if line and not line.startswith("#")]
+    assert directives == ["User-agent: *", "Allow: /", "Disallow: /api/", "Disallow: /ws",
+                          "Sitemap: https://shengji.fly.dev/sitemap.xml"]
+    assert AGENT_CLAUSE in text
+
+
+def test_the_sitemap_lists_every_public_page(tmp_path):
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(_public_client(tmp_path).get("/sitemap.xml").content)
+    ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    locs = [e.text for e in root.findall("s:url/s:loc", ns)]
+    assert locs == ["https://shengji.fly.dev/" + p for p in ("", "rules", "rules/zh", "privacy")]
+
+
+def test_llms_txt_states_the_automated_play_clause(tmp_path):
+    text = _public_client(tmp_path).get("/llms.txt").text
+    assert AGENT_CLAUSE in text
+    assert "https://shengji.fly.dev/rules" in text and "https://shengji.fly.dev/rules/zh" in text
+
+
+@pytest.mark.parametrize("page, lang, other", [
+    ("rules/index.html", "en", "/rules/zh"),
+    ("rules/zh/index.html", "zh-Hans", "/rules"),
+])
+def test_rules_pages_carry_canonical_hreflang_and_valid_json_ld(page, lang, other):
+    import re
+
+    html = (PUBLIC / page).read_text(encoding="utf-8")
+    url = "https://shengji.fly.dev/" + page.removesuffix("/index.html")
+    assert f'<html lang="{lang}">' in html
+    assert f'<link rel="canonical" href="{url}" />' in html
+    assert 'hreflang="en" href="https://shengji.fly.dev/rules"' in html
+    assert 'hreflang="zh-Hans" href="https://shengji.fly.dev/rules/zh"' in html
+    assert f'href="{other}"' in html and 'href="/"' in html
+    [block] = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    graph = json.loads(block)["@graph"]
+    assert [node["@type"] for node in graph] == ["Article", "FAQPage"]
+    assert 4 <= len(graph[1]["mainEntity"]) <= 6
+    assert "<script src" not in html and 'type="module"' not in html
+
+
+def test_the_app_page_json_ld_parses():
+    import re
+
+    html = (PUBLIC.parent / "index.html").read_text(encoding="utf-8")
+    [block] = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    data = json.loads(block)
+    assert "VideoGame" in data["@type"] and data["url"] == "https://shengji.fly.dev/"
+
+
+def test_the_rules_routes_take_no_request_input(tmp_path):
+    r = _public_client(tmp_path).get("/rules?file=../../etc/passwd")
+    assert r.status_code == 200 and r.text.startswith("<!doctype html>")

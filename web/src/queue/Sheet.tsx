@@ -11,8 +11,8 @@ export const SHEET_IN_MS = 320;
 const FOCUSABLE =
   "a[href], button:not([disabled]), input:not([disabled]):not([type='hidden']), select:not([disabled]), " +
   "textarea:not([disabled]), [tabindex]:not([tabindex='-1']), [contenteditable]:not([contenteditable='false'])";
-/** Page siblings left live while a sheet is open: other modal layers (the
- *  ready check sits above a sheet) and announcements. */
+/** Page siblings left live while a sheet is open: other modal layers (a
+ *  dialog can sit above a sheet) and announcements. */
 const LEFT_LIVE = ".q-layer, [aria-modal='true'], [role='status'], [role='alert'], [aria-live]";
 
 /** Handed from a sheet that just closed to one that opens in the same

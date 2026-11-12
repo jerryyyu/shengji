@@ -87,7 +87,8 @@ class Env:
         if uid not in self.conns:
             self.player(uid, rating)
         await self.send(uid, "queue_join", **fields)
-        assert self.mm._entry(uid) is not None, self.conns[uid].sent
+        started = any(uid in humans_of(slots) for _, slots in self.started)
+        assert started or self.mm._entry(uid) is not None, self.conns[uid].sent
 
     async def pair(self, leader, partner, r1=1000.0, r2=1000.0):
         self.player(leader, r1)
@@ -97,11 +98,6 @@ class Env:
         await self.send(partner, "party_join", code=code)
         return self.mm._party(leader)
 
-    def match_of(self, uid):
-        e = self.mm._entry(uid)
-        return self.mm.matches.get(e.match_id) if e and e.match_id else None
-
-
 def run(coro):
     return asyncio.run(coro)
 
@@ -110,347 +106,397 @@ def humans_of(slots):
     return [s.user_id for s in slots if not s.is_bot]
 
 
-# ------------------------------------------------------------ the window
-def test_window_steps_and_bot_fill_are_the_named_constants():
+# ------------------------------------------------------- the constants
+def test_window_steps_timers_and_table_rules_are_the_named_constants():
     assert mm.BOT_FILL_SECS == 60.0
     assert mm.WINDOW_STEPS == ((20.0, 100.0), (40.0, 250.0))
     assert mm.window_for(0) == 100 and mm.window_for(19.9) == 100
     assert mm.window_for(20) == 250 and mm.window_for(39.9) == 250
     assert mm.window_for(40) == float("inf")
+    assert mm.WINDOW_FROM == 5
+    assert mm.AWAY_SECS == 10.0 and mm.TABLE_AWAY_SECS == 60.0
+    assert mm.TABLE_IDLE_SECS == 120.0
+    assert mm.SEAT_ORDER == (0, 1, 2, 3) and mm.PAIR_SEATS == ((0, 2), (1, 3))
 
 
-def test_the_anchor_takes_the_closest_ratings_inside_its_window():
-    async def go():
-        env = Env()
-        await env.join(1, 1000)              # the anchor: longest wait
-        env.clock.advance(1)
-        for uid, r in ((2, 1050), (3, 1090), (4, 1150), (5, 1020)):
-            await env.join(uid, r)
-        formed = env.mm.tick()
-        assert len(formed) == 1
-        assert set(formed[0].humans) == {1, 2, 3, 5}   # 1150 is outside +-100
-        assert env.mm._entry(4).match_id is None
-    run(go())
-
-
-def test_the_window_widens_with_the_anchors_wait():
-    async def go():
-        env = Env()
-        await env.join(1, 1000)
-        for uid in (2, 3, 4):
-            await env.join(uid, 1200)
-        assert env.mm.tick() == []           # anchor first: the 1200s wait for it
-        env.clock.advance(19.9)
-        assert env.mm.tick() == []
-        env.clock.advance(0.1)               # 20 s: +-250
-        assert len(env.mm.tick()) == 1
-
-        env = Env()
-        await env.join(1, 1000)
-        for uid in (2, 3, 4):
-            await env.join(uid, 1400)
-        env.clock.advance(39)
-        assert env.mm.tick() == []
-        env.clock.advance(1)                 # 40 s: any rating
-        assert len(env.mm.tick()) == 1
-    run(go())
-
-
-def test_front_of_line_entries_anchor_before_older_ones():
-    async def go():
-        env = Env()
-        await env.join(1, 1000)
-        env.clock.advance(5)
-        await env.join(2, 1500)
-        env.mm._entry(2).front = True
-        for uid in (3, 4, 5):
-            await env.join(uid, 1500)
-        formed = env.mm.tick()
-        assert set(formed[0].humans) == {2, 3, 4, 5}
-    run(go())
-
-
-# ------------------------------------------------------------- the teams
-def test_teams_take_the_pairing_with_the_smallest_average_gap():
-    slots = [mm.Slot(1, "a", 1400), mm.Slot(2, "b", 1200),
-             mm.Slot(3, "c", 1200), mm.Slot(4, "d", 1000)]
-    seats = mm.choose_teams(slots)
-    team0 = {seats[0].user_id, seats[2].user_id}
-    assert team0 == {1, 4} and seats[0].user_id == 1     # 1200 vs 1200: gap 0
-
-
-def test_a_pair_is_never_split_even_when_splitting_is_fairer():
-    slots = [mm.Slot(1, "a", 1400, "p"), mm.Slot(2, "b", 1400, "p"),
-             mm.Slot(3, "c", 1000), mm.Slot(4, "d", 1000)]
-    seats = mm.choose_teams(slots)
-    assert {seats[0].user_id, seats[2].user_id} == {1, 2}
-
-
-def test_with_bots_the_humans_are_spread_across_both_teams():
-    bot = mm.Slot(None, "", ratings.BOT_RATING)
-    # Two humans at 1000 and 1000 with bots: grouping the humans would be a
-    # zero gap too, but the spread pairing is preferred.
-    seats = mm.choose_teams([mm.Slot(1, "a", 1000), mm.Slot(2, "b", 1000), bot, bot])
-    assert seats[0].user_id == 1 and seats[1].user_id == 2
-    assert seats[2].is_bot and seats[3].is_bot
-
-
-# -------------------------------------------------------------- bot fill
-@pytest.mark.parametrize("humans", [1, 2, 3])
-def test_bot_fill_at_sixty_seconds(humans):
-    async def go():
-        env = Env()
-        for uid in range(1, humans + 1):
-            await env.join(uid, 1000 + 400 * (uid - 1))
-        env.clock.advance(59.9)
-        assert env.mm.tick() == []
-        env.clock.advance(0.1)
-        formed = env.mm.tick()
-        assert len(formed) == 1
-        m = formed[0]
-        assert sorted(m.humans) == list(range(1, humans + 1)) and m.bots == 4 - humans
-        assert all(s.rating == ratings.BOT_RATING for s in m.slots if s.is_bot)
-        msg = env.conns[1].last("match")
-        assert msg["size"] == humans and msg["bots"] == 4 - humans
-        if humans >= 2:
-            teams = {i % 2 for i, s in enumerate(m.slots) if not s.is_bot}
-            assert teams == {0, 1}
-    run(go())
-
-
-def test_bot_fill_keep_waiting_restarts_the_wait_without_a_cooldown():
+# ------------------------------------------------------- seating a table
+def test_alone_in_the_queue_there_is_no_table():
     async def go():
         env = Env()
         await env.join(1)
-        env.clock.advance(60)
-        m = env.mm.tick()[0]
-        await env.send(1, "match_decline", match_id=m.id, keep_waiting=True)
-        e = env.mm._entry(1)
-        assert e is not None and e.since == env.clock() and not e.front
-        assert e.bots_at == env.clock() + mm.BOT_FILL_SECS
-        assert 1 not in env.mm.cooldown
+        state = env.conns[1].last("queue_state")
+        assert state["queued"] and state["table"] is None
+        assert env.mm.tables == {}
     run(go())
 
 
-def test_queue_state_carries_bots_at_and_the_wait_players_flag():
+def test_two_singles_form_one_table_on_the_second_ones_arrival():
     async def go():
         env = Env()
         await env.join(1)
-        st = env.conns[1].last("queue_state")
-        assert st["bots_at"] == st["since"] + mm.BOT_FILL_SECS
-        assert st["wait_players"] is False
+        await env.join(2)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, None]
+        for uid, seat in ((1, 0), (2, 1)):
+            table = env.conns[uid].last("queue_state")["table"]
+            assert table["id"] == t.id and table["you"] == seat
+            assert [s and s["name"] for s in table["seats"]] == ["P1", "P2", None, None]
+            assert table["seats"][seat]["you"] is True
+            assert table["ready"] == 0 and table["of"] == 2
+        assert env.started == []
     run(go())
 
 
-# ------------------------------------------------- wait for real players
-def test_wait_players_turns_off_the_bot_fill_for_good_but_people_still_match():
+def test_a_third_sits_as_the_first_ones_partner_and_a_fourth_starts_the_table_at_once():
     async def go():
         env = Env()
-        await env.join(1, 1000)
-        await env.send(1, "queue_wait_players")
-        st = env.conns[1].last("queue_state")
-        assert st["queued"] is True and st["bots_at"] is None and st["wait_players"] is True
-        assert env.mm._entry(1).bots_at is None
-        for _ in range(300):                       # ten minutes of ticks
-            env.clock.advance(2)
-            assert env.mm.tick() == []
-        assert env.conns[1].of("match") == []
-        for uid, r in ((2, 1900), (3, 400), (4, 1600)):   # far apart: the window is open now
-            await env.join(uid, r)
-        formed = env.mm.tick()
-        assert len(formed) == 1 and sorted(formed[0].humans) == [1, 2, 3, 4]
-        assert formed[0].bots == 0
+        for uid in (1, 2, 3):
+            await env.join(uid)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, 3, None]
+        await env.join(4)
+        (table_id, slots), = env.started
+        assert table_id == t.id
+        assert [s.user_id for s in slots] == [1, 2, 3, 4]
+        assert env.mm.tables == {} and env.mm.entries == {}
+        for c in env.conns.values():          # no ready check on the way in
+            assert c.of("match") == [] and c.of("match_ready") == []
     run(go())
 
 
-def test_a_waiting_anchor_does_not_hold_up_the_bot_fill_behind_it():
+def test_a_pair_sits_as_partners_on_the_free_team():
     async def go():
         env = Env()
-        await env.join(1, 1000)
-        await env.send(1, "queue_wait_players")
-        env.clock.advance(5)
-        await env.join(2, 1000)
-        env.clock.advance(59.9)
-        assert env.mm.tick() == []
-        env.clock.advance(0.1)
-        formed = env.mm.tick()
-        assert len(formed) == 1 and formed[0].humans == [2] and formed[0].bots == 3
-        assert env.mm._entry(1).match_id is None      # never taken into a bot fill
+        await env.join(1)
+        await env.pair(2, 3)
+        await env.send(2, "queue_join")
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, 3]
+        table = env.conns[3].last("queue_state")["table"]
+        assert table["you"] == 3 and table["seats"][1]["pair"] and table["seats"][1]["leader"]
+        assert not table["seats"][3]["leader"]
     run(go())
 
 
-def test_a_waiting_entry_still_joins_a_later_anchors_human_match():
-    async def go():
-        env = Env()
-        await env.join(1, 1000)
-        await env.send(1, "queue_wait_players")
-        env.clock.advance(1)
-        for uid in (2, 3, 4):
-            await env.join(uid, 1000)
-        formed = env.mm.tick()
-        assert len(formed) == 1 and sorted(formed[0].humans) == [1, 2, 3, 4]
-    run(go())
-
-
-def test_wait_players_is_the_pair_leaders_call_and_both_members_see_it():
+def test_a_pair_first_takes_seats_zero_and_two_and_a_single_sits_opposite():
     async def go():
         env = Env()
         await env.pair(1, 2)
         await env.send(1, "queue_join")
-        await env.send(2, "queue_wait_players")
-        assert env.conns[2].last("error")["code"] == "not_leader"
-        assert env.mm._entry(1).bots_at is not None
-        await env.send(1, "queue_wait_players")
-        for uid in (1, 2):
-            st = env.conns[uid].last("queue_state")
-            assert st["wait_players"] is True and st["bots_at"] is None
-        assert env.conns[2].last("queue_state")["leader"] is False
+        await env.join(3)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 3, 2, None]
     run(go())
 
 
-def test_wait_players_needs_a_queue_entry():
-    async def go():
-        env = Env()
-        env.player(1)
-        await env.send(1, "queue_wait_players")
-        assert env.conns[1].last("error")["code"] == "not_queued"
-    run(go())
-
-
-def test_rejoining_restores_the_bot_fill():
+def test_a_pair_never_splits_across_teams_to_fit_a_table():
     async def go():
         env = Env()
         await env.join(1)
-        await env.send(1, "queue_wait_players")
-        await env.send(1, "queue_leave")
-        env.clock.advance(5)
-        await env.join(1)
-        st = env.conns[1].last("queue_state")
-        assert st["wait_players"] is False and st["bots_at"] == env.clock() + mm.BOT_FILL_SECS
-        env.clock.advance(60)
-        assert len(env.mm.tick()) == 1
+        await env.join(2)
+        await env.pair(3, 4)
+        await env.send(3, "queue_join")
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, None]
+        assert env.mm._entry(3).table_id is None
+        assert env.conns[4].last("queue_state")["table"] is None
     run(go())
 
 
-def test_allow_bots_schedules_the_fill_sixty_seconds_from_now():
+def test_two_pairs_fill_a_table_and_start_it():
     async def go():
         env = Env()
-        await env.join(1)
-        await env.send(1, "queue_wait_players")
-        env.clock.advance(100)
-        assert env.mm.tick() == []
-        await env.send(1, "queue_allow_bots")
-        st = env.conns[1].last("queue_state")
-        assert st["wait_players"] is False and st["bots_at"] == env.clock() + mm.BOT_FILL_SECS
-        assert st["since"] == env.clock() - 100           # the wait itself is kept
-        env.clock.advance(59.9)
-        assert env.mm.tick() == []
-        env.clock.advance(0.1)
-        assert len(env.mm.tick()) == 1
+        await env.pair(1, 2)
+        await env.send(1, "queue_join")
+        await env.pair(3, 4)
+        await env.send(3, "queue_join")
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 3, 2, 4]
     run(go())
 
 
-# ----------------------------------------------------------- ready check
-def test_all_accept_starts_the_room_with_the_chosen_seats():
+def test_under_five_queued_anyone_sits_with_anyone():
     async def go():
         env = Env()
-        for uid, r in ((1, 1400), (2, 1200), (3, 1200), (4, 1000)):
-            await env.join(uid, r)
-        env.clock.advance(40)                # any rating from 40 s
-        m = env.mm.tick()[0]
+        await env.join(1, 1000)
+        await env.join(2, 1700)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, None]
+    run(go())
+
+
+def test_from_five_queued_the_rating_window_decides_who_shares_a_table():
+    async def go():
+        env = Env()
+        await env.join(1, 1000)
+        await env.join(2, 1000)
+        await env.pair(3, 4, 1000, 1000)
+        await env.send(3, "queue_join")      # no pair seats left: waits alone
+        await env.join(5, 1600)               # five queued: 600 is outside ±100
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, None]
+        assert env.mm._entry(5).table_id is None
+        await env.join(6, 1050)               # inside the window
+        assert t.seats == [1, 2, 6, None]
+    run(go())
+
+
+def test_a_second_table_forms_when_the_first_has_no_pair_seats():
+    async def go():
+        env = Env()
         for uid in (1, 2, 3):
-            await env.send(uid, "match_accept", match_id=m.id)
-        ready = env.conns[1].last("match_ready")
-        assert ready["accepted"] == 3 and ready["of"] == 4 and "names" not in ready
-        assert env.started == []
-        await env.send(4, "match_accept", match_id=m.id)
-        assert len(env.started) == 1
-        mid, slots = env.started[0]
-        assert mid == m.id and [s.user_id for s in slots] == [1, 2, 4, 3]
-        final = env.conns[4].last("match_ready")
-        assert final["accepted"] == 4 and sorted(final["names"]) == ["P1", "P2", "P3", "P4"]
-        assert env.mm.entries == {} and env.mm.matches == {}
+            await env.join(uid, 1000)
+        await env.pair(4, 5, 1000, 1000)
+        await env.send(4, "queue_join")       # alone: no pair seats at the table
+        await env.pair(6, 7, 1000, 1000)
+        await env.send(6, "queue_join")       # sits with the other pair
+        tables = list(env.mm.tables.values())
+        assert env.started and [s.user_id for s in env.started[0][1]] == [4, 6, 5, 7]
+        assert len(tables) == 1 and tables[0].seats == [1, 2, 3, None]
     run(go())
 
 
-def _four(env):
-    async def go():
-        for uid in (1, 2, 3, 4):
-            await env.join(uid)
-            env.clock.advance(1)
-        return env.mm.tick()[0]
-    return go()
-
-
-def test_a_decline_cools_the_decliner_and_requeues_only_the_accepters_at_the_front():
+# ------------------------------------------------------------- starting
+def test_every_start_tapped_starts_the_table_with_bots_and_a_newcomer_keeps_the_ticks():
     async def go():
         env = Env()
-        start = env.clock()
-        m = await _four(env)
-        await env.send(1, "match_accept", match_id=m.id)
-        await env.send(2, "match_decline", match_id=m.id)
+        await env.join(1)
+        await env.join(2)
+        await env.send(1, "table_start")
+        assert env.started == []
+        mine = env.conns[1].last("queue_state")["table"]
+        assert mine["you_ready"] and mine["ready"] == 1 and mine["waiting_for"] == ["P2"]
+        assert mine["seats"][0]["ready"] and not mine["seats"][1]["ready"]
+        await env.join(3)                     # a newcomer does not clear the tick
+        mine = env.conns[1].last("queue_state")["table"]
+        assert mine["ready"] == 1 and mine["of"] == 3 and mine["waiting_for"] == ["P2", "P3"]
+        await env.send(2, "table_start")
+        await env.send(2, "table_start")      # twice is once
+        assert env.started == []
+        await env.send(3, "table_start")
+        (table_id, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 2, 3, None]
+    run(go())
+
+
+def test_the_table_timer_is_the_earliest_switch_off_players_and_switch_on_players_ride_it():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        env.clock.advance(10)
+        await env.join(2)
+        bots_at_2 = env.mm._entry(2).bots_at
+        env.clock.advance(5)
+        await env.join(3)
+        timer = env.conns[1].last("queue_state")["table"]["timer"]
+        assert timer == {"at": bots_at_2, "name": "P2", "you": False}
+        assert env.conns[2].last("queue_state")["table"]["timer"]["you"] is True
+        await env.send(2, "queue_leave")      # the owner leaves: the next switch-off one owns it
+        timer = env.conns[1].last("queue_state")["table"]["timer"]
+        assert timer["name"] == "P3" and timer["at"] == env.mm._entry(3).bots_at
+        env.clock.t = env.mm._entry(3).bots_at - 0.1
+        await env.mm.tick()
+        assert env.started == []
+        env.clock.advance(0.1)
+        await env.mm.tick()
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, None, 3, None]
+    run(go())
+
+
+def test_with_every_switch_on_there_is_no_timer_and_only_every_start_starts_it():
+    async def go():
+        env = Env()
+        for uid in (1, 2):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        assert env.conns[1].last("queue_state")["table"]["timer"] is None
+        env.clock.advance(100)
+        await env.mm.pump()
+        assert env.started == []
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 2, None, None]
+    run(go())
+
+
+def test_alone_the_bot_timer_starts_a_bot_game_without_a_ready_check():
+    async def go():
+        env = Env()
+        await env.join(1)
+        env.clock.advance(mm.BOT_FILL_SECS - mm.TICK_INTERVAL)
+        await env.mm.pump()
+        assert env.started == []
+        env.clock.advance(mm.TICK_INTERVAL)
+        await env.mm.pump()
+        (table_id, slots), = env.started
+        assert table_id is None and [s.user_id for s in slots] == [1, None, None, None]
+        assert env.conns[1].of("match") == []
+    run(go())
+
+
+def test_alone_with_the_switch_on_never_starts_with_bots():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        env.clock.advance(1000)
+        await env.mm.tick()
+        assert env.started == [] and env.mm._entry(1) is not None
+    run(go())
+
+
+def test_the_ready_check_is_gone():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "match_accept", match_id="x")
+        assert env.conns[1].last("error")["code"] == "no_match"
+        await env.send(1, "table_start")
+        assert env.conns[1].last("error")["code"] == "not_seated"
+    run(go())
+
+
+def test_an_older_clients_play_bots_at_a_table_is_its_start():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.join(2)
+        await env.send(1, "queue_start_bots")
+        assert env.started == [] and env.conns[1].last("queue_state")["table"]["you_ready"]
+        await env.send(2, "queue_start_bots")
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 2, None, None]
+    run(go())
+
+
+def test_the_pair_leader_starts_for_the_pair_and_the_partner_cannot():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.pair(2, 3)
+        await env.send(2, "queue_join")
+        for kind in ("table_start", "queue_leave", "queue_wait_players"):
+            await env.send(3, kind)
+            assert env.conns[3].last("error")["code"] == "not_leader"
+        await env.send(2, "table_start")
+        table = env.conns[1].last("queue_state")["table"]
+        assert table["ready"] == 2 and table["of"] == 3 and table["waiting_for"] == []
+        await env.send(1, "table_start")
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 2, None, 3]
+    run(go())
+
+
+# --------------------------------------------------------- leaving a table
+def test_leaving_frees_the_seat_and_nobody_moves():
+    async def go():
+        env = Env()
+        for uid in (1, 2, 3):
+            await env.join(uid)
+        await env.send(2, "queue_leave")
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, None, 3, None]
+        assert env.conns[2].last("queue_state")["queued"] is False
+        assert env.conns[1].last("queue_state")["table"]["seats"][1] is None
+        await env.join(4)
+        assert t.seats == [1, 4, 3, None]
+    run(go())
+
+
+def test_the_last_one_left_at_a_table_is_alone_again_with_its_own_timer():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.join(2)
+        await env.send(1, "table_start")
+        await env.send(2, "queue_leave")
+        assert env.mm.tables == {}
+        state = env.conns[1].last("queue_state")
+        assert state["queued"] and state["table"] is None
+        await env.join(3)                     # a fresh table: the old tick is gone
+        assert env.conns[1].last("queue_state")["table"]["you_ready"] is False
+    run(go())
+
+
+def test_a_seated_socket_that_closes_holds_its_seat_sixty_seconds_reconnecting():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        await env.join(2)
+        await env.send(2, "table_start")
+        env.mm.disconnect(env.conns[2])
+        seat = env.conns[1].last("queue_state")["table"]["seats"][1]
+        assert seat["reconnecting"] is True and seat["ready"] is True
+        env.clock.advance(mm.TABLE_AWAY_SECS - 1)
+        await env.mm.pump()
+        assert env.mm._entry(2) is not None
+        back = FakeConn(2, "P2")
+        env.mm.connect(back)                 # the app comes back: resync, readiness kept
+        table = back.last("queue_state")["table"]
+        assert table["you"] == 1 and table["you_ready"] is True
+        assert env.conns[1].last("queue_state")["table"]["seats"][1]["reconnecting"] is False
+        env.mm.disconnect(back)
+        env.clock.advance(mm.TABLE_AWAY_SECS + 1)
+        await env.mm.pump()
+        assert env.mm._entry(2) is None and env.mm.tables == {}
+        assert env.conns[1].last("queue_state")["table"] is None
+    run(go())
+
+
+def test_four_people_wait_for_a_reconnecting_one_but_the_timer_does_not():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        for uid in (2, 3):
+            await env.join(uid)
+        env.mm.disconnect(env.conns[2])
+        await env.join(4)
+        assert env.started == []              # four, but one is reconnecting
+        env.clock.t = env.mm._entry(3).bots_at
+        await env.mm.tick()
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, None, 3, 4]
+        assert env.mm._entry(2) is None
+    run(go())
+
+
+def test_two_minutes_without_a_tap_at_the_table_removes_you_without_a_cooldown():
+    async def go():
+        env = Env()
+        for uid in (1, 2, 3):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        await env.send(1, "table_start")      # ready: never idle
+        env.clock.advance(100)
+        await env.send(3, "queue_allow_bots") # a tap resets the clock
+        await env.send(3, "queue_wait_players")
+        env.clock.advance(mm.TABLE_IDLE_SECS - 100)
+        await env.mm.pump()
         removed = env.conns[2].last("queue_removed")
-        assert removed["reason"] == "declined"
-        assert removed["cooldown_until"] == env.clock() + mm.COOLDOWN_SECS
-        assert env.mm._entry(2) is None and m.id not in env.mm.matches
-        for uid in (1, 3, 4):
-            e = env.mm._entry(uid)
-            assert e.match_id is None and e.since == start + (uid - 1)
-            assert e.front is (uid == 1)
-            assert uid not in env.mm.cooldown
-            assert env.conns[uid].last("match_cancelled")["reason"] == "player_missed"
-            assert env.conns[uid].last("queue_state")["front"] is (uid == 1)
-        env.clock.advance(29)
-        await env.send(2, "queue_join")
-        err = env.conns[2].last("error")
-        assert err["code"] == "cooldown" and env.mm._entry(2) is None
-        env.clock.advance(1)
-        await env.send(2, "queue_join")
+        assert removed["reason"] == "idle" and removed["cooldown_until"] is None
+        assert env.mm._entry(1) is not None and env.mm._entry(3) is not None
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, None, 3, None]
+        await env.join(2)                     # straight back: no cooldown
         assert env.mm._entry(2) is not None
     run(go())
 
 
-def test_a_timeout_cools_only_the_players_who_did_not_accept():
+def test_the_room_start_hook_gets_the_table_id_only_for_a_table():
     async def go():
         env = Env()
-        m = await _four(env)
-        await env.send(1, "match_accept", match_id=m.id)
-        await env.send(3, "match_accept", match_id=m.id)
-        env.clock.advance(mm.READY_SECS - 0.1)
-        await env.mm.pump()
-        assert m.id in env.mm.matches
-        env.clock.advance(0.1)
-        await env.mm.pump()
-        for uid in (2, 4):
-            assert env.conns[uid].last("queue_removed")["reason"] == "missed"
-            assert uid in env.mm.cooldown
-        assert env.mm._entry(1).front and env.mm._entry(3).front
-    run(go())
-
-
-def test_cancelling_during_the_check_is_a_decline():
-    async def go():
-        env = Env()
-        m = await _four(env)
-        await env.send(1, "match_accept", match_id=m.id)
-        await env.send(3, "queue_leave")
-        assert env.conns[3].last("queue_removed")["reason"] == "declined"
-        assert 3 in env.mm.cooldown and env.mm._entry(1).front
-        assert not env.mm._entry(2).front and 2 not in env.mm.cooldown
-    run(go())
-
-
-def test_the_accepters_rematch_at_the_front_with_a_newcomer():
-    async def go():
-        env = Env()
-        m = await _four(env)
-        for uid in (1, 2, 3):
-            await env.send(uid, "match_accept", match_id=m.id)
-        await env.send(4, "match_decline", match_id=m.id)
-        env.clock.advance(5)
-        await env.join(9)
-        m = env.mm.tick()[0]
-        assert set(m.humans) == {1, 2, 3, 9}
+        await env.join(1)
+        await env.send(1, "queue_start_bots")
+        await env.join(2)
+        await env.join(3)
+        await env.send(2, "table_start")
+        await env.send(3, "table_start")
+        assert [tid is None for tid, _ in env.started] == [True, False]
     run(go())
 
 
@@ -460,9 +506,10 @@ def test_start_bots_solo_seats_one_human_and_three_bots():
         env = Env()
         await env.join(1)
         await env.send(1, "queue_start_bots")
-        mid, slots = env.started[0]
-        assert mid is None and humans_of(slots) == [1] and slots[0].user_id == 1
-        assert env.mm._entry(1) is None
+        (match_id, slots), = env.started
+        assert match_id is None and humans_of(slots) == [1]
+        assert [s.is_bot for s in slots] == [False, True, True, True]
+        assert env.mm.entries == {}
     run(go())
 
 
@@ -472,9 +519,9 @@ def test_start_bots_as_a_pair_puts_the_bots_opposite_and_is_the_leaders_call():
         await env.pair(1, 2)
         await env.send(1, "queue_join")
         await env.send(2, "queue_start_bots")
-        assert env.conns[2].last("error")["code"] == "not_leader" and not env.started
+        assert env.conns[2].last("error")["code"] == "not_leader"
         await env.send(1, "queue_start_bots")
-        _, slots = env.started[0]
+        (_, slots), = env.started
         assert [s.user_id for s in slots] == [1, None, 2, None]
     run(go())
 
@@ -482,26 +529,17 @@ def test_start_bots_as_a_pair_puts_the_bots_opposite_and_is_the_leaders_call():
 def test_start_bots_failure_reaches_both_members_of_a_pair():
     async def go():
         env = Env()
-        await env.pair(1, 2)
-        await env.send(1, "queue_join")
 
         async def boom(match_id, slots, conns):
-            raise RuntimeError("injected start failure")
+            raise RuntimeError("no room")
         env.mm.start_room = boom
+        await env.pair(1, 2)
+        await env.send(1, "queue_start_bots")
+        assert env.conns[1].last("error")["code"] == "not_queued"
+        await env.send(1, "queue_join")
         await env.send(1, "queue_start_bots")
         assert env.conns[1].last("error")["code"] == "start_failed"
         assert env.conns[2].last("error")["code"] == "start_failed"
-        assert env.mm._entry(1) is None and env.mm._entry(2) is None
-    run(go())
-
-
-def test_start_bots_after_a_match_formed_is_refused_with_match_pending():
-    async def go():
-        env = Env()
-        m = await _four(env)
-        await env.send(1, "queue_start_bots")
-        assert env.conns[1].last("error")["code"] == "match_pending"
-        assert env.started == [] and m.id in env.mm.matches
     run(go())
 
 
@@ -515,65 +553,47 @@ def test_start_bots_needs_a_queue_entry():
 
 
 # --------------------------------------------------------- away from app
-def test_away_over_ten_seconds_drops_without_a_cooldown():
+def test_alone_away_over_ten_seconds_drops_without_a_cooldown():
     async def go():
         env = Env()
         await env.join(1)
         env.mm.disconnect(env.conns[1])
-        env.clock.advance(mm.AWAY_SECS)
+        env.clock.advance(mm.AWAY_SECS - 1)
         await env.mm.pump()
         assert env.mm._entry(1) is not None
-        env.clock.advance(0.5)
+        env.clock.advance(2)
         await env.mm.pump()
-        assert env.mm._entry(1) is None and 1 not in env.mm.cooldown
-        back = FakeConn(1, "P1")
-        env.mm.connect(back)
-        await env.mm.handle(back, {"type": "queue_join"}, 1)
+        assert env.mm._entry(1) is None
+        again = env.player(1)
+        await env.send(1, "queue_join", conn=again)
         assert env.mm._entry(1) is not None
     run(go())
 
 
-def test_a_reconnect_within_ten_seconds_keeps_the_place():
+def test_a_disconnected_entry_is_not_seated_while_it_may_come_back():
     async def go():
         env = Env()
         await env.join(1)
-        since = env.mm._entry(1).since
         env.mm.disconnect(env.conns[1])
-        env.clock.advance(6)
-        back = FakeConn(1, "P1")
-        env.mm.connect(back)
-        state = back.last("queue_state")
-        assert state["queued"] and state["since"] == since
-        env.clock.advance(20)
-        await env.mm.pump()
-        assert env.mm._entry(1).since == since
+        await env.join(2)
+        assert env.mm.tables == {}
     run(go())
 
 
-def test_a_disconnected_entry_is_not_matched_while_it_may_come_back():
+def test_a_failed_table_start_puts_everyone_back_at_the_front():
     async def go():
         env = Env()
-        m = None
+
+        async def boom(match_id, slots, conns):
+            raise RuntimeError("no room")
+        env.mm.start_room = boom
         for uid in (1, 2, 3, 4):
             await env.join(uid)
-        env.mm.disconnect(env.conns[4])
-        assert env.mm.tick() == []
-        env.mm.connect(FakeConn(4, "P4"))
-        m = env.mm.tick()
-        assert len(m) == 1
-    run(go())
-
-
-def test_an_accepted_player_whose_socket_is_gone_at_start_aborts_without_a_cooldown():
-    async def go():
-        env = Env()
-        m = await _four(env)
-        for uid in (1, 2, 3):
-            await env.send(uid, "match_accept", match_id=m.id)
-        env.mm.disconnect(env.conns[2])
-        await env.send(4, "match_accept", match_id=m.id)
-        assert env.started == [] and 2 not in env.mm.cooldown
-        assert env.mm._entry(2) is None and env.mm._entry(1).front
+        assert env.mm.tables == {}
+        for uid in (1, 2, 3, 4):
+            e = env.mm._entry(uid)
+            assert e is not None and e.front and e.table_id is None
+            assert env.conns[uid].last("match_cancelled")["reason"] == "server_error"
     run(go())
 
 
@@ -607,81 +627,16 @@ def test_only_the_leader_queues_or_cancels():
     run(go())
 
 
-def test_a_pair_prefers_another_pair_over_closer_solos():
+def test_a_pair_leaving_its_party_frees_both_seats():
     async def go():
         env = Env()
-        await env.pair(1, 2, 1000, 1000)
-        await env.send(1, "queue_join")
-        await env.join(3, 1000)
-        await env.join(4, 1000)
-        await env.pair(5, 6, 1080, 1080)
-        await env.send(5, "queue_join")
-        m = env.mm.tick()[0]
-        assert set(m.humans) == {1, 2, 5, 6}
-        team = {m.slots[0].user_id, m.slots[2].user_id}
-        assert team == {1, 2}
-    run(go())
-
-
-def test_a_pair_with_two_solos_is_never_split():
-    async def go():
-        env = Env()
-        await env.pair(1, 2, 1300, 1300)
-        await env.send(1, "queue_join")
-        await env.join(3, 1250)
-        await env.join(4, 1250)
-        m = env.mm.tick()[0]
-        assert {m.slots[0].user_id, m.slots[2].user_id} == {1, 2}
-    run(go())
-
-
-def test_a_lone_pair_gets_both_bots_on_the_opposing_team_at_sixty_seconds():
-    async def go():
-        env = Env()
-        await env.pair(1, 2)
-        await env.send(1, "queue_join")
-        env.clock.advance(59)
-        assert env.mm.tick() == []
-        env.clock.advance(1)
-        m = env.mm.tick()[0]
-        assert [s.user_id for s in m.slots] == [1, None, 2, None]
-    run(go())
-
-
-def test_a_pair_and_a_solo_get_one_bot_partnering_the_solo():
-    async def go():
-        env = Env()
-        await env.pair(1, 2)
-        await env.send(1, "queue_join")
-        await env.join(3)
-        env.clock.advance(60)
-        m = env.mm.tick()[0]
-        assert {m.slots[0].user_id, m.slots[2].user_id} == {1, 2}
-        assert {m.slots[1].user_id, m.slots[3].user_id} == {3, None}
-    run(go())
-
-
-def test_one_partner_missing_cools_both_and_names_who_missed():
-    async def go():
-        env = Env()
-        await env.pair(1, 2)
-        await env.send(1, "queue_join")
-        await env.join(3)
-        await env.join(4)
-        m = env.mm.tick()[0]
-        await env.send(1, "match_accept", match_id=m.id)
-        await env.send(3, "match_accept", match_id=m.id)
-        await env.send(4, "match_accept", match_id=m.id)
-        env.clock.advance(mm.READY_SECS)
-        await env.mm.pump()
-        for uid in (1, 2):
-            removed = env.conns[uid].last("queue_removed")
-            assert removed["reason"] == "missed" and removed["by"] == "P2"
-            assert env.mm.cooldown[uid] == env.clock() + mm.COOLDOWN_SECS
-        assert env.mm._party(1) is not None            # the pair stays formed
-        assert env.mm._entry(3).front and m.id not in env.mm.matches
-        await env.send(1, "queue_join")
-        assert env.conns[1].last("error")["code"] == "cooldown"
+        await env.join(1)
+        await env.join(2)
+        await env.pair(3, 4)
+        await env.send(3, "queue_join")
+        await env.send(4, "party_leave")
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, None]
     run(go())
 
 
@@ -691,6 +646,7 @@ def test_parties_expire_after_five_minutes_unless_queued():
         await env.pair(1, 2)
         await env.pair(3, 4)
         await env.send(3, "queue_join")
+        await env.send(3, "queue_wait_players")
         env.clock.advance(mm.PARTY_TTL + 1)
         env.mm._last_tick = env.clock()          # keep the matcher out of it
         await env.mm.pump()
@@ -724,9 +680,10 @@ def test_guests_are_refused():
         env = Env()
         guest = FakeConn(None, "")
         env.mm.connect(guest)
-        for kind in ("queue_join", "party_create", "queue_start_bots", "queue_wait_players"):
+        for kind in ("queue_join", "party_create", "queue_start_bots", "queue_wait_players",
+                     "table_start"):
             await env.mm.handle(guest, {"type": kind}, None)
-        assert [m["code"] for m in guest.of("error")] == ["signed_in_only"] * 4
+        assert [m["code"] for m in guest.of("error")] == ["signed_in_only"] * 5
         assert env.mm.entries == {}
     run(go())
 
@@ -790,143 +747,45 @@ def test_a_socket_in_a_room_cannot_queue():
     run(go())
 
 
-def test_concurrent_accepts_ticks_and_start_bots_seat_everyone_once():
+def test_concurrent_starts_ticks_and_leaves_seat_everyone_once():
     async def go():
         env = Env()
-        for uid in range(1, 9):
+        for uid in (1, 2, 3):
             await env.join(uid)
-        formed = env.mm.tick()
-        assert len(formed) == 2
-        ids = {u: env.match_of(u).id for u in range(1, 9)}
+        for uid in (4, 5):
+            await env.join(uid)              # 4 fills the first table; 5 waits
+        await env.join(6)
+        assert len(env.started) == 1
 
-        async def accept(uid):
+        async def later(coro):
             await asyncio.sleep(0)
-            await env.send(uid, "match_accept", match_id=ids[uid])
+            await coro
 
-        async def bots(uid):
-            await asyncio.sleep(0)
-            await env.send(uid, "queue_start_bots")
-
-        async def tick():
-            await asyncio.sleep(0)
-            env.mm.tick()
-            await env.mm.pump()
-
-        await asyncio.gather(*[accept(u) for u in range(1, 9)],
-                             *[accept(u) for u in range(1, 9)],
-                             *[bots(u) for u in range(1, 9)], tick(), tick())
+        await asyncio.gather(*[later(env.send(u, k)) for u in (5, 6)
+                               for k in ("table_start", "queue_start_bots", "table_start")],
+                             later(env.mm.tick()), later(env.mm.pump()))
         seated = [u for _, slots in env.started for u in humans_of(slots)]
-        assert sorted(seated) == list(range(1, 9))
-        assert len(env.started) == 2 and env.mm.entries == {}
+        assert sorted(seated) == list(range(1, 7))
+        assert len(env.started) == 2 and env.mm.entries == {} and env.mm.tables == {}
     run(go())
 
 
-def test_an_accept_after_the_deadline_before_the_pump_does_not_start_a_room():
-    async def go():
-        env = Env()
-        m = await _four(env)
-        for uid in (1, 2, 3):
-            await env.send(uid, "match_accept", match_id=m.id)
-        env.clock.advance(mm.READY_SECS + 0.1)
-        await env.send(4, "match_accept", match_id=m.id)
-        assert not env.started and m.id not in env.mm.matches
-        assert env.conns[4].last("error")["code"] == "stale_match"
-        assert env.conns[4].last("queue_removed")["reason"] == "missed"
-        assert 4 in env.mm.cooldown
-        for uid in (1, 2, 3):
-            assert env.mm._entry(uid).front and uid not in env.mm.cooldown
-    run(go())
-
-
-def test_a_decline_after_the_deadline_is_the_timeout_not_a_decline():
-    async def go():
-        env = Env()
-        m = await _four(env)
-        await env.send(1, "match_accept", match_id=m.id)
-        env.clock.advance(mm.READY_SECS)
-        await env.send(2, "match_decline", match_id=m.id, keep_waiting=True)
-        assert env.conns[2].last("error")["code"] == "stale_match"
-        for uid in (2, 3, 4):
-            assert env.conns[uid].last("queue_removed")["reason"] == "missed"
-            assert uid in env.mm.cooldown
-        assert env.mm._entry(1).front
-    run(go())
-
-
-@pytest.mark.parametrize("kind", ["match_accept", "match_decline"])
-@pytest.mark.parametrize("given", ["missing", "wrong"])
-def test_an_answer_must_name_the_current_match(kind, given):
-    async def go():
-        env = Env()
-        m = await _four(env)
-        fields = {} if given == "missing" else {"match_id": "0" * 12}
-        await env.send(1, kind, **fields)
-        assert env.conns[1].last("error")["code"] == "stale_match"
-        assert env.mm.matches.get(m.id) is m and m.accepted == set()
-        assert env.mm._entry(1).match_id == m.id and 1 not in env.mm.cooldown
-    run(go())
-
-
-def test_a_delayed_answer_to_an_earlier_check_cannot_act_on_its_replacement():
-    async def go():
-        env = Env()
-        old = await _four(env)
-        await env.send(2, "match_accept", match_id=old.id)
-        await env.send(1, "match_decline", match_id=old.id)
-        await env.join(5)
-        new = env.mm.tick()[0]
-        assert old.id != new.id and 2 in new.humans
-        await env.send(2, "match_accept")
-        await env.send(2, "match_accept", match_id=old.id)
-        await env.send(2, "match_decline", match_id=old.id)
-        assert env.mm.matches.get(new.id) is new and 2 not in new.accepted
-        assert env.conns[2].last("error")["code"] == "stale_match"
-        assert env.mm._entry(2).match_id == new.id
-    run(go())
-
-
-def test_a_decline_gives_front_priority_only_to_players_who_accepted():
-    async def go():
-        env = Env()
-        m = await _four(env)
-        await env.send(2, "match_accept", match_id=m.id)
-        await env.send(1, "match_decline", match_id=m.id)
-        assert env.mm._entry(2).front
-        for uid in (3, 4):
-            e = env.mm._entry(uid)
-            assert not e.front and uid not in env.mm.cooldown
-            assert e.since == m.entries[uid - 1].since
-    run(go())
-
-
-@pytest.mark.parametrize("accepted, front", [((1,), False), ((1, 2), True)])
-def test_a_pair_goes_to_the_front_only_if_both_partners_accepted(accepted, front):
-    async def go():
-        env = Env()
-        await env.pair(1, 2)
-        await env.send(1, "queue_join")
-        since = env.mm._entry(1).since
-        await env.join(3)
-        await env.join(4)
-        m = env.mm.tick()[0]
-        for uid in accepted:
-            await env.send(uid, "match_accept", match_id=m.id)
-        await env.send(3, "match_decline", match_id=m.id)
-        e = env.mm._entry(1)
-        assert e is env.mm._entry(2) and e.match_id is None
-        assert e.front is front and e.since == since
-        assert 1 not in env.mm.cooldown and 2 not in env.mm.cooldown
-        for uid in (1, 2):
-            assert env.conns[uid].last("queue_state")["front"] is front
-    run(go())
-
-
+# ------------------------------------------------ a room that fails to start
 class _FakeWS:
     def __init__(self):
         self.sent: list[dict] = []
 
     async def send_json(self, payload):
         self.sent.append(payload)
+
+
+async def _four(env):
+    """Four players with sockets join; the fourth fills the table and starts it."""
+    for uid in (1, 2, 3, 4):
+        env.player(uid).ws = _FakeWS()
+    for uid in (1, 2, 3, 4):
+        await env.join(uid)
+        env.clock.advance(1)
 
 
 @pytest.mark.parametrize("fail_at", ["first_attach", "second_attach", "first_broadcast",
@@ -971,11 +830,7 @@ def test_a_failed_room_start_unwinds_the_room_before_requeueing(monkeypatch, fai
         monkeypatch.setattr(srv, "broadcast", broadcast)
         monkeypatch.setattr(srv, "handle_action", action)
         env.mm.start_room = srv.start_matched_room
-        m = await _four(env)
-        for c in env.conns.values():
-            c.ws = _FakeWS()
-        for uid in range(1, 5):
-            await env.send(uid, "match_accept", match_id=m.id)
+        await _four(env)
         await asyncio.sleep(0)
         (r,) = built
         assert srv.rooms == {} and r.aborted
@@ -986,10 +841,12 @@ def test_a_failed_room_start_unwinds_the_room_before_requeueing(monkeypatch, fai
         for uid, c in env.conns.items():
             assert c.adopted is None and not c.in_room and c in env.mm.lobby
             e = env.mm._entry(uid)
-            assert e is not None and e.front and e.match_id is None
+            assert e is not None and e.front and e.table_id is None
             assert c.last("match_cancelled")["reason"] == "server_error"
-        again = env.mm.tick()
-        assert len(again) == 1 and set(again[0].humans) == {1, 2, 3, 4}
+        assert env.mm.tables == {}
+        env.mm.seat_waiting()
+        (again,) = env.mm.tables.values()
+        assert again.seats == [1, 2, 3, 4]
     run(go())
 
 
@@ -1025,11 +882,7 @@ def test_a_failed_final_broadcast_leaves_no_saved_game_and_no_started_count(
     before = srv.ACTIVITY.games_started
 
     async def go():
-        m = await _four(env)
-        for c in env.conns.values():
-            c.ws = _FakeWS()
-        for uid in range(1, 5):
-            await env.send(uid, "match_accept", match_id=m.id)
+        await _four(env)
         await asyncio.sleep(0)
     run(go())
     saved_games.flush()
@@ -1039,6 +892,8 @@ def test_a_failed_final_broadcast_leaves_no_saved_game_and_no_started_count(
     assert srv.ACTIVITY.games_started == before
     for uid in range(1, 5):
         assert saved_games._list(uid, None, 50)["games"] == []
+
+
 
 
 # ----------------------------------------------------- over the websocket
@@ -1075,8 +930,19 @@ def _pump(client, srv):
     client.portal.call(srv.MATCHMAKER.pump)
 
 
+def _until(ws, kind, tries=80):
+    """Messages up to and including the first of ``kind``."""
+    seen = []
+    for _ in range(tries):
+        m = ws.receive_json()
+        seen.append(m)
+        if m.get("type") == kind:
+            return seen
+    raise AssertionError(f"no {kind} in {[m.get('type') for m in seen]}")
+
+
 @pytest.mark.parametrize("heartbeat", [False, True])
-def test_ws_four_players_match_accept_and_land_in_a_started_rated_room(wsenv, heartbeat):
+def test_ws_four_players_fill_a_waiting_table_and_land_in_a_started_rated_room(wsenv, heartbeat):
     srv, store, client, clock = wsenv
     users = [_user(store, f"s{i}", f"Player{i}") for i in range(4)]
     for (uid, _), r in zip(users, (1400, 1200, 1200, 1000)):
@@ -1090,29 +956,29 @@ def test_ws_four_players_match_accept_and_land_in_a_started_rated_room(wsenv, he
             a.send_json({"type": "ping", "nonce": 1})
             assert _drain(a, "pong")["nonce"] == 1
         socks = [a, b, c, d]
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["table"] is None
+        b.send_json({"type": "queue_join"})
+        table = _drain(b, "queue_state")["table"]
+        assert table["you"] == 1 and [s["name"] for s in table["seats"][:2]] == ["Player0", "Player1"]
+        c.send_json({"type": "queue_join"})
+        assert _drain(c, "queue_state")["table"]["you"] == 2
+        d.send_json({"type": "queue_join"})
         for ws in socks:
-            ws.send_json({"type": "queue_join"})
-            assert _drain(ws, "queue_state")["queued"] is True
-        clock.advance(40)
-        _pump(client, srv)
-        match = [_drain(ws, "match") for ws in socks]
-        assert {m["match_id"] for m in match} == {match[0]["match_id"]}
-        assert match[0]["size"] == 4 and match[0]["bots"] == 0
-        for ws in socks:
-            ws.send_json({"type": "match_accept", "match_id": match[0]["match_id"]})
-        for ws in socks:
-            started = _drain(ws, "match_started", tries=80)
+            seen = _until(ws, "match_started")
+            assert not {"match", "match_ready"} & {m["type"] for m in seen}
+            started = seen[-1]
         code = started["room"]
         state = _drain(d, "state", tries=80)
         assert state["matched"] is True and state["room"] == code
         room = srv.rooms[code]
         by_seat = [s.user_id for s in room.seats]
         uid = [u for u, _ in users]
-        # 1400 + 1000 vs 1200 + 1200; the anchor (first to join) at seat 0.
-        assert by_seat == [uid[0], uid[1], uid[3], uid[2]]
+        assert by_seat == uid                 # arrival order, alternating teams
+        assert room.waiting_table == started["match_id"] and room.table_humans == 4
         assert room.game is not None and room.matched
         assert room.ratings is not None
-        assert room.ratings.present == {0: uid[0], 1: uid[1], 2: uid[3], 3: uid[2]}
+        assert room.ratings.present == {0: uid[0], 1: uid[1], 2: uid[2], 3: uid[3]}
         # The adopted socket plays on as a seated socket: chat reaches the room.
         if heartbeat:
             a.send_json({"type": "ping", "nonce": 2})
@@ -1120,7 +986,7 @@ def test_ws_four_players_match_accept_and_land_in_a_started_rated_room(wsenv, he
             assert [s.user_id for s in room.seats] == by_seat
         a.send_json({"type": "chat", "text": "gl"})
         assert _drain(b, "chat", tries=400)["text"] == "gl"
-        assert srv.MATCHMAKER.entries == {}
+        assert srv.MATCHMAKER.entries == {} and srv.MATCHMAKER.tables == {}
 
 
 def test_ws_guest_is_refused(wsenv):
@@ -1164,31 +1030,25 @@ def test_ws_pair_start_bots_seats_both_partners(wsenv):
         assert [s.user_id for s in room.seats] == [u1, None, u2, None]
 
 
-def test_ws_decline_cools_down_and_refuses_an_early_join(wsenv):
+def test_ws_two_starts_take_a_waiting_table_to_a_rated_game_with_bots(wsenv):
     srv, store, client, clock = wsenv
-    users = [_user(store, f"d{i}") for i in range(4)]
-    with client.websocket_connect("/ws", headers=users[0][1]) as a, \
-            client.websocket_connect("/ws", headers=users[1][1]) as b, \
-            client.websocket_connect("/ws", headers=users[2][1]) as c, \
-            client.websocket_connect("/ws", headers=users[3][1]) as d:
-        socks = [a, b, c, d]
-        for ws in socks:
-            ws.send_json({"type": "queue_join"})
-            _drain(ws, "queue_state")
-        _pump(client, srv)
-        match_id = [_drain(ws, "match")["match_id"] for ws in socks][0]
-        a.send_json({"type": "match_accept", "match_id": match_id})
-        _drain(a, "match_ready")
-        d.send_json({"type": "match_decline", "match_id": match_id})
-        removed = _drain(d, "queue_removed")
-        assert removed["reason"] == "declined"
-        assert removed["cooldown_until"] == clock() + mm.COOLDOWN_SECS
-        d.send_json({"type": "queue_join"})
-        assert _drain(d, "error")["code"] == "cooldown"
-        back = _drain(a, "queue_state")
-        assert back["queued"] and back["front"] is True
-        waited = _drain(b, "queue_state")
-        assert waited["queued"] and waited["front"] is False
+    (u1, h1), (u2, h2) = _user(store, "t1", "One"), _user(store, "t2", "Two")
+    with client.websocket_connect("/ws", headers=h1) as a, \
+            client.websocket_connect("/ws", headers=h2) as b:
+        a.send_json({"type": "queue_join"})
+        _drain(a, "queue_state")
+        b.send_json({"type": "queue_join"})
+        assert _drain(b, "queue_state")["table"]["of"] == 2
+        a.send_json({"type": "table_start"})
+        table = _drain(b, "queue_state")["table"]
+        assert table["ready"] == 1 and table["seats"][0]["ready"] and table["waiting_for"] == []
+        b.send_json({"type": "table_start"})
+        started = _drain(a, "match_started", tries=80)
+        assert started["rated"] is True
+        _drain(a, "state", tries=80)
+        room = srv.rooms[started["room"]]
+        assert [s.user_id for s in room.seats] == [u1, u2, None, None]
+        assert room.waiting_table == started["match_id"] and room.table_humans == 2
 
 
 def test_ws_away_socket_is_dropped_and_a_quick_reconnect_keeps_its_place(wsenv):
@@ -1212,7 +1072,7 @@ def test_ws_away_socket_is_dropped_and_a_quick_reconnect_keeps_its_place(wsenv):
             break
     clock.advance(mm.AWAY_SECS + 1)
     _pump(client, srv)
-    assert srv.MATCHMAKER._entry(uid) is None and uid not in srv.MATCHMAKER.cooldown
+    assert srv.MATCHMAKER._entry(uid) is None
 
 
 def test_ws_joining_a_room_leaves_the_queue_and_leaving_it_returns_to_the_lobby(wsenv):

@@ -41,10 +41,12 @@ const config: CapacitorConfig = {
   },
   plugins: {
     // Google sign-in runs natively in the app because Google refuses its web
-    // sign-in inside an embedded WebView. Only the Google provider is bundled;
-    // the plugin's sync hook drops the other SDKs from its Swift package.
+    // sign-in inside an embedded WebView. Sign in with Apple uses the system's
+    // AuthenticationServices (no SDK) and needs the applesignin entitlement in
+    // App.entitlements. The plugin's sync hook drops the other SDKs from its
+    // Swift package.
     SocialLogin: {
-      providers: { google: true, apple: false, facebook: false, twitter: false },
+      providers: { google: true, apple: true, facebook: false, twitter: false },
       logLevel: 1,
     },
     SplashScreen: {

@@ -4,15 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetNativeForTests } from "../native";
 import { resetNativeAuthForTests } from "../nativeAuth";
 
-const { gis, loginWithGoogle, signedIn } = vi.hoisted(() => ({
+const { gis, loginWithApple, loginWithGoogle, signedIn } = vi.hoisted(() => ({
   gis: { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect: vi.fn() },
+  loginWithApple: vi.fn(),
   loginWithGoogle: vi.fn(),
   signedIn: vi.fn(),
 }));
 vi.mock("../ws", () => ({ conn: { reconnect: () => {} } }));
 vi.mock("../auth", async (importOriginal) => {
   const real = await importOriginal<typeof import("../auth")>();
-  return { ...real, loadGis: () => Promise.resolve(gis), loginWithGoogle, auth: { signedIn } };
+  return { ...real, loadGis: () => Promise.resolve(gis), loginWithApple, loginWithGoogle, auth: { signedIn } };
 });
 
 import GoogleSignIn from "./GoogleSignIn";
@@ -27,10 +28,11 @@ async function render() {
   await act(async () => root.render(<GoogleSignIn clientId="web.apps" />));
 }
 
-function fakeShell(plugin: Record<string, unknown> | null) {
+function fakeShell(plugin: Record<string, unknown> | null, platform?: string) {
   const Plugins: Record<string, unknown> = plugin ? { SocialLogin: plugin } : {};
   (window as unknown as { Capacitor: unknown }).Capacitor = {
     isNativePlatform: () => true,
+    ...(platform ? { getPlatform: () => platform } : {}),
     isPluginAvailable: (name: string) => name in Plugins,
     Plugins,
   };
@@ -39,6 +41,7 @@ function fakeShell(plugin: Record<string, unknown> | null) {
 beforeEach(() => {
   gis.initialize.mockClear();
   gis.renderButton.mockClear();
+  loginWithApple.mockReset();
   loginWithGoogle.mockReset();
   signedIn.mockClear();
 });
@@ -56,6 +59,7 @@ describe("GoogleSignIn", () => {
     expect(gis.initialize).toHaveBeenCalledTimes(1);
     expect(host.querySelector(".google-signin-slot")).not.toBeNull();
     expect(host.querySelector(".google-signin-native")).toBeNull();
+    expect(host.querySelector("[data-testid='apple-signin']")).toBeNull();
   });
 
   it("in the app posts the native ID token with its nonce and signs in", async () => {
@@ -97,5 +101,79 @@ describe("GoogleSignIn", () => {
     expect(host.querySelector("button")).toBeNull();
     expect(host.querySelector("[data-testid='google-signin-unavailable']")?.textContent).toBe("Update the app to sign in.");
     expect(gis.initialize).not.toHaveBeenCalled();
+  });
+});
+
+async function sha256(text: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+describe("Sign in with Apple", () => {
+  it("shows beside the Google button on iOS and posts the token, code, raw nonce and name", async () => {
+    const initialize = vi.fn((_opts: Record<string, unknown>) => Promise.resolve());
+    const login = vi.fn((_opts: { provider: string; options: { nonce: string } }) => Promise.resolve({
+      provider: "apple",
+      result: {
+        idToken: "apple.jwt", authorizationCode: "code-1", accessToken: null,
+        profile: { user: "001.abc", email: "", givenName: "Ann", familyName: "Lee" },
+      },
+    }));
+    fakeShell({ initialize, login, logout: vi.fn() }, "ios");
+    const user = { name: "Ann Lee", email: "", picture: null, display_name: null, name_shown: "Ann" };
+    loginWithApple.mockResolvedValue(user);
+    await render();
+    const google = host.querySelector<HTMLButtonElement>(".google-signin-native")!;
+    const apple = host.querySelector<HTMLButtonElement>("[data-testid='apple-signin']")!;
+    expect(apple).not.toBeNull();
+    expect(apple.textContent).toBe("Sign in with Apple");
+    expect(apple.style.minHeight).toBe(google.style.minHeight);
+    expect(apple.style.maxWidth).toBe(google.style.maxWidth);
+    expect(apple.style.width).toBe(google.style.width);
+    expect(initialize).toHaveBeenCalledWith({ apple: { useProperTokenExchange: true, redirectUrl: "" } });
+    await act(async () => apple.click());
+    expect(login).toHaveBeenCalledTimes(1);
+    const opts = login.mock.calls[0][0];
+    expect(opts.provider).toBe("apple");
+    const posted = loginWithApple.mock.calls[0][0];
+    expect(posted.nonce).toMatch(/^[0-9a-f]{32}$/);
+    expect(opts.options.nonce).toBe(await sha256(posted.nonce));
+    expect(posted).toEqual({
+      identityToken: "apple.jwt", nonce: posted.nonce, authorizationCode: "code-1", givenName: "Ann", familyName: "Lee",
+    });
+    expect(signedIn).toHaveBeenCalledWith(user);
+    expect(loginWithGoogle).not.toHaveBeenCalled();
+  });
+
+  it("a later sign-in without a name posts nulls; a cancelled sheet shows no error", async () => {
+    const login = vi.fn()
+      .mockRejectedValueOnce(new Error("The operation couldn't be completed. (com.apple.AuthenticationServices.AuthorizationError error 1001.)"))
+      .mockResolvedValueOnce({ provider: "apple", result: {
+        idToken: "apple.jwt", authorizationCode: "code-2", profile: { user: "u", email: "", givenName: "", familyName: "" } } });
+    fakeShell({ initialize: vi.fn(() => Promise.resolve()), login, logout: vi.fn() }, "ios");
+    loginWithApple.mockResolvedValue({ name: "Ann Lee", email: "", picture: null, display_name: null, name_shown: "Ann" });
+    await render();
+    const apple = host.querySelector<HTMLButtonElement>("[data-testid='apple-signin']")!;
+    await act(async () => apple.click());
+    expect(host.querySelector(".lobby-error")).toBeNull();
+    expect(loginWithApple).not.toHaveBeenCalled();
+    await act(async () => apple.click());
+    expect(loginWithApple.mock.calls[0][0]).toMatchObject({ authorizationCode: "code-2", givenName: null, familyName: null });
+  });
+
+  it("is absent on a non-iOS native shell and in a shell whose plugin refuses the Apple provider", async () => {
+    fakeShell({ initialize: vi.fn(() => Promise.resolve()), login: vi.fn(), logout: vi.fn() }, "android");
+    await render();
+    expect(host.querySelector(".google-signin-native")).not.toBeNull();
+    expect(host.querySelector("[data-testid='apple-signin']")).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+    resetNativeAuthForTests();
+    const initialize = vi.fn(() => Promise.reject(new Error("Apple Sign-In provider is disabled in capacitor.config")));
+    fakeShell({ initialize, login: vi.fn(), logout: vi.fn() }, "ios");
+    await render();
+    expect(initialize).toHaveBeenCalled();
+    expect(host.querySelector(".google-signin-native")).not.toBeNull();
+    expect(host.querySelector("[data-testid='apple-signin']")).toBeNull();
   });
 });

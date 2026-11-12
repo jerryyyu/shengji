@@ -22,6 +22,8 @@ Every deploy so far ran on machine `48e7e35a9597e8`, app `shengji`.
 
 Google sign-in is on when `GOOGLE_CLIENT_ID` (the web client) is set; the optional comma-separated `GOOGLE_IOS_CLIENT_IDS` adds native-app client ids that the login endpoint also accepts as a token audience. Set it as a Fly secret, since a `fly.toml` `[env]` line would need a `NON_BOT_KEYS` entry in `server/shengji/releases.py` first.
 
+Sign in with Apple (`POST /api/auth/apple`, iOS app only) needs no configuration to sign people in: the identity token is checked against Apple's public keys with the bundle id `com.jerryyu.shengji` as audience. Revoking the Apple grant on account deletion, which App Review requires, needs three Fly secrets: `APPLE_SIGNIN_KEY` (the PEM text of the Sign in with Apple `.p8` key; literal `\n` escapes are accepted), `APPLE_KEY_ID` and `APPLE_TEAM_ID`. Without them sign-in still works, the authorization code is not exchanged and deletion revokes nothing, each counted in `apple_auth.COUNTERS` and logged as a warning. The App ID needs the Sign in with Apple capability enabled in the developer portal for the `App.entitlements` entry to sign.
+
 ## Current production
 
 **Release 52**: release 51 with the combo51 search rules. The exact lead keeps the baseline lead unless the exact

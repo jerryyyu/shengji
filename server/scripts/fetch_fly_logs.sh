@@ -12,6 +12,9 @@ mkdir -p "$dest_dir"
 stage_dir=$(mktemp -d "$dest_dir/.fly-fetch.XXXXXX")
 backup_dir="$dest_dir/archive/pre-refresh-$snapshot_id"
 manifest_dir="$dest_dir/manifests"
+changed_list="$stage_dir/.changed"
+delta_reader="$default_repo_root/server/scripts/production_log_delta.py"
+python_bin=${SHENGJI_FETCH_PYTHON:-python3}
 cleanup() { rm -rf "$stage_dir"; }
 trap cleanup EXIT
 
@@ -63,6 +66,7 @@ while IFS= read -r file_name; do
     cp -p "$current" "$backup_dir/$file_name"
   fi
   mv "$staged" "$current"
+  echo "$file_name" >> "$changed_list"
   changed=$((changed + 1))
 done <<< "$remote_files"
 
@@ -81,4 +85,20 @@ echo "snapshot=$snapshot_id fetched=$fetched changed=$changed unchanged=$unchang
 echo "manifest=$manifest"
 if test -d "$backup_dir"; then
   echo "replaced files preserved at $backup_dir"
+fi
+
+# Attribute changed rows to the policy recorded by each event, never to the
+# current fly.toml or /healthz identity. A rewritten log is still safely
+# refreshed and backed up, but its delta attribution is explicitly refused.
+if test -f "$changed_list"; then
+  while IFS= read -r file_name; do
+    before="$backup_dir/$file_name"
+    test -f "$before" || before=/dev/null
+    delta_tmp="$stage_dir/$file_name.delta.json"
+    if "$python_bin" "$delta_reader" --compact "$before" "$dest_dir/$file_name" > "$delta_tmp"; then
+      echo "production_log_delta file=$file_name status=ok report=$(cat "$delta_tmp")"
+    else
+      echo "production_log_delta file=$file_name status=refused reason=not_append_only_or_invalid" >&2
+    fi
+  done < "$changed_list"
 fi

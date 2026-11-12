@@ -13,10 +13,9 @@ import { useMediaQuery } from "../phoneLayout";
 import { cached, remember, tabMemory, useCachedResource, useTabScroll, viewerScope } from "../home/session";
 import LargeTitlePage from "../home/LargeTitlePage";
 import type { MeSection } from "../home/route";
-import GoogleSignIn from "./GoogleSignIn";
+import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
 import { SavedGames } from "./GamesList";
-import QueueFriendRow from "../queue/QueueFriendRow";
 import { useMuted } from "../useMuted";
 import { hapticsEnabled, isNative, setHapticsEnabled, subscribeHaptics } from "../native";
 
@@ -90,7 +89,7 @@ function StatsBody({ stats }: { stats: Stats }) {
         <div className="me-tile"><b>{stats.best_streak}</b><span>best streak</span></div>
       </div>
       {rounds === 0 ? (
-        <p className="grp-foot">No ranked rounds yet. Every round you finish while signed in moves your rating.</p>
+        <p className="grp-foot">No ranked rounds yet.</p>
       ) : null}
       <ul className="grp me-counts">
         <Row label="Games won" value={stats.games_won} />
@@ -306,8 +305,10 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
   );
 }
 
-/** A guest's Me: what an account adds, one sign-in, and the help rows. */
-function GuestMe({ clientId }: { clientId: string | null }) {
+/** A guest's Me: one sign-in card, the device settings and the help rows.
+ *  `unreachable`: the server could not be asked, so the card shows its
+ *  buttons unavailable rather than disappearing. */
+function GuestMe({ clientId, unreachable }: { clientId: string | null; unreachable: boolean }) {
   return (
     <>
       <div className="me-who">
@@ -317,14 +318,10 @@ function GuestMe({ clientId }: { clientId: string | null }) {
           <div className="me-sub">Unranked</div>
         </div>
       </div>
-      {clientId ? (
+      {clientId || unreachable ? (
         <div className="signin-card">
-          <h3>Keep your games and get a rating</h3>
-          <p>Sign in to save every game with replay.{" "}
-            <button type="button" className="me-rated-link" onClick={() => openTab("leaderboard")}>
-              How ranked games work
-            </button></p>
-          <GoogleSignIn clientId={clientId} />
+          <h3>Sign in to keep your games</h3>
+          {clientId ? <GoogleSignIn clientId={clientId} /> : <SignInUnavailable />}
         </div>
       ) : null}
       <SettingsHead />
@@ -368,7 +365,10 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
 
   let body: ReactNode;
   if (account.status === "loading") body = <p className="lb-note" role="status">Loading…</p>;
-  else if (!user) body = <GuestMe clientId={account.status === "out" ? account.clientId : null} />;
+  else if (!user) {
+    body = <GuestMe clientId={account.status === "out" ? account.clientId : null}
+                    unreachable={account.status === "error"} />;
+  }
   else {
     let content: ReactNode;
     if (section === "games") {
@@ -385,12 +385,7 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
         {wide ? null
           : <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />}
         {content}
-        {gamesTab ? null : (
-          <>
-            <QueueFriendRow />
-            <Settings user={user} stats={stats} statsKey={statsKey} />
-          </>
-        )}
+        {gamesTab ? null : <Settings user={user} stats={stats} statsKey={statsKey} />}
       </Fragment>
     );
   }

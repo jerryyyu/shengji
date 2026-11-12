@@ -15,6 +15,17 @@ export default function GoogleSignIn({ clientId }: { clientId: string }) {
   return <WebGoogleSignIn clientId={clientId} />;
 }
 
+/** The sign-in buttons while the server cannot be reached: in place and
+ *  greyed, with the reason under them, so the card does not vanish. */
+export function SignInUnavailable() {
+  return (
+    <div className="google-signin signin-unavailable" data-testid="signin-unavailable">
+      <button type="button" className="btn signin-offline-btn" disabled>Sign in with Google</button>
+      <p className="signin-upsell">Can't reach the server</p>
+    </div>
+  );
+}
+
 function WebGoogleSignIn({ clientId }: { clientId: string }) {
   const slot = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +51,7 @@ function WebGoogleSignIn({ clientId }: { clientId: string }) {
         // Full width of the lobby column, as the other buttons are; GIS caps the width at 400px.
         const width = Math.min(400, Math.max(200, Math.round(slot.current.getBoundingClientRect().width)));
         gis.renderButton(slot.current, {
-          theme: "filled_black", size: "large", shape: "pill", text: "continue_with", logo_alignment: "center", width,
+          theme: "filled_black", size: "large", shape: "pill", text: "signin_with", logo_alignment: "center", width,
         });
       })
       .catch((e: Error) => {
@@ -162,7 +173,7 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
       <button type="button" className="google-signin-native" data-testid="google-signin" style={NATIVE_BUTTON}
               disabled={busy} onClick={() => void signIn()}>
         <GoogleMark />
-        <span>Continue with Google</span>
+        <span>Sign in with Google</span>
       </button>
       {apple ? (
         <button type="button" className="apple-signin-native" data-testid="apple-signin" style={APPLE_BUTTON}

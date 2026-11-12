@@ -109,10 +109,10 @@ const match = (over: Record<string, unknown> = {}) => ({ ...MATCH, deadline: now
 
 describe("Play", () => {
   const lobby = () => q(".lobby-panel")!;
-  it("signed in: Ranked first with a gold Play and Duo, then Casual; no Find a game", async () => {
+  it("signed in: Ranked first with a gold Play and Duo, then Unranked; no Find a game", async () => {
     await renderApp();
     const labels = [...lobby().querySelectorAll(".play-label")].map((h) => h.textContent);
-    expect(labels).toEqual(["Ranked", "Casual"]);
+    expect(labels).toEqual(["Ranked", "Unranked"]);
     expect(findBtn().textContent).toBe("Play");
     expect(findBtn().className).toContain("gold");
     say({ type: "queue_count", count: 3 });
@@ -141,11 +141,11 @@ describe("Play", () => {
     expect(q(".q-sheet .ranked-chip")?.textContent).toBe("Ranked");
   });
 
-  it("a guest: Casual first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
+  it("a guest: Unranked first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
     signedIn = false;
     await renderApp();
     const labels = [...lobby().querySelectorAll(".play-label")].map((h) => h.textContent);
-    expect(labels).toEqual(["Casual", "Ranked"]);
+    expect(labels).toEqual(["Unranked", "Ranked"]);
     expect(q(".q-find")).toBeNull();
     const bots = button("Play bots", lobby())!;
     expect(bots.className).toContain("gold");
@@ -509,12 +509,10 @@ describe("with a friend", () => {
     expect([...document.querySelectorAll(".q-rc-side")][0].textContent).toContain("Sam");
   });
 
-  it("joins a friend's pair by code from Me; the member cannot start or cancel", async () => {
+  it("joins a friend's pair by code from Duo; the member cannot start or cancel", async () => {
     await renderApp();
     const { openTab } = await import("../home/route");
-    act(() => openTab("me"));
-    await settle();
-    click(button(/^Queue with a friend/));
+    click(button("Duo", q(".lobby-panel")!));
     expect(lastSent()).toEqual({ type: "party_create" });
     const input = q("#q-join-code") as HTMLInputElement;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
@@ -731,9 +729,9 @@ describe("one code for rooms and pairs", () => {
   it("the pair sheet's box joins with a code, and a game code closes it and opens the room", async () => {
     await renderApp();
     const { openTab } = await import("../home/route");
+    click(button("Duo", q(".lobby-panel")!));
     act(() => openTab("me"));
     await settle();
-    click(button(/^Queue with a friend/));
     expect(q(".q-join-label")?.textContent).toBe("Join with a code");
     typeInto(q("#q-join-code") as HTMLInputElement, "wxyz");
     click(button("Join", q(".q-join")!));
@@ -923,9 +921,9 @@ describe("a pair-sheet lookup the player walks away from", () => {
   it("a tap on the scrim, then a late room answer: no Play tab, no peek, no join", async () => {
     await renderApp();
     const { openTab } = await import("../home/route");
+    openPairSheet();
     act(() => openTab("me"));
     await settle();
-    click(button(/^Queue with a friend/));
     askInSheet("WXYZ");
     click(q(".q-scrim"));
     expect(q(".q-sheet")).toBeNull();

@@ -7,13 +7,23 @@ import { tabMemory, useCachedResource, useTabScroll, viewerScope } from "../home
 import { WIDE } from "../home/route";
 import LargeTitlePage from "../home/LargeTitlePage";
 import { useMediaQuery } from "../phoneLayout";
-import GoogleSignIn from "./GoogleSignIn";
+import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
 import { SkeletonRows } from "./GamesList";
 
 const PERIODS = [
   { value: "week", label: "This week" },
   { value: "all", label: "All time" },
 ] as const;
+
+/** A rating as read aloud: 1,042, with the thousands separator. */
+export function ratingText(rating: number): string {
+  return rating.toLocaleString("en-US");
+}
+
+/** This week's change; no change is a dash, not a zero. */
+function weekDeltaText(delta: number): string {
+  return delta === 0 ? "–" : deltaText(delta);
+}
 
 function deltaClass(delta: number): string {
   return delta > 0 ? "delta-up" : delta < 0 ? "delta-dn" : "delta-flat";
@@ -29,9 +39,9 @@ export function Row({ row }: { row: LeaderRow }) {
         <span className="lb-name-text">{row.you ? `${row.name} (you)` : row.name}</span>
         {row.provisional ? <span className="lb-new" title="Fewer than 20 ranked rounds">new</span> : null}
       </span>
-      <span className="lb-rating">{row.rating}</span>
+      <span className="lb-rating">{ratingText(row.rating)}</span>
       <span className={`lb-delta ${deltaClass(row.week_delta)}`} title="Change this week">
-        {deltaText(row.week_delta)}
+        {weekDeltaText(row.week_delta)}
       </span>
     </li>
   );
@@ -39,7 +49,7 @@ export function Row({ row }: { row: LeaderRow }) {
 
 /** The bot anchor: a divider at its rating, not a competitor with a rank. */
 function Anchor({ name, rating }: { name: string; rating: number }) {
-  return <li className="lb-row anchor"><span className="lb-anchor-text">{name} · {rating}</span></li>;
+  return <li className="lb-row anchor"><span className="lb-anchor-text">{name} · {ratingText(rating)}</span></li>;
 }
 
 /** The top players with the bot anchor placed where its rating falls. */
@@ -89,7 +99,15 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   let pinned = null;
   if (res === null) body = <SkeletonRows kind="board" rows={5} />;
   else if (!res.ok) {
-    body = <p className="lobby-error" role="alert">Could not load the leaderboard ({res.status || "no connection"}).</p>;
+    body = (
+      <>
+        <p className="lobby-error" role="alert">Could not load the leaderboard ({res.status || "no connection"}).</p>
+        {/* the server is out of reach, so the guest's sign-in card shows unavailable */}
+        {account.status === "error" ? (
+          <div className="signin-card compact lb-rated"><h3>Sign in to be ranked</h3><SignInUnavailable /></div>
+        ) : null}
+      </>
+    );
   } else {
     const { players, me } = res.data;
     const empty = players.length === 0;

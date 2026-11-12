@@ -842,6 +842,19 @@ textarea:focus-visible {
   }
 }
 
+/* The room starts at the status-bar inset, as the canvas draws it, rather
+   than centred with a blank band above. */
+.room-screen > .room-panel { margin-top: 0; }
+
+/* The host's level picker and a guest's "Starts at" pill take the same
+   height, so the header below them sits at one place for both. */
+.room-panel > .start-level-row,
+.room-panel > .start-level-slot { min-height: 44px; }
+.start-level-slot { display: flex; align-items: center; justify-content: center; }
+
+/* Picking a seat to move: a line under the seats says what next. */
+.seat-pick-hint { margin: 0; color: var(--gold); font-size: var(--fs-14); font-weight: 600; }
+
 .room-head {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -1094,9 +1107,11 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+/* the seat being moved lifts off the table */
 .seat-card.selected {
   border-color: var(--gold);
-  box-shadow: 0 0 0 2px var(--gold-soft);
+  box-shadow: 0 0 0 2px var(--gold-soft), 0 8px 18px #0008;
+  transform: translateY(-4px);
 }
 
 .seat-card.swap-target {
@@ -3881,24 +3896,29 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   display: none;
 }
 
-/* Touch screens: the lobby's dice and How to play link keep their drawn size
-   but take a 44px tap. */
-@media (pointer: coarse) {
-  .name-reroll::after {
-    content: "";
-    position: absolute;
-    inset: -5px;
-  }
+/* The lobby's dice, How to play link and a saved game's Continue and Replay
+   keep their drawn size but take a 44px tap. */
+.name-reroll::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
 
-  .howto-link {
-    position: relative;
-  }
+.howto-link {
+  position: relative;
+}
 
-  .howto-link::after {
-    content: "";
-    position: absolute;
-    inset: -14px -8px;
-  }
+.howto-link::after {
+  content: "";
+  position: absolute;
+  inset: -14px -8px;
+}
+
+.games-row-actions .btn { position: relative; }
+.games-row-actions .btn::after {
+  content: "";
+  position: absolute;
+  inset: -5px -4px;
 }
 
 /* ============ Hidden debug xray panel ============ */
@@ -4425,9 +4445,18 @@ button.games-row { cursor: pointer; }
 }
 .games-when { font-size: var(--fs-13); color: var(--text-dim); }
 .games-teams { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
-.games-team { border-bottom: 2px solid transparent; }
-.games-team.team0 { border-bottom-color: var(--team0); }
-.games-team.team1 { border-bottom-color: var(--team1); }
+.games-team { display: inline-flex; align-items: baseline; gap: 6px; }
+.games-team::before {
+  content: "";
+  flex: none;
+  align-self: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--team-dot, transparent);
+}
+.games-team.team0 { --team-dot: var(--team0); }
+.games-team.team1 { --team-dot: var(--team1); }
 .games-team.mine { color: var(--gold); }
 .games-vs { color: var(--text-dim); font-weight: 400; font-size: var(--fs-13); }
 .games-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-13); color: var(--text-dim); }
@@ -4512,9 +4541,17 @@ button.games-row { cursor: pointer; }
   padding: 8px 12px;
   font-size: var(--fs-16);
 }
-.replay-hand { overflow: hidden; }
-.replay-hand .hand { --cw: 48px; padding: 8px 4px 4px; max-width: 100%; }
-.replay-hand .hand-slot { min-width: 8px; }
+/* A full hand (33 with the kitty) keeps every rank readable: each card
+   shows at least 18px and the strip scrolls sideways past that. */
+.replay-hand { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+.replay-hand .hand {
+  --cw: 48px;
+  padding: 8px 4px 4px;
+  max-width: none;
+  min-width: min-content;
+  justify-content: safe center;
+}
+.replay-hand .hand-slot { min-width: 18px; }
 .replay-result {
   display: flex;
   flex-direction: column;
@@ -5315,7 +5352,7 @@ body.keyboard-open .tabbar { display: none; }
 .home-narrow .lobby-panel:has(.lobby-preview) { padding-bottom: 0; }
 
 /* The Play tab: the title and preview, the guest's name or the account chip,
-   the Ranked and Casual blocks, the code box and How to play, in one column.
+   the Ranked and Unranked blocks, the code box and How to play, in one column.
    It sits straight on the page at every width, with no card around it; from
    700px it is 420px wide and centred under the top bar. */
 .play-tab > .lobby-panel { gap: 16px; }
@@ -5411,6 +5448,41 @@ body.keyboard-open .tabbar { display: none; }
 }
 button.play-conn { cursor: pointer; }
 .play-conn .conn-dot { width: 8px; height: 8px; margin-right: 8px; background: var(--gold); }
+
+/* A phone's Play tab fits 390x844 at rest, Join and How to play above the
+   tab bar: the title starts at the status-bar inset, smaller, and the
+   preview is a wider band of the same 1200x630 stage, trimmed evenly top
+   and bottom. */
+.home-narrow .play-tab > .lobby-panel:has(.lobby-preview) { padding-top: 0; }
+.home-narrow .play-tab .game-title { font-size: 44px; line-height: 1.1; }
+.home-narrow .play-tab .game-title-en { font-size: 15px; margin-top: 2px; }
+.home-narrow .play-tab .lobby-preview { aspect-ratio: 1200 / 500; margin-top: 0; }
+.home-narrow .play-tab .lp-stage {
+  inset: auto;
+  left: 0;
+  top: calc(100cqw / 1200 * -65);
+  width: 100%;
+  height: calc(100cqw / 1200 * 630);
+}
+
+/* The Play tab starts at the top like the other tabs, at every width. */
+.play-tab > .lobby-panel { margin-top: 0; }
+
+/* The sign-in buttons while the server cannot be reached: in place, greyed
+   rather than faded, with the reason under them. */
+.btn.signin-offline-btn,
+.btn.signin-offline-btn:disabled {
+  width: 100%;
+  max-width: 400px;
+  min-height: 44px;
+  border-radius: 999px;
+  opacity: 1;
+  background: #1f242d;
+  border: 1px solid var(--panel-edge);
+  color: #7a8494;
+}
+.signin-unavailable { gap: 8px; }
+.signin-unavailable .signin-upsell { margin: 0; }
 
 /* The signed-in player's chip (Play on a phone, the top bar's end when wide):
    avatar, name and rating; a tap opens Me. */

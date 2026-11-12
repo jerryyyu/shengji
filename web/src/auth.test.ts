@@ -174,6 +174,16 @@ describe("the auth store", () => {
     await auth.init();
     expect(auth.state.status).toBe("off");
   });
+  it("a 5xx from the config reads as error, not off", async () => {
+    routes.set("GET /api/auth/config", { status: 503 });
+    await auth.init();
+    expect(auth.state).toEqual({ status: "error", clientId: null, user: null });
+  });
+  it("no connection to the config reads as error, not off", async () => {
+    globalThis.fetch = vi.fn(async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
+    await auth.init();
+    expect(auth.state.status).toBe("error");
+  });
   it("feature on, signed out, then a sign-in and a sign-out", async () => {
     routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid" } });
     routes.set("GET /api/me", { status: 401 });

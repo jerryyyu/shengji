@@ -32,7 +32,10 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
   };
 }
 
-export type AuthStatus = "loading" | "off" | "out" | "in";
+/** "off": the server has no sign-in configured. "error": the server could
+ *  not be asked (no connection, or it answered with a failure), so whether
+ *  sign-in exists is unknown and its controls show as unavailable. */
+export type AuthStatus = "loading" | "off" | "error" | "out" | "in";
 
 export interface AuthState {
   status: AuthStatus;
@@ -74,8 +77,19 @@ async function api<T>(path: string, init?: RequestInit): Promise<{ status: numbe
   return { status: resp.status, body };
 }
 
+/** Thrown when `/api/auth/config` could not answer: a network failure or a
+ *  5xx. A server without the route (404) has no sign-in, which is "off". */
+export class AuthConfigUnavailable extends Error {}
+
 export async function fetchAuthConfig(): Promise<{ google_client_id: string | null }> {
-  const { status, body } = await api<{ google_client_id: string | null }>("/api/auth/config");
+  let got: { status: number; body: { google_client_id: string | null } | null };
+  try {
+    got = await api<{ google_client_id: string | null }>("/api/auth/config");
+  } catch {
+    throw new AuthConfigUnavailable("no connection");
+  }
+  const { status, body } = got;
+  if (status >= 500) throw new AuthConfigUnavailable(`status ${status}`);
   if (status !== 200 || !body) return { google_client_id: null };
   return { google_client_id: body.google_client_id ?? null };
 }
@@ -287,8 +301,9 @@ class AuthStore {
   }
 
   /** Idempotent: ask the server whether sign-in exists and who we are. A
-   *  network failure reads as "off": the lobby then looks exactly like a
-   *  deployment without the feature. */
+   *  server without sign-in reads as "off"; a server that could not be
+   *  reached reads as "error", so the sign-in controls stay in place,
+   *  unavailable, instead of vanishing. */
   async init(): Promise<void> {
     if (this.started) return;
     this.started = true;
@@ -301,7 +316,7 @@ class AuthStore {
       const user = await fetchMe();
       this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user });
     } catch {
-      this.set({ status: "off", clientId: null, user: null });
+      this.set({ status: "error", clientId: null, user: null });
     }
   }
 

@@ -44,6 +44,385 @@ def test_actual_producer_json_to_engine_consumer_with_expired_refusals():
     assert any(e['attempted'] != e['accepted'] for row in rows for e in row['plays'])
 
 
+def test_follow_capture_json_replays_actual_continuation_and_keeps_lead_api_strict():
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    ledgers = [RefusalLedger() for _ in range(4)]
+    follows = 0
+    for event in PLAYS:
+        seat = rnd.turn
+        ledgers[seat].observe(rnd)
+        if rnd.trick.plays:
+            before = fingerprint(rnd)
+            with pytest.raises(ValueError, match='not a lead root'):
+                capture.capture(rnd, ledger=ledgers[seat], decision={})
+            packet = capture.capture_turn(rnd, ledger=ledgers[seat], decision={})
+            restored, ledger = restore_with_ledger(json.loads(json.dumps(packet)))
+            assert fingerprint(rnd) == fingerprint(restored) == before
+            assert normalized(vars(ledger)) == normalized(vars(ledgers[seat]))
+            restored.play(seat, event['attempted'])
+            follows += 1
+        else:
+            restored = None
+        rnd.play(seat, event['attempted'])
+        capture.committed(rnd, seat, event['attempted'])
+        if restored is not None:
+            assert fingerprint(restored) == fingerprint(rnd)
+    assert follows == 48
+    with pytest.raises(ValueError, match='not a play root'):
+        capture.capture_turn(rnd, ledger=ledgers[seat], decision={})
+
+
+def test_follow_capture_reaches_server_snapshot_compute_commit():
+    import asyncio
+    import random
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from test_pv_admission_rules import served
+
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    first = PLAYS[0]
+    rnd.play(rnd.turn, first['attempted'])
+    capture.committed(rnd, first['seat'], first['attempted'])
+    ledger = RefusalLedger()
+    ledger.observe(rnd)
+    packet = capture.capture_turn(rnd, ledger=ledger, decision={})
+    restored, restored_ledger = restore_with_ledger(json.loads(json.dumps(packet)))
+
+    async def decide(root, observed):
+        bot = served(refusal_constraints=True)
+        bot._refusals = observed
+        room = srv.Room(code='FOLLOWCAPTURE', bot=bot)
+        room.game = Game(random.Random(7))
+        room.game.round = root
+        room.seats = [srv.Seat(name=str(s), is_bot=True) for s in range(4)]
+        room.ids = [dict(enumerate(h)) for h in root.hands]
+        room._kitty_given = True
+        prepared = await srv._paced_bot_step(room, root.turn, minimum_turn_seconds=0)
+        assert prepared is not None
+        async with room.lock:
+            assert srv._commit_bot_turn(room, prepared)
+        return list(prepared.decision.cards), fingerprint(root)
+
+    # Real server transaction with stub network, not model latency evidence.
+    assert asyncio.run(decide(restored, restored_ledger)) == asyncio.run(decide(rnd, ledger))
+
+
+def test_latency_worker_consumes_lead_and_follow_roots(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from shengji.api import server as srv
+    from scripts import exact_endgame_latency as worker
+    from test_pv_admission_rules import served
+
+    rnd = rebuild_round(EVENTS)
+    capture = LeadCapture(rnd)
+    ledger = RefusalLedger()
+    roots = []
+    for event in PLAYS:
+        ledger.observe(rnd)
+        if max(map(len, rnd.hands)) <= 7 and len(roots) < 4:
+            roots.append(dict(root_index=len(roots), deal_seed=0, trick=len(rnd.history),
+                              seat=rnd.turn, hand_size=len(rnd.hands[rnd.turn]),
+                              lead=not bool(rnd.trick.plays), max_hand=max(map(len, rnd.hands)),
+                              packet=capture.capture_turn(rnd, ledger=ledger, decision={})))
+        rnd.play(rnd.turn, event['attempted'])
+        capture.committed(rnd, event['seat'], event['attempted'])
+    assert {r['lead'] for r in roots} == {True, False}
+    path = tmp_path / 'roots.jsonl'
+    path.write_text(''.join(json.dumps(r) + '\n' for r in roots))
+    args = SimpleNamespace(roots=path, pass_label='test', arm='r45')
+    result = asyncio.run(worker.measure(args, srv, served(refusal_constraints=True), tmp_path))
+    rows = [json.loads(line) for line in (tmp_path / 'measure_test.jsonl').read_text().splitlines()]
+    assert result == {'roots_measured': 4}
+    assert [r['lead'] for r in rows] == [r['lead'] for r in roots]
+    assert {r['max_hand'] for r in roots} == {7}, 'fixture must exercise the D7/X7 boundary'
+    assert all(r['committed_once'] and r['wall_total_seconds'] >= r['wall_step_seconds'] >= 0 for r in rows)
+    rec = dict(exact_follow_attempted=True, exact_follow_applied=False,
+               exact_follow_abandoned='soft_budget', exact_follow_error='TimeoutError')
+    assert all(worker.record_fields(rec)[k] == v for k, v in rec.items())
+    from scripts.exact_endgame_latency_summary import summarize
+    summary = summarize(rows, roots, arm='r45', pass_label='test')
+    assert summary['roots'] == 4
+    assert summary['by_turn']['lead']['count'] == sum(r['lead'] for r in roots)
+    assert summary['by_turn']['follow']['count'] == sum(not r['lead'] for r in roots)
+    assert summary['by_max_hand_and_turn'] == {'7': summary['by_turn']}
+    mixed_roots, mixed_rows = copy.deepcopy(roots), copy.deepcopy(rows)
+    mixed_roots[0]['max_hand'] = mixed_rows[0]['max_hand'] = 25
+    mixed_rows[0]['wall_step_seconds'] = mixed_rows[0]['compute_seconds'] = 4.0
+    mixed_rows[0]['wall_total_seconds'] = 4.0 + mixed_rows[0]['wall_commit_seconds']
+    mixed = summarize(mixed_rows, mixed_roots, arm='r45', pass_label='test', max_hand=25)
+    kind = 'lead' if mixed_roots[0]['lead'] else 'follow'
+    assert mixed['by_max_hand_and_turn']['25'][kind]['whole_turn_over_3s'] == 1
+    assert mixed['by_max_hand_and_turn']['25'][kind]['count'] == 1
+    assert sum(g['count'] for g in mixed['by_max_hand_and_turn']['7'].values()) == 3
+    too_deep = copy.deepcopy(roots)
+    too_deep[0]['max_hand'] = too_deep[0]['hand_size'] = 8
+    with pytest.raises(ValueError, match='invalid root size'):
+        summarize(rows, too_deep, arm='r45', pass_label='test')
+    # Exercise the entrypoint's real measure -> terminal -> report path.
+    # Only the model factory is replaced with the fixture model; server
+    # preparation, off-loop computation, commit and serialization are real.
+    from scripts.exact_endgame_latency_summary import summarize_completed
+    monkeypatch.setattr(worker, 'build', lambda *a: (
+        worker.NAMES['r45'], served(refusal_constraints=True), {}))
+    assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--roots', str(path), '--pass-label', 'entry', '--arm', 'r45']) == 0
+    terminal = json.loads((tmp_path / 'terminal_measure_entry.json').read_text())
+    entry_rows = [json.loads(line) for line in (tmp_path / 'measure_entry.jsonl').read_text().splitlines()]
+    assert summarize_completed(entry_rows, roots, terminal, arm='r45', pass_label='entry')['roots'] == 4
+    monkeypatch.setattr(worker, 'build', lambda arm, *a: (
+        worker.NAMES[arm], served(refusal_constraints=True), {}))
+    assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--roots', str(path), '--pass-label', 'combo-entry', '--arm', 'combo']) == 0
+    combo_terminal = json.loads((tmp_path / 'terminal_measure_combo-entry.json').read_text())
+    combo_rows = [json.loads(line) for line in (tmp_path / 'measure_combo-entry.jsonl').read_text().splitlines()]
+    assert summarize_completed(combo_rows, roots, combo_terminal,
+                               arm='combo', pass_label='combo-entry')['roots'] == 4
+    wrong_combo = {**combo_terminal, 'policy': worker.NAMES['dx']}
+    with pytest.raises(ValueError, match='worker terminal drift: policy'):
+        summarize_completed(combo_rows, roots, wrong_combo, arm='combo', pass_label='combo-entry')
+    belief = dict(belief_fallback=1, belief_proposed=0, belief_ms=2.5,
+                  belief_error='BeliefNumpyError', history_rejections=3, history_fallback_worlds=2)
+    assert all(worker.record_fields(belief)[key] == value for key, value in belief.items())
+    for key, value in [('error', {'type': 'RuntimeError', 'message': 'late failure'}),
+                       ('result', {'roots_measured': 3}), ('result', {'roots_measured': True}),
+                       ('policy', worker.NAMES['dx']), ('mode', 'harvest'),
+                       ('arm', 'dx'), ('pass_label', 'other'), ('seconds', float('nan'))]:
+        bad_terminal = {**terminal, key: value}
+        with pytest.raises(ValueError):
+            summarize_completed(entry_rows, roots, bad_terminal, arm='r45', pass_label='entry')
+    missing_error = dict(terminal)
+    del missing_error['error']
+    with pytest.raises(ValueError):
+        summarize_completed(entry_rows, roots, missing_error, arm='r45', pass_label='entry')
+    for changed in (rows[:-1], rows + rows[:1]):
+        with pytest.raises(ValueError):
+            summarize(changed, roots, arm='r45', pass_label='test')
+    for field, value in [('committed_once', False), ('wall_total_seconds', float('nan')),
+                         ('wall_step_seconds', -1), ('wall_total_seconds', 999),
+                         ('hand_size', 99), ('lead', 1), ('arm', 'dx')]:
+        changed = copy.deepcopy(rows)
+        changed[0][field] = value
+        with pytest.raises(ValueError):
+            summarize(changed, roots, arm='r45', pass_label='test')
+    # Abandonment remains in the wall-time denominator; no success-only filter.
+    changed = copy.deepcopy(rows)
+    for row in changed:
+        row['arm'] = 'dx'
+    follow = next(r for r in changed if not r['lead'])
+    follow.update(exact_follow_attempted=True, exact_follow_abandoned='soft_budget',
+                  wall_step_seconds=4., wall_commit_seconds=0., wall_total_seconds=4.)
+    summary = summarize(changed, roots, arm='dx', pass_label='test')
+    assert summary['by_turn']['follow']['stage_statuses']['soft_budget'] == 1
+    assert summary['by_turn']['follow']['max_seconds'] >= 4.
+    from scripts.exact_endgame_latency_summary import paired_summary
+    passes = {}
+    for label in ('r45-a', 'dx-a', 'dx-b', 'r45-b'):
+        passes[label] = copy.deepcopy(rows)
+        for row in passes[label]:
+            elapsed = 1. if label.startswith('dx') else 2.
+            row.update(arm=label.rsplit('-', 1)[0], pass_label=label,
+                       wall_step_seconds=elapsed, wall_commit_seconds=0., wall_total_seconds=elapsed)
+    paired = paired_summary(passes, roots)
+    from scripts.exact_endgame_latency_summary import paired_completed_summary
+    terminals = {label: {**terminal, 'arm': label.rsplit('-', 1)[0], 'pass_label': label,
+                         'policy': worker.NAMES[label.rsplit('-', 1)[0]]} for label in passes}
+    assert paired_completed_summary(passes, roots, terminals) == paired
+    combo_passes, combo_terminals = {}, {}
+    for label, values in passes.items():
+        renamed = label.replace('dx-', 'combo-')
+        arm = renamed.rsplit('-', 1)[0]
+        combo_passes[renamed] = [{**row, 'arm': arm, 'pass_label': renamed} for row in values]
+        combo_terminals[renamed] = {**terminals[label], 'arm': arm, 'pass_label': renamed,
+                                   'policy': worker.NAMES[arm]}
+    combo_paired = paired_completed_summary(combo_passes, roots, combo_terminals, candidate_arm='combo')
+    assert combo_paired['paired_combo_minus_r45'] == paired['paired_dx_minus_r45']
+    with pytest.raises(ValueError, match='four ABBA'):
+        paired_completed_summary(combo_passes, roots, combo_terminals)
+    with pytest.raises(ValueError, match='invalid paired candidate arm'):
+        paired_summary(combo_passes, roots, candidate_arm='r45')
+    stale_policy = copy.deepcopy(terminals)
+    stale_policy['dx-a']['policy'] = 'pv-search-491ee4bf-w64-k8-div-rc-tb-ele-la-dtr-vd-ed6-xf6-xfcompactlevel-rd774ea98-bury-hybrid-bwv-ba1c68b8fa9a'
+    with pytest.raises(ValueError, match='worker terminal drift: policy'):
+        paired_completed_summary(passes, roots, stale_policy)
+    bad_terminals = copy.deepcopy(terminals)
+    bad_terminals['dx-b']['error'] = {'type': 'RuntimeError', 'message': 'late failure'}
+    with pytest.raises(ValueError, match='not successful'):
+        paired_completed_summary(passes, roots, bad_terminals)
+    for kind in ('lead', 'follow'):
+        assert paired['paired_dx_minus_r45'][kind]['mean_seconds'] == -1.
+        assert paired['paired_dx_minus_r45'][kind]['p90_seconds'] == -1.
+    with pytest.raises(ValueError, match='four ABBA'):
+        paired_summary({k: v for k, v in passes.items() if k != 'dx-b'}, roots)
+    passes['dx-b'].pop()
+    with pytest.raises(ValueError, match='incomplete'):
+        paired_summary(passes, roots)
+    original = path.read_text()
+    for field in ('hand_size', 'trick'):
+        bad = copy.deepcopy(roots)
+        bad[0][field] += 1
+        path.write_text(''.join(json.dumps(r) + '\n' for r in bad))
+        args.pass_label = 'bad_' + field
+        with pytest.raises(AssertionError):
+            asyncio.run(worker.measure(args, srv, served(), tmp_path))
+        assert not (tmp_path / f'measure_{args.pass_label}.jsonl').read_text()
+    path.write_text(original)
+    timed = worker.timed_turn
+    async def failed_commit(*a):
+        prepared, step, commit, _ = await timed(*a)
+        return prepared, step, commit, False
+    monkeypatch.setattr(worker, 'timed_turn', failed_commit)
+    args.pass_label = 'refused'
+    with pytest.raises(RuntimeError, match='not committed'):
+        asyncio.run(worker.measure(args, srv, served(), tmp_path))
+    assert not (tmp_path / 'measure_refused.jsonl').read_text()
+
+
+def test_latency_harvest_captures_seven_card_leads_and_follows(tmp_path):
+    """The producer, not a hand-authored packet, must reach the D7/X7 boundary."""
+    import asyncio
+    from types import SimpleNamespace
+    from shengji.api import server as srv
+    from scripts import exact_endgame_latency as worker
+    from test_pv_admission_rules import served
+
+    result = asyncio.run(worker.harvest(
+        SimpleNamespace(rounds=1, seed0=4600000, arm='r45'), srv,
+        served(refusal_constraints=True), tmp_path))
+    roots = [json.loads(line) for line in (tmp_path / 'roots.jsonl').read_text().splitlines()]
+    assert result == {'rounds': 1, 'roots': len(roots)}
+    assert {root['lead'] for root in roots if root['max_hand'] == 7} == {True, False}
+    assert all(1 <= root['max_hand'] <= 7 for root in roots)
+
+
+def test_preplay_latency_runs_server_transactions_to_terminal(tmp_path, monkeypatch):
+    import copy
+    from scripts import exact_endgame_latency as worker
+    from scripts.exact_endgame_latency_summary import summarize_preplay_completed
+    from test_pv_admission_rules import served
+
+    monkeypatch.setattr(worker, 'build', lambda *a: (
+        worker.NAMES['combo'], served(refusal_constraints=True), {}))
+    assert worker.main(['preplay', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--rounds', '1', '--seed0', '4600000',
+                        '--pass-label', 'combo-pre', '--arm', 'combo']) == 0
+    rows = [json.loads(line) for line in
+            (tmp_path / 'preplay_combo-pre.jsonl').read_text().splitlines()]
+    terminal = json.loads((tmp_path / 'terminal_preplay_combo-pre.json').read_text())
+    assert terminal['error'] is None
+    declarations = [r for r in rows if r['phase'] == 'declare']
+    assert len(declarations) == 104
+    assert sum(r['final'] for r in declarations) == 4
+    assert rows[-1]['phase'] == 'bury' and rows[-1]['committed_once']
+    assert all(r['wall_total_seconds'] >= 0 for r in rows)
+    assert terminal['result'] == dict(rounds=1, declarations=104, buries=1)
+    assert not (tmp_path / 'roots.jsonl').exists()
+    def summarize(data, end=terminal):
+        return summarize_preplay_completed(data, end, arm='combo',
+                                            pass_label='combo-pre', seeds=[4600000])
+    summary = summarize(rows)
+    assert summary['by_phase']['declare']['count'] == 104
+    assert summary['by_phase']['bury']['count'] == 1
+    for bad in (rows[:-1], rows + [rows[-1]], rows[1:]):
+        with pytest.raises(ValueError):
+            summarize(bad)
+    for key, value in (('error', {'type': 'TimeoutError'}), ('policy', worker.NAMES['r45'])):
+        with pytest.raises(ValueError):
+            summarize(rows, {**terminal, key: value})
+    for key, value in (('wall_total_seconds', float('nan')), ('arm', 'r45'),
+                       ('deal_seed', 4600001), ('final', 1)):
+        bad = copy.deepcopy(rows)
+        bad[0][key] = value
+        with pytest.raises(ValueError):
+            summarize(bad)
+    gated = copy.deepcopy(rows)
+    gated[0]['model_search'] = [{'kind': 'model_search', 'event': 'complete'}]
+    gated[0]['wall_total_seconds'] = 4.0
+    summary = summarize(gated)
+    assert summary['by_phase']['model_declare']['max_seconds'] == 4.0
+    assert summary['by_phase']['model_declare']['over_3s'] == 1
+
+
+def test_latency_worker_seals_factory_refusal_without_retry(tmp_path, monkeypatch):
+    from scripts import exact_endgame_latency as worker
+
+    calls = []
+    def refuse(*args):
+        calls.append(args)
+        raise ValueError('D7+X7 source required')
+    monkeypatch.setattr(worker, 'build', refuse)
+    assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--roots', 'unused', '--pass-label', 'test', '--arm', 'dx']) == 1
+    row = json.loads((tmp_path / 'terminal_measure_test.json').read_text())
+    assert len(calls) == 1 and row['result'] is None and row['policy'] is None
+    assert row['error'] == dict(type='ValueError', message='D7+X7 source required')
+    assert not (tmp_path / 'measure_test.jsonl').exists()
+
+
+def test_all_play_latency_producer_to_terminal_consumer(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from shengji.api import server as srv
+    from scripts import exact_endgame_latency as worker
+    from scripts.exact_endgame_latency_summary import summarize_completed
+    from test_pv_admission_rules import served
+
+    asyncio.run(worker.harvest(
+        SimpleNamespace(rounds=1, seed0=4600000, arm='r45', max_hand=25),
+        srv, served(refusal_constraints=True), tmp_path))
+    roots = [json.loads(line) for line in (tmp_path / 'roots.jsonl').read_text().splitlines()]
+    assert {r['lead'] for r in roots if r['max_hand'] == 25} == {True, False}
+    turns = [json.loads(line) for line in (tmp_path / 'harvest_turns.jsonl').read_text().splitlines()]
+    assert len(roots) == len(turns)
+    assert all(r['small_endgame'] == (r['max_hand'] <= 7) for r in turns)
+    sample = roots[:4]
+    path = tmp_path / 'early.jsonl'
+    path.write_text(''.join(json.dumps(r) + '\n' for r in sample))
+    monkeypatch.setattr(worker, 'build', lambda *a: (
+        worker.NAMES['combo'], served(refusal_constraints=True), {}))
+    assert worker.main(['measure', '--out', str(tmp_path), '--fly-toml', 'unused',
+                        '--roots', str(path), '--pass-label', 'early', '--arm', 'combo',
+                        '--max-hand', '25']) == 0
+    rows = [json.loads(line) for line in (tmp_path / 'measure_early.jsonl').read_text().splitlines()]
+    terminal = json.loads((tmp_path / 'terminal_measure_early.json').read_text())
+    assert summarize_completed(rows, sample, terminal, arm='combo', pass_label='early', max_hand=25)['roots'] == 4
+    with pytest.raises(ValueError, match='scope drift'):
+        summarize_completed(rows, sample, terminal, arm='combo', pass_label='early')
+
+
+def test_latency_duplicate_refusal_witness_is_outside_commit_timing(monkeypatch):
+    import asyncio
+    from scripts import exact_endgame_latency as worker
+    from shengji.api import server as srv
+    from test_bot_scheduler import _real_room
+
+    clock = [0.0]
+    calls = []
+    original = srv._commit_bot_turn
+    def commit(room, prepared):
+        accepted = original(room, prepared)
+        calls.append(accepted)
+        clock[0] += 1.0 if len(calls) == 1 else 100.0
+        return accepted
+    monkeypatch.setattr(srv, '_commit_bot_turn', commit)
+    monkeypatch.setattr(worker.time, 'perf_counter', lambda: clock[0])
+    room = _real_room()
+    _, step, commit_seconds, once = asyncio.run(worker.timed_turn(srv, room, room.round.turn))
+    assert calls == [True, False] and once
+    assert step == 0.0 and commit_seconds == 1.0
+
+
+def test_latency_harvest_refuses_old_capture_source_before_creating_output(tmp_path, monkeypatch):
+    import asyncio
+    from scripts import exact_endgame_latency as worker
+    monkeypatch.delattr(LeadCapture, 'capture_turn')
+    with pytest.raises(RuntimeError, match='integrated follow-root capture source'):
+        asyncio.run(worker.harvest(None, None, None, tmp_path))
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_every_captured_lead_replays_to_round_end_with_observed_ledger():
     # Snapshot equality alone does not exercise the continuation consumer.
     # Build an independent uninterrupted trajectory, preserving each seat's

@@ -918,8 +918,9 @@ class GoogleCerts:
     COLD_WAIT = 10.0
 
     def __init__(self, fetch: Callable[[], tuple[dict, float]] | None = None,
-                 clock: Callable[[], float] | None = None):
+                 clock: Callable[[], float] | None = None, label: str = "google"):
         self._fetch = fetch or self._fetch_http
+        self._label = label
         self._clock = clock or time.time
         self._certs: dict[str, str] = {}
         self._expires = 0.0
@@ -972,8 +973,8 @@ class GoogleCerts:
                 self._refreshing = False
                 self._cond.notify_all()
                 if self._certs:
-                    log.warning("google certs refresh failed (%s); using cached set",
-                                type(exc).__name__)
+                    log.warning("%s certs refresh failed (%s); using cached set",
+                                self._label, type(exc).__name__)
                     return self._certs
             raise AuthError("certs_unavailable") from exc
         with self._cond:

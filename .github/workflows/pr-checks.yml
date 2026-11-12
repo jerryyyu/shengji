@@ -201,6 +201,7 @@ jobs:
           tests/test_server_ws.py
           tests/test_health_activity.py
           tests/test_accounts.py
+          tests/test_apple_signin.py
           tests/test_saved_games_link.py
           tests/test_saved_games_api.py
           tests/test_support.py

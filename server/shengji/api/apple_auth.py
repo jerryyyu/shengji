@@ -112,7 +112,7 @@ def _fetch_apple_keys() -> tuple[dict, float]:
 
 
 # The same single-flight, bounded refresh as Google's certificates.
-KEYS = GoogleCerts(fetch=_fetch_apple_keys)
+KEYS = GoogleCerts(fetch=_fetch_apple_keys, label="apple")
 
 
 def nonce_digest(raw: str) -> str:

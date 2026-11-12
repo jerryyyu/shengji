@@ -120,6 +120,7 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
   };
 
   const pickName = room.players.find((p) => p.seat === pick)?.name;
+  const hintId = `seat-swap-hint-${room.room}`;
   const animate = !prefersReducedMotion();
   return (
     <>
@@ -178,6 +179,7 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
               style={style}
               aria-label={label}
               aria-pressed={pick === seat}
+              aria-describedby={hintId}
               onClick={() => onTap(seat)}
             >
               {body}
@@ -190,9 +192,11 @@ function SeatClock({ room, isHost }: { room: RoomMsg; isHost: boolean }) {
         })}
       </div>
       {isHost ? (
-        <div className="seat-clock-hint" aria-live="polite">
-          {pick !== null ? `Tap another seat to swap with ${pickName}` : "Drag to swap seats"}
-        </div>
+        <span id={hintId} hidden>
+          {pick !== null
+            ? `Selected ${pickName}. Choose another seat to swap with, or this one again to cancel.`
+            : "Drag onto another seat, or select it and then another seat, to swap them."}
+        </span>
       ) : null}
     </>
   );

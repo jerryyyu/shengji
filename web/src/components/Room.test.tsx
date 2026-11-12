@@ -73,10 +73,9 @@ describe("layout", () => {
     expect(host.textContent).not.toContain("Team seats");
   });
 
-  it("gives a non-host no handles and no hint", () => {
+  it("gives a non-host no handles", () => {
     render(room({ you: 2, host: 0 }));
     expect(host.querySelectorAll("button.seat-card")).toHaveLength(0);
-    expect(host.querySelector(".seat-clock-hint")).toBeNull();
     stubRects();
     const a = centre(2);
     const b = centre(0);
@@ -89,10 +88,14 @@ describe("layout", () => {
     expect(swaps()).toEqual([]);
   });
 
-  it("shows the host the drag hint", () => {
+  it("shows no hint text, and describes the host's seat handles to screen readers", () => {
     render(room());
-    expect(host.querySelector(".seat-clock-hint")?.textContent).toBe("Drag to swap seats");
-    expect(host.querySelectorAll("button.seat-card")).toHaveLength(3);
+    expect(host.textContent).not.toContain("Drag to swap seats");
+    const seats = [...host.querySelectorAll<HTMLButtonElement>("button.seat-card")];
+    expect(seats).toHaveLength(3);
+    const hint = document.getElementById(seats[0].getAttribute("aria-describedby")!)!;
+    expect(hint.hidden).toBe(true);
+    expect(hint.textContent).toContain("to swap them");
   });
 });
 
@@ -177,7 +180,8 @@ describe("tap to swap", () => {
     render(room());
     act(() => card(1).click());
     expect(card(1).getAttribute("aria-pressed")).toBe("true");
-    expect(host.querySelector(".seat-clock-hint")?.textContent).toBe("Tap another seat to swap with Bot 1");
+    const hint = document.getElementById(card(1).getAttribute("aria-describedby")!)!;
+    expect(hint.textContent).toContain("Selected Bot 1");
     act(() => card(2).click());
     expect(swaps()).toEqual([{ type: "swap_seats", a: 1, b: 2 }]);
     expect(card(1).getAttribute("aria-pressed")).toBe("false");

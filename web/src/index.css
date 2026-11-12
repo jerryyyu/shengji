@@ -1140,12 +1140,6 @@ textarea:focus-visible {
   }
 }
 
-.seat-clock-hint {
-  margin-top: -8px;
-  color: var(--text-dim);
-  font-size: var(--fs-12);
-}
-
 .seat-num {
   font-size: var(--fs-11);
   font-weight: 700;
@@ -3300,10 +3294,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     padding: 4px 8px;
     gap: 2px;
     font-size: var(--fs-13);
-  }
-
-  .seat-clock-hint {
-    margin-top: -4px;
   }
 
   /* --- Round end: a compact card; Next round always on screen --- */

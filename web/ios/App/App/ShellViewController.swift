@@ -11,8 +11,22 @@ import WebKit
 /// from the right edge forward), as in Safari: the web app's sub-pages (How
 /// to play, a saved game and its replays, Privacy, Support) are history
 /// entries. The web turns the gesture off at the table.
+///
+/// A tap on the status bar reaches the page as a window `statusTap` event, so
+/// the page can scroll its own scroller to the top (the WebView's outer scroll
+/// view never scrolls). In game mode the bottom edge defers the system's home
+/// gesture, so a card drag near the edge needs a second swipe to leave.
 class ShellViewController: CAPBridgeViewController {
     private var navigationGate: OfflineFallbackGate?
+    private var statusTapObserver: NSObjectProtocol?
+
+    var inGame = false {
+        didSet {
+            guard inGame != oldValue else { return }
+            setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+            setNeedsUpdateOfHomeIndicatorAutoHidden()
+        }
+    }
 
     override open func capacitorDidLoad() {
         webView?.allowsBackForwardNavigationGestures = true
@@ -22,6 +36,21 @@ class ShellViewController: CAPBridgeViewController {
             let gate = OfflineFallbackGate(inner: inner)
             navigationGate = gate
             webView.navigationDelegate = gate
+        }
+        statusTapObserver = NotificationCenter.default.addObserver(
+            forName: .capacitorStatusBarTapped, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.webView?.evaluateJavaScript("window.dispatchEvent(new Event('statusTap'))")
+        }
+    }
+
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
+        inGame ? .bottom : []
+    }
+
+    deinit {
+        if let observer = statusTapObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 }
@@ -79,7 +108,10 @@ final class OfflineFallbackGate: NSObject, WKNavigationDelegate {
 ///   sides, which ScreenOrientation's lock cannot (its "landscape" is one
 ///   side), so the table turns with the phone; "portrait" and "any" too;
 /// - `setBackGesture({enabled})`: the edge swipe back and forward, off while
-///   a game is on the table.
+///   a game is on the table;
+/// - `setGameMode({on})`: at the table the screen stays awake and the bottom
+///   edge defers the home gesture; off, the idle timer and the edge are the
+///   system's again. The home indicator itself hides through SystemBars.
 @objc(ShengjiShellPlugin)
 public class ShengjiShellPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ShengjiShellPlugin"
@@ -87,8 +119,22 @@ public class ShengjiShellPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "idiom", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "lockOrientation", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "setBackGesture", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "setBackGesture", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setGameMode", returnType: CAPPluginReturnPromise)
     ]
+
+    @objc func setGameMode(_ call: CAPPluginCall) {
+        guard let on = call.getBool("on") else {
+            call.reject("on must be true or false")
+            return
+        }
+        DispatchQueue.main.async {
+            // A hand can sit idle for a while between turns.
+            UIApplication.shared.isIdleTimerDisabled = on
+            (self.bridge?.viewController as? ShellViewController)?.inGame = on
+            call.resolve()
+        }
+    }
 
     @objc func setBackGesture(_ call: CAPPluginCall) {
         guard let enabled = call.getBool("enabled") else {

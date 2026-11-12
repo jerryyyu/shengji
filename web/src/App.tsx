@@ -21,7 +21,7 @@ import Leaderboard from "./components/Leaderboard";
 import MePage from "./components/MePage";
 import HomeShell from "./home/HomeShell";
 import { openTab, useHomeRoute } from "./home/route";
-import { haptic, hideSplash, lockFor, setBackGesture } from "./native";
+import { haptic, hideSplash, lockFor, setBackGesture, setGameMode, startShell } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
 import { TOAST_MS, makeToast } from "./toast";
 import type { Toast } from "./toast";
@@ -170,10 +170,14 @@ export default function App() {
   // the app's edge swipe back is off at the table, so a live game is never
   // covered by an earlier page by accident
   useEffect(() => { void setBackGesture(!atTable); }, [atTable]);
+  // the screen stays awake and the home gesture needs a second swipe at the table
+  useEffect(() => { void setGameMode(atTable); }, [atTable]);
   // a portrait phone browser gets the table turned sideways instead
   const { rotated } = usePhoneLayout(atTable);
   // the launch splash covers the WebView until the first screen has painted
   useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
+  // keyboard accessory bar off, keyboard-open class, status-bar tap to top
+  useEffect(() => { startShell(); }, []);
   // the audio context costs a long task to create: make it before any tap
   useEffect(() => { prewarmAudio(); }, []);
 

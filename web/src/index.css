@@ -2442,7 +2442,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     pointer-events: auto;
   }
 
-  /* drawn 36x32 to match the strip; ::after keeps a 44px hit area. The
+  /* drawn 36x32 to match the strip; ::after gives it a 48px hit area (44px
+     at least, wherever the screen edge does not stop it first). The
      extra class outranks the coarse-pointer 44px minimum later in the file. */
   .hud-bar .hud-more-btn {
     position: relative;
@@ -2464,7 +2465,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .hud-bar .hud-more-btn::after {
     content: "";
     position: absolute;
-    inset: -6px -4px;
+    inset: -8px -6px;
   }
 
   .hud-more-btn[aria-expanded="true"] {

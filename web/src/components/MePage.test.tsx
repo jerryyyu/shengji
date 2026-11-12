@@ -18,6 +18,7 @@ vi.mock("../auth", async (importOriginal) => {
 });
 
 import MePage from "./MePage";
+import GamesList from "./GamesList";
 import { openNameEditor } from "../home/route";
 import { forgetHomeSession, forgetPrivateSession } from "../home/session";
 
@@ -411,5 +412,53 @@ describe("account changes", () => {
     globalThis.fetch = vi.fn(() => new Promise<Response>(() => {})) as typeof fetch;
     await as(IN(ALICE), "games");
     expect(host.querySelector(".games-row-title")).toBeNull();
+  });
+});
+
+describe("removing a saved game from Me → Games", () => {
+  beforeEach(() => { authState.current = { status: "in", clientId: "cid", user: JERRY }; });
+  const game = (id: string, ago: number) => ({ ...GAME, id, started_at: GAME.started_at - ago });
+  const ids = () => [...host.querySelectorAll(".games-day-row")].length;
+  const buttonNamed = (label: string) =>
+    [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === label);
+  const tap = async (b: HTMLElement) => { act(() => b.click()); await settle(); };
+
+  it("a game removed from a previously loaded older page stays gone; the first page's continuation stays", async () => {
+    let first = { games: [game("g1", 0)], next_before: "c1" as string | null };
+    let removed = false;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({ url, method });
+      const ok = (body: unknown) => ({ status: 200, json: async () => body }) as Response;
+      if (url === "/api/me/stats") return ok(STATS);
+      if (url === "/api/me/games?limit=20") return ok(first);
+      if (url === "/api/me/games?limit=20&before=c1") {
+        return ok({ games: removed ? [game("g3", 120)] : [game("g2", 60), game("g3", 120)], next_before: null });
+      }
+      if (url === "/api/me/games/g2" && method === "GET") return ok({ ...game("g2", 60), round_results: [] });
+      if (url === "/api/me/games/g2" && method === "DELETE") {
+        removed = true;
+        return { status: 204, json: async () => { throw new Error("no body"); } } as unknown as Response;
+      }
+      return { status: 404, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+    await render("games");
+    await tap(buttonNamed("Load more")!);
+    expect(ids()).toBe(3);
+
+    await act(async () => { root.render(<GamesList route={{ page: "game", id: "g2" }} />); });
+    await settle();
+    await tap(buttonNamed("Remove from my history")!);
+    await tap(buttonNamed("Tap again to remove")!);
+    expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/me/games/g2")).toBe(true);
+
+    // the refreshed first page still has a continuation, so the cached older page stays
+    first = { games: [game("g1", 0)], next_before: "c1" };
+    await act(async () => { root.render(<MePage section="games" />); });
+    expect(ids()).toBe(2);
+    await settle();
+    expect(ids()).toBe(2);
+    expect(buttonNamed("Load more")).toBeUndefined();
   });
 });

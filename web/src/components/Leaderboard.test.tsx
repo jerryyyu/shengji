@@ -112,10 +112,13 @@ it("a guest reads the board, with a sign-in card where their own row would be", 
   await render();
   expect(host.querySelectorAll(".lb-list .lb-row:not(.anchor)")).toHaveLength(4);
   expect(host.querySelector(".lb-row.me")).toBeNull();
-  const card = host.querySelector(".lb-pin .signin-card")!;
+  const card = host.querySelector(".lb-page .signin-card")!;
   expect(card.querySelector("h3")?.textContent).toBe("Sign in to be ranked");
   expect(card.querySelector(".google-signin")).not.toBeNull();
   expect(card.textContent).not.toMatch(/coming soon/i);
+  // it follows the board in the page, not pinned to the screen's bottom
+  expect(host.querySelector(".lb-pin")).toBeNull();
+  expect(card.previousElementSibling?.classList.contains("lb-list")).toBe(true);
 });
 
 it("over a game it offers the way back", async () => {
@@ -180,7 +183,7 @@ describe("viewer changes", () => {
   it("guest to account: the board reloads with the new account's own row", async () => {
     await act(async () => { await auth.init(); });
     await render();
-    expect(host.querySelector(".lb-pin .signin-card")).not.toBeNull();
+    expect(host.querySelector(".lb-page .signin-card")).not.toBeNull();
     expect(lbCalls()).toHaveLength(1);
     await signIn("Jerry");
     expect(lbCalls()).toHaveLength(2);
@@ -195,7 +198,7 @@ describe("viewer changes", () => {
     expect(pinnedName()).toBe("Jerry (you)");
     await signOut();
     expect(host.textContent).not.toContain("(you)");
-    expect(host.querySelector(".lb-pin .signin-card")).not.toBeNull();
+    expect(host.querySelector(".lb-page .signin-card")).not.toBeNull();
     await signIn("Alice");
     expect(pinnedName()).toBe("Alice (you)");
     expect(host.textContent).not.toContain("Jerry (you)");

@@ -56,15 +56,14 @@ function Rows({ board }: { board: Board }) {
   );
 }
 
-/** Where a guest's own row would be: what signing in buys, and the button.
+/** Under the board for a guest: what signing in buys, and the button.
  *  This is the one place ranked and unranked play are explained; the other
  *  sign-in prompts link here. */
 function SignInToRank({ clientId }: { clientId: string }) {
   return (
     <div className="signin-card compact lb-rated">
       <h3>Sign in to be ranked</h3>
-      <p>Games you finish signed in are ranked: each round moves your rating and your place here, starting
-        from 1000. Guest games are unranked and need no account.</p>
+      <p>Ranked rounds move your rating here, starting from 1000.</p>
       <GoogleSignIn clientId={clientId} />
     </div>
   );
@@ -108,13 +107,17 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
       pinned = <ul className="grp lb-list"><Row row={me} /></ul>;
     }
   }
-  if (account.status === "out" && account.clientId) pinned = <SignInToRank clientId={account.clientId} />;
+  // a guest's card follows the board, where it is seen at once, rather than
+  // pinned to the screen's bottom
+  const signIn = account.status === "out" && account.clientId ? <SignInToRank clientId={account.clientId} /> : null;
+  if (signIn) pinned = null;
 
   return (
     <LargeTitlePage className="lb-page" scroller={scroller} title="Leaderboard" phone={phone} onRefresh={reload}
                     before={onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}>
       <Segmented label="Period" options={PERIODS} value={period} onChange={setPeriod} />
       {body}
+      {signIn}
       {pinned ? <div className="lb-pin">{pinned}</div> : null}
     </LargeTitlePage>
   );

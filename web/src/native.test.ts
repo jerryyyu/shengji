@@ -30,7 +30,7 @@ describe("native bridge", () => {
     expect(isNative()).toBe(false);
     expect(await isPhone()).toBe(false);
     await lockFor("game");
-    haptic("play");
+    haptic("turn");
     hideSplash();   // nothing to call, nothing thrown
   });
 
@@ -65,10 +65,10 @@ describe("native bridge", () => {
   });
 
   it("maps each table event to a UIKit feedback style", async () => {
-    expect(hapticCall("play")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
     expect(hapticCall("turn")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
     expect(hapticCall("declare")).toEqual({ method: "impact", opts: { style: "MEDIUM" } });
     expect(hapticCall("won")).toEqual({ method: "notification", opts: { type: "SUCCESS" } });
+    expect(hapticCall("error")).toEqual({ method: "notification", opts: { type: "ERROR" } });
     const calls = fakeShell("phone");
     haptic("select");
     await flush();

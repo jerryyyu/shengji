@@ -5,6 +5,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+const haptics = vi.hoisted(() => [] as string[]);
+vi.mock("./native", async (load) => ({
+  ...(await load<typeof import("./native")>()),
+  haptic: (kind: string) => { haptics.push(kind); },
+}));
+
 class FakeWS {
   static all: FakeWS[] = [];
   onopen: (() => void) | null = null;
@@ -83,4 +89,18 @@ it("shows the same error again on a repeat, as a new element, and drops it when 
   expect(host.querySelector(".toast")).toBe(second);
   act(() => { vi.advanceTimersByTime(1); });
   expect(host.querySelector(".toast")).toBeNull();
+});
+
+it("plays the error haptic, not a selection tick, for an error toast", async () => {
+  const { default: App } = await import("./App");
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  act(() => root.render(<App />));
+  const ws = FakeWS.all[0];
+  act(() => ws.onopen?.());
+  act(() => ws.deliver(playing));
+  haptics.length = 0;
+  act(() => ws.deliver(followSuit));
+  expect(haptics).toEqual(["error"]);
 });

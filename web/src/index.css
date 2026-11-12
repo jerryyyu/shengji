@@ -5025,3 +5025,72 @@ button.grp-row:disabled { cursor: default; }
 .games-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
 .games-row-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 1px; font-size: var(--fs-13); color: #9aa3b2; }
 .grp-value.games-replay { color: var(--gold); font-size: var(--fs-15); }
+
+/* Native feel. A long press anywhere outside a field or a chat message
+   selects nothing and raises no Copy / Look Up callout or Save Image sheet
+   (the table's own rule above does the same inside a game). */
+.app {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.app input,
+.app textarea,
+.app [contenteditable],
+.app .chat-text {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* A press shows at once and lets go fast, as UIKit controls do; under
+   Reduce Motion the dim still shows, only without a fade. */
+.tabbar-item,
+.topbar-tab,
+.segmented-btn,
+.howto-link {
+  transition: opacity 80ms var(--ease-out);
+}
+.tabbar-item:active,
+.topbar-tab:active,
+.segmented-btn:active,
+.howto-link:active {
+  opacity: 0.55;
+  transition-duration: 0ms;
+}
+.ios-switch {
+  transition: background 150ms ease, opacity 80ms var(--ease-out);
+}
+button[role="switch"]:active .ios-switch {
+  opacity: 0.7;
+}
+
+/* The More menu and the chat panel scale and fade in from their corner and
+   out again over POP_MS (usePresence.ts); under Reduce Motion the hook adds
+   neither class, and this rule is a second guard. */
+@keyframes pop-in { from { opacity: 0; transform: scale(0.94); } }
+@keyframes pop-out { to { opacity: 0; transform: scale(0.94); } }
+.hud-menu { transform-origin: top right; }
+.chat-panel { transform-origin: bottom right; }
+.hud-menu.pop-in,
+.chat-panel.pop-in {
+  animation: pop-in 200ms var(--ease-out);
+}
+.hud-menu.pop-out,
+.chat-panel.pop-out {
+  animation: pop-out 200ms ease-in forwards;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-item,
+  .topbar-tab,
+  .segmented-btn,
+  .howto-link,
+  .ios-switch,
+  .ios-switch::after { transition: none; }
+  .hud-menu.pop-in,
+  .chat-panel.pop-in,
+  .hud-menu.pop-out,
+  .chat-panel.pop-out { animation: none; }
+}

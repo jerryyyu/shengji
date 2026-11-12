@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { GameState, HandCard, StatePlayer } from "../protocol";
 
 const haptics: string[] = [];
@@ -102,19 +102,47 @@ describe("phone turn cue and haptics", () => {
     expect(haptics).toEqual(["declare"]);
   });
 
-  it("taps on select and on Play, and a success when your team takes the trick", () => {
+  it("ticks on select only: your own play and a won trick are silent", () => {
     render(state({ turn: 0, trick: { leader: 1, plays: [{ seat: 1, cards: ["H3"] }] } }));
     haptics.length = 0;
     const card = host.querySelector<HTMLButtonElement>(".hand .card.clickable")!;
     act(() => card.click());
     act(() => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.click());
-    expect(haptics).toEqual(["select", "play"]);
+    expect(haptics).toEqual(["select"]);
     expect(sent).toEqual([{ type: "play", card_ids: [1] }]);
     haptics.length = 0;
     // the trick resets and you (team 0) won it
     render(state({ turn: 0, hand: cards(24), trick: { leader: 0, plays: [] },
       last_trick: { leader: 1, plays: [], winner: 2, points: 10 } }));
+    expect(haptics).toEqual([]);
+  });
+
+  it("plays one success when your team takes the round, and none for the other team", () => {
+    const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+    const saved = { showModal: proto.showModal, close: proto.close };
+    proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+    proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+    onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+    render(state({ phase: "play", turn: 1 }));
+    haptics.length = 0;
+    const result = (winner_team: 0 | 1): GameState["round_result"] => ({
+      attacker_points: 40, kitty_points: 0, kitty_cards: [], winner_team, level_change: 1, next_banker: 1,
+      new_levels: ["3", "2"], games_won: [0, 0], point_scored: false, game_over: false });
+    render(state({ phase: "round_end", turn: null, round_result: result(0) }));
+    render(state({ phase: "round_end", turn: null, round_result: result(0), attacker_points: 5 }));
     expect(haptics).toEqual(["won"]);
+    haptics.length = 0;
+    render(state({ phase: "round_end", turn: null, round_result: result(1) }));
+    expect(haptics).toEqual([]);
+  });
+
+  it("labels the trick's cards for VoiceOver and the hand as one group", () => {
+    render(state({ turn: 0, hand: cards(3), trick: { leader: 1, plays: [{ seat: 1, cards: ["H3", "BJ"] }] } }));
+    const played = [...host.querySelectorAll<HTMLElement>(".trick-cards .card")];
+    expect(played.map((c) => [c.getAttribute("role"), c.getAttribute("aria-label")])).toEqual([
+      ["img", "3 of hearts"], ["img", "Big joker"]]);
+    expect(host.querySelector(".hand")!.getAttribute("role")).toBe("group");
+    expect(host.querySelector(".hand")!.getAttribute("aria-label")).toBe("Your hand, 3 cards");
   });
 
   it("draws the deal's deck with your share so far", () => {

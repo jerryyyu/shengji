@@ -532,7 +532,7 @@ const STEPS: Step[] = [
 function Head({ count }: { count: ReactNode }) {
   return (
     <header className="howto-head">
-      <button className="btn subtle games-back" onClick={closeHowto}>‹ Lobby</button>
+      <button className="btn subtle games-back" onClick={closeHowto}>‹ Back</button>
       <span className="howto-page">How to play</span>
       <span className="howto-count">{count}</span>
     </header>

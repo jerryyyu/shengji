@@ -177,6 +177,113 @@ server, so one player dismissing does not blank it for anyone else.
 6. **round_end**: `round_result` populated; every connected human sends `next_round` before the next round starts (banker/levels advance per result).
 7. A successful defence at level A scores a game: `point_scored` is set, `games_won` increments and both teams restart at the room's start level. Rooms never reach `game_over` (they are created with no game limit); the phase exists for engine games with a limit.
 
+## Matchmaking queue
+
+Signed-in players can queue for a rated game instead of sharing a room code.
+Invite rooms (`create_room` / `join_room`) are unchanged. Every queue message is
+sent from the lobby (a socket that holds no seat); a seated socket may send only
+`party_leave`, and anything else is refused with code `in_room`. Times
+(`since`, `deadline`, `cooldown_until`, `expires_at`, `bots_at`) are Unix
+seconds from the server clock; `deadline_in` is relative seconds. Refusals are
+`error` frames with a `code`.
+
+### Client → Server
+
+| type | fields | effect |
+|------|--------|--------|
+| `queue_join` | optional `party_id` | queue alone, or (party leader only) as the pair; a member of a full party always queues as the pair |
+| `queue_leave` | — | leave the queue (leader only for a pair); during a ready check this is a decline |
+| `match_accept` | `match_id` (required) | accept the ready check named by `match_id`; it must be your current one and its deadline not passed |
+| `match_decline` | `match_id` (required), optional `keep_waiting` | decline the ready check named by `match_id` (same rule as `match_accept`); with `keep_waiting: true` on a bot-fill match the entry stays queued, its wait restarted, with no cooldown |
+| `queue_start_bots` | — | leave the queue and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots |
+| `party_create` | — | create a pair party (or resend yours); answered with `party` |
+| `party_invite` | — | the same as `party_create`: the party's `code` is the invite |
+| `party_join` | `code` | join a friend's party by its code |
+| `party_leave` | — | leave the party; it dissolves and the other member is told. A queued pair leaves the queue; during a ready check it is a decline |
+
+Error codes: `signed_in_only` (guest), `in_room`, `rate_limited`
+(`queue_join` 10 and `party_*` 20 per account per minute), `cooldown` (with
+`cooldown_until`, `cooldown_secs`), `not_leader`, `bad_party`,
+`party_incomplete`, `party_changed`, `partner_unavailable` (the partner has no
+lobby socket), `not_queued`, `match_pending` (a match already formed for you:
+answer the ready check), `no_match` (no ready check is open for you),
+`stale_match` (a `match_accept` or `match_decline` whose `match_id` is
+missing, is not your current ready check, or arrived after its deadline; a
+late answer is the timeout: you get `queue_removed {reason: "missed"}` first),
+`start_failed`,
+`party_not_found`, `party_full`, `party_busy` (the leader is queued),
+`in_queue`, `in_party`, `not_in_party`.
+
+### Server → Client
+
+- `queue_state {queued, count, since?, front?, party_id?, leader?, bots_at?, replaced?}`:
+  your entry, after every change to it and on reconnect. `front` marks an entry
+  requeued at the front after someone else missed a ready check that every
+  member of this entry had accepted. `replaced:
+  true` tells an older socket that a newer one of the same account now holds
+  the entry (one entry per account).
+- `queue_count {count}`: to every lobby socket, signed in or not; players
+  queued, including those in a ready check. At most one per second; a newly
+  connected lobby socket gets the current count if it is above zero.
+- `match {match_id, deadline, deadline_in, size, bots, party_id}`: a ready
+  check. `size` is the number of humans who must accept, `bots` the bot seats.
+- `match_ready {match_id, accepted, of, names?}`: after each accept, counts
+  only; `names` (the humans, seat order) only once everyone has accepted.
+- `match_started {match_id, room, rated}`: the room was created and started
+  for you; `match_id` is null for `queue_start_bots`. It arrives with the usual
+  `resume`, `chat_history`, `room` and `state` frames: the socket now holds its
+  seat exactly as after `join_room`. `room` and `state` of such a room carry
+  `matched: true`.
+- `match_cancelled {match_id, reason}`: the ready check ended without you being
+  at fault (`player_missed`, `keep_waiting`, `server_error`); a `queue_state`
+  follows. After `server_error` the room was never left behind: you are back
+  in the lobby and queued at the front, even if its `resume` or
+  `match_started` frames already reached you.
+- `queue_removed {reason, cooldown_until, match_id?, by?}`: you are out of the
+  queue. `declined` and `missed` carry a 30 s cooldown; `away` (your socket was
+  gone over 10 s, or at the start of an accepted match) and `in_room` carry
+  none (`cooldown_until: null`). For a pair, `by` names the member who missed or
+  left, and both members get it.
+- `party {party_id, code, you_lead, members: [{name, leader, you}], expires_at}`.
+- `party_closed {party_id, reason, by?, you?}`: `left` (`by` who left) or
+  `expired` (5 minutes without queueing).
+
+### Matching
+
+The server runs a pass every 2 s (`server/shengji/api/matchmaking.py`; the
+numbers are named constants there):
+
+1. Waiting entries are ordered front-of-line first, then longest wait. A pair
+   is one entry at the mean of its two ratings; bots count as
+   `ratings.BOT_RATING`.
+2. The anchor is the first entry. The entries whose rating lies within the
+   anchor's window are added closest first until four players are found: ±100
+   for the first 20 s of the anchor's wait, ±250 until 40 s, then any. A pair
+   anchor takes another pair if one fits, else two solos. If the anchor cannot
+   be matched, nobody behind it is matched on that pass.
+3. From 60 s the anchor's match is completed with bots: the 1–3 humans who
+   fit, the rest bots.
+4. Teams (seats 0+2 vs 1+3): of the three pairings, those that keep each pair
+   together; with bots, those that give each team a human where any does; then
+   the smallest gap in team-average rating. A lone pair gets both bots on the
+   other team; a pair and a solo get one bot as the solo's partner.
+5. Every human gets a 10 s ready check. When all accept, the server creates an
+   ordinary room, seats everyone, adds the bots and starts it; ratings are the
+   ordinary room ratings (the round-start snapshot of signed-in seats). A
+   decline or timeout removes that entry (the whole pair, for a pair) with a
+   30 s cooldown. The others keep their original wait; an entry whose every
+   member had accepted goes to the front, one with a member who had not
+   answered yet (a pair with one acceptance included) keeps its place with no
+   front priority and no cooldown. The deadline is checked when an answer
+   arrives, so a late accept never starts a room.
+
+A queued socket that closes keeps its place for 10 s; a new socket of the same
+account within that time takes the entry back (and gets `queue_state`). After
+10 s the entry is dropped with `queue_removed {reason: "away"}` and no
+cooldown. A disconnected entry is not matched while it may still come back.
+`create_room` or `join_room` that seats the socket ends its queue entry (a
+ready check in progress counts as a decline); a failed join leaves it queued.
+
 ## Reconnect & lifecycle
 
 Rejoining with `join_room` and the stored `token` (or, for a disconnected seat, the same name, trimmed and case-folded) reclaims the seat, and the current `state` is resent. Bots act automatically after a short delay.

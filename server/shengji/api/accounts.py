@@ -676,6 +676,12 @@ class Store:
                 "UPDATE game_players SET hidden = 1 WHERE game_id = ? AND user_id = ? AND hidden = 0",
                 (game_id, user_id)).rowcount
 
+    def forget_game(self, game_id: str) -> int:
+        """Delete one game row (its links go by cascade): a start that was
+        rolled back never became a game anyone played."""
+        with closing(self._open()) as conn:
+            return conn.execute("DELETE FROM games WHERE id = ?", (game_id,)).rowcount
+
     def purge_games(self, now: float | None = None) -> int:
         """Delete games past retention (their links go by cascade) and games
         no account links any more; returns the games deleted."""

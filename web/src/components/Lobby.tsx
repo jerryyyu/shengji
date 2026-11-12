@@ -115,6 +115,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const codeView = useCodes();
   // A ?code= link that the lookup found to be a room: handled as ?room= is.
   const [linkRoom, setLinkRoom] = useState<string | null>(null);
+  // A Play-box or link lookup still waiting for its answer holds Join.
+  const looking = codeView.pending !== null && codeView.pending.from !== "pair";
   const autoJoined = useRef(false);
   const lastPeek = useRef<string | null>(null);
   const peekGen = useRef<number | null>(null);
@@ -225,7 +227,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // peeked here (below) and a pair is joined by the queue.
   const join = () => {
     const code = normalizeCode(roomCode);
-    if (!ready || code.length !== 4) return;
+    if (!ready || looking || code.length !== 4) return;
     nameOrRandom();
     if (codes.lookup(code, "play")) begin("join");
   };
@@ -402,11 +404,11 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           />
           <button
             className="btn"
-            disabled={!ready || roomCode.trim().length !== 4}
+            disabled={!ready || looking || roomCode.trim().length !== 4}
             onClick={join}
-            aria-busy={starting?.kind === "join" || undefined}
+            aria-busy={starting?.kind === "join" || looking || undefined}
           >
-            {starting?.kind === "join" ? STARTING_LABEL.join : "Join"}
+            {starting?.kind === "join" || looking ? STARTING_LABEL.join : "Join"}
           </button>
         </div>
 

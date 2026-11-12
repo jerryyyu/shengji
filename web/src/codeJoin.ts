@@ -42,6 +42,10 @@ export class CodeStore {
   private attached = false;
   /** The `?code=` link is looked up once per page, on the first open socket. */
   private linkTaken = false;
+  /** Codes of cancelled lookups whose answers are still on the way. The
+   *  server answers lookups in the order they were sent, one reply each, so
+   *  the oldest of these is the next answer to drop. */
+  private stale: string[] = [];
 
   attach(): void {
     if (this.attached) return;
@@ -49,6 +53,12 @@ export class CodeStore {
     // a test may stand in a partial socket
     conn.subscribe?.((m) => this.onMessage(m));
     conn.subscribeStatus?.((s) => this.onStatus(s));
+    // Dismissing the pair sheet (Cancel, the scrim, Escape, a drag) cancels
+    // its lookup. The room handoff clears the lookup before it closes the
+    // sheet, so it is not a dismissal.
+    queue.subscribe?.(() => {
+      if (this.view.pending?.from === "pair" && queue.view.sheet !== "party") this.cancel();
+    });
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -67,6 +77,7 @@ export class CodeStore {
     // The answer, if any, died with the socket. A link's lookup is asked
     // again on the next open socket; one that was answered is not.
     if (s !== "open") {
+      this.stale = [];
       const p = this.view.pending;
       if (p) {
         if (p.from === "link") this.linkTaken = false;
@@ -85,9 +96,19 @@ export class CodeStore {
     const code = normalizeCode(raw);
     if (code.length !== CODE_LEN) return false;
     if (!conn.send({ type: "code_lookup", code })) return false;
+    // one lookup at a time: a newer one replaces any still waiting
+    if (this.view.pending) this.stale.push(this.view.pending.code);
     this.set({ pending: { code, from }, ...(from === "pair" ? {} : { playError: null }) });
     if (from === "pair") queue.showPartyError(null);
     return true;
+  }
+
+  /** Drop the waiting lookup: its answer, when it comes, does nothing. */
+  cancel(): void {
+    const p = this.view.pending;
+    if (!p) return;
+    this.stale.push(p.code);
+    this.set({ pending: null });
   }
 
   /** The Play screen takes the room code it is about to open. */
@@ -102,10 +123,16 @@ export class CodeStore {
   }
 
   private onMessage(msg: ServerMsg): void {
-    const p = this.view.pending;
-    if (!p) return;
     // rate_limited is the one refusal code_lookup has; any other error
     // answers some other request and leaves the lookup waiting.
+    const answer = (msg.type === "code_kind" || (msg.type === "error" && msg.code === "rate_limited"));
+    if (answer && this.stale.length > 0
+        && (msg.type === "error" || msg.code === this.stale[0])) {
+      this.stale.shift();
+      return;
+    }
+    const p = this.view.pending;
+    if (!p) return;
     if (msg.type === "error") {
       if (msg.code !== "rate_limited") return;
       this.set({ pending: null });
@@ -154,6 +181,7 @@ export class CodeStore {
   reset(): void {
     this.view = EMPTY;
     this.linkTaken = false;
+    this.stale = [];
   }
 }
 

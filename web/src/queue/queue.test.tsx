@@ -768,3 +768,113 @@ describe("a code lookup that is interrupted or refused", () => {
     expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
   });
 });
+
+describe("a pair-sheet lookup the player walks away from", () => {
+  const typeInto = (input: HTMLInputElement, value: string) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  };
+  const openPairSheet = () => {
+    click(findBtn());
+    click(button(/^With a friend…/));
+  };
+  const pairJoinButton = () => q(".q-join button[type='submit']") as HTMLButtonElement;
+  const askInSheet = (code: string) => {
+    typeInto(q("#q-join-code") as HTMLInputElement, code);
+    click(pairJoinButton());
+    expect(lastSent()).toEqual({ type: "code_lookup", code });
+  };
+  const LIMITED = { type: "error", code: "rate_limited", message: "Too many requests; wait a minute." };
+
+  it("Cancel, then a late pair answer: no party_join and nothing shown", async () => {
+    await renderApp();
+    openPairSheet();
+    askInSheet("FG3K");
+    click(button("Cancel", q(".q-sheet")!));
+    expect(q(".q-sheet")).toBeNull();
+    say({ type: "code_kind", code: "FG3K", kind: "party" });
+    expect(sentTypes()).not.toContain("party_join");
+    expect(q(".q-sheet")).toBeNull();
+    expect(q(".q-error")).toBeNull();
+  });
+
+  it("a tap on the scrim, then a late room answer: no Play tab, no peek, no join", async () => {
+    await renderApp();
+    const { openTab } = await import("../home/route");
+    act(() => openTab("me"));
+    await settle();
+    click(button(/^Queue with a friend/));
+    askInSheet("WXYZ");
+    click(q(".q-scrim"));
+    expect(q(".q-sheet")).toBeNull();
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    await settle();
+    expect(window.location.hash).toBe("#/me");
+    expect(sentTypes()).not.toContain("peek_room");
+    expect(sentTypes()).not.toContain("join_room");
+  });
+
+  it("Escape, then a late answer of either kind: nothing happens", async () => {
+    await renderApp();
+    openPairSheet();
+    askInSheet("FG3K");
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
+    expect(q(".q-sheet")).toBeNull();
+    say({ type: "code_kind", code: "FG3K", kind: "party" });
+    await settle();
+    expect(sentTypes()).not.toContain("party_join");
+    expect(sentTypes()).not.toContain("peek_room");
+  });
+
+  it("a new lookup after a cancel is answered and joins", async () => {
+    await renderApp();
+    openPairSheet();
+    askInSheet("FG3K");
+    click(button("Cancel", q(".q-sheet")!));
+    openPairSheet();
+    askInSheet("AB12");
+    say({ type: "code_kind", code: "FG3K", kind: "party" });    // the cancelled one's answer
+    expect(sentTypes()).not.toContain("party_join");
+    say({ type: "code_kind", code: "AB12", kind: "party" });
+    expect(lastSent()).toEqual({ type: "party_join", code: "AB12" });
+    expect(FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "party_join")).toHaveLength(1);
+  });
+
+  it("the pair sheet's Join says Joining… and holds while the lookup waits; a refusal frees it", async () => {
+    await renderApp();
+    openPairSheet();
+    askInSheet("WXYZ");
+    expect(pairJoinButton().textContent).toBe("Joining…");
+    expect(pairJoinButton().disabled).toBe(true);
+    expect(pairJoinButton().getAttribute("aria-busy")).toBe("true");
+    say(LIMITED);
+    expect(pairJoinButton().textContent).toBe("Join");
+    expect(pairJoinButton().disabled).toBe(false);
+  });
+
+  it("the pair sheet's Join is freed when the socket drops", async () => {
+    await renderApp();
+    openPairSheet();
+    askInSheet("WXYZ");
+    act(() => ws().close());
+    expect(pairJoinButton().textContent).toBe("Join");
+    expect(pairJoinButton().disabled).toBe(false);
+  });
+
+  it("the Play box's Join holds while its lookup waits, past an unrelated error, and a drop frees it", async () => {
+    await renderApp();
+    typeInto(q("input[aria-label='Game or pair code']") as HTMLInputElement, "WXYZ");
+    const playJoin = () => q(".join-row button") as HTMLButtonElement;
+    click(playJoin());
+    expect(playJoin().textContent).toBe("Joining…");
+    expect(playJoin().disabled).toBe(true);
+    say({ type: "error", code: "room_full", message: "Room is full." });
+    expect(playJoin().textContent).toBe("Joining…");
+    expect(playJoin().disabled).toBe(true);
+    say(LIMITED);
+    expect(playJoin().disabled).toBe(false);
+    click(playJoin());
+    act(() => ws().close());
+    expect(playJoin().textContent).toBe("Join");
+  });
+});

@@ -45,6 +45,7 @@ describe("a refused lookup", () => {
   });
 
   it("from the pair sheet is the sheet's error, not the Play box's", () => {
+    queue.openSheet("party");
     codes.lookup("WXYZ", "pair");
     say(LIMITED);
     expect(queue.view.partyError).toBe(LIMITED.message);
@@ -77,5 +78,66 @@ describe("a ?code= link across reconnects", () => {
     status("closed");
     status("open");
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("a cancelled lookup", () => {
+  it("ignores its late answer: no join, no room, no error", () => {
+    queue.openSheet("party");
+    codes.lookup("FG3K", "pair");
+    codes.cancel();
+    expect(codes.view.pending).toBeNull();
+    say({ type: "code_kind", code: "FG3K", kind: "party" });
+    say({ type: "code_kind", code: "FG3K", kind: "room" });
+    expect(sent).toEqual([{ type: "code_lookup", code: "FG3K" }]);
+    expect(codes.view.room).toBeNull();
+    expect(queue.view.partyError).toBeNull();
+  });
+
+  it("is what closing the pair sheet does to a pair-sheet lookup", () => {
+    queue.openSheet("party");
+    codes.lookup("FG3K", "pair");
+    queue.closeSheet();
+    expect(codes.view.pending).toBeNull();
+    say({ type: "code_kind", code: "FG3K", kind: "room" });
+    expect(codes.view.room).toBeNull();
+  });
+
+  it("leaves a Play-box lookup alone when the pair sheet closes", () => {
+    queue.openSheet("party");
+    codes.lookup("WXYZ", "play");
+    queue.closeSheet();
+    expect(codes.view.pending).toEqual({ code: "WXYZ", from: "play" });
+  });
+
+  it("drops only its own answer: a fresh lookup after it is answered", () => {
+    queue.openSheet("party");
+    codes.lookup("FG3K", "pair");
+    codes.cancel();
+    codes.lookup("WXYZ", "play");
+    say({ type: "code_kind", code: "FG3K", kind: "party" });
+    expect(codes.view.pending).toEqual({ code: "WXYZ", from: "play" });
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(codes.view.room).toMatchObject({ code: "WXYZ", from: "play" });
+  });
+
+  it("the same code asked again after a cancel takes the second answer", () => {
+    queue.openSheet("party");
+    codes.lookup("WXYZ", "pair");
+    codes.cancel();
+    codes.lookup("WXYZ", "play");
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(codes.view.pending).toEqual({ code: "WXYZ", from: "play" });
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(codes.view.room).toMatchObject({ code: "WXYZ", from: "play" });
+  });
+
+  it("a refused cancelled lookup is dropped too", () => {
+    queue.openSheet("party");
+    codes.lookup("FG3K", "pair");
+    codes.cancel();
+    say(LIMITED);
+    expect(queue.view.partyError).toBeNull();
+    expect(codes.view.playError).toBeNull();
   });
 });

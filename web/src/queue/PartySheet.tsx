@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { partnerName, queue, useQueue } from "./store";
 import Sheet from "./Sheet";
-import { codes } from "../codeJoin";
+import { codes, useCodes } from "../codeJoin";
 import { codeLink } from "../codes";
 
 function UsersIcon() {
@@ -38,10 +38,11 @@ export function SoloSheet() {
 
 function JoinByCode() {
   const q = useQueue();
+  const waiting = useCodes().pending?.from === "pair";
   return (
     // A pair code joins the pair; a game code closes the sheet and opens
     // that room as the Play box would.
-    <form className="q-join" onSubmit={(e) => { e.preventDefault(); codes.lookup(q.joinCode, "pair"); }}>
+    <form className="q-join" onSubmit={(e) => { e.preventDefault(); if (!waiting) codes.lookup(q.joinCode, "pair"); }}>
       <label className="q-join-label" htmlFor="q-join-code">
         Got a code from a friend?<small>A pair code or a game code</small>
       </label>
@@ -49,7 +50,10 @@ function JoinByCode() {
         <input id="q-join-code" className="room-input" value={q.joinCode} maxLength={4} placeholder="CODE"
                aria-label="Pair or game code" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
                onChange={(e) => queue.setJoinCode(e.target.value)} />
-        <button type="submit" className="btn" disabled={q.joinCode.length !== 4}>Join</button>
+        <button type="submit" className="btn" disabled={waiting || q.joinCode.length !== 4}
+                aria-busy={waiting || undefined}>
+          {waiting ? "Joining…" : "Join"}
+        </button>
       </div>
     </form>
   );

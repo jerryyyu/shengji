@@ -154,21 +154,27 @@ describe("Play", () => {
 });
 
 describe("the queue bar", () => {
-  it("shows the wait and the count on every tab, then turns amber near the bot fill", async () => {
+  it("counts down to the bots from the first second on every tab, amber in the last ten", async () => {
     await renderApp();
     fakeClock();
-    say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
-    expect(q(".q-bar")?.textContent).toContain("Finding a game");
-    expect(q(".q-bar small")?.textContent).toBe("0:24 · 3 in queue");
+    say(queued());
+    expect(q(".q-bar b")?.textContent).toBe("Finding a game");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
+    tick(6000);
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:54 · 3 in queue");
+    expect(q(".q-bar")?.getAttribute("title")).toBe("Waiting 0:06");
     expect(q(".q-bar")?.className).not.toContain("warn");
     expect((findBtn() as HTMLButtonElement).disabled).toBe(true);
-    tick(2000);
-    expect(q(".q-bar small")?.textContent).toBe("0:26 · 3 in queue");
-    tick(24_000);   // 50 s: ten seconds before the bots
+    tick(43_000);   // 49 s: eleven seconds before the bots
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:11 · 3 in queue");
+    expect(q(".q-bar")?.className).not.toContain("warn");
+    tick(1_000);    // 50 s: ten seconds before the bots
     expect(q(".q-bar")?.className).toContain("warn");
-    expect(q(".q-bar small")?.textContent).toBe("0:50 · bots in 0:10");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:10 · 3 in queue");
     tick(5_000);
-    expect(q(".q-bar small")?.textContent).toBe("0:55 · bots in 0:05");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:05 · 3 in queue");
+    tick(5_000);
+    expect(q(".q-bar small")?.textContent).toBe("Adding bots…");
     // the bar follows to the other tabs
     const { openTab } = await import("../home/route");
     act(() => openTab("leaderboard"));
@@ -196,12 +202,39 @@ describe("the queue bar", () => {
   it("at 700px and up the bar is a chip in the top bar", async () => {
     viewport(true);
     await renderApp();
-    say(queued({ since: nowSecs() - 24 }));
+    say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
     expect(q(".q-bar")).toBeNull();
     const chip = q(".topbar .q-chip")!;
-    expect(chip.textContent).toContain("Finding a game · 0:24 · 3 in queue");
+    expect(chip.textContent).toContain("Finding a game · 0:24 · Bots in 0:36 · 3 in queue");
+    expect(chip.getAttribute("title")).toBe("Waiting 0:24");
     expect(button("Play with bots now", chip)).toBeDefined();
     expect(button("Cancel", chip)).toBeDefined();
+    click(button("Wait for real players", chip));
+    expect(lastSent()).toEqual({ type: "queue_wait_players" });
+    expect(chip.textContent).toContain("Finding a game · 0:24 · Waiting for real players · 3 in queue");
+    expect(q(".q-strip")?.textContent).toContain("Waiting for real players · 3 in queue");
+  });
+
+  it("Wait for real players turns the countdown off; Allow bots brings it back", async () => {
+    await renderApp();
+    fakeClock();
+    say(queued());
+    tick(52_000);
+    expect(q(".q-bar")?.className).toContain("warn");
+    click(button("Wait for real players", q(".q-bar")!));
+    expect(lastSent()).toEqual({ type: "queue_wait_players" });
+    expect(q(".q-bar small")?.textContent).toBe("Waiting for real players · 3 in queue");
+    expect(q(".q-bar")?.className).not.toContain("warn");
+    say(queued({ since: nowSecs() - 52, bots_at: null, wait_players: true }));
+    tick(120_000);
+    expect(q(".q-bar small")?.textContent).toBe("Waiting for real players · 3 in queue");
+    expect(button("Play with bots now")).toBeDefined();
+    expect(button("Cancel", q(".q-bar")!)).toBeDefined();
+    click(button("Allow bots", q(".q-bar")!));
+    expect(lastSent()).toEqual({ type: "queue_allow_bots" });
+    say(queued({ since: nowSecs() - 172, bots_at: nowSecs() + 60, wait_players: false }));
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
+    expect(button("Wait for real players", q(".q-bar")!)).toBeDefined();
   });
 });
 
@@ -303,7 +336,7 @@ describe("the ready check", () => {
     expect(q(".q-toast")?.textContent).toContain("A player didn't accept.");
     expect(q(".q-toast")?.textContent).toContain("You're back in the queue and keep your place.");
     expect(q(".q-bar b")?.textContent).toBe("Back in queue");
-    expect(q(".q-bar small")?.textContent).toBe("you keep your place");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
   });
 
   it("an unanswered player is told they are still queued, without the front-of-line copy", async () => {
@@ -421,7 +454,7 @@ describe("with a friend", () => {
     say(queued({ party_id: "p1" }));
     tick(12_000);
     expect(q(".q-bar b")?.textContent).toBe("You + Sam · 0:12");
-    expect(q(".q-bar small")?.textContent).toBe("3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:48 · 3 in queue");
     say(match({ party_id: "p1", size: 4 }));
     expect(q(".q-big")?.textContent).toBe("Ready? Both of you");
   });
@@ -448,6 +481,10 @@ describe("with a friend", () => {
     expect(button("Cancel", q(".q-bar")!)).toBeUndefined();
     expect(q(".q-bar")?.textContent).toContain("Sam leads");
     expect(button("Play with bots now")?.disabled).toBe(true);
+    expect(button("Wait for real players")).toBeUndefined();
+    say(queued({ party_id: "p1", leader: false, bots_at: null, wait_players: true }));
+    expect(q(".q-bar small")?.textContent).toBe("Waiting for real players · 3 in queue");
+    expect(button("Allow bots")).toBeUndefined();
   });
 
   it("an invite link opens the pair sheet with its code", async () => {

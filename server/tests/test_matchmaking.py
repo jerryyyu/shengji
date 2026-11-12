@@ -227,7 +227,126 @@ def test_bot_fill_keep_waiting_restarts_the_wait_without_a_cooldown():
         await env.send(1, "match_decline", match_id=m.id, keep_waiting=True)
         e = env.mm._entry(1)
         assert e is not None and e.since == env.clock() and not e.front
+        assert e.bots_at == env.clock() + mm.BOT_FILL_SECS
         assert 1 not in env.mm.cooldown
+    run(go())
+
+
+def test_queue_state_carries_bots_at_and_the_wait_players_flag():
+    async def go():
+        env = Env()
+        await env.join(1)
+        st = env.conns[1].last("queue_state")
+        assert st["bots_at"] == st["since"] + mm.BOT_FILL_SECS
+        assert st["wait_players"] is False
+    run(go())
+
+
+# ------------------------------------------------- wait for real players
+def test_wait_players_turns_off_the_bot_fill_for_good_but_people_still_match():
+    async def go():
+        env = Env()
+        await env.join(1, 1000)
+        await env.send(1, "queue_wait_players")
+        st = env.conns[1].last("queue_state")
+        assert st["queued"] is True and st["bots_at"] is None and st["wait_players"] is True
+        assert env.mm._entry(1).bots_at is None
+        for _ in range(300):                       # ten minutes of ticks
+            env.clock.advance(2)
+            assert env.mm.tick() == []
+        assert env.conns[1].of("match") == []
+        for uid, r in ((2, 1900), (3, 400), (4, 1600)):   # far apart: the window is open now
+            await env.join(uid, r)
+        formed = env.mm.tick()
+        assert len(formed) == 1 and sorted(formed[0].humans) == [1, 2, 3, 4]
+        assert formed[0].bots == 0
+    run(go())
+
+
+def test_a_waiting_anchor_does_not_hold_up_the_bot_fill_behind_it():
+    async def go():
+        env = Env()
+        await env.join(1, 1000)
+        await env.send(1, "queue_wait_players")
+        env.clock.advance(5)
+        await env.join(2, 1000)
+        env.clock.advance(59.9)
+        assert env.mm.tick() == []
+        env.clock.advance(0.1)
+        formed = env.mm.tick()
+        assert len(formed) == 1 and formed[0].humans == [2] and formed[0].bots == 3
+        assert env.mm._entry(1).match_id is None      # never taken into a bot fill
+    run(go())
+
+
+def test_a_waiting_entry_still_joins_a_later_anchors_human_match():
+    async def go():
+        env = Env()
+        await env.join(1, 1000)
+        await env.send(1, "queue_wait_players")
+        env.clock.advance(1)
+        for uid in (2, 3, 4):
+            await env.join(uid, 1000)
+        formed = env.mm.tick()
+        assert len(formed) == 1 and sorted(formed[0].humans) == [1, 2, 3, 4]
+    run(go())
+
+
+def test_wait_players_is_the_pair_leaders_call_and_both_members_see_it():
+    async def go():
+        env = Env()
+        await env.pair(1, 2)
+        await env.send(1, "queue_join")
+        await env.send(2, "queue_wait_players")
+        assert env.conns[2].last("error")["code"] == "not_leader"
+        assert env.mm._entry(1).bots_at is not None
+        await env.send(1, "queue_wait_players")
+        for uid in (1, 2):
+            st = env.conns[uid].last("queue_state")
+            assert st["wait_players"] is True and st["bots_at"] is None
+        assert env.conns[2].last("queue_state")["leader"] is False
+    run(go())
+
+
+def test_wait_players_needs_a_queue_entry():
+    async def go():
+        env = Env()
+        env.player(1)
+        await env.send(1, "queue_wait_players")
+        assert env.conns[1].last("error")["code"] == "not_queued"
+    run(go())
+
+
+def test_rejoining_restores_the_bot_fill():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        await env.send(1, "queue_leave")
+        env.clock.advance(5)
+        await env.join(1)
+        st = env.conns[1].last("queue_state")
+        assert st["wait_players"] is False and st["bots_at"] == env.clock() + mm.BOT_FILL_SECS
+        env.clock.advance(60)
+        assert len(env.mm.tick()) == 1
+    run(go())
+
+
+def test_allow_bots_schedules_the_fill_sixty_seconds_from_now():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "queue_wait_players")
+        env.clock.advance(100)
+        assert env.mm.tick() == []
+        await env.send(1, "queue_allow_bots")
+        st = env.conns[1].last("queue_state")
+        assert st["wait_players"] is False and st["bots_at"] == env.clock() + mm.BOT_FILL_SECS
+        assert st["since"] == env.clock() - 100           # the wait itself is kept
+        env.clock.advance(59.9)
+        assert env.mm.tick() == []
+        env.clock.advance(0.1)
+        assert len(env.mm.tick()) == 1
     run(go())
 
 
@@ -605,9 +724,9 @@ def test_guests_are_refused():
         env = Env()
         guest = FakeConn(None, "")
         env.mm.connect(guest)
-        for kind in ("queue_join", "party_create", "queue_start_bots"):
+        for kind in ("queue_join", "party_create", "queue_start_bots", "queue_wait_players"):
             await env.mm.handle(guest, {"type": kind}, None)
-        assert [m["code"] for m in guest.of("error")] == ["signed_in_only"] * 3
+        assert [m["code"] for m in guest.of("error")] == ["signed_in_only"] * 4
         assert env.mm.entries == {}
     run(go())
 

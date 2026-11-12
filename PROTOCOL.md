@@ -196,6 +196,8 @@ seconds from the server clock; `deadline_in` is relative seconds. Refusals are
 | `match_accept` | `match_id` (required) | accept the ready check named by `match_id`; it must be your current one and its deadline not passed |
 | `match_decline` | `match_id` (required), optional `keep_waiting` | decline the ready check named by `match_id` (same rule as `match_accept`); with `keep_waiting: true` on a bot-fill match the entry stays queued, its wait restarted, with no cooldown |
 | `queue_start_bots` | — | leave the queue and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots |
+| `queue_wait_players` | — | wait for real players only (leader only for a pair): the entry keeps its wait and place in line, its window still widens, but it is never completed with bots (`bots_at: null`, `wait_players: true`); every member gets a `queue_state`. Leaving and queueing again restores the bot fill |
+| `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the bot fill is due 60 s from now (a new `bots_at`); the wait itself is kept |
 | `party_create` | — | create a pair party (or resend yours); answered with `party` |
 | `party_invite` | — | the same as `party_create`: the party's `code` is the invite |
 | `party_join` | `code` | join a friend's party by its code |
@@ -216,8 +218,11 @@ late answer is the timeout: you get `queue_removed {reason: "missed"}` first),
 
 ### Server → Client
 
-- `queue_state {queued, count, since?, front?, party_id?, leader?, bots_at?, replaced?}`:
-  your entry, after every change to it and on reconnect. `front` marks an entry
+- `queue_state {queued, count, since?, front?, party_id?, leader?, bots_at?, wait_players?, replaced?}`:
+  your entry, after every change to it and on reconnect. `bots_at` is when the
+  match is completed with bots (60 s after joining, or after `queue_allow_bots`
+  or a `keep_waiting` decline); it is null and `wait_players` is true while the
+  entry waits for real players only. `front` marks an entry
   requeued at the front after someone else missed a ready check that every
   member of this entry had accepted. `replaced:
   true` tells an older socket that a newer one of the same account now holds

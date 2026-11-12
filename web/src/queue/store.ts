@@ -93,6 +93,9 @@ export class QueueStore {
   private joinSentAt: number | null = null;
   private declined: string | null = null;
   private droppedWhileQueued = false;
+  /** A ready check failed for someone else: say so once the queue_state
+   *  that follows tells whether this entry went to the front. */
+  private missedByOther = false;
   private resyncTimer: number | null = null;
   private noteTimer: number | null = null;
   private noteId = 0;
@@ -186,6 +189,12 @@ export class QueueStore {
           this.skew = msg.since * 1000 - this.joinSentAt;
         }
         this.joinSentAt = null;
+        if (this.missedByOther) {
+          this.missedByOther = false;
+          // only an entry whose every member accepted goes to the front
+          this.notify("A player didn't accept.", msg.front ? "You're back in the queue and keep your place."
+                                                           : "You're still in the queue.");
+        }
         this.set({
           queued: true, count: msg.count,
           since: msg.since !== undefined ? this.local(msg.since) : now,
@@ -223,11 +232,8 @@ export class QueueStore {
       case "match_cancelled": {
         const c = this.view.check?.id === msg.match_id ? this.view.check : null;
         if (c) this.set({ check: null });
-        // only the players who accepted go back to the front of the line
-        const accepted = c?.mine === "accepted";
         if (msg.reason === "player_missed") {
-          this.notify("A player didn't accept.", accepted ? "You're back in the queue and keep your place."
-                                                          : "You're still in the queue.");
+          this.missedByOther = true;
         } else if (msg.reason === "server_error") {
           this.notify("The game could not start.", "You're back in the queue and keep your place.");
         }
@@ -284,6 +290,9 @@ export class QueueStore {
         } else if (msg.code.startsWith("party") || msg.code === "in_queue" || msg.code === "in_party"
                    || msg.code === "not_in_party") {
           this.set({ pending: null, partyError: msg.message });
+        } else if (msg.code === "start_failed") {
+          // the entry left the queue before the start was tried
+          this.set({ pending: null, queued: false, since: null, botsAt: null, front: false });
         } else {
           this.set({ pending: null });
         }
@@ -385,6 +394,7 @@ export class QueueStore {
     this.declined = null;
     this.joinSentAt = null;
     this.droppedWhileQueued = false;
+    this.missedByOther = false;
     this.findAfterSignIn = false;
   }
 }

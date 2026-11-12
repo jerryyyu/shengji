@@ -131,7 +131,11 @@ export default function App() {
           const wasResuming = resumingRef.current;
           resumingRef.current = false;
           autoFill.current = false; // abort single-player orchestration
-          if (msg.code === "room_not_found") {
+          if (msg.code === "start_failed") {
+            // a queue game with bots that failed to start was unwound on the server
+            resetToLobby();
+            showToast(msg.message);
+          } else if (msg.code === "room_not_found") {
             // The room no longer exists (server restart / expiry). Stop
             // retrying it on reconnect and return to the lobby (name kept).
             resetToLobby();
@@ -150,6 +154,11 @@ export default function App() {
           break;
         case "event":
           // Optional animation hints; safe to ignore.
+          break;
+        case "match_cancelled":
+          // A matched room that failed to start was unwound on the server,
+          // even if its frames already arrived: back to the lobby, queued.
+          if (msg.reason === "server_error") resetToLobby();
           break;
       }
     });

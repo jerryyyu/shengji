@@ -205,6 +205,18 @@ describe("the queue bar", () => {
   });
 });
 
+const TABLE_STATE = {
+  type: "state", room: "ABCD", you: 0, phase: "play", matched: true,
+  players: [0, 1, 2, 3].map((seat) => ({
+    seat, name: `P${seat}`, is_bot: false, connected: true, team: seat % 2, cards_left: 3, is_banker: seat === 1,
+    takeover_in: null, controller: "human", reserved_for: null, reserved_secs: null,
+  })),
+  hand: [{ id: 1, code: "S5" }], levels: ["2", "2"], games_won: [0, 0], banker: 1,
+  trump: { suit: "S", rank: "2", declarer: 1 }, turn: 1, declare_options: [], current_declaration: null,
+  passed: [], trick: { leader: 1, plays: [] }, last_trick: null, attacker_points: 0, kitty_count: 8,
+  message: null, notice: null, round_result: null,
+};
+
 describe("the ready check", () => {
   it("counts down, accepts with the match id, shows counts only, and names once all accept", async () => {
     await renderApp();
@@ -302,6 +314,61 @@ describe("the ready check", () => {
     say(queued());
     expect(q(".q-toast")?.textContent).toContain("You're still in the queue.");
     expect(q(".q-bar b")?.textContent).toBe("Finding a game");
+  });
+
+  it("a pair whose partner had not answered keeps its place but not the front", async () => {
+    await renderApp();
+    say(queued({ party_id: "p1" }));
+    say(match({ party_id: "p1" }));
+    click(button("Accept"));
+    say({ type: "match_cancelled", match_id: "m1", reason: "player_missed" });
+    say(queued({ party_id: "p1", front: false }));
+    expect(q(".q-toast")?.textContent).toContain("You're still in the queue.");
+    expect(q(".q-bar b")?.textContent).not.toBe("Back in queue");
+  });
+
+  it("a late accept: the timeout comes first, then stale_match; the missed state shows", async () => {
+    await renderApp();
+    say(queued());
+    say(match());
+    say({ type: "queue_removed", reason: "missed", cooldown_until: nowSecs() + 30, match_id: "m1" });
+    say({ type: "error", code: "stale_match", message: "That ready check is over." });
+    expect(q(".q-big")?.textContent).toBe("You missed it");
+    expect(button(/^Queue again in 0:/)?.disabled).toBe(true);
+  });
+
+  it("server_error after the room's frames: back to the lobby, queued at the front", async () => {
+    await renderApp();
+    say(queued());
+    say(match());
+    click(button("Accept"));
+    say({ type: "match_ready", match_id: "m1", accepted: 4, of: 4, names: ["Jerry", "Mei", "Wen", "Hao"] });
+    say({ type: "match_started", match_id: "m1", room: "ABCD", rated: true });
+    say({ type: "resume", token: "t1", gen: 1 });
+    say({ type: "room", room: "ABCD", you: 0, host: 0, start_level: "2", matched: true,
+          players: [0, 1, 2, 3].map((seat) => ({ seat, name: `P${seat}`, is_bot: false, connected: true })) });
+    say(TABLE_STATE);
+    expect(q(".table-screen")).not.toBeNull();
+    expect(localStorage.getItem("shengji.room")).toBe("ABCD");
+    say({ type: "match_cancelled", match_id: "m1", reason: "server_error" });
+    say(queued({ front: true }));
+    expect(q(".table-screen")).toBeNull();
+    expect(q(".q-find")).not.toBeNull();
+    expect(localStorage.getItem("shengji.room")).toBeNull();   // nothing to resume
+    expect(q(".q-bar b")?.textContent).toBe("Back in queue");
+    expect(q(".q-toast")?.textContent).toContain("The game could not start.");
+  });
+
+  it("a bots game that fails to start returns to the lobby, out of the queue", async () => {
+    await renderApp();
+    say(queued());
+    click(button("Play with bots now"));
+    say({ type: "match_started", match_id: null, room: "BOTS", rated: true });
+    say({ ...TABLE_STATE, room: "BOTS" });
+    say({ type: "error", code: "start_failed", message: "Could not start the game." });
+    expect(q(".table-screen")).toBeNull();
+    expect(q(".q-bar")).toBeNull();
+    expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("a bot-fill match offers Keep waiting, which declines with keep_waiting", async () => {

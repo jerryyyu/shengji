@@ -156,6 +156,10 @@ export default function App() {
           // Intentional exit confirmed: forget the room (name kept) so
           // reconnects don't auto-rejoin, and route back to the lobby.
           resetToLobby();
+          if (msg.reason === "removed") {
+            openTab("play");
+            showToast(msg.message ?? "The host removed you from the room.");
+          }
           break;
         case "event":
           // Optional animation hints; safe to ignore.

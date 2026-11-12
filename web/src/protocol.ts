@@ -39,6 +39,11 @@ export type ClientMsg =
   /** Host only, before the game starts: the rank both teams begin at. */
   | { type: "set_start_level"; start_level: Rank }
   | { type: "remove_bot" }
+  /** Host only, before the game starts: exchange the occupants of two taken seats. */
+  /** `expect`: who the host saw at a and b (null: empty); the server refuses if either changed. */
+  | { type: "swap_seats"; a: number; b: number; expect?: [SeatOccupant | null, SeatOccupant | null] }
+  /** Host only, before the game starts: send the person in this seat out of the room. */
+  | { type: "remove_player"; seat: number; expect?: SeatOccupant }
   | { type: "start_game" }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window
@@ -64,6 +69,9 @@ export interface ErrorMsg {
   /** Set on a refused code_lookup only: the code it was asked about. */
   lookup?: string;
 }
+
+/** A seat's occupant as a room frame shows it, for a lobby action to name. */
+export interface SeatOccupant { name: string; is_bot: boolean }
 
 export interface RoomPlayer {
   seat: number;
@@ -224,6 +232,9 @@ export interface EventMsg {
 /** Confirmation of leave_room; the connection may create/join rooms again. */
 export interface LeftMsg {
   type: "left";
+  /** Present when the host removed this player rather than the player leaving. */
+  reason?: "removed";
+  message?: string;
 }
 
 export type ServerMsg =

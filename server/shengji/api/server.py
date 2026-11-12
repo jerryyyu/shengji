@@ -243,12 +243,19 @@ class Seat:
     # took this seat carried; None for a guest. Server-only: it enters no
     # state frame, no log record and no game decision.
     user_id: int | None = None
+    # Set when the host removed this occupant before the game: the seat is no
+    # longer in the room, and the socket that held it returns to the lobby.
+    removed: bool = False
 
 
 @dataclass
 class Room:
     code: str
-    seats: list[Seat] = field(default_factory=list)
+    # Index = seat position. Before the game starts a position may be None
+    # (empty: a person left, was removed or moved away), never as the last
+    # entry; start_game seats a bot in every empty position, so once a game
+    # exists the list is four Seats and nothing past the lobby sees a None.
+    seats: list[Seat | None] = field(default_factory=list)
     host: int = 0
     game: Game | None = None
     # Rank both teams start at. Chosen by the creator; applied when the game
@@ -644,7 +651,7 @@ def room_json(room: Room, seat: int) -> dict:
         "ready": sorted(room.ready),
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
-                    for i, s in enumerate(room.seats)],
+                    for i, s in enumerate(room.seats) if s is not None],
     }
 
 
@@ -670,7 +677,8 @@ def chat_post(room: Room, entry: dict) -> None:
     room.chat.append(entry)
     del room.chat[:-CHAT_KEEP]
     for sd in room.seats:
-        enqueue(sd, {"type": "chat", **entry})
+        if sd is not None:
+            enqueue(sd, {"type": "chat", **entry})
 
 
 def chat_snapshot(room: Room) -> dict:
@@ -815,7 +823,7 @@ async def _writer(ws: WebSocket, queue: asyncio.Queue,
 
 async def broadcast(room: Room) -> None:
     for i, seat in enumerate(room.seats):
-        if seat.connected and not seat.is_bot:
+        if seat is not None and seat.connected and not seat.is_bot:
             if room.game and room.round:
                 enqueue(seat, state_for(room, i))
             else:
@@ -1355,7 +1363,7 @@ async def cleanup_room(room: Room) -> None:
     refresh or network blip can reclaim the seat and resume the game."""
     await asyncio.sleep(ROOM_TTL)
     async with room.lock:
-        if any(s.connected for s in room.seats if not s.is_bot):
+        if any(s.connected for s in room.seats if s is not None and not s.is_bot):
             return
         rooms.pop(room.code, None)
         for task in (room.bot_task, room.deal_task, room.watchdog_task):
@@ -1590,6 +1598,116 @@ def validate_human_evaluation_start(room: Room) -> None:
         raise IllegalPlay("Evaluation requires bots at seats 1 and 3.")
 
 
+def _empty_position(room: Room) -> int | None:
+    """The lowest empty seat position before the game, or None when full."""
+    for i, sd in enumerate(room.seats):
+        if sd is None:
+            return i
+    return len(room.seats) if len(room.seats) < 4 else None
+
+
+def _seat_at(room: Room, position: int, occupant: Seat | None) -> None:
+    """Put ``occupant`` (None: empty) at a lobby position, keeping the list
+    free of trailing empties so a room nobody rearranged is a plain list."""
+    while len(room.seats) <= position:
+        room.seats.append(None)
+    room.seats[position] = occupant
+    while room.seats and room.seats[-1] is None:
+        room.seats.pop()
+
+
+def _occupant(room: Room, position: int) -> Seat | None:
+    return room.seats[position] if position < len(room.seats) else None
+
+
+class SeatChanged(IllegalPlay):
+    """A lobby action named an occupant who is no longer in that seat."""
+
+
+def _check_expected(room: Room, position: int, expected: Any) -> None:
+    """Refuse when the client said whom it meant at ``position`` and that is
+    no longer so. ``expected`` is the occupant as the room frame showed it,
+    ``{"name": ..., "is_bot": ...}``, or None for an empty seat: the frame
+    carries no other identity, and the offline server's frames must match."""
+    sd = _occupant(room, position)
+    seen = {"name": sd.name, "is_bot": sd.is_bot} if sd is not None else None
+    if expected != seen:
+        raise SeatChanged("That seat just changed. Try again.")
+
+
+def _swap_seats(room: Room, seat: int, msg: dict) -> None:
+    """Host-only lobby move: exchange what is in two seat positions, a
+    person, a bot or nothing.
+
+    Everything a connection owns (socket, queue, writer, generation, resume
+    token, account) lives on the ``Seat`` object, and a socket finds its seat
+    by identity on every action, so moving the objects moves the people. The
+    only per-POSITION state before a game exists is the host seat, the ready
+    set and the per-seat card-id maps, which follow the move here. A
+    saved-game continuation binds its creator's team and banker to seat
+    numbers, and an evaluation room fixes its seating, so neither can be
+    rearranged.
+    """
+    if seat != room.host:
+        raise IllegalPlay("Only the host can move seats.")
+    if room.game:
+        raise IllegalPlay("Seats are fixed once the game has started.")
+    if room.resume is not None or room.evaluation is not None:
+        raise IllegalPlay("Seats are fixed at this table.")
+    a, b = msg.get("a"), msg.get("b")
+    if (type(a) is not int or type(b) is not int or a == b
+            or not (0 <= a < 4 and 0 <= b < 4)):
+        raise IllegalPlay("Invalid seats.")
+    if "expect" in msg:
+        expect = msg["expect"]
+        if not isinstance(expect, list) or len(expect) != 2:
+            raise IllegalPlay("Invalid seats.")
+        _check_expected(room, a, expect[0])
+        _check_expected(room, b, expect[1])
+    first, second = _occupant(room, a), _occupant(room, b)
+    if first is None and second is None:
+        raise IllegalPlay("Both seats are empty.")
+    _seat_at(room, a, second)
+    _seat_at(room, b, first)
+    room.ids[a], room.ids[b] = room.ids[b], room.ids[a]
+    if room.host in (a, b):
+        room.host = b if room.host == a else a
+    room.ready = {b if s == a else a if s == b else s for s in room.ready}
+
+
+def _remove_player(room: Room, seat: int, msg: dict) -> None:
+    """Host-only lobby removal: the occupant of ``msg["seat"]`` leaves.
+
+    The position becomes empty and nobody else moves; the removed socket is
+    told and returns to the lobby on its next frame, and its resume token is
+    replaced so it can never reclaim a seat of this room.
+    """
+    if seat != room.host:
+        raise IllegalPlay("Only the host can remove players.")
+    if room.game:
+        raise IllegalPlay("Players are fixed once the game has started.")
+    if room.resume is not None or room.evaluation is not None:
+        raise IllegalPlay("Seats are fixed at this table.")
+    target = msg.get("seat")
+    if (type(target) is not int or not 0 <= target < 4
+            or _occupant(room, target) is None):
+        raise IllegalPlay("Invalid seat.")
+    if target == seat:
+        raise IllegalPlay("Use Leave to leave the room.")
+    if "expect" in msg:
+        _check_expected(room, target, msg["expect"])
+    gone = room.seats[target]
+    assert gone is not None
+    _seat_at(room, target, None)
+    room.ready.discard(target)
+    gone.removed = True
+    gone.token = secrets.token_urlsafe(12)
+    if not gone.is_bot:
+        enqueue(gone, {"type": "left", "reason": "removed",
+                       "message": "The host removed you from the room."})
+        chat_system(room, f"{gone.name} was removed by the host")
+
+
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
     if room.evaluation is not None and room.evaluation_invalidated:
@@ -1607,15 +1725,21 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         return
 
     if t == "add_bot":
-        if seat != room.host or len(room.seats) >= 4:
+        free = _empty_position(room) if room.game is None else None
+        if seat != room.host or free is None:
             raise IllegalPlay("Cannot add a bot now.")
-        room.seats.append(Seat(name=f"Bot {len(room.seats)}", is_bot=True))
+        _seat_at(room, free, Seat(name=f"Bot {free}", is_bot=True))
     elif t == "remove_bot":
-        if seat != room.host or not room.seats or not room.seats[-1].is_bot:
+        last = room.seats[-1] if room.seats else None
+        if seat != room.host or last is None or not last.is_bot:
             raise IllegalPlay("No bot to remove.")
         if room.game:
             raise IllegalPlay("Game already started.")
-        room.seats.pop()
+        _seat_at(room, len(room.seats) - 1, None)
+    elif t == "swap_seats":
+        _swap_seats(room, seat, msg)
+    elif t == "remove_player":
+        _remove_player(room, seat, msg)
     elif t == "set_start_level":
         # Jerry 09-26: the selector lives in the room screen, not the lobby.
         # Host-only, and only while no game exists -- Game() reads the level
@@ -1632,10 +1756,11 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     elif t == "start_game":
         if seat != room.host:
             raise IllegalPlay("Only the host can start.")
-        if len(room.seats) != 4:
-            raise IllegalPlay("Need exactly 4 players.")
         if room.game:
             raise IllegalPlay("Game already started.")
+        # A bot plays every seat nobody took, in that seat.
+        room.seats = [sd if sd is not None else Seat(name=f"Bot {i}", is_bot=True)
+                      for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
         validate_human_evaluation_start(room)
         # games_to_win=None: a table keeps playing. Holding A scores a
         # point and the levels restart, rather than ending the session.
@@ -1766,6 +1891,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 conn.adopted = None
             if room is not None and room.aborted:
                 room, me = None, None
+            if me is not None and me.removed:
+                # the host removed this seat: back to the lobby, no room
+                _detach(me)
+                room, me = None, None
+                MATCHMAKER.return_to_lobby(conn)
             if t == "ping":
                 nonce = msg.get("nonce")
                 if type(nonce) is int and 0 <= nonce <= 9007199254740991:
@@ -1852,7 +1982,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                        "controller": ("bot" if sd.is_bot else
                                                       "human" if sd.connected
                                                       else "bot_cover")}
-                                      for i, sd in enumerate(target.seats)],
+                                      for i, sd in enumerate(target.seats)
+                                      if sd is not None],
                         })
                     elif t == "join_room":
                         # Per-JOIN, not per-socket: these were read back via
@@ -1883,14 +2014,16 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             if isinstance(tok, str) and tok:
                                 reclaim = next(
                                     (s for s in target.seats
-                                     if not s.is_bot and secrets.compare_digest(
+                                     if s is not None and not s.is_bot
+                                     and secrets.compare_digest(
                                          s.token, tok)), None)
                             by_name = False
                             if reclaim is None:
                                 key = name.strip().casefold()
                                 reclaim = next(
                                     (s for s in target.seats
-                                     if not s.is_bot and not s.connected
+                                     if s is not None and not s.is_bot
+                                     and not s.connected
                                      and s.name.strip().casefold() == key),
                                     None)
                                 by_name = reclaim is not None
@@ -1902,9 +2035,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 # re-entry) brings none and clears it.
                                 me.user_id = account_id()
                                 saved_games.seat_changed(target, target.seats.index(me))
-                            elif len(target.seats) < 4 and target.game is None:
+                            elif (target.game is None
+                                  and (free := _empty_position(target)) is not None):
                                 me = Seat(name=name, user_id=account_id())
-                                target.seats.append(me)
+                                _seat_at(target, free, me)
                             else:
                                 # Take over a BOT's seat, mid-game if need be —
                                 # the hand already exists, so a late arrival can
@@ -2044,15 +2178,18 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         ratings.seat_left(room, room.seats.index(me))
                     _detach(me, room, my_gen)
                     if room.game is None:
-                        # lobby: free the seat entirely
+                        # lobby: the seat empties and nobody else moves
                         if me in room.seats:
-                            room.seats.remove(me)
+                            gone = room.seats.index(me)
+                            _seat_at(room, gone, None)
+                            room.ready.discard(gone)
                         humans = [i for i, x in enumerate(room.seats)
-                                  if not x.is_bot]
+                                  if x is not None and not x.is_bot]
                         if not humans:
                             rooms.pop(room.code, None)
                         else:
-                            room.host = humans[0]
+                            if _occupant(room, room.host) is None:
+                                room.host = humans[0]
                             await broadcast(room)
                     else:
                         # mid-game: seat stays (reclaimable); bots cover it
@@ -2088,6 +2225,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await handle_action(room, seat_idx, msg)
                     await broadcast(room)
                     kick_bots(room)
+                except SeatChanged as e:
+                    enqueue(me, {"type": "error", "code": "seat_changed", "message": str(e)})
                 except IllegalPlay as e:
                     enqueue(me, {"type": "error", "message": str(e)})
                 except Exception:  # malformed input must not kill the socket
@@ -2099,12 +2238,15 @@ async def ws_endpoint(ws: WebSocket) -> None:
             room, me, my_gen = conn.adopted
             conn.adopted = None
         MATCHMAKER.disconnect(conn)
-        if room is not None and me is not None:
+        if me is not None and me.removed:
+            _detach(me)
+        elif room is not None and me is not None:
             async with room.lock:
                 if not me.is_bot and me.connected:
                     chat_system(room, f"{me.name} disconnected")
                 _detach(me, room, my_gen)
-                if not any(x.connected for x in room.seats if not x.is_bot):
+                if not any(x.connected for x in room.seats
+                           if x is not None and not x.is_bot):
                     if room.cleanup_task is None or room.cleanup_task.done():
                         room.cleanup_task = asyncio.create_task(cleanup_room(room))
                 else:
@@ -2278,7 +2420,7 @@ def detach_deleted_user(user_id: int) -> None:
     round or game links that id."""
     for room in list(rooms.values()):
         for index, seat in enumerate(room.seats):
-            if seat.user_id == user_id:
+            if seat is not None and seat.user_id == user_id:
                 seat.user_id = None
                 saved_games.seat_changed(room, index)
 

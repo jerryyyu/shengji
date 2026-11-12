@@ -221,10 +221,6 @@ textarea:focus-visible {
   transform: scale(0.97); /* feedback on press; actions still commit on click */
 }
 
-.leave-room-btn {
-  align-self: center;
-}
-
 /* HUD leave control: subtle until armed */
 .leave-btn {
   appearance: none;
@@ -276,12 +272,6 @@ textarea:focus-visible {
   background: #262d38;
   border-color: #4a5462;
 }
-}
-
-.room-panel > .mute-btn {
-  position: absolute;
-  top: 14px;
-  right: 14px;
 }
 
 .btn.big {
@@ -887,28 +877,6 @@ textarea:focus-visible {
   text-align: center;
 }
 
-.room-code-label {
-  font-size: 12px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-/* a touch screen is tapped, not clicked */
-.room-code-label .copy-tap {
-  display: none;
-}
-
-@media (hover: none) and (pointer: coarse) {
-  .room-code-label .copy-click {
-    display: none;
-  }
-
-  .room-code-label .copy-tap {
-    display: inline;
-  }
-}
-
 /* A phone has no room for a card on felt: the thin green margin reads as a
    border, and held sideways the card runs off the bottom. The lobby, room
    and saved-games screens fill the screen with the panel's own colour
@@ -934,38 +902,104 @@ textarea:focus-visible {
   }
 }
 
-/* A phone's room: the caption keeps clear of the 44px mute button in the
-   panel's corner, and the seat tags read at 12px. */
-@media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
-  .room-panel > .room-code-label {
-    padding: 0 48px;
-  }
+.room-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 44px;
+}
 
-  .seat-name .you-tag,
-  .seat-name .host-tag {
-    font-size: var(--fs-12);
-  }
+.room-leave {
+  appearance: none;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0 6px 0 0;
+  border: 0;
+  background: none;
+  color: var(--gold);
+  font: inherit;
+  font-size: var(--fs-17, 17px);
+  cursor: pointer;
+}
+
+.room-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-17, 17px);
+  font-weight: 600;
+}
+
+.unranked-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  background: #2b3340;
+  color: #c3cad6;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.room-head-end {
+  justify-self: end;
+}
+
+.room-code-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
 }
 
 .room-code {
-  position: relative;
   appearance: none;
-  border: 1px dashed var(--gold-soft);
-  background: #10131a;
-  color: var(--gold);
-  font-size: 44px;
-  font-weight: 800;
-  letter-spacing: 0.45em;
-  padding: 14px 10px 14px 24px;
-  border-radius: 14px;
+  font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed #8a6a22;
+  background: #0f131a;
+  color: var(--gold);
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 0.4em;
+  padding-left: 0.4em;          /* the last letter's tracking, so the code centres */
+  border-radius: 14px;
+}
+
+.room-invite {
+  appearance: none;
+  width: 96px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 14px;
+  background: #242a35;
+  border: 1px solid #333b49;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  cursor: pointer;
 }
 
 @media (hover: hover) and (pointer: fine) {
-.room-code:hover {
-  border-color: var(--gold);
-}
+  .room-invite:hover {
+    background: #2b3240;
+  }
 }
 
 .copied-tag {
@@ -986,34 +1020,243 @@ textarea:focus-visible {
   opacity: 1;
 }
 
-.seat-list {
+.seat-clock {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(24px, 0.55fr) minmax(0, 1fr);
+  grid-template-areas:
+    "top    top    top"
+    "left   .      right"
+    "bottom bottom bottom";
+  row-gap: 36px;
+  column-gap: 8px;
+  align-items: center;
+  padding: 16px 12px;
+  border-radius: 20px;
+  background: radial-gradient(ellipse at 50% 45%, #2a6a49, #173f2b 70%);
+  border: 1px solid #2b323e;
+  box-shadow: inset 0 0 36px rgba(0, 0, 0, 0.35);
+}
+
+/* the table's rim */
+.seat-clock::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.seat-card {
+  appearance: none;
+  font: inherit;
+  color: var(--text);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  height: 64px;
+  box-sizing: border-box;
+  padding: 6px;
+  background: #14171e;
+  border: 1.5px solid var(--panel-edge);
+  border-radius: 14px;
+  text-align: center;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 0.18s ease, box-shadow 0.15s, border-color 0.15s;
+}
+
+.seat-card.pos-top { grid-area: top; }
+.seat-card.pos-left { grid-area: left; }
+.seat-card.pos-right { grid-area: right; }
+.seat-card.pos-bottom { grid-area: bottom; }
+
+.seat-card.pos-top,
+.seat-card.pos-bottom {
+  justify-self: center;
+  width: min(100%, 150px);
+}
+
+.seat-card.team0 { border-color: var(--team0); --seat-team: var(--team0); }
+.seat-card.team1 { border-color: var(--team1); --seat-team: var(--team1); }
+
+.seat-card.empty {
+  background: rgba(20, 23, 30, 0.85);
+  border-style: dashed;
+  color: var(--text-dim);
+  gap: 2px;
+}
+
+.seat-card-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-16, 16px);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.seat-card.empty .seat-card-name {
+  font-size: 15px;
+}
+
+.seat-card-role {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--seat-team);
+}
+
+.seat-card-note {
+  font-size: var(--fs-13);
+  line-height: 1.2;
+}
+
+.seat-card > .conn-pip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+}
+
+.seat-clock.can-swap .seat-card {
+  cursor: pointer;
+}
+
+/* the host's people are handles: a finger on one moves the seat, not the page */
+.seat-clock.can-swap .seat-card:not(.empty) {
+  cursor: grab;
+  touch-action: none;
+}
+
+.seat-card:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.seat-card.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-soft);
+}
+
+.seat-card.swap-target {
+  border-style: dashed;
+}
+
+.seat-card.lifted {
+  z-index: 2;
+  cursor: grabbing;
+  transition: none;
+  box-shadow: 0 10px 24px #000a;
+  opacity: 0.92;
+}
+
+.seat-card.drop-target {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold), 0 0 16px var(--gold-soft);
+}
+
+.seat-clock.still .seat-card {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat-card {
+    transition: none;
+  }
+}
+
+.room-start {
+  min-height: 58px;
+  border-radius: 16px;
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(#8a6a22, #6b5219);
+  border: 1.5px solid #d6a22c;
+  color: #ffd77a;
+}
+
+/* the seat menu: an action group and Cancel, over the room */
+.room-sheet {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin: 0 8px calc(34px + env(safe-area-inset-bottom, 0px));
+  outline: none;
 }
 
-.seat-row {
+.room-sheet-group {
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #2c313b;
+}
+
+.room-sheet-title {
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: #10131a;
-  border: 1px solid var(--panel-edge);
-  border-left-width: 3px;
-  border-radius: 10px;
-  padding: 10px 14px;
-  text-align: left;
+  justify-content: center;
+  padding: 0 16px;
+  border-bottom: 1px solid #3c4350;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: #c3cad6;
 }
 
-.seat-row.team0 {
-  border-left-color: var(--team0);
+.room-sheet-note {
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid #3c4350;
+  font-size: var(--fs-13);
+  color: #c3cad6;
 }
 
-.seat-row.team1 {
-  border-left-color: var(--team1);
+.room-sheet-btn {
+  appearance: none;
+  min-height: 56px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 19px;
+  color: var(--text);
+  cursor: pointer;
 }
 
-.seat-row.empty {
-  opacity: 0.55;
+.room-sheet-group .room-sheet-btn + .room-sheet-btn {
+  border-top: 1px solid #3c4350;
+}
+
+.room-sheet-btn.danger { color: #ff6b78; }
+.room-sheet-btn.invite { color: #5b9dff; }
+
+.room-sheet-cancel {
+  border-radius: 14px;
+  background: #2c313b;
+  font-weight: 600;
+}
+
+@media (min-width: 700px) {
+  .room-sheet {
+    width: 380px;
+    margin: 0;
+  }
 }
 
 .seat-num {
@@ -1022,17 +1265,6 @@ textarea:focus-visible {
   letter-spacing: 0.1em;
   color: var(--text-dim);
   width: 52px;
-}
-
-.seat-name {
-  flex: 1;
-  font-weight: 600;
-}
-
-.seat-name.waiting {
-  color: var(--text-dim);
-  font-weight: 400;
-  font-style: italic;
 }
 
 .conn-pip {
@@ -1045,24 +1277,6 @@ textarea:focus-visible {
 .conn-pip.on {
   background: #52c07d;
   box-shadow: 0 0 8px rgba(82, 192, 125, 0.7);
-}
-
-.team-legend {
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  font-size: var(--fs-12);
-  color: var(--text-dim);
-}
-
-.team-legend .team-dot {
-  margin-right: 5px;
-}
-
-.room-actions {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
 }
 
 .room-hint {
@@ -3176,22 +3390,23 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .room-code {
+    min-height: 44px;
     font-size: 26px;
-    padding: 8px 4px 8px 16px;
   }
 
-  .seat-list {
-    gap: 5px;
+  .seat-clock {
+    row-gap: 6px;
+    padding: 8px;
   }
 
-  .seat-row {
-    padding: 5px 12px;
-    font-size: var(--fs-13);
+  .seat-card {
+    height: 48px;
+    gap: 2px;
   }
 
-  .team-legend {
-    gap: 16px;
-    font-size: var(--fs-11);
+  .room-start {
+    min-height: 44px;
+    font-size: var(--fs-16, 16px);
   }
 
   /* --- Round end: a compact card; Next round always on screen --- */

@@ -52,6 +52,14 @@ def rules():
     ("server/tests/conftest.py", True),
     ("server/tests/test_cwv_pack.py", True),
     ("server/tests/test_screen_deadline_child.py", True),
+    # helpers selected modules import as `from tests.test_x import ...`
+    ("server/tests/test_world_shortlist.py", True),
+    ("server/tests/test_debug_xray.py", True),
+    ("server/tests/test_server_ws.py", True),
+    ("server/tests/test_screen_deadline.py", True),
+    ("server/tests/test_bot_scheduler.py", True),
+    # reached only through another helper (test_pv_adaptive_worlds)
+    ("server/tests/test_panel_rank_root.py", True),
     ("fly.toml", True),
     (".github/workflows/pr-checks.yml", True),
 ])
@@ -74,4 +82,30 @@ def test_the_training_selection_covers_both_scripts_and_their_helpers(rules):
     assert "server/tests/test_policy_prior.py" in tests
     # imported by test_cwv_archive_read, selected by no glob of its own
     assert "server/tests/test_cwv_loader_timing.py" in tests
+    # package-qualified imports: test_screen_deadline_child imports
+    # `from tests.test_screen_deadline import ...`
+    assert "server/tests/test_screen_deadline.py" in tests
     assert len(tests) > 100
+
+
+def test_helper_discovery_reads_every_import_form(rules, tmp_path, monkeypatch):
+    reaches_train, _tests, _web = rules
+    namespace = reaches_train.__globals__
+    tests = tmp_path / "server" / "tests"
+    tests.mkdir(parents=True)
+    for name in ("test_a", "test_b", "test_c", "test_d", "test_e", "test_f"):
+        (tests / f"{name}.py").write_text("")
+    (tests / "test_root.py").write_text(
+        "import test_a\n"
+        "from test_b import x\n"
+        "import tests.test_c\n"
+        "from tests.test_d import y\n"
+        "from tests import test_e\n"
+        "from . import test_f\n"          # relative: not this layout's form
+        "import os, tests.conftest\n")
+    (tests / "test_a.py").write_text("from tests.test_f import z\n")   # transitive
+    monkeypatch.chdir(tmp_path)
+    assert namespace["imported_test_modules"]("test_root") == {
+        "test_a", "test_b", "test_c", "test_d", "test_e"}
+    assert namespace["with_helpers"]({"test_root"}) == {
+        "test_root", "test_a", "test_b", "test_c", "test_d", "test_e", "test_f"}

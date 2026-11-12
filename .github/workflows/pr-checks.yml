@@ -45,7 +45,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python3 - <<'PY'
-          import glob, os, re, subprocess, sys
+          import ast, glob, os, re, subprocess, sys
 
           # Documentation that no CI job reads. HANDOFF_REVIEW.md is not here:
           # the conftest review-ledger guard checks it on every PR test session.
@@ -56,6 +56,38 @@ jobs:
                   return False
               return path.endswith(".md") or path.startswith(DOC_PREFIXES)
 
+          def imported_test_modules(name):
+              # Test modules `server/tests/<name>.py` imports, by its syntax tree:
+              # `import test_x`, `from test_x import ...`, `import tests.test_x`,
+              # `from tests.test_x import ...` and `from tests import test_x`.
+              tree = ast.parse(open(f"server/tests/{name}.py").read())
+              found = set()
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      modules = [alias.name for alias in node.names]
+                  elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                      modules = [node.module]
+                      if node.module == "tests":
+                          modules = [f"tests.{alias.name}" for alias in node.names]
+                  else:
+                      continue
+                  for module in modules:
+                      leaf = module.removeprefix("tests.")
+                      if "." not in leaf and leaf.startswith("test_"):
+                          found.add(leaf)
+              return {leaf for leaf in found if os.path.exists(f"server/tests/{leaf}.py")}
+
+          def with_helpers(names):
+              # `names` plus every test module they import, transitively.
+              names = set(names)
+              todo = list(names)
+              while todo:
+                  for name in imported_test_modules(todo.pop()):
+                      if name not in names:
+                          names.add(name)
+                          todo.append(name)
+              return names
+
           def luna_test_modules():
               # Test modules the luna-profiles job selects, plus the sibling test
               # modules they import (helpers shared through `from test_x import`).
@@ -64,13 +96,7 @@ jobs:
               names = set(re.findall(r"tests/(test_\w+)\.py", block.group(1)))
               if not names:
                   raise RuntimeError("no luna-profiles test modules found")
-              todo = list(names)
-              while todo:
-                  source = open(f"server/tests/{todo.pop()}.py").read()
-                  for name in re.findall(r"^\s*(?:from|import) (test_\w+)", source, re.M):
-                      if name not in names and os.path.exists(f"server/tests/{name}.py"):
-                          names.add(name)
-                          todo.append(name)
+              names = with_helpers(names)
               return {f"server/tests/{name}.py" for name in names}
 
           TRAIN_JOBS = ("train-cwv", "train-policy", "train-deadline")
@@ -93,13 +119,7 @@ jobs:
                       names.add(os.path.basename(found)[:-3])
               if not names:
                   raise RuntimeError("no train-* test modules found")
-              todo = list(names)
-              while todo:
-                  source = open(f"server/tests/{todo.pop()}.py").read()
-                  for name in re.findall(r"^\s*(?:from|import) (test_\w+)", source, re.M):
-                      if name not in names and os.path.exists(f"server/tests/{name}.py"):
-                          names.add(name)
-                          todo.append(name)
+              names = with_helpers(names)
               web = set()
               for name in names:
                   source = open(f"server/tests/{name}.py").read()

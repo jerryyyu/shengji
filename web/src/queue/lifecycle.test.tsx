@@ -100,8 +100,7 @@ const tick = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
 
 it("entering a pair code keeps keyboard focus after each character", async () => {
   await renderApp();
-  click(findBtn());
-  click(button(/With a friend/));
+  click(button("Duo"));
   const input = q("#q-join-code") as HTMLInputElement;
   input.focus();
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
@@ -126,7 +125,6 @@ it("a lost join reply recovers after reconnect without server entry", async () =
   await renderApp();
   fakeClock();
   click(findBtn());
-  click(button("Solo"));
   expect(lastSent()).toEqual({type:"queue_join"});
   act(() => ws().close());
   tick(2000);
@@ -137,8 +135,7 @@ it("a lost join reply recovers after reconnect without server entry", async () =
 
 it("typing a whole pair code keeps focus on the input for every character", async () => {
   await renderApp();
-  click(findBtn());
-  click(button(/With a friend/));
+  click(button("Duo"));
   const input = q("#q-join-code") as HTMLInputElement;
   input.focus();
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
@@ -158,7 +155,6 @@ it("the next account's pair action carries no stale party id", async () => {
   await act(async () => { auth.signedIn({name:"Other User",email:"other@example.invalid",picture:null,display_name:null,name_shown:"Other"}); });
   act(() => ws().onopen?.());
   click(findBtn());
-  click(button("Solo"));
   expect(lastSent()).toEqual({ type: "queue_join" });
   expect(q(".q-party-chip")).toBeNull();
 });

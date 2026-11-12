@@ -1,29 +1,27 @@
 import { useEffect, useState } from "react";
+import { effectiveName } from "../auth";
 import type { AuthUser } from "../auth";
-import { deltaText, fetchStats } from "../ratings/api";
-import type { MyStats } from "../ratings/api";
+import { fetchStats } from "../ratings/api";
 import { Avatar } from "../home/HomeShell";
 import { openTab } from "../home/route";
 
-/** The signed-in player's rating chip under the lobby's title: avatar,
- *  rating and this week's change; a tap opens the Leaderboard tab. Until
- *  the stats arrive (or when they cannot load) it is left out. */
+/** The signed-in player's chip: avatar, the name they play under and their
+ *  rating once it has loaded. One button that opens Me, where the name is
+ *  edited. It sits on Play on a phone and at the top bar's end when wide. */
 export default function AccountChip({ user }: { user: AuthUser }) {
-  const [stats, setStats] = useState<MyStats | null>(null);
+  const [rating, setRating] = useState<number | null>(null);
   useEffect(() => {
     let live = true;
-    fetchStats().then((r) => { if (live) setStats(r.ok ? r.data : null); });
+    fetchStats().then((r) => { if (live) setRating(r.ok ? r.data.rating : null); });
     return () => { live = false; };
   }, [user]);
-  if (!stats) return null;
-  const d = stats.week_delta;
+  const name = effectiveName(user) || user.email;
   return (
-    <button type="button" className="rating-chip" onClick={() => openTab("leaderboard")}
-            aria-label={`Rating ${stats.rating}, ${deltaText(d)} this week: open the leaderboard`}>
+    <button type="button" className="account-pill" onClick={() => openTab("me", "stats")}
+            aria-label={`${name}${rating !== null ? `, rating ${rating}` : ""}, open profile`}>
       <Avatar user={user} />
-      <span className="rating-chip-value">{stats.rating}</span>
-      <span className={d > 0 ? "delta-up" : d < 0 ? "delta-dn" : "delta-flat"}>{deltaText(d)}</span>
-      <span className="rating-chip-chev" aria-hidden="true">›</span>
+      <span className="account-pill-name">{name}</span>
+      {rating !== null ? <span className="account-pill-rating">{rating.toLocaleString("en-US")}</span> : null}
     </button>
   );
 }

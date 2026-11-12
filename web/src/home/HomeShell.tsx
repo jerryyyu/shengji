@@ -1,17 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { auth, effectiveName, useAuth } from "../auth";
-import { openHowto } from "../howto/route";
-import { openInfoPage } from "../support/route";
+import { effectiveName, useAuth } from "../auth";
 import type { AuthUser } from "../auth";
 import { canAnimate } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
-import { useMenuKeys } from "../useMenuKeys";
-import { WIDE, openNameEditor, openTab } from "./route";
+import { WIDE, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
 import { useTabSwipe } from "./useTabSwipe";
 import type { MeSection, Tab } from "./route";
 import QueueBar, { QueueChip, QueueStrip } from "../queue/QueueBar";
+import AccountChip from "../components/AccountChip";
 
 export { WIDE };
 
@@ -82,74 +80,6 @@ export function TabBar({ active }: { active: Tab }) {
   );
 }
 
-/** The top bar's account chip and its menu: Edit name, How to play,
- *  Privacy, Support and Sign out (Stats and Games are tabs beside it).
- *
- *  Keyboard: opening moves focus to the first row (ArrowUp on the closed chip
- *  to the last), the arrows, Home and End move between rows, and Escape
- *  closes the menu and returns focus to the chip. Tabbing out closes it. */
-function AccountMenu({ user }: { user: AuthUser }) {
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement | null>(null);
-  const trigger = useRef<HTMLButtonElement | null>(null);
-  const menu = useRef<HTMLDivElement | null>(null);
-  const focusNext = useRef<"first" | "last" | null>(null);
-  const { items, onKeyDown } = useMenuKeys(menu, "[role='menuitem']");
-  useEffect(() => {
-    const want = focusNext.current;
-    if (!open || want === null) return;
-    focusNext.current = null;
-    const list = items();
-    (want === "last" ? list[list.length - 1] : list[0])?.focus();
-  });
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setOpen(false);
-      trigger.current?.focus();
-    };
-    document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("pointerdown", away);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
-  const show = (at: "first" | "last") => { focusNext.current = at; setOpen(true); };
-  const pick = (go: () => void) => () => { setOpen(false); go(); };
-  return (
-    <div className="topbar-menu-box" ref={box}
-         onBlur={(e) => { if (open && e.relatedTarget && !box.current?.contains(e.relatedTarget as Node)) setOpen(false); }}>
-      <button ref={trigger} type="button" className="topbar-account" aria-haspopup="menu"
-              aria-expanded={open} onClick={() => { if (open) setOpen(false); else show("first"); }}
-              onKeyDown={(e) => {
-                if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
-                e.preventDefault();
-                show(e.key === "ArrowDown" ? "first" : "last");
-              }}>
-        <Avatar user={user} />
-        <span className="topbar-account-name">{effectiveName(user) || user.email}</span>
-        <span className="topbar-caret" aria-hidden="true">▾</span>
-      </button>
-      {open ? (
-        <div className="topbar-menu" role="menu" aria-label="Account" ref={menu} onKeyDown={onKeyDown}>
-          <button type="button" role="menuitem" onClick={pick(openNameEditor)}>Edit name</button>
-          <hr />
-          <button type="button" role="menuitem" onClick={pick(() => openHowto())}>How to play</button>
-          <button type="button" role="menuitem" onClick={pick(() => openInfoPage("privacy"))}>Privacy</button>
-          <button type="button" role="menuitem" onClick={pick(() => openInfoPage("support"))}>Support</button>
-          <hr />
-          <button type="button" role="menuitem" onClick={pick(() => { auth.signOut().catch(() => openTab("me", "stats")); })}>
-            Sign out
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /** The wide layout's four tabs: Me's two sections are tabs of their own. */
 const WIDE_TABS: { tab: Tab; section?: MeSection; label: string }[] = [
   { tab: "play", label: "Play" },
@@ -158,14 +88,15 @@ const WIDE_TABS: { tab: Tab; section?: MeSection; label: string }[] = [
   { tab: "me", section: "games", label: "Games" },
 ];
 
-/** The wide layout's top bar: the wordmark, Play, Leaderboard, Stats and
- *  Games, and the account's menu (or Sign in) at the end. */
+/** The wide layout's top bar: the wordmark (except on Play, whose page
+ *  carries the title), Play, Leaderboard, Stats and Games centred, and the
+ *  account chip (or Sign in) at the end. */
 export function TopBar({ active, section = "stats" }: { active: Tab; section?: MeSection }) {
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
   let end: ReactNode = null;
   if (user) {
-    end = <AccountMenu user={user} />;
+    end = <AccountChip user={user} />;
   } else if (account.status === "out") {
     end = (
       <button type="button" className="btn topbar-signin" onClick={() => openTab("me", "stats")}>Sign in</button>
@@ -178,9 +109,12 @@ export function TopBar({ active, section = "stats" }: { active: Tab; section?: M
   };
   return (
     <header className="topbar">
-      <button type="button" className="topbar-mark" aria-label="Sheng Ji: Play" onClick={() => openTab("play")}>
-        <b>升级</b><span>Sheng Ji</span>
-      </button>
+      {/* Play shows the title itself */}
+      {active === "play" ? null : (
+        <button type="button" className="topbar-mark" aria-label="Sheng Ji: Play" onClick={() => openTab("play")}>
+          <b>升级</b><span>Sheng Ji</span>
+        </button>
+      )}
       <nav className="topbar-tabs" aria-label="Main">
         {WIDE_TABS.map((t) => (
           <button key={t.label} type="button" className={`topbar-tab${on(t) ? " on" : ""}`}

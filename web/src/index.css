@@ -713,24 +713,6 @@ textarea:focus-visible {
   font-size: var(--fs-13);
   color: var(--text-dim);
 }
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-dim);
-  font-size: var(--fs-12);
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-
-.divider::before,
-.divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--panel-edge);
-}
-
 .join-row {
   display: flex;
   gap: 10px;
@@ -831,39 +813,6 @@ textarea:focus-visible {
   padding: 9px 12px;
   font-size: var(--fs-13);
   font-weight: 600;
-}
-
-.conn-status {
-  font-size: var(--fs-13);
-  color: var(--text-dim);
-}
-
-.conn-status.open {
-  color: #6fce93;
-}
-
-.conn-status.connecting {
-  color: var(--gold);
-}
-
-.conn-status.closed {
-  color: var(--danger);
-}
-
-/* no connection for a while: say so, with a way to try again now */
-.conn-status.stalled {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 6px 10px;
-  color: var(--danger);
-  text-align: center;
-}
-
-.conn-status.stalled .conn-retry {
-  min-height: 44px;
-  padding: 0 18px;
 }
 
 /* ---------- Room ---------- */
@@ -5166,7 +5115,7 @@ body.keyboard-open .tabbar { display: none; }
 }
 .topbar-mark b { font-size: 24px; color: var(--gold); letter-spacing: 0.02em; }
 .topbar-mark span { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--text-dim); }
-.topbar-tabs { display: flex; gap: 6px; align-self: stretch; }
+.topbar-tabs { grid-column: 2; display: flex; gap: 6px; align-self: stretch; }
 .topbar-tab {
   appearance: none;
   height: 56px;
@@ -5180,62 +5129,8 @@ body.keyboard-open .tabbar { display: none; }
   cursor: pointer;
 }
 .topbar-tab.on { color: #fff; border-bottom-color: var(--gold); }
-.topbar-end { justify-self: end; display: flex; align-items: center; min-width: 0; }
+.topbar-end { grid-column: 3; justify-self: end; display: flex; align-items: center; min-width: 0; }
 .topbar-end > .topbar-tab { height: 56px; }
-.topbar-menu-box { position: relative; min-width: 0; }
-.topbar-account {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 240px;
-  height: 36px;
-  padding: 0 12px 0 4px;
-  border: 1px solid var(--grp-edge);
-  border-radius: 18px;
-  background: var(--grp);
-  color: #e6eaf1;
-  font-size: var(--fs-14);
-  font-weight: 600;
-  cursor: pointer;
-}
-.topbar-account.on { border-color: var(--gold-soft); }
-/* drawn 36px tall; ::before makes the tap area 44px inside the 56px bar */
-.topbar-account { position: relative; }
-.topbar-account::before { content: ""; position: absolute; inset: -5px 0; }
-.topbar-account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.topbar-caret { color: var(--muted-2); font-size: 11px; }
-.topbar-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 60;
-  min-width: 200px;
-  display: flex;
-  flex-direction: column;
-  padding: 6px;
-  border: 1px solid var(--grp-edge);
-  border-radius: 12px;
-  background: var(--grp);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-}
-.topbar-menu button {
-  appearance: none;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: var(--text);
-  font-size: var(--fs-15);
-  text-align: left;
-  cursor: pointer;
-}
-.topbar-menu button:focus-visible { background: #2f3644; outline: none; }
-@media (hover: hover) and (pointer: fine) {
-  .topbar-menu button:hover { background: #2f3644; }
-}
-.topbar-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 0.5px solid var(--grp-line); }
 .topbar-signin { min-height: 36px; }
 
 .avatar {
@@ -5261,34 +5156,152 @@ body.keyboard-open .tabbar { display: none; }
 .avatar-guest { color: var(--muted); box-shadow: none; }
 
 /* Play on a phone: the lobby keeps the plain screen's top padding (the
-   status-bar inset or 12px) and drops the panel's bottom padding, which is
-   empty space under the connection line, so the whole stack fits between the
-   status bar and the tab bar on a 375x812 or larger phone. A shorter phone
-   scrolls, and the scroll ends at the tab bar's top edge. A signed-in
-   player's rating chip is centred under the title. */
+   status-bar inset or 12px) and drops the panel's bottom padding, so the
+   stack sits between the status bar and the tab bar. A shorter phone
+   scrolls, and the scroll ends at the tab bar's top edge. */
 .home-narrow .lobby-panel:has(.lobby-preview) { padding-bottom: 0; }
-.rating-chip {
+
+/* The Play tab: the title and preview, the guest's name or the account chip,
+   the Ranked and Casual blocks, the code box and How to play, in one column.
+   From 700px it is the same column, 420px wide, on the page under the top bar. */
+.play-tab > .lobby-panel { gap: 16px; }
+.home-wide .play-tab > .lobby-panel {
+  width: 420px;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 24px 0;
+}
+.home-wide .play-tab .account-pill { display: none; }
+.play-section { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.play-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-12);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.play-label.ranked { color: var(--gold); }
+.trophy {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.play-ranked-row { display: flex; gap: 8px; }
+.play-tab .btn.play-main,
+.play-tab .btn.play-duo {
+  min-height: 58px;
+  padding: 0 16px;
+  border-radius: 16px;
+  border-width: 1.5px;
+  font-size: var(--fs-20);
+  font-weight: 700;
+}
+.play-tab .btn.play-main { flex: 1; min-width: 0; }
+.play-tab .btn.play-duo {
+  flex: none;
+  width: 96px;
+  background: transparent;
+  border-color: var(--gold);
+  color: var(--gold);
+  font-size: var(--fs-17);
+}
+.play-tab .btn.play-signin {
+  min-height: 50px;
+  border-radius: 16px;
+  border: 1.5px solid var(--gold);
+  background: transparent;
+  color: var(--gold);
+  font-size: var(--fs-17);
+  font-weight: 700;
+}
+/* Unavailable controls keep their place and shape, greyed rather than faded. */
+.play-tab .btn:disabled {
+  opacity: 1;
+  background: #1f242d;
+  border-color: var(--panel-edge);
+  color: #7a8494;
+}
+.play-tab .room-input:disabled { background: #1a1e26; color: #7a8494; }
+.play-grp { border: 1px solid var(--grp-edge); border-radius: 14px; }
+.play-grp .grp-row { min-height: 50px; }
+.play-grp .grp-row:disabled { color: #7a8494; }
+.play-tab .howto-entry { font-size: var(--fs-15); }
+.play-conn-row { display: flex; justify-content: center; }
+.play-conn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid #3a4250;
+  border-radius: 16px;
+  background: #2a2f3a;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+button.play-conn { cursor: pointer; }
+.play-conn .conn-dot { width: 8px; height: 8px; margin-right: 8px; background: var(--gold); }
+
+/* The signed-in player's chip (Play on a phone, the top bar's end when wide):
+   avatar, name and rating; a tap opens Me. */
+.account-pill {
   appearance: none;
   align-self: center;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 32px;
-  margin-top: -6px;
-  padding: 0 10px 0 5px;
+  gap: 10px;
+  max-width: 100%;
+  height: 40px;
+  padding: 0 14px 0 6px;
   border: 1px solid var(--grp-edge);
-  border-radius: 16px;
+  border-radius: 20px;
   background: var(--grp);
-  color: #e6eaf1;
-  font-size: var(--fs-13);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-15);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
-.rating-chip { position: relative; }
-.rating-chip::before { content: ""; position: absolute; inset: -6px 0; }
-.rating-chip .avatar { width: 22px; height: 22px; font-size: 11px; }
-.rating-chip-chev { margin-left: -2px; color: var(--muted-2); font-weight: 400; }
+.account-pill .avatar { width: 28px; height: 28px; font-size: 12px; }
+.topbar .account-pill { max-width: 280px; }
+/* drawn 40px tall; ::before makes the tap area 44px */
+.account-pill { position: relative; }
+.account-pill::before { content: ""; position: absolute; inset: -2px 0; }
+.account-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-pill-rating { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* The Duo sheet's ranked mark under its title. */
+.ranked-chip {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--gold);
+  border-radius: 11px;
+  background: rgba(242, 193, 78, 0.16);
+  color: var(--gold);
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ranked-chip .trophy { width: 12px; height: 12px; }
+.q-ranked-row { display: flex; justify-content: center; margin-top: -4px; }
 
 .screen.home-page,
 .home-body > .screen.home-page {
@@ -5682,7 +5695,6 @@ button[role="switch"]:active .ios-switch {
    ready check, the queue's notices and the table's matched-game note. */
 .q-find { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.15; }
 .q-find.searching { opacity: 0.55; }
-.q-find-sub { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-12); font-weight: 500; opacity: 0.85; letter-spacing: 0; }
 .q-dot { width: 7px; height: 7px; border-radius: 50%; background: #5fc78b; flex: none; }
 .q-spin {
   width: 14px; height: 14px; flex: none; border-radius: 50%;

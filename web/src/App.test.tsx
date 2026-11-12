@@ -7,6 +7,6 @@ it("draws the lobby upright, with no rotate prompt and no turned table", () => {
   expect(html).toContain('class="panel lobby-panel"');
   expect(html).not.toContain("rotate-hint");
   expect(html).toContain('class="app"');
-  expect(html).toContain('aria-label="Game or pair code"');
+  expect(html).toContain('aria-label="Room or duo code"');
   expect(html).toContain('enterKeyHint="go"');
 });

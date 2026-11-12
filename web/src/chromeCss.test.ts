@@ -116,12 +116,11 @@ describe("home touch targets", () => {
     expect(Number(inset[1]) - padding).toBeLessThan(px(decls(".home-col"), "gap") / 2);
   });
 
-  it("the account chip reaches 44px inside the 56px top bar, and its menu rows are 44px", () => {
-    const chip = px(decls(".topbar-account"), "height");
-    const inset = /inset:\s*-(\d+)px 0/.exec(decls(".topbar-account::before"))!;
+  it("the account chip reaches 44px inside the 56px top bar", () => {
+    const chip = px(decls(".account-pill"), "height");
+    const inset = /inset:\s*-(\d+)px 0/.exec(decls(".account-pill::before"))!;
     expect(chip + 2 * Number(inset[1])).toBeGreaterThanOrEqual(44);
     expect(chip + 2 * Number(inset[1])).toBeLessThanOrEqual(56);
-    expect(px(decls(".topbar-menu button"), "min-height")).toBeGreaterThanOrEqual(44);
   });
 });
 

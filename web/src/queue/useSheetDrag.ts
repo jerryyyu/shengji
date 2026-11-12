@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { MutableRefObject, RefObject } from "react";
 import { haptic } from "../native";
-import { prefersReducedMotion } from "../motion";
+import { currentTranslate, prefersReducedMotion } from "../motion";
 import { WIDE } from "../home/route";
 
 /** Movement before a touch is locked to a vertical drag or let go. */
@@ -52,9 +52,12 @@ const now = () => performance.now();
  *  `--sheet-scrim`, so a drag never re-renders; an upward drag rubber-bands.
  *  A release past SHEET_DISMISS of the height, or a downward SHEET_FLICK,
  *  slides the sheet out and then calls onClose; otherwise it springs back.
- *  A second finger or a cancelled touch springs it back too. Passing the
- *  dismiss point ticks a light haptic in the app. Under Reduce Motion the
- *  sheet does not move and a release dismisses or stays at once. */
+ *  A second finger or a cancelled touch springs it back too. A touch that
+ *  lands while the sheet is still moving (springing back or sliding in)
+ *  catches it where it is drawn, read from its computed transform, and the
+ *  drag carries on from there with no jump. Passing the dismiss point ticks a
+ *  light haptic in the app. Under Reduce Motion the sheet does not move and
+ *  a release dismisses or stays at once. */
 export function useSheetDrag(
   layerRef: RefObject<HTMLElement | null>,
   sheetRef: RefObject<HTMLElement | null>,
@@ -64,8 +67,10 @@ export function useSheetDrag(
     const layer = layerRef.current;
     const sheet = sheetRef.current;
     if (!layer || !sheet) return;
+    // base: where the sheet was drawn when the touch caught it, nonzero only
+    // for a touch that landed while it was still moving
     type Drag = { y: number; x: number; lock: boolean; handle: boolean; dy: number; height: number;
-                  animate: boolean; past: boolean; samples: { y: number; t: number }[] };
+                  base: number; animate: boolean; past: boolean; samples: { y: number; t: number }[] };
     let g: Drag | null = null;
     let timer = 0;
     let leaving = false;
@@ -90,11 +95,14 @@ export function useSheetDrag(
       window.clearTimeout(timer);
       timer = window.setTimeout(clear, SHEET_SETTLE_MS);
     };
-    const offset = (d: Drag) => (d.dy >= 0 ? d.dy : sheetBand(d.dy, d.height));
+    const total = (d: Drag) => d.base + d.dy;
+    const offset = (d: Drag) => (total(d) >= 0 ? total(d) : sheetBand(total(d), d.height));
+    // a drag that let the sheet go away from rest must put it back
+    const moved = (d: Drag) => d.lock || d.base !== 0;
     const cancel = () => {
       const d = g;
       g = null;
-      if (d?.lock) settle(d);
+      if (d && moved(d)) settle(d);
     };
     const onStart = (e: TouchEvent) => {
       // a second finger, or a new touch, ends any drag still under way
@@ -107,8 +115,18 @@ export function useSheetDrag(
       if (!handle && scrolledDown(from, sheet)) return;
       const t = e.touches[0];
       const height = sheet.getBoundingClientRect().height || sheet.offsetHeight || window.innerHeight;
-      g = { x: t.clientX, y: t.clientY, lock: false, handle, dy: 0, height, animate: !prefersReducedMotion(),
+      const animate = !prefersReducedMotion();
+      const drawn = animate ? currentTranslate(sheet).dy : 0;
+      const base = Math.abs(drawn) >= 0.5 ? drawn : 0;
+      g = { x: t.clientX, y: t.clientY, lock: false, handle, dy: 0, height, base, animate,
             past: false, samples: [{ y: t.clientY, t: now() }] };
+      if (base !== 0) {
+        // hold it under the finger from the first touch, before any lock
+        window.clearTimeout(timer);
+        layer.classList.remove("q-in");
+        layer.dataset.sheetDrag = "drag";
+        show(offset(g), height);
+      }
     };
     const onMove = (e: TouchEvent) => {
       if (!g) return;
@@ -121,13 +139,15 @@ export function useSheetDrag(
       const dy = t.clientY - g.y;
       if (!g.lock) {
         if (Math.abs(dx) < SHEET_LOCK && Math.abs(dy) < SHEET_LOCK) return;
-        // sideways is not a drag; upward from the body is the sheet's own scroll
-        if (Math.abs(dy) <= Math.abs(dx) || (!g.handle && dy < 0)) {
-          g = null;
+        // sideways is not a drag; upward from the body is the sheet's own
+        // scroll, unless the touch caught the sheet away from rest
+        if (Math.abs(dy) <= Math.abs(dx) || (!g.handle && dy < 0 && g.base === 0)) {
+          cancel();
           return;
         }
         g.lock = true;
         window.clearTimeout(timer);
+        layer.classList.remove("q-in");
         if (g.animate) layer.dataset.sheetDrag = "drag";
       }
       if (e.cancelable) e.preventDefault();
@@ -135,7 +155,7 @@ export function useSheetDrag(
       const at = now();
       g.samples.push({ y: t.clientY, t: at });
       while (g.samples.length > 2 && at - g.samples[0].t > VELOCITY_WINDOW_MS) g.samples.shift();
-      const past = dy >= SHEET_DISMISS * g.height;
+      const past = total(g) >= SHEET_DISMISS * g.height;
       if (past !== g.past) {
         g.past = past;
         if (past) haptic("sheet");
@@ -145,7 +165,11 @@ export function useSheetDrag(
     const onEnd = (e: TouchEvent) => {
       const d = g;
       g = null;
-      if (!d || !d.lock) return;
+      if (!d) return;
+      if (!d.lock) {
+        if (moved(d)) settle(d);
+        return;
+      }
       // velocity runs up to the release itself, so a finger that stopped
       // before lifting has none
       const at = now();
@@ -154,7 +178,7 @@ export function useSheetDrag(
       const first = recent[0];
       const dt = at - first.t;
       const v = dt > 0 ? (endY - first.y) / dt : 0;
-      const go = d.dy > 0 && (d.dy >= SHEET_DISMISS * d.height || v >= SHEET_FLICK);
+      const go = total(d) > 0 && (total(d) >= SHEET_DISMISS * d.height || v >= SHEET_FLICK);
       if (!go) {
         settle(d);
         return;

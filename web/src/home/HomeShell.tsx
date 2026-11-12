@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { auth, effectiveName, useAuth } from "../auth";
 import { openHowto } from "../howto/route";
 import { openInfoPage } from "../support/route";
 import type { AuthUser } from "../auth";
+import { canAnimate } from "../motion";
 import { useMediaQuery } from "../phoneLayout";
 import { useMenuKeys } from "../useMenuKeys";
 import { WIDE, openNameEditor, openTab } from "./route";
@@ -193,6 +194,24 @@ export function TopBar({ active, section = "stats" }: { active: Tab; section?: M
   );
 }
 
+/** How long a newly opened tab's page fades in. */
+export const TAB_FADE_MS = 150;
+
+/** Fades the new page in when the tab (or the wide layout's Me section)
+ *  changes by a tap. A swipe has already slid the page in, so it does not
+ *  fade too, and nothing fades on first load or under Reduce Motion. */
+function useTabFade(body: { current: HTMLElement | null }, key: string): void {
+  const last = useRef(key);
+  useLayoutEffect(() => {
+    if (last.current === key) return;
+    last.current = key;
+    const el = body.current;
+    const page = el?.firstElementChild;
+    if (!el || el.dataset.tabSwipe || !canAnimate(page)) return;
+    page.animate([{ opacity: 0 }, { opacity: 1 }], { duration: TAB_FADE_MS, easing: "ease-out" });
+  }, [body, key]);
+}
+
 /** The home screen's frame: the active tab's page with the tabs above it
  *  (wide) or below it (a phone, where a sideways swipe on the page moves to
  *  the tab beside it). A game, a replay and How to play are drawn without it. */
@@ -202,6 +221,7 @@ export default function HomeShell({ active, section, children }: {
   const wide = useMediaQuery(WIDE);
   const body = useRef<HTMLDivElement | null>(null);
   useTabSwipe(body, active, !wide);
+  useTabFade(body, `${active}/${section ?? ""}`);
   return (
     <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
       {wide ? <TopBar active={active} section={section} /> : null}

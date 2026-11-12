@@ -1,11 +1,13 @@
 // A phone's bottom sheet drags down to dismiss, by touch only and below
 // 700px: from the grab handle or header at any time, or from the body when
 // nothing under the finger is scrolled down; never from a control.
+import { readFileSync } from "node:fs";
 import { act } from "react";
+import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WIDE } from "../home/route";
-import Sheet from "./Sheet";
+import Sheet, { SHEET_IN_MS } from "./Sheet";
 import { SHEET_SETTLE_MS } from "./useSheetDrag";
 
 const H = 400;
@@ -281,3 +283,214 @@ it("still closes on Escape, a scrim tap and Cancel", async () => {
   expect(onClose).toHaveBeenCalledTimes(3);
   expect(document.activeElement).toBe(sheet());
 });
+
+const flush = () => act(async () => { await Promise.resolve(); });
+function key(k: string, shiftKey = false) {
+  const e = new KeyboardEvent("keydown", { key: k, shiftKey, bubbles: true, cancelable: true });
+  act(() => { (document.activeElement ?? document).dispatchEvent(e); });
+  return e;
+}
+/** Renders `node` into a fresh host, with a page button before the host. */
+async function mount(node: ReactNode) {
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => { root.render(node); });
+}
+const other = (title: string) => (
+  <Sheet title={title} onClose={onClose}>
+    <div className="q-sheet-pad"><button type="button" className="btn other">Other</button></div>
+  </Sheet>
+);
+function withAnimate(run: () => Promise<void>) {
+  return async () => {
+    Object.defineProperty(HTMLElement.prototype, "animate", { value: vi.fn(), configurable: true, writable: true });
+    try {
+      await run();
+    } finally {
+      delete (HTMLElement.prototype as { animate?: unknown }).animate;
+      document.querySelectorAll(".q-out").forEach((n) => n.remove());
+    }
+  };
+}
+
+it("keeps the handle and header out of the body, which is what scrolls on a short screen", async () => {
+  await render();
+  const body = host.querySelector<HTMLElement>(".q-sheet-body")!;
+  expect(body.parentElement).toBe(sheet());
+  expect(body.querySelector(".q-sheet-pad")).not.toBeNull();
+  expect(body.contains(host.querySelector(".q-sheet-head"))).toBe(false);
+  expect(body.contains(host.querySelector(".q-grab"))).toBe(false);
+  const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
+  const rule = (sel: string) => css.match(new RegExp(`\\n${sel.replace(/[.]/g, "\\.")} \\{([^}]*)\\}`))?.[1] ?? "";
+  expect(rule(".q-sheet")).toMatch(/max-height: calc\(100% - max\(8px, env\(safe-area-inset-top/);
+  expect(rule(".q-sheet-body")).toMatch(/overflow-y: auto/);
+  expect(rule(".q-sheet-body")).toMatch(/min-height: 0/);
+});
+
+it("drags from the body only while the body is scrolled to its top", async () => {
+  await render();
+  const body = host.querySelector<HTMLElement>(".q-sheet-body")!;
+  Object.defineProperty(body, "scrollTop", { value: 30, configurable: true });
+  expect(drag(250, { on: ".plain" })[9].defaultPrevented).toBe(false);
+  await wait(SHEET_SETTLE_MS + 20);
+  expect(onClose).not.toHaveBeenCalled();
+  Object.defineProperty(body, "scrollTop", { value: 0, configurable: true });
+  expect(drag(250, { on: ".plain" })[9].defaultPrevented).toBe(true);
+  await wait(SHEET_SETTLE_MS + 20);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("keeps Tab and Shift-Tab inside the sheet and makes the page behind it inert", async () => {
+  const page = document.createElement("button");
+  page.textContent = "Find a game";
+  document.body.appendChild(page);
+  try {
+    page.focus();
+    await render();
+    expect(page.hasAttribute("inert")).toBe(true);
+    const cancel = host.querySelector<HTMLElement>(".q-sheet-head .q-link")!;
+    const field = host.querySelector<HTMLElement>(".field")!;
+    const play = host.querySelector<HTMLElement>(".btn")!;
+    expect(document.activeElement).toBe(sheet());
+    expect(key("Tab", true).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(play);
+    expect(key("Tab").defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(cancel);
+    expect(key("Tab", true).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(play);
+    field.focus();
+    expect(key("Tab").defaultPrevented).toBe(false);
+    page.focus();
+    expect(key("Tab").defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(cancel);
+    act(() => root.render(<></>));
+    expect(page.hasAttribute("inert")).toBe(false);
+    await flush();
+    expect(document.activeElement).toBe(page);
+  } finally {
+    page.remove();
+  }
+});
+
+it("does not take focus back to an opener that is gone", async () => {
+  const page = document.createElement("button");
+  document.body.appendChild(page);
+  page.focus();
+  await render();
+  page.remove();
+  act(() => root.render(<></>));
+  await flush();
+  expect(document.activeElement).toBe(document.body);
+});
+
+it("hands focus to a sheet that replaces it, and the opener back when that one closes", async () => {
+  const page = document.createElement("button");
+  document.body.appendChild(page);
+  try {
+    page.focus();
+    await mount(<div key="a">{other("Find a game")}</div>);
+    host.querySelector<HTMLElement>(".other")!.focus();
+    await act(async () => { root.render(<div key="b">{other("Queue with a friend")}</div>); });
+    await flush();
+    expect(host.querySelectorAll(".q-layer")).toHaveLength(1);
+    expect(document.activeElement).toBe(sheet());
+    expect(host.querySelector("h2")!.textContent).toBe("Queue with a friend");
+    expect(page.hasAttribute("inert")).toBe(true);
+    act(() => root.render(<></>));
+    await flush();
+    expect(page.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(page);
+  } finally {
+    page.remove();
+  }
+});
+
+it("catches a sheet that is springing back where it is drawn, and follows the finger on from there", async () => {
+  await render();
+  drag(40, { hold: 130 });
+  expect(layer().dataset.sheetDrag).toBe("settle");
+  clock += 40;
+  const real = globalThis.getComputedStyle;
+  vi.spyOn(globalThis, "getComputedStyle").mockImplementation((el, p) =>
+    el === sheet() ? ({ transform: "matrix(1, 0, 0, 1, 0, 26.41)" } as CSSStyleDeclaration) : real(el, p));
+  const grab = host.querySelector(".q-grab")!;
+  touch("touchstart", 300, grab);
+  expect(layer().dataset.sheetDrag).toBe("drag");
+  expect(shift()).toBe("26.41px");
+  clock += 16;
+  touch("touchmove", 309, grab);
+  const y = parseFloat(shift());
+  expect(y).toBeCloseTo(35.41, 2);
+  expect(y).toBeGreaterThanOrEqual(26.41);
+  clock += 200;
+  touch("touchend", 309, grab);
+  expect(layer().dataset.sheetDrag).toBe("settle");
+  expect(shift()).toBe("0px");
+  await wait(SHEET_SETTLE_MS + 20);
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+it("springs a caught sheet back when the touch lifts without moving, and dismisses one dragged on past the line", async () => {
+  await render();
+  const grab = host.querySelector(".q-grab")!;
+  const real = globalThis.getComputedStyle;
+  let drawn = "matrix(1, 0, 0, 1, 0, 30)";
+  vi.spyOn(globalThis, "getComputedStyle").mockImplementation((el, p) =>
+    el === sheet() ? ({ transform: drawn } as CSSStyleDeclaration) : real(el, p));
+  touch("touchstart", 300, grab);
+  expect(shift()).toBe("30px");
+  touch("touchend", 300, grab);
+  expect(layer().dataset.sheetDrag).toBe("settle");
+  expect(shift()).toBe("0px");
+  drawn = "matrix(1, 0, 0, 1, 0, 80)";
+  touch("touchstart", 300, grab);
+  clock += 400;
+  touch("touchmove", 325, grab);
+  clock += 400;
+  touch("touchend", 325, grab);
+  expect(layer().dataset.sheetDrag).toBe("out");
+  await wait(SHEET_SETTLE_MS + 20);
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("slides in, then leaves a copy that slides out when it closes", withAnimate(async () => {
+  await render();
+  expect(layer().classList.contains("q-in")).toBe(true);
+  await wait(SHEET_IN_MS + 20);
+  expect(layer().classList.contains("q-in")).toBe(false);
+  act(() => root.render(<></>));
+  const ghost = host.querySelector<HTMLElement>(".q-layer.q-out")!;
+  expect(ghost).not.toBeNull();
+  expect(ghost.hasAttribute("inert")).toBe(true);
+  expect(ghost.getAttribute("aria-hidden")).toBe("true");
+  expect(ghost.querySelector("[id]")).toBeNull();
+  await wait(SHEET_IN_MS + 20);
+  expect(host.querySelector(".q-layer")).toBeNull();
+}));
+
+it("does not slide a sheet that replaces another, nor leave a copy of the one it replaced", withAnimate(async () => {
+  await mount(<div key="a">{other("Find a game")}</div>);
+  await act(async () => { root.render(<div key="b">{other("Queue with a friend")}</div>); });
+  await flush();
+  const layers = host.querySelectorAll<HTMLElement>(".q-layer");
+  expect(layers).toHaveLength(1);
+  expect(layers[0].classList.contains("q-in")).toBe(false);
+}));
+
+it("leaves no copy after a drag has already slid the sheet out", withAnimate(async () => {
+  await render();
+  drag(200);
+  await wait(SHEET_SETTLE_MS + 20);
+  expect(onClose).toHaveBeenCalledTimes(1);
+  act(() => root.render(<></>));
+  expect(host.querySelector(".q-out")).toBeNull();
+}));
+
+it("neither slides in nor leaves a copy under Reduce Motion", withAnimate(async () => {
+  media.reduce = true;
+  await render();
+  expect(layer().classList.contains("q-in")).toBe(false);
+  act(() => root.render(<></>));
+  expect(host.querySelector(".q-out")).toBeNull();
+}));

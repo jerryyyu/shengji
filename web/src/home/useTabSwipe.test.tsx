@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { auth } from "../auth";
-import HomeShell from "./HomeShell";
+import HomeShell, { TAB_FADE_MS } from "./HomeShell";
 import { WIDE, useHomeRoute } from "./route";
 import { forgetHomeSession } from "./session";
 import { SWIPE_SETTLE_MS, edgeBand } from "./useTabSwipe";
@@ -286,4 +286,28 @@ it("springs back and clears the page's offset when the system cancels a drag", a
   await wait(SWIPE_SETTLE_MS + 30);
   expect(shift()).toBe("");
   expect(body().dataset.tabSwipe).toBeUndefined();
+});
+
+it("fades the new page in for 150 ms when a tab is tapped, but not after a swipe, on first load or under Reduce Motion", async () => {
+  const animate = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, "animate", { value: animate, configurable: true, writable: true });
+  try {
+    await render();
+    expect(animate).not.toHaveBeenCalled();
+    act(() => { host.querySelectorAll<HTMLElement>(".tabbar-item")[1].click(); });
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(animate.mock.instances[0]).toBe(host.querySelector(".home-body > .screen"));
+    expect(animate.mock.calls[0][0]).toEqual([{ opacity: 0 }, { opacity: 1 }]);
+    expect(animate.mock.calls[0][1]).toMatchObject({ duration: TAB_FADE_MS });
+    swipe(-150);
+    expect(onTab()).toBe("Me");
+    expect(animate).toHaveBeenCalledTimes(1);
+    await wait(SWIPE_SETTLE_MS + 20);
+    media.reduce = true;
+    act(() => { host.querySelectorAll<HTMLElement>(".tabbar-item")[0].click(); });
+    expect(onTab()).toBe("Play");
+    expect(animate).toHaveBeenCalledTimes(1);
+  } finally {
+    delete (HTMLElement.prototype as { animate?: unknown }).animate;
+  }
 });

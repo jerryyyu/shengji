@@ -246,3 +246,44 @@ it("does nothing at 700px and up", async () => {
   expect(window.location.hash).toBe("");
   expect(body().dataset.tabSwipe).toBeUndefined();
 });
+
+it("does not commit a short flick after the finger stops for a second", async () => {
+  await render();
+  swipe(-40, { ms: 40, release: false });
+  clock += 1000;
+  touch("touchend", 160, 300, host.querySelector(".plain")!);
+  expect(onTab()).toBe("Play");
+});
+it("settles a horizontal drag when a second finger touches down", async () => {
+  await render();
+  swipe(-40, { ms: 500, release: false });
+  const e = new Event("touchstart", { bubbles: true, cancelable: true });
+  Object.defineProperty(e, "touches", { value: [{clientX:160,clientY:300},{clientX:220,clientY:300}] });
+  act(() => host.querySelector(".plain")!.dispatchEvent(e));
+  touch("touchend", 0, 0, host.querySelector(".plain")!);
+  await wait(SWIPE_SETTLE_MS + 30);
+  expect(shift()).toBe("");
+  expect(body().dataset.tabSwipe).toBeUndefined();
+});
+
+it("still commits a drag past the threshold that paused before the release", async () => {
+  await render();
+  swipe(-150, { ms: 150, release: false });
+  clock += 1000;
+  touch("touchend", 0, 0, body());
+  expect(onTab()).toBe("Leaderboard");
+  expect(window.location.hash).toBe("#/leaderboard");
+});
+
+it("springs back and clears the page's offset when the system cancels a drag", async () => {
+  await render();
+  swipe(-150, { release: false });
+  expect(body().dataset.tabSwipe).toBe("drag");
+  touch("touchcancel", 0, 0, body());
+  expect(window.location.hash).toBe("");
+  expect(body().dataset.tabSwipe).toBe("settle");
+  expect(shift()).toBe("0px");
+  await wait(SWIPE_SETTLE_MS + 30);
+  expect(shift()).toBe("");
+  expect(body().dataset.tabSwipe).toBeUndefined();
+});

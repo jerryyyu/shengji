@@ -98,7 +98,8 @@ export function useTabSwipe(body: RefObject<HTMLElement | null>, active: Tab, en
       return Math.max(-d.width, Math.min(d.width, d.dx));
     };
     const onStart = (e: TouchEvent) => {
-      g = null;
+      // a second finger, or a new touch, ends any drag still under way
+      cancel();
       if (e.touches.length !== 1) return;
       const t = e.touches[0];
       if (t.clientX < SWIPE_EDGE || t.clientX > window.innerWidth - SWIPE_EDGE) return;
@@ -145,14 +146,18 @@ export function useTabSwipe(body: RefObject<HTMLElement | null>, active: Tab, en
       g = null;
       if (d?.lock && d.animate) settle(0);
     };
-    const onEnd = () => {
+    const onEnd = (e: TouchEvent) => {
       const d = g;
       g = null;
       if (!d || d.lock !== "x") return;
-      const first = d.samples[0];
-      const last = d.samples[d.samples.length - 1];
-      const dt = last.t - first.t;
-      const v = dt > 0 ? (last.x - first.x) / dt : 0;
+      // velocity runs up to the release itself, so a finger that stopped
+      // before lifting has none
+      const at = now();
+      const endX = e.changedTouches?.[0]?.clientX ?? d.samples[d.samples.length - 1].x;
+      const recent = [...d.samples, { x: endX, t: at }].filter((p) => at - p.t <= VELOCITY_WINDOW_MS);
+      const first = recent[0];
+      const dt = at - first.t;
+      const v = dt > 0 ? (endX - first.x) / dt : 0;
       const to = neighbourTab(activeRef.current, d.dx);
       const go = to !== null && d.dx !== 0
         && (Math.abs(d.dx) >= SWIPE_COMMIT * d.width || (Math.abs(v) >= SWIPE_FLICK && Math.sign(v) === Math.sign(d.dx)));

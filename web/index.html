@@ -32,6 +32,31 @@
     <meta name="twitter:description" content="Play Sheng Ji (升级, Tractor) in your browser against strong bots, or with friends." />
     <meta name="twitter:image" content="https://shengji.fly.dev/og/preview.jpg" />
     <meta name="twitter:image:alt" content="Four cards on a green card table: the ace of spades led and the big joker glowing gold as it wins the trick." />
+    <!-- Structured data for search engines; the browser ignores this script type. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": ["VideoGame", "SoftwareApplication"],
+        "name": "Sheng Ji 升级",
+        "alternateName": ["Sheng Ji", "升级", "Tractor", "拖拉机"],
+        "url": "https://shengji.fly.dev/",
+        "description": "Play Sheng Ji (升级, Tractor) in your browser against strong bots, or with friends.",
+        "image": "https://shengji.fly.dev/og/preview.jpg",
+        "genre": ["Card game", "Trick-taking game"],
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Web browser",
+        "gamePlatform": "Web browser",
+        "playMode": ["MultiPlayer", "SinglePlayer"],
+        "numberOfPlayers": {"@type": "QuantitativeValue", "value": 4},
+        "inLanguage": "en",
+        "isAccessibleForFree": true,
+        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+        "subjectOf": [
+          {"@type": "WebPage", "name": "How to play Sheng Ji", "url": "https://shengji.fly.dev/rules", "inLanguage": "en"},
+          {"@type": "WebPage", "name": "升级玩法规则", "url": "https://shengji.fly.dev/rules/zh", "inLanguage": "zh-Hans"}
+        ]
+      }
+    </script>
     <!-- Static first paint: shown until React mounts (and replaces #root's
          contents), so a slow phone network gets the title instead of a blank
          page while the script downloads. Plain inline CSS, no script. -->

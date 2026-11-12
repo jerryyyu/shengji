@@ -159,3 +159,49 @@ def test_a_guest_cannot_resume(env):
         assert _drain(ws, "error")["code"] == "resume_unavailable"
     finally:
         ws.__exit__(None, None, None)
+
+
+def test_a_lost_round_end_makes_continue_unavailable_not_a_rollback(env):
+    """The second round's ``round_end`` never reaches the log (the link worker
+    still records its levels and marks the game incomplete): Continue must not
+    fall back to the first round's levels and banker."""
+    from shengji.api import saved_games
+
+    srv, store, client, cookie, uid, _pem = env
+    t = Table(srv, code="DROPEND", users=(uid, None, None, None))
+    t.start_round(first=True)
+    t.act()
+    original = t.room.log_event
+
+    def drop_end(kind, **data):
+        if kind == "round_end":
+            saved_games.log_failed(t.room)
+            return None
+        return original(kind, **data)
+
+    t.room.log_event = drop_end
+    t.start_round()
+    t.act()
+    saved_games.flush()
+    game = store.user_game(uid, t.game_id)
+    assert game["incomplete"] and game["final_levels"] == list(t.room.game.result.new_levels)
+    assert saved_games.resume_point(uid, t.game_id) is None
+    ws = _continue(client, cookie, t.game_id)
+    try:
+        err = _drain(ws, "error")
+        assert err["code"] == "resume_unavailable"
+    finally:
+        ws.__exit__(None, None, None)
+
+
+def test_a_summary_that_disagrees_with_the_latest_logged_round_end_is_refused(env):
+    """A complete log whose latest ``round_end`` differs from the stored
+    summary (the summary write failed or lagged) is not trusted either."""
+    from shengji.api import saved_games
+
+    srv, store, _client, _cookie, uid, _pem = env
+    t, last = _saved(srv, uid, seat=0, rounds=2)
+    assert saved_games.resume_point(uid, t.game_id) is not None
+    other = ["A", "A"] if list(last.new_levels) != ["A", "A"] else ["K", "K"]
+    store.record_round_end(t.game_id, 2, other, list(last.games_won))
+    assert saved_games.resume_point(uid, t.game_id) is None

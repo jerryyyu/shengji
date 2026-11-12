@@ -532,13 +532,17 @@ def resume_point(user_id: int, game_id: str) -> dict | None:
     starts: the account's seat (as the game list shows it), and both teams'
     levels and the next banker from the game's latest logged ``round_end``.
     None when the game is not this account's to read, when the summary has
-    no levels (a game no round of which finished), or when the log no
-    longer holds a finished round."""
+    no levels (a game no round of which finished), when the log no longer
+    holds a finished round, or when the latest state cannot be verified: a
+    game whose log missed a record (``incomplete``) may lack its latest
+    ``round_end``, and an older one would silently roll the game back, so
+    the latest logged round end must also agree with the stored summary."""
     found = _visible(user_id, game_id)
     if found is None:
         return None
     game, rounds = found
-    if teams_levels(game["final_levels"]) is None:
+    stored = teams_levels(game["final_levels"])
+    if stored is None or game.get("incomplete"):
         return None
     seg = _segment(game)
     for n in sorted(seg.rounds, reverse=True):
@@ -548,6 +552,8 @@ def resume_point(user_id: int, game_id: str) -> dict | None:
         levels = teams_levels(end.get("new_levels"))
         banker = end.get("next_banker")
         if levels is None or not isinstance(banker, int) or not 0 <= banker < 4:
+            return None
+        if levels != stored or end.get("games_won") != game.get("games_won"):
             return None
         return {"seat": rounds[max(rounds)], "levels": levels, "banker": banker}
     return None

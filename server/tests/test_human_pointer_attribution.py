@@ -427,3 +427,112 @@ def test_team_metric_preserves_zero_levels_and_policy_populations():
     assert report["by_observed_policy"]["a"]["bot_signed_levels"] == -2
     assert report["by_observed_policy"]["a"]["bot_levels_per_round"] == -1
     assert report["by_observed_policy"]["b"]["bot_levels_per_round"] == 3
+
+
+@pytest.mark.parametrize("levels,gap,near", [
+    (["2", "2"], 0, [False, False]),
+    (["J", "Q"], -1, [False, True]),
+    (["A", "2"], 12, [True, False]),
+    (["K", "A"], -1, [True, True]),
+])
+def test_game_situation_reaches_replayed_round_manifest(tmp_path, levels, gap, near):
+    events = _completed_round()
+    events[0]["levels"] = levels
+    result, summary = _summary_for(tmp_path, events)
+    assert summary["game_situation"] == {
+        "status": "observed", "team_levels": levels,
+        "team0_minus_team1_rank_steps": gap,
+        "team_within_two_ranks_of_ace": near,
+        "either_team_within_two_ranks_of_ace": any(near),
+    }
+    write_source(tmp_path / "out", result, cap=256)
+    raw = json.loads((tmp_path / "out" / "room-log.manifest.json").read_text())
+    assert raw["extras"]["completed_rounds"][0]["game_situation"] == summary["game_situation"]
+    levels[0] = "3"
+    assert summary["game_situation"]["team_levels"] != levels
+
+
+@pytest.mark.parametrize("levels", [None, [], ["Q"], ["2"] * 4, ["2", "BJ"], [2, "A"]])
+def test_missing_game_situation_is_unknown_not_midgame(levels):
+    from shengji.harvest.room_log import _game_situation
+    assert _game_situation({"levels": levels}) == {
+        "status": "unknown", "reason": "missing_or_invalid_team_levels"}
+    assert _game_situation({})["status"] == "unknown"
+
+
+@pytest.mark.parametrize("bot_team", [0, 1])
+def test_game_situation_report_uses_verified_outcome_and_controller_gate(tmp_path, bot_team):
+    events = _completed_round()
+    events[0]["levels"] = ["2", "Q"]
+    for event in _play_events(events):
+        event["bot"] = event["seat"] % 2 == bot_team
+        event["decision"] = {"policy": "exact-policy"}
+    result, summary = _summary_for(tmp_path, events)
+    report = result.extras["game_situation_report"]
+    win = summary["outcome"]["winner_team"] == bot_team
+    assert report["eligible_rounds"] == 1
+    assert report["by_observed_policy"] == {"exact-policy": {"near_ace": {
+        "rounds": 1, "bot_wins": int(win),
+        "bot_signed_levels": (1 if win else -1) * summary["outcome"]["level_change"],
+        "bot_levels_per_round": (1 if win else -1) * summary["outcome"]["level_change"],
+    }}}
+    write_source(tmp_path / "out", result, cap=256)
+    saved = json.loads((tmp_path / "out" / "room-log.manifest.json").read_text())
+    assert saved["extras"]["game_situation_report"] == report
+
+
+def test_game_situation_report_separates_unknown_takeover_and_zero_outcomes():
+    from copy import deepcopy
+    from shengji.harvest.room_log import _game_situation_report
+    row = {"human_seats": [0, 2], "bot_seats": [1, 3],
+           "unknown_seats": [], "mixed_controller_seats": [],
+           "bot_policies": {"1": ["p"], "3": ["p"]},
+           "unknown_policy_count": {"1": 0, "3": 0},
+           "outcome": {"winner_team": 1, "level_change": 0},
+           "game_situation": {"status": "observed", "either_team_within_two_ranks_of_ace": False}}
+    near = deepcopy(row); near["game_situation"]["either_team_within_two_ranks_of_ace"] = True
+    near["outcome"]["level_change"] = 2
+    unknown = deepcopy(row); unknown["game_situation"] = {"status": "unknown"}
+    takeover = deepcopy(near); takeover["mixed_controller_seats"] = [0]
+    report = _game_situation_report([row, near, unknown, takeover])
+    assert report["completed_rounds"] == 4 and report["eligible_rounds"] == 2
+    assert report["by_source_ref"] == {}
+    assert report["eligible_rounds_without_source_ref"] == 2
+    assert report["excluded_rounds"] == {"mixed_controller": 1, "unknown_game_situation": 1}
+    assert report["by_observed_policy"]["p"]["other"]["bot_levels_per_round"] == 0
+    assert report["by_observed_policy"]["p"]["near_ace"]["bot_levels_per_round"] == 2
+
+
+def test_situation_source_groups_survive_replay_and_manifest(tmp_path):
+    from copy import deepcopy
+    base = _completed_round()
+    for event in _play_events(base):
+        event["bot"] = event["seat"] % 2 == 1
+        event["decision"] = {"policy": "p"}
+    first = deepcopy(base)
+    first[0]["levels"] = ["2", "4"]
+    second = deepcopy(base)
+    for event in second:
+        event["round"] = 2
+    second[0]["levels"] = ["Q", "4"]
+    paths = [tmp_path / "logs" / "ROOM.jsonl",
+             tmp_path / "logs" / "archive" / "old" / "ROOM.jsonl"]
+    for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    _write_jsonl(paths[0], first + second)
+    _write_jsonl(paths[1], second)
+    result = extract_room_logs(paths, repo=tmp_path)
+    assert result.counts["rounds"] == 3
+    report = result.extras["game_situation_report"]
+    groups = report["by_source_ref"]
+    assert len(groups) == 2  # identical room codes in different logs remain separate
+    counts = sorted((s["p"].get("other", {}).get("rounds", 0),
+                     s["p"]["near_ace"]["rounds"]) for s in groups.values())
+    assert counts == [(0, 1), (1, 1)]
+    assert report["eligible_rounds_without_source_ref"] == 0
+    for stratum, pooled in report["by_observed_policy"]["p"].items():
+        for key in ("rounds", "bot_wins", "bot_signed_levels"):
+            assert pooled[key] == sum(s["p"].get(stratum, {}).get(key, 0) for s in groups.values())
+    write_source(tmp_path / "out", result, cap=256)
+    saved = json.loads((tmp_path / "out" / "room-log.manifest.json").read_text())
+    assert saved["extras"]["game_situation_report"] == report

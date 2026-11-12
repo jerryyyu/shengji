@@ -30,6 +30,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
+from ..engine.cards import RANKS
 from ..engine.round import Round
 from ..rl.replay_log import rebuild_round
 from .common import (REPO, ROOM_LOG_GLOBS, ExtractResult, InputRegistry,
@@ -313,6 +314,23 @@ def extract_round(ref: str, round_no: int, events: list[dict], *,
     return records, counts
 
 
+def _game_situation(start: dict) -> dict[str, Any]:
+    """Preserve observed team progress without inferring absent or malformed levels."""
+    levels = start.get("levels")
+    if (not isinstance(levels, list) or len(levels) != 2
+            or any(not isinstance(rank, str) or rank not in RANKS for rank in levels)):
+        return {"status": "unknown", "reason": "missing_or_invalid_team_levels"}
+    indices = [RANKS.index(rank) for rank in levels]
+    near_ace = [len(RANKS) - 1 - index <= 2 for index in indices]
+    return {
+        "status": "observed",
+        "team_levels": list(levels),
+        "team0_minus_team1_rank_steps": indices[0] - indices[1],
+        "team_within_two_ranks_of_ace": near_ace,
+        "either_team_within_two_ranks_of_ace": any(near_ace),
+    }
+
+
 def _completed_round_summary(ref: str, round_no: int, events: list[dict],
                              records: list[dict]) -> dict[str, Any]:
     """Summarize observed play controllers after a round has replayed."""
@@ -367,6 +385,7 @@ def _completed_round_summary(ref: str, round_no: int, events: list[dict],
     return {
         "source_ref": ref,
         "round": round_no,
+        "game_situation": _game_situation(start),
         "seat_counts": {str(seat): seats[seat] for seat in range(4)},
         "bot_policies": {str(seat): sorted(bot_policies[seat])
                           for seat in range(4)},
@@ -449,6 +468,63 @@ def _human_team_report(rounds: list[dict]) -> dict:
     }
 
 
+def _game_situation_report(rounds: list[dict]) -> dict:
+    """Describe observed game-progress strata using the same matchup eligibility."""
+    policies: dict[str, dict] = {}
+    sources: dict[str, dict] = {}
+    ungrouped = 0
+    excluded: dict[str, int] = defaultdict(int)
+    for row in rounds:
+        eligible = _human_team_report([row])
+        if not eligible["eligible_rounds"]:
+            for reason, count in eligible["excluded_rounds"].items():
+                excluded[reason] += count
+            continue
+        situation = row.get("game_situation", {})
+        near = situation.get("either_team_within_two_ranks_of_ace")
+        if situation.get("status") != "observed" or type(near) is not bool:
+            excluded["unknown_game_situation"] += 1
+            continue
+        policy, value = next(iter(eligible["by_observed_policy"].items()))
+        groups = [policies]
+        ref = row.get("source_ref")
+        if isinstance(ref, str) and ref.strip():
+            groups.append(sources.setdefault(ref, {}))
+        else:
+            ungrouped += 1
+        for group in groups:
+            strata = group.setdefault(policy, {})
+            bucket = strata.setdefault("near_ace" if near else "other", {
+                "rounds": 0, "bot_wins": 0, "bot_signed_levels": 0})
+            for key in ("rounds", "bot_wins", "bot_signed_levels"):
+                bucket[key] += value[key]
+    for group in [policies, *sources.values()]:
+        for strata in group.values():
+            for bucket in strata.values():
+                bucket["bot_levels_per_round"] = bucket["bot_signed_levels"] / bucket["rounds"]
+    return {
+        "schema": "observed-game-situation-report-v1",
+        "by_source_ref": {ref: {p: dict(sorted(s.items())) for p, s in sorted(group.items())}
+                          for ref, group in sorted(sources.items())},
+        "eligible_rounds_without_source_ref": ungrouped,
+        "completed_rounds": len(rounds),
+        "eligible_rounds": sum(b["rounds"] for s in policies.values() for b in s.values()),
+        "excluded_rounds": dict(sorted(excluded.items())),
+        "by_observed_policy": {p: dict(sorted(s.items())) for p, s in sorted(policies.items())},
+        "observational_only": True,
+        "interpretation": (
+            "Near A means either team's observed starting level is Q, K or A. "
+            "Other means neither team is within two rank steps of A; unknown "
+            "situations are excluded. Full-team controller and policy eligibility "
+            "matches human_team_report. These are descriptive round counts and "
+            "means, not verified humans, independent samples, confidence intervals "
+            "or a game-aware strength verdict. Source references retain log-level "
+            "grouping only: a log is not a verified full game or an independent "
+            "sample. Missing source references remain in pooled totals but are "
+            "counted separately and never combined into a synthetic source."),
+    }
+
+
 def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 256,
                       registry: InputRegistry | None = None,
                       repo: Path = REPO,
@@ -500,6 +576,8 @@ def extract_room_logs(files: Sequence[Path] | None = None, *, cap: int | None = 
     result.extras["rejections"] = dict(sorted(rejections.items()))
     result.extras["per_directory"] = {k: per_dir[k] for k in sorted(per_dir)}
     result.extras["human_team_report"] = _human_team_report(
+        result.extras["completed_rounds"])
+    result.extras["game_situation_report"] = _game_situation_report(
         result.extras["completed_rounds"])
     result.inputs = registry.rows()
     result.notes.append("decisions = play records; bury records are counted "

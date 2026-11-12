@@ -72,3 +72,15 @@ export function QueueChip() {
     </div>
   );
 }
+
+/** The chip's content on a strip under the top bar, for wide windows too
+ *  narrow to fit it beside four tabs (CSS shows one or the other). */
+export function QueueStrip() {
+  const { text } = useBar();
+  if (!text) return null;
+  return (
+    <div className="q-strip">
+      <QueueChip />
+    </div>
+  );
+}

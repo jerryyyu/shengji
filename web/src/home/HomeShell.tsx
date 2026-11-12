@@ -9,7 +9,7 @@ import { useMenuKeys } from "../useMenuKeys";
 import { WIDE, openNameEditor, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
 import type { MeSection, Tab } from "./route";
-import QueueBar, { QueueChip } from "../queue/QueueBar";
+import QueueBar, { QueueChip, QueueStrip } from "../queue/QueueBar";
 
 export { WIDE };
 
@@ -202,6 +202,7 @@ export default function HomeShell({ active, section, children }: {
   return (
     <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
       {wide ? <TopBar active={active} section={section} /> : null}
+      {wide ? <QueueStrip /> : null}
       <div className="home-body">{children}</div>
       {wide ? null : <QueueBar />}
       {wide ? null : <TabBar active={active} />}

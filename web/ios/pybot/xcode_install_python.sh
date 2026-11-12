@@ -50,8 +50,20 @@ done
 rsync -a --delete --exclude '__pycache__' "$PYBOT/payload/" "$DEST/app/"
 cp "$PYBOT/offline_bot.py" "$DEST/app/offline_bot.py"
 echo "$IDENTITY" > "$DEST/app/BUNDLE_INPUTS"
-rsync -a --delete --exclude '__pycache__' --exclude 'tests/' "$PYBOT/site/$SITE/" "$DEST/app_packages/"
+rsync -a --delete --exclude '__pycache__' --exclude 'tests/' --exclude '*.a' "$PYBOT/site/$SITE/" "$DEST/app_packages/"
 rsync -a "$PYBOT/fast/$SITE/" "$DEST/app/"
 process_dylibs "$REL" "python/lib/$PYVER/lib-dynload"
 process_dylibs "$REL" python/app_packages
 process_dylibs "$REL" python/app
+# App Store validation refuses static libraries anywhere in the bundle and a
+# framework whose binary needs a later iOS than its Info.plist declares.
+STRAY=$(find "$CODESIGNING_FOLDER_PATH" -name '*.a' -print)
+[ -z "$STRAY" ] || { echo "error: static libraries in the bundle: $STRAY"; exit 1; }
+for fw in "$CODESIGNING_FOLDER_PATH"/Frameworks/*.framework; do
+  [ -f "$fw/Info.plist" ] || continue
+  exe=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$fw/Info.plist")
+  want=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$fw/Info.plist" 2>/dev/null || true)
+  got=$(xcrun vtool -show-build "$fw/$exe" 2>/dev/null | awk '/minos/{print $2; exit}')
+  [ -z "$want" ] || [ -z "$got" ] || [ "$(printf '%s\n%s\n' "$got" "$want" | sort -V | tail -1)" = "$want" ] \
+    || { echo "error: $(basename "$fw") binary needs iOS $got but declares $want"; exit 1; }
+done

@@ -9,6 +9,7 @@ import MuteButton from "./MuteButton";
 import LeaveButton from "./LeaveButton";
 import HudMenu from "./HudMenu";
 import { formatTableMessage, isDeclareMessage } from "../messageCopy";
+import { codeLink } from "../codes";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -181,7 +182,7 @@ export default function Hud({ state }: { state: GameState }) {
   // seat.
   const [copied, setCopied] = useState(false);
   const copyInvite = () => {
-    const url = `${window.location.origin}/?room=${state.room}`;
+    const url = codeLink(state.room);
     navigator.clipboard
       .writeText(url)
       .then(() => {

@@ -3,6 +3,7 @@ import type { Rank, RoomMsg } from "../protocol";
 import { RANKS } from "../protocol";
 import { conn } from "../ws";
 import MuteButton from "./MuteButton";
+import { codeLink } from "../codes";
 
 export default function Room({ room }: { room: RoomMsg }) {
   const [copied, setCopied] = useState(false);
@@ -12,7 +13,7 @@ export default function Room({ room }: { room: RoomMsg }) {
 
   const copyCode = () => {
     navigator.clipboard
-      .writeText(`${window.location.origin}/?room=${room.room}`)   // invite LINK, not just the code
+      .writeText(codeLink(room.room))   // invite LINK, not just the code
       .then(() => {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1200);

@@ -401,6 +401,11 @@ export class QueueStore {
     this.set({ joinCode: code.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4), partyError: null });
   }
 
+  /** A pair-sheet message the server did not send as a party error. */
+  showPartyError(message: string | null): void {
+    this.set({ partyError: message });
+  }
+
   joinParty(code: string): void {
     const c = code.trim().toUpperCase();
     if (c.length !== 4) return;

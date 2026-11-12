@@ -1115,3 +1115,123 @@ def test_ws_joining_a_room_leaves_the_queue_and_leaving_it_returns_to_the_lobby(
         _drain(a, "left")
         a.send_json({"type": "queue_join"})
         assert _drain(a, "queue_state")["queued"] is True
+
+
+# ----------------------------------------------------- one code space
+class ScriptedCodes:
+    """An RNG whose ``choices`` deals the given codes in order."""
+
+    def __init__(self, *codes):
+        self.codes = iter(codes)
+
+    def choices(self, population, k):
+        code = next(self.codes)
+        assert len(code) == k and set(code) <= set(population)
+        return list(code)
+
+
+def test_new_code_draws_again_past_any_taken_code():
+    taken = {"ABCD", "EFGH"}
+    code = mm.new_code(taken.__contains__, ScriptedCodes("ABCD", "EFGH", "JKLM"))
+    assert code == "JKLM"
+
+
+def test_a_pair_code_never_repeats_a_live_room_code(monkeypatch):
+    async def go():
+        env = Env()
+        env.mm.room_live = {"WXYZ"}.__contains__
+        monkeypatch.setattr(mm, "_CODE_RNG", ScriptedCodes("WXYZ", "WXYZ", "PQRS"))
+        env.player(1)
+        await env.send(1, "party_create")
+        assert env.conns[1].last("party")["code"] == "PQRS"
+    run(go())
+
+
+def test_code_lookup_names_rooms_pairs_and_nothing():
+    async def go():
+        env = Env()
+        env.mm.room_live = {"WXYZ"}.__contains__
+        p = await env.pair(1, 2)
+        guest = FakeConn(None, "")
+        env.mm.connect(guest)
+
+        def kind(code, uid=None, conn=guest):
+            return env.mm.code_lookup(conn, {"code": code}, uid)
+
+        assert kind(" wxyz ") == {"type": "code_kind", "code": "WXYZ", "kind": "room"}
+        assert kind(p.code.lower()) == {"type": "code_kind", "code": p.code, "kind": "party"}
+        assert kind(p.code, uid=1, conn=env.conns[1])["kind"] == "party"
+        assert kind("ZZZZ")["kind"] == "none"
+        for bad in ("WXY", "WXYZQ", "", None, "W-YZ"):
+            assert kind(bad)["kind"] == "none", bad
+        await env.send(1, "party_leave")             # a closed pair's code is free again
+        assert kind(p.code)["kind"] == "none"
+    run(go())
+
+
+def test_code_lookup_is_rate_limited_per_account():
+    env = Env()
+    conn = env.player(1)
+    limit, _ = mm.LOOKUP_LIMIT
+    for _ in range(limit):
+        assert env.mm.code_lookup(conn, {"code": "ABCD"}, 1)["type"] == "code_kind"
+    refused = env.mm.code_lookup(conn, {"code": "ABCD"}, 1)
+    assert refused["type"] == "error" and refused["code"] == "rate_limited"
+    env.clock.advance(mm.LOOKUP_LIMIT[1] + 1)
+    assert env.mm.code_lookup(conn, {"code": "ABCD"}, 1)["type"] == "code_kind"
+
+
+def test_ws_room_code_never_repeats_a_live_pair_code(wsenv, monkeypatch):
+    import random
+
+    srv, store, client, clock = wsenv
+    _, headers = _user(store, "pairer", "Pairer")
+    monkeypatch.setattr(mm, "_CODE_RNG", ScriptedCodes("PQRS"))
+    rolls = iter(["PQRS", "TUVW"])
+    monkeypatch.setattr(random, "choices", lambda population, k: list(next(rolls)))
+    with client.websocket_connect("/ws", headers=headers) as a, \
+            client.websocket_connect("/ws") as b:
+        a.send_json({"type": "party_create"})
+        assert _drain(a, "party")["code"] == "PQRS"
+        b.send_json({"type": "create_room", "name": "host"})
+        assert _drain(b, "room")["room"] == "TUVW"
+
+
+def test_ws_code_lookup_and_the_old_join_messages(wsenv):
+    srv, store, client, clock = wsenv
+    _, headers = _user(store, "leader", "Leader")
+    with client.websocket_connect("/ws", headers=headers) as a, \
+            client.websocket_connect("/ws") as host, \
+            client.websocket_connect("/ws") as g:
+        a.send_json({"type": "party_create"})
+        pair = _drain(a, "party")["code"]
+        host.send_json({"type": "create_room", "name": "host"})
+        room = _drain(host, "room")["room"]
+        assert all(c in mm.CODE_ALPHABET for c in room + pair)
+
+        for code, kind in ((room.lower(), "room"), (pair.lower(), "party"),
+                           ("ZZZZ", "none")):
+            g.send_json({"type": "code_lookup", "code": code})
+            assert _drain(g, "code_kind") == {"type": "code_kind", "code": code.upper(),
+                                              "kind": kind}
+        # a signed-in socket asks the same way
+        a.send_json({"type": "code_lookup", "code": room})
+        assert _drain(a, "code_kind")["kind"] == "room"
+
+        # a guest who follows a pair code is told to sign in
+        g.send_json({"type": "party_join", "code": pair})
+        assert _drain(g, "error")["code"] == "signed_in_only"
+
+        # the messages old clients send still work
+        g.send_json({"type": "peek_room", "room": room.lower()})
+        assert _drain(g, "room_seats")["room"] == room
+        g.send_json({"type": "join_room", "room": room, "name": "guest"})
+        assert _drain(g, "room")["room"] == room
+
+        # a closed room's code names nothing
+        closed = srv.rooms.pop(room)
+        try:
+            a.send_json({"type": "code_lookup", "code": room})
+            assert _drain(a, "code_kind")["kind"] == "none"
+        finally:
+            srv.rooms[room] = closed          # the fixture's teardown stops its tasks

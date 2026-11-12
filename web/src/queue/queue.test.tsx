@@ -116,7 +116,7 @@ describe("Play", () => {
     expect(findBtn().textContent).toBe("Find a game3 in queue");
     expect(findBtn().className).toContain("gold");
     expect(button("Create room")).toBeDefined();
-    expect(q("input[aria-label='Room code']")).not.toBeNull();
+    expect(q("input[aria-label='Game or pair code']")).not.toBeNull();
   });
 
   it("signed in: the sheet offers Solo and With a friend…; Solo queues", async () => {
@@ -437,6 +437,8 @@ describe("with a friend", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(input, "ab12"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     click(button("Join", q(".q-join")!));
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "AB12" });
+    say({ type: "code_kind", code: "AB12", kind: "party" });
     expect(lastSent()).toEqual({ type: "party_join", code: "AB12" });
     say(party([{ name: "Sam", leader: true, you: false }, { name: "Jerry", leader: false, you: true }], false));
     expect(q(".q-sheet")).toBeNull();
@@ -518,5 +520,171 @@ describe("the table", () => {
     expect(q(".table-screen .q-matched")?.textContent).toBe("Matched game · rated");
     say(state(false));
     expect(q(".q-matched")).toBeNull();
+  });
+});
+
+describe("one code for rooms and pairs", () => {
+  const typeInto = (input: HTMLInputElement, value: string) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  };
+  const playBox = () => q("input[aria-label='Game or pair code']") as HTMLInputElement;
+  const playJoin = () => click(button(/^Join$/, q(".join-row")!));
+  const pairParty = (code: string) => ({
+    type: "party", party_id: "p9", code, you_lead: false, expires_at: nowSecs() + 300,
+    members: [{ name: "Sam", leader: true, you: false }, { name: "Jerry", leader: false, you: true }],
+  });
+  const seats = (room: string) => ({
+    type: "room_seats", room, in_game: false,
+    seats: [{ seat: 0, name: "Host", is_bot: false, connected: true, team: 0, claimable: false,
+              controller: "human", reserved_secs: null }],
+  });
+  let clipboard: string[];
+  beforeEach(() => {
+    clipboard = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: (t: string) => { clipboard.push(t); return Promise.resolve(); } },
+    });
+  });
+
+  it("the Play box joins a room code through the room flow", async () => {
+    await renderApp();
+    typeInto(playBox(), "wxyz");
+    playJoin();
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    say(seats("WXYZ"));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: "Jerry" });
+  });
+
+  it("the Play box joins a pair code: the pair chip and the toast", async () => {
+    await renderApp();
+    typeInto(playBox(), "7F2K");
+    playJoin();
+    say({ type: "code_kind", code: "7F2K", kind: "party" });
+    expect(lastSent()).toEqual({ type: "party_join", code: "7F2K" });
+    expect(sentTypes()).not.toContain("peek_room");
+    say(pairParty("7F2K"));
+    expect(q(".q-party-chip")?.textContent).toContain("You + Sam");
+    expect(q(".q-toast")?.textContent).toContain("You joined Sam's pair.");
+    expect(button(/^Join$/, q(".join-row")!)?.disabled).toBe(false);
+  });
+
+  it("a code that names nothing says so in the Play box and the pair sheet", async () => {
+    await renderApp();
+    typeInto(playBox(), "ZZZZ");
+    playJoin();
+    say({ type: "code_kind", code: "ZZZZ", kind: "none" });
+    expect(q(".lobby-error")?.textContent).toBe("No game or pair has that code.");
+    expect(sentTypes()).not.toContain("peek_room");
+    expect(sentTypes()).not.toContain("party_join");
+    click(findBtn());
+    click(button(/^With a friend…/));
+    typeInto(q("#q-join-code") as HTMLInputElement, "ZZZZ");
+    click(button("Join", q(".q-join")!));
+    say({ type: "code_kind", code: "ZZZZ", kind: "none" });
+    expect(q(".q-sheet .q-error")?.textContent).toBe("No game or pair has that code.");
+  });
+
+  it("a guest who types a pair code is asked to sign in, then lands on the pair sheet", async () => {
+    signedIn = false;
+    await renderApp();
+    typeInto(playBox(), "7F2K");
+    playJoin();
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "7F2K" });
+    say({ type: "code_kind", code: "7F2K", kind: "party" });
+    expect(sentTypes()).not.toContain("party_join");
+    const sheet = q(".q-sheet")!;
+    expect(button("Sign in to play people", sheet)).toBeDefined();
+    expect(sheet.textContent).toContain("Pair code 7F2K is for signed-in players.");
+    click(button("Sign in to play people", sheet));
+    expect(window.location.hash).toBe("#/me");
+  });
+
+  it("the pair sheet's box says it takes either, and a game code closes it and opens the room", async () => {
+    await renderApp();
+    const { openTab } = await import("../home/route");
+    act(() => openTab("me"));
+    await settle();
+    click(button(/^Queue with a friend/));
+    expect(q(".q-join-label")?.textContent).toContain("A pair code or a game code");
+    typeInto(q("#q-join-code") as HTMLInputElement, "wxyz");
+    click(button("Join", q(".q-join")!));
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    await settle();
+    expect(q(".q-sheet")).toBeNull();
+    expect(window.location.hash).toBe("");
+    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    say(seats("WXYZ"));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ" });
+  });
+
+  it("a ?code= link for a room prefills Join and waits for the player", async () => {
+    window.history.replaceState(null, "", "/?code=wxyz");
+    await renderApp();
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    await settle();
+    expect(playBox().value).toBe("WXYZ");
+    expect(sentTypes()).not.toContain("join_room");
+    expect(sentTypes()).not.toContain("peek_room");
+  });
+
+  it("a ?code= link for a room with a name joins it, as ?room= does", async () => {
+    signedIn = false;
+    window.history.replaceState(null, "", "/?code=WXYZ&name=Ann");
+    await renderApp();
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    await settle();
+    expect(lastSent()).toEqual({ type: "join_room", room: "WXYZ", name: "Ann" });
+  });
+
+  it("a ?code= link for a pair opens the pair sheet with its code", async () => {
+    window.history.replaceState(null, "", "/?code=7F2K");
+    await renderApp();
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "7F2K" });
+    say({ type: "code_kind", code: "7F2K", kind: "party" });
+    await settle();
+    expect(q(".q-sheet h2")?.textContent).toBe("Queue with a friend");
+    expect((q("#q-join-code") as HTMLInputElement).value).toBe("7F2K");
+    expect(window.location.search).toBe("");
+    expect(sentTypes()).not.toContain("party_join");
+  });
+
+  it("a ?code= link that names nothing says so", async () => {
+    window.history.replaceState(null, "", "/?code=ZZZZ");
+    await renderApp();
+    say({ type: "code_kind", code: "ZZZZ", kind: "none" });
+    await settle();
+    expect(q(".lobby-error")?.textContent).toBe("No game or pair has that code.");
+    expect(window.location.search).toBe("");
+  });
+
+  it("an old ?room= link still prefills Join without a lookup", async () => {
+    window.history.replaceState(null, "", "/?room=WXYZ");
+    await renderApp();
+    expect(playBox().value).toBe("WXYZ");
+    expect(sentTypes()).not.toContain("code_lookup");
+  });
+
+  it("share links are ?code= links, for a pair and for a room", async () => {
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    await renderApp();
+    click(findBtn());
+    click(button(/^With a friend…/));
+    say({ type: "party", party_id: "p1", code: "7F2K", you_lead: true, expires_at: nowSecs() + 300,
+          members: [{ name: "Jerry", leader: true, you: true }] });
+    click(button("Share invite link"));
+    await settle();
+    expect(clipboard).toEqual([`${window.location.origin}/?code=7F2K`]);
+    click(button("Cancel", q(".q-sheet")!));
+    say({ type: "room", room: "WXYZ", you: 0, host: 0, start_level: "2",
+          players: [{ seat: 0, name: "Jerry", is_bot: false, connected: true }] });
+    click(q(".room-code"));
+    await settle();
+    expect(clipboard.at(-1)).toBe(`${window.location.origin}/?code=WXYZ`);
   });
 });

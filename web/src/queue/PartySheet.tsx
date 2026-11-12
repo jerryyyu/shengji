@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { partnerName, queue, useQueue } from "./store";
 import Sheet from "./Sheet";
-
-function inviteLink(code: string): string {
-  return `${window.location.origin}/?party=${code}`;
-}
+import { codes } from "../codeJoin";
+import { codeLink } from "../codes";
 
 function UsersIcon() {
   return (
@@ -41,11 +39,15 @@ export function SoloSheet() {
 function JoinByCode() {
   const q = useQueue();
   return (
-    <form className="q-join" onSubmit={(e) => { e.preventDefault(); queue.joinParty(q.joinCode); }}>
-      <label className="q-join-label" htmlFor="q-join-code">Got a code from a friend?</label>
+    // A pair code joins the pair; a game code closes the sheet and opens
+    // that room as the Play box would.
+    <form className="q-join" onSubmit={(e) => { e.preventDefault(); codes.lookup(q.joinCode, "pair"); }}>
+      <label className="q-join-label" htmlFor="q-join-code">
+        Got a code from a friend?<small>A pair code or a game code</small>
+      </label>
       <div className="join-row">
         <input id="q-join-code" className="room-input" value={q.joinCode} maxLength={4} placeholder="CODE"
-               aria-label="Pair code" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+               aria-label="Pair or game code" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
                onChange={(e) => queue.setJoinCode(e.target.value)} />
         <button type="submit" className="btn" disabled={q.joinCode.length !== 4}>Join</button>
       </div>
@@ -64,7 +66,7 @@ export function PartySheet() {
     navigator.clipboard?.writeText(text).then(() => setCopied(what)).catch(() => { /* clipboard blocked */ });
   };
   const share = (code: string) => {
-    const url = inviteLink(code);
+    const url = codeLink(code);
     if (typeof navigator.share === "function") {
       navigator.share({ title: "Sheng Ji", text: `Queue with me in Sheng Ji: pair code ${code}`, url })
         .catch(() => { /* share sheet dismissed */ });

@@ -59,8 +59,12 @@ PARTY_TTL = 300.0
 COUNT_DEBOUNCE = 1.0
 JOIN_LIMIT = (10, 60.0)      # queue_join per account per window
 PARTY_LIMIT = (20, 60.0)     # party_* per account per window
-PARTY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-PARTY_CODE_LEN = 4
+LOOKUP_LIMIT = (30, 60.0)    # code_lookup per account (a guest: per socket) per window
+# Room and pair codes share one space: no live room and live pair ever hold
+# the same code, so one join box takes either. No I, O, 0 or 1, which read
+# alike.
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+CODE_LEN = 4
 
 QUEUE_MESSAGES = frozenset({
     "queue_join", "queue_leave", "match_accept", "match_decline",
@@ -72,6 +76,23 @@ IN_ROOM_MESSAGES = frozenset({"party_leave"})
 
 # The three ways to split four seats into two teams of two.
 PAIRINGS = (((0, 1), (2, 3)), ((0, 2), (1, 3)), ((0, 3), (1, 2)))
+
+
+_CODE_RNG = secrets.SystemRandom()
+
+
+def new_code(taken: Callable[[str], bool], rng: Any = None) -> str:
+    """A code from the shared space that ``taken`` says is free. ``taken``
+    must cover both live rooms and live pairs."""
+    rng = rng if rng is not None else _CODE_RNG
+    while True:
+        code = "".join(rng.choices(CODE_ALPHABET, k=CODE_LEN))
+        if not taken(code):
+            return code
+
+
+def normalize_code(raw: Any) -> str:
+    return str(raw if raw is not None else "").strip().upper()
 
 
 def window_for(wait: float) -> float:
@@ -251,11 +272,15 @@ class Matchmaker:
                  rating_of: Callable[[int], Awaitable[float | None]] | None = None,
                  start_room: StartRoom | None = None,
                  user_active: Callable[[int], bool] | None = None,
+                 room_live: Callable[[str], bool] | None = None,
                  autorun: bool = True) -> None:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
         self.start_room = start_room
         self.user_active = user_active or (lambda uid: not accounts.is_deleted(uid))
+        # Whether a code names a live room: pair codes avoid them, and
+        # code_lookup answers with them.
+        self.room_live = room_live or (lambda code: False)
         self.autorun = autorun
         self._task: asyncio.Task | None = None
         self.reset()
@@ -275,6 +300,7 @@ class Matchmaker:
         self.party_codes: dict[str, str] = {}
         self.join_limiter = accounts.RateLimiter(*JOIN_LIMIT)
         self.party_limiter = accounts.RateLimiter(*PARTY_LIMIT)
+        self.lookup_limiter = accounts.RateLimiter(*LOOKUP_LIMIT)
         self._seq = count(1)
         self._count_sent = 0
         self._count_sent_at = -math.inf
@@ -684,11 +710,29 @@ class Matchmaker:
             raise err
 
     # ------------------------------------------------------------- parties
+    def has_party_code(self, code: str) -> bool:
+        return code in self.party_codes
+
     def _new_code(self) -> str:
-        while True:
-            code = "".join(secrets.choice(PARTY_CODE_ALPHABET) for _ in range(PARTY_CODE_LEN))
-            if code not in self.party_codes:
-                return code
+        return new_code(lambda c: c in self.party_codes or self.room_live(c))
+
+    def code_lookup(self, conn: Conn, msg: dict, user_id: int | None) -> dict:
+        """What a typed or linked code names: ``room``, ``party`` or
+        ``none``. Read-only and open to guests, so any join box can ask
+        before choosing the room or the pair flow. A room wins a code both
+        hold, which only codes issued before the shared space can do."""
+        key = str(user_id) if user_id is not None else f"socket:{id(conn)}"
+        if not self.lookup_limiter.allow(key, self.clock()):
+            return {"type": "error", "code": "rate_limited",
+                    "message": "Too many requests; wait a minute."}
+        code = normalize_code(msg.get("code"))
+        kind = "none"
+        if len(code) == CODE_LEN and code.isascii() and code.isalnum():
+            if self.room_live(code):
+                kind = "room"
+            elif code in self.party_codes:
+                kind = "party"
+        return {"type": "code_kind", "code": code[:CODE_LEN * 2], "kind": kind}
 
     def _party_payload(self, p: Party, uid: int) -> dict:
         return {"type": "party", "party_id": p.id, "code": p.code,
@@ -713,7 +757,7 @@ class Matchmaker:
         self._send(uid, self._party_payload(p, uid))
 
     def _party_join(self, uid: int, msg: dict) -> None:
-        code = str(msg.get("code", "")).strip().upper()
+        code = normalize_code(msg.get("code", ""))
         p = self.parties.get(self.party_codes.get(code, ""))
         if p is None:
             raise QueueError("party_not_found", "No party has that code.")

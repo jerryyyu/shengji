@@ -237,6 +237,9 @@ class PolicyRowsStream:
     the corpus can train the head without a memory cap.  Rows on ``exclude``
     deals are dropped per chunk; ``limit`` caps the rows drawn per pass."""
 
+    #: off-ballot negatives per row (0 = none); the constructor sets it from the manifest
+    legal_negatives = 0
+
     def __init__(self, directory: str | Path, *, limit: int | None = None,
                  exclude: set[str] | frozenset[str] = frozenset(), window: int = 4,
                  version: int = ENC_VERSION):

@@ -64,6 +64,12 @@ export function useCachedLoad<T extends { ok: boolean }>(
   return useCachedResource(key, load, refresh).value;
 }
 
+// The newest load started for each key: a response from any older load of
+// that key (a slow mount-time load landing after a pull to refresh) is stale
+// and neither drawn nor cached.
+let loadTicket = 0;
+const latestLoad = new Map<string, number>();
+
 /** useCachedLoad, plus `reload`: the same load again on demand (a pull to
  *  refresh), under the same rules, settling once its result is applied or
  *  dropped. */
@@ -79,11 +85,14 @@ export function useCachedResource<T extends { ok: boolean }>(
   const keyRef = useRef(key);
   keyRef.current = key;
   // one load, applied only while its key and session are still the live ones
+  // and no later load of the same key has started
   const run = useRef((k: string, isLive: () => boolean): Promise<void> => {
     const gen = generation;
     const shown = cached<T>(k);
+    const ticket = ++loadTicket;
+    latestLoad.set(k, ticket);
     return loadRef.current().then((r) => {
-      if (!isLive() || gen !== generation || keyRef.current !== k) return;
+      if (!isLive() || gen !== generation || keyRef.current !== k || latestLoad.get(k) !== ticket) return;
       if (r.ok || shown === undefined) setHeld({ key: k, value: r });
       if (r.ok) remember(k, r);
     }, () => {});

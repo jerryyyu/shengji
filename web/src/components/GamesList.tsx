@@ -242,26 +242,32 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
     return () => { shownLists.delete(drop); };
   }, []);
 
-  // the first page, merged over what is shown: on mount, and on a pull to refresh
+  // the first page, merged over what is shown: on mount, and on a pull to
+  // refresh. Only the newest request is merged, so an older one landing after
+  // a pull to refresh cannot put stale rows back.
   const live = useRef(false);
-  const loadFirstPage = useCallback((): Promise<void> => fetchGames(null).then((r) => {
-    if (!live.current) return;
-    setList((cur) => {
-      if (!r.ok) return cur.status === "ready" ? cur : { status: "failed", reason: r.reason, code: r.status };
-      const fresh = r.data.games;
-      // a first page with no continuation is the whole list
-      if (r.data.next_before === null) {
-        return { status: "ready", games: fresh, next: null, more: false, moreError: false };
-      }
-      // pages loaded past the first stay, below the refreshed first page
-      const ids = new Set(fresh.map((g) => g.id));
-      const oldest = fresh.length ? fresh[fresh.length - 1].started_at : Infinity;
-      const older = cur.status === "ready"
-        ? cur.games.filter((g) => !ids.has(g.id) && g.started_at < oldest) : [];
-      return { status: "ready", games: [...fresh, ...older], next: older.length && cur.status === "ready"
-        ? cur.next : r.data.next_before, more: false, moreError: false };
+  const firstPageTicket = useRef(0);
+  const loadFirstPage = useCallback((): Promise<void> => {
+    const ticket = ++firstPageTicket.current;
+    return fetchGames(null).then((r) => {
+      if (!live.current || ticket !== firstPageTicket.current) return;
+      setList((cur) => {
+        if (!r.ok) return cur.status === "ready" ? cur : { status: "failed", reason: r.reason, code: r.status };
+        const fresh = r.data.games;
+        // a first page with no continuation is the whole list
+        if (r.data.next_before === null) {
+          return { status: "ready", games: fresh, next: null, more: false, moreError: false };
+        }
+        // pages loaded past the first stay, below the refreshed first page
+        const ids = new Set(fresh.map((g) => g.id));
+        const oldest = fresh.length ? fresh[fresh.length - 1].started_at : Infinity;
+        const older = cur.status === "ready"
+          ? cur.games.filter((g) => !ids.has(g.id) && g.started_at < oldest) : [];
+        return { status: "ready", games: [...fresh, ...older], next: older.length && cur.status === "ready"
+          ? cur.next : r.data.next_before, more: false, moreError: false };
+      });
     });
-  }), []);
+  }, []);
 
   useEffect(() => {
     live.current = true;

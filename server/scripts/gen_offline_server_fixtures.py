@@ -122,6 +122,7 @@ class FakeWebSocket:
     cookies: dict = {}
 
     def __init__(self):
+        self.query_params: dict[str, str] = {}
         self.inbox: asyncio.Queue = asyncio.Queue()
         self.outbox: asyncio.Queue = asyncio.Queue()
         self.application_state = WebSocketState.CONNECTED
@@ -302,7 +303,18 @@ async def _session(seed: int, rounds: int, config: dict) -> list[dict]:
     ws.inbox.put_nowait(create)
     frames = []
     while True:
-        msg = await ws.outbox.get()
+        frame = asyncio.create_task(ws.outbox.get())
+        try:
+            done, _ = await asyncio.wait((frame, endpoint), return_when=asyncio.FIRST_COMPLETED)
+            if endpoint in done:
+                await endpoint
+                if frame not in done:
+                    raise RuntimeError(f"seed {seed}: endpoint ended before the driver finished")
+            msg = frame.result()
+        finally:
+            if not frame.done():
+                frame.cancel()
+                await asyncio.gather(frame, return_exceptions=True)
         frames.append(normalize(msg))
         if msg["type"] == "error":
             raise RuntimeError(f"seed {seed}: server refused the driver: {msg}")

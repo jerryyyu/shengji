@@ -104,7 +104,7 @@ describe("signed in", () => {
     expect(host.querySelector(".grp-head")?.textContent).toBe("Today");
     const row = host.querySelector(".games-day-row")!;
     expect(row.querySelector(".games-row-title")?.textContent).toBe("Room KQ4X · with Sam, Mei, Wen");
-    expect(row.querySelector(".games-replay")?.textContent).toBe("Replay");
+    expect(row.parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
     expect(host.querySelector(".me-tile")).toBeNull();
   });
 

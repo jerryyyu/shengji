@@ -1,10 +1,12 @@
-// The home screen's three tabs live in the URL hash like My games and How to
-// play, so a reload or a link lands on a tab and the game socket is never
-// touched. Play is the bare URL; `#/leaderboard`, `#/me` and `#/me/games` name
-// the other two. The older `#/stats` and `#/games` links land on the Me tab.
-// Switching tabs replaces the current history entry, as a native tab bar
-// keeps no back stack: back (or the app's edge swipe) leaves a sub-page such
-// as How to play or a replay, never walks the tabs.
+// The home screen's tabs live in the URL hash like My games and How to play,
+// so a reload or a link lands on a tab and the game socket is never touched.
+// Play is the bare URL. A phone has three tabs, Play, Leaderboard and Me, with
+// Me's Stats and Games as segments; at 700px and up the top bar shows Stats and
+// Games as tabs of their own. `#/stats`, `#/me` and `#/me/stats` name Stats,
+// `#/games` and `#/me/games` name Games, at any width. Switching tabs replaces
+// the current history entry, as a native tab bar keeps no back stack: back (or
+// the app's edge swipe) leaves a sub-page such as How to play or a replay,
+// never walks the tabs.
 import { useEffect, useState } from "react";
 import { tabMemory } from "./session";
 
@@ -20,8 +22,24 @@ export function parseHome(hash: string): HomeRoute | null {
   return null;
 }
 
-export function homeHash(tab: Tab, section: MeSection = "stats"): string {
+/** At this width and up (an iPad either way round, a desktop window) the
+ *  tabs sit in a top bar, with Stats and Games as tabs; below it, a phone's
+ *  bottom tab bar with Me. */
+export const WIDE = "(min-width: 700px)";
+
+function isWide(): boolean {
+  try {
+    return window.matchMedia?.(WIDE)?.matches ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** The hash a tab is opened at: the top bar's own `#/stats` and `#/games`
+ *  when `wide`, Me's `#/me` and `#/me/games` on a phone. */
+export function homeHash(tab: Tab, section: MeSection = "stats", wide = false): string {
   if (tab === "leaderboard") return "#/leaderboard";
+  if (tab === "me" && wide) return section === "games" ? "#/games" : "#/stats";
   if (tab === "me") return section === "games" ? "#/me/games" : "#/me";
   return "";
 }
@@ -38,7 +56,7 @@ function currentHash(): string {
  *  the others set theirs. Me opens on the section named, else the one it last
  *  showed this session. */
 export function openTab(tab: Tab, section?: MeSection): void {
-  const hash = homeHash(tab, section ?? tabMemory.meSection);
+  const hash = homeHash(tab, section ?? tabMemory.meSection, isWide());
   try {
     if (hash && currentHash() === hash) return;
     window.history.replaceState(null, "", window.location.pathname + window.location.search + hash);
@@ -65,11 +83,12 @@ export function useHomeRoute(): HomeRoute | null {
 let editNamePending = false;
 export const EDIT_NAME_EVENT = "shengji:edit-name";
 
-/** Open Me with its name editor open (the account menu's Edit name): a Me
- *  that mounts takes the request, one already showing hears the event. */
+/** Open Me's Stats, where the account's rows are, with its name editor open
+ *  (the account menu's Edit name): a page that mounts takes the request, one
+ *  already showing hears the event. */
 export function openNameEditor(): void {
   editNamePending = true;
-  openTab("me");
+  openTab("me", "stats");
   window.dispatchEvent(new Event(EDIT_NAME_EVENT));
 }
 

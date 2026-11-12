@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchGame, fetchGames, removeGame, teamPair } from "../replay/api";
 import type { Fetched, GameDetail, GameRow } from "../replay/api";
 import { navigate } from "../replay/route";
+import { continueGame, hasLevels, useCanContinue } from "../replay/continueGame";
 import type { GamesRoute } from "../replay/route";
 import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesStatus";
 import ReplayView from "./ReplayView";
@@ -61,6 +62,29 @@ function roundLine(seat: number, result: Record<string, unknown> | undefined): s
     + (pts !== undefined ? ` · attackers ${String(pts)}` : "");
 }
 
+/** A saved game's two ways on: Continue (a new table at its last levels,
+ *  shown only when the record has them) and Replay (its first round). */
+function GameActions({ game, className }: { game: GameRow; className: string }) {
+  const can = useCanContinue();
+  const first = game.rounds[0];
+  return (
+    <div className={className}>
+      {hasLevels(game) ? (
+        <button type="button" className="btn gold games-continue" disabled={!can}
+                title={can ? undefined : "Leave the game you are in to continue this one"}
+                onClick={() => continueGame(game.id)}>
+          Continue
+        </button>
+      ) : null}
+      <button type="button" className="btn subtle games-replay"
+              onClick={() => navigate(first !== undefined ? { page: "replay", id: game.id, round: first }
+                                                           : { page: "game", id: game.id })}>
+        Replay
+      </button>
+    </div>
+  );
+}
+
 function GameView({ id }: { id: string }) {
   const [res, setRes] = useState<Fetched<GameDetail> | null>(null);
   const [armed, setArmed] = useState(false);
@@ -107,6 +131,7 @@ function GameView({ id }: { id: string }) {
           <Teams game={game} />
           <Summary game={game} />
         </div>
+        <GameActions game={game} className="games-actions" />
         <div className="games-section">
           <span className="field-label">Rounds</span>
           <ul className="games-rounds">
@@ -195,9 +220,9 @@ function byDay(games: GameRow[]): { label: string; games: GameRow[] }[] {
 }
 
 /** The signed-in account's saved games, newest first and grouped by day;
- *  a row opens the game, whose rounds each have a Replay. With a
- *  `cacheKey` the last list shown is drawn at once on return and refreshed
- *  underneath; `onReady` fires once the list (or its failure) is drawn. */
+ *  a row opens the game, whose rounds each have a Replay, and offers
+ *  Continue and Replay itself. With a `cacheKey` the last list shown is
+ *  drawn at once on return and refreshed underneath; `onReady` fires once the list (or its failure) is drawn. */
 export function SavedGames({ onPlay, cacheKey, onReady }: {
   onPlay: () => void; cacheKey?: string; onReady?: () => void;
 }) {
@@ -278,7 +303,7 @@ export function SavedGames({ onPlay, cacheKey, onReady }: {
           <h3 className="grp-head">{d.label}</h3>
           <ul className="grp games-day-list">
             {d.games.map((g) => (
-              <li key={g.id}>
+              <li key={g.id} className="games-day-item">
                 <button className="grp-row games-day-row" onClick={() => navigate({ page: "game", id: g.id })}>
                   <span className="games-row-main">
                     <span className="games-row-title">{gameTitle(g)}</span>
@@ -287,8 +312,8 @@ export function SavedGames({ onPlay, cacheKey, onReady }: {
                       {g.incomplete ? <span className="games-tag">incomplete</span> : null}
                     </span>
                   </span>
-                  <span className="grp-value chev games-replay">Replay</span>
                 </button>
+                <GameActions game={g} className="games-row-actions" />
               </li>
             ))}
           </ul>

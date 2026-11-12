@@ -303,6 +303,10 @@ class Room:
     # A matched room whose start failed and was unwound: no socket may act
     # in it, and a receive loop still holding it drops it.
     aborted: bool = field(default=False, init=False, repr=False)
+    # A table continuing a saved game: the ``saved_games.resume_point`` its
+    # creator's account was given, applied once at ``start_game`` (both
+    # teams' levels and the first banker). Server-only.
+    resume: dict | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.bot is None:
@@ -1637,6 +1641,12 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         # games_to_win=None: a table keeps playing. Holding A scores a
         # point and the levels restart, rather than ending the session.
         room.game = Game(start_level=room.start_level, games_to_win=None)
+        if room.resume is not None:
+            # The engine reads a game's levels and banker only through these
+            # two fields, so setting them before the first round starts the
+            # table exactly where the saved game left off.
+            room.game.level_idx = [RANKS.index(level) for level in room.resume["levels"]]
+            room.game.banker = room.resume["banker"]
         ACTIVITY.games_started += 1
         room.game.start_round()
         room.index_round()
@@ -1697,6 +1707,15 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     if rnd and rnd.phase == "round_end" and room.game and room.game.result is None:
         room.game.finish_round()
         _log_round_end(room)
+
+
+async def _resume_point(user_id: int | None, game_id: Any, options: dict) -> dict | None:
+    """The ``create_room`` ``resume_from`` option: a saved game of the
+    signed-in caller's own account, in an ordinary room. None refuses it
+    (a guest, another account's game, an unknown id, no level data)."""
+    if user_id is None or options or not isinstance(game_id, str):
+        return None
+    return await accounts.STORE.run(saved_games.resume_point, user_id, game_id)
 
 
 # --------------------------------------------------------------- websocket
@@ -1771,7 +1790,14 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             await send(ws, {"type": "error", "code": "bad_start_level",
                                             "message": "Unknown starting level."})
                             continue
-                        room = Room(code=new_code(), start_level=start_level, **options)
+                        resume = None
+                        if "resume_from" in msg:
+                            resume = await _resume_point(account_id(), msg.get("resume_from"), options)
+                            if resume is None:
+                                await send(ws, {"type": "error", "code": "resume_unavailable",
+                                                "message": "That game can't be continued."})
+                                continue
+                        room = Room(code=new_code(), start_level=start_level, resume=resume, **options)
                         rooms[room.code] = room
                         ACTIVITY.rooms_created += 1
                         # Through _attach like every other path: hand-rolling the
@@ -1779,7 +1805,15 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         # resume token, so a creator had no identity and an
                         # overlapping refresh appended them as a SECOND seat.
                         me = Seat(name=player_name(msg.get("name")), user_id=account_id())
-                        room.seats.append(me)
+                        if resume is None:
+                            room.seats.append(me)
+                        else:
+                            # the creator back in their saved seat, a bot in each other
+                            bots = iter(range(1, 4))
+                            room.seats = [me if i == resume["seat"]
+                                          else Seat(name=f"Bot {next(bots)}", is_bot=True)
+                                          for i in range(4)]
+                            room.host = resume["seat"]
                         my_gen = _attach(room, me, ws)
                         await broadcast(room)
                     elif t == "peek_room":

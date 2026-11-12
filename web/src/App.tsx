@@ -11,6 +11,7 @@ import Room from "./components/Room";
 import Table from "./components/Table";
 import GamesList from "./components/GamesList";
 import { useGamesRoute } from "./replay/route";
+import { setContinueHandler } from "./replay/continueGame";
 import HowTo from "./howto/HowTo";
 import { useHowtoRoute } from "./howto/route";
 import SupportPage from "./support/SupportPage";
@@ -46,7 +47,7 @@ export default function App() {
   // A saved game and its replays, How to play, the info pages and the
   // Leaderboard and Me tabs are routes that sit over whatever screen is
   // live; the socket and any game in progress keep running underneath.
-  // `#/games` (the old list) is the Me tab's Games section.
+  // `#/games` (the list) is the Games tab, or Me's Games section on a phone.
   const gamesPage = useGamesRoute();
   const gamesRoute = gamesPage && gamesPage.page !== "list" ? gamesPage : null;
   const howtoRoute = useHowtoRoute();
@@ -177,6 +178,17 @@ export default function App() {
   useEffect(() => { prewarmAudio(); }, []);
 
   const inRoom = room !== null || game !== null;
+  // Continue on a saved game: a new room with bots in the other seats, which
+  // the auto-fill chain then starts (the server already filled it). Only
+  // from outside a room, so no game in progress is left by a tap.
+  useEffect(() => {
+    setContinueHandler((gameId) => {
+      autoFill.current = true;
+      conn.send({ type: "create_room", name: getSavedName(), resume_from: gameId });
+      openTab("play");
+    }, status === "open" && !inRoom);
+    return () => setContinueHandler(null, false);
+  }, [status, inRoom]);
   // Over a room or a game the tabs' pages show without the tab bars and
   // with a way back; at home the bars frame them.
   const backToGame = inRoom ? () => openTab("play") : undefined;
@@ -194,7 +206,11 @@ export default function App() {
   } else if (homeRoute && inRoom) {
     screen = tabPage;
   } else if (homeRoute) {
-    screen = <HomeShell active={homeRoute.tab}>{tabPage}</HomeShell>;
+    screen = (
+      <HomeShell active={homeRoute.tab} section={homeRoute.tab === "me" ? homeRoute.section : undefined}>
+        {tabPage}
+      </HomeShell>
+    );
   } else if (game) {
     // at the table the toast is placed against the table's own rows
     screen = <Table state={game} toast={toast} />;

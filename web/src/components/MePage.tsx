@@ -8,7 +8,8 @@ import type { Loaded, MyStats as Stats } from "../ratings/api";
 import { openHowto } from "../howto/route";
 import { followInfoLink } from "../support/route";
 import { Avatar, Segmented } from "../home/HomeShell";
-import { EDIT_NAME_EVENT, openTab, takeNameEditRequest } from "../home/route";
+import { EDIT_NAME_EVENT, WIDE, openTab, takeNameEditRequest } from "../home/route";
+import { useMediaQuery } from "../phoneLayout";
 import { cached, remember, tabMemory, useCachedLoad, useTabScroll, viewerScope } from "../home/session";
 import type { MeSection } from "../home/route";
 import GoogleSignIn from "./GoogleSignIn";
@@ -286,10 +287,14 @@ function GuestMe({ clientId }: { clientId: string | null }) {
 }
 
 /** The Me tab: who you are, your stats or your saved games, and the
- *  account's settings below either. Leaving and coming back keeps the
+ *  account's settings below either. At 700px and up the two sections are
+ *  the top bar's Stats and Games tabs instead: Stats keeps who you are and
+ *  the settings (the leaderboard switch and Delete account live nowhere
+ *  else), Games is the list alone. Leaving and coming back keeps the
  *  section, the scroll position and the last stats while fresh ones load;
  *  a different viewer or session starts from nothing. */
 export default function MePage({ section, onBack }: { section: MeSection; onBack?: () => void }) {
+  const wide = useMediaQuery(WIDE);
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
   useEffect(() => { tabMemory.meSection = section; }, [section]);
@@ -318,12 +323,14 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
     else if (!res.ok) {
       content = <p className="lobby-error" role="alert">Could not load your stats ({res.status || "no connection"}).</p>;
     } else content = <StatsBody stats={res.data} />;
+    const gamesTab = wide && section === "games";
     body = (
       <Fragment key={scope}>
-        <Identity user={user} stats={stats} />
-        <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />
+        {gamesTab ? null : <Identity user={user} stats={stats} />}
+        {wide ? null
+          : <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />}
         {content}
-        <Settings user={user} stats={stats} statsKey={statsKey} />
+        {gamesTab ? null : <Settings user={user} stats={stats} statsKey={statsKey} />}
       </Fragment>
     );
   }
@@ -331,7 +338,7 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
     <div className="screen home-page me-page" ref={scroller}>
       <div className="home-col">
         {onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}
-        <h1 className="large-title">Me</h1>
+        <h1 className="large-title">{wide ? (section === "games" ? "Games" : "Stats") : "Me"}</h1>
         {body}
       </div>
     </div>

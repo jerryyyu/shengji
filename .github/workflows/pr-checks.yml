@@ -203,6 +203,7 @@ jobs:
           tests/test_accounts.py
           tests/test_saved_games_link.py
           tests/test_saved_games_api.py
+          tests/test_saved_games_resume.py
           tests/test_support.py
           tests/test_ratings.py
           tests/test_matchmaking.py

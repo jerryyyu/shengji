@@ -104,32 +104,47 @@ describe("the bars", () => {
     expect(host.querySelector(".lobby-panel")).not.toBeNull();
   });
 
-  it("at 700px and up the tabs move into a top bar with the account chip", async () => {
+  it("at 700px and up the top bar has four tabs and the account chip, whose menu has no Me", async () => {
     viewport(true);
     await renderApp();
     expect(host.querySelector(".tabbar")).toBeNull();
-    const tabs = [...host.querySelectorAll<HTMLButtonElement>(".topbar-tabs .topbar-tab")];
-    expect(tabs.map((b) => b.textContent)).toEqual(["Play", "Leaderboard"]);
+    const tabs = () => [...host.querySelectorAll<HTMLButtonElement>(".topbar-tabs .topbar-tab")];
+    expect(tabs().map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Stats", "Games"]);
     expect(host.querySelector(".topbar-mark")?.textContent).toContain("升级");
     const account = host.querySelector<HTMLButtonElement>(".topbar-account")!;
     expect(account.textContent).toContain("Jerry");
     act(() => account.click());
     const items = [...host.querySelectorAll<HTMLButtonElement>(".topbar-menu [role=menuitem]")];
     expect(items.map((b) => b.textContent?.trim())).toEqual(
-      ["Me", "Edit name", "How to play", "Privacy", "Support", "Sign out"]);
-    await act(async () => { items[0].click(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(window.location.hash).toBe("#/me");
-    expect(host.querySelector(".me-page")).not.toBeNull();
+      ["Edit name", "How to play", "Privacy", "Support", "Sign out"]);
+    act(() => account.click());
+    // Stats: who you are, the stats and the account's rows, no segments
+    await act(async () => { tabs()[2].click(); await new Promise((r) => setTimeout(r, 0)); });
+    expect(window.location.hash).toBe("#/stats");
+    expect(host.querySelector(".large-title")?.textContent).toBe("Stats");
+    expect(tabs()[2].getAttribute("aria-current")).toBe("page");
+    expect(host.querySelector(".segmented")).toBeNull();
+    expect(host.querySelector(".me-tile")).not.toBeNull();
+    expect(host.querySelector(".me-visible")).not.toBeNull();
     expect(host.querySelector(".name-edit")).toBeNull();
-    // Edit name opens Me with the editor open, also when Me is already showing
+    // Games: the saved games alone
+    await act(async () => { tabs()[3].click(); await new Promise((r) => setTimeout(r, 0)); });
+    expect(window.location.hash).toBe("#/games");
+    expect(host.querySelector(".large-title")?.textContent).toBe("Games");
+    expect(tabs()[3].getAttribute("aria-current")).toBe("page");
+    expect(host.querySelector(".me-who")).toBeNull();
+    expect(host.querySelector(".me-visible")).toBeNull();
+    expect(host.querySelector(".games-status")?.textContent).toContain("No saved games yet");
+    // Edit name opens Stats with the editor open, from Games too
     act(() => host.querySelector<HTMLButtonElement>(".topbar-account")!.click());
     const edit = [...host.querySelectorAll<HTMLButtonElement>(".topbar-menu [role=menuitem]")]
       .find((b) => b.textContent === "Edit name")!;
     await act(async () => { edit.click(); await new Promise((r) => setTimeout(r, 0)); });
+    expect(window.location.hash).toBe("#/stats");
     expect(host.querySelector<HTMLInputElement>(".name-edit-input")?.value).toBe("Jerry");
   });
 
-  it("a guest at 700px gets a Sign in button that opens Me", async () => {
+  it("a guest at 700px gets a Sign in button that opens Stats", async () => {
     signedIn = false;
     viewport(true);
     await renderApp();
@@ -219,19 +234,19 @@ describe("the account menu's keys", () => {
     chip.focus();
     act(() => chip.click());
     const focused = () => (document.activeElement as HTMLElement).textContent?.trim();
-    expect(focused()).toBe("Me");
+    expect(focused()).toBe("Edit name");
     const key = (k: string) =>
       act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })); });
     key("ArrowDown");
-    expect(focused()).toBe("Edit name");
+    expect(focused()).toBe("How to play");
     key("End");
     expect(focused()).toBe("Sign out");
     key("ArrowDown");
-    expect(focused()).toBe("Me");
+    expect(focused()).toBe("Edit name");
     key("ArrowUp");
     expect(focused()).toBe("Sign out");
     key("Home");
-    expect(focused()).toBe("Me");
+    expect(focused()).toBe("Edit name");
     key("Escape");
     expect(host.querySelector(".topbar-menu")).toBeNull();
     expect(document.activeElement).toBe(chip);
@@ -250,7 +265,7 @@ describe("deep links", () => {
     ["#/games", "Me", "Games"],
   ];
   for (const [hash, title, section] of cases) {
-    it(`${hash} opens the ${title} tab${section ? ` on ${section}` : ""}`, async () => {
+    it(`${hash} opens the ${title} tab${section ? ` on ${section}` : ""} on a phone`, async () => {
       window.history.replaceState(null, "", `/${hash}`);
       await renderApp();
       expect(host.querySelector(".large-title")?.textContent).toBe(title);
@@ -259,6 +274,25 @@ describe("deep links", () => {
       if (section) {
         expect(host.querySelector(".segmented-btn[aria-pressed=true]")?.textContent).toBe(section);
       }
+    });
+  }
+
+  const wideCases: [string, string][] = [
+    ["#/leaderboard", "Leaderboard"],
+    ["#/stats", "Stats"],
+    ["#/me", "Stats"],
+    ["#/me/stats", "Stats"],
+    ["#/me/games", "Games"],
+    ["#/games", "Games"],
+  ];
+  for (const [hash, tab] of wideCases) {
+    it(`${hash} opens the ${tab} tab at 700px and up`, async () => {
+      viewport(true);
+      window.history.replaceState(null, "", `/${hash}`);
+      await renderApp();
+      expect(host.querySelector(".large-title")?.textContent).toBe(tab);
+      expect(host.querySelector(".topbar-tab[aria-current=page]")?.textContent).toBe(tab);
+      expect(host.querySelector(".me-page .segmented")).toBeNull();
     });
   }
 

@@ -12,6 +12,7 @@ import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
 import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
+import OpponentActions from "./OpponentActions";
 import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
 import type { Toast } from "../toast";
@@ -92,6 +93,10 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   const pos = seatPos(player.seat, state.you);
   // a tap or long press shows the whole name; only the phone layout draws it
   const [fullName, setFullName] = useState(false);
+  // a long press (or a right click) on a person's seat also offers mute and
+  // report; offline play seats only bots, so it never offers them there
+  const [actions, setActions] = useState(false);
+  const canAct = !player.is_bot;
   const pressTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   useEffect(() => {
@@ -121,12 +126,21 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
            longPressed.current = false;
            pressTimer.current = window.setTimeout(() => {
              pressTimer.current = null; longPressed.current = true; setFullName(true);
+             if (canAct) setActions(true);
            }, LONG_PRESS_MS);
+         }}
+         onContextMenu={(event) => {
+           if (!canAct) return;
+           event.preventDefault();
+           setActions(true);
          }}
          onPointerUp={endPress}
          onPointerLeave={endPress}
          onPointerCancel={endPress}>
       {fullName ? <span className="opp-fullname" role="tooltip">{player.name}</span> : null}
+      {actions && canAct ? (
+        <OpponentActions room={state.room} seat={player.seat} name={player.name} onClose={() => setActions(false)} />
+      ) : null}
       <div className="opp-name">
         {/* the phone pill carries the team as a dot and the turn as a gold
             fill ending in "…" */}

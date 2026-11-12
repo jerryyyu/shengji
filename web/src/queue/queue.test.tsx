@@ -143,6 +143,9 @@ describe("Play", () => {
     expect(button(/^Play vs bots now/, sheet)?.textContent).toContain("unrated");
     expect(button("Sign in to play people", sheet)).toBeDefined();
     expect(button("Solo", sheet)).toBeUndefined();
+    // the website signs in with Google only; nothing promises a provider still to come
+    expect(q(".q-foot")?.textContent).toContain("sign in with Google.");
+    expect(document.body.textContent).not.toMatch(/coming soon/i);
     click(button(/^Play vs bots now/, sheet));
     expect(lastSent()).toMatchObject({ type: "create_room" });
     expect(sentTypes()).not.toContain("queue_join");
@@ -151,6 +154,24 @@ describe("Play", () => {
     click(button("Sign in to play people"));
     expect(window.location.hash).toBe("#/me");
   });
+});
+
+it("in the app a guest's sheet names Apple beside Google", async () => {
+  const { resetNativeForTests } = await import("../native");
+  (window as unknown as { Capacitor: unknown }).Capacitor = {
+    isNativePlatform: () => true, getPlatform: () => "ios", isPluginAvailable: () => false, Plugins: {},
+  };
+  resetNativeForTests();
+  try {
+    signedIn = false;
+    await renderApp();
+    click(findBtn());
+    expect(q(".q-foot")?.textContent).toContain("sign in with Apple or Google.");
+    expect(document.body.textContent).not.toMatch(/coming soon/i);
+  } finally {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    resetNativeForTests();
+  }
 });
 
 describe("the queue bar", () => {

@@ -3,6 +3,7 @@ import { useAuth } from "../auth";
 import { openTab } from "../home/route";
 import { clock, partnerName, queue, useNow, useQueue } from "./store";
 import Sheet from "./Sheet";
+import { isNative } from "../native";
 
 /** "● 3 in queue", hidden below one. */
 function CountLine({ count }: { count: number }) {
@@ -108,7 +109,7 @@ export default function FindGame({ ready, onPlayBots, botsBusy }: {
           </div>
           {account.status === "out" ? (
             <p className="q-foot q-center">
-              Rated games with people need an account. Google now; Apple is coming soon. You come back to this choice after signing in.
+              Rated games with people need an account: sign in with {isNative() ? "Apple or Google" : "Google"}. You come back to this choice after signing in.
             </p>
           ) : null}
         </Sheet>

@@ -179,6 +179,18 @@ describe("Sign in with Apple", () => {
     expect(loginWithApple.mock.calls[0][0]).toMatchObject({ authorizationCode: "code-2", givenName: null, familyName: null });
   });
 
+  it("in the iOS app the Google button never says it opens a tab, and Apple sits beside it", async () => {
+    fakeShell({ initialize: vi.fn(() => Promise.resolve()), login: vi.fn(), logout: vi.fn() }, "ios");
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    const google = host.querySelector<HTMLButtonElement>("[data-testid='google-signin']")!;
+    expect(google.textContent).toBe("Continue with Google");
+    const labels = [...host.querySelectorAll("*")].map((el) => `${el.textContent} ${el.getAttribute("aria-label") ?? ""}`);
+    expect(labels.join(" ")).not.toMatch(/new tab|coming soon/i);
+    expect(host.querySelector("[data-testid='apple-signin']")?.textContent).toBe("Sign in with Apple");
+    expect(gis.renderButton).not.toHaveBeenCalled();
+  });
+
   it("is absent on a non-iOS native shell and in a shell whose plugin refuses the Apple provider", async () => {
     fakeShell({ initialize: vi.fn(() => Promise.resolve()), login: vi.fn(), logout: vi.fn() }, "android");
     await render();

@@ -199,6 +199,13 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
     return out
 
 
+def current_rating(store: accounts.Store, user_id: int) -> float | None:
+    """An account's stored rating, or None when the account does not exist."""
+    with closing(store._open()) as conn:
+        row = conn.execute("SELECT rating FROM users WHERE id = ?", (user_id,)).fetchone()
+    return float(row["rating"]) if row is not None else None
+
+
 def set_visible(store: accounts.Store, user_id: int, visible: bool) -> bool:
     with closing(store._open()) as conn:
         return conn.execute("UPDATE users SET leaderboard_visible = ? WHERE id = ?",

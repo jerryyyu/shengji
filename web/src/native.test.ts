@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { haptic, hapticCall, hideSplash, isNative, isPhone, lockFor, resetNativeForTests } from "./native";
+import { haptic, hapticCall, hideSplash, isNative, isPhone, lockFor, resetNativeForTests, setBackGesture } from "./native";
 
 type Calls = [string, string, unknown][];
 
@@ -42,6 +42,18 @@ describe("native bridge", () => {
     expect(calls.filter(([, m]) => m !== "idiom")).toEqual([
       ["ShengjiShell", "lockOrientation", { orientation: "landscape" }],
       ["ScreenOrientation", "lock", { orientation: "portrait" }],
+    ]);
+  });
+
+  it("sets the edge swipe back only when it changes, on any device", async () => {
+    await setBackGesture(false);    // a browser: nothing to call
+    const calls = fakeShell("pad");
+    await setBackGesture(true);
+    await setBackGesture(true);
+    await setBackGesture(false);
+    expect(calls).toEqual([
+      ["ShengjiShell", "setBackGesture", { enabled: true }],
+      ["ShengjiShell", "setBackGesture", { enabled: false }],
     ]);
   });
 

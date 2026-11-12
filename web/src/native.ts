@@ -118,6 +118,17 @@ export function haptic(kind: HapticKind): void {
   void call("Haptics", method, opts);
 }
 
+let lastBackGesture: boolean | null = null;
+
+/** The shell's edge swipe back and forward through the WebView's history:
+ *  on everywhere but the table, where a stray swipe would cover a live game
+ *  with an earlier page. A shell without the method keeps its default. */
+export async function setBackGesture(enabled: boolean): Promise<void> {
+  if (!isNative() || lastBackGesture === enabled) return;
+  lastBackGesture = enabled;
+  await call("ShengjiShell", "setBackGesture", { enabled });
+}
+
 let splashHidden = false;
 
 /** Fades the launch splash out once the first screen has painted. */
@@ -134,4 +145,5 @@ export function resetNativeForTests(): void {
   lastLock = null;
   selectionPrimed = false;
   splashHidden = false;
+  lastBackGesture = null;
 }

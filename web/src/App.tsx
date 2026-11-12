@@ -20,7 +20,7 @@ import Leaderboard from "./components/Leaderboard";
 import MePage from "./components/MePage";
 import HomeShell from "./home/HomeShell";
 import { openTab, useHomeRoute } from "./home/route";
-import { haptic, hideSplash, lockFor } from "./native";
+import { haptic, hideSplash, lockFor, setBackGesture } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
 import { TOAST_MS, makeToast } from "./toast";
 import type { Toast } from "./toast";
@@ -161,6 +161,9 @@ export default function App() {
   const atTable =
     game !== null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
+  // the app's edge swipe back is off at the table, so a live game is never
+  // covered by an earlier page by accident
+  useEffect(() => { void setBackGesture(!atTable); }, [atTable]);
   // a portrait phone browser gets the table turned sideways instead
   const { rotated } = usePhoneLayout(atTable);
   // the launch splash covers the WebView until the first screen has painted

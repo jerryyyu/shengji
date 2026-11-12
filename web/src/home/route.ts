@@ -1,7 +1,10 @@
 // The home screen's three tabs live in the URL hash like My games and How to
-// play, so the back button walks them and the game socket is never touched.
-// Play is the bare URL; `#/leaderboard`, `#/me` and `#/me/games` name the
-// other two. The older `#/stats` and `#/games` links land on the Me tab.
+// play, so a reload or a link lands on a tab and the game socket is never
+// touched. Play is the bare URL; `#/leaderboard`, `#/me` and `#/me/games` name
+// the other two. The older `#/stats` and `#/games` links land on the Me tab.
+// Switching tabs replaces the current history entry, as a native tab bar
+// keeps no back stack: back (or the app's edge swipe) leaves a sub-page such
+// as How to play or a replay, never walks the tabs.
 import { useEffect, useState } from "react";
 import { tabMemory } from "./session";
 
@@ -31,16 +34,14 @@ function currentHash(): string {
   }
 }
 
-/** Go to a tab: Play clears the hash, the others set theirs. Me opens on
- *  the section named, else the one it last showed this session. */
+/** Go to a tab in place of the current history entry: Play clears the hash,
+ *  the others set theirs. Me opens on the section named, else the one it last
+ *  showed this session. */
 export function openTab(tab: Tab, section?: MeSection): void {
   const hash = homeHash(tab, section ?? tabMemory.meSection);
   try {
-    if (hash) {
-      if (currentHash() !== hash) window.location.hash = hash;
-      return;
-    }
-    window.history.pushState(null, "", window.location.pathname + window.location.search);
+    if (hash && currentHash() === hash) return;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search + hash);
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   } catch {
     /* a sandboxed location */

@@ -941,8 +941,8 @@ textarea:focus-visible {
     padding: 0 48px;
   }
 
-  .seat-name .you-tag,
-  .seat-name .host-tag {
+  .seat-card-tags .you-tag,
+  .seat-card-tags .host-tag {
     font-size: var(--fs-12);
   }
 }
@@ -986,34 +986,164 @@ textarea:focus-visible {
   opacity: 1;
 }
 
-.seat-list {
+.seat-clock {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(56px, 0.7fr) minmax(0, 1fr);
+  grid-template-areas:
+    "top    top    top"
+    "left   table  right"
+    "bottom bottom bottom";
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.seat-clock-table {
+  grid-area: table;
+  justify-self: center;
+  width: 100%;
+  max-width: 96px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #2b6a45 0%, #1c4a31 70%, #163a27 100%);
+  box-shadow: inset 0 0 0 2px #ffffff14, 0 4px 14px #0006;
+}
+
+.seat-card {
+  appearance: none;
+  font: inherit;
+  color: var(--text);
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.seat-row {
-  display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 8px 10px;
   background: #10131a;
   border: 1px solid var(--panel-edge);
-  border-left-width: 3px;
-  border-radius: 10px;
-  padding: 10px 14px;
-  text-align: left;
+  border-top-width: 3px;
+  border-radius: 12px;
+  text-align: center;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 0.18s ease, box-shadow 0.15s, border-color 0.15s;
 }
 
-.seat-row.team0 {
-  border-left-color: var(--team0);
+.seat-card.pos-top { grid-area: top; }
+.seat-card.pos-left { grid-area: left; }
+.seat-card.pos-right { grid-area: right; }
+.seat-card.pos-bottom { grid-area: bottom; }
+
+.seat-card.pos-top,
+.seat-card.pos-bottom {
+  justify-self: center;
+  width: min(100%, 170px);
 }
 
-.seat-row.team1 {
-  border-left-color: var(--team1);
-}
+.seat-card.team0 { border-top-color: var(--team0); }
+.seat-card.team1 { border-top-color: var(--team1); }
 
-.seat-row.empty {
+.seat-card.empty {
   opacity: 0.55;
+  border-style: dashed;
+  border-top-style: solid;
+}
+
+.seat-card-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.seat-card.empty .seat-card-name {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.seat-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  min-height: 16px;
+}
+
+.seat-card-tags .bot-tag,
+.seat-card-tags .you-tag,
+.seat-card-tags .host-tag {
+  margin-left: 0;
+}
+
+.seat-role {
+  font-size: var(--fs-11);
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.seat-card > .conn-pip {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+}
+
+/* the host's seats are handles: a finger on one moves the seat, not the page */
+.seat-clock.can-swap .seat-card:not(.empty) {
+  cursor: grab;
+  touch-action: none;
+}
+
+.seat-card:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.seat-card.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-soft);
+}
+
+.seat-card.swap-target {
+  border-style: dashed;
+  border-top-style: solid;
+}
+
+.seat-card.lifted {
+  z-index: 2;
+  cursor: grabbing;
+  transition: none;
+  box-shadow: 0 10px 24px #000a;
+  opacity: 0.92;
+}
+
+.seat-card.drop-target {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold), 0 0 16px var(--gold-soft);
+}
+
+.seat-clock.still .seat-card {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat-card {
+    transition: none;
+  }
+}
+
+.seat-clock-hint {
+  margin-top: -8px;
+  color: var(--text-dim);
+  font-size: var(--fs-12);
 }
 
 .seat-num {
@@ -1022,17 +1152,6 @@ textarea:focus-visible {
   letter-spacing: 0.1em;
   color: var(--text-dim);
   width: 52px;
-}
-
-.seat-name {
-  flex: 1;
-  font-weight: 600;
-}
-
-.seat-name.waiting {
-  color: var(--text-dim);
-  font-weight: 400;
-  font-style: italic;
 }
 
 .conn-pip {
@@ -1045,18 +1164,6 @@ textarea:focus-visible {
 .conn-pip.on {
   background: #52c07d;
   box-shadow: 0 0 8px rgba(82, 192, 125, 0.7);
-}
-
-.team-legend {
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  font-size: var(--fs-12);
-  color: var(--text-dim);
-}
-
-.team-legend .team-dot {
-  margin-right: 5px;
 }
 
 .room-actions {
@@ -3180,18 +3287,23 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     padding: 8px 4px 8px 16px;
   }
 
-  .seat-list {
+  .seat-clock {
     gap: 5px;
   }
 
-  .seat-row {
-    padding: 5px 12px;
+  .seat-clock-table {
+    max-width: 44px;
+  }
+
+  .seat-card {
+    min-height: 44px;
+    padding: 4px 8px;
+    gap: 2px;
     font-size: var(--fs-13);
   }
 
-  .team-legend {
-    gap: 16px;
-    font-size: var(--fs-11);
+  .seat-clock-hint {
+    margin-top: -4px;
   }
 
   /* --- Round end: a compact card; Next round always on screen --- */

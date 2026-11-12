@@ -39,6 +39,8 @@ export type ClientMsg =
   /** Host only, before the game starts: the rank both teams begin at. */
   | { type: "set_start_level"; start_level: Rank }
   | { type: "remove_bot" }
+  /** Host only, before the game starts: exchange the occupants of two taken seats. */
+  | { type: "swap_seats"; a: number; b: number }
   | { type: "start_game" }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window

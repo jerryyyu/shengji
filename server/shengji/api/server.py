@@ -1590,6 +1590,40 @@ def validate_human_evaluation_start(room: Room) -> None:
         raise IllegalPlay("Evaluation requires bots at seats 1 and 3.")
 
 
+def _swap_seats(room: Room, seat: int, msg: dict) -> None:
+    """Host-only lobby move: exchange the occupants of two seats.
+
+    Everything a connection owns (socket, queue, writer, generation, resume
+    token, account) lives on the ``Seat`` object, and a socket finds its seat
+    by identity on every action, so moving the objects moves the people. The
+    only per-INDEX state before a game exists is the host seat, the ready
+    set and the per-seat card-id maps, which follow the move here.
+
+    Seats are a dense list (joins append), so an empty seat cannot hold a
+    hole: both seats must be occupied. A saved-game continuation binds its
+    creator's team and banker to seat numbers, and an evaluation room fixes
+    its seating, so neither can be rearranged.
+    """
+    if seat != room.host:
+        raise IllegalPlay("Only the host can move seats.")
+    if room.game:
+        raise IllegalPlay("Seats are fixed once the game has started.")
+    if room.resume is not None or room.evaluation is not None:
+        raise IllegalPlay("Seats are fixed at this table.")
+    a, b = msg.get("a"), msg.get("b")
+    if (type(a) is not int or type(b) is not int or a == b
+            or not (0 <= a < 4 and 0 <= b < 4)):
+        raise IllegalPlay("Invalid seats.")
+    if a >= len(room.seats) or b >= len(room.seats):
+        raise IllegalPlay("Both seats must be taken to swap them.")
+    seats = room.seats
+    seats[a], seats[b] = seats[b], seats[a]
+    room.ids[a], room.ids[b] = room.ids[b], room.ids[a]
+    if room.host in (a, b):
+        room.host = b if room.host == a else a
+    room.ready = {b if s == a else a if s == b else s for s in room.ready}
+
+
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
     if room.evaluation is not None and room.evaluation_invalidated:
@@ -1616,6 +1650,8 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         if room.game:
             raise IllegalPlay("Game already started.")
         room.seats.pop()
+    elif t == "swap_seats":
+        _swap_seats(room, seat, msg)
     elif t == "set_start_level":
         # Jerry 09-26: the selector lives in the room screen, not the lobby.
         # Host-only, and only while no game exists -- Game() reads the level

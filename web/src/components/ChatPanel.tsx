@@ -2,6 +2,7 @@ export type { ChatMsg } from "../protocol";
 import type { ChatMsg } from "../protocol";
 import { useEffect, useRef, useState } from "react";
 import { conn } from "../ws";
+import { usePresence } from "../usePresence";
 
 /** Toggled overlay, not a side panel: in landscape the table already fills
  *  the screen, so chat slides over it and closes again. Unread count lives
@@ -20,6 +21,7 @@ export default function ChatPanel({
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const presence = usePresence(open);
 
   useEffect(() => {
     if (open) {
@@ -34,7 +36,7 @@ export default function ChatPanel({
     if (open) endRef.current?.scrollIntoView({ block: "end" });
   }, [open, messages.length]);
 
-  if (!open) return null;
+  if (!presence.mounted) return null;
 
   const send = () => {
     const text = draft.trim();
@@ -44,7 +46,8 @@ export default function ChatPanel({
   };
 
   return (
-    <div className="chat-panel" role="region" aria-label="Chat" onKeyDown={(event) => {
+    <div className={`chat-panel${presence.className ? ` ${presence.className}` : ""}`} role="region"
+         aria-label="Chat" aria-hidden={!open || undefined} inert={!open || undefined} onKeyDown={(event) => {
       if (event.key === "Escape" && !event.nativeEvent.isComposing) onClose();
       event.stopPropagation();
     }}>

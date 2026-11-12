@@ -50,7 +50,7 @@ done
 rsync -a --delete --exclude '__pycache__' "$PYBOT/payload/" "$DEST/app/"
 cp "$PYBOT/offline_bot.py" "$DEST/app/offline_bot.py"
 echo "$IDENTITY" > "$DEST/app/BUNDLE_INPUTS"
-rsync -a --delete --exclude '__pycache__' --exclude 'tests/' --exclude '*.a' "$PYBOT/site/$SITE/" "$DEST/app_packages/"
+rsync -a --delete --exclude '__pycache__' --exclude 'tests/' --filter='-s *.a' "$PYBOT/site/$SITE/" "$DEST/app_packages/"
 rsync -a "$PYBOT/fast/$SITE/" "$DEST/app/"
 process_dylibs "$REL" "python/lib/$PYVER/lib-dynload"
 process_dylibs "$REL" python/app_packages

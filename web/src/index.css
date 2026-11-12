@@ -4815,13 +4815,13 @@ button.games-row { cursor: pointer; }
 }
 .avatar-guest { color: var(--muted); box-shadow: none; }
 
-/* Play: the lobby's sections sit a little further apart, and a signed-in
+/* Play on a phone: the lobby keeps the plain screen's top padding (the
+   status-bar inset or 12px) and drops the panel's bottom padding, which is
+   empty space under the connection line, so the whole stack fits between the
+   status bar and the tab bar on a 375x812 or larger phone. A shorter phone
+   scrolls, and the scroll ends at the tab bar's top edge. A signed-in
    player's rating chip is centred under the title. */
-.home .lobby-panel:has(.lobby-preview) { gap: 16px; }
-/* The centred lobby starts lower under the status bar or the top bar: twice
-   the shift in top padding, since centring splits it. */
-.home-narrow .screen.lobby-screen { padding-top: calc(max(12px, env(safe-area-inset-top, 0px)) + 40px); }
-.home-wide .home-body > .screen.lobby-screen { padding-top: 44px; }
+.home-narrow .lobby-panel:has(.lobby-preview) { padding-bottom: 0; }
 .rating-chip {
   appearance: none;
   align-self: center;

@@ -131,6 +131,10 @@ export default function App() {
           const wasResuming = resumingRef.current;
           resumingRef.current = false;
           autoFill.current = false; // abort single-player orchestration
+          if (msg.code === "not_in_party") {
+            // a pair the server no longer holds: the queue store drops the chip
+            break;
+          }
           if (msg.code === "start_failed") {
             // a queue game with bots that failed to start was unwound on the server
             resetToLobby();

@@ -461,6 +461,44 @@ describe("with a friend", () => {
   });
 });
 
+describe("a pair the server forgot", () => {
+  const PAIR = { type: "party", party_id: "p9", code: "FG3K", you_lead: true,
+                 members: [{ name: "Jerry", leader: true, you: true }], expires_at: 0 };
+
+  it("Leave answered not_in_party drops the chip without an error", async () => {
+    await renderApp();
+    say({ ...PAIR, expires_at: nowSecs() + 300 });
+    expect(q(".q-party-chip")).not.toBeNull();
+    say({ type: "error", code: "not_in_party", message: "You are not in a party." });
+    expect(q(".q-party-chip")).toBeNull();
+    expect(q(".lobby-error")).toBeNull();
+  });
+
+  it("a reconnect that gets no pair back drops the chip", async () => {
+    await renderApp();
+    say({ ...PAIR, expires_at: nowSecs() + 300 });
+    fakeClock();
+    act(() => ws().close());
+    tick(600);
+    act(() => ws().onopen?.());
+    expect(q(".q-party-chip")).not.toBeNull();      // the server may still hand it back
+    tick(3000);
+    expect(q(".q-party-chip")).toBeNull();
+  });
+
+  it("a reconnect that gets the pair back keeps it", async () => {
+    await renderApp();
+    say({ ...PAIR, expires_at: nowSecs() + 300 });
+    fakeClock();
+    act(() => ws().close());
+    tick(600);
+    act(() => ws().onopen?.());
+    say({ ...PAIR, expires_at: nowSecs() + 300 });
+    tick(3000);
+    expect(q(".q-party-chip")).not.toBeNull();
+  });
+});
+
 describe("away from the app", () => {
   it("a drop while the socket was gone: the notice on return", async () => {
     await renderApp();

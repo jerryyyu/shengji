@@ -27,6 +27,10 @@ export type ClientMsg =
       /** Experimental W32 is available only through the guarded lobby UI. */
       test_policy?: "w32";
       test_access_key?: string;
+      /** Continue this saved game of the signed-in account: the room is made
+       *  with the account in its saved seat and bots in the other three, and
+       *  starts at that game's last levels with its next banker. */
+      resume_from?: string;
     }
   | { type: "add_bot" }
   /** Host only, before the game starts: the rank both teams begin at. */
@@ -138,6 +142,17 @@ export interface RoundResult {
   /** True on the round that took a team past A. */
   point_scored: boolean;
   game_over: boolean;
+  /** The receiving seat's own rating after this round; present only for a
+   *  signed-in player, and only once the server has stored the round. */
+  rating?: RoundRating;
+}
+
+export interface RoundRating {
+  rating: number;
+  /** This round's change, rounded to a whole point. */
+  delta: number;
+  /** The change over the whole game, on the round that wins a game. */
+  game_delta?: number;
 }
 
 export interface GameState {
@@ -220,6 +235,7 @@ export type ErrorCode =
   | "seat_reserved"
   | "test_room_unavailable"
   | "bad_start_level"
+  | "resume_unavailable"
   | "stale_connection";
 
 /** "human" — a connected person; "bot" — a permanent bot seat;

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import type { GameState, Notice, Phase } from "../protocol";
 import { RANKS } from "../protocol";
 import { DUR, prefersReducedMotion } from "../motion";
@@ -7,7 +8,7 @@ import { SUIT_SYMBOL, shortLabel } from "./Card";
 import MuteButton from "./MuteButton";
 import LeaveButton from "./LeaveButton";
 import HudMenu from "./HudMenu";
-import { formatTableMessage } from "../messageCopy";
+import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -49,7 +50,15 @@ function NoticeBanner({ notice, state }: { notice: Notice; state: GameState }) {
   // Dismissal is keyed by the notice id, not by a boolean: the next failed
   // throw must appear even if you dismissed the last one.
   const [dismissed, setDismissed] = useState<number | null>(null);
-  if (dismissed === notice.id) return null;
+  // The notice is about one trick: it stays through the trick it happened in and one more, then goes.
+  const tricks = useRef<{ id: number; last: string; ended: number }>({ id: notice.id, last: "", ended: 0 });
+  const lastKey = JSON.stringify(state.last_trick);
+  if (tricks.current.id !== notice.id) tricks.current = { id: notice.id, last: lastKey, ended: 0 };
+  else if (tricks.current.last === "") tricks.current.last = lastKey;
+  else if (lastKey !== tricks.current.last) {
+    tricks.current = { ...tricks.current, last: lastKey, ended: tricks.current.ended + 1 };
+  }
+  if (dismissed === notice.id || tricks.current.ended >= 2) return null;
   const who = notice.seat === state.you
     ? "You"
     : state.players.find((p) => p.seat === notice.seat)?.name ?? "A player";
@@ -117,7 +126,55 @@ function LevelChip({ team, level, gamesWon }: { team: 0 | 1; level: string; game
   );
 }
 
+/** Distance in layout px from `el`'s left edge to `frame`'s, along offsetParents.
+ *  Layout coordinates, so a table drawn a quarter turn round measures the same. */
+function offsetIn(el: HTMLElement, frame: HTMLElement): number | null {
+  let x = 0;
+  for (let e: HTMLElement | null = el; e && e !== frame; e = e.offsetParent as HTMLElement | null) {
+    if (!e.offsetParent && e !== frame) return null;
+    x += e.offsetLeft;
+  }
+  return x;
+}
+
+/** Publishes the width of the phone header's level-and-points strip as
+ *  `--hud-strip-w` on the table, so the top seat's label (which shares the
+ *  header row) is sized and placed clear of it, whatever the levels, score
+ *  and text size make it. The strip starts at the safe edge, which CSS adds,
+ *  so turning the phone the other way round needs no new measurement. */
+function useStripWidth(bar: RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const el = bar.current;
+    const frame = el?.closest<HTMLElement>(".table-screen");
+    if (!el || !frame) return;
+    const parts = () => [el.querySelector<HTMLElement>(".hud-group:nth-child(2)"), el.querySelector<HTMLElement>(".points-chip")]
+      .filter((x): x is HTMLElement => x !== null && x.offsetWidth > 0);
+    const measure = () => {
+      let start = Infinity;
+      let end = -Infinity;
+      for (const part of parts()) {
+        const x = offsetIn(part, frame);
+        if (x === null) continue;
+        start = Math.min(start, x);
+        end = Math.max(end, x + part.offsetWidth);
+      }
+      // offsets are whole px, the drawn edges are not: 1px more absorbs the rounding
+      if (end > start) frame.style.setProperty("--hud-strip-w", `${Math.ceil(end - start) + 1}px`);
+      else frame.style.removeProperty("--hud-strip-w");
+    };
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const ro = new ResizeObserver(measure);
+    for (const part of [el.querySelector(".hud-group:nth-child(2)"), el.querySelector(".points-chip"), frame]) {
+      if (part) ro.observe(part);
+    }
+    return () => ro.disconnect();
+  }, [bar]);
+}
+
 export default function Hud({ state }: { state: GameState }) {
+  const barRef = useRef<HTMLDivElement | null>(null);
+  useStripWidth(barRef);
   const shownPoints = Math.round(useCountUp(state.attacker_points, { snapDown: true }));
   // Tapping the room chip mid-game copies a full invite link, so you can
   // pull someone into a game already in progress — they land on a bot's
@@ -138,7 +195,7 @@ export default function Hud({ state }: { state: GameState }) {
 
   return (
     <div className="hud">
-      <div className="hud-bar">
+      <div className="hud-bar" ref={barRef}>
         <div className="hud-group">
           <button
             className={"chip room-chip" + (copied ? " copied" : "")}
@@ -192,7 +249,7 @@ export default function Hud({ state }: { state: GameState }) {
       {/* `message` restates the notice for one play; showing both would
           double up, so the notice wins while it is on screen. */}
       {state.message && !state.notice ? (
-        <div className="hud-message" key={state.message}>
+        <div className={`hud-message${isDeclareMessage(state.message) ? " declare-message" : ""}`} key={state.message}>
           {formatTableMessage(state.message, state.players, state.you)}
         </div>
       ) : null}

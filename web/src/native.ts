@@ -9,8 +9,10 @@
 // the lobby in portrait and the game in landscape (either side); an iPad, even
 // in a narrow Split View, is never locked.
 
+import { scrollActiveTabToTop } from "./home/session";
+
 export type ScreenKind = "lobby" | "game";
-export type HapticKind = "select" | "play" | "won" | "turn" | "declare";
+export type HapticKind = "select" | "turn" | "declare" | "won" | "error";
 
 interface PluginProxy {
   [method: string]: ((opts?: Record<string, unknown>) => Promise<unknown>) | undefined;
@@ -90,14 +92,18 @@ export async function lockFor(screen: ScreenKind): Promise<void> {
   }
 }
 
-/** The kind of haptic each table event plays (UIKit feedback generators). */
+/** The kind of haptic each event plays (UIKit feedback generators). A round
+ *  is about 25 turns, so only rare or decisive moments get one: your turn
+ *  arriving (light), a declare chance (medium, it is racing), your team
+ *  winning the round (success) and a refused action (error). A card select
+ *  is a selection tick; your own play and a won trick are silent. */
 export function hapticCall(kind: HapticKind): { method: string; opts?: Record<string, unknown> } {
   switch (kind) {
     case "select": return { method: "selectionChanged" };
-    case "play": return { method: "impact", opts: { style: "LIGHT" } };
-    case "won": return { method: "notification", opts: { type: "SUCCESS" } };
-    case "turn":
+    case "turn": return { method: "impact", opts: { style: "LIGHT" } };
     case "declare": return { method: "impact", opts: { style: "MEDIUM" } };
+    case "won": return { method: "notification", opts: { type: "SUCCESS" } };
+    case "error": return { method: "notification", opts: { type: "ERROR" } };
   }
 }
 
@@ -116,6 +122,71 @@ export function haptic(kind: HapticKind): void {
   void call("Haptics", method, opts);
 }
 
+let lastBackGesture: boolean | null = null;
+
+/** The shell's edge swipe back and forward through the WebView's history:
+ *  on everywhere but the table, where a stray swipe would cover a live game
+ *  with an earlier page. A shell without the method keeps its default. */
+export async function setBackGesture(enabled: boolean): Promise<void> {
+  if (!isNative() || lastBackGesture === enabled) return;
+  lastBackGesture = enabled;
+  await call("ShengjiShell", "setBackGesture", { enabled });
+}
+
+let lastGameMode: boolean | null = null;
+
+/** At the table: the screen stays awake, the bottom edge defers the home
+ *  gesture (a card drag near it needs a second swipe to leave) and the home
+ *  indicator hides; away from it all three are the system's again. Any
+ *  device, since an iPad has the same edge and indicator. */
+export async function setGameMode(on: boolean): Promise<void> {
+  if (!isNative() || lastGameMode === on) return;
+  lastGameMode = on;
+  await Promise.all([
+    call("ShengjiShell", "setGameMode", { on }),
+    call("SystemBars", on ? "hide" : "show", { bar: "NavigationBar" }),
+  ]);
+}
+
+/** Set on <body> while the keyboard is up, so the tab bar steps aside. */
+export const KEYBOARD_OPEN_CLASS = "keyboard-open";
+/** The shell dispatches this on window when the status bar is tapped. */
+export const STATUS_TAP_EVENT = "statusTap";
+
+const onKeyboardShow = () => document.body.classList.add(KEYBOARD_OPEN_CLASS);
+const onKeyboardHide = () => document.body.classList.remove(KEYBOARD_OPEN_CLASS);
+/** The WebView shrinks only after the keyboard has risen, too late for
+ *  WebKit's own scroll to the focused field, so the field is brought into
+ *  view again once the page has its new height. */
+const revealFocused = () => {
+  if (!document.body.classList.contains(KEYBOARD_OPEN_CLASS)) return;
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el !== document.body) el.scrollIntoView?.({ block: "center" });
+};
+/** A tab page with remembered scroll answers scrollActiveTabToTop; any other
+ *  scrolled screen (the Play lobby, a room) is scrolled up here. */
+const onStatusTap = () => {
+  scrollActiveTabToTop();
+  for (const el of document.querySelectorAll<HTMLElement>(".screen")) {
+    if (el.scrollTop > 0) el.scrollTo?.({ top: 0, behavior: "smooth" });
+  }
+};
+let shellStarted = false;
+
+/** Startup wiring for the app: no web Previous/Next/Done bar over the
+ *  keyboard, the keyboard-open class from the Keyboard plugin's window events,
+ *  the focused field kept in view as the page shrinks, and a status-bar tap
+ *  scrolling the active tab to the top. */
+export function startShell(): void {
+  if (shellStarted || !isNative()) return;
+  shellStarted = true;
+  void call("Keyboard", "setAccessoryBarVisible", { isVisible: false });
+  window.addEventListener("keyboardWillShow", onKeyboardShow);
+  window.addEventListener("keyboardWillHide", onKeyboardHide);
+  window.addEventListener("resize", revealFocused);
+  window.addEventListener(STATUS_TAP_EVENT, onStatusTap);
+}
+
 let splashHidden = false;
 
 /** Fades the launch splash out once the first screen has painted. */
@@ -132,4 +203,14 @@ export function resetNativeForTests(): void {
   lastLock = null;
   selectionPrimed = false;
   splashHidden = false;
+  lastBackGesture = null;
+  lastGameMode = null;
+  if (shellStarted) {
+    window.removeEventListener("keyboardWillShow", onKeyboardShow);
+    window.removeEventListener("keyboardWillHide", onKeyboardHide);
+    window.removeEventListener("resize", revealFocused);
+    window.removeEventListener(STATUS_TAP_EVENT, onStatusTap);
+    shellStarted = false;
+  }
+  document.body.classList.remove(KEYBOARD_OPEN_CLASS);
 }

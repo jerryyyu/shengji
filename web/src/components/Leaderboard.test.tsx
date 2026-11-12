@@ -108,6 +108,22 @@ it("with the server unreachable a guest still sees the sign-in card, unavailable
   expect(card.querySelector(".signin-upsell")?.textContent).toBe("Can't reach the server");
 });
 
+it("with only sign-in out of reach, the board shows and the sign-in card is unavailable", async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    if (String(input) === "/api/auth/config") return { status: 503, json: async () => ({}) } as Response;
+    return real(input);
+  }) as typeof fetch;
+  signedIn = false;
+  await auth.init();
+  expect(auth.state.status).toBe("error");
+  await render();
+  expect(host.querySelectorAll(".lb-list .lb-row:not(.anchor)").length).toBeGreaterThan(0);
+  const card = host.querySelector(".lb-page .lb-rated")!;
+  expect(card).not.toBeNull();
+  expect(card.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!.disabled).toBe(true);
+});
+
 it("marks provisional players with a new chip", async () => {
   await render();
   const chips = [...host.querySelectorAll(".lb-new")];

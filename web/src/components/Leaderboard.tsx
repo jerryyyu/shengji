@@ -99,15 +99,7 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   let pinned = null;
   if (res === null) body = <SkeletonRows kind="board" rows={5} />;
   else if (!res.ok) {
-    body = (
-      <>
-        <p className="lobby-error" role="alert">Could not load the leaderboard ({res.status || "no connection"}).</p>
-        {/* the server is out of reach, so the guest's sign-in card shows unavailable */}
-        {account.status === "error" ? (
-          <div className="signin-card compact lb-rated"><h3>Sign in to be ranked</h3><SignInUnavailable /></div>
-        ) : null}
-      </>
-    );
+    body = <p className="lobby-error" role="alert">Could not load the leaderboard ({res.status || "no connection"}).</p>;
   } else {
     const { players, me } = res.data;
     const empty = players.length === 0;
@@ -127,7 +119,11 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   }
   // a guest's card follows the board, where it is seen at once, rather than
   // pinned to the screen's bottom
-  const signIn = account.status === "out" && account.clientId ? <SignInToRank clientId={account.clientId} /> : null;
+  // with sign-in out of reach the same card shows unavailable, whether or not
+  // the board itself loaded
+  const signIn = account.status === "out" && account.clientId ? <SignInToRank clientId={account.clientId} />
+    : account.status === "error" ? <div className="signin-card compact lb-rated"><h3>Sign in to be ranked</h3><SignInUnavailable /></div>
+    : null;
   if (signIn) pinned = null;
 
   return (

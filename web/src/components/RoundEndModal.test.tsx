@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, RoundResult, StatePlayer } from "../protocol";
 import RoundEndModal from "./RoundEndModal";
+import { auth } from "../auth";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, leaveToLobby: () => {} } }));
@@ -178,5 +179,58 @@ describe("leaving from the round-end screen", () => {
   it("is also available before you confirm the next round", () => {
     renderModal(makeResult());
     expect(leaveButton()).toBeDefined();
+  });
+});
+
+describe("round end rating line", () => {
+  afterEach(() => auth.reset());
+
+  async function signedOutWithSignIn() {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/auth/config") return { status: 200, json: async () => ({ google_client_id: "cid" }) } as Response;
+      return { status: 401, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+    await auth.init();
+  }
+
+  it("shows a signed-in player's rating and this round's change", () => {
+    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }));
+    const line = host.querySelector(".rating-line")!;
+    expect(line.textContent).toContain("Your rating 1712");
+    expect(line.querySelector(".rating-delta")!.textContent).toBe("▲ +9");
+    expect(line.querySelector(".rating-delta")!.className).toContain("delta-up");
+    expect(line.querySelector(".rating-game")).toBeNull();
+    expect(host.querySelector(".rating-guest")).toBeNull();
+  });
+
+  it("shows a loss and, on the round that wins a game, the game's total", () => {
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0],
+                             rating: { rating: 1688, delta: -4, game_delta: 31 } }));
+    const line = host.querySelector(".rating-line")!;
+    expect(line.querySelector(".rating-delta")!.textContent).toBe("▼ −4");
+    expect(line.querySelector(".rating-game")!.textContent).toBe("+31 this game");
+  });
+
+  it("shows the game total on the game-over screen", () => {
+    renderModal(makeResult({ game_over: true, rating: { rating: 1740, delta: 12, game_delta: 55 } }));
+    expect(host.querySelector(".victory .rating-line")!.textContent).toContain("+55 this game");
+  });
+
+  it("invites a guest to sign in, and only reveals the button on request", async () => {
+    await signedOutWithSignIn();
+    renderModal(makeResult());
+    const guest = host.querySelector(".rating-guest")!;
+    expect(guest.textContent).toContain("Playing as a guest");
+    expect(host.querySelector(".rating-line")).toBeNull();
+    expect(host.querySelector(".google-signin-slot")).toBeNull();
+    const link = guest.querySelector<HTMLButtonElement>(".rating-signin")!;
+    expect(link.textContent).toBe("Sign in to get a rating");
+  });
+
+  it("says nothing about ratings where sign-in is off", () => {
+    renderModal(makeResult());
+    expect(host.querySelector(".rating-line")).toBeNull();
+    expect(host.querySelector(".rating-guest")).toBeNull();
   });
 });

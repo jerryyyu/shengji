@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { GameState, HandCard, StatePlayer } from "../protocol";
 
 const haptics: string[] = [];
@@ -102,19 +102,47 @@ describe("phone turn cue and haptics", () => {
     expect(haptics).toEqual(["declare"]);
   });
 
-  it("taps on select and on Play, and a success when your team takes the trick", () => {
+  it("ticks on select only: your own play and a won trick are silent", () => {
     render(state({ turn: 0, trick: { leader: 1, plays: [{ seat: 1, cards: ["H3"] }] } }));
     haptics.length = 0;
     const card = host.querySelector<HTMLButtonElement>(".hand .card.clickable")!;
     act(() => card.click());
     act(() => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.click());
-    expect(haptics).toEqual(["select", "play"]);
+    expect(haptics).toEqual(["select"]);
     expect(sent).toEqual([{ type: "play", card_ids: [1] }]);
     haptics.length = 0;
     // the trick resets and you (team 0) won it
     render(state({ turn: 0, hand: cards(24), trick: { leader: 0, plays: [] },
       last_trick: { leader: 1, plays: [], winner: 2, points: 10 } }));
+    expect(haptics).toEqual([]);
+  });
+
+  it("plays one success when your team takes the round, and none for the other team", () => {
+    const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+    const saved = { showModal: proto.showModal, close: proto.close };
+    proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+    proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+    onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+    render(state({ phase: "play", turn: 1 }));
+    haptics.length = 0;
+    const result = (winner_team: 0 | 1): GameState["round_result"] => ({
+      attacker_points: 40, kitty_points: 0, kitty_cards: [], winner_team, level_change: 1, next_banker: 1,
+      new_levels: ["3", "2"], games_won: [0, 0], point_scored: false, game_over: false });
+    render(state({ phase: "round_end", turn: null, round_result: result(0) }));
+    render(state({ phase: "round_end", turn: null, round_result: result(0), attacker_points: 5 }));
     expect(haptics).toEqual(["won"]);
+    haptics.length = 0;
+    render(state({ phase: "round_end", turn: null, round_result: result(1) }));
+    expect(haptics).toEqual([]);
+  });
+
+  it("labels the trick's cards for VoiceOver and the hand as one group", () => {
+    render(state({ turn: 0, hand: cards(3), trick: { leader: 1, plays: [{ seat: 1, cards: ["H3", "BJ"] }] } }));
+    const played = [...host.querySelectorAll<HTMLElement>(".trick-cards .card")];
+    expect(played.map((c) => [c.getAttribute("role"), c.getAttribute("aria-label")])).toEqual([
+      ["img", "3 of hearts"], ["img", "Big joker"]]);
+    expect(host.querySelector(".hand")!.getAttribute("role")).toBe("group");
+    expect(host.querySelector(".hand")!.getAttribute("aria-label")).toBe("Your hand, 3 cards");
   });
 
   it("draws the deal's deck with your share so far", () => {
@@ -306,6 +334,148 @@ describe("a pending action across a reconnect", () => {
     act(() => primary().click());
     render(playing({ attacker_points: 5 }));
     expect(primary().disabled).toBe(true);
+    expect(sent).toHaveLength(1);
+  });
+});
+
+describe("whose turn on a seat's label", () => {
+  it("marks only the seat on turn with the turn class and its …, and gives every seat its team dot", () => {
+    render(state({ turn: 2, players: [0, 1, 2, 3].map((s) => player(s, s === 3 ? { is_bot: false, controller: "human" } : {})) }));
+    const opp = (seat: number) => host.querySelectorAll<HTMLElement>(".opponent")[seat - 1];
+    expect(opp(2).classList.contains("on-turn")).toBe(true);
+    expect(opp(2).querySelector(".opp-name .turn-dots.shown")?.textContent).toBe("…");
+    for (const s of [1, 3]) {
+      expect(opp(s).classList.contains("on-turn")).toBe(false);
+      // drawn unseen, so the label keeps its width when the turn comes
+      expect(opp(s).querySelector(".turn-dots")).not.toBeNull();
+      expect(opp(s).querySelector(".turn-dots.shown")).toBeNull();
+    }
+    for (const s of [1, 2, 3]) expect(opp(s).querySelector(`.opp-name .seat-dot.t${s % 2}`)).not.toBeNull();
+    // a human on turn gets the same mark
+    render(state({ turn: 3, players: [0, 1, 2, 3].map((s) => player(s, s === 3 ? { is_bot: false, controller: "human" } : {})) }));
+    expect(opp(3).querySelector(".turn-dots.shown")).not.toBeNull();
+    // outside bury and play nobody is on turn
+    render(state({ phase: "declare", turn: 2 }));
+    expect(host.querySelector(".turn-dots.shown")).toBeNull();
+  });
+});
+
+describe("Your turn on a lead", () => {
+  it("carries no hint line under the button", () => {
+    render(state({ turn: 0 }));
+    expect(host.querySelector(".lead-hint")).toBeNull();
+    expect(host.textContent).not.toContain("Tap cards, then Play");
+  });
+});
+
+
+it("draws the error toast inside the table, where its rows are", () => {
+  act(() => root.render(<Table state={state({ turn: 0 })} toast={{ id: 1, text: "You must follow suit." }} />));
+  expect(host.querySelector(".table-screen > .toast")?.textContent).toBe("You must follow suit.");
+  act(() => root.render(<Table state={state({ turn: 0 })} toast={null} />));
+  expect(host.querySelector(".toast")).toBeNull();
+});
+
+describe("following a lead", () => {
+  const SPADES_7 = { suit: "S", rank: "7", declarer: 1 };
+  const followHand: HandCard[] = [
+    { id: 1, code: "D9" }, { id: 2, code: "D9" }, { id: 3, code: "DJ" }, { id: 4, code: "S3" },
+  ];
+  const pairLed = (over: Partial<GameState> = {}) => state({
+    turn: 0, hand: followHand, trump: SPADES_7,
+    trick: { leader: 1, plays: [{ seat: 1, cards: ["DQ", "DQ"] }] }, ...over,
+  });
+  const slot = (id: number) => host.querySelector<HTMLButtonElement>(`.hand-slot[data-id="${id}"] .card`)!;
+  const primary = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+
+  it("keeps Play off until the selection is as many cards as the lead, and says the count", () => {
+    render(pairLed());
+    act(() => slot(1).click());
+    expect(primary().disabled).toBe(true);
+    expect(primary().querySelector(".play-text")?.textContent).toBe("Play (1/2)");
+    act(() => slot(2).click());
+    expect(primary().disabled).toBe(false);
+    expect(primary().querySelector(".play-text")?.textContent).toBe("Play (2/2)");
+    act(() => primary().click());
+    expect(sent).toEqual([{ type: "play", card_ids: [1, 2] }]);
+  });
+
+  it("leading, any count may go", () => {
+    render(state({ turn: 0, hand: followHand, trump: SPADES_7, trick: { leader: 0, plays: [] } }));
+    act(() => slot(3).click());
+    expect(primary().disabled).toBe(false);
+    expect(primary().querySelector(".play-text")?.textContent).toBe("Play (1)");
+  });
+});
+
+describe("Play and Bury say they are sending", () => {
+  const pick = (n: number) => act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[n].click());
+  const primary = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+  const label = () => (primary().querySelector(".play-text") ?? primary()).textContent;
+  const handIds = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")].map((slot) => Number(slot.dataset.id));
+  const selected = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")]
+    .filter((slot) => slot.querySelector(".card.selected")).map((slot) => Number(slot.dataset.id));
+  const setStatus = (s: string) => act(() => { link.status = s; for (const fn of link.statusListeners) fn(s); });
+  const playing = (over: Partial<GameState> = {}) => state({ turn: 0, trick: { leader: 0, plays: [] }, ...over });
+  const burying = (over: Partial<GameState> = {}) => state({
+    phase: "bury", turn: 0, hand: cards(33), banker: 0,
+    players: [player(0, { is_banker: true, cards_left: 33 }), player(1), player(2), player(3)], ...over });
+
+  it("a delayed play: Sending… and aria-busy at once, the cards stay in the hand, one send", () => {
+    render(playing());
+    pick(0);
+    expect(label()).toBe("Play (1)");
+    expect(primary().getAttribute("aria-busy")).toBeNull();
+    act(() => primary().click());
+    expect(label()).toBe("Sending…");
+    expect(primary().getAttribute("aria-busy")).toBe("true");
+    expect(handIds()).toHaveLength(25);          // nothing leaves before the server says so
+    expect(selected()).toEqual([1]);
+    act(() => primary().click());
+    expect(sent).toHaveLength(1);
+    setStatus("closed");                         // the connection drops meanwhile
+    expect(label()).toBe("Reconnecting…");
+    expect(primary().getAttribute("aria-busy")).toBe("true");
+    setStatus("connecting");
+    setStatus("open");
+    render(playing({ hand: cards(25).slice(1), turn: 1, trick: { leader: 0, plays: [{ seat: 0, cards: ["S2"] }] } }));
+    expect(host.querySelector(".action-bar .btn.primary")?.getAttribute("aria-busy") ?? null).toBeNull();
+  });
+
+  it("a rejected play: the label and selection come back, nothing resent", () => {
+    render(playing());
+    pick(0); pick(1);
+    act(() => primary().click());
+    expect(label()).toBe("Sending…");
+    serverSays({ type: "error", code: "illegal", message: "Not a legal play." });
+    expect(label()).toBe("Play (2)");
+    expect(primary().getAttribute("aria-busy")).toBeNull();
+    expect(selected()).toEqual([1, 2]);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a delayed bury: Sending… and aria-busy, the eight stay, one send", () => {
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    expect(label()).toBe("Bury 8 cards (8/8)");
+    act(() => primary().click());
+    expect(label()).toBe("Sending…");
+    expect(primary().getAttribute("aria-busy")).toBe("true");
+    act(() => primary().click());
+    expect(sent).toHaveLength(1);
+    expect(handIds()).toHaveLength(33);
+    expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("a rejected bury: Bury comes back with the eight still chosen", () => {
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    act(() => primary().click());
+    serverSays({ type: "error", code: "illegal", message: "Bury exactly 8 cards." });
+    expect(label()).toBe("Bury 8 cards (8/8)");
+    expect(primary().getAttribute("aria-busy")).toBeNull();
+    expect(primary().disabled).toBe(false);
+    expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(sent).toHaveLength(1);
   });
 });

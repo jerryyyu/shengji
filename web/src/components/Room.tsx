@@ -26,7 +26,10 @@ export default function Room({ room }: { room: RoomMsg }) {
     <div className="screen room-screen">
       <div className="panel room-panel">
         <MuteButton />
-        <div className="room-code-label">Room code — click to copy invite link</div>
+        <div className="room-code-label">
+          <span className="copy-click">Room code — click to copy invite link</span>
+          <span className="copy-tap">Tap to copy invite link</span>
+        </div>
         <button className="room-code" onClick={copyCode} title="Copy room code">
           {room.room}
           <span className={`copied-tag${copied ? " show" : ""}`}>Copied!</span>

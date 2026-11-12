@@ -23,6 +23,29 @@ function wsUrl(): string {
 
 const WS_URL = wsUrl();
 
+const OFFLINE_KEY = "shengji.offline";
+
+/**
+ * Offline mode: no game server, a local one in the page (src/offline/server)
+ * with SmartBot seats. On for the app's bundled page (served from its own
+ * capacitor:// origin, which the shell shows when the live site cannot load)
+ * and for `?offline=1`, which this tab remembers until `?offline=0`.
+ */
+function detectOffline(): boolean {
+  if (typeof location === "undefined") return false;
+  if (location.protocol === "capacitor:") return true;
+  const param = new URLSearchParams(location.search).get("offline");
+  try {
+    if (param === "1") sessionStorage.setItem(OFFLINE_KEY, "1");
+    if (param === "0") sessionStorage.removeItem(OFFLINE_KEY);
+    return sessionStorage.getItem(OFFLINE_KEY) === "1";
+  } catch {
+    return param === "1";
+  }
+}
+
+export const OFFLINE = detectOffline();
+
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";
 const TOKEN_KEY = "shengji.token";   // opaque seat identity, per room
@@ -86,6 +109,9 @@ class Connection {
   private backoff = 500;
   private reconnectTimer: number | null = null;
   private started = false;
+  /** Opens the transport: the game server's WebSocket, or offline the
+   *  in-page server's look-alike (set once its module has loaded). */
+  private makeSocket: () => WebSocket = () => new WebSocket(WS_URL);
   /** The next reconnect is deliberate (a sign-in or sign-out): open it at
    *  once instead of after the failure backoff. */
   private immediate = false;
@@ -107,6 +133,23 @@ class Connection {
   start(): void {
     if (this.started) return;
     this.started = true;
+    if (OFFLINE) {
+      void import("./offline/server").then((m) => {
+        this.makeSocket = () => new m.LocalSocket() as unknown as WebSocket;
+        this.open();
+      });
+      return;
+    }
+    // A browser wake can end an outage before the retry timer expires.
+    // Preserve healthy sockets and handshakes that are already in progress.
+    const wake = () => {
+      if (this.status === "closed") this.reconnect();
+    };
+    window.addEventListener("online", wake);
+    window.addEventListener("pageshow", wake);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") wake();
+    });
     this.open();
   }
 
@@ -205,7 +248,7 @@ class Connection {
 
   private open(): void {
     this.setStatus("connecting");
-    const ws = new WebSocket(WS_URL);
+    const ws = this.makeSocket();
     this.ws = ws;
 
     ws.onopen = () => {

@@ -14,6 +14,10 @@ import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
 import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
+import type { Toast } from "../toast";
+import ToastView from "./ToastView";
+import MatchedNote from "../queue/MatchedNote";
+import { leadToFollow } from "../follow";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -124,8 +128,13 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
          onPointerCancel={endPress}>
       {fullName ? <span className="opp-fullname" role="tooltip">{player.name}</span> : null}
       <div className="opp-name">
+        {/* the phone pill carries the team as a dot and the turn as a gold
+            fill ending in "…" */}
+        <span className={`seat-dot t${player.team}`} aria-hidden="true" />
         {player.is_banker ? <span className="banker-crown" title="Banker">👑</span> : null}
         <span className="opp-name-text">{player.name}</span>
+        {/* always drawn, so the label's width never changes with the turn */}
+        <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
         {!player.connected && !player.is_bot ? (
@@ -162,9 +171,10 @@ function isYourTurnCue(state: GameState): boolean {
 }
 
 /** Haptic ticks on the moments that matter (no-ops outside the iOS app):
- *  your turn arriving, a declare option appearing, your team taking a trick
- *  or the round. Each fires on the transition, never on a repeat state. */
-function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
+ *  your turn arriving, a declare option appearing and your team taking the
+ *  round. Each fires on the transition, never on a repeat state; a won trick
+ *  is shown, not felt, since it comes about 25 times a round. */
+function useTableHaptics(state: GameState) {
   const turn = isYourTurnCue(state);
   const canDeclare = (state.phase === "deal" || state.phase === "declare") && state.declare_options.length > 0;
   const myTeam = state.players.find((p) => p.seat === state.you)?.team ?? null;
@@ -174,17 +184,18 @@ function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
     if (canDeclare && !prev.current.canDeclare) haptic("declare");
     prev.current = { turn, canDeclare };
   }, [turn, canDeclare]);
+  // every server state is a fresh object, so the round's arrival is the
+  // transition from no result to one, not a change of identity
+  const wonRound = state.round_result !== null && myTeam !== null && state.round_result.winner_team === myTeam;
+  const hadResult = state.round_result !== null;
+  const prevResult = useRef(hadResult);
   useEffect(() => {
-    if (!shownLastTrick || myTeam === null) return;
-    if (state.players.find((p) => p.seat === shownLastTrick.winner)?.team === myTeam) haptic("won");
-  }, [shownLastTrick]);   // once per finished trick, not on every state
-  const result = state.round_result;
-  useEffect(() => {
-    if (result && myTeam !== null && result.winner_team === myTeam) haptic("won");
-  }, [result]);           // once per round result
+    if (hadResult && !prevResult.current && wonRound) haptic("won");
+    prevResult.current = hadResult;
+  }, [hadResult, wonRound]);
 }
 
-export default function Table({ state }: { state: GameState }) {
+export default function Table({ state, toast = null }: { state: GameState; toast?: Toast | null }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -247,9 +258,12 @@ export default function Table({ state }: { state: GameState }) {
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
   const online = status === "open";
+  // What Play or Bury says while its send is unanswered: the cards stay put
+  // until the server's state moves them, and a dropped connection says so
+  // instead of waiting silently.
+  const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
-    haptic("play");
     setPending({ handKey, turn: state.turn, generation: conn.generation });
   };
 
@@ -292,7 +306,9 @@ export default function Table({ state }: { state: GameState }) {
   const selectable =
     (state.phase === "bury" && iAmBanker) || state.phase === "play";
 
-  useTableHaptics(state, shownLastTrick);
+  const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
+
+  useTableHaptics(state);
 
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
@@ -357,20 +373,32 @@ export default function Table({ state }: { state: GameState }) {
       <button
         className="btn primary"
         disabled={selectedIds.length !== 8 || pending !== null || !online}
+        aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
       >
-        Bury 8 cards ({selectedIds.length}/8)
+        {pendingLabel ?? `Bury 8 cards (${selectedIds.length}/8)`}
       </button>
     );
   } else if (state.phase === "play" && myTurn) {
+    const choosing = selectedIds.length === 0 && pending === null;
+    // following, a play is exactly as many cards as the lead
+    const need = lead ? lead.length : null;
+    const countWrong = need !== null && selectedIds.length !== need;
+    const playLabel = selectedIds.length === 0
+      ? "Play"
+      : need !== null && need > 1 ? `Play (${selectedIds.length}/${need})` : `Play (${selectedIds.length})`;
     actionBar = (
       <>
         <button
-          className="btn primary"
-          disabled={selectedIds.length === 0 || pending !== null || !online}
+          className={`btn primary${choosing ? " your-turn" : ""}`}
+          disabled={selectedIds.length === 0 || countWrong || pending !== null || !online}
+          aria-busy={pending !== null || undefined}
           onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
         >
-          Play {selectedIds.length > 0 ? `(${selectedIds.length})` : ""}
+          {/* a phone shows "Your turn" on Play until you choose a card */}
+          <span className="play-text">{pendingLabel ?? playLabel}</span>
+          <span className="your-turn-text">Your turn</span>
+          {/* a phone says what to do under it until a card is chosen */}
         </button>
         <button
           className="btn subtle"
@@ -389,6 +417,7 @@ export default function Table({ state }: { state: GameState }) {
   return (
     <div className={`table-screen phase-${state.phase}${showingLast ? " showing-last" : ""}${isYourTurnCue(state) ? " my-turn" : ""}`}>
       <Hud state={state} />
+      {state.matched ? <MatchedNote /> : null}
       <div className="felt">
         {opponents.map((p) => (
           <OpponentPanel key={p.seat} player={p} state={state} />
@@ -434,6 +463,7 @@ export default function Table({ state }: { state: GameState }) {
       )}
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
+      {toast ? <ToastView key={toast.id} toast={toast} /> : null}
     </div>
   );
 }

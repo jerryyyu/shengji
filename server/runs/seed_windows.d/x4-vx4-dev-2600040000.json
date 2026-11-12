@@ -1,0 +1,14 @@
+{
+ "name": "x4-vx4-dev-2600040000",
+ "purpose": "screen",
+ "seed0": 2600040000,
+ "clusters": 1000,
+ "span": [
+  2600040000,
+  2600041000
+ ],
+ "created_at": "2026-11-11T00:00:00Z",
+ "host": "unassigned",
+ "git_head": "257e502c688df367f6abbd3da6d449db9306f0b6",
+ "note": "X4 arm V-X4 (value), DEV stage: 1,000 fresh deals vs R52. DEV pass bar: mean >= +0.02 and one-sided 80% lower bound > 0. This is a seed reservation only; the candidate package/full lineage is not yet available, while the R52 comparator is pinned at packet freeze. Before any launch, pin the candidate lineage and run seed_windows.py clear against every checkpoint exposure and control; registry disjointness here is not exposure clearance. RESERVED FOR FUTURE REVIEW; not launch authorization."
+}

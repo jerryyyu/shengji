@@ -1,0 +1,14 @@
+{
+ "name": "x4-px4-confirm-2600100000",
+ "purpose": "screen",
+ "seed0": 2600100000,
+ "clusters": 7840,
+ "span": [
+  2600100000,
+  2600107840
+ ],
+ "created_at": "2026-11-11T00:00:00Z",
+ "host": "unassigned",
+ "git_head": "257e502c688df367f6abbd3da6d449db9306f0b6",
+ "note": "X4 arm P-X4 (prior), CONFIRMATION stage: 7,840 fresh deals vs R52, only after a reviewed SCREEN PASS and with pinned model packages. This is a seed reservation only; before any launch, pin both model lineages and run seed_windows.py clear against every checkpoint exposure and control. Registry disjointness here is not exposure clearance. RESERVED FOR FUTURE REVIEW; not launch authorization."
+}

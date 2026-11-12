@@ -1,0 +1,14 @@
+{
+ "name": "x4-bx4-screen-2600010000",
+ "purpose": "screen",
+ "seed0": 2600010000,
+ "clusters": 3920,
+ "span": [
+  2600010000,
+  2600013920
+ ],
+ "created_at": "2026-11-11T00:00:00Z",
+ "host": "unassigned",
+ "git_head": "257e502c688df367f6abbd3da6d449db9306f0b6",
+ "note": "X4 arm B-X4 (belief), SCREEN stage: 3,920 fresh deals vs R52, gated on a reviewed DEV result and pinned model packages. This is a seed reservation only; before any launch, pin both model lineages and run seed_windows.py clear against every checkpoint exposure and control. Registry disjointness here is not exposure clearance. RESERVED FOR FUTURE REVIEW; not launch authorization."
+}

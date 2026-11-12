@@ -1,0 +1,14 @@
+{
+ "name": "x4-bx4-dev-2600000000",
+ "purpose": "screen",
+ "seed0": 2600000000,
+ "clusters": 1000,
+ "span": [
+  2600000000,
+  2600001000
+ ],
+ "created_at": "2026-11-11T00:00:00Z",
+ "host": "unassigned",
+ "git_head": "257e502c688df367f6abbd3da6d449db9306f0b6",
+ "note": "X4 arm B-X4 (belief), DEV stage: 1,000 deals vs R52. DEV pass bar: mean >= +0.02 and one-sided 80% lower bound > 0. Pin candidate, init and comparator packages and their training lineage before launch. For this belief-only DEV comparison, B-X4 and B1a checkpoints lack CWV metadata.exposure: document their known corpus seed intervals and verify numeric disjointness from this window instead of reconstructing belief exposure. This is not deal-key exposure clearance; unknown or repeated-deal overlap remains a limitation of the DEV result. Run seed_windows.py clear for the shared value/prior controls and their available checkpoint lineage. A passing DEV permits proposing a screen, not claiming fresh-deal strength: full candidate/control deal-exposure clearance is still required before screen promotion. This exception applies only to this B-X4 DEV window, not other arms or stages. Registration, independent packet review, existing user authority, host/queue guards and Claude RELEASE remain required; this reservation is not launch authorization."
+}

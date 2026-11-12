@@ -372,7 +372,7 @@ describe("the ready check", () => {
     expect(q(".q-rc")).toBeNull();
     expect(q(".q-dlg")).toBeNull();
     expect(q(".q-toast")?.textContent).toContain("A player didn't accept.");
-    expect(q(".q-toast")?.textContent).toContain("You're back in the queue and keep your place.");
+    expect(q(".q-toast")?.textContent).toContain("You keep your place.");
     expect(q(".q-bar b")?.textContent).toBe("Back in queue");
     expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
   });

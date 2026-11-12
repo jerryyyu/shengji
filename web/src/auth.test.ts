@@ -144,7 +144,7 @@ describe("display names", () => {
     const err = await updateDisplayName("Bot 1").catch((e: Error) => e);
     expect(err).toBeInstanceOf(NameRejected);
     expect((err as NameRejected).reason).toBe("reserved");
-    expect((err as Error).message).toContain("reserved for bots");
+    expect((err as Error).message).toContain("reserved");
     routes.set("PATCH /api/me", { status: 401 });
     await expect(updateDisplayName("X")).rejects.toThrow("401");
     // clearing sends null

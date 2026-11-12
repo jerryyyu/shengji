@@ -92,7 +92,7 @@ export const NAME_MESSAGES: Record<string, string> = {
   empty: "Enter a name.",
   too_long: `Up to ${DISPLAY_NAME_MAX} characters.`,
   control_chars: "No line breaks or control characters.",
-  reserved: "That name is reserved for bots and the system.",
+  reserved: "That name is reserved.",
   not_allowed: "That name is not allowed.",
   not_a_string: "Enter a name.",
 };

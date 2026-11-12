@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import { fetchGame, fetchGames, removeGame, teamPair } from "../replay/api";
 import type { Fetched, GameDetail, GameRow } from "../replay/api";
 import { navigate } from "../replay/route";
@@ -222,9 +223,11 @@ function byDay(games: GameRow[]): { label: string; games: GameRow[] }[] {
 /** The signed-in account's saved games, newest first and grouped by day;
  *  a row opens the game, whose rounds each have a Replay, and offers
  *  Continue and Replay itself. With a `cacheKey` the last list shown is
- *  drawn at once on return and refreshed underneath; `onReady` fires once the list (or its failure) is drawn. */
-export function SavedGames({ onPlay, cacheKey, onReady }: {
+ *  drawn at once on return and refreshed underneath; `onReady` fires once the list (or its failure) is drawn.
+ *  `refreshRef` receives the first-page reload, for a pull to refresh. */
+export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
   onPlay: () => void; cacheKey?: string; onReady?: () => void;
+  refreshRef?: MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const [list, setList] = useState<ListState>(
     () => (cacheKey ? cached<ListState>(cacheKey) : undefined) ?? { status: "loading" });
@@ -239,28 +242,38 @@ export function SavedGames({ onPlay, cacheKey, onReady }: {
     return () => { shownLists.delete(drop); };
   }, []);
 
-  useEffect(() => {
-    let live = true;
-    fetchGames(null).then((r) => {
-      if (!live) return;
-      setList((cur) => {
-        if (!r.ok) return cur.status === "ready" ? cur : { status: "failed", reason: r.reason, code: r.status };
-        const fresh = r.data.games;
-        // a first page with no continuation is the whole list
-        if (r.data.next_before === null) {
-          return { status: "ready", games: fresh, next: null, more: false, moreError: false };
-        }
-        // pages loaded past the first stay, below the refreshed first page
-        const ids = new Set(fresh.map((g) => g.id));
-        const oldest = fresh.length ? fresh[fresh.length - 1].started_at : Infinity;
-        const older = cur.status === "ready"
-          ? cur.games.filter((g) => !ids.has(g.id) && g.started_at < oldest) : [];
-        return { status: "ready", games: [...fresh, ...older], next: older.length && cur.status === "ready"
-          ? cur.next : r.data.next_before, more: false, moreError: false };
-      });
+  // the first page, merged over what is shown: on mount, and on a pull to refresh
+  const live = useRef(false);
+  const loadFirstPage = useCallback((): Promise<void> => fetchGames(null).then((r) => {
+    if (!live.current) return;
+    setList((cur) => {
+      if (!r.ok) return cur.status === "ready" ? cur : { status: "failed", reason: r.reason, code: r.status };
+      const fresh = r.data.games;
+      // a first page with no continuation is the whole list
+      if (r.data.next_before === null) {
+        return { status: "ready", games: fresh, next: null, more: false, moreError: false };
+      }
+      // pages loaded past the first stay, below the refreshed first page
+      const ids = new Set(fresh.map((g) => g.id));
+      const oldest = fresh.length ? fresh[fresh.length - 1].started_at : Infinity;
+      const older = cur.status === "ready"
+        ? cur.games.filter((g) => !ids.has(g.id) && g.started_at < oldest) : [];
+      return { status: "ready", games: [...fresh, ...older], next: older.length && cur.status === "ready"
+        ? cur.next : r.data.next_before, more: false, moreError: false };
     });
-    return () => { live = false; };
-  }, []);
+  }), []);
+
+  useEffect(() => {
+    live.current = true;
+    void loadFirstPage();
+    return () => { live.current = false; };
+  }, [loadFirstPage]);
+
+  useEffect(() => {
+    if (!refreshRef) return;
+    refreshRef.current = loadFirstPage;
+    return () => { if (refreshRef.current === loadFirstPage) refreshRef.current = null; };
+  }, [refreshRef, loadFirstPage]);
 
   useEffect(() => {
     if (list.status === "loading") return;

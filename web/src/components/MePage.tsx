@@ -10,7 +10,8 @@ import { followInfoLink } from "../support/route";
 import { Avatar, Segmented } from "../home/HomeShell";
 import { EDIT_NAME_EVENT, WIDE, openTab, takeNameEditRequest } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
-import { cached, remember, tabMemory, useCachedLoad, useTabScroll, viewerScope } from "../home/session";
+import { cached, remember, tabMemory, useCachedResource, useTabScroll, viewerScope } from "../home/session";
+import LargeTitlePage from "../home/LargeTitlePage";
 import type { MeSection } from "../home/route";
 import GoogleSignIn from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
@@ -302,7 +303,11 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
   // session, so another account's stats are never drawn while these load
   const scope = viewerScope(account);
   const statsKey = `${scope}:stats`;
-  const res = useCachedLoad<Loaded<Stats>>(user ? statsKey : null, fetchStats, user);
+  const { value: res, reload: reloadStats } = useCachedResource<Loaded<Stats>>(user ? statsKey : null, fetchStats, user);
+  // the saved-games list's own first-page reload, while Games is showing
+  const reloadGames = useRef<(() => Promise<void>) | null>(null);
+  const refresh = useCallback(
+    () => Promise.all([reloadStats(), reloadGames.current?.()]), [reloadStats]);
   const stats = res && res.ok ? res.data : null;
   const [gamesReady, setGamesReady] = useState(false);
   useEffect(() => { if (section !== "games") setGamesReady(false); }, [section]);
@@ -318,7 +323,8 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
   else {
     let content: ReactNode;
     if (section === "games") {
-      content = <SavedGames onPlay={() => openTab("play")} cacheKey={`${scope}:games`} onReady={markGamesReady} />;
+      content = <SavedGames onPlay={() => openTab("play")} cacheKey={`${scope}:games`} onReady={markGamesReady}
+                             refreshRef={reloadGames} />;
     } else if (res === null) content = <p className="lb-note" role="status">Loading…</p>;
     else if (!res.ok) {
       content = <p className="lobby-error" role="alert">Could not load your stats ({res.status || "no connection"}).</p>;
@@ -335,12 +341,10 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
     );
   }
   return (
-    <div className="screen home-page me-page" ref={scroller}>
-      <div className="home-col">
-        {onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}
-        <h1 className="large-title">{wide ? (section === "games" ? "Games" : "Stats") : "Me"}</h1>
-        {body}
-      </div>
-    </div>
+    <LargeTitlePage className="me-page" scroller={scroller} title={wide ? (section === "games" ? "Games" : "Stats") : "Me"}
+                    phone={!wide} onRefresh={refresh}
+                    before={onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}>
+      {body}
+    </LargeTitlePage>
   );
 }

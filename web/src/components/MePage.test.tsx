@@ -462,3 +462,40 @@ describe("removing a saved game from Me → Games", () => {
     expect(buttonNamed("Load more")).toBeUndefined();
   });
 });
+
+describe("pull to refresh", () => {
+  beforeEach(() => { authState.current = { status: "in", clientId: "cid", user: JERRY }; });
+
+  function pullDown() {
+    const el = host.querySelector(".me-page")!;
+    const fire = (type: string, y: number | null) => {
+      const e = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(e, "touches", { value: y === null ? [] : [{ clientX: 150, clientY: y }] });
+      act(() => { el.dispatchEvent(e); });
+    };
+    fire("touchstart", 100);
+    for (let y = 110; y <= 260; y += 10) fire("touchmove", y);
+    fire("touchend", null);
+  }
+  const count = (prefix: string) => calls.filter((c) => c.url.startsWith(prefix)).length;
+
+  it("Stats reloads the stats through the page's cached load", async () => {
+    await render();
+    expect(count("/api/me/stats")).toBe(1);
+    pullDown();
+    await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
+    expect(count("/api/me/stats")).toBe(2);
+    expect(count("/api/me/games")).toBe(0);
+    expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
+  });
+
+  it("Games reloads the saved games' first page and the stats, once each", async () => {
+    await render("games");
+    expect(count("/api/me/games?")).toBe(1);
+    pullDown();
+    await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
+    expect(count("/api/me/games?")).toBe(2);
+    expect(count("/api/me/stats")).toBe(2);
+    expect(host.querySelector(".games-day-row .games-row-title")?.textContent).toBe("Room KQ4X · with Sam, Mei, Wen");
+  });
+});

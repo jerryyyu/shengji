@@ -140,6 +140,16 @@ class Connection {
       });
       return;
     }
+    // A browser wake can end an outage before the retry timer expires.
+    // Preserve healthy sockets and handshakes that are already in progress.
+    const wake = () => {
+      if (this.status === "closed") this.reconnect();
+    };
+    window.addEventListener("online", wake);
+    window.addEventListener("pageshow", wake);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") wake();
+    });
     this.open();
   }
 

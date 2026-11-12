@@ -97,6 +97,8 @@ export class QueueStore {
    *  that follows tells whether this entry went to the front. */
   private missedByOther = false;
   private resyncTimer: number | null = null;
+  /** After a reconnect, how long the server has to hand the pair back. */
+  private partyResyncTimer: number | null = null;
   private noteTimer: number | null = null;
   private noteId = 0;
   private status: ConnStatus = "closed";
@@ -126,6 +128,7 @@ export class QueueStore {
     // loading -> signed in keeps what the resync delivered
     if (was === null || (was === undefined && account !== null)) return;
     this.clearResync();
+    this.clearPartyResync();
     this.declined = null;
     this.joinSentAt = null;
     this.droppedWhileQueued = false;
@@ -170,12 +173,27 @@ export class QueueStore {
     this.resyncTimer = null;
   }
 
+  private clearPartyResync(): void {
+    if (this.partyResyncTimer !== null) window.clearTimeout(this.partyResyncTimer);
+    this.partyResyncTimer = null;
+  }
+
   private onStatus(s: ConnStatus): void {
     const was = this.status;
     this.status = s;
     // an unanswered join or start counts too: its reply may have died with the socket
     if (s !== "open" && was === "open" && (this.view.queued || this.view.check || this.view.pending)) {
       this.droppedWhileQueued = true;
+    }
+    // Pairs live in the server's memory: a restart forgets them, and a
+    // reconnect that gets no pair back means this one is gone.
+    if (s === "open" && was !== "open" && this.view.party) {
+      const id = this.view.party.party_id;
+      this.clearPartyResync();
+      this.partyResyncTimer = window.setTimeout(() => {
+        this.partyResyncTimer = null;
+        if (this.view.party?.party_id === id) this.set({ party: null, partyError: null });
+      }, RESYNC_MS);
     }
     if (s === "open" && this.droppedWhileQueued) {
       this.droppedWhileQueued = false;
@@ -288,6 +306,7 @@ export class QueueStore {
         break;
       }
       case "party": {
+        this.clearPartyResync();
         const before = this.view.party;
         const joined = msg.members.length === 2 && (!before || before.members.length < 2);
         this.set({ party: msg, partyError: null, joinCode: "",
@@ -300,6 +319,7 @@ export class QueueStore {
       }
       case "party_closed":
         if (this.view.party && this.view.party.party_id !== msg.party_id) break;
+        this.clearPartyResync();
         this.set({ party: null });
         if (msg.reason === "expired") this.notify("Your pair code expired.");
         else if (msg.by && !msg.you) this.notify(`${msg.by} left the pair.`);
@@ -314,8 +334,11 @@ export class QueueStore {
           }
           const secs = extra.cooldown_secs ?? 30;
           this.set({ pending: null, cooldownUntil: now + secs * 1000 });
-        } else if (msg.code.startsWith("party") || msg.code === "in_queue" || msg.code === "in_party"
-                   || msg.code === "not_in_party") {
+        } else if (msg.code === "not_in_party") {
+          // the server holds no pair for this account: the chip is stale
+          this.clearPartyResync();
+          this.set({ pending: null, party: null, partyError: null });
+        } else if (msg.code.startsWith("party") || msg.code === "in_queue" || msg.code === "in_party") {
           this.set({ pending: null, partyError: msg.message });
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
@@ -414,6 +437,7 @@ export class QueueStore {
   /** Test seam: forget everything, as a fresh page would. */
   reset(): void {
     this.clearResync();
+    this.clearPartyResync();
     if (this.noteTimer !== null) window.clearTimeout(this.noteTimer);
     this.noteTimer = null;
     this.view = EMPTY;

@@ -62,7 +62,6 @@ export default function ChatPanel({
         </button>
       </div>
       <div className="chat-log" role="log" aria-label="Messages" aria-relevant="additions">
-        {shown.length === 0 && <div className="chat-empty">No messages yet</div>}
         {shown.map((m, i) =>
           m.seat === -1 ? (            // system line: joins, leaves, seat claims
             <div key={i} className="chat-msg system">

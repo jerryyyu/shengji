@@ -13,9 +13,9 @@ const TOPICS: { value: SupportTopic; label: string }[] = [
 ];
 
 const ERRORS: Record<Exclude<SendResult, "ok">, string> = {
-  rate_limited: "You’ve sent several messages in the last hour. Please try again later.",
+  rate_limited: "Too many messages. Try again later.",
   invalid: "Check the message and the email address, then send again.",
-  failed: "Couldn’t send. Check your connection and try again.",
+  failed: "Couldn’t send. Check your connection.",
 };
 
 type Phase = "editing" | "sending" | "sent";
@@ -60,16 +60,11 @@ export default function SupportPage() {
         {phase === "sent" ? (
           <div className="support-thanks" role="status">
             <p className="support-thanks-title">Thanks — we read every message.</p>
-            <p className="info-text">
-              {email.trim() ? "If we can help, we’ll reply to the address you gave." : "You didn’t leave an email, so we won’t be able to reply, but we’ll still read it."}
-            </p>
+            {email.trim() ? <p className="info-text">We’ll reply if we can.</p> : null}
             <button type="button" className="btn big" onClick={again}>Send another</button>
           </div>
         ) : (
           <form className="support-form" onSubmit={submit} noValidate>
-            <p className="info-text">
-              Found a bug, have an idea, or need help with your account? Tell us here.
-            </p>
             <label className="field">
               <span className="field-label">Topic</span>
               <select value={topic} onChange={(e) => setTopic(e.target.value as SupportTopic)}>
@@ -107,7 +102,7 @@ export default function SupportPage() {
                 onChange={(e) => setEmail(e.target.value)}
               />
               <span id={`${id}-email`} className="field-hint">
-                {emailBad ? "That doesn’t look like an email address." : "Only if you want a reply."}
+                {emailBad ? "That doesn’t look like an email address." : null}
               </span>
             </label>
             <div className="support-trap" aria-hidden="true">

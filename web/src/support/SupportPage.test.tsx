@@ -46,7 +46,7 @@ describe("the support form", () => {
     render();
     const labels = [...host.querySelectorAll(".field-label")].map((l) => l.textContent);
     expect(labels).toEqual(["Topic", "Message", "Email (optional)"]);
-    expect(host.textContent).toContain("Only if you want a reply.");
+    expect(host.textContent).not.toContain("That doesn’t look like an email address.");
     const options = [...host.querySelectorAll("option")].map((o) => o.textContent);
     expect(options).toEqual(["Bug", "Feedback", "Account", "Other"]);
     const trap = q<HTMLInputElement>('input[name="website"]');
@@ -95,7 +95,7 @@ describe("the support form", () => {
     render();
     type(message(), "A second message this hour.");
     await submit();
-    expect(q('[role="alert"]').textContent).toMatch(/try again later/);
+    expect(q('[role="alert"]').textContent).toMatch(/Try again later/);
     expect(message().value).toBe("A second message this hour.");
   });
 

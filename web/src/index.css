@@ -4068,7 +4068,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .chat-close { background: none; border: none; color: #eee; font-size: var(--fs-20); cursor: pointer; }
 .chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: var(--fs-14); }
 .chat-head, .chat-input { flex-shrink: 0; }
-.chat-empty { opacity: 0.5; font-size: var(--fs-13); }
 .chat-msg { margin: 4px 0; word-break: break-word; }
 .chat-msg .chat-name { opacity: 0.65; margin-right: 6px; font-weight: 600; }
 .chat-msg.mine .chat-name { color: #8fd18f; }

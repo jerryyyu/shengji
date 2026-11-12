@@ -212,7 +212,7 @@ export class QueueStore {
         const signedIn = auth.state?.status === "in";
         this.joinSentAt = null;
         this.set({ queued: false, check: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false });
-        if (held && signedIn) this.notify("You left the queue while away.", "Tap Find a game to queue again; no cooldown.");
+        if (held && signedIn) this.notify("You left the queue while away.", "No cooldown.");
       }, RESYNC_MS);
     }
   }
@@ -242,7 +242,7 @@ export class QueueStore {
         if (this.missedByOther) {
           this.missedByOther = false;
           // only an entry whose every member accepted goes to the front
-          this.notify("A player didn't accept.", msg.front ? "You're back in the queue and keep your place."
+          this.notify("A player didn't accept.", msg.front ? "You keep your place."
                                                            : "You're still in the queue.");
         }
         this.set({
@@ -286,7 +286,7 @@ export class QueueStore {
         if (msg.reason === "player_missed") {
           this.missedByOther = true;
         } else if (msg.reason === "server_error") {
-          this.notify("The game could not start.", "You're back in the queue and keep your place.");
+          this.notify("The game could not start.", "You keep your place.");
         }
         break;
       }
@@ -305,7 +305,7 @@ export class QueueStore {
         this.set(next);
         if (msg.reason === "away") {
           this.notify(by ? `${by} left the queue while away.` : "You left the queue while away.",
-                      "Tap Find a game to queue again; no cooldown.");
+                      "No cooldown.");
         } else if (msg.reason === "in_room" && by) {
           this.notify(`${by} joined a room, so your search ended.`);
         }

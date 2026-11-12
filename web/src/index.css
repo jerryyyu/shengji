@@ -221,7 +221,7 @@ textarea:focus-visible {
   transform: scale(0.97); /* feedback on press; actions still commit on click */
 }
 
-/* HUD leave control: subtle until armed */
+/* HUD leave control: subtle; a tap opens the leave alert */
 .leave-btn {
   appearance: none;
   background: transparent;
@@ -241,12 +241,6 @@ textarea:focus-visible {
   color: var(--text);
   border-color: #4a5462;
 }
-}
-
-.leave-btn.armed {
-  background: #3a1e24;
-  border-color: var(--danger);
-  color: #ffb3bc;
 }
 
 /* Speaker / mute toggle */
@@ -848,20 +842,27 @@ textarea:focus-visible {
   min-height: 44px;
 }
 
+/* Room's way out: a quiet grey "‹ Leave" with a 44px tall hit area */
 .room-leave {
   appearance: none;
   justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  min-height: 44px;
-  padding: 0 6px 0 0;
+  height: 44px;
+  padding: 0 8px 0 0;
   border: 0;
   background: none;
-  color: var(--gold);
+  color: #9aa3b2;
   font: inherit;
-  font-size: var(--fs-17, 17px);
+  font-size: 14px;
   cursor: pointer;
+}
+
+/* the leave link is quiet: a small grey chevron and word */
+.room-leave svg {
+  width: 9px;
+  height: 15px;
 }
 
 .room-title {
@@ -1685,19 +1686,6 @@ textarea:focus-visible {
   display: none;
 }
 
-/* The round-end dialog's Leave asks first, with no timer: Stay / Leave. */
-.dialog-leave-confirm {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.dialog-leave-confirm .dialog-leave-q {
-  color: var(--text-dim);
-  font-weight: 600;
-}
-
 /* Play's "Your turn" wording: only the phone layout shows it */
 .your-turn-text {
   display: none;
@@ -2343,6 +2331,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --safe-b: var(--frame-safe-b, env(safe-area-inset-bottom, 0px));
     --safe-w: calc(var(--view-w) - var(--safe-l) - var(--safe-r));
     --header-h: 32px;
+    /* every header pill: the level strip, the top seat, the mode chip, Chat, the menu */
+    --pill-bg: rgba(8, 20, 14, 0.72);
+    /* Chat's slot in the header (40px and its gap); offline has no Chat */
+    --chat-w: calc(40px + var(--space-s));
     /* one spacing scale for the whole table */
     --space-xs: 4px;
     --space-s: 8px;
@@ -2506,7 +2498,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .hud-bar .hud-group:nth-child(2) {
     gap: 0;
     height: var(--header-h);
-    background: rgba(8, 20, 14, 0.72);
+    background: var(--pill-bg);
     border-radius: 999px 0 0 999px;
     padding: 0 2px 0 6px;
   }
@@ -2530,7 +2522,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 0 999px 999px 0;
     padding: 0 14px 0 10px;
     line-height: 1;
-    background: rgba(8, 20, 14, 0.72);
+    background: var(--pill-bg);
     box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.1);   /* the divider */
   }
 
@@ -2600,8 +2592,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     min-height: var(--header-h);
     padding: 0 8px;
     border-radius: 999px;
-    border: 1px solid var(--panel-edge);
-    background: rgba(16, 19, 26, 0.82);
+    border: 0;
+    background: var(--pill-bg);
     color: var(--text);
     font-size: var(--fs-16);
     font-weight: 700;
@@ -2617,7 +2609,30 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .hud-more-btn[aria-expanded="true"] {
-    border-color: var(--gold);
+    outline: 1px solid var(--gold);
+    outline-offset: -1px;
+  }
+
+  /* The mode chip stands at the right of the header, before Chat and the
+     menu: the same height, fill and radius as every header pill. Chat is
+     placed on its own (fixed), so the chip keeps Chat's slot and a gap
+     clear; offline there is no Chat and it sits a gap from the menu. */
+  .hud-bar .mode-chip {
+    height: var(--header-h);
+    margin-left: auto;
+    margin-right: calc(var(--chat-w) + var(--space-s));
+    padding: 0 12px;
+    border: 0;
+    background: var(--pill-bg);
+    font-size: var(--fs-13);
+  }
+
+  .hud-bar .mode-chip ~ .hud-more {
+    margin-left: 0;
+  }
+
+  .table-screen:has(.mode-chip) {
+    --mode-gap: var(--space-s);
   }
 
   .hud-menu {
@@ -2657,33 +2672,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
   }
   .hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
-  .hud-menu-row.leave.armed { color: var(--gold); cursor: default; padding-right: 4px; white-space: nowrap; }
   .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-
-  /* Leave game? Stay | Leave: two real buttons, no timer */
-  .hud-menu-confirm {
-    display: flex;
-    gap: 6px;
-  }
-
-  .hud-menu-choice {
-    min-height: 44px;
-    min-width: 58px;
-    padding: 0 12px;
-    border: 1px solid var(--panel-edge);
-    border-radius: 8px;
-    background: var(--panel);
-    color: var(--text);
-    font: 600 var(--fs-13) inherit;
-    font-family: inherit;
-    cursor: pointer;
-  }
-
-  .hud-menu-choice.danger {
-    border-color: transparent;
-    background: var(--danger);
-    color: #fff;
-  }
 
   /* --- Seats: one-line labels of one height, radius and type size --- */
   .opponent {
@@ -2695,7 +2684,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     padding: 0 10px 0 7px;     /* the team dot sits in the label: a little less padding */
     border: 0;
     border-radius: 999px;
-    background: rgba(8, 20, 14, 0.72);
+    background: var(--pill-bg);
     z-index: 2;
   }
 
@@ -2839,12 +2828,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   /* The top seat's label shares the header row. Its stretch runs from a gap
      past the level strip (the strip's measured width, --hud-strip-w, from
-     the safe edge) to a gap before Chat. It is centred over its slot when
+     the safe edge) to a gap before the mode chip, or Chat. It is centred over its slot when
      the stretch allows; otherwise it takes up to 96px of the stretch off
      centre, and the name ends in an ellipsis. */
   .opponent.pos-top {
     --top-from: calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s));
-    --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - 40px - var(--space-s));
+    --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - var(--chat-w)
+      - var(--hud-mode-w, 0px) - var(--mode-gap, 0px));
     --top-w: min(200px, max(calc(2 * min(var(--view-w) / 2 - var(--top-from), var(--top-to) - var(--view-w) / 2)),
       min(96px, calc(var(--top-to) - var(--top-from)))));
     top: calc(6px + var(--safe-t));
@@ -3631,8 +3621,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   /* the card's own 8px gap separates Next round from Leave, and Leave keeps
      the same 12px from the bottom edge as the title has from the top */
-  .modal > .dialog-leave-btn,
-  .modal > .dialog-leave-confirm {
+  .modal > .dialog-leave-btn {
     margin: 0 auto 12px;
   }
 
@@ -3678,6 +3667,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: auto;
     width: 40px;
     height: var(--header-h);
+    border: 0;
+    background: var(--pill-bg);
     border-radius: 999px;
     font-size: var(--fs-15);
   }
@@ -4855,12 +4846,6 @@ button.games-row { cursor: pointer; }
   margin: 12px auto 0;
 }
 
-.dialog-leave-btn.armed {
-  background: #3a1e24;
-  border-color: var(--danger);
-  color: #ffb3bc;
-}
-
 /* Support and Privacy: a lobby-style panel of plain reading text, wide
    enough for comfortable lines on a desktop and the full width on a phone. */
 
@@ -4978,28 +4963,33 @@ button.games-row { cursor: pointer; }
 .rating-game { font-size: 12px; font-weight: 600; }
 .rating-guest {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0 8px;
-  padding: 0 12px;
-  border: 1px dashed var(--panel-edge);
-  border-radius: 10px;
+  min-height: 44px;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: 14px;
 }
+/* drawn as a 30px pill, tapped as 44px */
 .rating-signin {
   appearance: none;
-  min-height: 44px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
   border: 0;
-  background: none;
+  border-radius: 15px;
+  background: #242a35;
   color: var(--gold);
   font: inherit;
   font-weight: 600;
-  text-decoration: underline;
-  text-decoration-color: #6b5a22;
-  text-underline-offset: 3px;
   cursor: pointer;
+}
+.rating-signin::after {
+  content: "";
+  position: absolute;
+  inset: -7px 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5356,7 +5346,11 @@ button.play-conn { cursor: pointer; }
   text-transform: uppercase;
 }
 .ranked-chip .trophy { width: 12px; height: 12px; }
-.q-ranked-row { display: flex; justify-content: center; margin-top: -4px; }
+/* The chip sits a little closer to the title than the body's gap. The pull
+   is a negative margin on the header, outside the scrolling body: a negative
+   margin on the chip's row would tuck its top under the body's clip edge. */
+.q-ranked-row { display: flex; justify-content: center; }
+.q-sheet:has(.q-sheet-body > .q-ranked-row:first-child) .q-sheet-head { margin-bottom: -4px; }
 
 .screen.home-page,
 .home-body > .screen.home-page {
@@ -5586,7 +5580,7 @@ button.grp-row:disabled { cursor: default; }
 .signin-card.compact { gap: 10px; padding: 16px 16px 14px; }
 .signin-card h3 { margin: 0; font-size: var(--fs-20); font-weight: 700; line-height: 1.2; color: #fff; }
 .signin-card p { margin: 0; font-size: var(--fs-15); line-height: 1.35; color: #9aa3b2; }
-/* The one explanation of rated play is the Leaderboard's sign-in card; other
+/* The one explanation of ranked play is the Leaderboard's sign-in card; other
    sign-in cards link there with this. */
 .me-rated-link {
   appearance: none;
@@ -5760,7 +5754,7 @@ button[role="switch"]:active .ios-switch {
 }
 .games-screen .btn.subtle:not(.games-back):disabled { opacity: 0.45; }
 
-/* Matchmaking queue: Find a game, the queue bar (a top-bar chip from 700px),
+/* Matchmaking queue: the Ranked sheet, the queue bar (a top-bar chip from 700px),
    the Solo / With a friend and pair sheets (centred dialogs from 700px), the
    ready check, the queue's notices and the table's matched-game note. */
 .q-find { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.15; }
@@ -6029,7 +6023,87 @@ span.q-party-main { cursor: default; }
 .q-toast small { display: block; font-size: var(--fs-13); font-weight: 400; color: #9aa3b2; }
 .q-toast-i { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%; background: #3f3415; color: var(--gold); font-size: 13px; }
 
-.rated-chip { display: inline-flex; align-items: center; gap: 5px; color: #d8f3e1; font-weight: 600; }
+/* The header's mode chip: gold with a trophy for a ranked game, grey for practice. */
+.mode-chip { gap: 5px; }
+.mode-chip.ranked { color: var(--gold); }
+.mode-chip.practice { color: #c3cad6; }
+.mode-chip-icon { flex: none; }
+
+/* Wide screens: every pill in the top bar is one height. */
+:root:not(.phone-landscape) .hud-bar .chip,
+:root:not(.phone-landscape) .hud-bar .leave-btn {
+  box-sizing: border-box;
+  height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+:root:not(.phone-landscape) .hud-bar .mute-btn {
+  box-sizing: border-box;
+  width: 34px;
+  height: 34px;
+}
+
+/* The leave alert: a small centred card, title and one line, then Keep
+   playing | Leave side by side. */
+dialog.leave-alert-backdrop {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: none;
+  z-index: 90;
+  animation: fade-in 0.2s ease-out;
+}
+.leave-alert {
+  width: 270px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #2c313b;
+  display: flex;
+  flex-direction: column;
+  animation: leave-alert-in 0.2s var(--ease-out);
+}
+.leave-alert-text {
+  padding: 20px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+.leave-alert-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #e9ecf2;
+}
+.leave-alert-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #c3cad6;
+}
+.leave-alert-actions {
+  display: flex;
+  border-top: 1px solid #3c4350;
+}
+.leave-alert-actions button {
+  flex: 1 1 0;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+.leave-alert-actions button:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.leave-alert-actions .leave-alert-keep {
+  border-right: 1px solid #3c4350;
+  font-weight: 600;
+  color: #5b9dff;
+}
+.leave-alert-actions .leave-alert-leave { color: #ff6b78; }
+@keyframes leave-alert-in {
+  from { opacity: 0; transform: scale(1.08); }
+  to { opacity: 1; transform: none; }
+}
 
 @media (min-width: 700px) {
   .q-layer { justify-content: center; align-items: center; }
@@ -6082,4 +6156,5 @@ span.q-party-main { cursor: default; }
 }
 @media (prefers-reduced-motion: reduce) {
   .skel { animation: none; }
+  dialog.leave-alert-backdrop, .leave-alert { animation: none; }
 }

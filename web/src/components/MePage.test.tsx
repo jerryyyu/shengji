@@ -250,7 +250,7 @@ describe("a guest", () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     expect(host.querySelector(".me-name")?.textContent).toBe("Guest");
-    expect(host.querySelector(".me-sub")?.textContent).toBe("Not rated");
+    expect(host.querySelector(".me-sub")?.textContent).toBe("Unranked");
     const card = host.querySelector(".signin-card")!;
     expect(card.querySelector(".google-signin")).not.toBeNull();
     expect(card.querySelector(".apple-signin")).toBeNull();
@@ -570,13 +570,13 @@ describe("the Settings group", () => {
     expect(groupLabels()).toEqual(["Sound", "Haptics"]);
   });
 
-  it("a guest's sign-in card links to the leaderboard's explanation of rated games instead of repeating it", async () => {
+  it("a guest's sign-in card links to the leaderboard's explanation of ranked games instead of repeating it", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     const card = host.querySelector(".signin-card")!;
     expect(card.textContent).not.toContain("1000");
     const link = card.querySelector<HTMLButtonElement>(".me-rated-link")!;
-    expect(link.textContent?.trim()).toBe("How rated games work");
+    expect(link.textContent?.trim()).toBe("How ranked games work");
     act(() => link.click());
     expect(window.location.hash).toBe("#/leaderboard");
   });

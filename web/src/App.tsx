@@ -28,9 +28,8 @@ import type { Toast } from "./toast";
 import ToastView from "./components/ToastView";
 import QueueLayer from "./queue/QueueLayer";
 
-// Offline play (no game server): its lobby and badge load with the local server.
-const OfflineLobby = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineLobby })));
-const OfflineBadge = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineBadge })));
+// Offline play (no game server): its start screen loads with the local server.
+const OfflineStart = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineStart })));
 
 export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
@@ -245,7 +244,7 @@ export default function App() {
   } else if (OFFLINE) {
     screen = (
       <Suspense fallback={null}>
-        <OfflineLobby status={status} error={toast?.text ?? null}
+        <OfflineStart status={status} error={toast?.text ?? null}
                       onArmAutoFill={() => { autoFill.current = true; }} />
       </Suspense>
     );
@@ -266,7 +265,6 @@ export default function App() {
   return (
     <div className={`app${rotated ? " rotated" : ""}${OFFLINE ? " offline" : ""}`}>
       {screen}
-      {OFFLINE && atTable ? <Suspense fallback={null}><OfflineBadge /></Suspense> : null}
       {status !== "open" && inRoom ? (
         <div className="reconnect-banner">
           <span className="conn-dot" /> Reconnecting…

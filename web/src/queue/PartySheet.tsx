@@ -16,11 +16,11 @@ function UsersIcon() {
   );
 }
 
-/** Signed in, Find a game asks: Solo queues now, With a friend… makes a
+/** Signed in, the Ranked sheet asks: Solo queues now, With a friend… makes a
  *  pair code to share. */
 export function SoloSheet() {
   return (
-    <Sheet title="Find a game" onClose={() => queue.closeSheet()}>
+    <Sheet title="Ranked" onClose={() => queue.closeSheet()}>
       <div className="q-sheet-pad">
         <button type="button" className="btn gold big q-find" onClick={() => queue.join()}>Solo</button>
       </div>

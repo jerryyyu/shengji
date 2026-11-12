@@ -1,5 +1,5 @@
 // The matchmaking queue as the client sees it: one store fed by the socket,
-// read by the Find a game button, the queue bar, the ready check and the pair
+// read by the Ranked Play button, the queue bar, the ready check and the pair
 // sheet. The server is the authority; the store only remembers what it was
 // last told and the few things the server cannot know (which sheet is open,
 // whether this client declined, the clock skew).

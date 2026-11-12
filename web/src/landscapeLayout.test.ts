@@ -436,7 +436,6 @@ describe("phone controls", () => {
     expect(more.height).toBe("var(--header-h)");
     expect(px(tokens["--header-h"])).toBe(32);
     expect(px(rule(block, ".hud-menu-row")["min-height"])).toBeGreaterThanOrEqual(44);
-    expect(px(rule(block, ".hud-menu-choice")["min-height"])).toBeGreaterThanOrEqual(44);
     const modalBtn = rule(block, ".modal > .btn.big");
     expect(modalBtn.position).toBe("sticky");
     expect(px(modalBtn["min-height"])).toBeGreaterThanOrEqual(44);
@@ -790,7 +789,7 @@ describe("the round-end card on a phone", () => {
     const block = phoneBlock();
     expect(rule(block, ".modal > .btn.big")["margin-bottom"]).toBeUndefined();
     expect(rule(block, ".modal").gap).toBe("8px");
-    expect(rule(block, ".modal > .dialog-leave-btn, .modal > .dialog-leave-confirm").margin).toBe("0 auto 12px");
+    expect(rule(block, ".modal > .dialog-leave-btn").margin).toBe("0 auto 12px");
   });
 });
 

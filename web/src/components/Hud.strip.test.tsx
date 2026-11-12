@@ -1,6 +1,7 @@
 // The phone header publishes the width of its level-and-points strip as
-// --hud-strip-w so the top seat's label is placed clear of it; a matched
-// game's Rated chip sits in that same row and must count.
+// --hud-strip-w and the mode chip's as --hud-mode-w, so the top seat's label
+// is placed clear of both. The mode chip stands at the right, so it never
+// widens the strip.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -11,7 +12,7 @@ import type { GameState } from "../protocol";
 const BOX: Record<string, [number, number]> = {
   "hud-group": [10, 150],      // left, width of the level/trump group
   "points-chip": [170, 70],
-  "rated-chip": [250, 60],
+  "mode-chip": [600, 80],
 };
 const proto = HTMLElement.prototype;
 const saved = {
@@ -57,14 +58,15 @@ const state = (matched: boolean) => ({
   attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
 }) as unknown as GameState;
 
-it("the strip ends after the Rated chip in a matched game, after the points otherwise", () => {
-  act(() => root.render(<Hud state={state(false)} />));
+it("the strip ends after the points; a ranked game publishes the mode chip's width instead", () => {
+  act(() => root.render(<Hud state={state(false)} practice={false} />));
   // group 10..160, points 170..240 -> 230 + 1 rounding px
   expect(host.style.getPropertyValue("--hud-strip-w")).toBe("231px");
-  act(() => root.render(<Hud state={state(true)} />));
-  // the Rated chip ends at 310 -> 300 + 1
-  expect(host.querySelector(".rated-chip")).not.toBeNull();
-  expect(host.style.getPropertyValue("--hud-strip-w")).toBe("301px");
-  act(() => root.render(<Hud state={state(false)} />));
+  expect(host.style.getPropertyValue("--hud-mode-w")).toBe("");
+  act(() => root.render(<Hud state={state(true)} practice={false} />));
+  expect(host.querySelector(".mode-chip")).not.toBeNull();
   expect(host.style.getPropertyValue("--hud-strip-w")).toBe("231px");
+  expect(host.style.getPropertyValue("--hud-mode-w")).toBe("81px");
+  act(() => root.render(<Hud state={state(false)} practice={false} />));
+  expect(host.style.getPropertyValue("--hud-mode-w")).toBe("");
 });

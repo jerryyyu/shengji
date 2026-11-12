@@ -103,13 +103,35 @@ export class QueueStore {
   /** A guest tapped Sign in to play people: reopen the choice once signed in. */
   findAfterSignIn = false;
   private attached = false;
+  /** The signed-in account this state belongs to; null when signed out,
+   *  undefined while sign-in is still being checked (a resync may land first). */
+  private account: string | null | undefined = undefined;
 
   attach(): void {
     if (this.attached) return;
     this.attached = true;
-    // a test may stand in a partial socket
+    // a test may stand in a partial auth store or socket
+    auth.subscribe?.((a) => this.onAuth(a.status === "loading" ? undefined
+                                      : a.status === "in" ? a.user?.email ?? "" : null));
     conn.subscribeStatus?.((s) => this.onStatus(s));
     conn.subscribe?.((m) => this.onMessage(m));
+  }
+
+  /** Queue, pair and ready-check state belong to one account: a sign-out,
+   *  a deletion or another account's sign-in starts from nothing. */
+  private onAuth(account: string | null | undefined): void {
+    if (account === this.account) return;
+    const was = this.account;
+    this.account = account;
+    // loading -> signed in keeps what the resync delivered
+    if (was === null || (was === undefined && account !== null)) return;
+    this.clearResync();
+    this.declined = null;
+    this.joinSentAt = null;
+    this.droppedWhileQueued = false;
+    this.missedByOther = false;
+    this.findAfterSignIn = false;
+    this.set({ ...EMPTY, count: this.view.count, note: null });
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -151,7 +173,8 @@ export class QueueStore {
   private onStatus(s: ConnStatus): void {
     const was = this.status;
     this.status = s;
-    if (s !== "open" && was === "open" && (this.view.queued || this.view.check)) {
+    // an unanswered join or start counts too: its reply may have died with the socket
+    if (s !== "open" && was === "open" && (this.view.queued || this.view.check || this.view.pending)) {
       this.droppedWhileQueued = true;
     }
     if (s === "open" && this.droppedWhileQueued) {
@@ -161,16 +184,20 @@ export class QueueStore {
       // back at once (queue_state); silence means it was dropped.
       this.resyncTimer = window.setTimeout(() => {
         this.resyncTimer = null;
-        if (!this.view.queued && !this.view.check) return;
+        const held = this.view.queued || !!this.view.check;
+        if (!held && !this.view.pending) return;
         const signedIn = auth.state?.status === "in";
+        this.joinSentAt = null;
         this.set({ queued: false, check: null, pending: null, since: null, botsAt: null, front: false });
-        if (signedIn) this.notify("You left the queue while away.", "Tap Find a game to queue again; no cooldown.");
+        if (held && signedIn) this.notify("You left the queue while away.", "Tap Find a game to queue again; no cooldown.");
       }, RESYNC_MS);
     }
   }
 
   private onMessage(msg: ServerMsg): void {
     const now = Date.now();
+    // the queue and pairs are signed-in only; a signed-out page keeps just the count
+    if (this.account === null && msg.type !== "queue_count") return;
     switch (msg.type) {
       case "queue_count":
         this.set({ count: msg.count });

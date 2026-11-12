@@ -5,8 +5,8 @@
 export type QueueClientMsg =
   | { type: "queue_join"; party_id?: string }
   | { type: "queue_leave" }
-  | { type: "match_accept"; match_id?: string }
-  | { type: "match_decline"; match_id?: string; keep_waiting?: boolean }
+  | { type: "match_accept"; match_id: string }
+  | { type: "match_decline"; match_id: string; keep_waiting?: boolean }
   | { type: "queue_start_bots" }
   | { type: "party_create" }
   | { type: "party_join"; code: string }

@@ -5186,13 +5186,27 @@ button[role="switch"]:active .ios-switch {
 .q-chip .q-spin { width: 12px; height: 12px; }
 /* queued, the end column takes the room the chip needs and the tabs centre
    in what is left */
-.topbar:has(.q-chip) { grid-template-columns: auto 1fr auto; column-gap: 24px; }
+.topbar:has(.q-chip) { grid-template-columns: auto 1fr minmax(0, auto); column-gap: 24px; }
+.topbar-end:has(.q-chip) .topbar-menu-box { flex: none; }
 .topbar:has(.q-chip) .topbar-tabs { justify-self: center; }
 .topbar-end:has(.q-chip) { min-width: 0; max-width: 62vw; }
 .q-chip { min-width: 0; flex-shrink: 1; }
 .q-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .q-chip .q-bots { height: 28px; padding: 0 9px; border-radius: 7px; font-size: var(--fs-13); }
 .q-chip .q-cancel { height: 28px; padding: 0 10px; border-radius: 7px; font-size: var(--fs-13); }
+/* below ~1000px the tabs keep their width, the chip takes only what is left
+   (its text truncates), and the wordmark's subtitle and the account name make
+   room; the avatar stays */
+@media (max-width: 999px) {
+  .topbar:has(.q-chip) .topbar-mark span,
+  .topbar:has(.q-chip) .topbar-account-name { display: none; }
+  .topbar:has(.q-chip) { grid-template-columns: auto auto minmax(0, 1fr); column-gap: 16px; }
+  .topbar-end:has(.q-chip) { max-width: none; justify-self: stretch; justify-content: flex-end; }
+}
+/* narrower still, the wait and the count come first; the bar is the search */
+@media (max-width: 859px) {
+  .q-chip-title { display: none; }
+}
 
 .q-layer { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; justify-content: flex-end; }
 .q-center-layer { justify-content: center; align-items: center; z-index: 80; }

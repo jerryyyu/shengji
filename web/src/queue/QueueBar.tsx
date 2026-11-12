@@ -67,7 +67,7 @@ export function QueueChip() {
   return (
     <div className={`q-chip${text.warn ? " warn" : ""}`} role="status" aria-live="polite">
       <span className="q-spin" aria-hidden="true" />
-      <span className="q-chip-text">{text.title} · {text.sub}</span>
+      <span className="q-chip-text"><span className="q-chip-title">{text.title} · </span>{text.sub}</span>
       <Actions q={q} compact />
     </div>
   );

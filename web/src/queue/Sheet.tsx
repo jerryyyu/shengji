@@ -8,12 +8,16 @@ export default function Sheet({ title, onClose, children, className = "" }: {
 }) {
   const titleId = useId();
   const box = useRef<HTMLDivElement | null>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  // Once per opening: a parent re-render hands a new onClose, and refocusing
+  // the sheet then would pull focus out of an input mid-typing.
   useEffect(() => {
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") close.current(); };
     document.addEventListener("keydown", key);
     box.current?.focus();
     return () => document.removeEventListener("keydown", key);
-  }, [onClose]);
+  }, []);
   return (
     <div className="q-layer">
       <div className="q-scrim" onClick={onClose} />

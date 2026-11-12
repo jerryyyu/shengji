@@ -189,6 +189,7 @@ describe("native bridge", () => {
     expect(hapticCall("declare")).toEqual({ method: "impact", opts: { style: "MEDIUM" } });
     expect(hapticCall("won")).toEqual({ method: "notification", opts: { type: "SUCCESS" } });
     expect(hapticCall("error")).toEqual({ method: "notification", opts: { type: "ERROR" } });
+    expect(hapticCall("sheet")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
     const calls = fakeShell("phone");
     haptic("select");
     await flush();

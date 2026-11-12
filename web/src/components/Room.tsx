@@ -11,7 +11,7 @@ import { seatPos } from "./TrickArea";
 /** Movement before a press on a seat becomes a drag; less stays a tap. */
 const SEAT_DRAG_START = 8;
 
-type Drag = { pointerId: number; seat: number; x0: number; y0: number; started: boolean };
+type Drag = { pointerId: number; seat: number; who: string; x0: number; y0: number; started: boolean };
 type Lifted = { seat: number; dx: number; dy: number; over: number | null };
 
 const ROLE = { bottom: "You", top: "Partner", left: "Opponent", right: "Opponent" } as const;
@@ -58,7 +58,19 @@ function ActionSheet({ title, children, onClose }: {
   );
 }
 
-type Menu = { seat: number; player: RoomPlayer | null };
+/** Who sits at a seat, as the room frame names them; null for empty. */
+type Occupant = { name: string; is_bot: boolean };
+function occupantOf(p: RoomPlayer | undefined): Occupant | null {
+  return p ? { name: p.name, is_bot: p.is_bot } : null;
+}
+/** The same occupant as one comparable key. */
+function occupantKey(p: RoomPlayer | undefined): string | null {
+  return p ? JSON.stringify(occupantOf(p)) : null;
+}
+
+/** A seat as the host chose it: its position and whoever sat there then. */
+type Chosen = { seat: number; who: string | null };
+type Menu = Chosen & { player: RoomPlayer | null };
 
 /** The four seats around the table as the game draws it: you at the bottom,
  *  your partner across, the opponents left and right. The host moves people
@@ -67,20 +79,46 @@ type Menu = { seat: number; player: RoomPlayer | null };
  *  does the same by touch or keyboard. A drag
  *  starts after SEAT_DRAG_START px, captures the pointer only then, and ends
  *  with nothing sent on a second touch, a pointercancel or a release away
- *  from every seat. */
+ *  from every seat. An open menu, a chosen seat and a drag each belong to
+ *  the occupant they were opened on: when that seat empties or someone else
+ *  sits there, they end for good, and every send names the occupants it
+ *  meant so the server refuses one that changed in flight. */
 function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean; onInvite: () => void }) {
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Chosen | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [lifted, setLifted] = useState<Lifted | null>(null);
   const drag = useRef<Drag | null>(null);
   const swallowClick = useRef(false);
   const clockRef = useRef<HTMLDivElement>(null);
-  const occupied = (seat: number) => room.players.some((p) => p.seat === seat);
-  const pick = selected !== null && occupied(selected) ? selected : null;
+  const keyAt = (seat: number) => occupantKey(room.players.find((p) => p.seat === seat));
+  const still = (c: Chosen | null): c is Chosen => c !== null && keyAt(c.seat) === c.who;
+  const pick = still(selected) ? selected.seat : null;
+  const liveMenu = still(menu) ? menu : null;
+  // A frame where the chosen occupant is gone ends the choice for good, so a
+  // later frame that fills the seat cannot bring it back for someone else.
+  const invalidate = useRef(() => {});
+  invalidate.current = () => {
+    if (menu && !still(menu)) setMenu(null);
+    if (selected && !still(selected)) setSelected(null);
+    const d = drag.current;
+    if (d && keyAt(d.seat) !== d.who) cancel();
+  };
+  const seatKeys = [0, 1, 2, 3].map(keyAt).join("\n");
+  useEffect(() => { invalidate.current(); }, [seatKeys]);
+  const whoAt = (seat: number) => occupantOf(room.players.find((p) => p.seat === seat));
 
-  const swap = (a: number, b: number) => {
-    conn.send({ type: "swap_seats", a, b });
+  /** Swap `from` (still held by `who`) with whatever is at `to` now. */
+  const swap = (from: number, who: string | null, to: number) => {
     setSelected(null);
+    if (keyAt(from) !== who) return;
+    conn.send({ type: "swap_seats", a: from, b: to, expect: [whoAt(from), whoAt(to)] });
+  };
+  const remove = (m: Menu) => {
+    setMenu(null);
+    if (!still(m)) return;
+    const who = whoAt(m.seat);
+    if (who === null) return;
+    conn.send({ type: "remove_player", seat: m.seat, expect: who });
   };
   /** The seat (other than `from`, taken or empty) whose card is under the point. */
   const seatAt = (x: number, y: number, from: number): number | null => {
@@ -117,8 +155,9 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
     const card = (e.target as HTMLElement).closest<HTMLElement>("[data-seat]");
     if (!card) return;
     const seat = Number(card.dataset.seat);
-    if (!occupied(seat)) return;
-    drag.current = { pointerId: e.pointerId, seat, x0: e.clientX, y0: e.clientY, started: false };
+    const who = keyAt(seat);
+    if (who === null) return;
+    drag.current = { pointerId: e.pointerId, seat, who, x0: e.clientX, y0: e.clientY, started: false };
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -143,7 +182,7 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
     if (!d || e.pointerId !== d.pointerId) return;
     const target = d.started ? seatAt(e.clientX, e.clientY, d.seat) : null;
     cancel();
-    if (target !== null) swap(d.seat, target);
+    if (target !== null) swap(d.seat, d.who, target);
   };
   const onPointerCancel = (e: PointerEvent<HTMLDivElement>) => {
     if (drag.current && e.pointerId === drag.current.pointerId) cancel();
@@ -156,9 +195,9 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
   };
   const onTap = (seat: number) => {
     const player = room.players.find((p) => p.seat === seat) ?? null;
-    if (pick === null) setMenu({ seat, player });
+    if (pick === null) setMenu({ seat, who: occupantKey(player ?? undefined), player });
     else if (pick === seat) setSelected(null);
-    else swap(pick, seat);
+    else swap(pick, keyAt(pick), seat);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Escape" && pick !== null) setSelected(null);
@@ -167,7 +206,7 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
   const pickName = room.players.find((p) => p.seat === pick)?.name;
   const hintId = `seat-swap-hint-${room.room}`;
   const animate = !prefersReducedMotion();
-  const roomMenu = menu && (menu.player === null || occupied(menu.seat)) ? menu : null;
+  const roomMenu = liveMenu;
   return (
     <>
       <div
@@ -249,12 +288,12 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
       {roomMenu && roomMenu.player ? (
         <ActionSheet title={roomMenu.player.name} onClose={() => setMenu(null)}>
           <button type="button" className="room-sheet-btn"
-                  onClick={() => { setSelected(roomMenu.seat); setMenu(null); }}>
+                  onClick={() => { setSelected({ seat: roomMenu.seat, who: roomMenu.who }); setMenu(null); }}>
             Swap seats
           </button>
           {roomMenu.seat !== room.host ? (
             <button type="button" className="room-sheet-btn danger"
-                    onClick={() => { conn.send({ type: "remove_player", seat: roomMenu.seat }); setMenu(null); }}>
+                    onClick={() => remove(roomMenu)}>
               Remove from room
             </button>
           ) : null}

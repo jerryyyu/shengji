@@ -1620,6 +1620,21 @@ def _occupant(room: Room, position: int) -> Seat | None:
     return room.seats[position] if position < len(room.seats) else None
 
 
+class SeatChanged(IllegalPlay):
+    """A lobby action named an occupant who is no longer in that seat."""
+
+
+def _check_expected(room: Room, position: int, expected: Any) -> None:
+    """Refuse when the client said whom it meant at ``position`` and that is
+    no longer so. ``expected`` is the occupant as the room frame showed it,
+    ``{"name": ..., "is_bot": ...}``, or None for an empty seat: the frame
+    carries no other identity, and the offline server's frames must match."""
+    sd = _occupant(room, position)
+    seen = {"name": sd.name, "is_bot": sd.is_bot} if sd is not None else None
+    if expected != seen:
+        raise SeatChanged("That seat just changed. Try again.")
+
+
 def _swap_seats(room: Room, seat: int, msg: dict) -> None:
     """Host-only lobby move: exchange what is in two seat positions, a
     person, a bot or nothing.
@@ -1643,6 +1658,12 @@ def _swap_seats(room: Room, seat: int, msg: dict) -> None:
     if (type(a) is not int or type(b) is not int or a == b
             or not (0 <= a < 4 and 0 <= b < 4)):
         raise IllegalPlay("Invalid seats.")
+    if "expect" in msg:
+        expect = msg["expect"]
+        if not isinstance(expect, list) or len(expect) != 2:
+            raise IllegalPlay("Invalid seats.")
+        _check_expected(room, a, expect[0])
+        _check_expected(room, b, expect[1])
     first, second = _occupant(room, a), _occupant(room, b)
     if first is None and second is None:
         raise IllegalPlay("Both seats are empty.")
@@ -1673,6 +1694,8 @@ def _remove_player(room: Room, seat: int, msg: dict) -> None:
         raise IllegalPlay("Invalid seat.")
     if target == seat:
         raise IllegalPlay("Use Leave to leave the room.")
+    if "expect" in msg:
+        _check_expected(room, target, msg["expect"])
     gone = room.seats[target]
     assert gone is not None
     _seat_at(room, target, None)
@@ -2202,6 +2225,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await handle_action(room, seat_idx, msg)
                     await broadcast(room)
                     kick_bots(room)
+                except SeatChanged as e:
+                    enqueue(me, {"type": "error", "code": "seat_changed", "message": str(e)})
                 except IllegalPlay as e:
                     enqueue(me, {"type": "error", "message": str(e)})
                 except Exception:  # malformed input must not kill the socket

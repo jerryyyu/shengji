@@ -115,7 +115,7 @@ describe("host drag", () => {
     expect(card(0).style.transform).toBe(`translate(${b.x - a.x}px, 0px)`);
     expect(card(2).className).toContain("drop-target");
     pointer("pointerup", card(2), b.x, b.y);
-    expect(swaps()).toEqual([{ type: "swap_seats", a: 0, b: 2 }]);
+    expect(swaps()).toEqual([expect.objectContaining({ type: "swap_seats", a: 0, b: 2 })]);
     expect(card(0).className).not.toContain("lifted");
     // the release's click is not a tap that selects the seat
     act(() => card(2).click());
@@ -171,7 +171,7 @@ describe("host drag", () => {
     pointer("pointermove", card(2), e.x, e.y);
     expect(card(3).className).toContain("drop-target");
     pointer("pointerup", card(3), e.x, e.y);
-    expect(swaps()).toEqual([{ type: "swap_seats", a: 2, b: 3 }]);
+    expect(swaps()).toEqual([expect.objectContaining({ type: "swap_seats", a: 2, b: 3 })]);
   });
 
   it("does not drag an empty seat", () => {
@@ -200,7 +200,7 @@ describe("tap to swap", () => {
     const hint = document.getElementById(card(1).getAttribute("aria-describedby")!)!;
     expect(hint.textContent).toContain("Selected Bot 1");
     act(() => card(2).click());
-    expect(swaps()).toEqual([{ type: "swap_seats", a: 1, b: 2 }]);
+    expect(swaps()).toEqual([expect.objectContaining({ type: "swap_seats", a: 1, b: 2 })]);
     expect(card(1).getAttribute("aria-pressed")).toBe("false");
   });
 
@@ -210,7 +210,7 @@ describe("tap to swap", () => {
     act(() => sheetButton("Swap seats")!.click());
     expect(card(3).className).toContain("swap-target");
     act(() => card(3).click());
-    expect(swaps()).toEqual([{ type: "swap_seats", a: 2, b: 3 }]);
+    expect(swaps()).toEqual([expect.objectContaining({ type: "swap_seats", a: 2, b: 3 })]);
     expect(sheet()).toBeNull();
   });
 
@@ -244,7 +244,7 @@ describe("seat menu", () => {
     act(() => card(2).click());
     expect(sheet()?.getAttribute("role")).toBe("dialog");
     act(() => sheetButton("Remove from room")!.click());
-    expect(sent).toContainEqual({ type: "remove_player", seat: 2 });
+    expect(sent).toContainEqual({ type: "remove_player", seat: 2, expect: { name: "Amy", is_bot: false } });
     expect(sheet()).toBeNull();
   });
 
@@ -343,5 +343,81 @@ it("keeps the drag when a card hands its touch capture to the clock", () => {
   pointer("lostpointercapture", card(0), b.x, b.y);
   expect(card(0).className).toContain("lifted");
   pointer("pointerup", card(2), b.x, b.y);
-  expect(swaps()).toEqual([{ type: "swap_seats", a: 0, b: 2 }]);
+  expect(swaps()).toEqual([expect.objectContaining({ type: "swap_seats", a: 0, b: 2 })]);
+});
+
+
+it("invalidates an occupant action sheet when the seat is vacated and refilled", () => {
+  render(room());
+  act(() => card(2).click());
+  expect(host.querySelector("[role=dialog]")?.textContent).toContain("Amy");
+  render(room({ players: room().players.filter(p => p.seat !== 2) }));
+  expect(host.querySelector("[role=dialog]")).toBeNull();
+  render(room({ players: room().players.map(p => p.seat === 2 ? { ...p, name: "Bob" } : p) }));
+  expect(host.querySelector("[role=dialog]")).toBeNull();
+});
+
+describe("a seat that changes hands", () => {
+  const frame = (over: Partial<RoomMsg> = {}): RoomMsg => room(over);
+  const bob = (msg: RoomMsg): RoomMsg =>
+    ({ ...msg, players: msg.players.map((p) => p.seat === 2 ? { ...p, name: "Bob" } : p) });
+  const vacant = (msg: RoomMsg): RoomMsg => ({ ...msg, players: msg.players.filter((p) => p.seat !== 2) });
+
+  it("names the occupants it means in remove and swap", () => {
+    render(frame());
+    act(() => card(2).click());
+    act(() => sheetButton("Remove from room")!.click());
+    act(() => card(2).click());
+    act(() => sheetButton("Swap seats")!.click());
+    act(() => card(3).click());
+    expect(sent).toEqual([
+      { type: "remove_player", seat: 2, expect: { name: "Amy", is_bot: false } },
+      { type: "swap_seats", a: 2, b: 3, expect: [{ name: "Amy", is_bot: false }, null] },
+    ]);
+  });
+
+  for (const [how, change] of [["vacated then refilled", "vacate"], ["replaced directly", "replace"]] as const) {
+    const apply = () => {
+      if (change === "vacate") render(vacant(frame()));
+      render(bob(frame()));
+    };
+
+    it(`closes the person menu for good when ${how}`, () => {
+      render(frame());
+      act(() => card(2).click());
+      expect(sheet()?.textContent).toContain("Amy");
+      apply();
+      expect(sheet()).toBeNull();
+      render(bob(frame()));
+      expect(sheet()).toBeNull();
+      expect(sent).toEqual([]);
+    });
+
+    it(`drops a Swap seats choice when ${how}`, () => {
+      render(frame());
+      act(() => card(2).click());
+      act(() => sheetButton("Swap seats")!.click());
+      expect(card(2).getAttribute("aria-pressed")).toBe("true");
+      apply();
+      expect(card(2).getAttribute("aria-pressed")).toBe("false");
+      act(() => card(3).click());          // now an ordinary tap: the empty seat's menu
+      expect(swaps()).toEqual([]);
+      expect(sheet()?.textContent).toContain("Empty seat");
+    });
+
+    it(`ends a drag when ${how}`, () => {
+      render(frame());
+      stubRects();
+      const a = centre(2);
+      const e = centre(3);
+      pointer("pointerdown", card(2), a.x, a.y);
+      pointer("pointermove", card(2), e.x, e.y);
+      expect(card(2).className).toContain("lifted");
+      apply();
+      stubRects();
+      expect(card(2).className).not.toContain("lifted");
+      pointer("pointerup", card(3), e.x, e.y);
+      expect(swaps()).toEqual([]);
+    });
+  }
 });

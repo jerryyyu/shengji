@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
@@ -18,6 +18,8 @@ import type { Toast } from "../toast";
 import ToastView from "./ToastView";
 import MatchedNote from "../queue/MatchedNote";
 import { leadToFollow } from "../follow";
+import { followHint, playableIds } from "../followRules";
+import { STALL_MS } from "./Lobby";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -82,6 +84,29 @@ function BotThinking({ phase }: { phase: "bury" | "play" }) {
       </div>
     </>
   );
+}
+
+/** How long a refused Play's hint stays above the hand. */
+export const HINT_MS = 2600;
+
+/** Whether the connection has stayed short of "open" for the lobby's
+ *  STALL_MS, and a retry that reconnects at once and starts the wait over;
+ *  the same wait and retry the lobby offers. */
+function useStalled(status: ConnStatus): [boolean, () => void] {
+  const [stalled, setStalled] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const open = status === "open";
+  useEffect(() => {
+    setStalled(false);
+    if (open) return;
+    const t = window.setTimeout(() => setStalled(true), STALL_MS);
+    return () => window.clearTimeout(t);
+  }, [open, attempt]);
+  const retry = useCallback(() => {
+    setAttempt((n) => n + 1);
+    conn.reconnect();
+  }, []);
+  return [stalled && !open, retry];
 }
 
 /** How long the full-name popover stays up after a tap or long press. */
@@ -258,6 +283,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
   const online = status === "open";
+  const [stalled, retry] = useStalled(status);
   // What Play or Bury says while its send is unanswered: the cards stay put
   // until the server's state moves them, and a dropped connection says so
   // instead of waiting silently.
@@ -309,6 +335,23 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
 
   useTableHaptics(state);
+
+  // Following, the cards no legal play can use are dimmed. Only your hand,
+  // the lead and the trump go in: nothing another player holds.
+  const following = state.phase === "play" && myTurn && lead !== null;
+  const playable = useMemo(
+    () => (following && lead ? playableIds(state.hand, lead, state.trump) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [following, state.hand, JSON.stringify(lead), state.trump?.suit, state.trump?.rank]);
+
+  // A tap on a Play that cannot go yet says why, once, above the hand.
+  const [hint, setHint] = useState<{ text: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!hint) return;
+    const t = window.setTimeout(() => setHint(null), HINT_MS);
+    return () => window.clearTimeout(t);
+  }, [hint]);
+  useEffect(() => { setHint(null); }, [selected, state.turn, state.phase]);
 
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
@@ -387,19 +430,28 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     const playLabel = selectedIds.length === 0
       ? "Play"
       : need !== null && need > 1 ? `Play (${selectedIds.length}/${need})` : `Play (${selectedIds.length})`;
+    const playDisabled = selectedIds.length === 0 || countWrong || pending !== null || !online;
+    // a disabled button takes no taps, so its wrapper hears them and explains
+    const whyNot = () => {
+      if (!playDisabled || pending !== null || !online) return;
+      const text = lead ? followHint(lead, state.trump) : "Choose the cards to lead";
+      setHint((h) => ({ text, n: (h?.n ?? 0) + 1 }));
+      haptic("error");
+    };
     actionBar = (
       <>
-        <button
-          className={`btn primary${choosing ? " your-turn" : ""}`}
-          disabled={selectedIds.length === 0 || countWrong || pending !== null || !online}
-          aria-busy={pending !== null || undefined}
-          onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
-        >
-          {/* a phone shows "Your turn" on Play until you choose a card */}
-          <span className="play-text">{pendingLabel ?? playLabel}</span>
-          <span className="your-turn-text">Your turn</span>
-          {/* a phone says what to do under it until a card is chosen */}
-        </button>
+        <span className="play-wrap" onClick={whyNot}>
+          <button
+            className={`btn primary${choosing ? " your-turn" : ""}`}
+            disabled={playDisabled}
+            aria-busy={pending !== null || undefined}
+            onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
+          >
+            {/* a phone shows "Your turn" on Play until you choose a card */}
+            <span className="play-text">{pendingLabel ?? playLabel}</span>
+            <span className="your-turn-text">Your turn</span>
+          </button>
+        </span>
         <button
           className="btn subtle"
           disabled={selectedIds.length === 0 || pending !== null}
@@ -445,8 +497,11 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           </div>
           <div className="action-bar">{actionBar}</div>
           </div>
+          {hint ? (
+            <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>
+          ) : null}
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} />
+                rects={handRects} playable={playable} />
         </div>
       </div>
 
@@ -463,6 +518,12 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       )}
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
+      {stalled ? (
+        <div className="table-stalled" role="status">
+          <span>Can’t reach the server.</span>
+          <button className="btn conn-retry" onClick={retry}>Retry</button>
+        </div>
+      ) : null}
       {toast ? <ToastView key={toast.id} toast={toast} /> : null}
     </div>
   );

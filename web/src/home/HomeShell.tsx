@@ -8,6 +8,7 @@ import { useMediaQuery } from "../phoneLayout";
 import { useMenuKeys } from "../useMenuKeys";
 import { WIDE, openNameEditor, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
+import { useTabSwipe } from "./useTabSwipe";
 import type { MeSection, Tab } from "./route";
 import QueueBar, { QueueChip, QueueStrip } from "../queue/QueueBar";
 
@@ -193,17 +194,19 @@ export function TopBar({ active, section = "stats" }: { active: Tab; section?: M
 }
 
 /** The home screen's frame: the active tab's page with the tabs above it
- *  (wide) or below it (a phone). A game, a replay and How to play are drawn
- *  without it. */
+ *  (wide) or below it (a phone, where a sideways swipe on the page moves to
+ *  the tab beside it). A game, a replay and How to play are drawn without it. */
 export default function HomeShell({ active, section, children }: {
   active: Tab; section?: MeSection; children: ReactNode;
 }) {
   const wide = useMediaQuery(WIDE);
+  const body = useRef<HTMLDivElement | null>(null);
+  useTabSwipe(body, active, !wide);
   return (
     <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
       {wide ? <TopBar active={active} section={section} /> : null}
       {wide ? <QueueStrip /> : null}
-      <div className="home-body">{children}</div>
+      <div className="home-body" ref={body}>{children}</div>
       {wide ? null : <QueueBar />}
       {wide ? null : <TabBar active={active} />}
     </div>

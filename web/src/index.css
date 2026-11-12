@@ -4655,6 +4655,15 @@ button.games-row { cursor: pointer; }
 .home-body { flex: 1; min-height: 0; position: relative; }
 .home-body > .screen { height: 100%; }
 .home-narrow .home-body > .screen { padding-bottom: 12px; }
+/* A phone's swipe between tabs (useTabSwipe.ts) moves the page body by
+   --tab-swipe-x only while data-tab-swipe is set, so at rest it keeps no
+   transform; the frame clips it meanwhile so the page never scrolls sideways. */
+.home:has(> .home-body[data-tab-swipe]) { overflow: clip; }
+.home-body[data-tab-swipe] { transform: translate3d(var(--tab-swipe-x, 0px), 0, 0); will-change: transform; }
+.home-body[data-tab-swipe="settle"] { transition: transform 280ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .home-body[data-tab-swipe] { transform: none; transition: none; }
+}
 .home-wide .home-body > .screen { padding-top: 12px; }
 
 .tabbar {

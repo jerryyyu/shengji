@@ -416,21 +416,22 @@ def test_a_guest_cannot_join_a_ranked_room(queue_env):
         assert _seats(room) == before
 
 
-def test_another_account_cannot_join_a_ranked_room_by_code(queue_env):
+def test_another_account_joins_a_ranked_room_by_code_only_as_an_open_table_newcomer(queue_env):
     srv, store, client = queue_env
-    _, h1 = _user(store, "owner", "Owner")
-    _, h2 = _user(store, "other", "Other")
+    owner, h1 = _user(store, "owner", "Owner")
+    other, h2 = _user(store, "other", "Other")
     with client.websocket_connect("/ws", headers=h1) as a:
         code, _ = _ranked_solo(srv, a)
         room = srv.rooms[code]
-        before = _seats(room)
         with client.websocket_connect("/ws", headers=h2) as b:
-            b.send_json({"type": "join_room", "room": code, "name": "Other"})
-            assert _drain(b, "error")["code"] == "ranked_queue_only"
-            # typing the holder's name is not a way in either
+            # typing the holder's name is not a way into the holder's seat:
+            # the code is an invite, taking a bot's seat from the handover
             b.send_json({"type": "join_room", "room": code, "name": "Owner"})
-            assert _drain(b, "error")["code"] == "ranked_queue_only"
-        assert _seats(room) == before
+            started = _drain(b, "match_started")
+            assert started["joining"] is True and started["seat"] != 0
+            assert room.seats[0].user_id == owner
+            seat = started["seat"]
+            assert room.seats[seat].user_id == other or room.pending_joins[seat].uid == other
 
 
 def test_the_seat_holder_comes_back_with_or_without_a_token(queue_env):
@@ -655,6 +656,24 @@ def test_a_late_claimant_who_leaves_mid_round_is_not_rated(env, monkeypatch):
     table.room.seats[1].connected = False
     table.finish()
     assert [e["user_id"] for e in _events(store)] == [host]
+
+
+def test_a_carried_leave_caps_the_next_rated_round_once(env, monkeypatch):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    host, _ = _user(store, "host")
+    _force_outcome(monkeypatch, 30)            # the host's team wins by 2 levels
+    ratings.CARRIED_CAPS.clear()
+    ratings.carry_leaver_cap(host)
+    table = Table(srv, [host, "bot", "bot", "bot"])
+    table.play_round(banker=0)
+    table.play_round(banker=0)
+    first, second = _events(store)
+    assert first["actual"] == ratings.LEAVER_SCORE_CAP and first["abandoned"] == 0
+    assert first["won"] == 1
+    assert second["actual"] > ratings.LEAVER_SCORE_CAP
+    assert ratings.CARRIED_CAPS == set()
 
 
 def test_recent_games_split_at_each_game_boundary_losses_included(env, monkeypatch):

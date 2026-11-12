@@ -236,6 +236,24 @@ function useTableHaptics(state: GameState) {
   }, [hadResult, wonRound]);
 }
 
+/** The table's corner line about an open-table newcomer: "Alice joins next
+ *  trick" until the handover, "Alice joins next round" when they were seated
+ *  at the round end. Not shown to the newcomer itself. */
+export function JoinNotices({ state }: { state: GameState }) {
+  const lines = (state.joining ?? []).filter((j) => j.seat !== state.you && !state.joining_you);
+  if (lines.length === 0) return null;
+  return (
+    <div className="join-notice" role="status">
+      {lines.map((j) => (
+        <span key={`${j.seat}-${j.when}`}>
+          <i className={`join-dot team${j.seat % 2}`} aria-hidden="true" />
+          {j.name} joins next {j.when === "round" ? "round" : "trick"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function Table({ state, toast = null }: { state: GameState; toast?: Toast | null }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
@@ -342,11 +360,13 @@ export default function Table({ state, toast = null }: { state: GameState; toast
 
   const me = state.players.find((p) => p.seat === state.you) ?? null;
   const opponents = state.players.filter((p) => p.seat !== state.you);
-  const myTurn = state.turn === state.you;
+  // a newcomer waiting for the handover watches its seat: the bot plays it
+  const watching = state.joining_you === true;
+  const myTurn = state.turn === state.you && !watching;
   const iAmBanker = me?.is_banker ?? false;
 
-  const selectable =
-    (state.phase === "bury" && iAmBanker) || state.phase === "play";
+  const selectable = !watching &&
+    ((state.phase === "bury" && iAmBanker) || state.phase === "play");
 
   const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
 
@@ -391,7 +411,9 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       : null;
 
   let actionBar: ReactNode = null;
-  if (state.phase === "deal" || state.phase === "declare") {
+  if (watching) {
+    actionBar = null;
+  } else if (state.phase === "deal" || state.phase === "declare") {
     // Declaration is a race: options can appear for anyone during dealing and
     // during the short declare window afterwards. No Pass while dealing.
     const canDeclare = state.declare_options.length > 0;
@@ -533,7 +555,19 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       )}
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
-      {away ? (
+      <JoinNotices state={state} />
+      {watching ? (
+        <div className="away-pill join-pill" role="status">
+          <span className="away-pill-text">
+            <b>Joining after this trick</b>
+            <span>A bot plays your seat until then</span>
+          </span>
+          <button className="btn join-leave" onClick={() => conn.send({ type: "leave_room" })}>
+            Leave
+          </button>
+        </div>
+      ) : null}
+      {away && !watching ? (
         <div className="away-pill" role="status">
           <span className="away-pill-text">
             <b>Away</b>

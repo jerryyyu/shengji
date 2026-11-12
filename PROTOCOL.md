@@ -231,6 +231,9 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 | `party_join` | `code` | join a friend's party by its code (pair codes share the room code space; see "Codes") |
 | `party_leave` | — | leave the party; it dissolves and the other member is told. A queued pair leaves the queue (and its seats) |
 | `match_accept`, `match_decline` | — | retired with the ready check: always refused with `no_match` |
+| `open_table_join` | `room`, `seat` | take that seat at the open table offered to you (see "Open tables"); the first confirm wins |
+| `open_table_wait` | — | keep queuing instead; the offered table is not offered again by itself |
+| `open_table_show` | optional `room` | show again the offer of an open table you waited on (the bar's chip), with a fresh 10 s |
 
 Error codes: `signed_in_only` (guest), `in_room`, `rate_limited`
 (`queue_join` 10 and `party_*` 20 per account per minute), `not_leader`,
@@ -238,11 +241,14 @@ Error codes: `signed_in_only` (guest), `in_room`, `rate_limited`
 partner has no lobby socket), `not_queued`, `not_seated` (`table_start` while
 not at a waiting table), `no_match`, `start_failed`, `party_not_found`,
 `party_full`, `party_busy` (the leader is queued), `in_queue`, `in_party`,
-`not_in_party`.
+`not_in_party`, `cooldown` (with `cooldown_until`: you left a table you
+joined, see "Open tables"), `no_offer`, `bad_seat`, `seat_taken` (another
+newcomer confirmed that seat first; the offer is re-sent without it),
+`table_closed`.
 
 ### Server → Client
 
-- `queue_state {queued, count, since?, front?, party_id?, leader?, bots_at?, wait_players?, table?, replaced?}`:
+- `queue_state {queued, count, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?}`:
   your entry, after every change to it or to its table, and on reconnect.
   `bots_at` is when this entry's own timer starts a bot game (60 s after
   joining, or after `queue_allow_bots`); it is null and `wait_players` is true
@@ -257,7 +263,13 @@ not at a waiting table), `no_match`, `start_failed`, `party_not_found`,
   when every switch is on; `ready`/`of` count people; `waiting_for` names the
   other entries (by leader) yet to tap Start. `replaced: true` tells an older
   socket that a newer one of the same account now holds the entry (one entry
-  per account). Older clients ignore `table`.
+  per account). Older clients ignore `table`. `offer` is an open table
+  offered to you now, `{room, seats, pick, expires_at, round_end}`: `seats`
+  in seat order, each `{name, bot, open}` (`open`: you may take it), `pick`
+  the seat picked for you; null when none is. `open_tables` counts the open
+  tables you waited on that can still be joined; `bots_paused` is true while
+  an offer is up or such a table exists, and `bots_at` is then null (the
+  wait stands still and runs on from where it stopped).
 - `queue_count {count}`: to every lobby socket, signed in or not; players
   queued, including those at waiting tables. At most one per second; a newly
   connected lobby socket gets the current count if it is above zero.
@@ -266,7 +278,10 @@ not at a waiting table), `no_match`, `start_failed`, `party_not_found`,
   alone (`queue_start_bots` or the entry's own timer). It arrives with the
   usual `resume`, `chat_history`, `room` and `state` frames: the socket now
   holds its seat exactly as after `join_room`. `room` and `state` of such a
-  room carry `matched: true`. There is no ready check before it.
+  room carry `matched: true`. There is no ready check before it. After
+  `open_table_join` it is `match_started {match_id: null, room, rated,
+  joining: true, seat}`: the seat is yours from the handover (see "Open
+  tables").
 - `match_cancelled {match_id, reason: "server_error"}`: the room could not be
   built; a `queue_state` follows. You were never left in a room: you are back
   in the lobby and queued at the front, unseated, even if its `resume` or
@@ -317,6 +332,65 @@ has not tapped Start and sent nothing for 2 minutes is dropped with
 not seated while it may still come back. `create_room` or `join_room` that
 seats the socket ends its queue entry (and frees its seat); a failed join
 leaves it queued.
+
+### Open tables
+
+A ranked room in play is an open table while it has a bot seat, a person
+connected and "Allow joiners" on (`allow_joiners`, any seated person may send
+`{type: "allow_joiners", on}`; default on). A newcomer who taps Play goes, in
+order, to a waiting table if anyone is queued, else is offered the open table
+with the most people (`queue_state.offer`, 10 s), else waits alone. A
+signed-in entry not at a waiting table is offered one, at its join and
+whenever a table opens; guests never are. A single may take any open seat. A
+queued pair is offered a table only when two partner seats (opposite each
+other) are open there, and gets those two together: each member's `offer`
+has `pick` (its own seat) and `partner: {seat, name}` (null for a single);
+neither picks, and either member's `open_table_join` takes both seats. The
+pair is seated at one handover, when both seats can change hands, and both
+are unranked for that round. Either member's `open_table_wait` is Wait for
+both, at no cost. If either member leaves or drops before the handover, both
+Joins end (the other gets `left {reason: "partner_left", message}`); only
+the member who confirmed pays the join-then-leave cost for a leave. A table you waited on (or let
+lapse) is not offered again by itself; while it can still be joined your bot
+wait is paused and `open_tables` puts a chip on the bar.
+
+`open_table_join {room, seat}` takes any open seat (the lone player's
+partner is picked by default). The bot keeps playing it until the handover:
+at once if the seat owes nothing (dealing, declaring, someone else's bury, a
+trick it already played to, a round end), else at the end of the current
+trick, never in the middle of its bury. Until then the newcomer's socket gets
+the seat's `state` frames with `joining_you: true` and may send only
+`leave_room`; the table's frames carry `joining: [{seat, name, when}]`
+(`when: "trick"`, then `"round"` for someone seated at a round end, who plays
+from the next round). At the handover the socket holds the seat as after
+`join_room` (`resume`, `chat_history`, `state`).
+
+A newcomer seated mid-round is not rated for that round (its `round_result`
+carries `unranked: "joined"`) and is rated from the next. Leaving it before
+the handover, or leaving (or being away or taken over at the end of) the
+round they joined mid-way: the seat is a bot's again, `queue_join` is refused
+with `cooldown` for 5 minutes, that table is never offered to them again,
+and after a seated leave their next rated round anywhere is capped as a
+leave (kept in server memory).
+
+A ranked table's invite link (its room code; "Copy invite link" stays in
+the game menu) is the table's consent: `peek_room` answers `room_seats` with
+`ranked: true`, `full` and `claimable` on the seats a newcomer may take, and
+a signed-in account that holds no seat there joins with `join_room {room,
+seat?}` exactly as from an offer (pending until the handover, first round
+unranked), even with Allow joiners off. The cooldown, never-again and
+carried-cap rules apply as to any newcomer. Refusals: `ranked_sign_in` for a
+guest ("Sign in to join a ranked table."), `table_full` when no seat is
+open, `seat_unavailable` when the chosen seat went, `cooldown`, and
+`table_left` (they left this table after joining it).
+
+From a round boundary, a seat whose player has been away (move timer) for
+the whole previous round is offered too (`open: true` with the player's
+name). Its player keeps it by tapping I'm back until the newcomer is seated
+(the newcomer then gets `left {reason: "reclaimed", message}` and is back at
+the front of the queue); once seated, the away player gets `left {reason:
+"seat_given", message}`. A game that ends before the handover sends `left
+{reason: "table_closed"}`.
 
 ## Reconnect & lifecycle
 

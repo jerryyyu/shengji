@@ -986,3 +986,226 @@ describe("a pair-sheet lookup the player walks away from", () => {
     expect(playJoin().textContent).toBe("Join");
   });
 });
+
+describe("open tables", () => {
+  const offerSeat = (name: string, bot: boolean, open: boolean) => ({ name, bot, open });
+  const offer = (over: Record<string, unknown> = {}) => ({
+    room: "OPEN", pick: 2, expires_at: nowSecs() + 10, round_end: false,
+    seats: [offerSeat("Jerry", false, false), offerSeat("Bot 1", true, true),
+            offerSeat("Bot 2", true, true), offerSeat("Bot 3", true, true)],
+    ...over,
+  });
+  const player = (seat: number, over: Record<string, unknown> = {}) => ({
+    seat, name: seat === 0 ? "Jerry" : `Bot ${seat}`, is_bot: seat !== 0, connected: true, team: seat % 2,
+    cards_left: 3, is_banker: seat === 1, takeover_in: null, controller: seat === 0 ? "human" : "bot",
+    reserved_for: null, reserved_secs: null, ...over,
+  });
+  const state = (over: Record<string, unknown> = {}) => ({
+    type: "state", room: "OPEN", you: 0, phase: "play", matched: true, allow_joiners: true, joining: [],
+    players: [0, 1, 2, 3].map((s) => player(s)), hand: [{ id: 1, code: "S5" }], levels: ["2", "2"],
+    games_won: [0, 0], banker: 1, trump: { suit: "S", rank: "2", declarer: 1 }, turn: 1, declare_options: [],
+    current_declaration: null, passed: [], trick: { leader: 1, plays: [] }, last_trick: null,
+    attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null, ...over,
+  });
+  const sheet = () => q(".ot-sheet");
+  // An earlier test's app may reopen a socket while this one renders, so
+  // frames go to every socket opened during this test (the stale app is
+  // unmounted) and sends are read from all of them.
+  const open = async () => {
+    await renderApp();
+    act(() => { for (const w of FakeWS.all) if (w !== ws()) w.onopen?.(); });
+    await settle();
+  };
+  const tell = (msg: unknown) => act(() => { for (const w of FakeWS.all) w.deliver(msg); });
+  const sentLast = () => lastSent();
+
+  it("O1: the offer shows both teams, your partner seat picked and a ten-second Join", async () => {
+    await open();
+    fakeClock();
+    tell(queued({ offer: offer(), bots_paused: true, bots_at: null }));
+    expect(sheet()?.getAttribute("aria-label")).toBe("Table open");
+    expect(q(".ot-title")?.textContent).toBe("Table open");
+    expect(q(".ot-sub")?.textContent).toBe("Game in progress · first round is unranked");
+    const [ours, theirs] = [...document.querySelectorAll(".ot-col")];
+    expect([...ours.querySelectorAll(".ot-name")].map((n) => n.textContent)).toEqual(["Jerry", "You"]);
+    expect([...theirs.querySelectorAll(".ot-seat.open")].length).toBe(2);
+    expect(button(/^Join · /)?.textContent).toBe("Join · 0:10");
+    tick(3000);
+    expect(button(/^Join · /)?.textContent).toBe("Join · 0:07");
+    // tap a dashed seat on the other team: you move there
+    click(theirs.querySelector<HTMLElement>(".ot-seat.open"));
+    const [ours2] = [...document.querySelectorAll(".ot-col")];
+    expect([...ours2.querySelectorAll(".ot-name")].map((n) => n.textContent)).toEqual(["Bot", "You"]);
+    click(button(/^Join · /));
+    expect(sentLast()).toEqual({ type: "open_table_join", room: "OPEN", seat: 3 });
+    expect(button("Joining…")?.disabled).toBe(true);
+  });
+
+  it("O1 at a round end says the newcomer plays ranked from the next round", async () => {
+    await open();
+    tell(queued({ offer: offer({ round_end: true }), bots_paused: true, bots_at: null }));
+    expect(q(".ot-sub")?.textContent).toBe("Joins next round · ranked");
+  });
+
+  it("a seat taken first: the offer re-renders with it solid and keeps your other pick", async () => {
+    await open();
+    tell(queued({ offer: offer(), bots_paused: true, bots_at: null }));
+    click(button(/^Join · /));
+    tell({ type: "error", code: "seat_taken", message: "That seat was just taken. Pick another." });
+    const taken = offer({ pick: 1, seats: [offerSeat("Jerry", false, false), offerSeat("Bot 1", true, true),
+                                            offerSeat("Bob", false, false), offerSeat("Bot 3", true, true)] });
+    tell(queued({ offer: taken, bots_paused: true, bots_at: null }));
+    expect(q(".q-toast")?.textContent).toContain("That seat was just taken.");
+    expect([...document.querySelectorAll(".ot-name")].map((n) => n.textContent)).toContain("Bob");
+    expect(q(".ot-seat.you")).not.toBeNull();
+    expect(button(/^Join · /)?.disabled).toBe(false);
+  });
+
+  it("O6: Wait keeps queuing; the bar reads Bots paused and its chip brings the offer back", async () => {
+    await open();
+    tell(queued({ offer: offer(), bots_paused: true, bots_at: null }));
+    click(button("Wait"));
+    expect(sentLast()).toEqual({ type: "open_table_wait" });
+    expect(sheet()).toBeNull();
+    tell(queued({ offer: null, open_tables: 1, bots_paused: true, bots_at: null }));
+    expect(q(".q-bar small")?.textContent).toBe("Bots paused");
+    const chip = button("1 open table");
+    expect(chip).toBeDefined();
+    click(chip);
+    expect(sentLast()).toEqual({ type: "open_table_show" });
+    tell(queued({ offer: offer(), open_tables: 0, bots_paused: true, bots_at: null }));
+    expect(sheet()).not.toBeNull();
+    expect(button("1 open table")).toBeUndefined();
+  });
+
+  it("O2b: the newcomer watches its seat with Joining after this trick and a Leave", async () => {
+    await open();
+    tell(queued({ offer: offer(), bots_paused: true, bots_at: null }));
+    click(button(/^Join · /));
+    tell({ type: "match_started", match_id: null, room: "OPEN", rated: true, joining: true, seat: 2 });
+    expect(sheet()).toBeNull();
+    tell(state({ you: 2, joining_you: true, turn: 2, joining: [{ seat: 2, name: "Jerry Yu", when: "trick" }] }));
+    expect(q(".join-pill")?.textContent).toContain("Joining after this trick");
+    expect(q(".join-pill")?.textContent).toContain("A bot plays your seat until then");
+    expect(q(".join-notice")).toBeNull();
+    expect(button(/^Play/)).toBeUndefined();
+    click(button("Leave", q(".join-pill")!));
+    expect(sentLast()).toEqual({ type: "leave_room" });
+  });
+
+  it("O2: the table sees one corner line, next trick then next round", async () => {
+    await open();
+    tell({ type: "match_started", match_id: "m1", room: "OPEN", rated: true });
+    tell(state({ joining: [{ seat: 2, name: "Alice", when: "trick" }] }));
+    expect(q(".join-notice")?.textContent).toBe("Alice joins next trick");
+    tell(state({ joining: [{ seat: 2, name: "Alice", when: "round" }] }));
+    expect(q(".join-notice")?.textContent).toBe("Alice joins next round");
+    tell(state({ joining: [] }));
+    expect(q(".join-notice")).toBeNull();
+  });
+
+  it("the game menu's Allow joiners switch, at ranked tables only", async () => {
+    await open();
+    tell({ type: "match_started", match_id: "m1", room: "OPEN", rated: true });
+    tell(state());
+    click(q(".hud-more-btn"));
+    const allow = [...document.querySelectorAll<HTMLElement>(".hud-menu-row")]
+      .find((r) => r.textContent?.startsWith("Allow joiners"));
+    expect(allow?.getAttribute("aria-checked")).toBe("true");
+    click(allow);
+    expect(sentLast()).toEqual({ type: "allow_joiners", on: false });
+    tell(state({ allow_joiners: false }));
+    const off = [...document.querySelectorAll<HTMLElement>(".hud-menu-row")]
+      .find((r) => r.textContent?.startsWith("Allow joiners"));
+    expect(off?.getAttribute("aria-checked")).toBe("false");
+  });
+});
+
+describe("a ranked table's invite and a pair's open-table offer", () => {
+  const typeInto = (input: HTMLInputElement, value: string) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  };
+  const open = async () => {
+    await renderApp();
+    act(() => { for (const w of FakeWS.all) if (w !== ws()) w.onopen?.(); });
+    await settle();
+  };
+  const tell = (msg: unknown) => act(() => { for (const w of FakeWS.all) w.deliver(msg); });
+  const seatRow = (seat: number, name: string, isBot: boolean, claimable: boolean) => ({
+    seat, name, is_bot: isBot, connected: true, team: seat % 2, claimable,
+    controller: isBot ? "bot" : "human", reserved_secs: null,
+  });
+  const rankedSeats = (full = false) => ({
+    type: "room_seats", room: "RANK", in_game: true, ranked: true, full,
+    seats: [seatRow(0, "Host", false, false), seatRow(1, "Bot 1", true, !full),
+            seatRow(2, "Bot 2", true, !full), seatRow(3, "Bot 3", true, !full)],
+  });
+  const viaPlayBox = () => {
+    typeInto(q("input[aria-label='Room or duo code']") as HTMLInputElement, "rank");
+    click(button(/^Join$/, q(".join-row")!));
+    tell({ type: "code_kind", code: "RANK", kind: "room" });
+    expect(lastSent()).toEqual({ type: "peek_room", room: "RANK" });
+  };
+
+  it("signed in: the ranked seat picker, then join_room with the seat", async () => {
+    await open();
+    viaPlayBox();
+    tell(rankedSeats());
+    expect(document.body.textContent).toContain("Ranked game in progress · first round is unranked");
+    click(button(/Seat 2/));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK", seat: 2 });
+  });
+
+  it("a guest is asked to sign in to join a ranked table", async () => {
+    signedIn = false;
+    await open();
+    viaPlayBox();
+    tell(rankedSeats());
+    expect(q(".ranked-gate h2")?.textContent).toBe("Sign in to join a ranked table");
+    expect(sentTypes()).not.toContain("join_room");
+  });
+
+  it("a ranked table with no bot seat says Table is full", async () => {
+    await open();
+    viaPlayBox();
+    tell(rankedSeats(true));
+    expect(q(".ranked-gate h2")?.textContent).toBe("Table is full");
+    expect(sentTypes()).not.toContain("join_room");
+  });
+
+  it("a ranked table's menu has both Copy invite link and Allow joiners", async () => {
+    await open();
+    tell({ type: "match_started", match_id: "m1", room: "RANK", rated: true });
+    tell({
+      type: "state", room: "RANK", you: 0, phase: "play", matched: true, allow_joiners: false, joining: [],
+      players: [0, 1, 2, 3].map((s) => ({
+        seat: s, name: `P${s}`, is_bot: s !== 0, connected: true, team: s % 2, cards_left: 3, is_banker: s === 1,
+        takeover_in: null, controller: s === 0 ? "human" : "bot", reserved_for: null, reserved_secs: null })),
+      hand: [{ id: 1, code: "S5" }], levels: ["2", "2"], games_won: [0, 0], banker: 1,
+      trump: { suit: "S", rank: "2", declarer: 1 }, turn: 1, declare_options: [], current_declaration: null,
+      passed: [], trick: { leader: 1, plays: [] }, last_trick: null, attacker_points: 0, kitty_count: 8,
+      message: null, notice: null, round_result: null,
+    });
+    click(q(".hud-more-btn"));
+    const rows = [...document.querySelectorAll<HTMLElement>(".hud-menu-row")].map((r) => r.textContent);
+    expect(rows).toContain("Copy invite link");
+    expect(rows).toContain("Allow joinersoff");
+  });
+
+  it("a pair's offer highlights both partner seats, fixed, and Join takes them", async () => {
+    await open();
+    tell({ type: "queue_state", queued: true, count: 2, since: nowSecs(), front: false, party_id: "p1",
+           leader: false, bots_at: null, bots_paused: true, open_tables: 0, table: null,
+           offer: { room: "OPEN", pick: 3, partner: { seat: 1, name: "Lee" }, expires_at: nowSecs() + 10,
+                    round_end: false,
+                    seats: [{ name: "Jerry", bot: false, open: false }, { name: "Bot 1", bot: true, open: true },
+                            { name: "Bot 2", bot: true, open: true }, { name: "Bot 3", bot: true, open: true }] } });
+    const picked = [...document.querySelectorAll(".ot-seat.you")].map((n) => n.querySelector(".ot-name")?.textContent);
+    expect(picked).toEqual(["Lee", "You"]);
+    expect(document.querySelectorAll(".ot-seat.open").length).toBe(0);
+    expect(q(".ot-pair")?.textContent).toBe("Two seats for you and Lee");
+    click(button(/^Join · /));
+    expect(lastSent()).toEqual({ type: "open_table_join", room: "OPEN", seat: 3 });
+  });
+});

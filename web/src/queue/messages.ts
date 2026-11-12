@@ -10,7 +10,13 @@ export type QueueClientMsg =
   | { type: "queue_allow_bots" }
   | { type: "party_create" }
   | { type: "party_join"; code: string }
-  | { type: "party_leave" };
+  | { type: "party_leave" }
+  /** Take this seat at the offered open table; the first confirm wins. */
+  | { type: "open_table_join"; room: string; seat: number }
+  /** Keep queuing: the offered table is not offered again by itself. */
+  | { type: "open_table_wait" }
+  /** The bar's open-table chip: the offer again, with a fresh clock. */
+  | { type: "open_table_show"; room?: string };
 
 export interface QueueStateMsg {
   type: "queue_state";
@@ -26,6 +32,36 @@ export interface QueueStateMsg {
   replaced?: boolean;
   /** The waiting table you sit at; null while you are alone in the queue. */
   table?: WaitingTableMsg | null;
+  /** Your bot wait stands still: an open table is offered or can be joined. */
+  bots_paused?: boolean;
+  /** An open table offered to you now; null when none is. */
+  offer?: OpenTableOfferMsg | null;
+  /** Open tables you waited on that can still be joined (the bar's chip). */
+  open_tables?: number;
+}
+
+/** A seat at an offered open table, in seat order (team 0 at seats 0+2). */
+export interface OfferSeatMsg {
+  name: string;
+  bot: boolean;
+  /** You may take it: a bot's seat, or an away player's from a round end. */
+  open: boolean;
+}
+
+/** A ranked game in progress with a seat for you. */
+export interface OpenTableOfferMsg {
+  room: string;
+  seats: OfferSeatMsg[];
+  /** The seat picked for you: the lone player's partner when it is open. */
+  pick: number;
+  /** When the offer lapses into Wait. */
+  expires_at: number;
+  /** At a round end you play, ranked, from the next round; mid-round the
+   *  round you join is unranked for you. */
+  round_end: boolean;
+  /** A pair's offer: your partner's seat (opposite yours) and name. Neither
+   *  of you picks; either Join takes both seats. */
+  partner?: { seat: number; name: string } | null;
 }
 
 /** One taken seat at a waiting table. */
@@ -60,7 +96,12 @@ export interface WaitingTableMsg {
 
 export interface QueueCountMsg { type: "queue_count"; count: number }
 
-export interface MatchStartedMsg { type: "match_started"; match_id: string | null; room: string; rated: boolean }
+export interface MatchStartedMsg {
+  type: "match_started"; match_id: string | null; room: string; rated: boolean;
+  /** An open table's seat is yours after the bot's trick (state frames carry joining_you). */
+  joining?: boolean;
+  seat?: number;
+}
 
 /** The room could not be built: you are back in the queue at the front. */
 export interface MatchCancelledMsg {
@@ -110,12 +151,12 @@ export type QueueErrorCode =
   | "bad_party" | "party_incomplete" | "party_changed" | "partner_unavailable"
   | "not_queued" | "not_seated" | "no_match" | "start_failed"
   | "party_not_found" | "party_full" | "party_busy" | "in_queue" | "in_party"
-  | "not_in_party";
+  | "not_in_party" | "cooldown" | "no_offer" | "bad_seat" | "seat_taken" | "table_closed";
 
 export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "signed_in_only", "in_room", "rate_limited", "not_leader",
   "bad_party", "party_incomplete", "party_changed", "partner_unavailable",
   "not_queued", "not_seated", "no_match", "start_failed",
   "party_not_found", "party_full", "party_busy", "in_queue", "in_party",
-  "not_in_party",
+  "not_in_party", "cooldown", "no_offer", "bad_seat", "seat_taken", "table_closed",
 ]);

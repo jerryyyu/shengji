@@ -201,6 +201,12 @@ describe("round end rating line", () => {
     await auth.init();
   }
 
+  it("a seat taken mid-round from an open table reads Unranked · joined mid-round", () => {
+    renderModal(makeResult({ unranked: "joined" }));
+    expect(host.querySelector(".rating-unranked")!.textContent).toBe("Unranked · joined mid-round");
+    expect(host.querySelector(".rating-delta")).toBeNull();
+  });
+
   it("shows a signed-in player's rating and this round's change", () => {
     renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }));
     const line = host.querySelector(".rating-line")!;

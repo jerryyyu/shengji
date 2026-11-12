@@ -8,6 +8,7 @@ import { needsSeatPicker } from "../seatPicker";
 import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
+import GoogleSignIn from "./GoogleSignIn";
 import LobbyPreview from "./LobbyPreview";
 import { GuestDuoSheet, RankedSection, TrophyIcon } from "../queue/Ranked";
 import { offlineGame } from "./offlineGame";
@@ -134,6 +135,9 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const nameRef = useRef<HTMLInputElement>(null);
   // Mid-game joins pick their seat: partner choice matters (0&2 vs 1&3).
   const [seatChoice, setSeatChoice] = useState<RoomSeats | null>(null);
+  // A ranked table's invite that cannot be taken here: a guest must sign in
+  // first, and a table with no bot seat is full.
+  const [rankedGate, setRankedGate] = useState<{ room: string; kind: "signin" | "full" } | null>(null);
   // Declared before the subscriber and memoised so the effect can list it as
   // a dependency instead of silencing the warning: it closes over `name` and
   // `roomCode`, and a stale copy would join with the wrong name.
@@ -164,6 +168,11 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       return;
     }
     if (m?.type === "room_seats") {
+      if (m.ranked && (!signedIn || m.full)) {
+        setStarting(null);
+        setRankedGate({ room: m.room, kind: signedIn ? "full" : "signin" });
+        return;
+      }
       if (needsSeatPicker(m.seats)) {
         setStarting(null);                 // the answer is a choice to make
         setSeatChoice(m);
@@ -179,7 +188,20 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         && lastPeek.current) {
       conn.send({ type: "peek_room", room: lastPeek.current });
     }
-  }), [joinSeat]);
+    if (m?.type === "error" && (m.code === "ranked_sign_in" || m.code === "table_full")) {
+      setSeatChoice(null);
+      setRankedGate({ room: lastPeek.current ?? "", kind: m.code === "ranked_sign_in" ? "signin" : "full" });
+    }
+  }), [joinSeat, signedIn]);
+
+  // Signed in from the ranked gate: the invite is tried again at once.
+  useEffect(() => {
+    if (!signedIn || rankedGate?.kind !== "signin" || !rankedGate.room) return;
+    const room = rankedGate.room;
+    setRankedGate(null);
+    peek(room);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn, rankedGate]);
 
   // An empty name never blocks a start: Play vs bots, Create room and Join
   // each fill the field with a random name and go, the same as the dice.
@@ -279,17 +301,48 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     }
   }, [status, invited, invitedName, signedIn, accountName]);
 
+  if (rankedGate) {
+    return (
+      <div className="screen lobby-screen">
+        <div className="lobby-card ranked-gate" role="dialog" aria-label={rankedGate.kind === "full" ? "Table is full" : "Ranked table"}>
+          {rankedGate.kind === "full" ? (
+            <>
+              <h2>Table is full</h2>
+              <p className="seat-hint">Every seat at this ranked table has a player.</p>
+            </>
+          ) : (
+            <>
+              <h2>Sign in to join a ranked table</h2>
+              {account.status === "out" && account.clientId ? <GoogleSignIn clientId={account.clientId} /> : null}
+            </>
+          )}
+          <button className="btn" onClick={() => setRankedGate(null)}>
+            {rankedGate.kind === "full" ? "OK" : "Cancel"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (seatChoice) {
     const you = playerName || "You";
+    const ranked = seatChoice.ranked === true;
     return (
       <div className="screen lobby-screen">
         <div className="lobby-card">
           <h2>Take a seat in {seatChoice.room}</h2>
-          <p className="seat-hint">
-            Game in progress — pick a seat to take. Seats 0 &amp; 2 are one
-            team, 1 &amp; 3 the other. A seat whose player has gone offline can
-            be taken over too; a bot is playing it in the meantime.
-          </p>
+          {ranked ? (
+            <p className="seat-hint">
+              Ranked game in progress · first round is unranked. Pick a bot&rsquo;s
+              seat; you take it after the current trick.
+            </p>
+          ) : (
+            <p className="seat-hint">
+              Game in progress — pick a seat to take. Seats 0 &amp; 2 are one
+              team, 1 &amp; 3 the other. A seat whose player has gone offline can
+              be taken over too; a bot is playing it in the meantime.
+            </p>
+          )}
           <div className="seat-grid">
             {seatChoice.seats.map((sd: RoomSeats["seats"][number]) => (
               <button

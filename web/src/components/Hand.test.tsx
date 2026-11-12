@@ -34,7 +34,7 @@ it("memoized hand cards still update on selection, selectability and hand change
   // Same ids, fresh array (as every server state delivers): content follows.
   act(() => root.render(<Hand hand={[{ id: 0, code: "S5" }, { id: 2, code: "BJ" }]} selected={new Set([1])} selectable onToggle={onToggle} />));
   expect(cards()).toHaveLength(2);
-  expect(cards().map((c) => c.getAttribute("aria-label"))).toEqual(["♠5", "Big Joker"]);
+  expect(cards().map((c) => c.getAttribute("aria-label"))).toEqual(["5 of spades", "Big joker"]);
 
   act(() => root.render(<Hand hand={[{ id: 0, code: "S5" }, { id: 2, code: "BJ" }]} selected={new Set()} selectable={false} onToggle={onToggle} />));
   expect(cards().every((c) => c.tagName === "DIV" && !c.classList.contains("clickable"))).toBe(true);

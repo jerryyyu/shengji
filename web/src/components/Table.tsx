@@ -170,9 +170,10 @@ function isYourTurnCue(state: GameState): boolean {
 }
 
 /** Haptic ticks on the moments that matter (no-ops outside the iOS app):
- *  your turn arriving, a declare option appearing, your team taking a trick
- *  or the round. Each fires on the transition, never on a repeat state. */
-function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
+ *  your turn arriving, a declare option appearing and your team taking the
+ *  round. Each fires on the transition, never on a repeat state; a won trick
+ *  is shown, not felt, since it comes about 25 times a round. */
+function useTableHaptics(state: GameState) {
   const turn = isYourTurnCue(state);
   const canDeclare = (state.phase === "deal" || state.phase === "declare") && state.declare_options.length > 0;
   const myTeam = state.players.find((p) => p.seat === state.you)?.team ?? null;
@@ -182,14 +183,15 @@ function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
     if (canDeclare && !prev.current.canDeclare) haptic("declare");
     prev.current = { turn, canDeclare };
   }, [turn, canDeclare]);
+  // every server state is a fresh object, so the round's arrival is the
+  // transition from no result to one, not a change of identity
+  const wonRound = state.round_result !== null && myTeam !== null && state.round_result.winner_team === myTeam;
+  const hadResult = state.round_result !== null;
+  const prevResult = useRef(hadResult);
   useEffect(() => {
-    if (!shownLastTrick || myTeam === null) return;
-    if (state.players.find((p) => p.seat === shownLastTrick.winner)?.team === myTeam) haptic("won");
-  }, [shownLastTrick]);   // once per finished trick, not on every state
-  const result = state.round_result;
-  useEffect(() => {
-    if (result && myTeam !== null && result.winner_team === myTeam) haptic("won");
-  }, [result]);           // once per round result
+    if (hadResult && !prevResult.current && wonRound) haptic("won");
+    prevResult.current = hadResult;
+  }, [hadResult, wonRound]);
 }
 
 export default function Table({ state, toast = null }: { state: GameState; toast?: Toast | null }) {
@@ -255,9 +257,12 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
   const online = status === "open";
+  // What Play or Bury says while its send is unanswered: the cards stay put
+  // until the server's state moves them, and a dropped connection says so
+  // instead of waiting silently.
+  const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
-    haptic("play");
     setPending({ handKey, turn: state.turn, generation: conn.generation });
   };
 
@@ -302,7 +307,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
 
   const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
 
-  useTableHaptics(state, shownLastTrick);
+  useTableHaptics(state);
 
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
@@ -367,9 +372,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       <button
         className="btn primary"
         disabled={selectedIds.length !== 8 || pending !== null || !online}
+        aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
       >
-        Bury 8 cards ({selectedIds.length}/8)
+        {pendingLabel ?? `Bury 8 cards (${selectedIds.length}/8)`}
       </button>
     );
   } else if (state.phase === "play" && myTurn) {
@@ -385,10 +391,11 @@ export default function Table({ state, toast = null }: { state: GameState; toast
         <button
           className={`btn primary${choosing ? " your-turn" : ""}`}
           disabled={selectedIds.length === 0 || countWrong || pending !== null || !online}
+          aria-busy={pending !== null || undefined}
           onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
         >
           {/* a phone shows "Your turn" on Play until you choose a card */}
-          <span className="play-text">{playLabel}</span>
+          <span className="play-text">{pendingLabel ?? playLabel}</span>
           <span className="your-turn-text">Your turn</span>
           {/* a phone says what to do under it until a card is chosen */}
         </button>

@@ -5,6 +5,7 @@
 // sends on its own, to `/api/*` and on the `/ws` handshake alike.
 
 import { useEffect, useState } from "react";
+import { forgetPrivateSession } from "./home/session";
 import { nativeGoogleSignOut } from "./nativeAuth";
 import { conn } from "./ws";
 
@@ -171,6 +172,20 @@ export async function logout(): Promise<void> {
   if (status !== 200) throw new Error(`Sign-out failed (${status}). Try again.`);
 }
 
+/** `DELETE /api/me`: remove the account for good. Resolves once the server
+ *  answered 204 (it also clears the session cookie); throws otherwise, so
+ *  the page keeps the account signed in and says why. */
+export async function deleteAccount(): Promise<void> {
+  let status: number;
+  try {
+    ({ status } = await api("/api/me", { method: "DELETE" }));
+  } catch {
+    throw new Error("Could not delete the account: no connection. Try again.");
+  }
+  if (status === 429) throw new Error("Too many changes; try again in a minute.");
+  if (status !== 204) throw new Error(`Could not delete the account (${status}). Try again.`);
+}
+
 /** The display-name default for a signed-in player who typed none. */
 export function firstName(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
@@ -256,6 +271,7 @@ class AuthStore {
   /** A login the server confirmed (the cookie is set). The open socket
    *  still carries the guest handshake, so it is replaced. */
   signedIn(user: AuthUser): void {
+    forgetPrivateSession();
     this.set({ status: "in", user });
     conn.reconnect();
   }
@@ -276,6 +292,21 @@ class AuthStore {
       /* GIS not loaded */
     }
     void nativeGoogleSignOut();
+    forgetPrivateSession();
+    this.set({ status: "out", user: null });
+    conn.reconnect();
+  }
+
+  /** The server deleted the account and cleared its cookie: forget it here
+   *  the way a confirmed sign-out does. */
+  deleted(): void {
+    try {
+      window.google?.accounts?.id?.disableAutoSelect();
+    } catch {
+      /* GIS not loaded */
+    }
+    void nativeGoogleSignOut();
+    forgetPrivateSession();
     this.set({ status: "out", user: null });
     conn.reconnect();
   }

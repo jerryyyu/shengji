@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState } from "../auth";
 import { NAME_ADJECTIVES, NAME_NOUNS } from "../randomName";
 
-const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects } = vi.hoisted(() => ({
+const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects, link } = vi.hoisted(() => ({
   sent: [] as unknown[],
+  link: { generation: 0, listeners: new Set<(m: unknown) => void>() },
   reconnects: { n: 0 },
   authState: { current: { status: "loading", clientId: null, user: null } as AuthState },
   signOut: vi.fn(() => Promise.resolve()),
@@ -14,7 +15,9 @@ const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects } 
   gis: { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect: vi.fn() },
 }));
 vi.mock("../ws", () => ({
-  conn: { send: (m: unknown) => { sent.push(m); }, subscribe: () => () => {}, generation: 0,
+  conn: { send: (m: unknown) => { sent.push(m); return true; },
+          subscribe: (fn: (m: unknown) => void) => { link.listeners.add(fn); return () => link.listeners.delete(fn); },
+          get generation() { return link.generation; },
           reconnect: () => { reconnects.n += 1; } },
   getSavedName: () => localStorage.getItem("shengji.name") ?? "",
   saveName: (n: string) => localStorage.setItem("shengji.name", n),
@@ -66,6 +69,8 @@ function type(input: HTMLInputElement, value: string) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
+/** The server answers the outstanding start (here with an error), so the next start may go. */
+const answered = () => act(() => { for (const fn of [...link.listeners]) fn({ type: "error", code: "x", message: "x" }); });
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
@@ -92,59 +97,59 @@ describe("the lobby with sign-in OFF", () => {
 });
 
 describe("the lobby with sign-in ON", () => {
-  it("signed out: renders the Google button slot and initialises GIS with the client id", async () => {
+  const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 80, provisional: false, levels_per_round: 0.4,
+                  won_pct: 58, defender_won_pct: 61, attacker_won_pct: 54, best_streak: 7, games_won: 3,
+                  week_delta: 8, history: [], recent_games: [], visible: true };
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me/stats") return { status: 200, json: async () => STATS } as Response;
+      return { status: 404, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+  });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
+
+  it("signed out: no sign-in prompt and no rating chip on Play (they live on Leaderboard and Me)", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    expect(host.querySelector(".google-signin")).not.toBeNull();
-    expect(host.querySelector(".account-chip")).toBeNull();
-    expect(gis.initialize).toHaveBeenCalledTimes(1);
-    const cfg = gis.initialize.mock.calls[0][0] as { client_id: string; nonce: string };
-    expect(cfg.client_id).toBe("cid.apps");
-    expect(cfg.nonce).toMatch(/^[0-9a-f]{32}$/);
-    expect(gis.renderButton).toHaveBeenCalledTimes(1);
-    expect(gis.renderButton.mock.calls[0][0]).toBe(host.querySelector(".google-signin-slot"));
+    expect(host.querySelector(".google-signin")).toBeNull();
+    expect(host.querySelector(".signin-upsell")).toBeNull();
+    expect(host.querySelector(".rating-chip")).toBeNull();
+    expect(gis.initialize).not.toHaveBeenCalled();
+    expect(nameInput()).not.toBeNull();
   });
 
-  it("signed in: shows avatar, name and Sign out, and no name field of its own", async () => {
-    authState.current = {
-      status: "in", clientId: "cid.apps",
-      user: JERRY,
-    };
+  it("signed in: a rating chip under the title opens the leaderboard, and there is no name field", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    const chip = host.querySelector(".account-card")!;
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    const chip = host.querySelector<HTMLButtonElement>(".rating-chip")!;
     expect(chip).not.toBeNull();
-    expect(chip.querySelector("img.account-avatar")?.getAttribute("src")).toBe("https://img/j.png");
-    expect(chip.querySelector(".account-name")?.textContent).toBe("Jerry");   // the effective name
+    expect(chip.previousElementSibling?.className).toBe("game-subtitle");
+    expect(chip.querySelector("img.avatar")?.getAttribute("src")).toBe("https://img/j.png");
+    expect(chip.querySelector(".rating-chip-value")?.textContent).toBe("1532");
+    expect(chip.textContent).toContain("▲ 8");
+    expect(host.querySelector(".account-card")).toBeNull();
     expect(host.querySelector(".google-signin")).toBeNull();
     expect(nameInput()).toBeNull();
     expect(host.querySelector("button[aria-label='Random name']")).toBeNull();
-    act(() => chip.querySelector<HTMLButtonElement>(".account-signout")!.click());
-    expect(signOut).toHaveBeenCalledTimes(1);
-  });
-
-  it("a sign-out the server refused keeps the chip and shows a retryable error", async () => {
-    authState.current = {
-      status: "in", clientId: "cid.apps",
-      user: { ...JERRY, picture: null },
-    };
-    signOut.mockImplementationOnce(() => Promise.reject(new Error("Sign-out failed (500). Try again.")));
-    await render();
-    await act(async () => { host.querySelector<HTMLButtonElement>(".account-signout")!.click(); });
-    expect(host.querySelector(".account-chip")).not.toBeNull();
-    expect(host.querySelector(".account-error")?.textContent).toContain("Try again");
-    expect(host.querySelector<HTMLButtonElement>(".account-signout")!.disabled).toBe(false);
-    await act(async () => { host.querySelector<HTMLButtonElement>(".account-signout")!.click(); });
-    expect(signOut).toHaveBeenCalledTimes(2);
-    expect(host.querySelector(".account-error")).toBeNull();
+    act(() => chip.click());
+    expect(window.location.hash).toBe("#/leaderboard");
   });
 
   it("a blank avatar shows the initial", async () => {
-    authState.current = {
-      status: "in", clientId: "cid.apps",
-      user: { ...JERRY, picture: null },
-    };
+    authState.current = { status: "in", clientId: "cid.apps", user: { ...JERRY, picture: null } };
     await render();
-    expect(host.querySelector(".account-avatar-blank")?.textContent).toBe("J");
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".rating-chip .avatar")?.textContent).toBe("J");
+  });
+
+  it("stats that cannot load leave the chip out", async () => {
+    globalThis.fetch = vi.fn(async () => ({ status: 500, json: async () => ({}) }) as Response) as typeof fetch;
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".rating-chip")).toBeNull();
   });
 });
 
@@ -171,8 +176,8 @@ describe("signed in, the player plays under the account name", () => {
     expect(nameInput()).toBeNull();
     expect(saveRow()).toBeNull();
     expect(host.textContent).not.toContain("Your name");
-    expect(host.querySelector(".account-name")?.textContent).toBe("Captain");
     act(() => buttonNamed("Create room").click());
+    answered();
     act(() => buttonNamed("Play vs bots").click());
     expect(sent.map((m) => (m as { type: string }).type)).toEqual(["create_room", "create_room"]);
     expect([sentName(0), sentName(1)]).toEqual(["Captain", "Captain"]);
@@ -185,6 +190,7 @@ describe("signed in, the player plays under the account name", () => {
     expect(sentName()).toBe("Jerry");
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await rerender();
+    answered();
     act(() => buttonNamed("Create room").click());
     expect(sentName(1)).toBe("Captain");
   });
@@ -196,22 +202,6 @@ describe("signed in, the player plays under the account name", () => {
     act(() => buttonNamed("Create room").click());
     expect(sentName()).toBe("Jerry");
     expect(localStorage.getItem("shengji.name")).toBe("JY");
-  });
-
-  it("the Edit name button opens the form, and a saved name reaches the store", async () => {
-    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
-    const next = { ...JERRY, display_name: "Cap", name_shown: "Cap" };
-    updateDisplayName.mockResolvedValue(next);
-    await render();
-    expect(host.querySelector(".name-edit")).toBeNull();
-    act(() => host.querySelector<HTMLButtonElement>(".account-edit")!.click());
-    const input = host.querySelector<HTMLInputElement>(".name-edit-input")!;
-    expect(input.value).toBe("Jerry");
-    type(input, "Cap");
-    await act(async () => { host.querySelector("form.name-edit")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    expect(updateDisplayName).toHaveBeenCalledWith("Cap");
-    expect(updated).toHaveBeenCalledWith(next);
-    expect(host.querySelector(".name-edit")).toBeNull();
   });
 
   it("while sign-in is loading nothing is filled; once signed in the field goes away", async () => {
@@ -256,6 +246,21 @@ describe("signed out, the guest names themselves", () => {
       expect(sentName()).toBe(nameInput().value);
       expect(localStorage.getItem("shengji.name")).toBe(nameInput().value);
     }
+  });
+
+  it("the name field is a keyboard-friendly name entry that Enter puts away without submitting", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    await render();
+    const input = nameInput();
+    expect(input.getAttribute("enterkeyhint")).toBe("done");
+    expect(input.getAttribute("spellcheck")).toBe("false");
+    expect(input.getAttribute("autocapitalize")).toBe("words");
+    expect(input.getAttribute("autocorrect")).toBe("off");
+    act(() => input.focus());
+    expect(document.activeElement).toBe(input);
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(document.activeElement).not.toBe(input);
+    expect(sent).toHaveLength(0);
   });
 
   it("the dice reroll the name, have an accessible label and never submit", async () => {
@@ -381,5 +386,77 @@ describe("the lobby preview and the How to play entry", () => {
     } finally {
       window.history.replaceState(null, "", "/");
     }
+  });
+});
+
+describe("help and policy links", () => {
+  it("Play keeps the How to play line and leaves Privacy and Support to the Me tab", async () => {
+    for (const current of [{ status: "out", clientId: "cid", user: null },
+                           { status: "in", clientId: "cid", user: JERRY }] as AuthState[]) {
+      authState.current = current;
+      if (host) { act(() => root.unmount()); host.remove(); }
+      await render();
+      expect(host.querySelector(".howto-entry")?.textContent).toBe("New to Sheng Ji? How to play");
+      expect(host.querySelector(".info-links")).toBeNull();
+      expect(host.querySelector("a[href='/privacy'], a[href='/support']")).toBeNull();
+    }
+  });
+});
+
+describe("starting a game waits for the server", () => {
+  const button = (text: RegExp) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => text.test(b.textContent ?? ""))!;
+  const serverSays = (m: unknown) => act(() => { for (const fn of [...link.listeners]) fn(m); });
+  async function renderWith(status: "open" | "closed" | "connecting") {
+    await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
+  }
+
+  for (const [start, busy] of [[/^Play vs bots$/, "Starting…"], [/^Create room$/, "Creating…"]] as const) {
+    it(`${busy} shows at once, and a second tap sends nothing; an error allows a retry`, async () => {
+      await render();
+      act(() => button(start).click());
+      expect(sent).toHaveLength(1);
+      const b = button(new RegExp(busy));
+      expect(b.getAttribute("aria-busy")).toBe("true");
+      expect(b.disabled).toBe(true);
+      act(() => b.click());
+      expect(sent).toHaveLength(1);
+      // every other start waits too
+      expect(button(/^(Play vs bots|Create room)$/).disabled).toBe(true);
+      serverSays({ type: "error", code: "busy", message: "Server busy." });
+      expect(button(start).disabled).toBe(false);
+      expect(button(start).getAttribute("aria-busy")).toBeNull();
+      act(() => button(start).click());
+      expect(sent).toHaveLength(2);
+    });
+  }
+
+  it("a reconnect frees a start that was never answered, for a deliberate retry", async () => {
+    await render();
+    act(() => button(/^Play vs bots$/).click());
+    expect(button(/Starting…/).disabled).toBe(true);
+    await renderWith("closed");
+    link.generation += 1;
+    await renderWith("open");
+    expect(button(/^Play vs bots$/).disabled).toBe(false);
+    act(() => button(/^Play vs bots$/).click());
+    expect(sent).toHaveLength(2);
+    link.generation = 0;
+  });
+
+  it("Join says Joining… while the room is looked up, and an error frees it", async () => {
+    await render();
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room code']")!;
+    type(code, "ABCD");
+    act(() => button(/^Join$/).click());
+    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
+    expect(button(/Joining…/).getAttribute("aria-busy")).toBe("true");
+    act(() => button(/Joining…/).click());
+    expect(sent).toHaveLength(1);
+    // straight through when there is no seat to choose: still joining, one join
+    serverSays({ type: "room_seats", room: "ABCD", seats: [] });
+    expect(sent.filter((m) => (m as { type: string }).type === "join_room")).toHaveLength(1);
+    expect(button(/Joining…/).disabled).toBe(true);
+    serverSays({ type: "error", code: "room_not_found", message: "No such room." });
+    expect(button(/^Join$/).disabled).toBe(false);
   });
 });

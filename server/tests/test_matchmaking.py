@@ -874,6 +874,54 @@ def test_a_failed_room_start_unwinds_the_room_before_requeueing(monkeypatch, fai
     run(go())
 
 
+def test_a_failed_final_broadcast_leaves_no_saved_game_and_no_started_count(
+        accounts_on, tmp_path, monkeypatch):  # noqa: F811
+    from shengji.api import saved_games
+    from shengji.api import server as srv
+
+    store = accounts_on.STORE
+    for uid in range(1, 5):
+        assert store.upsert_user({"sub": f"user-{uid}", "name": f"P{uid}"})["id"] == uid
+    env = Env()
+    real_room, real_broadcast = srv.Room, srv.broadcast
+    built, calls = [], [0]
+
+    def room(**kw):
+        r = real_room(bot=object(), **kw)
+        built.append(r)
+        return r
+
+    async def broadcast(room_):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise RuntimeError("injected last broadcast failure")
+        await real_broadcast(room_)
+
+    monkeypatch.setattr(srv, "Room", room)
+    monkeypatch.setattr(srv, "rooms", {})
+    monkeypatch.setattr(srv, "MATCHMAKER", env.mm)
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "LOG_DIR", tmp_path / "logs")
+    env.mm.start_room = srv.start_matched_room
+    before = srv.ACTIVITY.games_started
+
+    async def go():
+        m = await _four(env)
+        for c in env.conns.values():
+            c.ws = _FakeWS()
+        for uid in range(1, 5):
+            await env.send(uid, "match_accept", match_id=m.id)
+        await asyncio.sleep(0)
+    run(go())
+    saved_games.flush()
+    (r,) = built
+    assert r.aborted and srv.rooms == {}
+    assert r.game is not None, "the failure came after start_game, as intended"
+    assert srv.ACTIVITY.games_started == before
+    for uid in range(1, 5):
+        assert saved_games._list(uid, None, 50)["games"] == []
+
+
 # ----------------------------------------------------- over the websocket
 @pytest.fixture()
 def wsenv(accounts_on, client):  # noqa: F811

@@ -2115,6 +2115,10 @@ async def start_matched_room(match_id: str | None, slots: list,
 
 def _unwind_matched_room(room: Room, attached: list, conns) -> None:
     room.aborted = True
+    if room.game is not None:       # start_game ran: undo its durable effects
+        ACTIVITY.games_started -= 1
+        saved_games.abort(room)
+        room.ratings = None
     if rooms.get(room.code) is room:
         del rooms[room.code]
     for task in (room.bot_task, room.deal_task, room.watchdog_task, room.cleanup_task):

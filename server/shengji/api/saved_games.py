@@ -242,6 +242,16 @@ def round_ended(room: Any, result: Any) -> None:
 
 
 @_guarded
+def abort(room: Any) -> None:
+    """A start rolled back before the game began: no account keeps it. The
+    delete queues behind this game's link writes on the same worker."""
+    link: GameLink | None = getattr(room, "saved_game", None)
+    room.saved_game = None
+    if link is not None and link.stored:
+        _submit("forget_game", link.id)
+
+
+@_guarded
 def log_failed(room: Any) -> None:
     """A record of this game did not reach disk: its replay is incomplete."""
     link: GameLink | None = getattr(room, "saved_game", None)

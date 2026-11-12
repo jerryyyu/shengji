@@ -74,9 +74,10 @@ type Menu = Chosen & { player: RoomPlayer | null };
 
 /** The four seats around the table as the game draws it: you at the bottom,
  *  your partner across, the opponents left and right. The host moves people
- *  by dragging a seat onto another, taken or empty (touch or mouse); a tap
- *  opens the seat's actions, where "Swap seats" then a tap on another seat
- *  does the same by touch or keyboard. A drag
+ *  by dragging a seat onto another, taken or empty (touch or mouse). A tap
+ *  on the host's own seat (or Enter or Space on it) lifts it at once, and a
+ *  tap on another seat then moves the host there; a tap on any other seat
+ *  opens its actions, where "Swap seats" lifts that seat the same way. A drag
  *  starts after SEAT_DRAG_START px, captures the pointer only then, and ends
  *  with nothing sent on a second touch, a pointercancel or a release away
  *  from every seat. An open menu, a chosen seat and a drag each belong to
@@ -195,7 +196,8 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
   };
   const onTap = (seat: number) => {
     const player = room.players.find((p) => p.seat === seat) ?? null;
-    if (pick === null) setMenu({ seat, who: occupantKey(player ?? undefined), player });
+    if (pick === null && seat === room.you && player) setSelected({ seat, who: occupantKey(player) });
+    else if (pick === null) setMenu({ seat, who: occupantKey(player ?? undefined), player });
     else if (pick === seat) setSelected(null);
     else swap(pick, keyAt(pick), seat);
   };
@@ -234,10 +236,11 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
             `${pick === seat ? " selected" : ""}${isLifted ? " lifted" : ""}` +
             `${lifted && lifted.over === seat ? " drop-target" : ""}` +
             `${pick !== null && pick !== seat ? " swap-target" : ""}`;
-          const caption = p
-            ? [p.is_bot ? "Bot" : null, pos === "bottom" ? "You" : ROLE[pos],
-               seat === room.host ? "Host" : null].filter(Boolean).join(" · ")
-            : "";
+          // one tag fits the card: Host over the seat's role; your own seat,
+          // the widest card, reads You · Host
+          const caption = !p ? ""
+            : pos === "bottom" ? (seat === room.host ? "You · Host" : "You")
+            : seat === room.host ? "Host" : ROLE[pos];
           const body = p ? (
             <>
               <span className="seat-card-name">{p.name}</span>
@@ -264,7 +267,7 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
               className={cls}
               style={style}
               aria-label={label}
-              aria-haspopup={pick === null ? "dialog" : undefined}
+              aria-haspopup={pick === null && seat !== room.you ? "dialog" : undefined}
               aria-pressed={p ? pick === seat : undefined}
               aria-describedby={p || pick !== null ? hintId : undefined}
               onClick={() => onTap(seat)}
@@ -278,11 +281,12 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
           );
         })}
       </div>
+      {isHost && pick !== null ? <p className="seat-pick-hint" role="status">Tap a seat to move</p> : null}
       {isHost ? (
         <span id={hintId} hidden>
           {pick !== null
             ? `Selected ${pickName}. Choose another seat to swap with, or this one again to cancel.`
-            : "Drag onto another seat, or open it and choose Swap seats, to swap them."}
+            : "Drag onto another seat, or tap your own seat and then another, to move."}
         </span>
       ) : null}
       {roomMenu && roomMenu.player ? (
@@ -377,9 +381,11 @@ export default function Room({ room }: { room: RoomMsg }) {
         ) : (
           // Joiners pick a seat before the first deal; the level the host
           // chose changes what game they are agreeing to play.
-          <span className="chip start-level-marker">
-            Starts at {room.start_level}
-          </span>
+          <div className="start-level-slot">
+            <span className="chip start-level-marker">
+              Starts at {room.start_level}
+            </span>
+          </div>
         )}
         {room.experimental_policy === "w32" ? (
           <span className="chip experimental-marker">Experimental W32</span>

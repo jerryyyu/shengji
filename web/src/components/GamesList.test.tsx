@@ -160,11 +160,11 @@ describe("a game", () => {
     expect(rounds.every((r) => r.querySelector("button")?.textContent === "Replay")).toBe(true);
   });
 
-  it("Remove from my history needs two taps, sends DELETE and drops the row", async () => {
+  it("Remove from my games needs two taps, sends DELETE and drops the row", async () => {
     routes["DELETE /api/me/games/g1"] = { status: 204 };
     await mount();
     await click(qa(".games-day-row")[0]);
-    await click(button("Remove from my history"));
+    await click(button("Remove from my games"));
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [row("g2", 1_789_000_000)], next_before: null } };
     await click(button("Tap again to remove"));
@@ -177,10 +177,15 @@ describe("a game", () => {
   it("a failed DELETE keeps the game and says so", async () => {
     routes["DELETE /api/me/games/g1"] = { status: 500 };
     await mount({ page: "game", id: "g1" });
-    await click(button("Remove from my history"));
+    await click(button("Remove from my games"));
     await click(button("Tap again to remove"));
     expect(q("[role=alert]")?.textContent).toContain("Could not remove the game (500)");
     expect(q(".games-title")?.textContent).toBe("Game");
+  });
+
+  it("the game page goes back to Games", async () => {
+    await mount({ page: "game", id: "g1" });
+    expect(q(".games-back")?.textContent).toBe("‹ Games");
   });
 });
 
@@ -262,7 +267,7 @@ it("review: remove last game through cached Me history reaches empty state", asy
   host=document.createElement("div");document.body.appendChild(host);root=createRoot(host);
   await act(async()=>{root.render(<CachedHost />);});await settle();
   await click(qa(".games-day-row")[0]);
-  await click(button("Remove from my history"));
+  await click(button("Remove from my games"));
   routes["GET /api/me/games?limit=20"]={status:200,body:{games:[],next_before:null}};
   await click(button("Tap again to remove"));
   expect(calls.some(c=>c.method === "DELETE")).toBe(true);

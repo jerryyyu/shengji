@@ -9,7 +9,7 @@ import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
 import LobbyPreview from "./LobbyPreview";
-import { GuestDuoSheet, RankedSection } from "../queue/Ranked";
+import { GuestDuoSheet, RankedSection, TrophyIcon } from "../queue/Ranked";
 import { offlineGame } from "./offlineGame";
 import { codes, useCodes } from "../codeJoin";
 import { normalizeCode } from "../codes";
@@ -50,6 +50,21 @@ type Starting = { kind: "bots" | "create" | "join"; generation: number };
 export const START_TIMEOUT_MS = 15000;
 const STARTING_LABEL: Record<Starting["kind"], string> = { bots: "Starting…", create: "Creating…", join: "Joining…" };
 
+/** The Ranked block while the server cannot say whether sign-in exists:
+ *  Play and Duo in their places, unavailable. */
+function RankedUnavailable() {
+  const labelId = useId();
+  return (
+    <section className="play-section" aria-labelledby={labelId} data-testid="ranked-unavailable">
+      <h2 className="play-label ranked" id={labelId}><TrophyIcon />Ranked</h2>
+      <div className="play-ranked-row">
+        <button type="button" className="btn gold play-main q-find" disabled>Play</button>
+        <button type="button" className="btn play-duo" disabled>Duo</button>
+      </div>
+    </section>
+  );
+}
+
 export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [stalled, retry] = useStalled(status);
   // Play vs bots, Create room and Join each send one request and then wait:
@@ -86,7 +101,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // is left alone.
   const autoFilled = useRef(false);
   useEffect(() => {
-    if (autoFilled.current || (account.status !== "out" && account.status !== "off")) return;
+    if (autoFilled.current || (account.status !== "out" && account.status !== "off" && account.status !== "error")) return;
     autoFilled.current = true;
     if (!name.trim() && !getSavedName().trim()) setName(randomName());
   }, [account.status, name]);
@@ -316,7 +331,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const botsPrimary = !signedIn || stalled;
   const casual = (
     <section className="play-section" aria-labelledby={`${nameId}-casual`}>
-      <h2 className="play-label" id={`${nameId}-casual`}>Casual</h2>
+      <h2 className="play-label" id={`${nameId}-casual`}>Unranked</h2>
       {botsPrimary ? (
         <button type="button" className="btn gold play-main" disabled={!botsReady} onClick={playBots}
                 aria-busy={starting?.kind === "bots" || undefined}>
@@ -341,7 +356,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       </ul>
     </section>
   );
-  const ranked = <RankedSection online={status === "open"} />;
+  const ranked = account.status === "error"
+    ? <RankedUnavailable /> : <RankedSection online={status === "open"} />;
 
   return (
     <div className="screen lobby-screen play-tab">
@@ -417,6 +433,12 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           </div>
         ) : null}
 
+        {/* above the sections, so it is on screen at rest; a phone's tab bar
+            covers the bottom of the column */}
+        {error || codeView.playError ? (
+          <div className="lobby-error" role="alert">{error ?? codeView.playError}</div>
+        ) : null}
+
         {signedIn ? <>{ranked}{casual}</> : <>{casual}{ranked}</>}
 
         <div className="join-row">
@@ -448,10 +470,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             {starting?.kind === "join" || looking ? STARTING_LABEL.join : "Join"}
           </button>
         </div>
-
-        {error || codeView.playError ? (
-          <div className="lobby-error">{error ?? codeView.playError}</div>
-        ) : null}
 
         <p className="howto-entry">
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>

@@ -17,7 +17,7 @@ const week: Board = {
   period: "week",
   players: [
     row({ rank: 1, name: "Shrewd", rating: 1712, week_delta: 24 }),
-    row({ rank: 2, name: "sk", rating: 1694 }),
+    row({ rank: 2, name: "sk", rating: 1694, week_delta: 0 }),
     row({ rank: 3, name: "Bold", rating: 1540, rounds: 14, provisional: true, week_delta: 40 }),
     row({ rank: 4, name: "Quiet", rating: 1480, levels_per_round: -0.04, week_delta: -8 }),
   ],
@@ -76,7 +76,7 @@ it("lists the players with the bot anchor as a divider and pins the viewer's own
   await render();
   const listed = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-row")];
   expect(listed.map((r) => r.querySelector(".lb-name-text")?.textContent ?? r.textContent))
-    .toEqual(["Shrewd", "sk", "Bold", "Sheng Ji bot · 1500", "Quiet"]);
+    .toEqual(["Shrewd", "sk", "Bold", "Sheng Ji bot · 1,500", "Quiet"]);
   expect(listed[3].className).toContain("anchor");
   expect(listed[3].querySelector(".lb-rank")).toBeNull();
   expect(listed[0].querySelector(".lb-rank.top")?.textContent).toBe("1");
@@ -85,6 +85,27 @@ it("lists the players with the bot anchor as a divider and pins the viewer's own
   expect(pinned.querySelector(".lb-rank")!.textContent).toBe("26");
   expect(pinned.querySelector(".lb-name-text")!.textContent).toBe("Jerry (you)");
   expect(pinned.querySelector(".lb-delta")!.textContent).toBe("▼ 12");
+});
+
+it("ratings carry a thousands separator and no change this week is a dash", async () => {
+  await render();
+  const listed = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-row:not(.anchor)")];
+  expect(listed.map((r) => r.querySelector(".lb-rating")?.textContent)).toEqual(["1,712", "1,694", "1,540", "1,480"]);
+  expect(listed[1].querySelector(".lb-delta")?.textContent).toBe("–");
+  expect(listed[1].querySelector(".lb-delta")?.className).toContain("delta-flat");
+  expect(host.querySelector(".lb-pin .lb-rating")?.textContent).toBe("1,210");
+});
+
+it("with the server unreachable a guest still sees the sign-in card, unavailable, with the reason", async () => {
+  globalThis.fetch = vi.fn(async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
+  await auth.init();
+  expect(auth.state.status).toBe("error");
+  await render();
+  const card = host.querySelector(".lb-rated")!;
+  expect(card).not.toBeNull();
+  const btn = card.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
+  expect(btn.disabled).toBe(true);
+  expect(card.querySelector(".signin-upsell")?.textContent).toBe("Can't reach the server");
 });
 
 it("marks provisional players with a new chip", async () => {

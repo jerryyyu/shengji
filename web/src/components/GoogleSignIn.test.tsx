@@ -62,6 +62,13 @@ describe("GoogleSignIn", () => {
     expect(host.querySelector("[data-testid='apple-signin']")).toBeNull();
   });
 
+  it("the web button says Sign in with Google, the same verb as Apple's", async () => {
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(gis.renderButton).toHaveBeenCalledTimes(1);
+    expect(gis.renderButton.mock.calls[0][1]).toMatchObject({ text: "signin_with" });
+  });
+
   it("in the app posts the native ID token with its nonce and signs in", async () => {
     const login = vi.fn((_opts: { options: { nonce: string } }) =>
       Promise.resolve({ provider: "google", result: { idToken: "jwt.tok" } }));
@@ -71,7 +78,7 @@ describe("GoogleSignIn", () => {
     await render();
     expect(gis.initialize).not.toHaveBeenCalled();
     const button = host.querySelector<HTMLButtonElement>(".google-signin-native")!;
-    expect(button.textContent).toBe("Continue with Google");
+    expect(button.textContent).toBe("Sign in with Google");
     await act(async () => button.click());
     const nonce = login.mock.calls[0][0].options.nonce;
     expect(nonce).toMatch(/^[0-9a-f]{32}$/);
@@ -184,7 +191,7 @@ describe("Sign in with Apple", () => {
     await render();
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     const google = host.querySelector<HTMLButtonElement>("[data-testid='google-signin']")!;
-    expect(google.textContent).toBe("Continue with Google");
+    expect(google.textContent).toBe("Sign in with Google");
     const labels = [...host.querySelectorAll("*")].map((el) => `${el.textContent} ${el.getAttribute("aria-label") ?? ""}`);
     expect(labels.join(" ")).not.toMatch(/new tab|coming soon/i);
     expect(host.querySelector("[data-testid='apple-signin']")?.textContent).toBe("Sign in with Apple");

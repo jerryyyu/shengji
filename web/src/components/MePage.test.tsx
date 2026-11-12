@@ -93,7 +93,7 @@ describe("signed in", () => {
     const tiles = [...host.querySelectorAll(".me-tile")].map((t) => t.textContent);
     expect(tiles).toEqual(["58%rounds won", "+0.41levels / round", "7best streak"]);
     expect(rowLabels()).toEqual(["Games won", "Rounds played", "Won as defenders", "Won as attackers",
-      "Queue with a friend", "Sound", "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy",
+      "Sound", "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy",
       "Support", "Sign out", "Delete account"]);
     expect(host.textContent).not.toContain("With a bot partner");
     expect(host.querySelector(".me-delete")?.className).toContain("destructive");
@@ -118,7 +118,7 @@ describe("signed in", () => {
 
   it("the account's settings and help rows sit under Games too, below the games", async () => {
     await render("games");
-    expect(rowLabels()).toEqual(["Queue with a friend", "Sound", "Show me on the leaderboard", "Edit name", "How to play",
+    expect(rowLabels()).toEqual(["Sound", "Show me on the leaderboard", "Edit name", "How to play",
       "Privacy policy", "Support", "Sign out", "Delete account"]);
     const list = host.querySelector(".games-day-row")!;
     const settings = host.querySelector(".me-visible")!;
@@ -260,6 +260,34 @@ describe("a guest", () => {
     expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/support"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
+  });
+
+  it("the sign-in card is the heading and the buttons, nothing else", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    const card = host.querySelector(".signin-card")!;
+    expect(card.querySelector("h3")?.textContent).toBe("Sign in to keep your games");
+    expect(card.querySelector("p")).toBeNull();
+    expect(card.querySelector(".me-rated-link")).toBeNull();
+  });
+
+  it("with the server unreachable the card stays, its sign-in unavailable, with one line saying why", async () => {
+    authState.current = { status: "error", clientId: null, user: null };
+    await render();
+    const card = host.querySelector(".signin-card")!;
+    expect(card).not.toBeNull();
+    expect(card.querySelector("h3")?.textContent).toBe("Sign in to keep your games");
+    const btn = card.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toBe("Sign in with Google");
+    expect(card.querySelector(".signin-upsell")?.textContent).toBe("Can't reach the server");
+    expect(rowLabels()).toEqual(["Sound", "How to play", "Privacy policy", "Support"]);
+  });
+
+  it("with sign-in off there is no card at all", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    await render();
+    expect(host.querySelector(".signin-card")).toBeNull();
   });
 });
 
@@ -457,7 +485,7 @@ describe("removing a saved game from Me → Games", () => {
 
     await act(async () => { root.render(<GamesList route={{ page: "game", id: "g2" }} />); });
     await settle();
-    await tap(buttonNamed("Remove from my history")!);
+    await tap(buttonNamed("Remove from my games")!);
     await tap(buttonNamed("Tap again to remove")!);
     expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/me/games/g2")).toBe(true);
 
@@ -570,14 +598,4 @@ describe("the Settings group", () => {
     expect(groupLabels()).toEqual(["Sound", "Haptics"]);
   });
 
-  it("a guest's sign-in card links to the leaderboard's explanation of ranked games instead of repeating it", async () => {
-    authState.current = { status: "out", clientId: "cid", user: null };
-    await render();
-    const card = host.querySelector(".signin-card")!;
-    expect(card.textContent).not.toContain("1000");
-    const link = card.querySelector<HTMLButtonElement>(".me-rated-link")!;
-    expect(link.textContent?.trim()).toBe("How ranked games work");
-    act(() => link.click());
-    expect(window.location.hash).toBe("#/leaderboard");
-  });
 });

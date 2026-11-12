@@ -94,13 +94,34 @@ describe("the lobby with sign-in OFF", () => {
     expect(labels).toContain("Create room");
     expect(labels).not.toContain("Find a game");
     // no accounts, so no ranked play to offer
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Unranked"]);
+  });
+  it("the section a guest plays in is called Unranked, never Casual", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    await render();
+    expect(host.querySelector(".play-label")?.textContent).toBe("Unranked");
+    expect(host.textContent).not.toMatch(/casual/i);
   });
   it("while loading, nothing about accounts shows either", async () => {
     authState.current = { status: "loading", clientId: null, user: null };
     await render();
     expect(host.querySelector(".google-signin")).toBeNull();
     expect(host.querySelector(".account-chip")).toBeNull();
+  });
+});
+
+describe("the lobby when the server cannot be reached", () => {
+  it("keeps the Ranked section, with Play and Duo unavailable, instead of dropping it", async () => {
+    authState.current = { status: "error", clientId: null, user: null };
+    await render();
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Unranked", "Ranked"]);
+    const ranked = host.querySelector("[data-testid=ranked-unavailable]")!;
+    expect(ranked).not.toBeNull();
+    const buttons = [...ranked.querySelectorAll<HTMLButtonElement>("button")];
+    expect(buttons.map((b) => b.textContent)).toEqual(["Play", "Duo"]);
+    expect(buttons.every((b) => b.disabled)).toBe(true);
+    // a guest still gets a name to play under
+    expect(nameInput().value).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
   });
 });
 
@@ -117,10 +138,10 @@ describe("the lobby with sign-in ON", () => {
   });
   afterEach(() => { window.history.replaceState(null, "", "/"); });
 
-  it("signed out: Casual first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
+  it("signed out: Unranked first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual", "Ranked"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Unranked", "Ranked"]);
     expect(buttonNamed("Play bots").className).toContain("gold");
     expect(buttonNamed("Create room").className).toContain("grp-row");
     expect(host.querySelector(".q-find")).toBeNull();
@@ -150,10 +171,10 @@ describe("the lobby with sign-in ON", () => {
     expect(window.location.hash).toBe("#/me");
   });
 
-  it("signed in: Ranked first (Play and Duo), then Casual (Create room, Play bots)", async () => {
+  it("signed in: Ranked first (Play and Duo), then Unranked (Create room, Play bots)", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked", "Casual"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked", "Unranked"]);
     const ranked = [...host.querySelectorAll(".play-ranked-row button")].map((b) => b.textContent);
     expect(ranked).toEqual(["Play", "Duo"]);
     const rows = [...host.querySelectorAll(".play-grp .grp-row")].map((b) => b.textContent);
@@ -560,6 +581,11 @@ describe("starting a game waits for the server", () => {
     serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });
     expect(button(/^Join$/).disabled).toBe(false);
     expect(host.querySelector(".lobby-error")?.textContent).toBe("No game or pair has that code.");
+    // shown above the sections, where it is on screen at rest, not under Join
+    const err = host.querySelector(".lobby-error")!;
+    const first = host.querySelector(".play-section")!;
+    expect(err.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(err.getAttribute("role")).toBe("alert");
     expect(sent).toEqual([{ type: "code_lookup", code: "ZZZZ" }]);
     type(code, "ZZZ");
     expect(host.querySelector(".lobby-error")).toBeNull();

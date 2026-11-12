@@ -59,15 +59,23 @@ afterEach(() => {
 });
 
 describe("layout", () => {
+  it("shows one tag per seat: Host over the role, You · Host on your own", () => {
+    render(room({ you: 1, host: 2, players: [...room().players, { seat: 3, name: "Sam", is_bot: false, connected: true }] }));
+    expect(card(2).querySelector(".seat-card-role")?.textContent).toBe("Host");
+    expect(card(3).querySelector(".seat-card-role")?.textContent).toBe("Partner");
+    render(room());
+    expect(card(0).querySelector(".seat-card-role")?.textContent).toBe("You · Host");
+  });
+
   it("places seats around the table relative to you", () => {
     render(room({ you: 2, host: 0 }));
     expect(card(2).className).toContain("pos-bottom");
     expect(card(3).className).toContain("pos-left");
     expect(card(0).className).toContain("pos-top");
     expect(card(1).className).toContain("pos-right");
-    expect(card(0).querySelector(".seat-card-role")?.textContent).toBe("Partner · Host");
+    expect(card(0).querySelector(".seat-card-role")?.textContent).toBe("Host");
     expect(card(2).querySelector(".seat-card-role")?.textContent).toBe("You");
-    expect(card(1).querySelector(".seat-card-role")?.textContent).toBe("Bot · Opponent");
+    expect(card(1).querySelector(".seat-card-role")?.textContent).toBe("Opponent");
     expect(card(3).textContent).toContain("Empty");
     expect(card(0).querySelector(".conn-pip.on")).not.toBeNull();
     expect(host.textContent).not.toContain("Team seats");
@@ -95,7 +103,7 @@ describe("layout", () => {
     expect(seats).toHaveLength(4);
     const hint = document.getElementById(seats[0].getAttribute("aria-describedby")!)!;
     expect(hint.hidden).toBe(true);
-    expect(hint.textContent).toContain("to swap them");
+    expect(hint.textContent).toContain("tap your own seat and then another");
   });
 });
 
@@ -222,10 +230,54 @@ describe("tap to swap", () => {
     expect(card(1).getAttribute("aria-pressed")).toBe("false");
     expect(sheet()).toBeNull();
     act(() => card(0).click());
-    act(() => sheetButton("Swap seats")!.click());
     act(() => { card(0).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     expect(card(0).getAttribute("aria-pressed")).toBe("false");
     expect(swaps()).toEqual([]);
+  });
+
+  it("a tap on your own seat lifts it with no sheet and says so", () => {
+    render(room());
+    act(() => card(0).click());
+    expect(sheet()).toBeNull();
+    expect(card(0).getAttribute("aria-pressed")).toBe("true");
+    expect(card(0).className).toContain("selected");
+    expect(host.querySelector(".seat-pick-hint")?.textContent).toBe("Tap a seat to move");
+  });
+
+  it("a second tap on your own seat cancels the lift", () => {
+    render(room());
+    act(() => card(0).click());
+    act(() => card(0).click());
+    expect(card(0).getAttribute("aria-pressed")).toBe("false");
+    expect(host.querySelector(".seat-pick-hint")).toBeNull();
+    expect(sheet()).toBeNull();
+    expect(swaps()).toEqual([]);
+  });
+
+  it("after lifting your own seat, the next seat tapped is where you move", () => {
+    render(room());
+    act(() => card(0).click());
+    act(() => card(3).click());
+    expect(swaps()).toEqual([{ type: "swap_seats", a: 0, b: 3, expect: [{ name: "Jerry", is_bot: false }, null] }]);
+    expect(sheet()).toBeNull();
+    expect(card(0).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("Enter or Space on your own seat lifts it too: the seat is a native button", () => {
+    render(room());
+    const own = card(0);
+    expect(own.tagName).toBe("BUTTON");
+    expect((own as HTMLButtonElement).type).toBe("button");
+    own.focus();
+    act(() => own.click());   // a focused button turns Enter and Space into this click
+    expect(own.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("other seats keep their menus", () => {
+    render(room());
+    act(() => card(1).click());
+    expect(sheet()?.textContent).toContain("Bot 1");
+    expect(card(0).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("is reachable by keyboard: every seat is a button in the tab order", () => {
@@ -248,11 +300,12 @@ describe("seat menu", () => {
     expect(sheet()).toBeNull();
   });
 
-  it("offers no Remove on the host's own seat", () => {
+  it("opens no menu on the host's own seat", () => {
     render(room());
     act(() => card(0).click());
-    expect(sheetButton("Remove from room")).toBeUndefined();
-    expect(sheetButton("Swap seats")).toBeDefined();
+    expect(sheet()).toBeNull();
+    expect(card(0).getAttribute("aria-haspopup")).toBeNull();
+    expect(card(2).getAttribute("aria-haspopup")).toBeNull();   // picking: the next tap moves
   });
 
   it("closes on Cancel with nothing sent", () => {

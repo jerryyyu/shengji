@@ -207,7 +207,7 @@ function GameView({ id }: { id: string }) {
           </ul>
         </div>
         <button className={`btn danger games-remove${armed ? " armed" : ""}`} disabled={busy} onClick={remove}>
-          {busy ? "Removing…" : armed ? "Tap again to remove" : "Remove from my history"}
+          {busy ? "Removing…" : armed ? "Tap again to remove" : "Remove from my games"}
         </button>
         {error ? <div className="lobby-error" role="alert">{error}</div> : null}
       </>
@@ -215,7 +215,7 @@ function GameView({ id }: { id: string }) {
   }
   return (
     <div className="panel games-panel">
-      <GamesHead back="My games" onBack={() => navigate({ page: "list" })} title="Game" sub={sub} />
+      <GamesHead back="Games" onBack={() => navigate({ page: "list" })} title="Game" sub={sub} />
       {body}
     </div>
   );

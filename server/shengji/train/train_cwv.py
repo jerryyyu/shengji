@@ -1715,6 +1715,7 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                  policy_tower_layers: int = 0, policy_tower_width: int | None = None,
                  policy_trunk_grad_scale: float = 1.0,
                  policy_bce_weight: float = 1.0, policy_rows_window: int = POLICY_ROWS_WINDOW,
+                 policy_legal_negatives: bool = False,
                  grad_clip_norm: float = 0.0, train_eval_mode: bool = False,
                  epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
                  limit_clusters: int | None = None, lr: float = DEFAULTS["lr"],
@@ -1885,12 +1886,15 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
                              "policy loss; use --policy-weight 0 for the matched twin")
         if type(policy_rows_window) is not int or policy_rows_window < 1:
             raise TrainError("--policy-rows-window must be an integer >= 1")
+        if type(policy_legal_negatives) is not bool:
+            raise TrainError("--policy-legal-negatives is a flag")
     elif policy_rows or policy_eval or policy_detach or policy_soft_targets \
             or float(policy_explore_weight) != 1.0 or float(policy_bce_weight) != 1.0 \
-            or policy_rows_window != POLICY_ROWS_WINDOW:
+            or policy_rows_window != POLICY_ROWS_WINDOW or policy_legal_negatives:
         raise TrainError("--policy-rows / --policy-eval / --policy-detach / "
                          "--policy-soft-targets / --policy-explore-weight / "
-                         "--policy-bce-weight / --policy-rows-window need --policy-head")
+                         "--policy-bce-weight / --policy-rows-window / "
+                         "--policy-legal-negatives need --policy-head")
     elif int(policy_tower_layers) or policy_tower_width is not None \
             or float(policy_trunk_grad_scale) != 1.0:
         raise TrainError("--policy-tower-layers / --policy-tower-width / "
@@ -1949,6 +1953,8 @@ def build_config(*, data: Sequence[str], eval_luna: str | None = None, arch: str
         tower_fields["policy_bce_weight"] = float(policy_bce_weight)
     if policy_head and policy_rows_window != POLICY_ROWS_WINDOW:
         tower_fields["policy_rows_window"] = int(policy_rows_window)
+    if policy_head and policy_legal_negatives:
+        tower_fields["policy_legal_negatives"] = True
     if float(grad_clip_norm) > 0:
         tower_fields["grad_clip_norm"] = float(grad_clip_norm)
     if train_eval_mode:
@@ -2117,6 +2123,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
           policy_tower_layers: int = 0, policy_tower_width: int | None = None,
           policy_trunk_grad_scale: float = 1.0,
           policy_bce_weight: float = 1.0, policy_rows_window: int = POLICY_ROWS_WINDOW,
+          policy_legal_negatives: bool = False,
           grad_clip_norm: float = 0.0, train_eval_mode: bool = False,
           eval_holdout: Sequence[str] | None = None,
           frozen_population: str | None = None, frozen_population_sha256: str | None = None,
@@ -2162,6 +2169,7 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         policy_tower_layers=policy_tower_layers, policy_tower_width=policy_tower_width,
         policy_trunk_grad_scale=policy_trunk_grad_scale,
         policy_bce_weight=policy_bce_weight, policy_rows_window=policy_rows_window,
+        policy_legal_negatives=policy_legal_negatives,
         grad_clip_norm=grad_clip_norm, train_eval_mode=train_eval_mode,
         data=data, eval_luna=eval_luna, arch=arch, epochs=epochs, seed=seed,
         limit_clusters=limit_clusters, lr=lr, weight_decay=weight_decay,
@@ -2384,6 +2392,11 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
         if policy_rows_window != POLICY_ROWS_WINDOW and not hasattr(policy_data, "window"):
             raise TrainError("--policy-rows-window applies to a chunked root-row directory; "
                              f"{policy_rows} loads in memory")
+        if policy_legal_negatives and not policy_data.identity.get("legal_negatives"):
+            # REFUSE rather than train the ballot-only loss under the legal-set label.
+            raise TrainError("--policy-legal-negatives: these policy rows carry no off-ballot "
+                             "negatives (manifest legal_negatives absent); build them with "
+                             "served_policy_rows --legal-negatives CAP")
         if float(policy_explore_weight) != 1.0 and not policy_data.identity.get("explore_tags"):
             # REFUSE rather than train the unweighted run under a weighted label (the
             # --policy-soft-targets pattern): an extract from before #676 carries no
@@ -2969,7 +2982,8 @@ def train(*, data: Sequence[str], out: str | os.PathLike, eval_luna: str | None 
                                                soft_temperature=float(policy_soft_temperature),
                                                row_weight=p_w,
                                                trunk_grad_scale=float(policy_trunk_grad_scale),
-                                               rows=ballot_dev)
+                                               rows=ballot_dev,
+                                               legal_negatives=bool(policy_legal_negatives))
                 b_r = int(len(p_batch["x"]))
                 if float(policy_bce_weight) == 0.0:
                     bce_term = None
@@ -3823,6 +3837,12 @@ def build_parser() -> argparse.ArgumentParser:
                         "Default 1.0 = the loss as before the option (bit-identical); 0 = the "
                         "listwise term alone, which is the P0 trainer's policy loss. BCE is "
                         "still computed and logged.")
+    t.add_argument("--policy-legal-negatives", action="store_true",
+                   help="put each root row's off-ballot legal actions (served_policy_rows "
+                        "--legal-negatives) in the listwise softmax with zero target mass, so the "
+                        "loss ranks the ballot above the rest of the legal set "
+                        "(policy_prior.listwise_loss_legal). Refuses rows without negatives. "
+                        "Off = the ballot-only listwise loss, unchanged.")
     t.add_argument("--policy-rows-window", type=int, default=POLICY_ROWS_WINDOW,
                    help="root-row chunks shuffled together per pass (default "
                         f"{POLICY_ROWS_WINDOW}). A value at least the chunk count shuffles the "
@@ -3997,6 +4017,7 @@ def main(argv: list[str] | None = None) -> int:
                   policy_trunk_grad_scale=args.policy_trunk_grad_scale,
                   policy_bce_weight=args.policy_bce_weight,
                   policy_rows_window=args.policy_rows_window,
+                  policy_legal_negatives=args.policy_legal_negatives,
                   grad_clip_norm=args.grad_clip_norm, train_eval_mode=args.train_eval_mode,
                   val_rank_records=args.val_rank_records, init=args.init,
                   val_rows=args.val_rows, compile_trunk=args.compile_trunk,

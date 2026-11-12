@@ -217,9 +217,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # Bound the complete serial path, including compiled parity and required
-    # package-backed capture tests after the core suite.
-    timeout-minutes: 40
+    # Two shards side by side, each a whole set of steps: `pure` runs the core
+    # suite and the Sol benchmark contracts; `compiled` runs compiled parity and
+    # every production-package gate (fetch, load, release manifests). Steps are
+    # split, never a pytest session, so each step's tests share a process as before.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [pure, compiled]
     defaults:
       run:
         working-directory: server
@@ -235,6 +241,7 @@ jobs:
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
       - name: Test core server behavior in pure mode
+        if: matrix.shard == 'pure'
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_test_checkout.py
@@ -317,6 +324,7 @@ jobs:
           tests/test_pv_exact_follow.py
       # New modules in these families are selected without editing this list.
       - name: Test Sol benchmark contracts in pure mode
+        if: matrix.shard == 'pure'
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_benchmark_*.py
@@ -324,6 +332,7 @@ jobs:
       # Every test module importing the engine boundary must also run here (or in
       # another compiled step); check_ci_test_selection.py enforces it (#888, #891).
       - name: Test compiled engine and policy parity
+        if: matrix.shard == 'compiled'
         env:
           SHENGJI_FAST: "1"
         run: >-
@@ -363,6 +372,7 @@ jobs:
       # here and in the test. A missing or wrong-hash asset FAILS the job -- a required gate
       # that skips itself is indistinguishable from one that passes (#633, #634).
       - name: Fetch the pinned production package
+        if: matrix.shard == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/smv3out-491ee4bf.npz
           PACKAGE_SHA256: 491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670
@@ -374,6 +384,7 @@ jobs:
       # The served belief-worlds proposal binds its own hash-pinned package: the same
       # release, the same fail-closed rule.
       - name: Fetch the pinned belief package
+        if: matrix.shard == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/s17long-e2-763b5e05.npz
           PACKAGE_SHA256: 763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343
@@ -385,6 +396,7 @@ jobs:
       # Release 48's belief package (S58); the S17 package above stays for the release-46
       # rollback, which is built on real bytes too.
       - name: Fetch the pinned release-48 belief package
+        if: matrix.shard == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/s58-e6-42444515.npz
           PACKAGE_SHA256: 424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e
@@ -396,6 +408,7 @@ jobs:
       # Release 50's three packages: the G3 Stage A value package, the FT1 card-play prior
       # and the B1a belief package; the release-49 packages above stay for its rollback.
       - name: Fetch the pinned release-50 package g3a-e04-f4f4127e
+        if: matrix.shard == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/g3a-e04-f4f4127e.npz
           PACKAGE_SHA256: f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd
@@ -405,6 +418,7 @@ jobs:
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/g3a-e04-f4f4127e.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/g3a-e04-f4f4127e.npz" | sha256sum -c -
       - name: Fetch the pinned release-50 package p0-ft1-1fa201b2
+        if: matrix.shard == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/p0-ft1-1fa201b2.npz
           PACKAGE_SHA256: 1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf
@@ -414,6 +428,7 @@ jobs:
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/p0-ft1-1fa201b2.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/p0-ft1-1fa201b2.npz" | sha256sum -c -
       - name: Fetch the pinned release-50 package b1a-028131a0
+        if: matrix.shard == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/b1a-028131a0.npz
           PACKAGE_SHA256: 028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8
@@ -423,6 +438,7 @@ jobs:
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/b1a-028131a0.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/b1a-028131a0.npz" | sha256sum -c -
       - name: Load the production package on this tree
+        if: matrix.shard == 'compiled'
         env:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
@@ -436,6 +452,7 @@ jobs:
       # The release manifests' wiring witness on the same pinned packages: the stage tables
       # of releases 49, 50, 51 and 52 must be what their served bots do (fails, never skips, here).
       - name: Check release manifests and served capture on pinned packages
+        if: matrix.shard == 'compiled'
         env:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
@@ -574,14 +591,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # The pure leg runs the whole search selection without the compiled
-    # kernels and reached 81% at 25 minutes on a shared runner; a timeout
-    # shows as "cancelled", not "failed".
-    timeout-minutes: 40
+    # Each engine leg runs in two shards balanced by measured per-file time
+    # (a pure leg of the whole selection took about 31 minutes); every module
+    # is in exactly one shard. A timeout shows as "cancelled", not "failed".
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         engine: [pure, compiled]
+        shard: [1, 2]
     defaults:
       run:
         working-directory: server
@@ -596,7 +614,24 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
-      - name: Test production search regressions
+      # Missing torch must not silently skip real-package witnesses;
+      # a compiled import fallback must not masquerade as native coverage.
+      - name: Check torch and the engine mode
+        run: |
+          if [ "${{ matrix.engine }}" = "pure" ]; then
+            unset SHENGJI_FAST
+          else
+            export SHENGJI_FAST=1
+          fi
+          uv run python -B - <<'PY'
+          import os
+          import torch
+          from shengji.engine import legal
+          expected = "shengji.engine._fast" if os.environ.get("SHENGJI_FAST") == "1" else "shengji.engine.legal"
+          assert legal.validate_follow.__module__ == expected
+          PY
+      - name: Test production search regressions (shard 1 of 2)
+        if: matrix.shard == 1
         env:
           OMP_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
@@ -607,95 +642,99 @@ jobs:
           else
             export SHENGJI_FAST=1
           fi
-          # Missing torch must not silently skip real-package witnesses;
-          # a compiled import fallback must not masquerade as native coverage.
-          uv run python -B - <<'PY'
-          import os
-          import torch
-          from shengji.engine import legal
-          expected = "shengji.engine._fast" if os.environ.get("SHENGJI_FAST") == "1" else "shengji.engine.legal"
-          assert legal.validate_follow.__module__ == expected
-          PY
           uv run python -B -m pytest -q --durations=10 \
             tests/test_pv_admission_rules.py \
             tests/test_m5_population_contract.py \
             tests/test_pair_resource_admission.py \
             tests/test_pair_resource_pipeline.py \
-            tests/test_refusal_constraints.py \
-            tests/test_world_history_legal.py \
             tests/test_world_history_draw.py \
             tests/test_world_history_throws.py \
-            tests/test_pv_belief_worlds.py \
-            tests/test_pv_belief_log.py \
-            tests/test_pv_belief_capacity.py \
             tests/test_pv_tiebreak_points.py \
             tests/test_pv_lead_anchor.py \
-            tests/test_pv_tree_search.py \
             tests/test_pv_search_serving.py \
-            tests/test_y_trajectory_runner.py \
-            ../tools/y_datagen/test_launch.py \
-            tests/test_pv_search_hooks.py \
             tests/test_pv_value_matrix.py \
             tests/test_pv_adaptive_k.py \
-            tests/test_pv_lead_tiebreak_prior.py \
-            tests/test_pv_doomed_throw_swap.py \
             tests/test_pv_doomed_throw_reselect.py \
             tests/test_pv_doomed_throw_reselect_exact_guard.py \
-            tests/test_pv_leaf_greedy_finish.py \
-            tests/test_pv_leaf_greedy_finish_exact_skip.py \
             tests/test_pv_leaf_greedy_stream.py \
-            tests/test_pv_lgf_reply_prefix.py \
             tests/test_pv_leaf_greedy_deadline.py \
-            tests/test_pv_leaf_greedy_top.py \
             tests/test_pv_lead_confirm.py \
-            tests/test_degradation_telemetry.py \
-            tests/test_degradation_telemetry_identity.py \
             tests/test_pv_encode_prefix.py \
             tests/test_pv_encode_batch_fast.py \
             tests/test_pv_native.py \
             tests/test_pv_native_release48.py \
-            tests/test_pv_single_candidate_fast.py \
-            tests/test_pv_exact_world_subset.py \
             tests/test_pv_value_declare.py \
-            tests/test_pv_declare_first_round.py \
             tests/test_pv_declare_served_bury.py \
-            tests/test_pv_declare_pass_worlds.py \
-            tests/test_pv_declare_wait.py \
-            tests/test_model_ids_stamp.py \
             tests/test_release_manifests.py \
-            tests/test_declare_pass_evidence.py \
-            tests/test_lead_root_capture.py \
             tests/test_lead_capture_collector.py \
             tests/test_xmtj_throw_regressions.py \
-            tests/test_pv_small_joker_lead.py \
             tests/test_pv_adaptive_worlds.py \
             tests/test_pv_adaptive_worlds_leads.py \
             tests/test_optional_stage_contract.py \
             tests/test_pv_wide_lead_admission.py \
             tests/test_pv_finish_lead.py \
+            tests/test_r50_flag_off_parity.py \
+            tests/test_rules_profile.py \
+            tests/test_rules_profile_r50.py \
+            tests/test_pv_serving_smoke.py \
+            tests/test_pv_refusal_event_complete.py \
+            tests/test_tactical_public_observations.py \
+            tests/test_belief_labels.py \
+            tests/test_belief_eval.py \
+            tests/test_belief_history.py \
+            tests/test_belief_seq_eval_rows.py
+      - name: Test production search regressions (shard 2 of 2)
+        if: matrix.shard == 2
+        env:
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: |
+          if [ "${{ matrix.engine }}" = "pure" ]; then
+            unset SHENGJI_FAST
+          else
+            export SHENGJI_FAST=1
+          fi
+          uv run python -B -m pytest -q --durations=10 \
+            tests/test_refusal_constraints.py \
+            tests/test_world_history_legal.py \
+            tests/test_pv_belief_worlds.py \
+            tests/test_pv_belief_log.py \
+            tests/test_pv_belief_capacity.py \
+            tests/test_pv_tree_search.py \
+            tests/test_y_trajectory_runner.py \
+            ../tools/y_datagen/test_launch.py \
+            tests/test_pv_search_hooks.py \
+            tests/test_pv_lead_tiebreak_prior.py \
+            tests/test_pv_doomed_throw_swap.py \
+            tests/test_pv_leaf_greedy_finish.py \
+            tests/test_pv_leaf_greedy_finish_exact_skip.py \
+            tests/test_pv_lgf_reply_prefix.py \
+            tests/test_pv_leaf_greedy_top.py \
+            tests/test_degradation_telemetry.py \
+            tests/test_degradation_telemetry_identity.py \
+            tests/test_pv_single_candidate_fast.py \
+            tests/test_pv_exact_world_subset.py \
+            tests/test_pv_declare_first_round.py \
+            tests/test_pv_declare_pass_worlds.py \
+            tests/test_pv_declare_wait.py \
+            tests/test_model_ids_stamp.py \
+            tests/test_declare_pass_evidence.py \
+            tests/test_lead_root_capture.py \
+            tests/test_pv_small_joker_lead.py \
             tests/test_endgame.py \
             tests/test_endgame_compact.py \
             tests/test_endgame_level.py \
             tests/test_pv_exact_lead_variants.py \
             tests/test_pv_exact_lead_full_minimax.py \
-            tests/test_r50_flag_off_parity.py \
-            tests/test_rules_profile.py \
-            tests/test_rules_profile_r50.py \
             tests/test_pv_two_trick_lead.py \
             tests/test_pv_search_bury.py \
             tests/test_pv_search_prior_package.py \
-            tests/test_pv_serving_smoke.py \
-            tests/test_pv_refusal_event_complete.py \
             tests/test_pv_sampler_telemetry.py \
-            tests/test_tactical_public_observations.py \
-            tests/test_belief_labels.py \
-            tests/test_belief_eval.py \
-            tests/test_belief_history.py \
             tests/test_world_weighting.py \
             tests/test_belief_sampler.py \
             tests/test_belief_seq_speed.py \
-            tests/test_belief_seq_init.py \
-            tests/test_belief_seq_eval_rows.py
+            tests/test_belief_seq_init.py
 
   luna-profiles:
     needs: changes

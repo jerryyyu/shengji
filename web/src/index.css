@@ -29,6 +29,35 @@
   --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Chrome text (lobby, buttons, labels, menus, seat labels, toasts) follows
+     the reader's text size, up to 1.3x; card faces and the table's geometry
+     stay in px. --tu is one px at the default size: 1rem is the browser's
+     default (16px), or in WebKit the Dynamic Type body size (17px at the
+     default setting, see the @supports block below). */
+  --tu: calc(1rem / 16);
+  --fs-10: clamp(10px, calc(10 * var(--tu)), 13px);
+  --fs-11: clamp(11px, calc(11 * var(--tu)), 14.3px);
+  --fs-12: clamp(12px, calc(12 * var(--tu)), 15.6px);
+  --fs-13: clamp(13px, calc(13 * var(--tu)), 16.9px);
+  --fs-14: clamp(14px, calc(14 * var(--tu)), 18.2px);
+  --fs-15: clamp(15px, calc(15 * var(--tu)), 19.5px);
+  --fs-16: clamp(16px, calc(16 * var(--tu)), 20.8px);
+  --fs-17: clamp(17px, calc(17 * var(--tu)), 22.1px);
+  --fs-18: clamp(18px, calc(18 * var(--tu)), 23.4px);
+  --fs-20: clamp(20px, calc(20 * var(--tu)), 26px);
+}
+
+/* WebKit reports Dynamic Type through the system body font; the root takes
+   it so 1rem follows the setting. */
+@supports (font: -apple-system-body) {
+  html {
+    font: -apple-system-body;
+  }
+
+  :root {
+    --tu: calc(1rem / 17);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
 }
 
 * {
@@ -43,6 +72,7 @@ body,
 }
 
 body {
+  font-size: var(--fs-16);
   background: var(--chrome);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -107,8 +137,8 @@ textarea:focus-visible {
     max(12px, env(safe-area-inset-right, 0px))
     max(12px, env(safe-area-inset-bottom, 0px))
     max(12px, env(safe-area-inset-left, 0px));
-  background:
-    radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+  /* the redesign's charcoal page; the felt is only for the table itself */
+  background: var(--page);
 }
 
 .panel {
@@ -129,7 +159,7 @@ textarea:focus-visible {
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--fs-14);
   letter-spacing: 0.02em;
   transition: background 150ms ease, transform var(--dur-fast) var(--ease-out), box-shadow 150ms ease;
 }
@@ -141,7 +171,8 @@ textarea:focus-visible {
 }
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.4;
   cursor: default;
 }
@@ -200,7 +231,7 @@ textarea:focus-visible {
   background: transparent;
   border: 1px solid var(--panel-edge);
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 600;
   padding: 4px 11px;
   border-radius: 999px;
@@ -233,7 +264,7 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--fs-14);
   line-height: 1;
   padding: 0;
   cursor: pointer;
@@ -255,7 +286,7 @@ textarea:focus-visible {
 
 .btn.big {
   padding: 12px 24px;
-  font-size: 16px;
+  font-size: var(--fs-16);
   border-radius: 12px;
 }
 
@@ -280,7 +311,7 @@ textarea:focus-visible {
 .host-tag,
 .off-tag,
 .ready-tag {
-  font-size: 10px;
+  font-size: var(--fs-10);
   font-weight: 700;
   letter-spacing: 0.08em;
   padding: 2px 6px;
@@ -338,7 +369,8 @@ textarea:focus-visible {
   border-radius: 10px;
   font-weight: 600;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  animation: toast-in 0.2s ease-out, toast-out 0.4s ease-in 3.6s forwards;
+  /* the fade ends as the toast unmounts: --toast-ms is the state timer */
+  animation: toast-in 0.2s ease-out, toast-out 0.4s ease-in calc(var(--toast-ms, 4000ms) - 0.4s) forwards;
   z-index: 60;
   pointer-events: none;
 }
@@ -366,7 +398,7 @@ textarea:focus-visible {
   color: var(--gold);
   padding: 7px 16px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
   z-index: 70;
 }
@@ -402,20 +434,168 @@ textarea:focus-visible {
 .game-subtitle {
   margin: -8px 0 8px;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
 }
 
 .lobby-preview {
   display: block;
+  position: relative;
   width: 100%;
   aspect-ratio: 1200 / 630;
-  object-fit: cover;
+  overflow: hidden;
   border-radius: 10px;
   border: 1px solid var(--panel-edge);
   margin-top: -4px;
+  container-type: inline-size;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  background:
+    radial-gradient(ellipse 130% 100% at 50% 30%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.5);
 }
 
-/* The clip costs ~165px; a slightly tighter panel keeps the signed-out lobby
+/* The live preview: a 1200x630 stage in units of --u, so it scales with the
+   box. Everything is placed at the stage's top-left and moved by transform
+   alone; only transform and opacity ever transition. */
+.lp-stage {
+  --u: calc(100cqw / 1200);
+  --cw: calc(var(--u) * 104);
+  position: absolute;
+  inset: 0;
+}
+
+.lp-fan,
+.lp-x,
+.lp-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+
+/* above every played card (their z-index tops out at 20 for the winner) */
+.lp-chip {
+  z-index: 30;
+}
+
+.lp-fan-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 160%;
+}
+
+.lp-fan .card {
+  box-shadow: 0 calc(var(--u) * 6) calc(var(--u) * 14) rgba(0, 0, 0, 0.35);
+}
+
+.lp-flip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-style: preserve-3d;
+}
+
+.lp-flip .card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 calc(var(--u) * 12) calc(var(--u) * 26) rgba(0, 0, 0, 0.36),
+    0 calc(var(--u) * 2) calc(var(--u) * 6) rgba(0, 0, 0, 0.3);
+}
+
+.lp-flip .lp-back {
+  rotate: y 180deg;
+}
+
+/* The winner's gold ring is drawn once and faded in, never animated as a shadow. */
+.lp-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--cw);
+  aspect-ratio: 5 / 7;
+  translate: -50% -50%;
+  border-radius: calc(var(--cw) * 0.11);
+  box-shadow: 0 0 0 calc(var(--u) * 3) var(--gold), 0 0 calc(var(--u) * 30) rgba(242, 193, 78, 0.7);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  opacity: 0;
+  transition: opacity var(--dur-reflow) var(--ease-out);
+}
+
+.lp-flip.win .lp-ring {
+  opacity: 1;
+}
+
+.lp-chip .win-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  font-size: max(8px, calc(var(--u) * 13));
+  padding: max(2px, calc(var(--u) * 4)) max(6px, calc(var(--u) * 12));
+  white-space: nowrap;
+  box-shadow: 0 calc(var(--u) * 4) calc(var(--u) * 12) rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity var(--dur-fast) ease-in, transform var(--dur-fast) ease-in;
+}
+
+.lp-chip .win-tag.shown {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity var(--dur-reflow) var(--ease-back) 80ms, transform var(--dur-reflow) var(--ease-back) 80ms;
+}
+
+/* A card's flight: x and y ease differently so the path bows, while the
+   card turns face up. The second card of a pair leaves a beat later. */
+.lp-stage[data-phase="play"] .lp-x,
+.lp-stage[data-phase="won"] .lp-x {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="play"] .lp-y,
+.lp-stage[data-phase="won"] .lp-y {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out-expo) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="play"] .lp-flip {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="won"] .lp-flip {
+  transition: transform var(--dur-lift) var(--ease-back);
+}
+
+/* The finished trick gathers on the winner, then slides off to their hand. */
+.lp-stage[data-phase="gather"] .lp-x,
+.lp-stage[data-phase="gather"] .lp-y,
+.lp-stage[data-phase="gather"] .lp-flip {
+  transition: transform var(--dur-reflow) var(--ease-in-out) calc(var(--k) * 25ms);
+}
+
+.lp-stage[data-phase="gone"] .lp-x {
+  transition: transform var(--dur-sweep) ease-in, opacity var(--dur-sweep) ease-in;
+}
+
+.lp-stage[data-phase="gone"] .lp-y {
+  transition: transform var(--dur-sweep) ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-stage *,
+  .lp-stage .win-tag.shown {
+    transition: none !important;
+  }
+}
+
+/* The preview costs ~165px; a slightly tighter panel keeps the signed-out lobby
    inside a 1280x800 laptop screen and a 390x844 phone without scrolling. */
 .lobby-panel:has(.lobby-preview) {
   gap: 12px;
@@ -431,7 +611,7 @@ textarea:focus-visible {
 }
 
 .field-label {
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -450,11 +630,14 @@ textarea:focus-visible {
   transition: border-color 0.15s;
 }
 
+/* a field's focus is its border alone: one ring, not the border plus the
+   outline (a tapped field also matches :focus-visible) */
 .field input:focus,
 .field select:focus,
 .start-level-row select:focus,
 .room-input:focus {
   border-color: var(--team0);
+  outline: none;
 }
 
 .field select,
@@ -496,7 +679,7 @@ textarea:focus-visible {
   border: 0;
   border-radius: 8px;
   background: none;
-  font-size: 17px;
+  font-size: var(--fs-17);
   line-height: 1;
   opacity: 0.7;
   cursor: pointer;
@@ -509,7 +692,7 @@ textarea:focus-visible {
 .name-reroll:focus-visible { opacity: 1; outline: 2px solid var(--gold); outline-offset: 1px; }
 
 .field-hint {
-  font-size: 12px;
+  font-size: var(--fs-12);
   line-height: 1.45;
   color: var(--text-dim);
 }
@@ -537,7 +720,7 @@ textarea:focus-visible {
 .signin-upsell {
   margin: 4px 0 -4px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--fs-13);
   color: var(--text-dim);
 }
 .divider {
@@ -545,7 +728,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 12px;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-12);
   letter-spacing: 0.15em;
   text-transform: uppercase;
 }
@@ -569,7 +752,7 @@ textarea:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.4em;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--fs-18);
   text-align: center;
 }
 
@@ -593,25 +776,6 @@ textarea:focus-visible {
   color-scheme: light;
 }
 .google-signin-slot iframe { background: transparent; }
-/* The account pill: avatar and name above three evenly spaced actions,
-   My games filled and the other two quiet. */
-.account-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid var(--panel-edge);
-  border-radius: 22px;
-  background: rgba(16, 19, 26, 0.5);
-  text-align: left;
-}
-.account-chip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 0 4px;
-}
 .account-avatar {
   width: 28px;
   height: 28px;
@@ -620,14 +784,13 @@ textarea:focus-visible {
   object-fit: cover;
   background: #2a3140;
 }
-.account-chip .account-avatar { width: 32px; height: 32px; }
 .account-avatar-blank {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--gold);
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--fs-14);
 }
 .account-name {
   flex: 1;
@@ -637,16 +800,6 @@ textarea:focus-visible {
   white-space: nowrap;
   font-weight: 600;
 }
-.account-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
-  gap: 6px;
-}
-.account-actions .btn { padding: 9px 6px; border-radius: 12px; white-space: normal; }
-.account-actions .btn.subtle { border-color: transparent; color: var(--text-dim); }
-.account-card .name-edit { padding: 0 4px 4px; }
-.account-error { font-size: 13px; }
-.account-block { display: flex; flex-direction: column; gap: 8px; }
 /* The display-name editor (NameEditForm): one input, Save / Cancel, a
    message line. The same form sits in the lobby chip and the phone menu. */
 .name-edit {
@@ -667,11 +820,11 @@ textarea:focus-visible {
 }
 .name-edit-input:focus { border-color: var(--team0); outline: none; }
 .name-edit-actions { display: flex; gap: 8px; }
-.name-edit-actions .btn { padding: 6px 12px; font-size: 13px; }
-.name-edit-error { color: #f0a0aa; font-size: 12px; }
+.name-edit-actions .btn { padding: 6px 12px; font-size: var(--fs-13); }
+.name-edit-error { color: #f0a0aa; font-size: var(--fs-12); }
 .hud-menu-row.account-edit .account-avatar { width: 20px; height: 20px; }
 .hud-menu-row.hud-menu-edit { display: block; cursor: default; min-width: 220px; }
-.hud-menu-row.hud-menu-edit .name-edit-input { font-size: 14px; }
+.hud-menu-row.hud-menu-edit .name-edit-input { font-size: var(--fs-14); }
 .hud-menu-account-name {
   flex: 1;
   min-width: 0;
@@ -686,12 +839,12 @@ textarea:focus-visible {
   color: #ffd7dc;
   border-radius: 10px;
   padding: 9px 12px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
 }
 
 .conn-status {
-  font-size: 13px;
+  font-size: var(--fs-13);
   color: var(--text-dim);
 }
 
@@ -705,6 +858,22 @@ textarea:focus-visible {
 
 .conn-status.closed {
   color: var(--danger);
+}
+
+/* no connection for a while: say so, with a way to try again now */
+.conn-status.stalled {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 10px;
+  color: var(--danger);
+  text-align: center;
+}
+
+.conn-status.stalled .conn-retry {
+  min-height: 44px;
+  padding: 0 18px;
 }
 
 /* ---------- Room ---------- */
@@ -723,6 +892,59 @@ textarea:focus-visible {
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--text-dim);
+}
+
+/* a touch screen is tapped, not clicked */
+.room-code-label .copy-tap {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .room-code-label .copy-click {
+    display: none;
+  }
+
+  .room-code-label .copy-tap {
+    display: inline;
+  }
+}
+
+/* A phone has no room for a card on felt: the thin green margin reads as a
+   border, and held sideways the card runs off the bottom. The lobby, room
+   and saved-games screens fill the screen with the panel's own colour
+   instead, in either orientation; the felt stays for the table. */
+@media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  .lobby-screen,
+  .room-screen,
+  .games-screen {
+    background: linear-gradient(180deg, var(--panel) 0%, #171b22 100%);
+  }
+
+  .lobby-screen > .panel,
+  .room-screen > .panel,
+  .games-screen > .panel {
+    width: 100%;
+    max-width: 520px;          /* a sideways phone keeps a column, not a 850px row */
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
+/* A phone's room: the caption keeps clear of the 44px mute button in the
+   panel's corner, and the seat tags read at 12px. */
+@media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  .room-panel > .room-code-label {
+    padding: 0 48px;
+  }
+
+  .seat-name .you-tag,
+  .seat-name .host-tag {
+    font-size: var(--fs-12);
+  }
 }
 
 .room-code {
@@ -750,7 +972,7 @@ textarea:focus-visible {
   position: absolute;
   top: -12px;
   right: 10px;
-  font-size: 12px;
+  font-size: var(--fs-12);
   letter-spacing: 0.05em;
   background: var(--gold);
   color: #201703;
@@ -795,7 +1017,7 @@ textarea:focus-visible {
 }
 
 .seat-num {
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--text-dim);
@@ -829,7 +1051,7 @@ textarea:focus-visible {
   display: flex;
   justify-content: center;
   gap: 24px;
-  font-size: 12px;
+  font-size: var(--fs-12);
   color: var(--text-dim);
 }
 
@@ -845,7 +1067,7 @@ textarea:focus-visible {
 
 .room-hint {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-style: italic;
 }
 
@@ -887,7 +1109,7 @@ textarea:focus-visible {
   border: 1px solid var(--panel-edge);
   border-radius: 999px;
   padding: 5px 13px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -901,7 +1123,7 @@ textarea:focus-visible {
 .phase-chip {
   color: var(--text-dim);
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: var(--fs-11);
   letter-spacing: 0.12em;
 }
 
@@ -932,23 +1154,23 @@ textarea:focus-visible {
 
 .trump-chip {
   border-color: var(--gold-soft);
-  font-size: 15px;
+  font-size: var(--fs-15);
 }
 
 .trump-chip.none {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-style: italic;
 }
 
 .trump-suit.red {
   color: #ff6b7c;
-  font-size: 18px;
+  font-size: var(--fs-18);
 }
 
 .trump-suit.black {
   color: #f4f6fa;
-  font-size: 18px;
+  font-size: var(--fs-18);
 }
 
 .trump-suit.nt {
@@ -960,7 +1182,7 @@ textarea:focus-visible {
 .trump-rank {
   color: var(--gold);
   font-weight: 800;
-  font-size: 16px;
+  font-size: var(--fs-16);
 }
 
 .points-chip {
@@ -968,7 +1190,7 @@ textarea:focus-visible {
 }
 
 .points-big {
-  font-size: 20px;
+  font-size: var(--fs-20);
   font-weight: 800;
   color: var(--team1);
 }
@@ -980,7 +1202,7 @@ textarea:focus-visible {
 
 .points-target {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--fs-12);
 }
 
 .kitty-icon {
@@ -993,7 +1215,7 @@ textarea:focus-visible {
 
 .hud-message {
   text-align: center;
-  font-size: 13px;
+  font-size: var(--fs-13);
   color: #ffe9b0;
   padding: 4px 0 2px;
   animation: message-in 0.25s ease-out;
@@ -1014,7 +1236,7 @@ textarea:focus-visible {
   border-radius: 6px;
   background: rgba(40, 30, 12, 0.92);
   color: #ffe9b0;
-  font-size: 13px;
+  font-size: var(--fs-13);
   line-height: 1.35;
   text-align: left;
   animation: message-in 0.25s ease-out;
@@ -1034,7 +1256,7 @@ textarea:focus-visible {
   border-radius: 4px;
   background: transparent;
   color: #ffe9b0;
-  font-size: 16px;
+  font-size: var(--fs-16);
   line-height: 1.2;
   cursor: pointer;
   opacity: 0.7;
@@ -1133,11 +1355,11 @@ textarea:focus-visible {
   align-items: center;
   gap: 6px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--fs-15);
 }
 
 .banker-crown {
-  font-size: 15px;
+  font-size: var(--fs-15);
   filter: drop-shadow(0 0 6px rgba(242, 193, 78, 0.8));
 }
 
@@ -1167,7 +1389,7 @@ textarea:focus-visible {
    for as long as a bot thought (~8% of a 4x-throttled phone CPU, measured);
    opacity animates on the compositor. */
 .thinking {
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-style: italic;
   color: #d5dbe5;
   animation: thinking-pulse 1.4s ease-in-out infinite alternate;
@@ -1175,7 +1397,7 @@ textarea:focus-visible {
 
 .bot-banter {
   max-width: 160px;
-  font-size: 10px;
+  font-size: var(--fs-10);
   color: var(--text-dim);
   line-height: 1.3;
 }
@@ -1217,7 +1439,7 @@ textarea:focus-visible {
 }
 
 .their-turn {
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-style: italic;
   color: var(--gold);
 }
@@ -1289,6 +1511,11 @@ textarea:focus-visible {
 .dialog-leave-confirm .dialog-leave-q {
   color: var(--text-dim);
   font-weight: 600;
+}
+
+/* Play's "Your turn" wording: only the phone layout shows it */
+.your-turn-text {
+  display: none;
 }
 
 /* a seat's full name on tap: only the phone layout, which shortens long
@@ -1399,7 +1626,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   border-radius: 999px;
   padding: 5px 16px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--fs-14);
 }
 
 .you-tagline.team0 {
@@ -1420,7 +1647,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 }
 
 .your-turn-tag {
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1439,7 +1666,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 
 .action-hint {
   color: rgba(233, 236, 242, 0.75);
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-style: italic;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
@@ -1679,19 +1906,19 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 .result-label {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
 }
 
 .result-value {
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--fs-14);
   text-align: right;
 }
 
 .result-label.total,
 .result-value.total {
   color: var(--gold);
-  font-size: 15px;
+  font-size: var(--fs-15);
   border-top: 1px solid var(--panel-edge);
   padding-top: 8px;
 }
@@ -1699,12 +1926,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .result-note {
   color: var(--text-dim);
   font-weight: 400;
-  font-size: 12px;
+  font-size: var(--fs-12);
 }
 
 .result-verdict {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
   margin: 10px 0 0;
 }
 
@@ -1753,28 +1980,41 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 /* ============ Mobile landscape (short viewports) ============ */
 /* Phones held horizontally: ~740-930 x 360-430. Everything must fit with no
-   page scrolling. Desktop rules above are untouched. */
+   page scrolling. Desktop rules above are untouched.
+   The block is keyed on the root's `phone-landscape` class, which
+   phoneLayout.ts sets for a viewport under 500px tall (the media query
+   `(max-height: 500px)`) and for a portrait phone at the table, whose table
+   is drawn turned a quarter turn (.app.rotated). A media query cannot see
+   the rotated frame, a class can. :where() adds no specificity, so every
+   rule weighs what it would on its own; the build flattens the nesting. */
 
-@media (max-height: 500px) {
+:where(.phone-landscape) {
   /* Phone table (short landscape).
      Every size derives from the viewport through the tokens on .table-screen,
      so a wider phone gets bigger cards instead of empty felt. The regions:
        - a header row (y 6..38): one strip with levels, trump and points at the
          left, the top seat's label in the middle, the `…` menu at the right;
-       - the trick cross, centred between the header and your row; each side
-         seat's label sits on top of its own trick slot;
+       - the trick cross between the header and the hand: each slot is its
+         cards plus a tag line under them, a gap apart; each side seat's label
+         stands outside its slot;
+       - in play your slot is also your row: Play (with "Your turn") sits where
+         your cards will land, just above the hand; while declaring and burying
+         the row sits under the cross;
        - the hand, the only thing in the bottom band, running 16px under the
-         home indicator; a turn shows as a gold glow along its top edge;
-       - your row, centred just above the hand: Play, Bury or the declare
-         options (the banker's crown beside them); the cross sits above it;
-       - messages pass in the bottom-left corner above your row.
+         home indicator;
+       - messages pass in the bottom-left corner.
      Desktop and iPad never match this block. */
   .table-screen {
     position: relative;         /* the floating HUD's frame */
-    --safe-l: env(safe-area-inset-left, 0px);
-    --safe-r: env(safe-area-inset-right, 0px);
-    --safe-b: env(safe-area-inset-bottom, 0px);
-    --safe-w: calc(100vw - var(--safe-l) - var(--safe-r));
+    /* The frame the table is laid out in: the viewport, or the rotated
+       frame's size and its safe areas turned with it (--frame-*). */
+    --view-w: var(--frame-w, 100vw);
+    --view-h: var(--frame-h, 100vh);
+    --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
+    --safe-l: var(--frame-safe-l, env(safe-area-inset-left, 0px));
+    --safe-r: var(--frame-safe-r, env(safe-area-inset-right, 0px));
+    --safe-b: var(--frame-safe-b, env(safe-area-inset-bottom, 0px));
+    --safe-w: calc(var(--view-w) - var(--safe-l) - var(--safe-r));
     --header-h: 32px;
     /* one spacing scale for the whole table */
     --space-xs: 4px;
@@ -1785,28 +2025,49 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --hand-under: max(0px, calc(var(--safe-b) - 16px));
     --lift: 18px;               /* a selected card's rise; the hand's top padding */
     --hand-h: calc(var(--hand-cw) * 1.4 + var(--hand-under));
-    --header-bottom: calc(env(safe-area-inset-top, 0px) + 6px + var(--header-h));
-    /* The felt between the header and your row holds the cross: three equal
-       gaps (header, top slot, your slot, your row) and two card heights. The
-       cards take the width-based size unless that leaves gaps under --space-m. */
-    --cross-avail: calc(100vh - var(--header-bottom) - var(--zone-bottom) - var(--row-h));
-    --trick-cw: min(clamp(48px, 6.7vw, 64px),
-      calc((var(--cross-avail) - 3 * var(--space-m)) / 2.8));
+    --header-bottom: calc(var(--safe-t) + 6px + var(--header-h));
+    /* A slot's footprint is its cards plus a tag line under them (LEAD, WINS,
+       "… declares"), so a tag never covers a card's index. */
+    --tag-s: 20px;
+    /* While declaring and burying a row of controls sits under the cross; in
+       play your slot is the row (see .phase-play). */
+    --row-reserve: var(--row-h);
+    /* The felt between the header and the hand (less the row, if any) holds
+       the cross: two footprints and three equal gaps. The cards are as large
+       as the felt allows: the width-based size unless that leaves gaps under
+       --space-s, or leaves a side seat's label under 64px beside a
+       four-card throw. */
+    --cross-avail: calc(var(--view-h) - var(--header-bottom) - var(--zone-bottom) - var(--row-reserve));
+    --trick-cw: min(clamp(48px, calc(var(--view-w) * 0.075), 72px),
+      calc((var(--cross-avail) - 3 * var(--space-s) - 2 * var(--tag-s)) / 2.8),
+      calc((var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--space-xs) - 2 * var(--space-s) - 70px) / 4.2));
     --trick-ch: calc(var(--trick-cw) * 1.4);
-    --gap-v: calc((var(--cross-avail) - 2 * var(--trick-ch)) / 3);
+    --foot: calc(var(--trick-ch) + var(--tag-s));
+    --gap-v: calc((var(--cross-avail) - 2 * var(--foot)) / 3);
     /* a side slot's outer edge, from the centre: room for a four-card throw
        growing inward that still clears a four-card throw in the top or your
-       slot (4 cards span 3.16 card widths at the -0.28 overlap) */
-    --side-out: calc(var(--trick-cw) * 4.74 + 6px);
-    /* a side seat's label sits outside its slot and never reaches the safe area */
-    --pill-max: min(96px, calc(50vw - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))));
-    /* top and your slot centres sit a card and a gap apart */
-    --slot-dy: calc((var(--trick-ch) + var(--gap-v)) / 2);
+       slot (4 cards span 2.8 card widths at a 60% pitch) */
+    --side-out: calc(var(--trick-cw) * 4.2 + var(--space-s));
+    /* A side seat's label is centred over its slot's first card. Inward it
+       stops short of where the widest top play can reach: half of 2.8 card
+       widths in play, half of a two-card declaration while setting up.
+       Outward it stops short of the safe edge. */
+    --top-reach: calc(var(--trick-cw) * 1.4);
+    --pill-max: min(200px,
+      calc(2 * (var(--side-out) - var(--top-reach) - var(--space-s)) - var(--trick-cw)),
+      calc(2 * (var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--side-out) - var(--space-s))
+        + var(--trick-cw)));
+    /* card centres from the cross's centre: the top slot's footprint ends a
+       half gap above it, yours starts a half gap below; side cards sit so
+       their footprint is centred */
+    --dy-top: calc(var(--trick-ch) / 2 + var(--tag-s) + var(--gap-v) / 2);
+    --dy-bottom: calc(var(--trick-ch) / 2 + var(--gap-v) / 2);
+    --side-dy: calc(var(--tag-s) / -2);
     --trick-top: calc(var(--header-bottom) + var(--gap-v));
     --trick-bottom: calc(var(--hand-h) + var(--lift));
     --row-h: 50px;              /* one 44px button row and its padding */
     --zone-bottom: calc(var(--trick-bottom) + var(--space-xs));
-    --cross-bottom: calc(var(--zone-bottom) + var(--row-h) + var(--gap-v));
+    --cross-bottom: calc(var(--zone-bottom) + var(--row-reserve) + var(--gap-v));
     --corner-l: calc(var(--safe-l) + 8px);
     /* a long press on a name or label must not select text or raise the
        Copy / Look Up callout over the table */
@@ -1822,11 +2083,24 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     -webkit-touch-callout: default;
   }
 
-  /* The banker's 33 cards fit one row by shrinking to about 52px tall; the
-     row and the cross move down with the shorter hand. Back to full size
-     once the bury leaves 25. */
+  /* in play your slot is your row, so nothing is reserved under the cross */
+  .table-screen.phase-play {
+    --row-reserve: 0px;
+  }
+
+  /* while setting up the top slot holds a declaration, two cards at most */
+  .table-screen.phase-deal,
+  .table-screen.phase-declare,
+  .table-screen.phase-bury {
+    --top-reach: calc(var(--trick-cw) * 0.8);
+  }
+
+  /* The banker's 33 cards fit one row by drawing smaller, as large as the
+     width allows (about 51px wide on a 14 Pro, 56 at most); the row and the
+     cross move down with the shorter hand. Back to full size once the bury
+     leaves 25. */
   .table-screen:has(.hand.small-cards) {
-    --hand-cw: 37px;
+    --hand-cw: clamp(37px, calc(var(--safe-w) * 0.07), 56px);
   }
 
   /* --- HUD: no bar; one strip top-left, the menu top-right --- */
@@ -1839,7 +2113,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     background: none;
     border-bottom: 0;
     pointer-events: none;     /* only the chips themselves take taps */
-    padding: calc(6px + env(safe-area-inset-top, 0px)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
+    padding: calc(6px + var(--safe-t)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
   }
 
   .hud-bar {
@@ -1874,30 +2148,30 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .chip {
     padding: 2px 9px;
-    font-size: 12px;
+    font-size: var(--fs-12);
     gap: 5px;
   }
 
   .trump-chip {
-    font-size: 13px;
+    font-size: var(--fs-13);
   }
 
   .trump-suit.red,
   .trump-suit.black {
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
   .trump-rank {
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
   .points-big {
-    font-size: 16px;
+    font-size: var(--fs-16);
     font-variant-numeric: tabular-nums;
   }
 
   .hud-message {
-    font-size: 12px;
+    font-size: var(--fs-12);
     padding: 2px 0 1px;
   }
 
@@ -1971,7 +2245,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .leave-btn {
-    font-size: 10px;
+    font-size: var(--fs-10);
     padding: 3px 9px;
     min-height: 26px;
   }
@@ -1979,7 +2253,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .mute-btn {
     width: 26px;
     height: 26px;
-    font-size: 12px;
+    font-size: var(--fs-12);
   }
 
   .hud-more {
@@ -2001,7 +2275,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border: 1px solid var(--panel-edge);
     background: rgba(16, 19, 26, 0.82);
     color: var(--text);
-    font-size: 16px;
+    font-size: var(--fs-16);
     font-weight: 700;
     letter-spacing: 0.08em;
     line-height: 1;
@@ -2044,7 +2318,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 8px;
     background: none;
     color: var(--text);
-    font: 500 13px inherit;
+    font: 500 var(--fs-13) inherit;
     font-family: inherit;
     text-align: left;
     cursor: pointer;
@@ -2072,7 +2346,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 8px;
     background: var(--panel);
     color: var(--text);
-    font: 600 13px inherit;
+    font: 600 var(--fs-13) inherit;
     font-family: inherit;
     cursor: pointer;
   }
@@ -2090,30 +2364,86 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-s);
     min-width: 0;
     height: var(--header-h);
-    padding: 0 var(--space-m) 0 var(--space-s);
+    padding: 0 10px 0 7px;     /* the team dot sits in the label: a little less padding */
     border: 0;
-    border-left: 3px solid var(--panel-edge);   /* the team colour lives here, once */
     border-radius: 999px;
     background: rgba(8, 20, 14, 0.72);
     z-index: 2;
   }
 
-  .opponent.team0 { border-left-color: var(--team0); }
-  .opponent.team1 { border-left-color: var(--team1); }
+  /* The label is the only way to read a long name (a tap shows it whole),
+     so its tap area reaches 44px tall, as the menu button's does. */
+  .opponent::after {
+    content: "";
+    position: absolute;
+    inset: -6px -4px;
+  }
 
-  /* whose turn: the seat's edge turns gold, without a glow */
+  /* the team colour is a dot inside the label, the same for every seat */
+  .opponent .seat-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+  }
+
+  .opponent .seat-dot.t0 { background: var(--team0); }
+  .opponent .seat-dot.t1 { background: var(--team1); }
+
+  /* Whose turn: the seat's label fills gold and its name ends in "…". A
+     solid fill, no glow and no motion. */
   .opponent.on-turn {
-    border-left-color: var(--gold);
+    background: var(--gold);
     box-shadow: none;
   }
 
+  .opponent.on-turn .opp-name {
+    color: #1a1a1a;
+  }
+
+  /* Nothing in or beside the label moves when the turn comes: the team dot
+     and the "…" both always hold their room, and the turn only shows one and
+     hides the other. */
+  /* the banker's crown already marks its team, and the pill has no room for both */
+  .opponent:has(.banker-crown) .seat-dot {
+    display: none;
+  }
+
+  .opponent.on-turn .seat-dot {
+    visibility: hidden;
+  }
+
+  .opponent .turn-dots {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 10px;
+    margin-left: -2px;
+    font-weight: 800;
+    visibility: hidden;
+  }
+
+  .opponent .turn-dots.shown {
+    visibility: visible;
+  }
+
   .opp-name {
-    font-size: 13px;
+    font-size: var(--fs-13);
     white-space: nowrap;
   }
 
+  /* no glow anywhere on the phone table */
   .banker-crown {
-    font-size: 12px;
+    font-size: var(--fs-12);
+    filter: none;
+  }
+
+  .level-chip.level-up {
+    animation: none;
+  }
+
+  .victory-crown {
+    filter: none;
   }
 
   /* the card count is not shown at the table */
@@ -2131,7 +2461,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .you-tag,
   .host-tag,
   .off-tag {
-    font-size: 10px;
+    font-size: var(--fs-11);
     padding: 1px 5px;
     margin-left: var(--space-xs);
   }
@@ -2158,9 +2488,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-weight: 800;
   }
 
-  .thinking,
-  .their-turn {
-    font-size: 11px;
+  .thinking {
+    font-size: var(--fs-11);
+  }
+
+  /* a human's turn is the label's fill too; the label stays one line */
+  .opponent .their-turn {
+    display: none;
   }
 
   /* A bot's turn shows as its seat's gold edge, not a sentence on the felt.
@@ -2175,13 +2509,20 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     white-space: nowrap;
   }
 
-  /* the top seat's label is centred in the header row, over its slot */
+  /* The top seat's label shares the header row. Its stretch runs from a gap
+     past the level strip (the strip's measured width, --hud-strip-w, from
+     the safe edge) to a gap before Chat. It is centred over its slot when
+     the stretch allows; otherwise it takes up to 96px of the stretch off
+     centre, and the name ends in an ellipsis. */
   .opponent.pos-top {
-    top: calc(6px + env(safe-area-inset-top, 0px));
-    left: 50%;
+    --top-from: calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s));
+    --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - 40px - var(--space-s));
+    --top-w: min(200px, max(calc(2 * min(var(--view-w) / 2 - var(--top-from), var(--top-to) - var(--view-w) / 2)),
+      min(96px, calc(var(--top-to) - var(--top-from)))));
+    top: calc(6px + var(--safe-t));
+    left: clamp(calc(var(--top-from) + var(--top-w) / 2), calc(var(--view-w) / 2), calc(var(--top-to) - var(--top-w) / 2));
     height: var(--header-h);
-    /* between the level strip (about 260px from the safe edge) and the menu */
-    max-width: min(200px, calc(100vw - 2 * max(var(--safe-l), var(--safe-r)) - 528px));
+    max-width: var(--top-w);
     transform: translateX(-50%);
   }
 
@@ -2192,26 +2533,25 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-xs);
   }
 
-  /* A side seat's label stands on the outer side of its trick slot, centred
-     on it, as far from its cards as the top seat's label is from its card.
-     Long names step down a size, then end in an ellipsis; a tap or long press
-     shows the whole name. */
+  /* A side seat's label stands centred over its slot's first card, a small
+     gap above where its cards' tops are (the slot's centre less half a card),
+     and never higher than just under the header. A play grows inward and
+     downward from there, so no play reaches it. Its width keeps it short of
+     the widest top play inward and of the safe edge outward. Long names step
+     down a size, then end in an ellipsis; a tap or long press shows the
+     whole name. */
   .opponent.pos-left,
   .opponent.pos-right {
-    top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2);
+    top: max(calc(var(--header-bottom) + var(--space-xs)),
+      calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy)
+        - var(--trick-ch) / 2 - var(--space-s) - var(--header-h)));
     right: auto;
     max-width: var(--pill-max);
+    transform: translate(-50%, 0);
   }
 
-  .opponent.pos-left {
-    left: calc(50% - var(--side-out) - var(--gap-v));
-    transform: translate(-100%, -50%);
-  }
-
-  .opponent.pos-right {
-    left: calc(50% + var(--side-out) + var(--gap-v));
-    transform: translate(0, -50%);
-  }
+  .opponent.pos-left { left: calc(50% - var(--side-out) + var(--trick-cw) / 2); }
+  .opponent.pos-right { left: calc(50% + var(--side-out) - var(--trick-cw) / 2); }
 
   .opp-name-text {
     min-width: 0;
@@ -2220,8 +2560,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     white-space: nowrap;
   }
 
-  .opponent[data-name-len="m"] .opp-name { font-size: 11px; }
-  .opponent[data-name-len="l"] .opp-name { font-size: 10px; }
+  /* a long name steps down once, to 12px, then ends in an ellipsis */
+  .opponent[data-name-len="m"] .opp-name,
+  .opponent[data-name-len="l"] .opp-name { font-size: var(--fs-12); }
 
   .opp-fullname {
     display: block;
@@ -2230,13 +2571,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     left: 50%;
     translate: -50% 0;
     z-index: 20;
-    max-width: 60vw;
+    max-width: calc(var(--view-w) * 0.6);
     padding: 5px 10px;
     border: 1px solid var(--panel-edge);
     border-radius: 8px;
     background: #0a0c11;
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-12);
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -2262,12 +2603,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --cw: var(--trick-cw);
   }
 
-  /* Up to four cards overlap by 28%; a longer play (a tractor of four pairs,
-     a big throw) packs tighter so it never spans more than four would, the
-     room the cross keeps between its slots. */
+  /* Up to four cards sit at a 60% pitch (each index stays clear); a longer
+     play (a tractor of four pairs, a big throw) packs tighter so it never
+     spans more than four would, the room the cross keeps between its slots. */
   .trick-play {
-    --t-pitch: min(calc(var(--trick-cw) * 0.72),
-      calc(var(--trick-cw) * 2.16 / max(1, calc(var(--n, 1) - 1))));
+    --t-pitch: min(calc(var(--trick-cw) * 0.6),
+      calc(var(--trick-cw) * 1.8 / max(1, calc(var(--n, 1) - 1))));
   }
 
   .trick-cards .card + .card {
@@ -2289,37 +2630,36 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     left: 50%;
   }
 
-  .trick-play.pos-top { translate: -50% calc(-50% - var(--slot-dy)); }
-  .trick-play.pos-bottom { translate: -50% calc(-50% + var(--slot-dy)); }
+  .trick-play.pos-top { translate: -50% calc(-50% - var(--dy-top)); }
+  .trick-play.pos-bottom { translate: -50% calc(-50% + var(--dy-bottom)); }
 
   .trick-play.pos-left {
     top: 50%;
     left: calc(50% - var(--side-out));
     right: auto;
-    translate: 0 -50%;
+    translate: 0 calc(-50% + var(--side-dy));
   }
 
   .trick-play.pos-right {
     top: 50%;
     left: auto;
     right: calc(50% - var(--side-out));
-    translate: 0 -50%;
+    translate: 0 calc(-50% + var(--side-dy));
   }
 
-  /* One rule for every seat: LEAD / WINS sit centred inside the cards'
-     bottom edge, so a tag takes no room of its own and never lands between
-     two slots. */
+  /* One rule for every seat: LEAD / WINS / "… declares" sit centred just
+     under the cards, in the tag line each slot keeps, so no card's index is
+     covered; LEAD and WINS on one card stand side by side. */
   .trick-tag {
     position: absolute;
-    top: auto;
-    bottom: var(--space-xs);
+    top: calc(100% + var(--space-xs));
+    bottom: auto;
     left: 50%;
     translate: -50% 0;
     margin: 0;
     min-height: 0;
     white-space: nowrap;
-    /* LEAD and WINS on one card stack, so they stay within its width */
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     gap: var(--space-xs);
   }
@@ -2334,9 +2674,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* felt text sits on the HUD's dark pill, so it stays readable */
+  /* 12px with a 15px line keeps a tag inside the slot's 20px tag line */
   .lead-tag,
   .win-tag {
-    font-size: 10px;
+    font-size: 12px;
+    line-height: 15px;
     padding: 2px 7px;
   }
 
@@ -2346,8 +2688,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .declare-tag {
-    font-size: 11px;
-    padding: 3px 9px;
+    font-size: 12px;
+    line-height: 15px;
+    padding: 2px 9px;
     background: rgba(8, 20, 14, 0.78);
   }
 
@@ -2458,6 +2801,36 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     pointer-events: auto;
   }
 
+  /* In play the row is the bottom of your slot, just above the hand: Play
+     stands where your cards land, and once you have played the row is empty
+     and your cards show there. While the finished trick lingers the row
+     steps aside. */
+  .phase-play .you-row {
+    bottom: var(--zone-bottom);
+  }
+
+  .phase-play.showing-last .you-row {
+    visibility: hidden;
+  }
+
+  /* Your turn, nothing chosen yet: Play reads "Your turn", fully opaque, in
+     place of a glow. It turns back into Play once a card is chosen. */
+  .phase-play .action-bar .btn.primary.your-turn .play-text {
+    display: none;
+  }
+
+  .phase-play .action-bar .btn.primary.your-turn .your-turn-text {
+    display: inline;
+  }
+
+  .phase-play .action-bar .btn.primary.your-turn:disabled {
+    opacity: 1;
+    border-color: var(--gold);
+    background: rgba(8, 20, 14, 0.85);
+    color: var(--gold);
+    font-weight: 700;
+  }
+
   /* no name pill at the table: only the banker's crown, beside an action */
   .you-tagline {
     display: none;
@@ -2480,6 +2853,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     box-shadow: none;
   }
 
+  /* burying, the Bury button is yours alone; a bare crown beside it would
+     read as a second button */
+  .phase-bury .you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown) {
+    display: none;
+  }
+
   .you-tagline .you-name,
   .you-tagline .your-turn-tag,
   .you-tagline .ready-tag {
@@ -2489,7 +2868,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .action-bar {
     grid-column: 2;
     min-height: 0;
-    max-width: calc(100vw - var(--safe-l) - var(--safe-r) - 16px);
+    max-width: calc(var(--view-w) - var(--safe-l) - var(--safe-r) - 16px);
     margin: 0;
     padding: 3px 0;
     gap: 8px;
@@ -2526,7 +2905,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .action-bar .btn {
     min-height: 44px; /* touch target */
     padding: 6px 16px;
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
   /* a disabled Clear is not information */
@@ -2550,7 +2929,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 999px;
     background: rgba(8, 20, 14, 0.78);
     color: var(--gold);
-    font-size: 12px;
+    font-size: var(--fs-12);
     font-weight: 700;
   }
 
@@ -2571,7 +2950,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 999px;
     background: rgba(8, 20, 14, 0.78);
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-12);
     font-style: normal;
     text-shadow: none;
   }
@@ -2596,9 +2975,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
       calc((var(--safe-w) - 16px - var(--hand-cw)) / max(1, calc(var(--n, 25) - 1))));
     position: relative;
     justify-content: flex-start;
-    max-width: 100vw;
+    max-width: var(--view-w);
     padding: var(--lift) calc(8px + var(--safe-r)) var(--hand-under) calc(8px + var(--safe-l));
-    overflow-x: auto;           /* a safety net only: the pitch always fits */
+    /* no overflow clip: any non-visible overflow also clips vertically, and a lifted card's gold ring
+       rises past the top padding; the pitch always fits, so nothing scrolls */
+    overflow: visible;
+  }
+
+  /* a finger slides across the hand to choose a run of cards, so the hand
+     never pans (it always fits) */
+  .hand.selectable {
+    touch-action: none;
   }
 
   .hand-slot {
@@ -2624,28 +3011,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: 0;
     left: 0;
     right: 0;
-  }
-
-  /* Your turn: a gold glow along the top edge of the hand */
-  .hand::before {
-    content: "";
-    position: absolute;
-    top: var(--lift);
-    left: 50%;
-    width: calc((var(--n, 25) - 1) * var(--pitch) + var(--hand-cw));
-    height: 3px;
-    translate: -50% -2px;
-    border-radius: 3px;
-    background: var(--gold);
-    box-shadow: 0 0 10px 3px var(--gold-soft), 0 -4px 22px 8px rgba(242, 193, 78, 0.22);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 200ms ease;
-  }
-
-  .my-turn .hand::before {
-    opacity: 1;
-    animation: turn-glow 1.6s ease-in-out infinite alternate;
   }
 
   /* Over 25 cards (the banker with the kitty) the cards are smaller, so all
@@ -2696,7 +3061,59 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     max-width: 360px;
     margin: 0;
     padding: 6px 8px;
-    font-size: 12px;
+    font-size: var(--fs-12);
+  }
+
+  /* In play the corner beside your row is free: messages and the
+     failed-throw notice pass there, left of the crown, no taller than the band
+     under the left seat's slot. */
+  .phase-play .hud-message,
+  .phase-play .hud-notice {
+    bottom: calc(var(--zone-bottom) + var(--space-s));
+    width: auto;
+    max-width: calc(50% - var(--corner-l) - 88px);
+    max-height: calc(var(--cross-avail) / 2 - var(--trick-ch) / 2 - 26px);
+  }
+
+  .phase-play .hud-message {
+    overflow: hidden;
+  }
+
+  /* a declaration is told once, by its tag under the declared cards */
+  .hud-message.declare-message {
+    display: none;
+  }
+
+  .phase-play .hud-notice {
+    font-size: var(--fs-11);
+    line-height: 1.3;
+    padding-right: 30px;
+  }
+
+  /* Only the text is clipped to the band: clipping the notice itself would
+     also clip the close button's tap area, which overhangs the corner. */
+  .phase-play .hud-notice .hud-notice-body {
+    align-self: stretch;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* The close is a full 44px button whose glyph sits in the notice's top
+     right 24px corner; the 10px of tap area around the glyph overhangs the
+     notice's top and right edges by 8px instead of making a short notice
+     taller. */
+  .phase-play .hud-notice .hud-notice-close {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 10px;
+    line-height: 24px;
+    background-clip: content-box;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -2705,8 +3122,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
       transition: none;
     }
 
-    .my-turn .hand::before,
-    .deal-deck-stack .card,
+    /* :nth-child(n) matches the pulsing card's own selector weight */
+    .deal-deck-stack .card:nth-child(n),
     .phase-deal .action-bar .btn.gold,
     .phase-declare .action-bar .btn.gold {
       animation: none;
@@ -2738,7 +3155,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin: -4px 0 0;
   }
 
-  /* no room for the signed-out clip above the form */
+  /* no room for the preview above the form */
   .lobby-preview {
     display: none;
   }
@@ -2755,7 +3172,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .btn.big {
     padding: 9px 18px;
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
   .room-code {
@@ -2769,17 +3186,18 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .seat-row {
     padding: 5px 12px;
-    font-size: 13px;
+    font-size: var(--fs-13);
   }
 
   .team-legend {
     gap: 16px;
-    font-size: 11px;
+    font-size: var(--fs-11);
   }
 
   /* --- Round end: a compact card; Next round always on screen --- */
   .modal {
     width: min(380px, 100%);
+    max-width: 100%;
     padding: 12px 16px 0;
     gap: 8px;
     max-height: 100%;
@@ -2787,7 +3205,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .modal-title {
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
   .modal-title .title-team {
@@ -2808,14 +3226,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: 2px 0;
   }
 
-  /* `.result-grid` in front outranks the rem text sizes at the end of the file */
+  /* `.result-grid` in front outranks the text sizes at the end of the file */
   .result-grid .result-label {
-    font-size: 12px;
+    font-size: var(--fs-12);
     line-height: 1.35;
   }
 
   .result-grid .result-value {
-    font-size: 13px;
+    font-size: var(--fs-13);
     line-height: 1.35;
     padding-left: 12px;
   }
@@ -2843,8 +3261,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: 0;
     min-height: 44px;
     padding: 8px 16px;
-    margin-bottom: 12px;
     box-shadow: 0 -10px 12px var(--panel);
+  }
+
+  /* the card's own 8px gap separates Next round from Leave, and Leave keeps
+     the same 12px from the bottom edge as the title has from the top */
+  .modal > .dialog-leave-btn,
+  .modal > .dialog-leave-confirm {
+    margin: 0 auto 12px;
   }
 
   .victory-crown {
@@ -2859,25 +3283,38 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 13px;
   }
 
-  /* an error passes in the header band, never over Play and Clear */
+  /* off the table, an error passes in the header band */
   .toast {
     top: calc(env(safe-area-inset-top, 0px) + 6px);
     bottom: auto;
     max-width: calc(100vw - 2 * max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) - 32px);
-    font-size: 13px;
+    font-size: var(--fs-13);
     padding: 7px 16px;
+  }
+
+  /* At the table an error passes just above your row, centred, close to the
+     hand it is about: never over a seat's label, Play, Clear or the hand. It
+     stays inside the cross's width, between the side seats' labels. */
+  .table-screen .toast {
+    top: auto;
+    bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-xs));
+    max-width: calc(2 * var(--side-out) - 2 * var(--space-s));
+    font-size: var(--fs-13);
+    line-height: 17px;
+    padding: 6px 14px;
+    text-align: center;
   }
 
   /* chat sits in the header, beside the menu button, clear of the hand
      (the extra class outranks the base rule later in the file) */
   .table-screen .chat-launch {
-    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    top: calc(var(--safe-t) + 6px);
     right: calc(var(--safe-r) + 4px + 36px + var(--space-s));
     bottom: auto;
     width: 40px;
     height: var(--header-h);
     border-radius: 999px;
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
   .table-screen .chat-launch::after {
@@ -2909,71 +3346,73 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   from { opacity: 0; transform: scale(0.85); }
 }
 
-@keyframes turn-glow {
-  from { opacity: 0.65; }
-  to { opacity: 1; }
-}
-
-/* ============ Portrait phones: rotate hint ============ */
-
-/* A browser fallback: the iOS app turns the phone to landscape itself. */
-.rotate-hint {
-  display: none;
+/* The game is always played sideways. A phone browser held upright at the
+   table (App sets .rotated; the iOS app turns itself instead) draws the table
+   a quarter turn clockwise in a frame the screen's long side wide, so the
+   phone layout applies to it unchanged. The frame's left edge lies along
+   the screen's top, so its safe areas turn with it. Hit testing follows the
+   transform, so a tap lands on the card under the finger. */
+.app.rotated {
   position: fixed;
-  inset: 0;
-  z-index: 100;
-  background:
-    radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
-  padding: 24px;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  overflow: hidden;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
 }
 
-.rotate-card {
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 90px;
-  border-radius: 8px;
-  background: linear-gradient(160deg, #fdfdf7 0%, #f1f0e6 100%);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  color: var(--card-red);
-  font-size: 18px;
-  font-weight: 800;
-  animation: rotate-nudge 1.8s ease-in-out infinite;
+/* The turned table's bottom is the phone's left edge, which has no inset
+   in portrait: the hand keeps 8px off it instead of touching the glass. */
+.app.rotated .table-screen {
+  --hand-under: max(8px, calc(var(--safe-b) - 16px));
 }
 
-.rotate-leave {
-  min-height: 44px;
+/* the chat and the round-end card measure the turned frame, not the
+   viewport */
+.app.rotated .chat-panel {
+  right: calc(12px + var(--frame-safe-r));
+  bottom: calc(68px + var(--frame-safe-b));
+  width: min(320px, calc(var(--frame-w) * 0.82));
+  max-height: min(380px, calc(var(--frame-h) - 80px - var(--frame-safe-t) - var(--frame-safe-b)));
 }
 
-@keyframes rotate-nudge {
-  0%,
-  20% {
-    transform: rotate(0deg);
-  }
-  60%,
-  100% {
-    transform: rotate(90deg);
-  }
+.app.rotated .modal-backdrop {
+  padding: max(12px, var(--frame-safe-t)) max(12px, var(--frame-safe-r))
+    max(12px, var(--frame-safe-b)) max(12px, var(--frame-safe-l));
 }
 
-@media (orientation: portrait) and (max-width: 600px) {
-  .rotate-hint {
-    display: flex;
-  }
+/* A dialog opened with showModal() lives in the browser's top layer, which
+   ignores the .app transform, so it takes the same quarter turn itself and
+   reads the same turned frame. */
+.app.rotated dialog.modal-backdrop:modal {
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
+}
 
-  /* the table's no-wrap HUD widened the layout viewport, which put the fixed
-     hint off-screen; out of layout, the hint centres */
-  .table-screen {
-    display: none;
-  }
+/* the seat label's team dot and turn mark, and the hint under Your turn,
+   belong to the phone table only */
+.seat-dot,
+.turn-dots {
+  display: none;
 }
 
 /* Touch screens: the lobby's dice and How to play link keep their drawn size
@@ -3164,7 +3603,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* Round-end readiness (all humans must confirm before advancing) */
 .ready-status {
   margin-top: 10px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   opacity: 0.75;
   text-align: center;
 }
@@ -3176,7 +3615,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   width: 46px; height: 46px; border-radius: 50%;
   background: rgba(20, 28, 22, 0.92); border: 1px solid rgba(255,255,255,0.18);
-  font-size: 20px; cursor: pointer;
+  font-size: var(--fs-20); cursor: pointer;
 }
 .chat-badge {
   position: absolute; top: -4px; right: -4px;
@@ -3197,13 +3636,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .chat-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.12);
-  font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: var(--fs-13); letter-spacing: 0.04em; text-transform: uppercase;
   opacity: 0.85;
 }
-.chat-close { background: none; border: none; color: #eee; font-size: 20px; cursor: pointer; }
-.chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: 14px; }
+.chat-close { background: none; border: none; color: #eee; font-size: var(--fs-20); cursor: pointer; }
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: var(--fs-14); }
 .chat-head, .chat-input { flex-shrink: 0; }
-.chat-empty { opacity: 0.5; font-size: 13px; }
+.chat-empty { opacity: 0.5; font-size: var(--fs-13); }
 .chat-msg { margin: 4px 0; word-break: break-word; }
 .chat-msg .chat-name { opacity: 0.65; margin-right: 6px; font-weight: 600; }
 .chat-msg.mine .chat-name { color: #8fd18f; }
@@ -3239,7 +3678,7 @@ button.room-chip.copied {
 .chat-msg.system {
   opacity: 0.55;
   font-style: italic;
-  font-size: 13px;
+  font-size: var(--fs-13);
   text-align: center;
   margin: 6px 0;
 }
@@ -3255,7 +3694,7 @@ button.room-chip::after {
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 12px; font-style: normal; letter-spacing: 0;
+  font-size: var(--fs-12); font-style: normal; letter-spacing: 0;
   opacity: 0; pointer-events: none; transition: opacity 0.12s ease;
   z-index: 50;
 }
@@ -3265,7 +3704,7 @@ button.room-chip::after {
 button.room-chip:focus-visible::after { opacity: 1; }
 
 /* Seat picker for mid-game joins */
-.seat-hint { opacity: 0.7; font-size: 14px; margin: 4px 0 14px; }
+.seat-hint { opacity: 0.7; font-size: var(--fs-14); margin: 4px 0 14px; }
 .seat-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;
 }
@@ -3281,12 +3720,12 @@ button.room-chip:focus-visible::after { opacity: 1; }
 @media (hover: hover) and (pointer: fine) {
   .seat-option:not(:disabled):hover { background: rgba(255,255,255,0.12); }
 }
-.seat-num { font-weight: 600; font-size: 13px; }
-.seat-who { font-size: 13px; opacity: 0.8; }
+.seat-num { font-weight: 600; font-size: var(--fs-13); }
+.seat-who { font-size: var(--fs-13); opacity: 0.8; }
 .seat-option { min-width: 0; }
 .seat-who { overflow-wrap: anywhere; }
-.seat-team { font-size: 11px; opacity: 0.55; letter-spacing: 0.06em; }
-.seat-take { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+.seat-team { font-size: var(--fs-11); opacity: 0.55; letter-spacing: 0.06em; }
+.seat-take { font-size: var(--fs-11); opacity: 0.7; margin-top: 2px; }
 
 /* A phone-only message toast; the element remounts per message (key=message),
    so the animation restarts for each new line and the last one fades out. */
@@ -3299,13 +3738,13 @@ button.room-chip:focus-visible::after { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .hud-message { animation: none; }
-  .modal, .modal-backdrop, .hud-notice, .trick-play, .rotate-card { animation: none; }
+  .modal, .modal-backdrop, .hud-notice, .trick-play { animation: none; }
   .trick-play.winner .trick-cards, .trick-play.winner .win-tag, .level-chip.level-up { animation: none; }
   .opponent.on-turn::after { animation: none; }
   .hand .card, .btn, .seat-option { transition: none; }
   .btn:active:not(:disabled), .seat-option:active:not(:disabled) { transform: none; }
   /* Preserve the toast's dismissal timing, without its slide-in movement. */
-  .toast { animation: toast-out 0.01ms linear 3.6s forwards; }
+  .toast { animation: toast-out 0.01ms linear calc(var(--toast-ms, 4000ms) - 0.01ms) forwards; }
 }
 
 /* A phone's controls need finger-sized targets, not desktop icon bounds. */
@@ -3316,7 +3755,7 @@ button.room-chip:focus-visible::after { opacity: 1; }
     min-width: 44px;
   }
   .field input, .field select, .start-level-row select, .room-input,
-  .chat-input input { font-size: 16px; }
+  .chat-input input { font-size: var(--fs-16); }
 }
 
 .mute-btn:active, .leave-btn:active, .hud-more-btn:active,
@@ -3331,11 +3770,11 @@ button.room-chip:active { background-color: #394452; }
 
 /* Text-heavy surfaces scale with the user's default text size. Card geometry
    stays independent so changing text size cannot change a hand's hit mapping. */
-.lobby-panel { width: 24rem; }
+.lobby-panel { width: 384px; }
 .field, .chat-log, .result-grid, .result-verdict, .ready-status { line-height: 1.5; }
-.field > span, .result-label, .ready-status { font-size: 0.875rem; }
-.field input, .field select, .chat-input input { font-size: max(16px, 1rem); }
-.chat-log, .result-value, .result-verdict { font-size: 0.9375rem; }
+.field > span, .result-label, .ready-status { font-size: var(--fs-14); }
+.field input, .field select, .chat-input input { font-size: var(--fs-16); }
+.chat-log, .result-value, .result-verdict { font-size: var(--fs-15); }
 .modal-title, .victory-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .result-grid { min-width: 0; }
 .result-grid > * { min-width: 0; overflow-wrap: anywhere; }
@@ -3457,15 +3896,15 @@ button.room-chip:active { background-color: #394452; }
    page is a lobby-sized panel: same width, padding, height and type scale. */
 
 .games-panel {
-  width: 24rem;
+  width: 384px;
   max-width: 100%;
-  min-height: min(100%, 40rem);
+  min-height: min(100%, 640px);
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
 }
-.games-panel.wide { width: 32rem; }
+.games-panel.wide { width: 512px; }
 .games-head {
   display: flex;
   flex-direction: column;
@@ -3491,11 +3930,11 @@ button.room-chip:active { background-color: #394452; }
   padding: 16px 0;
   text-align: center;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: var(--fs-14);
   line-height: 1.5;
 }
 .games-status p { margin: 0; }
-.games-status .games-status-title { color: var(--text); font-size: 16px; font-weight: 600; }
+.games-status .games-status-title { color: var(--text); font-size: var(--fs-16); font-weight: 600; }
 .games-cta { align-self: stretch; margin-top: 16px; }
 .games-section { display: flex; flex-direction: column; gap: 8px; }
 .games-list, .games-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -3519,20 +3958,20 @@ button.games-row { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) {
   button.games-row:hover { border-color: var(--gold-soft); }
 }
-.games-when { font-size: 0.8125rem; color: var(--text-dim); }
+.games-when { font-size: var(--fs-13); color: var(--text-dim); }
 .games-teams { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .games-team { border-bottom: 2px solid transparent; }
 .games-team.team0 { border-bottom-color: var(--team0); }
 .games-team.team1 { border-bottom-color: var(--team1); }
 .games-team.mine { color: var(--gold); }
-.games-vs { color: var(--text-dim); font-weight: 400; font-size: 0.8125rem; }
-.games-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.8125rem; color: var(--text-dim); }
+.games-vs { color: var(--text-dim); font-weight: 400; font-size: var(--fs-13); }
+.games-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-13); color: var(--text-dim); }
 .games-tag {
   color: var(--gold);
   border: 1px solid var(--gold-soft);
   border-radius: 999px;
   padding: 0 8px;
-  font-size: 0.75rem;
+  font-size: var(--fs-12);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -3545,14 +3984,14 @@ button.games-row { cursor: pointer; }
   border-radius: 10px;
 }
 .games-round-n { font-weight: 700; white-space: nowrap; }
-.games-round-res { flex: 1; min-width: 0; color: var(--text-dim); font-size: 0.875rem; }
-.games-round .btn { padding: 5px 12px; font-size: 13px; }
+.games-round-res { flex: 1; min-width: 0; color: var(--text-dim); font-size: var(--fs-14); }
+.games-round .btn { padding: 5px 12px; font-size: var(--fs-13); }
 .games-more, .games-remove { align-self: stretch; }
 .games-remove { margin-top: auto; }
 
 .replay { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .replay-info { display: flex; flex-wrap: wrap; gap: 6px; }
-.replay-info .chip { padding: 3px 10px; font-size: 12px; }
+.replay-info .chip { padding: 3px 10px; font-size: var(--fs-12); }
 .replay-red { color: var(--card-red); }
 .replay-seats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .replay-seat {
@@ -3564,7 +4003,7 @@ button.games-row { cursor: pointer; }
   border-radius: 999px;
   background: rgba(16, 19, 26, 0.6);
   border: 1px solid var(--panel-edge);
-  font-size: 13px;
+  font-size: var(--fs-13);
 }
 .replay-seat.team0 { border-left: 3px solid var(--team0); }
 .replay-seat.team1 { border-left: 3px solid var(--team1); }
@@ -3589,7 +4028,7 @@ button.games-row { cursor: pointer; }
 .replay-felt .trick-cards { --cw: 40px; }
 .replay-felt .trick-cards .card + .card { margin-left: -24px; }
 .replay-felt .table-emblem { top: 50%; font-size: 64px; }
-.replay-caption { margin: 0; min-height: 2.6em; font-size: 0.875rem; line-height: 1.3; overflow-wrap: anywhere; }
+.replay-caption { margin: 0; min-height: 2.6em; font-size: var(--fs-14); line-height: 1.3; overflow-wrap: anywhere; }
 .replay-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto repeat(2, minmax(0, 1fr));
@@ -3597,7 +4036,7 @@ button.games-row { cursor: pointer; }
   gap: 6px;
 }
 .replay-controls .btn { padding: 6px 0; }
-.replay-step { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; min-width: 4.5em; text-align: center; }
+.replay-step { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: var(--fs-13); min-width: 4.5em; text-align: center; }
 .replay-jump {
   grid-column: 1 / -1;
   width: 100%;
@@ -3606,7 +4045,7 @@ button.games-row { cursor: pointer; }
   border: 1px solid var(--panel-edge);
   border-radius: 10px;
   padding: 8px 12px;
-  font-size: max(16px, 1rem);
+  font-size: var(--fs-16);
 }
 .replay-hand { overflow: hidden; }
 .replay-hand .hand { --cw: 48px; padding: 8px 4px 4px; max-width: 100%; }
@@ -3618,13 +4057,13 @@ button.games-row { cursor: pointer; }
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--panel-edge);
-  font-size: 0.875rem;
+  font-size: var(--fs-14);
 }
 .replay-result.won { border-color: var(--gold); }
-.replay-result-head { font-weight: 700; font-size: 1rem; }
+.replay-result-head { font-weight: 700; font-size: var(--fs-16); }
 .replay-mini-cards { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; --cw: 28px; }
-.replay-mini-label { font-size: 12px; color: var(--text-dim); margin-right: 6px; min-width: 4em; }
-.replay-note { margin: 0; color: var(--text-dim); font-size: 14px; }
+.replay-mini-label { font-size: var(--fs-12); color: var(--text-dim); margin-right: 6px; min-width: 4em; }
+.replay-note { margin: 0; color: var(--text-dim); font-size: var(--fs-14); }
 .replay-all { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 
 /* How to play: a lobby-sized panel of short steps, each a headline, a line
@@ -3645,7 +4084,7 @@ button.games-row { cursor: pointer; }
   text-underline-offset: 3px;
 }
 
-.howto-panel { min-height: min(100%, 46rem); }
+.howto-panel { min-height: min(100%, 736px); }
 .howto-head {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -3660,7 +4099,7 @@ button.games-row { cursor: pointer; }
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.howto-count { justify-self: end; padding-right: 18px; font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.howto-count { justify-self: end; padding-right: 18px; font-size: var(--fs-13); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .howto-step { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .howto-step > .howto-visual { flex: 1; justify-content: center; }
 .howto-title { margin: 0; font-size: 22px; line-height: 1.25; color: var(--gold); text-align: center; }
@@ -3673,7 +4112,7 @@ button.games-row { cursor: pointer; }
 }
 /* The text slots keep one height on every step (three body lines, two caption
    lines, empty or not), so the picture, the dots and the buttons never jump. */
-.howto-body { font-size: 14px; line-height: 1.5; min-height: 4.5em; color: var(--text); }
+.howto-body { font-size: var(--fs-14); line-height: 1.5; min-height: 4.5em; color: var(--text); }
 .howto-caption { font-size: 13px; line-height: 1.45; min-height: 2.9em; color: var(--text-dim); }
 
 .howto-visual {
@@ -3830,17 +4269,15 @@ button.games-row { cursor: pointer; }
 .howto-band-pts { font-variant-numeric: tabular-nums; font-weight: 700; }
 
 .howto-nav { display: flex; flex-direction: column; gap: 12px; }
-.howto-dots { display: flex; justify-content: center; gap: 2px; }
-.howto-dot {
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: 6px 4px;
-  cursor: pointer;
-}
+/* The dots are a page indicator, not buttons: Back and Next (44px and up)
+   and the swipe move between steps, so no tap target is narrower than a
+   finger. */
+.howto-dots { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 16px; pointer-events: none; }
+.howto-dot { display: flex; align-items: center; justify-content: center; }
 .howto-dot::before {
   content: "";
   display: block;
+  flex-shrink: 0;
   width: 8px;
   height: 8px;
   border-radius: 999px;
@@ -3854,9 +4291,15 @@ button.games-row { cursor: pointer; }
    parts. Parts that appear later keep their space while hidden. */
 .howto-visual { position: relative; }
 .howto-frame { display: contents; }
-.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }
+/* 30px buttons 14px apart: each one's 44px tap (the ::after) meets the next's.
+   They sit in a strip of their own across the picture's top, 44px tall so
+   even the taps end above the picture, which therefore never draws a seat
+   name or a card under them, at any width or text size. */
+.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 14px; }
+.howto-visual:has(> .howto-anim-controls) { padding-top: 44px; }
 .howto-anim-btn {
   appearance: none;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3869,6 +4312,11 @@ button.games-row { cursor: pointer; }
   color: var(--text-dim);
   cursor: pointer;
   transition: color 150ms ease, background 150ms ease;
+}
+.howto-anim-btn::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
 }
 .howto-anim-btn svg { width: 14px; height: 14px; fill: currentColor; }
 .howto-anim-btn svg[fill="none"] { fill: none; }
@@ -3971,25 +4419,26 @@ button.games-row { cursor: pointer; }
    spans every text row, so it keeps one size on every step and the text
    needs no reserved height. */
 @media (min-width: 900px) {
-  .howto-panel { width: 58rem; gap: 20px; }
+  .howto-panel { width: 928px; gap: 20px; }
   .howto-step {
     display: grid;
-    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 256px) minmax(0, 1fr);
     grid-template-rows: 1fr auto auto auto 1fr;
     grid-template-areas: ". visual" "title visual" "body visual" "caption visual" ". visual";
     column-gap: 36px;
     row-gap: 12px;
     /* Tall enough for the scoring table; shorter on a 720px-tall laptop so
        the panel still fits without scrolling. */
-    min-height: clamp(28rem, 100dvh - 14rem, 34rem);
+    min-height: clamp(448px, 100dvh - 224px, 544px);
   }
   .howto-step > .howto-visual { grid-area: visual; padding: 24px 20px; gap: 14px; }
+  .howto-step > .howto-visual:has(> .howto-anim-controls) { padding-top: 44px; }
   .howto-title { grid-area: title; text-align: left; }
   .howto-body,
   .howto-caption { grid-area: body; margin: 0; max-width: none; min-height: 0; text-align: left; text-wrap: pretty; }
   .howto-caption { grid-area: caption; font-size: 14px; }
   .howto-caption:empty { display: none; }
-  .howto-body { font-size: 16px; line-height: 1.55; }
+  .howto-body { font-size: var(--fs-16); line-height: 1.55; }
 
   .howto-cards { --cw: 72px; }
   .howto-cards.sm { --cw: 52px; }
@@ -4028,7 +4477,7 @@ button.games-row { cursor: pointer; }
 
   /* Dots on the left, the two buttons at their phone width on the right. */
   .howto-nav { flex-direction: row; align-items: center; justify-content: space-between; }
-  .howto-buttons { width: 22rem; }
+  .howto-buttons { width: 352px; }
 }
 
 /* Leave from inside a modal result screen; quieter than the primary action */
@@ -4041,4 +4490,920 @@ button.games-row { cursor: pointer; }
   background: #3a1e24;
   border-color: var(--danger);
   color: #ffb3bc;
+}
+
+/* Support and Privacy: a lobby-style panel of plain reading text, wide
+   enough for comfortable lines on a desktop and the full width on a phone. */
+
+.info-panel {
+  width: 560px;
+  gap: 14px;
+  text-align: left;
+}
+.info-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.info-back { min-height: 44px; }
+.info-text,
+.privacy-section p {
+  margin: 0;
+  font-size: var(--fs-14);
+  line-height: 1.55;
+  color: var(--text);
+}
+.privacy-section p + p { margin-top: 8px; }
+.privacy-section h2 {
+  margin: 0 0 6px;
+  font-size: var(--fs-16);
+  line-height: 1.3;
+  color: var(--gold);
+}
+.info-small {
+  margin: 0;
+  font-size: var(--fs-12);
+  line-height: 1.45;
+  color: var(--text-dim);
+  text-align: center;
+}
+.info-panel a {
+  color: var(--gold);
+  text-decoration: underline;
+  text-decoration-color: var(--gold-soft);
+  text-underline-offset: 3px;
+}
+
+.support-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.support-form .field input,
+.support-form .field select { min-height: 44px; font-size: var(--fs-16); }
+.support-message {
+  min-height: 140px;
+  resize: vertical;
+  font: inherit;
+  font-size: var(--fs-16);
+  line-height: 1.45;
+  background: #10131a;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 11px 14px;
+  transition: border-color 0.15s;
+}
+.support-message:focus { border-color: var(--team0); outline: none; }
+.support-form .field input[aria-invalid="true"] { border-color: var(--danger); }
+.support-count { text-align: right; font-variant-numeric: tabular-nums; }
+.support-form .btn.big { min-height: 48px; }
+/* the honeypot: off screen rather than display:none, which some form
+   scripts skip */
+.support-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.support-error {
+  margin: 0;
+  background: #3a1e24;
+  border: 1px solid var(--danger);
+  color: #ffd7dc;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+.support-thanks {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+.support-thanks-title { margin: 0; font-size: var(--fs-20); font-weight: 700; color: var(--gold); }
+
+.delta-up { color: #5cc488; }
+.delta-dn { color: #e07a5f; }
+.delta-flat { color: var(--text-dim); }
+/* The round-end rating line sits under the result grid. */
+.rating-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #6b5a22;
+  border-radius: 10px;
+  background: #1d1a10;
+  font-size: 14px;
+}
+.rating-line b { font-size: 17px; color: var(--gold); font-variant-numeric: tabular-nums; }
+.rating-deltas { display: flex; gap: 10px; align-items: baseline; font-weight: 700; }
+.rating-game { font-size: 12px; font-weight: 600; }
+.rating-guest {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  padding: 0 12px;
+  border: 1px dashed var(--panel-edge);
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.rating-signin {
+  appearance: none;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--gold);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: #6b5a22;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ios-switch, .ios-switch::after { transition: none; }
+}
+
+/* Home: the Play, Leaderboard and Me tabs. Below 700px a phone's bottom
+   tab bar (49px over the home-indicator inset); at 700px and up a top bar.
+   Leaderboard and Me are iOS-style pages: a large title, 32px segmented
+   controls and inset-grouped lists of 44px rows on charcoal. */
+:root {
+  --page: #1b1f27;
+  --grp: #242a35;
+  --grp-edge: #333b49;
+  --grp-line: rgba(255, 255, 255, 0.12);
+  --seg-on: #3d4556;
+  --muted: #8a929f;
+  --muted-2: #6c7585;
+  --destructive: #f08a7e;
+}
+.home { height: 100%; display: flex; flex-direction: column; background: var(--page); }
+.home-body { flex: 1; min-height: 0; position: relative; }
+.home-body > .screen { height: 100%; }
+.home-narrow .home-body > .screen { padding-bottom: 12px; }
+.home-wide .home-body > .screen { padding-top: 12px; }
+
+.tabbar {
+  flex: none;
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+  height: calc(49px + env(safe-area-inset-bottom, 0px));
+  padding: 0 max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
+    max(10px, env(safe-area-inset-left, 0px));
+  background: rgba(22, 26, 34, 0.94);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-top: 0.5px solid rgba(255, 255, 255, 0.14);
+}
+/* The iOS app's keyboard shrinks the WebView, but 100dvh keeps the old height
+   there, so the page follows the shrunken frame instead and its screen can
+   scroll the focused field into view; the tab bar would ride above the keys. */
+body.keyboard-open .app { height: 100%; }
+body.keyboard-open .tabbar { display: none; }
+.tabbar-item {
+  appearance: none;
+  flex: 1;
+  max-width: 120px;
+  height: 49px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 500 10px/1.2 system-ui, -apple-system, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tabbar-item svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.tabbar-item.on { color: var(--gold); }
+.tabbar-item.on svg { fill: currentColor; stroke-width: 1.3; }
+.tabbar-item.on svg .nofill { fill: none; }
+.tabbar-item.on svg .pip { fill: #161a22; stroke: none; }
+
+.topbar {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) max(28px, env(safe-area-inset-right, 0px)) 0
+    max(28px, env(safe-area-inset-left, 0px));
+  background: #161a22;
+  border-bottom: 0.5px solid var(--grp-line);
+}
+.topbar-mark {
+  justify-self: start;
+  appearance: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.topbar-mark b { font-size: 24px; color: var(--gold); letter-spacing: 0.02em; }
+.topbar-mark span { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--text-dim); }
+.topbar-tabs { display: flex; gap: 6px; align-self: stretch; }
+.topbar-tab {
+  appearance: none;
+  height: 56px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #aab2bf;
+  font-size: var(--fs-15);
+  font-weight: 500;
+  cursor: pointer;
+}
+.topbar-tab.on { color: #fff; border-bottom-color: var(--gold); }
+.topbar-end { justify-self: end; display: flex; align-items: center; min-width: 0; }
+.topbar-end > .topbar-tab { height: 56px; }
+.topbar-menu-box { position: relative; min-width: 0; }
+.topbar-account {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  height: 36px;
+  padding: 0 12px 0 4px;
+  border: 1px solid var(--grp-edge);
+  border-radius: 18px;
+  background: var(--grp);
+  color: #e6eaf1;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  cursor: pointer;
+}
+.topbar-account.on { border-color: var(--gold-soft); }
+/* drawn 36px tall; ::before makes the tap area 44px inside the 56px bar */
+.topbar-account { position: relative; }
+.topbar-account::before { content: ""; position: absolute; inset: -5px 0; }
+.topbar-account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-caret { color: var(--muted-2); font-size: 11px; }
+.topbar-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid var(--grp-edge);
+  border-radius: 12px;
+  background: var(--grp);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.topbar-menu button {
+  appearance: none;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-size: var(--fs-15);
+  text-align: left;
+  cursor: pointer;
+}
+.topbar-menu button:focus-visible { background: #2f3644; outline: none; }
+@media (hover: hover) and (pointer: fine) {
+  .topbar-menu button:hover { background: #2f3644; }
+}
+.topbar-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 0.5px solid var(--grp-line); }
+.topbar-signin { min-height: 36px; }
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #3a4150;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+}
+.avatar-lg {
+  width: 64px;
+  height: 64px;
+  font-size: 26px;
+  background: linear-gradient(#3a4150, #2a303c);
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.25);
+}
+.avatar-guest { color: var(--muted); box-shadow: none; }
+
+/* Play on a phone: the lobby keeps the plain screen's top padding (the
+   status-bar inset or 12px) and drops the panel's bottom padding, which is
+   empty space under the connection line, so the whole stack fits between the
+   status bar and the tab bar on a 375x812 or larger phone. A shorter phone
+   scrolls, and the scroll ends at the tab bar's top edge. A signed-in
+   player's rating chip is centred under the title. */
+.home-narrow .lobby-panel:has(.lobby-preview) { padding-bottom: 0; }
+.rating-chip {
+  appearance: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  margin-top: -6px;
+  padding: 0 10px 0 5px;
+  border: 1px solid var(--grp-edge);
+  border-radius: 16px;
+  background: var(--grp);
+  color: #e6eaf1;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.rating-chip { position: relative; }
+.rating-chip::before { content: ""; position: absolute; inset: -6px 0; }
+.rating-chip .avatar { width: 22px; height: 22px; font-size: 11px; }
+.rating-chip-chev { margin-left: -2px; color: var(--muted-2); font-weight: 400; }
+
+.screen.home-page,
+.home-body > .screen.home-page {
+  display: block;
+  padding-bottom: 0;
+  background: var(--page);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.home-col {
+  width: 100%;
+  max-width: 680px;
+  min-height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 16px;
+  color: #eef1f6;
+}
+.me-page .home-col { max-width: 560px; }
+.home-back { margin: 0 0 -8px -8px; }
+.large-title {
+  margin: 4px 0 0;
+  font-size: clamp(34px, calc(34 * var(--tu)), 40px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
+  color: #fff;
+}
+/* A phone's home pages: a 44 pt bar, sticky at the top of the page's own
+   scroller and over the safe-area inset, empty while the large title shows
+   below it; once that title has scrolled under it, the bar fades in the
+   compact title and its hairline (LargeTitlePage.tsx). The bar spans the
+   scroller's side padding. */
+.home-body > .screen.home-page.has-nav { position: relative; padding-top: 0; }
+.nav-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(44px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 56px 0;
+  margin: 0 calc(-1 * max(16px, env(safe-area-inset-right, 0px))) 0
+    calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+  background: var(--page);
+  border-bottom: 0.5px solid transparent;
+}
+.nav-bar.collapsed {
+  background: rgba(22, 26, 34, 0.94);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+.nav-bar-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 17px/1.2 system-ui, -apple-system, sans-serif;
+  color: #fff;
+  opacity: 0;
+}
+.nav-bar.collapsed .nav-bar-title { opacity: 1; }
+.nav-animate .nav-bar { transition: background-color 200ms ease, border-color 200ms ease; }
+.nav-animate .nav-bar-title { transition: opacity 200ms ease; }
+
+/* Pull to refresh (usePullToRefresh.ts): the hook writes the pull, after
+   resistance, to --ptr and its share of the threshold to --ptr-p. The column
+   follows the finger and the spinner shows in the gap under the bar. The
+   column is moved only while a pull is on (ptr-on), so at rest it keeps no
+   transform; it follows the finger at once and eases back once let go. */
+.has-nav .ptr {
+  position: absolute;
+  z-index: 2;
+  top: calc(44px + env(safe-area-inset-top, 0px));
+  left: 0;
+  right: 0;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.ptr-spinner {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  margin-top: calc(var(--ptr, 0px) / 2 - 14px);
+  opacity: var(--ptr-p, 0);
+}
+.has-nav:not(.ptr-on) .ptr-spinner { visibility: hidden; }
+.ptr-spinner i {
+  position: absolute;
+  left: 12.5px;
+  top: 2px;
+  width: 3px;
+  height: 7.5px;
+  border-radius: 1.5px;
+  background: #c5ccd8;
+  transform-origin: 1.5px 12px;
+}
+/* the brightest spoke leads clockwise, the dimmer ones trail behind it */
+.ptr-spinner i:nth-child(1) { opacity: 1; }
+.ptr-spinner i:nth-child(2) { opacity: 0.24; }
+.ptr-spinner i:nth-child(3) { opacity: 0.3; }
+.ptr-spinner i:nth-child(4) { opacity: 0.38; }
+.ptr-spinner i:nth-child(5) { opacity: 0.48; }
+.ptr-spinner i:nth-child(6) { opacity: 0.6; }
+.ptr-spinner i:nth-child(7) { opacity: 0.72; }
+.ptr-spinner i:nth-child(8) { opacity: 0.86; }
+.ptr-refreshing .ptr-spinner { opacity: 1; }
+.has-nav.ptr-on .home-col { transform: translateY(var(--ptr, 0px)); }
+.nav-animate.ptr-on:not(.ptr-drag) .home-col { transition: transform 300ms var(--ease-out); }
+.nav-animate.ptr-on:not(.ptr-drag) .ptr-spinner { transition: margin-top 300ms var(--ease-out), opacity 300ms ease; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+.nav-animate.ptr-refreshing .ptr-spinner { animation: ptr-spin 800ms steps(8) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-bar,
+  .nav-bar-title,
+  .ptr-spinner,
+  .has-nav .home-col { transition: none !important; animation: none !important; }
+}
+.segmented { flex: none; display: flex; height: 32px; padding: 2px; border-radius: 9px; background: var(--grp); }
+/* the buttons draw 28px inside the 32px track; ::before stretches each tap
+   area to 44px, 6px past the track, which the 14px column gap leaves clear */
+.segmented-btn {
+  position: relative;
+  appearance: none;
+  flex: 1;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: #aab2bf;
+  font-size: var(--fs-13);
+  font-weight: 500;
+  cursor: pointer;
+}
+.segmented-btn::before { content: ""; position: absolute; inset: -8px 0; }
+.segmented-btn.on { background: var(--seg-on); color: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+
+.grp { flex: none; list-style: none; margin: 0; padding: 0; border-radius: 12px; overflow: hidden; background: var(--grp); }
+.grp > li + li { border-top: 0.5px solid var(--grp-line); }
+.grp-row {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: #eef1f6;
+  font: inherit;
+  font-size: var(--fs-17);
+  text-align: left;
+  text-decoration: none;
+}
+button.grp-row, a.grp-row { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button.grp-row:active, a.grp-row:active { background: rgba(255, 255, 255, 0.06); }
+button.grp-row:disabled { cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  button.grp-row:hover:not(:disabled), a.grp-row:hover { background: rgba(255, 255, 255, 0.04); }
+}
+.grp-label { flex: 1; min-width: 0; }
+.grp-value {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: #9aa3b2;
+  font-variant-numeric: tabular-nums;
+}
+.grp-value.chev::after { content: "›"; color: var(--muted-2); font-size: 22px; line-height: 1; }
+.grp-row.destructive { color: var(--destructive); }
+.grp-row[aria-busy="true"] { cursor: progress; }
+.me-saving { font-size: var(--fs-15); }
+.grp-error { margin: 0; padding: 0 16px 10px; font-size: var(--fs-13); line-height: 1.35; color: var(--destructive); }
+.grp-head { margin: 4px 16px -6px; font-size: var(--fs-13); font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
+.grp-foot { margin: -4px 16px 0; font-size: var(--fs-13); line-height: 1.35; color: var(--muted); }
+.grp-inset { padding: 4px 16px 12px; }
+.grp-section { display: flex; flex-direction: column; gap: 12px; }
+.lb-note { margin: 0; text-align: center; color: var(--text-dim); font-size: var(--fs-13); }
+
+.lb-list .lb-row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; font-size: var(--fs-17); }
+.lb-rank { width: 26px; flex: none; text-align: right; color: #9aa3b2; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lb-rank.top { color: var(--gold); }
+.lb-name { flex: 1; min-width: 0; display: flex; align-items: center; }
+.lb-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-new {
+  flex: none;
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--gold-soft);
+  border-radius: 5px;
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 600;
+}
+.lb-rating { flex: none; width: 46px; text-align: right; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
+.lb-delta { flex: none; width: 44px; text-align: right; font-size: var(--fs-13); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lb-list .lb-row.me { background: #2d3a2f; box-shadow: inset 3px 0 0 var(--gold); }
+.lb-list .lb-row.anchor { min-height: 34px; justify-content: center; gap: 8px; background: #1f242e; color: var(--muted); font-size: var(--fs-13); }
+.lb-list .lb-row.anchor::before,
+.lb-list .lb-row.anchor::after { content: ""; flex: 1; border-top: 1px dashed #4a5262; }
+.lb-pin {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  margin-bottom: -16px;
+  padding: 28px 0 16px;
+  background: linear-gradient(rgba(27, 31, 39, 0), var(--page) 28px);
+}
+
+.signin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 20px 18px 16px;
+  border-radius: 16px;
+  background: var(--grp);
+  text-align: center;
+}
+.signin-card.compact { gap: 10px; padding: 16px 16px 14px; }
+.signin-card h3 { margin: 0; font-size: var(--fs-20); font-weight: 700; line-height: 1.2; color: #fff; }
+.signin-card p { margin: 0; font-size: var(--fs-15); line-height: 1.35; color: #9aa3b2; }
+.signin-card .google-signin { display: flex; flex-direction: column; align-items: center; }
+.signin-card .google-signin-slot { width: 100%; display: flex; justify-content: center; }
+.signin-card p.signin-foot { margin-top: -4px; font-size: var(--fs-12); color: var(--muted-2); }
+.me-who { display: flex; align-items: center; gap: 14px; }
+.me-who-text { min-width: 0; }
+.me-name { font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; line-height: 1.15; color: #fff; overflow-wrap: anywhere; }
+.me-sub { margin-top: 2px; font-size: var(--fs-15); color: #9aa3b2; font-variant-numeric: tabular-nums; }
+.me-sub b { font-weight: 600; }
+.me-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.me-tile { padding: 10px 8px 9px; border-radius: 12px; background: var(--grp); text-align: center; }
+.me-tile b { display: block; font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; letter-spacing: -0.3px; color: #fff; font-variant-numeric: tabular-nums; }
+.me-tile span { font-size: var(--fs-12); color: #9aa3b2; }
+.ios-switch {
+  flex: none;
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: 16px;
+  background: #3a4350;
+  transition: background 150ms ease;
+}
+.ios-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 150ms var(--ease-out);
+}
+.ios-switch.on { background: #5fc78b; }
+.ios-switch.on::after { transform: translateX(20px); }
+.me-delete-confirm { display: flex; flex-direction: column; gap: 10px; padding: 16px; text-align: center; }
+.me-delete-confirm h3 { margin: 0; font-size: var(--fs-17); color: #fff; }
+.me-delete-confirm p { margin: 0; font-size: var(--fs-15); line-height: 1.35; color: #9aa3b2; }
+
+.games-days { display: flex; flex-direction: column; gap: 14px; }
+.grp .games-day-row { min-height: 60px; padding: 8px 16px; }
+.games-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.games-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
+.games-row-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 1px; font-size: var(--fs-13); color: #9aa3b2; }
+.grp-value.games-replay { color: var(--gold); font-size: var(--fs-15); }
+
+/* Native feel. A long press anywhere outside a field or a chat message
+   selects nothing and raises no Copy / Look Up callout or Save Image sheet
+   (the table's own rule above does the same inside a game). */
+.app {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.app input,
+.app textarea,
+.app [contenteditable],
+.app .chat-text {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* A press shows at once and lets go fast, as UIKit controls do; under
+   Reduce Motion the dim still shows, only without a fade. */
+.tabbar-item,
+.topbar-tab,
+.segmented-btn,
+.howto-link {
+  transition: opacity 80ms var(--ease-out);
+}
+.tabbar-item:active,
+.topbar-tab:active,
+.segmented-btn:active,
+.howto-link:active {
+  opacity: 0.55;
+  transition-duration: 0ms;
+}
+.ios-switch {
+  transition: background 150ms ease, opacity 80ms var(--ease-out);
+}
+button[role="switch"]:active .ios-switch {
+  opacity: 0.7;
+}
+
+/* The More menu and the chat panel scale and fade in from their corner and
+   out again over POP_MS (usePresence.ts); under Reduce Motion the hook adds
+   neither class, and this rule is a second guard. */
+@keyframes pop-in { from { opacity: 0; transform: scale(0.94); } }
+@keyframes pop-out { to { opacity: 0; transform: scale(0.94); } }
+.hud-menu { transform-origin: top right; }
+.chat-panel { transform-origin: bottom right; }
+.hud-menu.pop-in,
+.chat-panel.pop-in {
+  animation: pop-in 200ms var(--ease-out);
+}
+.hud-menu.pop-out,
+.chat-panel.pop-out {
+  animation: pop-out 200ms ease-in forwards;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-item,
+  .topbar-tab,
+  .segmented-btn,
+  .howto-link,
+  .ios-switch,
+  .ios-switch::after { transition: none; }
+  .hud-menu.pop-in,
+  .chat-panel.pop-in,
+  .hud-menu.pop-out,
+  .chat-panel.pop-out { animation: none; }
+}
+
+/* A saved game's row: the row opens the game; Continue and Replay sit at its
+   end, or on a line of their own when the row is too narrow for both. */
+.games-day-item { display: flex; flex-wrap: wrap; align-items: center; }
+.games-day-item > .games-day-row { flex: 1 1 240px; width: auto; min-width: 0; }
+.games-row-actions { display: flex; gap: 8px; margin-left: auto; padding: 0 16px 10px; }
+@media (min-width: 700px) {
+  .games-row-actions { padding: 0 16px 0 0; }
+}
+.games-row-actions .btn { min-height: 36px; padding: 6px 14px; font-size: var(--fs-13); }
+.games-actions { display: flex; gap: 10px; }
+.games-actions .btn { flex: 1; min-height: 44px; }
+
+/* My games and the replay on the redesign's charcoal: a top-aligned column
+   with grouped surfaces, no card; the replay's felt stays green. */
+.screen.games-screen { background: var(--page); align-items: flex-start; }
+.games-screen > .panel {
+  margin: 0 auto;
+  width: 560px;
+  max-width: 100%;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 16px 4px;
+}
+.games-screen .games-row.static,
+.games-screen .games-round,
+.games-screen .replay-result,
+.games-screen .replay-seat,
+.games-screen .replay-info .chip,
+.games-screen .replay-jump {
+  background: var(--grp);
+  border-color: var(--grp-edge);
+}
+.games-screen .replay-result.won { border-color: var(--gold); }
+.games-screen .replay-seat.team0 { border-left-color: var(--team0); }
+.games-screen .replay-seat.team1 { border-left-color: var(--team1); }
+.games-screen .replay-seat.on-turn { border-color: var(--gold); }
+.games-screen .btn.subtle:not(.games-back) {
+  background: var(--grp);
+  border-color: var(--grp-edge);
+}
+.games-screen .btn.subtle:not(.games-back):disabled { opacity: 0.45; }
+
+/* Matchmaking queue: Find a game, the queue bar (a top-bar chip from 700px),
+   the Solo / With a friend and pair sheets (centred dialogs from 700px), the
+   ready check, the queue's notices and the table's matched-game note. */
+.q-find { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.15; }
+.q-find.searching { opacity: 0.55; }
+.q-find-sub { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-12); font-weight: 500; opacity: 0.85; letter-spacing: 0; }
+.q-dot { width: 7px; height: 7px; border-radius: 50%; background: #5fc78b; flex: none; }
+.q-spin {
+  width: 14px; height: 14px; flex: none; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25); border-top-color: var(--gold);
+  animation: q-spin 0.9s linear infinite;
+}
+@keyframes q-spin { to { transform: rotate(360deg); } }
+
+.q-bar {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  height: 60px; margin: 0 8px 8px; padding: 0 6px 0 12px;
+  border-radius: 14px; background: #1f5d3a; border: 1px solid #2f8a57; color: #eafbea;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); font-variant-numeric: tabular-nums;
+}
+.q-bar-text { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.2; }
+.q-bar-text b { font-size: var(--fs-14); font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-bar-text small { font-size: var(--fs-13); color: #bfe9cf; white-space: nowrap; }
+.q-bar.warn, .q-chip.warn { background: #3f3415; border-color: #9a6f12; }
+.q-bar.warn .q-bar-text small { color: var(--gold); font-weight: 600; }
+.q-bots, .q-cancel {
+  appearance: none; flex: none; height: 40px; padding: 0 8px; border: 0; border-radius: 10px;
+  font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.q-bots { background: none; color: var(--gold); font-size: 12.5px; box-shadow: inset 0 0 0 1.5px #d6a22c; }
+.q-cancel { background: rgba(0, 0, 0, 0.22); color: #fff; font-size: var(--fs-15); padding: 0 10px; }
+.q-bots:disabled, .q-cancel:disabled { opacity: 0.45; cursor: default; }
+.q-cancel.q-led { display: inline-flex; align-items: center; color: #bfe9cf; font-size: var(--fs-13); font-weight: 500; cursor: default; }
+
+.q-chip {
+  display: flex; align-items: center; gap: 10px; height: 36px; margin-right: 12px; padding: 0 6px 0 14px;
+  border-radius: 10px; background: #1f5d3a; border: 1px solid #2f8a57; color: #eafbea;
+  font-size: var(--fs-14); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.q-chip .q-spin { width: 12px; height: 12px; }
+/* Queued, from 1200px the chip sits in the top bar: the end column takes the
+   room it needs and the tabs centre in what is left. Narrower wide windows
+   cannot fit it beside four tabs, so the same chip rides on a strip under
+   the top bar instead. */
+.q-strip { display: none; }
+@media (min-width: 700px) and (max-width: 1199px) {
+  .topbar .q-chip { display: none; }
+  .q-strip {
+    flex: none; display: flex; justify-content: center;
+    padding: 6px max(16px, env(safe-area-inset-right, 0px)) 6px max(16px, env(safe-area-inset-left, 0px));
+    background: #161a22; border-bottom: 0.5px solid var(--grp-line);
+  }
+  .q-strip .q-chip { margin: 0; max-width: 100%; }
+}
+@media (min-width: 1200px) {
+  .topbar:has(.q-chip) { grid-template-columns: auto 1fr auto; column-gap: 24px; }
+  .topbar:has(.q-chip) .topbar-tabs { justify-self: center; }
+}
+.q-chip { min-width: 0; flex-shrink: 1; }
+.q-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.q-chip .q-bots { height: 28px; padding: 0 9px; border-radius: 7px; font-size: var(--fs-13); }
+.q-chip .q-cancel { height: 28px; padding: 0 10px; border-radius: 7px; font-size: var(--fs-13); }
+
+.q-layer { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; justify-content: flex-end; }
+.q-center-layer { justify-content: center; align-items: center; z-index: 80; }
+.q-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
+.q-sheet {
+  position: relative; display: flex; flex-direction: column; gap: 12px;
+  padding: 6px 0 calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 14px 14px 0 0; background: #1b1f27; color: #eef1f6;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5); outline: none;
+}
+.q-grab { width: 36px; height: 5px; margin: 0 auto 2px; border-radius: 3px; background: #4a5263; }
+.q-sheet-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px; }
+.q-sheet-head h2 { margin: 0; font-size: var(--fs-17); font-weight: 600; color: #fff; }
+.q-link { appearance: none; justify-self: start; min-height: 44px; padding: 0 8px; border: 0; background: none; color: var(--gold); font: inherit; font-size: var(--fs-17); cursor: pointer; }
+.q-hidden { visibility: hidden; }
+.q-sheet-pad { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+.q-sheet-pad .btn { min-height: 50px; }
+.btn.q-ghost { background: transparent; border-color: #3d4556; }
+.btn.q-dis { background: #1f242e; color: #6c7585; border-color: #2c3340; opacity: 1; }
+.q-grp { margin: 0 16px; background: #2a3140; }
+.q-friend-row { min-height: 56px; gap: 12px; }
+.q-friend-row small { display: block; font-size: var(--fs-13); color: #9aa3b2; }
+.q-users { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.q-foot { margin: 0; padding: 0 20px; font-size: var(--fs-13); line-height: 1.4; color: #8a929f; }
+.q-center { text-align: center; }
+.q-codebox { margin: 0 16px; padding: 12px 16px; border-radius: 12px; background: #2a3140; text-align: center; }
+.q-codebox small { display: block; margin-bottom: 2px; font-size: var(--fs-12); color: #8a929f; }
+.q-codebox b { padding-left: 0.3em; font-size: 28px; letter-spacing: 0.3em; color: var(--gold); font-variant-numeric: tabular-nums; }
+.q-codebox b.q-pair-names { padding: 0; font-size: 22px; letter-spacing: 0; color: #fff; }
+.q-join { display: flex; flex-direction: column; gap: 6px; padding: 0 16px; }
+.q-join-label { font-size: var(--fs-13); color: #9aa3b2; }
+.q-error { margin: 0 16px; color: var(--destructive); font-size: var(--fs-14); }
+
+.q-party-chip {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 6px 0 12px;
+  border-radius: 12px; background: #1f5d3a; box-shadow: inset 0 0 0 1px #2f8a57; color: #eafbea; font-size: var(--fs-15);
+}
+.q-party-chip.waiting { background: var(--grp); box-shadow: inset 0 0 0 1px var(--grp-edge); }
+.q-party-main {
+  appearance: none; flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0; border: 0;
+  background: none; color: inherit; font: inherit; text-align: left; white-space: nowrap; overflow: hidden; cursor: pointer;
+}
+span.q-party-main { cursor: default; }
+.q-party-main b { color: var(--gold); letter-spacing: 0.15em; }
+.q-party-sub { font-size: var(--fs-13); color: #bfe9cf; overflow: hidden; text-overflow: ellipsis; }
+.q-party-chip.waiting .q-party-sub { color: #9aa3b2; }
+.q-party-leave { appearance: none; flex: none; min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: rgba(0, 0, 0, 0.22); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.q-av { width: 24px; height: 24px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; background: #3a4150; color: var(--gold); font-size: 11px; font-weight: 700; box-shadow: 0 0 0 2px #1f5d3a; }
+.q-av2 { margin-left: -12px; }
+
+.q-dlg {
+  position: relative; width: min(345px, calc(100vw - 32px)); padding: 22px 18px 18px;
+  border-radius: 16px; background: #1b1f27; color: #eef1f6; text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+}
+.q-dlg h3 { margin: 0; font-size: var(--fs-13); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8a929f; }
+.q-big { margin-top: 4px; font-size: 20px; font-weight: 700; color: var(--gold); }
+.q-dlg p { margin: 8px 0 0; font-size: var(--fs-14); line-height: 1.4; color: #aab2bf; }
+.q-dlg p.q-gap { margin-top: 12px; }
+.q-dlg-b { display: flex; gap: 10px; margin-top: 16px; }
+.q-dlg-b .btn { flex: 1; min-height: 46px; }
+.q-names { display: flex; align-items: center; justify-content: center; }
+.q-sub { margin-top: 10px; font-size: var(--fs-13); line-height: 1.35; color: #8a929f; }
+.q-ring { position: relative; width: 96px; height: 96px; margin: 10px auto 6px; }
+.q-ring svg { width: 96px; height: 96px; transform: rotate(-90deg); }
+.q-ring circle { fill: none; stroke-width: 7; }
+.q-ring-track { stroke: #2d3440; }
+.q-ring-arc { stroke: var(--gold); stroke-linecap: round; transition: stroke-dasharray 200ms linear; }
+.q-ring.done .q-ring-arc { stroke: #5fc78b; }
+.q-ring-n { position: absolute; inset: 0; display: grid; place-items: center; font-size: 36px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.q-ring.done .q-ring-n { color: #5fc78b; }
+.q-pips { display: flex; justify-content: center; gap: 12px; margin: 14px 0 2px; }
+.q-pips i { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #2d3440; box-shadow: inset 0 0 0 2px #3d4556; color: #5fc78b; font-size: 17px; font-style: normal; }
+.q-pips i.ok { background: #1f5d3a; box-shadow: inset 0 0 0 2px #5fc78b; }
+.q-pips i.bot { color: #9aa3b2; font-size: 11px; font-weight: 600; }
+
+.q-toast {
+  position: fixed; left: 50%; bottom: calc(130px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  z-index: 75; display: flex; align-items: flex-start; gap: 10px; width: max-content; max-width: calc(100vw - 32px);
+  padding: 12px 16px; border-radius: 12px; background: #262d38; border: 1px solid #3d4556; color: #fff;
+  font-size: var(--fs-15); font-weight: 600; line-height: 1.3; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  animation: toast-in 0.2s ease-out; pointer-events: none;
+}
+.q-toast small { display: block; font-size: var(--fs-13); font-weight: 400; color: #9aa3b2; }
+.q-toast-i { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%; background: #3f3415; color: var(--gold); font-size: 13px; }
+
+.q-matched {
+  position: absolute; top: calc(env(safe-area-inset-top, 0px) + 52px); left: 50%; transform: translateX(-50%); z-index: 6;
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35); color: #d8f3e1; font-size: var(--fs-12); font-weight: 600; white-space: nowrap; pointer-events: none;
+}
+
+@media (min-width: 700px) {
+  .q-layer { justify-content: center; align-items: center; }
+  .q-sheet { width: 380px; padding-bottom: 18px; border-radius: 16px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
+  .q-grab { display: none; }
+  .q-dlg { width: 380px; }
+  .q-toast { bottom: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .q-spin { animation: none; }
+  .q-ring-arc { transition: none; }
 }

@@ -1,50 +1,29 @@
-import { useState } from "react";
-import { auth, effectiveName } from "../auth";
+import { useEffect, useState } from "react";
 import type { AuthUser } from "../auth";
-import { navigate } from "../replay/route";
-import NameEditForm from "./NameEditForm";
+import { deltaText, fetchStats } from "../ratings/api";
+import type { MyStats } from "../ratings/api";
+import { Avatar } from "../home/HomeShell";
+import { openTab } from "../home/route";
 
-/** The signed-in state in the lobby panel: one pill holding the avatar and
- *  name above My games, Edit name and Sign out. A sign-out the server did not
- *  confirm stays signed in and says so. */
+/** The signed-in player's rating chip under the lobby's title: avatar,
+ *  rating and this week's change; a tap opens the Leaderboard tab. Until
+ *  the stats arrive (or when they cannot load) it is left out. */
 export default function AccountChip({ user }: { user: AuthUser }) {
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const shown = effectiveName(user) || user.email;
-  const signOut = () => {
-    setBusy(true);
-    setError(null);
-    auth.signOut()
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setBusy(false));
-  };
+  const [stats, setStats] = useState<MyStats | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetchStats().then((r) => { if (live) setStats(r.ok ? r.data : null); });
+    return () => { live = false; };
+  }, [user]);
+  if (!stats) return null;
+  const d = stats.week_delta;
   return (
-    <div className="account-card">
-      <div className="account-chip">
-        {user.picture ? (
-          <img className="account-avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />
-        ) : (
-          <span className="account-avatar account-avatar-blank" aria-hidden="true">
-            {shown.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        <span className="account-name" title={user.email}>{shown}</span>
-      </div>
-      <div className="account-actions">
-        <button className="btn account-games" onClick={() => navigate({ page: "list" })}>
-          My games
-        </button>
-        <button className="btn subtle account-edit" aria-expanded={editing}
-                onClick={() => setEditing((v) => !v)}>
-          Edit name
-        </button>
-        <button className="btn subtle account-signout" disabled={busy} onClick={signOut}>
-          {busy ? "Signing out…" : "Sign out"}
-        </button>
-      </div>
-      {editing ? <NameEditForm user={user} onDone={() => setEditing(false)} /> : null}
-      {error ? <div className="lobby-error account-error" role="alert">{error}</div> : null}
-    </div>
+    <button type="button" className="rating-chip" onClick={() => openTab("leaderboard")}
+            aria-label={`Rating ${stats.rating}, ${deltaText(d)} this week: open the leaderboard`}>
+      <Avatar user={user} />
+      <span className="rating-chip-value">{stats.rating}</span>
+      <span className={d > 0 ? "delta-up" : d < 0 ? "delta-dn" : "delta-flat"}>{deltaText(d)}</span>
+      <span className="rating-chip-chev" aria-hidden="true">›</span>
+    </button>
   );
 }

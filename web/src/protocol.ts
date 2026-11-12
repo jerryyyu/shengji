@@ -2,6 +2,8 @@
 // Card codes: suited = suit letter (S H D C) + rank ("S2".."SA", "H10", ...);
 // jokers = "LJ" (little/black) and "BJ" (big/red).
 
+import type { QueueClientMsg, QueueErrorCode, QueueServerMsg } from "./queue/messages";
+
 export interface HandCard {
   id: number;
   code: string;
@@ -27,6 +29,10 @@ export type ClientMsg =
       /** Experimental W32 is available only through the guarded lobby UI. */
       test_policy?: "w32";
       test_access_key?: string;
+      /** Continue this saved game of the signed-in account: the room is made
+       *  with the account in its saved seat and bots in the other three, and
+       *  starts at that game's last levels with its next banker. */
+      resume_from?: string;
     }
   | { type: "add_bot" }
   /** Host only, before the game starts: the rank both teams begin at. */
@@ -41,7 +47,8 @@ export type ClientMsg =
   | { type: "chat"; text: string }
   | { type: "peek_room"; room: string }
   | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
-  | { type: "leave_room" }; // anytime after joining; server replies {type:"left"}
+  | { type: "leave_room" } // anytime after joining; server replies {type:"left"}
+  | QueueClientMsg;
 
 // ---------- Server -> Client ----------
 
@@ -70,6 +77,8 @@ export interface RoomMsg {
   start_level: Rank;
   /** Present only for rooms explicitly created with the W32 test policy. */
   experimental_policy?: "w32";
+  /** Built by the matchmaking queue: a rated game between strangers. */
+  matched?: boolean;
 }
 
 export interface StatePlayer {
@@ -138,6 +147,17 @@ export interface RoundResult {
   /** True on the round that took a team past A. */
   point_scored: boolean;
   game_over: boolean;
+  /** The receiving seat's own rating after this round; present only for a
+   *  signed-in player, and only once the server has stored the round. */
+  rating?: RoundRating;
+}
+
+export interface RoundRating {
+  rating: number;
+  /** This round's change, rounded to a whole point. */
+  delta: number;
+  /** The change over the whole game, on the round that wins a game. */
+  game_delta?: number;
 }
 
 export interface GameState {
@@ -146,6 +166,8 @@ export interface GameState {
   you: number;
   /** Present only for rooms explicitly created with the W32 test policy. */
   experimental_policy?: "w32";
+  /** Built by the matchmaking queue: a rated game between strangers. */
+  matched?: boolean;
   phase: Phase;
   ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];
@@ -208,7 +230,8 @@ export type ServerMsg =
   | RoomSeats
   | ChatMsg
   | ChatHistory
-  | ResumeMsg;
+  | ResumeMsg
+  | QueueServerMsg;
 
 /** Every coded error the server can send. Keep in sync with server.py —
  *  an unlisted code silently falls through to a generic toast. */
@@ -220,7 +243,9 @@ export type ErrorCode =
   | "seat_reserved"
   | "test_room_unavailable"
   | "bad_start_level"
-  | "stale_connection";
+  | "resume_unavailable"
+  | "stale_connection"
+  | QueueErrorCode;
 
 /** "human" — a connected person; "bot" — a permanent bot seat;
  *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */

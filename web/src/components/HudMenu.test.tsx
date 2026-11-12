@@ -5,7 +5,6 @@ import HudMenu from "./HudMenu";
 import MuteButton from "./MuteButton";
 import { isMuted, setMuted } from "../audio";
 import { auth } from "../auth";
-import { navigate } from "../replay/route";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
@@ -92,23 +91,20 @@ describe("the phone overflow menu (#651)", () => {
   });
 });
 
-describe("a signed-in player's rows", () => {
-  it("shows the account name with Edit name, then Sign out; Edit name opens the form in place", async () => {
+describe("a signed-in player's menu", () => {
+  it("is the same four rows: account rows live on the Me tab", () => {
     auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" });
     const v = render();
     act(() => btn(v.host).click());
-    const text = rows(v.host).map((r) => r.textContent);
-    expect(text[3]).toContain("Cap"); expect(text[3]).toContain("Edit name");
-    expect(text[4]).toContain("My games");
-    expect(text[5]).toContain("Sign out");
-    expect(text[6]).toContain("Leave game");
-    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
-    expect(v.host.querySelector(".hud-menu")).not.toBeNull();     // the menu stays open
-    const input = v.host.querySelector<HTMLInputElement>(".hud-menu-edit .name-edit-input")!;
-    expect(input.value).toBe("Cap");
-    act(() => v.host.querySelector<HTMLButtonElement>(".name-edit-cancel")!.click());
-    expect(v.host.querySelector(".name-edit")).toBeNull();
-    expect(rows(v.host)[3].textContent).toContain("Edit name");
+    const text = rows(v.host).map((r) => r.textContent ?? "");
+    expect(text).toHaveLength(4);
+    expect(text[0]).toContain("Kitty");
+    expect(text[1]).toContain("Sound");
+    expect(text[2]).toContain("Copy invite link");
+    expect(text[3]).toContain("Leave game");
+    for (const gone of ["Edit name", "My games", "Sign out", "Cap"]) {
+      expect(text.some((t) => t.includes(gone))).toBe(false);
+    }
     v.unmount();
     auth.reset();
   });
@@ -133,47 +129,6 @@ describe("mute state is shared between controls (Codex, #653)", () => {
     expect(isMuted()).toBe(false);
     expect(chip().textContent).toBe("🔊");            // ...the chip follows, and it was ONE tap
     act(() => root.unmount());
-  });
-});
-
-describe("the account row (optional sign-in)", () => {
-  it("is absent for a guest, and when signed in a refused sign-out keeps the menu open to retry", async () => {
-    auth.reset();
-    const v = render();
-    act(() => btn(v.host).click());
-    expect(rows(v.host).some((r) => r.textContent?.includes("Sign out"))).toBe(false);
-    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
-    const row = () => rows(v.host).find((r) => r.textContent?.includes("Sign out")) as HTMLButtonElement;
-    expect(rows(v.host).find((r) => r.textContent?.includes("Edit name"))?.textContent).toContain("Jerry");
-    globalThis.fetch = vi.fn(async () => ({ status: 500, json: async () => ({}) })) as unknown as typeof fetch;
-    await act(async () => { row().click(); });
-    expect(v.host.querySelector(".hud-menu")).not.toBeNull();   // still open
-    expect(row().textContent).toContain("Sign out failed, retry");
-    expect(auth.state.status).toBe("in");
-    globalThis.fetch = vi.fn(async () => ({ status: 200, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
-    await act(async () => { row().click(); });
-    expect(v.host.querySelector(".hud-menu")).toBeNull();
-    expect(auth.state.status).toBe("out");
-    v.unmount();
-    auth.reset();
-  });
-});
-
-describe("the My games row", () => {
-  it("is shown only when signed in, and opens the history page", () => {
-    auth.reset();
-    const v = render();
-    act(() => btn(v.host).click());
-    const games = () => rows(v.host).find((r) => r.textContent?.includes("My games")) as HTMLButtonElement | undefined;
-    expect(games()).toBeUndefined();
-    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
-    expect(games()).toBeDefined();
-    act(() => games()!.click());
-    expect(v.host.querySelector(".hud-menu")).toBeNull();
-    expect(window.location.hash).toBe("#/games");
-    v.unmount();
-    act(() => navigate(null));
-    auth.reset();
   });
 });
 

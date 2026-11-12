@@ -8,6 +8,7 @@ import { WIDE } from "../home/route";
 import LargeTitlePage from "../home/LargeTitlePage";
 import { useMediaQuery } from "../phoneLayout";
 import GoogleSignIn from "./GoogleSignIn";
+import { SkeletonRows } from "./GamesList";
 
 const PERIODS = [
   { value: "week", label: "This week" },
@@ -55,12 +56,15 @@ function Rows({ board }: { board: Board }) {
   );
 }
 
-/** Where a guest's own row would be: what signing in buys, and the button. */
+/** Where a guest's own row would be: what signing in buys, and the button.
+ *  This is the one place rated and unrated play are explained; the other
+ *  sign-in prompts link here. */
 function SignInToRank({ clientId }: { clientId: string }) {
   return (
-    <div className="signin-card compact">
+    <div className="signin-card compact lb-rated">
       <h3>Sign in to be ranked</h3>
-      <p>Your games as a guest aren’t rated. Sign in and your first rated game starts you at 1000.</p>
+      <p>Games you finish signed in are rated: each round moves your rating and your place here, starting
+        from 1000. Guest games are unrated and need no account.</p>
       <GoogleSignIn clientId={clientId} />
     </div>
   );
@@ -84,7 +88,7 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
 
   let body;
   let pinned = null;
-  if (res === null) body = <p className="lb-note" role="status">Loading…</p>;
+  if (res === null) body = <SkeletonRows kind="board" rows={5} />;
   else if (!res.ok) {
     body = <p className="lobby-error" role="alert">Could not load the leaderboard ({res.status || "no connection"}).</p>;
   } else {

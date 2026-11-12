@@ -208,7 +208,7 @@ describe("viewer changes", () => {
     mode = "hold";
     await signIn("Alice");
     expect(host.textContent).not.toContain("Jerry (you)");
-    expect(host.querySelector(".lb-note[role=status]")?.textContent).toBe("Loading…");
+    expect(host.querySelector(".skel-wrap[role=status]")?.textContent).toBe("Loading…");
     await act(async () => { pending.forEach((p) => p.resolve(ok(boardFor("Alice")))); });
     await settle();
     expect(pinnedName()).toBe("Alice (you)");
@@ -264,7 +264,7 @@ describe("viewer changes", () => {
     await act(async () => { auth.signedIn(user("Jerry")); });
     await render();
     expect(host.textContent).not.toContain("(you)");
-    expect(host.querySelector(".lb-note[role=status]")?.textContent).toBe("Loading…");
+    expect(host.querySelector(".skel-wrap[role=status]")?.textContent).toBe("Loading…");
   });
 
   it("the same account gets its period and last board back at once on return", async () => {

@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { TAB_TOP_EVENT } from "./home/session";
 import {
-  KEYBOARD_OPEN_CLASS, STATUS_TAP_EVENT, haptic, hapticCall, hideSplash, isNative, isPhone, lockFor,
-  resetNativeForTests, setBackGesture, setGameMode, startShell,
+  KEYBOARD_OPEN_CLASS, STATUS_TAP_EVENT, haptic, hapticCall, hapticsEnabled, hideSplash, isNative, isPhone,
+  lockFor, resetNativeForTests, setHapticsEnabled, subscribeHaptics, setBackGesture, setGameMode, startShell,
 } from "./native";
 
 type Calls = [string, string, unknown][];
@@ -236,6 +236,30 @@ describe("native bridge", () => {
     expect(calls.map(([n, m]) => `${n}.${m}`)).toEqual([
       "Haptics.selectionStart", "Haptics.selectionChanged", "Haptics.selectionChanged", "Haptics.notification",
     ]);
+  });
+
+  it("plays no haptic while the Haptics setting is off, and remembers the setting", async () => {
+    localStorage.removeItem("shengji.haptics");
+    resetNativeForTests();
+    expect(hapticsEnabled()).toBe(true);
+    const seen: boolean[] = [];
+    const stop = subscribeHaptics((on) => seen.push(on));
+    const calls = fakeShell("phone");
+    setHapticsEnabled(false);
+    haptic("won");
+    haptic("select");
+    await flush();
+    expect(calls).toEqual([]);
+    expect(localStorage.getItem("shengji.haptics")).toBe("0");
+    resetNativeForTests();
+    expect(hapticsEnabled()).toBe(false);
+    setHapticsEnabled(true);
+    haptic("won");
+    await flush();
+    expect(calls.map(([n, m]) => `${n}.${m}`)).toEqual(["Haptics.notification"]);
+    stop();
+    expect(seen).toEqual([false, true]);
+    localStorage.removeItem("shengji.haptics");
   });
 
   it("hides the splash once", () => {

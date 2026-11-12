@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, Ref } from "react";
 import type { ReactNode } from "react";
 import { auth, deleteAccount, effectiveName, useAuth } from "../auth";
@@ -17,6 +17,8 @@ import GoogleSignIn from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
 import { SavedGames } from "./GamesList";
 import QueueFriendRow from "../queue/QueueFriendRow";
+import { useMuted } from "../useMuted";
+import { hapticsEnabled, isNative, setHapticsEnabled, subscribeHaptics } from "../native";
 
 const SECTIONS = [
   { value: "stats", label: "Stats" },
@@ -180,6 +182,44 @@ function DeleteAccount() {
   );
 }
 
+/** A switch row: the whole 44 pt row is the control. */
+function SwitchRow({ label, on, onClick, className }: {
+  label: string; on: boolean; onClick: () => void; className: string;
+}) {
+  return (
+    <li>
+      <button type="button" className={`grp-row ${className}`} role="switch" aria-checked={on} onClick={onClick}>
+        <span className="grp-label">{label}</span>
+        <span className={`ios-switch${on ? " on" : ""}`} aria-hidden="true" />
+      </button>
+    </li>
+  );
+}
+
+function useHaptics(): boolean {
+  return useSyncExternalStore(subscribeHaptics, hapticsEnabled);
+}
+
+/** This device's settings, for guests and accounts alike: sound, and haptics
+ *  inside the app (a browser has none to turn off). An account adds its own
+ *  rows after these. */
+function DeviceRows() {
+  const [muted, toggleSound] = useMuted();
+  const haptics = useHaptics();
+  return (
+    <>
+      <SwitchRow label="Sound" on={!muted} onClick={toggleSound} className="me-sound" />
+      {isNative()
+        ? <SwitchRow label="Haptics" on={haptics} onClick={() => setHapticsEnabled(!haptics)} className="me-haptics" />
+        : null}
+    </>
+  );
+}
+
+function SettingsHead() {
+  return <h3 className="grp-head" id="me-settings-head">Settings</h3>;
+}
+
 function InfoRows() {
   return (
     <ul className="grp">
@@ -238,7 +278,9 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
   };
   return (
     <>
-      <ul className="grp">
+      <SettingsHead />
+      <ul className="grp me-settings" aria-labelledby="me-settings-head">
+        <DeviceRows />
         <li>
           <button type="button" className="grp-row me-visible" role="switch" aria-checked={visible === true}
                   disabled={visible === null} aria-disabled={saving || undefined} aria-busy={saving || undefined}
@@ -278,11 +320,17 @@ function GuestMe({ clientId }: { clientId: string | null }) {
       {clientId ? (
         <div className="signin-card">
           <h3>Keep your games and get a rating</h3>
-          <p>Sign in to save every game with replay, start at rating 1000 and appear on the leaderboard.
-            Guest play stays free and needs no account.</p>
+          <p>Sign in to save every game with replay.{" "}
+            <button type="button" className="me-rated-link" onClick={() => openTab("leaderboard")}>
+              How rated games work
+            </button></p>
           <GoogleSignIn clientId={clientId} />
         </div>
       ) : null}
+      <SettingsHead />
+      <ul className="grp me-settings" aria-labelledby="me-settings-head">
+        <DeviceRows />
+      </ul>
       <InfoRows />
     </>
   );

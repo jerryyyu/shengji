@@ -52,6 +52,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
+from ..engine.cards import RANKS
 from ..engine.round import HAND_SIZE, KITTY_SIZE
 from . import accounts
 
@@ -239,6 +240,16 @@ def round_ended(room: Any, result: Any) -> None:
     link.last_result = (room.game.round_no, list(result.new_levels), list(result.games_won))
     if link.stored:
         _submit("record_round_end", link.id, *link.last_result)
+
+
+@_guarded
+def abort(room: Any) -> None:
+    """A start rolled back before the game began: no account keeps it. The
+    delete queues behind this game's link writes on the same worker."""
+    link: GameLink | None = getattr(room, "saved_game", None)
+    room.saved_game = None
+    if link is not None and link.stored:
+        _submit("forget_game", link.id)
 
 
 @_guarded
@@ -514,6 +525,46 @@ def _detail(user_id: int, game_id: str) -> dict | None:
         out["incomplete"] = True
     out["round_results"] = results
     return out
+
+
+def resume_point(user_id: int, game_id: str) -> dict | None:
+    """Where a new table continuing one of this account's saved games
+    starts: the account's seat (as the game list shows it), and both teams'
+    levels and the next banker from the game's latest logged ``round_end``.
+    None when the game is not this account's to read, when the summary has
+    no levels (a game no round of which finished), when the log no longer
+    holds a finished round, or when the latest state cannot be verified: a
+    game whose log missed a record (``incomplete``) may lack its latest
+    ``round_end``, and an older one would silently roll the game back, so
+    the latest logged round end must also agree with the stored summary."""
+    found = _visible(user_id, game_id)
+    if found is None:
+        return None
+    game, rounds = found
+    stored = teams_levels(game["final_levels"])
+    if stored is None or game.get("incomplete"):
+        return None
+    seg = _segment(game)
+    for n in sorted(seg.rounds, reverse=True):
+        end = next((r for r in _round_records(game, seg, n) if r["e"] == "round_end"), None)
+        if end is None:
+            continue
+        levels = teams_levels(end.get("new_levels"))
+        banker = end.get("next_banker")
+        if levels is None or not isinstance(banker, int) or not 0 <= banker < 4:
+            return None
+        if levels != stored or end.get("games_won") != game.get("games_won"):
+            return None
+        return {"seat": rounds[max(rounds)], "levels": levels, "banker": banker}
+    return None
+
+
+def teams_levels(value: Any) -> list[str] | None:
+    """``[team 0, team 1]`` ranks, or None unless both are known ranks."""
+    if (isinstance(value, list) and len(value) == 2
+            and all(isinstance(v, str) and v in RANKS for v in value)):
+        return list(value)
+    return None
 
 
 def _round(user_id: int, game_id: str, n: int) -> dict | None:

@@ -532,8 +532,8 @@ const STEPS: Step[] = [
 function Head({ count }: { count: ReactNode }) {
   return (
     <header className="howto-head">
-      <button className="btn subtle games-back" onClick={closeHowto}>‹ Lobby</button>
-      <span className="howto-page">How to play</span>
+      <button className="btn subtle games-back" onClick={closeHowto}>‹ Back</button>
+      <h1 className="howto-page">How to play</h1>
       <span className="howto-count">{count}</span>
     </header>
   );
@@ -569,14 +569,17 @@ function Stepper({ step }: { step: number }) {
         <p className="howto-caption">{s.caption}</p>
       </section>
       <nav className="howto-nav" aria-label="Steps">
-        <div className="howto-dots">
+        {/* Where you are, not a control: ten taps would be under 30px wide on
+            a small phone, and Next and the swipe already move a step.
+            The header's "n of 10" says the same for a screen reader. */}
+        <div className="howto-dots" aria-hidden="true">
           {STEPS.map((_, k) => (
-            <button key={k} className={`howto-dot${k === i ? " on" : ""}`}
-                    aria-label={`Step ${k + 1}`} aria-current={k === i ? "step" : undefined} onClick={() => go(k + 1)} />
+            <span key={k} className={`howto-dot${k === i ? " on" : ""}`} />
           ))}
         </div>
+        {/* One way forward: a step back is a swipe or the browser's own back,
+            and the header's ‹ Back is the one way out. */}
         <div className="howto-buttons">
-          <button className="btn big" disabled={i === 0} onClick={() => go(i)}>Back</button>
           {i < n - 1
             ? <button className="btn primary big" onClick={() => go(i + 2)}>Next</button>
             : <button className="btn gold big" onClick={closeHowto}>Start playing</button>}

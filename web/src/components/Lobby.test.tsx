@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState } from "../auth";
 import { NAME_ADJECTIVES, NAME_NOUNS } from "../randomName";
 
-const { sent, authState, signOut, updated, updateDisplayName, gis } = vi.hoisted(() => ({
+const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects, link } = vi.hoisted(() => ({
   sent: [] as unknown[],
+  link: { generation: 0, listeners: new Set<(m: unknown) => void>() },
+  reconnects: { n: 0 },
   authState: { current: { status: "loading", clientId: null, user: null } as AuthState },
   signOut: vi.fn(() => Promise.resolve()),
   updated: vi.fn(),
@@ -13,7 +15,10 @@ const { sent, authState, signOut, updated, updateDisplayName, gis } = vi.hoisted
   gis: { initialize: vi.fn(), renderButton: vi.fn(), disableAutoSelect: vi.fn() },
 }));
 vi.mock("../ws", () => ({
-  conn: { send: (m: unknown) => { sent.push(m); }, subscribe: () => () => {}, generation: 0 },
+  conn: { send: (m: unknown) => { sent.push(m); return true; },
+          subscribe: (fn: (m: unknown) => void) => { link.listeners.add(fn); return () => link.listeners.delete(fn); },
+          get generation() { return link.generation; },
+          reconnect: () => { reconnects.n += 1; } },
   getSavedName: () => localStorage.getItem("shengji.name") ?? "",
   saveName: (n: string) => localStorage.setItem("shengji.name", n),
   getResumeToken: () => null,
@@ -32,7 +37,10 @@ vi.mock("../auth", async (importOriginal) => {
   };
 });
 
-import Lobby from "./Lobby";
+import Lobby, { STALL_MS } from "./Lobby";
+import { offlineGame } from "./offlineGame";
+import { queue } from "../queue/store";
+import { codes } from "../codeJoin";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -47,6 +55,8 @@ const nameInput = () => host.querySelector<HTMLInputElement>("input[autocomplete
 
 beforeEach(() => {
   sent.length = 0;
+  queue.reset();
+  codes.reset();
   localStorage.clear();
   gis.initialize.mockClear();
   gis.renderButton.mockClear();
@@ -64,6 +74,8 @@ function type(input: HTMLInputElement, value: string) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
+/** The server answers the outstanding start (here with an error), so the next start may go. */
+const answered = () => act(() => { for (const fn of [...link.listeners]) fn({ type: "error", code: "x", message: "x" }); });
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
@@ -78,8 +90,11 @@ describe("the lobby with sign-in OFF", () => {
     expect(gis.initialize).not.toHaveBeenCalled();
     expect(nameInput().value).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);   // a random name
     const labels = Array.from(host.querySelectorAll("button")).map((b) => b.textContent);
-    expect(labels).toContain("Play vs bots");
+    expect(labels).toContain("Play bots");
     expect(labels).toContain("Create room");
+    expect(labels).not.toContain("Find a game");
+    // no accounts, so no ranked play to offer
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual"]);
   });
   it("while loading, nothing about accounts shows either", async () => {
     authState.current = { status: "loading", clientId: null, user: null };
@@ -90,64 +105,84 @@ describe("the lobby with sign-in OFF", () => {
 });
 
 describe("the lobby with sign-in ON", () => {
-  it("signed out: renders the Google button slot and initialises GIS with the client id", async () => {
+  const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 80, provisional: false, levels_per_round: 0.4,
+                  won_pct: 58, defender_won_pct: 61, attacker_won_pct: 54, best_streak: 7, games_won: 3,
+                  week_delta: 8, history: [], recent_games: [], visible: true };
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me/stats") return { status: 200, json: async () => STATS } as Response;
+      return { status: 404, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+  });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
+
+  it("signed out: Casual first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual", "Ranked"]);
+    expect(buttonNamed("Play bots").className).toContain("gold");
+    expect(buttonNamed("Create room").className).toContain("grp-row");
+    expect(host.querySelector(".q-find")).toBeNull();
+    expect(host.querySelector(".account-pill")).toBeNull();
+    expect(nameInput()).not.toBeNull();
+    // the sign-in buttons appear only once asked for
+    expect(host.querySelector(".google-signin")).toBeNull();
+    act(() => buttonNamed("Sign in to play ranked").click());
+    expect(buttonNamed("Sign in to play ranked")).toBeUndefined();
     expect(host.querySelector(".google-signin")).not.toBeNull();
-    expect(host.querySelector(".account-chip")).toBeNull();
-    expect(gis.initialize).toHaveBeenCalledTimes(1);
-    const cfg = gis.initialize.mock.calls[0][0] as { client_id: string; nonce: string };
-    expect(cfg.client_id).toBe("cid.apps");
-    expect(cfg.nonce).toMatch(/^[0-9a-f]{32}$/);
-    expect(gis.renderButton).toHaveBeenCalledTimes(1);
-    expect(gis.renderButton.mock.calls[0][0]).toBe(host.querySelector(".google-signin-slot"));
+    expect(sent).toHaveLength(0);
   });
 
-  it("signed in: shows avatar, name and Sign out, and no name field of its own", async () => {
-    authState.current = {
-      status: "in", clientId: "cid.apps",
-      user: JERRY,
-    };
+  it("signed in: an account chip under the preview opens the name editor, and there is no name field", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    const chip = host.querySelector(".account-card")!;
-    expect(chip).not.toBeNull();
-    expect(chip.querySelector("img.account-avatar")?.getAttribute("src")).toBe("https://img/j.png");
-    expect(chip.querySelector(".account-name")?.textContent).toBe("Jerry");   // the effective name
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    const chip = host.querySelector<HTMLButtonElement>(".account-pill")!;
+    expect(chip.previousElementSibling?.className).toBe("lobby-preview");
+    expect(chip.querySelector("img.avatar")?.getAttribute("src")).toBe("https://img/j.png");
+    expect(chip.querySelector(".account-pill-name")?.textContent).toBe("Jerry");
+    expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("1,532");
     expect(host.querySelector(".google-signin")).toBeNull();
     expect(nameInput()).toBeNull();
     expect(host.querySelector("button[aria-label='Random name']")).toBeNull();
-    act(() => chip.querySelector<HTMLButtonElement>(".account-signout")!.click());
-    expect(signOut).toHaveBeenCalledTimes(1);
+    act(() => chip.click());
+    expect(window.location.hash).toBe("#/me");
   });
 
-  it("a sign-out the server refused keeps the chip and shows a retryable error", async () => {
-    authState.current = {
-      status: "in", clientId: "cid.apps",
-      user: { ...JERRY, picture: null },
-    };
-    signOut.mockImplementationOnce(() => Promise.reject(new Error("Sign-out failed (500). Try again.")));
+  it("signed in: Ranked first (Play and Duo), then Casual (Create room, Play bots)", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    await act(async () => { host.querySelector<HTMLButtonElement>(".account-signout")!.click(); });
-    expect(host.querySelector(".account-chip")).not.toBeNull();
-    expect(host.querySelector(".account-error")?.textContent).toContain("Try again");
-    expect(host.querySelector<HTMLButtonElement>(".account-signout")!.disabled).toBe(false);
-    await act(async () => { host.querySelector<HTMLButtonElement>(".account-signout")!.click(); });
-    expect(signOut).toHaveBeenCalledTimes(2);
-    expect(host.querySelector(".account-error")).toBeNull();
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked", "Casual"]);
+    const ranked = [...host.querySelectorAll(".play-ranked-row button")].map((b) => b.textContent);
+    expect(ranked).toEqual(["Play", "Duo"]);
+    const rows = [...host.querySelectorAll(".play-grp .grp-row")].map((b) => b.textContent);
+    expect(rows).toEqual(["Create room", "Play bots"]);
+    expect(host.textContent).not.toContain("Find a game");
+    expect(host.querySelector(".game-subtitle")).toBeNull();
   });
 
   it("a blank avatar shows the initial", async () => {
-    authState.current = {
-      status: "in", clientId: "cid.apps",
-      user: { ...JERRY, picture: null },
-    };
+    authState.current = { status: "in", clientId: "cid.apps", user: { ...JERRY, picture: null } };
     await render();
-    expect(host.querySelector(".account-avatar-blank")?.textContent).toBe("J");
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".account-pill .avatar")?.textContent).toBe("J");
+  });
+
+  it("stats that cannot load leave the rating out of the chip", async () => {
+    globalThis.fetch = vi.fn(async () => ({ status: 500, json: async () => ({}) }) as Response) as typeof fetch;
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".account-pill-name")?.textContent).toBe("Jerry");
+    expect(host.querySelector(".account-pill-rating")).toBeNull();
   });
 });
 
 const rerender = () => act(async () => root.render(<Lobby status="open" error={null} onArmAutoFill={() => {}} />));
 const buttonNamed = (label: string) => Array.from(host.querySelectorAll("button")).find((b) => b.textContent === label)!;
+/** A bots game: one tap on Play bots. */
+const playBots = () => act(() => buttonNamed("Play bots").click());
 const sentName = (k = 0) => (sent[k] as { name: string }).name;
 const isRandom = (v: string) => {
   const [adj, noun] = v.split(" ");
@@ -163,17 +198,31 @@ async function remount() {
 describe("signed in, the player plays under the account name", () => {
   const CAPTAIN = { ...JERRY, display_name: "Captain", name_shown: "Captain" };
 
-  it("shows no name field and no 'Save as my name'; Create and Play vs bots send the account name", async () => {
+  it("shows no name field; Create and Play bots send the account name; Play queues at once", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await render();
     expect(nameInput()).toBeNull();
     expect(saveRow()).toBeNull();
     expect(host.textContent).not.toContain("Your name");
-    expect(host.querySelector(".account-name")?.textContent).toBe("Captain");
     act(() => buttonNamed("Create room").click());
-    act(() => buttonNamed("Play vs bots").click());
-    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["create_room", "create_room"]);
-    expect([sentName(0), sentName(1)]).toEqual(["Captain", "Captain"]);
+    answered();
+    playBots();
+    answered();
+    // Play joins the ranked queue with no sheet in between
+    act(() => buttonNamed("Play").click());
+    expect(queue.view.sheet).toBeNull();
+    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["create_room", "create_room", "queue_join"]);
+    expect(sentName(0)).toBe("Captain");
+    expect(sentName(1)).toBe("Captain");
+    expect(sent[2]).toEqual({ type: "queue_join" });
+  });
+
+  it("Duo opens the pair sheet", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
+    await render();
+    act(() => buttonNamed("Duo").click());
+    expect(queue.view.sheet).toBe("party");
+    expect(sent).toEqual([{ type: "party_create" }]);
   });
 
   it("without a display name the first name is used, and a rename is followed at once", async () => {
@@ -183,6 +232,7 @@ describe("signed in, the player plays under the account name", () => {
     expect(sentName()).toBe("Jerry");
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await rerender();
+    answered();
     act(() => buttonNamed("Create room").click());
     expect(sentName(1)).toBe("Captain");
   });
@@ -194,22 +244,6 @@ describe("signed in, the player plays under the account name", () => {
     act(() => buttonNamed("Create room").click());
     expect(sentName()).toBe("Jerry");
     expect(localStorage.getItem("shengji.name")).toBe("JY");
-  });
-
-  it("the Edit name button opens the form, and a saved name reaches the store", async () => {
-    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
-    const next = { ...JERRY, display_name: "Cap", name_shown: "Cap" };
-    updateDisplayName.mockResolvedValue(next);
-    await render();
-    expect(host.querySelector(".name-edit")).toBeNull();
-    act(() => host.querySelector<HTMLButtonElement>(".account-edit")!.click());
-    const input = host.querySelector<HTMLInputElement>(".name-edit-input")!;
-    expect(input.value).toBe("Jerry");
-    type(input, "Cap");
-    await act(async () => { host.querySelector("form.name-edit")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    expect(updateDisplayName).toHaveBeenCalledWith("Cap");
-    expect(updated).toHaveBeenCalledWith(next);
-    expect(host.querySelector(".name-edit")).toBeNull();
   });
 
   it("while sign-in is loading nothing is filled; once signed in the field goes away", async () => {
@@ -239,7 +273,7 @@ describe("signed out, the guest names themselves", () => {
     await remount();
     expect(nameInput().value).toBe("Deuce");
     type(nameInput(), "Trey");
-    act(() => buttonNamed("Play vs bots").click());
+    playBots();
     expect(sentName()).toBe("Trey");
     expect(localStorage.getItem("shengji.name")).toBe("Trey");
   });
@@ -254,6 +288,21 @@ describe("signed out, the guest names themselves", () => {
       expect(sentName()).toBe(nameInput().value);
       expect(localStorage.getItem("shengji.name")).toBe(nameInput().value);
     }
+  });
+
+  it("the name field is a keyboard-friendly name entry that Enter puts away without submitting", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    await render();
+    const input = nameInput();
+    expect(input.getAttribute("enterkeyhint")).toBe("done");
+    expect(input.getAttribute("spellcheck")).toBe("false");
+    expect(input.getAttribute("autocapitalize")).toBe("words");
+    expect(input.getAttribute("autocorrect")).toBe("off");
+    act(() => input.focus());
+    expect(document.activeElement).toBe(input);
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(document.activeElement).not.toBe(input);
+    expect(sent).toHaveLength(0);
   });
 
   it("the dice reroll the name, have an accessible label and never submit", async () => {
@@ -279,29 +328,112 @@ describe("signed out, the guest names themselves", () => {
     type(nameInput(), "");
     await rerender();
     expect(nameInput().value).toBe("");
-    expect(buttonNamed("Create room").disabled).toBe(true);
+  });
+
+  it("with the name cleared, Create room and Play vs bots both stay enabled and pick a random name", async () => {
+    authState.current = { status: "off", clientId: null, user: null };
+    await render();
+    type(nameInput(), "");
+    expect(buttonNamed("Create room").disabled).toBe(false);
+    expect(buttonNamed("Play bots").disabled).toBe(false);
+    act(() => buttonNamed("Create room").click());
+    expect(isRandom(sentName())).toBe(true);
+    expect(nameInput().value).toBe(sentName());          // the field shows the name it went with
+    await remount();
+    type(nameInput(), "   ");
+    playBots();
+    expect(isRandom(sentName())).toBe(true);
+    expect(nameInput().value).toBe(sentName());
   });
 });
 
-describe("the lobby preview clip and the How to play entry", () => {
-  const preview = () => host.querySelector(".lobby-preview");
+describe("no connection", () => {
+  afterEach(() => { vi.useRealTimers(); });
 
-  it("plays the muted, looping clip", async () => {
-    authState.current = { status: "out", clientId: "cid", user: null };
-    await render();
-    const v = host.querySelector<HTMLVideoElement>("video.lobby-preview")!;
-    expect(v).not.toBeNull();
-    expect(v.muted).toBe(true);
-    expect(v.loop).toBe(true);
-    expect(v.autoplay).toBe(true);
-    expect(v.hasAttribute("playsinline")).toBe(true);
-    expect(v.getAttribute("preload")).toBe("none");
-    expect(v.getAttribute("poster")).toBe("/og/preview.jpg");
-    expect(v.getAttribute("src")).toBe("/og/preview.mp4");
-    expect(v.getAttribute("aria-hidden")).toBe("true");
+  const pill = () => host.querySelector(".play-conn");
+  const retryPill = () => host.querySelector<HTMLButtonElement>("button.play-conn");
+  async function renderAt(status: "open" | "closed" | "connecting") {
+    if (!host || !host.isConnected) {
+      host = document.createElement("div");
+      document.body.appendChild(host);
+      root = createRoot(host);
+    }
+    await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
+  }
+
+  it("says Connecting… first, then after 4 s No connection · retrying, which retries on a tap", async () => {
+    vi.useFakeTimers();
+    authState.current = { status: "off", clientId: null, user: null };
+    reconnects.n = 0;
+    await renderAt("connecting");
+    expect(pill()?.textContent).toBe("Connecting…");
+    expect(retryPill()).toBeNull();
+    expect(buttonNamed("Play bots").disabled).toBe(true);    // not yet known to be offline
+    await act(async () => { vi.advanceTimersByTime(3999); });
+    expect(retryPill()).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(1); });
+    expect(retryPill()?.textContent).toBe("No connection · retrying");
+    act(() => retryPill()!.click());
+    expect(reconnects.n).toBe(1);
+    // the wait starts over after a retry
+    expect(retryPill()).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(4000); });
+    expect(retryPill()).not.toBeNull();
+    // a connection clears it at once, and says nothing while all is well
+    await renderAt("open");
+    expect(pill()).toBeNull();
+    expect(host.textContent).not.toContain("Connected");
   });
 
-  it("shows the clip signed in, signed out, while loading and with sign-in off", async () => {
+  it("with no connection Play bots stays gold and plays on this device; the rest is disabled", async () => {
+    vi.useFakeTimers();
+    const start = vi.spyOn(offlineGame, "start").mockImplementation(() => {});
+    try {
+      authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+      await renderAt("closed");
+      await act(async () => { vi.advanceTimersByTime(STALL_MS); });
+      const bots = buttonNamed("Play bots");
+      expect(bots.className).toContain("gold");               // the main button, signed in too
+      expect(bots.disabled).toBe(false);
+      for (const label of ["Play", "Duo", "Create room", "Join"]) expect(buttonNamed(label).disabled).toBe(true);
+      expect(host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!.disabled).toBe(true);
+      expect(host.querySelector(".play-label")?.textContent).toBe("Ranked");   // same layout, greyed
+      act(() => bots.click());
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(sent).toHaveLength(0);
+    } finally {
+      start.mockRestore();
+    }
+  });
+
+  it("connected, Play bots plays online (never the offline game)", async () => {
+    const start = vi.spyOn(offlineGame, "start").mockImplementation(() => {});
+    try {
+      authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+      await renderAt("open");
+      const bots = buttonNamed("Play bots");
+      expect(bots.className).toContain("grp-row");
+      act(() => bots.click());
+      expect(start).not.toHaveBeenCalled();
+      expect(sent).toMatchObject([{ type: "create_room" }]);
+    } finally {
+      start.mockRestore();
+    }
+  });
+});
+
+describe("the lobby preview and the How to play entry", () => {
+  const preview = () => host.querySelector(".lobby-preview");
+
+  it("draws a live trick with the table's cards, not a video", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    expect(host.querySelector("video")).toBeNull();
+    expect(preview()!.getAttribute("aria-hidden")).toBe("true");
+    expect(preview()!.querySelectorAll(".card").length).toBeGreaterThan(0);
+  });
+
+  it("shows the preview signed in, signed out, while loading and with sign-in off", async () => {
     for (const state of [
       { status: "in", clientId: "cid", user: JERRY },
       { status: "out", clientId: "cid", user: null },
@@ -317,7 +449,7 @@ describe("the lobby preview clip and the How to play entry", () => {
     await render(); // afterEach unmounts once more
   });
 
-  it("reduced motion shows the poster still, not the video", async () => {
+  it("reduced motion shows one still frame", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     const mm = window.matchMedia;
     window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
@@ -327,21 +459,109 @@ describe("the lobby preview clip and the How to play entry", () => {
       window.matchMedia = mm;
     }
     expect(host.querySelector("video")).toBeNull();
-    const img = host.querySelector<HTMLImageElement>("img.lobby-preview")!;
-    expect(img.getAttribute("src")).toBe("/og/preview.jpg");
-    expect(img.getAttribute("alt")).toBe("");
+    expect(preview()!.getAttribute("data-still")).toBe("true");
   });
 
-  it("New to Sheng Ji? How to play opens #/howto", async () => {
+  it("How to play opens #/howto", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     const entry = host.querySelector(".howto-entry")!;
-    expect(entry.textContent).toBe("New to Sheng Ji? How to play");
+    expect(entry.textContent).toBe("How to play");
     try {
       act(() => entry.querySelector<HTMLButtonElement>("button")!.click());
       expect(window.location.hash).toBe("#/howto");
     } finally {
       window.history.replaceState(null, "", "/");
     }
+  });
+});
+
+describe("help and policy links", () => {
+  it("Play keeps the How to play line and leaves Privacy and Support to the Me tab", async () => {
+    for (const current of [{ status: "out", clientId: "cid", user: null },
+                           { status: "in", clientId: "cid", user: JERRY }] as AuthState[]) {
+      authState.current = current;
+      if (host) { act(() => root.unmount()); host.remove(); }
+      await render();
+      expect(host.querySelector(".howto-entry")?.textContent).toBe("How to play");
+      expect(host.querySelector(".info-links")).toBeNull();
+      expect(host.querySelector("a[href='/privacy'], a[href='/support']")).toBeNull();
+    }
+  });
+});
+
+describe("starting a game waits for the server", () => {
+  const button = (text: RegExp) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => text.test(b.textContent ?? ""))!;
+  const serverSays = (m: unknown) => act(() => { for (const fn of [...link.listeners]) fn(m); });
+  async function renderWith(status: "open" | "closed" | "connecting") {
+    await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
+  }
+
+  beforeEach(() => { authState.current = { status: "off", clientId: null, user: null }; });
+  const tapStart = (start: RegExp) => act(() => button(start).click());
+  for (const [start, busy] of [[/^Play bots$/, "Starting…"], [/^Create room$/, "Creating…"]] as const) {
+    it(`${busy} shows at once, and a second tap sends nothing; an error allows a retry`, async () => {
+      await render();
+      tapStart(start);
+      expect(sent).toHaveLength(1);
+      const b = button(new RegExp(busy));
+      expect(b.getAttribute("aria-busy")).toBe("true");
+      expect(b.disabled).toBe(true);
+      act(() => b.click());
+      expect(sent).toHaveLength(1);
+      // every other start waits too
+      expect(button(/^(Play bots|Create room)$/).disabled).toBe(true);
+      serverSays({ type: "error", code: "busy", message: "Server busy." });
+      expect(button(start).disabled).toBe(false);
+      expect(button(start).getAttribute("aria-busy")).toBeNull();
+      tapStart(start);
+      expect(sent).toHaveLength(2);
+    });
+  }
+
+  it("a reconnect frees a start that was never answered, for a deliberate retry", async () => {
+    await render();
+    playBots();
+    expect(button(/Starting…/).disabled).toBe(true);
+    await renderWith("closed");
+    link.generation += 1;
+    await renderWith("open");
+    expect(button(/^Play bots$/).disabled).toBe(false);
+    playBots();
+    expect(sent).toHaveLength(2);
+    link.generation = 0;
+  });
+
+  it("Join says Joining… while the room is looked up, and an error frees it", async () => {
+    await render();
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+    type(code, "abcd");
+    act(() => button(/^Join$/).click());
+    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }]);
+    expect(button(/Joining…/).getAttribute("aria-busy")).toBe("true");
+    act(() => button(/Joining…/).click());
+    expect(sent).toHaveLength(1);
+    serverSays({ type: "code_kind", code: "ABCD", kind: "room" });
+    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }, { type: "peek_room", room: "ABCD" }]);
+    expect(button(/Joining…/).disabled).toBe(true);
+    // straight through when there is no seat to choose: still joining, one join
+    serverSays({ type: "room_seats", room: "ABCD", seats: [] });
+    expect(sent.filter((m) => (m as { type: string }).type === "join_room")).toHaveLength(1);
+    expect(button(/Joining…/).disabled).toBe(true);
+    serverSays({ type: "error", code: "room_not_found", message: "No such room." });
+    expect(button(/^Join$/).disabled).toBe(false);
+  });
+
+  it("a code that names nothing frees Join and says so until the box changes", async () => {
+    await render();
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+    type(code, "ZZZZ");
+    act(() => button(/^Join$/).click());
+    serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });
+    expect(button(/^Join$/).disabled).toBe(false);
+    expect(host.querySelector(".lobby-error")?.textContent).toBe("No game or pair has that code.");
+    expect(sent).toEqual([{ type: "code_lookup", code: "ZZZZ" }]);
+    type(code, "ZZZ");
+    expect(host.querySelector(".lobby-error")).toBeNull();
   });
 });

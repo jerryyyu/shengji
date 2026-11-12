@@ -1,7 +1,9 @@
 import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
 import Card from "./Card";
-import { useId } from "react";
+import { useId, useState } from "react";
+import { useAuth } from "../auth";
+import GoogleSignIn from "./GoogleSignIn";
 import ResultDialog from "./ResultDialog";
 import LeaveButton from "./LeaveButton";
 
@@ -35,6 +37,52 @@ function TeamTitle({ team, state, what }: { team: 0 | 1; state: GameState; what:
   const members = teamMembers(team, state);
   if (!members) return <>{colour} team wins {what}</>;
   return <><span className="title-team">{colour} team · </span>{members} win {what}</>;
+}
+
+function signedDelta(delta: number): string {
+  if (delta > 0) return `▲ +${delta}`;
+  if (delta < 0) return `▼ −${Math.abs(delta)}`;
+  return "±0";
+}
+
+/** The viewer's own rating after the round (the server sends it only to a
+ *  signed-in seat, once the round is stored); a guest at a deployment with
+ *  sign-in gets a quiet invitation instead. ``total`` shows the whole
+ *  game's change where a game was won. */
+export function RatingLine({ result, total }: { result: RoundResult; total: boolean }) {
+  const account = useAuth();
+  const [signingIn, setSigningIn] = useState(false);
+  const rating = result.rating;
+  if (rating) {
+    const game = total && rating.game_delta !== undefined ? rating.game_delta : null;
+    const tone = (d: number) => (d > 0 ? "delta-up" : d < 0 ? "delta-dn" : "delta-flat");
+    return (
+      <div className="rating-line">
+        <span>Your rating <b>{rating.rating}</b></span>
+        <span className="rating-deltas">
+          <span className={`rating-delta ${tone(rating.delta)}`}>{signedDelta(rating.delta)}</span>
+          {game !== null ? (
+            <span className={`rating-game ${tone(game)}`}>
+              {game > 0 ? "+" : game < 0 ? "−" : "±"}{Math.abs(game)} this game
+            </span>
+          ) : null}
+        </span>
+      </div>
+    );
+  }
+  if (account.status !== "out" || !account.clientId) return null;
+  return (
+    <div className="rating-guest">
+      {signingIn ? (
+        <GoogleSignIn clientId={account.clientId} />
+      ) : (
+        <>
+          <span>Playing as a guest</span>
+          <button className="rating-signin" onClick={() => setSigningIn(true)}>Sign in to get a rating</button>
+        </>
+      )}
+    </div>
+  );
 }
 
 /** Card points: 5s are worth 5, 10s and kings 10, everything else 0. */
@@ -73,6 +121,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           <p className="victory-sub">
             Final levels — Blue: {result.new_levels[0]} · Orange: {result.new_levels[1]}
           </p>
+          <RatingLine result={result} total />
           <button
             className="btn primary big"
             onClick={() => conn.leaveToLobby()}
@@ -84,6 +133,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
     );
   }
 
+  const levels = result.level_change === 1 ? "level" : "levels";
   return (
     <ResultDialog titleId={titleId}>
       <div className="panel modal">
@@ -91,74 +141,92 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           <TeamTitle team={result.winner_team} state={state} what="the round" />
         </h2>
 
-        {result.kitty_cards.length > 0 && (
-          <div className="kitty-reveal">
-            <div className="kitty-reveal-label">
-              {bankerName ? `Buried by ${bankerName}` : "Buried"} · {buriedPoints} pts
-            </div>
-            <div className="kitty-cards">
-              {result.kitty_cards.map((code, i) => (
-                <Card key={i} code={code} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="result-grid">
-          <span className="result-label">Trick points</span>
-          <span className="result-value">{trickPoints}</span>
-
-          {result.kitty_points > 0 && (
-            <>
-              <span className="result-label">Kitty bonus</span>
-              <span className="result-value">+{result.kitty_points}</span>
-            </>
-          )}
-
-          <span className="result-label total">Total</span>
-          <span className="result-value total">
-            {total} <span className="result-note">(80 needed)</span>
+        {/* the outcome first; how it was scored waits behind Details */}
+        <div className="result-headline">
+          <span className={`result-change team${result.winner_team}`}>
+            {result.point_scored ? "Game won" : `+${result.level_change} ${levels}`}
           </span>
-
-          <span className="result-label">
-            {result.point_scored ? "Result" : "Level change"}
-          </span>
-          <span className="result-value">
-            {result.point_scored
-              ? `${teamName(result.winner_team, state)} wins the game`
-              : `+${result.level_change}`}
-          </span>
-
-          {result.point_scored ? (
-            <>
-              <span className="result-label">Games won</span>
-              <span className="result-value">
-                <span className="team-dot t0" /> {result.games_won[0]}
-                <span className="team-dot t1" style={{ marginLeft: 12 }} />{" "}
-                {result.games_won[1]}
-              </span>
-            </>
-          ) : null}
-
-          <span className="result-label">
-            {result.point_scored ? "Levels restart at" : "New levels"}
-          </span>
-          <span className="result-value">
+          <span className="result-levels">
+            {result.point_scored ? "Levels restart at " : "Now "}
             <span className="team-dot t0" /> {result.new_levels[0]}
-            <span className="team-dot t1" style={{ marginLeft: 12 }} /> {result.new_levels[1]}
+            <span className="team-dot t1" /> {result.new_levels[1]}
           </span>
-
-          <span className="result-label">Next banker</span>
-          <span className="result-value">{nextBankerName}</span>
+          <span className="result-score">Attackers {total} of 80</span>
         </div>
 
-        <p className="result-verdict">
-          {result.point_scored
-            ? `${teamName(result.winner_team, state)} held Ace and wins the game — levels restart at ${result.new_levels[0]} and play continues.`
-            : total >= 80
-            ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
-            : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
-        </p>
+        <RatingLine result={result} total={result.point_scored} />
+
+        <details className="result-details">
+          <summary>Details</summary>
+          {result.kitty_cards.length > 0 && (
+            <div className="kitty-reveal">
+              <div className="kitty-reveal-label">
+                {bankerName ? `Buried by ${bankerName}` : "Buried"} · {buriedPoints} pts
+              </div>
+              <div className="kitty-cards">
+                {result.kitty_cards.map((code, i) => (
+                  <Card key={i} code={code} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="result-grid">
+            <span className="result-label">Trick points</span>
+            <span className="result-value">{trickPoints}</span>
+
+            {result.kitty_points > 0 && (
+              <>
+                <span className="result-label">Kitty bonus</span>
+                <span className="result-value">+{result.kitty_points}</span>
+              </>
+            )}
+
+            <span className="result-label total">Total</span>
+            <span className="result-value total">
+              {total} <span className="result-note">(80 needed)</span>
+            </span>
+
+            <span className="result-label">
+              {result.point_scored ? "Result" : "Level change"}
+            </span>
+            <span className="result-value">
+              {result.point_scored
+                ? `${teamName(result.winner_team, state)} wins the game`
+                : `+${result.level_change}`}
+            </span>
+
+            {result.point_scored ? (
+              <>
+                <span className="result-label">Games won</span>
+                <span className="result-value">
+                  <span className="team-dot t0" /> {result.games_won[0]}
+                  <span className="team-dot t1" style={{ marginLeft: 12 }} />{" "}
+                  {result.games_won[1]}
+                </span>
+              </>
+            ) : null}
+
+            <span className="result-label">
+              {result.point_scored ? "Levels restart at" : "New levels"}
+            </span>
+            <span className="result-value">
+              <span className="team-dot t0" /> {result.new_levels[0]}
+              <span className="team-dot t1" style={{ marginLeft: 12 }} /> {result.new_levels[1]}
+            </span>
+
+            <span className="result-label">Next banker</span>
+            <span className="result-value">{nextBankerName}</span>
+          </div>
+
+          <p className="result-verdict">
+            {result.point_scored
+              ? `${teamName(result.winner_team, state)} held Ace and wins the game — levels restart at ${result.new_levels[0]} and play continues.`
+              : total >= 80
+              ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
+              : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
+          </p>
+        </details>
 
         {(() => {
           // Everyone reviews the round at their own pace: the server only

@@ -26,6 +26,8 @@ export interface Timeline<S> {
   toggle: () => void;
   replay: () => void;
   pause: () => void;
+  /** Continue a paused timeline from where it stopped. */
+  resume: () => void;
 }
 
 function now(): number {
@@ -110,5 +112,5 @@ export function useTimeline<S>(frames: Frame<S>[], autoplay = true): Timeline<S>
 
   const frame = frames[idx];
   if (!frame) throw new Error(`useTimeline: no frame ${idx} in a timeline of ${frames.length}`);
-  return { state: frame.state, status, run, rootRef, toggle, replay, pause };
+  return { state: frame.state, status, run, rootRef, toggle, replay, pause, resume };
 }

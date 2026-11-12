@@ -5,7 +5,6 @@ import HudMenu from "./HudMenu";
 import MuteButton from "./MuteButton";
 import { isMuted, setMuted } from "../audio";
 import { auth } from "../auth";
-import { navigate } from "../replay/route";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
@@ -92,23 +91,20 @@ describe("the phone overflow menu (#651)", () => {
   });
 });
 
-describe("a signed-in player's rows", () => {
-  it("shows the account name with Edit name, then Sign out; Edit name opens the form in place", async () => {
+describe("a signed-in player's menu", () => {
+  it("is the same four rows: account rows live on the Me tab", () => {
     auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" });
     const v = render();
     act(() => btn(v.host).click());
-    const text = rows(v.host).map((r) => r.textContent);
-    expect(text[3]).toContain("Cap"); expect(text[3]).toContain("Edit name");
-    expect(text[4]).toContain("My games");
-    expect(text[5]).toContain("Sign out");
-    expect(text[6]).toContain("Leave game");
-    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
-    expect(v.host.querySelector(".hud-menu")).not.toBeNull();     // the menu stays open
-    const input = v.host.querySelector<HTMLInputElement>(".hud-menu-edit .name-edit-input")!;
-    expect(input.value).toBe("Cap");
-    act(() => v.host.querySelector<HTMLButtonElement>(".name-edit-cancel")!.click());
-    expect(v.host.querySelector(".name-edit")).toBeNull();
-    expect(rows(v.host)[3].textContent).toContain("Edit name");
+    const text = rows(v.host).map((r) => r.textContent ?? "");
+    expect(text).toHaveLength(4);
+    expect(text[0]).toContain("Kitty");
+    expect(text[1]).toContain("Sound");
+    expect(text[2]).toContain("Copy invite link");
+    expect(text[3]).toContain("Leave game");
+    for (const gone of ["Edit name", "My games", "Sign out", "Cap"]) {
+      expect(text.some((t) => t.includes(gone))).toBe(false);
+    }
     v.unmount();
     auth.reset();
   });
@@ -136,43 +132,125 @@ describe("mute state is shared between controls (Codex, #653)", () => {
   });
 });
 
-describe("the account row (optional sign-in)", () => {
-  it("is absent for a guest, and when signed in a refused sign-out keeps the menu open to retry", async () => {
-    auth.reset();
+describe("keyboard focus in the menu", () => {
+  const key = (el: Element, k: string) => act(() => {
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+  });
+  const focused = () => (document.activeElement as HTMLElement | null)?.textContent ?? "";
+
+  it("opening focuses the first actionable row; arrows wrap, Home and End go to the ends", () => {
+    const v = render();
+    const trigger = btn(v.host);
+    trigger.focus();
+    act(() => trigger.click());
+    expect(focused()).toContain("Sound");             // the kitty row is information only
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Copy invite link");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Leave game");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Sound");             // wraps
+    key(document.activeElement!, "ArrowUp");
+    expect(focused()).toContain("Leave game");
+    key(document.activeElement!, "Home");
+    expect(focused()).toContain("Sound");
+    key(document.activeElement!, "End");
+    expect(focused()).toContain("Leave game");
+    v.unmount();
+  });
+
+  it("ArrowDown and ArrowUp on the closed button open it at the first and last row", () => {
+    const v = render();
+    btn(v.host).focus();
+    key(btn(v.host), "ArrowDown");
+    expect(v.host.querySelector(".hud-menu")).not.toBeNull();
+    expect(focused()).toContain("Sound");
+    key(document.activeElement!, "Escape");
+    key(btn(v.host), "ArrowUp");
+    expect(focused()).toContain("Leave game");
+    v.unmount();
+  });
+
+  it("Escape closes the menu and returns focus to the More button", () => {
     const v = render();
     act(() => btn(v.host).click());
-    expect(rows(v.host).some((r) => r.textContent?.includes("Sign out"))).toBe(false);
-    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
-    const row = () => rows(v.host).find((r) => r.textContent?.includes("Sign out")) as HTMLButtonElement;
-    expect(rows(v.host).find((r) => r.textContent?.includes("Edit name"))?.textContent).toContain("Jerry");
-    globalThis.fetch = vi.fn(async () => ({ status: 500, json: async () => ({}) })) as unknown as typeof fetch;
-    await act(async () => { row().click(); });
-    expect(v.host.querySelector(".hud-menu")).not.toBeNull();   // still open
-    expect(row().textContent).toContain("Sign out failed, retry");
-    expect(auth.state.status).toBe("in");
-    globalThis.fetch = vi.fn(async () => ({ status: 200, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
-    await act(async () => { row().click(); });
+    key(document.activeElement!, "ArrowDown");
+    key(document.activeElement!, "Escape");
     expect(v.host.querySelector(".hud-menu")).toBeNull();
-    expect(auth.state.status).toBe("out");
+    expect(document.activeElement).toBe(btn(v.host));
     v.unmount();
-    auth.reset();
+  });
+
+  it("arming Leave focuses Stay; Stay returns focus to the Leave row; arrows reach Leave", () => {
+    const v = render();
+    act(() => btn(v.host).click());
+    key(document.activeElement!, "End");
+    act(() => (document.activeElement as HTMLButtonElement).click());
+    expect(v.host.querySelector(".hud-menu-row.leave.armed")).not.toBeNull();
+    expect(focused()).toBe("Stay");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toBe("Leave");
+    key(document.activeElement!, "ArrowUp");
+    act(() => (document.activeElement as HTMLButtonElement).click());
+    expect(focused()).toContain("Leave game…");
+    expect(sent).toEqual([]);
+    v.unmount();
+  });
+
+  it("an outside tap still closes it", () => {
+    const v = render();
+    act(() => btn(v.host).click());
+    act(() => { document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
+    expect(v.host.querySelector(".hud-menu")).toBeNull();
+    v.unmount();
   });
 });
 
-describe("the My games row", () => {
-  it("is shown only when signed in, and opens the history page", () => {
-    auth.reset();
-    const v = render();
-    act(() => btn(v.host).click());
-    const games = () => rows(v.host).find((r) => r.textContent?.includes("My games")) as HTMLButtonElement | undefined;
-    expect(games()).toBeUndefined();
-    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
-    expect(games()).toBeDefined();
-    act(() => games()!.click());
-    expect(v.host.querySelector(".hud-menu")).toBeNull();
-    expect(window.location.hash).toBe("#/games");
-    v.unmount();
-    act(() => navigate(null));
-    auth.reset();
+describe("the menu's scale-and-fade", () => {
+  const reduceMotion = (on: boolean) => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: on && q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+    return () => { window.matchMedia = mm; };
+  };
+  const canAnimate = () => {
+    const had = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "animate");
+    Object.defineProperty(HTMLElement.prototype, "animate", { configurable: true, value: () => ({}) });
+    return () => {
+      if (had) Object.defineProperty(HTMLElement.prototype, "animate", had);
+      else Reflect.deleteProperty(HTMLElement.prototype, "animate");
+    };
+  };
+
+  it("pops in, stays through its fade out, then goes", () => {
+    vi.useFakeTimers();
+    const restore = [reduceMotion(false), canAnimate()];
+    try {
+      const v = render();
+      act(() => btn(v.host).click());
+      expect(v.host.querySelector(".hud-menu")!.classList.contains("pop-in")).toBe(true);
+      act(() => btn(v.host).click());
+      const menu = v.host.querySelector(".hud-menu")!;
+      expect(menu.classList.contains("pop-out")).toBe(true);
+      expect(menu.getAttribute("aria-hidden")).toBe("true");
+      act(() => { vi.advanceTimersByTime(199); });
+      expect(v.host.querySelector(".hud-menu")).not.toBeNull();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(v.host.querySelector(".hud-menu")).toBeNull();
+      v.unmount();
+    } finally { restore.forEach((r) => r()); vi.useRealTimers(); }
+  });
+
+  it("under Reduce Motion appears and goes at once, with no animation class", () => {
+    const restore = [reduceMotion(true), canAnimate()];
+    try {
+      const v = render();
+      act(() => btn(v.host).click());
+      const menu = v.host.querySelector(".hud-menu")!;
+      expect(menu.classList.contains("pop-in")).toBe(false);
+      expect(menu.classList.contains("pop-out")).toBe(false);
+      act(() => btn(v.host).click());
+      expect(v.host.querySelector(".hud-menu")).toBeNull();
+      v.unmount();
+    } finally { restore.forEach((r) => r()); }
   });
 });

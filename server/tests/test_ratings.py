@@ -650,7 +650,7 @@ def test_a_v3_database_gains_the_rating_tables_idempotently(accounts_on, tmp_pat
     finally:
         accounts_on.SCHEMA[:] = real
     store = accounts_on.Store(path)
-    assert store.schema_version() == len(real) == 5
+    assert store.schema_version() == len(real)
     row = store.user(1)
     assert row["rating"] == 1000 and row["rated_rounds"] == 0 and row["leaderboard_visible"] == 1
     with closing(sqlite3.connect(path)) as db:
@@ -659,7 +659,7 @@ def test_a_v3_database_gains_the_rating_tables_idempotently(accounts_on, tmp_pat
         db.commit()
         names = {r[0] for r in db.execute("SELECT name FROM sqlite_master")}
     assert {"rating_events", "rating_events_user", "rating_events_created"} <= names
-    assert accounts_on.Store(path).schema_version() == 5
+    assert accounts_on.Store(path).schema_version() == len(accounts_on.SCHEMA)
 
 
 def _v4_database(accounts_on, path, ratings_by_sub):
@@ -701,7 +701,7 @@ def test_a_v4_database_moves_to_the_1000_scale_once(accounts_on, tmp_path):
         assert db.execute("SELECT rating FROM users WHERE id = ?", (ids["even"],)).fetchone()[0] == 1500
 
     store = accounts_on.Store(path)
-    assert store.schema_version() == 5
+    assert store.schema_version() == len(accounts_on.SCHEMA)
     assert [store.user(ids[s])["rating"] for s in ("even", "up", "down")] == [1000, 1032, 971]
     after = {e["user_id"]: e for e in _events_at(path)}
     assert set(after) == {ids["up"], ids["down"]}
@@ -715,14 +715,14 @@ def test_a_v4_database_moves_to_the_1000_scale_once(accounts_on, tmp_path):
 
     # A second open, a direct re-run of the step and a lost version row each
     # leave the shift applied exactly once.
-    assert accounts_on.Store(path).schema_version() == 5
+    assert accounts_on.Store(path).schema_version() == len(accounts_on.SCHEMA)
     with closing(sqlite3.connect(path)) as db:
         db.row_factory = sqlite3.Row
         accounts_on._migrate_v5(db)
         db.execute("UPDATE schema_version SET version = 4")
         db.commit()
     again = accounts_on.Store(path)
-    assert again.schema_version() == 5
+    assert again.schema_version() == len(accounts_on.SCHEMA)
     assert [again.user(ids[s])["rating"] for s in ("even", "up", "down")] == [1000, 1032, 971]
     assert {e["user_id"]: e["rating_after"] for e in _events_at(path)} == {
         uid: e["rating_after"] for uid, e in after.items()}
@@ -751,7 +751,7 @@ def test_the_scale_move_keeps_every_delta():
 
 def test_a_fresh_database_starts_new_accounts_at_1000(accounts_on):
     store = accounts_on.STORE
-    assert store.schema_version() == 5
+    assert store.schema_version() == len(accounts_on.SCHEMA)
     assert store.upsert_user(_claims(sub="fresh"))["rating"] == 1000
     # A returning login never resets a moved rating.
     uid = store.upsert_user(_claims(sub="fresh"))["id"]

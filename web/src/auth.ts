@@ -6,11 +6,11 @@
 
 import { useEffect, useState } from "react";
 import { forgetPrivateSession } from "./home/session";
-import { nativeGoogleSignOut } from "./nativeAuth";
+import { nativeAppleSignOut, nativeGoogleSignOut } from "./nativeAuth";
 import { conn } from "./ws";
 
 export interface AuthUser {
-  /** The Google profile name. */
+  /** The profile name: Google's, or the name Apple sent on the first sign-in. */
   name: string;
   email: string;
   picture: string | null;
@@ -159,6 +159,36 @@ export async function loginWithGoogle(credential: string, nonce: string): Promis
   return toUser(body);
 }
 
+/** What the app posts after Apple's native sheet: the identity token, the raw
+ *  nonce whose SHA-256 hex the sheet put into it, the authorization code the
+ *  server exchanges (to revoke the grant when the account is deleted), and
+ *  the name Apple sends only on the first authorization. */
+export interface AppleLogin {
+  identityToken: string;
+  nonce: string;
+  authorizationCode: string | null;
+  givenName: string | null;
+  familyName: string | null;
+}
+
+export async function loginWithApple(login: AppleLogin): Promise<AuthUser> {
+  const { status, body } = await api<AuthUser & { detail?: string }>("/api/auth/apple", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      identity_token: login.identityToken,
+      nonce: login.nonce,
+      authorization_code: login.authorizationCode,
+      given_name: login.givenName,
+      family_name: login.familyName,
+    }),
+  });
+  if (status !== 200 || !body) {
+    throw new Error(body?.detail ?? `Sign-in failed (${status})`);
+  }
+  return toUser(body);
+}
+
 /** Revoke the session. Resolves only when the server confirmed it; a 5xx or
  *  a network failure throws, because the HttpOnly cookie is then still live
  *  and the page must not claim otherwise. */
@@ -200,6 +230,13 @@ export function newNonce(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The lowercase SHA-256 hex of a nonce: what Apple's sheet is given, so the
+ *  raw nonce stays with the page until it is posted. */
+export async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 let gisLoading: Promise<GoogleAccountsId> | null = null;
@@ -292,6 +329,7 @@ class AuthStore {
       /* GIS not loaded */
     }
     void nativeGoogleSignOut();
+    void nativeAppleSignOut(false);
     forgetPrivateSession();
     this.set({ status: "out", user: null });
     conn.reconnect();
@@ -306,6 +344,7 @@ class AuthStore {
       /* GIS not loaded */
     }
     void nativeGoogleSignOut();
+    void nativeAppleSignOut(true);
     forgetPrivateSession();
     this.set({ status: "out", user: null });
     conn.reconnect();

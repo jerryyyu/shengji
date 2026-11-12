@@ -300,6 +300,9 @@ class Room:
     ratings: Any = field(default=None, init=False, repr=False)
     # Built by the matchmaking queue rather than by a player's create_room.
     matched: bool = False
+    # A matched room whose start failed and was unwound: no socket may act
+    # in it, and a receive loop still holding it drops it.
+    aborted: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.bot is None:
@@ -1741,6 +1744,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if conn.adopted is not None:       # the queue seated this socket
                 room, me, my_gen = conn.adopted
                 conn.adopted = None
+            if room is not None and room.aborted:
+                room, me = None, None
             if room is None or me is None:
                 if t in matchmaking.QUEUE_MESSAGES:
                     await MATCHMAKER.handle(conn, msg, account_id())
@@ -1772,8 +1777,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         # Through _attach like every other path: hand-rolling the
                         # queue/writer here skipped the generation bump AND the
                         # resume token, so a creator had no identity and an
-                        # overlapping refresh appended them as a SECOND seat
-                        # (Codex, 2026-08-04).
+                        # overlapping refresh appended them as a SECOND seat.
                         me = Seat(name=player_name(msg.get("name")), user_id=account_id())
                         room.seats.append(me)
                         my_gen = _attach(room, me, ws)
@@ -1811,7 +1815,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         # Per-JOIN, not per-socket: these were read back via
                         # locals(), so a player who claimed a bot seat in one room
                         # kept claimed_from_bot/took_from set and the NEXT room
-                        # announced a stale bot's name (Codex case 8).
+                        # announced a stale bot's name.
                         claimed_from_bot = False
                         took_from = ""
                         took_over_human = False
@@ -1826,7 +1830,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             # Match on a normalised name: an exact-only match
                             # locked people out of their own seat whenever they
                             # came back on another device or retyped their name
-                            # with different capitalisation (Jerry, 2026-08-03).
+                            # with different capitalisation.
                             # Identity order: TOKEN first (the only real identity;
                             # it also lets a player resume while their stale socket
                             # is still open — the newest connection wins), then a
@@ -1861,7 +1865,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             else:
                                 # Take over a BOT's seat, mid-game if need be —
                                 # the hand already exists, so a late arrival can
-                                # sit down without restarting (Jerry, 2026-08-03).
+                                # sit down without restarting.
                                 # Safe under the room lock: pump_bots re-checks
                                 # is_bot after every BOT_DELAY and exits cleanly
                                 # when a seat stops being a bot.
@@ -1871,12 +1875,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 # the second group a 4-human game with one player
                                 # offline reported "room full" and NOBODY could
                                 # take the seat — not even that player under a
-                                # different name (Jerry, 2026-08-03).
+                                # different name.
                                 botseats = [i for i, sd in enumerate(target.seats)
                                             if sd.is_bot]
                                 # A dropped seat is RESERVED for its owner during
-                                # the grace window: anyone could previously claim
-                                # it the instant a player blipped. After the window
+                                # the grace window, so nobody can claim it the
+                                # instant a player blips. After the window
                                 # the bot is covering and the seat is open to all.
                                 dropped = [i for i, sd in enumerate(target.seats)
                                            if not sd.is_bot and not sd.connected
@@ -1949,8 +1953,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 # seat picker already grants deliberately, so the
                                 # name path grants no MORE access — but it must
                                 # not hand over the original owner's token, or an
-                                # impersonator could later displace the real owner
-                                # (Codex, 2026-08-04).
+                                # impersonator could later displace the real owner.
                                 me.token = secrets.token_urlsafe(12)
                             my_gen = _attach(room, me, ws)
                             if reclaim is not None:
@@ -2072,31 +2075,57 @@ async def start_matched_room(match_id: str | None, slots: list,
     """Build, seat and start the room for a queue match (``match_id``) or a
     ``queue_start_bots`` game (``None``). Slots arrive in seat order; every
     human's socket is bound to its seat here, before anything awaits, so the
-    socket's receive loop adopts the room on its next message."""
+    socket's receive loop adopts the room on its next message.
+
+    The start is all or nothing: if anything fails once the room is
+    registered, the room is unregistered and aborted, every attached seat is
+    detached and every socket is back in the lobby with no adoption pending,
+    before the error reaches the matchmaker that requeues these players."""
     room = Room(code=new_code(), matched=True)
     rooms[room.code] = room
+    attached: list[tuple[Seat, Any, int]] = []
+    try:
+        humans = []
+        for i, slot in enumerate(slots):
+            if slot.user_id is None:
+                room.seats.append(Seat(name=f"Bot {i}", is_bot=True))
+            else:
+                seat = Seat(name=slot.name or "Player", user_id=slot.user_id)
+                room.seats.append(seat)
+                humans.append((seat, conns[slot.user_id]))
+        room.host = room.seats.index(humans[0][0])
+        async with room.lock:
+            for seat, conn in humans:
+                gen = _attach(room, seat, conn.ws)
+                attached.append((seat, conn, gen))
+                conn.adopted = (room, seat, gen)
+                MATCHMAKER.enter_room(conn)
+                enqueue(seat, {"type": "match_started", "match_id": match_id,
+                               "room": room.code, "rated": ratings.eligible(room)})
+            await broadcast(room)
+            await handle_action(room, room.host, {"type": "start_game"})
+            await broadcast(room)
+            kick_bots(room)
+    except BaseException:
+        _unwind_matched_room(room, attached, conns.values())
+        raise
     ACTIVITY.rooms_created += 1
-    humans = []
-    for i, slot in enumerate(slots):
-        if slot.user_id is None:
-            room.seats.append(Seat(name=f"Bot {i}", is_bot=True))
-        else:
-            seat = Seat(name=slot.name or "Player", user_id=slot.user_id)
-            room.seats.append(seat)
-            humans.append((seat, conns[slot.user_id]))
-    room.host = room.seats.index(humans[0][0])
-    async with room.lock:
-        for seat, conn in humans:
-            gen = _attach(room, seat, conn.ws)
-            conn.adopted = (room, seat, gen)
-            MATCHMAKER.enter_room(conn)
-            enqueue(seat, {"type": "match_started", "match_id": match_id,
-                           "room": room.code, "rated": ratings.eligible(room)})
-        await broadcast(room)
-        await handle_action(room, room.host, {"type": "start_game"})
-        await broadcast(room)
-        kick_bots(room)
     return room.code
+
+
+def _unwind_matched_room(room: Room, attached: list, conns) -> None:
+    room.aborted = True
+    if rooms.get(room.code) is room:
+        del rooms[room.code]
+    for task in (room.bot_task, room.deal_task, room.watchdog_task, room.cleanup_task):
+        if task is not None:
+            task.cancel()
+    for seat, _conn, gen in attached:
+        _detach(seat, room, gen)
+    for conn in conns:
+        if conn.adopted is not None and conn.adopted[0] is room:
+            conn.adopted = None
+        MATCHMAKER.return_to_lobby(conn)
 
 
 MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room)

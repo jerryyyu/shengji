@@ -19,8 +19,10 @@ The matcher (``tick``, every ``TICK_INTERVAL`` seconds):
    are spread across both teams where possible;
 5. each human gets a ``READY_SECS`` ready check. All accept: the room is
    created and started. A decline or a timeout removes the entry that missed
-   with a ``COOLDOWN_SECS`` cooldown; the others requeue at the front with
-   their original wait.
+   with a ``COOLDOWN_SECS`` cooldown; the others requeue with their original
+   wait, at the front only if every member of that entry had accepted. An
+   accept or decline must name the current ``match_id`` and arrive before
+   the deadline.
 
 Room creation is the server's job: ``start_room`` is injected, and receives
 the four seats in seat order (bots as ``Slot`` with ``user_id=None``).
@@ -539,12 +541,18 @@ class Matchmaker:
         self._flush_count()
 
     def _current_match(self, uid: int, msg: dict) -> Match:
+        """The ready check an accept or decline answers. The deadline is
+        checked here, not left to the pump, so a late answer cannot act on an
+        expired check; and the answer must name the exact current match, so a
+        delayed answer to an earlier check cannot land on its replacement."""
         e = self._entry(uid)
         m = self.matches.get(e.match_id) if e is not None and e.match_id else None
         if m is None:
             raise QueueError("no_match", "There is no ready check for you.")
-        want = msg.get("match_id")
-        if want is not None and want != m.id:
+        if self.clock() >= m.deadline:
+            self._expire(m)
+            raise QueueError("stale_match", "That ready check is over.")
+        if msg.get("match_id") != m.id:
             raise QueueError("stale_match", "That ready check is over.")
         return m
 
@@ -570,14 +578,16 @@ class Matchmaker:
         misser leaves the queue: with a cooldown for every member, or with
         none when each misser's socket was gone (``away``) or the misser
         chose to keep waiting for people (that entry restarts its wait). The
-        other entries go back to the front with their original wait."""
+        other entries requeue with their original wait; only an entry whose
+        every member accepted goes to the front, so a player who had not
+        answered yet is neither rewarded nor penalised."""
         self.matches.pop(m.id, None)
         now = self.clock()
         for e in m.entries:
             e.match_id = None
             missed = [u for u in e.members if u in missers]
             if not missed:
-                e.front = True
+                e.front = all(u in m.accepted for u in e.members)
                 for u in e.members:
                     self._send(u, {"type": "match_cancelled", "match_id": m.id,
                                    "reason": "player_missed"})
@@ -757,9 +767,7 @@ class Matchmaker:
         self._drop_inactive()
         for m in list(self.matches.values()):
             if now >= m.deadline:
-                missers = {u for u in m.humans if u not in m.accepted}
-                away = {u for u in missers if not self._available(u)}
-                self._fail_match(m, missers, "missed", away=away)
+                self._expire(m)
         self._drop_away(now)
         for p in list(self.parties.values()):
             queued = any(u in self.entry_of for u in p.members)
@@ -769,6 +777,13 @@ class Matchmaker:
             self._last_tick = now
             self.tick()
         self._flush_count()
+
+    def _expire(self, m: Match) -> None:
+        """The ready check's deadline passed: everyone who has not accepted
+        missed it."""
+        missers = {u for u in m.humans if u not in m.accepted}
+        away = {u for u in missers if not self._available(u)}
+        self._fail_match(m, missers, "missed", away=away)
 
     def _drop_inactive(self) -> None:
         for e in list(self.entries.values()):

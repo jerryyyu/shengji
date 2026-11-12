@@ -193,8 +193,8 @@ seconds from the server clock; `deadline_in` is relative seconds. Refusals are
 |------|--------|--------|
 | `queue_join` | optional `party_id` | queue alone, or (party leader only) as the pair; a member of a full party always queues as the pair |
 | `queue_leave` | — | leave the queue (leader only for a pair); during a ready check this is a decline |
-| `match_accept` | optional `match_id` | accept the ready check |
-| `match_decline` | optional `match_id`, optional `keep_waiting` | decline; with `keep_waiting: true` on a bot-fill match the entry stays queued, its wait restarted, with no cooldown |
+| `match_accept` | `match_id` (required) | accept the ready check named by `match_id`; it must be your current one and its deadline not passed |
+| `match_decline` | `match_id` (required), optional `keep_waiting` | decline the ready check named by `match_id` (same rule as `match_accept`); with `keep_waiting: true` on a bot-fill match the entry stays queued, its wait restarted, with no cooldown |
 | `queue_start_bots` | — | leave the queue and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots |
 | `party_create` | — | create a pair party (or resend yours); answered with `party` |
 | `party_invite` | — | the same as `party_create`: the party's `code` is the invite |
@@ -206,7 +206,11 @@ Error codes: `signed_in_only` (guest), `in_room`, `rate_limited`
 `cooldown_until`, `cooldown_secs`), `not_leader`, `bad_party`,
 `party_incomplete`, `party_changed`, `partner_unavailable` (the partner has no
 lobby socket), `not_queued`, `match_pending` (a match already formed for you:
-answer the ready check), `no_match`, `stale_match`, `start_failed`,
+answer the ready check), `no_match` (no ready check is open for you),
+`stale_match` (a `match_accept` or `match_decline` whose `match_id` is
+missing, is not your current ready check, or arrived after its deadline; a
+late answer is the timeout: you get `queue_removed {reason: "missed"}` first),
+`start_failed`,
 `party_not_found`, `party_full`, `party_busy` (the leader is queued),
 `in_queue`, `in_party`, `not_in_party`.
 
@@ -214,7 +218,8 @@ answer the ready check), `no_match`, `stale_match`, `start_failed`,
 
 - `queue_state {queued, count, since?, front?, party_id?, leader?, bots_at?, replaced?}`:
   your entry, after every change to it and on reconnect. `front` marks an entry
-  requeued at the front after someone else missed a ready check. `replaced:
+  requeued at the front after someone else missed a ready check that every
+  member of this entry had accepted. `replaced:
   true` tells an older socket that a newer one of the same account now holds
   the entry (one entry per account).
 - `queue_count {count}`: to every lobby socket, signed in or not; players
@@ -231,7 +236,9 @@ answer the ready check), `no_match`, `stale_match`, `start_failed`,
   `matched: true`.
 - `match_cancelled {match_id, reason}`: the ready check ended without you being
   at fault (`player_missed`, `keep_waiting`, `server_error`); a `queue_state`
-  follows.
+  follows. After `server_error` the room was never left behind: you are back
+  in the lobby and queued at the front, even if its `resume` or
+  `match_started` frames already reached you.
 - `queue_removed {reason, cooldown_until, match_id?, by?}`: you are out of the
   queue. `declined` and `missed` carry a 30 s cooldown; `away` (your socket was
   gone over 10 s, or at the start of an accepted match) and `in_room` carry
@@ -264,7 +271,11 @@ numbers are named constants there):
    ordinary room, seats everyone, adds the bots and starts it; ratings are the
    ordinary room ratings (the round-start snapshot of signed-in seats). A
    decline or timeout removes that entry (the whole pair, for a pair) with a
-   30 s cooldown; the others go back to the front with their original wait.
+   30 s cooldown. The others keep their original wait; an entry whose every
+   member had accepted goes to the front, one with a member who had not
+   answered yet (a pair with one acceptance included) keeps its place with no
+   front priority and no cooldown. The deadline is checked when an answer
+   arrives, so a late accept never starts a room.
 
 A queued socket that closes keeps its place for 10 s; a new socket of the same
 account within that time takes the entry back (and gets `queue_state`). After

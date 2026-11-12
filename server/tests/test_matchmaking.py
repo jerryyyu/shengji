@@ -263,22 +263,24 @@ def _four(env):
     return go()
 
 
-def test_a_decline_cools_the_decliner_and_requeues_the_others_at_the_front():
+def test_a_decline_cools_the_decliner_and_requeues_only_the_accepters_at_the_front():
     async def go():
         env = Env()
         start = env.clock()
         m = await _four(env)
-        await env.send(1, "match_accept")
-        await env.send(2, "match_decline")
+        await env.send(1, "match_accept", match_id=m.id)
+        await env.send(2, "match_decline", match_id=m.id)
         removed = env.conns[2].last("queue_removed")
         assert removed["reason"] == "declined"
         assert removed["cooldown_until"] == env.clock() + mm.COOLDOWN_SECS
         assert env.mm._entry(2) is None and m.id not in env.mm.matches
         for uid in (1, 3, 4):
             e = env.mm._entry(uid)
-            assert e.front and e.match_id is None and e.since == start + (uid - 1)
+            assert e.match_id is None and e.since == start + (uid - 1)
+            assert e.front is (uid == 1)
+            assert uid not in env.mm.cooldown
             assert env.conns[uid].last("match_cancelled")["reason"] == "player_missed"
-            assert env.conns[uid].last("queue_state")["front"] is True
+            assert env.conns[uid].last("queue_state")["front"] is (uid == 1)
         env.clock.advance(29)
         await env.send(2, "queue_join")
         err = env.conns[2].last("error")
@@ -293,8 +295,8 @@ def test_a_timeout_cools_only_the_players_who_did_not_accept():
     async def go():
         env = Env()
         m = await _four(env)
-        await env.send(1, "match_accept")
-        await env.send(3, "match_accept")
+        await env.send(1, "match_accept", match_id=m.id)
+        await env.send(3, "match_accept", match_id=m.id)
         env.clock.advance(mm.READY_SECS - 0.1)
         await env.mm.pump()
         assert m.id in env.mm.matches
@@ -310,18 +312,22 @@ def test_a_timeout_cools_only_the_players_who_did_not_accept():
 def test_cancelling_during_the_check_is_a_decline():
     async def go():
         env = Env()
-        await _four(env)
+        m = await _four(env)
+        await env.send(1, "match_accept", match_id=m.id)
         await env.send(3, "queue_leave")
         assert env.conns[3].last("queue_removed")["reason"] == "declined"
         assert 3 in env.mm.cooldown and env.mm._entry(1).front
+        assert not env.mm._entry(2).front and 2 not in env.mm.cooldown
     run(go())
 
 
 def test_the_accepters_rematch_at_the_front_with_a_newcomer():
     async def go():
         env = Env()
-        await _four(env)
-        await env.send(4, "match_decline")
+        m = await _four(env)
+        for uid in (1, 2, 3):
+            await env.send(uid, "match_accept", match_id=m.id)
+        await env.send(4, "match_decline", match_id=m.id)
         env.clock.advance(5)
         await env.join(9)
         m = env.mm.tick()[0]
@@ -528,9 +534,9 @@ def test_one_partner_missing_cools_both_and_names_who_missed():
         await env.join(3)
         await env.join(4)
         m = env.mm.tick()[0]
-        await env.send(1, "match_accept")
-        await env.send(3, "match_accept")
-        await env.send(4, "match_accept")
+        await env.send(1, "match_accept", match_id=m.id)
+        await env.send(3, "match_accept", match_id=m.id)
+        await env.send(4, "match_accept", match_id=m.id)
         env.clock.advance(mm.READY_SECS)
         await env.mm.pump()
         for uid in (1, 2):
@@ -656,10 +662,11 @@ def test_concurrent_accepts_ticks_and_start_bots_seat_everyone_once():
             await env.join(uid)
         formed = env.mm.tick()
         assert len(formed) == 2
+        ids = {u: env.match_of(u).id for u in range(1, 9)}
 
         async def accept(uid):
             await asyncio.sleep(0)
-            await env.send(uid, "match_accept")
+            await env.send(uid, "match_accept", match_id=ids[uid])
 
         async def bots(uid):
             await asyncio.sleep(0)
@@ -676,6 +683,178 @@ def test_concurrent_accepts_ticks_and_start_bots_seat_everyone_once():
         seated = [u for _, slots in env.started for u in humans_of(slots)]
         assert sorted(seated) == list(range(1, 9))
         assert len(env.started) == 2 and env.mm.entries == {}
+    run(go())
+
+
+def test_an_accept_after_the_deadline_before_the_pump_does_not_start_a_room():
+    async def go():
+        env = Env()
+        m = await _four(env)
+        for uid in (1, 2, 3):
+            await env.send(uid, "match_accept", match_id=m.id)
+        env.clock.advance(mm.READY_SECS + 0.1)
+        await env.send(4, "match_accept", match_id=m.id)
+        assert not env.started and m.id not in env.mm.matches
+        assert env.conns[4].last("error")["code"] == "stale_match"
+        assert env.conns[4].last("queue_removed")["reason"] == "missed"
+        assert 4 in env.mm.cooldown
+        for uid in (1, 2, 3):
+            assert env.mm._entry(uid).front and uid not in env.mm.cooldown
+    run(go())
+
+
+def test_a_decline_after_the_deadline_is_the_timeout_not_a_decline():
+    async def go():
+        env = Env()
+        m = await _four(env)
+        await env.send(1, "match_accept", match_id=m.id)
+        env.clock.advance(mm.READY_SECS)
+        await env.send(2, "match_decline", match_id=m.id, keep_waiting=True)
+        assert env.conns[2].last("error")["code"] == "stale_match"
+        for uid in (2, 3, 4):
+            assert env.conns[uid].last("queue_removed")["reason"] == "missed"
+            assert uid in env.mm.cooldown
+        assert env.mm._entry(1).front
+    run(go())
+
+
+@pytest.mark.parametrize("kind", ["match_accept", "match_decline"])
+@pytest.mark.parametrize("given", ["missing", "wrong"])
+def test_an_answer_must_name_the_current_match(kind, given):
+    async def go():
+        env = Env()
+        m = await _four(env)
+        fields = {} if given == "missing" else {"match_id": "0" * 12}
+        await env.send(1, kind, **fields)
+        assert env.conns[1].last("error")["code"] == "stale_match"
+        assert env.mm.matches.get(m.id) is m and m.accepted == set()
+        assert env.mm._entry(1).match_id == m.id and 1 not in env.mm.cooldown
+    run(go())
+
+
+def test_a_delayed_answer_to_an_earlier_check_cannot_act_on_its_replacement():
+    async def go():
+        env = Env()
+        old = await _four(env)
+        await env.send(2, "match_accept", match_id=old.id)
+        await env.send(1, "match_decline", match_id=old.id)
+        await env.join(5)
+        new = env.mm.tick()[0]
+        assert old.id != new.id and 2 in new.humans
+        await env.send(2, "match_accept")
+        await env.send(2, "match_accept", match_id=old.id)
+        await env.send(2, "match_decline", match_id=old.id)
+        assert env.mm.matches.get(new.id) is new and 2 not in new.accepted
+        assert env.conns[2].last("error")["code"] == "stale_match"
+        assert env.mm._entry(2).match_id == new.id
+    run(go())
+
+
+def test_a_decline_gives_front_priority_only_to_players_who_accepted():
+    async def go():
+        env = Env()
+        m = await _four(env)
+        await env.send(2, "match_accept", match_id=m.id)
+        await env.send(1, "match_decline", match_id=m.id)
+        assert env.mm._entry(2).front
+        for uid in (3, 4):
+            e = env.mm._entry(uid)
+            assert not e.front and uid not in env.mm.cooldown
+            assert e.since == m.entries[uid - 1].since
+    run(go())
+
+
+@pytest.mark.parametrize("accepted, front", [((1,), False), ((1, 2), True)])
+def test_a_pair_goes_to_the_front_only_if_both_partners_accepted(accepted, front):
+    async def go():
+        env = Env()
+        await env.pair(1, 2)
+        await env.send(1, "queue_join")
+        since = env.mm._entry(1).since
+        await env.join(3)
+        await env.join(4)
+        m = env.mm.tick()[0]
+        for uid in accepted:
+            await env.send(uid, "match_accept", match_id=m.id)
+        await env.send(3, "match_decline", match_id=m.id)
+        e = env.mm._entry(1)
+        assert e is env.mm._entry(2) and e.match_id is None
+        assert e.front is front and e.since == since
+        assert 1 not in env.mm.cooldown and 2 not in env.mm.cooldown
+        for uid in (1, 2):
+            assert env.conns[uid].last("queue_state")["front"] is front
+    run(go())
+
+
+class _FakeWS:
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    async def send_json(self, payload):
+        self.sent.append(payload)
+
+
+@pytest.mark.parametrize("fail_at", ["first_attach", "second_attach", "first_broadcast",
+                                     "start_game", "last_broadcast"])
+def test_a_failed_room_start_unwinds_the_room_before_requeueing(monkeypatch, fail_at):
+    from shengji.api import server as srv
+
+    async def go():
+        env = Env()
+        built = []
+        real_room = srv.Room
+
+        def room(**kw):
+            r = real_room(bot=object(), **kw)
+            built.append(r)
+            return r
+
+        calls = {"attach": 0, "broadcast": 0}
+        real_attach, real_broadcast, real_action = srv._attach, srv.broadcast, srv.handle_action
+
+        def attach(room_, seat, ws):
+            calls["attach"] += 1
+            if (fail_at, calls["attach"]) in (("first_attach", 1), ("second_attach", 2)):
+                raise RuntimeError("injected attach failure")
+            return real_attach(room_, seat, ws)
+
+        async def broadcast(room_):
+            calls["broadcast"] += 1
+            if (fail_at, calls["broadcast"]) in (("first_broadcast", 1), ("last_broadcast", 2)):
+                raise RuntimeError("injected broadcast failure")
+            await real_broadcast(room_)
+
+        async def action(room_, seat, msg):
+            if fail_at == "start_game":
+                raise RuntimeError("injected start failure")
+            await real_action(room_, seat, msg)
+
+        monkeypatch.setattr(srv, "Room", room)
+        monkeypatch.setattr(srv, "rooms", {})
+        monkeypatch.setattr(srv, "MATCHMAKER", env.mm)
+        monkeypatch.setattr(srv, "_attach", attach)
+        monkeypatch.setattr(srv, "broadcast", broadcast)
+        monkeypatch.setattr(srv, "handle_action", action)
+        env.mm.start_room = srv.start_matched_room
+        m = await _four(env)
+        for c in env.conns.values():
+            c.ws = _FakeWS()
+        for uid in range(1, 5):
+            await env.send(uid, "match_accept", match_id=m.id)
+        await asyncio.sleep(0)
+        (r,) = built
+        assert srv.rooms == {} and r.aborted
+        for task in (r.bot_task, r.deal_task, r.watchdog_task, r.cleanup_task):
+            assert task is None or task.cancelled() or task.done()
+        for seat in r.seats:
+            assert seat.ws is None and not seat.connected and seat.writer is None
+        for uid, c in env.conns.items():
+            assert c.adopted is None and not c.in_room and c in env.mm.lobby
+            e = env.mm._entry(uid)
+            assert e is not None and e.front and e.match_id is None
+            assert c.last("match_cancelled")["reason"] == "server_error"
+        again = env.mm.tick()
+        assert len(again) == 1 and set(again[0].humans) == {1, 2, 3, 4}
     run(go())
 
 
@@ -805,9 +984,10 @@ def test_ws_decline_cools_down_and_refuses_an_early_join(wsenv):
             ws.send_json({"type": "queue_join"})
             _drain(ws, "queue_state")
         _pump(client, srv)
-        for ws in socks:
-            _drain(ws, "match")
-        d.send_json({"type": "match_decline"})
+        match_id = [_drain(ws, "match")["match_id"] for ws in socks][0]
+        a.send_json({"type": "match_accept", "match_id": match_id})
+        _drain(a, "match_ready")
+        d.send_json({"type": "match_decline", "match_id": match_id})
         removed = _drain(d, "queue_removed")
         assert removed["reason"] == "declined"
         assert removed["cooldown_until"] == clock() + mm.COOLDOWN_SECS
@@ -815,6 +995,8 @@ def test_ws_decline_cools_down_and_refuses_an_early_join(wsenv):
         assert _drain(d, "error")["code"] == "cooldown"
         back = _drain(a, "queue_state")
         assert back["queued"] and back["front"] is True
+        waited = _drain(b, "queue_state")
+        assert waited["queued"] and waited["front"] is False
 
 
 def test_ws_away_socket_is_dropped_and_a_quick_reconnect_keeps_its_place(wsenv):

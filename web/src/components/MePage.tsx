@@ -90,7 +90,7 @@ function StatsBody({ stats }: { stats: Stats }) {
         <div className="me-tile"><b>{stats.best_streak}</b><span>best streak</span></div>
       </div>
       {rounds === 0 ? (
-        <p className="grp-foot">No rated rounds yet. Every round you finish while signed in moves your rating.</p>
+        <p className="grp-foot">No ranked rounds yet. Every round you finish while signed in moves your rating.</p>
       ) : null}
       <ul className="grp me-counts">
         <Row label="Games won" value={stats.games_won} />
@@ -99,7 +99,7 @@ function StatsBody({ stats }: { stats: Stats }) {
         <Row label="Won as attackers" value={pct(stats.attacker_won_pct)} />
       </ul>
       {stats.provisional && rounds > 0 ? (
-        <p className="grp-foot">Your rating is provisional until 20 rated rounds.</p>
+        <p className="grp-foot">Your rating is provisional until 20 ranked rounds.</p>
       ) : null}
     </>
   );
@@ -314,7 +314,7 @@ function GuestMe({ clientId }: { clientId: string | null }) {
         <Avatar user={null} size="lg" />
         <div className="me-who-text">
           <div className="me-name">Guest</div>
-          <div className="me-sub">Not rated</div>
+          <div className="me-sub">Unranked</div>
         </div>
       </div>
       {clientId ? (
@@ -322,7 +322,7 @@ function GuestMe({ clientId }: { clientId: string | null }) {
           <h3>Keep your games and get a rating</h3>
           <p>Sign in to save every game with replay.{" "}
             <button type="button" className="me-rated-link" onClick={() => openTab("leaderboard")}>
-              How rated games work
+              How ranked games work
             </button></p>
           <GoogleSignIn clientId={clientId} />
         </div>

@@ -27,7 +27,7 @@ export function Row({ row }: { row: LeaderRow }) {
       <span className="avatar avatar-sm" aria-hidden="true">{row.name.slice(0, 1).toUpperCase()}</span>
       <span className="lb-name">
         <span className="lb-name-text">{row.you ? `${row.name} (you)` : row.name}</span>
-        {row.provisional ? <span className="lb-new" title="Fewer than 20 rated rounds">new</span> : null}
+        {row.provisional ? <span className="lb-new" title="Fewer than 20 ranked rounds">new</span> : null}
       </span>
       <span className="lb-rating">{row.rating}</span>
       <span className={`lb-delta ${deltaClass(row.week_delta)}`} title="Change this week">
@@ -57,20 +57,20 @@ function Rows({ board }: { board: Board }) {
 }
 
 /** Where a guest's own row would be: what signing in buys, and the button.
- *  This is the one place rated and unrated play are explained; the other
+ *  This is the one place ranked and unranked play are explained; the other
  *  sign-in prompts link here. */
 function SignInToRank({ clientId }: { clientId: string }) {
   return (
     <div className="signin-card compact lb-rated">
       <h3>Sign in to be ranked</h3>
-      <p>Games you finish signed in are rated: each round moves your rating and your place here, starting
-        from 1000. Guest games are unrated and need no account.</p>
+      <p>Games you finish signed in are ranked: each round moves your rating and your place here, starting
+        from 1000. Guest games are unranked and need no account.</p>
       <GoogleSignIn clientId={clientId} />
     </div>
   );
 }
 
-/** The Leaderboard tab: rated players by rating, this week or all time.
+/** The Leaderboard tab: ranked players by rating, this week or all time.
  *  Guests read it too; the viewer's own row (or, for a guest, a sign-in
  *  card) is pinned to the bottom when it is not among the rows shown.
  *  This week on the first visit; after that the period last chosen, with
@@ -99,7 +99,7 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
         <Rows board={res.data} />
         {empty ? (
           <p className="lb-note">
-            {period === "week" ? "Nobody has played a rated round this week yet." : "No rated rounds yet."}
+            {period === "week" ? "Nobody has played a ranked round this week yet." : "No ranked rounds yet."}
           </p>
         ) : null}
       </>

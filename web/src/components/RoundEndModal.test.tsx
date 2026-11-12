@@ -147,28 +147,35 @@ describe("leaving from the round-end screen", () => {
     expect(leave!.disabled).toBe(false);
   });
 
+  const alert = () => host.querySelector<HTMLElement>("[role='alertdialog']");
   const choice = (label: string) =>
-    [...host.querySelectorAll(".dialog-leave-confirm button")].find((b) => b.textContent === label) as
+    [...(alert()?.querySelectorAll("button") ?? [])].find((b) => b.textContent === label) as
       HTMLButtonElement | undefined;
 
-  it("asks Leave game? with Stay and Leave, and sends leave_room only on Leave", () => {
+  it("opens the leave alert, and sends leave_room only on Leave", () => {
     renderModal(makeResult(), waiting);
     act(() => { leaveButton()!.click(); });
     expect(sent).toEqual([]);
-    expect(host.querySelector(".dialog-leave-confirm")!.textContent).toContain("Leave game?");
+    expect(alert()!.textContent).toContain("Leave this game?");
     act(() => { choice("Leave")!.click(); });
     expect(sent).toEqual([{ type: "leave_room" }]);
   });
 
-  it("has no timer: the question waits, and Stay puts the button back", () => {
+  it("a ranked game's alert says what leaving does to the result", () => {
+    renderModal(makeResult(), { ...waiting, matched: true });
+    act(() => { leaveButton()!.click(); });
+    expect(alert()!.querySelector("h2")!.textContent).toBe("Leave this ranked game?");
+  });
+
+  it("has no timer: the alert waits, and Keep playing closes it", () => {
     vi.useFakeTimers();
     try {
       renderModal(makeResult(), waiting);
       act(() => { leaveButton()!.click(); });
       act(() => { vi.advanceTimersByTime(30_000); });
-      expect(host.querySelector(".dialog-leave-confirm")).not.toBeNull();
-      act(() => { choice("Stay")!.click(); });
-      expect(host.querySelector(".dialog-leave-confirm")).toBeNull();
+      expect(alert()).not.toBeNull();
+      act(() => { choice("Keep playing")!.click(); });
+      expect(alert()).toBeNull();
       expect(leaveButton()!.textContent).toBe("Leave game");
       expect(sent).toEqual([]);
     } finally {
@@ -217,15 +224,18 @@ describe("round end rating line", () => {
     expect(host.querySelector(".victory .rating-line")!.textContent).toContain("+55 this game");
   });
 
-  it("invites a guest to sign in, and only reveals the button on request", async () => {
+  it("offers a guest Sign in to be ranked in place of the rating line; a tap opens sign-in", async () => {
     await signedOutWithSignIn();
     renderModal(makeResult());
     const guest = host.querySelector(".rating-guest")!;
-    expect(guest.textContent).toContain("Playing as a guest");
     expect(host.querySelector(".rating-line")).toBeNull();
     expect(host.querySelector(".google-signin-slot")).toBeNull();
     const link = guest.querySelector<HTMLButtonElement>(".rating-signin")!;
-    expect(link.textContent).toBe("Sign in to get a rating");
+    expect(link.textContent).toBe("Sign in to be ranked");
+    expect(guest.textContent).toBe("Sign in to be ranked");
+    act(() => { link.click(); });
+    expect(host.querySelector(".rating-signin")).toBeNull();
+    expect(host.querySelector(".google-signin-slot")).not.toBeNull();
   });
 
   it("says nothing about ratings where sign-in is off", () => {

@@ -10,6 +10,7 @@ import LeaveButton from "./LeaveButton";
 import HudMenu from "./HudMenu";
 import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { codeLink } from "../codes";
+import { OFFLINE } from "../offlineMode";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -161,19 +162,18 @@ function offsetIn(el: HTMLElement, frame: HTMLElement): number | null {
   return x;
 }
 
-/** Publishes the width of the phone header's level-and-points strip as
- *  `--hud-strip-w` on the table, so the top seat's label (which shares the
- *  header row) is sized and placed clear of it, whatever the levels, score
- *  and text size make it. The strip starts at the safe edge, which CSS adds,
- *  so turning the phone the other way round needs no new measurement. */
-function useStripWidth(bar: RefObject<HTMLDivElement | null>, rated: boolean) {
+/** Publishes the widths the top seat's label must keep clear of on the
+ *  phone header: the level-and-points strip on the left as `--hud-strip-w`,
+ *  and the mode chip on the right as `--hud-mode-w` (with its gap), whatever
+ *  the levels, score and text size make them. The strip starts at the safe
+ *  edge, which CSS adds, so turning the phone the other way round needs no
+ *  new measurement. */
+function useStripWidth(bar: RefObject<HTMLDivElement | null>, mode: Mode) {
   useLayoutEffect(() => {
     const el = bar.current;
     const frame = el?.closest<HTMLElement>(".table-screen");
     if (!el || !frame) return;
-    // the Rated chip sits after the points in the same header row
-    const parts = () => [el.querySelector<HTMLElement>(".hud-group:nth-child(2)"), el.querySelector<HTMLElement>(".points-chip"),
-                         el.querySelector<HTMLElement>(".rated-chip")]
+    const parts = () => [el.querySelector<HTMLElement>(".hud-group:nth-child(2)"), el.querySelector<HTMLElement>(".points-chip")]
       .filter((x): x is HTMLElement => x !== null && x.offsetWidth > 0);
     const measure = () => {
       let start = Infinity;
@@ -187,21 +187,56 @@ function useStripWidth(bar: RefObject<HTMLDivElement | null>, rated: boolean) {
       // offsets are whole px, the drawn edges are not: 1px more absorbs the rounding
       if (end > start) frame.style.setProperty("--hud-strip-w", `${Math.ceil(end - start) + 1}px`);
       else frame.style.removeProperty("--hud-strip-w");
+      const chip = el.querySelector<HTMLElement>(".mode-chip");
+      if (chip && chip.offsetWidth > 0) frame.style.setProperty("--hud-mode-w", `${chip.offsetWidth + 1}px`);
+      else frame.style.removeProperty("--hud-mode-w");
     };
     measure();
     if (typeof ResizeObserver !== "function") return;
     const ro = new ResizeObserver(measure);
     for (const part of [el.querySelector(".hud-group:nth-child(2)"), el.querySelector(".points-chip"),
-                        el.querySelector(".rated-chip"), frame]) {
+                        el.querySelector(".mode-chip"), frame]) {
       if (part) ro.observe(part);
     }
     return () => ro.disconnect();
-  }, [bar, rated]);
+  }, [bar, mode]);
 }
 
-export default function Hud({ state }: { state: GameState }) {
+/** What kind of game the table is: a matched game from the queue is ranked,
+ *  a game on this device is practice, and a room among friends is neither. */
+export type Mode = "ranked" | "practice" | null;
+
+export function gameMode(state: GameState, practice: boolean): Mode {
+  if (practice) return "practice";
+  return state.matched ? "ranked" : null;
+}
+
+/** The header's short mode chip: gold with a trophy for a ranked game, grey
+ *  for practice, nothing for a room. */
+export function ModeChip({ mode }: { mode: Mode }) {
+  if (mode === "ranked") {
+    return (
+      <span className="chip mode-chip ranked" title="Ranked game">
+        <svg className="mode-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 4h8v5a4 4 0 0 1-8 0z" />
+          <path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6" />
+        </svg>
+        Ranked
+      </span>
+    );
+  }
+  if (mode === "practice") {
+    return <span className="chip mode-chip practice" title="Bots on this device">Practice</span>;
+  }
+  return null;
+}
+
+/** `practice` is offline play on this device; it defaults to the page's mode. */
+export default function Hud({ state, practice = OFFLINE }: { state: GameState; practice?: boolean }) {
   const barRef = useRef<HTMLDivElement | null>(null);
-  useStripWidth(barRef, !!state.matched);
+  const mode = gameMode(state, practice);
+  useStripWidth(barRef, mode);
   const shownPoints = Math.round(useCountUp(state.attacker_points, { snapDown: true }));
   // Tapping the room chip mid-game copies a full invite link, so you can
   // pull someone into a game already in progress — they land on a bot's
@@ -262,18 +297,14 @@ export default function Hud({ state }: { state: GameState }) {
               <span style={{ width: `${Math.min(100, (state.attacker_points / 80) * 100)}%` }} />
             </span>
           </span>
-          {state.matched ? (
-            <span className="chip rated-chip" title="Matched game · rated">
-              <span className="q-dot" aria-hidden="true" />Rated
-            </span>
-          ) : null}
+          <ModeChip mode={mode} />
           <span className="chip kitty-chip" title="Kitty (face-down)">
             <span className="kitty-icon" />
             {state.kitty_count}
           </span>
           <MuteButton />
-          <LeaveButton />
-          <HudMenu room={state.room} kittyCount={state.kitty_count} />
+          <LeaveButton ranked={mode === "ranked"} practice={practice} />
+          <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked"} offline={practice} />
         </div>
       </div>
       {state.notice ? (

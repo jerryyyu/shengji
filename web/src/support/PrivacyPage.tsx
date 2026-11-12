@@ -75,15 +75,15 @@ export default function PrivacyPage() {
 
         <Section title="Ratings and the leaderboard">
           <p>
-            Signed-in players get a rating; guests are not rated. For your account we store your
-            current rating, how many rated rounds it rests on, and one entry per rated round: the
+            Signed-in players get a rating; guests are unranked. For your account we store your
+            current rating, how many ranked rounds it rests on, and one entry per ranked round: the
             game and round, your team and whether it won, the levels it moved, your rating before
             and after and the change, whether the round was abandoned, your partner’s name at the
             table (or that the partner was a computer player) and how many opponents were computer
             players.
           </p>
           <p>
-            The leaderboard shows your display name with your rating, rated rounds, levels per round
+            The leaderboard shows your display name with your rating, ranked rounds, levels per round
             and this week’s change, and anyone who opens it can see it. It never shows your email or
             account id. You can leave the leaderboard with “Show me on the leaderboard” in My stats;
             your rating keeps updating either way.

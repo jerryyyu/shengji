@@ -47,7 +47,7 @@ function signedDelta(delta: number): string {
 
 /** The viewer's own rating after the round (the server sends it only to a
  *  signed-in seat, once the round is stored); a guest at a deployment with
- *  sign-in gets a quiet invitation instead. ``total`` shows the whole
+ *  sign-in gets Sign in to be ranked in its place. ``total`` shows the whole
  *  game's change where a game was won. */
 export function RatingLine({ result, total }: { result: RoundResult; total: boolean }) {
   const account = useAuth();
@@ -76,10 +76,14 @@ export function RatingLine({ result, total }: { result: RoundResult; total: bool
       {signingIn ? (
         <GoogleSignIn clientId={account.clientId} />
       ) : (
-        <>
-          <span>Playing as a guest</span>
-          <button className="rating-signin" onClick={() => setSigningIn(true)}>Sign in to get a rating</button>
-        </>
+        <button className="rating-signin" onClick={() => setSigningIn(true)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+               strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M8 4h8v5a4 4 0 0 1-8 0z" />
+            <path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6" />
+          </svg>
+          Sign in to be ranked
+        </button>
       )}
     </div>
   );
@@ -257,7 +261,7 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
               {/* The modal dialog makes the HUD inert, so its Leave control
                   is unreachable here; without this, a player waiting on
                   others has no way out until everyone confirms. */}
-              <LeaveButton variant="dialog" />
+              <LeaveButton variant="dialog" ranked={!!state.matched} />
             </>
           );
         })()}

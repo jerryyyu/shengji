@@ -183,3 +183,11 @@ describe("the home Play column", () => {
     expect(decls(".panel")).toContain("box-shadow");
   });
 });
+
+describe("the Duo sheet's Ranked chip", () => {
+  it("is never pulled above the scrolling body's top edge, where it would be clipped", () => {
+    expect(decls(".q-sheet-body")).toMatch(/overflow-y:\s*auto/);
+    expect(decls(".q-ranked-row")).not.toMatch(/margin(-top)?:\s*-/);
+    expect(decls(".q-sheet:has(.q-sheet-body > .q-ranked-row:first-child) .q-sheet-head")).toContain("margin-bottom: -4px");
+  });
+});

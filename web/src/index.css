@@ -6158,3 +6158,7 @@ dialog.leave-alert-backdrop {
   .skel { animation: none; }
   dialog.leave-alert-backdrop, .leave-alert { animation: none; }
 }
+
+/* The whole guide takes a horizontal swipe as a page turn; the browser keeps
+   vertical scrolling and pinch zoom. */
+.howto-screen { touch-action: pan-y pinch-zoom; }

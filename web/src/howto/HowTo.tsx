@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, TouchEvent } from "react";
 import type { GameState, Trick } from "../protocol";
 import Card from "../components/Card";
 import TrickArea from "../components/TrickArea";
@@ -543,26 +543,12 @@ function Stepper({ step }: { step: number }) {
   const n = STEPS.length;
   const i = Math.min(Math.max(step, 1), n) - 1;
   const s = STEPS[i];
-  const touch = useRef<{ x: number; y: number } | null>(null);
   const go = (to: number) => openHowto(Math.min(Math.max(to, 1), n));
   return (
     <div className="panel games-panel howto-panel">
       <Head count={`${i + 1} of ${n}`} />
       {/* Keyed by step, so a slide's picture starts afresh each time it is entered. */}
-      <section key={i} className="howto-step" aria-roledescription="slide"
-               onTouchStart={(e) => {
-                 touch.current = e.touches.length === 1
-                   ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
-               }}
-               onTouchMove={(e) => { if (e.touches.length !== 1) touch.current = null; }}
-               onTouchCancel={() => { touch.current = null; }}
-               onTouchEnd={(e) => {
-                 const start = touch.current; touch.current = null;
-                 if (start === null || e.changedTouches.length !== 1) return;
-                 const dx = e.changedTouches[0].clientX - start.x;
-                 const dy = e.changedTouches[0].clientY - start.y;
-                 if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(i + 1 + (dx < 0 ? 1 : -1));
-               }}>
+      <section key={i} className="howto-step" aria-roledescription="slide">
         <h2 className="howto-title">{s.title}</h2>
         <p className="howto-body">{s.body}</p>
         {s.visual}
@@ -589,9 +575,41 @@ function Stepper({ step }: { step: number }) {
   );
 }
 
+/** A swipe turns the page wherever it starts on the screen: only a mostly
+ *  horizontal single-finger move past the threshold counts, so vertical
+ *  scrolling and taps pass through. A touch that starts at the left edge
+ *  belongs to the system's back gesture. */
+const SWIPE_MIN_PX = 50;
+const EDGE_PX = 20;
+
+function useSwipe(step: number) {
+  const n = STEPS.length;
+  const i = Math.min(Math.max(step, 1), n);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  return {
+    onTouchStart: (e: TouchEvent) => {
+      const t = e.touches[0];
+      touch.current = e.touches.length === 1 && t.clientX > EDGE_PX
+        ? { x: t.clientX, y: t.clientY } : null;
+    },
+    onTouchMove: (e: TouchEvent) => { if (e.touches.length !== 1) touch.current = null; },
+    onTouchCancel: () => { touch.current = null; },
+    onTouchEnd: (e: TouchEvent) => {
+      const start = touch.current; touch.current = null;
+      if (start === null || e.changedTouches.length !== 1) return;
+      const dx = e.changedTouches[0].clientX - start.x;
+      const dy = e.changedTouches[0].clientY - start.y;
+      if (Math.abs(dx) > SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy)) {
+        openHowto(Math.min(Math.max(i + (dx < 0 ? 1 : -1), 1), n));
+      }
+    },
+  };
+}
+
 export default function HowTo({ route }: { route: HowtoRoute }) {
+  const swipe = useSwipe(route.step);
   return (
-    <div className="screen lobby-screen howto-screen">
+    <div className="screen lobby-screen howto-screen" {...swipe}>
       <Stepper step={route.step} />
     </div>
   );

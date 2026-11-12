@@ -291,7 +291,7 @@ describe("deep links", () => {
     window.history.replaceState(null, "", "/#/leaderboard");
     await renderApp();
     expect(host.querySelector(".lb-row.anchor")?.textContent).toContain("Sheng Ji bot");
-    expect(host.querySelector(".lb-pin .signin-card h3")?.textContent).toBe("Sign in to be ranked");
+    expect(host.querySelector(".lb-page .signin-card h3")?.textContent).toBe("Sign in to be ranked");
   });
 
   it("a saved game's page and its replay keep their routes, without the bars", async () => {

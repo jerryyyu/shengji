@@ -8,9 +8,7 @@ import { needsSeatPicker } from "../seatPicker";
 import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
-import GoogleSignIn from "./GoogleSignIn";
 import LobbyPreview from "./LobbyPreview";
-import { followInfoLink } from "../support/route";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -47,8 +45,32 @@ function useStalled(status: ConnStatus): [boolean, () => void] {
   return [stalled && !open, retry];
 }
 
+/** A start request the server has not answered yet. */
+type Starting = { kind: "bots" | "create" | "join"; generation: number };
+/** If neither a room nor an error has come back by then, the buttons wake up again. */
+export const START_TIMEOUT_MS = 15000;
+const STARTING_LABEL: Record<Starting["kind"], string> = { bots: "Starting…", create: "Creating…", join: "Joining…" };
+
 export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const [stalled, retry] = useStalled(status);
+  // Play vs bots, Create room and Join each send one request and then wait:
+  // the button says so at once and every start button holds until the room
+  // arrives (the lobby goes away), an error comes back, the connection the
+  // request went out on is replaced, or START_TIMEOUT_MS passes. Any of the
+  // last three leaves the buttons ready for a deliberate retry.
+  const [starting, setStarting] = useState<Starting | null>(null);
+  const begin = (kind: Starting["kind"]) => setStarting({ kind, generation: conn.generation });
+  useEffect(() => {
+    if (starting && (status !== "open" || conn.generation !== starting.generation)) setStarting(null);
+  }, [status, starting]);
+  useEffect(() => {
+    if (!starting) return;
+    const t = window.setTimeout(() => setStarting(null), START_TIMEOUT_MS);
+    return () => window.clearTimeout(t);
+  }, [starting]);
+  useEffect(() => conn.subscribe((msg: ServerMsg) => {
+    if (msg?.type === "error") setStarting(null);
+  }), []);
   const [name, setName] = useState(getSavedName());
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
@@ -101,8 +123,10 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     clearInvite();
     setSeatChoice(null);
     const token = getResumeToken();
-    conn.send({ type: "join_room", room: target, name: trimmed, seat,
-                ...(token ? { token } : {}) });
+    if (conn.send({ type: "join_room", room: target, name: trimmed, seat,
+                    ...(token ? { token } : {}) })) {
+      setStarting({ kind: "join", generation: conn.generation });
+    }
   }, [playerName, roomCode, rememberName]);
 
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
@@ -115,6 +139,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     }
     if (m?.type === "room_seats") {
       if (needsSeatPicker(m.seats)) {
+        setStarting(null);                 // the answer is a choice to make
         setSeatChoice(m);
       } else {
         joinSeat(undefined, m.room);       // nothing to choose
@@ -132,7 +157,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
   // An empty name never blocks a start: Play vs bots, Create room and Join
   // each fill the field with a random name and go, the same as the dice.
-  const ready = status === "open";
+  const ready = status === "open" && starting === null;
   const testReady = !w32Selected || testAccessKey.trim().length > 0;
   const nameOrRandom = () => {
     if (playerName) return playerName;
@@ -149,7 +174,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     rememberName(trimmed);
     clearInvite();
     clearSavedRoom(); // don't auto-rejoin an old room while creating a new one
-    conn.send(payload);
+    if (conn.send(payload)) begin("create");
   };
 
   const playBots = () => {
@@ -160,7 +185,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     rememberName(trimmed);
     clearSavedRoom();
     onArmAutoFill();
-    conn.send(payload);
+    if (conn.send(payload)) begin("bots");
   };
 
 
@@ -181,7 +206,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     // needsSeatPicker() says so, otherwise joins straight through.
     lastPeek.current = code;
     peekGen.current = conn.generation;   // this transaction belongs to this socket
-    conn.send({ type: "peek_room", room: code });
+    if (conn.send({ type: "peek_room", room: code })) begin("join");
   };
 
   // Invite links prefill the room code and focus the NAME field — they do
@@ -193,7 +218,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const invited = new URLSearchParams(window.location.search).get("room");
   const invitedName = new URLSearchParams(window.location.search).get("name");
   useEffect(() => {
-    if (autoJoined.current || !ready || !invited || invited.length !== 4) return;
+    if (autoJoined.current || status !== "open" || !invited || invited.length !== 4) return;
     if (invitedName && invitedName.trim()) {
       autoJoined.current = true;
       const joinAs = signedIn ? accountName : invitedName.trim();
@@ -204,7 +229,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       nameRef.current?.focus();
       nameRef.current?.select();
     }
-  }, [ready, invited, invitedName, signedIn, accountName]);
+  }, [status, invited, invitedName, signedIn, accountName]);
 
   if (seatChoice) {
     const you = playerName || "You";
@@ -222,7 +247,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
               <button
                 key={sd.seat}
                 className={"seat-option team" + sd.team + (sd.claimable ? "" : " taken")}
-                disabled={!sd.claimable}
+                disabled={!sd.claimable || starting !== null}
                 onClick={() => joinSeat(sd.seat)}
               >
                 <span className="seat-num">Seat {sd.seat}</span>
@@ -255,11 +280,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
         <p className="game-subtitle">Tractor · two decks</p>
+        {signedIn ? <AccountChip user={signedIn} /> : null}
         <LobbyPreview />
-
-        {account.status === "in" && account.user ? (
-          <AccountChip user={account.user} />
-        ) : null}
 
         {signedIn ? null : (
           <div className="field">
@@ -310,12 +332,14 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           </div>
         ) : null}
 
-        <button className="btn gold big" disabled={!ready || !testReady} onClick={playBots}>
-          Play vs bots
+        <button className="btn gold big" disabled={!ready || !testReady} onClick={playBots}
+                aria-busy={starting?.kind === "bots" || undefined}>
+          {starting?.kind === "bots" ? STARTING_LABEL.bots : "Play vs bots"}
         </button>
 
-        <button className="btn primary big" disabled={!ready || !testReady} onClick={create}>
-          Create room
+        <button className="btn primary big" disabled={!ready || !testReady} onClick={create}
+                aria-busy={starting?.kind === "create" || undefined}>
+          {starting?.kind === "create" ? STARTING_LABEL.create : "Create room"}
         </button>
 
         <div className="divider">
@@ -342,19 +366,13 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             className="btn"
             disabled={!ready || roomCode.trim().length !== 4}
             onClick={join}
+            aria-busy={starting?.kind === "join" || undefined}
           >
-            Join
+            {starting?.kind === "join" ? STARTING_LABEL.join : "Join"}
           </button>
         </div>
 
         {error ? <div className="lobby-error">{error}</div> : null}
-
-        {account.status === "out" && account.clientId ? (
-          <>
-            <p className="signin-upsell">Sign in to save your games and join the leaderboard.</p>
-            <GoogleSignIn clientId={account.clientId} />
-          </>
-        ) : null}
 
         <p className="howto-entry">
           New to Sheng Ji?{" "}
@@ -373,11 +391,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             {STATUS_LABEL[status]}
           </div>
         )}
-
-        <nav className="info-links" aria-label="About">
-          <a href="/support" onClick={(e) => followInfoLink(e, "support")}>Support</a>
-          <a href="/privacy" onClick={(e) => followInfoLink(e, "privacy")}>Privacy</a>
-        </nav>
       </div>
     </div>
   );

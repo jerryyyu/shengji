@@ -5,7 +5,7 @@ import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
-import { auth, useAuth } from "./auth";
+import { auth } from "./auth";
 import Lobby from "./components/Lobby";
 import Room from "./components/Room";
 import Table from "./components/Table";
@@ -17,8 +17,9 @@ import SupportPage from "./support/SupportPage";
 import PrivacyPage from "./support/PrivacyPage";
 import { useInfoRoute } from "./support/route";
 import Leaderboard from "./components/Leaderboard";
-import MyStats from "./components/MyStats";
-import { useRatingsRoute } from "./ratings/route";
+import MePage from "./components/MePage";
+import HomeShell from "./home/HomeShell";
+import { openTab, useHomeRoute } from "./home/route";
 import { haptic, hideSplash, lockFor } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
 import { TOAST_MS, makeToast } from "./toast";
@@ -38,16 +39,15 @@ export default function App() {
   const seededRef = useRef(false);
   // True from an automatic resume of the saved room until the server answers it.
   const resumingRef = useRef(false);
-  // "My games" pages (hash routes) sit over whatever screen is live; the
-  // socket and any game in progress keep running underneath.
-  const gamesRoute = useGamesRoute();
+  // A saved game and its replays, How to play, the info pages and the
+  // Leaderboard and Me tabs are routes that sit over whatever screen is
+  // live; the socket and any game in progress keep running underneath.
+  // `#/games` (the old list) is the Me tab's Games section.
+  const gamesPage = useGamesRoute();
+  const gamesRoute = gamesPage && gamesPage.page !== "list" ? gamesPage : null;
   const howtoRoute = useHowtoRoute();
   const infoRoute = useInfoRoute();
-  // The leaderboard and My stats exist only for a signed-in account; a
-  // guest who lands on their hash sees the usual screen instead.
-  const account = useAuth();
-  const ratingsPage = useRatingsRoute();
-  const ratingsRoute = account.status === "in" ? ratingsPage : null;
+  const homeRoute = useHomeRoute();
 
   useEffect(() => {
     const showToast = (message: string) => {
@@ -159,7 +159,7 @@ export default function App() {
   // The iOS app keeps lobby screens portrait and the table landscape on an
   // iPhone; everywhere else these are no-ops.
   const atTable =
-    game !== null && !gamesRoute && !howtoRoute && !infoRoute && !ratingsRoute;
+    game !== null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
   useEffect(() => { void lockFor(atTable ? "game" : "lobby"); }, [atTable]);
   // a portrait phone browser gets the table turned sideways instead
   const { rotated } = usePhoneLayout(atTable);
@@ -168,17 +168,25 @@ export default function App() {
   // the audio context costs a long task to create: make it before any tap
   useEffect(() => { prewarmAudio(); }, []);
 
+  const inRoom = room !== null || game !== null;
+  // Over a room or a game the tabs' pages show without the tab bars and
+  // with a way back; at home the bars frame them.
+  const backToGame = inRoom ? () => openTab("play") : undefined;
+  const tabPage = homeRoute === null ? null
+    : homeRoute.tab === "leaderboard" ? <Leaderboard onBack={backToGame} />
+    : <MePage section={homeRoute.section} onBack={backToGame} />;
+
   let screen: ReactNode;
   if (infoRoute) {
     screen = infoRoute === "support" ? <SupportPage /> : <PrivacyPage />;
   } else if (howtoRoute) {
     screen = <HowTo route={howtoRoute} />;
-  } else if (ratingsRoute === "leaderboard") {
-    screen = <Leaderboard inGame={room !== null || game !== null} />;
-  } else if (ratingsRoute === "stats") {
-    screen = <MyStats inGame={room !== null || game !== null} />;
   } else if (gamesRoute) {
-    screen = <GamesList route={gamesRoute} inGame={room !== null || game !== null} />;
+    screen = <GamesList route={gamesRoute} />;
+  } else if (homeRoute && inRoom) {
+    screen = tabPage;
+  } else if (homeRoute) {
+    screen = <HomeShell active={homeRoute.tab}>{tabPage}</HomeShell>;
   } else if (game) {
     // at the table the toast is placed against the table's own rows
     screen = <Table state={game} toast={toast} />;
@@ -186,17 +194,17 @@ export default function App() {
     screen = <Room room={room} />;
   } else {
     screen = (
-      <Lobby
-        status={status}
-        error={toast?.text ?? null}
-        onArmAutoFill={() => {
-          autoFill.current = true;
-        }}
-      />
+      <HomeShell active="play">
+        <Lobby
+          status={status}
+          error={toast?.text ?? null}
+          onArmAutoFill={() => {
+            autoFill.current = true;
+          }}
+        />
+      </HomeShell>
     );
   }
-
-  const inRoom = room !== null || game !== null;
 
   return (
     <div className={`app${rotated ? " rotated" : ""}`}>

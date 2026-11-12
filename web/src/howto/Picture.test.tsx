@@ -16,6 +16,12 @@ function Guide() {
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let reduced = false;
+const motionListeners = new Set<(e: { matches: boolean }) => void>();
+/** The viewer turns Reduce Motion on or off while the page is open. */
+function setReduced(on: boolean) {
+  reduced = on;
+  act(() => { for (const l of [...motionListeners]) l({ matches: on }); });
+}
 
 function mount(node: React.ReactNode) {
   host = document.createElement("div");
@@ -38,9 +44,14 @@ const frameHtml = () => host.querySelector(".howto-frame, .howto-visual")!.inner
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
   reduced = false;
+  motionListeners.clear();
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
-    value: (q: string) => ({ matches: reduced && q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {} }),
+    value: (q: string) => ({
+      matches: reduced && q.includes("reduce"), media: q,
+      addEventListener(_: string, l: (e: { matches: boolean }) => void) { if (q.includes("reduce")) motionListeners.add(l); },
+      removeEventListener(_: string, l: (e: { matches: boolean }) => void) { motionListeners.delete(l); },
+    }),
   });
 });
 afterEach(() => {
@@ -147,6 +158,35 @@ describe("the still image", () => {
     click(btn("Play animation"));                  // the viewer can still ask for it
     expect(isStill()).toBe(false);
     expect(plays()).toBe(0);
+  });
+
+  it("turning Reduce Motion on mid-play stops the timeline on the still; Replay still plays", () => {
+    open(5);
+    advance(1100);
+    expect(plays()).toBe(2);
+    setReduced(true);
+    expect(isStill()).toBe(true);
+    expect(plays()).toBe(4);
+    const still = frameHtml();
+    advance(5000);
+    expect(frameHtml()).toBe(still);               // no frame advances after the switch
+    expect(btn("Show still image")!.getAttribute("aria-pressed")).toBe("true");
+    click(btn("Replay animation"));                // a deliberate replay still runs
+    expect(isStill()).toBe(false);
+    expect(plays()).toBe(0);
+    advance(1100);
+    expect(plays()).toBe(2);
+    setReduced(false);                             // turning it off changes nothing by itself
+    expect(isStill()).toBe(false);
+  });
+
+  it("a slide entered under Reduce Motion stays still", () => {
+    reduced = true;
+    open(1);
+    const still = frameHtml();
+    expect(isStill()).toBe(true);
+    advance(6000);
+    expect(frameHtml()).toBe(still);
   });
 
   it("the toggle swaps to the still and back to a fresh run", () => {

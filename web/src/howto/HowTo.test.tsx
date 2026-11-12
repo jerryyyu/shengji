@@ -63,7 +63,7 @@ describe("the stepped guide", () => {
     expect(counter()).toBe("1 of 10");
     expect(button("Back")!.disabled).toBe(true);
     expect(host.querySelectorAll(".howto-dot")).toHaveLength(10);
-    expect(host.querySelector(".howto-dot.on")!.getAttribute("aria-current")).toBe("step");
+    expect(host.querySelectorAll(".howto-dot.on")).toHaveLength(1);
   });
 
   it("Next and Back walk the steps through the hash", async () => {
@@ -80,12 +80,13 @@ describe("the stepped guide", () => {
     expect(title()).toBe("Climb from 2 to Ace");
   });
 
-  it("a dot jumps straight to its step", async () => {
-    await open("#/howto/2");
-    await click(host.querySelector<HTMLButtonElement>("button[aria-label='Step 9']"));
-    expect(window.location.hash).toBe("#/howto/9");
-    expect(title()).toBe("Scoring a round");
-    expect(host.querySelectorAll(".howto-dot.on")).toHaveLength(1);
+  it("the dots show the step and are not buttons", async () => {
+    await open("#/howto/9");
+    const dots = [...host.querySelectorAll(".howto-dot")];
+    expect(dots.findIndex((d) => d.classList.contains("on"))).toBe(8);
+    expect(host.querySelector(".howto-dots")!.getAttribute("aria-hidden")).toBe("true");
+    expect(host.querySelector(".howto-dots button")).toBeNull();
+    expect(counter()).toBe("9 of 10");
   });
 
   it("an out-of-range step clamps to the last step, which offers Start playing", async () => {

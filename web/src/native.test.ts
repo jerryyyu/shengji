@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { haptic, hapticCall, hideSplash, isNative, isPhone, lockFor, resetNativeForTests } from "./native";
+import { haptic, hapticCall, hideSplash, isNative, isPhone, lockFor, resetNativeForTests, setBackGesture } from "./native";
 
 type Calls = [string, string, unknown][];
 
@@ -30,7 +30,7 @@ describe("native bridge", () => {
     expect(isNative()).toBe(false);
     expect(await isPhone()).toBe(false);
     await lockFor("game");
-    haptic("play");
+    haptic("turn");
     hideSplash();   // nothing to call, nothing thrown
   });
 
@@ -45,6 +45,18 @@ describe("native bridge", () => {
     ]);
   });
 
+  it("sets the edge swipe back only when it changes, on any device", async () => {
+    await setBackGesture(false);    // a browser: nothing to call
+    const calls = fakeShell("pad");
+    await setBackGesture(true);
+    await setBackGesture(true);
+    await setBackGesture(false);
+    expect(calls).toEqual([
+      ["ShengjiShell", "setBackGesture", { enabled: true }],
+      ["ShengjiShell", "setBackGesture", { enabled: false }],
+    ]);
+  });
+
   it("never locks an iPad", async () => {
     const calls = fakeShell("pad");
     await lockFor("game");
@@ -53,10 +65,10 @@ describe("native bridge", () => {
   });
 
   it("maps each table event to a UIKit feedback style", async () => {
-    expect(hapticCall("play")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
-    expect(hapticCall("turn")).toEqual({ method: "impact", opts: { style: "MEDIUM" } });
+    expect(hapticCall("turn")).toEqual({ method: "impact", opts: { style: "LIGHT" } });
     expect(hapticCall("declare")).toEqual({ method: "impact", opts: { style: "MEDIUM" } });
     expect(hapticCall("won")).toEqual({ method: "notification", opts: { type: "SUCCESS" } });
+    expect(hapticCall("error")).toEqual({ method: "notification", opts: { type: "ERROR" } });
     const calls = fakeShell("phone");
     haptic("select");
     await flush();

@@ -138,6 +138,17 @@ export interface RoundResult {
   /** True on the round that took a team past A. */
   point_scored: boolean;
   game_over: boolean;
+  /** The receiving seat's own rating after this round; present only for a
+   *  signed-in player, and only once the server has stored the round. */
+  rating?: RoundRating;
+}
+
+export interface RoundRating {
+  rating: number;
+  /** This round's change, rounded to a whole point. */
+  delta: number;
+  /** The change over the whole game, on the round that wins a game. */
+  game_delta?: number;
 }
 
 export interface GameState {

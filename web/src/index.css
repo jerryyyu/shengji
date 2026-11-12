@@ -5399,11 +5399,7 @@ span.q-party-main { cursor: default; }
 .q-toast small { display: block; font-size: var(--fs-13); font-weight: 400; color: #9aa3b2; }
 .q-toast-i { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%; background: #3f3415; color: var(--gold); font-size: 13px; }
 
-.q-matched {
-  position: absolute; top: calc(env(safe-area-inset-top, 0px) + 52px); left: 50%; transform: translateX(-50%); z-index: 6;
-  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
-  background: rgba(0, 0, 0, 0.35); color: #d8f3e1; font-size: var(--fs-12); font-weight: 600; white-space: nowrap; pointer-events: none;
-}
+.rated-chip { display: inline-flex; align-items: center; gap: 5px; color: #d8f3e1; font-weight: 600; }
 
 @media (min-width: 700px) {
   .q-layer { justify-content: center; align-items: center; }

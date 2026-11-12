@@ -234,6 +234,11 @@ export default function Hud({ state }: { state: GameState }) {
               <span style={{ width: `${Math.min(100, (state.attacker_points / 80) * 100)}%` }} />
             </span>
           </span>
+          {state.matched ? (
+            <span className="chip rated-chip" title="Matched game · rated">
+              <span className="q-dot" aria-hidden="true" />Rated
+            </span>
+          ) : null}
           <span className="chip kitty-chip" title="Kitty (face-down)">
             <span className="kitty-icon" />
             {state.kitty_count}

@@ -511,12 +511,14 @@ describe("the table", () => {
     attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
   });
 
-  it("a matched room says Matched game · rated; an invite room does not", async () => {
+  it("a matched room shows a Rated chip in the top bar; an invite room does not", async () => {
     await renderApp();
     say({ type: "match_started", match_id: "m1", room: "ABCD", rated: true });
     say(state(true));
-    expect(q(".table-screen .q-matched")?.textContent).toBe("Matched game · rated");
+    const chip = q(".table-screen .hud-bar .rated-chip");
+    expect(chip?.textContent).toBe("Rated");
+    expect(chip?.getAttribute("title")).toBe("Matched game · rated");
     say(state(false));
-    expect(q(".q-matched")).toBeNull();
+    expect(q(".rated-chip")).toBeNull();
   });
 });

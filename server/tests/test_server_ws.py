@@ -2290,3 +2290,210 @@ def test_swap_against_a_changed_seat_is_refused(client, stale):
         err = _drain(a, "error")
         assert err.get("code") == ("seat_changed" if stale != "malformed" else None)
         assert _names(room) == ["jerry", "james"]
+
+
+# ------------------------------------------------------------- move timer
+# A room with ``move_timer`` on (ranked rooms) gives a present player
+# MOVE_TIMER seconds per decision; ticks run on the server's own loop through
+# the TestClient portal so the bot pump it kicks keeps playing.
+def _wait_for(pred, timeout=15.0):
+    import time
+
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if pred():
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"condition never held; server: {_server_snapshot()}")
+
+
+def _timer_game(client, a, monkeypatch, on=True):
+    """Seat 0 human, three bots, in the play phase, waiting on seat 0."""
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    code, room = _start_game(client, a, to_play=True)
+    room.move_timer = on
+    _wait_for(lambda: _my_turn(room))
+    return code, room
+
+
+def _state_until(ws, pred, tries=400):
+    """The first state frame that satisfies ``pred`` (older frames queue up)."""
+    for _ in range(tries):
+        state = _drain(ws, "state", tries=400)
+        if pred(state):
+            return state
+    raise AssertionError(f"no matching state; server: {_server_snapshot()}")
+
+
+def _my_turn(room, seat=0):
+    rnd = room.round
+    return rnd is not None and rnd.phase == "play" and rnd.turn == seat
+
+
+def _tick(client, room):
+    from shengji.api import server as srv
+
+    return client.portal.call(srv.move_timer_tick, room)
+
+
+def _real_play(a, room, seat=0):
+    """Send a legal play for ``seat`` through the socket, as the player would."""
+    import copy
+
+    codes = copy.deepcopy(room.bot).decide_play(copy.deepcopy(room.round), seat)
+    before = _plays_by(room, seat)
+    a.send_json({"type": "play", "card_ids": room.ids_for_codes(seat, codes)})
+    _wait_for(lambda: _plays_by(room, seat) == before + 1)
+
+
+def _time_out_once(client, room, clock, seat=0):
+    from shengji.api import server as srv
+
+    before = _plays_by(room, seat)
+    clock["v"] += srv.MOVE_TIMER + 1
+    assert _tick(client, room)
+    assert _plays_by(room, seat) == before + 1
+
+
+def test_move_timer_bot_plays_one_move_at_zero(client, clock, monkeypatch):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        _, room = _timer_game(client, a, monkeypatch)
+        before = _plays_by(room, 0)
+        assert _tick(client, room) is False          # starts the clock
+        clock["v"] += srv.MOVE_TIMER - 1
+        assert _tick(client, room) is False
+        assert _plays_by(room, 0) == before and room.round.turn == 0
+        state = _state_until(a, lambda m: m["players"][0]["turn_deadline"] is not None)
+        assert state["players"][0]["away"] is False
+        assert all(p["turn_deadline"] is None for p in state["players"][1:])
+        clock["v"] += 2
+        assert _tick(client, room) is True
+        assert _plays_by(room, 0) == before + 1
+        seat = room.seats[0]
+        assert (seat.timeouts_in_row, seat.timeouts_in_round, seat.away) == (1, 1, False)
+        # the bot decided once: seat 0 waits again on its next turn
+        _wait_for(lambda: _my_turn(room))
+        assert _plays_by(room, 0) == before + 1
+
+
+def test_two_timeouts_in_a_row_mark_the_seat_away(client, clock, monkeypatch):
+    with client.websocket_connect("/ws") as a:
+        _, room = _timer_game(client, a, monkeypatch)
+        _tick(client, room)
+        _time_out_once(client, room, clock)
+        _wait_for(lambda: _my_turn(room))
+        _tick(client, room)
+        _time_out_once(client, room, clock)
+        assert room.seats[0].away
+        # away: the bot plays seat 0's next turn with no clock running out
+        before = _plays_by(room, 0)
+        _wait_for(lambda: _plays_by(room, 0) > before)
+        state = _state_until(a, lambda m: m["players"][0]["away"])
+        assert state["players"][0]["turn_deadline"] is None
+
+
+def test_three_timeouts_in_one_round_mark_the_seat_away(client, clock, monkeypatch):
+    with client.websocket_connect("/ws") as a:
+        _, room = _timer_game(client, a, monkeypatch)
+        for n in range(3):
+            _tick(client, room)
+            _time_out_once(client, room, clock)
+            if n < 2:
+                assert not room.seats[0].away
+                _wait_for(lambda: _my_turn(room))
+                _real_play(a, room)                   # breaks the run
+                assert room.seats[0].timeouts_in_row == 0
+                _wait_for(lambda: _my_turn(room))
+        assert room.seats[0].timeouts_in_round == 3
+        assert room.seats[0].away
+
+
+def test_im_back_and_a_real_move_clear_away(client, clock, monkeypatch):
+    with client.websocket_connect("/ws") as a:
+        _, room = _timer_game(client, a, monkeypatch)
+        seat = room.seats[0]
+        # on seat 0's turn with the pump idle: away takes effect from here
+        seat.away, seat.timeouts_in_row = True, 2
+        a.send_json({"type": "im_back"})
+        _wait_for(lambda: not seat.away)
+        assert seat.timeouts_in_row == 0
+        state = _state_until(a, lambda m: m["players"][0]["turn_deadline"] is not None)
+        assert state["players"][0]["away"] is False
+        seat.away, seat.timeouts_in_row = True, 2
+        _real_play(a, room)
+        assert not seat.away and seat.timeouts_in_row == 0
+
+
+def test_round_end_next_is_readied_after_the_move_timer(client, clock, monkeypatch):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        _, room = _timer_game(client, a, monkeypatch)
+        round_no = room.game.round_no
+        # let the bot play seat 0 out to the round end
+        room.seats[0].away = True
+        client.portal.call(srv.kick_bots, room)
+        _wait_for(lambda: room.round.phase == "round_end")
+        a.send_json({"type": "im_back"})
+        _wait_for(lambda: not room.seats[0].away)
+        assert _tick(client, room) is False
+        clock["v"] += srv.MOVE_TIMER - 1
+        assert _tick(client, room) is False
+        assert room.game.round_no == round_no
+        clock["v"] += 2
+        assert _tick(client, room) is True
+        assert room.game.round_no == round_no + 1, "Next was never auto-readied"
+        assert room.seats[0].timeouts_in_row == 1
+        assert room.seats[0].timeouts_in_round == 0      # a new round began
+
+
+def test_an_away_seat_is_readied_at_round_end_without_waiting(client, clock, monkeypatch):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        _, room = _timer_game(client, a, monkeypatch)
+        round_no = room.game.round_no
+        room.seats[0].away = True
+        client.portal.call(srv.kick_bots, room)
+        _wait_for(lambda: room.round.phase == "round_end")
+        assert _tick(client, room) is True
+        assert room.game.round_no == round_no + 1
+        assert room.seats[0].away
+
+
+def test_a_casual_room_has_no_move_timer(client, clock, monkeypatch):
+    with client.websocket_connect("/ws") as a:
+        _, room = _timer_game(client, a, monkeypatch, on=False)
+        before = _plays_by(room, 0)
+        _tick(client, room)
+        clock["v"] += 600
+        assert _tick(client, room) is False
+        assert _plays_by(room, 0) == before and room.round.turn == 0
+        state = _drain(a, "state", tries=200)
+        assert all(p["turn_deadline"] is None and p["away"] is False
+                   for p in state["players"])
+        assert room.seats[0].turn_started is None
+
+
+def test_a_disconnected_turn_uses_takeover_and_is_not_a_timeout(client, clock, monkeypatch):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as b:
+        with client.websocket_connect("/ws") as a:
+            code, room = _timer_game(client, a, monkeypatch)
+            _tick(client, room)
+            # a second human keeps the room alive once seat 0 drops
+            b.send_json({"type": "join_room", "room": code, "name": "bee", "seat": 1})
+            _drain(b, "state", tries=200)
+        _wait_for(lambda: not room.seats[0].connected)
+        before = _plays_by(room, 0)
+        clock["v"] += srv.MOVE_TIMER + 1
+        assert _tick(client, room) is False, "the move timer acted for a disconnected seat"
+        assert client.portal.call(srv.watchdog_tick, room) is True
+        assert _plays_by(room, 0) == before + 1
+        seat = room.seats[0]
+        assert (seat.timeouts_in_row, seat.timeouts_in_round, seat.away) == (0, 0, False)

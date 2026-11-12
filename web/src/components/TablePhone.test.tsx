@@ -551,3 +551,68 @@ describe("a stalled connection at the table", () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+describe("move timer", () => {
+  const mine = (over: Partial<StatePlayer>) =>
+    [player(0, over), player(1), player(2), player(3)];
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("shows nothing until ten seconds are left, then a ring with the seconds", () => {
+    vi.useFakeTimers();
+    render(state({ turn: 0, players: mine({ turn_deadline: 12 }) }));
+    expect(host.querySelector(".move-ring")).toBeNull();
+    expect(host.querySelector(".action-bar")!.classList.contains("clock-low")).toBe(false);
+    act(() => { vi.advanceTimersByTime(2500); });
+    const ring = host.querySelector(".move-ring");
+    expect(ring).not.toBeNull();
+    expect(ring!.getAttribute("role")).toBe("timer");
+    expect(ring!.textContent).toBe("10");
+    expect(host.querySelector(".action-bar")!.classList.contains("clock-low")).toBe(true);
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(host.querySelector(".move-ring")!.textContent).toBe("7");
+  });
+
+  it("buzzes once at five seconds and not before", () => {
+    vi.useFakeTimers();
+    render(state({ turn: 0, players: mine({ turn_deadline: 7 }) }));
+    haptics.length = 0;
+    act(() => { vi.advanceTimersByTime(1500); });
+    expect(haptics).toEqual([]);
+    act(() => { vi.advanceTimersByTime(750); });
+    expect(haptics).toEqual(["clock"]);
+    // a fresh state for the same decision does not buzz again
+    render(state({ turn: 0, attacker_points: 5, players: mine({ turn_deadline: 4 }) }));
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(haptics).toEqual(["clock"]);
+  });
+
+  it("draws no ring and no buzz without a clock (casual tables, offline)", () => {
+    vi.useFakeTimers();
+    render(state({ turn: 0 }));
+    haptics.length = 0;
+    act(() => { vi.advanceTimersByTime(70_000); });
+    expect(host.querySelector(".move-ring")).toBeNull();
+    expect(haptics).toEqual([]);
+  });
+
+  it("shows the away pill, and I'm back sends im_back", () => {
+    render(state({ turn: 1, players: mine({ away: true }) }));
+    const pill = host.querySelector(".away-pill")!;
+    expect(pill.textContent).toContain("Away");
+    expect(pill.textContent).toContain("The bot is playing for you");
+    const back = pill.querySelector<HTMLButtonElement>("button")!;
+    expect(back.textContent).toContain("I’m back");
+    act(() => back.click());
+    expect(sent).toEqual([{ type: "im_back" }]);
+    render(state({ turn: 1, players: mine({ away: false }) }));
+    expect(host.querySelector(".away-pill")).toBeNull();
+  });
+
+  it("tags another player's seat Away and nothing else", () => {
+    render(state({ turn: 1, players: [player(0), player(1, { is_bot: false, controller: "human", away: true }),
+      player(2), player(3)] }));
+    const tags = [...host.querySelectorAll(".away-tag")].map((t) => t.textContent);
+    expect(tags).toEqual(["Away"]);
+    expect(host.querySelector(".away-pill")).toBeNull();
+  });
+});

@@ -6,10 +6,14 @@ import { useAuth } from "../auth";
 import GoogleSignIn from "./GoogleSignIn";
 import ResultDialog from "./ResultDialog";
 import LeaveButton from "./LeaveButton";
+import { MoveRing } from "./MoveClock";
+import { RING_SECS } from "../useMoveClock";
 
 interface RoundEndModalProps {
   state: GameState;
   result: RoundResult;
+  /** Seconds left on your move timer for Next (ranked tables), else null. */
+  clock?: number | null;
 }
 
 /** Name the actual players, not the seat numbers: "Blue team (seats 0 & 2)"
@@ -93,7 +97,7 @@ function cardPoints(code: string): number {
   return 0;
 }
 
-export default function RoundEndModal({ state, result }: RoundEndModalProps) {
+export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
   const titleId = useId();
   const nextBankerName =
     state.players.find((p) => p.seat === result.next_banker)?.name ?? `Seat ${result.next_banker}`;
@@ -240,10 +244,11 @@ export default function RoundEndModal({ state, result }: RoundEndModalProps) {
           return (
             <>
               <button
-                className="btn primary big"
+                className={`btn primary big${!iAmReady && clock !== null && clock <= RING_SECS ? " clock-low" : ""}`}
                 disabled={iAmReady}
                 onClick={() => conn.send({ type: "next_round" })}
               >
+                {iAmReady ? null : <MoveRing left={clock} />}
                 {iAmReady ? "Waiting for others…" : "Next round"}
               </button>
               {humans.length > 1 && (

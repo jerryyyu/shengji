@@ -545,6 +545,56 @@ def test_leaving_and_returning_before_the_round_ends_is_not_an_abandon(env, monk
     assert event["abandoned"] == 0
 
 
+def test_away_at_the_round_end_is_an_abandon(env, monkeypatch):
+    srv, store, _ = env
+    uid, _ = _user(store, "idler")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    table.room.seats[0].away = True            # still connected, the bot plays on
+    table.finish()
+    [event] = _events(store)
+    assert event["abandoned"] == 1 and event["actual"] == 0.5    # a 2-level win, capped
+
+
+def test_back_from_away_before_the_round_ends_is_not_an_abandon(env, monkeypatch):
+    srv, store, _ = env
+    uid, _ = _user(store, "returner")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    table.room.seats[0].away = True
+    srv._player_moved(table.room, 0)           # "I'm back"
+    table.finish()
+    [event] = _events(store)
+    assert event["abandoned"] == 0 and event["won"] == 1
+
+
+def test_one_or_two_timeouts_change_nothing(env, monkeypatch):
+    srv, store, _ = env
+    uid, _ = _user(store, "slow")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    table.room.move_timer = True
+    seat = table.room.seats[0]
+    srv._count_timeout(table.room, 0)
+    seat.timeouts_in_row = 0                   # a real move in between
+    srv._count_timeout(table.room, 0)
+    assert not seat.away
+    table.finish()
+    [event] = _events(store)
+    assert event["abandoned"] == 0 and event["won"] == 1
+
+
+def test_a_ranked_room_runs_the_move_timer(queue_env):
+    srv, store, client = queue_env
+    _, headers = _user(store, "owner", "Owner")
+    with client.websocket_connect("/ws", headers=headers) as a:
+        code, _ = _ranked_solo(srv, a)
+        assert srv.rooms[code].move_timer is True
+
+
 def _claim(seat, uid, name):
     """What the server's mid-game seat claim does to the seat it hands over."""
     seat.bot_announced = False

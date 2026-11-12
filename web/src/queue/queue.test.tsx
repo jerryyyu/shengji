@@ -1,5 +1,5 @@
 // The matchmaking queue's screens against a mocked socket: Play's Ranked
-// block and the Duo sheet, the queue bar, the ready check and what follows it, the pair
+// block and the Duo sheet, the queue bar, the waiting table, the pair
 // flow, the away notice and the matched game's note.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -104,8 +104,26 @@ function queued(over: Record<string, unknown> = {}) {
   return { type: "queue_state", queued: true, count: 3, since, front: false, party_id: null,
            leader: true, bots_at: since + 60, ...over };
 }
-const MATCH = { type: "match", match_id: "m1", deadline: 0, deadline_in: 10, size: 4, bots: 0, party_id: null };
-const match = (over: Record<string, unknown> = {}) => ({ ...MATCH, deadline: nowSecs() + 10, ...over });
+type Seat = { name: string; you?: boolean; ready?: boolean; reconnecting?: boolean; since?: number;
+              pair?: boolean; leader?: boolean } | null;
+const seat = (name: string, over: Partial<NonNullable<Seat>> = {}): Seat => ({
+  name, you: false, ready: false, reconnecting: false, since: nowSecs() - 30, pair: false, leader: true, ...over,
+});
+/** A queue_state at a waiting table (you at seat 0 unless `you` says). */
+function atTable(seats: Seat[], table: Record<string, unknown> = {}, over: Record<string, unknown> = {}) {
+  const you = (table.you as number | undefined) ?? 0;
+  const taken = seats.filter((s) => s !== null) as NonNullable<Seat>[];
+  return queued({
+    ...over,
+    table: {
+      id: "t1", you, seats, timer: null,
+      ready: taken.filter((s) => s.ready).length, of: taken.length,
+      you_ready: !!seats[you]?.ready,
+      waiting_for: taken.filter((s) => !s.ready && !s.you).map((s) => s.name),
+      ...table,
+    },
+  });
+}
 
 describe("Play", () => {
   const lobby = () => q(".lobby-panel")!;
@@ -191,20 +209,20 @@ describe("the queue bar", () => {
     fakeClock();
     say(queued());
     expect(q(".q-bar b")?.textContent).toBe("Finding a ranked game");
-    expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00");
     tick(6000);
-    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:54 · 3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:54");
     expect(q(".q-bar")?.getAttribute("title")).toBe("Waiting 0:06");
     expect(q(".q-bar")?.className).not.toContain("warn");
     expect((findBtn() as HTMLButtonElement).disabled).toBe(true);
     tick(43_000);   // 49 s: eleven seconds before the bots
-    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:11 · 3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:11");
     expect(q(".q-bar")?.className).not.toContain("warn");
     tick(1_000);    // 50 s: ten seconds before the bots
     expect(q(".q-bar")?.className).toContain("warn");
-    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:10 · 3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:10");
     tick(5_000);
-    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:05 · 3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:05");
     tick(5_000);
     expect(q(".q-bar small")?.textContent).toBe("Adding bots…");
     // the bar follows to the other tabs
@@ -215,19 +233,20 @@ describe("the queue bar", () => {
     expect(q(".q-bar")).not.toBeNull();
   });
 
-  it("Play bots sends queue_start_bots; Cancel leaves", async () => {
+  it("Start with bots sends queue_start_bots; Leave queue leaves", async () => {
     await renderApp();
     say(queued());
     // notices are lifted over the bar while it shows
     const clear = () => document.documentElement.style.getPropertyValue("--q-bar-clear");
     expect(clear()).toMatch(/^\d+px$/);
-    click(button("Play bots", q(".q-bar")!));
+    expect(q(".q-bar")?.textContent).not.toContain("in queue");   // alone: no count
+    click(button("Start with bots", q(".q-bar")!));
     expect(lastSent()).toEqual({ type: "queue_start_bots" });
     expect(button("Starting…")).toBeDefined();
     say({ type: "match_started", match_id: null, room: "BOTS", rated: true });
     expect(q(".q-bar")).toBeNull();
     say(queued());
-    click(button("Cancel", q(".q-bar")!));
+    click(button("Leave queue", q(".q-bar")!));
     expect(lastSent()).toEqual({ type: "queue_leave" });
     say({ type: "queue_state", queued: false, count: 0 });
     expect(q(".q-bar")).toBeNull();
@@ -241,40 +260,40 @@ describe("the queue bar", () => {
     say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
     expect(q(".q-bar")).toBeNull();
     const chip = q(".topbar .q-chip")!;
-    expect(chip.textContent).toContain("Finding a ranked game · 0:24 · Bots in 0:36 · 3 in queue");
+    expect(chip.textContent).toContain("Finding a ranked game · 0:24 · Bots in 0:36");
     expect(chip.getAttribute("title")).toBe("Waiting 0:24");
-    expect(button("Play bots", chip)).toBeDefined();
-    expect(button("Cancel", chip)).toBeDefined();
-    click(button("Wait for real players", chip));
+    expect(button("Start with bots", chip)).toBeDefined();
+    expect(button("Leave queue", chip)).toBeDefined();
+    click(button("Only tables with people", chip));
     expect(lastSent()).toEqual({ type: "queue_wait_players" });
-    expect(button("Wait for real players", chip)?.getAttribute("aria-checked")).toBe("true");
-    expect(chip.textContent).toContain("Finding a ranked game · 0:24 · 3 in queue");
+    expect(button("Only tables with people", chip)?.getAttribute("aria-checked")).toBe("true");
+    expect(chip.textContent).toContain("Finding a ranked game · 0:24 · Waiting for people");
     expect(chip.textContent).not.toContain("Bots in");
   });
 
-  it("the Wait for real players switch turns the countdown off and back on", async () => {
+  it("the Only tables with people switch turns the countdown off and back on", async () => {
     await renderApp();
     fakeClock();
     say(queued());
     tick(52_000);
     expect(q(".q-bar")?.className).toContain("warn");
-    const sw = () => button("Wait for real players", q(".q-bar")!)!;
+    const sw = () => button("Only tables with people", q(".q-bar")!)!;
     expect(sw().getAttribute("role")).toBe("switch");
     expect(sw().getAttribute("aria-checked")).toBe("false");
     click(sw());
     expect(lastSent()).toEqual({ type: "queue_wait_players" });
     expect(sw().getAttribute("aria-checked")).toBe("true");
-    expect(q(".q-bar small")?.textContent).toBe("3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Waiting for people");
     expect(q(".q-bar")?.className).not.toContain("warn");
     say(queued({ since: nowSecs() - 52, bots_at: null, wait_players: true }));
     tick(120_000);
-    expect(q(".q-bar small")?.textContent).toBe("3 in queue");
-    expect(button("Play bots", q(".q-bar")!)).toBeDefined();
-    expect(button("Cancel", q(".q-bar")!)).toBeDefined();
+    expect(q(".q-bar small")?.textContent).toBe("Waiting for people");
+    expect(button("Start with bots", q(".q-bar")!)).toBeDefined();
+    expect(button("Leave queue", q(".q-bar")!)).toBeDefined();
     click(sw());
     expect(lastSent()).toEqual({ type: "queue_allow_bots" });
     say(queued({ since: nowSecs() - 172, bots_at: nowSecs() + 60, wait_players: false }));
-    expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00");
     expect(sw().getAttribute("aria-checked")).toBe("false");
   });
 });
@@ -291,148 +310,129 @@ const TABLE_STATE = {
   message: null, notice: null, round_result: null,
 };
 
-describe("the ready check", () => {
-  it("counts down, accepts with the match id, shows counts only, and names once all accept", async () => {
+describe("the waiting table", () => {
+  it("a second person turns the bar into the table: seats, the timer line, Start", async () => {
     await renderApp();
-    say(queued());
     fakeClock();
-    say(match());
-    const sheet = q(".q-rc")!;
-    expect(sheet.querySelector("h2")?.textContent).toBe("Ranked match found");
-    expect(q(".q-rc-sub")).toBeNull();       // no subtext: the deadline is in Accept's label
-    expect(sheet.getAttribute("role")).toBe("alertdialog");
-    expect(button("Accept · 0:10")).toBeDefined();
-    expect(button("Decline", sheet)).toBeDefined();
-    expect(sheet.querySelectorAll(".q-rc-seat")).toHaveLength(4);
-    expect(sheet.querySelectorAll(".q-rc-av.team0")).toHaveLength(2);
-    expect(sheet.querySelectorAll(".q-rc-av.team1")).toHaveLength(2);
-    expect(q(".q-bar")).toBeNull();          // the bar steps aside for the sheet
-    tick(3000);
-    click(button("Accept · 0:07"));
-    expect(lastSent()).toEqual({ type: "match_accept", match_id: "m1" });
-    expect(q(".q-rc-seat.you .q-rc-ok")).not.toBeNull();
-    say({ type: "match_ready", match_id: "m1", accepted: 2, of: 4 });
-    expect(button("2 of 4 ready · 0:07")?.disabled).toBe(true);
-    expect(q(".q-rc")?.querySelectorAll(".q-rc-ok")).toHaveLength(1);   // counts only, never who
-    expect(q(".q-rc")?.textContent).not.toContain("Mei");
-    say({ type: "match_ready", match_id: "m1", accepted: 4, of: 4, names: ["Mei", "Wen", "Jerry", "Hao"] });
-    expect(button("Starting…")?.disabled).toBe(true);
-    expect(q(".q-rc-names")?.textContent).toBe("Mei · Wen · you · Hao");
-    // seat order: Jerry at seat 2 partners Mei at seat 0
-    const [mine, theirs] = [...document.querySelectorAll(".q-rc-side")].map((e) => e.textContent);
-    expect(mine).toContain("Mei");
-    expect(theirs).toContain("Wen");
-    expect(theirs).toContain("Hao");
-    say({ type: "match_started", match_id: "m1", room: "ABCD", rated: true });
-    expect(q(".q-rc")).toBeNull();
+    say(queued());
+    expect(q(".wt-sheet")).toBeNull();
+    say(atTable([seat("Jerry", { you: true }), seat("Alice", { since: nowSecs() }), null, null],
+                { timer: { at: nowSecs() + 42, name: "Alice", you: false } }));
+    expect(q(".q-bar")).toBeNull();                       // the bar grew into the sheet
+    const sheet = q(".wt-sheet")!;
+    expect(sheet.querySelector(".q-bar-title")?.textContent).toBe("Ranked table");
+    expect(sheet.querySelector(".wt-timer")?.textContent).toBe("Alice starts with bots in 0:42");
+    expect(button("Only tables with people", sheet)).toBeDefined();
+    const cards = [...sheet.querySelectorAll<HTMLElement>(".seat-card")];
+    expect(cards).toHaveLength(4);
+    expect(sheet.querySelector(".pos-bottom")?.textContent).toBe("JerryYou");
+    expect(sheet.querySelector(".pos-left")?.textContent).toBe("AliceJust joined");
+    expect(sheet.querySelector(".pos-left")?.className).toContain("team1");   // the other team
+    expect(sheet.querySelector(".pos-top")?.className).toContain("team0");    // your partner's seat
+    expect(sheet.querySelector(".pos-top")?.textContent).toBe("Emptya bot plays");
+    expect(sheet.querySelector(".wt-count")?.textContent).toBe("0 of 2 ready");
+    tick(6000);
+    expect(sheet.querySelector(".pos-left")?.textContent).toBe("Alice");
+    expect(sheet.querySelector(".wt-timer")?.textContent).toBe("Alice starts with bots in 0:36");
+    click(button("Start", sheet));
+    expect(lastSent()).toEqual({ type: "table_start" });
+    expect(button("Start", sheet)?.disabled).toBe(true);
+    // the play page and the tabs stay behind the sheet
+    expect(q(".tabbar")).not.toBeNull();
+    expect(findBtn()).not.toBeNull();
   });
 
-  it("Accept is disabled at zero", async () => {
+  it("after your Start the button waits for the others by name; a newcomer keeps your tick", async () => {
     await renderApp();
-    fakeClock();
-    say(match());
-    tick(10_000);
-    expect(button("Accept · 0:00")?.disabled).toBe(true);
-    click(button("Accept · 0:00"));
-    expect(sentTypes()).not.toContain("match_accept");
+    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null]));
+    const sheet = q(".wt-sheet")!;
+    expect(button("Waiting for Alice", sheet)?.disabled).toBe(true);
+    expect(sheet.querySelector(".pos-bottom")?.textContent).toBe("JerryYou · ✓ Ready");
+    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice", { reconnecting: true }),
+                 seat("Bob", { since: nowSecs() }), null],
+                { timer: { at: nowSecs() + 18, name: "Alice", you: false } }));
+    expect(button("Waiting for 2 players", sheet)?.disabled).toBe(true);
+    expect(sheet.querySelector(".pos-left")?.textContent).toBe("AliceReconnecting");
+    expect(sheet.querySelector(".pos-top")?.textContent).toBe("BobJust joined");
+    expect(sheet.querySelector(".wt-count")?.textContent).toBe("1 of 3 ready");
   });
 
-  it("a decline sends the match id and shows the cooldown on Play", async () => {
+  it("with every switch on there is no timer, only a unanimous Start", async () => {
     await renderApp();
-    say(queued());
     fakeClock();
-    say(match());
-    click(button("Decline"));
-    expect(lastSent()).toEqual({ type: "match_decline", match_id: "m1" });
-    expect(q(".q-rc")).toBeNull();
-    say({ type: "queue_removed", reason: "declined", cooldown_until: nowSecs() + 30, match_id: "m1" });
-    expect(q(".q-dlg")).toBeNull();           // no "missed" dialog for your own decline
-    expect(findBtn().textContent).toBe("Queue again in 0:30");
-    expect((findBtn() as HTMLButtonElement).disabled).toBe(true);
-    tick(30_000);
-    expect(findBtn().textContent).toBe("Play");
+    say(atTable([seat("Jerry", { you: true }), seat("Alice")], {}, { bots_at: null, wait_players: true }));
+    const sheet = q(".wt-sheet")!;
+    expect(sheet.querySelector(".wt-timer")?.textContent).toBe("Starts when everyone taps Start");
+    expect(button("Only tables with people", sheet)?.getAttribute("aria-checked")).toBe("true");
+    say(atTable([seat("Jerry", { you: true }), seat("Alice")],
+                { timer: { at: nowSecs() + 30, name: "Jerry", you: true } }));
+    expect(sheet.querySelector(".wt-timer")?.textContent).toBe("You start with bots in 0:30");
+  });
+
+  it("Leave queue frees your seat and puts you back on Play", async () => {
+    await renderApp();
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
+    click(button("Leave queue", q(".wt-sheet")!));
+    expect(lastSent()).toEqual({ type: "queue_leave" });
+    say({ type: "queue_state", queued: false, count: 1 });
+    expect(q(".wt-sheet")).toBeNull();
     expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("a timeout: You missed it, Queue again in 0:30, live at zero, and it queues", async () => {
+  it("the table starting goes straight to the game: no match-found sheet", async () => {
     await renderApp();
-    say(queued());
-    fakeClock();
-    say(match());
-    tick(10_500);
-    say({ type: "queue_removed", reason: "missed", cooldown_until: nowSecs() + 30, match_id: "m1" });
-    expect(q(".q-big")?.textContent).toBe("You missed it");
-    expect(q(".q-dlg")?.textContent).toContain("out of the queue for 30 seconds");
-    expect(button("Queue again in 0:30")?.disabled).toBe(true);
-    tick(12_000);
-    expect(button("Queue again in 0:18")).toBeDefined();
-    tick(18_000);
-    click(button("Queue again"));
-    expect(lastSent()).toEqual({ type: "queue_join" });
-    expect(q(".q-dlg")).toBeNull();
+    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice", { ready: true }), null, null]));
+    say({ type: "match_started", match_id: "t1", room: "ABCD", rated: true });
+    expect(q(".wt-sheet")).toBeNull();
+    expect(document.body.textContent).not.toContain("match found");
+    say({ type: "resume", token: "t1", gen: 1 });
+    say(TABLE_STATE);
+    expect(q(".table-screen")).not.toBeNull();
   });
 
-  it("someone else missed it: back in the queue at the front, and you keep your place", async () => {
+  it("the last other person leaving makes you alone again: the bar comes back", async () => {
     await renderApp();
-    fakeClock();
-    say(queued({ since: nowSecs() - 30 }));
-    say(match());
-    click(button(/^Accept/));
-    say({ type: "match_cancelled", match_id: "m1", reason: "player_missed" });
-    say(queued({ since: nowSecs() - 30, front: true }));
-    expect(q(".q-rc")).toBeNull();
-    expect(q(".q-dlg")).toBeNull();
-    expect(q(".q-toast")?.textContent).toContain("A player didn't accept.");
-    expect(q(".q-toast")?.textContent).toContain("You keep your place.");
-    expect(q(".q-bar b")?.textContent).toBe("Back in queue");
-    expect(q(".q-bar small")?.textContent).toBe("Bots in 1:00 · 3 in queue");
-  });
-
-  it("an unanswered player is told they are still queued, without the front-of-line copy", async () => {
-    await renderApp();
-    say(queued());
-    say(match());
-    say({ type: "match_cancelled", match_id: "m1", reason: "player_missed" });
-    say(queued());
-    expect(q(".q-toast")?.textContent).toContain("You're still in the queue.");
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
+    say(queued({ table: null }));
+    expect(q(".wt-sheet")).toBeNull();
     expect(q(".q-bar b")?.textContent).toBe("Finding a ranked game");
   });
 
-  it("a pair whose partner had not answered keeps its place but not the front", async () => {
+  it("two minutes without a tap: one notice, back on Play, no cooldown", async () => {
     await renderApp();
-    say(queued({ party_id: "p1" }));
-    say(match({ party_id: "p1" }));
-    click(button(/^Accept/));
-    say({ type: "match_cancelled", match_id: "m1", reason: "player_missed" });
-    say(queued({ party_id: "p1", front: false }));
-    expect(q(".q-toast")?.textContent).toContain("You're still in the queue.");
-    expect(q(".q-bar b")?.textContent).not.toBe("Back in queue");
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
+    say({ type: "queue_removed", reason: "idle", cooldown_until: null });
+    expect(q(".wt-sheet")).toBeNull();
+    expect(q(".q-toast")?.textContent).toContain("You left the table.");
+    expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("a late accept: the timeout comes first, then stale_match; the missed state shows", async () => {
+  it("a pair's other member sees the table but the leader starts and leaves", async () => {
     await renderApp();
-    say(queued());
-    say(match());
-    say({ type: "queue_removed", reason: "missed", cooldown_until: nowSecs() + 30, match_id: "m1" });
-    say({ type: "error", code: "stale_match", message: "That ready check is over." });
-    expect(q(".q-big")?.textContent).toBe("You missed it");
-    expect(button(/^Queue again in 0:/)?.disabled).toBe(true);
+    say({ type: "party", party_id: "p1", code: "7F2K", you_lead: false, expires_at: nowSecs() + 300,
+          members: [{ name: "Sam", leader: true, you: false }, { name: "Jerry", leader: false, you: true }] });
+    say(atTable([seat("Alice"), seat("Sam", { pair: true }), null, seat("Jerry", { you: true, pair: true, leader: false })],
+                { you: 3 }, { party_id: "p1", leader: false }));
+    const sheet = q(".wt-sheet")!;
+    expect(sheet.querySelector(".pos-bottom")?.textContent).toBe("JerryYou");
+    expect(sheet.querySelector(".pos-top")?.textContent).toBe("Sam");     // your partner across
+    expect(button("Start", sheet)?.disabled).toBe(true);
+    expect(button("Leave queue", sheet)).toBeUndefined();
+    expect(sheet.textContent).toContain("Sam leads");
+    expect(button("Only tables with people", sheet)).toBeUndefined();
   });
 
   it("server_error after the room's frames: back to the lobby, queued at the front", async () => {
     await renderApp();
-    say(queued());
-    say(match());
-    click(button(/^Accept/));
-    say({ type: "match_ready", match_id: "m1", accepted: 4, of: 4, names: ["Jerry", "Mei", "Wen", "Hao"] });
-    say({ type: "match_started", match_id: "m1", room: "ABCD", rated: true });
+    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Mei", { ready: true }), null, null]));
+    say({ type: "match_started", match_id: "t1", room: "ABCD", rated: true });
     say({ type: "resume", token: "t1", gen: 1 });
     say({ type: "room", room: "ABCD", you: 0, host: 0, start_level: "2", matched: true,
           players: [0, 1, 2, 3].map((seat) => ({ seat, name: `P${seat}`, is_bot: false, connected: true })) });
     say(TABLE_STATE);
     expect(q(".table-screen")).not.toBeNull();
     expect(localStorage.getItem("shengji.room")).toBe("ABCD");
-    say({ type: "match_cancelled", match_id: "m1", reason: "server_error" });
+    say({ type: "match_cancelled", match_id: "t1", reason: "server_error" });
     say(queued({ front: true }));
     expect(q(".table-screen")).toBeNull();
     expect(q(".q-find")).not.toBeNull();
@@ -444,7 +444,7 @@ describe("the ready check", () => {
   it("a bots game that fails to start returns to the lobby, out of the queue", async () => {
     await renderApp();
     say(queued());
-    click(button("Play bots", q(".q-bar")!));
+    click(button("Start with bots", q(".q-bar")!));
     say({ type: "match_started", match_id: null, room: "BOTS", rated: true });
     say({ ...TABLE_STATE, room: "BOTS" });
     say({ type: "error", code: "start_failed", message: "Could not start the game." });
@@ -453,21 +453,12 @@ describe("the ready check", () => {
     expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("a bot-fill match offers Keep waiting, which declines with keep_waiting", async () => {
+  it("at 700px and up the table is a centred card and the chip steps aside", async () => {
+    viewport(true);
     await renderApp();
-    say(queued({ since: nowSecs() - 60 }));
-    say(match({ match_id: "m2", size: 2, bots: 2 }));
-    const sheet = q(".q-rc")!;
-    expect(sheet.querySelector("h2")?.textContent).toBe("Ranked match found");
-    expect(q(".q-rc-sub")).toBeNull();
-    expect(sheet.querySelectorAll(".q-rc-seat.bot")).toHaveLength(2);
-    expect(button("Decline")).toBeUndefined();
-    click(button("Keep waiting"));
-    expect(lastSent()).toEqual({ type: "match_decline", match_id: "m2", keep_waiting: true });
-    expect(q(".q-rc")).toBeNull();
-    say({ type: "match_cancelled", match_id: "m2", reason: "keep_waiting" });
-    say(queued());
-    expect(q(".q-bar b")?.textContent).toBe("Finding a ranked game");
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
+    expect(q(".topbar .q-chip")).toBeNull();
+    expect(q(".wt-sheet")).not.toBeNull();
   });
 });
 
@@ -503,10 +494,7 @@ describe("with a friend", () => {
     tick(12_000);
     expect(q(".q-bar b")?.textContent).toBe("You + Sam");
     expect(q(".q-bar-time")?.textContent).toBe("0:12");
-    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:48 · 3 in queue");
-    say(match({ party_id: "p1", size: 4 }));
-    expect(q(".q-rc-sub")).toBeNull();
-    expect([...document.querySelectorAll(".q-rc-side")][0].textContent).toContain("Sam");
+    expect(q(".q-bar small")?.textContent).toBe("Bots in 0:48");
   });
 
   it("joins a friend's pair by code from Duo; the member cannot start or cancel", async () => {
@@ -528,13 +516,13 @@ describe("with a friend", () => {
     expect(findBtn().textContent).toBe("Play");
     expect((findBtn() as HTMLButtonElement).disabled).toBe(true);
     say(queued({ party_id: "p1", leader: false }));
-    expect(button("Cancel", q(".q-bar")!)).toBeUndefined();
+    expect(button("Leave queue", q(".q-bar")!)).toBeUndefined();
     expect(q(".q-bar")?.textContent).toContain("Sam leads");
-    expect(button("Play bots", q(".q-bar")!)?.disabled).toBe(true);
-    expect(button("Wait for real players")).toBeUndefined();
+    expect(button("Start with bots", q(".q-bar")!)?.disabled).toBe(true);
+    expect(button("Only tables with people")).toBeUndefined();
     say(queued({ party_id: "p1", leader: false, bots_at: null, wait_players: true }));
-    expect(q(".q-bar small")?.textContent).toBe("Real players only · 3 in queue");
-    expect(button("Wait for real players")).toBeUndefined();
+    expect(q(".q-bar small")?.textContent).toBe("Only tables with people");
+    expect(button("Only tables with people")).toBeUndefined();
   });
 
   it("an invite link opens the pair sheet with its code", async () => {

@@ -5941,7 +5941,7 @@ button[role="switch"]:active .ios-switch {
 
 /* Matchmaking queue: the Ranked sheet, the queue bar (a top-bar chip from 700px),
    the Solo / With a friend and pair sheets (centred dialogs from 700px), the
-   ready check, the queue's notices and the table's matched-game note. */
+   waiting table, the queue's notices and the table's matched-game note. */
 .q-find { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.15; }
 .q-find.searching { opacity: 0.55; }
 .q-dot { width: 7px; height: 7px; border-radius: 50%; background: #5fc78b; flex: none; }
@@ -5952,8 +5952,8 @@ button[role="switch"]:active .ios-switch {
 }
 @keyframes q-spin { to { transform: rotate(360deg); } }
 
-/* Four rows: who is searching and for how long; the countdown and queue
-   count; the leader's wait switch; Play bots and Cancel as equal halves. */
+/* Four rows: who is searching and for how long; the countdown; the
+   leader's switch; Start with bots and Leave queue as equal halves. */
 .q-bar {
   flex: none; display: flex; flex-direction: column; gap: 12px;
   margin: 0 8px 8px; padding: 16px;
@@ -6051,7 +6051,6 @@ button[role="switch"]:active .ios-switch {
 .q-chip .q-cancel { height: 28px; padding: 0 10px; border-radius: 7px; font-size: var(--fs-13); }
 
 .q-layer { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; justify-content: flex-end; }
-.q-center-layer { justify-content: center; align-items: center; z-index: 80; }
 .q-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
 /* A short screen (a keyboard up, a landscape phone) caps the sheet below the
    top inset; the grab handle and header stay put and the body scrolls. */
@@ -6129,70 +6128,57 @@ span.q-party-main { cursor: default; }
 .q-av { width: 24px; height: 24px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; background: #3a4150; color: var(--gold); font-size: 11px; font-weight: 700; box-shadow: 0 0 0 2px #1f5d3a; }
 .q-av2 { margin-left: -12px; }
 
-.q-dlg {
-  position: relative; width: min(345px, calc(100vw - 32px)); padding: 22px 18px 18px;
-  border-radius: 16px; background: #1b1f27; color: #eef1f6; text-align: center;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+/* The waiting table: the queue bar grown into a sheet over the page, its
+   foot where the bar's is, just above the floating tab bar, so the tabs stay
+   usable; the seats as on the room screen; a centred card from 700px. */
+.wt-sheet {
+  position: fixed; left: 0; right: 0; z-index: 60;
+  bottom: calc(64px + max(8px, env(safe-area-inset-bottom, 0px)) + 8px);
+  max-height: calc(100dvh - 72px - max(8px, env(safe-area-inset-bottom, 0px)) - 96px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 8px 16px 16px;
+  border-radius: 20px 20px 0 0; background: #1f4a33; border: 1px solid #2f7a52; border-bottom: 0;
+  color: #eafbea; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+  font-variant-numeric: tabular-nums; line-height: 1.2;
+  animation: q-sheet-in 320ms var(--ease-out);
 }
-.q-dlg h3 { margin: 0; font-size: var(--fs-13); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8a929f; }
-.q-big { margin-top: 4px; font-size: 20px; font-weight: 700; color: var(--gold); }
-.q-dlg p { margin: 8px 0 0; font-size: var(--fs-14); line-height: 1.4; color: #aab2bf; }
-.q-dlg p.q-gap { margin-top: 12px; }
-.q-dlg-b { display: flex; gap: 10px; margin-top: 16px; }
-.q-dlg-b .btn { flex: 1; min-height: 46px; }
-.q-sub { margin-top: 10px; font-size: var(--fs-13); line-height: 1.35; color: #8a929f; }
-/* The ready check: a bottom sheet with both teams, a big gold Accept that
-   counts down and a plain answer under it; a centred dialog from 700px. */
-.q-rc-layer { z-index: 80; }
-.q-rc {
-  position: relative; display: flex; flex-direction: column; gap: 16px;
-  padding: 8px 16px calc(24px + env(safe-area-inset-bottom, 0px));
-  border-radius: 20px 20px 0 0; background: var(--grp); border-top: 1px solid var(--grp-edge);
-  color: var(--text); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
-}
-.q-rc-grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; background: #4a5262; }
-.q-rc h2 { margin: 0; text-align: center; font-size: 22px; font-weight: 700; color: #fff; }
-.q-rc-teams { display: grid; grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); gap: 8px; align-items: center; }
-.q-rc-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.q-rc-seat {
-  display: flex; align-items: center; gap: 10px; height: 48px; min-width: 0; padding: 0 10px;
-  border-radius: 12px; background: var(--page); border: 1px solid var(--grp-edge);
-}
-.q-rc-av {
-  width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%;
-  font-size: 12px; font-weight: 700; color: var(--chrome);
-}
-.q-rc-av.team0 { background: var(--team0); }
-.q-rc-av.team1 { background: var(--team1); }
-.q-rc-seat.bot .q-rc-av { font-size: 8px; letter-spacing: 0.02em; }
-.q-rc-name { flex: 1; min-width: 0; font-size: var(--fs-15); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.q-rc-seat.you .q-rc-name { font-weight: 600; }
-.q-rc-seat.player .q-rc-name, .q-rc-seat.bot .q-rc-name { color: var(--text-dim); }
-.q-rc-ok { flex: none; color: #5fc78b; font-weight: 700; }
-.q-rc-vs { text-align: center; font-size: var(--fs-13); font-weight: 700; letter-spacing: 0.08em; color: var(--text-dim); }
-.q-rc-names { text-align: center; font-size: var(--fs-14); color: var(--text-dim); }
-.q-rc-accept {
-  appearance: none; display: flex; align-items: center; justify-content: center; height: 58px;
+@media (prefers-reduced-motion: reduce) { .wt-sheet { animation: none; } }
+.wt-grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.3); }
+.wt-sheet .q-wait { justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0; font-size: var(--fs-16); }
+.wt-sheet .q-wait-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wt-sheet .q-switch { width: 51px; height: 31px; border-radius: 16px; }
+.wt-sheet .q-switch::after { width: 27px; height: 27px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); }
+.wt-sheet .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(20px); }
+.wt-switch:empty { display: none; }
+.wt-clock { row-gap: 24px; padding: 14px 10px; }
+.wt-seat .seat-card-role { color: var(--seat-team); }
+.wt-seat.ready .seat-card-role { color: #5fc78b; }
+.wt-seat.away .seat-card-role { color: var(--gold); }
+.wt-seat.away .seat-card-name { opacity: 0.7; }
+.wt-count { text-align: center; font-size: var(--fs-15); color: #bfe9cf; }
+.wt-acts { display: flex; flex-direction: column; gap: 8px; }
+.wt-start {
+  appearance: none; display: flex; align-items: center; justify-content: center; height: 54px;
   border-radius: 16px; border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219);
-  color: #ffd77a; font: inherit; font-size: var(--fs-20); font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer;
+  color: #ffd77a; font: inherit; font-size: var(--fs-20); font-weight: 700; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.q-rc-accept:disabled { background: #1f242e; border-color: #2c3340; color: #8a929f; cursor: default; }
-.q-rc-plain {
-  appearance: none; min-height: 44px; margin-top: -8px; border: 0; background: none;
-  color: #c3cad6; font: inherit; font-size: var(--fs-17); font-weight: 600; cursor: pointer;
+.wt-start:disabled { background: #252a34; border-color: #2c3340; color: #8a929f; cursor: default; }
+.wt-leave {
+  appearance: none; display: flex; align-items: center; justify-content: center; height: 46px;
+  border: 0; border-radius: 14px; background: rgba(0, 0, 0, 0.3); color: #fff;
+  font: inherit; font-size: var(--fs-16); font-weight: 600; cursor: pointer;
 }
-@media (max-width: 359px) {
-  .q-rc { padding-left: 12px; padding-right: 12px; }
-  .q-rc-teams { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); gap: 6px; }
-  .q-rc-seat { gap: 6px; padding: 0 6px; }
-  .q-rc-av { width: 24px; height: 24px; font-size: 11px; }
-  .q-rc-name { font-size: var(--fs-14); }
-  .q-rc-vs { font-size: var(--fs-11); letter-spacing: 0; }
-}
+.wt-leave:disabled { opacity: 0.45; cursor: default; }
+.wt-leave.wt-led { background: none; color: #bfe9cf; font-size: var(--fs-15); font-weight: 500; cursor: default; }
 @media (min-width: 700px) {
-  .q-rc-layer { justify-content: center; align-items: center; }
-  .q-rc { width: min(420px, calc(100vw - 32px)); padding-bottom: 20px; border-radius: 20px; border: 1px solid var(--grp-edge); }
-  .q-rc-grab { display: none; }
+  .wt-sheet {
+    left: 50%; right: auto; top: 50%; bottom: auto; transform: translate(-50%, -50%);
+    width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 48px);
+    border-radius: 20px; border-bottom: 1px solid #2f7a52; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    animation: none;
+  }
+  .wt-grab { display: none; }
 }
 
 /* Above the tab bar, and above the queue bar while it shows (QueueBar sets
@@ -6296,7 +6282,6 @@ dialog.leave-alert-backdrop {
   .q-grab { display: none; }
   .q-layer.q-in .q-sheet { animation: pop-in 320ms var(--ease-out); }
   .q-layer.q-out .q-sheet { animation: pop-out 320ms cubic-bezier(0.32, 0, 0.67, 0) forwards; }
-  .q-dlg { width: 380px; }
   .q-toast { bottom: 32px; }
 }
 @media (prefers-reduced-motion: reduce) {

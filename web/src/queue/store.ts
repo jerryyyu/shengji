@@ -1,8 +1,8 @@
 // The matchmaking queue as the client sees it: one store fed by the socket,
-// read by the Ranked Play button, the queue bar, the ready check and the pair
-// sheet. The server is the authority; the store only remembers what it was
-// last told and the few things the server cannot know (which sheet is open,
-// whether this client declined, the clock skew).
+// read by the Ranked Play button, the queue bar, the waiting table and the
+// pair sheet. The server is the authority; the store only remembers what it
+// was last told and the few things the server cannot know (which sheet is
+// open, the clock skew).
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { auth, effectiveName } from "../auth";
@@ -10,7 +10,7 @@ import type { ConnStatus } from "../ws";
 import { conn } from "../ws";
 import { haptic } from "../native";
 import type { ServerMsg } from "../protocol";
-import type { PartyMsg, QueueClientMsg } from "./messages";
+import type { PartyMsg, QueueClientMsg, WaitingTableMsg } from "./messages";
 import { QUEUE_ERROR_CODES } from "./messages";
 
 /** From this long before the bot fill the bar turns amber. */
@@ -23,26 +23,28 @@ export const RESYNC_MS = 2500;
 /** How long a queue notice stays up. */
 export const NOTE_MS = 5000;
 
-export interface ReadyCheck {
-  id: string;
-  /** Local ms. */
-  deadline: number;
-  /** The whole countdown, ms, for the ring. */
-  window: number;
-  size: number;
-  bots: number;
-  partyId: string | null;
-  accepted: number;
-  of: number;
-  names: string[] | null;
-  mine: "pending" | "accepted";
+/** A seat at the waiting table, times in local ms. */
+export interface TableSeat {
+  name: string;
+  you: boolean;
+  ready: boolean;
+  reconnecting: boolean;
+  since: number | null;
+  pair: boolean;
+  leader: boolean;
 }
 
-/** The ready check ended with this client's entry out of the queue. */
-export interface Missed {
-  reason: "missed" | "declined";
-  /** The pair member who missed it, when it was not you. */
-  by: string | null;
+/** The shared waiting table you sit at, times in local ms. */
+export interface TableView {
+  id: string;
+  /** Seat order; null is empty (a bot plays it). */
+  seats: (TableSeat | null)[];
+  you: number;
+  timer: { at: number; name: string; you: boolean } | null;
+  ready: number;
+  of: number;
+  youReady: boolean;
+  waitingFor: string[];
 }
 
 export type Sheet = null | "solo" | "guest" | "party";
@@ -61,11 +63,9 @@ export interface QueueView {
   front: boolean;
   leader: boolean;
   partyId: string | null;
-  pending: null | "join" | "leave" | "bots";
-  check: ReadyCheck | null;
-  missed: Missed | null;
-  /** Local ms. */
-  cooldownUntil: number | null;
+  pending: null | "join" | "leave" | "bots" | "start";
+  /** The waiting table you sit at; null while alone in the queue. */
+  table: TableView | null;
   party: PartyMsg | null;
   partyError: string | null;
   sheet: Sheet;
@@ -76,7 +76,7 @@ export interface QueueView {
 
 const EMPTY: QueueView = {
   count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
-  partyId: null, pending: null, check: null, missed: null, cooldownUntil: null,
+  partyId: null, pending: null, table: null,
   party: null, partyError: null, sheet: null, joinCode: "", note: null,
 };
 
@@ -96,11 +96,7 @@ export class QueueStore {
   /** Server clock minus local clock, ms. */
   private skew = 0;
   private joinSentAt: number | null = null;
-  private declined: string | null = null;
   private droppedWhileQueued = false;
-  /** A ready check failed for someone else: say so once the queue_state
-   *  that follows tells whether this entry went to the front. */
-  private missedByOther = false;
   private resyncTimer: number | null = null;
   /** After a reconnect, how long the server has to hand the pair back. */
   private partyResyncTimer: number | null = null;
@@ -124,7 +120,7 @@ export class QueueStore {
     conn.subscribe?.((m) => this.onMessage(m));
   }
 
-  /** Queue, pair and ready-check state belong to one account: a sign-out,
+  /** Queue, table and pair state belong to one account: a sign-out,
    *  a deletion or another account's sign-in starts from nothing. */
   private onAuth(account: string | null | undefined): void {
     if (account === this.account) return;
@@ -134,10 +130,8 @@ export class QueueStore {
     if (was === null || (was === undefined && account !== null)) return;
     this.clearResync();
     this.clearPartyResync();
-    this.declined = null;
     this.joinSentAt = null;
     this.droppedWhileQueued = false;
-    this.missedByOther = false;
     this.findAfterSignIn = false;
     this.set({ ...EMPTY, count: this.view.count, note: null });
   }
@@ -187,7 +181,7 @@ export class QueueStore {
     const was = this.status;
     this.status = s;
     // an unanswered join or start counts too: its reply may have died with the socket
-    if (s !== "open" && was === "open" && (this.view.queued || this.view.check || this.view.pending)) {
+    if (s !== "open" && was === "open" && (this.view.queued || this.view.pending)) {
       this.droppedWhileQueued = true;
     }
     // Pairs live in the server's memory: a restart forgets them, and a
@@ -207,11 +201,11 @@ export class QueueStore {
       // back at once (queue_state); silence means it was dropped.
       this.resyncTimer = window.setTimeout(() => {
         this.resyncTimer = null;
-        const held = this.view.queued || !!this.view.check;
+        const held = this.view.queued;
         if (!held && !this.view.pending) return;
         const signedIn = auth.state?.status === "in";
         this.joinSentAt = null;
-        this.set({ queued: false, check: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false });
+        this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false });
         if (held && signedIn) this.notify("You left the queue while away.", "No cooldown.");
       }, RESYNC_MS);
     }
@@ -230,7 +224,7 @@ export class QueueStore {
         if (!msg.queued) {
           const wasQueued = this.view.queued;
           this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
-                     pending: null, check: this.view.check });
+                     pending: null, table: null });
           if (msg.replaced && wasQueued) this.notify("Your search moved to another window.");
           break;
         }
@@ -239,71 +233,41 @@ export class QueueStore {
           this.skew = msg.since * 1000 - this.joinSentAt;
         }
         this.joinSentAt = null;
-        if (this.missedByOther) {
-          this.missedByOther = false;
-          // only an entry whose every member accepted goes to the front
-          this.notify("A player didn't accept.", msg.front ? "You keep your place."
-                                                           : "You're still in the queue.");
-        }
+        const table = msg.table ? this.tableView(msg.table) : null;
+        // someone sat down with you: the bar grows into the table
+        if (table && !this.view.table) haptic("declare");
+        const pending = this.view.pending === "bots" ? "bots"
+          : this.view.pending === "start" && table && !table.youReady ? "start" : null;
         this.set({
           queued: true, count: msg.count,
           since: msg.since !== undefined ? this.local(msg.since) : now,
           botsAt: msg.bots_at != null ? this.local(msg.bots_at) : null,
           waitPlayers: msg.wait_players === true,
           front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
-          pending: this.view.pending === "bots" ? "bots" : null,
-          missed: null, cooldownUntil: null,
+          pending, table,
         });
-        break;
-      }
-      case "match": {
-        this.clearResync();
-        this.skew = (msg.deadline - msg.deadline_in) * 1000 - now;
-        const window_ = Math.max(0, msg.deadline_in * 1000);
-        this.set({
-          check: { id: msg.match_id, deadline: now + window_, window: Math.max(window_, 1), size: msg.size,
-                   bots: msg.bots, partyId: msg.party_id, accepted: 0, of: msg.size, names: null,
-                   mine: "pending" },
-          sheet: null, pending: null,
-        });
-        haptic("declare");
-        break;
-      }
-      case "match_ready": {
-        const c = this.view.check;
-        if (!c || c.id !== msg.match_id) break;
-        this.set({ check: { ...c, accepted: msg.accepted, of: msg.of, names: msg.names ?? c.names } });
         break;
       }
       case "match_started":
         this.clearResync();
-        this.set({ queued: false, check: null, pending: null, sheet: null, missed: null,
+        this.set({ queued: false, table: null, pending: null, sheet: null,
                    since: null, botsAt: null, waitPlayers: false, front: false, note: null });
         break;
-      case "match_cancelled": {
-        const c = this.view.check?.id === msg.match_id ? this.view.check : null;
-        if (c) this.set({ check: null });
-        if (msg.reason === "player_missed") {
-          this.missedByOther = true;
-        } else if (msg.reason === "server_error") {
+      case "match_cancelled":
+        this.set({ pending: null });
+        if (msg.reason === "server_error") {
           this.notify("The game could not start.", "You keep your place.");
         }
         break;
-      }
       case "queue_removed": {
         this.clearResync();
-        const mine = msg.match_id !== undefined && this.declined === msg.match_id;
         const me = myName();
         const by = msg.by && msg.by !== me ? msg.by : null;
-        const next: Partial<QueueView> = {
-          queued: false, check: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false,
-          cooldownUntil: msg.cooldown_until !== null ? this.local(msg.cooldown_until) : null,
-        };
-        if (msg.reason === "missed" || (msg.reason === "declined" && !mine)) {
-          next.missed = { reason: msg.reason, by };
-        }
-        this.set(next);
-        if (msg.reason === "away") {
+        this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false,
+                   front: false });
+        if (msg.reason === "idle") {
+          this.notify("You left the table.", "No tap for 2 minutes. No cooldown.");
+        } else if (msg.reason === "away") {
           this.notify(by ? `${by} left the queue while away.` : "You left the queue while away.",
                       "No cooldown.");
         } else if (msg.reason === "in_room" && by) {
@@ -333,14 +297,7 @@ export class QueueStore {
       case "error":
         if (!msg.code || !QUEUE_ERROR_CODES.has(msg.code)) break;
         this.joinSentAt = null;
-        if (msg.code === "cooldown") {
-          const extra = msg as unknown as { cooldown_until?: number; cooldown_secs?: number };
-          if (extra.cooldown_until !== undefined && extra.cooldown_secs !== undefined) {
-            this.skew = (extra.cooldown_until - extra.cooldown_secs) * 1000 - now;
-          }
-          const secs = extra.cooldown_secs ?? 30;
-          this.set({ pending: null, cooldownUntil: now + secs * 1000 });
-        } else if (msg.code === "not_in_party") {
+        if (msg.code === "not_in_party") {
           // the server holds no pair for this account: the chip is stale
           this.clearPartyResync();
           this.set({ pending: null, party: null, partyError: null });
@@ -348,7 +305,8 @@ export class QueueStore {
           this.set({ pending: null, partyError: msg.message });
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
-          this.set({ pending: null, queued: false, since: null, botsAt: null, waitPlayers: false, front: false });
+          this.set({ pending: null, queued: false, table: null, since: null, botsAt: null, waitPlayers: false,
+                     front: false });
         } else {
           this.set({ pending: null });
         }
@@ -368,7 +326,7 @@ export class QueueStore {
     const sent = this.send(pair ? { type: "queue_join", party_id: pair.party_id } : { type: "queue_join" });
     if (!sent) return;
     this.joinSentAt = Date.now();
-    this.set({ pending: "join", sheet: null, missed: null });
+    this.set({ pending: "join", sheet: null });
   }
 
   leave(): void {
@@ -391,32 +349,19 @@ export class QueueStore {
     }
   }
 
-  accept(): void {
-    const c = this.view.check;
-    // the server refuses an accept after the deadline
-    if (!c || c.mine === "accepted" || Date.now() >= c.deadline) return;
-    if (this.send({ type: "match_accept", match_id: c.id })) {
-      this.set({ check: { ...c, mine: "accepted" } });
-    }
+  /** Start at the waiting table: your tick is in for good. */
+  tableStart(): void {
+    const t = this.view.table;
+    if (!t || t.youReady || this.view.pending !== null) return;
+    if (this.send({ type: "table_start" })) this.set({ pending: "start" });
   }
 
-  decline(): void {
-    const c = this.view.check;
-    if (!c) return;
-    this.declined = c.id;
-    this.send({ type: "match_decline", match_id: c.id });
-    this.set({ check: null });
-  }
-
-  keepWaiting(): void {
-    const c = this.view.check;
-    if (!c) return;
-    this.send({ type: "match_decline", match_id: c.id, keep_waiting: true });
-    this.set({ check: null });
-  }
-
-  dismissMissed(): void {
-    this.set({ missed: null });
+  private tableView(t: WaitingTableMsg): TableView {
+    return {
+      id: t.id, you: t.you, ready: t.ready, of: t.of, youReady: t.you_ready, waitingFor: t.waiting_for,
+      seats: t.seats.map((s) => (s ? { ...s, since: s.since !== null ? this.local(s.since) : null } : null)),
+      timer: t.timer ? { ...t.timer, at: this.local(t.timer.at) } : null,
+    };
   }
 
   openSheet(sheet: Sheet): void {
@@ -465,10 +410,8 @@ export class QueueStore {
     this.noteTimer = null;
     this.view = EMPTY;
     this.skew = 0;
-    this.declined = null;
     this.joinSentAt = null;
     this.droppedWhileQueued = false;
-    this.missedByOther = false;
     this.findAfterSignIn = false;
   }
 }

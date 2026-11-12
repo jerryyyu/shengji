@@ -155,3 +155,37 @@ it("only a horizontal single-finger swipe changes the guide step", async () => {
   await tick();
   expect(counter()).toBe("3 of 10");
 });
+
+it("a swipe anywhere on the guide's screen turns the page, not only on the slide", async () => {
+  await open("#/howto/2");
+  const swipe = async (surface: Element, x0: number, y0: number, x1: number, y1: number) => {
+    const fire = (type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true });
+      const points = [{ clientX: x, clientY: y }];
+      Object.defineProperties(event, { touches: { value: points }, changedTouches: { value: points } });
+      act(() => surface.dispatchEvent(event));
+    };
+    fire("touchstart", x0, y0);
+    fire("touchend", x1, y1);
+    await tick();
+  };
+  const head = host.querySelector(".howto-head")!;
+  const nav = host.querySelector(".howto-nav")!;
+  const screen = host.querySelector(".howto-screen")!;
+  expect(head.closest(".howto-step")).toBeNull();
+  expect(nav.closest(".howto-step")).toBeNull();
+
+  await swipe(head, 200, 20, 100, 30);
+  expect(counter()).toBe("3 of 10");
+  await swipe(nav, 100, 600, 220, 610);
+  expect(counter()).toBe("2 of 10");
+  await swipe(screen, 300, 300, 200, 300);
+  expect(counter()).toBe("3 of 10");
+
+  // Mostly vertical is a scroll, even when it also moves far sideways.
+  await swipe(head, 200, 20, 120, 300);
+  expect(counter()).toBe("3 of 10");
+  // A touch from the left edge is the system's back gesture.
+  await swipe(screen, 10, 300, 200, 300);
+  expect(counter()).toBe("3 of 10");
+});

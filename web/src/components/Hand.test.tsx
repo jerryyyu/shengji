@@ -154,17 +154,3 @@ describe("drag-select", () => {
     expect(host.querySelector(".hand-slot.pressed")).toBeNull();
   });
 });
-
-it("dims the cards outside the playable set, which stay choosable", () => {
-  const onToggle = vi.fn();
-  mount();
-  act(() => root.render(<Hand hand={hand(["S5", "H7", "BJ"])} selected={new Set()} selectable onToggle={onToggle}
-                              playable={new Set([0])} />));
-  const dimmed = () => [...host.querySelectorAll(".hand-slot")].map((s) => s.classList.contains("dimmed"));
-  expect(dimmed()).toEqual([false, true, true]);
-  act(() => cards()[2].click());
-  expect(onToggle).toHaveBeenCalledWith(2);
-  act(() => root.render(<Hand hand={hand(["S5", "H7", "BJ"])} selected={new Set()} selectable onToggle={onToggle}
-                              playable={null} />));
-  expect(dimmed()).toEqual([false, false, false]);
-});

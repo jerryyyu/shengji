@@ -1756,11 +1756,6 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   transform: translateY(-26px) scale(1.08);
 }
 
-/* following, a card no legal play can use stays choosable, only darker */
-.hand .hand-slot.dimmed .card {
-  filter: brightness(0.55) saturate(0.6);
-}
-
 /* a disabled Play takes no taps; its wrapper hears them and explains why */
 .play-wrap {
   display: inline-flex;

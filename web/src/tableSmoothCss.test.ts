@@ -2,8 +2,7 @@
 /// <reference types="node" />
 // Guards table rules jsdom cannot render: the header's "/ 80" and "No trump"
 // read at 4.5:1 or more over the brightest felt, the touched card lifts and
-// grows, a dimmed card stays drawn, and the points float stills under Reduce
-// Motion.
+// grows, and the points float stills under Reduce Motion.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -42,11 +41,8 @@ describe("header contrast", () => {
 });
 
 describe("hand touch", () => {
-  it("lifts and scales the pressed card, and dims without hiding", () => {
+  it("lifts and scales the pressed card", () => {
     expect(prop(decls(".hand .hand-slot.pressed .card"), "transform")).toMatch(/translateY\(-\d+px\) scale\(1\.\d+\)/);
-    const dim = decls(".hand .hand-slot.dimmed .card");
-    expect(prop(dim, "filter")).toContain("brightness");
-    expect(dim).not.toMatch(/display:\s*none|visibility:\s*hidden|opacity:\s*0[;\s]/);
   });
   it("lets a disabled Play's wrapper hear the tap", () => {
     expect(prop(decls(".play-wrap > .btn:disabled"), "pointer-events")).toBe("none");

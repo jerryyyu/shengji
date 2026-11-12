@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
@@ -18,7 +18,7 @@ import type { Toast } from "../toast";
 import ToastView from "./ToastView";
 import MatchedNote from "../queue/MatchedNote";
 import { leadToFollow } from "../follow";
-import { followHint, playableIds } from "../followRules";
+import { followHint } from "../followRules";
 import { STALL_MS } from "./Lobby";
 
 const LAST_TRICK_MS = 1500;
@@ -336,14 +336,6 @@ export default function Table({ state, toast = null }: { state: GameState; toast
 
   useTableHaptics(state);
 
-  // Following, the cards no legal play can use are dimmed. Only your hand,
-  // the lead and the trump go in: nothing another player holds.
-  const following = state.phase === "play" && myTurn && lead !== null;
-  const playable = useMemo(
-    () => (following && lead ? playableIds(state.hand, lead, state.trump) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [following, state.hand, JSON.stringify(lead), state.trump?.suit, state.trump?.rank]);
-
   // A tap on a Play that cannot go yet says why, once, above the hand.
   const [hint, setHint] = useState<{ text: string; n: number } | null>(null);
   useEffect(() => {
@@ -501,7 +493,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
             <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>
           ) : null}
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} playable={playable} />
+                rects={handRects} />
         </div>
       </div>
 

@@ -35,9 +35,6 @@ interface HandProps {
   onToggle: (id: number) => void;
   /** Filled with card positions for the trick area's play flights. */
   rects?: RefObject<HandRects>;
-  /** When following, the cards some legal play can use; the rest are drawn
-   *  dimmed but stay choosable. Null or absent: nothing is dimmed. */
-  playable?: Set<number> | null;
 }
 
 interface SlotProps {
@@ -46,16 +43,15 @@ interface SlotProps {
   selected: boolean;
   /** Under a finger that is down: the card lifts until the finger lifts. */
   pressed: boolean;
-  dimmed: boolean;
   onToggle: ((id: number) => void) | undefined;
 }
 
 /** One card in the hand. Props are primitives plus the stable onToggle, so a
  *  server update or a tap re-renders only the slots whose card or selection
  *  changed, not all 25. */
-const HandSlot = memo(function HandSlot({ id, code, selected, pressed, dimmed, onToggle }: SlotProps) {
+const HandSlot = memo(function HandSlot({ id, code, selected, pressed, onToggle }: SlotProps) {
   return (
-    <div className={`hand-slot${pressed ? " pressed" : ""}${dimmed ? " dimmed" : ""}`} data-id={id}>
+    <div className={`hand-slot${pressed ? " pressed" : ""}`} data-id={id}>
       <Card code={code} selected={selected} onClick={onToggle ? () => onToggle(id) : undefined} />
     </div>
   );
@@ -104,7 +100,7 @@ interface Drag {
   moved: boolean;
 }
 
-export default function Hand({ hand, selected, selectable, onToggle, rects, playable = null }: HandProps) {
+export default function Hand({ hand, selected, selectable, onToggle, rects }: HandProps) {
   const handRef = useRef<HTMLDivElement>(null);
   // The card under a finger that is down lifts at once, before the tap's
   // click commits the choice on release; a slide carries the lift along.
@@ -262,7 +258,6 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, play
       {hand.map((c) => (
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
                   pressed={selectable && pressed === c.id}
-                  dimmed={selectable && playable !== null && !playable.has(c.id)}
                   onToggle={selectable ? onToggle : undefined} />
       ))}
     </div>

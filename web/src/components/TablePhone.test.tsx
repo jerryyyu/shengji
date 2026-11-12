@@ -488,18 +488,7 @@ describe("following", () => {
   const following = (over: Partial<GameState> = {}) => state({
     turn: 0, hand: mixed, trump: { suit: "H", rank: "J", declarer: 1 },
     trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }] }, ...over });
-  const slots = () => [...host.querySelectorAll(".hand-slot")];
   const wrap = () => host.querySelector<HTMLElement>(".play-wrap")!;
-
-  it("dims the cards no legal follow can use, from your hand and the lead alone", () => {
-    render(following());
-    const dimmed = slots().filter((s) => s.classList.contains("dimmed"));
-    // a spade pair owes a pair: your spade pairs follow, the heart cannot
-    expect(dimmed.map((s) => s.querySelector(".card")!.getAttribute("aria-label"))).toEqual(["Ace of hearts"]);
-    // not your turn: nothing dimmed
-    render(following({ turn: 2 }));
-    expect(host.querySelector(".hand-slot.dimmed")).toBeNull();
-  });
 
   it("a tap on a Play that cannot go says what the follow needs and buzzes", () => {
     render(following());

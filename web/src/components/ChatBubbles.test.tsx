@@ -21,7 +21,7 @@ vi.mock("../ws", () => ({
   },
 }));
 // the connection buffers a live line before telling subscribers, as ws.ts does
-const serverSays = (m: { type: string }) => act(() => {
+const serverSays = <M extends { type: string }>(m: M) => act(() => {
   if (m.type === "chat") link.history.push(m);
   for (const fn of link.listeners) fn(m);
 });

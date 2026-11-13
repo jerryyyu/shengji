@@ -155,8 +155,10 @@ account may not read):
   `rating_change` (summed delta over every segment, rounded), `rating_after`
   (the latest rated round's rating) and `rated_rounds`; an unrated game has
   none of these keys. Only the viewer's own rating events are read.
-- `GET /api/me/games/{id}`: the summary plus each readable round's result;
-  a rated round's row also carries the viewer's `rating_delta`.
+- `GET /api/me/games/{id}`: the summary plus each readable round's result,
+  its `level` (the rank played) and `banker` seat (taken from the trump
+  record, since a first round names its banker only then); a rated round's
+  row also carries the viewer's `rating_delta`.
 - `GET /api/me/games/{id}/rounds/{n}`: that round's log records from the
   seat the account held, without bot reasoning, timing, seeds or chat, and
   with hidden cards (`null`) until the round ends. While the round is still

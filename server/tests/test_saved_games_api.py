@@ -170,6 +170,24 @@ def test_events_keep_the_log_keys_minus_the_forbidden_ones(api):
     assert served["events"][0]["deck"] == logged[0]["deck"]
 
 
+def test_each_round_result_names_its_level_and_banker(api):
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    t = Table(srv, users=(owner, None, None, None))
+    t.start_round(first=True)
+    t.act()
+    t.start_round()
+    t.act()
+    raw = [json.loads(line) for line in (srv.LOG_DIR / "REPL.jsonl").read_text().splitlines()]
+    trump = {r["round"]: r for r in raw if r["e"] == "trump"}
+    detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
+    assert [r["round"] for r in detail["round_results"]] == [1, 2]
+    for row in detail["round_results"]:
+        assert row["level"] == trump[row["round"]]["rank"]
+        assert row["banker"] == trump[row["round"]]["banker"]
+        assert row["banker"] in range(4)
+
+
 def test_hidden_cards_before_round_end(api):
     srv, store, client = api
     users = [store.upsert_user(_claims(sub=f"s{i}"))["id"] for i in range(4)]

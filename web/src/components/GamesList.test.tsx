@@ -90,13 +90,13 @@ describe("the games list", () => {
     expect(days[0].querySelectorAll(".games-day-row")).toHaveLength(2);
     expect(days[1].querySelectorAll(".games-day-row")).toHaveLength(1);
     const rows = qa(".games-day-row");
-    expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("Room ABCD · with Bot 1, Bea, Bot 3");
+    expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("ABCD · Bot 1, Bea, Bot 3");
     expect(rows[0].textContent).toContain("3 rounds");
     expect(rows[0].textContent).toContain("Levels 5–3");
     expect(rows[0].parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
     expect(rows[0].querySelector(".games-tag")).toBeNull();
     // seat 1: the others are seats 2, 3 and 0
-    expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("Room ABCD · with Bea, Bot 3, Ana");
+    expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("ABCD · Bea, Bot 3, Ana");
     expect(rows[2].textContent).toContain("1 round");
     expect(rows[2].querySelector(".games-tag")?.textContent).toBe("incomplete");
     expect(button("Load more")).toBeUndefined();
@@ -144,8 +144,8 @@ describe("a game", () => {
     routes["GET /api/me/games?limit=20"] = { status: 200, body: {
       games: [row("g1", 1_790_000_000), row("g2", 1_789_000_000)], next_before: null } };
     routes["GET /api/me/games/g1"] = { status: 200, body: { ...row("g1", 1_790_000_000), round_results: [
-      { round: 1, seat: 0, result: { winner_team: 0, level_change: 2, attacker_points: 35 } },
-      { round: 2, seat: 0, result: { winner_team: 1, level_change: 1, attacker_points: 90 } },
+      { round: 1, seat: 0, level: "2", banker: 0, result: { winner_team: 0, level_change: 2, attacker_points: 35 } },
+      { round: 2, seat: 0, level: "J", banker: 1, result: { winner_team: 1, level_change: 1, attacker_points: 90 } },
     ] } };
   });
 
@@ -154,9 +154,9 @@ describe("a game", () => {
     await click(qa(".games-day-row")[0]);
     const rounds = qa(".games-round");
     expect(rounds.map((r) => r.querySelector(".games-round-n")?.textContent)).toEqual(["Round 1", "Round 2", "Round 3"]);
-    expect(rounds[0].textContent).toContain("won, +2 levels");
-    expect(rounds[1].textContent).toContain("lost, +1 level");
-    expect(rounds[2].textContent).toContain("unfinished");
+    expect(rounds[0].querySelector(".games-round-res")?.textContent).toBe("Level 2 · Defender · Won");
+    expect(rounds[1].querySelector(".games-round-res")?.textContent).toBe("Level J · Attacker · Lost");
+    expect(rounds[2].querySelector(".games-round-res")?.textContent).toBe("Unfinished");
     expect(rounds.every((r) => r.querySelector("button")?.textContent === "Replay")).toBe(true);
   });
 
@@ -298,7 +298,7 @@ it("review: an authoritative empty refresh removes the last deleted cached game"
   await act(async()=>{root.render(<SavedGames cacheKey={key} onPlay={()=>{}} />);});
   await settle();
   expect(host.textContent).toContain("No saved games yet");
-  expect(host.textContent).not.toContain("Room ABCD");
+  expect(host.textContent).not.toContain("ABCD");
 });
 
 it("review: remove last game through cached Me history reaches empty state", async () => {

@@ -27,13 +27,19 @@ export interface GameRow {
 }
 
 export interface GameDetail extends GameRow {
-  round_results: {
-    round: number;
-    seat: number;
-    result: Record<string, unknown>;
-    /** The viewer's rating change that round; absent when it was not rated. */
-    rating_delta?: number;
-  }[];
+  round_results: RoundResult[];
+}
+
+export interface RoundResult {
+  round: number;
+  seat: number;
+  result: Record<string, unknown>;
+  /** The rank the round was played at, e.g. "6" or "J". */
+  level?: string;
+  /** The banker's seat; the banker's team defends. */
+  banker?: number;
+  /** The viewer's rating change that round; absent when it was not rated. */
+  rating_delta?: number;
 }
 
 export interface GamesPage {

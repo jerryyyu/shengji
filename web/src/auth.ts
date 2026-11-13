@@ -5,10 +5,12 @@
 // sends on its own, to `/api/*` and on the `/ws` handshake alike.
 
 import { useEffect, useState } from "react";
+import { forgetPrivateSession } from "./home/session";
+import { nativeAppleSignOut, nativeGoogleSignOut } from "./nativeAuth";
 import { conn } from "./ws";
 
 export interface AuthUser {
-  /** The Google profile name. */
+  /** The profile name: Google's, or the name Apple sent on the first sign-in. */
   name: string;
   email: string;
   picture: string | null;
@@ -30,7 +32,10 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
   };
 }
 
-export type AuthStatus = "loading" | "off" | "out" | "in";
+/** "off": the server has no sign-in configured. "error": the server could
+ *  not be asked (no connection, or it answered with a failure), so whether
+ *  sign-in exists is unknown and its controls show as unavailable. */
+export type AuthStatus = "loading" | "off" | "error" | "out" | "in";
 
 export interface AuthState {
   status: AuthStatus;
@@ -72,8 +77,19 @@ async function api<T>(path: string, init?: RequestInit): Promise<{ status: numbe
   return { status: resp.status, body };
 }
 
+/** Thrown when `/api/auth/config` could not answer: a network failure or a
+ *  5xx. A server without the route (404) has no sign-in, which is "off". */
+export class AuthConfigUnavailable extends Error {}
+
 export async function fetchAuthConfig(): Promise<{ google_client_id: string | null }> {
-  const { status, body } = await api<{ google_client_id: string | null }>("/api/auth/config");
+  let got: { status: number; body: { google_client_id: string | null } | null };
+  try {
+    got = await api<{ google_client_id: string | null }>("/api/auth/config");
+  } catch {
+    throw new AuthConfigUnavailable("no connection");
+  }
+  const { status, body } = got;
+  if (status >= 500) throw new AuthConfigUnavailable(`status ${status}`);
   if (status !== 200 || !body) return { google_client_id: null };
   return { google_client_id: body.google_client_id ?? null };
 }
@@ -90,7 +106,7 @@ export const NAME_MESSAGES: Record<string, string> = {
   empty: "Enter a name.",
   too_long: `Up to ${DISPLAY_NAME_MAX} characters.`,
   control_chars: "No line breaks or control characters.",
-  reserved: "That name is reserved for bots and the system.",
+  reserved: "That name is reserved.",
   not_allowed: "That name is not allowed.",
   not_a_string: "Enter a name.",
 };
@@ -157,6 +173,36 @@ export async function loginWithGoogle(credential: string, nonce: string): Promis
   return toUser(body);
 }
 
+/** What the app posts after Apple's native sheet: the identity token, the raw
+ *  nonce whose SHA-256 hex the sheet put into it, the authorization code the
+ *  server exchanges (to revoke the grant when the account is deleted), and
+ *  the name Apple sends only on the first authorization. */
+export interface AppleLogin {
+  identityToken: string;
+  nonce: string;
+  authorizationCode: string | null;
+  givenName: string | null;
+  familyName: string | null;
+}
+
+export async function loginWithApple(login: AppleLogin): Promise<AuthUser> {
+  const { status, body } = await api<AuthUser & { detail?: string }>("/api/auth/apple", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      identity_token: login.identityToken,
+      nonce: login.nonce,
+      authorization_code: login.authorizationCode,
+      given_name: login.givenName,
+      family_name: login.familyName,
+    }),
+  });
+  if (status !== 200 || !body) {
+    throw new Error(body?.detail ?? `Sign-in failed (${status})`);
+  }
+  return toUser(body);
+}
+
 /** Revoke the session. Resolves only when the server confirmed it; a 5xx or
  *  a network failure throws, because the HttpOnly cookie is then still live
  *  and the page must not claim otherwise. */
@@ -168,6 +214,20 @@ export async function logout(): Promise<void> {
     throw new Error("Sign-out failed: no connection. Try again.");
   }
   if (status !== 200) throw new Error(`Sign-out failed (${status}). Try again.`);
+}
+
+/** `DELETE /api/me`: remove the account for good. Resolves once the server
+ *  answered 204 (it also clears the session cookie); throws otherwise, so
+ *  the page keeps the account signed in and says why. */
+export async function deleteAccount(): Promise<void> {
+  let status: number;
+  try {
+    ({ status } = await api("/api/me", { method: "DELETE" }));
+  } catch {
+    throw new Error("Could not delete the account: no connection. Try again.");
+  }
+  if (status === 429) throw new Error("Too many changes; try again in a minute.");
+  if (status !== 204) throw new Error(`Could not delete the account (${status}). Try again.`);
 }
 
 /** The display-name default for a signed-in player who typed none. */
@@ -184,6 +244,13 @@ export function newNonce(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The lowercase SHA-256 hex of a nonce: what Apple's sheet is given, so the
+ *  raw nonce stays with the page until it is posted. */
+export async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 let gisLoading: Promise<GoogleAccountsId> | null = null;
@@ -234,8 +301,9 @@ class AuthStore {
   }
 
   /** Idempotent: ask the server whether sign-in exists and who we are. A
-   *  network failure reads as "off": the lobby then looks exactly like a
-   *  deployment without the feature. */
+   *  server without sign-in reads as "off"; a server that could not be
+   *  reached reads as "error", so the sign-in controls stay in place,
+   *  unavailable, instead of vanishing. */
   async init(): Promise<void> {
     if (this.started) return;
     this.started = true;
@@ -248,13 +316,14 @@ class AuthStore {
       const user = await fetchMe();
       this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user });
     } catch {
-      this.set({ status: "off", clientId: null, user: null });
+      this.set({ status: "error", clientId: null, user: null });
     }
   }
 
   /** A login the server confirmed (the cookie is set). The open socket
    *  still carries the guest handshake, so it is replaced. */
   signedIn(user: AuthUser): void {
+    forgetPrivateSession();
     this.set({ status: "in", user });
     conn.reconnect();
   }
@@ -274,6 +343,24 @@ class AuthStore {
     } catch {
       /* GIS not loaded */
     }
+    void nativeGoogleSignOut();
+    void nativeAppleSignOut(false);
+    forgetPrivateSession();
+    this.set({ status: "out", user: null });
+    conn.reconnect();
+  }
+
+  /** The server deleted the account and cleared its cookie: forget it here
+   *  the way a confirmed sign-out does. */
+  deleted(): void {
+    try {
+      window.google?.accounts?.id?.disableAutoSelect();
+    } catch {
+      /* GIS not loaded */
+    }
+    void nativeGoogleSignOut();
+    void nativeAppleSignOut(true);
+    forgetPrivateSession();
     this.set({ status: "out", user: null });
     conn.reconnect();
   }

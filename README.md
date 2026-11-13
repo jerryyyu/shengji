@@ -57,6 +57,14 @@ Earlier releases, newest first (full history in [DEPLOY.md](DEPLOY.md) and [AI_P
 
 **Budget and fallbacks.** The heuristic decides first. Card play and declaration have 3 s per decision and the bury 2 s, checked between draws and model batches; past the budget or on any error the bot plays the heuristic's choice.
 
+### The models
+
+All three are trained in PyTorch, exported to `.npz` and run in NumPy on the server CPU; value positions go in batches of 128. On Fly, a release 52 decision takes p95 0.855 s with one game running ([DEPLOY.md](DEPLOY.md#latency)).
+
+- **Belief: B1a (`028131a0`), a transformer, 3.2M parameters.** A causal 4-layer encoder (width 192, 4 heads) reads the round's earlier plays as tokens: cards, seat, trick, position in the trick, led suit and attempted throws. One query per card (54) cross-attends to that history through 4 layers, then the cards attend to each other in one more; a 2-layer MLP (256 wide) over 1,115 public features adds to the output. The output is 54 × 4 logits (next player, partner, previous player, kitty), masked to the holders the public facts allow and turned into probabilities by a softmax at the package's calibration temperature, 1.019, which flattens them slightly; no setting changes it in release 52. It is trained to predict each hidden card's true holder: S58 fine-tuned on 10.3M decisions from the Y self-play rounds.
+- **Value: G3 Stage A (`f4f4127e`), a residual MLP, 620k parameters.** 833 inputs (561 public features, the world's complete deal as 5 × 54 card counts for the four hands and the kitty, and 2 for the perspective) go through a linear stem to width 165, four residual blocks (LayerNorm, a 330-wide ReLU layer, back to 165, added to the block's input), and a final LayerNorm and ReLU. The head gives 204 outcome classes; their softmax, weighted by each class's signed level, is the expected signed level for the scoring seat's team. It is trained with cross-entropy on round outcomes from 200k Y self-play rounds, warm from SMV3's trunk.
+- **Prior: FT1 (`1fa201b2`), the same residual MLP with a 54-card policy head.** It reads one root position per sampled world and returns 54 card log-odds; the search uses them raw, with no softmax or temperature, summed over a play's cards. It is the policy net fine-tuned toward about 37.8k expert-search labels. The prior package's value head and the value package's policy head are not used.
+
 Rule tokens used in the figures and tables:
 
 - **div**: diversify candidates (at most 2 of the same shape)
@@ -69,7 +77,7 @@ Rule tokens used in the figures and tables:
 - **vdef**: in round 1, consult the value head at every declare chance
 - **whl / whd**: sampled worlds must be consistent with every earlier follow (history-legal)
 - **wht**: sampled worlds must also leave every earlier accepted throw unrefusable (release 52)
-- **bw**: hidden hands proposed by the belief model (S17 in release 46, S58 since release 48)
+- **bw**: hidden hands proposed by the belief model (B1a since release 50; S58 in releases 48 and 49, S17 in release 46)
 - **ele / ed7 / xf7**: exact endgame search for leads and follows at ≤7 cards
 - **elt / elm / els1600**: the exact lead keeps the baseline lead unless strictly better, solves its own first trick by minimax, and stops at 1.6 s (release 52)
 - **bwv**: wide value-only bury (64 candidate kitties)

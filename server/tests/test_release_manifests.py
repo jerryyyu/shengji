@@ -49,6 +49,18 @@ def _edited_fly(tmp_path, old, new):
     return path
 
 
+@pytest.mark.parametrize("directory", ["/data/telemetry", "/data/ui-events"])
+def test_telemetry_sink_stays_in_server_config_but_out_of_bot_manifest(tmp_path, directory):
+    fly = _edited_fly(tmp_path, "SHENGJI_TELEMETRY_DIR = '/data/telemetry'",
+                      f"SHENGJI_TELEMETRY_DIR = '{directory}'")
+    assert served_config.fly_env(fly)["SHENGJI_TELEMETRY_DIR"] == directory
+    assert releases.fly_env(fly) == releases.load(52)["env"]
+    edited = copy.deepcopy(releases.load(52))
+    edited["env"]["SHENGJI_TELEMETRY_DIR"] = directory
+    with pytest.raises(releases.ManifestError, match="enters no bot"):
+        releases.validate(edited)
+
+
 def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
     manifest = releases.load(52)
     # fly.toml edited, manifest not

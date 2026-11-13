@@ -288,7 +288,9 @@ def test_debug_tool_on_a_room_log(arms, tmp_path, capsys):
     for (round_no, ply, rnd, seat, rec), d in list(zip(listed, on))[:: max(1, len(on) // 12)]:
         assert seat == d["seat"] and rec == d["record"]
         result = belief_debug.report(rnd, seat, rec, model=model)
-        assert result["snapshot_diff"] == 0 and all(result["checks"].values())
+        assert result["snapshot_diff"] == 0
+        assert result["checks"] == {
+            k: (True if k in rec else None) for k in belief_debug.REPLAY_CHECKS}
         if result["fill"] == 0:
             assert [result["worlds"]] == d["worlds"]
         assert 0.0 < result["truth"]["true_mass"] <= 1.0
@@ -391,7 +393,8 @@ def test_trajectory_shard_to_report(pinned_production_package, belief_package, t
             assert fields["worlds"] == row["action_values"]["worlds"] == 64
             result = belief_debug.report(rnd, seat, fields, model=model)
             assert result["snapshot_diff"] == 0
-            assert result["checks"] == {k: True for k in belief_debug.REPLAY_CHECKS}
+            assert result["checks"] == {
+                k: (True if k in fields else None) for k in belief_debug.REPLAY_CHECKS}
             rejected += fields["history_rejections"] > 0
             reports += 1
     assert reports >= 50 and rejected >= 5
@@ -440,3 +443,16 @@ def test_debug_fill_accounting_includes_every_rejection():
     assert checks["history_throw_rejections"] is True
     assert checks["history_cap_rejected"] is True
     assert checks["belief_proposed"] is None
+
+
+def test_trajectory_keeps_history_replay_options():
+    from shengji.harvest.trajectory import pv_fields_from_record
+
+    counters = {"history_throw_events": 1, "history_throw_rejections": 2,
+                "history_cap_rejected": 3, "history_unchecked_worlds": 4,
+                "history_fill_worlds": 5}
+    rec = {"belief_seed": 17, "belief_proposed": 64, **counters}
+    full = {**rec, "admitted": [["SA"]], "admitted_indices": [0],
+            "selected_index": 0, "played": ["SA"], "value_means": [0.0], "worlds": 64}
+    _, _, values = pv_fields_from_record(full, [["SA"]])
+    assert values["belief"] == rec

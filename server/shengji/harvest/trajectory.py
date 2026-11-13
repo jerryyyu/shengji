@@ -392,7 +392,9 @@ BELIEF_RECORD_PREFIX = "belief_"
 #: (``scripts/belief_debug.py``), carried beside the belief fields when present
 BELIEF_REPLAY_COUNTERS = ("history_follow_events", "history_rejections",
                           "history_fallback_worlds", "refusal_rejections",
-                          "refusal_fallback_worlds")
+                          "refusal_fallback_worlds", "history_throw_events",
+                          "history_throw_rejections", "history_cap_rejected",
+                          "history_unchecked_worlds", "history_fill_worlds")
 MANIFEST_SCHEMA = "shengji-trajectory-manifest-v1"
 SHARD_SCHEMA = "shengji-trajectory-shard-v1"
 RUN_SCHEMA = "shengji-trajectory-run-v1"

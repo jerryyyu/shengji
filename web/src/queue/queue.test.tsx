@@ -1593,13 +1593,14 @@ describe("the search on screen is the server's", () => {
     expect(q(".q-toast")?.textContent).toContain("Press Play to find one.");
   });
 
-  it("a search held by another device of yours shows as such, and clears when it ends", async () => {
+  it.each([true, false])("an elsewhere-held table can be reclaimed with leader=%s", async (leader) => {
     await renderApp();
-    say({ type: "queue_state", queued: true, elsewhere: true, count: 2, since: nowSecs(), leader: true,
+    say({ type: "queue_state", queued: true, elsewhere: true, count: 2, since: nowSecs(), leader,
           table: null, offer: null });
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Your table is open on another device.");
     expect(q(".q-find")).toBeNull();
     await pastGuard();
+    expect(Boolean(button("Leave table", panel()!))).toBe(leader);
     click(button("Move it here", panel()!));
     expect(lastSent()).toEqual({ type: "queue_join" });
     say({ type: "queue_state", queued: false, count: 1 });

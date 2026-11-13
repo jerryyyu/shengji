@@ -224,9 +224,9 @@ function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): Pane
   }
   if (kind === "elsewhere") {
     return {
-      kicker: "Your table", title: "Your table is open on another device.", lines: [], seats: null, you: 0, led,
+      kicker: "Your table", title: "Your table is open on another device.", lines: [], seats: null, you: 0,
       primary: { label: "Move it here", disabled: q.pending !== null, onClick: () => queue.join() },
-      secondary: leave,
+      secondary: q.leader ? leave : null,
     };
   }
   return null;

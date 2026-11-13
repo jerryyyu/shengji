@@ -1814,6 +1814,50 @@ def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_c
     ratings.CARRIED_CAPS.clear()
 
 
+def test_a_newcomer_leaving_at_the_end_of_the_round_it_joined_carries_no_cap(
+        wsenv, monkeypatch):
+    """The round joined mid-way was played out: Leave on its round-end screen
+    is an ordinary between-rounds leave, with no carried cap and no cooldown."""
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    ratings.CARRIED_CAPS.clear()
+    host, host_headers = _user(store, "host", "Host")
+    alice, alice_headers = _user(store, "alice", "Alice")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=alice_headers) as a:
+        h.send_json({"type": "queue_join"})
+        _drain(h, "queue_state")
+        h.send_json({"type": "queue_start_bots"})
+        code = _drain(h, "match_started")["room"]
+        room = srv.rooms[code]
+        room.seats[0].away = True                    # the bot plays the host's seat too
+        client.portal.call(srv.kick_bots, room)
+        _wait_until(lambda: room.round is not None and room.round.phase == "play")
+        a.send_json({"type": "queue_join"})
+        offer = _drain(a, "queue_state")["offer"]
+        assert offer["room"] == code and offer["pick"] == 2
+        a.send_json({"type": "open_table_join", "room": code, "seat": 2})
+        _drain(a, "match_started")
+        _wait_until(lambda: room.seats[2].user_id == alice)
+        round_no = room.game.round_no
+        assert room.seats[2].joined_round == round_no
+        # the bot plays Alice's cards for her; it stands in for her own plays,
+        # so that cover is not itself read as abandoning the round
+        monkeypatch.setattr(srv, "_joined_round_ended", lambda room: None)
+        room.seats[2].away = True
+        client.portal.call(srv.kick_bots, room)
+        _wait_until(lambda: room.round.phase == "round_end")
+        room.seats[2].away = False
+        assert room.game.round_no == round_no and alice not in ratings.CARRIED_CAPS
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=400)
+        assert alice not in ratings.CARRIED_CAPS
+        a.send_json({"type": "queue_join"})
+        state = _drain(a, "queue_state", tries=400)
+        assert state["queued"]
+    ratings.CARRIED_CAPS.clear()
+
+
 @pytest.mark.parametrize("left", [True, False])
 def test_leaving_or_dropping_before_the_handover_ends_the_join(otenv, left):
     srv, store, env = otenv

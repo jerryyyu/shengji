@@ -1966,6 +1966,38 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   from { opacity: 0; }
 }
 
+/* a newcomer's first turns: the coach line in gold, the cards that follow
+   the lead at full strength and the rest dimmed; an idle turn pulses both */
+.coach-cue {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.hand-slot.dim .card {
+  filter: brightness(0.55) saturate(0.7);
+}
+
+.coach-cue.nudge {
+  animation: follow-hint-in 160ms var(--ease-out) both, coach-pulse 1.6s ease-in-out infinite;
+}
+
+.coach-cue.nudge ~ .hand .hand-slot.lit .card {
+  animation: coach-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes coach-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--gold-soft); }
+  50% { box-shadow: 0 0 0 2px var(--gold), 0 0 14px 2px var(--gold-soft); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-cue.nudge,
+  .coach-cue.nudge ~ .hand .hand-slot.lit .card {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--gold);
+  }
+}
+
 /* the lobby's stalled line, at the table: the server has been out of reach
    for a while, and Retry tries again now */
 .table-stalled {

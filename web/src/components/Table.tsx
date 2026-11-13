@@ -23,6 +23,7 @@ import { followHint } from "../followRules";
 import { STALL_MS } from "./Lobby";
 import { MoveRing } from "./MoveClock";
 import { RING_SECS, useMoveClock } from "../useMoveClock";
+import { NUDGE_MS, coachFor, isNewcomer, playsMade, recordPlay } from "../firstTurns";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -299,11 +300,14 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // - an error comes back: pending clears and the selection stays.
   // The socket opening alone settles nothing, and neither does a same-hand
   // broadcast on the connection the play was sent on.
-  const [pending, setPending] = useState<{ handKey: string; turn: number | null; generation: number } | null>(null);
+  const [pending, setPending] = useState<{ kind: "play" | "bury"; handKey: string; turn: number | null; generation: number } | null>(null);
   const handKey = state.hand.map((c) => c.id).join(",");
+  // your own plays so far in this browser; the first few get the coach
+  const [plays, setPlays] = useState(playsMade);
   useEffect(() => {
     if (!pending) return;
     if (handKey !== pending.handKey || state.turn !== pending.turn) {
+      if (pending.kind === "play" && isNewcomer(plays)) setPlays(recordPlay());
       setPending(null);
       setSelected(new Set());
     } else if (conn.generation !== pending.generation) {
@@ -325,7 +329,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
-    setPending({ handKey, turn: state.turn, generation: conn.generation });
+    setPending({ kind: msg.type, handKey, turn: state.turn, generation: conn.generation });
   };
 
   // When the trick resets and last_trick changed, linger on the finished trick
@@ -385,6 +389,21 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     return () => window.clearTimeout(t);
   }, [hint]);
   useEffect(() => { setHint(null); }, [selected, state.turn, state.phase]);
+
+  // A newcomer's turn says what to tap, lights the cards that follow the
+  // lead, and after NUDGE_MS with nothing chosen nudges once more.
+  const coach = state.phase === "play" && myTurn && pending === null && isNewcomer(plays)
+    ? coachFor(state.hand, lead, state.trump)
+    : null;
+  const coaching = coach !== null;
+  const nothingChosen = selected.size === 0;
+  const [nudge, setNudge] = useState(false);
+  useEffect(() => {
+    setNudge(false);
+    if (!coaching || !nothingChosen) return;
+    const t = window.setTimeout(() => setNudge(true), NUDGE_MS);
+    return () => window.clearTimeout(t);
+  }, [coaching, nothingChosen, state.turn, handKey]);
 
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
@@ -537,9 +556,11 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           </div>
           {hint ? (
             <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>
+          ) : coach && nothingChosen ? (
+            <div className={`follow-hint coach-cue${nudge ? " nudge" : ""}`} role="status">{coach.text}</div>
           ) : null}
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} />
+                rects={handRects} lit={coach?.follow ?? null} />
         </div>
       </div>
 

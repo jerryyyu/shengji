@@ -161,10 +161,15 @@ describe("leaving from the round-end screen", () => {
     expect(sent).toEqual([{ type: "leave_room" }]);
   });
 
-  it("a ranked game's alert says what leaving does to the result", () => {
+  it("a ranked game's alert carries no penalty between rounds: the result is already kept", () => {
     renderModal(makeResult(), { ...waiting, matched: true });
     act(() => { leaveButton()!.click(); });
-    expect(alert()!.querySelector("h2")!.textContent).toBe("Leave this ranked game?");
+    expect(alert()!.querySelector("h2")!.textContent).toBe("Leave the table?");
+    expect(alert()!.querySelector("p")!.textContent).toBe("This round's result is kept.");
+    expect(alert()!.textContent).not.toMatch(/draw|bot takes your seat/i);
+    expect(sent).toEqual([]);
+    act(() => { choice("Leave")!.click(); });
+    expect(sent).toEqual([{ type: "leave_room" }]);
   });
 
   it("has no timer: the alert waits, and Keep playing closes it", () => {

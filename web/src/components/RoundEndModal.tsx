@@ -266,7 +266,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
               {/* The modal dialog makes the HUD inert, so its Leave control
                   is unreachable here; without this, a player waiting on
                   others has no way out until everyone confirms. */}
-              <LeaveButton variant="dialog" ranked={!!state.matched} />
+              <LeaveButton variant="dialog" ranked={!!state.matched} betweenRounds />
             </>
           );
         })()}

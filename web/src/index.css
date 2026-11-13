@@ -6265,6 +6265,8 @@ dialog.leave-alert-backdrop {
   cursor: pointer;
 }
 .leave-alert-actions button:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+/* opened from a tap: the first, programmatic focus paints no ring (a key press clears the attribute) */
+.leave-alert-backdrop[data-pointer-open] .leave-alert-actions button:focus-visible { outline: none; }
 .leave-alert-actions .leave-alert-keep {
   border-right: 1px solid #3c4350;
   font-weight: 600;

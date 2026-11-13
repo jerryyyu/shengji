@@ -80,19 +80,16 @@ it("lists the players without a bot row and pins the viewer's own row", async ()
   expect(host.querySelector(".lb-row.anchor")).toBeNull();
   expect(host.textContent).not.toContain("Sheng Ji bot");
   expect(listed[0].querySelector(".lb-rank.top")?.textContent).toBe("1");
-  expect(listed[0].querySelector(".lb-delta")?.textContent).toBe("▲ 24");
   const pinned = host.querySelector(".lb-pin .lb-row.me")!;
   expect(pinned.querySelector(".lb-rank")!.textContent).toBe("26");
   expect(pinned.querySelector(".lb-name-text")!.textContent).toBe("Jerry (you)");
-  expect(pinned.querySelector(".lb-delta")!.textContent).toBe("▼ 12");
+  expect(host.querySelector(".lb-delta")).toBeNull();
 });
 
-it("ratings carry a thousands separator and no change this week is a dash", async () => {
+it("ratings carry a thousands separator", async () => {
   await render();
   const listed = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-row:not(.anchor)")];
   expect(listed.map((r) => r.querySelector(".lb-rating")?.textContent)).toEqual(["1,712", "1,694", "1,540", "1,480"]);
-  expect(listed[1].querySelector(".lb-delta")?.textContent).toBe("–");
-  expect(listed[1].querySelector(".lb-delta")?.className).toContain("delta-flat");
   expect(host.querySelector(".lb-pin .lb-rating")?.textContent).toBe("1,210");
 });
 

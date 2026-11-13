@@ -660,6 +660,75 @@ def test_leaving_a_ranked_room_between_rounds_costs_nothing(env, monkeypatch):
     assert store.user(uid)["rated_rounds"] == 1
 
 
+def _start_undealt(table):
+    """Start the table's next round as the server does, before any card is dealt."""
+    from shengji.api import ratings
+
+    room = table.room
+    room.game.start_round()
+    room.index_round()
+    ratings.round_started(room)
+    return room.round
+
+
+def _deal_out(table, banker=0):
+    room, rnd = table.room, table.room.round
+    while rnd.phase == "deal":
+        seat, idx, code = rnd.deal_next()
+        room.ids[seat][idx] = code
+    rnd.finalize_declare()
+    if rnd.banker is None:
+        rnd.banker = banker
+
+
+def test_leaving_before_the_first_card_of_the_next_round_is_not_an_abandon(env, monkeypatch):
+    """Readied, and the Leave lands after the others' Next round started the
+    next round but before this seat's first card: nothing of that round was
+    seen, so it is not rated, as a leave at the round end would not be."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "readied")
+    partner, _ = _user(store, "stayer")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", partner, "bot"])
+    table.play_round(banker=0)
+    room = table.room
+    rnd = _start_undealt(table)
+    assert room.ratings.present == {0: uid, 2: partner}
+    assert rnd.phase == "deal" and rnd.hands[0] == []
+    ratings.seat_left(room, 0)                 # what leave_room does, then detaches
+    srv._detach(room.seats[0], room)
+    assert room.ratings.left == {} and room.ratings.present == {2: partner}
+    _deal_out(table)
+    table.finish()
+    second = [e for e in _events(store) if e["round_no"] == 2]
+    assert [(e["user_id"], e["abandoned"]) for e in second] == [(partner, 0)]
+    assert store.user(uid)["rated_rounds"] == 1
+
+
+def test_leaving_once_a_card_of_the_round_is_dealt_is_still_an_abandon(env, monkeypatch):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "dealt")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.play_round(banker=0)
+    room = table.room
+    rnd = _start_undealt(table)
+    seat, idx, code = rnd.deal_next()
+    room.ids[seat][idx] = code
+    assert seat == 0 and rnd.hands[0]
+    ratings.seat_left(room, 0)
+    srv._detach(room.seats[0], room)
+    assert room.ratings.left == {uid: 0}
+    _deal_out(table)
+    table.finish()
+    second = [e for e in _events(store) if e["round_no"] == 2]
+    assert [(e["user_id"], e["abandoned"]) for e in second] == [(uid, 1)]
+
+
 def test_away_at_the_round_end_is_an_abandon(env, monkeypatch):
     srv, store, _ = env
     uid, _ = _user(store, "idler")

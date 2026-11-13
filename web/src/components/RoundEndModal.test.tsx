@@ -139,61 +139,42 @@ describe("leaving from the round-end screen", () => {
   // included) is inert; the way out has to live inside the dialog.
   const waiting: GameState = { ...state, ready: [0] };
   const leaveButton = () =>
-    [...host.querySelectorAll("dialog button")].find((b) => /leave/i.test(b.textContent ?? "")) as
+    [...host.querySelectorAll("dialog button")].find((b) => b.textContent === "Leave game") as
       HTMLButtonElement | undefined;
+  const nextButton = () =>
+    [...host.querySelectorAll("dialog button")].find((b) => /Next round|Waiting for others/.test(b.textContent ?? "")) as
+      HTMLButtonElement;
 
-  it("offers an enabled Leave control inside the dialog while you wait for others", () => {
+  for (const [kind, shown] of [["casual", state], ["ranked", { ...state, matched: true }]] as const) {
+    it(`puts Leave below the full-width Next round, the same in a ${kind} room`, () => {
+      renderModal(makeResult(), shown);
+      const leave = leaveButton()!;
+      expect(leave).toBeDefined();
+      expect(leave.className).toBe("btn subtle danger dialog-leave-btn");
+      expect(nextButton().className).toContain("btn primary big");
+      expect(leave.parentElement).toBe(nextButton().parentElement);
+      expect(nextButton().compareDocumentPosition(leave) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+  }
+
+  it("stays enabled while you wait for others", () => {
     const text = renderModal(makeResult(), waiting);
     expect(text).toContain("Waiting for others");
-    const leave = leaveButton();
-    expect(leave).toBeDefined();
-    expect(leave!.disabled).toBe(false);
+    expect(leaveButton()!.disabled).toBe(false);
   });
 
-  const alert = () => host.querySelector<HTMLElement>("[role='alertdialog']");
-  const choice = (label: string) =>
-    [...(alert()?.querySelectorAll("button") ?? [])].find((b) => b.textContent === label) as
-      HTMLButtonElement | undefined;
-
-  it("opens the leave alert, and sends leave_room only on Leave", () => {
+  it("leaves at once: the round is over, so there is nothing to confirm", () => {
     renderModal(makeResult(), waiting);
     act(() => { leaveButton()!.click(); });
-    expect(sent).toEqual([]);
-    expect(alert()!.textContent).toContain("Leave this game?");
-    act(() => { choice("Leave")!.click(); });
+    expect(host.querySelector("[role='alertdialog']")).toBeNull();
     expect(sent).toEqual([{ type: "leave_room" }]);
   });
 
-  it("a ranked game's alert carries no penalty between rounds: the result is already kept", () => {
-    renderModal(makeResult(), { ...waiting, matched: true });
+  it("a ranked game leaves at once too, with no penalty alert", () => {
+    renderModal(makeResult(), { ...state, matched: true });
     act(() => { leaveButton()!.click(); });
-    expect(alert()!.querySelector("h2")!.textContent).toBe("Leave the table?");
-    expect(alert()!.querySelector("p")!.textContent).toBe("This round's result is kept.");
-    expect(alert()!.textContent).not.toMatch(/draw|bot takes your seat/i);
-    expect(sent).toEqual([]);
-    act(() => { choice("Leave")!.click(); });
+    expect(host.querySelector("[role='alertdialog']")).toBeNull();
     expect(sent).toEqual([{ type: "leave_room" }]);
-  });
-
-  it("has no timer: the alert waits, and Keep playing closes it", () => {
-    vi.useFakeTimers();
-    try {
-      renderModal(makeResult(), waiting);
-      act(() => { leaveButton()!.click(); });
-      act(() => { vi.advanceTimersByTime(30_000); });
-      expect(alert()).not.toBeNull();
-      act(() => { choice("Keep playing")!.click(); });
-      expect(alert()).toBeNull();
-      expect(leaveButton()!.textContent).toBe("Leave game");
-      expect(sent).toEqual([]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("is also available before you confirm the next round", () => {
-    renderModal(makeResult());
-    expect(leaveButton()).toBeDefined();
   });
 });
 

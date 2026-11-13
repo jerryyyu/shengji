@@ -24,7 +24,7 @@ def client(tmp_path, monkeypatch):
     from shengji.api import server as srv
 
     srv.LOG_DIR = tmp_path / "logs"
-    # A real deal is ~22s of DEAL_DELAY; these tests care about the protocol,
+    # A real deal is ~15s of DEAL_DELAY; these tests care about the protocol,
     # not the pacing. BOT_DELAY is left alone — one test needs a bot turn to
     # still be PENDING when a human claims that seat.
     monkeypatch.setattr(srv, "DEAL_DELAY", 0.0)
@@ -332,6 +332,54 @@ def test_start_game_to_play_completes_human_banker_bury(client, monkeypatch):
         assert room.round.phase == "play"
         assert len(room.round.buried) == KITTY_SIZE
         assert len(room.round.hands[0]) == 25
+
+
+def test_the_deal_paces_a_card_every_0_15_s_and_keeps_the_declare_windows():
+    from shengji.api import server as srv
+    from shengji.engine.round import HAND_SIZE
+
+    assert srv.DEAL_DELAY == 0.15
+    assert 4 * HAND_SIZE * srv.DEAL_DELAY == pytest.approx(15.0)
+    # the window after the last card is the deal-speed-independent part
+    assert srv.DECLARE_GRACE == 5.0 and srv.DECLARE_EXTEND == 3.0
+
+
+def test_a_human_declaration_during_the_deal_is_accepted(client, monkeypatch):
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import server as srv
+
+    from shengji.engine.cards import card_rank
+    from shengji.engine.round import Round
+
+    monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
+    # Slow enough that a socket round trip lands mid-deal, at the real pace's order.
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0.05)
+    real_init = Round.__init__
+
+    def init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        # seat 0's first card is a trump-rank card, so it can declare at once
+        i = next(i for i, c in enumerate(self.deck) if card_rank(c) == self.trump_rank)
+        self.deck[0], self.deck[i] = self.deck[i], self.deck[0]
+
+    monkeypatch.setattr(Round, "__init__", init)
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        a.send_json({"type": "start_game"})
+        room = srv.rooms[code]
+        st = _drain(a, "state", tries=60)
+        while not st["declare_options"]:
+            assert st["phase"] == "deal", "the deal ended before seat 0 could declare"
+            st = _drain(a, "state", tries=60)
+        option = st["declare_options"][0]
+        a.send_json({"type": "declare", "card_ids": option})
+        for _ in range(200):
+            st = _drain(a, "state", tries=60)
+            if st["current_declaration"] is not None:
+                break
+        assert st["current_declaration"]["seat"] == 0
+        assert st["phase"] == "deal"                 # taken while cards were still coming
+        assert room.round.declaration is not None and room.round.declaration["seat"] == 0
 
 
 def test_claim_preserves_private_hand_and_ids(client):

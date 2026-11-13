@@ -112,7 +112,7 @@ def _prior_health() -> dict | None:
 BOT_DELAY = 0.7
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
 CHAT_MAX_LEN = 300    # per-message cap
-DEAL_DELAY = 0.22          # seconds between dealt cards (~22s full deal)
+DEAL_DELAY = 0.15          # seconds between dealt cards (~15s full deal)
 DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected
@@ -2686,10 +2686,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         ratings.seat_left(room, room.seats.index(me))
                     # a newcomer leaving the round it joined mid-way: the
                     # seat is a bot's again, and the leave costs (rule in
-                    # _joined_leave_penalty)
+                    # _joined_leave_penalty). At the round end that round is
+                    # over, so leaving then is an ordinary between-rounds leave.
                     joined_leave = (room.game is not None and not room.game.game_over
                                     and me in room.seats and not me.is_bot
-                                    and me.joined_round == room.game.round_no)
+                                    and me.joined_round == room.game.round_no
+                                    and room.round is not None
+                                    and room.round.phase != "round_end")
                     leaver = me.user_id
                     _detach(me, room, my_gen)
                     if joined_leave:

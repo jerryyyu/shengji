@@ -5,9 +5,34 @@ import { useId, useState } from "react";
 import { useAuth } from "../auth";
 import GoogleSignIn from "./GoogleSignIn";
 import ResultDialog from "./ResultDialog";
-import LeaveButton from "./LeaveButton";
+import LeaveAlert from "./LeaveAlert";
+import { OFFLINE } from "../offlineMode";
 import { MoveRing } from "./MoveClock";
 import { RING_SECS } from "../useMoveClock";
+
+/** Leave below Next round, the same in every room. The round is over and
+ *  recorded and the next has not started, so leaving costs nothing and goes
+ *  at once; a practice game on this device ends with it, so that one still
+ *  asks first. The modal dialog makes the HUD's own Leave control
+ *  unreachable here. */
+function RoundEndLeave({ ranked }: { ranked: boolean }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="btn subtle danger dialog-leave-btn"
+        onClick={() => (OFFLINE ? setAsking(true) : conn.send({ type: "leave_room" }))}
+      >
+        Leave game
+      </button>
+      {asking ? (
+        <LeaveAlert ranked={ranked} practice betweenRounds
+                    onKeep={() => setAsking(false)} onLeft={() => setAsking(false)} />
+      ) : null}
+    </>
+  );
+}
 
 interface RoundEndModalProps {
   state: GameState;
@@ -268,10 +293,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
                   )}
                 </div>
               )}
-              {/* The modal dialog makes the HUD inert, so its Leave control
-                  is unreachable here; without this, a player waiting on
-                  others has no way out until everyone confirms. */}
-              <LeaveButton variant="dialog" ranked={ranked} betweenRounds />
+              <RoundEndLeave ranked={ranked} />
             </>
           );
         })()}

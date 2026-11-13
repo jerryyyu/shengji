@@ -526,7 +526,12 @@ def round_started(room: Any) -> None:
 @_guarded
 def seat_left(room: Any, seat: int) -> None:
     """A player pressed Leave mid-game: while a round is in play, that round
-    counts as abandoned unless they are back in the seat when it ends."""
+    counts as abandoned unless they are back in the seat when it ends.
+
+    Before their first card of a round is dealt they have seen nothing of it
+    (a Leave sent from the round-end screen can land just after the others'
+    Next round starts it), so they leave it unrated, as if they had left
+    before it started."""
     tracker: RoomRatings | None = getattr(room, "ratings", None)
     if tracker is None or room.game is None or room.game.game_over:
         return
@@ -534,8 +539,13 @@ def seat_left(room: Any, seat: int) -> None:
     if rnd is None or rnd.phase == "round_end":
         return
     uid = _signed_in(room.seats[seat])
-    if uid is not None:
-        tracker.left[uid] = seat
+    if uid is None:
+        return
+    if rnd.phase == "deal" and not rnd.hands[seat]:
+        if tracker.present.get(seat) == uid:
+            del tracker.present[seat]
+        return
+    tracker.left[uid] = seat
 
 
 def pending(room: Any) -> bool:

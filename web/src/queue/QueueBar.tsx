@@ -1,4 +1,6 @@
 import { useRef } from "react";
+import { WIDE, openTab } from "../home/route";
+import { SHORT_VIEWPORT, useMediaQuery } from "../phoneLayout";
 import { BOTS_WARN_MS, clock, partnerName, queue, useNow, useQueue } from "./store";
 import type { QueueView } from "./store";
 import { useBarClearance } from "./useBarClearance";
@@ -80,21 +82,15 @@ export function WaitToggle({ q }: { q: QueueView }) {
   );
 }
 
-/** A phone's queue bar while you are alone in the queue, pinned above the
- *  tab bar on every tab, in four rows: who is searching and for how long;
- *  the countdown; the leader's switch; Start with bots and Leave queue side
- *  by side. Once someone else queues it becomes the waiting table. */
-export default function QueueBar() {
-  const { q, text } = useBar();
-  const ref = useRef<HTMLDivElement | null>(null);
-  useBarClearance(ref, text !== null);
-  if (!text) return null;
+/** The four rows the phone's bar and the wide Play card share: who is
+ *  searching and for how long; the countdown; the leader's switch; Start
+ *  with bots and Leave queue side by side. */
+function CardRows({ q, text, title }: { q: QueueView; text: BarText; title: string }) {
   return (
-    <div ref={ref} className={`q-bar${text.warn ? " warn" : ""}`} role="status" aria-live="polite"
-         title={`Waiting ${text.waited}`}>
+    <>
       <div className="q-bar-head">
         <span className="q-bar-dot" aria-hidden="true" />
-        <b className="q-bar-title">{text.label}</b>
+        <b className="q-bar-title">{title}</b>
         <span className="q-bar-time">{text.waited}</span>
       </div>
       <div className="q-bar-subrow">
@@ -103,11 +99,65 @@ export default function QueueBar() {
       </div>
       <WaitToggle q={q} />
       <div className="q-bar-acts"><Actions q={q} /></div>
+    </>
+  );
+}
+
+/** Whether the queue shows inline (an iPad or a desktop window): the Ranked
+ *  card on Play and a pill in the top bar elsewhere. A phone held sideways
+ *  is wide too, but keeps the strip under its top bar. */
+export function useInlineQueue(): boolean {
+  const wide = useMediaQuery(WIDE);
+  const short = useMediaQuery(SHORT_VIEWPORT);
+  return wide && !short;
+}
+
+/** A phone's queue bar while you are alone in the queue, pinned above the
+ *  tab bar on every tab. Once someone else queues it becomes the waiting
+ *  table. */
+export default function QueueBar() {
+  const { q, text } = useBar();
+  const ref = useRef<HTMLDivElement | null>(null);
+  useBarClearance(ref, text !== null);
+  if (!text) return null;
+  return (
+    <div ref={ref} className={`q-bar${text.warn ? " warn" : ""}`} role="status" aria-live="polite"
+         title={`Waiting ${text.waited}`}>
+      <CardRows q={q} text={text} title={text.label} />
     </div>
   );
 }
 
-/** The same, as a chip in the wide layout's top bar. */
+/** The same rows in place of Play's Ranked buttons on an iPad or a desktop
+ *  window, titled "Searching" when alone. Null while not searching alone. */
+export function QueueCard() {
+  const { q, text } = useBar();
+  if (!text) return null;
+  const title = text.label === "Finding a ranked game" ? "Searching" : text.label;
+  return (
+    <div className={`q-bar q-card${text.warn ? " warn" : ""}`} role="status" aria-live="polite"
+         title={`Waiting ${text.waited}`}>
+      <CardRows q={q} text={text} title={title} />
+    </div>
+  );
+}
+
+/** The top bar's way back to the search from another tab on an iPad or a
+ *  desktop window: "Searching · 0:24", opening Play; a narrow top bar keeps
+ *  only the dot and the time. */
+export function QueuePill() {
+  const { text } = useBar();
+  if (!text) return null;
+  return (
+    <button type="button" className={`q-pill${text.warn ? " warn" : ""}`}
+            aria-label={`Searching · ${text.waited}, back to the queue`} onClick={() => openTab("play")}>
+      <span className="q-bar-dot" aria-hidden="true" />
+      <span><span className="q-pill-label">Searching · </span>{text.waited}</span>
+    </button>
+  );
+}
+
+/** The same in one line, for the strip under a sideways phone's top bar. */
 export function QueueChip() {
   const { q, text } = useBar();
   if (!text) return null;
@@ -125,8 +175,7 @@ export function QueueChip() {
   );
 }
 
-/** The chip's content on a strip under the top bar, for wide windows too
- *  narrow to fit it beside four tabs (CSS shows one or the other). */
+/** The chip on a strip under a sideways phone's top bar. */
 export function QueueStrip() {
   const { text } = useBar();
   if (!text) return null;

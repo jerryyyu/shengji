@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
+import { QueueCard, useInlineQueue } from "./QueueBar";
 import { partnerName, queue, useQueue } from "./store";
 import Sheet from "./Sheet";
 
@@ -53,7 +54,8 @@ export function PartyChip() {
 /** Play's Ranked block. Signed in: a wide gold Play that joins the ranked
  *  queue at once (as the pair when one is formed and you lead it) and Duo,
  *  which opens the pair sheet. Signed out: Sign in to play ranked, which
- *  shows the sign-in buttons in its place. With sign-in off or still
+ *  shows the sign-in buttons in its place. Searching alone on an iPad or a
+ *  desktop window, the queue's card takes the buttons' place. With sign-in off or still
  *  loading there is no ranked play to offer and nothing shows. */
 export function RankedSection({ online }: {
   /** The socket is open; without it every ranked control is disabled. */
@@ -63,6 +65,7 @@ export function RankedSection({ online }: {
   const account = useAuth();
   const [signingIn, setSigningIn] = useState(false);
   const labelId = useId();
+  const inlineQueue = useInlineQueue();
   if (account.status !== "in" && account.status !== "out") return null;
 
   let body;
@@ -80,7 +83,8 @@ export function RankedSection({ online }: {
     let disabled = !online;
     if (searching) { label = "Searching…"; disabled = true; }
     else if (pair && !pair.you_lead) disabled = true;
-    body = (
+    if (inlineQueue && q.queued && !q.table) body = <><PartyChip /><QueueCard /></>;
+    else body = (
       <>
         <PartyChip />
         <div className="play-ranked-row">

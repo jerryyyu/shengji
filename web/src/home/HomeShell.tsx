@@ -8,7 +8,7 @@ import { WIDE, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
 import { useTabSwipe } from "./useTabSwipe";
 import type { MeSection, Tab } from "./route";
-import QueueBar, { QueueChip, QueueStrip } from "../queue/QueueBar";
+import QueueBar, { QueuePill, QueueStrip, useInlineQueue } from "../queue/QueueBar";
 import AccountChip from "../components/AccountChip";
 
 export { WIDE };
@@ -104,9 +104,11 @@ const WIDE_TABS: { tab: Tab; section?: MeSection; label: string }[] = [
 
 /** The wide layout's top bar: the wordmark (except on Play, whose page
  *  carries the title), Play, Leaderboard, Stats and Games centred, and the
- *  account chip (or Sign in) at the end. */
+ *  account chip (or Sign in) at the end, after the search's pill on a tab
+ *  other than Play. */
 export function TopBar({ active, section = "stats" }: { active: Tab; section?: MeSection }) {
   const account = useAuth();
+  const inlineQueue = useInlineQueue();
   const user = account.status === "in" ? account.user : null;
   let end: ReactNode = null;
   if (user) {
@@ -137,7 +139,7 @@ export function TopBar({ active, section = "stats" }: { active: Tab; section?: M
           </button>
         ))}
       </nav>
-      <div className="topbar-end"><QueueChip />{end}</div>
+      <div className="topbar-end">{inlineQueue && active !== "play" ? <QueuePill /> : null}{end}</div>
     </header>
   );
 }
@@ -167,13 +169,14 @@ export default function HomeShell({ active, section, children }: {
   active: Tab; section?: MeSection; children: ReactNode;
 }) {
   const wide = useMediaQuery(WIDE);
+  const inlineQueue = useInlineQueue();
   const body = useRef<HTMLDivElement | null>(null);
   useTabSwipe(body, active, !wide);
   useTabFade(body, `${active}/${section ?? ""}`);
   return (
     <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
       {wide ? <TopBar active={active} section={section} /> : null}
-      {wide ? <QueueStrip /> : null}
+      {wide && !inlineQueue ? <QueueStrip /> : null}
       <div className="home-body" ref={body}>{children}</div>
       {wide ? null : <QueueBar />}
       {wide ? null : <TabBar active={active} />}

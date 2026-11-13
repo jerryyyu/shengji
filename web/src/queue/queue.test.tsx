@@ -5,6 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
+import { SHORT_VIEWPORT } from "../phoneLayout";
 
 class FakeWS {
   static OPEN = 1;
@@ -32,9 +33,12 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const realMatchMedia = window.matchMedia;
 
-function viewport(wide: boolean) {
+/** A phone held upright, a wide window, or (`short`) a phone held sideways,
+ *  which is wide as well. */
+function viewport(wide: boolean, short = false) {
   window.matchMedia = ((q: string) => ({
-    matches: q === WIDE ? wide : false, media: q, addEventListener() {}, removeEventListener() {},
+    matches: q === WIDE ? wide || short : q === SHORT_VIEWPORT ? short : false,
+    media: q, addEventListener() {}, removeEventListener() {},
   })) as unknown as typeof window.matchMedia;
 }
 
@@ -254,21 +258,95 @@ describe("the queue bar", () => {
     expect(clear()).toBe("");
   });
 
-  it("at 700px and up the bar is a chip in the top bar", async () => {
+  it("on a desktop or an iPad Play's Ranked card becomes the search, with no strip", async () => {
     viewport(true);
     await renderApp();
     say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
-    expect(q(".q-bar")).toBeNull();
-    const chip = q(".topbar .q-chip")!;
+    expect(q(".q-bar:not(.q-card)")).toBeNull();
+    expect(q(".q-strip")).toBeNull();
+    expect(q(".q-chip")).toBeNull();
+    expect(q(".q-pill")).toBeNull();
+    const card = q(".play-section .q-card")!;
+    expect(card.getAttribute("role")).toBe("status");
+    expect(card.querySelector("b")?.textContent).toBe("Searching");
+    expect(card.querySelector(".q-bar-time")?.textContent).toBe("0:24");
+    expect(card.querySelector("small")?.textContent).toBe("Bots in 0:36");
+    expect(card.getAttribute("title")).toBe("Waiting 0:24");
+    // the card replaces Play and Duo while it shows
+    expect(q(".q-find")).toBeNull();
+    expect(button("Duo")).toBeUndefined();
+    // the same 44 px rows as the phone's bar
+    expect(card.querySelector(".q-bar-acts .q-bots")?.textContent).toBe("Start with bots");
+    expect(card.querySelector(".q-bar-acts .q-cancel")?.textContent).toBe("Leave queue");
+    click(button("Only tables with people", card));
+    expect(lastSent()).toEqual({ type: "queue_wait_players" });
+    expect(button("Only tables with people", card)?.getAttribute("aria-checked")).toBe("true");
+    expect(card.querySelector("small")?.textContent).toBe("Waiting for people");
+    click(button("Start with bots", card));
+    expect(lastSent()).toEqual({ type: "queue_start_bots" });
+    say({ type: "queue_state", queued: false, count: 0 });
+    expect(q(".q-card")).toBeNull();
+    expect(findBtn().textContent).toBe("Play");
+    expect(button("Duo")).toBeDefined();
+  });
+
+  it("on a desktop's other tabs a Searching pill in the top bar goes back to Play", async () => {
+    viewport(true);
+    await renderApp();
+    say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
+    const { openTab } = await import("../home/route");
+    for (const go of [() => openTab("leaderboard"), () => openTab("me", "stats"), () => openTab("me", "games")]) {
+      act(go);
+      const pill = q(".topbar .topbar-end .q-pill")!;
+      expect(pill.textContent).toBe("Searching · 0:24");
+      // a narrow top bar hides this label and keeps the time (topBarFitCss.test.ts)
+      expect(pill.querySelector(".q-pill-label")?.textContent).toBe("Searching · ");
+      // before the account chip
+      expect(pill.nextElementSibling?.className).toContain("account-pill");
+      expect(q(".q-strip")).toBeNull();
+      expect(q(".q-card")).toBeNull();
+    }
+    click(q(".q-pill"));
+    expect(window.location.hash).toBe("");
+    expect(q(".q-pill")).toBeNull();
+    expect(q(".play-section .q-card")).not.toBeNull();
+  });
+
+  it("a phone held sideways keeps the strip, with 44 px buttons and switch", async () => {
+    viewport(false, true);
+    await renderApp();
+    say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
+    expect(q(".q-card")).toBeNull();
+    expect(q(".q-pill")).toBeNull();
+    expect(q(".topbar .q-chip")).toBeNull();
+    const chip = q(".q-strip .q-chip")!;
     expect(chip.textContent).toContain("Finding a ranked game · 0:24 · Bots in 0:36");
     expect(chip.getAttribute("title")).toBe("Waiting 0:24");
-    expect(button("Start with bots", chip)).toBeDefined();
-    expect(button("Leave queue", chip)).toBeDefined();
-    click(button("Only tables with people", chip));
-    expect(lastSent()).toEqual({ type: "queue_wait_players" });
-    expect(button("Only tables with people", chip)?.getAttribute("aria-checked")).toBe("true");
-    expect(chip.textContent).toContain("Finding a ranked game · 0:24 · Waiting for people");
-    expect(chip.textContent).not.toContain("Bots in");
+    // index.css sizes `.q-chip .q-bots`, `.q-chip .q-cancel` and `.q-chip .q-wait` at 44 px
+    expect(button("Start with bots", chip)?.className).toBe("q-bots");
+    expect(button("Leave queue", chip)?.className).toBe("q-cancel");
+    expect(button("Only tables with people", chip)?.className).toBe("q-wait");
+    expect(findBtn().textContent).toBe("Searching…");
+    const { openTab } = await import("../home/route");
+    act(() => openTab("leaderboard"));
+    expect(q(".q-strip .q-chip")).not.toBeNull();
+    expect(q(".q-pill")).toBeNull();
+  });
+
+  it("a phone held upright keeps the bar, its buttons in the 44 px row", async () => {
+    await renderApp();
+    say(queued());
+    const bar = q(".q-bar")!;
+    expect(bar.className).not.toContain("q-card");
+    expect(bar.parentElement?.className).toContain("home-narrow");
+    // index.css sizes `.q-bar-acts .q-bots` and `.q-bar-acts .q-cancel` at 44 px, 16 px type
+    const acts = bar.querySelector(".q-bar-acts")!;
+    expect(acts.querySelector(".q-bots")?.textContent).toBe("Start with bots");
+    expect(acts.querySelector(".q-cancel")?.textContent).toBe("Leave queue");
+    expect(q(".q-card")).toBeNull();
+    expect(q(".q-pill")).toBeNull();
+    expect(q(".q-strip")).toBeNull();
+    expect(findBtn().textContent).toBe("Searching…");
   });
 
   it("the Only tables with people switch turns the countdown off and back on", async () => {
@@ -453,11 +531,12 @@ describe("the waiting table", () => {
     expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("at 700px and up the table is a centred card and the chip steps aside", async () => {
+  it("at 700px and up the table is a centred card and the search card steps aside", async () => {
     viewport(true);
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
-    expect(q(".topbar .q-chip")).toBeNull();
+    expect(q(".q-card")).toBeNull();
+    expect(q(".q-pill")).toBeNull();
     expect(q(".wt-sheet")).not.toBeNull();
   });
 });

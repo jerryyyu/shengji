@@ -18,8 +18,9 @@ interface Bubble {
  *  after it arrived. Only live "chat" events count: anything the
  *  connection had already buffered, or a chat_history snapshot replays, is
  *  scrollback and stays in the panel. System lines, muted seats and
- *  anything said while the panel is open never pop. */
-function useChatBubbles(open: boolean): Bubble[] {
+ *  anything said while the panel is open never pop. Dismissing a bubble
+ *  only hides it: the line stays in the panel and still counts as unread. */
+function useChatBubbles(open: boolean) {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const timers = useRef(new Map<number, number>());
   const openRef = useRef(open);
@@ -41,12 +42,15 @@ function useChatBubbles(open: boolean): Bubble[] {
     setBubbles((list) => list.filter((b) => b.seat !== seat));
   };
 
-  useEffect(() => {
-    openRef.current = open;
-    if (!open) return;
+  const dropAll = () => {
     for (const t of timers.current.values()) window.clearTimeout(t);
     timers.current.clear();
     setBubbles([]);
+  };
+
+  useEffect(() => {
+    openRef.current = open;
+    if (open) dropAll();
   }, [open]);
 
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
@@ -76,7 +80,7 @@ function useChatBubbles(open: boolean): Bubble[] {
     };
   }, []);
 
-  return bubbles;
+  return { bubbles, drop, dropAll };
 }
 
 export type Side = "left" | "right" | "above" | "below";
@@ -229,15 +233,21 @@ function layout(layer: HTMLElement, you: number) {
   }
 }
 
+/** A horizontal drag this far, in px, flicks a bubble away. */
+const SWIPE_PX = 30;
+
 /** Live chat shown for a few seconds as a speech bubble beside the seat
  *  that said it (your own beside your name), without opening the panel.
- *  The panel keeps the full text; a tap on a bubble opens it. */
-export default function ChatBubbles({ state, open, onOpen }: {
+ *  The panel keeps the full text and the launcher opens it; a tap or a
+ *  sideways swipe on a bubble dismisses it, Escape dismisses them all. */
+export default function ChatBubbles({ state, open }: {
   state: GameState;
   open: boolean;
-  onOpen: () => void;
+  /** Accepted for the caller's sake; a bubble no longer opens the panel. */
+  onOpen?: () => void;
 }) {
-  const bubbles = useChatBubbles(open);
+  const { bubbles, drop, dropAll } = useChatBubbles(open);
+  const swipe = useRef<{ id: number; x: number } | null>(null);
   const muted = useMutes();
   const shown = bubbles.filter((b) => !muted(state.room, b.seat));
   const layerRef = useRef<HTMLDivElement>(null);
@@ -259,15 +269,33 @@ export default function ChatBubbles({ state, open, onOpen }: {
     return () => window.clearInterval(t);
   }, [showing, state.you]);
   return (
-    <div className="chat-bubbles" ref={layerRef} aria-live="polite">
-      {shown.map((b) => (
-        <button key={`${b.seat}:${b.id}`} type="button" data-seat={b.seat}
-                className={`chat-bubble${b.seat === state.you ? " mine" : ""}`}
-                style={{ visibility: "hidden" }} onClick={onOpen}>
-          <span className="chat-bubble-who">{b.seat === state.you ? "You" : b.name}: </span>
-          {b.text}
-        </button>
-      ))}
+    <div className="chat-bubbles" ref={layerRef} aria-live="polite"
+         onKeyDown={(e) => { if (e.key === "Escape") dropAll(); }}>
+      {shown.map((b) => {
+        const who = b.seat === state.you ? "You" : b.name;
+        return (
+          <button key={`${b.seat}:${b.id}`} type="button" data-seat={b.seat}
+                  className={`chat-bubble${b.seat === state.you ? " mine" : ""}`}
+                  aria-label={`Dismiss: ${who}: ${b.text}`}
+                  style={{ visibility: "hidden" }} onClick={() => drop(b.seat)}
+                  onPointerDown={(e) => { swipe.current = { id: e.pointerId, x: e.clientX }; }}
+                  onPointerMove={(e) => {
+                    const s = swipe.current;
+                    if (s && s.id === e.pointerId) e.currentTarget.style.transform = `translateX(${e.clientX - s.x}px)`;
+                  }}
+                  onPointerUp={(e) => {
+                    const s = swipe.current;
+                    swipe.current = null;
+                    if (!s || s.id !== e.pointerId) return;
+                    if (Math.abs(e.clientX - s.x) > SWIPE_PX) drop(b.seat);
+                    else e.currentTarget.style.transform = "";
+                  }}
+                  onPointerCancel={(e) => { swipe.current = null; e.currentTarget.style.transform = ""; }}>
+            <span className="chat-bubble-who">{who}: </span>
+            {b.text}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -208,7 +208,7 @@ export type Mode = "ranked" | "practice" | null;
 
 export function gameMode(state: GameState, practice: boolean): Mode {
   if (practice) return "practice";
-  return state.matched ? "ranked" : null;
+  return state.matched || state.ranked ? "ranked" : null;
 }
 
 /** The header's short mode chip: gold with a trophy for a ranked game, grey

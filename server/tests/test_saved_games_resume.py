@@ -85,12 +85,14 @@ def test_continue_starts_a_table_at_those_levels_banker_and_seat(env):
         ws.__exit__(None, None, None)
 
 
-def test_a_continued_game_is_rated_for_the_signed_in_player(env):
+def test_a_continued_game_is_rated_for_the_signed_in_player_when_ranked(env):
     srv, store, client, cookie, uid, _pem = env
     t, _last = _saved(srv, uid, seat=1, rounds=1)
     ws = _continue(client, cookie, t.game_id)
     try:
         code = _drain(ws, "room")["room"]
+        # a continued game is a created room: unranked until its host says so
+        ws.send_json({"type": "set_ranked", "on": True})
         ws.send_json({"type": "start_game"})
         _drain(ws, "state", tries=60)
         room = srv.rooms[code]

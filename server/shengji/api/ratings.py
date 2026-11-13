@@ -1,14 +1,20 @@
 """Ratings for signed-in players: one Elo-style number per account, the
 leaderboard and the My stats page.
 
+Only rounds in a ranked room are rated (``ranked``): a room from the queue
+(``matched``) always is, and a room a player created is ranked only when its
+host switched Ranked on (``set_ranked``) before the game started; the mode is
+then fixed for that game. Every other room, Play bots included, is unranked
+and writes no rating at all.
+
 Only signed-in human seats are rated. Bots never move: every bot seat counts
-as ``BOT_RATING``, the anchor of the served release, and in a casual room a
-guest seat counts the same, so solo games against bots, games with a partner
-and mixed tables share one scale. A ranked (queue-matched) room is for
-signed-in players only: a round that starts with a guest in one of its seats
-is not rated for anyone. Nothing here reads or changes a game decision; the
-hooks only observe the room at a round's start, at an explicit leave and at
-the round's end.
+as ``BOT_RATING``, the anchor of the served release, and in a ranked room a
+player created a guest seat counts the same, so solo games against bots,
+games with a partner and mixed tables share one scale. A queue-matched room
+is for signed-in players only: a round that starts with a guest in one of its
+seats is not rated for anyone. Nothing here reads or changes a game decision;
+the hooks only observe the room at a round's start, at an explicit leave and
+at the round's end.
 
 Every seat's rating and kind (account, bot, guest) is read when the round
 starts, and the round is rated from that record: a seat that changes hands
@@ -77,7 +83,7 @@ START_RATING = accounts.START_RATING
 # The served release's fixed rating. Every bot seat is rated this, so a
 # stronger release gets a higher constant from its measured duel margin.
 BOT_RATING = 1000.0
-# A guest has no rating; in a casual room their seat counts like a bot's.
+# A guest has no rating; in a created ranked room their seat counts like a bot's.
 GUEST_RATING = BOT_RATING
 # Holding the deal (the kitty, the first lead and the defence threshold of
 # 80) is worth this much team strength; the value is a starting estimate to
@@ -471,11 +477,19 @@ def _signed_in(seat: Any) -> int | None:
     return uid
 
 
+def ranked(room: Any) -> bool:
+    """Whether the room's rounds are rated: a queue-matched room, or a created
+    room whose host switched Ranked on; never a room that is not ``eligible``."""
+    return eligible(room) and bool(getattr(room, "matched", False)
+                                   or getattr(room, "ranked", False))
+
+
 @_guarded
 def start(room: Any) -> None:
-    """At ``start_game``, after the saved-game link (whose id it reuses)."""
+    """At ``start_game``, after the saved-game link (whose id it reuses). An
+    unranked room gets no rating state, so none of its rounds is rated."""
     room.ratings = None
-    if not eligible(room):
+    if not ranked(room):
         return
     link = getattr(room, "saved_game", None)
     room.ratings = RoomRatings(game_id=link.id if link is not None else secrets.token_hex(16))

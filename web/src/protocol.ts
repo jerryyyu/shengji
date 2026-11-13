@@ -38,6 +38,9 @@ export type ClientMsg =
   | { type: "add_bot" }
   /** Host only, before the game starts: the rank both teams begin at. */
   | { type: "set_start_level"; start_level: Rank }
+  /** Host only, before the game starts: whether this created room is ranked
+   *  (its rounds rated). A room starts unranked. */
+  | { type: "set_ranked"; on: boolean }
   | { type: "remove_bot" }
   /** Host only, before the game starts: exchange the occupants of two taken seats. */
   /** `expect`: who the host saw at a and b (null: empty); the server refuses if either changed. */
@@ -102,6 +105,8 @@ export interface RoomMsg {
   experimental_policy?: "w32";
   /** Built by the matchmaking queue: a rated game between strangers. */
   matched?: boolean;
+  /** A created room its host switched to Ranked: its rounds are rated. */
+  ranked?: boolean;
 }
 
 export interface StatePlayer {
@@ -210,6 +215,8 @@ export interface GameState {
   experimental_policy?: "w32";
   /** Built by the matchmaking queue: a rated game between strangers. */
   matched?: boolean;
+  /** A created room its host switched to Ranked: its rounds are rated. */
+  ranked?: boolean;
   /** Ranked tables: whether newcomers may be offered a bot seat. */
   allow_joiners?: boolean;
   /** Ranked tables: newcomers taking a seat (see JoinNotice). */

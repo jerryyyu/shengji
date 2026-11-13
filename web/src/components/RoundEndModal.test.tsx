@@ -26,6 +26,9 @@ const state: GameState = {
   round_result: null, message: null, notice: null,
 };
 
+/** A queue room: its rounds are rated. */
+const ranked: GameState = { ...state, matched: true };
+
 function makeResult(overrides: Partial<RoundResult> = {}): RoundResult {
   return {
     attacker_points: 0, kitty_points: 0, kitty_cards: [], winner_team: 0,
@@ -207,13 +210,13 @@ describe("round end rating line", () => {
   }
 
   it("a seat taken mid-round from an open table reads Unranked · joined mid-round", () => {
-    renderModal(makeResult({ unranked: "joined" }));
+    renderModal(makeResult({ unranked: "joined" }), ranked);
     expect(host.querySelector(".rating-unranked")!.textContent).toBe("Unranked · joined mid-round");
     expect(host.querySelector(".rating-delta")).toBeNull();
   });
 
   it("shows a signed-in player's rating and this round's change", () => {
-    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }));
+    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), ranked);
     const line = host.querySelector(".rating-line")!;
     expect(line.textContent).toContain("Your rating 1712");
     expect(line.querySelector(".rating-delta")!.textContent).toBe("▲ +9");
@@ -224,20 +227,20 @@ describe("round end rating line", () => {
 
   it("shows a loss and, on the round that wins a game, the game's total", () => {
     renderModal(makeResult({ point_scored: true, games_won: [1, 0],
-                             rating: { rating: 1688, delta: -4, game_delta: 31 } }));
+                             rating: { rating: 1688, delta: -4, game_delta: 31 } }), ranked);
     const line = host.querySelector(".rating-line")!;
     expect(line.querySelector(".rating-delta")!.textContent).toBe("▼ −4");
     expect(line.querySelector(".rating-game")!.textContent).toBe("+31 this game");
   });
 
   it("shows the game total on the game-over screen", () => {
-    renderModal(makeResult({ game_over: true, rating: { rating: 1740, delta: 12, game_delta: 55 } }));
+    renderModal(makeResult({ game_over: true, rating: { rating: 1740, delta: 12, game_delta: 55 } }), ranked);
     expect(host.querySelector(".victory .rating-line")!.textContent).toContain("+55 this game");
   });
 
   it("offers a guest Sign in to be ranked in place of the rating line; a tap opens sign-in", async () => {
     await signedOutWithSignIn();
-    renderModal(makeResult());
+    renderModal(makeResult(), ranked);
     const guest = host.querySelector(".rating-guest")!;
     expect(host.querySelector(".rating-line")).toBeNull();
     expect(host.querySelector(".google-signin-slot")).toBeNull();
@@ -249,8 +252,21 @@ describe("round end rating line", () => {
     expect(host.querySelector(".google-signin-slot")).not.toBeNull();
   });
 
-  it("says nothing about ratings where sign-in is off", () => {
+  it("an unranked room shows no rating line and no sign-in offer", async () => {
+    await signedOutWithSignIn();
     renderModal(makeResult());
+    expect(host.querySelector(".rating-guest")).toBeNull();
+    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }));
+    expect(host.querySelector(".rating-line")).toBeNull();
+  });
+
+  it("a created room switched to Ranked shows the rating line like a queue room", () => {
+    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), { ...state, ranked: true });
+    expect(host.querySelector(".rating-line")!.textContent).toContain("Your rating 1712");
+  });
+
+  it("says nothing about ratings where sign-in is off", () => {
+    renderModal(makeResult(), ranked);
     expect(host.querySelector(".rating-line")).toBeNull();
     expect(host.querySelector(".rating-guest")).toBeNull();
   });

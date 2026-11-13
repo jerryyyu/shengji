@@ -17,6 +17,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 |------|--------|------|
 | `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`) | anytime before joining |
 | `set_start_level` | `start_level` (same values) | host, lobby only; refused once the game has started |
+| `set_ranked` | `on: boolean` | host, lobby only, created rooms only: whether the room is ranked (see "Ranked rooms"); refused once the game has started |
 | `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | lobby, OR mid-game to claim a bot's or a dropped human's seat |
 | `peek_room` | `room` | anytime, WITHOUT joining — answered with `room_seats` |
 | `code_lookup` | `code` | anytime, guests too, WITHOUT joining — answered with `code_kind` (see "Codes") |
@@ -53,7 +54,7 @@ their own lobby misdescribes. No room is created, and the socket stays usable.
 room (`test_policy`) when the server has them off (production does); such rooms
 add an `experimental_policy` field to `room` and `state`.
 
-### `{type: "room", room: string, you: number, host: number, start_level: string, ready: number[], players: RoomPlayer[]}`
+### `{type: "room", room: string, you: number, host: number, start_level: string, ready: number[], players: RoomPlayer[], ranked?: true}`
 Sent in lobby. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
 
 `start_level` is the rank BOTH teams begin at: set at `create_room`, changeable
@@ -61,6 +62,26 @@ by the host with `set_start_level` until the game starts, and echoed to everyone
 so a joiner knows what game they are taking a seat in. A team wins a game by
 successfully DEFENDING at `A`, so a higher start level is simply a shorter game.
 The room then plays on (see `games_won` below).
+
+### Ranked rooms
+
+Only a ranked room's rounds are rated. A room from the queue (`matched: true`)
+always is. A room made with `create_room` (Play bots and a continued saved
+game included) starts unranked; its host may send `set_ranked {on}` until the
+game starts, and `room` and `state` then carry `ranked: true` (absent when
+off) to every seat. Once the game starts the mode is fixed for it. `set_ranked`
+is refused for anyone but the host, after the game has started, and in a
+queue or test room.
+
+A created ranked room keeps the open join of any created room: guests may sit
+and join by code or invite link, and the queue-only refusals
+(`ranked_sign_in`, `ranked_queue_only`) and open-table invite path belong to
+queue rooms only. Its signed-in seats are rated from the round-start snapshot;
+a guest seat counts at the bot anchor rating, and a guest seated does not void
+the round (a queue room's round that starts with a guest is not rated). A
+person who claims a seat mid-round is rated from the next round. An unranked
+room is never rated: its `round_result` carries no `rating`, and the client
+shows no rating line.
 
 ### Trick plays carry a `shape`
 

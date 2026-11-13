@@ -910,6 +910,25 @@ textarea:focus-visible {
   justify-self: end;
 }
 
+/* The host's Ranked switch: the whole 44px row is the control. */
+.room-ranked-row {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.room-ranked-text { display: flex; flex-direction: column; gap: 2px; }
+.room-ranked-note { font-size: var(--fs-13); color: var(--text-dim); }
+
 .room-code-row {
   display: flex;
   align-items: stretch;

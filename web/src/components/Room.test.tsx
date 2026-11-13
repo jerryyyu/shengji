@@ -474,3 +474,47 @@ describe("a seat that changes hands", () => {
     });
   }
 });
+
+describe("ranked switch", () => {
+  const toggle = () => host.querySelector<HTMLButtonElement>(".room-ranked-row[role='switch']");
+  const headChip = () => host.querySelector(".room-title .ranked-chip, .room-title .unranked-tag");
+
+  it("a created room starts Unranked; the host sees the switch off", () => {
+    render(room());
+    expect(toggle()!.getAttribute("aria-checked")).toBe("false");
+    expect(headChip()!.className).toBe("unranked-tag");
+    expect(headChip()!.textContent).toBe("UNRANKED");
+  });
+
+  it("the host's tap sends set_ranked with the other state", () => {
+    render(room());
+    act(() => { toggle()!.click(); });
+    expect(sent).toEqual([{ type: "set_ranked", on: true }]);
+    sent.length = 0;
+    render(room({ ranked: true }));
+    act(() => { toggle()!.click(); });
+    expect(sent).toEqual([{ type: "set_ranked", on: false }]);
+  });
+
+  it("the header chip shows RANKED in gold once the room is ranked", () => {
+    render(room({ ranked: true }));
+    expect(toggle()!.getAttribute("aria-checked")).toBe("true");
+    expect(headChip()!.className).toBe("ranked-chip");
+    expect(headChip()!.textContent).toBe("Ranked");
+  });
+
+  it("a seat that is not the host sees the chip and no switch", () => {
+    render(room({ you: 2, ranked: true }));
+    expect(toggle()).toBeNull();
+    expect(headChip()!.className).toBe("ranked-chip");
+    render(room({ you: 2 }));
+    expect(toggle()).toBeNull();
+    expect(headChip()!.textContent).toBe("UNRANKED");
+  });
+
+  it("a queue room is ranked with no switch", () => {
+    render(room({ matched: true }));
+    expect(toggle()).toBeNull();
+    expect(headChip()!.className).toBe("ranked-chip");
+  });
+});

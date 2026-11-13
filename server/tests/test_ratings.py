@@ -38,13 +38,14 @@ def _set(store, user_id, rating, rounds=0):
 
 class Table:
     """A room whose four seats the test assigns (an int is a signed-in human,
-    None a guest, "bot" a bot), played in-process."""
+    None a guest, "bot" a bot), played in-process. It is a created room with
+    Ranked switched on unless ``ranked=False``: only a ranked room is rated."""
 
-    def __init__(self, srv, seats, code="RATE"):
+    def __init__(self, srv, seats, code="RATE", ranked=True):
         from shengji.engine.game import Game
 
         self.srv = srv
-        self.room = srv.Room(code=code)
+        self.room = srv.Room(code=code, ranked=ranked)
         self.room.seats = [
             srv.Seat(name=f"Bot {i}", is_bot=True) if s == "bot"
             else srv.Seat(name=f"P{i}", user_id=s, connected=True)
@@ -312,6 +313,78 @@ def test_experimental_rooms_are_not_rated(env, monkeypatch):
     table.room.experimental_policy = "w32"
     table.play_round(banker=0)
     assert table.room.ratings is None and _events(store) == []
+
+
+# ------------------------------------------------------------ ranked switch
+def test_an_unranked_created_room_rates_nobody(env, monkeypatch):
+    srv, store, _ = env
+    a, _ = _user(store, "alice")
+    b, _ = _user(store, "bob")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [a, "bot", b, "bot"], ranked=False)
+    table.play_round(banker=0)
+    table.play_round()
+    assert table.room.ratings is None and _events(store) == []
+    assert store.user(a)["rated_rounds"] == 0 and store.user(a)["rating"] == 1000
+    assert "rating" not in srv.state_for(table.room, 0)["round_result"]
+
+
+def test_a_ranked_created_room_rates_beside_a_guest_without_voiding(env, monkeypatch):
+    """Unlike a queue-matched room, a created ranked room keeps a round with a
+    guest seated: the guest's seat counts as the bot anchor."""
+    srv, store, _ = env
+    a, _ = _user(store, "alice")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [a, None, "bot", None])
+    assert table.room.matched is False
+    table.play_round(banker=0)
+    [event] = _events(store)
+    assert event["user_id"] == a
+    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)
+
+
+def _socket_room(srv, client, headers, ranked):
+    ws = client.websocket_connect("/ws", headers=headers)
+    a = ws.__enter__()
+    a.send_json({"type": "create_room", "name": "Jerry"})
+    code = _drain(a, "room")["room"]
+    for _ in range(3):
+        a.send_json({"type": "add_bot"})
+    if ranked:
+        a.send_json({"type": "set_ranked", "on": True})
+    a.send_json({"type": "start_game"})
+    _drain(a, "state", tries=60)
+    return ws, srv.rooms[code]
+
+
+def test_play_bots_is_unrated_and_the_switch_rates_the_same_room(env):
+    """Play bots is a created room with bots in every other seat, never
+    switched to Ranked: it gets no rating state. The same room with Ranked
+    on is rated for its signed-in seat."""
+    srv, store, client = env
+    uid, headers = _user(store, "solo", "Solo")
+    ws, room = _socket_room(srv, client, headers, ranked=False)
+    try:
+        assert room.ratings is None
+    finally:
+        ws.__exit__(None, None, None)
+    ws, room = _socket_room(srv, client, headers, ranked=True)
+    try:
+        assert room.ranked is True
+        assert room.ratings is not None and room.ratings.present == {0: uid}
+    finally:
+        ws.__exit__(None, None, None)
+
+
+def test_a_queue_room_is_ranked_without_the_switch():
+    from shengji.api import ratings, server as srv
+
+    assert ratings.ranked(srv.Room(code="Q", matched=True))
+    assert not ratings.ranked(srv.Room(code="C"))
+    assert ratings.ranked(srv.Room(code="R", ranked=True))
+    test_room = srv.Room(code="X", ranked=True)
+    test_room.experimental_policy = "w32"
+    assert not ratings.ranked(test_room)
 
 
 # --------------------------------------------------------- frozen at start
@@ -781,6 +854,7 @@ def test_leave_room_over_the_socket_marks_the_round_abandoned(env, keypair):
         code = _drain(a, "room")["room"]
         for _ in range(3):
             a.send_json({"type": "add_bot"})
+        a.send_json({"type": "set_ranked", "on": True})     # only a ranked room is rated
         a.send_json({"type": "start_game"})
         _drain(a, "state", tries=60)
         room = srv.rooms[code]

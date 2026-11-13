@@ -164,21 +164,94 @@ it("a tap dismisses a bubble at once, leaves the panel shut and the badge as it 
 const pointer = (el: Element, type: string, clientX: number) => act(() => {
   el.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX }));
 });
+// a pointer click as a browser fires it after pointerup; a keyboard one has detail 0
+const pointerClick = (el: Element) => act(() => {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+});
+const keyboardClick = (el: Element) => act(() => {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+});
 
-it("a sideways swipe dismisses a bubble; a short drag does not", () => {
+it("a sideways swipe past 30 px dismisses a bubble", () => {
   render();
   serverSays(line(1, 1, "swipe me"));
-  let b = bubbles()[0];
-  pointer(b, "pointerdown", 100);
-  pointer(b, "pointermove", 115);
-  pointer(b, "pointerup", 120);
-  expect(bubbles()).toHaveLength(1);
-  b = bubbles()[0];
+  const b = bubbles()[0];
   pointer(b, "pointerdown", 100);
   pointer(b, "pointermove", 120);
   pointer(b, "pointerup", 140);
+  pointerClick(b);
   expect(bubbles()).toHaveLength(0);
   expect(host.querySelector(".chat-badge")!.textContent).toBe("1");
+});
+
+it("a short drag snaps back and keeps the bubble, its trailing click included", () => {
+  render();
+  serverSays(line(1, 1, "drag me"));
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 115);
+  expect(b.style.transform).toBe("translateX(15px)");
+  pointer(b, "pointerup", 120);
+  pointerClick(b);
+  expect(bubbles()).toEqual([b]);
+  expect(b.style.transform).toBe("");
+  // the next plain tap still dismisses
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointerup", 102);
+  pointerClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("a tap with its pointer events dismisses a bubble", () => {
+  render();
+  serverSays(line(1, 1, "tap"));
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 103);
+  pointer(b, "pointerup", 103);
+  pointerClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("a keyboard activation dismisses a bubble, even right after a short drag", () => {
+  render();
+  serverSays(line(1, 1, "one"));
+  serverSays(line(2, 2, "two"));
+  keyboardClick(bubbles()[0]);
+  expect(bubbleText()).toEqual(["2:Bo: two"]);
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 115);
+  pointer(b, "pointerup", 115);
+  keyboardClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("captures the pointer, and a lost capture or a cancel ends the swipe and clears its offset", () => {
+  const capture = vi.fn();
+  Object.defineProperty(Element.prototype, "setPointerCapture", { configurable: true, value: capture });
+  try {
+    render();
+    serverSays(line(1, 1, "hold"));
+    const b = bubbles()[0];
+    pointer(b, "pointerdown", 100);
+    expect(capture).toHaveBeenCalledWith(1);
+    pointer(b, "pointermove", 125);
+    // released outside the window: the capture is lost, no pointerup arrives here
+    pointer(b, "lostpointercapture", 125);
+    expect(b.style.transform).toBe("");
+    // a stray pointerup afterwards is not a swipe
+    pointer(b, "pointerup", 200);
+    expect(bubbles()).toEqual([b]);
+    pointer(b, "pointerdown", 100);
+    pointer(b, "pointermove", 140);
+    pointer(b, "pointercancel", 140);
+    expect(b.style.transform).toBe("");
+    pointer(b, "pointerup", 200);
+    expect(bubbles()).toEqual([b]);
+  } finally {
+    delete (Element.prototype as { setPointerCapture?: unknown }).setPointerCapture;
+  }
 });
 
 it("Escape in the bubble layer dismisses every bubble", () => {

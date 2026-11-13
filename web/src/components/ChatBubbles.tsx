@@ -235,6 +235,8 @@ function layout(layer: HTMLElement, you: number) {
 
 /** A horizontal drag this far, in px, flicks a bubble away. */
 const SWIPE_PX = 30;
+/** Movement past this, in px, makes a press a drag rather than a tap. */
+const DRAG_PX = 6;
 
 /** Live chat shown for a few seconds as a speech bubble beside the seat
  *  that said it (your own beside your name), without opening the panel.
@@ -247,7 +249,13 @@ export default function ChatBubbles({ state, open }: {
   onOpen?: () => void;
 }) {
   const { bubbles, drop, dropAll } = useChatBubbles(open);
-  const swipe = useRef<{ id: number; x: number } | null>(null);
+  const swipe = useRef<{ id: number; x: number; dragged: boolean } | null>(null);
+  // the click a browser fires after a drag's pointerup is not a tap
+  const skipClick = useRef(false);
+  const endSwipe = (el: HTMLElement) => {
+    swipe.current = null;
+    el.style.transform = "";
+  };
   const muted = useMutes();
   const shown = bubbles.filter((b) => !muted(state.room, b.seat));
   const layerRef = useRef<HTMLDivElement>(null);
@@ -277,20 +285,38 @@ export default function ChatBubbles({ state, open }: {
           <button key={`${b.seat}:${b.id}`} type="button" data-seat={b.seat}
                   className={`chat-bubble${b.seat === state.you ? " mine" : ""}`}
                   aria-label={`Dismiss: ${who}: ${b.text}`}
-                  style={{ visibility: "hidden" }} onClick={() => drop(b.seat)}
-                  onPointerDown={(e) => { swipe.current = { id: e.pointerId, x: e.clientX }; }}
+                  style={{ visibility: "hidden" }}
+                  onClick={(e) => {
+                    // a keyboard activation (detail 0) always dismisses
+                    if (skipClick.current && e.detail !== 0) { skipClick.current = false; return; }
+                    skipClick.current = false;
+                    drop(b.seat);
+                  }}
+                  onPointerDown={(e) => {
+                    skipClick.current = false;
+                    swipe.current = { id: e.pointerId, x: e.clientX, dragged: false };
+                    // a release outside the bubble still ends the swipe here
+                    e.currentTarget.setPointerCapture?.(e.pointerId);
+                  }}
                   onPointerMove={(e) => {
                     const s = swipe.current;
-                    if (s && s.id === e.pointerId) e.currentTarget.style.transform = `translateX(${e.clientX - s.x}px)`;
+                    if (!s || s.id !== e.pointerId) return;
+                    const dx = e.clientX - s.x;
+                    if (Math.abs(dx) > DRAG_PX) s.dragged = true;
+                    e.currentTarget.style.transform = `translateX(${dx}px)`;
                   }}
                   onPointerUp={(e) => {
                     const s = swipe.current;
-                    swipe.current = null;
                     if (!s || s.id !== e.pointerId) return;
-                    if (Math.abs(e.clientX - s.x) > SWIPE_PX) drop(b.seat);
-                    else e.currentTarget.style.transform = "";
+                    const dx = e.clientX - s.x;
+                    endSwipe(e.currentTarget);
+                    if (Math.abs(dx) > SWIPE_PX) { drop(b.seat); return; }
+                    if (s.dragged || Math.abs(dx) > DRAG_PX) skipClick.current = true;
                   }}
-                  onPointerCancel={(e) => { swipe.current = null; e.currentTarget.style.transform = ""; }}>
+                  onPointerCancel={(e) => endSwipe(e.currentTarget)}
+                  onLostPointerCapture={(e) => {
+                    if (swipe.current?.id === e.pointerId) endSwipe(e.currentTarget);
+                  }}>
             <span className="chat-bubble-who">{who}: </span>
             {b.text}
           </button>

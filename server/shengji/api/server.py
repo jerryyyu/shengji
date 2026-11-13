@@ -1372,7 +1372,10 @@ async def _paced_bot_step(room: Room, seat: int, *,
     """Search an isolated snapshot while the live room remains claimable."""
     if turn_started is None:
         turn_started = time.perf_counter()
-    if minimum_turn_seconds is None:
+    # The served pace (no explicit minimum) is the one that slows an empty
+    # room; a caller's explicit minimum, such as 0 in tests, stands as given.
+    served_pace = minimum_turn_seconds is None
+    if served_pace:
         minimum_turn_seconds = BOT_DELAY
     async with room.lock:
         snapshot = _snapshot_bot_turn(room, seat, mode)
@@ -1410,7 +1413,7 @@ async def _paced_bot_step(room: Room, seat: int, *,
         await asyncio.sleep(pacing_seconds)
     # An empty room plays slowly. The wait is re-read in slices, so a human
     # connecting cuts it short.
-    while _unwatched(room):
+    while served_pace and _unwatched(room):
         remaining = EMPTY_ROOM_BOT_DELAY - (time.perf_counter() - turn_started)
         if remaining <= 0:
             break

@@ -2744,3 +2744,36 @@ def test_one_of_two_humans_leaving_leaves_the_game_running(client):
         assert not left.is_bot and not left.connected and left.name == "james"
         assert not srv._unwatched(room)
         assert srv._auto_mode(room, want) is None   # the takeover covers it
+
+
+def test_only_the_served_pace_slows_an_empty_room(monkeypatch):
+    """A caller's explicit minimum (tests and harnesses pass 0) is never
+    stretched by the empty-room wait; only the served default is."""
+    import asyncio
+    import time
+    from types import SimpleNamespace
+
+    from shengji.api import server as srv
+
+    async def compute(snapshot):
+        return "decision"
+
+    monkeypatch.setattr(srv, "_snapshot_bot_turn",
+                        lambda room, seat, mode: SimpleNamespace(bot_copy=None, phase="play"))
+    monkeypatch.setattr(srv, "_compute_bot_turn_off_loop", compute)
+    monkeypatch.setattr(srv, "_unwatched", lambda room: True)
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    monkeypatch.setattr(srv, "EMPTY_ROOM_POLL", 0.02)
+
+    async def step(**kw):
+        room = SimpleNamespace(lock=asyncio.Lock())
+        started = time.perf_counter()
+        prepared = await srv._paced_bot_step(room, 1, **kw)
+        return prepared, time.perf_counter() - started
+
+    monkeypatch.setattr(srv, "EMPTY_ROOM_BOT_DELAY", 30.0)
+    prepared, took = asyncio.run(step(minimum_turn_seconds=0))
+    assert prepared.decision == "decision" and took < 1.0
+    monkeypatch.setattr(srv, "EMPTY_ROOM_BOT_DELAY", 0.3)
+    prepared, took = asyncio.run(step())
+    assert took >= 0.3 * 0.95 and prepared.pacing_seconds > 0

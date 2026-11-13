@@ -10,10 +10,10 @@ import { offlineGame } from "./offlineGame";
 import { useOnline } from "../useOnline";
 import { conn } from "../ws";
 
-/** The table's `…` overflow: kitty count, sound, the coach switch, invite
+/** The phone's `…` overflow: kitty count, sound, the coach switch, invite
  * link and leave — none of them a mid-trick decision, so on a small screen
- * they share one button instead of chips. Desktop keeps its chips too and
- * shows the menu beside them, for the coach switch and the rows no chip has. Account rows (name, saved games, sign out) live on the Me tab, so
+ * they share one button instead of five chips. Desktop keeps its chips (this
+ * is hidden by CSS there). Account rows (name, saved games, sign out) live on the Me tab, so
  * this stays a table menu for signed-in players and guests alike. Leave
  * closes the menu and opens the leave alert, which waits for Keep playing or
  * Leave. Offline there is no invite link; Play online appears instead while

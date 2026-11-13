@@ -207,6 +207,9 @@ describe("newcomer coach", () => {
     expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
     expect(cue()).not.toBeNull();
     expect(toastText()).toBe("Coach on");
+    // a notice, not an error
+    expect(host.querySelector(".toast")!.classList.contains("toast-info")).toBe(true);
+    expect(host.querySelector(".toast")!.getAttribute("role")).toBe("status");
     act(() => coachRow()!.click());
     expect(localStorage.getItem(COACH_KEY)).toBe("off");
     expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
@@ -232,5 +235,22 @@ describe("newcomer coach", () => {
     expect(toastText()).toBe("Coach off");
     act(() => { vi.advanceTimersByTime(TOAST_MS + 50); });
     expect(toastText()).toBeNull();
+  });
+
+  it("desktop's Coach chip flips the same switch and reports it with aria-pressed", () => {
+    const chip = () => host.querySelector<HTMLButtonElement>(".coach-chip")!;
+    render(firstFollow());
+    expect(chip().getAttribute("aria-pressed")).toBe("true");
+    act(() => chip().click());
+    expect(chip().getAttribute("aria-pressed")).toBe("false");
+    expect(chip().textContent).toBe("Coach off");
+    expect(localStorage.getItem(COACH_KEY)).toBe("off");
+    expect(cue()).toBeNull();
+    openMenu();
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
+    act(() => chip().click());
+    expect(chip().getAttribute("aria-pressed")).toBe("true");
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
+    expect(cue()).not.toBeNull();
   });
 });

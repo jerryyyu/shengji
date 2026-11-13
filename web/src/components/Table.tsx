@@ -619,7 +619,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
         </div>
       ) : null}
       {toast ? <ToastView key={toast.id} toast={toast} />
-        : coachToast ? <ToastView key={`coach-${coachToast.id}`} toast={coachToast} /> : null}
+        : coachToast ? <ToastView key={`coach-${coachToast.id}`} toast={coachToast} info /> : null}
     </div>
   );
 }

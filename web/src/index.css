@@ -6576,74 +6576,52 @@ dialog.leave-alert-backdrop {
 }
 :root:not(.phone-landscape) .hud-bar > .hud-group:last-child { justify-content: flex-end; }
 
-/* Wide screens show the `…` menu beside the chips: a 34px pill like the
-   mute button, with a 44px hit area, and the menu drops below it. */
-:root:not(.phone-landscape) .hud-more {
-  display: block;
-  position: relative;
-}
-:root:not(.phone-landscape) .hud-bar .hud-more-btn {
-  position: relative;
-  box-sizing: border-box;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: 1px solid var(--panel-edge);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text);
-  font-size: var(--fs-16);
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-}
-:root:not(.phone-landscape) .hud-bar .hud-more-btn::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-}
-:root:not(.phone-landscape) .hud-more-btn[aria-expanded="true"] {
-  border-color: var(--gold);
-}
-:root:not(.phone-landscape) .hud-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 12;
-  min-width: 190px;
-  display: flex;
-  flex-direction: column;
-  padding: 5px;
-  border-radius: 12px;
-  border: 1px solid var(--panel-edge);
-  background: #0a0c11;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
-}
-:root:not(.phone-landscape) .hud-menu-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  min-height: 44px;
-  padding: 6px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: var(--text);
-  font: 500 var(--fs-13) inherit;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-:root:not(.phone-landscape) .hud-menu-row[aria-disabled="true"] { cursor: default; }
-:root:not(.phone-landscape) .hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
-:root:not(.phone-landscape) .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-@media (hover: hover) and (pointer: fine) {
-  :root:not(.phone-landscape) .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
-}
-
 /* the coach switch reads gold while the coach is on */
 .hud-menu-row.coach-row[aria-checked="true"] .hud-menu-k {
   color: var(--gold);
   font-weight: 700;
+}
+
+/* Desktop's Coach chip: the mute button's pill with a word in it, gold
+   while the coach is on. Phones flip it from the `…` menu instead. */
+.coach-chip {
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  position: relative;
+}
+.coach-chip::after {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
+}
+.coach-chip[aria-pressed="true"] {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.coach-chip-state { font-weight: 800; text-transform: uppercase; font-size: var(--fs-10); }
+@media (hover: hover) and (pointer: fine) {
+  .coach-chip:hover { background: rgba(255, 255, 255, 0.06); }
+}
+:where(.phone-landscape) .hud-bar .coach-chip { display: none; }
+
+/* A toast that informs rather than warns: the panel and the gold outline of
+   "Your turn", announced politely. */
+.toast.toast-info {
+  background: #0a0c11;
+  border-color: var(--gold);
+  color: var(--gold);
 }

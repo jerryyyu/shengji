@@ -1223,10 +1223,16 @@ def _log_round_start(room: Room) -> int | None:
             }
             for i, seat in enumerate(room.seats)
         ]
+    # Each seat's account id (null for a guest or bot), so a rating can be
+    # audited from the log. A top-level field rather than part of ``players``:
+    # saved_games serves ``players`` to every seat and drops this one.
+    accounts_by_seat = ({} if room.evaluation is not None else
+                        {"user_ids": [None if seat.is_bot else seat.user_id
+                                      for seat in room.seats]})
     return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
                    players=players, bot_seed=room.bot_seed,
-                   ranked=ratings.ranked(room))
+                   ranked=ratings.ranked(room), **accounts_by_seat)
 
 
 def _log_seat(room: Room, kind: str, seat: Seat, reason: str) -> None:
@@ -1234,6 +1240,24 @@ def _log_seat(room: Room, kind: str, seat: Seat, reason: str) -> None:
     ``seat_left``) in a started game; a lobby keeps no log of its own."""
     if room.game is not None and seat in room.seats:
         room.log_event(kind, seat=room.seats.index(seat), reason=reason)
+
+
+def _log_play_refused(room: Room, seat: int, msg: dict, error: IllegalPlay) -> None:
+    """A human play the server refused, with the cards it named (unknown ids
+    are kept as ids). The record reveals a hand, so ``saved_games`` never
+    serves it (it is not in ``PUBLIC_KEYS``)."""
+    rnd = room.round
+    if room.game is None or rnd is None:
+        return
+    ids = msg.get("card_ids")
+    ids = ids[:64] if isinstance(ids, list) else []
+    attempted = [room.ids[seat].get(i, i)
+                 if isinstance(i, int) and not isinstance(i, bool) else None
+                 for i in ids]
+    room.log_event("play_refused", seat=seat, attempted_cards=attempted,
+                   phase=rnd.phase, turn=rnd.turn,
+                   code=getattr(error, "code", None) or type(error).__name__,
+                   reason=str(error))
 
 
 def _log_round_end(room: Room) -> None:
@@ -2729,6 +2753,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 except SeatChanged as e:
                     enqueue(me, {"type": "error", "code": "seat_changed", "message": str(e)})
                 except IllegalPlay as e:
+                    if t == "play":
+                        _log_play_refused(room, seat_idx, msg, e)
                     enqueue(me, {"type": "error", "message": str(e)})
                 except Exception:  # malformed input must not kill the socket
                     enqueue(me, {"type": "error", "message": "Invalid request."})
@@ -2750,7 +2776,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
             async with room.lock:
                 if not me.is_bot and me.connected:
                     chat_system(room, f"{me.name} disconnected")
-                    _log_seat(room, "seat_disconnected", me, "socket_closed")
+                    if my_gen == me.gen:
+                        _log_seat(room, "seat_disconnected", me, "socket_closed")
                 _detach(me, room, my_gen)
                 if not any(x.connected for x in room.seats
                            if x is not None and not x.is_bot):

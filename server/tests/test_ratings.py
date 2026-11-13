@@ -790,6 +790,30 @@ def test_a_carried_leave_caps_the_next_rated_round_once(env, monkeypatch):
     assert ratings.CARRIED_CAPS == set()
 
 
+def test_overlapping_rounds_take_k_from_the_round_start(env, monkeypatch):
+    """One account in two rooms at once, one round short of established: the
+    round that ends second still uses the provisional K it started with."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "twotables")
+    _set(store, uid, 1000.0, ratings.PROVISIONAL_ROUNDS - 1)
+    _force_outcome(monkeypatch, 30)
+    first = Table(srv, [uid, "bot", "bot", "bot"], code="RAT1")
+    second = Table(srv, [uid, "bot", "bot", "bot"], code="RAT2")
+    first.start_round(banker=0)
+    second.start_round(banker=0)
+    ratings.flush()                            # both round-start reads are taken
+    first.finish()
+    ratings.flush()
+    second.finish()
+    ratings.flush()
+    a, b = _events(store)
+    assert a["k"] == ratings.K_PROVISIONAL
+    assert b["k"] == ratings.K_PROVISIONAL
+    assert b["rating_before"] == pytest.approx(a["rating_after"])
+
+
 def test_recent_games_split_at_each_game_boundary_losses_included(env, monkeypatch):
     from shengji.api import ratings
 
@@ -970,7 +994,11 @@ def test_a_closing_ranked_round_is_finished_without_the_served_search(env, keypa
     assert room.seats[0].bot_announced
     records = [json.loads(line) for line in
                (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
-    assert [r["ranked"] for r in records if r["e"] == "round_start"] == [True]
+    [start] = [r for r in records if r["e"] == "round_start"]
+    assert start["ranked"] is True and start["user_ids"] == [room.seats[0].user_id, None, None, None]
+    assert isinstance(start["user_ids"][0], int)
+    text = json.dumps(start)
+    assert "@" not in text and room.seats[0].token not in text
     assert [r["seat"] for r in records if r["e"] == "seat_left"] == [0]
 
 

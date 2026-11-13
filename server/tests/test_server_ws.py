@@ -2854,6 +2854,31 @@ def test_ranked_switches_the_move_timer_on_and_back(client):
         assert room.move_timer is True and room.watchdog_task is not None
 
 
+def test_a_refused_human_play_is_logged_with_its_cards(client, monkeypatch):
+    import json
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _banker_leads(client, a, monkeypatch, bot_delay=0.05)
+        _wait_for(lambda: room.bot_task is None or room.bot_task.done())
+        a.send_json({"type": "next_round"})                  # not a play: not logged
+        _drain(a, "error", tries=60)
+        _real_play(client, a, room)                          # seat 0 led; now off turn
+        ids = sorted(room.ids[0])[:1]
+        codes = [room.ids[0][i] for i in ids]
+        a.send_json({"type": "play", "card_ids": ids})
+        error = _drain(a, "error", tries=200)
+        records = [json.loads(line) for line in
+                   (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+        refused = [r for r in records if r["e"] == "play_refused"]
+        assert len(refused) == 1
+        [rec] = refused
+        assert rec["seat"] == 0 and rec["attempted_cards"] == codes
+        assert rec["reason"] == error["message"] and rec["code"] == "IllegalPlay"
+        assert rec["phase"] == "play" and rec["round"] == 1
+
+
 def test_seat_presence_and_ranked_are_in_the_room_log(client):
     import json
 
@@ -2882,3 +2907,37 @@ def test_seat_presence_and_ranked_are_in_the_room_log(client):
                                ("seat_reconnected", want, "name"),
                                ("seat_left", want, "leave")]
         assert all(r["round"] == 1 for r in records if r["e"].startswith("seat_"))
+
+
+def test_a_displaced_socket_closing_logs_no_disconnect(client):
+    """A second tab resuming the seat is a reconnect; the first tab's socket
+    then closing is not a disconnect of the seat, which is still connected."""
+    import json
+    import time
+
+    from shengji.api import server as srv
+
+    a = client.websocket_connect("/ws").__enter__()
+    try:
+        code, room = _start_game(client, a)
+        token = room.seats[0].token
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "jerry", "token": token})
+            _drain(b, "state", tries=60)
+            a.__exit__(None, None, None)
+            a = None
+            time.sleep(0.3)                 # the server handles the close
+            _settled(client, room)
+            assert room.seats[0].connected
+            records = [json.loads(line) for line in
+                       (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+            assert [(r["e"], r["reason"]) for r in records
+                    if r["e"] in ("seat_disconnected", "seat_reconnected")] == [
+                ("seat_reconnected", "token")]
+        _wait_for(lambda: not room.seats[0].connected)
+        records = [json.loads(line) for line in
+                   (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+        assert [r["e"] for r in records if r["e"] == "seat_disconnected"] == ["seat_disconnected"]
+    finally:
+        if a is not None:
+            a.__exit__(None, None, None)

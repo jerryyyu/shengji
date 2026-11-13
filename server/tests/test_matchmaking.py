@@ -3026,3 +3026,28 @@ def test_every_seat_without_an_account_at_a_matched_table_is_a_guest(otenv, monk
     assert "guest" not in srv.state_for(room, 2)
     room.matched = False
     assert "guest" not in srv.state_for(room, 1)
+
+
+def test_review_signed_out_created_ranked_game_blocks_guest_queue(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    async def paused_deal(room):
+        await asyncio.Future()
+    monkeypatch.setattr(srv, "run_deal", paused_deal)
+    _, headers = _user(store, "review-created", "Host")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as h:
+        h.send_json({"type": "create_room"})
+        code = _drain(h, "room")["room"]
+        h.send_json({"type": "set_ranked", "on": True})
+        _next(h, "room", lambda m: m.get("ranked") is True)
+        h.send_json({"type": "start_game"})
+        _drain(h, "state", tries=400)
+    assert srv.rooms[code].ranked and not srv.rooms[code].matched
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join", "name": "Guest"})
+        for _ in range(40):
+            msg = g.receive_json()
+            if msg["type"] in ("queue_state", "error"):
+                assert msg.get("code") == "account_in_game", msg
+                break
+        else:
+            raise AssertionError("no queue response")

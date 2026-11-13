@@ -143,7 +143,8 @@ export function QueueCard() {
 }
 
 /** The top bar's way back to the search from another tab on an iPad or a
- *  desktop window: "Searching · 0:24", opening Play. */
+ *  desktop window: "Searching · 0:24", opening Play; a narrow top bar keeps
+ *  only the dot and the time. */
 export function QueuePill() {
   const { text } = useBar();
   if (!text) return null;
@@ -151,7 +152,7 @@ export function QueuePill() {
     <button type="button" className={`q-pill${text.warn ? " warn" : ""}`}
             aria-label={`Searching · ${text.waited}, back to the queue`} onClick={() => openTab("play")}>
       <span className="q-bar-dot" aria-hidden="true" />
-      Searching · {text.waited}
+      <span><span className="q-pill-label">Searching · </span>{text.waited}</span>
     </button>
   );
 }

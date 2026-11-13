@@ -5267,10 +5267,14 @@ body.keyboard-open .tabbar { display: none; }
 .tabbar-initial::before { content: attr(data-initial); }
 .tabbar-item.on .avatar { box-shadow: 0 0 0 1.5px var(--gold); }
 
+/* The sides share what the tabs leave but never get less than their content
+   needs, with at least 8px between groups: a crowded bar pushes the tabs off
+   centre rather than letting a side run under them. */
 .topbar {
   flex: none;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
+  column-gap: 8px;
   align-items: center;
   height: calc(56px + env(safe-area-inset-top, 0px));
   padding: env(safe-area-inset-top, 0px) max(28px, env(safe-area-inset-right, 0px)) 0
@@ -5290,6 +5294,7 @@ body.keyboard-open .tabbar { display: none; }
   color: inherit;
   cursor: pointer;
 }
+.topbar-mark { white-space: nowrap; }
 .topbar-mark b { font-size: 24px; color: var(--gold); letter-spacing: 0.02em; }
 .topbar-mark span { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--text-dim); }
 /* The wide tabs: the same glass pill, the active tab in a lighter capsule. */
@@ -5505,7 +5510,10 @@ button.play-conn { cursor: pointer; }
   cursor: pointer;
 }
 .account-pill .avatar { width: 28px; height: 28px; font-size: 12px; }
+/* Its name ellipsizes past the cap; the cap follows the room the top bar has. */
 .topbar .account-pill { max-width: 280px; }
+@media (max-width: 799px) { .topbar .account-pill { max-width: 220px; } }
+@media (min-width: 1200px) { .topbar .account-pill { max-width: 320px; } }
 /* drawn 40px tall; ::before makes the tap area 44px */
 .account-pill { position: relative; }
 .account-pill::before { content: ""; position: absolute; inset: -2px 0; }
@@ -6027,6 +6035,21 @@ button[role="switch"]:active .ios-switch {
   white-space: nowrap; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); cursor: pointer;
 }
 .q-pill.warn { background: #3f3415; border-color: #9a6f12; }
+/* While the pill shows, a narrow top bar makes room for it: the pill keeps
+   its dot and time (still 44px tall), then the account chip drops its name,
+   then its rating, leaving the avatar. */
+@media (max-width: 1199px) {
+  .topbar .q-pill { gap: 0; padding: 0 14px; min-width: 44px; }
+  .topbar .q-pill .q-bar-dot { margin-right: 8px; }
+  .topbar .q-pill-label { display: none; }
+}
+@media (max-width: 959px) {
+  .topbar:has(.q-pill) .account-pill-name { display: none; }
+}
+@media (max-width: 767px) {
+  .topbar:has(.q-pill) .account-pill-rating { display: none; }
+  .topbar:has(.q-pill) .account-pill { padding: 0 5px; }
+}
 
 /* a sideways phone's one-line chip, on a strip under its top bar */
 .q-chip {

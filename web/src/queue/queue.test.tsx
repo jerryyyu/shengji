@@ -299,6 +299,8 @@ describe("the queue bar", () => {
       act(go);
       const pill = q(".topbar .topbar-end .q-pill")!;
       expect(pill.textContent).toBe("Searching · 0:24");
+      // a narrow top bar hides this label and keeps the time (topBarFitCss.test.ts)
+      expect(pill.querySelector(".q-pill-label")?.textContent).toBe("Searching · ");
       // before the account chip
       expect(pill.nextElementSibling?.className).toContain("account-pill");
       expect(q(".q-strip")).toBeNull();

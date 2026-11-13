@@ -47,21 +47,11 @@ export function Row({ row }: { row: LeaderRow }) {
   );
 }
 
-/** The bot anchor: a divider at its rating, not a competitor with a rank. */
-function Anchor({ name, rating }: { name: string; rating: number }) {
-  return <li className="lb-row anchor"><span className="lb-anchor-text">{name} · {ratingText(rating)}</span></li>;
-}
-
-/** The top players with the bot anchor placed where its rating falls. */
+/** The top players by rating. */
 function Rows({ board }: { board: Board }) {
-  const { players, anchor } = board;
-  const at = players.findIndex((p) => p.rating < anchor.rating);
-  const split = at === -1 ? players.length : at;
   return (
     <ul className="grp lb-list">
-      {players.slice(0, split).map((p, i) => <Row key={`a${i}`} row={p} />)}
-      <Anchor {...anchor} />
-      {players.slice(split).map((p, i) => <Row key={`b${i}`} row={p} />)}
+      {board.players.map((p, i) => <Row key={i} row={p} />)}
     </ul>
   );
 }

@@ -162,6 +162,10 @@ export default function App() {
           if (msg.reason === "removed") {
             openTab("play");
             showToast(msg.message ?? "The host removed you from the room.");
+          } else if (msg.reason && msg.message) {
+            // an open-table seat that went back to its owner, or to a newcomer
+            openTab("play");
+            showToast(msg.message);
           }
           break;
         case "event":

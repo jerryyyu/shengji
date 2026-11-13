@@ -43,6 +43,11 @@ counts as it happened, a win counts no better than a draw. Leaving can then
 never earn more than playing on, and costs no more than the real result.
 Later rounds they are absent from are not rated at all.
 
+A newcomer who takes a seat at an open table mid-round and leaves (or
+abandons) that round, in which they were not rated, carries the cap instead:
+their next rated round, anywhere, scores at most ``LEAVER_SCORE_CAP``
+(``carry_leaver_cap``; kept in memory, so a restart forgets it).
+
 Writes run on one worker thread in a single transaction per round; a
 storage failure is logged and never reaches the game. Once a round's update
 is stored, the room is broadcast again so each rated seat's round-end
@@ -96,6 +101,9 @@ HISTORY_POINTS = 60
 RECENT_GAMES = 10
 BOT_ANCHOR_NAME = "Sheng Ji bot"
 
+# Accounts whose next rated round is capped as a leave (``carry_leaver_cap``).
+CARRIED_CAPS: set[int] = set()
+
 _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ratings")
 # Broadcast tasks are kept until done; the loop holds only weak references.
 _TASKS: set[asyncio.Task] = set()
@@ -144,6 +152,9 @@ class Participant:
     user_id: int
     seat: int
     abandoned: bool = False
+    # Scored at most LEAVER_SCORE_CAP for a leave carried from a round in
+    # which they were not rated; recorded as a played round.
+    capped: bool = False
 
 
 @dataclass
@@ -232,7 +243,7 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                 won = rec.winner_team == team
                 exp = expected_score(strengths[team], strengths[1 - team])
                 actual = round_score(won, rec.level_change)
-                if p.abandoned:
+                if p.abandoned or p.capped:
                     actual = min(actual, LEAVER_SCORE_CAP)
                 k = k_factor(int(row["rated_rounds"]), bool(provisional - {p.user_id}))
                 before = float(row["rating"])
@@ -566,6 +577,10 @@ def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | 
     parts = participants(room, tracker)
     if not parts:
         return None
+    for p in parts:
+        if p.user_id in CARRIED_CAPS:
+            CARRIED_CAPS.discard(p.user_id)
+            p.capped = not p.abandoned
     rated = {p.user_id for p in parts}
     return RoundRecord(
         game_id=f"{tracker.game_id}/{tracker.game_no}", round_no=room.game.round_no,
@@ -628,6 +643,12 @@ def round_ended(room: Any, result: Any) -> None:
         task.add_done_callback(_TASKS.discard)
 
     loop.run_in_executor(_EXECUTOR, apply_round, store, rec).add_done_callback(done)
+
+
+def carry_leaver_cap(user_id: int) -> None:
+    """Cap ``user_id``'s next rated round as a leave: they left (or
+    abandoned) a round they joined mid-way and so were not rated in."""
+    CARRIED_CAPS.add(user_id)
 
 
 def flush(timeout: float = 10.0) -> None:

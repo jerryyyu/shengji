@@ -264,6 +264,14 @@ class Seat:
     timeouts_in_round: int = 0
     # The bot plays every decision for this seat until the player is back.
     away: bool = False
+    # The round in which this seat went away (None while it is not away): a
+    # seat away for a whole round may be offered to newcomers.
+    away_since: int | None = None
+    # Open tables: the round a newcomer took this seat mid-way (unranked
+    # for them; None once a round starts with them seated), and the bot
+    # name the seat goes back to if they leave during it.
+    joined_round: int | None = None
+    bot_name: str | None = None
 
 
 @dataclass
@@ -337,6 +345,13 @@ class Room:
     # A matched room whose start failed and was unwound: no socket may act
     # in it, and a receive loop still holding it drops it.
     aborted: bool = field(default=False, init=False, repr=False)
+    # Open tables (matched rooms): whether a newcomer may be offered a seat
+    # (any human at the table can switch it off), the Joins waiting for their
+    # handover by seat, and who was seated at this round's end (they play
+    # from the next round). Server-only apart from the notices in a frame.
+    allow_joiners: bool = True
+    pending_joins: dict = field(default_factory=dict, repr=False)
+    round_end_joins: dict = field(default_factory=dict, repr=False)
     # A table continuing a saved game: the ``saved_games.resume_point`` its
     # creator's account was given, applied once at ``start_game`` (both
     # teams' levels and the first banker). Server-only.
@@ -646,6 +661,7 @@ def _count_timeout(room: Room, seat: int) -> None:
     if (sd.timeouts_in_row >= AWAY_IN_A_ROW
             or sd.timeouts_in_round >= AWAY_PER_ROUND):
         sd.away = True
+        sd.away_since = room.game.round_no if room.game is not None else 0
 
 
 def _player_moved(room: Room, seat: int) -> None:
@@ -653,6 +669,7 @@ def _player_moved(room: Room, seat: int) -> None:
     no longer away and its run of timeouts is broken."""
     sd = room.seats[seat]
     sd.away = False
+    sd.away_since = None
     sd.timeouts_in_row = 0
 
 
@@ -783,10 +800,14 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "games_won": list(result.games_won),
             "point_scored": result.point_scored,
             **ratings.round_payload(room, seat),
+            # took this seat mid-round from an open table: not ranked for it
+            **({"unranked": "joined"}
+               if room.seats[seat].joined_round == game.round_no else {}),
         } if result else None),
         "message": rnd.message,
         "notice": rnd.notice,
-        **({"matched": True} if room.matched else {}),
+        **({"matched": True, "allow_joiners": room.allow_joiners,
+            "joining": _join_notices(room)} if room.matched else {}),
     }
 
 
@@ -971,6 +992,8 @@ async def _writer(ws: WebSocket, queue: asyncio.Queue,
 
 
 async def broadcast(room: Room) -> None:
+    if room.pending_joins:
+        _settle_joins(room)
     if room.game and room.round:
         _sync_move_timer(room)
     for i, seat in enumerate(room.seats):
@@ -979,6 +1002,10 @@ async def broadcast(room: Room) -> None:
                 enqueue(seat, state_for(room, i))
             else:
                 enqueue(seat, room_json(room, i))
+    if room.game and room.round:
+        # a newcomer waiting for the handover watches the seat it takes
+        for i, pj in list(room.pending_joins.items()):
+            pj.conn.push({**state_for(room, i), "joining_you": True})
 
 
 # ----------------------------------------------------------------- bot pump
@@ -1081,6 +1108,11 @@ async def advance_if_all_ready(room: Room) -> bool:
     game.start_round()
     room.index_round()
     _round_timeouts_reset(room)
+    # everyone seated now starts this round, so it is ranked for them
+    room.round_end_joins.clear()
+    for sd in room.seats:
+        if sd is not None:
+            sd.joined_round = None
     _log_round_start(room)
     saved_games.round_started(room)
     ratings.round_started(room)
@@ -1123,6 +1155,7 @@ def _log_round_end(room: Room) -> None:
                    point_scored=r.point_scored)
     saved_games.round_ended(room, r)
     ratings.round_ended(room, r)
+    _joined_round_ended(room)
 
 
 def bot_step(room: Room, seat: int) -> bool:
@@ -1954,6 +1987,12 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         _swap_seats(room, seat, msg)
     elif t == "remove_player":
         _remove_player(room, seat, msg)
+    elif t == "allow_joiners":
+        # Any person at a ranked table may switch it either way; a Join
+        # already waiting for its trick goes ahead.
+        if not room.matched or room.seats[seat].is_bot:
+            raise IllegalPlay("Only a ranked table takes joiners.")
+        room.allow_joiners = msg.get("on") is True
     elif t == "set_start_level":
         # Jerry 09-26: the selector lives in the room screen, not the lobby.
         # Host-only, and only while no game exists -- Game() reads the level
@@ -2133,6 +2172,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 await send(ws, MATCHMAKER.code_lookup(conn, msg, account_id()))
                 continue
             if room is None or me is None:
+                if t == "leave_room" and conn.joining is not None:
+                    # Leave before the handover: the Join ends, with the
+                    # join-then-leave cooldown, and the seat stays the bot's.
+                    await end_pending_join(conn, penalty=True)
+                    await send(ws, {"type": "left"})
+                    continue
                 if t in matchmaking.QUEUE_MESSAGES:
                     await MATCHMAKER.handle(conn, msg, account_id())
                     continue
@@ -2191,19 +2236,27 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             await send(ws, {"type": "error", "code": "room_not_found",
                                             "message": "Room not found."})
                             continue
+                        # A ranked table's invite: its open seats only, and
+                        # whether there is none.
+                        ranked_open = (_open_seats(target, invite=True)
+                                       if target.matched else None)
                         await send(ws, {
                             "type": "room_seats",
                             "room": target.code,
                             "in_game": target.game is not None,
+                            **({"ranked": True, "full": not ranked_open}
+                               if target.matched else {}),
                             "seats": [{"seat": i, "name": sd.name,
                                        "is_bot": sd.is_bot,
                                        "connected": sd.connected,
                                        "team": i % 2,
                                        # What the lobby actually needs to know:
                                        # a dropped human's seat can be taken too.
-                                       "claimable": sd.is_bot or (
+                                       "claimable": (i in ranked_open
+                                                     if ranked_open is not None
+                                                     else sd.is_bot or (
                                            not sd.connected
-                                           and not _reserved(target, i)),
+                                           and not _reserved(target, i))),
                                        "reserved_secs": (_takeover_in(target, i)
                                                          if _reserved(target, i)
                                                          else None),
@@ -2227,18 +2280,32 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             await send(ws, {"type": "error", "code": "room_not_found",
                                             "message": "Room not found."})
                             continue
+                        if (target.matched and account_id() is not None
+                                and not _holds_seat(target, account_id())):
+                            # An invite link to a ranked table: the open-table
+                            # path for that table (pending until the handover).
+                            refused = await join_by_invite(
+                                target, msg.get("seat"), account_id(),
+                                player_name(msg.get("name")), conn)
+                            if refused is not None:
+                                await send(ws, {
+                                    "type": "error", "code": refused,
+                                    "message": INVITE_REFUSALS[refused],
+                                    **({"cooldown_until": MATCHMAKER.cooldowns[account_id()]}
+                                       if refused == "cooldown" else {})})
+                            continue
                         async with target.lock:
                             name = player_name(msg.get("name"))
                             # A ranked table is rated for signed-in players
-                            # only and is filled by the queue: a guest is
-                            # refused, and an account may only come back to
-                            # the seat it already holds.
+                            # only: a guest is refused, and an account may only
+                            # come back to the seat it already holds (any
+                            # other account takes the invite path above).
                             held = None
                             if target.matched:
                                 if account_id() is None:
                                     await send(ws, {
                                         "type": "error", "code": "ranked_sign_in",
-                                        "message": "Sign in to join a ranked game."})
+                                        "message": "Sign in to join a ranked table."})
                                     continue
                                 held = next(
                                     (s for s in target.seats
@@ -2409,7 +2476,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     # A failed create or join returns the socket to the lobby;
                     # a seat taken elsewhere ends its queue entry.
                     if t in ("create_room", "join_room"):
-                        if room is None or me is None:
+                        if conn.joining is not None:
+                            pass       # an invite Join waits for its handover
+                        elif room is None or me is None:
                             MATCHMAKER.return_to_lobby(conn)
                         else:
                             MATCHMAKER.leave_for_room(conn)
@@ -2429,7 +2498,18 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     chat_system(room, f"{me.name} left")
                     if me in room.seats:
                         ratings.seat_left(room, room.seats.index(me))
+                    # a newcomer leaving the round it joined mid-way: the
+                    # seat is a bot's again, and the leave costs (rule in
+                    # _joined_leave_penalty)
+                    joined_leave = (room.game is not None and not room.game.game_over
+                                    and me in room.seats and not me.is_bot
+                                    and me.joined_round == room.game.round_no)
+                    leaver = me.user_id
                     _detach(me, room, my_gen)
+                    if joined_leave:
+                        _revert_to_bot(room, room.seats.index(me))
+                        _joined_leave_penalty(room, leaver)
+                        kick_bots(room)
                     if room.game is None:
                         # lobby: the seat empties and nobody else moves
                         if me in room.seats:
@@ -2493,6 +2573,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
         if conn.adopted is not None:
             room, me, my_gen = conn.adopted
             conn.adopted = None
+        if conn.joining is not None:
+            # the newcomer's socket went before the handover: the Join ends
+            await end_pending_join(conn, penalty=False)
         MATCHMAKER.disconnect(conn)
         if me is not None and me.removed:
             _detach(me)
@@ -2597,8 +2680,370 @@ def _unwind_matched_room(room: Room, attached: list, conns) -> None:
         MATCHMAKER.return_to_lobby(conn)
 
 
+# ---------------------------------------------------------- open tables
+@dataclass
+class PendingJoin:
+    """A newcomer's Join of an open-table seat, waiting for its handover:
+    the bot (or the away owner's bot) plays the seat until then."""
+    uid: int
+    name: str
+    conn: Any                     # the newcomer's ``matchmaking.Conn``
+    away: bool = False            # the seat is an away player's, not a bot's
+    # A queued pair's two Joins share a group: they are seated together and
+    # end together. ``confirmer`` is the account whose Join it was; only it
+    # pays the join-then-leave cost for leaving before the handover.
+    group: str | None = None
+    confirmer: int | None = None
+
+
+def _joinable(room: Room, invite: bool = False) -> bool:
+    """A ranked game in play that takes joiners and still has a person
+    connected at it. An invite link is the table's own consent, so it does
+    not need Allow joiners."""
+    game = room.game
+    return (room.matched and not room.aborted and rooms.get(room.code) is room
+            and (room.allow_joiners or invite) and room.evaluation is None
+            and game is not None and room.round is not None and not game.game_over
+            and any(sd is not None and not sd.is_bot and sd.connected for sd in room.seats))
+
+
+def _away_offerable(room: Room, seat: int) -> bool:
+    """A present player's seat that the bot has played for the whole
+    previous round: offered from the round boundary on (at a round end the
+    round just played is the previous one)."""
+    sd, game = room.seats[seat], room.game
+    if sd.is_bot or not sd.away or sd.away_since is None or game is None:
+        return False
+    boundary = game.round_no if room.round.phase == "round_end" else game.round_no - 1
+    return sd.away_since <= boundary - 1
+
+
+def _open_seats(room: Room, invite: bool = False) -> list[int]:
+    """The seats a newcomer may take: bot seats, and away seats from the
+    round boundary, none already claimed by a waiting Join."""
+    if not _joinable(room, invite):
+        return []
+    return [i for i, sd in enumerate(room.seats)
+            if i not in room.pending_joins and (sd.is_bot or _away_offerable(room, i))]
+
+
+def open_tables() -> list[dict]:
+    """Every open table as the matchmaker sees it: its code, whether it is
+    at a round end (a newcomer then plays, ranked, from the next round), and
+    the four seats with who holds them and which a newcomer may take."""
+    out = []
+    for room in list(rooms.values()):
+        seats = _open_seats(room)
+        if not seats:
+            continue
+        view = []
+        for i, sd in enumerate(room.seats):
+            pj = room.pending_joins.get(i)
+            view.append({"name": pj.name if pj else sd.name,
+                         "bot": sd.is_bot and pj is None,
+                         "away": i in seats and not sd.is_bot,
+                         "open": i in seats, "team": i % 2,
+                         "user_id": pj.uid if pj else sd.user_id})
+        out.append({"code": room.code, "seats": view,
+                    "round_end": room.round.phase == "round_end"})
+    return out
+
+
+async def join_open_table(code: str, seat: int, uid: int, name: str, conn: Any) -> str | None:
+    """A newcomer confirmed a seat: it is theirs, pending the handover at
+    the next trick boundary (at once when the seat owes nothing). The first
+    confirm wins; a later one for the same seat is ``seat_taken``."""
+    room = rooms.get(code)
+    if room is None:
+        return "closed"
+    async with room.lock:
+        seats = _open_seats(room)
+        if seat not in seats:
+            return "seat_taken" if seats else "closed"
+        if _holds_seat(room, uid):
+            return "closed"
+        await _claim_open_seat(room, seat, uid, name, conn)
+    return None
+
+
+def _holds_seat(room: Room, uid: int) -> bool:
+    return any(sd is not None and not sd.is_bot and sd.user_id == uid for sd in room.seats) or any(
+        pj.uid == uid for pj in room.pending_joins.values())
+
+
+async def _claim_open_seat(room: Room, seat: int, uid: int, name: str, conn: Any, *,
+                           group: str | None = None, confirmer: int | None = None,
+                           announce: bool = True) -> None:
+    """The seat is the newcomer's, pending the handover (caller holds the
+    lock and has checked the seat is open)."""
+    room.pending_joins[seat] = PendingJoin(uid=uid, name=name or "Player", conn=conn,
+                                           away=not room.seats[seat].is_bot, group=group,
+                                           confirmer=uid if confirmer is None else confirmer)
+    conn.joining = (room, seat)
+    MATCHMAKER.enter_room(conn)
+    conn.push({"type": "match_started", "match_id": None, "room": room.code,
+               "rated": ratings.eligible(room), "joining": True, "seat": seat})
+    if announce:
+        await broadcast(room)
+        kick_bots(room)
+
+
+async def join_pair_open_table(code: str, seats: list[int], uids: list[int], names: list[str],
+                               conns: list[Any], confirmer: int) -> str | None:
+    """A queued pair confirmed: both partner seats are theirs at once,
+    pending one shared handover, or neither is."""
+    room = rooms.get(code)
+    if room is None:
+        return "closed"
+    async with room.lock:
+        open_ = _open_seats(room)
+        if (len(seats) != 2 or (seats[0] + 2) % 4 != seats[1]
+                or not all(s in open_ for s in seats)):
+            return "seat_taken" if open_ else "closed"
+        if any(_holds_seat(room, u) for u in uids):
+            return "closed"
+        group = secrets.token_hex(6)
+        for seat, uid, name, conn in zip(seats, uids, names, conns):
+            await _claim_open_seat(room, seat, uid, name, conn, group=group,
+                                   confirmer=confirmer, announce=False)
+        await broadcast(room)
+        kick_bots(room)
+    return None
+
+
+def _default_seat(room: Room, seats: list[int]) -> int:
+    """The lone player's partner seat when it is open, else the first."""
+    humans = [i for i, sd in enumerate(room.seats)
+              if not sd.is_bot and i not in seats] + list(room.pending_joins)
+    if len(humans) == 1 and (humans[0] + 2) % 4 in seats:
+        return (humans[0] + 2) % 4
+    return seats[0]
+
+
+async def join_by_invite(room: Room, seat: Any, uid: int, name: str, conn: Any) -> str | None:
+    """A signed-in friend opened a ranked table's invite link: the open-table
+    path for that table (any open seat, the handover after the trick, the
+    first round unranked), even with Allow joiners off. Returns a refusal
+    code: ``cooldown``, ``table_left`` (they left this table after joining
+    it), ``table_full`` or ``seat_unavailable``."""
+    if MATCHMAKER.cooldowns.get(uid, 0.0) > MATCHMAKER.clock():
+        return "cooldown"
+    if room.code in MATCHMAKER.barred.get(uid, ()):
+        return "table_left"
+    async with room.lock:
+        seats = _open_seats(room, invite=True)
+        if not seats or _holds_seat(room, uid):
+            return "table_full"
+        if isinstance(seat, bool) or not (seat is None or isinstance(seat, int)):
+            seat = None
+        if seat is None:
+            seat = _default_seat(room, seats)
+        if seat not in seats:
+            return "seat_unavailable"
+        MATCHMAKER.leave_for_room(conn)
+        MATCHMAKER.invite_joining(uid, room.code)
+        await _claim_open_seat(room, seat, uid, name, conn)
+    return None
+
+
+INVITE_REFUSALS = {
+    "cooldown": "You left a table you joined. You can join again in 5 minutes.",
+    "table_left": "You left this table, so you can't join it again.",
+    "table_full": "Table is full.",
+    "seat_unavailable": "That seat was just taken — pick another.",
+}
+
+
+def _join_due(room: Room, seat: int) -> bool:
+    """Can the seat change hands now: at a round end, or a trick boundary,
+    or whenever it owes nothing (dealing, declaring, someone else's bury,
+    or it already played to this trick). Never mid-bury."""
+    game, rnd = room.game, room.round
+    if game is None or rnd is None or game.game_over:
+        return False
+    if rnd.phase == "bury":
+        return rnd.turn != seat
+    if rnd.phase == "play":
+        trick = rnd.trick
+        return trick is None or not trick.plays or any(p.seat == seat for p in trick.plays)
+    return True
+
+
+def _join_notices(room: Room) -> list[dict]:
+    """The table's corner line: who takes a seat after this trick, and who
+    was seated at this round end and plays from the next round."""
+    out = [{"seat": i, "name": pj.name, "when": "trick"}
+           for i, pj in sorted(room.pending_joins.items())]
+    if room.round is not None and room.round.phase == "round_end":
+        out += [{"seat": i, "name": n, "when": "round"}
+                for i, n in sorted(room.round_end_joins.items())]
+    return out
+
+
+def _drop_join(room: Room, seat: int, *, back_in_line: bool, penalty: bool = False,
+               reason: str | None = None, message: str | None = None) -> None:
+    """End a Join before its handover (caller holds the lock). The newcomer
+    is told when it did not ask, and is back in the lobby (and, with
+    ``back_in_line``, at the front of the queue)."""
+    pj = room.pending_joins.pop(seat)
+    pj.conn.joining = None
+    if reason is not None:
+        pj.conn.push({"type": "left", "reason": reason, "message": message})
+    MATCHMAKER.return_to_lobby(pj.conn)
+    MATCHMAKER.join_ended(pj.uid, back_in_line=back_in_line, penalty=penalty)
+
+
+async def end_pending_join(conn: Any, *, penalty: bool) -> None:
+    """The newcomer on ``conn`` left (``penalty``) or lost its socket before
+    the handover: its Join ends and the seat stays as it was. A pair's Join
+    ends for both, and the leave costs only the member who confirmed."""
+    if conn.joining is None:
+        return
+    jroom, jseat = conn.joining
+    async with jroom.lock:
+        pj = jroom.pending_joins.get(jseat)
+        if pj is not None and pj.conn is conn:
+            for seat in _join_group(jroom, jseat):
+                if seat == jseat:
+                    _drop_join(jroom, seat, back_in_line=False,
+                               penalty=penalty and pj.confirmer == pj.uid)
+                else:
+                    _drop_join(jroom, seat, back_in_line=False, reason="partner_left",
+                               message=f"{pj.name} left, so your join was cancelled.")
+            await broadcast(jroom)
+    conn.joining = None
+
+
+def _join_group(room: Room, seat: int) -> list[int]:
+    """The seats whose Joins stand or fall with this one's."""
+    group = room.pending_joins[seat].group
+    if group is None:
+        return [seat]
+    return sorted(s for s, pj in room.pending_joins.items() if pj.group == group)
+
+
+def _settle_joins(room: Room) -> None:
+    """Hand every waiting Join its seat when the seat can change hands, or
+    drop it: the away owner came back first, the game ended, or the
+    newcomer's socket went (caller holds the lock; ``broadcast`` runs it
+    before every frame)."""
+    for seat in sorted(room.pending_joins):
+        if seat not in room.pending_joins:
+            continue                   # settled with its pair
+        group = _join_group(room, seat)
+        gone = [s for s in group if room.pending_joins[s].conn.closed]
+        reclaimed = [s for s in group if room.pending_joins[s].away
+                     and (room.seats[s].is_bot or not room.seats[s].away)]
+        if gone:
+            who = room.pending_joins[gone[0]].name
+            for s in group:
+                if s in gone:
+                    _drop_join(room, s, back_in_line=False)
+                else:
+                    _drop_join(room, s, back_in_line=False, reason="partner_left",
+                               message=f"{who} left, so your join was cancelled.")
+        elif reclaimed:
+            owner = room.seats[reclaimed[0]].name
+            for s in group:
+                _drop_join(room, s, back_in_line=True, reason="reclaimed",
+                           message=f"{owner} came back to the seat. You are back in the queue.")
+        elif room.game is None or room.game.game_over or room.aborted:
+            for s in group:
+                _drop_join(room, s, back_in_line=True, reason="table_closed",
+                           message="That game ended. You are back in the queue.")
+        elif all(_join_due(room, s) for s in group):
+            # a pair takes its two seats at the same boundary
+            for s in group:
+                _seat_newcomer(room, s, room.pending_joins[s])
+
+
+def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
+    """The handover: the newcomer holds the seat from here. A bot seat
+    changes hands in place, as a mid-game claim does; an away player's seat
+    gets a new Seat and its owner's socket is sent back to the lobby."""
+    old = room.seats[seat]
+    at_round_end = room.round.phase == "round_end"
+    took = old.name
+    if old.is_bot:
+        me = old
+        me.bot_name = old.name
+    else:
+        displaced_ws, owner = old.ws, old.user_id
+        _detach(old, room, old.gen)
+        old.removed = True
+        me = Seat(name=pj.name, user_id=pj.uid, bot_name=f"Bot {seat}")
+        room.seats[seat] = me
+        holder = MATCHMAKER._live(owner) if owner is not None else None
+        if holder is not None and displaced_ws is not None and holder.ws is displaced_ws:
+            holder.push({"type": "left", "reason": "seat_given",
+                         "message": "You were away for a whole round, so a new player "
+                                    "took your seat."})
+    me.is_bot = False
+    me.name = pj.name
+    me.user_id = pj.uid
+    me.token = secrets.token_urlsafe(12)
+    me.bot_announced = False
+    me.away, me.away_since = False, None
+    me.timeouts_in_row = me.timeouts_in_round = 0
+    me.turn_started = None
+    me.joined_round = None if at_round_end else room.game.round_no
+    if at_round_end:
+        room.round_end_joins[seat] = pj.name
+    del room.pending_joins[seat]
+    pj.conn.joining = None
+    saved_games.seat_changed(room, seat)
+    room.log_event("seat_claimed", seat=seat, name=pj.name, bot=False)
+    gen = _attach(room, me, pj.conn.ws)
+    pj.conn.adopted = (room, me, gen)
+    MATCHMAKER.join_seated(pj.uid)
+    chat_system(room, f"{pj.name} took {took}'s seat")
+
+
+def _revert_to_bot(room: Room, seat: int) -> None:
+    """A newcomer left during the round they joined: the seat is a bot's
+    again (caller holds the lock and has detached the socket)."""
+    sd = room.seats[seat]
+    sd.is_bot = True
+    sd.name = sd.bot_name or f"Bot {seat}"
+    sd.user_id = None
+    sd.token = secrets.token_urlsafe(12)
+    sd.joined_round = None
+    sd.away, sd.away_since = False, None
+    sd.bot_announced = False
+    sd.timeouts_in_row = sd.timeouts_in_round = 0
+    sd.turn_started = None
+    sd.left_at = None
+    saved_games.seat_changed(room, seat)
+    room.log_event("seat_claimed", seat=seat, name=sd.name, bot=True)
+
+
+def _joined_leave_penalty(room: Room, uid: int | None) -> None:
+    """Leaving (or abandoning) the round one joined mid-way: the leaver cap
+    moves to the account's next rated round, a queue cooldown starts, and
+    this table is never offered to it again."""
+    if uid is None:
+        return
+    ratings.carry_leaver_cap(uid)
+    MATCHMAKER.left_open_table(uid, room.code)
+
+
+def _joined_round_ended(room: Room) -> None:
+    """At the end of a round someone joined mid-way: a newcomer who went
+    away or whose socket the bot took over abandoned it, as a leave would."""
+    game = room.game
+    if game is None:
+        return
+    for sd in room.seats:
+        if (sd is not None and not sd.is_bot and sd.joined_round == game.round_no
+                and (sd.away or (not sd.connected and sd.bot_announced))):
+            _joined_leave_penalty(room, sd.user_id)
+
+
 MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
-                                    room_live=lambda code: code in rooms)
+                                    room_live=lambda code: code in rooms,
+                                    open_tables=open_tables,
+                                    join_table=join_open_table,
+                                    join_pair=join_pair_open_table)
 
 
 def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:

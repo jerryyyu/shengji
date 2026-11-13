@@ -304,7 +304,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           </span>
           <MuteButton />
           <LeaveButton ranked={mode === "ranked"} practice={practice} />
-          <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked"} offline={practice} />
+          <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked"} offline={practice}
+                   allowJoiners={state.matched && !state.joining_you ? state.allow_joiners ?? true : undefined} />
         </div>
       </div>
       {/* the notice belongs to a trick of this round: it closes when the round ends */}

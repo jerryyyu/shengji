@@ -3,6 +3,7 @@ import { useAuth } from "../auth";
 import type { ConnStatus } from "../ws";
 import { PartySheet, SoloSheet } from "./PartySheet";
 import { queue, useQueue } from "./store";
+import OpenTableOffer from "./OpenTableOffer";
 import WaitingTable from "./WaitingTable";
 
 /** Read a `?party=CODE` invite link once and drop it from the address. */
@@ -17,7 +18,8 @@ function takeInviteCode(): string | null {
 }
 
 /** Everything of the queue that floats over any screen: the waiting table,
- *  the Solo / With a friend and pair sheets, and the queue's notices. */
+ *  an open-table offer, the Solo / With a friend and pair sheets, and the
+ *  queue's notices. */
 export default function QueueLayer({ status }: { status: ConnStatus }) {
   const q = useQueue();
   const account = useAuth();
@@ -45,6 +47,7 @@ export default function QueueLayer({ status }: { status: ConnStatus }) {
       {q.sheet === "solo" && account.status === "in" ? <SoloSheet /> : null}
       {q.sheet === "party" && account.status === "in" ? <PartySheet /> : null}
       <WaitingTable />
+      <OpenTableOffer />
       {q.note ? (
         <div key={q.note.id} className="q-toast" role="status">
           <span className="q-toast-i" aria-hidden="true">!</span>

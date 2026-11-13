@@ -57,6 +57,9 @@ export function RatingLine({ result, total }: { result: RoundResult; total: bool
   const account = useAuth();
   const [signingIn, setSigningIn] = useState(false);
   const rating = result.rating;
+  if (result.unranked === "joined") {
+    return <div className="rating-line rating-unranked"><span>Unranked · joined mid-round</span></div>;
+  }
   if (rating) {
     const game = total && rating.game_delta !== undefined ? rating.game_delta : null;
     const tone = (d: number) => (d > 0 ? "delta-up" : d < 0 ? "delta-dn" : "delta-flat");

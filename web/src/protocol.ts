@@ -52,6 +52,8 @@ export type ClientMsg =
   | { type: "next_round" }
   /** Ranked table: the player is back after the move timer marked them away. */
   | { type: "im_back" }
+  /** Ranked table: whether newcomers may be offered a bot seat; anyone seated may switch it. */
+  | { type: "allow_joiners"; on: boolean }
   | { type: "chat"; text: string }
   /** Report another seat's player; the server answers report_received or a coded error. */
   | { type: "report_player"; seat: number; reason: ReportReason }
@@ -74,6 +76,8 @@ export interface ErrorMsg {
   code?: ErrorCode;
   /** Set on a refused code_lookup only: the code it was asked about. */
   lookup?: string;
+  /** A queue cooldown's end (Unix seconds, server clock), on code "cooldown". */
+  cooldown_until?: number;
 }
 
 /** A seat's occupant as a room frame shows it, for a lobby action to name. */
@@ -177,6 +181,17 @@ export interface RoundResult {
   /** The receiving seat's own rating after this round; present only for a
    *  signed-in player, and only once the server has stored the round. */
   rating?: RoundRating;
+  /** This seat was taken mid-round from an open table: not ranked for it. */
+  unranked?: "joined";
+}
+
+/** The table's corner line about an open-table newcomer: "trick", they take
+ *  the seat after this trick; "round", they were seated at this round end and
+ *  play from the next round. */
+export interface JoinNotice {
+  seat: number;
+  name: string;
+  when: "trick" | "round";
 }
 
 export interface RoundRating {
@@ -195,6 +210,13 @@ export interface GameState {
   experimental_policy?: "w32";
   /** Built by the matchmaking queue: a rated game between strangers. */
   matched?: boolean;
+  /** Ranked tables: whether newcomers may be offered a bot seat. */
+  allow_joiners?: boolean;
+  /** Ranked tables: newcomers taking a seat (see JoinNotice). */
+  joining?: JoinNotice[];
+  /** Sent only to a newcomer waiting for its handover: `you` is the seat it
+   *  takes, which the bot plays until the trick ends. */
+  joining_you?: boolean;
   phase: Phase;
   ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];
@@ -246,8 +268,11 @@ export interface EventMsg {
 /** Confirmation of leave_room; the connection may create/join rooms again. */
 export interface LeftMsg {
   type: "left";
-  /** Present when the host removed this player rather than the player leaving. */
-  reason?: "removed";
+  /** Why the server sent this without a leave_room: the host removed this
+   *  player; the away owner came back before a newcomer's handover
+   *  (reclaimed); the game ended first (table_closed); or this away
+   *  player's seat went to a newcomer (seat_given). */
+  reason?: "removed" | "reclaimed" | "table_closed" | "seat_given" | "partner_left";
   message?: string;
 }
 
@@ -284,6 +309,8 @@ export type ErrorCode =
   | "seat_reserved"
   | "ranked_sign_in"
   | "ranked_queue_only"
+  | "table_full"
+  | "table_left"
   | "test_room_unavailable"
   | "bad_start_level"
   | "resume_unavailable"
@@ -344,4 +371,9 @@ export interface RoomSeats {
     controller: Controller;
     reserved_secs: number | null;
   }[];
+  /** A ranked table: `claimable` marks the seats its invite may take (bot
+   *  seats, away seats from a round boundary); signed-in players only. */
+  ranked?: boolean;
+  /** A ranked table with no seat to take. */
+  full?: boolean;
 }

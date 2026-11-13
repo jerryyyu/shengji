@@ -1215,3 +1215,843 @@ def test_ws_code_lookup_and_the_old_join_messages(wsenv):
             assert _drain(a, "code_kind")["kind"] == "none"
         finally:
             srv.rooms[room] = closed          # the fixture's teardown stops its tasks
+
+
+# ------------------------------------------------- open tables: the matcher
+class Tables:
+    """The open tables a fake server reports, and its Join: the first
+    confirm of a seat takes it."""
+
+    def __init__(self, env):
+        self.env = env
+        self.tables: dict[str, dict] = {}
+        self.joins: list[tuple[str, int, int]] = []
+        env.mm.open_tables = self
+        env.mm.join_table = self.join
+
+    def add(self, code, seats, round_end=False):
+        """``seats``: an int is a person's account, "bot" a bot seat."""
+        self.tables[code] = {"code": code, "round_end": round_end, "seats": [
+            {"name": "Bot", "bot": True, "open": True, "user_id": None, "team": i % 2}
+            if s == "bot" else
+            {"name": f"P{s}", "bot": False, "open": False, "user_id": s, "team": i % 2}
+            for i, s in enumerate(seats)]}
+
+    def take(self, code, seat, uid):
+        self.tables[code]["seats"][seat] = {"name": f"P{uid}", "bot": False, "open": False,
+                                            "user_id": uid, "team": seat % 2}
+
+    def __call__(self):
+        return [t for t in self.tables.values() if any(s["open"] for s in t["seats"])]
+
+    async def join(self, code, seat, uid, name, conn):
+        t = self.tables.get(code)
+        if t is None or not any(s["open"] for s in t["seats"]):
+            return "closed"
+        if not t["seats"][seat]["open"]:
+            return "seat_taken"
+        self.take(code, seat, uid)
+        self.joins.append((code, seat, uid))
+        self.env.mm.enter_room(conn)
+        return None
+
+
+def test_a_newcomer_alone_is_offered_an_open_table_with_the_partner_seat_picked():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        await env.join(1)
+        state = env.conns[1].last("queue_state")
+        offer = state["offer"]
+        assert offer["room"] == "OPEN" and offer["pick"] == 2 and offer["round_end"] is False
+        assert offer["expires_at"] == env.clock.t + mm.OFFER_SECS
+        assert [(s["name"], s["bot"], s["open"]) for s in offer["seats"]] == [
+            ("P50", False, False), ("Bot", True, True), ("Bot", True, True), ("Bot", True, True)]
+        # the bot wait stands still while the offer is up
+        assert state["bots_paused"] is True and state["bots_at"] is None
+        assert state["wait_players"] is False and state["open_tables"] == 0
+        env.clock.advance(mm.BOT_FILL_SECS + 5)
+        await env.mm.tick()
+        assert env.started == []
+    run(go())
+
+
+def test_a_waiting_table_outranks_an_open_table():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        await env.join(1)
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        await env.mm.tick()                           # an alone waiter gets the new table
+        assert env.conns[1].last("queue_state")["offer"]["room"] == "OPEN"
+        env.clock.advance(3)
+        await env.join(2)                             # someone queued: they share a table
+        (t,) = env.mm.tables.values()
+        assert t.seats[:2] == [1, 2]
+        for uid in (1, 2):
+            state = env.conns[uid].last("queue_state")
+            assert state["offer"] is None and state["table"] is not None
+        # the wait stood still under the offer and runs on as the table's timer
+        assert env.mm._entry(1).bots_at == env.clock.t + mm.BOT_FILL_SECS
+        # a pair queued while a table waits for people still gets an open
+        # table's free partner seats (it cannot sit at a two-seat-short table)
+        await env.pair(3, 4)
+        await env.send(3, "queue_join", party_id=env.mm._party(3).id)
+        assert env.mm._entry(3).table_id is not None or env.mm._entry(3).offer.pair == (1, 3)
+    run(go())
+
+
+def test_a_seat_another_newcomer_took_first_re_renders_the_offer():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        await env.join(1)
+        tables.take("OPEN", 2, 77)                    # another newcomer confirmed seat 2 first
+        await env.send(1, "open_table_join", room="OPEN", seat=2)
+        assert env.conns[1].last("error")["code"] == "seat_taken"
+        offer = env.conns[1].last("queue_state")["offer"]
+        assert offer["seats"][2] == {"name": "P77", "bot": False, "open": False}
+        assert offer["pick"] == 1 and env.mm._entry(1) is not None
+        await env.send(1, "open_table_join", room="OPEN", seat=3)
+        assert tables.joins == [("OPEN", 3, 1)]
+        assert env.mm._entry(1) is None and env.mm.joining[1][0] == "OPEN"
+        assert env.conns[1].in_room
+    run(go())
+
+
+def test_a_tick_re_renders_a_standing_offer_when_its_seat_goes():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [50, "bot", 60, "bot"])
+        await env.join(1)
+        assert env.conns[1].last("queue_state")["offer"]["pick"] == 1
+        tables.take("OPEN", 1, 77)
+        await env.mm.tick()
+        offer = env.conns[1].last("queue_state")["offer"]
+        assert offer["pick"] == 3 and offer["seats"][1]["open"] is False
+        tables.take("OPEN", 3, 78)                    # four people: no longer open
+        await env.mm.tick()
+        assert env.conns[1].last("queue_state")["offer"] is None
+    run(go())
+
+
+def test_wait_keeps_queuing_pauses_the_bot_timer_and_never_re_offers_by_itself():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        await env.join(1)
+        env.clock.advance(20)                         # 40 s of bot wait left
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        await env.mm.tick()
+        await env.send(1, "open_table_wait")
+        state = env.conns[1].last("queue_state")
+        assert state["queued"] and state["offer"] is None
+        assert state["open_tables"] == 1 and state["bots_paused"] is True
+        env.clock.advance(600)
+        await env.mm.pump()
+        await env.mm.tick()
+        assert env.started == [] and env.mm._entry(1).offer is None
+        # the chip brings the offer back, with a fresh clock
+        await env.send(1, "open_table_show")
+        offer = env.conns[1].last("queue_state")["offer"]
+        assert offer["room"] == "OPEN" and offer["expires_at"] == env.clock.t + mm.OFFER_SECS
+        await env.send(1, "open_table_wait")
+        # the table closes: the timer runs on from where it stopped
+        del tables.tables["OPEN"]
+        await env.mm.tick()
+        state = env.conns[1].last("queue_state")
+        assert state["open_tables"] == 0 and state["bots_paused"] is False
+        assert state["bots_at"] == env.clock.t + 40
+        env.clock.advance(40)
+        await env.mm.tick()
+        assert [humans_of(slots) for _, slots in env.started] == [[1]]
+    run(go())
+
+
+def test_an_unanswered_offer_lapses_into_wait():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        await env.join(1)
+        env.clock.advance(mm.OFFER_SECS)
+        await env.mm.pump()
+        state = env.conns[1].last("queue_state")
+        assert state["offer"] is None and state["open_tables"] == 1
+        await env.send(1, "open_table_join", room="OPEN", seat=1)
+        assert env.conns[1].last("error")["code"] == "no_offer"
+    run(go())
+
+
+def test_a_reclaimed_join_puts_the_newcomer_back_at_the_front():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        await env.join(1)
+        await env.send(1, "open_table_join", room="OPEN", seat=2)
+        env.mm.return_to_lobby(env.conns[1])
+        env.mm.join_ended(1, back_in_line=True)
+        e = env.mm._entry(1)
+        assert e is not None and e.front and 1 not in env.mm.joining
+        assert "OPEN" in env.mm.declined[1] and 1 not in env.mm.cooldowns
+        assert env.conns[1].last("queue_state")["queued"] is True
+    run(go())
+
+
+@pytest.mark.parametrize("seated", [False, True])
+def test_join_then_leave_costs_a_cooldown_and_the_table_is_never_offered_again(seated):
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        await env.join(1)
+        await env.send(1, "open_table_join", room="OPEN", seat=2)
+        env.mm.return_to_lobby(env.conns[1])
+        if seated:
+            env.mm.join_seated(1)
+            env.mm.left_open_table(1, "OPEN")
+        else:
+            env.mm.join_ended(1, back_in_line=False, penalty=True)
+        assert env.mm._entry(1) is None
+        tables.tables["OPEN"]["seats"][2] = {"name": "Bot", "bot": True, "open": True,
+                                             "user_id": None, "team": 0}
+        await env.send(1, "queue_join")
+        err = env.conns[1].last("error")
+        assert err["code"] == "cooldown"
+        assert err["cooldown_until"] == env.clock.t + mm.JOIN_COOLDOWN_SECS
+        env.clock.advance(mm.JOIN_COOLDOWN_SECS)
+        await env.join(1)
+        state = env.conns[1].last("queue_state")
+        assert state["offer"] is None and state["open_tables"] == 0
+        await env.send(1, "open_table_show")
+        assert env.conns[1].last("error")["code"] == "table_closed"
+        assert state["bots_paused"] is False
+    run(go())
+
+
+def test_a_guest_never_sees_an_open_table():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        guest = FakeConn(None, "")
+        env.mm.connect(guest)
+        await env.mm.tick()
+        for kind in ("queue_join", "open_table_join", "open_table_show"):
+            await env.mm.handle(guest, {"type": kind, "room": "OPEN", "seat": 1}, None)
+            assert guest.last("error")["code"] == "signed_in_only"
+        assert guest.of("queue_state") == [] and tables.joins == []
+    run(go())
+
+
+# ------------------------------------------------- open tables: the server
+@pytest.fixture()
+def otenv(accounts_on, tmp_path, monkeypatch):  # noqa: F811
+    """The server's open-table functions on a fresh room registry, with the
+    queue a test ``Env`` and every bot decision driven by the test."""
+    from shengji.api import server as srv
+
+    env = Env()
+    monkeypatch.setattr(srv, "LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(srv, "rooms", {})
+    monkeypatch.setattr(srv, "MATCHMAKER", env.mm)
+    monkeypatch.setattr(srv, "kick_bots", lambda room: None)
+
+    async def no_deal(room):
+        return
+
+    monkeypatch.setattr(srv, "run_deal", no_deal)
+    env.mm.open_tables = srv.open_tables
+    env.mm.join_table = srv.join_open_table
+    ratings.CARRIED_CAPS.clear()
+    yield srv, accounts_on.STORE, env
+    ratings.CARRIED_CAPS.clear()
+
+
+class OpenRoom:
+    """A ranked room in play whose seats the test assigns (an int is a
+    connected signed-in person, "bot" a bot), dealt and played in-process."""
+
+    def __init__(self, srv, seats, code="OPEN"):
+        from shengji.engine.game import Game
+
+        self.srv = srv
+        self.room = room = srv.Room(code=code, matched=True, move_timer=True)
+        room.seats = [srv.Seat(name=f"Bot {i}", is_bot=True) if s == "bot"
+                      else srv.Seat(name=f"P{s}", user_id=s, connected=True)
+                      for i, s in enumerate(seats)]
+        room.game = Game(start_level="2", games_to_win=None)
+        srv.rooms[code] = room
+
+    def first_round(self, banker=0):
+        room = self.room
+        room.game.banker = banker
+        room.game.start_round()
+        room.index_round()
+        room.saved_game = None
+        ratings.start(room)
+        self._deal(banker)
+
+    async def next_round(self, banker=None):
+        room = self.room
+        if banker is not None:
+            room.game.result.next_banker = banker
+            room.game.banker = banker
+        room.ready = {i for i, sd in enumerate(room.seats) if not sd.is_bot and sd.connected}
+        assert await self.srv.advance_if_all_ready(room)
+        self._deal(room.round.banker if room.round.banker is not None else banker or 0)
+
+    def _deal(self, banker):
+        rnd = self.room.round
+        while rnd.phase == "deal":
+            seat, idx, code = rnd.deal_next()
+            self.room.ids[seat][idx] = code
+        rnd.finalize_declare()
+        if rnd.banker is None:
+            rnd.banker = banker
+
+    async def step(self):
+        rnd = self.room.round
+        actor = rnd.banker if rnd.phase == "bury" else rnd.turn
+        assert self.srv.bot_step(self.room, actor)
+        await self.srv.broadcast(self.room)
+
+    async def until(self, pred):
+        for _ in range(400):
+            if pred(self.room.round):
+                return
+            await self.step()
+        raise AssertionError("never reached")
+
+    async def finish(self):
+        await self.until(lambda r: r.phase == "round_end")
+        ratings.flush()
+        return self.room.game.result
+
+
+def _plays(rnd, seat):
+    n = sum(1 for t in rnd.history for p in t.plays if p.seat == seat)
+    return n + (sum(1 for p in rnd.trick.plays if p.seat == seat) if rnd.trick else 0)
+
+
+async def _newcomer_joins(env, uid, seat, name, code="OPEN"):
+    conn = env.player(uid, name=name)
+    conn.ws = _FakeWS()
+    await env.send(uid, "queue_join")
+    offer = conn.last("queue_state")["offer"]
+    assert offer is not None and offer["room"] == code, conn.sent
+    await env.send(uid, "open_table_join", room=code, seat=seat)
+    assert conn.last("error") is None, conn.last("error")
+    return conn
+
+
+def test_open_tables_are_ranked_games_in_play_with_bot_seats_and_joiners_allowed(otenv):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        assert srv.open_tables() == []                # no game in play yet
+        t.first_round()
+        (view,) = srv.open_tables()
+        assert view["code"] == "OPEN" and view["round_end"] is False
+        assert [s["open"] for s in view["seats"]] == [False, True, True, True]
+        assert srv.state_for(t.room, 0)["allow_joiners"] is True
+        await srv.handle_action(t.room, 0, {"type": "allow_joiners", "on": False})
+        assert srv.open_tables() == [] and srv.state_for(t.room, 0)["allow_joiners"] is False
+        with pytest.raises(srv.IllegalPlay):
+            await srv.handle_action(t.room, 1, {"type": "allow_joiners", "on": True})
+        await srv.handle_action(t.room, 0, {"type": "allow_joiners", "on": True})
+        assert len(srv.open_tables()) == 1
+        # nobody connected, a casual room, four people: none is open
+        t.room.seats[0].connected = False
+        assert srv.open_tables() == []
+        t.room.seats[0].connected = True
+        t.room.matched = False
+        assert srv.open_tables() == []
+        t.room.matched = True
+        for i in (1, 2, 3):
+            t.room.seats[i] = srv.Seat(name=f"Q{i}", user_id=900 + i, connected=True)
+        assert srv.open_tables() == []
+    run(go())
+
+
+def test_the_bot_plays_on_until_the_trick_ends_then_the_newcomer_holds_the_seat(otenv):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    new, _ = _user(store, "alice", "Alice")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=0)
+        await t.until(lambda r: r.phase == "play" and r.trick.plays
+                      and all(p.seat != 2 for p in r.trick.plays))
+        before = _plays(t.room.round, 2)
+        conn = await _newcomer_joins(env, new, 2, "Alice")
+        room = t.room
+        started = conn.last("match_started")
+        assert started["joining"] is True and started["room"] == "OPEN" and started["seat"] == 2
+        assert room.seats[2].is_bot and 2 in room.pending_joins
+        frame = conn.last("state")
+        assert frame["joining_you"] is True and frame["you"] == 2
+        assert srv.state_for(room, 0)["joining"] == [{"seat": 2, "name": "Alice", "when": "trick"}]
+        # the seat is not open to anyone else meanwhile
+        assert [s["open"] for s in srv.open_tables()[0]["seats"]] == [False, True, False, True]
+        trick_no = len(room.round.history)
+        await t.until(lambda r: len(r.history) > trick_no)
+        assert _plays(room.round, 2) == before + 1    # the bot played the seat's card
+        seat = room.seats[2]
+        assert not seat.is_bot and seat.user_id == new and seat.name == "Alice"
+        assert seat.connected and seat.joined_round == room.game.round_no
+        assert conn.adopted is not None and conn.adopted[1] is seat
+        assert room.pending_joins == {} and new not in env.mm.joining
+        assert srv.state_for(room, 0)["joining"] == []
+    run(go())
+
+
+def test_a_joiner_is_unranked_for_the_round_joined_mid_way_and_ranked_from_the_next(
+        otenv, monkeypatch):
+    from tests.test_ratings import _events, _force_outcome
+
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    new, _ = _user(store, "alice", "Alice")
+    _force_outcome(monkeypatch, 30)
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=0)
+        await t.until(lambda r: r.phase == "play" and len(r.history) == 2)
+        await _newcomer_joins(env, new, 2, "Alice")
+        await t.finish()
+        assert [e["user_id"] for e in _events(store)] == [host]
+        result = srv.state_for(t.room, 2)["round_result"]
+        assert result["unranked"] == "joined" and "rating" not in result
+        assert "unranked" not in srv.state_for(t.room, 0)["round_result"]
+        await t.next_round(banker=0)
+        assert t.room.seats[2].joined_round is None
+        await t.finish()
+        second = sorted(e["user_id"] for e in _events(store) if e["round_no"] == 2)
+        assert second == sorted([host, new])
+    run(go())
+
+
+def test_at_a_round_end_the_newcomer_sits_at_once_and_is_ranked_next_round(otenv, monkeypatch):
+    from tests.test_ratings import _events, _force_outcome
+
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    new, _ = _user(store, "alice", "Alice")
+    _force_outcome(monkeypatch, 30)
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=0)
+        await t.finish()
+        conn = env.player(new, name="Alice")
+        conn.ws = _FakeWS()
+        await env.send(new, "queue_join")
+        assert conn.last("queue_state")["offer"]["round_end"] is True
+        await env.send(new, "open_table_join", room="OPEN", seat=2)
+        seat = t.room.seats[2]
+        assert seat.user_id == new and seat.joined_round is None
+        assert new not in env.mm.joining and env.mm._entry(new) is None
+        assert srv.state_for(t.room, 0)["joining"] == [{"seat": 2, "name": "Alice", "when": "round"}]
+        assert "unranked" not in srv.state_for(t.room, 2)["round_result"]
+        assert srv.pending_ready(t.room) >= {2}       # the newcomer's Next counts too
+        await t.next_round(banker=0)
+        assert srv.state_for(t.room, 0)["joining"] == []
+        await t.finish()
+        second = sorted(e["user_id"] for e in _events(store) if e["round_no"] == 2)
+        assert second == sorted([host, new])
+    run(go())
+
+
+def test_a_bury_never_changes_hands_and_a_seat_that_owes_nothing_changes_at_once(otenv):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    new, _ = _user(store, "alice", "Alice")
+    other, _ = _user(store, "bob", "Bob")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=2)
+        room = t.room
+        assert room.round.phase == "bury" and room.round.turn == 2
+        await _newcomer_joins(env, new, 2, "Alice")
+        assert room.seats[2].is_bot and 2 in room.pending_joins     # mid-bury: waits
+        # someone else's bury owes seat 1 nothing: Bob sits at once
+        await _newcomer_joins(env, other, 1, "Bob")
+        assert room.seats[1].user_id == other
+        await t.step()                                # the bot buries
+        assert room.round.phase == "play" and room.seats[2].user_id == new
+    run(go())
+
+
+def test_two_confirms_for_one_seat_first_wins(otenv):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    a, _ = _user(store, "alice", "Alice")
+    b, _ = _user(store, "bob", "Bob")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=2)                       # seat 2 buries: Joins wait
+        ca, cb = env.player(a, name="Alice"), env.player(b, name="Bob")
+        assert await srv.join_open_table("OPEN", 2, a, "Alice", ca) is None
+        assert await srv.join_open_table("OPEN", 2, b, "Bob", cb) == "seat_taken"
+        assert t.room.pending_joins[2].uid == a
+    run(go())
+
+
+def test_an_away_seat_is_offered_from_the_round_boundary_and_its_owner_reclaims_it(otenv):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    dana, _ = _user(store, "dana", "Dana")
+    new, _ = _user(store, "alice", "Alice")
+    late, _ = _user(store, "bob", "Bob")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", dana, "bot"])
+        room = t.room
+        room.seats[2].name = "Dana"
+        t.first_round(banker=0)
+        dana_conn = env.player(dana)
+        dana_conn.ws = room.seats[2].ws = _FakeWS()
+        dana_conn.in_room = True
+        # Dana goes away in round 1 (two timeouts): not offered in round 1 or 2
+        room.seats[2].timeouts_in_row = 1
+        srv._count_timeout(room, 2)
+        assert room.seats[2].away and room.seats[2].away_since == 1
+        offerable = lambda: [s["open"] for s in srv.open_tables()[0]["seats"]]  # noqa: E731
+        assert offerable() == [False, True, False, True]
+        await t.finish()
+        assert offerable() == [False, True, False, True]
+        await t.next_round(banker=0)
+        await t.until(lambda r: r.phase == "play" and len(r.history) == 1)
+        assert offerable() == [False, True, False, True]
+        await t.finish()
+        # away for the whole of round 2: offered from its end
+        view = srv.open_tables()[0]["seats"]
+        assert view[2] == {"name": "Dana", "bot": False, "away": True, "open": True,
+                           "team": 0, "user_id": dana}
+        await t.next_round(banker=0)
+        await t.until(lambda r: r.phase == "play" and r.trick.plays
+                      and all(p.seat != 2 for p in r.trick.plays))
+        conn = await _newcomer_joins(env, new, 2, "Alice")
+        assert 2 in room.pending_joins and room.seats[2].user_id == dana
+        # Dana taps I'm back before the trick ends: the seat stays hers
+        await srv.handle_action(room, 2, {"type": "im_back"})
+        await srv.broadcast(room)
+        assert room.pending_joins == {} and room.seats[2].user_id == dana
+        left = conn.last("left")
+        assert left["reason"] == "reclaimed" and "Dana" in left["message"]
+        e = env.mm._entry(new)
+        assert e is not None and e.front and not conn.in_room
+        await env.send(new, "queue_leave")      # else Bob would sit with her
+        # away again for a whole round: Bob takes it at a round end and Dana is sent off
+        room.seats[2].away, room.seats[2].away_since = True, room.game.round_no - 1
+        await t.finish()
+        await _newcomer_joins(env, late, 2, "Bob")
+        seat = room.seats[2]
+        assert seat.user_id == late and seat.name == "Bob" and not seat.away
+        assert dana_conn.last("left")["reason"] == "seat_given"
+    run(go())
+
+
+def _wait_until(pred, timeout=15.0):
+    import time
+
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if pred():
+            return
+        time.sleep(0.01)
+    raise AssertionError("condition never held")
+
+
+def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_carried_cap(
+        wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    ratings.CARRIED_CAPS.clear()
+    host, host_headers = _user(store, "host", "Host")
+    alice, alice_headers = _user(store, "alice", "Alice")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=alice_headers) as a:
+        h.send_json({"type": "queue_join"})
+        _drain(h, "queue_state")
+        h.send_json({"type": "queue_start_bots"})
+        code = _drain(h, "match_started")["room"]
+        room = srv.rooms[code]
+        room.seats[0].away = True                    # the bot plays the host's seat too
+        client.portal.call(srv.kick_bots, room)
+        _wait_until(lambda: room.round is not None and room.round.phase == "play")
+        a.send_json({"type": "queue_join"})
+        offer = _drain(a, "queue_state")["offer"]
+        assert offer["room"] == code and offer["pick"] == 2
+        a.send_json({"type": "open_table_join", "room": code, "seat": 2})
+        started = _drain(a, "match_started")
+        assert started["joining"] is True
+        _wait_until(lambda: room.seats[2].user_id == alice)
+        assert room.seats[2].joined_round == room.game.round_no
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=400)
+        seat = room.seats[2]
+        assert seat.is_bot and seat.user_id is None and seat.name == "Bot 2"
+        assert alice in ratings.CARRIED_CAPS
+        a.send_json({"type": "queue_join"})
+        err = _drain(a, "error", tries=400)
+        assert err["code"] == "cooldown"
+        clock.advance(mm.JOIN_COOLDOWN_SECS + 1)
+        a.send_json({"type": "queue_join"})
+        state = _drain(a, "queue_state", tries=400)
+        assert state["queued"] and state["offer"] is None and state["open_tables"] == 0
+    ratings.CARRIED_CAPS.clear()
+
+
+@pytest.mark.parametrize("left", [True, False])
+def test_leaving_or_dropping_before_the_handover_ends_the_join(otenv, left):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    new, _ = _user(store, "alice", "Alice")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=2)                       # seat 2 buries: the Join waits
+        conn = await _newcomer_joins(env, new, 2, "Alice")
+        assert 2 in t.room.pending_joins and conn.joining is not None
+        if not left:
+            conn.close(env.clock.t)
+        await srv.end_pending_join(conn, penalty=left)
+        assert t.room.pending_joins == {} and t.room.seats[2].is_bot
+        assert conn.joining is None and new not in env.mm.joining
+        assert ("OPEN" in env.mm.barred.get(new, set())) is left
+        assert (new in env.mm.cooldowns) is left
+        assert "OPEN" in env.mm.declined.get(new, set()) or left
+        assert env.mm._entry(new) is None
+        assert len(srv.open_tables()) == 1
+    run(go())
+
+
+# ------------------------------------------- a ranked table's invite link
+def _ranked_host(srv, store, client, monkeypatch):
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    host, headers = _user(store, "host", "Host")
+    return host, headers
+
+
+def _start_ranked(srv, h):
+    h.send_json({"type": "queue_join"})
+    _drain(h, "queue_state")
+    h.send_json({"type": "queue_start_bots"})
+    code = _drain(h, "match_started")["room"]
+    return code, srv.rooms[code]
+
+
+def test_ws_an_invite_link_seats_a_signed_in_friend_even_with_joiners_off(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    _, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    friend, friend_headers = _user(store, "friend", "Friend")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=friend_headers) as f:
+        code, room = _start_ranked(srv, h)
+        room.allow_joiners = False
+        room.seats[0].away = True                    # the bot plays on for the host
+        client.portal.call(srv.kick_bots, room)
+        _wait_until(lambda: room.round is not None and room.round.phase == "play")
+        assert srv.open_tables() == []               # not offered to the queue
+        f.send_json({"type": "peek_room", "room": code})
+        seats = _drain(f, "room_seats")
+        assert seats["ranked"] is True and seats["full"] is False
+        assert [s["claimable"] for s in seats["seats"]] == [False, True, True, True]
+        f.send_json({"type": "join_room", "room": code, "name": "Friend", "seat": 2})
+        started = _drain(f, "match_started")
+        assert started["joining"] is True and started["seat"] == 2
+        _wait_until(lambda: room.seats[2].user_id == friend)
+        assert room.seats[2].joined_round == room.game.round_no      # first round unranked
+        f.send_json({"type": "leave_room"})
+        _drain(f, "left", tries=400)
+        assert room.seats[2].is_bot
+        assert srv.MATCHMAKER.cooldowns[friend] > clock()
+        assert friend in ratings.CARRIED_CAPS
+        f.send_json({"type": "join_room", "room": code, "name": "Friend", "seat": 2})
+        assert _drain(f, "error", tries=400)["code"] == "cooldown"
+    ratings.CARRIED_CAPS.clear()
+
+
+def test_ws_a_guest_with_a_ranked_invite_is_asked_to_sign_in(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    _, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws") as g:
+        code, room = _start_ranked(srv, h)
+        g.send_json({"type": "peek_room", "room": code})
+        assert _drain(g, "room_seats")["ranked"] is True
+        g.send_json({"type": "join_room", "room": code, "name": "Guest", "seat": 2})
+        err = _drain(g, "error")
+        assert err["code"] == "ranked_sign_in" and err["message"] == "Sign in to join a ranked table."
+        assert all(sd.user_id != None or sd.is_bot for sd in room.seats)  # noqa: E711
+        assert room.pending_joins == {}
+
+
+def test_ws_a_ranked_invite_with_no_bot_seat_is_table_full(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    _, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    friend, friend_headers = _user(store, "friend", "Friend")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=friend_headers) as f:
+        code, room = _start_ranked(srv, h)
+
+        async def fill():
+            async with room.lock:
+                for i in (1, 2, 3):
+                    seat = room.seats[i]
+                    seat.is_bot, seat.name, seat.user_id, seat.connected = False, f"Q{i}", 900 + i, True
+        client.portal.call(fill)
+        f.send_json({"type": "peek_room", "room": code})
+        seats = _drain(f, "room_seats")
+        assert seats["full"] is True and not any(s["claimable"] for s in seats["seats"])
+        f.send_json({"type": "join_room", "room": code, "name": "Friend"})
+        err = _drain(f, "error")
+        assert err["code"] == "table_full" and err["message"] == "Table is full."
+        assert room.pending_joins == {}
+
+
+# ------------------------------------------------- open tables: a queued pair
+async def _queued_pair(env, leader, partner, names=("Lee", "Pat")):
+    for uid, name in zip((leader, partner), names):
+        env.player(uid, name=name).ws = _FakeWS()
+    await env.send(leader, "party_create")
+    code = env.conns[leader].last("party")["code"]
+    await env.send(partner, "party_join", code=code)
+    await env.send(leader, "queue_join", party_id=env.mm._party(leader).id)
+    return env.conns[leader], env.conns[partner]
+
+
+@pytest.fixture()
+def pairenv(otenv):
+    srv, store, env = otenv
+    env.mm.join_pair = srv.join_pair_open_table
+    return otenv
+
+
+def test_a_pair_is_offered_two_free_partner_seats_together(pairenv):
+    srv, store, env = pairenv
+    host, _ = _user(store, "host")
+    lee, _ = _user(store, "lee", "Lee")
+    pat, _ = _user(store, "pat", "Pat")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=0)
+        cl, cp = await _queued_pair(env, lee, pat)
+        lo, po = cl.last("queue_state")["offer"], cp.last("queue_state")["offer"]
+        assert lo["room"] == "OPEN" and (lo["pick"], lo["partner"]["seat"]) == (1, 3)
+        assert lo["partner"]["name"] == "Pat"
+        assert (po["pick"], po["partner"]) == (3, {"seat": 1, "name": "Lee"})
+    run(go())
+
+
+def test_a_pair_is_never_offered_two_bot_seats_that_are_not_partners(pairenv):
+    srv, store, env = pairenv
+    host, _ = _user(store, "host")
+    other, _ = _user(store, "other")
+    lee, _ = _user(store, "lee", "Lee")
+    pat, _ = _user(store, "pat", "Pat")
+    solo, _ = _user(store, "solo", "Solo")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", other])      # bots at 1 and 2: adjacent
+        t.first_round(banker=0)
+        cl, cp = await _queued_pair(env, lee, pat)
+        assert cl.last("queue_state")["offer"] is None and cp.last("queue_state")["offer"] is None
+        await env.mm.tick()
+        assert env.mm._entry(lee).offer is None
+        await env.send(lee, "queue_leave")
+        conn = env.player(solo, name="Solo")
+        await env.send(solo, "queue_join")
+        assert conn.last("queue_state")["offer"]["room"] == "OPEN"   # a single still is
+    run(go())
+
+
+def test_one_partner_waiting_cancels_the_pair_offer_with_no_cost(pairenv):
+    srv, store, env = pairenv
+    host, _ = _user(store, "host")
+    lee, _ = _user(store, "lee", "Lee")
+    pat, _ = _user(store, "pat", "Pat")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=0)
+        cl, cp = await _queued_pair(env, lee, pat)
+        await env.send(pat, "open_table_wait")                  # the member, not the leader
+        for c in (cl, cp):
+            state = c.last("queue_state")
+            assert state["queued"] and state["offer"] is None and state["open_tables"] == 1
+        assert {"OPEN"} <= env.mm.declined[lee] and {"OPEN"} <= env.mm.declined[pat]
+        assert env.mm.cooldowns == {}
+        await env.mm.tick()
+        assert env.mm._entry(lee).offer is None
+    run(go())
+
+
+@pytest.mark.parametrize("leaver", ["confirmer", "partner"])
+def test_a_partner_leaving_before_the_handover_cancels_both_joins(pairenv, leaver):
+    srv, store, env = pairenv
+    host, _ = _user(store, "host")
+    lee, _ = _user(store, "lee", "Lee")
+    pat, _ = _user(store, "pat", "Pat")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=1)                 # seat 1 buries: the pair's Join waits
+        cl, cp = await _queued_pair(env, lee, pat)
+        await env.send(pat, "open_table_join", room="OPEN", seat=3)     # Pat confirms for both
+        room = t.room
+        assert {s: pj.uid for s, pj in room.pending_joins.items()} == {1: lee, 3: pat}
+        assert room.seats[1].is_bot and room.seats[3].is_bot            # 3 owes nothing, yet waits
+        gone = cp if leaver == "confirmer" else cl
+        stays = cl if gone is cp else cp
+        await srv.end_pending_join(gone, penalty=True)
+        assert room.pending_joins == {} and room.seats[1].is_bot and room.seats[3].is_bot
+        assert stays.last("left")["reason"] == "partner_left"
+        assert stays.joining is None and gone.joining is None
+        if leaver == "confirmer":
+            assert set(env.mm.cooldowns) == {pat} and "OPEN" in env.mm.barred[pat]
+        else:
+            assert env.mm.cooldowns == {}
+    run(go())
+
+
+def test_a_pair_takes_both_seats_at_the_same_trick_boundary(pairenv):
+    srv, store, env = pairenv
+    host, _ = _user(store, "host")
+    lee, _ = _user(store, "lee", "Lee")
+    pat, _ = _user(store, "pat", "Pat")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.first_round(banker=0)
+        room = t.room
+        # seat 1 has played to this trick (owes nothing), seat 3 has not
+        await t.until(lambda r: r.phase == "play" and any(p.seat == 1 for p in r.trick.plays)
+                      and all(p.seat != 3 for p in r.trick.plays))
+        cl, cp = await _queued_pair(env, lee, pat)
+        await env.send(lee, "open_table_join", room="OPEN", seat=1)
+        assert set(room.pending_joins) == {1, 3} and room.seats[1].is_bot
+        assert srv.state_for(room, 0)["joining"] == [
+            {"seat": 1, "name": "Lee", "when": "trick"}, {"seat": 3, "name": "Pat", "when": "trick"}]
+        trick_no = len(room.round.history)
+        while len(room.round.history) == trick_no:
+            assert room.seats[1].is_bot and room.seats[3].is_bot
+            await t.step()
+        assert room.seats[1].user_id == lee and room.seats[3].user_id == pat
+        assert room.seats[1].joined_round == room.seats[3].joined_round == room.game.round_no
+        assert cl.adopted[1] is room.seats[1] and cp.adopted[1] is room.seats[3]
+        assert lee not in env.mm.joining and pat not in env.mm.joining
+    run(go())

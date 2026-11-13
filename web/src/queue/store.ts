@@ -10,7 +10,7 @@ import type { ConnStatus } from "../ws";
 import { conn } from "../ws";
 import { haptic } from "../native";
 import type { ServerMsg } from "../protocol";
-import type { PartyMsg, QueueClientMsg, WaitingTableMsg } from "./messages";
+import type { OfferSeatMsg, OpenTableOfferMsg, PartyMsg, QueueClientMsg, WaitingTableMsg } from "./messages";
 import { QUEUE_ERROR_CODES } from "./messages";
 
 /** From this long before the bot fill the bar turns amber. */
@@ -47,6 +47,18 @@ export interface TableView {
   waitingFor: string[];
 }
 
+/** An open table offered to you, times in local ms; `pick` is the seat you
+ *  have chosen (the server's pick until you tap another). */
+export interface OfferView {
+  room: string;
+  seats: OfferSeatMsg[];
+  pick: number;
+  expiresAt: number;
+  roundEnd: boolean;
+  /** A pair's offer: both seats are fixed, yours and your partner's. */
+  partner: { seat: number; name: string } | null;
+}
+
 export type Sheet = null | "solo" | "guest" | "party";
 
 export interface QueueNote { id: number; title: string; sub?: string }
@@ -63,9 +75,15 @@ export interface QueueView {
   front: boolean;
   leader: boolean;
   partyId: string | null;
-  pending: null | "join" | "leave" | "bots" | "start";
+  pending: null | "join" | "leave" | "bots" | "start" | "offer";
   /** The waiting table you sit at; null while alone in the queue. */
   table: TableView | null;
+  /** An open table offered to you now. */
+  offer: OfferView | null;
+  /** Open tables you waited on that can still be joined. */
+  openTables: number;
+  /** Your bot wait stands still while an open table can be joined. */
+  botsPaused: boolean;
   party: PartyMsg | null;
   partyError: string | null;
   sheet: Sheet;
@@ -76,7 +94,7 @@ export interface QueueView {
 
 const EMPTY: QueueView = {
   count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
-  partyId: null, pending: null, table: null,
+  partyId: null, pending: null, table: null, offer: null, openTables: 0, botsPaused: false,
   party: null, partyError: null, sheet: null, joinCode: "", note: null,
 };
 
@@ -205,7 +223,8 @@ export class QueueStore {
         if (!held && !this.view.pending) return;
         const signedIn = auth.state?.status === "in";
         this.joinSentAt = null;
-        this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false });
+        this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false,
+                   offer: null, openTables: 0, botsPaused: false });
         if (held && signedIn) this.notify("You left the queue while away.", "No cooldown.");
       }, RESYNC_MS);
     }
@@ -224,7 +243,7 @@ export class QueueStore {
         if (!msg.queued) {
           const wasQueued = this.view.queued;
           this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
-                     pending: null, table: null });
+                     pending: null, table: null, offer: null, openTables: 0, botsPaused: false });
           if (msg.replaced && wasQueued) this.notify("Your search moved to another window.");
           break;
         }
@@ -238,19 +257,21 @@ export class QueueStore {
         if (table && !this.view.table) haptic("declare");
         const pending = this.view.pending === "bots" ? "bots"
           : this.view.pending === "start" && table && !table.youReady ? "start" : null;
+        const offer = msg.offer ? this.offerView(msg.offer) : null;
+        if (offer && !this.view.offer) haptic("declare");
         this.set({
           queued: true, count: msg.count,
           since: msg.since !== undefined ? this.local(msg.since) : now,
           botsAt: msg.bots_at != null ? this.local(msg.bots_at) : null,
           waitPlayers: msg.wait_players === true,
           front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
-          pending, table,
+          pending, table, offer, openTables: msg.open_tables ?? 0, botsPaused: msg.bots_paused === true,
         });
         break;
       }
       case "match_started":
         this.clearResync();
-        this.set({ queued: false, table: null, pending: null, sheet: null,
+        this.set({ queued: false, table: null, pending: null, sheet: null, offer: null, openTables: 0, botsPaused: false,
                    since: null, botsAt: null, waitPlayers: false, front: false, note: null });
         break;
       case "match_cancelled":
@@ -264,7 +285,7 @@ export class QueueStore {
         const me = myName();
         const by = msg.by && msg.by !== me ? msg.by : null;
         this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false,
-                   front: false });
+                   front: false, offer: null, openTables: 0, botsPaused: false });
         if (msg.reason === "idle") {
           this.notify("You left the table.", "No tap for 2 minutes. No cooldown.");
         } else if (msg.reason === "away") {
@@ -303,10 +324,19 @@ export class QueueStore {
           this.set({ pending: null, party: null, partyError: null });
         } else if (msg.code.startsWith("party") || msg.code === "in_queue" || msg.code === "in_party") {
           this.set({ pending: null, partyError: msg.message });
+        } else if (msg.code === "cooldown") {
+          this.set({ pending: null });
+          this.notify("You left a table you joined.", "You can queue again in 5 minutes.");
+        } else if (msg.code === "seat_taken") {
+          this.set({ pending: null });
+          this.notify("That seat was just taken.", "Pick another.");
+        } else if (msg.code === "table_closed" || msg.code === "no_offer") {
+          this.set({ pending: null, offer: null });
+          this.notify("That table is no longer open.");
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
           this.set({ pending: null, queued: false, table: null, since: null, botsAt: null, waitPlayers: false,
-                     front: false });
+                     front: false, offer: null, openTables: 0, botsPaused: false });
         } else {
           this.set({ pending: null });
         }
@@ -354,6 +384,41 @@ export class QueueStore {
     const t = this.view.table;
     if (!t || t.youReady || this.view.pending !== null) return;
     if (this.send({ type: "table_start" })) this.set({ pending: "start" });
+  }
+
+  /** Take the seat you picked at the offered table. */
+  offerJoin(): void {
+    const o = this.view.offer;
+    if (!o || this.view.pending !== null) return;
+    if (this.send({ type: "open_table_join", room: o.room, seat: o.pick })) this.set({ pending: "offer" });
+  }
+
+  /** Pick another open seat at the offered table. */
+  offerPick(seat: number): void {
+    const o = this.view.offer;
+    if (!o || o.partner || !o.seats[seat]?.open) return;
+    this.set({ offer: { ...o, pick: seat } });
+  }
+
+  /** Keep queuing; the bar keeps a way back while the table is joinable. */
+  offerWait(): void {
+    // a Join in flight is answered by the server first
+    if (!this.view.offer || this.view.pending === "offer") return;
+    if (this.send({ type: "open_table_wait" })) this.set({ offer: null });
+  }
+
+  /** The bar's open-table chip: the offer again. */
+  offerShow(): void {
+    this.send({ type: "open_table_show" });
+  }
+
+  /** A re-sent offer keeps the seat you picked while it is still open. */
+  private offerView(o: OpenTableOfferMsg): OfferView {
+    const was = this.view.offer;
+    const partner = o.partner ?? null;
+    const keep = !partner && was && was.room === o.room && o.seats[was.pick]?.open ? was.pick : o.pick;
+    return { room: o.room, seats: o.seats, pick: keep, expiresAt: this.local(o.expires_at), roundEnd: o.round_end,
+             partner };
   }
 
   private tableView(t: WaitingTableMsg): TableView {

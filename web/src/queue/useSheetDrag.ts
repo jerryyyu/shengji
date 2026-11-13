@@ -62,6 +62,8 @@ export function useSheetDrag(
   layerRef: RefObject<HTMLElement | null>,
   sheetRef: RefObject<HTMLElement | null>,
   close: MutableRefObject<() => void>,
+  /** False while the sheet may not be dismissed: no drag starts. */
+  dismissible?: MutableRefObject<boolean>,
 ): void {
   useEffect(() => {
     const layer = layerRef.current;
@@ -107,7 +109,7 @@ export function useSheetDrag(
     const onStart = (e: TouchEvent) => {
       // a second finger, or a new touch, ends any drag still under way
       cancel();
-      if (leaving || e.touches.length !== 1) return;
+      if (leaving || e.touches.length !== 1 || dismissible?.current === false) return;
       if (window.matchMedia?.(WIDE)?.matches) return;
       const from = e.target;
       if (!(from instanceof Element) || from.closest(EXCLUDED)) return;
@@ -205,5 +207,5 @@ export function useSheetDrag(
       sheet.removeEventListener("touchcancel", cancel);
       clear();
     };
-  }, [layerRef, sheetRef, close]);
+  }, [layerRef, sheetRef, close, dismissible]);
 }

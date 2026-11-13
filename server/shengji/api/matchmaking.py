@@ -40,6 +40,17 @@ starts with bots at its own ``bots_at``, or at once on ``queue_start_bots``.
 Room creation is the server's job: ``start_room`` is injected, and receives
 the table id (``None`` for a game started alone) and the four seats in seat
 order (bots as ``Slot`` with ``user_id=None``).
+
+Open tables (``open_tables`` and ``join_table`` are injected by the server):
+a ranked game in play with a seat a newcomer may take. A single entry alone
+in the queue (after ``seat_waiting``, so a waiting table always comes first)
+is offered the open table with the most people, for ``OFFER_SECS``: it picks
+a seat and joins, or waits. A table it waited on (or let lapse) is never
+offered to it again by itself, but stays one tap away on the bar while it is
+joinable, and the entry's bot timer is paused for as long as an offer is up
+or such a table can still be joined. Leaving a table it joined, before its
+first ranked round there, costs a ``JOIN_COOLDOWN_SECS`` queue cooldown and
+that table is never offered to it again.
 """
 
 from __future__ import annotations
@@ -80,6 +91,10 @@ TABLE_IDLE_SECS = 120.0
 # seat pairs a pair can take.
 SEAT_ORDER = (0, 1, 2, 3)
 PAIR_SEATS = ((0, 2), (1, 3))
+# How long an open-table offer stays up, and the queue cooldown after
+# leaving a table one joined before its first ranked round there.
+OFFER_SECS = 10.0
+JOIN_COOLDOWN_SECS = 300.0
 PARTY_TTL = 300.0
 COUNT_DEBOUNCE = 1.0
 JOIN_LIMIT = (10, 60.0)      # queue_join per account per window
@@ -94,7 +109,7 @@ CODE_LEN = 4
 QUEUE_MESSAGES = frozenset({
     "queue_join", "queue_leave", "table_start", "match_accept", "match_decline",
     "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_create", "party_invite", "party_join",
-    "party_leave",
+    "party_leave", "open_table_join", "open_table_wait", "open_table_show",
 })
 # The only queue message a seated socket may send: leaving a pair.
 IN_ROOM_MESSAGES = frozenset({"party_leave"})
@@ -149,6 +164,24 @@ class Party:
 
 
 @dataclass
+class Offer:
+    """An open table offered to one entry: the table's seats as the server
+    described them (``open`` marks a seat the newcomer may take), the seat
+    picked for it, and when the offer lapses."""
+    code: str
+    seats: list[dict]
+    pick: int
+    expires_at: float
+    round_end: bool = False
+    # A pair's offer: the two partner seats, the leader's first. Neither
+    # member picks; one confirm takes both.
+    pair: tuple[int, int] | None = None
+
+    def open_seats(self) -> list[int]:
+        return [i for i, s in enumerate(self.seats) if s.get("open")]
+
+
+@dataclass
 class Entry:
     id: str
     seq: int
@@ -165,6 +198,14 @@ class Entry:
     # there (or it sat down): the idle clock.
     table_id: str | None = None
     active_at: float = 0.0
+    # The open table on offer, the remaining bot wait while the timer is
+    # paused for open tables, and the open tables this entry waited on that
+    # can still be joined (the bar's chip).
+    offer: Offer | None = None
+    paused: float | None = None
+    open_codes: list[str] = field(default_factory=list)
+    # A Join is in flight: the entry is neither seated nor started meanwhile.
+    claiming: bool = False
 
     @property
     def size(self) -> int:
@@ -234,6 +275,9 @@ class Conn:
         self.closed_at: float | None = None
         self.in_room = False
         self.adopted: tuple | None = None
+        # ``(room, seat)`` while this socket's Join of an open table waits for
+        # its handover; set and cleared by the server.
+        self.joining: tuple | None = None
         self._queue: asyncio.Queue | None = None
         self._writer: asyncio.Task | None = None
 
@@ -282,6 +326,13 @@ async def _store_rating(user_id: int) -> float | None:
 
 # ------------------------------------------------------------- the queue
 StartRoom = Callable[[str | None, list[Slot], dict[int, Conn]], Awaitable[Any]]
+# (room code, seat, account, name, socket) -> None when the seat is the
+# newcomer's (pending until the handover), else a refusal code.
+JoinTable = Callable[[str, int, int, str, Conn], Awaitable[str | None]]
+# (room code, the two partner seats, the two accounts, their names, their
+# sockets, the account that confirmed) -> as JoinTable, for both at once.
+JoinPair = Callable[[str, list[int], list[int], list[str], list[Conn], int],
+                    Awaitable[str | None]]
 
 
 class Matchmaker:
@@ -290,6 +341,9 @@ class Matchmaker:
                  start_room: StartRoom | None = None,
                  user_active: Callable[[int], bool] | None = None,
                  room_live: Callable[[str], bool] | None = None,
+                 open_tables: Callable[[], list[dict]] | None = None,
+                 join_table: JoinTable | None = None,
+                 join_pair: JoinPair | None = None,
                  autorun: bool = True) -> None:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
@@ -298,6 +352,12 @@ class Matchmaker:
         # Whether a code names a live room: pair codes avoid them, and
         # code_lookup answers with them.
         self.room_live = room_live or (lambda code: False)
+        # The open tables as the server sees them (``{"code", "seats",
+        # "round_end"}``; a seat is ``{"name", "bot", "open", "user_id",
+        # "team"}``), and the server's join of one seat for one account.
+        self.open_tables = open_tables or (lambda: [])
+        self.join_table = join_table
+        self.join_pair = join_pair
         self.autorun = autorun
         self._task: asyncio.Task | None = None
         self.reset()
@@ -314,6 +374,14 @@ class Matchmaker:
         self.parties: dict[str, Party] = {}
         self.party_of: dict[int, str] = {}
         self.party_codes: dict[str, str] = {}
+        # Open tables: per account, the tables it waited on (never offered
+        # again by themselves), the tables it may never be offered (it joined
+        # and left), its queue cooldown, and a Join waiting for its handover
+        # (the entry kept to put back in line if the seat is reclaimed).
+        self.declined: dict[int, set[str]] = {}
+        self.barred: dict[int, set[str]] = {}
+        self.cooldowns: dict[int, float] = {}
+        self.joining: dict[int, tuple[str, Entry | None]] = {}
         self.join_limiter = accounts.RateLimiter(*JOIN_LIMIT)
         self.party_limiter = accounts.RateLimiter(*PARTY_LIMIT)
         self.lookup_limiter = accounts.RateLimiter(*LOOKUP_LIMIT)
@@ -336,7 +404,7 @@ class Matchmaker:
             except Exception:      # noqa: BLE001 - the queue outlives one bad tick
                 log.exception("matchmaking pump failed")
             if (not self.entries and not self.tables and not self.parties
-                    and self._count_sent == 0):
+                    and not self.joining and self._count_sent == 0):
                 return
 
     def _live(self, uid: int) -> Conn | None:
@@ -424,8 +492,26 @@ class Matchmaker:
         return {"type": "queue_state", "queued": True, "since": e.since,
                 "count": self.count(), "front": e.front,
                 "party_id": e.party_id, "leader": e.leader == uid,
-                "bots_at": e.bots_at, "wait_players": e.bots_at is None,
-                "table": self.table_payload(t, uid) if t is not None else None}
+                "bots_at": e.bots_at,
+                "wait_players": e.bots_at is None and e.paused is None,
+                "bots_paused": e.paused is not None,
+                "table": self.table_payload(t, uid) if t is not None else None,
+                "offer": self._offer_payload(e.offer, uid, e) if e.offer is not None else None,
+                "open_tables": len(e.open_codes)}
+
+    def _offer_payload(self, o: Offer, uid: int | None = None, e: Entry | None = None) -> dict:
+        """The offer as ``uid`` sees it: for a pair, ``pick`` is its own seat
+        and ``partner`` the other member's."""
+        out = {"room": o.code, "pick": o.pick, "expires_at": o.expires_at,
+               "round_end": o.round_end, "partner": None,
+               "seats": [{"name": s.get("name") or "Player", "bot": bool(s.get("bot")),
+                          "open": bool(s.get("open"))} for s in o.seats]}
+        if o.pair is not None and e is not None and uid in e.members:
+            mine = o.pair[e.members.index(uid)]
+            other = next(u for u in e.members if u != uid)
+            out["pick"] = mine
+            out["partner"] = {"seat": o.pair[1 - e.members.index(uid)], "name": self._name(other)}
+        return out
 
     def _send_state(self, e: Entry) -> None:
         for u in e.members:
@@ -593,6 +679,12 @@ class Matchmaker:
                     await self._start_bots(user_id)
                 elif t in ("queue_wait_players", "queue_allow_bots"):
                     self._set_bot_fill(user_id, t == "queue_allow_bots")
+                elif t == "open_table_join":
+                    await self._open_join(conn, user_id, msg)
+                elif t == "open_table_wait":
+                    self._open_wait(user_id)
+                elif t == "open_table_show":
+                    self._open_show(user_id, msg)
         except QueueError as err:
             self._error(conn, err)
         self.ensure_running()
@@ -616,6 +708,10 @@ class Matchmaker:
         for m in members:
             if m != uid and not self._available(m):
                 raise QueueError("partner_unavailable", "Your partner is not in the lobby.")
+        until = max((self.cooldowns.get(m, 0.0) for m in members), default=0.0)
+        if until > self.clock():
+            raise QueueError("cooldown", "You left a table you joined. You can queue "
+                             "again in 5 minutes.", cooldown_until=until)
         member_ratings = {}
         for m in members:
             r = await self.rating_of(m)
@@ -637,6 +733,7 @@ class Matchmaker:
         for m in members:
             self.entry_of[m] = e.id
         self.seat_waiting()
+        self._offer_open_tables(self.clock(), quiet={e.id})
         if e.table_id is None:
             self._send_state(e)
         self._flush_count()
@@ -664,10 +761,10 @@ class Matchmaker:
         if e.leader != uid:
             raise QueueError("not_leader", "Only the party leader can change this.")
         if allow:
-            if e.bots_at is None:
+            if e.bots_at is None and e.paused is None:
                 e.bots_at = self.clock() + BOT_FILL_SECS
         else:
-            e.bots_at = None
+            e.bots_at, e.paused = None, None
         t = self._table(e)
         if t is not None:
             self._send_table(t)
@@ -705,7 +802,8 @@ class Matchmaker:
 
         while True:
             pool = sorted((e for e in self.entries.values()
-                           if e.table_id is None and self._entry_available(e)),
+                           if e.table_id is None and not e.claiming
+                           and self._entry_available(e)),
                           key=lambda e: (not e.front, e.since, e.seq))
             seated = False
             for e in pool:
@@ -741,6 +839,11 @@ class Matchmaker:
             t.seated_at[u] = now
         t.entries.append(e)
         e.table_id, e.active_at = t.id, now
+        # A waiting table outranks an open table: the offer goes, and a
+        # paused bot wait runs again as the table's timer.
+        e.offer, e.open_codes = None, []
+        if e.paused is not None:
+            e.bots_at, e.paused = now + e.paused, None
 
     # ------------------------------------------------------------- starts
     def _due(self, t: Table, now: float) -> bool:
@@ -766,6 +869,7 @@ class Matchmaker:
                 continue
             e = next((e for e in sorted(self.entries.values(), key=lambda e: e.seq)
                       if e.table_id is None and e.bots_at is not None and e.id not in tried
+                      and not e.claiming
                       and now >= e.bots_at and self._entry_available(e)), None)
             if e is None:
                 return
@@ -866,6 +970,267 @@ class Matchmaker:
                 if m != uid and (c := self._live(m)) is not None:
                     self._error(c, err)
             raise err
+
+    # --------------------------------------------------------- open tables
+    def _usable(self, t: dict, uid: int) -> bool:
+        """Can ``uid`` be offered this open table: a seat is open, it holds no
+        seat there already, and it never left this table after joining."""
+        if t["code"] in self.barred.get(uid, ()):
+            return False
+        seats = t["seats"]
+        return (any(s.get("open") for s in seats)
+                and not any(s.get("user_id") == uid for s in seats))
+
+    @staticmethod
+    def _default_pick(seats: list[dict]) -> int:
+        """The lone human's partner seat when it is open, else the first
+        open seat."""
+        humans = [i for i, s in enumerate(seats) if not s.get("bot") and not s.get("open")]
+        if len(humans) == 1 and seats[(humans[0] + 2) % 4].get("open"):
+            return (humans[0] + 2) % 4
+        return next(i for i, s in enumerate(seats) if s.get("open"))
+
+    @staticmethod
+    def _pair_seats(seats: list[dict]) -> tuple[int, int] | None:
+        """Two open partner seats (opposite each other), or None."""
+        for s in (0, 1):
+            if seats[s].get("open") and seats[s + 2].get("open"):
+                return (s, s + 2)
+        return None
+
+    def _fits(self, t: dict, e: Entry) -> bool:
+        """A single fits any open seat; a pair only two open partner seats."""
+        if not all(self._usable(t, u) for u in e.members):
+            return False
+        return e.size == 1 or self._pair_seats(t["seats"]) is not None
+
+    def _declined_by(self, e: Entry, code: str) -> bool:
+        return any(code in self.declined.get(u, ()) for u in e.members)
+
+    def _make_offer(self, t: dict, now: float, e: Entry | None = None) -> Offer:
+        pair = self._pair_seats(t["seats"]) if e is not None and e.size == 2 else None
+        return Offer(code=t["code"], seats=list(t["seats"]),
+                     pick=pair[0] if pair else self._default_pick(t["seats"]),
+                     expires_at=now + OFFER_SECS, round_end=bool(t.get("round_end")), pair=pair)
+
+    def _offer_open_tables(self, now: float, quiet: set[str] = frozenset()) -> None:
+        """Bring every lone single's open-table state up to date: re-render or
+        withdraw a standing offer, offer the best table it has not waited on,
+        list the waited-on tables still joinable, and pause or resume its bot
+        wait. An entry not at a waiting table is offered one: a single any
+        open seat, a pair only two open partner seats; entries in ``quiet``
+        are told by the caller."""
+        tables = [t for t in self.open_tables() if t.get("seats")]
+        by_code = {t["code"]: t for t in tables}
+        for e in sorted(self.entries.values(), key=lambda e: e.seq):
+            if e.table_id is not None or e.claiming:
+                continue
+            uid = e.leader
+            usable = [t for t in tables if self._fits(t, e)]
+            before = (self._offer_payload(e.offer) if e.offer else None,
+                      list(e.open_codes), e.paused is not None)
+            if e.offer is not None:
+                t = by_code.get(e.offer.code)
+                if t is None or t not in usable:
+                    e.offer = None
+                elif t["seats"] != e.offer.seats:
+                    # another newcomer took a seat: re-render, keeping the pick if open
+                    e.offer.seats = list(t["seats"])
+                    e.offer.round_end = bool(t.get("round_end"))
+                    if e.offer.pair is not None:
+                        e.offer.pair = self._pair_seats(t["seats"])
+                        e.offer.pick = e.offer.pair[0]
+                    elif e.offer.pick not in e.offer.open_seats():
+                        e.offer.pick = self._default_pick(t["seats"])
+            if e.offer is None and self._entry_available(e):
+                fresh = [t for t in usable if not self._declined_by(e, t["code"])]
+                if fresh:
+                    best = max(fresh, key=lambda t: sum(1 for s in t["seats"] if not s.get("bot")))
+                    e.offer = self._make_offer(best, now, e)
+            e.open_codes = [t["code"] for t in usable
+                            if self._declined_by(e, t["code"])
+                            and (e.offer is None or t["code"] != e.offer.code)]
+            self._sync_pause(e, now)
+            after = (self._offer_payload(e.offer) if e.offer else None,
+                     list(e.open_codes), e.paused is not None)
+            if after != before and e.id not in quiet:
+                self._send_state(e)
+
+    @staticmethod
+    def _sync_pause(e: Entry, now: float) -> None:
+        """The bot wait stands still while an offer is up or a waited-on open
+        table can still be joined, and runs on from where it stopped after."""
+        hold = e.offer is not None or bool(e.open_codes)
+        if hold and e.bots_at is not None:
+            e.paused, e.bots_at = max(0.0, e.bots_at - now), None
+        elif not hold and e.paused is not None:
+            e.bots_at, e.paused = now + e.paused, None
+
+    def _decline(self, e: Entry) -> None:
+        """Wait (either member of a pair): the table is waited on for both."""
+        if e.offer is not None:
+            for u in e.members:
+                self.declined.setdefault(u, set()).add(e.offer.code)
+            e.offer = None
+
+    def _lapse_offers(self, now: float) -> None:
+        """An offer nobody answered in ``OFFER_SECS`` counts as Wait."""
+        for e in list(self.entries.values()):
+            if e.offer is not None and not e.claiming and now >= e.offer.expires_at:
+                self._decline(e)
+                self._offer_open_tables(now, quiet={e.id})
+                self._send_state(e)
+
+    def _open_wait(self, uid: int) -> None:
+        e = self._entry(uid)
+        if e is None:
+            raise QueueError("not_queued", "Queue first.")
+        self._decline(e)
+        self._offer_open_tables(self.clock(), quiet={e.id})
+        self._send_state(e)
+
+    def _open_show(self, uid: int, msg: dict) -> None:
+        """The bar's open-table chip: the offer again, with a fresh clock."""
+        e = self._entry(uid)
+        if e is None:
+            raise QueueError("not_queued", "Queue first.")
+        now = self.clock()
+        self._offer_open_tables(now, quiet={e.id})
+        want = normalize_code(msg.get("room")) or None
+        code = want if want in e.open_codes else (e.open_codes[0] if e.open_codes else None)
+        t = next((t for t in self.open_tables() if t["code"] == code), None)
+        if e.offer is None and t is not None and self._fits(t, e):
+            e.offer = self._make_offer(t, now, e)
+            e.open_codes = [c for c in e.open_codes if c != code]
+        elif e.offer is None:
+            self._send_state(e)
+            raise QueueError("table_closed", "That table is no longer open.")
+        self._sync_pause(e, now)
+        self._send_state(e)
+
+    async def _open_join(self, conn: Conn, uid: int, msg: dict) -> None:
+        """Join on the offer: the server makes the seat this account's,
+        pending until the handover, and the entry leaves the queue. A seat
+        another newcomer confirmed first is refused and the offer re-renders
+        without it."""
+        e = self._entry(uid)
+        if e is None or e.offer is None or e.claiming:
+            raise QueueError("no_offer", "That table is no longer offered to you.")
+        code = normalize_code(msg.get("room")) or e.offer.code
+        seat = msg.get("seat", e.offer.pick)
+        if code != e.offer.code:
+            raise QueueError("no_offer", "That table is no longer offered to you.")
+        if isinstance(seat, bool) or not isinstance(seat, int) or not 0 <= seat < 4:
+            raise QueueError("bad_seat", "Pick one of the open seats.")
+        if e.offer.pair is not None:
+            await self._open_join_pair(e, uid, code)
+            return
+        if self.join_table is None:
+            raise QueueError("table_closed", "That table is no longer open.")
+        e.claiming = True
+        # recorded before the await: a seat that owes nothing changes hands
+        # inside the server's join, which clears it (``join_seated``)
+        self.joining[uid] = (code, e)
+        try:
+            refused = await self.join_table(code, seat, uid, self._name(uid), conn)
+        finally:
+            e.claiming = False
+        now = self.clock()
+        if refused is None:
+            if self.entries.get(e.id) is e:
+                self._remove(e)
+            e.offer, e.open_codes, e.front = None, [], True
+            if e.paused is not None:
+                e.bots_at, e.paused = now + e.paused, None
+            self._flush_count()
+            return
+        self.joining.pop(uid, None)
+        self._offer_open_tables(now, quiet={e.id})
+        self._send_state(e)
+        if refused == "seat_taken":
+            raise QueueError("seat_taken", "That seat was just taken. Pick another.")
+        raise QueueError("table_closed", "That table is no longer open.")
+
+    async def _open_join_pair(self, e: Entry, uid: int, code: str) -> None:
+        """Either member's Join takes both partner seats at once; ``uid`` is
+        the one that confirmed (a leave before the handover costs only it)."""
+        assert e.offer is not None and e.offer.pair is not None
+        if not self._entry_available(e):
+            raise QueueError("partner_unavailable", "Your partner is not in the lobby.")
+        if self.join_pair is None:
+            raise QueueError("table_closed", "That table is no longer open.")
+        e.claiming = True
+        for u in e.members:
+            self.joining[u] = (code, e)
+        try:
+            refused = await self.join_pair(
+                code, list(e.offer.pair), list(e.members), [self._name(u) for u in e.members],
+                [self.conns[u] for u in e.members], uid)
+        finally:
+            e.claiming = False
+        now = self.clock()
+        if refused is None:
+            if self.entries.get(e.id) is e:
+                self._remove(e)
+            e.offer, e.open_codes, e.front = None, [], True
+            if e.paused is not None:
+                e.bots_at, e.paused = now + e.paused, None
+            self._flush_count()
+            return
+        for u in e.members:
+            self.joining.pop(u, None)
+        self._offer_open_tables(now, quiet={e.id})
+        self._send_state(e)
+        raise QueueError("table_closed" if refused != "seat_taken" else "seat_taken",
+                         "Those seats were just taken." if refused == "seat_taken"
+                         else "That table is no longer open.")
+
+    def invite_joining(self, uid: int, code: str) -> None:
+        """A Join through a ranked table's invite link: no queue entry to put
+        back, but the join-then-leave rules apply as to any newcomer."""
+        self.joining[uid] = (code, None)
+
+    def join_seated(self, uid: int) -> None:
+        """The server seated a newcomer at its open table."""
+        self.joining.pop(uid, None)
+
+    def join_ended(self, uid: int, *, back_in_line: bool, penalty: bool = False) -> None:
+        """A Join that never reached its seat: the owner reclaimed it or the
+        table closed (``back_in_line``: the entry returns to the front of the
+        queue), the newcomer left (``penalty``), or its socket went."""
+        code, e = self.joining.pop(uid, (None, None))
+        if code is None:
+            return
+        if penalty:
+            self._bar(uid, code)
+        else:
+            self.declined.setdefault(uid, set()).add(code)
+        if (e is None or not back_in_line or uid in self.entry_of
+                or not self._entry_available(e)):
+            return
+        e.front, e.table_id, e.offer, e.open_codes = True, None, None, []
+        if e.bots_at is not None:
+            e.bots_at = self.clock() + BOT_FILL_SECS
+        self.entries[e.id] = e
+        for u in e.members:
+            self.entry_of[u] = e.id
+        self.seat_waiting()
+        if e.table_id is None:
+            self._offer_open_tables(self.clock(), quiet={e.id})
+            self._send_state(e)
+        self._flush_count()
+        self.ensure_running()
+
+    def _bar(self, uid: int, code: str) -> None:
+        self.barred.setdefault(uid, set()).add(code)
+        self.cooldowns[uid] = self.clock() + JOIN_COOLDOWN_SECS
+
+    def left_open_table(self, uid: int, code: str) -> None:
+        """A newcomer left the table it joined before its first ranked round
+        there: a queue cooldown, and that table is never offered to it
+        again."""
+        self.joining.pop(uid, None)
+        self._bar(uid, code)
 
     # ------------------------------------------------------------- parties
     def has_party_code(self, code: str) -> bool:
@@ -972,6 +1337,7 @@ class Matchmaker:
         self._drop_inactive()
         self._drop_away(now)
         self._drop_idle(now)
+        self._lapse_offers(now)
         for p in list(self.parties.values()):
             queued = any(u in self.entry_of for u in p.members)
             if not queued and now - p.idle_since > PARTY_TTL:
@@ -982,8 +1348,10 @@ class Matchmaker:
         self._flush_count()
 
     async def tick(self) -> None:
-        """Seat everyone who can sit, then start what is due."""
+        """Seat everyone who can sit, offer open tables to who is still
+        alone, then start what is due."""
         self.seat_waiting()
+        self._offer_open_tables(self.clock())
         await self._start_due()
 
     def _drop_inactive(self) -> None:

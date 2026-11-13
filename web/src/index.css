@@ -6334,3 +6334,65 @@ dialog.leave-alert-backdrop {
 /* The whole guide takes a horizontal swipe as a page turn; the browser keeps
    vertical scrolling and pinch zoom. */
 .howto-screen { touch-action: pan-y pinch-zoom; }
+
+/* Open tables. The offer: the game's two teams side by side, your team on
+   the left with you in gold, seats you may take dashed; Join counts down. */
+.ot-sheet { gap: 16px; padding-left: 16px; padding-right: 16px; background: #242a35; border-top: 1px solid #333b49; border-radius: 20px 20px 0 0; }
+.ot-sheet .q-sheet-head h2 { font-size: 22px; font-weight: 700; }
+.ot-sheet .q-sheet-body { gap: 16px; padding-bottom: 8px; }
+.ot-sub { margin: 0; text-align: center; font-size: var(--fs-15); color: #c3cad6; }
+.ot-teams { display: grid; grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); gap: 8px; align-items: center; }
+.ot-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ot-vs { text-align: center; font-size: var(--fs-13); font-weight: 700; letter-spacing: 0.08em; color: #9aa3b2; }
+.ot-seat {
+  appearance: none; display: flex; align-items: center; gap: 10px; height: 48px; min-width: 0;
+  box-sizing: border-box; padding: 0 10px; border-radius: 12px; border: 1px solid #333b49;
+  background: #1b1f27; color: #e9ecf2; font: inherit; font-size: var(--fs-15); font-weight: 600; text-align: left;
+}
+.ot-seat .ot-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ot-av {
+  width: 28px; height: 28px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 12px; font-weight: 700; color: #14171e;
+}
+.ot-seat.ours .ot-av { background: var(--team0); }
+.ot-seat.theirs .ot-av { background: var(--team1); }
+.ot-seat.you { background: rgba(242, 193, 78, 0.12); border: 2px solid var(--gold); font-weight: 700; }
+.ot-seat.you .ot-av { font-size: 10px; }
+.ot-pair { margin-top: -8px; font-size: var(--fs-13); color: var(--gold); }
+.ot-seat.open { background: transparent; border: 1.5px dashed #6b7484; color: #c3cad6; font-weight: 400; cursor: pointer; }
+.ot-seat.open .ot-av { opacity: 0.7; }
+.ot-join {
+  min-height: 58px; border-radius: 16px; font-size: 20px; font-weight: 700;
+  background: linear-gradient(#8a6a22, #6b5219); border: 1.5px solid #d6a22c; color: #ffd77a;
+  font-variant-numeric: tabular-nums;
+}
+.ot-wait {
+  appearance: none; min-height: 44px; border: 0; background: none; color: #c3cad6;
+  font: inherit; font-size: var(--fs-17); font-weight: 600; cursor: pointer;
+}
+.ot-seat:disabled, .ot-join:disabled, .ot-wait:disabled { opacity: 0.6; cursor: default; }
+/* the bar while your bot wait is paused for an open table you waited on */
+.q-bar-subrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.q-open-chip {
+  appearance: none; flex: none; min-height: 32px; padding: 0 12px; border-radius: 16px;
+  border: 1px solid #d6a22c; background: rgba(242, 193, 78, 0.14); color: #ffd77a;
+  font: inherit; font-size: var(--fs-14); font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.q-chip .q-open-chip { min-height: 26px; padding: 0 10px; font-size: var(--fs-13); }
+/* the table's corner line about a newcomer, and the newcomer's own pill */
+.join-notice {
+  position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); bottom: 128px;
+  z-index: 30; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none;
+}
+.join-notice span {
+  display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; padding: 0 14px 0 12px;
+  border-radius: 18px; background: rgba(20, 23, 30, 0.82); border: 1px solid #333b49;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); color: #e9ecf2; font-size: var(--fs-14); white-space: nowrap;
+}
+.join-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--team0); }
+.join-dot.team1 { background: var(--team1); }
+.btn.join-leave {
+  min-height: 40px; padding: 0 16px; border-radius: 14px; border: 1px solid #4a5262;
+  background: rgba(255, 255, 255, 0.06); color: #e9ecf2; font-size: var(--fs-15); font-weight: 600;
+}
+.rating-unranked { color: var(--text-dim); }

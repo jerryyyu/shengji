@@ -15,7 +15,8 @@ function barText(q: QueueView, now: number): BarText {
   const warn = botsIn <= BOTS_WARN_MS;
   const partner = q.partyId ? partnerName(q.party) : null;
   const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a ranked game";
-  const sub = q.waitPlayers ? (q.leader ? "Waiting for people" : "Only tables with people")
+  const sub = q.botsPaused ? "Bots paused"
+    : q.waitPlayers ? (q.leader ? "Waiting for people" : "Only tables with people")
     : botsIn <= 0 ? "Adding bots…"
     : botsIn !== Infinity ? `Bots in ${clock(botsIn, true)}`
     : "Waiting for people";
@@ -47,6 +48,18 @@ function Actions({ q, compact }: { q: QueueView; compact?: boolean }) {
         <span className={`q-cancel q-led${compact ? " compact" : ""}`}>{partner ?? "Partner"} leads</span>
       )}
     </>
+  );
+}
+
+/** The way back to an open table you waited on: tapping it shows the offer
+ *  again. Nothing while none can be joined. */
+export function OpenTablesChip({ q }: { q: QueueView }) {
+  if (q.openTables <= 0 || q.offer) return null;
+  const n = q.openTables;
+  return (
+    <button type="button" className="q-open-chip" onClick={() => queue.offerShow()}>
+      {n === 1 ? "1 open table" : `${n} open tables`}
+    </button>
   );
 }
 
@@ -84,7 +97,10 @@ export default function QueueBar() {
         <b className="q-bar-title">{text.label}</b>
         <span className="q-bar-time">{text.waited}</span>
       </div>
-      <small className="q-bar-sub">{text.sub}</small>
+      <div className="q-bar-subrow">
+        <small className="q-bar-sub">{text.sub}</small>
+        <OpenTablesChip q={q} />
+      </div>
       <WaitToggle q={q} />
       <div className="q-bar-acts"><Actions q={q} /></div>
     </div>
@@ -102,6 +118,7 @@ export function QueueChip() {
       <span className="q-chip-text">
         <span className="q-chip-title">{text.label} · {text.waited} · </span>{text.sub}
       </span>
+      <OpenTablesChip q={q} />
       <WaitToggle q={q} />
       <Actions q={q} compact />
     </div>

@@ -7,6 +7,7 @@ import { codeLink } from "../codes";
 import LeaveAlert from "./LeaveAlert";
 import { offlineGame } from "./offlineGame";
 import { useOnline } from "../useOnline";
+import { conn } from "../ws";
 
 /** The phone's `…` overflow: kitty count, sound, invite link and leave —
  * none of them a mid-trick decision, so on a small screen they share one
@@ -20,8 +21,11 @@ import { useOnline } from "../useOnline";
  * Keyboard: opening moves focus to the first actionable row, ArrowUp and
  * ArrowDown move between rows (wrapping), Home and End go to the ends, and
  * Escape closes the menu and returns focus to the `…` button. */
-export default function HudMenu({ room, kittyCount, ranked = false, offline = OFFLINE }:
-  { room: string; kittyCount: number; ranked?: boolean; offline?: boolean }) {
+export default function HudMenu({ room, kittyCount, ranked = false, offline = OFFLINE, allowJoiners }: {
+  room: string; kittyCount: number; ranked?: boolean; offline?: boolean;
+  /** A ranked table's "Allow joiners" switch; undefined elsewhere. */
+  allowJoiners?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [muted, toggleSound] = useMuted();
   const [asking, setAsking] = useState(false);
@@ -119,6 +123,12 @@ export default function HudMenu({ room, kittyCount, ranked = false, offline = OF
           {offline ? null : (
             <button className="hud-menu-row" role="menuitem" onClick={copyInvite}>
               <span>{copied ? "Link copied" : "Copy invite link"}</span>
+            </button>
+          )}
+          {allowJoiners === undefined ? null : (
+            <button className="hud-menu-row" role="menuitemcheckbox" aria-checked={allowJoiners}
+                    onClick={() => conn.send({ type: "allow_joiners", on: !allowJoiners })}>
+              <span>Allow joiners</span><span className="hud-menu-k">{allowJoiners ? "on" : "off"}</span>
             </button>
           )}
           {offline && online ? (

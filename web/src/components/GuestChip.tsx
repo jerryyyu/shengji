@@ -33,10 +33,10 @@ export function GuestNameSheet() {
     <Sheet title="Your name" onClose={done} cancel={null}>
       <div className="q-sheet-pad guest-name-sheet">
         <div className="field">
-          <label className="field-label" htmlFor={id}>Your name</label>
           <div className="name-input">
             <input
               id={id}
+              aria-label="Your name"
               value={name}
               maxLength={20}
               placeholder="e.g. Jerry"

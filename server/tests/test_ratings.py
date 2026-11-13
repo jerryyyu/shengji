@@ -1340,5 +1340,6 @@ def test_a_guest_displaced_socket_still_cannot_leave_for_the_seat(client):
             b.send_json({"type": "join_room", "room": code, "name": "jerry", "token": token})
             _drain(b, "state", tries=80)
             a.send_json({"type": "leave_room"})
-            assert _drain(a, "error")["code"] == "stale_connection"
+            # the deal's queued state frames reach this socket first
+            assert _drain(a, "error", tries=200)["code"] == "stale_connection"
             assert srv.rooms[code].seats[0].connected

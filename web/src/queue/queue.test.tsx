@@ -1708,6 +1708,30 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
       "Leave this ranked game? / A bot takes your seat, and this round counts as at best a draw.");
   });
 
+  it("after a reload, state frames alone (no match_started) carry the joined round's warning", async () => {
+    // a fresh module load is a reload: the client never saw this seat's match_started
+    await renderApp();
+    say(state({ joined_round: true }));
+    expect(leaveAlertText()).toBe(
+      "Leave the table? / This round isn't ranked for you, and leaving means a 5-minute wait to search.");
+    // the server omits the flag once the round is over; the round end clears it
+    say(state({ phase: "round_end" }));
+    say(state({ phase: "deal" }));
+    expect(leaveAlertText()).toBe(
+      "Leave this ranked game? / A bot takes your seat, and this round counts as at best a draw.");
+  });
+
+  it("after a reconnect, the new socket's joined_round frame keeps the joined round's warning", async () => {
+    await renderApp();
+    const first = ws();
+    say(state({ joined_round: true }));
+    act(() => first.close());
+    await act(async () => { await new Promise((r) => setTimeout(r, 1600)); });
+    expect(ws()).not.toBe(first);
+    say(state({ joined_round: true }));
+    expect(leaveAlertText()).toMatch(/isn't ranked for you, and leaving means a 5-minute wait/);
+  });
+
   it("a seat taken at a round end, or a server flag saying otherwise, gets the ranked warning", async () => {
     await renderApp();
     say({ type: "match_started", match_id: null, room: "OPEN", rated: true, joining: true, seat: 2 });

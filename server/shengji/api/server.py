@@ -2601,7 +2601,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             continue
                         tok = msg.get("token")
                         qid = queue_id()
-                        if (target.matched and account_id() is None and device is not None
+                        if ((target.matched or _live_ranked_room(target))
+                                and account_id() is None and device is not None
                                 and _account_seat_on(target, device) is not None):
                             # A guest on the device whose account holds a seat
                             # here (it signed out): only signing in returns there.
@@ -3203,13 +3204,18 @@ def _account_seat_on(room: Room, device: str) -> Seat | None:
                  and sd.device == device), None)
 
 
+def _live_ranked_room(room: Room) -> bool:
+    """A ranked game in play: queue-matched, or a created room switched to
+    Ranked, not aborted, closing, over or under evaluation."""
+    game = room.game
+    return ((room.matched or room.ranked) and not room.aborted and not room.closing
+            and room.evaluation is None and game is not None and not game.game_over)
+
+
 def _account_game_on(device: str) -> Room | None:
     """A ranked game in play where an account holds a seat from ``device``."""
     for room in list(rooms.values()):
-        game = room.game
-        if (room.matched and not room.aborted and not room.closing
-                and game is not None and not game.game_over
-                and _account_seat_on(room, device) is not None):
+        if _live_ranked_room(room) and _account_seat_on(room, device) is not None:
             return room
     return None
 

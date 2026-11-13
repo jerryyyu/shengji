@@ -90,10 +90,11 @@
   <div class="grid" id="activity"></div>
   <p class="note">Rated rounds = rounds with at least one signed-in seat (casual or ranked; the
     database does not mark which). Rounds and seat-rounds come from the room logs'
-    round_start records, which name no account. "Human" means human-controlled at round start
-    (not a bot then); a seat can change hands later in the round. A seat-round counts as
-    signed in when a saved-game link covers that seat in that round, counted by the round's own
-    time; the remaining human seat-rounds are the guest estimate. "Today" starts at midnight ET.</p>
+    round_start records, which name no account. A roster seat is one not marked as a bot at round
+    start; that includes a disconnected player's seat while a bot covers it, so roster seats are
+    not evidence of human play. A roster seat-round is signed in when a saved-game link covers
+    that seat in that round (counted by the round's own time), unknown when the database may not
+    have recorded it yet, and otherwise the guest estimate. "Today" starts at midnight ET.</p>
 
   <h2>Return</h2>
   <div class="grid" id="returns"></div>
@@ -133,19 +134,19 @@ function ago(sec) {
 function humBreakdown(by) {
   if (!by) return "";
   return `<div class="hum">${["1","2","3","4"].map(k =>
-    `<div><b>${fmt(by[k])}</b><span>${k} human${k === "1" ? "" : "s"}</span></div>`).join("")}</div>`;
+    `<div><b>${fmt(by[k])}</b><span>${k} roster seat${k === "1" ? "" : "s"}</span></div>`).join("")}</div>`;
 }
 
 function renderLive(d) {
   const h = d.health || {}, logs = (d.db || {}).logs || {}, now = Date.now() / 1000;
-  const live = logs.live_tables_by_humans;
+  const live = logs.live_tables_by_roster_seats;
   const liveTotal = live ? ["1","2","3","4"].reduce((a, k) => a + (live[k] || 0), 0) : null;
   document.getElementById("live").innerHTML = [
     tile(fmt(h.rooms), "Open rooms", "server memory, now"),
     tile(fmt(liveTotal), "Tables playing", `a round started in the last ${Math.round((logs.live_window_s || 1200) / 60)} min`),
-    tile(ago(logs.last_round_start ? now - logs.last_round_start : null), "Since last round start", "any table with a human"),
+    tile(ago(logs.last_round_start ? now - logs.last_round_start : null), "Since last round start", "any table with a non-bot roster seat"),
     tile(fmt((h.activity || {}).games_started), "Games since restart", `${fmt((h.activity || {}).rounds_recorded)} rounds recorded`),
-    `<div class="tile wide"><div class="l">Tables playing now, by human seats at the latest round start</div>${humBreakdown(live)}</div>`,
+    `<div class="tile wide"><div class="l">Tables playing now, by non-bot roster seats at the latest round start</div>${humBreakdown(live)}</div>`,
     na("Players now: signed-in / guests / bots", "needs server endpoint"),
     na("Ranked queue / waiting tables", "needs server endpoint"),
   ].join("");
@@ -181,11 +182,11 @@ function renderActivity(d) {
     tile(fmt(w.abandoned_rounds), "Abandoned rated rounds", "a signed-in seat left"),
     tile(pct(w.rated_rounds ? w.rated_rounds_2plus_humans / w.rated_rounds : null), "Rated rounds with 2+ humans",
          `${fmt(w.rated_rounds_2plus_humans)} of ${fmt(w.rated_rounds)}`),
-    logs ? tile(fmt(w.log_rounds), "Rounds played (all)", `${pct(w.share_2plus_humans_at_start)} with 2+ humans at start`) : na("Rounds played (all)", "room logs unavailable"),
-    logs ? tile(fmt(w.guest_start_seat_rounds_est), "Guest seat-rounds (est.)",
-                `of ${fmt(w.human_start_seat_rounds)} human-at-start seat-rounds; ${fmt(w.signed_in_start_seat_rounds)} signed in`) : na("Guest seat-rounds", "room logs unavailable"),
+    logs ? tile(fmt(w.log_rounds), "Rounds played (all)", `${pct(w.share_2plus_roster_seats)} with 2+ non-bot roster seats`) : na("Rounds played (all)", "room logs unavailable"),
+    logs ? tile(fmt(w.guest_roster_seat_rounds_est), "Guest roster seat-rounds (est.)",
+                `of ${fmt(w.roster_seat_rounds)} non-bot roster seat-rounds; ${fmt(w.signed_in_roster_seat_rounds)} signed in, ${fmt(w.unknown_roster_seat_rounds)} unknown`) : na("Guest roster seat-rounds", "room logs unavailable"),
     na("Guest people", "not countable: no guest id"),
-    logs ? `<div class="tile wide"><div class="l">Rounds by human seats at round start</div>${humBreakdown(w.rounds_by_humans_at_start)}</div>` : "",
+    logs ? `<div class="tile wide"><div class="l">Rounds by non-bot roster seats at round start</div>${humBreakdown(w.rounds_by_roster_seats)}</div>` : "",
   ].join("");
 }
 

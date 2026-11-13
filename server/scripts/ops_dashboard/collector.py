@@ -48,14 +48,14 @@ ERROR_CODES = ("healthz_failed", "query_failed", "query_timeout", "query_bad_jso
 # Leaf kinds: NUM is an int or finite float (not a bool) or null; BOOL is a
 # bool; [NUM] is a list of NUM. Every dict below lists all its allowed keys.
 NUM, BOOL = "num", "bool"
-_BY_HUMANS = {k: NUM for k in ("1", "2", "3", "4")}
+_BY_ROSTER = {k: NUM for k in ("1", "2", "3", "4")}
 _WINDOW = {
     "rated_rounds": NUM, "rated_rounds_2plus_humans": NUM, "abandoned_rounds": NUM,
     "signed_in_players": NUM, "rated_rounds_per_player": NUM, "saved_games_created": NUM,
     "games_per_player": NUM, "log_rounds": NUM, "bot_only_rounds": NUM,
-    "rounds_by_humans_at_start": _BY_HUMANS, "human_start_seat_rounds": NUM,
-    "signed_in_start_seat_rounds": NUM, "guest_start_seat_rounds_est": NUM,
-    "share_2plus_humans_at_start": NUM,
+    "rounds_by_roster_seats": _BY_ROSTER, "roster_seat_rounds": NUM,
+    "signed_in_roster_seat_rounds": NUM, "unknown_roster_seat_rounds": NUM,
+    "guest_roster_seat_rounds_est": NUM, "share_2plus_roster_seats": NUM,
 }
 _RETURN = {"cohort": NUM, "returned": NUM, "rate": NUM}
 QUERY_SCHEMA = {
@@ -66,7 +66,7 @@ QUERY_SCHEMA = {
     "returns": {"d1": _RETURN, "d7": _RETURN},
     "logs": {"available": BOOL, "files_scanned": NUM, "live_window_s": NUM,
              "last_round_start": NUM,
-             "live_tables_by_humans": {k: NUM for k in ("0", "1", "2", "3", "4")}},
+             "live_tables_by_roster_seats": {k: NUM for k in ("0", "1", "2", "3", "4")}},
     "support_7d": NUM, "reports_7d": NUM, "query_cpu_s": NUM,
 }
 MAX_LIST = 64
@@ -198,7 +198,7 @@ def collect(home: Path) -> int:
 
     health = snap.get("health") or {}
     today = ((snap.get("db") or {}).get("windows") or {}).get("today") or {}
-    live = ((snap.get("db") or {}).get("logs") or {}).get("live_tables_by_humans") or {}
+    live = ((snap.get("db") or {}).get("logs") or {}).get("live_tables_by_roster_seats") or {}
     with open(home / "history.jsonl", "a") as fh:
         fh.write(json.dumps({"t": round(now), "rooms": health.get("rooms"),
                              "live_tables": sum(v for k, v in live.items() if k != "0") if live else None,

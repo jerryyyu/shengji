@@ -31,12 +31,12 @@ container (measured 0.055-0.08 s on 2026-11-12 with 46 log files, 29 MB).
 | metric | source |
 |---|---|
 | open rooms | `/healthz` `rooms` |
-| tables playing now, by human seats at the latest round start | room logs: a `round_start` in the last 20 min (latest per room) |
+| tables playing now, by non-bot roster seats at the latest round start | room logs: a `round_start` in the last 20 min (latest per room) |
 | accounts, Google/Apple, new 24 h/7 d, sign-ups per day | `users` |
 | rated rounds, 2+ humans, abandoned, per player | `rating_events` (rows for every round with a signed-in seat; ranked and casual are not told apart) |
 | signed-in players, saved games, games per player | `game_players` + `games`, plus `rating_events` |
-| rounds played, rounds by human seats at round start | room logs `round_start.players[].is_bot` (false = human-controlled when the round started; a seat can change hands mid-round) |
-| signed-in / guest seat-rounds (estimate) | each logged round's human-at-start seats, by that round's timestamp, split by whether a saved-game link (`games.log_offset` locates the game in the log, `game_players` seat and round range) covers the seat in that round; the rest are the guest estimate. A signed-in seat whose game has no `log_offset` (its first log write failed) counts as a guest |
+| rounds played, rounds by non-bot roster seats | room logs `round_start.players[].is_bot`. False means the seat was not a bot seat on the roster at round start, which includes a disconnected owner's seat while a bot covers it (`server._controller` = `bot_cover`); these counts are not evidence of human play |
+| signed-in / unknown / guest roster seat-rounds (estimate) | each logged round's non-bot roster seats, by that round's timestamp. Signed in: a saved-game link (`games.log_offset` locates the game in the log, `game_players` seat and round range; an open link has no upper round) covers the seat in that round. Unknown: not covered, and the database may lag the log (the round is past the game's stored `last_round`, or it started within 120 s of the database snapshot). Guest estimate: the rest. A signed-in seat whose game has no `log_offset` (its first log write failed) counts as a guest |
 | return after 1 / 7 days | `users.created_at` vs later rated rounds or saved games |
 | support messages, player reports (7 d) | `support_messages.jsonl`, `player_reports.jsonl` (`ts` only) |
 

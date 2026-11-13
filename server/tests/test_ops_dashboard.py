@@ -131,18 +131,19 @@ def test_collect_counts_and_shape(world):
     assert today["rated_rounds_per_player"] == 1.5
 
     assert today["log_rounds"] == 2 and today["bot_only_rounds"] == 1
-    assert today["rounds_by_humans_at_start"] == {"1": 0, "2": 1, "3": 1, "4": 0}
+    assert today["rounds_by_roster_seats"] == {"1": 0, "2": 1, "3": 1, "4": 0}
     # G3 round 1: seats 0 and 1 linked; round 2: seats 0, 1 linked, seat 2 a guest.
-    assert today["human_start_seat_rounds"] == 5
-    assert today["signed_in_start_seat_rounds"] == 4
-    assert today["guest_start_seat_rounds_est"] == 1
+    assert today["roster_seat_rounds"] == 5
+    assert today["signed_in_roster_seat_rounds"] == 4
+    assert today["unknown_roster_seat_rounds"] == 0
+    assert today["guest_roster_seat_rounds_est"] == 1
     # G2 round 1 adds seat 0, linked to account 2.
-    assert (week["human_start_seat_rounds"], week["signed_in_start_seat_rounds"],
-            week["guest_start_seat_rounds_est"]) == (6, 5, 1)
-    assert week["log_rounds"] == 3 and week["share_2plus_humans_at_start"] == round(2 / 3, 3)
+    assert (week["roster_seat_rounds"], week["signed_in_roster_seat_rounds"],
+            week["unknown_roster_seat_rounds"], week["guest_roster_seat_rounds_est"]) == (6, 5, 0, 1)
+    assert week["log_rounds"] == 3 and week["share_2plus_roster_seats"] == round(2 / 3, 3)
 
     logs_out = out["logs"]
-    assert logs_out["live_tables_by_humans"] == {"0": 1, "1": 0, "2": 0, "3": 1, "4": 0}
+    assert logs_out["live_tables_by_roster_seats"] == {"0": 1, "1": 0, "2": 0, "3": 1, "4": 0}
     assert logs_out["last_round_start"] == NOW - 500
 
     # d1: accounts 1-3 and 5 (account 4 is an hour old); 5 never played.
@@ -217,9 +218,57 @@ def test_guest_estimate_attributes_each_round_by_its_own_time(tmp_path):
     (logs / "ROOM.jsonl").write_text(_round_start(TODAY + 60, [False, True, True, True]) + "\n")
     os.utime(logs / "ROOM.jsonl", (NOW - 60, NOW - 60))
     today = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)["windows"]["today"]
-    assert today["human_start_seat_rounds"] == 1
-    assert today["signed_in_start_seat_rounds"] == 1
-    assert today["guest_start_seat_rounds_est"] == 0
+    assert today["roster_seat_rounds"] == 1
+    assert today["signed_in_roster_seat_rounds"] == 1
+    assert today["guest_roster_seat_rounds_est"] == 0
+
+
+def _one_game_world(tmp_path, last_round, link_to, rounds):
+    """One account at seat 0 of game G1; ``rounds`` is a list of
+    ``(t, round, bots)`` round_start records in ROOM.jsonl."""
+    data, logs = tmp_path / "data", tmp_path / "logs"
+    logs.mkdir()
+    conn = _store(data)
+    conn.execute("INSERT INTO users(google_sub, email, created_at, last_login_at)"
+                 " VALUES ('g1', 'x@example.com', ?, ?)", (NOW - 9 * DAY, NOW - 9 * DAY))
+    conn.execute("INSERT INTO games(id, room_code, log_file, log_offset, started_at, last_round)"
+                 " VALUES ('G1', 'ROOM', 'ROOM.jsonl', 0, ?, ?)", (rounds[0][0], last_round))
+    conn.execute("INSERT INTO game_players(game_id, user_id, seat, from_round, to_round)"
+                 " VALUES ('G1', 1, 0, 1, ?)", (link_to,))
+    conn.commit()
+    conn.close()
+    (logs / "ROOM.jsonl").write_text("".join(_round_start(t, bots, rnd=r) + "\n"
+                                             for t, r, bots in rounds))
+    os.utime(logs / "ROOM.jsonl", (NOW - 60, NOW - 60))
+    return query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)["windows"]["today"]
+
+
+def test_open_link_covers_rounds_the_database_has_not_recorded(tmp_path):
+    """Round 2 is in the log but ``games.last_round`` is still 1: the open
+    link covers seat 0 (signed in), and seat 1, with no link, is unknown
+    rather than a guest because the database may not have caught up."""
+    today = _one_game_world(tmp_path, last_round=1, link_to=None, rounds=[
+        (NOW - 3000, 1, [False, False, True, True]),
+        (NOW - 1500, 2, [False, False, True, True]),
+    ])
+    assert today["roster_seat_rounds"] == 4
+    assert today["signed_in_roster_seat_rounds"] == 2
+    # Round 1 seat 1: recorded game, no link, old enough -> guest. Round 2 seat 1: unknown.
+    assert today["unknown_roster_seat_rounds"] == 1
+    assert today["guest_roster_seat_rounds_est"] == 1
+
+
+def test_recent_unlinked_round_is_unknown_and_a_closed_link_ends(tmp_path):
+    """A closed link stops at its ``to_round``; an uncovered seat in a round
+    newer than the attribution lag is unknown, not a guest."""
+    today = _one_game_world(tmp_path, last_round=3, link_to=1, rounds=[
+        (NOW - 3000, 1, [False, True, True, True]),
+        (NOW - 2000, 2, [False, True, True, True]),
+        (NOW - 30, 3, [False, True, True, True]),
+    ])
+    assert today["signed_in_roster_seat_rounds"] == 1
+    assert today["unknown_roster_seat_rounds"] == 1
+    assert today["guest_roster_seat_rounds_est"] == 1
 
 
 SECRET = "alice@example.com"

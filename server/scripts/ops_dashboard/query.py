@@ -137,39 +137,58 @@ def return_rates(conn: sqlite3.Connection, now: float) -> dict:
     return out
 
 
-def saved_game_links(conn: sqlite3.Connection) -> dict[tuple[str, int], list[tuple[int, int, int]]]:
+# Saved-game rows and links are written asynchronously after the round_start
+# record they describe; a round started this recently may not be in the
+# database snapshot yet.
+ATTRIBUTION_LAG = 120
+
+Link = tuple[int, int, "int | None"]
+
+
+def saved_game_links(conn: sqlite3.Connection) -> dict[tuple[str, int], dict]:
     """``(log file name, byte offset of the game's round 1 round_start)`` ->
-    the game's account links as ``(seat, first round, last round)``; an open
-    link runs to the game's last round. Ids and accounts stay in here: only
-    seat and round numbers leave this function."""
-    games: dict[tuple[str, int], list[tuple[int, int, int]]] = {}
+    ``{"last_round": n, "links": [(seat, first round, last round or None)]}``.
+    An open link (no ``to_round``) has no upper bound: the game's log segment
+    bounds it, since ``games.last_round`` can trail the log. Ids and accounts
+    stay in here: only seat and round numbers leave this function."""
+    games: dict[tuple[str, int], dict] = {}
     for log_file, offset, last, seat, frm, to in conn.execute(
             """SELECT g.log_file, g.log_offset, g.last_round, gp.seat, gp.from_round, gp.to_round
                FROM games g JOIN game_players gp ON gp.game_id = g.id
                WHERE g.log_offset IS NOT NULL"""):
         key = (Path(log_file).name, int(offset))
-        games.setdefault(key, []).append((int(seat), int(frm), int(to if to is not None else last)))
+        game = games.setdefault(key, {"last_round": int(last), "links": []})
+        game["links"].append((int(seat), int(frm), int(to) if to is not None else None))
     return games
 
 
+def _covered(links: list[Link], seat, rnd: int) -> bool:
+    return any(s == seat and frm <= rnd and (to is None or rnd <= to) for s, frm, to in links)
+
+
 def scan_logs(log_dir: Path, now: float, starts: dict[str, float],
-              links: dict[tuple[str, int], list[tuple[int, int, int]]] | None = None) -> dict:
+              games: dict[tuple[str, int], dict] | None = None) -> dict:
     """Count ``round_start`` records in room logs changed in the last 30
-    days, each attributed to its own round's timestamp: rounds by the number
-    of seats human-controlled at round start (``is_bot`` false then; a seat
-    can change hands later in the round), and those seat-rounds split into
-    seats a saved-game link covers for that round (signed in) and the rest
-    (guest estimate).
+    days, each attributed to its own round's timestamp.
+
+    A roster seat is one whose ``players[].is_bot`` is false at round start.
+    That is not evidence of human play: a disconnected owner's seat stays on
+    the roster while a bot covers it (``server._controller`` reports
+    ``bot_cover``). Roster seat-rounds split three ways: signed in (a
+    saved-game link covers the seat in that round), unknown (not covered, but
+    the database may not have caught up: the round is past the game's stored
+    ``last_round``, or it started within ``ATTRIBUTION_LAG`` of ``now``, the
+    collector's clock just before the database snapshot), and guest (the
+    rest).
 
     A round belongs to the game whose round 1 ``round_start`` begins at the
     ``games.log_offset`` byte offset; the game runs until the next round 1
     ``round_start`` or lobby (round 0) record, as ``saved_games._scan`` reads
-    it. Games with no signed-in seat have no ``games`` row, so their human
-    seats all count as guests."""
-    links = links or {}
-    windows = {k: {"rounds": 0, "bot_only_rounds": 0, "human_start_seat_rounds": 0,
-                   "signed_in_start_seat_rounds": 0,
-                   "by_humans": {"1": 0, "2": 0, "3": 0, "4": 0}} for k in starts}
+    it. Games with no signed-in seat have no ``games`` row."""
+    games = games or {}
+    windows = {k: {"rounds": 0, "bot_only_rounds": 0, "roster_seat_rounds": 0,
+                   "signed_in": 0, "unknown": 0,
+                   "by_roster": {"1": 0, "2": 0, "3": 0, "4": 0}} for k in starts}
     live_rooms: dict[str, int] = {}
     last_round_start = None
     files = 0
@@ -181,7 +200,7 @@ def scan_logs(log_dir: Path, now: float, starts: dict[str, float],
         if now - entry.stat().st_mtime > LOG_WINDOW_DAYS * DAY:
             continue
         files += 1
-        game: list[tuple[int, int, int]] | None = None
+        game: dict | None = None
         pos = 0
         with open(entry.path, "rb") as fh:
             for line in fh:
@@ -197,37 +216,46 @@ def scan_logs(log_dir: Path, now: float, starts: dict[str, float],
                 except ValueError:
                     continue
                 rnd = rec.get("round")
+                t = float(rec.get("t") or 0)
                 if rnd == 1:
-                    game = links.get((entry.name, start))
+                    game = games.get((entry.name, start))
                 if rec.get("experiment") or rec.get("training_excluded"):
                     continue
-                t = float(rec.get("t") or 0)
-                human_seats = [p.get("seat") for p in rec.get("players") or () if not p.get("is_bot")]
-                humans = len(human_seats)
-                signed = 0
-                if game is not None and isinstance(rnd, int):
-                    signed = sum(1 for s in human_seats
-                                 if any(seat == s and frm <= rnd <= to for seat, frm, to in game))
+                roster = [p.get("seat") for p in rec.get("players") or () if not p.get("is_bot")]
+                n = len(roster)
+                signed = unknown = 0
+                if isinstance(rnd, int):
+                    links = game["links"] if game is not None else []
+                    pending = (t >= now - ATTRIBUTION_LAG
+                               or (game is not None and rnd > game["last_round"]))
+                    for seat in roster:
+                        if _covered(links, seat, rnd):
+                            signed += 1
+                        elif pending:
+                            unknown += 1
+                else:
+                    unknown = n
                 if last_round_start is None or t > last_round_start:
                     last_round_start = t
                 if now - t <= LIVE_WINDOW:
-                    live_rooms[entry.name] = humans
+                    live_rooms[entry.name] = n
                 for key, since in starts.items():
                     if t < since:
                         continue
                     w = windows[key]
-                    if humans == 0:
+                    if n == 0:
                         w["bot_only_rounds"] += 1
                         continue
                     w["rounds"] += 1
-                    w["human_start_seat_rounds"] += humans
-                    w["signed_in_start_seat_rounds"] += signed
-                    w["by_humans"][str(min(humans, 4))] += 1
+                    w["roster_seat_rounds"] += n
+                    w["signed_in"] += signed
+                    w["unknown"] += unknown
+                    w["by_roster"][str(min(n, 4))] += 1
     live = {"1": 0, "2": 0, "3": 0, "4": 0, "0": 0}
-    for humans in live_rooms.values():
-        live[str(min(humans, 4))] += 1
+    for n in live_rooms.values():
+        live[str(min(n, 4))] += 1
     return {"available": True, "files_scanned": files, "windows": windows,
-            "live_tables_by_humans": live, "live_window_s": LIVE_WINDOW,
+            "live_tables_by_roster_seats": live, "live_window_s": LIVE_WINDOW,
             "last_round_start": last_round_start}
 
 
@@ -268,12 +296,13 @@ def collect(db: Path, log_dir: Path, data_dir: Path, now: float, today_start: fl
             lw = logs["windows"][key]
             w["log_rounds"] = lw["rounds"]
             w["bot_only_rounds"] = lw["bot_only_rounds"]
-            w["rounds_by_humans_at_start"] = lw["by_humans"]
-            w["human_start_seat_rounds"] = lw["human_start_seat_rounds"]
-            w["signed_in_start_seat_rounds"] = lw["signed_in_start_seat_rounds"]
-            w["guest_start_seat_rounds_est"] = (lw["human_start_seat_rounds"]
-                                                - lw["signed_in_start_seat_rounds"])
-            w["share_2plus_humans_at_start"] = (round(sum(lw["by_humans"][k] for k in "234")
+            w["rounds_by_roster_seats"] = lw["by_roster"]
+            w["roster_seat_rounds"] = lw["roster_seat_rounds"]
+            w["signed_in_roster_seat_rounds"] = lw["signed_in"]
+            w["unknown_roster_seat_rounds"] = lw["unknown"]
+            w["guest_roster_seat_rounds_est"] = (lw["roster_seat_rounds"] - lw["signed_in"]
+                                                 - lw["unknown"])
+            w["share_2plus_roster_seats"] = (round(sum(lw["by_roster"][k] for k in "234")
                                              / lw["rounds"], 3) if lw["rounds"] else None)
         del logs["windows"]
     out["support_7d"] = count_jsonl_since(data_dir / "support_messages.jsonl", now - 7 * DAY)

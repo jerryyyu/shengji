@@ -307,7 +307,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked"} offline={practice} />
         </div>
       </div>
-      {state.notice ? (
+      {/* the notice belongs to a trick of this round: it closes when the round ends */}
+      {state.notice && state.phase === "play" ? (
         <NoticeBanner notice={state.notice} state={state} key={state.notice.id} />
       ) : null}
       {/* `message` restates the notice for one play; showing both would

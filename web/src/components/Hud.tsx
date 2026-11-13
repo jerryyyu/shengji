@@ -298,7 +298,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
               <span style={{ width: `${Math.min(100, (state.attacker_points / 80) * 100)}%` }} />
             </span>
           </span>
-          <ModeChip mode={mode} />
+          {/* a guest is never rated: no Ranked chip at a ranked table */}
+          <ModeChip mode={mode === "ranked" && state.guest === true ? null : mode} />
           <span className="chip kitty-chip" title="Kitty (face-down)">
             <span className="kitty-icon" />
             {state.kitty_count}

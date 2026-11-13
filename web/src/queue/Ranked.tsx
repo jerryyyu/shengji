@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
 import { QueueCard, useInlineQueue } from "./QueueBar";
-import { partnerName, queue, useQueue } from "./store";
+import { clock, partnerName, queue, useNow, useQueue } from "./store";
 
 /** The ranked mark: a trophy. */
 export function TrophyIcon() {
@@ -88,6 +88,7 @@ export function RankedSection({ online }: {
   const account = useAuth();
   const labelId = useId();
   const inlineQueue = useInlineQueue();
+  const now = useNow(q.cooldownUntil !== null, 500);
   if (account.status === "loading" || account.status === "error") return null;
   const guest = account.status !== "in";
 
@@ -96,7 +97,11 @@ export function RankedSection({ online }: {
   let label = "Play";
   let disabled = !online;
   if (searching) { label = "Searching…"; disabled = true; }
-  else if (pair && !pair.you_lead) disabled = true;
+  else if (q.cooldownUntil !== null && q.cooldownUntil > now) {
+    // a table you joined and left: Play counts the queue cooldown down
+    label = `Play in ${clock(q.cooldownUntil - now, true)}`;
+    disabled = true;
+  } else if (pair && !pair.you_lead) disabled = true;
   const body = inlineQueue && q.queued && !q.table ? <><PartyChip /><QueueCard /></> : (
     <>
       <PartyChip />

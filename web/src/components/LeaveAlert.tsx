@@ -1,18 +1,63 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { conn } from "../ws";
 import { lastInputModality, trackInputModality } from "../inputModality";
+import type { ServerMsg } from "../protocol";
 
 trackInputModality();
+
+/** This socket's seat was taken mid-round from an open table and that round
+ *  is still in play: it is not rated for this player, and leaving it costs
+ *  the queue cooldown. A state frame's `joined_round` says so when the
+ *  server sends it; otherwise it is the first frame after an open-table
+ *  join's handover (not a round-end one) until that room's round ends. */
+let joinPending: string | null = null;
+let joinedRoom: string | null = null;
+
+function trackJoin(m: ServerMsg): void {
+  if (m.type === "match_started") {
+    joinPending = m.joining ? m.room : null;
+    joinedRoom = null;
+    return;
+  }
+  if (m.type === "left") {
+    joinPending = joinedRoom = null;
+    return;
+  }
+  if (m.type !== "state") return;
+  const flag = (m as { joined_round?: boolean }).joined_round;
+  if (typeof flag === "boolean") {
+    joinPending = null;
+    joinedRoom = flag ? m.room : null;
+    return;
+  }
+  if (m.joining_you) return;
+  if (joinPending !== null && m.room === joinPending) {
+    joinPending = null;
+    joinedRoom = m.phase !== "round_end" ? m.room : null;
+  } else if (joinedRoom !== null && (m.room !== joinedRoom || m.phase === "round_end")) {
+    joinedRoom = null;
+  }
+}
+conn.subscribe?.(trackJoin);
+
+/** Whether leaving now leaves a round joined from an open table. */
+export function inJoinedRound(): boolean {
+  return joinedRoom !== null;
+}
 
 /** The two lines a leave alert shows: a ranked game warns about the result
  *  of the round in play, but between rounds that result is already recorded
  *  and the next round has not started, so leaving costs nothing; a practice
- *  game on this device simply ends; any other game plays on with a bot in
- *  your seat. */
+ *  game on this device simply ends; a round joined mid-way from an open
+ *  table (`joined`) is not rated for you but leaving it costs the queue
+ *  cooldown; any other game plays on with a bot in your seat. */
 export function leaveCopy(ranked: boolean, practice = false,
-                          betweenRounds = false): { title: string; body: string } {
+                          betweenRounds = false, joined = false): { title: string; body: string } {
   if (practice) return { title: "Leave this game?", body: "This practice game ends." };
   if (ranked && betweenRounds) return { title: "Leave the table?", body: "This round's result is kept." };
+  if (joined && !betweenRounds) {
+    return { title: "Leave the table?", body: "This round isn't ranked for you, and leaving means a 5-minute wait to search." };
+  }
   return ranked
     ? { title: "Leave this ranked game?", body: "A bot takes your seat, and this round counts as at best a draw." }
     : { title: "Leave this game?", body: "A bot takes your seat and the others keep playing." };
@@ -40,7 +85,8 @@ export default function LeaveAlert({ ranked, practice = false, betweenRounds = f
   const keepRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const bodyId = useId();
-  const { title, body } = leaveCopy(ranked, practice, betweenRounds);
+  const [joined] = useState(inJoinedRound);
+  const { title, body } = leaveCopy(ranked, practice, betweenRounds, joined);
   const [pointerOpen, setPointerOpen] = useState(() => lastInputModality() === "pointer");
 
   useEffect(() => {

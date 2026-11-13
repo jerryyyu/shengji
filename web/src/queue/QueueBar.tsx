@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { WIDE, openTab } from "../home/route";
 import { SHORT_VIEWPORT, useMediaQuery } from "../phoneLayout";
+import { useAuth } from "../auth";
 import { BOTS_WARN_MS, clock, partnerName, queue, useNow, useQueue } from "./store";
 import type { QueueView } from "./store";
 import { useBarClearance } from "./useBarClearance";
@@ -11,13 +12,15 @@ interface BarText { label: string; waited: string; sub: string; warn: boolean }
  *  waiting table instead, so there is no count): who is searching and for
  *  how long, then your bot countdown (amber in its last ten seconds). A
  *  pair's other member has no switch, so its line says when it is on. */
-function barText(q: QueueView, now: number): BarText {
+function barText(q: QueueView, now: number, guest: boolean): BarText {
   const waited = q.since !== null ? clock(now - q.since) : "0:00";
   const botsIn = q.botsAt !== null && !q.waitPlayers ? q.botsAt - now : Infinity;
   const warn = botsIn <= BOTS_WARN_MS;
   const partner = q.partyId ? partnerName(q.party) : null;
   if (q.elsewhere) return { label: "Searching on another device", waited, sub: "Leave queue here to stop it", warn: false };
-  const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a ranked game";
+  // a guest is never rated, so its search is not a ranked one
+  const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue"
+    : guest ? "Finding a game" : "Finding a ranked game";
   const sub = q.botsPaused ? "Bots paused"
     : q.waitPlayers ? (q.leader ? "Waiting for people" : "Only tables with people")
     : botsIn <= 0 ? "Adding bots…"
@@ -30,7 +33,8 @@ function useBar(): { q: QueueView; text: BarText | null } {
   const q = useQueue();
   const shown = q.queued && !q.table;
   const now = useNow(shown, 250);
-  return { q, text: shown ? barText(q, now) : null };
+  const guest = useAuth().status !== "in";
+  return { q, text: shown ? barText(q, now, guest) : null };
 }
 
 function Actions({ q, compact }: { q: QueueView; compact?: boolean }) {
@@ -134,7 +138,7 @@ export default function QueueBar() {
 export function QueueCard() {
   const { q, text } = useBar();
   if (!text) return null;
-  const title = text.label === "Finding a ranked game" ? "Searching" : text.label;
+  const title = text.label === "Finding a ranked game" || text.label === "Finding a game" ? "Searching" : text.label;
   return (
     <div className={`q-bar q-card${text.warn ? " warn" : ""}`} role="status" aria-live="polite"
          title={`Waiting ${text.waited}`}>

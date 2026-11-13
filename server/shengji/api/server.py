@@ -122,8 +122,9 @@ TAKEOVER_AFTER = 30.0      # bot plays for a disconnected human after this long
 EMPTY_ROOM_BOT_DELAY = 10.0  # least seconds per bot move while no human is connected
 EMPTY_ROOM_POLL = 0.25     # how often a long empty-room wait re-checks for a human
 # Move timer (rooms with ``move_timer`` on, which today means ranked rooms):
-# a connected human has MOVE_TIMER seconds for each bury, play and round-end
-# Next; at zero the bot makes that one decision. AWAY_IN_A_ROW consecutive
+# while at least two humans hold seats (``_timer_live``), a connected human
+# has MOVE_TIMER seconds for each bury, play and round-end Next; at zero the
+# bot makes that one decision. AWAY_IN_A_ROW consecutive
 # timeouts, or AWAY_PER_ROUND in one round, mark the seat away: the bot then
 # plays every decision for it until the player is back.
 MOVE_TIMER = 60.0
@@ -640,10 +641,25 @@ def _owing_seats(room: Room) -> set[int]:
     return {seat}
 
 
+def _timer_live(room: Room) -> bool:
+    """Whether the move clock runs: the room has the move timer and at least
+    two human seats (accounts or guests). Nobody waits on a lone player, so
+    alone at a table they take as long as they like."""
+    return room.move_timer and sum(
+        1 for sd in room.seats if sd is not None and not sd.is_bot) >= 2
+
+
 def _sync_move_timer(room: Room) -> None:
     """Start the clock of every seat that newly owes a decision (caller holds
-    the lock). A no-op in a room without the move timer."""
+    the lock). A no-op in a room without the move timer; with one human the
+    clocks stand cleared, so a second human's arrival starts them fresh."""
     if not room.move_timer:
+        return
+    if not _timer_live(room):
+        room.timer_key = None
+        for sd in room.seats:
+            if sd is not None:
+                sd.turn_started = None
         return
     key = _decision_key(room)
     owing = _owing_seats(room)
@@ -662,7 +678,7 @@ def _timed(room: Room, seat: int) -> bool:
     """Is this seat's move clock running? Connected humans only: a
     disconnected seat is on TAKEOVER_AFTER instead."""
     sd = room.seats[seat]
-    return (room.move_timer and not sd.is_bot and sd.connected
+    return (_timer_live(room) and not sd.is_bot and sd.connected
             and sd.turn_started is not None)
 
 

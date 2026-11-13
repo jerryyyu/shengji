@@ -2426,10 +2426,13 @@ def _wait_for(pred, timeout=15.0):
 
 
 def _timer_game(client, a, monkeypatch, on=True):
-    """Seat 0 human, three bots, in the play phase, waiting on seat 0."""
+    """Seat 0 human, three bots, in the play phase, waiting on seat 0. The
+    clock runs as if a second human were seated: these tests are about the
+    clock itself, and the one-human rule has its own (``test_matchmaking``)."""
     from shengji.api import server as srv
 
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    monkeypatch.setattr(srv, "_timer_live", lambda room: room.move_timer)
     code, room = _start_game(client, a, to_play=True)
     room.move_timer = on
     _wait_for(lambda: _my_turn(room))

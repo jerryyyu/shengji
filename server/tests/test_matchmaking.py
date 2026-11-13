@@ -2336,6 +2336,55 @@ def test_ws_a_guest_who_joins_then_leaves_gets_the_cooldown(wsenv, monkeypatch):
     assert srv.MATCHMAKER.cooldowns[-5] > clock() and ratings.CARRIED_CAPS == caps
 
 
+# ------------------------------------------------- the move timer and one human
+def _owes(srv, room, seat=0):
+    async def check():
+        async with room.lock:
+            return (room.bot_task is None or room.bot_task.done()) and seat in srv._owing_seats(room)
+    return check
+
+
+def test_ws_one_human_at_a_matched_table_has_no_move_clock_until_a_second_sits(
+        wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    t = {"v": 5000.0}
+    monkeypatch.setattr(srv, "now", lambda: t["v"])
+    _, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    friend, friend_headers = _user(store, "friend", "Friend")
+    with client.websocket_connect("/ws", headers=host_headers) as h:
+        code, room = _start_ranked(srv, h)
+        assert room.matched and room.move_timer
+        _wait_until(lambda: client.portal.call(_owes(srv, room)))
+
+        async def frame():
+            async with room.lock:
+                await srv.broadcast(room)
+                return srv.state_for(room, 0)
+        state = client.portal.call(frame)
+        assert state["players"][0]["turn_deadline"] is None
+        assert room.seats[0].turn_started is None
+        t["v"] += 10 * srv.MOVE_TIMER
+        assert client.portal.call(srv.move_timer_tick, room) is False
+        assert client.portal.call(_owes(srv, room)), "the bot decided for the lone player"
+        assert room.seats[0].timeouts_in_row == 0
+
+        with client.websocket_connect("/ws", headers=friend_headers) as f:
+            async def due_seat():
+                async with room.lock:
+                    return next(s for s in (1, 2, 3) if srv._join_due(room, s))
+            seat = client.portal.call(due_seat)
+            f.send_json({"type": "join_room", "room": code, "seat": seat})
+            _drain(f, "match_started")
+            _wait_until(lambda: room.seats[seat].user_id == friend)
+            state = client.portal.call(frame)
+            # the clock starts fresh for the decision still owed
+            assert room.seats[0].turn_started == t["v"]
+            assert state["players"][0]["turn_deadline"] == srv.MOVE_TIMER
+            t["v"] += srv.MOVE_TIMER + 1
+            assert client.portal.call(srv.move_timer_tick, room) is True
+            assert room.seats[0].timeouts_in_row == 1
+
+
 # ------------------------------------------------- a guest signs in
 def _next(ws, kind, pred, tries=80):
     """The first message of ``kind`` that satisfies ``pred``."""

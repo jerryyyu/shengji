@@ -2129,8 +2129,13 @@ def test_ws_a_signed_in_create_room_takes_the_account_name_not_the_sent_one(wsen
         assert _drain(g, "room")["players"][0]["name"] == "Sarah"
 
 
-def test_ws_a_rename_while_seated_renames_the_seat_in_the_next_frame(wsenv):
+def test_ws_a_rename_while_seated_renames_the_seat_in_the_next_frame(wsenv, monkeypatch):
     srv, store, client, clock = wsenv
+    async def paused_deal(room):
+        await asyncio.Future()
+
+    # Isolate rename delivery from the deal's unrelated state broadcasts.
+    monkeypatch.setattr(srv, "run_deal", paused_deal)
     _uid, headers = _user(store, "seated", "Old Name")
     with client.websocket_connect("/ws", headers=headers) as a:
         a.send_json({"type": "create_room"})
@@ -2142,12 +2147,7 @@ def test_ws_a_rename_while_seated_renames_the_seat_in_the_next_frame(wsenv):
         _drain(a, "state", tries=80)
         assert client.patch("/api/me", json={"display_name": "Gamename"},
                             headers=headers).status_code == 200
-        for _ in range(80):
-            state = _drain(a, "state", tries=80)
-            if state["players"][0]["name"] == "Gamename":
-                break
-        else:
-            raise AssertionError("the seat kept its old name")
         assert srv.rooms[code].seats[0].name == "Gamename"
+        assert _drain(a, "state", tries=80)["players"][0]["name"] == "Gamename"
         log = (srv.LOG_DIR / f"{code}.jsonl").read_text()
         assert '"e": "seat_renamed"' in log

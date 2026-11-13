@@ -2992,3 +2992,42 @@ def test_a_displaced_socket_closing_logs_no_disconnect(client):
     finally:
         if a is not None:
             a.__exit__(None, None, None)
+
+
+# ------------------------------------------------------- a friend's first seat
+def test_the_first_friend_sits_as_the_hosts_partner_and_seats_still_swap(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        b.send_json({"type": "join_room", "room": code, "name": "james"})
+        assert _drain(b, "room")["you"] == 2
+        with client.websocket_connect("/ws") as c:
+            c.send_json({"type": "join_room", "room": code, "name": "amy"})
+            assert _drain(c, "room")["you"] == 1
+            assert _names(srv.rooms[code]) == ["jerry", "amy", "james"]
+            a.send_json({"type": "swap_seats", "a": 2, "b": 1})
+            _room_until(b, lambda m: m["you"] == 1)
+            assert _names(srv.rooms[code]) == ["jerry", "james", "amy"]
+
+
+def test_a_room_of_guests_cannot_switch_ranked_on(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as host:
+        host.send_json({"type": "create_room", "name": "jerry"})
+        first = _drain(host, "room")
+        assert "rankable" not in first
+        host.send_json({"type": "set_ranked", "on": True})
+        assert _drain(host, "error")["message"] == "Ranked needs a signed-in player at the table."
+        assert srv.rooms[first["room"]].ranked is False
+
+
+def test_a_casual_room_takes_no_allow_joiners_switch(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as host:
+        host.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(host, "room")["room"]
+        assert srv.rooms[code].allow_joiners is False
+        host.send_json({"type": "allow_joiners", "on": True})
+        assert _drain(host, "error")["message"] == "Only a ranked table takes joiners."
+        assert srv.rooms[code].allow_joiners is False

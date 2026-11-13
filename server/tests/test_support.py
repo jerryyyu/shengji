@@ -269,3 +269,37 @@ def test_the_app_page_json_ld_parses():
 def test_the_rules_routes_take_no_request_input(tmp_path):
     r = _public_client(tmp_path).get("/rules?file=../../etc/passwd")
     assert r.status_code == 200 and r.text.startswith("<!doctype html>")
+
+
+FAKE_TEAM = "ABCDE12345"
+
+
+@pytest.mark.parametrize("path", ["/.well-known/apple-app-site-association",
+                                  "/apple-app-site-association"])
+def test_the_app_site_association_names_the_app_and_only_invite_links(tmp_path, monkeypatch, path):
+    monkeypatch.setenv("APPLE_TEAM_ID", FAKE_TEAM)
+    r = _page_client(tmp_path).get(path, follow_redirects=False)
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/json"
+    details = r.json()["applinks"]["details"]
+    assert details[0]["appIDs"] == [f"{FAKE_TEAM}.com.jerryyu.shengji"]
+    matched = [(c["/"], c["?"]) for c in details[0]["components"]]
+    assert matched == [("/", {"code": "?*"}), ("/", {"room": "?*"})]
+
+
+@pytest.mark.parametrize("team", [None, "", "abcde12345", "ABCDE1234", "ABCDE12345X"])
+def test_the_app_site_association_is_404_without_a_team_id(tmp_path, monkeypatch, team):
+    if team is None:
+        monkeypatch.delenv("APPLE_TEAM_ID", raising=False)
+    else:
+        monkeypatch.setenv("APPLE_TEAM_ID", team)
+    c = _page_client(tmp_path)
+    for path in ("/.well-known/apple-app-site-association", "/apple-app-site-association"):
+        assert c.get(path, follow_redirects=False).status_code == 404
+
+
+def test_the_bundle_id_matches_the_capacitor_app_id():
+    from shengji.api import support
+
+    config = (PUBLIC.parent / "capacitor.config.ts").read_text()
+    assert f'appId: "{support.APP_BUNDLE_ID}"' in config

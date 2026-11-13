@@ -9,28 +9,25 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 52** (since 2026-11-09 17:25 EST, Fly v64; [deploy record](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6753130529);
-[DEPLOY.md](DEPLOY.md#current-production)): release 51 plus the combo51 search rules. The exact lead keeps the
-baseline unless the exact pass is strictly better (elt), solves its own first trick by full minimax (elm) and stops
-at 1.6 s (els1600); the play worlds keep every earlier accepted throw legal (wht); refused throws are recorded after
-every committed play (rcec). Same packages and budgets. Against release 51 (paired, seat-swapped duels on the M5
-Ultra): screen combo51 +0.0418 [+0.0332, +0.0506] (SCREEN_PASS), confirmation combo51C +0.0438 [+0.0381, +0.0497]
-on 7,840 fresh deals (CONFIRMED). Its strength on Fly is not measured; on Fly, one game at a time, its decision p95
-was 0.855 s against release 51's 0.835 s, and latency with 2 or 4 concurrent games there is not measured. New duels
-and screens compare against release 52 as served. **Release 51** (served 2026-11-06 to 11-09, Fly v61 then v63, and the
-rollback target) is release 50 with the held-out lead confirmation (lcc32) off, `SHENGJI_PV_LEAD_CONFIRM = '0'`:
-cheaper per play (Fly CPU per play ×0.552, S91) at a measured strength cost on cloud (lccC, lcc off − on: −0.0133
-[−0.0232, −0.0033], KEEP_LCC); the M5 Ultra read loo (+0.0079 [−0.0069, +0.0221], DROP_SAFE) disagrees, and Fly
-has not been measured. Jerry chose it with lccC's cost in view, for cheaper serving and data generation. **Release 50** (the cbaC stack, served 2026-11-04 to 11-06, Fly v57–v60) is release 49 on the G3 Stage A value package, the FT1 card-play prior, the B1a belief package and
-belief-drawn bury worlds (bbw). Release 49 is
-release 48 plus two lead rules, the singleton challenger (sc8) and the held-out lead confirmation (lcc32). Release 48 is release 46 with
-the S58 belief package, dtrx and the guarded greedy-finished value leaf (lgf, lgfx, lgfd2000). Release 46 is the combo: belief-model worlds + exact
-endgame at 7 cards + every-chance first-round value declaration, on release 45. Release 45 is the SMV3
-outcome-head package `smv3out-491ee4bf.npz` in the one-ply policy/value search (64 worlds,
-8 candidates) with five search rules (div, rc, tb, la, dtr), the value-guided trump declaration
-(release 44) and the wide value-only bury (release 45). The model owns declaration, bury and card
-play; the heuristic is the anchor and the fallback. Colour marks what release 46 added: violet belief,
-berry exact endgame, blue declaration.
+**Live: release 52** (since 2026-11-09, Fly v64; [DEPLOY.md](DEPLOY.md#current-production) has the record and
+rollback). It is release 51 plus the combo51 search rules (elt, elm, els1600, wht, rcec; see the list below), with the
+same packages and budgets. Against release 51 it measured +0.0438 levels/round [+0.0381, +0.0497] over 7,840 fresh
+paired deals. New duels and screens compare against release 52 as served.
+
+How the bot plays: a belief model draws 64 hidden-hand worlds, the policy admits 8 candidate plays, and the value head
+scores each candidate in every world; at 7 cards or fewer an exact endgame search takes over. The model owns
+declaration, bury and card play; the heuristic is the anchor and the fallback.
+
+Earlier releases, newest first (full history in [DEPLOY.md](DEPLOY.md) and [AI_POLICIES.md](AI_POLICIES.md)):
+
+- **51**: release 50 with the lead confirmation (lcc32) off, cheaper to serve at a small measured cost; the rollback target.
+- **50**: G3 value, FT1 card-play prior, B1a belief and belief-drawn bury worlds (bbw).
+- **49**: two lead rules, the singleton challenger (sc8) and the lead confirmation (lcc32).
+- **48**: the S58 belief package, dtrx and the greedy-finished value leaf (lgf).
+- **46**: belief-model worlds, the exact endgame at 7 cards and value-guided first-round declaration.
+- **45**: the SMV3 outcome-head package in the policy/value search, with the div, rc, tb, la and dtr search rules and the wide value-only bury.
+
+In the figures, colour marks what release 46 added: violet belief, berry exact endgame, blue declaration.
 
 <img src="docs/visuals/release46-bot-turn.svg" alt="One release-46 play decision drawn from a live lead in room ADKY: seat 3 holds seven cards; the S17 belief model gives each hidden card&#39;s holder probabilities as a heatmap (26.9 ms); 66 worlds are drawn, 2 rejected as history-illegal, 64 kept; 8 of 64 legal plays are admitted with their policy log-odds; the value head scores each candidate in every world (rows candidates, columns worlds: 512 positions (values) sent as 4 forward calls, batches of 128) and the mean picks the ace of clubs (1.799); then the exact endgame, in five steps (belief worlds; play each candidate; try each one with all hands face up to the round's end; average over the 64 worlds; pick the best average), with alpha-beta pruning and a transposition-table cache (429,026 positions tried, 173,315 reused, 0.197 s), switches to the jack of diamonds (mean 1.797 vs 1.719), played in 0.49 s. One world, the true deal, is drawn: the jack of diamonds and the ace of clubs both end with attackers on 45 (+1 level), the 5-8-ace of clubs on 80, a lost deal." width="100%">
 

@@ -6,10 +6,12 @@ instead of on production. The room logs and support files are tiny files in
 ``tmp_path``.
 """
 
+import hashlib
 import importlib.util
 import json
 import os
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -42,12 +44,32 @@ def _rating(conn, game, rnd, user, at, partner_bot=1, opponents_bots=2, abandone
         (game, rnd, user, at, abandoned, partner_bot, opponents_bots))
 
 
+def _round_start(t, bots, rnd=1, **extra):
+    players = [{"seat": i, "name": f"p{i}", "is_bot": b} for i, b in enumerate(bots)]
+    return json.dumps({"t": t, "room": "ROOM", "round": rnd, "e": "round_start",
+                       "deck": list(range(60)), "players": players, **extra})
+
+
+def _store(data):
+    store = accounts.Store(data / "accounts.sqlite3")
+    store.schema_version()                      # runs every migration
+    return sqlite3.connect(data / "accounts.sqlite3")
+
+
 @pytest.fixture
 def world(tmp_path):
     data = tmp_path / "data"
-    store = accounts.Store(data / "accounts.sqlite3")
-    store.schema_version()                      # runs every migration
-    conn = sqlite3.connect(data / "accounts.sqlite3")
+    rs = _round_start
+    lines = [
+        rs(NOW - 2 * DAY, [False, True, True, True]),           # G2 round 1
+        rs(NOW - 3000, [False, False, True, True]),             # G3 round 1
+        rs(NOW - 600, [False, False, False, True], rnd=2),      # G3 round 2, live: 3 humans
+        rs(NOW - 400, [False, True, True, True], training_excluded=True),
+        json.dumps({"t": NOW - 300, "room": "ROOM", "round": 1, "e": "play", "seat": 0}),
+        "not json",
+    ]
+    offsets = {"G1": None, "G2": 0, "G3": len(lines[0]) + 1}
+    conn = _store(data)
     users = [  # (google_sub, apple_sub, created_at)
         ("g1", None, NOW - 40 * DAY),
         ("g2", None, NOW - 10 * DAY),
@@ -60,8 +82,8 @@ def world(tmp_path):
                      " VALUES (?, ?, 'x@example.com', ?, ?)", (g, a, created, created))
     for gid, started, last in (("G1", NOW - 20 * DAY, 3), ("G2", NOW - 2 * DAY, 2),
                                ("G3", NOW - 3600, 4)):
-        conn.execute("INSERT INTO games(id, room_code, log_file, started_at, last_round)"
-                     " VALUES (?, 'ROOM', 'ROOM.jsonl', ?, ?)", (gid, started, last))
+        conn.execute("INSERT INTO games(id, room_code, log_file, log_offset, started_at, last_round)"
+                     " VALUES (?, 'ROOM', 'ROOM.jsonl', ?, ?, ?)", (gid, offsets[gid], started, last))
     for gid, uid, seat, frm, to in (("G1", 1, 0, 1, None), ("G2", 2, 0, 1, None),
                                     ("G2", 3, 2, 2, None), ("G3", 2, 0, 1, 2), ("G3", 4, 1, 1, None)):
         conn.execute("INSERT INTO game_players(game_id, user_id, seat, from_round, to_round)"
@@ -76,20 +98,6 @@ def world(tmp_path):
 
     logs = tmp_path / "logs"
     logs.mkdir()
-
-    def rs(t, bots, **extra):
-        players = [{"seat": i, "name": f"p{i}", "is_bot": b} for i, b in enumerate(bots)]
-        return json.dumps({"t": t, "room": "ROOM", "round": 1, "e": "round_start",
-                           "deck": list(range(60)), "players": players, **extra})
-
-    lines = [
-        rs(NOW - 2 * DAY, [False, True, True, True]),
-        rs(NOW - 3000, [False, False, True, True]),
-        rs(NOW - 600, [False, False, False, True]),          # live: a 3-human table
-        rs(NOW - 400, [False, True, True, True], training_excluded=True),
-        json.dumps({"t": NOW - 300, "room": "ROOM", "round": 1, "e": "play", "seat": 0}),
-        "not json",
-    ]
     (logs / "ROOM.jsonl").write_text("\n".join(lines) + "\n")
     os.utime(logs / "ROOM.jsonl", (NOW - 60, NOW - 60))
     (logs / "SMOKE.jsonl").write_text(rs(NOW - 500, [True, True, True, True]) + "\n")
@@ -121,14 +129,17 @@ def test_collect_counts_and_shape(world):
     assert (today["saved_games_created"], week["saved_games_created"]) == (1, 2)
     assert today["games_per_player"] == 1.0
     assert today["rated_rounds_per_player"] == 1.5
-    # G3: account 2 rounds 1-2, account 4 rounds 1-4.
-    assert today["signed_in_seat_rounds"] == 6
 
     assert today["log_rounds"] == 2 and today["bot_only_rounds"] == 1
-    assert today["rounds_by_humans"] == {"1": 0, "2": 1, "3": 1, "4": 0}
-    assert today["human_seat_rounds"] == 5
-    assert today["guest_seat_rounds_est"] == 0
-    assert week["log_rounds"] == 3 and week["share_2plus_humans"] == round(2 / 3, 3)
+    assert today["rounds_by_humans_at_start"] == {"1": 0, "2": 1, "3": 1, "4": 0}
+    # G3 round 1: seats 0 and 1 linked; round 2: seats 0, 1 linked, seat 2 a guest.
+    assert today["human_start_seat_rounds"] == 5
+    assert today["signed_in_start_seat_rounds"] == 4
+    assert today["guest_start_seat_rounds_est"] == 1
+    # G2 round 1 adds seat 0, linked to account 2.
+    assert (week["human_start_seat_rounds"], week["signed_in_start_seat_rounds"],
+            week["guest_start_seat_rounds_est"]) == (6, 5, 1)
+    assert week["log_rounds"] == 3 and week["share_2plus_humans_at_start"] == round(2 / 3, 3)
 
     logs_out = out["logs"]
     assert logs_out["live_tables_by_humans"] == {"0": 1, "1": 0, "2": 0, "3": 1, "4": 0}
@@ -139,22 +150,124 @@ def test_collect_counts_and_shape(world):
     # d7: accounts 1, 2 and 5; 1 played 20 days and 2 eight days after sign-up.
     assert out["returns"]["d7"] == {"cohort": 3, "returned": 2, "rate": round(2 / 3, 3)}
     assert out["support_7d"] == 1 and out["reports_7d"] == 0
-    assert out["wal_bytes"] == 0
 
 
 def test_output_carries_counts_only(world):
     data, logs = world
     out = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)
-    collector.assert_counts_only(out)
+    collector.check_schema(out)
     text = json.dumps(out)
     for secret in ("example.com", "a@b.c", "ROOM", "p0", "g1", "a1", "hi"):
         assert f'"{secret}' not in text and secret + '"' not in text
-    with pytest.raises(collector.LeakError):
-        collector.assert_counts_only({"a": [1, {"b": "x@example.com"}]})
+    for bad in ({"accounts": {"alice@example.com": 1}}, {"alice@example.com": 1},
+                {"accounts": {"total": "x@example.com"}}, {"support_7d": True},
+                {"accounts": {"signups_per_day": [1, "x"]}}):
+        with pytest.raises(collector.LeakError) as exc:
+            collector.check_schema(bad)
+        assert str(exc.value) == "schema_violation"
 
 
-def test_query_opens_the_database_without_side_files(world):
+def test_query_leaves_the_database_file_unchanged(world):
     data, logs = world
-    before = sorted(p.name for p in data.iterdir())
-    query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)
-    assert sorted(p.name for p in data.iterdir()) == before
+    db = data / "accounts.sqlite3"
+    digest = hashlib.sha256(db.read_bytes()).hexdigest()
+    before = {p.name for p in data.iterdir()}
+    query.collect(db, logs, data, NOW, TODAY)
+    assert hashlib.sha256(db.read_bytes()).hexdigest() == digest
+    # The server keeps these WAL side files itself; nothing else may appear.
+    assert {p.name for p in data.iterdir()} - before <= {db.name + "-wal", db.name + "-shm"}
+
+
+def test_query_reads_rows_committed_to_a_live_wal(world):
+    data, logs = world
+    db = data / "accounts.sqlite3"
+    writer = sqlite3.connect(db, isolation_level=None)
+    try:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("INSERT INTO users(google_sub, email, created_at, last_login_at)"
+                       " VALUES ('g9', 'y@example.com', ?, ?)", (NOW - 60, NOW - 60))
+        assert Path(f"{db}-wal").stat().st_size > 0      # committed, not checkpointed
+        immutable = sqlite3.connect(f"file:{db}?mode=ro&immutable=1", uri=True)
+        try:
+            assert immutable.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 5
+        finally:
+            immutable.close()
+        out = query.collect(db, logs, data, NOW, TODAY)
+        assert out["accounts"]["total"] == 6
+        assert out["accounts"]["new_24h"] == 2
+    finally:
+        writer.close()
+
+
+def test_guest_estimate_attributes_each_round_by_its_own_time(tmp_path):
+    """A signed-in game that starts before midnight and plays its only round
+    after it: today has one human seat-round, and it is signed in."""
+    data, logs = tmp_path / "data", tmp_path / "logs"
+    logs.mkdir()
+    conn = _store(data)
+    conn.execute("INSERT INTO users(google_sub, email, created_at, last_login_at)"
+                 " VALUES ('g1', 'x@example.com', ?, ?)", (NOW - 9 * DAY, NOW - 9 * DAY))
+    conn.execute("INSERT INTO games(id, room_code, log_file, log_offset, started_at, last_round)"
+                 " VALUES ('G1', 'ROOM', 'ROOM.jsonl', 0, ?, 1)", (TODAY - 60,))
+    conn.execute("INSERT INTO game_players(game_id, user_id, seat, from_round, to_round)"
+                 " VALUES ('G1', 1, 0, 1, NULL)")
+    conn.commit()
+    conn.close()
+    (logs / "ROOM.jsonl").write_text(_round_start(TODAY + 60, [False, True, True, True]) + "\n")
+    os.utime(logs / "ROOM.jsonl", (NOW - 60, NOW - 60))
+    today = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)["windows"]["today"]
+    assert today["human_start_seat_rounds"] == 1
+    assert today["signed_in_start_seat_rounds"] == 1
+    assert today["guest_start_seat_rounds_est"] == 0
+
+
+SECRET = "alice@example.com"
+
+
+@pytest.fixture
+def collector_home(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(collector, "fetch_health",
+                        lambda: {"ok": True, "rooms": 1, "bot": "mc", "fast": True, "activity": {}})
+    return home
+
+
+def _fake_fly(monkeypatch, stdout, stderr="", rc=0):
+    def run(args, **kw):
+        return subprocess.CompletedProcess(args, rc, stdout=stdout, stderr=stderr)
+    monkeypatch.setattr(collector.subprocess, "run", run)
+
+
+def _stored_text(home):
+    return "\n".join(p.read_text() for p in home.rglob("*") if p.is_file())
+
+
+def test_collector_stores_a_valid_query_output(world, collector_home, monkeypatch):
+    data, logs = world
+    out = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)
+    _fake_fly(monkeypatch, "noise\nOPS_JSON " + json.dumps(out) + "\n")
+    assert collector.collect(collector_home) == 0
+    latest = json.loads((collector_home / "latest.json").read_text())
+    assert latest["errors"] == [] and latest["db"] == out
+
+
+@pytest.mark.parametrize("stdout,stderr,rc,code", [
+    ("OPS_JSON " + json.dumps({"accounts": {"total": 3, SECRET: 1}}), "", 0, "schema_violation"),
+    ("OPS_JSON " + json.dumps({SECRET: {"n": 1}}), "", 0, "schema_violation"),
+    ("OPS_JSON " + json.dumps({SECRET: "secret"}), "", 0, "schema_violation"),
+    ("OPS_JSON " + json.dumps({"accounts": {"total": SECRET}}), "", 0, "schema_violation"),
+    ("OPS_JSON {" + SECRET, "", 0, "query_bad_json"),
+    ("", f"Error: no route for {SECRET} token=s3cr3t", 1, "query_failed"),
+    (f"traceback mentioning {SECRET}", "", 0, "query_failed"),
+])
+def test_collector_never_stores_rejected_keys_or_error_text(
+        collector_home, monkeypatch, capsys, stdout, stderr, rc, code):
+    _fake_fly(monkeypatch, stdout, stderr, rc)
+    assert collector.collect(collector_home) == 1
+    latest = json.loads((collector_home / "latest.json").read_text())
+    assert latest["errors"] == [code] and "db" not in latest
+    printed = capsys.readouterr()
+    for text in (_stored_text(collector_home), printed.out, printed.err):
+        assert SECRET not in text and "s3cr3t" not in text

@@ -1,18 +1,27 @@
 # Ops dashboard
 
-A private, read-only usage page for production, run on the Mac mini and
-reachable only on localhost and the Mini's Tailscale address.
+A private, read-only usage page for production, run on the Mac mini. `serve.py`
+binds by default localhost and the Mini's Tailscale address
+(`127.0.0.1,100.113.192.116`); `--bind` accepts any comma-separated list of addresses and refuses only a wildcard
+(`0.0.0.0`, `::`), so another address is reachable from wherever it routes.
 
 | file | runs where | does |
 |---|---|---|
-| `query.py` | inside the Fly container (`python3 -`) | opens `/data/accounts.sqlite3` with `mode=ro&immutable=1` (no locks, no `-wal`/`-shm` side files), reads room logs changed in the last 30 days and the support/report files, prints one `OPS_JSON {...}` line of counts |
-| `collector.py` | Mini, launchd every 300 s | fetches `/healthz`, runs `query.py` over `flyctl ssh console`, refuses any non-numeric value from the container, writes `latest.json`, `history.jsonl` and `snapshots/<date>/<time>.json` under `~/shengji-ops/` |
+| `query.py` | inside the Fly container (`python3 -`) | opens `/data/accounts.sqlite3` with `mode=ro` and runs every database query in one read transaction (one consistent snapshot, including rows committed to the server's WAL; it shares the `-wal`/`-shm` files the server already keeps), reads room logs changed in the last 30 days and the support/report files, prints one `OPS_JSON {...}` line of counts |
+| `collector.py` | Mini, launchd every 300 s | fetches `/healthz`, runs `query.py` over `flyctl ssh console`, refuses any output outside its fixed key schema, writes `latest.json`, `history.jsonl` and `snapshots/<date>/<time>.json` under `~/shengji-ops/` |
 | `serve.py` | Mini, launchd, kept alive | serves `index.html`, `/api/latest`, `/api/history`; binds only the `--bind` addresses (refuses a wildcard); every request needs `?t=<token>` from `~/shengji-ops/token`, else 403 |
 | `index.html` | the browser | one inline page (no external requests), refreshes every 60 s |
 
-Privacy: the page shows counts only. No email, account id, name, room code, IP
-or message text leaves the container; `collector.assert_counts_only` enforces
-that before anything is stored. Nothing is sent to a third party.
+Privacy: the page shows counts only. `query.py` prints no email, account id,
+name, room code, IP or message text. Before anything is stored,
+`collector.check_schema` requires the output to use only the key paths in
+`collector.QUERY_SCHEMA`, each holding a number (a bool or null where listed);
+any other key or a string fails the run. Failures are stored as fixed codes
+(`query_failed`, `query_timeout`, `query_bad_json`, `schema_violation`,
+`healthz_failed`), never as key names, values or command output. This check
+limits what is stored on the Mini; it cannot prove what the container
+computes, and a number under an allowed key could still be anything the query
+chose to put there. Nothing is sent to a third party.
 
 Production cost per run: one `flyctl ssh` session and about 0.1 s of CPU in the
 container (measured 0.055-0.08 s on 2026-11-12 with 46 log files, 29 MB).
@@ -22,12 +31,12 @@ container (measured 0.055-0.08 s on 2026-11-12 with 46 log files, 29 MB).
 | metric | source |
 |---|---|
 | open rooms | `/healthz` `rooms` |
-| tables playing now, by humans seated | room logs: a `round_start` in the last 20 min (latest per room) |
+| tables playing now, by human seats at the latest round start | room logs: a `round_start` in the last 20 min (latest per room) |
 | accounts, Google/Apple, new 24 h/7 d, sign-ups per day | `users` |
 | rated rounds, 2+ humans, abandoned, per player | `rating_events` (rows for every round with a signed-in seat; ranked and casual are not told apart) |
 | signed-in players, saved games, games per player | `game_players` + `games`, plus `rating_events` |
-| rounds played, rounds by humans at the table | room logs `round_start.players[].is_bot` |
-| guest seat-rounds (estimate) | human seat-rounds in the logs minus signed-in seat-rounds of saved games |
+| rounds played, rounds by human seats at round start | room logs `round_start.players[].is_bot` (false = human-controlled when the round started; a seat can change hands mid-round) |
+| signed-in / guest seat-rounds (estimate) | each logged round's human-at-start seats, by that round's timestamp, split by whether a saved-game link (`games.log_offset` locates the game in the log, `game_players` seat and round range) covers the seat in that round; the rest are the guest estimate. A signed-in seat whose game has no `log_offset` (its first log write failed) counts as a guest |
 | return after 1 / 7 days | `users.created_at` vs later rated rounds or saved games |
 | support messages, player reports (7 d) | `support_messages.jsonl`, `player_reports.jsonl` (`ts` only) |
 

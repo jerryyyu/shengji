@@ -3,11 +3,12 @@
 
 The collector sends this file to ``python3 -`` over ``flyctl ssh console``
 with two arguments, ``now`` and ``today_start`` (epoch seconds). It opens the accounts
-database read-only (``mode=ro&immutable=1`` and ``PRAGMA query_only``, so not
-even SQLite's ``-wal``/``-shm`` side files are created), opens every other
-file for reading only, and prints one JSON object of counts. No email, account
-id, name, room code, IP or message text is printed: every value is a count, a
-ratio or a timestamp.
+database read-only (``mode=ro`` and ``PRAGMA query_only``) and runs every
+database query inside one read transaction, so the counts come from one
+consistent snapshot that includes rows the server has committed to its WAL. It
+opens every other file for reading only and prints one JSON object of counts.
+No email, account id, name, room code, IP or message text is printed: every
+value is a count, a ratio or a timestamp.
 
 Stdlib only, and cheap: the room-log scan reads only files changed in the last
 30 days and parses only ``round_start`` lines.
@@ -30,14 +31,14 @@ COHORT_DAYS = 60
 
 
 def _connect(db: Path) -> sqlite3.Connection:
-    """Open the database file without writing anything beside it.
+    """A read-only connection that takes part in the server's WAL locking.
 
-    ``mode=ro`` alone still creates and maps ``-wal``/``-shm`` side files on a
-    WAL database; ``immutable=1`` reads the main file with no locks and no
-    side files. Frames still in the server's WAL are not seen (``wal_bytes``
-    in the output says how many bytes that could be); the server checkpoints
-    when its connections close, so the lag is small."""
-    conn = sqlite3.connect(f"file:{db}?mode=ro&immutable=1", uri=True, timeout=2.0)
+    It reads committed frames still in the server's ``-wal`` file. A reader
+    never blocks the server's writers; while its read transaction is open, a
+    checkpoint cannot reset the WAL past the reader's snapshot, which lasts
+    for the ~0.1 s of this query. ``immutable=1`` is wrong here: it skips the
+    WAL and all locking on a file the server is changing."""
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2.0, isolation_level=None)
     conn.execute("PRAGMA query_only = 1")
     return conn
 
@@ -108,13 +109,6 @@ def window_stats(conn: sqlite3.Connection, since: float) -> dict:
     game_players = _one(
         conn, """SELECT COUNT(DISTINCT gp.user_id) FROM game_players gp
                  JOIN games g ON g.id = gp.game_id WHERE g.started_at >= ?""", (since,))
-    # Signed-in seat-rounds in saved games started in the window: each link
-    # covers rounds from_round..to_round (open links run to the game's last
-    # round).
-    signed_seat_rounds = _one(
-        conn, """SELECT SUM(MAX(0, COALESCE(gp.to_round, g.last_round) - gp.from_round + 1))
-                 FROM game_players gp JOIN games g ON g.id = gp.game_id
-                 WHERE g.started_at >= ?""", (since,))
     return {
         "rated_rounds": rated_rounds,
         "rated_rounds_2plus_humans": int(rounds[1] or 0),
@@ -123,7 +117,6 @@ def window_stats(conn: sqlite3.Connection, since: float) -> dict:
         "rated_rounds_per_player": round(rated_rows / rated_players, 2) if rated_players else None,
         "saved_games_created": saved,
         "games_per_player": round(player_games / game_players, 2) if game_players else None,
-        "signed_in_seat_rounds": signed_seat_rounds,
     }
 
 
@@ -144,12 +137,38 @@ def return_rates(conn: sqlite3.Connection, now: float) -> dict:
     return out
 
 
-def scan_logs(log_dir: Path, now: float, starts: dict[str, float]) -> dict:
+def saved_game_links(conn: sqlite3.Connection) -> dict[tuple[str, int], list[tuple[int, int, int]]]:
+    """``(log file name, byte offset of the game's round 1 round_start)`` ->
+    the game's account links as ``(seat, first round, last round)``; an open
+    link runs to the game's last round. Ids and accounts stay in here: only
+    seat and round numbers leave this function."""
+    games: dict[tuple[str, int], list[tuple[int, int, int]]] = {}
+    for log_file, offset, last, seat, frm, to in conn.execute(
+            """SELECT g.log_file, g.log_offset, g.last_round, gp.seat, gp.from_round, gp.to_round
+               FROM games g JOIN game_players gp ON gp.game_id = g.id
+               WHERE g.log_offset IS NOT NULL"""):
+        key = (Path(log_file).name, int(offset))
+        games.setdefault(key, []).append((int(seat), int(frm), int(to if to is not None else last)))
+    return games
+
+
+def scan_logs(log_dir: Path, now: float, starts: dict[str, float],
+              links: dict[tuple[str, int], list[tuple[int, int, int]]] | None = None) -> dict:
     """Count ``round_start`` records in room logs changed in the last 30
-    days: rounds by number of human seats, and human seat-rounds per window.
-    The ``players`` list names no account, so guests and signed-in humans
-    look alike here; ``guest_seat_rounds`` subtracts the saved-game links."""
-    windows = {k: {"rounds": 0, "bot_only_rounds": 0, "human_seat_rounds": 0,
+    days, each attributed to its own round's timestamp: rounds by the number
+    of seats human-controlled at round start (``is_bot`` false then; a seat
+    can change hands later in the round), and those seat-rounds split into
+    seats a saved-game link covers for that round (signed in) and the rest
+    (guest estimate).
+
+    A round belongs to the game whose round 1 ``round_start`` begins at the
+    ``games.log_offset`` byte offset; the game runs until the next round 1
+    ``round_start`` or lobby (round 0) record, as ``saved_games._scan`` reads
+    it. Games with no signed-in seat have no ``games`` row, so their human
+    seats all count as guests."""
+    links = links or {}
+    windows = {k: {"rounds": 0, "bot_only_rounds": 0, "human_start_seat_rounds": 0,
+                   "signed_in_start_seat_rounds": 0,
                    "by_humans": {"1": 0, "2": 0, "3": 0, "4": 0}} for k in starts}
     live_rooms: dict[str, int] = {}
     last_round_start = None
@@ -162,18 +181,33 @@ def scan_logs(log_dir: Path, now: float, starts: dict[str, float]) -> dict:
         if now - entry.stat().st_mtime > LOG_WINDOW_DAYS * DAY:
             continue
         files += 1
+        game: list[tuple[int, int, int]] | None = None
+        pos = 0
         with open(entry.path, "rb") as fh:
             for line in fh:
-                if b'"e": "round_start"' not in line[:160]:
+                start, pos = pos, pos + len(line)
+                head = line[:160]
+                if b'"round": 0,' in head:
+                    game = None
+                    continue
+                if b'"e": "round_start"' not in head:
                     continue
                 try:
                     rec = json.loads(line)
                 except ValueError:
                     continue
+                rnd = rec.get("round")
+                if rnd == 1:
+                    game = links.get((entry.name, start))
                 if rec.get("experiment") or rec.get("training_excluded"):
                     continue
                 t = float(rec.get("t") or 0)
-                humans = sum(1 for p in rec.get("players") or () if not p.get("is_bot"))
+                human_seats = [p.get("seat") for p in rec.get("players") or () if not p.get("is_bot")]
+                humans = len(human_seats)
+                signed = 0
+                if game is not None and isinstance(rnd, int):
+                    signed = sum(1 for s in human_seats
+                                 if any(seat == s and frm <= rnd <= to for seat, frm, to in game))
                 if last_round_start is None or t > last_round_start:
                     last_round_start = t
                 if now - t <= LIVE_WINDOW:
@@ -186,7 +220,8 @@ def scan_logs(log_dir: Path, now: float, starts: dict[str, float]) -> dict:
                         w["bot_only_rounds"] += 1
                         continue
                     w["rounds"] += 1
-                    w["human_seat_rounds"] += humans
+                    w["human_start_seat_rounds"] += humans
+                    w["signed_in_start_seat_rounds"] += signed
                     w["by_humans"][str(min(humans, 4))] += 1
     live = {"1": 0, "2": 0, "3": 0, "4": 0, "0": 0}
     for humans in live_rooms.values():
@@ -215,27 +250,30 @@ def collect(db: Path, log_dir: Path, data_dir: Path, now: float, today_start: fl
     starts = {"today": today_start, "7d": now - 7 * DAY, "30d": now - 30 * DAY}
     conn = _connect(db)
     try:
+        conn.execute("BEGIN")
         out = {
             "generated_at": now,
             "accounts": account_stats(conn, now, today_start),
             "windows": {k: window_stats(conn, s) for k, s in starts.items()},
             "returns": return_rates(conn, now),
         }
+        links = saved_game_links(conn)
+        conn.execute("COMMIT")
     finally:
         conn.close()
-    wal = Path(f"{db}-wal")
-    out["wal_bytes"] = wal.stat().st_size if wal.is_file() else 0
-    logs = scan_logs(log_dir, now, starts)
+    logs = scan_logs(log_dir, now, starts, links)
     out["logs"] = logs
     if logs.get("available"):
         for key, w in out["windows"].items():
             lw = logs["windows"][key]
             w["log_rounds"] = lw["rounds"]
             w["bot_only_rounds"] = lw["bot_only_rounds"]
-            w["rounds_by_humans"] = lw["by_humans"]
-            w["human_seat_rounds"] = lw["human_seat_rounds"]
-            w["guest_seat_rounds_est"] = max(0, lw["human_seat_rounds"] - w["signed_in_seat_rounds"])
-            w["share_2plus_humans"] = (round(sum(lw["by_humans"][k] for k in "234")
+            w["rounds_by_humans_at_start"] = lw["by_humans"]
+            w["human_start_seat_rounds"] = lw["human_start_seat_rounds"]
+            w["signed_in_start_seat_rounds"] = lw["signed_in_start_seat_rounds"]
+            w["guest_start_seat_rounds_est"] = (lw["human_start_seat_rounds"]
+                                                - lw["signed_in_start_seat_rounds"])
+            w["share_2plus_humans_at_start"] = (round(sum(lw["by_humans"][k] for k in "234")
                                              / lw["rounds"], 3) if lw["rounds"] else None)
         del logs["windows"]
     out["support_7d"] = count_jsonl_since(data_dir / "support_messages.jsonl", now - 7 * DAY)

@@ -7,9 +7,12 @@ Run by launchd every few minutes. Writes, under ``--home`` (default
 (atomic replace) and one compact line per run in ``history.jsonl``.
 
 Nothing is written to production: ``query.py`` opens the accounts database
-with ``mode=ro`` and only reads files. Before anything is stored, every value
-that came out of the container must be a number, a bool or null; a string
-anywhere fails the run, so a query change cannot leak a name or an email.
+with ``mode=ro`` and only reads files. Before anything is stored, the output
+must match ``QUERY_SCHEMA``: a fixed set of key paths, each holding a number
+(or a bool or null where the schema says so). An unknown key or a string
+anywhere fails the run, so a query change cannot store a name or an email
+here. Failures are recorded as the stable codes in ``ERROR_CODES``, never as
+key names or raw command output.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import base64
 import datetime as dt
 import fcntl
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -34,22 +38,76 @@ QUERY = Path(__file__).resolve().with_name("query.py")
 TZ = ZoneInfo("America/New_York")
 FLY_TIMEOUT = 90
 HEALTH_KEYS = ("ok", "rooms", "bot", "fast")
+HEALTH_ACTIVITY_KEYS = ("rooms_created", "games_started", "rounds_recorded", "records_written",
+                        "record_write_failures", "account_link_failures")
+
+# The only diagnostics a snapshot or log line carries.
+ERROR_CODES = ("healthz_failed", "query_failed", "query_timeout", "query_bad_json",
+               "schema_violation")
+
+# Leaf kinds: NUM is an int or finite float (not a bool) or null; BOOL is a
+# bool; [NUM] is a list of NUM. Every dict below lists all its allowed keys.
+NUM, BOOL = "num", "bool"
+_BY_HUMANS = {k: NUM for k in ("1", "2", "3", "4")}
+_WINDOW = {
+    "rated_rounds": NUM, "rated_rounds_2plus_humans": NUM, "abandoned_rounds": NUM,
+    "signed_in_players": NUM, "rated_rounds_per_player": NUM, "saved_games_created": NUM,
+    "games_per_player": NUM, "log_rounds": NUM, "bot_only_rounds": NUM,
+    "rounds_by_humans_at_start": _BY_HUMANS, "human_start_seat_rounds": NUM,
+    "signed_in_start_seat_rounds": NUM, "guest_start_seat_rounds_est": NUM,
+    "share_2plus_humans_at_start": NUM,
+}
+_RETURN = {"cohort": NUM, "returned": NUM, "rate": NUM}
+QUERY_SCHEMA = {
+    "generated_at": NUM,
+    "accounts": {"total": NUM, "google": NUM, "apple": NUM, "new_24h": NUM, "new_7d": NUM,
+                 "with_rated_round": NUM, "with_saved_game": NUM, "signups_per_day": [NUM]},
+    "windows": {"today": _WINDOW, "7d": _WINDOW, "30d": _WINDOW},
+    "returns": {"d1": _RETURN, "d7": _RETURN},
+    "logs": {"available": BOOL, "files_scanned": NUM, "live_window_s": NUM,
+             "last_round_start": NUM,
+             "live_tables_by_humans": {k: NUM for k in ("0", "1", "2", "3", "4")}},
+    "support_7d": NUM, "reports_7d": NUM, "query_cpu_s": NUM,
+}
+MAX_LIST = 64
 
 
 class LeakError(ValueError):
-    pass
+    """The container's output left ``QUERY_SCHEMA``. The message is always
+    the code ``schema_violation``: the offending key or value is not
+    repeated anywhere."""
+
+    def __init__(self) -> None:
+        super().__init__("schema_violation")
 
 
-def assert_counts_only(value, path="$"):
-    """Every leaf is a number, bool or null; dict keys are the only text."""
-    if isinstance(value, dict):
+class QueryError(RuntimeError):
+    def __init__(self, code: str) -> None:
+        assert code in ERROR_CODES
+        super().__init__(code)
+        self.code = code
+
+
+def check_schema(value, schema=QUERY_SCHEMA) -> None:
+    """Raise ``LeakError`` unless ``value`` fits ``schema`` exactly: dicts
+    hold only listed keys (a listed key may be absent), leaves have the
+    listed kind."""
+    if isinstance(schema, dict):
+        if not isinstance(value, dict) or any(k not in schema for k in value):
+            raise LeakError()
         for k, v in value.items():
-            assert_counts_only(v, f"{path}.{k}")
-    elif isinstance(value, list):
-        for i, v in enumerate(value):
-            assert_counts_only(v, f"{path}[{i}]")
-    elif value is not None and not isinstance(value, (int, float, bool)):
-        raise LeakError(f"non-numeric value at {path}")
+            check_schema(v, schema[k])
+    elif isinstance(schema, list):
+        if not isinstance(value, list) or len(value) > MAX_LIST:
+            raise LeakError()
+        for v in value:
+            check_schema(v, schema[0])
+    elif schema == BOOL:
+        if not isinstance(value, bool):
+            raise LeakError()
+    elif value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                or not math.isfinite(value)):
+        raise LeakError()
 
 
 def fetch_health() -> dict:
@@ -57,8 +115,10 @@ def fetch_health() -> dict:
     with urllib.request.urlopen(req, timeout=15) as resp:
         raw = json.load(resp)
     out = {k: raw.get(k) for k in HEALTH_KEYS}
-    out["activity"] = {k: v for k, v in (raw.get("activity") or {}).items()
-                       if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    activity = raw.get("activity") or {}
+    out["activity"] = {k: activity[k] for k in HEALTH_ACTIVITY_KEYS
+                       if isinstance(activity.get(k), (int, float))
+                       and not isinstance(activity.get(k), bool)}
     return out
 
 
@@ -69,15 +129,25 @@ def flyctl() -> str:
 def run_query(now: float, today_start: float) -> dict:
     script = base64.b64encode(QUERY.read_bytes()).decode()
     remote = f"sh -c 'echo {script} | base64 -d | python3 - {now:.3f} {today_start:.0f}'"
-    proc = subprocess.run([flyctl(), "ssh", "console", "-a", APP, "-C", remote],
-                          capture_output=True, text=True, timeout=FLY_TIMEOUT)
-    for line in proc.stdout.splitlines():
+    try:
+        proc = subprocess.run([flyctl(), "ssh", "console", "-a", APP, "-C", remote],
+                              capture_output=True, text=True, timeout=FLY_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise QueryError("query_timeout") from None
+    except OSError:
+        raise QueryError("query_failed") from None
+    for line in (proc.stdout or "").splitlines():
         if line.startswith("OPS_JSON "):
-            data = json.loads(line[len("OPS_JSON "):])
-            assert_counts_only(data)
+            try:
+                data = json.loads(line[len("OPS_JSON "):])
+            except ValueError:
+                raise QueryError("query_bad_json") from None
+            try:
+                check_schema(data)
+            except LeakError:
+                raise QueryError("schema_violation") from None
             return data
-    tail = (proc.stderr or proc.stdout).strip().splitlines()[-1:] or [""]
-    raise RuntimeError(f"flyctl rc={proc.returncode}: {tail[0][:200]}")
+    raise QueryError("query_failed")
 
 
 def write_atomic(path: Path, data: dict) -> None:
@@ -94,13 +164,15 @@ def collect(home: Path) -> int:
             "errors": []}
     try:
         snap["health"] = fetch_health()
-    except Exception as exc:  # noqa: BLE001 - recorded, the run goes on
-        snap["errors"].append(f"healthz: {type(exc).__name__}")
+    except Exception:  # noqa: BLE001 - recorded as a code, the run goes on
+        snap["errors"].append("healthz_failed")
     t0 = time.time()
     try:
         snap["db"] = run_query(now, today_start)
-    except Exception as exc:  # noqa: BLE001
-        snap["errors"].append(f"query: {type(exc).__name__}: {str(exc)[:200]}")
+    except QueryError as exc:
+        snap["errors"].append(exc.code)
+    except Exception:  # noqa: BLE001 - recorded as a code, the run goes on
+        snap["errors"].append("query_failed")
     snap["query_wall_s"] = round(time.time() - t0, 2)
 
     stamp = dt.datetime.fromtimestamp(now, dt.timezone.utc)

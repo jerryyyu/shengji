@@ -29,6 +29,34 @@ Earlier releases, newest first (full history in [DEPLOY.md](DEPLOY.md) and [AI_P
 
 <img src="docs/visuals/decision-steps.svg" alt="One decision, four steps, with one live decision as the example: a bot leading with 7 cards left. The numbers are real; the shades, tiles and tree shape are illustrative. Step 1, belief: one call on the public history returns each card&#39;s odds of being in each of the 4 hands, drawn as a small heatmap; deals are sampled from it, drawn as 66 tiles with 2 crossed out for breaking earlier play, leaving 64 sampled deals. Step 2, prior: one call on 64 positions returns a score per card; the 64 legal plays are drawn as bars and the top 8 are admitted, the jack of diamonds at log-odds −0.06 and the ace of clubs at −0.22 first. Step 3, value: 4 calls of 128 positions score each of the 8 plays in each of the 64 deals, drawn as an 8 by 64 heatmap with a row-mean column; the best average was the ace of clubs at 1.799. Step 4, endgame: with 7 cards or fewer, no model is called and each deal is solved exactly by a game tree with all hands face up and pruned branches, and the per-deal results are averaged; it switched to the jack of diamonds, 1.797 against 1.719 for the ace of clubs. The bot played the jack of diamonds in 0.49 seconds. All models run in NumPy on the server CPU, with a 3 second budget per decision; the trump call and the bury reuse the value model." width="100%">
 
+### How the search works
+
+**Belief sampling.**
+- The belief model (bw) reads the public history and gives, for every hidden card copy, the probability that each other hand or the kitty holds it. The probabilities are masked to the holders the public facts allow (voids, declared cards), rescaled so each holder's expected count matches its size, and drawn copy by copy in random order, each copy only onto a holder that leaves the rest of the deal completable.
+- A drawn world is rejected when an earlier follow would have been illegal from the hand it gives that seat at the time (whl, whd), when an earlier accepted throw would have been refused (wht), or when a throw refused this round would not be refused with the same forced card (rc; the record of refusals is updated after every play, rcec).
+- The search keeps 64 worlds. The history tests apply to the first 512 draws and the plain sampler fills any shortfall after 2,560. If the belief model errors or its preparation takes over 0.25 s, the decision draws from the Monte Carlo sampler under the same tests.
+
+**Candidates.**
+- Legal plays are enumerated (up to 4,000) with the heuristic's play included. The prior runs once on the 64 root positions, one per world; a play's score is the sum of its cards' log-odds, averaged over the worlds.
+- 8 plays are admitted: the heuristic's play first, then the best scores, at most 2 per shape and no near-duplicate throws (div). On a low non-trump single lead, the first slot goes to the strongest one-suit pair or tractor (la).
+- On a lead with more than 7 cards in some hand, singles left off the ballot are probed on 8 worlds, and the best one takes the last slot if it beats every admitted play there (sc8).
+
+**Value pass.**
+- One position is a candidate played in one world, with the rest of the trick finished: each remaining seat plays whichever of the prior's top 4 follows and the heuristic's follow the value model rates best for its team (lgf). Where an exact stage will run, or once 2 s have passed, the heuristic finishes the trick instead (lgfx, lgfd2000).
+- The value model scores the 512 positions in batches of 128 as expected signed levels for the bot's team, and the best mean over the 64 worlds wins. Plays within 0.02 levels of the best are separated by trick points won (tb).
+- A lead throw refused in every world with the same forced card is dropped and the rest re-selected (dtr); after an exact pass the re-selection may not lower the exact mean (dtrx).
+
+**Exact endgame.**
+- When every hand holds 7 cards or fewer, each admitted play is also solved in each of the 64 worlds with all hands face up: partnership minimax to the round's end with alpha-beta pruning and a transposition table (ele, ed7 for leads, xf7 for follows). The per-world outcomes, in signed levels, are averaged over the worlds.
+- A lead solves its own first trick by minimax (elm) and replaces the value pass's lead only on a strictly higher exact mean (elt), within 1.6 s (els1600); a follow likewise switches only on a strictly higher mean.
+- The lead stage starts only in the first half of the budget, both stages stop by 80% of it, and a stage that does not finish leaves the value pass's choice.
+
+**Declaration and bury.**
+- Where the heuristic would declare, at the last chance, or at any chance in round 1 (vdef), each option and passing are scored on 64 deals drawn uniformly around the seat's hand and the current declaration, each with the heuristic's bury and first trick; the best replaces the heuristic's choice only if strictly higher (vd).
+- The bury scores up to 64 candidate kitties (the heuristic's, structured alternatives and single-card swaps) on 32 belief-drawn worlds and keeps the best mean (bwv, bbw).
+
+**Budget and fallbacks.** The heuristic decides first. Card play and declaration have 3 s per decision and the bury 2 s, checked between draws and model batches; past the budget or on any error the bot plays the heuristic's choice.
+
 Rule tokens used in the figures and tables:
 
 - **div**: diversify candidates (at most 2 of the same shape)

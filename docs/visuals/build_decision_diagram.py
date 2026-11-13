@@ -5,8 +5,8 @@ Edit the data block below, then run this script; `--check` exits 1 when the
 committed SVG differs from what the data block generates. Stdlib only.
 
 GitHub shows README images through <img>, which ignores the page's CSS, so the
-SVG carries its own colours: light by default, dark under an internal
-`prefers-color-scheme: dark` rule, with system font stacks.
+SVG carries its own colours: one dark palette on a rounded dark panel, the
+same on GitHub's light and dark pages, with system font stacks.
 
 The heatmap cells, deal tiles, faint bars and tree shape are illustrative,
 drawn from a fixed seed; the example numbers (deal counts, policy log-odds of
@@ -85,12 +85,11 @@ ARIA = (
     "the trump call and the bury reuse the value model."
 )
 
-LIGHT = {"bg": "#f6f7f5", "panel": "#ffffff", "edge": "#dfe2dc", "fg": "#15181a", "dim": "#4f555a",
-         "muted": "#6f767a", "accent": "#1f6f54", "chip": "#eef1ec", "bad": "#c0392b",
-         "belief": "#7c4dbb", "prior": "#b4501f", "value": "#2667c9", "exact": "#a8326e"}
-DARK = {"bg": "#141716", "panel": "#1c201e", "edge": "#2e3431", "fg": "#eef1ee", "dim": "#b3bab5",
-        "muted": "#8a918c", "accent": "#5fc49d", "chip": "#242a27", "bad": "#ef8a7c",
-        "belief": "#b393ec", "prior": "#f0925f", "value": "#7aa9f0", "exact": "#e978b0"}
+# One fixed dark palette, the release ladder's (docs/visuals/release-ladder.svg); every
+# text colour clears 4.5:1 contrast on the panel, the column boxes and the result bar.
+THEME = {"bg": "#1d242c", "panel": "#151a20", "edge": "#323c47", "fg": "#e6ebf0", "dim": "#c3ccd5",
+         "muted": "#98a4b0", "accent": "#4fc1b9", "chip": "#232c36", "bad": "#f08a80",
+         "belief": "#b39cf0", "prior": "#f2a46b", "value": "#7fb8ef", "exact": "#ef8fbe"}
 TOKENS = ("belief", "prior", "value", "exact", "bad", "muted", "fg")
 
 SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
@@ -280,10 +279,10 @@ def build() -> str:
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {HEIGHT}" width="{WIDTH}" '
         f'height="{HEIGHT}" role="img" aria-label="{escape(ARIA, {chr(34): "&quot;"})}">',
         f"<title>{escape(TITLE)}</title>",
-        "<style>" + _rules(LIGHT) + "@media (prefers-color-scheme: dark){" + _rules(DARK) + "}</style>",
+        "<style>" + _rules(THEME) + "</style>",
         '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
         'orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>',
-        f'<rect class="bg" x="0" y="0" width="{WIDTH}" height="{HEIGHT}"/>',
+        f'<rect class="bg" x="0" y="0" width="{WIDTH}" height="{HEIGHT}" rx="16"/>',
         _text(COL_X0, 34, "h1", TITLE),
         _text(COL_X0, 58, "s", SUBTITLE),
     ]

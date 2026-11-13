@@ -2258,7 +2258,7 @@ def test_ws_a_guest_and_an_account_share_a_table_and_start(wsenv):
         frames = seen_a + seen_g + [state]
         assert DEVICE_A not in str(frames) and DEVICE_B not in str(frames)
         log = (srv.LOG_DIR / f"{room.code}.jsonl").read_text()
-        assert DEVICE_A not in log and DEVICE_B not in log and "-1" not in log.split('"user_ids"')[1][:40]
+        assert DEVICE_A not in log and DEVICE_B not in log and '"user_ids"' not in log
 
 
 def test_ws_a_guest_comes_back_to_its_matched_seat_by_token_only(wsenv, monkeypatch):

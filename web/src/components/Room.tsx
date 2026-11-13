@@ -316,12 +316,21 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
   );
 }
 
-export default function Room({ room }: { room: RoomMsg }) {
+/** What a created room's frame adds: whether a signed-in player is seated
+ *  (only then can it be ranked), and a ranked room's Allow joiners. */
+type RoomFrame = RoomMsg & { rankable?: boolean; allow_joiners?: boolean };
+
+export default function Room({ room }: { room: RoomFrame }) {
   const [copied, setCopied] = useState(false);
   const isHost = room.you === room.host;
   // a queue room is always ranked; a created one when its host switched it on
   const ranked = !!(room.matched || room.ranked);
-  const canSwitchRanked = isHost && !room.matched && !room.experimental_policy;
+  // ranking rates accounts, so the switch shows once one is at the table
+  const canSwitchRanked = isHost && !room.matched && !room.experimental_policy
+    && (room.rankable === true || ranked);
+  // the switch the running ranked table has, set before the game starts
+  const showJoiners = ranked && !room.matched;
+  const joiners = room.allow_joiners === true;
 
   const invite = () => {
     void shareInvite(room.room).then((didCopy) => {
@@ -400,6 +409,17 @@ export default function Room({ room }: { room: RoomMsg }) {
               <span className="room-ranked-note">Rates signed-in players</span>
             </span>
             <span className={`ios-switch${ranked ? " on" : ""}`} aria-hidden="true" />
+          </button>
+        ) : null}
+        {showJoiners ? (
+          <button type="button" className="room-ranked-row room-joiners-row" role="switch"
+                  aria-checked={joiners}
+                  onClick={() => conn.send({ type: "allow_joiners", on: !joiners })}>
+            <span className="room-ranked-text">
+              <span className="field-label">Allow joiners</span>
+              <span className="room-ranked-note">Queue players can take a bot&rsquo;s seat</span>
+            </span>
+            <span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
           </button>
         ) : null}
         {room.experimental_policy === "w32" ? (

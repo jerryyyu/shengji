@@ -14,7 +14,8 @@ import Room from "./Room";
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-const room = (over: Partial<RoomMsg> = {}): RoomMsg => ({
+type Frame = RoomMsg & { rankable?: boolean; allow_joiners?: boolean };
+const room = (over: Partial<Frame> = {}): Frame => ({
   type: "room", room: "ABCD", you: 0, host: 0, start_level: "2",
   players: [
     { seat: 0, name: "Jerry", is_bot: false, connected: true },
@@ -476,18 +477,19 @@ describe("a seat that changes hands", () => {
 });
 
 describe("ranked switch", () => {
-  const toggle = () => host.querySelector<HTMLButtonElement>(".room-ranked-row[role='switch']");
+  const toggle = () => host.querySelector<HTMLButtonElement>(".room-ranked-row:not(.room-joiners-row)[role='switch']");
+  const joiners = () => host.querySelector<HTMLButtonElement>(".room-joiners-row[role='switch']");
   const headChip = () => host.querySelector(".room-title .ranked-chip, .room-title .unranked-tag");
 
   it("a created room starts Unranked; the host sees the switch off", () => {
-    render(room());
+    render(room({ rankable: true }));
     expect(toggle()!.getAttribute("aria-checked")).toBe("false");
     expect(headChip()!.className).toBe("unranked-tag");
     expect(headChip()!.textContent).toBe("UNRANKED");
   });
 
   it("the host's tap sends set_ranked with the other state", () => {
-    render(room());
+    render(room({ rankable: true }));
     act(() => { toggle()!.click(); });
     expect(sent).toEqual([{ type: "set_ranked", on: true }]);
     sent.length = 0;
@@ -515,6 +517,30 @@ describe("ranked switch", () => {
   it("a queue room is ranked with no switch", () => {
     render(room({ matched: true }));
     expect(toggle()).toBeNull();
+    expect(joiners()).toBeNull();
     expect(headChip()!.className).toBe("ranked-chip");
+  });
+
+  it("with no signed-in player seated the host sees no Ranked switch", () => {
+    render(room());
+    expect(toggle()).toBeNull();
+    expect(headChip()!.textContent).toBe("UNRANKED");
+    render(room({ rankable: true }));
+    expect(toggle()).not.toBeNull();
+  });
+
+  it("a ranked room shows Allow joiners to every seat before the game, off until switched on", () => {
+    render(room({ rankable: true }));
+    expect(joiners()).toBeNull();          // casual: no joiners from the queue
+    render(room({ rankable: true, ranked: true, allow_joiners: false }));
+    expect(joiners()!.textContent).toContain("Allow joiners");
+    expect(joiners()!.getAttribute("aria-checked")).toBe("false");
+    act(() => { joiners()!.click(); });
+    expect(sent).toEqual([{ type: "allow_joiners", on: true }]);
+    sent.length = 0;
+    render(room({ you: 2, ranked: true, allow_joiners: true }));
+    expect(joiners()!.getAttribute("aria-checked")).toBe("true");
+    act(() => { joiners()!.click(); });
+    expect(sent).toEqual([{ type: "allow_joiners", on: false }]);
   });
 });

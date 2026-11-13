@@ -92,7 +92,9 @@ export default function OpenTableOffer() {
     <Sheet title="Table open" className="ot-sheet" cancel={null} dismissible={!busy}
            onClose={() => queue.offerWait()}>
         <p className="ot-sub">
-          {o.roundEnd ? "Joins next round · ranked" : "Game in progress · first round is unranked"}
+          {/* a guest is never rated: no round is called ranked or unranked */}
+          {account.status !== "in" ? (o.roundEnd ? "Joins next round" : "Game in progress")
+            : o.roundEnd ? "Joins next round · ranked" : "Game in progress · first round is unranked"}
         </p>
         {o.partner ? <p className="ot-sub ot-pair">Two seats for you and {o.partner.name}</p> : null}
         <div className="ot-teams">

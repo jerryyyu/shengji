@@ -93,7 +93,10 @@ export default function App() {
         invite: inviteRoom ? { room: inviteRoom,
                                name: params.get("name") ?? undefined } : null,
         savedRoom: getSavedRoom(),
-        savedName: getSavedName(),
+        // A signed-in player keeps no name on the device, and a socket that
+        // has just signed out must still ask for its seat back, so the server
+        // can say what holds it; the server names an account itself.
+        savedName: getSavedName() || "Player",
         savedToken: getResumeToken(),
       });
       if (intent.kind !== "resume") return;   // Lobby owns invite + pending
@@ -150,7 +153,13 @@ export default function App() {
             resumingRef.current = false;
           } else if (msg.code === "ranked_queue_only" && wasResuming) {
             // A saved ranked seat belongs to an account; this socket is a guest
-            // (signed out mid-game). Keep the room so signing back in returns there.
+            // (signed out mid-game). The table goes for Play, and the saved
+            // room stays so signing back in returns there.
+            setRoom(null);
+            setGame(null);
+            seededRef.current = false;
+            resetAnnouncer();
+            openTab("play");
             showToast("Sign in again to return to your game.");
           } else {
             showToast(msg.message);

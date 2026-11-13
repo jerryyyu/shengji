@@ -87,7 +87,12 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
     if (msg?.type === "error") setStarting(null);
   }), []);
-  const { name } = useGuestName();
+  const { name, editing } = useGuestName();
+  // Whether this device had a guest name before this page load: an invitee
+  // who has one goes straight into the room, a first-timer names themselves.
+  const [hadName] = useState(() => {
+    try { return getSavedName().trim() !== ""; } catch { return false; }
+  });
   const setName = (next: string) => guestName.setName(next);
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
@@ -107,7 +112,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   useEffect(() => {
     if (autoFilled.current || (account.status !== "out" && account.status !== "off" && account.status !== "error")) return;
     autoFilled.current = true;
-    if (!name.trim() && !getSavedName().trim()) guestName.setName(randomName());
+    if (!name.trim() && !getSavedName().trim()) guestName.fill(randomName());
   }, [account.status, name]);
   const nameId = useId();
   // Only a guest's own name is remembered; an account name lives on the account.
@@ -139,6 +144,10 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // A ranked table's invite that cannot be taken here: no bot seat is left.
   // Guests take a ranked table's seats as accounts do, unrated.
   const [tableFull, setTableFull] = useState(false);
+  // The room an invite link is taking this page into, until the server
+  // answers; and why it could not, said on Play.
+  const inviting = useRef<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   // Declared before the subscriber and memoised so the effect can list it as
   // a dependency instead of silencing the warning: it closes over `name` and
   // `roomCode`, and a stale copy would join with the wrong name.
@@ -172,6 +181,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       if (m.ranked && m.full) {
         setStarting(null);
         setTableFull(true);
+        inviting.current = null;
+        clearInvite();
         return;
       }
       if (needsSeatPicker(m.seats)) {
@@ -197,6 +208,14 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     // from the queue only: App says so, and the picker has nothing to offer
     if (m?.type === "error" && (m.code === "same_device" || m.code === "ranked_queue_only")) {
       setSeatChoice(null);
+    }
+    // An invite that went nowhere leaves the page on Play, saying why; the
+    // server's own words do for the rest (full, one device, ranked).
+    if (m?.type === "error" && inviting.current) {
+      const code = inviting.current;
+      inviting.current = null;
+      clearInvite();
+      if (m.code === "room_not_found") setInviteError(`No room ${code}. It may have closed.`);
     }
   }), [joinSeat]);
 
@@ -284,19 +303,37 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // joins under their account name. A guest's name editor opens instead.
   const invited = new URLSearchParams(window.location.search).get("room") ?? linkRoom;
   const invitedName = new URLSearchParams(window.location.search).get("name");
+  // An invite goes into the room: at once for a signed-in player or a guest
+  // with a saved name, else once a first-time guest has named themselves
+  // (the editor's Done, or closing it on the name it offered).
+  const nameAsked = useRef(false);
+  const accountKnown = account.status !== "loading";
   useEffect(() => {
     if (autoJoined.current || status !== "open" || !invited || invited.length !== 4) return;
+    const code = invited.toUpperCase();
     if (invitedName && invitedName.trim()) {
       autoJoined.current = true;
       const joinAs = signedIn ? accountName : invitedName.trim();
       if (!signedIn) guestName.keep(joinAs);
       clearInvite();
-      conn.send({ type: "join_room", room: invited.toUpperCase(), name: joinAs });
-    } else if (!signedIn && !autoJoined.current) {
-      autoJoined.current = true;
-      guestName.open();
+      inviting.current = code;
+      conn.send({ type: "join_room", room: code, name: joinAs });
+      return;
     }
-  }, [status, invited, invitedName, signedIn, accountName]);
+    if (!accountKnown) return;
+    if (!signedIn && !hadName && !nameAsked.current) {
+      nameAsked.current = true;
+      guestName.open();
+      return;
+    }
+    if (editing) return;
+    autoJoined.current = true;
+    if (!signedIn) guestName.keep(playerName);
+    inviting.current = code;
+    setInviteError(null);
+    peek(code);
+  }, [status, invited, invitedName, signedIn, accountName, accountKnown, hadName, editing,
+      playerName, peek]);
 
   if (tableFull) {
     return (
@@ -447,8 +484,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
         {/* above the sections, so it is on screen at rest; a phone's tab bar
             covers the bottom of the column */}
-        {error || codeView.playError ? (
-          <div className="lobby-error" role="alert">{error ?? codeView.playError}</div>
+        {inviteError || error || codeView.playError ? (
+          <div className="lobby-error" role="alert">{inviteError ?? error ?? codeView.playError}</div>
         ) : null}
 
         {ranked}
@@ -469,6 +506,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             onChange={(e) => {
               setRoomCode(e.target.value.toUpperCase());
               codes.clearPlayError();
+              setInviteError(null);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") join();

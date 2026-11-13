@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { partnerName, queue, useQueue } from "./store";
+import { useAuth } from "../auth";
+import { clock, partnerName, queue, useNow, useQueue } from "./store";
 import Sheet from "./Sheet";
 import { codes, useCodes } from "../codeJoin";
 import { codeLink } from "../codes";
@@ -49,7 +50,7 @@ function JoinByCode() {
       </label>
       <div className="join-row">
         <input id="q-join-code" className="room-input" value={q.joinCode} maxLength={4} placeholder="CODE"
-               aria-label="Pair or game code" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+               aria-label="Duo or game code" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
                onChange={(e) => queue.setJoinCode(e.target.value)} />
         <button type="submit" className="btn" disabled={waiting || q.joinCode.length !== 4}
                 aria-busy={waiting || undefined}>
@@ -65,6 +66,9 @@ function JoinByCode() {
  *  here or from Play. */
 export function PartySheet() {
   const q = useQueue();
+  const guest = useAuth().status !== "in";
+  const now = useNow(q.cooldownUntil !== null, 500);
+  const cooling = q.cooldownUntil !== null && q.cooldownUntil > now;
   const [copied, setCopied] = useState<string | null>(null);
   const p = q.party;
   const other = partnerName(p);
@@ -74,7 +78,7 @@ export function PartySheet() {
   const share = (code: string) => {
     const url = codeLink(code);
     if (typeof navigator.share === "function") {
-      navigator.share({ title: "Sheng Ji", text: `Queue with me in Sheng Ji: pair code ${code}`, url })
+      navigator.share({ title: "Sheng Ji", text: `Queue with me in Sheng Ji: Duo code ${code}`, url })
         .catch(() => { /* share sheet dismissed */ });
     } else {
       copy(url, "link");
@@ -85,15 +89,17 @@ export function PartySheet() {
   if (p && p.members.length === 2 && other) {
     body = (
       <>
-        <div className="q-codebox"><small>Your pair</small><b className="q-pair-names">You + {other}</b></div>
+        <div className="q-codebox"><small>Your Duo</small><b className="q-pair-names">You + {other}</b></div>
         <div className="q-sheet-pad">
           {p.you_lead ? (
-            <button type="button" className="btn gold big q-find" disabled={q.queued}
-                    onClick={() => queue.join()}>Play</button>
+            <button type="button" className="btn gold big q-find" disabled={q.queued || cooling}
+                    onClick={() => queue.join()}>
+              {cooling && q.cooldownUntil !== null ? `Play in ${clock(q.cooldownUntil - now, true)}` : "Play"}
+            </button>
           ) : (
             <button type="button" className="btn big q-dis" disabled>{other} starts the search</button>
           )}
-          <button type="button" className="btn big q-ghost" onClick={() => queue.leaveParty()}>Leave pair</button>
+          <button type="button" className="btn big q-ghost" onClick={() => queue.leaveParty()}>Leave Duo</button>
         </div>
       </>
     );
@@ -129,7 +135,8 @@ export function PartySheet() {
   }
   return (
     <Sheet title="Duo" onClose={() => queue.closeSheet()}>
-      <div className="q-ranked-row"><RankedChip /></div>
+      {/* a guest is never rated: its Duo is not marked Ranked */}
+      {guest ? null : <div className="q-ranked-row"><RankedChip /></div>}
       {body}
       {q.partyError ? <p className="q-error" role="alert">{q.partyError}</p> : null}
     </Sheet>

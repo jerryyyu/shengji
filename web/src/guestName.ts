@@ -1,7 +1,7 @@
 // A guest's name, shared by the Play tab and the wide top bar's chip: the
-// name they play under and whether its editor is open. Only what the guest
-// keeps is written to storage (saveName); a random fill stays in memory until
-// it is played with or kept from the editor.
+// name they play under and whether its editor is open. What the guest keeps
+// and the first random fill are written to storage (saveName), so a guest is
+// called the same thing on every page load until they choose a name.
 
 import { useSyncExternalStore } from "react";
 import { getSavedName, saveName } from "./ws";
@@ -44,6 +44,13 @@ class GuestNameStore {
 
   setName(name: string): void {
     if (name !== this.view.name) this.set({ name });
+  }
+
+  /** A random name for a guest who has none, kept at once so the next page
+   *  load shows the same one. */
+  fill(name: string): void {
+    this.setName(name);
+    this.keep(name);
   }
 
   /** Remember the name for next time; an empty one is not kept. */

@@ -87,8 +87,10 @@ export interface QueueView {
   offer: OfferView | null;
   /** Open tables you waited on that can still be joined. */
   openTables: number;
-  /** Your bot wait stands still while an open table can be joined. */
+  /** Your bot wait stands still while an open table is offered. */
   botsPaused: boolean;
+  /** Local ms a queue cooldown ends (Play counts it down); null when none runs. */
+  cooldownUntil: number | null;
   /** The search is held by another socket of yours (another device or
    *  window): shown, but its table and controls live there. */
   elsewhere: boolean;
@@ -103,7 +105,7 @@ export interface QueueView {
 const EMPTY: QueueView = {
   count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
   partyId: null, pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
-  party: null, partyError: null, sheet: null, joinCode: "", note: null,
+  cooldownUntil: null, party: null, partyError: null, sheet: null, joinCode: "", note: null,
 };
 
 /** The name you play under: the account's, or a guest's own. */
@@ -297,9 +299,12 @@ export class QueueStore {
           const wasQueued = this.view.queued && !this.view.elsewhere;
           const leaving = this.view.pending === "leave";
           this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
-                     pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false });
-          if (msg.replaced && wasQueued) this.notify("Your search moved to another window.");
-          else if (wasQueued && !leaving && !msg.replaced) {
+                     pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
+                     cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null });
+          if (msg.replaced && wasQueued) {
+            const there = msg.by === "window" ? "window" : "device";
+            this.notify(msg.stopped ? `Search stopped from another ${there}.` : `Your search moved to another ${there}.`);
+          } else if (wasQueued && !leaving && !msg.replaced) {
             this.notify("You're no longer searching.", "Press Play to search again.");
           }
           break;
@@ -311,7 +316,7 @@ export class QueueStore {
                      since: msg.since !== undefined ? this.local(msg.since) : now,
                      botsAt: null, waitPlayers: false, front: !!msg.front, leader: msg.leader !== false,
                      partyId: msg.party_id ?? null, pending: null, table: null, offer: null,
-                     openTables: 0, botsPaused: false });
+                     openTables: 0, botsPaused: false, cooldownUntil: null });
           break;
         }
         if (this.joinSentAt !== null && !msg.front && msg.since !== undefined) {
@@ -333,7 +338,7 @@ export class QueueStore {
           waitPlayers: msg.wait_players === true,
           front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
           pending, table, offer, openTables: msg.open_tables ?? 0, botsPaused: msg.bots_paused === true,
-          elsewhere: false,
+          elsewhere: false, cooldownUntil: null,
         });
         break;
       }
@@ -372,7 +377,7 @@ export class QueueStore {
                    sheet: joined && this.view.sheet === "party" ? null : this.view.sheet });
         if (joined) {
           const other = partnerName(msg);
-          if (other) this.notify(msg.you_lead ? `${other} joined your pair.` : `You joined ${other}'s pair.`);
+          if (other) this.notify(msg.you_lead ? `${other} joined your Duo.` : `You joined ${other}'s Duo.`);
         }
         break;
       }
@@ -380,8 +385,8 @@ export class QueueStore {
         if (this.view.party && this.view.party.party_id !== msg.party_id) break;
         this.clearPartyResync();
         this.set({ party: null });
-        if (msg.reason === "expired") this.notify("Your pair code expired.");
-        else if (msg.by && !msg.you) this.notify(`${msg.by} left the pair.`);
+        if (msg.reason === "expired") this.notify("Your Duo code expired.");
+        else if (msg.by && !msg.you) this.notify(`${msg.by} left the Duo.`);
         break;
       case "error":
         // a pair needs two devices: the pair sheet says so where it was asked
@@ -407,8 +412,9 @@ export class QueueStore {
         } else if (msg.code.startsWith("party") || msg.code === "in_queue" || msg.code === "in_party") {
           this.set({ pending: null, partyError: msg.message });
         } else if (msg.code === "cooldown") {
-          this.set({ pending: null });
-          this.notify("You left a table you joined.", "You can queue again in 5 minutes.");
+          // the lobby shows the server's message; Play counts down to the end
+          this.set({ pending: null,
+                     cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : this.view.cooldownUntil });
         } else if (msg.code === "seat_taken") {
           this.set({ pending: null });
           this.notify("That seat was just taken.", "Pick another.");
@@ -435,6 +441,7 @@ export class QueueStore {
     const p = this.view.party;
     const pair = p && p.members.length === 2 ? p : null;
     if (pair && !pair.you_lead) return;
+    if (this.cooling()) return;
     const sent = this.send(pair ? { type: "queue_join", party_id: pair.party_id } : { type: "queue_join" });
     if (!sent) {
       this.notify("Not connected.", "Press Play again in a moment.");
@@ -453,6 +460,11 @@ export class QueueStore {
       this.notify("Couldn't start searching.", "Press Play to try again.");
       if (this.status === "open") this.askStatus();
     }, CONFIRM_MS);
+  }
+
+  /** A queue cooldown still runs: Play waits it out. */
+  cooling(now = Date.now()): boolean {
+    return this.view.cooldownUntil !== null && this.view.cooldownUntil > now;
   }
 
   leave(): void {

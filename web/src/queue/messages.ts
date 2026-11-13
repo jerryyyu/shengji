@@ -33,7 +33,14 @@ export interface QueueStateMsg {
   /** Null while the entry waits for real players only. */
   bots_at?: number | null;
   wait_players?: boolean;
+  /** Another socket of yours took the search over: on another device or
+   *  in another window of this one (`by`), stopping it (`stopped`) or
+   *  holding it there. */
   replaced?: boolean;
+  by?: "device" | "window";
+  stopped?: boolean;
+  /** Not queued: a queue cooldown runs until then (Play counts it down). */
+  cooldown_until?: number;
   /** Another socket of yours (another device or window) holds the search:
    *  no table, offer or timer is sent here; any queue action takes it over. */
   elsewhere?: boolean;
@@ -66,7 +73,7 @@ export interface OpenTableOfferMsg {
   /** At a round end you play, ranked, from the next round; mid-round the
    *  round you join is unranked for you. */
   round_end: boolean;
-  /** A pair's offer: your partner's seat (opposite yours) and name. Neither
+  /** A Duo's offer: your partner's seat (opposite yours) and name. Neither
    *  of you picks; either Join takes both seats. */
   partner?: { seat: number; name: string } | null;
 }

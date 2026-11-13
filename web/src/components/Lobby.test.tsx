@@ -630,3 +630,76 @@ describe("starting a game waits for the server", () => {
     expect(host.querySelector(".lobby-error")).toBeNull();
   });
 });
+
+describe("a guest's random name", () => {
+  it("is saved when it is first made, so the next page load shows the same one", async () => {
+    authState.current = { status: "out", clientId: "cid.apps", user: null };
+    await render();
+    const first = nameInput().value;
+    expect(isRandom(first)).toBe(true);
+    expect(localStorage.getItem("shengji.name")).toBe(first);
+    guestName.reset();
+    await remount();
+    expect(nameInput().value).toBe(first);
+  });
+});
+
+describe("an invite link lands in the room", () => {
+  const serverSays = (m: unknown) => act(() => { for (const fn of [...link.listeners]) fn(m); });
+  const types = () => sent.map((m) => (m as { type: string }).type);
+  beforeEach(() => { window.history.replaceState(null, "", "/?room=abcd"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
+
+  it("a guest with a saved name goes straight in under it", async () => {
+    localStorage.setItem("shengji.name", "Ace");
+    authState.current = { status: "out", clientId: "cid.apps", user: null };
+    await render();
+    expect(host.querySelector(".q-layer:not(.q-out) .q-sheet")).toBeNull();
+    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
+    serverSays({ type: "room_seats", room: "ABCD", in_game: false, seats: [] });
+    expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Ace" });
+    expect(window.location.search).toBe("");
+  });
+
+  it("a signed-in player goes straight in under the account name", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+    await render();
+    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
+    serverSays({ type: "room_seats", room: "ABCD", in_game: false, seats: [] });
+    expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Jerry" });
+  });
+
+  it("a first-time guest names themselves, and Done goes into the room", async () => {
+    authState.current = { status: "out", clientId: "cid.apps", user: null };
+    await render();
+    expect(host.querySelector(".q-layer:not(.q-out) .q-sheet")).not.toBeNull();
+    expect(types()).toEqual([]);
+    type(nameInput(), "Robin");
+    act(() => buttonNamed("Done").click());
+    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
+    serverSays({ type: "room_seats", room: "ABCD", in_game: false, seats: [] });
+    expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Robin" });
+  });
+
+  it("a ?code= link that names a room goes in the same way", async () => {
+    window.history.replaceState(null, "", "/?code=abcd");
+    localStorage.setItem("shengji.name", "Ace");
+    authState.current = { status: "out", clientId: "cid.apps", user: null };
+    await render();
+    act(() => { codes.lookup("abcd", "link"); });
+    serverSays({ type: "code_kind", code: "ABCD", kind: "room" });
+    expect(types()).toEqual(["code_lookup", "peek_room"]);
+    serverSays({ type: "room_seats", room: "ABCD", in_game: false, seats: [] });
+    expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Ace" });
+  });
+
+  it("a room that is gone leaves the guest on Play, saying so", async () => {
+    localStorage.setItem("shengji.name", "Ace");
+    authState.current = { status: "out", clientId: "cid.apps", user: null };
+    await render();
+    serverSays({ type: "error", code: "room_not_found", message: "Room not found." });
+    expect(host.querySelector(".lobby-error")?.textContent).toBe("No room ABCD. It may have closed.");
+    expect(window.location.search).toBe("");
+    expect(types()).toEqual(["peek_room"]);
+  });
+});

@@ -10,20 +10,21 @@ import { OFFLINE } from "../offlineMode";
 import { MoveRing } from "./MoveClock";
 import { RING_SECS } from "../useMoveClock";
 
-/** Leave beside Next round. The round is over and recorded and the next has
- *  not started, so leaving costs nothing and goes at once; a practice game
- *  on this device ends with it, so that one still asks first. The modal
- *  dialog makes the HUD's own Leave control unreachable here. */
+/** Leave below Next round, the same in every room. The round is over and
+ *  recorded and the next has not started, so leaving costs nothing and goes
+ *  at once; a practice game on this device ends with it, so that one still
+ *  asks first. The modal dialog makes the HUD's own Leave control
+ *  unreachable here. */
 function RoundEndLeave({ ranked }: { ranked: boolean }) {
   const [asking, setAsking] = useState(false);
   return (
     <>
       <button
         type="button"
-        className="btn big round-end-leave"
+        className="btn subtle danger dialog-leave-btn"
         onClick={() => (OFFLINE ? setAsking(true) : conn.send({ type: "leave_room" }))}
       >
-        Leave
+        Leave game
       </button>
       {asking ? (
         <LeaveAlert ranked={ranked} practice betweenRounds
@@ -276,17 +277,14 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
           const waiting = humans.filter((p) => !ready.includes(p.seat));
           return (
             <>
-              <div className="round-end-actions">
-                <RoundEndLeave ranked={ranked} />
-                <button
-                  className={`btn primary big${!iAmReady && clock !== null && clock <= RING_SECS ? " clock-low" : ""}`}
-                  disabled={iAmReady}
-                  onClick={() => conn.send({ type: "next_round" })}
-                >
-                  {iAmReady ? null : <MoveRing left={clock} />}
-                  {iAmReady ? "Waiting for others…" : "Next round"}
-                </button>
-              </div>
+              <button
+                className={`btn primary big${!iAmReady && clock !== null && clock <= RING_SECS ? " clock-low" : ""}`}
+                disabled={iAmReady}
+                onClick={() => conn.send({ type: "next_round" })}
+              >
+                {iAmReady ? null : <MoveRing left={clock} />}
+                {iAmReady ? "Waiting for others…" : "Next round"}
+              </button>
               {humans.length > 1 && (
                 <div className="ready-status">
                   {ready.length}/{humans.length} ready
@@ -295,6 +293,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
                   )}
                 </div>
               )}
+              <RoundEndLeave ranked={ranked} />
             </>
           );
         })()}

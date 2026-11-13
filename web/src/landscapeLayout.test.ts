@@ -785,15 +785,11 @@ describe("the header row on a phone", () => {
 });
 
 describe("the round-end card on a phone", () => {
-  it("keeps Leave and Next round in one sticky row 12px off the bottom", () => {
+  it("spaces Next round and Leave by the card's gap and keeps Leave 12px off the bottom", () => {
     const block = phoneBlock();
     expect(rule(block, ".modal > .btn.big")["margin-bottom"]).toBeUndefined();
     expect(rule(block, ".modal").gap).toBe("8px");
-    const row = rule(block, ".modal > .round-end-actions");
-    expect(row.position).toBe("sticky");
-    expect(row.bottom).toBe("0");
-    expect(row["padding-bottom"]).toBe("12px");
-    expect(rule(block, ".round-end-actions > .btn.big")["min-height"]).toBe("44px");
+    expect(rule(block, ".modal > .dialog-leave-btn").margin).toBe("0 auto 12px");
   });
 });
 

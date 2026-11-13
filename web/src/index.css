@@ -3795,20 +3795,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     box-shadow: 0 -10px 12px var(--panel);
   }
 
-  /* Leave and Next round stay on screen; the row keeps the same 12px from
-     the bottom edge as the title has from the top */
-  .modal > .round-end-actions {
-    position: sticky;
-    bottom: 0;
-    padding-bottom: 12px;
-    /* the foot of the card's gradient, so the row reads as the card */
-    background: #171b22;
-    box-shadow: 0 -10px 12px #171b22;
-  }
-
-  .round-end-actions > .btn.big {
-    min-height: 44px;
-    padding: 8px 16px;
+  /* the card's own 8px gap separates Next round from Leave, and Leave keeps
+     the same 12px from the bottom edge as the title has from the top */
+  .modal > .dialog-leave-btn {
+    margin: 0 auto 12px;
   }
 
   .victory-crown {
@@ -5049,14 +5039,9 @@ button.games-row { cursor: pointer; }
 }
 
 /* Leave from inside a modal result screen; quieter than the primary action */
-/* Round end: Leave beside Next round, which takes the rest of the row */
-.round-end-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.round-end-actions > .btn.primary {
-  flex: 1;
+.dialog-leave-btn {
+  display: block;
+  margin: 12px auto 0;
 }
 
 /* Support and Privacy: a lobby-style panel of plain reading text, wide

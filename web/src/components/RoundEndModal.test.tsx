@@ -139,20 +139,23 @@ describe("leaving from the round-end screen", () => {
   // included) is inert; the way out has to live inside the dialog.
   const waiting: GameState = { ...state, ready: [0] };
   const leaveButton = () =>
-    [...host.querySelectorAll("dialog button")].find((b) => b.textContent === "Leave") as
+    [...host.querySelectorAll("dialog button")].find((b) => b.textContent === "Leave game") as
       HTMLButtonElement | undefined;
   const nextButton = () =>
     [...host.querySelectorAll("dialog button")].find((b) => /Next round|Waiting for others/.test(b.textContent ?? "")) as
       HTMLButtonElement;
 
-  it("puts Leave beside Next round, in one row", () => {
-    renderModal(makeResult());
-    const leave = leaveButton()!;
-    expect(leave).toBeDefined();
-    expect(leave.parentElement).toBe(nextButton().parentElement);
-    expect(leave.parentElement!.className).toBe("round-end-actions");
-    expect(leave.compareDocumentPosition(nextButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
+  for (const [kind, shown] of [["casual", state], ["ranked", { ...state, matched: true }]] as const) {
+    it(`puts Leave below the full-width Next round, the same in a ${kind} room`, () => {
+      renderModal(makeResult(), shown);
+      const leave = leaveButton()!;
+      expect(leave).toBeDefined();
+      expect(leave.className).toBe("btn subtle danger dialog-leave-btn");
+      expect(nextButton().className).toContain("btn primary big");
+      expect(leave.parentElement).toBe(nextButton().parentElement);
+      expect(nextButton().compareDocumentPosition(leave) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+  }
 
   it("stays enabled while you wait for others", () => {
     const text = renderModal(makeResult(), waiting);

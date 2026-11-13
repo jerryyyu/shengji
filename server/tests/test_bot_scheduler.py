@@ -20,6 +20,7 @@ def _room() -> SimpleNamespace:
         code="TEST",
         lock=asyncio.Lock(),
         seats=[SimpleNamespace(is_bot=True)],
+        closing=False,
         round=SimpleNamespace(phase="play"),
         records=[],
         log_event=lambda kind, **data: None,

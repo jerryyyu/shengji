@@ -117,6 +117,8 @@ DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected
 TAKEOVER_AFTER = 30.0      # bot plays for a disconnected human after this long
+EMPTY_ROOM_BOT_DELAY = 10.0  # least seconds per bot move while no human is connected
+EMPTY_ROOM_POLL = 0.25     # how often a long empty-room wait re-checks for a human
 # Move timer (rooms with ``move_timer`` on, which today means ranked rooms):
 # a connected human has MOVE_TIMER seconds for each bury, play and round-end
 # Next; at zero the bot makes that one decision. AWAY_IN_A_ROW consecutive
@@ -255,6 +257,10 @@ class Seat:
     # Set when the host removed this occupant before the game: the seat is no
     # longer in the room, and the socket that held it returns to the lobby.
     removed: bool = False
+    # The connection generation whose socket this seat's account left from
+    # another of its sockets: that socket returns to the lobby on its next
+    # frame, as a removed one does.
+    left_gen: int | None = None
     # Move timer state; untouched in a room without the move timer.
     # ``turn_started`` is the ``now()`` at which this seat began owing the
     # current decision (None when it owes none). A disconnect does not reset
@@ -357,6 +363,9 @@ class Room:
     allow_joiners: bool = True
     pending_joins: dict = field(default_factory=dict, repr=False)
     round_end_joins: dict = field(default_factory=dict, repr=False)
+    # Every human is gone and a round in play still owes a rating: the bots
+    # finish that round without pacing and the room closes at its end.
+    closing: bool = field(default=False, init=False, repr=False)
     # A table continuing a saved game: the ``saved_games.resume_point`` its
     # creator's account was given, applied once at ``start_game`` (both
     # teams' levels and the first banker). Server-only.
@@ -692,6 +701,8 @@ def _auto_mode(room: Room, seat: int) -> str | None:
         return "bot"
     if room.move_timer and sd.connected and sd.away:
         return "timeout"
+    if room.closing and not sd.connected:
+        return "close"
     return None
 
 
@@ -1016,6 +1027,43 @@ async def broadcast(room: Room) -> None:
 
 
 # ----------------------------------------------------------------- bot pump
+def _unwatched(room: Room) -> bool:
+    """A room with human seats and none of them connected: its bots play at
+    EMPTY_ROOM_BOT_DELAY, unless it is closing."""
+    if room.closing:
+        return False
+    humans = [s for s in room.seats if s is not None and not s.is_bot]
+    return bool(humans) and not any(s.connected for s in humans)
+
+
+def _close_room(room: Room) -> None:
+    """Unregister the room and cancel its tasks (caller holds the lock).
+    The task running this call is left to return on its own."""
+    if rooms.get(room.code) is room:
+        del rooms[room.code]
+    room.closing = False
+    for seat in sorted(room.pending_joins):
+        if seat in room.pending_joins:
+            _drop_join(room, seat, back_in_line=True, reason="table_closed",
+                       message="That game ended. You are back in the queue.")
+    current = asyncio.current_task()
+    for task in (room.bot_task, room.deal_task, room.watchdog_task, room.cleanup_task):
+        if task is not None and task is not current:
+            task.cancel()
+
+
+def _close_when_empty(room: Room) -> None:
+    """No human is connected any more (caller holds the lock): close now,
+    or, while a round in play still owes a rating, finish it first."""
+    if ratings.pending(room):
+        room.closing = True
+        if room.cleanup_task is None or room.cleanup_task.done():
+            room.cleanup_task = asyncio.create_task(cleanup_room(room))
+        kick_bots(room)
+    else:
+        _close_room(room)
+
+
 def current_actor(room: Room) -> int | None:
     rnd = room.round
     if rnd is None or rnd.turn is None or rnd.phase == "round_end":
@@ -1163,6 +1211,8 @@ def _log_round_end(room: Room) -> None:
     saved_games.round_ended(room, r)
     ratings.round_ended(room, r)
     _joined_round_ended(room)
+    if room.closing:
+        _close_room(room)
 
 
 def bot_step(room: Room, seat: int) -> bool:
@@ -1238,6 +1288,8 @@ def _turn_eligible(room: Room, seat: int, mode: str, *,
     owner = room.seats[seat]
     if mode == "bot":
         return owner.is_bot
+    if mode == "close":
+        return room.closing and not owner.is_bot and not owner.connected
     if mode == "takeover":
         return (
             not owner.is_bot
@@ -1320,7 +1372,10 @@ async def _paced_bot_step(room: Room, seat: int, *,
     """Search an isolated snapshot while the live room remains claimable."""
     if turn_started is None:
         turn_started = time.perf_counter()
-    if minimum_turn_seconds is None:
+    # The served pace (no explicit minimum) is the one that slows an empty
+    # room; a caller's explicit minimum, such as 0 in tests, stands as given.
+    served_pace = minimum_turn_seconds is None
+    if served_pace:
         minimum_turn_seconds = BOT_DELAY
     async with room.lock:
         snapshot = _snapshot_bot_turn(room, seat, mode)
@@ -1356,6 +1411,14 @@ async def _paced_bot_step(room: Room, seat: int, *,
         0.0, minimum_turn_seconds - (time.perf_counter() - turn_started))
     if pacing_seconds:
         await asyncio.sleep(pacing_seconds)
+    # An empty room plays slowly. The wait is re-read in slices, so a human
+    # connecting cuts it short.
+    while served_pace and _unwatched(room):
+        remaining = EMPTY_ROOM_BOT_DELAY - (time.perf_counter() - turn_started)
+        if remaining <= 0:
+            break
+        await asyncio.sleep(min(remaining, EMPTY_ROOM_POLL))
+        pacing_seconds += min(remaining, EMPTY_ROOM_POLL)
     turn_seconds = time.perf_counter() - turn_started
     return _PreparedBotTurn(
         decision=decision,
@@ -1407,6 +1470,9 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             _observe_committed_play(room)
         else:  # guarded by snapshot construction; fail closed on corruption
             return False
+        if snapshot.mode == "close":
+            # the bot played for an absent player: rated as a takeover
+            room.seats[seat].bot_announced = True
         if snapshot.mode == "timeout":
             # Counted here, once per committed action and before the round
             # end below captures ratings: a final-card timeout that makes the
@@ -1497,7 +1563,8 @@ async def pump_bots(room: Room) -> None:
             if mode is None:
                 return
         prepared = await _paced_bot_step(
-            room, seat, turn_started=turn_started, mode=mode)
+            room, seat, turn_started=turn_started, mode=mode,
+            minimum_turn_seconds=0.0 if room.closing else None)
         if prepared is None:
             return
         async with room.lock:
@@ -1613,16 +1680,20 @@ async def watchdog(room: Room) -> None:
 
 
 async def cleanup_room(room: Room) -> None:
-    """Delete the room only after ROOM_TTL with no humans connected, so a
-    refresh or network blip can reclaim the seat and resume the game."""
+    """Close the room only after ROOM_TTL with no humans connected, so a
+    refresh or network blip can reclaim the seat and resume the game; the
+    bots play slowly meanwhile. A closing room still open after ROOM_TTL
+    closes without its round."""
     await asyncio.sleep(ROOM_TTL)
     async with room.lock:
         if any(s.connected for s in room.seats if s is not None and not s.is_bot):
             return
-        rooms.pop(room.code, None)
-        for task in (room.bot_task, room.deal_task, room.watchdog_task):
-            if task is not None:
-                task.cancel()
+        if room.cleanup_task is asyncio.current_task():
+            room.cleanup_task = None
+        if room.closing:
+            _close_room(room)       # the round it waited for never ended
+        else:
+            _close_when_empty(room)
 
 
 def kick_bots(room: Room) -> None:
@@ -1757,7 +1828,7 @@ async def run_deal(room: Room) -> None:
             if room.round is not rnd:
                 return
             await broadcast(room)
-        await asyncio.sleep(DEAL_DELAY)
+        await asyncio.sleep(0.0 if room.closing else DEAL_DELAY)
 
     loop = asyncio.get_event_loop()
     needs_response = not await _bot_declares(room, list(range(4)), final=True)
@@ -1772,7 +1843,7 @@ async def run_deal(room: Room) -> None:
     deadline = loop.time() + DECLARE_GRACE
     last_declaration = rnd.declaration
     while True:
-        await asyncio.sleep(0.25)
+        await asyncio.sleep(0.0 if room.closing else 0.25)
         async with room.lock:
             if room.evaluation is not None and room.evaluation_invalidated:
                 return
@@ -2181,6 +2252,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 _detach(me)
                 room, me = None, None
                 MATCHMAKER.return_to_lobby(conn)
+            if me is not None and me.left_gen == my_gen:
+                # the account left this seat from another of its sockets
+                await send(ws, {"type": "left"})
+                room, me = None, None
+                MATCHMAKER.return_to_lobby(conn)
             if t == "ping":
                 nonce = msg.get("nonce")
                 if type(nonce) is int and 0 <= nonce <= 9007199254740991:
@@ -2505,6 +2581,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
             # A socket that has been displaced by a newer connection owns
             # nothing: its leave_room previously detached the LIVE connection
             # and deleted the room, and it could still submit plays.
+            # The one exception is the seat's own account pressing Leave on
+            # a socket that another of its tabs or devices displaced by
+            # resuming: that is still the person leaving, so the seat is
+            # left, and the socket now holding it is sent back to the lobby.
+            if (my_gen != me.gen and t == "leave_room" and account_id() is not None
+                    and me.user_id == account_id() and me.connected):
+                my_gen = me.left_gen = me.gen
             if my_gen != me.gen:
                 await send(ws, {"type": "error", "code": "stale_connection",
                                 "message": "This connection was replaced by a "
@@ -2543,12 +2626,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 room.host = humans[0]
                             await broadcast(room)
                     else:
-                        # mid-game: seat stays (reclaimable); bots cover it
+                        # mid-game: seat stays (reclaimable); bots cover it.
+                        # The last human leaving closes the room.
                         if not any(x.connected for x in room.seats
                                    if not x.is_bot):
-                            if room.cleanup_task is None or room.cleanup_task.done():
-                                room.cleanup_task = asyncio.create_task(
-                                    cleanup_room(room))
+                            _close_when_empty(room)
                         # Explicit leave must re-check the round-end quorum
                         # exactly like an abrupt disconnect: the last unready
                         # player LEAVING used to deadlock everyone else while
@@ -2597,6 +2679,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
         MATCHMAKER.disconnect(conn)
         if me is not None and me.removed:
             _detach(me)
+        elif me is not None and me.left_gen == my_gen:
+            pass                       # the account already left this seat
         elif room is not None and me is not None:
             async with room.lock:
                 if not me.is_bot and me.connected:
@@ -3076,6 +3160,7 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     if room.cleanup_task is not None:
         room.cleanup_task.cancel()
         room.cleanup_task = None
+    room.closing = False             # a human is back: the game goes on
     if seat.writer is not None:      # displace any older live socket
         seat.writer.cancel()
     seat.gen += 1

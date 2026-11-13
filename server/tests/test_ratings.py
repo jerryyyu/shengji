@@ -864,6 +864,67 @@ def test_leave_room_over_the_socket_marks_the_round_abandoned(env, keypair):
         assert room.ratings.left == {1: 0}
 
 
+
+def _wait_until(pred, timeout=60.0):
+    deadline = time.monotonic() + timeout
+    while not pred():
+        assert time.monotonic() < deadline, "condition never held"
+        time.sleep(0.01)
+
+
+def test_a_losing_leaver_is_rated_before_the_empty_room_closes(env, keypair, monkeypatch):
+    """The last human leaving a rated round of a ranked room: the bots finish
+    it without pacing, the leaver is rated on its real result, then the room
+    closes."""
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import ratings
+
+    srv, store, client = env
+    private_pem, _ = keypair
+    monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
+    _force_outcome(monkeypatch, 165)           # attackers +2: the leaver's banker team loses
+    monkeypatch.setattr(srv, "ROOM_TTL", 120.0)  # the round ends well before the backstop
+    cookie = _session_cookie(srv.accounts, client, private_pem)
+    with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
+        a.send_json({"type": "create_room", "name": "Jerry"})
+        code = _drain(a, "room")["room"]
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+        a.send_json({"type": "set_ranked", "on": True})
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=60)
+        room = srv.rooms[code]
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=200)
+        _wait_until(lambda: code not in srv.rooms)
+    assert room.game.round_no == 1 and room.round.phase == "round_end"
+    ratings.flush()
+    [event] = _events(store)
+    assert event["abandoned"] == 1 and event["won"] == 0
+    assert event["actual"] == pytest.approx(1 / 6)
+    assert room.seats[0].bot_announced
+
+
+def test_a_ranked_room_closed_by_its_last_leaver_leaves_nothing_in_the_queue(queue_env, monkeypatch):
+    srv, store, client = queue_env
+    uid, headers = _user(store, "solo", "Solo")
+    monkeypatch.setattr(srv, "ROOM_TTL", 120.0)
+    with client.websocket_connect("/ws", headers=headers) as a:
+        code, _ = _ranked_solo(srv, a)
+        room = srv.rooms[code]
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=200)
+        _wait_until(lambda: code not in srv.rooms)
+        conn = srv.MATCHMAKER.conns[uid]
+        assert not conn.in_room and conn.adopted is None
+        assert not srv.MATCHMAKER.room_live(code)
+        assert srv.MATCHMAKER._entry(uid) is None and not srv.MATCHMAKER.tables
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["queued"] is True
+    assert all(task is None or task.done()
+               for task in (room.bot_task, room.deal_task, room.cleanup_task))
+
+
 # ------------------------------------------------------- round-end payload
 def test_the_round_result_carries_only_the_seats_own_rating(env, monkeypatch):
     srv, store, _ = env
@@ -1172,3 +1233,113 @@ def _events_at(path):
     with closing(sqlite3.connect(path)) as db:
         db.row_factory = sqlite3.Row
         return [dict(r) for r in db.execute("SELECT * FROM rating_events ORDER BY id")]
+
+
+# ------------------------------------------- one account, two sockets
+def _displaced_seat(srv, client, cookie, ranked=False):
+    """Socket ``a`` starts a game at seat 0; ``b``, the same account in
+    another tab, resumes the seat by its token and displaces ``a``."""
+    a = client.websocket_connect("/ws", headers={"cookie": cookie}).__enter__()
+    a.send_json({"type": "create_room", "name": "Jerry"})
+    token = _drain(a, "resume")["token"]
+    code = _drain(a, "room")["room"]
+    for _ in range(3):
+        a.send_json({"type": "add_bot"})
+    if ranked:
+        a.send_json({"type": "set_ranked", "on": True})
+    a.send_json({"type": "start_game"})
+    _drain(a, "state", tries=60)
+    room = srv.rooms[code]
+    b = client.websocket_connect("/ws", headers={"cookie": cookie}).__enter__()
+    b.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
+    _drain(b, "state", tries=80)
+    assert room.seats[0].connected
+    return a, b, code, room
+
+
+def test_leaving_from_a_displaced_tab_leaves_the_seat_and_closes_the_room(env, keypair):
+    """The account leaves on the socket another of its tabs displaced: the
+    seat is left (no stale refusal), the room with no other human closes, and
+    the tab that held the seat goes back to the lobby on its next frame."""
+    srv, store, client = env
+    private_pem, _ = keypair
+    cookie = _session_cookie(srv.accounts, client, private_pem)
+    a, b, code, room = _displaced_seat(srv, client, cookie)
+    try:
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=200)
+        assert not room.seats[0].connected and not room.seats[0].is_bot
+        assert code not in srv.rooms
+        b.send_json({"type": "ping", "nonce": 1})
+        _drain(b, "left", tries=200)
+        b.send_json({"type": "play", "card_ids": []})
+        assert _drain(b, "error")["message"] == "Join a room first."
+    finally:
+        b.__exit__(None, None, None)
+        a.__exit__(None, None, None)
+
+
+def test_a_displaced_tabs_leave_in_a_ranked_round_finishes_it_bot_covered(env, keypair,
+                                                                          monkeypatch):
+    srv, store, client = env
+    private_pem, _ = keypair
+    monkeypatch.setattr(srv, "ROOM_TTL", 120.0)
+    cookie = _session_cookie(srv.accounts, client, private_pem)
+    a, b, code, room = _displaced_seat(srv, client, cookie, ranked=True)
+    try:
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=200)
+        assert room.ratings.left == {1: 0}
+        _wait_until(lambda: code not in srv.rooms)
+        assert room.round.phase == "round_end" and room.seats[0].bot_announced
+    finally:
+        b.__exit__(None, None, None)
+        a.__exit__(None, None, None)
+    from shengji.api import ratings
+    ratings.flush()
+    [event] = _events(store)
+    assert event["abandoned"] == 1
+
+
+def test_a_displaced_tabs_leave_beside_another_human_keeps_the_game(env, keypair):
+    srv, store, client = env
+    private_pem, _ = keypair
+    cookie = _session_cookie(srv.accounts, client, private_pem)
+    a, b, code, room = _displaced_seat(srv, client, cookie)
+    try:
+        with client.websocket_connect("/ws") as guest:
+            guest.send_json({"type": "join_room", "room": code, "name": "amy", "seat": 2})
+            _drain(guest, "state", tries=80)
+            a.send_json({"type": "leave_room"})
+            _drain(a, "left", tries=200)
+            assert srv.rooms.get(code) is room and not room.closing
+            assert not room.seats[0].connected
+            assert srv._controller(room, 0) == "bot_cover"
+            b.send_json({"type": "ping", "nonce": 1})
+            _drain(b, "left", tries=200)
+            assert srv.rooms.get(code) is room
+    finally:
+        b.__exit__(None, None, None)
+        a.__exit__(None, None, None)
+
+
+def test_a_guest_displaced_socket_still_cannot_leave_for_the_seat(client):
+    """Without an account a displaced socket proves nothing about who is
+    leaving, so it is refused."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        token = _drain(a, "resume")["token"]
+        code = _drain(a, "room")["room"]
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=60)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "jerry", "token": token})
+            _drain(b, "state", tries=80)
+            a.send_json({"type": "leave_room"})
+            # the deal's queued state frames reach this socket first
+            assert _drain(a, "error", tries=200)["code"] == "stale_connection"
+            assert srv.rooms[code].seats[0].connected

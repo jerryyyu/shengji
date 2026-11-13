@@ -531,14 +531,82 @@ describe("the waiting table", () => {
     expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("at 700px and up the table is a centred card and the search card steps aside", async () => {
+  it("on a desktop or an iPad the table is a centred modal panel over a blurred Play, with no scrim", async () => {
+    viewport(true);
+    await renderApp();
+    say(queued());
+    expect(q(".home-body")?.classList.contains("wt-behind")).toBe(false);
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null],
+                { timer: { at: nowSecs() + 42, name: "Alice", you: false } }));
+    expect(q(".wt-sheet")).toBeNull();
+    expect(q(".q-card")).toBeNull();                      // the search card steps aside
+    expect(q(".q-pill")).toBeNull();
+    const panel = q(".wt-panel")!;
+    expect(panel.getAttribute("role")).toBe("dialog");
+    expect(panel.getAttribute("aria-modal")).toBe("true");
+    expect(panel.querySelector(".wt-panel-title")?.textContent).toBe("Waiting table Ranked");
+    expect(panel.querySelector(".ranked-chip")).not.toBeNull();
+    expect(panel.querySelector(".wt-timer")?.textContent).toBe("Alice starts with bots in 0:42");
+    expect(panel.querySelectorAll(".seat-card")).toHaveLength(4);
+    expect(panel.querySelector(".pos-top")?.textContent).toBe("Emptya bot plays");
+    // Play behind blurs, and nothing dims it
+    const body = q(".home-body")!;
+    expect(body.classList.contains("wt-behind")).toBe(true);
+    expect(body.contains(findBtn())).toBe(true);
+    expect(q(".q-scrim")).toBeNull();
+    expect(q(".q-layer")).toBeNull();
+    // modal: focus inside, the page inert
+    expect(panel.contains(document.activeElement)).toBe(true);
+    expect(findBtn().closest("[inert]")).not.toBeNull();
+    say(queued());                                        // back to searching alone
+    expect(q(".wt-panel")).toBeNull();
+    expect(body.classList.contains("wt-behind")).toBe(false);
+    expect(q(".play-section .q-card")?.closest("[inert]")).toBeNull();
+  });
+
+  it("the panel's Start, Leave queue and switch send what the sheet's do; Tab stays inside; Escape stays queued", async () => {
     viewport(true);
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
-    expect(q(".q-card")).toBeNull();
-    expect(q(".q-pill")).toBeNull();
-    expect(q(".wt-sheet")).not.toBeNull();
+    const panel = q(".wt-panel")!;
+    const key = (k: string, shiftKey = false) => act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: k, shiftKey, bubbles: true, cancelable: true }));
+    });
+    key("Escape");
+    expect(q(".wt-panel")).not.toBeNull();
+    expect(sentTypes()).not.toContain("queue_leave");
+    const inside = [...panel.querySelectorAll<HTMLElement>("button:not([disabled])")];
+    act(() => inside[inside.length - 1].focus());
+    key("Tab");
+    expect(document.activeElement).toBe(inside[0]);
+    key("Tab", true);
+    expect(document.activeElement).toBe(inside[inside.length - 1]);
+    click(button("Only tables with people", panel));
+    expect(lastSent()).toEqual({ type: "queue_wait_players" });
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { wait_players: true }));
+    expect(button("Only tables with people", panel)?.getAttribute("aria-checked")).toBe("true");
+    click(button("Only tables with people", panel));
+    expect(lastSent()).toEqual({ type: "queue_allow_bots" });
+    click(button("Start", panel));
+    expect(lastSent()).toEqual({ type: "table_start" });
+    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null]));
+    expect(button("Waiting for Alice", panel)?.disabled).toBe(true);
+    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice", { reconnecting: true }), null, null]));
+    expect(panel.querySelector(".pos-left")?.textContent).toBe("AliceReconnecting");
+    click(button("Leave queue", panel));
+    expect(lastSent()).toEqual({ type: "queue_leave" });
   });
+
+  for (const [name, short] of [["upright", false], ["sideways", true]] as const) {
+    it(`a phone held ${name} keeps the sheet`, async () => {
+      viewport(false, short);
+      await renderApp();
+      say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
+      expect(q(".wt-sheet")).not.toBeNull();
+      expect(q(".wt-panel")).toBeNull();
+      expect(q(".wt-behind")).toBeNull();
+    });
+  }
 });
 
 describe("with a friend", () => {

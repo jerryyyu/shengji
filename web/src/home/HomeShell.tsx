@@ -9,6 +9,7 @@ import { scrollActiveTabToTop } from "./session";
 import { useTabSwipe } from "./useTabSwipe";
 import type { MeSection, Tab } from "./route";
 import QueueBar, { QueuePill, QueueStrip, useInlineQueue } from "../queue/QueueBar";
+import { useQueue } from "../queue/store";
 import AccountChip from "../components/AccountChip";
 
 export { WIDE };
@@ -170,6 +171,9 @@ export default function HomeShell({ active, section, children }: {
 }) {
   const wide = useMediaQuery(WIDE);
   const inlineQueue = useInlineQueue();
+  const q = useQueue();
+  // the waiting table's centred panel sits over the page, which blurs (no scrim)
+  const behindTable = inlineQueue && q.queued && q.table !== null;
   const body = useRef<HTMLDivElement | null>(null);
   useTabSwipe(body, active, !wide);
   useTabFade(body, `${active}/${section ?? ""}`);
@@ -177,7 +181,7 @@ export default function HomeShell({ active, section, children }: {
     <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
       {wide ? <TopBar active={active} section={section} /> : null}
       {wide && !inlineQueue ? <QueueStrip /> : null}
-      <div className="home-body" ref={body}>{children}</div>
+      <div className={`home-body${behindTable ? " wt-behind" : ""}`} ref={body}>{children}</div>
       {wide ? null : <QueueBar />}
       {wide ? null : <TabBar active={active} />}
     </div>

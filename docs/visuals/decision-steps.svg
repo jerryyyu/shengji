@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 476" width="760" height="476" role="img" aria-label="How each decision calls the models, with one real decision as the example. Belief: one call on the public history returns each card's odds of being in each hand; 66 deals were drawn and 64 kept. Prior: one call on 64 positions scores every card; the top 8 of 64 legal plays are kept. Value: 4 calls of 128 positions score each of the 8 plays in all 64 deals; the best average was the ace of clubs at 1.799. Endgame: with 7 cards or fewer, no model call, each deal is solved exactly; it switched to the jack of diamonds, 1.797 against 1.719 for the ace of clubs. It played the jack of diamonds in 0.49 seconds. All models run in NumPy on the server CPU with a 3 second budget per decision; the trump call and the bury reuse the value model.">
+<title>One decision, four steps</title>
+<style>.bg{fill:#f6f7f5}.box{fill:#ffffff;stroke-width:1.5}.t{font:600 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#15181a}.s{font:13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#4f555a}.f{font:12.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#4f555a}.k{font:600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;letter-spacing:.06em}.m{font:12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;fill:#6f767a}.rule{stroke:#dfe2dc}.arrow{stroke:#6f767a;stroke-width:1.8;fill:none}.ah{fill:#6f767a}.bar{fill:#eef1ec;stroke:#1f6f54;stroke-width:1.5}.c-belief{fill:#7c4dbb}.b-belief{stroke:#7c4dbb}.c-prior{fill:#b4501f}.b-prior{stroke:#b4501f}.c-value{fill:#2667c9}.b-value{stroke:#2667c9}.c-exact{fill:#a8326e}.b-exact{stroke:#a8326e}@media (prefers-color-scheme: dark){.bg{fill:#141716}.box{fill:#1c201e;stroke-width:1.5}.t{font:600 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#eef1ee}.s{font:13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#b3bab5}.f{font:12.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#b3bab5}.k{font:600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;letter-spacing:.06em}.m{font:12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;fill:#8a918c}.rule{stroke:#2e3431}.arrow{stroke:#8a918c;stroke-width:1.8;fill:none}.ah{fill:#8a918c}.bar{fill:#242a27;stroke:#5fc49d;stroke-width:1.5}.c-belief{fill:#b393ec}.b-belief{stroke:#b393ec}.c-prior{fill:#f0925f}.b-prior{stroke:#f0925f}.c-value{fill:#7aa9f0}.b-value{stroke:#7aa9f0}.c-exact{fill:#e978b0}.b-exact{stroke:#e978b0}}</style>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<rect class="bg" x="0" y="0" width="760" height="476"/>
+<text x="20" y="30" class="t">One decision, four steps</text>
+<text x="20" y="52" class="s">Example: a bot leading with 7 cards left in a live game</text>
+<rect class="box b-belief" x="20" y="70" width="170" height="300" rx="12"/>
+<text x="34" y="96" class="k c-belief">1 · BELIEF</text>
+<text x="34" y="120" class="t">Who holds what?</text>
+<text x="34" y="152" class="m">CALLS</text>
+<text x="34" y="172" class="s">1 call</text>
+<text x="34" y="190" class="s">public history in</text>
+<text x="34" y="236" class="m">RETURNS</text>
+<text x="34" y="256" class="s">odds for 54 cards</text>
+<text x="34" y="274" class="s">× 4 hands</text>
+<line class="rule" x1="34" x2="176" y1="300" y2="300"/>
+<text x="34" y="322" class="m c-belief">EXAMPLE</text>
+<text x="34" y="342" class="s">66 deals drawn,</text>
+<text x="34" y="360" class="s">64 kept (2 illegal)</text>
+<path class="arrow" d="M190 220 H206" marker-end="url(#ah)"/>
+<rect class="box b-prior" x="206" y="70" width="170" height="300" rx="12"/>
+<text x="220" y="96" class="k c-prior">2 · PRIOR</text>
+<text x="220" y="120" class="t">Which plays?</text>
+<text x="220" y="152" class="m">CALLS</text>
+<text x="220" y="172" class="s">1 call</text>
+<text x="220" y="190" class="s">64 positions in</text>
+<text x="220" y="236" class="m">RETURNS</text>
+<text x="220" y="256" class="s">a score per card;</text>
+<text x="220" y="274" class="s">top 8 plays kept</text>
+<line class="rule" x1="220" x2="362" y1="300" y2="300"/>
+<text x="220" y="322" class="m c-prior">EXAMPLE</text>
+<text x="220" y="342" class="s">8 of 64 legal</text>
+<text x="220" y="360" class="s">plays shortlisted</text>
+<path class="arrow" d="M376 220 H392" marker-end="url(#ah)"/>
+<rect class="box b-value" x="392" y="70" width="170" height="300" rx="12"/>
+<text x="406" y="96" class="k c-value">3 · VALUE</text>
+<text x="406" y="120" class="t">How good is each?</text>
+<text x="406" y="152" class="m">CALLS</text>
+<text x="406" y="172" class="s">4 calls × 128</text>
+<text x="406" y="190" class="s">= 8 plays × 64 deals</text>
+<text x="406" y="236" class="m">RETURNS</text>
+<text x="406" y="256" class="s">one score per</text>
+<text x="406" y="274" class="s">play per deal</text>
+<line class="rule" x1="406" x2="548" y1="300" y2="300"/>
+<text x="406" y="322" class="m c-value">EXAMPLE</text>
+<text x="406" y="342" class="s">best average:</text>
+<text x="406" y="360" class="s">A♣ 1.799</text>
+<path class="arrow" d="M562 220 H578" marker-end="url(#ah)"/>
+<rect class="box b-exact" x="578" y="70" width="170" height="300" rx="12"/>
+<text x="592" y="96" class="k c-exact">4 · ENDGAME</text>
+<text x="592" y="120" class="t">Solve it exactly</text>
+<text x="592" y="152" class="m">CALLS</text>
+<text x="592" y="172" class="s">no model call;</text>
+<text x="592" y="190" class="s">≤ 7 cards left</text>
+<text x="592" y="236" class="m">RETURNS</text>
+<text x="592" y="256" class="s">exact result</text>
+<text x="592" y="274" class="s">per deal</text>
+<line class="rule" x1="592" x2="734" y1="300" y2="300"/>
+<text x="592" y="322" class="m c-exact">EXAMPLE</text>
+<text x="592" y="342" class="s">switches to J♦:</text>
+<text x="592" y="360" class="s">1.797 vs A♣ 1.719</text>
+<rect class="bar" x="20" y="390" width="728" height="62" rx="12"/>
+<text x="36" y="416" class="t">Plays J♦ in 0.49 s</text>
+<text x="36" y="437" class="f">All models run in NumPy on the server CPU · budget 3 s per decision · trump call and bury reuse the value model</text>
+</svg>

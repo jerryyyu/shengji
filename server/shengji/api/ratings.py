@@ -8,11 +8,11 @@ then fixed for that game. Every other room, Play bots included, is unranked
 and writes no rating at all.
 
 Only signed-in human seats are rated. Bots never move: every bot seat counts
-as ``BOT_RATING``, the anchor of the served release, and in a ranked room a
-player created a guest seat counts the same, so solo games against bots,
-games with a partner and mixed tables share one scale. A queue-matched room
-is for signed-in players only: a round that starts with a guest in one of its
-seats is not rated for anyone. Nothing here reads or changes a game decision;
+as ``BOT_RATING``, the anchor of the served release, and a guest seat (a
+person with no account, in a queue-matched room or a created ranked one)
+counts the same and is never rated itself, so solo games against bots, games
+with a partner and mixed tables share one scale. A round with a guest rates
+every signed-in player in it in full. Nothing here reads or changes a game decision;
 the hooks only observe the room at a round's start, at an explicit leave and
 at the round's end.
 
@@ -83,7 +83,7 @@ START_RATING = accounts.START_RATING
 # The served release's fixed rating. Every bot seat is rated this, so a
 # stronger release gets a higher constant from its measured duel margin.
 BOT_RATING = 1000.0
-# A guest has no rating; in a created ranked room their seat counts like a bot's.
+# A guest has no rating; in a ranked room their seat counts like a bot's.
 GUEST_RATING = BOT_RATING
 # Holding the deal (the kitty, the first lead and the defence threshold of
 # 80) is worth this much team strength; the value is a starting estimate to
@@ -556,7 +556,7 @@ def pending(room: Any) -> bool:
     if tracker is None or room.game is None or room.game.game_over:
         return False
     rnd = room.round
-    if rnd is None or rnd.phase == "round_end" or ranked_round_voided(room, tracker):
+    if rnd is None or rnd.phase == "round_end":
         return False
     return any(not accounts.is_deleted(uid) for uid in tracker.present.values())
 
@@ -599,17 +599,9 @@ def participants(room: Any, tracker: RoomRatings) -> list[Participant]:
     return [p for p in found.values() if len(teams.get(p.user_id, {p.seat % 2})) == 1]
 
 
-def ranked_round_voided(room: Any, tracker: RoomRatings) -> bool:
-    """A ranked (queue-matched) room rates signed-in players only: a guest
-    seated when the round started leaves the round unrated for everyone."""
-    return bool(getattr(room, "matched", False)) and GUEST in tracker.kinds
-
-
 def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | None:
     rnd = room.round
     if rnd is None or rnd.banker is None or room.game is None:
-        return None
-    if ranked_round_voided(room, tracker):
         return None
     parts = participants(room, tracker)
     if not parts:

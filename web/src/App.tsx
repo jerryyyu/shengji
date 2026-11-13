@@ -148,6 +148,10 @@ export default function App() {
             // player; only a join they asked for gets told.
             if (!wasResuming) showToast("That game has ended.");
             resumingRef.current = false;
+          } else if (msg.code === "ranked_queue_only" && wasResuming) {
+            // A saved ranked seat belongs to an account; this socket is a guest
+            // (signed out mid-game). Keep the room so signing back in returns there.
+            showToast("Sign in again to return to your game.");
           } else {
             showToast(msg.message);
           }

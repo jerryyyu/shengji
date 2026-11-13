@@ -8,6 +8,7 @@ import errno
 import json
 import logging
 import random
+import re
 import time
 import weakref
 from dataclasses import dataclass, field
@@ -121,8 +122,9 @@ TAKEOVER_AFTER = 30.0      # bot plays for a disconnected human after this long
 EMPTY_ROOM_BOT_DELAY = 10.0  # least seconds per bot move while no human is connected
 EMPTY_ROOM_POLL = 0.25     # how often a long empty-room wait re-checks for a human
 # Move timer (rooms with ``move_timer`` on, which today means ranked rooms):
-# a connected human has MOVE_TIMER seconds for each bury, play and round-end
-# Next; at zero the bot makes that one decision. AWAY_IN_A_ROW consecutive
+# while at least two humans hold seats (``_timer_live``), a connected human
+# has MOVE_TIMER seconds for each bury, play and round-end Next; at zero the
+# bot makes that one decision. AWAY_IN_A_ROW consecutive
 # timeouts, or AWAY_PER_ROUND in one round, mark the seat away: the bot then
 # plays every decision for it until the player is back.
 MOVE_TIMER = 60.0
@@ -255,6 +257,13 @@ class Seat:
     # took this seat carried; None for a guest. Server-only: it enters no
     # state frame, no log record and no game decision.
     user_id: int | None = None
+    # Who holds this seat as the queue knows them: the account id, or a
+    # guest's negative device id (``guest_queue_id``). Set in matched rooms
+    # only, and never stored as ``user_id``. Server-only.
+    queue_id: int | None = None
+    # The socket's device key (``device_key``): one device holds one human
+    # seat at a matched or ranked table. Server-only; never logged or sent.
+    device: str | None = None
     # Set when the host removed this occupant before the game: the seat is no
     # longer in the room, and the socket that held it returns to the lobby.
     removed: bool = False
@@ -632,10 +641,25 @@ def _owing_seats(room: Room) -> set[int]:
     return {seat}
 
 
+def _timer_live(room: Room) -> bool:
+    """Whether the move clock runs: the room has the move timer and at least
+    two human seats (accounts or guests). Nobody waits on a lone player, so
+    alone at a table they take as long as they like."""
+    return room.move_timer and sum(
+        1 for sd in room.seats if sd is not None and not sd.is_bot) >= 2
+
+
 def _sync_move_timer(room: Room) -> None:
     """Start the clock of every seat that newly owes a decision (caller holds
-    the lock). A no-op in a room without the move timer."""
+    the lock). A no-op in a room without the move timer; with one human the
+    clocks stand cleared, so a second human's arrival starts them fresh."""
     if not room.move_timer:
+        return
+    if not _timer_live(room):
+        room.timer_key = None
+        for sd in room.seats:
+            if sd is not None:
+                sd.turn_started = None
         return
     key = _decision_key(room)
     owing = _owing_seats(room)
@@ -654,7 +678,7 @@ def _timed(room: Room, seat: int) -> bool:
     """Is this seat's move clock running? Connected humans only: a
     disconnected seat is on TAKEOVER_AFTER instead."""
     sd = room.seats[seat]
-    return (room.move_timer and not sd.is_bot and sd.connected
+    return (_timer_live(room) and not sd.is_bot and sd.connected
             and sd.turn_started is not None)
 
 
@@ -764,6 +788,9 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
                        for opt in rnd.declare_options(seat)]
 
     result = game.result
+    me = room.seats[seat]
+    # a person with no account at a rated table: plays, is never rated
+    guest = ratings.ranked(room) and not me.is_bot and me.user_id is None
     return {
         "type": "state",
         **({"experimental_policy": room.experimental_policy}
@@ -827,15 +854,17 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "games_won": list(result.games_won),
             "point_scored": result.point_scored,
             **ratings.round_payload(room, seat),
-            # took this seat mid-round from an open table: not ranked for it
-            **({"unranked": "joined"}
-               if room.seats[seat].joined_round == game.round_no else {}),
+            # took this seat mid-round from an open table: not ranked for it;
+            # a guest is not ranked at all
+            **({"unranked": "joined"} if me.joined_round == game.round_no
+               else {"unranked": "guest"} if guest else {}),
         } if result else None),
         "message": rnd.message,
         "notice": rnd.notice,
         **({"matched": True, "allow_joiners": room.allow_joiners,
             "joining": _join_notices(room)} if room.matched else {}),
         **({"ranked": True} if room.ranked else {}),
+        **({"guest": True} if guest else {}),
     }
 
 
@@ -2021,6 +2050,10 @@ class SeatChanged(IllegalPlay):
     """A lobby action named an occupant who is no longer in that seat."""
 
 
+class SameDevice(IllegalPlay):
+    """A ranked game with two human seats on one device."""
+
+
 def _check_expected(room: Room, position: int, expected: Any) -> None:
     """Refuse when the client said whom it meant at ``position`` and that is
     no longer so. ``expected`` is the occupant as the room frame showed it,
@@ -2167,6 +2200,9 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         if room.matched or not ratings.eligible(room):
             raise IllegalPlay("This room's mode can't be changed.")
         on = msg.get("on") is True
+        if on and _same_device_humans(room):
+            raise SameDevice("Two players here share one device; a ranked game "
+                             "needs one device per player.")
         # A ranked room has the move timer, as a matched room does; Ranked
         # off gives the room back its own setting.
         if on and not room.ranked:
@@ -2181,6 +2217,9 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             raise IllegalPlay("Only the host can start.")
         if room.game:
             raise IllegalPlay("Game already started.")
+        if (room.matched or room.ranked) and _same_device_humans(room):
+            raise SameDevice("Two players here share one device; a ranked game "
+                             "needs one device per player.")
         # A bot plays every seat nobody took, in that seat.
         room.seats = [sd if sd is not None else Seat(name=f"Bot {i}", is_bot=True)
                       for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
@@ -2279,6 +2318,28 @@ async def _resume_point(user_id: int | None, game_id: Any, options: dict) -> dic
     return await accounts.STORE.run(saved_games.resume_point, user_id, game_id)
 
 
+# A guest's device key, ``?device=`` on the socket URL: a random 128-bit
+# url-safe token the client keeps (22 base64url characters, or up to 64).
+# It stays in memory; it is never logged, stored or sent to anyone.
+DEVICE_KEY_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
+# device key -> that guest's queue id: -1, -2, ... in order of first use, so
+# a reconnect from the same device keeps its place, pair and cooldown.
+GUEST_IDS: dict[str, int] = {}
+
+
+def device_key(raw: Any) -> str | None:
+    """The socket's device key, or None when absent or malformed."""
+    return raw if isinstance(raw, str) and DEVICE_KEY_RE.fullmatch(raw) else None
+
+
+def guest_queue_id(device: str) -> int:
+    """The negative queue id of the guest on ``device``."""
+    qid = GUEST_IDS.get(device)
+    if qid is None:
+        qid = GUEST_IDS[device] = -(len(GUEST_IDS) + 1)
+    return qid
+
+
 # --------------------------------------------------------------- websocket
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
@@ -2308,8 +2369,29 @@ async def ws_endpoint(ws: WebSocket) -> None:
             return conn.name or "Player"
         return str(raw or "Player")
 
-    conn = matchmaking.Conn(ws, user_id, default_name)
+    device = device_key(ws.query_params.get("device"))
+    guest_id = guest_queue_id(device) if user_id is None and device is not None else None
+
+    def queue_id() -> int | None:
+        # The queue's identity for this socket: the account, else the
+        # device's guest id; None for a deleted account or a guest whose
+        # client sent no device key, which the queue refuses.
+        return account_id() if user_id is not None else guest_id
+
+    conn = matchmaking.Conn(ws, user_id, default_name,
+                            queue_id=user_id if user_id is not None else guest_id,
+                            device=device)
     LIVE_CONNS.add(conn)
+    # The same device's guest id, when this socket is signed in: the guest
+    # signed in here. Its queue, waiting-table seat, pair and pending Join
+    # end now (a matched seat moves over on rejoin by its resume token).
+    signed_in_guest = (GUEST_IDS.get(device)
+                       if user_id is not None and device is not None else None)
+    if signed_in_guest is not None:
+        old_conn = MATCHMAKER.conns.get(signed_in_guest)
+        if old_conn is not None and old_conn.joining is not None:
+            await end_pending_join(old_conn, penalty=False)
+        MATCHMAKER.signed_in(signed_in_guest, user_id)
     MATCHMAKER.connect(conn)
 
     try:
@@ -2359,7 +2441,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await send(ws, {"type": "left"})
                     continue
                 if t in matchmaking.QUEUE_MESSAGES:
-                    await MATCHMAKER.handle(conn, msg, account_id())
+                    if account_id() is None and msg.get("name"):
+                        # a guest is called in the queue what it typed
+                        conn.name = str(msg["name"]).strip()[:accounts.DISPLAY_NAME_MAX]
+                    await MATCHMAKER.handle(conn, msg, queue_id())
                     continue
                 if t in ("create_room", "join_room"):
                     MATCHMAKER.enter_room(conn)
@@ -2396,7 +2481,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         # queue/writer here skipped the generation bump AND the
                         # resume token, so a creator had no identity and an
                         # overlapping refresh appended them as a SECOND seat.
-                        me = Seat(name=player_name(msg.get("name")), user_id=account_id())
+                        me = Seat(name=player_name(msg.get("name")), user_id=account_id(),
+                                  device=device)
                         if resume is None:
                             room.seats.append(me)
                         else:
@@ -2460,37 +2546,50 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             await send(ws, {"type": "error", "code": "room_not_found",
                                             "message": "Room not found."})
                             continue
-                        if (target.matched and account_id() is not None
-                                and not _holds_seat(target, account_id())):
+                        tok = msg.get("token")
+                        qid = queue_id()
+                        # A guest comes back to a matched seat by its token
+                        # alone; a guest who signed in on this device moves
+                        # its seat over to the account the same way.
+                        migrate = (_guest_seat_of(target, tok, signed_in_guest)
+                                   if target.matched and account_id() is not None
+                                   and signed_in_guest is not None else None)
+                        if (target.matched and qid is not None
+                                and not _holds_seat(target, qid)
+                                and migrate is None
+                                and not (account_id() is None
+                                         and _token_seat(target, tok) is not None)):
                             # An invite link to a ranked table: the open-table
                             # path for that table (pending until the handover).
                             refused = await join_by_invite(
-                                target, msg.get("seat"), account_id(),
+                                target, msg.get("seat"), qid,
                                 player_name(msg.get("name")), conn)
                             if refused is not None:
                                 await send(ws, {
                                     "type": "error", "code": refused,
                                     "message": INVITE_REFUSALS[refused],
-                                    **({"cooldown_until": MATCHMAKER.cooldowns[account_id()]}
+                                    **({"cooldown_until": MATCHMAKER.cooldowns[qid]}
                                        if refused == "cooldown" else {})})
                             continue
                         async with target.lock:
                             name = player_name(msg.get("name"))
-                            # A ranked table is rated for signed-in players
-                            # only: a guest is refused, and an account may only
-                            # come back to the seat it already holds (any
-                            # other account takes the invite path above).
+                            # At a ranked table a person only comes back to
+                            # the seat they already hold: an account to its
+                            # own seat (or to the guest seat it held on this
+                            # device before signing in), a guest by its guest
+                            # seat's token; never a guest to an account's
+                            # seat (anyone else takes the invite path above).
                             held = None
                             if target.matched:
                                 if account_id() is None:
-                                    await send(ws, {
-                                        "type": "error", "code": "ranked_sign_in",
-                                        "message": "Sign in to join a ranked table."})
-                                    continue
-                                held = next(
-                                    (s for s in target.seats
-                                     if s is not None and not s.is_bot
-                                     and s.user_id == account_id()), None)
+                                    held = _guest_seat_of(target, tok)
+                                else:
+                                    held = next(
+                                        (s for s in target.seats
+                                         if s is not None and not s.is_bot
+                                         and s.user_id == account_id()), None)
+                                    if held is None:
+                                        held = migrate
                                 if held is None:
                                     await send(ws, {
                                         "type": "error", "code": "ranked_queue_only",
@@ -2505,14 +2604,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             # it also lets a player resume while their stale socket
                             # is still open — the newest connection wins), then a
                             # normalised name among DISCONNECTED seats.
-                            tok = msg.get("token")
-                            reclaim = None
-                            if isinstance(tok, str) and tok:
-                                reclaim = next(
-                                    (s for s in target.seats
-                                     if s is not None and not s.is_bot
-                                     and secrets.compare_digest(
-                                         s.token, tok)), None)
+                            reclaim = _token_seat(target, tok)
                             if held is not None:
                                 reclaim = held
                             by_name = False
@@ -2525,8 +2617,16 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                      and s.name.strip().casefold() == key),
                                     None)
                                 by_name = reclaim is not None
+                            if ((target.matched or target.ranked) and device is not None
+                                    and _device_seated(target, device, reclaim)):
+                                await send(ws, {"type": "error", "code": "same_device",
+                                                "message": SAME_DEVICE_MESSAGE})
+                                continue
                             if reclaim is not None:
                                 me = reclaim
+                                me.device = device
+                                if target.matched:
+                                    me.queue_id = qid
                                 # The seat's account follows the socket that now
                                 # owns it: a sign-in reconnect brings one, a
                                 # sign-out reconnect (or a guest's by-name
@@ -2537,7 +2637,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 saved_games.seat_changed(target, target.seats.index(me))
                             elif (target.game is None
                                   and (free := _empty_position(target)) is not None):
-                                me = Seat(name=name, user_id=account_id())
+                                me = Seat(name=name, user_id=account_id(), device=device)
                                 _seat_at(target, free, me)
                             else:
                                 # Take over a BOT's seat, mid-game if need be —
@@ -2620,6 +2720,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 me.is_bot = False
                                 me.name = name
                                 me.user_id = account_id()
+                                me.device = device
                                 saved_games.seat_changed(target, pick)
                                 target.log_event("seat_claimed", seat=pick,
                                                  name=name, bot=False)
@@ -2701,11 +2802,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                     and me.joined_round == room.game.round_no
                                     and room.round is not None
                                     and room.round.phase != "round_end")
-                    leaver = me.user_id
+                    leaver = (me.user_id, me.queue_id)
                     _detach(me, room, my_gen)
                     if joined_leave:
                         _revert_to_bot(room, room.seats.index(me))
-                        _joined_leave_penalty(room, leaver)
+                        _joined_leave_penalty(room, *leaver)
                         kick_bots(room)
                     if room.game is None:
                         # lobby: the seat empties and nobody else moves
@@ -2739,7 +2840,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 MATCHMAKER.return_to_lobby(conn)
                 continue
             if t in matchmaking.QUEUE_MESSAGES:
-                await MATCHMAKER.handle(conn, msg, account_id())
+                await MATCHMAKER.handle(conn, msg, queue_id())
                 continue
             if t == "report_player":
                 await _report_player(room, me, account_id(), msg)
@@ -2759,6 +2860,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     kick_bots(room)
                 except SeatChanged as e:
                     enqueue(me, {"type": "error", "code": "seat_changed", "message": str(e)})
+                except SameDevice as e:
+                    enqueue(me, {"type": "error", "code": "same_device", "message": str(e)})
                 except IllegalPlay as e:
                     if t == "play":
                         _log_play_refused(room, seat_idx, msg, e)
@@ -2837,12 +2940,15 @@ async def start_matched_room(match_id: str | None, slots: list,
     try:
         humans = []
         for i, slot in enumerate(slots):
+            # ``slot.user_id`` is the queue id: negative for a guest
             if slot.user_id is None:
                 room.seats.append(Seat(name=f"Bot {i}", is_bot=True))
             else:
-                seat = Seat(name=slot.name or "Player", user_id=slot.user_id)
+                conn = conns[slot.user_id]
+                seat = Seat(name=slot.name or "Player", user_id=_account_of(slot.user_id),
+                            queue_id=slot.user_id, device=conn.device)
                 room.seats.append(seat)
-                humans.append((seat, conns[slot.user_id]))
+                humans.append((seat, conn))
         room.host = room.seats.index(humans[0][0])
         async with room.lock:
             for seat, conn in humans:
@@ -2851,7 +2957,8 @@ async def start_matched_room(match_id: str | None, slots: list,
                 conn.adopted = (room, seat, gen)
                 MATCHMAKER.enter_room(conn)
                 enqueue(seat, {"type": "match_started", "match_id": match_id,
-                               "room": room.code, "rated": ratings.eligible(room)})
+                               "room": room.code, "rated": ratings.eligible(room),
+                               **({"guest": True} if seat.user_id is None else {})})
             await broadcast(room)
             await handle_action(room, room.host, {"type": "start_game"})
             await broadcast(room)
@@ -2886,7 +2993,8 @@ def _unwind_matched_room(room: Room, attached: list, conns) -> None:
 @dataclass
 class PendingJoin:
     """A newcomer's Join of an open-table seat, waiting for its handover:
-    the bot (or the away owner's bot) plays the seat until then."""
+    the bot (or the away owner's bot) plays the seat until then. ``uid``
+    is the newcomer's queue id (negative for a guest)."""
     uid: int
     name: str
     conn: Any                     # the newcomer's ``matchmaking.Conn``
@@ -2945,7 +3053,8 @@ def open_tables() -> list[dict]:
                          "bot": sd.is_bot and pj is None,
                          "away": i in seats and not sd.is_bot,
                          "open": i in seats, "team": i % 2,
-                         "user_id": pj.uid if pj else sd.user_id})
+                         "queue_id": pj.uid if pj else sd.queue_id,
+                         "device": pj.conn.device if pj else sd.device})
         out.append({"code": room.code, "seats": view,
                     "round_end": room.round.phase == "round_end"})
     return out
@@ -2964,13 +3073,59 @@ async def join_open_table(code: str, seat: int, uid: int, name: str, conn: Any) 
             return "seat_taken" if seats else "closed"
         if _holds_seat(room, uid):
             return "closed"
+        if conn.device is not None and _device_seated(room, conn.device):
+            return "same_device"
         await _claim_open_seat(room, seat, uid, name, conn)
     return None
 
 
-def _holds_seat(room: Room, uid: int) -> bool:
-    return any(sd is not None and not sd.is_bot and sd.user_id == uid for sd in room.seats) or any(
-        pj.uid == uid for pj in room.pending_joins.values())
+def _holds_seat(room: Room, qid: int) -> bool:
+    """Whether queue id ``qid`` holds a seat at the matched room, or a Join
+    waiting for one."""
+    return any(sd is not None and not sd.is_bot and sd.queue_id == qid
+               for sd in room.seats) or any(
+        pj.uid == qid for pj in room.pending_joins.values())
+
+
+def _device_seated(room: Room, device: str, besides: Seat | None = None) -> bool:
+    """Whether ``device`` already holds a human seat (other than
+    ``besides``) at the room, or a Join waiting for one."""
+    return any(sd is not None and sd is not besides and not sd.is_bot
+               and sd.device == device for sd in room.seats) or any(
+        pj.conn.device == device for pj in room.pending_joins.values())
+
+
+def _token_seat(room: Room, tok: Any) -> Seat | None:
+    """The human seat whose resume token is ``tok``."""
+    if not isinstance(tok, str) or not tok:
+        return None
+    return next((s for s in room.seats if s is not None and not s.is_bot
+                 and secrets.compare_digest(s.token, tok)), None)
+
+
+def _guest_seat_of(room: Room, tok: Any, guest: int | None = None) -> Seat | None:
+    """The guest-held seat whose resume token is ``tok`` (and, given
+    ``guest``, that guest's queue id holds it); never an account's seat."""
+    seat = _token_seat(room, tok)
+    if (seat is None or seat.user_id is not None or seat.queue_id is None
+            or seat.queue_id >= 0 or (guest is not None and seat.queue_id != guest)):
+        return None
+    return seat
+
+
+def _same_device_humans(room: Room) -> bool:
+    """Whether two human seats at the room share a device key."""
+    devices = [sd.device for sd in room.seats
+               if sd is not None and not sd.is_bot and sd.device is not None]
+    return len(set(devices)) < len(devices)
+
+
+def _account_of(qid: int | None) -> int | None:
+    """The account id a queue id names; None for a guest's (negative) id."""
+    return qid if qid is not None and qid > 0 else None
+
+
+SAME_DEVICE_MESSAGE = "Someone on this device is already at that table."
 
 
 async def _claim_open_seat(room: Room, seat: int, uid: int, name: str, conn: Any, *,
@@ -2984,7 +3139,8 @@ async def _claim_open_seat(room: Room, seat: int, uid: int, name: str, conn: Any
     conn.joining = (room, seat)
     MATCHMAKER.enter_room(conn)
     conn.push({"type": "match_started", "match_id": None, "room": room.code,
-               "rated": ratings.eligible(room), "joining": True, "seat": seat})
+               "rated": ratings.eligible(room), "joining": True, "seat": seat,
+               **({"guest": True} if uid < 0 else {})})
     if announce:
         await broadcast(room)
         kick_bots(room)
@@ -3004,6 +3160,9 @@ async def join_pair_open_table(code: str, seats: list[int], uids: list[int], nam
             return "seat_taken" if open_ else "closed"
         if any(_holds_seat(room, u) for u in uids):
             return "closed"
+        devices = [c.device for c in conns if c.device is not None]
+        if len(set(devices)) < len(devices) or any(_device_seated(room, d) for d in devices):
+            return "same_device"
         group = secrets.token_hex(6)
         for seat, uid, name, conn in zip(seats, uids, names, conns):
             await _claim_open_seat(room, seat, uid, name, conn, group=group,
@@ -3023,11 +3182,12 @@ def _default_seat(room: Room, seats: list[int]) -> int:
 
 
 async def join_by_invite(room: Room, seat: Any, uid: int, name: str, conn: Any) -> str | None:
-    """A signed-in friend opened a ranked table's invite link: the open-table
-    path for that table (any open seat, the handover after the trick, the
-    first round unranked), even with Allow joiners off. Returns a refusal
-    code: ``cooldown``, ``table_left`` (they left this table after joining
-    it), ``table_full`` or ``seat_unavailable``."""
+    """A friend (``uid`` is their queue id) opened a ranked table's invite
+    link: the open-table path for that table (any open seat, the handover
+    after the trick, the first round unranked), even with Allow joiners off.
+    Returns a refusal code: ``cooldown``, ``table_left`` (they left this
+    table after joining it), ``table_full``, ``seat_unavailable`` or
+    ``same_device`` (this device already holds a seat there)."""
     if MATCHMAKER.cooldowns.get(uid, 0.0) > MATCHMAKER.clock():
         return "cooldown"
     if room.code in MATCHMAKER.barred.get(uid, ()):
@@ -3042,6 +3202,8 @@ async def join_by_invite(room: Room, seat: Any, uid: int, name: str, conn: Any) 
             seat = _default_seat(room, seats)
         if seat not in seats:
             return "seat_unavailable"
+        if conn.device is not None and _device_seated(room, conn.device):
+            return "same_device"
         MATCHMAKER.leave_for_room(conn)
         MATCHMAKER.invite_joining(uid, room.code)
         await _claim_open_seat(room, seat, uid, name, conn)
@@ -3053,6 +3215,7 @@ INVITE_REFUSALS = {
     "table_left": "You left this table, so you can't join it again.",
     "table_full": "Table is full.",
     "seat_unavailable": "That seat was just taken — pick another.",
+    "same_device": SAME_DEVICE_MESSAGE,
 }
 
 
@@ -3170,10 +3333,10 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
         me = old
         me.bot_name = old.name
     else:
-        displaced_ws, owner = old.ws, old.user_id
+        displaced_ws, owner = old.ws, old.queue_id
         _detach(old, room, old.gen)
         old.removed = True
-        me = Seat(name=pj.name, user_id=pj.uid, bot_name=f"Bot {seat}")
+        me = Seat(name=pj.name, bot_name=f"Bot {seat}")
         room.seats[seat] = me
         holder = MATCHMAKER._live(owner) if owner is not None else None
         if holder is not None and displaced_ws is not None and holder.ws is displaced_ws:
@@ -3182,7 +3345,9 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
                                     "took your seat."})
     me.is_bot = False
     me.name = pj.name
-    me.user_id = pj.uid
+    me.user_id = _account_of(pj.uid)
+    me.queue_id = pj.uid
+    me.device = pj.conn.device
     me.token = secrets.token_urlsafe(12)
     me.bot_announced = False
     me.away, me.away_since = False, None
@@ -3208,6 +3373,7 @@ def _revert_to_bot(room: Room, seat: int) -> None:
     sd.is_bot = True
     sd.name = sd.bot_name or f"Bot {seat}"
     sd.user_id = None
+    sd.queue_id = sd.device = None
     sd.token = secrets.token_urlsafe(12)
     sd.joined_round = None
     sd.away, sd.away_since = False, None
@@ -3219,14 +3385,15 @@ def _revert_to_bot(room: Room, seat: int) -> None:
     room.log_event("seat_claimed", seat=seat, name=sd.name, bot=True)
 
 
-def _joined_leave_penalty(room: Room, uid: int | None) -> None:
+def _joined_leave_penalty(room: Room, uid: int | None, qid: int | None) -> None:
     """Leaving (or abandoning) the round one joined mid-way: the leaver cap
-    moves to the account's next rated round, a queue cooldown starts, and
-    this table is never offered to it again."""
-    if uid is None:
-        return
-    ratings.carry_leaver_cap(uid)
-    MATCHMAKER.left_open_table(uid, room.code)
+    moves to the account's (``uid``) next rated round, and for the account
+    or guest (queue id ``qid``) a queue cooldown starts and this table is
+    never offered again."""
+    if uid is not None:
+        ratings.carry_leaver_cap(uid)
+    if qid is not None:
+        MATCHMAKER.left_open_table(qid, room.code)
 
 
 def _joined_round_ended(room: Room) -> None:
@@ -3238,7 +3405,7 @@ def _joined_round_ended(room: Room) -> None:
     for sd in room.seats:
         if (sd is not None and not sd.is_bot and sd.joined_round == game.round_no
                 and (sd.away or (not sd.connected and sd.bot_announced))):
-            _joined_leave_penalty(room, sd.user_id)
+            _joined_leave_penalty(room, sd.user_id, sd.queue_id)
 
 
 MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,

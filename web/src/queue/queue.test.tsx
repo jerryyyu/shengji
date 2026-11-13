@@ -163,20 +163,99 @@ describe("Play", () => {
     expect(q(".q-sheet .ranked-chip")?.textContent).toBe("Ranked");
   });
 
-  it("a guest: Casual first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
+  it("a guest: Play and Duo with no Ranked heading, the guest line, and Play bots as a Casual row", async () => {
     signedIn = false;
     await renderApp();
     const labels = [...lobby().querySelectorAll(".play-label")].map((h) => h.textContent);
-    expect(labels).toEqual(["Casual", "Ranked"]);
-    expect(q(".q-find")).toBeNull();
+    expect(labels).toEqual(["Casual"]);
+    expect(document.body.textContent).not.toContain("Sign in to play ranked");
+    expect(q(".play-guest-line")?.textContent).toBe("Playing as a guest · Sign in to be ranked");
     const bots = button("Play bots", lobby())!;
-    expect(bots.className).toContain("gold");
-    click(bots);
-    expect(lastSent()).toMatchObject({ type: "create_room" });
-    expect(sentTypes()).not.toContain("queue_join");
-    say({ type: "error", code: "x", message: "x" });
-    click(button("Sign in to play ranked"));
-    expect(button("Sign in to play ranked")).toBeUndefined();
+    expect(bots.className).toContain("grp-row");
+    // Play queues a guest exactly as it does an account, with the chip's name
+    const name = q(".lobby-panel .guest-pill .account-pill-name")!.textContent;
+    click(button("Play", lobby())!);
+    expect(lastSent()).toEqual({ type: "queue_join", name });
+    expect(localStorage.getItem("shengji.name")).toBe(name);
+    say(queued());
+    expect(q(".q-find")?.textContent).toBe("Searching…");
+    expect(q(".q-bar")).not.toBeNull();
+  });
+
+  it("a guest's Duo opens the pair sheet and makes a code, as an account's does", async () => {
+    signedIn = false;
+    await renderApp();
+    const name = q(".lobby-panel .guest-pill .account-pill-name")!.textContent;
+    click(button("Duo", lobby())!);
+    expect(lastSent()).toEqual({ type: "party_create", name });
+    expect(q(".q-sheet h2")?.textContent).toBe("Duo");
+    expect(q(".q-sheet .google-signin")).toBeNull();
+    // the same device cannot be both halves of a pair: the sheet says so
+    say({ type: "error", code: "same_device", message: "A pair needs two devices." });
+    expect(q(".q-sheet .q-error")?.textContent).toBe("A pair needs two devices.");
+  });
+
+  it("an account's queue messages carry no name", async () => {
+    await renderApp();
+    click(button("Play", lobby())!);
+    expect(lastSent()).toEqual({ type: "queue_join" });
+  });
+
+  it("a guest who signs in mid-search starts over: the search is cleared and Play asked for again", async () => {
+    signedIn = false;
+    await renderApp();
+    click(button("Play", lobby())!);
+    say(queued());
+    expect(findBtn().textContent).toBe("Searching…");
+    const { auth } = await import("../auth");
+    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
+    await settle();
+    expect(q(".q-bar")).toBeNull();
+    expect(findBtn().textContent).toBe("Play");
+    expect(q(".q-toast")?.textContent).toContain("Signed in. Press Play to search again.");
+  });
+
+  it("a guest who signs in at a waiting table or in a pair keeps nothing: the new socket's one Play is the only search", async () => {
+    signedIn = false;
+    await renderApp();
+    say({ type: "party", party_id: "p1", code: "7F2K", you_lead: false, expires_at: nowSecs() + 300,
+          members: [{ name: "Sam", leader: true, you: false }, { name: "Guesty", leader: false, you: true }] });
+    click(button("Play", lobby())!);
+    say(atTable([seat("Guesty", { you: true }), seat("Alice"), null, null]));
+    expect(q(".wt-sheet")).not.toBeNull();
+    const old = ws();
+    const oldSent = old.sent.length;
+    fakeClock();
+    const { auth } = await import("../auth");
+    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
+    tick(0);
+    const fresh = ws();
+    expect(fresh).not.toBe(old);                  // the identity moved to a new socket
+    act(() => fresh.onopen?.());
+    // what the guest's socket still had in flight belongs to the guest
+    act(() => old.deliver(atTable([seat("Guesty", { you: true }), seat("Alice"), null, null])));
+    // the server holds nothing for the account: it says only the count
+    say({ type: "queue_count", count: 1 });
+    tick(10_000);                                 // past the reconnect resync: no "left while away"
+    expect(q(".wt-sheet")).toBeNull();
+    expect(q(".q-bar")).toBeNull();
+    expect(q(".q-party-chip")).toBeNull();
+    expect(findBtn().textContent).toBe("Play");
+    expect(document.body.textContent).not.toContain("left the queue while away");
+    expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([]);
+    click(findBtn());
+    expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([{ type: "queue_join" }]);
+    expect(old.sent.slice(oldSent)).toEqual([]);  // nothing more on the guest's socket
+    say(queued());
+    expect(findBtn().textContent).toBe("Searching…");
+    expect(fresh.sent.filter((m) => m.type === "queue_join")).toHaveLength(1);
+  });
+
+  it("a guest's Sign in shows the sign-in buttons in the line's place", async () => {
+    signedIn = false;
+    await renderApp();
+    click(q(".play-guest-signin") as HTMLButtonElement);
+    expect(q(".play-guest-line")).toBeNull();
     expect(q(".lobby-panel .google-signin")).not.toBeNull();
     // the website signs in with Google only; nothing promises a provider still to come
     expect(q("[data-testid='apple-signin']")).toBeNull();
@@ -184,7 +263,7 @@ describe("Play", () => {
   });
 });
 
-it("in the app a guest's Sign in to play ranked offers Apple beside Google", async () => {
+it("in the app a guest's Sign in offers Apple beside Google", async () => {
   const { resetNativeForTests } = await import("../native");
   const Plugins: Record<string, unknown> = {
     SocialLogin: { initialize: () => Promise.resolve(), login: () => Promise.resolve(), logout: () => Promise.resolve() },
@@ -196,7 +275,7 @@ it("in the app a guest's Sign in to play ranked offers Apple beside Google", asy
   try {
     signedIn = false;
     await renderApp();
-    click(button("Sign in to play ranked"));
+    click(q(".play-guest-signin") as HTMLButtonElement);
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(q("[data-testid='google-signin']")).not.toBeNull();
     expect(q("[data-testid='apple-signin']")?.textContent).toBe("Sign in with Apple");
@@ -847,18 +926,16 @@ describe("one code for rooms and pairs", () => {
     expect(q(".q-sheet .q-error")?.textContent).toBe("No game or pair has that code.");
   });
 
-  it("a guest who types a pair code is asked to sign in, then lands on the pair sheet", async () => {
+  it("a guest who types a pair code joins the pair, as an account does", async () => {
     signedIn = false;
     await renderApp();
     typeInto(playBox(), "7F2K");
     playJoin();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "7F2K" });
     say({ type: "code_kind", code: "7F2K", kind: "party" });
-    expect(sentTypes()).not.toContain("party_join");
-    const sheet = q(".q-sheet")!;
-    expect(sheet.querySelector("h2")?.textContent).toBe("Duo");
-    expect(sheet.textContent).toContain("Sign in to join duo 7F2K.");
-    expect(sheet.querySelector(".google-signin")).not.toBeNull();
+    expect(lastSent()).toMatchObject({ type: "party_join", code: "7F2K" });
+    expect(typeof (lastSent() as { name?: unknown }).name).toBe("string");
+    expect(document.body.textContent).not.toContain("Sign in to join duo");
   });
 
   it("the pair sheet's box joins with a code, and a game code closes it and opens the room", async () => {
@@ -1304,13 +1381,24 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK", seat: 2 });
   });
 
-  it("a guest is asked to sign in to join a ranked table", async () => {
+  it("a guest takes a ranked table's seat as an account does", async () => {
     signedIn = false;
     await open();
     viaPlayBox();
     tell(rankedSeats());
-    expect(q(".ranked-gate h2")?.textContent).toBe("Sign in to join a ranked table");
-    expect(sentTypes()).not.toContain("join_room");
+    expect(q(".ranked-gate")).toBeNull();
+    click(button(/Seat 2/));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK", seat: 2 });
+  });
+
+  it("same_device closes the seat picker and shows the server's message", async () => {
+    await open();
+    viaPlayBox();
+    tell(rankedSeats());
+    click(button(/Seat 2/));
+    tell({ type: "error", code: "same_device", message: "Someone on this device is already at that table." });
+    expect(document.body.textContent).not.toContain("Take a seat");
+    expect(document.body.textContent).toContain("Someone on this device is already at that table.");
   });
 
   it("a ranked table with no bot seat says Table is full", async () => {
@@ -1440,5 +1528,102 @@ describe("the open-table offer is a modal sheet", () => {
     tell({ type: "error", code: "seat_taken", message: "That seat was just taken. Pick another." });
     escape();
     expect(waits()).toBe(1);
+  });
+});
+
+describe("the search on screen is the server's", () => {
+  const sentOf = (type: string) => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === type);
+
+  for (const who of ["signed in", "a guest"] as const) {
+    it(`${who}: a Play the server never confirms reverts with a notice and asks what it holds`, async () => {
+      signedIn = who === "signed in";
+      await renderApp();
+      fakeClock();
+      click(findBtn());
+      expect(findBtn().textContent).toBe("Searching…");
+      tick(3000);
+      expect(findBtn().textContent).toBe("Play");
+      expect(q(".q-toast")?.textContent).toContain("Couldn't start searching.");
+      expect(lastSent()).toMatchObject({ type: "queue_status" });
+      say(queued());                       // it did reach the server after all
+      expect(q(".q-bar")).not.toBeNull();
+    });
+  }
+
+  it("a confirmed Play does not revert", async () => {
+    await renderApp();
+    fakeClock();
+    click(findBtn());
+    say(queued());
+    tick(3000);
+    expect(q(".q-bar")).not.toBeNull();
+    expect(q(".q-toast")).toBeNull();
+  });
+
+  for (const error of [{ code: "same_device", message: "Someone on this device is already at that table." },
+                       { message: "Invalid request." }]) {
+    it(`an error reply (${error.code ?? "no code"}) clears an unconfirmed Play`, async () => {
+      await renderApp();
+      click(findBtn());
+      say({ type: "error", ...error });
+      expect(findBtn().textContent).toBe("Play");
+      expect(lastSent()).toEqual({ type: "queue_status" });
+    });
+  }
+
+  it("a reconnect asks the server and a search it dropped is cleared with a notice", async () => {
+    await renderApp();
+    say(queued());
+    fakeClock();
+    act(() => ws().close());
+    tick(600);
+    act(() => ws().onopen?.());
+    expect(ws().sent).toContainEqual({ type: "queue_status" });
+    say({ type: "queue_state", queued: false, count: 0 });
+    expect(q(".q-bar")).toBeNull();
+    expect(findBtn().textContent).toBe("Play");
+    expect(q(".q-toast")?.textContent).toContain("You're no longer searching.");
+    expect(q(".q-toast")?.textContent).toContain("Press Play to search again.");
+  });
+
+  it("a search held by another device of yours shows as such, and clears when it ends", async () => {
+    await renderApp();
+    say({ type: "queue_state", queued: true, elsewhere: true, count: 2, since: nowSecs(), leader: true,
+          table: null, offer: null });
+    expect(q(".q-bar")?.textContent).toContain("Searching on another device");
+    expect(findBtn().textContent).toBe("Searching…");
+    say({ type: "queue_state", queued: false, count: 1 });
+    expect(q(".q-bar")).toBeNull();
+    expect(q(".q-toast")).toBeNull();
+  });
+
+  it("back in view, a socket suspended without a close is probed and replaced, and the search rechecked", async () => {
+    await renderApp();
+    say({ type: "heartbeat_ready" });
+    say(queued());
+    fakeClock();
+    const suspended = ws();
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+    expect(suspended.sent[suspended.sent.length - 1]).toMatchObject({ type: "ping" });
+    tick(5000);                          // no pong: the socket is dead
+    expect(suspended.readyState).toBe(3);
+    tick(10);
+    expect(ws()).not.toBe(suspended);
+    act(() => ws().onopen?.());
+    expect(ws().sent).toContainEqual({ type: "queue_status" });
+  });
+
+  it("while a search is on screen the client checks it with the server", async () => {
+    await renderApp();
+    fakeClock();
+    say(queued());
+    const before = sentOf("queue_status").length;
+    tick(15_000);
+    expect(sentOf("queue_status").length).toBe(before + 1);
+    say({ type: "queue_state", queued: false, count: 0 });
+    expect(q(".q-bar")).toBeNull();
+    tick(30_000);
+    expect(sentOf("queue_status").length).toBe(before + 1);   // nothing to check any more
   });
 });

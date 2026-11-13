@@ -16,6 +16,7 @@ function barText(q: QueueView, now: number): BarText {
   const botsIn = q.botsAt !== null && !q.waitPlayers ? q.botsAt - now : Infinity;
   const warn = botsIn <= BOTS_WARN_MS;
   const partner = q.partyId ? partnerName(q.party) : null;
+  if (q.elsewhere) return { label: "Searching on another device", waited, sub: "Leave queue here to stop it", warn: false };
   const label = partner ? `You + ${partner}` : q.front && !warn ? "Back in queue" : "Finding a ranked game";
   const sub = q.botsPaused ? "Bots paused"
     : q.waitPlayers ? (q.leader ? "Waiting for people" : "Only tables with people")
@@ -37,7 +38,7 @@ function Actions({ q, compact }: { q: QueueView; compact?: boolean }) {
   const partner = q.partyId ? partnerName(q.party) : null;
   return (
     <>
-      <button type="button" className="q-bots" disabled={!leads || q.pending !== null}
+      <button type="button" className="q-bots" disabled={!leads || q.pending !== null || q.elsewhere}
               title={leads ? undefined : `${partner ?? "Your partner"} leads`}
               onClick={() => queue.startBots()}>
         {q.pending === "bots" ? "Starting…" : "Start with bots"}
@@ -71,7 +72,7 @@ export function OpenTablesChip({ q }: { q: QueueView }) {
  *  state in the sub-line. The bar puts the switch after its label, the chip
  *  before it. */
 export function WaitToggle({ q }: { q: QueueView }) {
-  if (!q.leader) return null;
+  if (!q.leader || q.elsewhere) return null;
   return (
     <button type="button" role="switch" aria-checked={q.waitPlayers} className="q-wait"
             disabled={q.pending !== null}

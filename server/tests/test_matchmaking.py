@@ -22,6 +22,11 @@ from tests.test_server_ws import _drain, client  # noqa: F401
 
 
 # ---------------------------------------------------------------- harness
+# Two device keys as a client sends them (``?device=``): 22 base64url chars.
+DEVICE_A = "AAAAAAAAAAAAAAAAAAAAAA"
+DEVICE_B = "BBBBBBBBBBBBBBBBBBBBBB"
+
+
 class FakeConn(mm.Conn):
     def __init__(self, uid, name):
         super().__init__(None, uid, name)
@@ -696,8 +701,12 @@ def test_one_entry_per_account_and_a_second_socket_takes_it_over():
         env.mm.connect(second)
         await env.mm.handle(second, {"type": "queue_join"}, 1)
         assert len(env.mm.entries) == 1 and env.mm.count() == 1
-        assert env.conns[1].last("queue_state")["replaced"] is True
+        states = env.conns[1].of("queue_state")
+        assert any(m.get("replaced") is True and m["queued"] is False for m in states)
+        # the first socket then shows the search as held elsewhere
+        assert states[-1]["queued"] is True and states[-1]["elsewhere"] is True
         assert env.mm.conns[1] is second and second.last("queue_state")["queued"]
+        assert "elsewhere" not in second.last("queue_state")
     run(go())
 
 
@@ -904,6 +913,7 @@ def wsenv(accounts_on, client):  # noqa: F811
     clock = Clock()
     mmk = srv.MATCHMAKER
     mmk.reset()
+    srv.GUEST_IDS.clear()
     saved = (mmk.clock, mmk.autorun)
     mmk.clock, mmk.autorun = clock, False
     try:
@@ -989,7 +999,7 @@ def test_ws_four_players_fill_a_waiting_table_and_land_in_a_started_rated_room(w
         assert srv.MATCHMAKER.entries == {} and srv.MATCHMAKER.tables == {}
 
 
-def test_ws_guest_is_refused(wsenv):
+def test_ws_a_guest_with_no_device_key_cannot_queue(wsenv):
     srv, store, client, clock = wsenv
     with client.websocket_connect("/ws") as g:
         g.send_json({"type": "queue_join"})
@@ -1232,14 +1242,14 @@ class Tables:
     def add(self, code, seats, round_end=False):
         """``seats``: an int is a person's account, "bot" a bot seat."""
         self.tables[code] = {"code": code, "round_end": round_end, "seats": [
-            {"name": "Bot", "bot": True, "open": True, "user_id": None, "team": i % 2}
+            {"name": "Bot", "bot": True, "open": True, "queue_id": None, "team": i % 2}
             if s == "bot" else
-            {"name": f"P{s}", "bot": False, "open": False, "user_id": s, "team": i % 2}
+            {"name": f"P{s}", "bot": False, "open": False, "queue_id": s, "team": i % 2}
             for i, s in enumerate(seats)]}
 
     def take(self, code, seat, uid):
         self.tables[code]["seats"][seat] = {"name": f"P{uid}", "bot": False, "open": False,
-                                            "user_id": uid, "team": seat % 2}
+                                            "queue_id": uid, "team": seat % 2}
 
     def __call__(self):
         return [t for t in self.tables.values() if any(s["open"] for s in t["seats"])]
@@ -1418,7 +1428,7 @@ def test_join_then_leave_costs_a_cooldown_and_the_table_is_never_offered_again(s
             env.mm.join_ended(1, back_in_line=False, penalty=True)
         assert env.mm._entry(1) is None
         tables.tables["OPEN"]["seats"][2] = {"name": "Bot", "bot": True, "open": True,
-                                             "user_id": None, "team": 0}
+                                             "queue_id": None, "team": 0}
         await env.send(1, "queue_join")
         err = env.conns[1].last("error")
         assert err["code"] == "cooldown"
@@ -1482,7 +1492,8 @@ class OpenRoom:
         self.srv = srv
         self.room = room = srv.Room(code=code, matched=True, move_timer=True)
         room.seats = [srv.Seat(name=f"Bot {i}", is_bot=True) if s == "bot"
-                      else srv.Seat(name=f"P{s}", user_id=s, connected=True)
+                      else srv.Seat(name=f"P{s}", user_id=s, queue_id=s,
+                                connected=True)
                       for i, s in enumerate(seats)]
         room.game = Game(start_level="2", games_to_win=None)
         srv.rooms[code] = room
@@ -1738,7 +1749,7 @@ def test_an_away_seat_is_offered_from_the_round_boundary_and_its_owner_reclaims_
         # away for the whole of round 2: offered from its end
         view = srv.open_tables()[0]["seats"]
         assert view[2] == {"name": "Dana", "bot": False, "away": True, "open": True,
-                           "team": 0, "user_id": dana}
+                           "team": 0, "queue_id": dana, "device": None}
         await t.next_round(banker=0)
         await t.until(lambda r: r.phase == "play" and r.trick.plays
                       and all(p.seat != 2 for p in r.trick.plays))
@@ -1928,19 +1939,23 @@ def test_ws_an_invite_link_seats_a_signed_in_friend_even_with_joiners_off(wsenv,
     ratings.CARRIED_CAPS.clear()
 
 
-def test_ws_a_guest_with_a_ranked_invite_is_asked_to_sign_in(wsenv, monkeypatch):
+def test_ws_a_guest_with_a_ranked_invite_joins_as_a_newcomer(wsenv, monkeypatch):
     srv, store, client, clock = wsenv
     _, host_headers = _ranked_host(srv, store, client, monkeypatch)
     with client.websocket_connect("/ws", headers=host_headers) as h, \
-            client.websocket_connect("/ws") as g:
+            client.websocket_connect("/ws") as nokey, \
+            client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         code, room = _start_ranked(srv, h)
         g.send_json({"type": "peek_room", "room": code})
         assert _drain(g, "room_seats")["ranked"] is True
+        # no device key: no queue identity, so no way in
+        nokey.send_json({"type": "join_room", "room": code, "name": "Guest", "seat": 2})
+        assert _drain(nokey, "error")["code"] == "ranked_queue_only"
         g.send_json({"type": "join_room", "room": code, "name": "Guest", "seat": 2})
-        err = _drain(g, "error")
-        assert err["code"] == "ranked_sign_in" and err["message"] == "Sign in to join a ranked table."
-        assert all(sd.user_id != None or sd.is_bot for sd in room.seats)  # noqa: E711
-        assert room.pending_joins == {}
+        started = _drain(g, "match_started")
+        assert started["joining"] is True and started["seat"] == 2
+        seat = room.seats[2]
+        assert seat.user_id is None and (seat.queue_id or room.pending_joins[2].uid) < 0
 
 
 def test_ws_a_ranked_invite_with_no_bot_seat_is_table_full(wsenv, monkeypatch):
@@ -2151,3 +2166,628 @@ def test_ws_a_rename_while_seated_renames_the_seat_in_the_next_frame(wsenv, monk
         assert _drain(a, "state", tries=80)["players"][0]["name"] == "Gamename"
         log = (srv.LOG_DIR / f"{code}.jsonl").read_text()
         assert '"e": "seat_renamed"' in log
+
+
+# ------------------------------------------------------------ guests
+def _guest(env, uid, device, name=None):
+    conn = FakeConn(uid, name or f"G{-uid}")
+    conn.device = device
+    env.conns[uid] = conn
+    env.mm.connect(conn)
+    return conn
+
+
+def test_a_guest_queues_at_1000_and_one_device_never_sits_twice_at_a_table():
+    async def go():
+        env = Env()
+        env.player(1, rating=1600).device = DEVICE_A
+        _guest(env, -1, DEVICE_A)                # the same device, signed out
+        await env.join(1, rating=1600)
+        await env.join(-1)
+        assert env.mm._entry(-1).member_ratings == {-1: ratings.GUEST_RATING}
+        assert env.mm.tables == {}               # the two places are one device's
+        env.player(2).device = DEVICE_B
+        await env.join(2)
+        [t] = env.mm.tables.values()
+        assert 2 in t.seats and (1 in t.seats) != (-1 in t.seats)
+    run(go())
+
+
+def test_a_pair_needs_two_devices():
+    async def go():
+        env = Env()
+        env.player(1).device = DEVICE_A
+        g = _guest(env, -1, DEVICE_A)
+        await env.send(1, "party_create")
+        code = env.conns[1].last("party")["code"]
+        await env.send(-1, "party_join", code=code)
+        assert g.last("error")["code"] == "same_device"
+        other = _guest(env, -2, DEVICE_B)
+        await env.send(-2, "party_join", code=code)
+        assert other.last("party")["members"][1]["name"] == "G2"
+        assert env.mm._party(1).members == [1, -2]
+    run(go())
+
+
+def test_an_open_table_holding_the_device_is_not_offered():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [7, "bot", "bot", "bot"])
+        tables.tables["OPEN"]["seats"][0]["device"] = DEVICE_A
+        _guest(env, -1, DEVICE_A)
+        await env.join(-1)
+        assert env.conns[-1].last("queue_state")["offer"] is None
+        await env.send(-1, "queue_leave")
+        _guest(env, -2, DEVICE_B)
+        await env.join(-2)
+        assert env.conns[-2].last("queue_state")["offer"]["room"] == "OPEN"
+    run(go())
+
+
+def test_ws_a_guest_with_a_device_key_queues(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join", "name": "Guesty"})
+        state = _drain(g, "queue_state")
+        assert state["queued"] is True and state["table"] is None
+        assert srv.MATCHMAKER.entry_of.keys() == {-1}
+    # a malformed key is no key
+    with client.websocket_connect("/ws?device=short") as bad:
+        bad.send_json({"type": "queue_join"})
+        assert _drain(bad, "error")["code"] == "signed_in_only"
+
+
+def test_ws_a_guest_and_an_account_share_a_table_and_start(wsenv):
+    srv, store, client, clock = wsenv
+    uid, headers = _user(store, "acct", "Acct Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a, \
+            client.websocket_connect(f"/ws?device={DEVICE_B}") as g:
+        a.send_json({"type": "queue_join"})
+        _drain(a, "queue_state")
+        g.send_json({"type": "queue_join", "name": "Guesty"})
+        table = _drain(g, "queue_state")["table"]
+        assert [s["name"] for s in table["seats"][:2]] == ["Acct", "Guesty"]
+        a.send_json({"type": "table_start"})
+        g.send_json({"type": "table_start"})
+        seen_a = _until(a, "match_started")
+        seen_g = _until(g, "match_started")
+        assert "guest" not in seen_a[-1] and seen_g[-1]["guest"] is True
+        room = srv.rooms[seen_g[-1]["room"]]
+        state = _drain(g, "state", tries=80)
+        human = [sd for sd in room.seats if not sd.is_bot]
+        assert [(sd.user_id, sd.queue_id) for sd in human] == [(uid, uid), (None, -1)]
+        assert state["guest"] is True and "guest" not in _drain(a, "state", tries=80)
+        assert room.ratings.present == {0: uid}
+        frames = seen_a + seen_g + [state]
+        assert DEVICE_A not in str(frames) and DEVICE_B not in str(frames)
+        log = (srv.LOG_DIR / f"{room.code}.jsonl").read_text()
+        assert DEVICE_A not in log and DEVICE_B not in log and '"user_ids"' not in log
+
+
+def test_ws_a_guest_comes_back_to_its_matched_seat_by_token_only(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join", "name": "Guesty"})
+        _drain(g, "queue_state")
+        g.send_json({"type": "queue_start_bots"})
+        seen = _until(g, "match_started")
+        code = seen[-1]["room"]
+        token = next(m for m in seen if m["type"] == "resume")["token"]
+    room = srv.rooms[code]
+    with client.websocket_connect(f"/ws?device={DEVICE_B}") as other:
+        other.send_json({"type": "join_room", "room": code, "name": "Guesty"})
+        assert _drain(other, "error")["code"] in ("ranked_queue_only", "table_full",
+                                                  "seat_unavailable")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as back:
+        back.send_json({"type": "join_room", "room": code, "token": token})
+        state = _drain(back, "state", tries=80)
+        assert state["you"] == 0 and room.seats[0].connected
+        assert room.seats[0].queue_id == -1 and room.seats[0].user_id is None
+
+
+def test_ws_the_same_device_gets_the_same_guest_id_after_a_reconnect(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join"})
+        assert _drain(g, "queue_state")["queued"] is True
+    with client.websocket_connect(f"/ws?device={DEVICE_B}") as other:
+        other.send_json({"type": "queue_join"})
+        _drain(other, "queue_state")
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as again:
+            assert _drain(again, "queue_state")["queued"] is True   # its entry, back
+            assert srv.MATCHMAKER.conns[-1].ws is not None
+            assert srv.guest_queue_id(DEVICE_A) == -1 and srv.guest_queue_id(DEVICE_B) == -2
+
+
+def test_ws_one_device_is_refused_a_second_seat_at_a_ranked_table(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    host, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=host_headers) as h, \
+            client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        code, room = _start_ranked(srv, h)
+        g.send_json({"type": "join_room", "room": code, "name": "Guesty", "seat": 2})
+        assert _drain(g, "error")["code"] == "same_device"
+        assert room.pending_joins == {}
+
+        class Sock:
+            device = DEVICE_A
+        assert client.portal.call(srv.join_open_table, code, 2, -1, "Guesty", Sock()) \
+            == "same_device"
+        assert client.portal.call(srv.join_pair_open_table, code, [1, 3], [-1, -2],
+                                  ["G1", "G2"], [Sock(), Sock()], -1) == "same_device"
+        assert room.pending_joins == {}
+
+
+def test_ws_a_guest_who_joins_then_leaves_gets_the_cooldown(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    host, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect(f"/ws?device={DEVICE_B}") as g:
+        code, room = _start_ranked(srv, h)
+        g.send_json({"type": "join_room", "room": code, "name": "Guesty", "seat": 2})
+        assert _drain(g, "match_started")["guest"] is True
+        g.send_json({"type": "leave_room"})
+        _drain(g, "left")
+        assert srv.MATCHMAKER.cooldowns[-1] > clock()
+        g.send_json({"type": "queue_join"})
+        err = _drain(g, "error")
+        assert err["code"] == "cooldown" and err["cooldown_until"] > clock()
+    # a guest seated mid-round who leaves it: the cooldown, and no carried cap
+    caps = set(ratings.CARRIED_CAPS)
+    srv._joined_leave_penalty(room, None, -5)
+    assert srv.MATCHMAKER.cooldowns[-5] > clock() and ratings.CARRIED_CAPS == caps
+
+
+# ------------------------------------------------- the move timer and one human
+def _owes(srv, room, seat=0):
+    async def check():
+        async with room.lock:
+            return (room.bot_task is None or room.bot_task.done()) and seat in srv._owing_seats(room)
+    return check
+
+
+def test_ws_one_human_at_a_matched_table_has_no_move_clock_until_a_second_sits(
+        wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    t = {"v": 5000.0}
+    monkeypatch.setattr(srv, "now", lambda: t["v"])
+    _, host_headers = _ranked_host(srv, store, client, monkeypatch)
+    friend, friend_headers = _user(store, "friend", "Friend")
+    with client.websocket_connect("/ws", headers=host_headers) as h:
+        code, room = _start_ranked(srv, h)
+        assert room.matched and room.move_timer
+        _wait_until(lambda: client.portal.call(_owes(srv, room)))
+
+        async def frame():
+            async with room.lock:
+                await srv.broadcast(room)
+                return srv.state_for(room, 0)
+        state = client.portal.call(frame)
+        assert state["players"][0]["turn_deadline"] is None
+        assert room.seats[0].turn_started is None
+        t["v"] += 10 * srv.MOVE_TIMER
+        assert client.portal.call(srv.move_timer_tick, room) is False
+        assert client.portal.call(_owes(srv, room)), "the bot decided for the lone player"
+        assert room.seats[0].timeouts_in_row == 0
+
+        with client.websocket_connect("/ws", headers=friend_headers) as f:
+            async def due_seat():
+                async with room.lock:
+                    return next(s for s in (1, 2, 3) if srv._join_due(room, s))
+            seat = client.portal.call(due_seat)
+            f.send_json({"type": "join_room", "room": code, "seat": seat})
+            _drain(f, "match_started")
+            _wait_until(lambda: room.seats[seat].user_id == friend)
+            state = client.portal.call(frame)
+            # the clock starts fresh for the decision still owed
+            assert room.seats[0].turn_started == t["v"]
+            assert state["players"][0]["turn_deadline"] == srv.MOVE_TIMER
+            t["v"] += srv.MOVE_TIMER + 1
+            assert client.portal.call(srv.move_timer_tick, room) is True
+            assert room.seats[0].timeouts_in_row == 1
+
+
+# ------------------------------------------------- a guest signs in
+def _next(ws, kind, pred, tries=80):
+    """The first message of ``kind`` that satisfies ``pred``."""
+    for _ in range(tries):
+        m = _drain(ws, kind)
+        if pred(m):
+            return m
+    raise AssertionError(f"no matching {kind}")
+
+
+def _settled(ws):
+    """Wait until the server has run this socket's connect."""
+    ws.send_json({"type": "ping", "nonce": 1})
+    _drain(ws, "pong")
+
+
+def _guest_match(client, device=DEVICE_A):
+    """A guest on ``device`` starts a matched game with bots: (room code, token)."""
+    with client.websocket_connect(f"/ws?device={device}") as g:
+        g.send_json({"type": "queue_join", "name": "Guesty"})
+        _drain(g, "queue_state")
+        g.send_json({"type": "queue_start_bots"})
+        seen = _until(g, "match_started")
+        token = next(m for m in seen if m["type"] == "resume")["token"]
+        return seen[-1]["room"], token
+
+
+def test_ws_a_guest_who_signs_in_takes_its_matched_seat_back_as_the_account(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    code, token = _guest_match(client)
+    room = srv.rooms[code]
+    assert room.ratings.kinds[0] == ratings.GUEST and room.ratings.present == {}
+    round_no = room.game.round_no
+    uid, headers = _user(store, "signer", "Acct Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+        a.send_json({"type": "join_room", "room": code, "token": token})
+        state = _drain(a, "state", tries=80)
+        assert state["you"] == 0 and "guest" not in state
+        seat = room.seats[0]
+        assert (seat.user_id, seat.queue_id, seat.name) == (uid, uid, "Acct")
+        assert seat.connected and srv._holds_seat(room, uid) and not srv._holds_seat(room, -1)
+        # the round in play stays as it started: a guest seat, unrated for it
+        assert room.game.round_no == round_no
+        assert room.ratings.kinds[0] == ratings.GUEST and room.ratings.present == {}
+        assert ratings.participants(room, room.ratings) == []
+
+
+def test_ws_a_guest_seat_moves_only_to_an_account_signed_in_on_that_device(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    code, token = _guest_match(client)
+    room = srv.rooms[code]
+    _, headers = _user(store, "elsewhere", "Else Where")
+    with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=headers) as a:
+        a.send_json({"type": "join_room", "room": code, "token": token})
+        assert _drain(a, "error")["code"] in ("table_full", "seat_unavailable")
+    assert room.seats[0].user_id is None and room.seats[0].queue_id == -1
+
+
+def test_ws_a_signed_out_account_cannot_take_its_matched_seat_as_a_guest(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    uid, headers = _user(store, "leaver", "Lea Ver")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+        a.send_json({"type": "queue_join"})
+        _drain(a, "queue_state")
+        a.send_json({"type": "queue_start_bots"})
+        seen = _until(a, "match_started")
+        code = seen[-1]["room"]
+        token = next(m for m in seen if m["type"] == "resume")["token"]
+    room = srv.rooms[code]
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "join_room", "room": code, "token": token, "name": "Lea"})
+        assert _drain(g, "error")["code"] == "ranked_queue_only"
+    seat = room.seats[0]
+    assert (seat.user_id, seat.queue_id) == (uid, uid) and not seat.connected
+    assert room.pending_joins == {}
+
+
+def test_ws_a_guest_who_signs_in_at_a_waiting_table_leaves_it_and_the_table_is_told(wsenv):
+    srv, store, client, clock = wsenv
+    other, other_headers = _user(store, "other", "Other Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=other_headers) as b:
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+            g.send_json({"type": "queue_join", "name": "Guesty"})
+            _drain(g, "queue_state")
+            b.send_json({"type": "queue_join"})
+            _next(b, "queue_state", lambda m: m["table"] is not None)
+            assert srv.MATCHMAKER.entry_of.keys() == {-1, other}
+        uid, headers = _user(store, "signer", "Acct Person")
+        with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+            _settled(a)
+            # the guest's place is gone; the account holds nothing until Play
+            assert srv.MATCHMAKER.entry_of.keys() == {other}
+            assert srv.MATCHMAKER.tables == {}
+            alone = _next(b, "queue_state", lambda m: m["table"] is None)
+            assert alone["queued"] is True
+            assert srv.MATCHMAKER.count() == 1
+            a.send_json({"type": "queue_join"})
+            table = _next(a, "queue_state", lambda m: m["table"] is not None)["table"]
+            assert srv.MATCHMAKER.entry_of.keys() == {other, uid}
+            assert sorted(s["name"] for s in table["seats"] if s) == ["Acct", "Other"]
+
+
+def test_ws_a_guest_who_signs_in_while_searching_alone_leaves_the_queue(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join", "name": "Guesty"})
+        _drain(g, "queue_state")
+    uid, headers = _user(store, "signer", "Acct Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+        _settled(a)
+        assert srv.MATCHMAKER.entry_of == {} and srv.MATCHMAKER.count() == 0
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["queued"] is True
+        assert srv.MATCHMAKER.entry_of.keys() == {uid}
+
+
+def test_ws_a_guest_who_signs_in_in_a_pair_ends_the_pair(wsenv):
+    srv, store, client, clock = wsenv
+    friend, friend_headers = _user(store, "friend", "Friend Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=friend_headers) as f:
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+            f.send_json({"type": "party_create"})
+            code = _drain(f, "party")["code"]
+            g.send_json({"type": "party_join", "code": code, "name": "Guesty"})
+            _drain(g, "party")
+            f.send_json({"type": "queue_join"})
+            assert _next(f, "queue_state", lambda m: m["queued"])["queued"] is True
+            assert srv.MATCHMAKER.entry_of.keys() == {friend, -1}
+        _, headers = _user(store, "signer", "Acct Person")
+        with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+            _settled(a)
+            assert _next(f, "queue_state", lambda m: not m["queued"])["queued"] is False
+            closed = _drain(f, "party_closed")
+            assert closed["reason"] == "left" and closed["you"] is False
+            assert srv.MATCHMAKER.parties == {} and srv.MATCHMAKER.party_of == {}
+            assert srv.MATCHMAKER.entry_of == {} and srv.MATCHMAKER.count() == 0
+
+
+def test_ws_a_guest_reconnecting_as_a_guest_keeps_its_waiting_table_seat(wsenv):
+    srv, store, client, clock = wsenv
+    other, other_headers = _user(store, "other", "Other Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=other_headers) as b:
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+            g.send_json({"type": "queue_join", "name": "Guesty"})
+            _drain(g, "queue_state")
+            b.send_json({"type": "queue_join"})
+            _next(b, "queue_state", lambda m: m["table"] is not None)
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as again:
+            assert _next(again, "queue_state", lambda m: m["table"] is not None)["queued"]
+            assert srv.MATCHMAKER.entry_of.keys() == {-1, other}
+            [t] = srv.MATCHMAKER.tables.values()
+            assert -1 in t.seats and other in t.seats
+
+
+def _same_device_lobby(srv, store, client):
+    """A created casual room: its host signed in on DEVICE_A, a guest on the
+    same device in seat 1."""
+    _, headers = _user(store, "host", "Host Person")
+    host = client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers)
+    guest = client.websocket_connect(f"/ws?device={DEVICE_A}")
+    h, g = host.__enter__(), guest.__enter__()
+    h.send_json({"type": "create_room", "name": "Host"})
+    code = _drain(h, "room")["room"]
+    g.send_json({"type": "join_room", "room": code, "name": "Guesty"})
+    _drain(g, "room")
+    room = srv.rooms[code]
+    assert [sd.device for sd in room.seats[:2]] == [DEVICE_A, DEVICE_A]
+    return (host, guest), h, g, room
+
+
+def test_ws_ranked_is_refused_with_two_players_on_one_device(wsenv):
+    srv, store, client, clock = wsenv
+    ctx, h, g, room = _same_device_lobby(srv, store, client)
+    try:
+        h.send_json({"type": "set_ranked", "on": True})
+        err = _drain(h, "error")
+        assert err["code"] == "same_device" and "one device" in err["message"]
+        assert room.ranked is False and room.move_timer is False
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+
+
+def test_a_ranked_start_with_two_players_on_one_device_is_refused(wsenv):
+    srv, store, client, clock = wsenv
+    ctx, h, g, room = _same_device_lobby(srv, store, client)
+    try:
+        room.seats[1].device = DEVICE_B
+        h.send_json({"type": "set_ranked", "on": True})
+        _next(h, "room", lambda m: m.get("ranked") is True)
+        room.seats[1].device = DEVICE_A       # however the seat came to share it
+        h.send_json({"type": "start_game"})
+        assert _drain(h, "error")["code"] == "same_device"
+        assert room.game is None and room.ratings is None
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    # a queue-matched room is held to the same rule at its start
+    matched = srv.Room(code="SAMEDV", matched=True, move_timer=True)
+    matched.seats = [srv.Seat(name="A", user_id=7, queue_id=7, device=DEVICE_A),
+                     srv.Seat(name="Bot 1", is_bot=True),
+                     srv.Seat(name="G", queue_id=-3, device=DEVICE_A),
+                     srv.Seat(name="Bot 3", is_bot=True)]
+    with pytest.raises(srv.SameDevice):
+        client.portal.call(srv.handle_action, matched, 0, {"type": "start_game"})
+    assert matched.game is None
+
+
+# ------------------------------------------------- queue truth per socket
+def test_every_socket_of_an_account_shows_the_search_the_server_holds():
+    async def go():
+        env = Env()
+        await env.join(1)
+        other = FakeConn(1, "P1")                   # the same account in another tab
+        env.mm.connect(other)
+        held = other.last("queue_state")
+        assert held["queued"] is True and held["elsewhere"] is True and held["table"] is None
+        await env.join(2)                           # a table forms on the first socket
+        assert env.conns[1].last("queue_state")["table"] is not None
+        assert other.last("queue_state")["elsewhere"] is True
+        await env.send(1, "queue_leave")
+        assert env.conns[1].last("queue_state")["queued"] is False
+        assert other.last("queue_state")["queued"] is False
+    run(go())
+
+
+def test_a_search_dropped_while_its_socket_is_away_clears_the_accounts_other_tabs():
+    async def go():
+        env = Env()
+        await env.join(1)
+        other = FakeConn(1, "P1")
+        env.mm.connect(other)
+        env.mm.disconnect(env.conns[1])             # the searching tab goes away
+        env.clock.advance(mm.AWAY_SECS + 1)
+        await env.mm.pump()
+        assert env.mm._entry(1) is None
+        assert other.last("queue_state")["queued"] is False
+    run(go())
+
+
+def test_a_match_start_clears_the_accounts_other_tabs():
+    async def go():
+        env = Env()
+        await env.join(1)
+        other = FakeConn(1, "P1")
+        env.mm.connect(other)
+        await env.send(1, "queue_start_bots")
+        assert env.started and other.last("queue_state")["queued"] is False
+    run(go())
+
+
+def test_queue_status_answers_each_socket_with_what_the_server_holds_for_it():
+    async def go():
+        env = Env()
+        await env.join(1)
+        other = FakeConn(1, "P1")
+        env.mm.connect(other)
+        other.clear()
+        await env.mm.handle(env.conns[1], {"type": "queue_status"}, 1)
+        mine = env.conns[1].last("queue_state")
+        assert mine["queued"] is True and "elsewhere" not in mine
+        await env.mm.handle(other, {"type": "queue_status"}, 1)
+        assert other.last("queue_state")["elsewhere"] is True
+        assert env.mm.conns[1] is env.conns[1]      # asking never takes the entry over
+        nobody = FakeConn(None, "")
+        env.mm.connect(nobody)
+        await env.mm.handle(nobody, {"type": "queue_status"}, None)
+        assert nobody.last("queue_state")["queued"] is False and not nobody.of("error")
+        lone = env.player(3)
+        await env.send(3, "queue_status")
+        assert lone.last("queue_state")["queued"] is False
+    run(go())
+
+
+def test_queue_status_for_a_guest_and_from_a_seated_socket():
+    async def go():
+        env = Env()
+        guest = FakeConn(-4, "Guest")
+        env.conns[-4] = guest
+        env.mm.connect(guest)
+        await env.send(-4, "queue_join")
+        guest.clear()
+        await env.send(-4, "queue_status")
+        assert guest.last("queue_state")["queued"] is True
+        tab = FakeConn(-4, "Guest")
+        env.mm.connect(tab)
+        await env.mm.handle(tab, {"type": "queue_status"}, -4)
+        assert tab.last("queue_state")["elsewhere"] is True
+        await env.send(-4, "queue_start_bots")      # seated in a room now
+        assert tab.last("queue_state")["queued"] is False
+        await env.send(-4, "queue_status")
+        assert guest.last("queue_state")["queued"] is False and not guest.of("error")
+    run(go())
+
+
+def test_a_new_socket_from_the_same_device_takes_the_search_over():
+    async def go():
+        env = Env()
+        first = FakeConn(1, "P1")
+        first.device = DEVICE_A
+        env.conns[1] = first
+        env.mm.connect(first)
+        await env.send(1, "queue_join")
+        # the page reconnects while the server still thinks the old socket is open
+        again = FakeConn(1, "P1")
+        again.device = DEVICE_A
+        env.mm.connect(again)
+        assert env.mm.conns[1] is again
+        state = again.last("queue_state")
+        assert state["queued"] is True and "elsewhere" not in state
+        assert any(m.get("replaced") for m in first.of("queue_state"))
+        # another device of the account does not take it
+        phone = FakeConn(1, "P1")
+        phone.device = DEVICE_B
+        env.mm.connect(phone)
+        assert env.mm.conns[1] is again and phone.last("queue_state")["elsewhere"] is True
+    run(go())
+
+
+def test_queue_events_are_logged_by_kind_without_identity():
+    import logging
+
+    class Grab(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.lines: list[str] = []
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+    grab = Grab()
+    mm.qlog.addHandler(grab)
+    try:
+        async def go():
+            env = Env()
+            await env.join(1234567, name=None)
+            guest = FakeConn(-9, "Secret Name")
+            env.conns[-9] = guest
+            env.mm.connect(guest)
+            await env.send(-9, "queue_join")
+            await env.send(1234567, "queue_leave")
+            await env.send(-9, "queue_start_bots")
+        run(go())
+    finally:
+        mm.qlog.removeHandler(grab)
+    import json
+    recs = [json.loads(line) for line in grab.lines]
+    assert [(r["queue"], r.get("who"), r.get("reason")) for r in recs] == [
+        ("join", "account", None), ("join", "guest", None), ("leave", "account", "leave"),
+        ("leave", "guest", "bots"), ("start", None, None)]
+    assert all("queued" in r for r in recs) and recs[2]["wait"] >= 0
+    text = "\n".join(grab.lines)
+    assert "1234567" not in text and "Secret" not in text and "-9" not in text
+
+
+def test_a_queue_writer_that_failed_once_delivers_later_messages():
+    class FlakyWs:
+        def __init__(self):
+            self.sent: list[dict] = []
+            self.fail = True
+
+        async def send_json(self, payload):
+            if self.fail:
+                self.fail = False
+                raise RuntimeError("transient")
+            self.sent.append(payload)
+
+    async def go():
+        ws = FlakyWs()
+        c = mm.Conn(ws, 1, "P1")
+        c.push({"type": "queue_count", "count": 1})
+        for _ in range(5):
+            await asyncio.sleep(0)
+        c.push({"type": "queue_state", "queued": False, "count": 0})
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert ws.sent == [{"type": "queue_state", "queued": False, "count": 0}]
+    run(go())
+
+
+def test_ws_two_sockets_of_one_account_both_see_the_true_search(wsenv):
+    srv, store, client, clock = wsenv
+    _, headers = _user(store, "twotabs", "Two Tabs")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a, \
+            client.websocket_connect(f"/ws?device={DEVICE_B}", headers=headers) as b:
+        _settled(a)
+        _settled(b)
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["queued"] is True
+        held = _drain(b, "queue_state")
+        assert held["queued"] is True and held["elsewhere"] is True
+        b.send_json({"type": "queue_status"})
+        assert _drain(b, "queue_state")["elsewhere"] is True
+        a.send_json({"type": "queue_leave"})
+        assert _drain(a, "queue_state")["queued"] is False
+        assert _drain(b, "queue_state")["queued"] is False
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_status", "name": "Guesty"})
+        assert _drain(g, "queue_state")["queued"] is False

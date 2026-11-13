@@ -6,6 +6,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { auth, effectiveName } from "../auth";
+import { guestName } from "../guestName";
 import type { ConnStatus } from "../ws";
 import { conn } from "../ws";
 import { haptic } from "../native";
@@ -22,6 +23,10 @@ export const BOT_FILL_MS = 60_000;
 export const RESYNC_MS = 2500;
 /** How long a queue notice stays up. */
 export const NOTE_MS = 5000;
+/** How long the server has to confirm a Play before the button reverts. */
+export const CONFIRM_MS = 3000;
+/** While searching, how often the client asks the server what it holds. */
+export const CHECK_MS = 15_000;
 
 /** A seat at the waiting table, times in local ms. */
 export interface TableSeat {
@@ -59,7 +64,7 @@ export interface OfferView {
   partner: { seat: number; name: string } | null;
 }
 
-export type Sheet = null | "solo" | "guest" | "party";
+export type Sheet = null | "solo" | "party";
 
 export interface QueueNote { id: number; title: string; sub?: string }
 
@@ -84,6 +89,9 @@ export interface QueueView {
   openTables: number;
   /** Your bot wait stands still while an open table can be joined. */
   botsPaused: boolean;
+  /** The search is held by another socket of yours (another device or
+   *  window): shown, but its table and controls live there. */
+  elsewhere: boolean;
   party: PartyMsg | null;
   partyError: string | null;
   sheet: Sheet;
@@ -94,13 +102,14 @@ export interface QueueView {
 
 const EMPTY: QueueView = {
   count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
-  partyId: null, pending: null, table: null, offer: null, openTables: 0, botsPaused: false,
+  partyId: null, pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
   party: null, partyError: null, sheet: null, joinCode: "", note: null,
 };
 
+/** The name you play under: the account's, or a guest's own. */
 function myName(): string {
   const a = auth.state;
-  return a?.status === "in" && a.user ? effectiveName(a.user) : "";
+  return a?.status === "in" && a.user ? effectiveName(a.user) : guestName.name.trim();
 }
 
 /** The other member of a pair, by name. */
@@ -119,9 +128,13 @@ export class QueueStore {
   /** After a reconnect, how long the server has to hand the pair back. */
   private partyResyncTimer: number | null = null;
   private noteTimer: number | null = null;
+  /** A Play the server has not confirmed yet. */
+  private confirmTimer: number | null = null;
+  /** The next periodic check of what the server holds. */
+  private checkTimer: number | null = null;
   private noteId = 0;
   private status: ConnStatus = "closed";
-  /** A guest tapped Sign in to play people: reopen the choice once signed in. */
+  /** A `?party=` invite waits for the socket before its pair sheet opens. */
   findAfterSignIn = false;
   private attached = false;
   /** The signed-in account this state belongs to; null when signed out,
@@ -138,20 +151,26 @@ export class QueueStore {
     conn.subscribe?.((m) => this.onMessage(m));
   }
 
-  /** Queue, table and pair state belong to one account: a sign-out,
-   *  a deletion or another account's sign-in starts from nothing. */
+  /** Queue, table and pair state belong to one identity: a sign-in, a
+   *  sign-out, a deletion or another account's sign-in starts from nothing.
+   *  A guest who signs in mid-search is told to press Play again: the socket
+   *  reconnects as the account, and the server ends the guest's search,
+   *  waiting-table seat and pair (the others there see an ordinary leave). */
   private onAuth(account: string | null | undefined): void {
     if (account === this.account) return;
     const was = this.account;
     this.account = account;
-    // loading -> signed in keeps what the resync delivered
-    if (was === null || (was === undefined && account !== null)) return;
+    // loading -> known keeps what the resync delivered
+    if (was === undefined) return;
+    const searching = was === null && (this.view.queued || this.view.pending === "join");
     this.clearResync();
+    this.clearConfirm();
     this.clearPartyResync();
     this.joinSentAt = null;
     this.droppedWhileQueued = false;
     this.findAfterSignIn = false;
     this.set({ ...EMPTY, count: this.view.count, note: null });
+    if (searching) this.notify("Signed in. Press Play to search again.");
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -163,7 +182,36 @@ export class QueueStore {
 
   private set(next: Partial<QueueView>): void {
     this.view = { ...this.view, ...next };
+    if (this.view.pending !== "join") this.clearConfirm();
+    this.armCheck();
     for (const fn of this.listeners) fn();
+  }
+
+  /** Ask the server what it holds for this socket; it answers queue_state. */
+  private askStatus(): void {
+    this.send({ type: "queue_status" });
+  }
+
+  /** While the client shows a search, it asks the server now and then, so
+   *  a lost message can never leave a search on screen the server dropped. */
+  private armCheck(): void {
+    const showing = this.view.queued || this.view.pending !== null;
+    if (!showing) {
+      if (this.checkTimer !== null) window.clearTimeout(this.checkTimer);
+      this.checkTimer = null;
+      return;
+    }
+    if (this.checkTimer !== null) return;
+    this.checkTimer = window.setTimeout(() => {
+      this.checkTimer = null;
+      if (this.status === "open" && (this.view.queued || this.view.pending !== null)) this.askStatus();
+      this.armCheck();
+    }, CHECK_MS);
+  }
+
+  private clearConfirm(): void {
+    if (this.confirmTimer !== null) window.clearTimeout(this.confirmTimer);
+    this.confirmTimer = null;
   }
 
   /** Local ms for a server time in Unix seconds. */
@@ -171,8 +219,14 @@ export class QueueStore {
     return serverSecs * 1000 - this.skew;
   }
 
+  /** A guest's messages carry the name it plays under, which is kept for
+   *  next time (and for resuming a matched seat). */
   private send(msg: QueueClientMsg): boolean {
-    return conn.send(msg);
+    if (auth.state?.status === "in") return conn.send(msg);
+    const name = guestName.name.trim();
+    if (!name) return conn.send(msg);
+    guestName.keep(name);
+    return conn.send({ ...msg, name });
   }
 
   notify(title: string, sub?: string): void {
@@ -215,25 +269,24 @@ export class QueueStore {
     if (s === "open" && this.droppedWhileQueued) {
       this.droppedWhileQueued = false;
       this.clearResync();
+      // the server answers at once; the timer below is for one that cannot
+      this.askStatus();
       // A socket that comes back within the server's grace gets its entry
       // back at once (queue_state); silence means it was dropped.
       this.resyncTimer = window.setTimeout(() => {
         this.resyncTimer = null;
         const held = this.view.queued;
         if (!held && !this.view.pending) return;
-        const signedIn = auth.state?.status === "in";
         this.joinSentAt = null;
         this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false,
-                   offer: null, openTables: 0, botsPaused: false });
-        if (held && signedIn) this.notify("You left the queue while away.", "No cooldown.");
+                   offer: null, openTables: 0, botsPaused: false, elsewhere: false });
+        if (held) this.notify("You left the queue while away.", "No cooldown.");
       }, RESYNC_MS);
     }
   }
 
   private onMessage(msg: ServerMsg): void {
     const now = Date.now();
-    // the queue and pairs are signed-in only; a signed-out page keeps just the count
-    if (this.account === null && msg.type !== "queue_count") return;
     switch (msg.type) {
       case "queue_count":
         this.set({ count: msg.count });
@@ -241,10 +294,24 @@ export class QueueStore {
       case "queue_state": {
         this.clearResync();
         if (!msg.queued) {
-          const wasQueued = this.view.queued;
+          const wasQueued = this.view.queued && !this.view.elsewhere;
+          const leaving = this.view.pending === "leave";
           this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
-                     pending: null, table: null, offer: null, openTables: 0, botsPaused: false });
+                     pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false });
           if (msg.replaced && wasQueued) this.notify("Your search moved to another window.");
+          else if (wasQueued && !leaving && !msg.replaced) {
+            this.notify("You're no longer searching.", "Press Play to search again.");
+          }
+          break;
+        }
+        if (msg.elsewhere) {
+          // held by another socket of yours: shown here, run there
+          this.joinSentAt = null;
+          this.set({ queued: true, elsewhere: true, count: msg.count,
+                     since: msg.since !== undefined ? this.local(msg.since) : now,
+                     botsAt: null, waitPlayers: false, front: !!msg.front, leader: msg.leader !== false,
+                     partyId: msg.party_id ?? null, pending: null, table: null, offer: null,
+                     openTables: 0, botsPaused: false });
           break;
         }
         if (this.joinSentAt !== null && !msg.front && msg.since !== undefined) {
@@ -266,13 +333,14 @@ export class QueueStore {
           waitPlayers: msg.wait_players === true,
           front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
           pending, table, offer, openTables: msg.open_tables ?? 0, botsPaused: msg.bots_paused === true,
+          elsewhere: false,
         });
         break;
       }
       case "match_started":
         this.clearResync();
         this.set({ queued: false, table: null, pending: null, sheet: null, offer: null, openTables: 0, botsPaused: false,
-                   since: null, botsAt: null, waitPlayers: false, front: false, note: null });
+                   since: null, botsAt: null, waitPlayers: false, front: false, note: null, elsewhere: false });
         break;
       case "match_cancelled":
         this.set({ pending: null });
@@ -285,7 +353,7 @@ export class QueueStore {
         const me = myName();
         const by = msg.by && msg.by !== me ? msg.by : null;
         this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false,
-                   front: false, offer: null, openTables: 0, botsPaused: false });
+                   front: false, offer: null, openTables: 0, botsPaused: false, elsewhere: false });
         if (msg.reason === "idle") {
           this.notify("You left the table.", "No tap for 2 minutes. No cooldown.");
         } else if (msg.reason === "away") {
@@ -316,7 +384,21 @@ export class QueueStore {
         else if (msg.by && !msg.you) this.notify(`${msg.by} left the pair.`);
         break;
       case "error":
-        if (!msg.code || !QUEUE_ERROR_CODES.has(msg.code)) break;
+        // a pair needs two devices: the pair sheet says so where it was asked
+        if (msg.code === "same_device" && this.view.sheet === "party") {
+          this.set({ partyError: msg.message });
+          break;
+        }
+        if (!msg.code || !QUEUE_ERROR_CODES.has(msg.code)) {
+          // An error the queue does not name may still be the answer to a
+          // Play: never keep searching on it; the server says what it holds.
+          if (this.view.pending === "join" && !("lookup" in msg)) {
+            this.joinSentAt = null;
+            this.set({ pending: null });
+            this.askStatus();
+          }
+          break;
+        }
         this.joinSentAt = null;
         if (msg.code === "not_in_party") {
           // the server holds no pair for this account: the chip is stale
@@ -336,7 +418,7 @@ export class QueueStore {
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
           this.set({ pending: null, queued: false, table: null, since: null, botsAt: null, waitPlayers: false,
-                     front: false, offer: null, openTables: 0, botsPaused: false });
+                     front: false, offer: null, openTables: 0, botsPaused: false, elsewhere: false });
         } else {
           this.set({ pending: null });
         }
@@ -354,9 +436,23 @@ export class QueueStore {
     const pair = p && p.members.length === 2 ? p : null;
     if (pair && !pair.you_lead) return;
     const sent = this.send(pair ? { type: "queue_join", party_id: pair.party_id } : { type: "queue_join" });
-    if (!sent) return;
+    if (!sent) {
+      this.notify("Not connected.", "Press Play again in a moment.");
+      return;
+    }
     this.joinSentAt = Date.now();
     this.set({ pending: "join", sheet: null });
+    this.clearConfirm();
+    // Searching shows only once the server confirms; a Play lost on a dead
+    // socket reverts instead of searching forever.
+    this.confirmTimer = window.setTimeout(() => {
+      this.confirmTimer = null;
+      if (this.view.pending !== "join") return;
+      this.joinSentAt = null;
+      this.set({ pending: null });
+      this.notify("Couldn't start searching.", "Press Play to try again.");
+      if (this.status === "open") this.askStatus();
+    }, CONFIRM_MS);
   }
 
   leave(): void {
@@ -471,6 +567,9 @@ export class QueueStore {
   reset(): void {
     this.clearResync();
     this.clearPartyResync();
+    this.clearConfirm();
+    if (this.checkTimer !== null) window.clearTimeout(this.checkTimer);
+    this.checkTimer = null;
     if (this.noteTimer !== null) window.clearTimeout(this.noteTimer);
     this.noteTimer = null;
     this.view = EMPTY;

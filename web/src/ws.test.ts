@@ -431,3 +431,43 @@ describe("negotiated connection heartbeat", () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+describe("the device key", () => {
+  it("is made once, 22 url-safe characters, kept in storage and sent on every socket", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, deviceKey } = await load();
+      const key = deviceKey();
+      expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+      expect(deviceKey()).toBe(key);
+      expect(localStorage.getItem("shengji.device")).toBe(key);
+      conn.start();
+      const first = FakeWS.last!;
+      expect(new URL(first.url).searchParams.get("device")).toBe(key);
+      expect(new URL(first.url).searchParams.get("heartbeat")).toBe("1");
+      first.onopen?.();
+      first.close();
+      vi.advanceTimersByTime(30_000);
+      const second = FakeWS.last!;
+      expect(second).not.toBe(first);
+      expect(new URL(second.url).searchParams.get("device")).toBe(key);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("survives a reload, and two devices get different keys", async () => {
+    const a = (await load()).deviceKey();
+    expect((await load()).deviceKey()).toBe(a);
+    localStorage.clear();
+    expect((await load()).deviceKey()).not.toBe(a);
+  });
+
+  it("falls back to one in-memory key when storage refuses", async () => {
+    const { deviceKey } = await load();
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    try {
+      const key = deviceKey();
+      expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+      expect(deviceKey()).toBe(key);
+    } finally { get.mockRestore(); }
+  });
+});

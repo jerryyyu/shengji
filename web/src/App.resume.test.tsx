@@ -101,3 +101,19 @@ it("reports an explicit missing-room join after an automatic resume was refused"
   act(() => ws.deliver({ type: "error", code: "room_not_found", message: "Room not found" }));
   expect(host.textContent).toContain("That game has ended.");
 });
+
+it("a signed-out player's saved ranked seat asks them to sign in again and keeps the room", async () => {
+  const { default: App } = await import("./App");
+  const { saveRoom, saveName, getSavedRoom } = await import("./ws");
+  saveName("Me");
+  saveRoom("ABCD");
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  act(() => root.render(<App />));
+  const ws = FakeWS.all[0];
+  act(() => ws.onopen?.());
+  act(() => ws.deliver({ type: "error", code: "ranked_queue_only", message: "Ranked games are joined through the queue." }));
+  expect(host.textContent).toContain("Sign in again to return to your game.");
+  expect(getSavedRoom()).toBe("ABCD");
+});

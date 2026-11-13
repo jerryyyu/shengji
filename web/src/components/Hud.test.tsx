@@ -126,6 +126,15 @@ describe("failed-throw notice", () => {
     view.unmount();
   });
 
+  it("closes when the round ends, even if no later trick cleared it", () => {
+    const notice = failedThrow(4);
+    const view = render(makeState({ notice }));
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, phase: "round_end" }));
+    expect(view.host.querySelector(".hud-notice")).toBeNull();
+    view.unmount();
+  });
+
   it("goes away by itself once the trick after the failed throw is over", () => {
     const trickA = { leader: 0, plays: [], winner: 0 } as unknown as GameState["last_trick"];
     const trickB = { leader: 1, plays: [], winner: 1 } as unknown as GameState["last_trick"];

@@ -257,6 +257,10 @@ class Seat:
     # Set when the host removed this occupant before the game: the seat is no
     # longer in the room, and the socket that held it returns to the lobby.
     removed: bool = False
+    # The connection generation whose socket this seat's account left from
+    # another of its sockets: that socket returns to the lobby on its next
+    # frame, as a removed one does.
+    left_gen: int | None = None
     # Move timer state; untouched in a room without the move timer.
     # ``turn_started`` is the ``now()`` at which this seat began owing the
     # current decision (None when it owes none). A disconnect does not reset
@@ -2245,6 +2249,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 _detach(me)
                 room, me = None, None
                 MATCHMAKER.return_to_lobby(conn)
+            if me is not None and me.left_gen == my_gen:
+                # the account left this seat from another of its sockets
+                await send(ws, {"type": "left"})
+                room, me = None, None
+                MATCHMAKER.return_to_lobby(conn)
             if t == "ping":
                 nonce = msg.get("nonce")
                 if type(nonce) is int and 0 <= nonce <= 9007199254740991:
@@ -2569,6 +2578,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
             # A socket that has been displaced by a newer connection owns
             # nothing: its leave_room previously detached the LIVE connection
             # and deleted the room, and it could still submit plays.
+            # The one exception is the seat's own account pressing Leave on
+            # a socket that another of its tabs or devices displaced by
+            # resuming: that is still the person leaving, so the seat is
+            # left, and the socket now holding it is sent back to the lobby.
+            if (my_gen != me.gen and t == "leave_room" and account_id() is not None
+                    and me.user_id == account_id() and me.connected):
+                my_gen = me.left_gen = me.gen
             if my_gen != me.gen:
                 await send(ws, {"type": "error", "code": "stale_connection",
                                 "message": "This connection was replaced by a "
@@ -2660,6 +2676,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
         MATCHMAKER.disconnect(conn)
         if me is not None and me.removed:
             _detach(me)
+        elif me is not None and me.left_gen == my_gen:
+            pass                       # the account already left this seat
         elif room is not None and me is not None:
             async with room.lock:
                 if not me.is_bot and me.connected:

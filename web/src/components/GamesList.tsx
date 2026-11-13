@@ -10,6 +10,7 @@ import ReplayView from "./ReplayView";
 import { dayLabel } from "../home/dayLabel";
 import { cached, remember } from "../home/session";
 import { deltaText } from "../ratings/api";
+import { useScreen } from "../telemetry";
 
 function deltaClass(delta: number): string {
   return delta > 0 ? "delta-up" : delta < 0 ? "delta-dn" : "delta-flat";
@@ -434,6 +435,7 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
 /** A saved game's rounds and the replay of one; the list itself is the Me
  *  tab's Games section. */
 export default function GamesList({ route }: { route: GamesRoute }) {
+  useScreen(route.page === "list" ? "games" : "game");
   let page;
   if (route.page === "replay") page = <ReplayView id={route.id} round={route.round} />;
   else if (route.page === "game") page = <GameView id={route.id} />;

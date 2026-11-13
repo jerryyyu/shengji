@@ -18,6 +18,7 @@ import NameEditForm from "./NameEditForm";
 import { SavedGames } from "./GamesList";
 import { useMuted } from "../useMuted";
 import { hapticsEnabled, isNative, setHapticsEnabled, subscribeHaptics } from "../native";
+import { useScreen } from "../telemetry";
 
 const SECTIONS = [
   { value: "stats", label: "Stats" },
@@ -341,6 +342,7 @@ function GuestMe({ clientId, unreachable }: { clientId: string | null; unreachab
  *  section, the scroll position and the last stats while fresh ones load;
  *  a different viewer or session starts from nothing. */
 export default function MePage({ section, onBack }: { section: MeSection; onBack?: () => void }) {
+  useScreen(section === "games" ? "games" : "me");
   const wide = useMediaQuery(WIDE);
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;

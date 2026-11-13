@@ -290,6 +290,7 @@ jobs:
           tests/test_player_reports.py
           tests/test_ratings.py
           tests/test_matchmaking.py
+          tests/test_telemetry.py
           tests/test_web_cache_headers.py
           tests/test_deploy_web_only.py
           tests/test_hybrid_duel_quality.py

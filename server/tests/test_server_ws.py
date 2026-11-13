@@ -2777,3 +2777,167 @@ def test_only_the_served_pace_slows_an_empty_room(monkeypatch):
     monkeypatch.setattr(srv, "EMPTY_ROOM_BOT_DELAY", 0.3)
     prepared, took = asyncio.run(step())
     assert took >= 0.3 * 0.95 and prepared.pacing_seconds > 0
+
+
+def test_a_covered_seat_moves_at_the_bot_pace_without_the_watchdog(client, monkeypatch):
+    """One connected human and one absent human the bot already covers: the
+    covered seat is driven by the bot pump, not the watchdog's 5 s tick (the
+    fixture stubs the watchdog, so only the pump can move it)."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _banker_leads(client, a, monkeypatch, bot_delay=0.05)
+        _wait_for(lambda: room.bot_task is None or room.bot_task.done())
+
+        async def cover_seat_1():
+            async with room.lock:
+                sd = room.seats[1]
+                sd.is_bot, sd.name, sd.connected = False, "james", False
+                sd.left_at = srv.now() - srv.TAKEOVER_AFTER - 1
+                sd.bot_announced = True
+
+        client.portal.call(cover_seat_1)
+        _real_play(client, a, room)
+        _wait_for(lambda: _plays_by(room, 1) == 1, timeout=3.0)
+        _wait_for(lambda: _my_turn(room) or room.round.phase != "play", timeout=3.0)
+        assert srv.rooms.get(code) is room and not room.closing
+
+
+def test_an_absence_inside_the_takeover_window_is_not_covered_by_the_pump(client, monkeypatch):
+    import time
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        _, room = _banker_leads(client, a, monkeypatch, bot_delay=0.05)
+        _wait_for(lambda: room.bot_task is None or room.bot_task.done())
+
+        async def drop_seat_1():
+            async with room.lock:
+                sd = room.seats[1]
+                sd.is_bot, sd.name, sd.connected = False, "james", False
+                sd.left_at = srv.now()
+                sd.bot_announced = True     # even so, the 30 s window holds
+
+        client.portal.call(drop_seat_1)
+        _real_play(client, a, room)
+        _wait_for(lambda: _my_turn(room, 1))
+        time.sleep(0.3)
+        assert _plays_by(room, 1) == 0 and srv._auto_mode(room, 1) is None
+
+
+def test_ranked_switches_the_move_timer_on_and_back(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        room = srv.rooms[code]
+        _drain(a, "room", tries=60)
+        assert room.move_timer is False
+        a.send_json({"type": "set_ranked", "on": True})
+        _wait_for(lambda: room.ranked)
+        assert room.move_timer is True
+        a.send_json({"type": "set_ranked", "on": True})     # a repeat keeps the saved setting
+        a.send_json({"type": "set_ranked", "on": False})
+        _wait_for(lambda: not room.ranked)
+        assert room.move_timer is False
+        room.move_timer = True                              # a room whose own setting is on
+        a.send_json({"type": "set_ranked", "on": True})
+        _wait_for(lambda: room.ranked)
+        a.send_json({"type": "set_ranked", "on": False})
+        _wait_for(lambda: not room.ranked)
+        assert room.move_timer is True
+        a.send_json({"type": "set_ranked", "on": True})
+        _wait_for(lambda: room.ranked)
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=60)
+        assert room.move_timer is True and room.watchdog_task is not None
+
+
+def test_a_refused_human_play_is_logged_with_its_cards(client, monkeypatch):
+    import json
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _banker_leads(client, a, monkeypatch, bot_delay=0.05)
+        _wait_for(lambda: room.bot_task is None or room.bot_task.done())
+        a.send_json({"type": "next_round"})                  # not a play: not logged
+        _drain(a, "error", tries=60)
+        _real_play(client, a, room)                          # seat 0 led; now off turn
+        ids = sorted(room.ids[0])[:1]
+        codes = [room.ids[0][i] for i in ids]
+        a.send_json({"type": "play", "card_ids": ids})
+        error = _drain(a, "error", tries=200)
+        records = [json.loads(line) for line in
+                   (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+        refused = [r for r in records if r["e"] == "play_refused"]
+        assert len(refused) == 1
+        [rec] = refused
+        assert rec["seat"] == 0 and rec["attempted_cards"] == codes
+        assert rec["reason"] == error["message"] and rec["code"] == "IllegalPlay"
+        assert rec["phase"] == "play" and rec["round"] == 1
+
+
+def test_seat_presence_and_ranked_are_in_the_room_log(client):
+    import json
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a)
+        want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "james", "seat": want})
+            _drain(b, "state", tries=60)
+        _wait_for(lambda: not room.seats[want].connected)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            _drain(b, "state", tries=60)
+            assert room.seats[want].connected
+            b.send_json({"type": "leave_room"})
+            _drain(b, "left", tries=200)
+        records = [json.loads(line) for line in
+                   (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+        [start] = [r for r in records if r["e"] == "round_start"]
+        assert start["ranked"] is False
+        seat_events = [(r["e"], r["seat"], r["reason"]) for r in records
+                       if r["e"].startswith("seat_") and r["e"] != "seat_claimed"]
+        assert seat_events == [("seat_disconnected", want, "socket_closed"),
+                               ("seat_reconnected", want, "name"),
+                               ("seat_left", want, "leave")]
+        assert all(r["round"] == 1 for r in records if r["e"].startswith("seat_"))
+
+
+def test_a_displaced_socket_closing_logs_no_disconnect(client):
+    """A second tab resuming the seat is a reconnect; the first tab's socket
+    then closing is not a disconnect of the seat, which is still connected."""
+    import json
+    import time
+
+    from shengji.api import server as srv
+
+    a = client.websocket_connect("/ws").__enter__()
+    try:
+        code, room = _start_game(client, a)
+        token = room.seats[0].token
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "jerry", "token": token})
+            _drain(b, "state", tries=60)
+            a.__exit__(None, None, None)
+            a = None
+            time.sleep(0.3)                 # the server handles the close
+            _settled(client, room)
+            assert room.seats[0].connected
+            records = [json.loads(line) for line in
+                       (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+            assert [(r["e"], r["reason"]) for r in records
+                    if r["e"] in ("seat_disconnected", "seat_reconnected")] == [
+                ("seat_reconnected", "token")]
+        _wait_for(lambda: not room.seats[0].connected)
+        records = [json.loads(line) for line in
+                   (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+        assert [r["e"] for r in records if r["e"] == "seat_disconnected"] == ["seat_disconnected"]
+    finally:
+        if a is not None:
+            a.__exit__(None, None, None)

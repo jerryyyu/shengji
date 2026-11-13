@@ -366,6 +366,12 @@ class Room:
     # Every human is gone and a round in play still owes a rating: the bots
     # finish that round without pacing and the room closes at its end.
     closing: bool = field(default=False, init=False, repr=False)
+    # The cheap bot that plays a closing room's round: nobody is watching, so
+    # no model search runs for it. Built on first use.
+    closing_bot: Any = field(default=None, init=False, repr=False)
+    # The created room's own move-timer setting, kept while Ranked forces the
+    # timer on so switching Ranked off restores it.
+    casual_move_timer: bool | None = field(default=None, init=False, repr=False)
     # A table continuing a saved game: the ``saved_games.resume_point`` its
     # creator's account was given, applied once at ``start_game`` (both
     # teams' levels and the first banker). Server-only.
@@ -695,7 +701,9 @@ def _round_timeouts_reset(room: Room) -> None:
 
 def _auto_mode(room: Room, seat: int) -> str | None:
     """How the bot may act for this seat without waiting: ``"bot"`` for a bot
-    seat, ``"timeout"`` for a present player who is away."""
+    seat, ``"timeout"`` for a present player who is away, ``"takeover"`` for
+    an absent player the bot already covers. The first cover of an absence
+    stays with the watchdog, after TAKEOVER_AFTER, which also announces it."""
     sd = room.seats[seat]
     if sd.is_bot:
         return "bot"
@@ -703,6 +711,8 @@ def _auto_mode(room: Room, seat: int) -> str | None:
         return "timeout"
     if room.closing and not sd.connected:
         return "close"
+    if sd.bot_announced and _turn_eligible(room, seat, "takeover"):
+        return "takeover"
     return None
 
 
@@ -1071,8 +1081,27 @@ def current_actor(room: Room) -> int | None:
     return rnd.turn
 
 
+def _acting_bot(room: Room) -> Any:
+    """The bot that decides for the room now: the served bot, or in a closing
+    room the heuristic bot, so a round nobody is in runs no model search."""
+    if not room.closing:
+        return room.bot
+    if room.closing_bot is None:
+        room.closing_bot = make_bot("heuristic", seed=room.bot_seed)
+    return room.closing_bot
+
+
+def _keep_acting_bot(room: Room, used: Any, decided: Any) -> None:
+    """Store ``decided`` (the copy that made a committed decision) in the slot
+    of ``used``, the bot it was copied from."""
+    if used is room.closing_bot and used is not None:
+        room.closing_bot = decided
+    else:
+        room.bot = decided
+
+
 def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
-              prev_last) -> None:
+              prev_last, decider: Any = None) -> None:
     # S0 item 3: attach the search's own account of the decision. A live game
     # previously recorded only the CARD, so a reported misplay could not be
     # replayed — the QHKR incident had to be diagnosed from replicas rather
@@ -1080,7 +1109,8 @@ def _log_play(room: Room, seat: int, cards: list[str], bot: bool,
     # search simply has no record.
     extra = {}
     if bot:
-        rec = getattr(room.bot, "last_decision_record", None)
+        rec = getattr(room.bot if decider is None else decider,
+                      "last_decision_record", None)
         if rec is not None:
             if sorted(rec.get("played", [])) != sorted(cards):
                 # A lead throw is an attempted action: the engine may replace
@@ -1193,9 +1223,37 @@ def _log_round_start(room: Room) -> int | None:
             }
             for i, seat in enumerate(room.seats)
         ]
+    # Room logs never carry account ids (test_no_log_record_carries_the_account);
+    # seats map to accounts through the game_players links instead.
     return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
-                   players=players, bot_seed=room.bot_seed)
+                   players=players, bot_seed=room.bot_seed,
+                   ranked=ratings.ranked(room))
+
+
+def _log_seat(room: Room, kind: str, seat: Seat, reason: str) -> None:
+    """A seat's presence change (``seat_disconnected``, ``seat_reconnected``,
+    ``seat_left``) in a started game; a lobby keeps no log of its own."""
+    if room.game is not None and seat in room.seats:
+        room.log_event(kind, seat=room.seats.index(seat), reason=reason)
+
+
+def _log_play_refused(room: Room, seat: int, msg: dict, error: IllegalPlay) -> None:
+    """A human play the server refused, with the cards it named (unknown ids
+    are kept as ids). The record reveals a hand, so ``saved_games`` never
+    serves it (it is not in ``PUBLIC_KEYS``)."""
+    rnd = room.round
+    if room.game is None or rnd is None:
+        return
+    ids = msg.get("card_ids")
+    ids = ids[:64] if isinstance(ids, list) else []
+    attempted = [room.ids[seat].get(i, i)
+                 if isinstance(i, int) and not isinstance(i, bool) else None
+                 for i in ids]
+    room.log_event("play_refused", seat=seat, attempted_cards=attempted,
+                   phase=rnd.phase, turn=rnd.turn,
+                   code=getattr(error, "code", None) or type(error).__name__,
+                   reason=str(error))
 
 
 def _log_round_end(room: Room) -> None:
@@ -1263,6 +1321,8 @@ class _BotTurnSnapshot:
     mode: str
     owner_left_at: float | None
     play_cursor: tuple[int, int] | None
+    # copied from the closing room's heuristic bot, not the served bot
+    closing_bot: bool = False
 
 
 @dataclass(frozen=True)
@@ -1316,16 +1376,18 @@ def _snapshot_bot_turn(room: Room, seat: int, mode: str
     if (game is None or rnd is None or game.game_over
             or not _turn_eligible(room, seat, mode)):
         return None
+    bot = _acting_bot(room)
     return _BotTurnSnapshot(
         game_token=game,
         round_token=rnd,
         round_copy=copy.deepcopy(rnd),
-        bot_copy=copy.deepcopy(room.bot),
+        bot_copy=copy.deepcopy(bot),
         seat=seat,
         phase=rnd.phase,
         mode=mode,
         owner_left_at=room.seats[seat].left_at,
         play_cursor=(len(rnd.history), len(rnd.trick.plays)) if rnd.phase == "play" else None,
+        closing_bot=bot is not room.bot,
     )
 
 
@@ -1451,7 +1513,10 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
                 room, snapshot.seat, snapshot.mode,
                 owner_left_at=snapshot.owner_left_at)):
         return False
-    room.bot = snapshot.bot_copy
+    if snapshot.closing_bot:
+        room.closing_bot = snapshot.bot_copy
+    else:
+        room.bot = snapshot.bot_copy
     rnd = room.round
     seat = snapshot.seat
     try:
@@ -1465,8 +1530,9 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             rnd.play(seat, decision.cards)
             played = actual_play_after(rnd, seat, prev_last)
             room.remove_codes(seat, played)
-            _log_play(room, seat, played, True, prev_last)
-            # on the committed bot: ``room.bot`` is ``snapshot.bot_copy`` now
+            _log_play(room, seat, played, True, prev_last,
+                      decider=snapshot.bot_copy)
+            # on the served bot: ``snapshot.bot_copy`` unless the room is closing
             _observe_committed_play(room)
         else:  # guarded by snapshot construction; fail closed on corruption
             return False
@@ -1594,6 +1660,11 @@ async def _watchdog_body(room: Room) -> bool:
         seat = current_actor(room)
         if (seat is None
                 or not _turn_eligible(room, seat, "takeover")):
+            return False
+        if room.seats[seat].bot_announced:
+            # an announced cover moves at the served pace through pump_bots;
+            # here it only restarts a pump that is not running
+            kick_bots(room)
             return False
     prepared = await _paced_bot_step(
         room, seat, mode="takeover", minimum_turn_seconds=0.0)
@@ -1751,7 +1822,7 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                 return False
             if s >= len(room.seats) or not room.seats[s].is_bot:
                 continue
-            bot = room.bot
+            bot = _acting_bot(room)
             value_declare = getattr(bot, "value_declare", False)
             gate = getattr(bot, "declare_gate", None)
             # Most dealt cards cannot trigger value evaluation. Keep those
@@ -1787,7 +1858,7 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                                       final=final), emit)
         async with room.lock:
             if (room.game is not game or room.round is not rnd
-                    or room.bot is not bot or rnd.phase != phase
+                    or _acting_bot(room) is not bot or rnd.phase != phase
                     or rnd.declaration is not declaration
                     or tuple(tuple(hand) for hand in rnd.hands) != hands
                     or s >= len(room.seats) or room.seats[s] is not owner
@@ -1802,7 +1873,7 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                 except IllegalPlay:
                     complete = False
                     continue
-            room.bot = bot_copy
+            _keep_acting_bot(room, bot, bot_copy)
             record = getattr(bot_copy, "last_declare_record", None)
             if record is not None:
                 room.log_event("declare_decision", seat=s, record=record, bot=True)
@@ -2094,7 +2165,16 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             raise IllegalPlay("Ranked is fixed once the game has started.")
         if room.matched or not ratings.eligible(room):
             raise IllegalPlay("This room's mode can't be changed.")
-        room.ranked = msg.get("on") is True
+        on = msg.get("on") is True
+        # A ranked room has the move timer, as a matched room does; Ranked
+        # off gives the room back its own setting.
+        if on and not room.ranked:
+            room.casual_move_timer = room.move_timer
+            room.move_timer = True
+        elif not on and room.ranked:
+            room.move_timer = bool(room.casual_move_timer)
+            room.casual_move_timer = None
+        room.ranked = on
     elif t == "start_game":
         if seat != room.host:
             raise IllegalPlay("Only the host can start.")
@@ -2548,6 +2628,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 me.token = secrets.token_urlsafe(12)
                             my_gen = _attach(room, me, ws)
                             if reclaim is not None:
+                                _log_seat(room, "seat_reconnected", me,
+                                          "name" if by_name
+                                          else "account" if held is not None
+                                          else "token")
                                 chat_system(
                                     room,
                                     f"{name} reconnected"
@@ -2597,6 +2681,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
             if t == "leave_room":
                 async with room.lock:
                     chat_system(room, f"{me.name} left")
+                    _log_seat(room, "seat_left", me, "leave")
                     if me in room.seats:
                         ratings.seat_left(room, room.seats.index(me))
                     # a newcomer leaving the round it joined mid-way: the
@@ -2664,6 +2749,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 except SeatChanged as e:
                     enqueue(me, {"type": "error", "code": "seat_changed", "message": str(e)})
                 except IllegalPlay as e:
+                    if t == "play":
+                        _log_play_refused(room, seat_idx, msg, e)
                     enqueue(me, {"type": "error", "message": str(e)})
                 except Exception:  # malformed input must not kill the socket
                     enqueue(me, {"type": "error", "message": "Invalid request."})
@@ -2685,6 +2772,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
             async with room.lock:
                 if not me.is_bot and me.connected:
                     chat_system(room, f"{me.name} disconnected")
+                    if my_gen == me.gen:
+                        _log_seat(room, "seat_disconnected", me, "socket_closed")
                 _detach(me, room, my_gen)
                 if not any(x.connected for x in room.seats
                            if x is not None and not x.is_bot):

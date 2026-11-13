@@ -251,7 +251,7 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                 actual = round_score(won, rec.level_change)
                 if p.abandoned or p.capped:
                     actual = min(actual, LEAVER_SCORE_CAP)
-                k = k_factor(int(row["rated_rounds"]), bool(provisional - {p.user_id}))
+                k = k_factor(at_start[p.user_id][1], bool(provisional - {p.user_id}))
                 before = float(row["rating"])
                 delta = k * (actual - exp)
                 after = before + delta

@@ -790,6 +790,30 @@ def test_a_carried_leave_caps_the_next_rated_round_once(env, monkeypatch):
     assert ratings.CARRIED_CAPS == set()
 
 
+def test_overlapping_rounds_take_k_from_the_round_start(env, monkeypatch):
+    """One account in two rooms at once, one round short of established: the
+    round that ends second still uses the provisional K it started with."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "twotables")
+    _set(store, uid, 1000.0, ratings.PROVISIONAL_ROUNDS - 1)
+    _force_outcome(monkeypatch, 30)
+    first = Table(srv, [uid, "bot", "bot", "bot"], code="RAT1")
+    second = Table(srv, [uid, "bot", "bot", "bot"], code="RAT2")
+    first.start_round(banker=0)
+    second.start_round(banker=0)
+    ratings.flush()                            # both round-start reads are taken
+    first.finish()
+    ratings.flush()
+    second.finish()
+    ratings.flush()
+    a, b = _events(store)
+    assert a["k"] == ratings.K_PROVISIONAL
+    assert b["k"] == ratings.K_PROVISIONAL
+    assert b["rating_before"] == pytest.approx(a["rating_after"])
+
+
 def test_recent_games_split_at_each_game_boundary_losses_included(env, monkeypatch):
     from shengji.api import ratings
 
@@ -903,6 +927,78 @@ def test_a_losing_leaver_is_rated_before_the_empty_room_closes(env, keypair, mon
     assert event["abandoned"] == 1 and event["won"] == 0
     assert event["actual"] == pytest.approx(1 / 6)
     assert room.seats[0].bot_announced
+
+
+def test_a_closing_ranked_round_is_finished_without_the_served_search(env, keypair, monkeypatch):
+    """Nobody is left to watch the round: the cheap heuristic bot finishes
+    it, the served bot is never asked, and the leaver is rated exactly as
+    before (abandoned, on the real result)."""
+    import json
+
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import ratings
+
+    srv, store, client = env
+    private_pem, _ = keypair
+    monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
+    _force_outcome(monkeypatch, 165)
+    monkeypatch.setattr(srv, "ROOM_TTL", 120.0)
+
+    async def no_model_search(*args, **kwargs):
+        raise AssertionError("model search ran in a closing room")
+
+    monkeypatch.setattr(srv, "run_model_search", no_model_search)
+    asked = []
+
+    class ServedBot(HeuristicBot):
+        room = None                      # class-level: a deepcopy does not copy it
+
+        def _check(self, what):
+            if type(self).room is not None and type(self).room.closing:
+                asked.append(what)
+                raise AssertionError(f"served bot asked to {what} in a closing room")
+
+        def decide_declare(self, rnd, seat, final=False):
+            self._check("declare")
+            return None
+
+        def decide_bury(self, rnd, seat):
+            self._check("bury")
+            return super().decide_bury(rnd, seat)
+
+        def decide_play(self, rnd, seat):
+            self._check("play")
+            return super().decide_play(rnd, seat)
+
+    cookie = _session_cookie(srv.accounts, client, private_pem)
+    with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
+        a.send_json({"type": "create_room", "name": "Jerry"})
+        code = _drain(a, "room")["room"]
+        room = srv.rooms[code]
+        ServedBot.room = room
+        room.bot = ServedBot()
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+        a.send_json({"type": "set_ranked", "on": True})
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=60)
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=200)
+        _wait_until(lambda: code not in srv.rooms, timeout=20.0)
+    assert asked == []
+    assert room.game.round_no == 1 and room.round.phase == "round_end"
+    ratings.flush()
+    [event] = _events(store)
+    assert event["abandoned"] == 1 and event["won"] == 0
+    assert event["actual"] == pytest.approx(1 / 6)
+    assert room.seats[0].bot_announced
+    records = [json.loads(line) for line in
+               (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+    [start] = [r for r in records if r["e"] == "round_start"]
+    assert start["ranked"] is True and "user_ids" not in start
+    text = json.dumps(start)
+    assert "@" not in text and room.seats[0].token not in text
+    assert [r["seat"] for r in records if r["e"] == "seat_left"] == [0]
 
 
 def test_a_ranked_room_closed_by_its_last_leaver_leaves_nothing_in_the_queue(queue_env, monkeypatch):

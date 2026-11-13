@@ -164,7 +164,7 @@ def test_events_keep_the_log_keys_minus_the_forbidden_ones(api):
     assert len(logged) == len(served["events"])
     for rec, ev in zip(logged, served["events"]):
         assert ev["e"] == rec["e"]
-        assert set(ev) == set(rec) - {"decision", "bot_seed"}
+        assert set(ev) == set(rec) - {"decision", "bot_seed", "ranked"}
         if rec["e"] != "round_start":
             assert ev == {k: rec[k] for k in ev}       # a finished round shows everything
     assert served["events"][0]["deck"] == logged[0]["deck"]
@@ -666,3 +666,40 @@ def test_every_segment_of_a_saved_game_counts(api):
     detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
     assert [r["rating_delta"] for r in detail["round_results"]] == [
         round(e["delta"]) for e in mine]
+
+
+def test_seat_presence_records_are_not_served_and_do_not_break_a_round(api):
+    from shengji.harvest import room_log
+
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    t = Table(srv, users=(owner, None, None, None))
+    t.start_round(first=True)
+    t.act(plays=5)
+    seat = t.room.seats[1]
+    srv._log_seat(t.room, "seat_disconnected", seat, "socket_closed")
+    srv._log_seat(t.room, "seat_reconnected", seat, "token")
+    srv._log_seat(t.room, "seat_left", seat, "leave")
+    t.room.log_event("play_refused", seat=1, attempted_cards=["never-served-text"],
+                     phase="play", turn=2, code="IllegalPlay", reason="Not your turn.")
+    owner_view = _round(client, owner_h, t.game_id, 1).json()
+    assert owner_view["finished"] is False
+    assert "never-served-text" not in _strings(owner_view)
+    assert not any(e["e"] == "play_refused" for e in owner_view["events"])
+    t.act()
+    response = _round(client, owner_h, t.game_id, 1)
+    assert response.status_code == 200
+    served = response.json()
+    assert served["finished"] is True
+    kinds = [e["e"] for e in served["events"]]
+    assert not any(k.startswith("seat_") for k in kinds) and "play_refused" not in kinds
+    assert "never-served-text" not in _strings(served)
+    assert "ranked" not in served["events"][0] and "user_ids" not in served["events"][0]
+    assert all(set(p) == {"seat", "name", "is_bot"} for p in served["events"][0]["players"])
+    raw = [json.loads(line) for line in (srv.LOG_DIR / "REPL.jsonl").read_text().splitlines()]
+    assert [r["e"] for r in raw if r["e"].startswith("seat_")] == [
+        "seat_disconnected", "seat_reconnected", "seat_left"]
+    assert raw[0]["e"] == "round_start" and raw[0]["ranked"] is False
+    assert "user_ids" not in raw[0]
+    records, _ = room_log.extract_round("REPL", 1, [r for r in raw if r["round"] == 1])
+    assert records

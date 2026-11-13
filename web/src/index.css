@@ -6396,3 +6396,59 @@ dialog.leave-alert-backdrop {
   background: rgba(255, 255, 255, 0.06); color: #e9ecf2; font-size: var(--fs-15); font-weight: 600;
 }
 .rating-unranked { color: var(--text-dim); }
+/* Live chat beside the seat that said it: one ellipsized line for a few
+   seconds, then it fades. The layer passes taps through; a bubble opens the
+   panel. ChatBubbles.tsx places each one clear of the trick and the hand. */
+.chat-bubbles {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  overflow: hidden;
+}
+.chat-bubble {
+  position: absolute;
+  pointer-events: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid rgba(20, 23, 30, 0.12);
+  border-radius: 12px;
+  background: #f7f4ea;
+  color: #1b1f27;
+  font: inherit;
+  font-size: var(--fs-13);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  animation: chat-bubble-life 5s linear both;
+}
+/* the corner nearest the seat is pinched, pointing the bubble at it */
+.chat-bubble[data-side="right"] { border-top-left-radius: 3px; }
+.chat-bubble[data-side="left"] { border-top-right-radius: 3px; }
+.chat-bubble[data-side="below"] { border-top-left-radius: 3px; }
+.chat-bubble[data-side="above"] { border-bottom-left-radius: 3px; }
+.chat-bubble.mine {
+  background: #dcebd9;
+}
+.chat-bubble-who {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@keyframes chat-bubble-life {
+  0% { opacity: 0; translate: 0 3px; }
+  4% { opacity: 1; translate: 0 0; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble { animation: none; }
+}

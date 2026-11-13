@@ -12,6 +12,7 @@ import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
 import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
+import ChatBubbles from "./ChatBubbles";
 import OpponentActions from "./OpponentActions";
 import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
@@ -553,6 +554,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           💬{unread > 0 && <span className="chat-badge">{unread}</span>}
         </button>
       )}
+      <ChatBubbles state={state} open={chatOpen} onOpen={() => setChatOpen(true)} />
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
       <JoinNotices state={state} />

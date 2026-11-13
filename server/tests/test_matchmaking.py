@@ -698,6 +698,9 @@ def test_a_cooldown_is_pushed_to_the_lobby_and_counted_down_by_queue_state():
         env.conns[1].clear()
         env.mm.return_to_lobby(env.conns[1])
         assert env.conns[1].last("queue_state")["cooldown_until"] == until
+        fresh = FakeConn(1, "P1")
+        env.mm.connect(fresh)
+        assert fresh.last("queue_state")["cooldown_until"] == until
         env.clock.advance(48)
         await env.send(1, "queue_status")
         assert env.conns[1].last("queue_state")["cooldown_until"] == until

@@ -690,6 +690,8 @@ class Matchmaker:
             self._resync(uid)
         elif uid in self.entry_of:
             conn.push(self._elsewhere_state(uid))
+        if uid not in self.entry_of and self.cooldowns.get(uid, 0.0) > self.clock():
+            conn.push(self._idle_state(uid))     # a page opened mid-cooldown counts it down
 
     def disconnect(self, conn: Conn) -> None:
         conn.close(self.clock())

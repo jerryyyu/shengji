@@ -2099,3 +2099,55 @@ def test_a_pair_takes_both_seats_at_the_same_trick_boundary(pairenv):
         assert cl.adopted[1] is room.seats[1] and cp.adopted[1] is room.seats[3]
         assert lee not in env.mm.joining and pat not in env.mm.joining
     run(go())
+
+
+# ------------------------------------------------------ the account's name
+def test_ws_a_rename_on_an_open_socket_names_the_queued_seat(wsenv):
+    srv, store, client, clock = wsenv
+    _uid, headers = _user(store, "rename-queue", "Old Name")
+    with client.websocket_connect("/ws", headers=headers) as a:
+        assert client.patch("/api/me", json={"display_name": "Newname"},
+                            headers=headers).status_code == 200
+        a.send_json({"type": "queue_join", "name": "Stale"})
+        _drain(a, "queue_state")
+        a.send_json({"type": "queue_start_bots"})
+        started = _drain(a, "match_started", tries=40)
+        state = _drain(a, "state", tries=80)
+        assert srv.rooms[started["room"]].seats[0].name == "Newname"
+        assert state["players"][0]["name"] == "Newname"
+
+
+def test_ws_a_signed_in_create_room_takes_the_account_name_not_the_sent_one(wsenv):
+    srv, store, client, clock = wsenv
+    _uid, headers = _user(store, "named", "Alex Smith")
+    with client.websocket_connect("/ws", headers=headers) as a:
+        a.send_json({"type": "create_room", "name": "Sarah"})
+        room = _drain(a, "room")
+        assert room["players"][0]["name"] == "Alex"
+    with client.websocket_connect("/ws") as g:
+        g.send_json({"type": "create_room", "name": "Sarah"})
+        assert _drain(g, "room")["players"][0]["name"] == "Sarah"
+
+
+def test_ws_a_rename_while_seated_renames_the_seat_in_the_next_frame(wsenv):
+    srv, store, client, clock = wsenv
+    _uid, headers = _user(store, "seated", "Old Name")
+    with client.websocket_connect("/ws", headers=headers) as a:
+        a.send_json({"type": "create_room"})
+        code = _drain(a, "room")["room"]
+        assert client.patch("/api/me", json={"display_name": "Lobbyname"},
+                            headers=headers).status_code == 200
+        assert _drain(a, "room")["players"][0]["name"] == "Lobbyname"
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=80)
+        assert client.patch("/api/me", json={"display_name": "Gamename"},
+                            headers=headers).status_code == 200
+        for _ in range(80):
+            state = _drain(a, "state", tries=80)
+            if state["players"][0]["name"] == "Gamename":
+                break
+        else:
+            raise AssertionError("the seat kept its old name")
+        assert srv.rooms[code].seats[0].name == "Gamename"
+        log = (srv.LOG_DIR / f"{code}.jsonl").read_text()
+        assert '"e": "seat_renamed"' in log

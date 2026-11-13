@@ -450,10 +450,17 @@ def _add_rating(summary: dict, rated: dict | None) -> None:
     summary["rated_rounds"] = int(rated["rated_rounds"])
 
 
-def _summary(game: dict, rounds: dict[int, int]) -> dict:
+def _current(names: list[str], current: dict[int, str] | None) -> list[str]:
+    """The logged names by seat, each seat an account held shown by that
+    account's current name instead."""
+    return [(current or {}).get(seat) or name for seat, name in enumerate(names)]
+
+
+def _summary(game: dict, rounds: dict[int, int],
+             current: dict[int, str] | None = None) -> dict:
     return {"id": game["id"], "room_code": game["room_code"],
             "started_at": game["started_at"], "ended_at": game["ended_at"],
-            "seat": rounds[max(rounds)], "players": _first_names(game),
+            "seat": rounds[max(rounds)], "players": _current(_first_names(game), current),
             "rounds": list(rounds), "final_levels": game["final_levels"],
             "games_won": game["games_won"], "incomplete": bool(game["incomplete"])}
 
@@ -513,11 +520,12 @@ def _level_and_banker(records: list[dict]) -> dict:
 def _list(user_id: int, before: tuple[int, str] | None, limit: int) -> dict:
     games = accounts.STORE.list_games(user_id, before=before, limit=limit + 1)
     more = len(games) > limit
+    current = accounts.STORE.current_seat_names([g["id"] for g in games[:limit]], 1)
     out = []
     for game in games[:limit]:
         rounds = readable_rounds(game)
         if rounds:
-            out.append(_summary(game, rounds))
+            out.append(_summary(game, rounds, current.get(game["id"])))
     rated = accounts.STORE.game_ratings(user_id, [g["id"] for g in out])
     for summary in out:
         _add_rating(summary, rated.get(summary["id"]))
@@ -541,7 +549,8 @@ def _detail(user_id: int, game_id: str) -> dict | None:
         return None
     game, rounds = found
     seg = _segment(game)
-    out = _summary(game, rounds)
+    out = _summary(game, rounds,
+                   accounts.STORE.current_seat_names([game["id"]], 1).get(game["id"]))
     _add_rating(out, accounts.STORE.game_ratings(user_id, [game["id"]]).get(game["id"]))
     deltas = accounts.STORE.game_round_ratings(user_id, game["id"])
     results = []
@@ -616,8 +625,10 @@ def _round(user_id: int, game_id: str, n: int) -> dict | None:
     seat = rounds[n]
     start = next((r for r in records if r["e"] == "round_start"), None)
     finished, events = filter_round(records, seat)
+    current = accounts.STORE.current_seat_names([game["id"]], n if start else 1)
     return {"game_id": game["id"], "round": n, "seat": seat,
-            "players": _player_names(start) if start else _first_names(game),
+            "players": _current(_player_names(start) if start else _first_names(game),
+                                current.get(game["id"])),
             "finished": finished, "events": events}
 
 

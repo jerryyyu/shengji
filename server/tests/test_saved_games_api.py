@@ -121,7 +121,7 @@ def test_owner_reads_the_game_and_another_account_gets_404(api):
     [game] = body["games"]
     assert game["id"] == t.game_id and game["room_code"] == "REPL"
     assert game["seat"] == 0 and game["rounds"] == [1, 2]
-    assert game["players"] == ["P0", "P1", "P2", "P3"]
+    assert game["players"] == ["Jerry", "P1", "P2", "P3"]   # the account's current name
     assert game["incomplete"] is False and game["ended_at"] is not None
     assert game["final_levels"] == list(t.room.game.levels)
     assert set(game) == {"id", "room_code", "started_at", "ended_at", "seat", "players",
@@ -703,3 +703,33 @@ def test_seat_presence_records_are_not_served_and_do_not_break_a_round(api):
     assert "user_ids" not in raw[0]
     records, _ = room_log.extract_round("REPL", 1, [r for r in raw if r["round"] == 1])
     assert records
+
+
+def test_old_games_show_each_accounts_current_name_and_no_account_id(api):
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    friend, _friend_h = _user(store, "friend")
+    t = Table(srv, users=(owner, None, friend, None))
+    t.start_round(first=True)
+    t.act()
+    t.start_round()
+    t.act()
+    store.set_display_name(owner, "Captain")
+    store.set_display_name(friend, "Mate")
+    [game] = client.get("/api/me/games", headers=owner_h).json()["games"]
+    assert game["players"] == ["Captain", "P1", "Mate", "P3"]
+    detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
+    assert detail["players"] == ["Captain", "P1", "Mate", "P3"]
+    served = _round(client, owner_h, t.game_id, 2).json()
+    assert served["players"] == ["Captain", "P1", "Mate", "P3"]
+    text = _strings([game, detail, served])
+    assert '"user_id' not in text and "user_ids" not in text
+    # a seat the account held only from round 2 keeps round 1's logged name
+    t2 = Table(srv, code="LATE", users=(owner, None, None, None))
+    t2.start_round(first=True)
+    t2.act()
+    t2.sign(1, friend)
+    t2.start_round()
+    t2.act()
+    rounds = {n: _round(client, owner_h, t2.game_id, n).json()["players"] for n in (1, 2)}
+    assert rounds == {1: ["Captain", "P1", "P2", "P3"], 2: ["Captain", "Mate", "P2", "P3"]}

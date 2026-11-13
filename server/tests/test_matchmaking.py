@@ -2937,7 +2937,8 @@ def test_ws_allow_joiners_set_in_a_ranked_rooms_lobby_opens_the_table_in_play(ws
         assert view["seats"][0]["queue_id"] == uid
         # switched off at the table, as at a queue-matched one
         h.send_json({"type": "allow_joiners", "on": False})
-        _next(h, "state", lambda m: m.get("allow_joiners") is False)
+        # the reply queues behind the deal's state frames (about one per card)
+        _next(h, "state", lambda m: m.get("allow_joiners") is False, tries=400)
         assert not [t for t in srv.open_tables() if t["code"] == code]
 
 

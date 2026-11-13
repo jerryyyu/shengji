@@ -8,6 +8,7 @@ import { SUIT_SYMBOL, shortLabel } from "./Card";
 import MuteButton from "./MuteButton";
 import LeaveButton from "./LeaveButton";
 import HudMenu from "./HudMenu";
+import { useCoach } from "../firstTurns";
 import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { codeLink } from "../codes";
 import { OFFLINE } from "../offlineMode";
@@ -303,6 +304,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
             {state.kitty_count}
           </span>
           <MuteButton />
+          <CoachChip />
           <LeaveButton ranked={mode === "ranked"} practice={practice} />
           <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked"} offline={practice}
                    allowJoiners={state.matched && !state.joining_you ? state.allow_joiners ?? true : undefined} />
@@ -320,5 +322,16 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Desktop's coach switch, beside Sound; phones flip it from the `…` menu. */
+function CoachChip() {
+  const [on, toggle] = useCoach();
+  return (
+    <button className="coach-chip" aria-pressed={on} onClick={toggle}
+            title={on ? "Turn the coach off" : "Turn the coach on"}>
+      Coach <span className="coach-chip-state">{on ? "on" : "off"}</span>
+    </button>
   );
 }

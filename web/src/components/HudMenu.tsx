@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMenuKeys } from "../useMenuKeys";
 import { useMuted } from "../useMuted";
+import { useCoach } from "../firstTurns";
 import { usePresence } from "../usePresence";
 import { OFFLINE } from "../offlineMode";
 import { codeLink } from "../codes";
@@ -9,10 +10,10 @@ import { offlineGame } from "./offlineGame";
 import { useOnline } from "../useOnline";
 import { conn } from "../ws";
 
-/** The phone's `…` overflow: kitty count, sound, invite link and leave —
- * none of them a mid-trick decision, so on a small screen they share one
- * button instead of four chips. Desktop keeps its chips (this is hidden by CSS
- * there). Account rows (name, saved games, sign out) live on the Me tab, so
+/** The phone's `…` overflow: kitty count, sound, the coach switch, invite
+ * link and leave — none of them a mid-trick decision, so on a small screen
+ * they share one button instead of five chips. Desktop keeps its chips (this
+ * is hidden by CSS there). Account rows (name, saved games, sign out) live on the Me tab, so
  * this stays a table menu for signed-in players and guests alike. Leave
  * closes the menu and opens the leave alert, which waits for Keep playing or
  * Leave. Offline there is no invite link; Play online appears instead while
@@ -28,6 +29,7 @@ export default function HudMenu({ room, kittyCount, ranked = false, offline = OF
 }) {
   const [open, setOpen] = useState(false);
   const [muted, toggleSound] = useMuted();
+  const [coachOn, toggleCoach] = useCoach();
   const [asking, setAsking] = useState(false);
   const online = useOnline();
   const [copied, setCopied] = useState(false);
@@ -94,7 +96,7 @@ export default function HudMenu({ room, kittyCount, ranked = false, offline = OF
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="More"
-        title="Kitty, sound, invite, leave"
+        title="Kitty, sound, coach, invite, leave"
         onClick={() => {
           if (open) { close(); return; }
           focusNext.current = "first";
@@ -119,6 +121,9 @@ export default function HudMenu({ room, kittyCount, ranked = false, offline = OF
           </div>
           <button className="hud-menu-row" role="menuitemcheckbox" aria-checked={!muted} onClick={toggleSound}>
             <span>Sound</span><span className="hud-menu-k">{muted ? "off" : "on"}</span>
+          </button>
+          <button className="hud-menu-row coach-row" role="menuitemcheckbox" aria-checked={coachOn} onClick={toggleCoach}>
+            <span>Coach</span><span className="hud-menu-k">{coachOn ? "on" : "off"}</span>
           </button>
           {offline ? null : (
             <button className="hud-menu-row" role="menuitem" onClick={copyInvite}>

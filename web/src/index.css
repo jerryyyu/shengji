@@ -1966,6 +1966,38 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   from { opacity: 0; }
 }
 
+/* a newcomer's first turns: the coach line in gold, the cards that follow
+   the lead at full strength and the rest dimmed; an idle turn pulses both */
+.coach-cue {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.hand-slot.dim .card {
+  filter: brightness(0.55) saturate(0.7);
+}
+
+.coach-cue.nudge {
+  animation: follow-hint-in 160ms var(--ease-out) both, coach-pulse 1.6s ease-in-out infinite;
+}
+
+.coach-cue.nudge ~ .hand .hand-slot.lit .card {
+  animation: coach-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes coach-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--gold-soft); }
+  50% { box-shadow: 0 0 0 2px var(--gold), 0 0 14px 2px var(--gold-soft); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-cue.nudge,
+  .coach-cue.nudge ~ .hand .hand-slot.lit .card {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--gold);
+  }
+}
+
 /* the lobby's stalled line, at the table: the server has been out of reach
    for a while, and Retry tries again now */
 .table-stalled {
@@ -6543,3 +6575,53 @@ dialog.leave-alert-backdrop {
   min-width: max-content;
 }
 :root:not(.phone-landscape) .hud-bar > .hud-group:last-child { justify-content: flex-end; }
+
+/* the coach switch reads gold while the coach is on */
+.hud-menu-row.coach-row[aria-checked="true"] .hud-menu-k {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* Desktop's Coach chip: the mute button's pill with a word in it, gold
+   while the coach is on. Phones flip it from the `…` menu instead. */
+.coach-chip {
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  position: relative;
+}
+.coach-chip::after {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
+}
+.coach-chip[aria-pressed="true"] {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.coach-chip-state { font-weight: 800; text-transform: uppercase; font-size: var(--fs-10); }
+@media (hover: hover) and (pointer: fine) {
+  .coach-chip:hover { background: rgba(255, 255, 255, 0.06); }
+}
+:where(.phone-landscape) .hud-bar .coach-chip { display: none; }
+
+/* A toast that informs rather than warns: the panel and the gold outline of
+   "Your turn", announced politely. */
+.toast.toast-info {
+  background: #0a0c11;
+  border-color: var(--gold);
+  color: var(--gold);
+}

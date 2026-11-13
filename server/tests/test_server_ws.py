@@ -24,7 +24,7 @@ def client(tmp_path, monkeypatch):
     from shengji.api import server as srv
 
     srv.LOG_DIR = tmp_path / "logs"
-    # A real deal is ~15s of DEAL_DELAY; these tests care about the protocol,
+    # A real deal is ~20s of DEAL_DELAY; these tests care about the protocol,
     # not the pacing. BOT_DELAY is left alone — one test needs a bot turn to
     # still be PENDING when a human claims that seat.
     monkeypatch.setattr(srv, "DEAL_DELAY", 0.0)
@@ -334,12 +334,12 @@ def test_start_game_to_play_completes_human_banker_bury(client, monkeypatch):
         assert len(room.round.hands[0]) == 25
 
 
-def test_the_deal_paces_a_card_every_0_15_s_and_keeps_the_declare_windows():
+def test_the_deal_paces_a_card_every_0_2_s_and_keeps_the_declare_windows():
     from shengji.api import server as srv
     from shengji.engine.round import HAND_SIZE
 
-    assert srv.DEAL_DELAY == 0.15
-    assert 4 * HAND_SIZE * srv.DEAL_DELAY == pytest.approx(15.0)
+    assert srv.DEAL_DELAY == 0.2
+    assert 4 * HAND_SIZE * srv.DEAL_DELAY == pytest.approx(20.0)
     # the window after the last card is the deal-speed-independent part
     assert srv.DECLARE_GRACE == 5.0 and srv.DECLARE_EXTEND == 3.0
 

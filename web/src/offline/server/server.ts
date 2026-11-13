@@ -31,7 +31,7 @@ import { type ActionEntry, BotGate, type DecisionKind, type RemoteBot, requestFo
 import { DeckRng, randomSeed } from "./rng";
 
 export const BOT_DELAY = 0.7;
-export const DEAL_DELAY = 0.15;
+export const DEAL_DELAY = 0.2;
 export const DECLARE_GRACE = 5.0;
 export const DECLARE_EXTEND = 3.0;
 const DECLARE_POLL = 0.25;

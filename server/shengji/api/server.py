@@ -114,7 +114,7 @@ def _prior_health() -> dict | None:
 BOT_DELAY = 0.7
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
 CHAT_MAX_LEN = 300    # per-message cap
-DEAL_DELAY = 0.15          # seconds between dealt cards (~15s full deal)
+DEAL_DELAY = 0.2           # seconds between dealt cards (~20s full deal)
 DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected

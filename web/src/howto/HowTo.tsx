@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, TouchEvent } from "react";
 import type { GameState, Trick } from "../protocol";
 import Card from "../components/Card";
 import TrickArea from "../components/TrickArea";
@@ -532,8 +532,8 @@ const STEPS: Step[] = [
 function Head({ count }: { count: ReactNode }) {
   return (
     <header className="howto-head">
-      <button className="btn subtle games-back" onClick={closeHowto}>‹ Lobby</button>
-      <span className="howto-page">How to play</span>
+      <button className="btn subtle games-back" onClick={closeHowto}>‹ Back</button>
+      <h1 className="howto-page">How to play</h1>
       <span className="howto-count">{count}</span>
     </header>
   );
@@ -543,40 +543,29 @@ function Stepper({ step }: { step: number }) {
   const n = STEPS.length;
   const i = Math.min(Math.max(step, 1), n) - 1;
   const s = STEPS[i];
-  const touch = useRef<{ x: number; y: number } | null>(null);
   const go = (to: number) => openHowto(Math.min(Math.max(to, 1), n));
   return (
     <div className="panel games-panel howto-panel">
       <Head count={`${i + 1} of ${n}`} />
       {/* Keyed by step, so a slide's picture starts afresh each time it is entered. */}
-      <section key={i} className="howto-step" aria-roledescription="slide"
-               onTouchStart={(e) => {
-                 touch.current = e.touches.length === 1
-                   ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
-               }}
-               onTouchMove={(e) => { if (e.touches.length !== 1) touch.current = null; }}
-               onTouchCancel={() => { touch.current = null; }}
-               onTouchEnd={(e) => {
-                 const start = touch.current; touch.current = null;
-                 if (start === null || e.changedTouches.length !== 1) return;
-                 const dx = e.changedTouches[0].clientX - start.x;
-                 const dy = e.changedTouches[0].clientY - start.y;
-                 if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(i + 1 + (dx < 0 ? 1 : -1));
-               }}>
+      <section key={i} className="howto-step" aria-roledescription="slide">
         <h2 className="howto-title">{s.title}</h2>
         <p className="howto-body">{s.body}</p>
         {s.visual}
         <p className="howto-caption">{s.caption}</p>
       </section>
       <nav className="howto-nav" aria-label="Steps">
-        <div className="howto-dots">
+        {/* Where you are, not a control: ten taps would be under 30px wide on
+            a small phone, and Next and the swipe already move a step.
+            The header's "n of 10" says the same for a screen reader. */}
+        <div className="howto-dots" aria-hidden="true">
           {STEPS.map((_, k) => (
-            <button key={k} className={`howto-dot${k === i ? " on" : ""}`}
-                    aria-label={`Step ${k + 1}`} aria-current={k === i ? "step" : undefined} onClick={() => go(k + 1)} />
+            <span key={k} className={`howto-dot${k === i ? " on" : ""}`} />
           ))}
         </div>
+        {/* One way forward: a step back is a swipe or the browser's own back,
+            and the header's ‹ Back is the one way out. */}
         <div className="howto-buttons">
-          <button className="btn big" disabled={i === 0} onClick={() => go(i)}>Back</button>
           {i < n - 1
             ? <button className="btn primary big" onClick={() => go(i + 2)}>Next</button>
             : <button className="btn gold big" onClick={closeHowto}>Start playing</button>}
@@ -586,9 +575,41 @@ function Stepper({ step }: { step: number }) {
   );
 }
 
+/** A swipe turns the page wherever it starts on the screen: only a mostly
+ *  horizontal single-finger move past the threshold counts, so vertical
+ *  scrolling and taps pass through. A touch that starts at the left edge
+ *  belongs to the system's back gesture. */
+const SWIPE_MIN_PX = 50;
+const EDGE_PX = 20;
+
+function useSwipe(step: number) {
+  const n = STEPS.length;
+  const i = Math.min(Math.max(step, 1), n);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  return {
+    onTouchStart: (e: TouchEvent) => {
+      const t = e.touches[0];
+      touch.current = e.touches.length === 1 && t.clientX > EDGE_PX
+        ? { x: t.clientX, y: t.clientY } : null;
+    },
+    onTouchMove: (e: TouchEvent) => { if (e.touches.length !== 1) touch.current = null; },
+    onTouchCancel: () => { touch.current = null; },
+    onTouchEnd: (e: TouchEvent) => {
+      const start = touch.current; touch.current = null;
+      if (start === null || e.changedTouches.length !== 1) return;
+      const dx = e.changedTouches[0].clientX - start.x;
+      const dy = e.changedTouches[0].clientY - start.y;
+      if (Math.abs(dx) > SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy)) {
+        openHowto(Math.min(Math.max(i + (dx < 0 ? 1 : -1), 1), n));
+      }
+    },
+  };
+}
+
 export default function HowTo({ route }: { route: HowtoRoute }) {
+  const swipe = useSwipe(route.step);
   return (
-    <div className="screen lobby-screen howto-screen">
+    <div className="screen lobby-screen howto-screen" {...swipe}>
       <Stepper step={route.step} />
     </div>
   );

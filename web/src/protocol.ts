@@ -2,6 +2,8 @@
 // Card codes: suited = suit letter (S H D C) + rank ("S2".."SA", "H10", ...);
 // jokers = "LJ" (little/black) and "BJ" (big/red).
 
+import type { QueueClientMsg, QueueErrorCode, QueueServerMsg } from "./queue/messages";
+
 export interface HandCard {
   id: number;
   code: string;
@@ -19,6 +21,7 @@ export type Rank = (typeof RANKS)[number];
 // ---------- Client -> Server ----------
 
 export type ClientMsg =
+  | { type: "ping"; nonce: number }
   | {
       type: "create_room";
       name: string;
@@ -27,21 +30,39 @@ export type ClientMsg =
       /** Experimental W32 is available only through the guarded lobby UI. */
       test_policy?: "w32";
       test_access_key?: string;
+      /** Continue this saved game of the signed-in account: the room is made
+       *  with the account in its saved seat and bots in the other three, and
+       *  starts at that game's last levels with its next banker. */
+      resume_from?: string;
     }
   | { type: "add_bot" }
   /** Host only, before the game starts: the rank both teams begin at. */
   | { type: "set_start_level"; start_level: Rank }
   | { type: "remove_bot" }
+  /** Host only, before the game starts: exchange the occupants of two taken seats. */
+  /** `expect`: who the host saw at a and b (null: empty); the server refuses if either changed. */
+  | { type: "swap_seats"; a: number; b: number; expect?: [SeatOccupant | null, SeatOccupant | null] }
+  /** Host only, before the game starts: send the person in this seat out of the room. */
+  | { type: "remove_player"; seat: number; expect?: SeatOccupant }
   | { type: "start_game" }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window
   | { type: "bury"; card_ids: number[] }
   | { type: "play"; card_ids: number[] }
   | { type: "next_round" }
+  /** Ranked table: the player is back after the move timer marked them away. */
+  | { type: "im_back" }
   | { type: "chat"; text: string }
+  /** Report another seat's player; the server answers report_received or a coded error. */
+  | { type: "report_player"; seat: number; reason: ReportReason }
   | { type: "peek_room"; room: string }
+  /** Which kind of thing a typed or linked code names (PROTOCOL.md "Codes"). */
+  | { type: "code_lookup"; code: string }
   | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
-  | { type: "leave_room" }; // anytime after joining; server replies {type:"left"}
+  | { type: "leave_room" } // anytime after joining; server replies {type:"left"}
+  | QueueClientMsg;
+
+export type ReportReason = "abuse" | "spam" | "cheating" | "other";
 
 // ---------- Server -> Client ----------
 
@@ -51,7 +72,12 @@ export interface ErrorMsg {
   /** Machine-readable case. Typed so a new server code cannot be handled by
    *  a stale client branch that silently falls through to a generic toast. */
   code?: ErrorCode;
+  /** Set on a refused code_lookup only: the code it was asked about. */
+  lookup?: string;
 }
+
+/** A seat's occupant as a room frame shows it, for a lobby action to name. */
+export interface SeatOccupant { name: string; is_bot: boolean }
 
 export interface RoomPlayer {
   seat: number;
@@ -70,6 +96,8 @@ export interface RoomMsg {
   start_level: Rank;
   /** Present only for rooms explicitly created with the W32 test policy. */
   experimental_policy?: "w32";
+  /** Built by the matchmaking queue: a rated game between strangers. */
+  matched?: boolean;
 }
 
 export interface StatePlayer {
@@ -91,6 +119,14 @@ export interface StatePlayer {
    *  the window has passed and anyone may claim it. Same deadline as
    *  takeover_in, so the two can never disagree. */
   reserved_secs: number | null;
+  /** Move timer (ranked tables): seconds this seat has left for the decision
+   *  it owes (a play, a bury or the round-end Next); null when no clock runs
+   *  for it. Tick it down locally, like takeover_in. Absent at a table
+   *  without the move timer (casual and offline). */
+  turn_deadline?: number | null;
+  /** The move timer ran out too often: the bot is playing every decision for
+   *  this present player until they are back. Absent where turn_deadline is. */
+  away?: boolean;
 }
 
 export interface Trump {
@@ -138,6 +174,17 @@ export interface RoundResult {
   /** True on the round that took a team past A. */
   point_scored: boolean;
   game_over: boolean;
+  /** The receiving seat's own rating after this round; present only for a
+   *  signed-in player, and only once the server has stored the round. */
+  rating?: RoundRating;
+}
+
+export interface RoundRating {
+  rating: number;
+  /** This round's change, rounded to a whole point. */
+  delta: number;
+  /** The change over the whole game, on the round that wins a game. */
+  game_delta?: number;
 }
 
 export interface GameState {
@@ -146,6 +193,8 @@ export interface GameState {
   you: number;
   /** Present only for rooms explicitly created with the W32 test policy. */
   experimental_policy?: "w32";
+  /** Built by the matchmaking queue: a rated game between strangers. */
+  matched?: boolean;
   phase: Phase;
   ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];
@@ -197,18 +246,33 @@ export interface EventMsg {
 /** Confirmation of leave_room; the connection may create/join rooms again. */
 export interface LeftMsg {
   type: "left";
+  /** Present when the host removed this player rather than the player leaving. */
+  reason?: "removed";
+  message?: string;
 }
 
 export type ServerMsg =
+  | { type: "heartbeat_ready" }
+  | { type: "pong"; nonce: number }
   | ErrorMsg
   | RoomMsg
   | GameState
   | EventMsg
   | LeftMsg
   | RoomSeats
+  | CodeKindMsg
   | ChatMsg
   | ChatHistory
-  | ResumeMsg;
+  | ResumeMsg
+  | ReportReceivedMsg
+  | QueueServerMsg;
+
+/** The server stored this viewer's report; ``message`` is shown as a toast. */
+export interface ReportReceivedMsg {
+  type: "report_received";
+  seat: number;
+  message: string;
+}
 
 /** Every coded error the server can send. Keep in sync with server.py —
  *  an unlisted code silently falls through to a generic toast. */
@@ -218,13 +282,32 @@ export type ErrorCode =
   | "choose_seat"
   | "seat_unavailable"
   | "seat_reserved"
+  | "ranked_sign_in"
+  | "ranked_queue_only"
   | "test_room_unavailable"
   | "bad_start_level"
-  | "stale_connection";
+  | "resume_unavailable"
+  | "stale_connection"
+  | "report_sign_in"
+  | "report_bad_seat"
+  | "report_bad_reason"
+  | "report_bot"
+  | "report_guest"
+  | "report_rate_limited"
+  | "report_not_stored"
+  | QueueErrorCode;
 
 /** "human" — a connected person; "bot" — a permanent bot seat;
  *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */
 export type Controller = "human" | "bot" | "bot_cover";
+
+/** Reply to code_lookup: room and pair codes share one space, so a code
+ *  names a live room, a live pair, or nothing. */
+export interface CodeKindMsg {
+  type: "code_kind";
+  code: string;
+  kind: "room" | "party" | "none";
+}
 
 export interface ChatHistory {
   type: "chat_history";

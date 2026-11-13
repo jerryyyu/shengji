@@ -317,6 +317,8 @@ export function stateFor(room: LocalRoom, seat: number): Json {
       : null,
     message: rnd.message,
     notice: rnd.notice,
+    // a solo table never seats an open-table joiner
+    joined_round: false,
   };
 }
 

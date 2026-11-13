@@ -21,7 +21,37 @@ function wsUrl(): string {
   return `${scheme}://${location.host}/ws`;
 }
 
-const WS_URL = `${wsUrl()}?heartbeat=1`;
+const DEVICE_KEY = "shengji.device";
+/** Used when storage refuses: one key for this page's life. */
+let memoryDevice: string | null = null;
+
+/** 128 random bits as url-safe base64 without padding: 22 characters. */
+function newDeviceKey(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** This device's opaque key, made on first use and kept in storage. The
+ *  server uses it to tell two tabs on one device apart from two people. It
+ *  identifies a browser, not a person: clearing site data makes a new one. */
+export function deviceKey(): string {
+  try {
+    const saved = localStorage.getItem(DEVICE_KEY);
+    if (saved && /^[A-Za-z0-9_-]{22}$/.test(saved)) return saved;
+    const made = newDeviceKey();
+    localStorage.setItem(DEVICE_KEY, made);
+    return made;
+  } catch {
+    memoryDevice ??= newDeviceKey();
+    return memoryDevice;
+  }
+}
+
+/** The socket URL, with the device key read at each connect. */
+export function socketUrl(): string {
+  return `${wsUrl()}?heartbeat=1&device=${deviceKey()}`;
+}
 const HEARTBEAT_MS = 15_000;
 
 // Offline mode is decided in its own module, so components can read it
@@ -94,7 +124,7 @@ class Connection {
   private started = false;
   /** Opens the transport: the game server's WebSocket, or offline the
    *  in-page server's look-alike (set once its module has loaded). */
-  private makeSocket: () => WebSocket = () => new WebSocket(WS_URL);
+  private makeSocket: () => WebSocket = () => new WebSocket(socketUrl());
   private stopHeartbeat: (() => void) | null = null;
   /** The next reconnect is deliberate (a sign-in or sign-out): open it at
    *  once instead of after the failure backoff. */

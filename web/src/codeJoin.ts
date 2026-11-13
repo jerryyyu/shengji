@@ -4,7 +4,6 @@
 // runs as it always has.
 
 import { useSyncExternalStore } from "react";
-import { auth } from "./auth";
 import { CODE_LEN, NO_CODE, normalizeCode } from "./codes";
 import { openTab } from "./home/route";
 import type { ServerMsg } from "./protocol";
@@ -159,23 +158,15 @@ export class CodeStore {
     }
   }
 
-  /** A pair code: join it when signed in; a guest is asked to sign in and
-   *  comes back to the pair sheet with the code filled in. A link only
-   *  fills the sheet in, as `?party=` always has. */
+  /** A pair code: joined at once, by guests and accounts alike. A link only
+   *  fills the pair sheet in, as `?party=` always has. */
   private party(code: string, from: CodeFrom): void {
-    const status = auth.state?.status;
-    if (status === "in" && from !== "link") {
+    if (from !== "link") {
       queue.joinParty(code);
       return;
     }
     queue.setJoinCode(code);
-    if (status === "in") {
-      queue.openSheet("party");
-    } else {
-      // QueueLayer opens the pair sheet once the account is signed in
-      queue.findAfterSignIn = true;
-      if (status === "out" || status === "off") queue.openSheet("guest");
-    }
+    queue.openSheet("party");
   }
 
   /** Test seam: forget everything, as a fresh page would. */

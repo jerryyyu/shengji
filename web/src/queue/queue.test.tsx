@@ -163,20 +163,37 @@ describe("Play", () => {
     expect(q(".q-sheet .ranked-chip")?.textContent).toBe("Ranked");
   });
 
-  it("a guest: Casual first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
+  it("a guest: Play and Duo with no Ranked heading, the guest line, and Play bots as a Casual row", async () => {
     signedIn = false;
     await renderApp();
     const labels = [...lobby().querySelectorAll(".play-label")].map((h) => h.textContent);
-    expect(labels).toEqual(["Casual", "Ranked"]);
-    expect(q(".q-find")).toBeNull();
+    expect(labels).toEqual(["Casual"]);
+    expect(document.body.textContent).not.toContain("Sign in to play ranked");
+    expect(q(".play-guest-line")?.textContent).toBe("Playing as a guest · Sign in to be ranked");
     const bots = button("Play bots", lobby())!;
-    expect(bots.className).toContain("gold");
-    click(bots);
-    expect(lastSent()).toMatchObject({ type: "create_room" });
-    expect(sentTypes()).not.toContain("queue_join");
-    say({ type: "error", code: "x", message: "x" });
-    click(button("Sign in to play ranked"));
-    expect(button("Sign in to play ranked")).toBeUndefined();
+    expect(bots.className).toContain("grp-row");
+    // Play queues a guest exactly as it does an account
+    click(button("Play", lobby())!);
+    expect(lastSent()).toEqual({ type: "queue_join" });
+    say(queued());
+    expect(q(".q-find")?.textContent).toBe("Searching…");
+    expect(q(".q-bar")).not.toBeNull();
+  });
+
+  it("a guest's Duo opens the pair sheet and makes a code, as an account's does", async () => {
+    signedIn = false;
+    await renderApp();
+    click(button("Duo", lobby())!);
+    expect(lastSent()).toEqual({ type: "party_create" });
+    expect(q(".q-sheet h2")?.textContent).toBe("Duo");
+    expect(q(".q-sheet .google-signin")).toBeNull();
+  });
+
+  it("a guest's Sign in shows the sign-in buttons in the line's place", async () => {
+    signedIn = false;
+    await renderApp();
+    click(q(".play-guest-signin") as HTMLButtonElement);
+    expect(q(".play-guest-line")).toBeNull();
     expect(q(".lobby-panel .google-signin")).not.toBeNull();
     // the website signs in with Google only; nothing promises a provider still to come
     expect(q("[data-testid='apple-signin']")).toBeNull();
@@ -184,7 +201,7 @@ describe("Play", () => {
   });
 });
 
-it("in the app a guest's Sign in to play ranked offers Apple beside Google", async () => {
+it("in the app a guest's Sign in offers Apple beside Google", async () => {
   const { resetNativeForTests } = await import("../native");
   const Plugins: Record<string, unknown> = {
     SocialLogin: { initialize: () => Promise.resolve(), login: () => Promise.resolve(), logout: () => Promise.resolve() },
@@ -196,7 +213,7 @@ it("in the app a guest's Sign in to play ranked offers Apple beside Google", asy
   try {
     signedIn = false;
     await renderApp();
-    click(button("Sign in to play ranked"));
+    click(q(".play-guest-signin") as HTMLButtonElement);
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect(q("[data-testid='google-signin']")).not.toBeNull();
     expect(q("[data-testid='apple-signin']")?.textContent).toBe("Sign in with Apple");
@@ -847,18 +864,15 @@ describe("one code for rooms and pairs", () => {
     expect(q(".q-sheet .q-error")?.textContent).toBe("No game or pair has that code.");
   });
 
-  it("a guest who types a pair code is asked to sign in, then lands on the pair sheet", async () => {
+  it("a guest who types a pair code joins the pair, as an account does", async () => {
     signedIn = false;
     await renderApp();
     typeInto(playBox(), "7F2K");
     playJoin();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "7F2K" });
     say({ type: "code_kind", code: "7F2K", kind: "party" });
-    expect(sentTypes()).not.toContain("party_join");
-    const sheet = q(".q-sheet")!;
-    expect(sheet.querySelector("h2")?.textContent).toBe("Duo");
-    expect(sheet.textContent).toContain("Sign in to join duo 7F2K.");
-    expect(sheet.querySelector(".google-signin")).not.toBeNull();
+    expect(lastSent()).toEqual({ type: "party_join", code: "7F2K" });
+    expect(document.body.textContent).not.toContain("Sign in to join duo");
   });
 
   it("the pair sheet's box joins with a code, and a game code closes it and opens the room", async () => {
@@ -1304,13 +1318,24 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK", seat: 2 });
   });
 
-  it("a guest is asked to sign in to join a ranked table", async () => {
+  it("a guest takes a ranked table's seat as an account does", async () => {
     signedIn = false;
     await open();
     viaPlayBox();
     tell(rankedSeats());
-    expect(q(".ranked-gate h2")?.textContent).toBe("Sign in to join a ranked table");
-    expect(sentTypes()).not.toContain("join_room");
+    expect(q(".ranked-gate")).toBeNull();
+    click(button(/Seat 2/));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK", seat: 2 });
+  });
+
+  it("same_device closes the seat picker and says why", async () => {
+    await open();
+    viaPlayBox();
+    tell(rankedSeats());
+    click(button(/Seat 2/));
+    tell({ type: "error", code: "same_device", message: "server text" });
+    expect(document.body.textContent).not.toContain("Take a seat");
+    expect(document.body.textContent).toContain("You're already at this table on this device.");
   });
 
   it("a ranked table with no bot seat says Table is full", async () => {

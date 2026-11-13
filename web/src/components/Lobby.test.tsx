@@ -41,6 +41,7 @@ import Lobby, { STALL_MS } from "./Lobby";
 import { offlineGame } from "./offlineGame";
 import { queue } from "../queue/store";
 import { codes } from "../codeJoin";
+import { guestName } from "../guestName";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -51,13 +52,23 @@ async function render() {
   root = createRoot(host);
   await act(async () => root.render(<Lobby status="open" error={null} onArmAutoFill={() => {}} />));
 }
-const nameInput = () => host.querySelector<HTMLInputElement>("input[autocomplete='nickname']")!;
+const NAME_FIELD = ".q-layer:not(.q-out) input[autocomplete='nickname']";
+/** A guest's name field, in the editor their chip opens (opened here when
+ *  shut); null for an account, which has no chip to open it. */
+const nameInput = () => {
+  const open = host.querySelector<HTMLInputElement>(NAME_FIELD);
+  if (open) return open;
+  const chip = host.querySelector<HTMLButtonElement>(".guest-pill");
+  if (chip) act(() => chip.click());
+  return host.querySelector<HTMLInputElement>(NAME_FIELD)!;
+};
 
 beforeEach(() => {
   sent.length = 0;
   queue.reset();
   codes.reset();
   localStorage.clear();
+  guestName.reset();
   gis.initialize.mockClear();
   gis.renderButton.mockClear();
   signOut.mockClear();
@@ -93,8 +104,10 @@ describe("the lobby with sign-in OFF", () => {
     expect(labels).toContain("Play bots");
     expect(labels).toContain("Create room");
     expect(labels).not.toContain("Find a game");
-    // no accounts, so no ranked play to offer
+    // no accounts: guests still queue, with no way to sign in offered
     expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual"]);
+    expect([...host.querySelectorAll(".play-ranked-row button")].map((b) => b.textContent)).toEqual(["Play", "Duo"]);
+    expect(host.querySelector(".play-guest-line")?.textContent).toBe("Playing as a guest");
   });
   it("the section a guest plays in is called Casual", async () => {
     authState.current = { status: "off", clientId: null, user: null };
@@ -114,7 +127,7 @@ describe("the lobby when the server cannot be reached", () => {
   it("keeps the Ranked section, with Play and Duo unavailable, instead of dropping it", async () => {
     authState.current = { status: "error", clientId: null, user: null };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual", "Ranked"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked", "Casual"]);
     const ranked = host.querySelector("[data-testid=ranked-unavailable]")!;
     expect(ranked).not.toBeNull();
     const buttons = [...ranked.querySelectorAll<HTMLButtonElement>("button")];
@@ -138,21 +151,47 @@ describe("the lobby with sign-in ON", () => {
   });
   afterEach(() => { window.history.replaceState(null, "", "/"); });
 
-  it("signed out: Casual first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
+  it("signed out: the signed-in layout with a guest chip, Play and Duo with no Ranked heading, and Casual rows", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual", "Ranked"]);
-    expect(buttonNamed("Play bots").className).toContain("gold");
-    expect(buttonNamed("Create room").className).toContain("grp-row");
-    expect(host.querySelector(".q-find")).toBeNull();
-    expect(host.querySelector(".account-pill")).toBeNull();
-    expect(nameInput()).not.toBeNull();
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual"]);
+    expect(host.textContent).not.toContain("Sign in to play ranked");
+    expect(host.textContent).not.toContain("Your name");
+    // the chip sits where an account's does: initial, name, and Guest for the rating
+    const chip = host.querySelector<HTMLButtonElement>(".guest-pill")!;
+    expect(chip.previousElementSibling?.className).toBe("lobby-preview");
+    const name = chip.querySelector(".account-pill-name")!.textContent!;
+    expect(name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+    expect(chip.querySelector(".avatar")?.textContent).toBe(name.slice(0, 1));
+    expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("Guest");
+    const row = [...host.querySelectorAll<HTMLButtonElement>(".play-ranked-row button")];
+    expect(row.map((b) => b.textContent)).toEqual(["Play", "Duo"]);
+    expect(row[0].className).toContain("gold");
+    expect(host.querySelector(".play-guest-line")?.textContent).toBe("Playing as a guest · Sign in to be ranked");
+    // Play bots is a Casual row, as it is for an account
+    const rows = [...host.querySelectorAll(".play-grp .grp-row")].map((b) => b.textContent);
+    expect(rows).toEqual(["Create room", "Play bots"]);
+    expect(buttonNamed("Play bots").className).not.toContain("gold");
     // the sign-in buttons appear only once asked for
     expect(host.querySelector(".google-signin")).toBeNull();
-    act(() => buttonNamed("Sign in to play ranked").click());
-    expect(buttonNamed("Sign in to play ranked")).toBeUndefined();
+    act(() => host.querySelector<HTMLButtonElement>(".play-guest-signin")!.click());
     expect(host.querySelector(".google-signin")).not.toBeNull();
     expect(sent).toHaveLength(0);
+    // Play queues a guest like anyone
+    act(() => row[0].click());
+    expect(sent).toEqual([{ type: "queue_join" }]);
+  });
+
+  it("signed out: the chip opens the name editor, whose Done keeps the name", async () => {
+    authState.current = { status: "out", clientId: "cid.apps", user: null };
+    await render();
+    expect(host.querySelector(".q-sheet")).toBeNull();
+    act(() => host.querySelector<HTMLButtonElement>(".guest-pill")!.click());
+    type(nameInput(), "Ace");
+    act(() => buttonNamed("Done").click());
+    expect(host.querySelector(".q-layer:not(.q-out) .q-sheet")).toBeNull();
+    expect(host.querySelector(".guest-pill .account-pill-name")?.textContent).toBe("Ace");
+    expect(localStorage.getItem("shengji.name")).toBe("Ace");
   });
 
   it("signed in: an account chip under the preview opens the name editor, and there is no name field", async () => {
@@ -278,7 +317,7 @@ describe("signed in, the player plays under the account name", () => {
 });
 
 describe("signed out, the guest names themselves", () => {
-  const dice = () => host.querySelector<HTMLButtonElement>("button[aria-label='Random name']")!;
+  const dice = () => { nameInput(); return host.querySelector<HTMLButtonElement>("button[aria-label='Random name']")!; };
 
   it("restores the name used last time, which Create and Play vs bots save without asking", async () => {
     localStorage.setItem("shengji.name", "Ace");

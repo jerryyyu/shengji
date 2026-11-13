@@ -316,6 +316,8 @@ export type ErrorCode =
   | "seat_reserved"
   | "ranked_sign_in"
   | "ranked_queue_only"
+  /** This device already holds a seat at the table (another tab). */
+  | "same_device"
   | "table_full"
   | "table_left"
   | "test_room_unavailable"

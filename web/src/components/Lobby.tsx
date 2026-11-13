@@ -2,15 +2,16 @@ import type { RoomSeats, ServerMsg } from "../protocol";
 import { openHowto } from "../howto/route";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
-import { clearSavedRoom, conn, getResumeToken, getSavedName, saveName } from "../ws";
+import { clearSavedRoom, conn, getResumeToken, getSavedName } from "../ws";
 import { createRoomPayload } from "../testPolicy";
 import { needsSeatPicker } from "../seatPicker";
 import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
-import GoogleSignIn from "./GoogleSignIn";
+import GuestChip, { GuestNameSheet } from "./GuestChip";
 import LobbyPreview from "./LobbyPreview";
-import { GuestDuoSheet, RankedSection, TrophyIcon } from "../queue/Ranked";
+import { RankedSection, TrophyIcon } from "../queue/Ranked";
+import { guestName, useGuestName } from "../guestName";
 import { offlineGame } from "./offlineGame";
 import { codes, useCodes } from "../codeJoin";
 import { normalizeCode } from "../codes";
@@ -86,16 +87,18 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
     if (msg?.type === "error") setStarting(null);
   }), []);
-  const [name, setName] = useState(getSavedName());
+  const { name } = useGuestName();
+  const setName = (next: string) => guestName.setName(next);
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
   const accountName = effectiveName(signedIn);
   // A signed-in player plays under their account name, the one the account
-  // pill shows and its Edit name changes; the lobby has no name field for
-  // them. It is sent explicitly because the socket's own default is read
-  // once at its handshake and would miss a rename made since.
-  // A guest names themselves in the field: it starts as the name they used
-  // last time, saved on Play, Create or Join, or else a random one.
+  // pill shows and its Edit name changes. It is sent explicitly because the
+  // socket's own default is read once at its handshake and would miss a
+  // rename made since.
+  // A guest's chip sits in the same place and opens their name editor: the
+  // name starts as the one they used last time, saved on Play, Create, Join
+  // or the editor's Done, or else a random one.
   const playerName = signedIn ? accountName : name.trim();
   // The random fill happens once, as soon as the page knows the visitor is
   // not signed in; a field the guest has typed into, or cleared afterwards,
@@ -104,13 +107,12 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   useEffect(() => {
     if (autoFilled.current || (account.status !== "out" && account.status !== "off" && account.status !== "error")) return;
     autoFilled.current = true;
-    if (!name.trim() && !getSavedName().trim()) setName(randomName());
+    if (!name.trim() && !getSavedName().trim()) guestName.setName(randomName());
   }, [account.status, name]);
-  const reroll = () => setName(randomName(name));
   const nameId = useId();
   // Only a guest's own name is remembered; an account name lives on the account.
   const rememberName = useCallback((trimmed: string) => {
-    if (!signedIn && trimmed) saveName(trimmed);
+    if (!signedIn && trimmed) guestName.keep(trimmed);
   }, [signedIn]);
   // The query gate is captured at mount. clearInvite() removes the URL query
   // after an action, but must not make an already-open test control disappear.
@@ -132,12 +134,11 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const autoJoined = useRef(false);
   const lastPeek = useRef<string | null>(null);
   const peekGen = useRef<number | null>(null);
-  const nameRef = useRef<HTMLInputElement>(null);
   // Mid-game joins pick their seat: partner choice matters (0&2 vs 1&3).
   const [seatChoice, setSeatChoice] = useState<RoomSeats | null>(null);
-  // A ranked table's invite that cannot be taken here: a guest must sign in
-  // first, and a table with no bot seat is full.
-  const [rankedGate, setRankedGate] = useState<{ room: string; kind: "signin" | "full" } | null>(null);
+  // A ranked table's invite that cannot be taken here: no bot seat is left.
+  // Guests take a ranked table's seats as accounts do, unrated.
+  const [tableFull, setTableFull] = useState(false);
   // Declared before the subscriber and memoised so the effect can list it as
   // a dependency instead of silencing the warning: it closes over `name` and
   // `roomCode`, and a stale copy would join with the wrong name.
@@ -168,9 +169,9 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
       return;
     }
     if (m?.type === "room_seats") {
-      if (m.ranked && (!signedIn || m.full)) {
+      if (m.ranked && m.full) {
         setStarting(null);
-        setRankedGate({ room: m.room, kind: signedIn ? "full" : "signin" });
+        setTableFull(true);
         return;
       }
       if (needsSeatPicker(m.seats)) {
@@ -188,20 +189,16 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         && lastPeek.current) {
       conn.send({ type: "peek_room", room: lastPeek.current });
     }
-    if (m?.type === "error" && (m.code === "ranked_sign_in" || m.code === "table_full")) {
+    if (m?.type === "error" && m.code === "table_full") {
       setSeatChoice(null);
-      setRankedGate({ room: lastPeek.current ?? "", kind: m.code === "ranked_sign_in" ? "signin" : "full" });
+      setTableFull(true);
     }
-  }), [joinSeat, signedIn]);
-
-  // Signed in from the ranked gate: the invite is tried again at once.
-  useEffect(() => {
-    if (!signedIn || rankedGate?.kind !== "signin" || !rankedGate.room) return;
-    const room = rankedGate.room;
-    setRankedGate(null);
-    peek(room);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedIn, rankedGate]);
+    // this device already sits at the table, or the table takes its players
+    // from the queue only: App says so, and the picker has nothing to offer
+    if (m?.type === "error" && (m.code === "same_device" || m.code === "ranked_queue_only")) {
+      setSeatChoice(null);
+    }
+  }), [joinSeat]);
 
   // An empty name never blocks a start: Play vs bots, Create room and Join
   // each fill the field with a random name and go, the same as the dice.
@@ -284,7 +281,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // otherwise be thrown into the room before they could change it. Auto-join
   // only when the link carries a name too, which is
   // an explicit choice by whoever built the link; a signed-in player still
-  // joins under their account name.
+  // joins under their account name. A guest's name editor opens instead.
   const invited = new URLSearchParams(window.location.search).get("room") ?? linkRoom;
   const invitedName = new URLSearchParams(window.location.search).get("name");
   useEffect(() => {
@@ -292,33 +289,22 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     if (invitedName && invitedName.trim()) {
       autoJoined.current = true;
       const joinAs = signedIn ? accountName : invitedName.trim();
-      if (!signedIn) saveName(joinAs);
+      if (!signedIn) guestName.keep(joinAs);
       clearInvite();
       conn.send({ type: "join_room", room: invited.toUpperCase(), name: joinAs });
-    } else {
-      nameRef.current?.focus();
-      nameRef.current?.select();
+    } else if (!signedIn && !autoJoined.current) {
+      autoJoined.current = true;
+      guestName.open();
     }
   }, [status, invited, invitedName, signedIn, accountName]);
 
-  if (rankedGate) {
+  if (tableFull) {
     return (
       <div className="screen lobby-screen">
-        <div className="lobby-card ranked-gate" role="dialog" aria-label={rankedGate.kind === "full" ? "Table is full" : "Ranked table"}>
-          {rankedGate.kind === "full" ? (
-            <>
-              <h2>Table is full</h2>
-              <p className="seat-hint">Every seat at this ranked table has a player.</p>
-            </>
-          ) : (
-            <>
-              <h2>Sign in to join a ranked table</h2>
-              {account.status === "out" && account.clientId ? <GoogleSignIn clientId={account.clientId} /> : null}
-            </>
-          )}
-          <button className="btn" onClick={() => setRankedGate(null)}>
-            {rankedGate.kind === "full" ? "OK" : "Cancel"}
-          </button>
+        <div className="lobby-card ranked-gate" role="dialog" aria-label="Table is full">
+          <h2>Table is full</h2>
+          <p className="seat-hint">Every seat at this ranked table has a player.</p>
+          <button className="btn" onClick={() => setTableFull(false)}>OK</button>
         </div>
       </div>
     );
@@ -379,9 +365,9 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const botsReady = stalled || (ready && testReady);
   const botsLabel = starting?.kind === "bots" ? STARTING_LABEL.bots : "Play bots";
   const createLabel = starting?.kind === "create" ? STARTING_LABEL.create : "Create room";
-  // A guest, or anyone without a connection, has Play bots as the one gold
-  // button; a signed-in player online has it as a row under Create room.
-  const botsPrimary = !signedIn || stalled;
+  // Without a connection Play bots is the one gold button, since it plays on
+  // this device; online it is a row under Create room for everyone.
+  const botsPrimary = stalled;
   const casual = (
     <section className="play-section" aria-labelledby={`${nameId}-casual`}>
       <h2 className="play-label" id={`${nameId}-casual`}>Casual</h2>
@@ -430,34 +416,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
         <LobbyPreview />
-        {signedIn ? <AccountChip user={signedIn} /> : (
-          <div className="field">
-            <label className="field-label" htmlFor={nameId}>Your name</label>
-            <div className="name-input">
-              <input
-                id={nameId}
-                ref={nameRef}
-                value={name}
-                maxLength={20}
-                placeholder="e.g. Jerry"
-                autoComplete="nickname"
-                autoCorrect="off"
-                autoCapitalize="words"
-                spellCheck={false}
-                enterKeyHint="done"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  // "done" on the keyboard puts it away; joining stays a tap
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur();
-                }}
-              />
-              <button type="button" className="name-reroll" aria-label="Random name"
-                      title="Random name" onClick={reroll}>
-                <span aria-hidden="true">🎲</span>
-              </button>
-            </div>
-          </div>
-        )}
+        {signedIn ? <AccountChip user={signedIn} /> : <GuestChip />}
 
         {testControlsVisible ? (
           <div className="experimental-controls">
@@ -492,7 +451,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           <div className="lobby-error" role="alert">{error ?? codeView.playError}</div>
         ) : null}
 
-        {signedIn ? <>{ranked}{casual}</> : <>{casual}{ranked}</>}
+        {ranked}
+        {casual}
 
         <div className="join-row">
           <input
@@ -528,7 +488,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
         </p>
       </div>
-      <GuestDuoSheet />
+      {signedIn ? null : <GuestNameSheet />}
     </div>
   );
 }

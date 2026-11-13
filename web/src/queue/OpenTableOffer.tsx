@@ -1,4 +1,5 @@
 import { effectiveName, useAuth } from "../auth";
+import { useGuestName } from "../guestName";
 import Sheet from "./Sheet";
 import { clock, queue, useNow, useQueue } from "./store";
 import type { OfferView } from "./store";
@@ -76,7 +77,8 @@ function OfferSeat({ o, seat, ours, busy, me }: {
 export default function OpenTableOffer() {
   const q = useQueue();
   const account = useAuth();
-  const me = account.status === "in" && account.user ? effectiveName(account.user) : "";
+  const guest = useGuestName();
+  const me = account.status === "in" && account.user ? effectiveName(account.user) : guest.name.trim();
   const o = q.offer;
   const shown = q.queued && q.table === null && o !== null;
   const now = useNow(shown, 250);

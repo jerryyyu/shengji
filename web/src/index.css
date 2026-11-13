@@ -5159,36 +5159,7 @@ button.games-row { cursor: pointer; }
 .rating-line b { font-size: 17px; color: var(--gold); font-variant-numeric: tabular-nums; }
 .rating-deltas { display: flex; gap: 10px; align-items: baseline; font-weight: 700; }
 .rating-game { font-size: 12px; font-weight: 600; }
-.rating-guest {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 44px;
-  color: var(--text-dim);
-  font-size: 14px;
-}
-/* drawn as a 30px pill, tapped as 44px */
-.rating-signin {
-  appearance: none;
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 15px;
-  background: #242a35;
-  color: var(--gold);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.rating-signin::after {
-  content: "";
-  position: absolute;
-  inset: -7px 0;
-}
+.rating-guest-note { font-size: 13px; }
 
 @media (prefers-reduced-motion: reduce) {
   .ios-switch, .ios-switch::after { transition: none; }
@@ -5407,7 +5378,7 @@ body.keyboard-open .tabbar { display: none; }
    under the floating tab bar and ends clear of it. */
 .home-narrow .lobby-panel:has(.lobby-preview) { padding-bottom: 0; }
 
-/* The Play tab: the title and preview, the guest's name or the account chip,
+/* The Play tab: the title and preview, the guest's or the account's chip,
    the Ranked and Unranked blocks, the code box and How to play, in one column.
    It sits straight on the page at every width, with no card around it; from
    700px it is 420px wide and centred under the top bar. */
@@ -5423,6 +5394,7 @@ body.keyboard-open .tabbar { display: none; }
   padding: 24px 0;
 }
 .home-wide .play-tab .account-pill { display: none; }
+.topbar-end:has(.guest-pill) { gap: 10px; }
 .play-section { display: flex; flex-direction: column; gap: 8px; text-align: left; }
 .play-label {
   display: flex;
@@ -5466,15 +5438,27 @@ body.keyboard-open .tabbar { display: none; }
   color: var(--gold);
   font-size: var(--fs-17);
 }
-.play-tab .btn.play-signin {
-  min-height: 50px;
-  border-radius: 16px;
-  border: 1.5px solid var(--gold);
-  background: transparent;
-  color: var(--gold);
-  font-size: var(--fs-17);
-  font-weight: 700;
+/* A guest's line under Play: unrated, and the way to sign in. */
+.play-guest-line {
+  margin: 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--fs-14, 14px);
 }
+.play-guest-signin {
+  appearance: none;
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gold);
+  font: inherit;
+  cursor: pointer;
+}
+/* tapped as 44px tall */
+.play-guest-signin::after { content: ""; position: absolute; inset: -14px -6px; }
+.play-guest-signin:disabled { color: inherit; cursor: default; }
+.play-guest .google-signin { align-self: center; }
 /* Unavailable controls keep their place and shape, greyed rather than faded. */
 .play-tab .btn:disabled {
   opacity: 1;

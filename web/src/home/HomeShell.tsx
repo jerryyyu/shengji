@@ -11,6 +11,7 @@ import type { MeSection, Tab } from "./route";
 import QueueBar, { QueuePill, QueueStrip, useInlineQueue } from "../queue/QueueBar";
 import { useQueue } from "../queue/store";
 import AccountChip from "../components/AccountChip";
+import GuestChip, { GuestNameSheet } from "../components/GuestChip";
 
 export { WIDE };
 
@@ -105,7 +106,7 @@ const WIDE_TABS: { tab: Tab; section?: MeSection; label: string }[] = [
 
 /** The wide layout's top bar: the wordmark (except on Play, whose page
  *  carries the title), Play, Leaderboard, Stats and Games centred, and the
- *  account chip (or Sign in) at the end, after the search's pill on a tab
+ *  account chip (a guest's chip and Sign in) at the end, after the search's pill on a tab
  *  other than Play. */
 export function TopBar({ active, section = "stats" }: { active: Tab; section?: MeSection }) {
   const account = useAuth();
@@ -114,9 +115,17 @@ export function TopBar({ active, section = "stats" }: { active: Tab; section?: M
   let end: ReactNode = null;
   if (user) {
     end = <AccountChip user={user} />;
-  } else if (account.status === "out") {
+  } else if (account.status !== "loading") {
+    // a guest's chip opens their name editor, which the Play tab holds
+    // itself; elsewhere the bar holds it
     end = (
-      <button type="button" className="btn topbar-signin" onClick={() => openTab("me", "stats")}>Sign in</button>
+      <>
+        <GuestChip />
+        {account.status === "out" ? (
+          <button type="button" className="btn topbar-signin" onClick={() => openTab("me", "stats")}>Sign in</button>
+        ) : null}
+        {active === "play" ? null : <GuestNameSheet />}
+      </>
     );
   }
   const on = (t: (typeof WIDE_TABS)[number]) => t.tab === active && (t.tab !== "me" || t.section === section);

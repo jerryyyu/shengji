@@ -6,6 +6,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { auth, effectiveName } from "../auth";
+import { guestName } from "../guestName";
 import type { ConnStatus } from "../ws";
 import { conn } from "../ws";
 import { haptic } from "../native";
@@ -59,7 +60,7 @@ export interface OfferView {
   partner: { seat: number; name: string } | null;
 }
 
-export type Sheet = null | "solo" | "guest" | "party";
+export type Sheet = null | "solo" | "party";
 
 export interface QueueNote { id: number; title: string; sub?: string }
 
@@ -98,9 +99,10 @@ const EMPTY: QueueView = {
   party: null, partyError: null, sheet: null, joinCode: "", note: null,
 };
 
+/** The name you play under: the account's, or a guest's own. */
 function myName(): string {
   const a = auth.state;
-  return a?.status === "in" && a.user ? effectiveName(a.user) : "";
+  return a?.status === "in" && a.user ? effectiveName(a.user) : guestName.name.trim();
 }
 
 /** The other member of a pair, by name. */
@@ -121,7 +123,7 @@ export class QueueStore {
   private noteTimer: number | null = null;
   private noteId = 0;
   private status: ConnStatus = "closed";
-  /** A guest tapped Sign in to play people: reopen the choice once signed in. */
+  /** A `?party=` invite waits for the socket before its pair sheet opens. */
   findAfterSignIn = false;
   private attached = false;
   /** The signed-in account this state belongs to; null when signed out,
@@ -138,8 +140,9 @@ export class QueueStore {
     conn.subscribe?.((m) => this.onMessage(m));
   }
 
-  /** Queue, table and pair state belong to one account: a sign-out,
-   *  a deletion or another account's sign-in starts from nothing. */
+  /** Queue, table and pair state belong to one identity: a sign-out, a
+   *  deletion or another account's sign-in starts from nothing. A guest who
+   *  signs in keeps what they have; the server moves it to the account. */
   private onAuth(account: string | null | undefined): void {
     if (account === this.account) return;
     const was = this.account;
@@ -221,19 +224,16 @@ export class QueueStore {
         this.resyncTimer = null;
         const held = this.view.queued;
         if (!held && !this.view.pending) return;
-        const signedIn = auth.state?.status === "in";
         this.joinSentAt = null;
         this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false,
                    offer: null, openTables: 0, botsPaused: false });
-        if (held && signedIn) this.notify("You left the queue while away.", "No cooldown.");
+        if (held) this.notify("You left the queue while away.", "No cooldown.");
       }, RESYNC_MS);
     }
   }
 
   private onMessage(msg: ServerMsg): void {
     const now = Date.now();
-    // the queue and pairs are signed-in only; a signed-out page keeps just the count
-    if (this.account === null && msg.type !== "queue_count") return;
     switch (msg.type) {
       case "queue_count":
         this.set({ count: msg.count });

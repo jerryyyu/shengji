@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { useAuth } from "../auth";
 import type { ConnStatus } from "../ws";
 import { PartySheet, SoloSheet } from "./PartySheet";
 import { queue, useQueue } from "./store";
@@ -22,7 +21,6 @@ function takeInviteCode(): string | null {
  *  queue's notices. */
 export default function QueueLayer({ status }: { status: ConnStatus }) {
   const q = useQueue();
-  const account = useAuth();
   useEffect(() => {
     const code = takeInviteCode();
     if (code) {
@@ -30,22 +28,18 @@ export default function QueueLayer({ status }: { status: ConnStatus }) {
       queue.findAfterSignIn = true;
     }
   }, []);
-  // An invite link, or a guest who chose Sign in to play people, comes back
-  // to the choice once the account is known.
+  // An invite link opens the pair sheet with its code once the socket is up,
+  // for guests and accounts alike.
   useEffect(() => {
     if (!queue.findAfterSignIn || status !== "open") return;
-    if (account.status === "in") {
-      queue.findAfterSignIn = false;
-      queue.openSheet(queue.view.joinCode ? "party" : "solo");
-    } else if (account.status === "out" && queue.view.joinCode && queue.view.sheet === null) {
-      queue.openSheet("guest");
-    }
-  }, [account.status, status]);
+    queue.findAfterSignIn = false;
+    queue.openSheet(queue.view.joinCode ? "party" : "solo");
+  }, [status]);
 
   return (
     <>
-      {q.sheet === "solo" && account.status === "in" ? <SoloSheet /> : null}
-      {q.sheet === "party" && account.status === "in" ? <PartySheet /> : null}
+      {q.sheet === "solo" ? <SoloSheet /> : null}
+      {q.sheet === "party" ? <PartySheet /> : null}
       <WaitingTable />
       <OpenTableOffer />
       {q.note ? (

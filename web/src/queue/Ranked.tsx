@@ -3,7 +3,6 @@ import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
 import { QueueCard, useInlineQueue } from "./QueueBar";
 import { partnerName, queue, useQueue } from "./store";
-import Sheet from "./Sheet";
 
 /** The ranked mark: a trophy. */
 export function TrophyIcon() {
@@ -51,52 +50,73 @@ export function PartyChip() {
   );
 }
 
-/** Play's Ranked block. Signed in: a wide gold Play that joins the ranked
- *  queue at once (as the pair when one is formed and you lead it) and Duo,
- *  which opens the pair sheet. Signed out: Sign in to play ranked, which
- *  shows the sign-in buttons in its place. Searching alone on an iPad or a
- *  desktop window, the queue's card takes the buttons' place. With sign-in off or still
- *  loading there is no ranked play to offer and nothing shows. */
+/** The line under a guest's Play: they queue like everyone, unrated, and
+ *  Sign in shows the sign-in buttons in the line's place. Without sign-in on
+ *  this server the line says only that they play as a guest. */
+function GuestLine({ online }: { online: boolean }) {
+  const account = useAuth();
+  const [signingIn, setSigningIn] = useState(false);
+  const clientId = account.status === "out" ? account.clientId : null;
+  if (clientId && signingIn && online) return <GoogleSignIn clientId={clientId} />;
+  return (
+    <p className="play-guest-line">
+      Playing as a guest
+      {clientId ? (
+        <>
+          {" · "}
+          <button type="button" className="play-guest-signin" disabled={!online}
+                  onClick={() => setSigningIn(true)}>Sign in</button>
+          {" to be ranked"}
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+/** Play's queue block, the same for guests and accounts: a wide gold Play
+ *  that joins the queue at once (as the pair when one is formed and you lead
+ *  it) and Duo, which opens the pair sheet. An account sees it under a Ranked
+ *  heading; a guest, whose rounds are not rated, sees no heading and a line
+ *  under the buttons that offers sign-in. Searching alone on an iPad or a
+ *  desktop window, the queue's card takes the buttons' place. While sign-in
+ *  is still loading nothing shows. */
 export function RankedSection({ online }: {
-  /** The socket is open; without it every ranked control is disabled. */
+  /** The socket is open; without it every queue control is disabled. */
   online: boolean;
 }) {
   const q = useQueue();
   const account = useAuth();
-  const [signingIn, setSigningIn] = useState(false);
   const labelId = useId();
   const inlineQueue = useInlineQueue();
-  if (account.status !== "in" && account.status !== "out") return null;
+  if (account.status === "loading" || account.status === "error") return null;
+  const guest = account.status !== "in";
 
-  let body;
-  if (account.status === "out") {
-    if (!account.clientId) return null;
-    body = signingIn && online ? <GoogleSignIn clientId={account.clientId} /> : (
-      <button type="button" className="btn play-signin" disabled={!online} onClick={() => setSigningIn(true)}>
-        Sign in to play ranked
-      </button>
-    );
-  } else {
-    const pair = q.party && q.party.members.length === 2 ? q.party : null;
-    const searching = q.queued || q.pending === "join";
-    let label = "Play";
-    let disabled = !online;
-    if (searching) { label = "Searching…"; disabled = true; }
-    else if (pair && !pair.you_lead) disabled = true;
-    if (inlineQueue && q.queued && !q.table) body = <><PartyChip /><QueueCard /></>;
-    else body = (
-      <>
-        <PartyChip />
-        <div className="play-ranked-row">
-          <button type="button" className={`btn gold play-main q-find${searching ? " searching" : ""}`}
-                  disabled={disabled} aria-busy={searching || undefined} onClick={() => queue.join()}>
-            {label}
-          </button>
-          <button type="button" className="btn play-duo" disabled={!online} onClick={() => queue.openParty()}>
-            Duo
-          </button>
-        </div>
-      </>
+  const pair = q.party && q.party.members.length === 2 ? q.party : null;
+  const searching = q.queued || q.pending === "join";
+  let label = "Play";
+  let disabled = !online;
+  if (searching) { label = "Searching…"; disabled = true; }
+  else if (pair && !pair.you_lead) disabled = true;
+  const body = inlineQueue && q.queued && !q.table ? <><PartyChip /><QueueCard /></> : (
+    <>
+      <PartyChip />
+      <div className="play-ranked-row">
+        <button type="button" className={`btn gold play-main q-find${searching ? " searching" : ""}`}
+                disabled={disabled} aria-busy={searching || undefined} onClick={() => queue.join()}>
+          {label}
+        </button>
+        <button type="button" className="btn play-duo" disabled={!online} onClick={() => queue.openParty()}>
+          Duo
+        </button>
+      </div>
+    </>
+  );
+  if (guest) {
+    return (
+      <section className="play-section play-guest" aria-label="Play">
+        {body}
+        <GuestLine online={online} />
+      </section>
     );
   }
   return (
@@ -104,24 +124,5 @@ export function RankedSection({ online }: {
       <h2 className="play-label ranked" id={labelId}><TrophyIcon />Ranked</h2>
       {body}
     </section>
-  );
-}
-
-/** A guest who entered a duo code (in the Play box or from an invite link):
- *  duos are for signed-in players, so the sheet offers sign-in, after which
- *  the pair sheet opens with the code. */
-export function GuestDuoSheet() {
-  const q = useQueue();
-  const account = useAuth();
-  if (q.sheet !== "guest" || account.status === "in") return null;
-  return (
-    <Sheet title="Duo" onClose={() => queue.closeSheet()}>
-      <div className="q-sheet-pad">
-        <p className="q-foot q-center">
-          {q.joinCode ? `Sign in to join duo ${q.joinCode}.` : "Sign in to play Duo."}
-        </p>
-        {account.status === "out" && account.clientId ? <GoogleSignIn clientId={account.clientId} /> : null}
-      </div>
-    </Sheet>
   );
 }

@@ -545,6 +545,37 @@ def test_leaving_and_returning_before_the_round_ends_is_not_an_abandon(env, monk
     assert event["abandoned"] == 0
 
 
+def test_leaving_a_ranked_room_between_rounds_costs_nothing(env, monkeypatch):
+    """leave_room after the round end and before the next round starts: the
+    finished round is already rated as played, and the leaver, no longer in
+    the seat when the next round starts, is not a participant in it."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "between")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.room.matched = True
+    table.play_round(banker=0)
+    room = table.room
+    assert room.round.phase == "round_end"
+    [first] = _events(store)
+    assert first["user_id"] == uid and first["abandoned"] == 0 and first["won"] == 1
+    # what the server's leave_room handler does to a mid-game seat
+    ratings.seat_left(room, 0)
+    srv._detach(room.seats[0], room)
+    assert room.ratings.left == {}
+    assert not room.seats[0].connected
+    rated_before = store.user(uid)["rating"]
+    table.play_round()                         # the bots play the next round
+    assert room.game.round_no == 2
+    events = _events(store)
+    assert [e["round_no"] for e in events] == [first["round_no"]]
+    assert [e["abandoned"] for e in events] == [0]
+    assert store.user(uid)["rating"] == rated_before
+    assert store.user(uid)["rated_rounds"] == 1
+
+
 def test_away_at_the_round_end_is_an_abandon(env, monkeypatch):
     srv, store, _ = env
     uid, _ = _user(store, "idler")

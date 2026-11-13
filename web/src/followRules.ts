@@ -25,3 +25,29 @@ export function followHint(lead: readonly Card[], trump: Trump | null): string {
   const count = `play ${n} ${n === 1 ? "card" : "cards"}`;
   return eff === null ? `Follow the lead: ${count}` : `Follow ${SUIT_NAME[eff]}: ${count}`;
 }
+
+/** Whether the chosen cards carry as many of the led suit as a follow must:
+ *  all of them when the hand holds enough of the suit, else every one it
+ *  holds. This is necessary for any legal follow, never sufficient: whether
+ *  a pair or tractor must be matched stays the server's call. null when the
+ *  lead's suit cannot be read, which never blocks a play. */
+export function followsSuit(hand: readonly { id: number; code: string }[], chosen: readonly number[],
+                            lead: readonly Card[], trump: Trump | null): boolean | null {
+  const eff = leadSuit(lead, trump);
+  if (eff === null || trump === null) return null;
+  const suit = trump.suit === "NT" || trump.suit === null ? null : trump.suit;
+  let ordering;
+  try {
+    ordering = orderingFor(suit as "S" | "H" | "D" | "C" | null, trump.rank);
+  } catch {
+    return null;
+  }
+  const picked = new Set(chosen);
+  let held = 0, played = 0;
+  for (const c of hand) {
+    if (ordering.effSuit(c.code) !== eff) continue;
+    held += 1;
+    if (picked.has(c.id)) played += 1;
+  }
+  return played >= Math.min(lead.length, held);
+}

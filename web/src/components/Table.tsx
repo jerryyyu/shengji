@@ -19,7 +19,7 @@ import { nameWidthClass } from "../nameWidth";
 import type { Toast } from "../toast";
 import ToastView from "./ToastView";
 import { leadToFollow } from "../follow";
-import { followHint } from "../followRules";
+import { followHint, followsSuit } from "../followRules";
 import { STALL_MS } from "./Lobby";
 import { MoveRing } from "./MoveClock";
 import { RING_SECS, useMoveClock } from "../useMoveClock";
@@ -512,6 +512,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       : null;
 
   let actionBar: ReactNode = null;
+  let inlineHint: string | null = null;
   if (watching) {
     actionBar = null;
   } else if (state.phase === "deal" || state.phase === "declare") {
@@ -565,10 +566,13 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     // following, a play is exactly as many cards as the lead
     const need = lead ? lead.length : null;
     const countWrong = need !== null && selectedIds.length !== need;
+    // the right count but too few of the led suit: Play waits and says why
+    const offSuit = lead !== null && !countWrong
+      && followsSuit(state.hand, selectedIds, lead, state.trump) === false;
     const playLabel = selectedIds.length === 0
       ? "Play"
       : need !== null && need > 1 ? `Play (${selectedIds.length}/${need})` : `Play (${selectedIds.length})`;
-    const playDisabled = selectedIds.length === 0 || countWrong || pending !== null || !online;
+    const playDisabled = selectedIds.length === 0 || countWrong || offSuit || pending !== null || !online;
     // a disabled button takes no taps, so its wrapper hears them and explains
     const whyNot = () => {
       if (!playDisabled || pending !== null || !online) return;
@@ -578,6 +582,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       setHint((h) => ({ text, n: (h?.n ?? 0) + 1 }));
       haptic("error");
     };
+    if (offSuit && lead) inlineHint = followHint(lead, state.trump);
     actionBar = (
       <>
         <MoveRing left={clock} />
@@ -639,6 +644,8 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           </div>
           {hint ? (
             <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>
+          ) : inlineHint ? (
+            <div className="follow-hint" role="status">{inlineHint}</div>
           ) : coach && nothingChosen ? (
             <div className={`follow-hint coach-cue${nudge ? " nudge" : ""}`} role="status">{coach.text}</div>
           ) : null}

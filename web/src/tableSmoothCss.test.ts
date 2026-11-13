@@ -52,3 +52,19 @@ describe("hand touch", () => {
 it("stills the points float under Reduce Motion", () => {
   expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.points-pop \{ display: none; \}/);
 });
+
+describe("the follow hint floats", () => {
+  // every .follow-hint rule, desktop and phone, takes the hint out of the
+  // flow, so showing it never moves the action bar
+  it("the base and phone .follow-hint rules are absolutely positioned", () => {
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    const bodies: string[] = [];
+    for (let m = re.exec(css); m; m = re.exec(css)) {
+      if (m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/\s+/g, " ") === ".follow-hint") bodies.push(m[2]);
+    }
+    const positions = bodies.map((body) => prop(body, "position")).filter((p) => p !== null);
+    expect(positions.length).toBeGreaterThanOrEqual(2);
+    for (const p of positions) expect(p).toBe("absolute");
+    expect(prop(bodies[0], "position")).toBe("absolute");
+  });
+});

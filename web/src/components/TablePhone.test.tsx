@@ -701,3 +701,64 @@ describe("turn telemetry: a decision is reported once, when the game moves past 
     } finally { done.mockRestore(); }
   });
 });
+
+describe("Play waits on an off-suit follow", () => {
+  // hearts and jacks are trump; the lead is a pair of spade kings
+  const hand: HandCard[] = ["S3", "S7", "C4", "C9", "D5", "HA", "SJ"].map((code, i) => ({ id: i + 1, code }));
+  const following = () => state({
+    turn: 0, hand, trump: { suit: "H", rank: "J", declarer: 1 },
+    trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }] } });
+  const choose = (...ids: number[]) => {
+    for (const id of ids) act(() => host.querySelector<HTMLElement>(`.hand-slot[data-id="${id}"] .card`)!.click());
+  };
+  const play = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+
+  it("an off-suit selection of the right count keeps Play disabled and shows the follow hint", () => {
+    render(following());
+    choose(1, 3);
+    expect(play().disabled).toBe(true);
+    const hint = host.querySelector(".follow-hint");
+    expect(hint?.textContent).toBe("Follow ♠: play 2 cards");
+    // the hint stands outside your row, so it cannot push the action bar
+    expect(hint!.closest(".you-row")).toBeNull();
+    expect(hint!.parentElement!.classList.contains("you-area")).toBe(true);
+    // the trump-rank jack of spades is trump, not a spade
+    act(() => host.querySelector<HTMLElement>(`.hand-slot[data-id="3"] .card`)!.click());
+    choose(7);
+    expect(play().disabled).toBe(true);
+  });
+
+  it("a legal follow enables Play with no hint", () => {
+    render(following());
+    choose(1, 2);
+    expect(play().disabled).toBe(false);
+    expect(host.querySelector(".follow-hint")).toBeNull();
+    act(() => play().click());
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a hand short of the suit may play every spade it holds and anything else", () => {
+    render(state({ turn: 0, hand: hand.filter((c) => c.code !== "S7"), trump: { suit: "H", rank: "J", declarer: 1 },
+      trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }] } }));
+    choose(1, 7);
+    expect(play().disabled).toBe(false);
+    expect(host.querySelector(".follow-hint")).toBeNull();
+  });
+
+  it("a tap on the waiting Play still counts as a disabled-Play tap", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    const notice = vi.spyOn(telemetry, "notice");
+    try {
+      render(following());
+      choose(1, 3);
+      act(() => host.querySelector<HTMLElement>(".play-wrap")!.click());
+      expect(notice).toHaveBeenCalledWith("follow_hint", "table");
+      expect(host.querySelectorAll(".follow-hint")).toHaveLength(1);
+      render(state({ turn: 1, hand: hand.slice(2), trump: { suit: "H", rank: "J", declarer: 1 },
+        trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }, { seat: 0, cards: ["S3", "S7"] }] } }));
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done.mock.calls[0][0]).toMatchObject({ disabled_play_taps: 1 });
+    } finally { done.mockRestore(); notice.mockRestore(); }
+  });
+});

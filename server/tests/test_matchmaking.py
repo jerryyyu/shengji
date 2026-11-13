@@ -2334,3 +2334,214 @@ def test_ws_a_guest_who_joins_then_leaves_gets_the_cooldown(wsenv, monkeypatch):
     caps = set(ratings.CARRIED_CAPS)
     srv._joined_leave_penalty(room, None, -5)
     assert srv.MATCHMAKER.cooldowns[-5] > clock() and ratings.CARRIED_CAPS == caps
+
+
+# ------------------------------------------------- a guest signs in
+def _next(ws, kind, pred, tries=80):
+    """The first message of ``kind`` that satisfies ``pred``."""
+    for _ in range(tries):
+        m = _drain(ws, kind)
+        if pred(m):
+            return m
+    raise AssertionError(f"no matching {kind}")
+
+
+def _settled(ws):
+    """Wait until the server has run this socket's connect."""
+    ws.send_json({"type": "ping", "nonce": 1})
+    _drain(ws, "pong")
+
+
+def _guest_match(client, device=DEVICE_A):
+    """A guest on ``device`` starts a matched game with bots: (room code, token)."""
+    with client.websocket_connect(f"/ws?device={device}") as g:
+        g.send_json({"type": "queue_join", "name": "Guesty"})
+        _drain(g, "queue_state")
+        g.send_json({"type": "queue_start_bots"})
+        seen = _until(g, "match_started")
+        token = next(m for m in seen if m["type"] == "resume")["token"]
+        return seen[-1]["room"], token
+
+
+def test_ws_a_guest_who_signs_in_takes_its_matched_seat_back_as_the_account(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    code, token = _guest_match(client)
+    room = srv.rooms[code]
+    assert room.ratings.kinds[0] == ratings.GUEST and room.ratings.present == {}
+    round_no = room.game.round_no
+    uid, headers = _user(store, "signer", "Acct Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+        a.send_json({"type": "join_room", "room": code, "token": token})
+        state = _drain(a, "state", tries=80)
+        assert state["you"] == 0 and "guest" not in state
+        seat = room.seats[0]
+        assert (seat.user_id, seat.queue_id, seat.name) == (uid, uid, "Acct")
+        assert seat.connected and srv._holds_seat(room, uid) and not srv._holds_seat(room, -1)
+        # the round in play stays as it started: a guest seat, unrated for it
+        assert room.game.round_no == round_no
+        assert room.ratings.kinds[0] == ratings.GUEST and room.ratings.present == {}
+        assert ratings.participants(room, room.ratings) == []
+
+
+def test_ws_a_guest_seat_moves_only_to_an_account_signed_in_on_that_device(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    code, token = _guest_match(client)
+    room = srv.rooms[code]
+    _, headers = _user(store, "elsewhere", "Else Where")
+    with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=headers) as a:
+        a.send_json({"type": "join_room", "room": code, "token": token})
+        assert _drain(a, "error")["code"] in ("table_full", "seat_unavailable")
+    assert room.seats[0].user_id is None and room.seats[0].queue_id == -1
+
+
+def test_ws_a_signed_out_account_cannot_take_its_matched_seat_as_a_guest(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    uid, headers = _user(store, "leaver", "Lea Ver")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+        a.send_json({"type": "queue_join"})
+        _drain(a, "queue_state")
+        a.send_json({"type": "queue_start_bots"})
+        seen = _until(a, "match_started")
+        code = seen[-1]["room"]
+        token = next(m for m in seen if m["type"] == "resume")["token"]
+    room = srv.rooms[code]
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "join_room", "room": code, "token": token, "name": "Lea"})
+        assert _drain(g, "error")["code"] == "ranked_queue_only"
+    seat = room.seats[0]
+    assert (seat.user_id, seat.queue_id) == (uid, uid) and not seat.connected
+    assert room.pending_joins == {}
+
+
+def test_ws_a_guest_who_signs_in_at_a_waiting_table_leaves_it_and_the_table_is_told(wsenv):
+    srv, store, client, clock = wsenv
+    other, other_headers = _user(store, "other", "Other Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=other_headers) as b:
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+            g.send_json({"type": "queue_join", "name": "Guesty"})
+            _drain(g, "queue_state")
+            b.send_json({"type": "queue_join"})
+            _next(b, "queue_state", lambda m: m["table"] is not None)
+            assert srv.MATCHMAKER.entry_of.keys() == {-1, other}
+        uid, headers = _user(store, "signer", "Acct Person")
+        with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+            _settled(a)
+            # the guest's place is gone; the account holds nothing until Play
+            assert srv.MATCHMAKER.entry_of.keys() == {other}
+            assert srv.MATCHMAKER.tables == {}
+            alone = _next(b, "queue_state", lambda m: m["table"] is None)
+            assert alone["queued"] is True
+            assert srv.MATCHMAKER.count() == 1
+            a.send_json({"type": "queue_join"})
+            table = _next(a, "queue_state", lambda m: m["table"] is not None)["table"]
+            assert srv.MATCHMAKER.entry_of.keys() == {other, uid}
+            assert sorted(s["name"] for s in table["seats"] if s) == ["Acct", "Other"]
+
+
+def test_ws_a_guest_who_signs_in_while_searching_alone_leaves_the_queue(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join", "name": "Guesty"})
+        _drain(g, "queue_state")
+    uid, headers = _user(store, "signer", "Acct Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+        _settled(a)
+        assert srv.MATCHMAKER.entry_of == {} and srv.MATCHMAKER.count() == 0
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["queued"] is True
+        assert srv.MATCHMAKER.entry_of.keys() == {uid}
+
+
+def test_ws_a_guest_who_signs_in_in_a_pair_ends_the_pair(wsenv):
+    srv, store, client, clock = wsenv
+    friend, friend_headers = _user(store, "friend", "Friend Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=friend_headers) as f:
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+            f.send_json({"type": "party_create"})
+            code = _drain(f, "party")["code"]
+            g.send_json({"type": "party_join", "code": code, "name": "Guesty"})
+            _drain(g, "party")
+            f.send_json({"type": "queue_join"})
+            assert _next(f, "queue_state", lambda m: m["queued"])["queued"] is True
+            assert srv.MATCHMAKER.entry_of.keys() == {friend, -1}
+        _, headers = _user(store, "signer", "Acct Person")
+        with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+            _settled(a)
+            assert _next(f, "queue_state", lambda m: not m["queued"])["queued"] is False
+            closed = _drain(f, "party_closed")
+            assert closed["reason"] == "left" and closed["you"] is False
+            assert srv.MATCHMAKER.parties == {} and srv.MATCHMAKER.party_of == {}
+            assert srv.MATCHMAKER.entry_of == {} and srv.MATCHMAKER.count() == 0
+
+
+def test_ws_a_guest_reconnecting_as_a_guest_keeps_its_waiting_table_seat(wsenv):
+    srv, store, client, clock = wsenv
+    other, other_headers = _user(store, "other", "Other Person")
+    with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=other_headers) as b:
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+            g.send_json({"type": "queue_join", "name": "Guesty"})
+            _drain(g, "queue_state")
+            b.send_json({"type": "queue_join"})
+            _next(b, "queue_state", lambda m: m["table"] is not None)
+        with client.websocket_connect(f"/ws?device={DEVICE_A}") as again:
+            assert _next(again, "queue_state", lambda m: m["table"] is not None)["queued"]
+            assert srv.MATCHMAKER.entry_of.keys() == {-1, other}
+            [t] = srv.MATCHMAKER.tables.values()
+            assert -1 in t.seats and other in t.seats
+
+
+def _same_device_lobby(srv, store, client):
+    """A created casual room: its host signed in on DEVICE_A, a guest on the
+    same device in seat 1."""
+    _, headers = _user(store, "host", "Host Person")
+    host = client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers)
+    guest = client.websocket_connect(f"/ws?device={DEVICE_A}")
+    h, g = host.__enter__(), guest.__enter__()
+    h.send_json({"type": "create_room", "name": "Host"})
+    code = _drain(h, "room")["room"]
+    g.send_json({"type": "join_room", "room": code, "name": "Guesty"})
+    _drain(g, "room")
+    room = srv.rooms[code]
+    assert [sd.device for sd in room.seats[:2]] == [DEVICE_A, DEVICE_A]
+    return (host, guest), h, g, room
+
+
+def test_ws_ranked_is_refused_with_two_players_on_one_device(wsenv):
+    srv, store, client, clock = wsenv
+    ctx, h, g, room = _same_device_lobby(srv, store, client)
+    try:
+        h.send_json({"type": "set_ranked", "on": True})
+        err = _drain(h, "error")
+        assert err["code"] == "same_device" and "one device" in err["message"]
+        assert room.ranked is False and room.move_timer is False
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+
+
+def test_a_ranked_start_with_two_players_on_one_device_is_refused(wsenv):
+    srv, store, client, clock = wsenv
+    ctx, h, g, room = _same_device_lobby(srv, store, client)
+    try:
+        room.seats[1].device = DEVICE_B
+        h.send_json({"type": "set_ranked", "on": True})
+        _next(h, "room", lambda m: m.get("ranked") is True)
+        room.seats[1].device = DEVICE_A       # however the seat came to share it
+        h.send_json({"type": "start_game"})
+        assert _drain(h, "error")["code"] == "same_device"
+        assert room.game is None and room.ratings is None
+    finally:
+        for c in reversed(ctx):
+            c.__exit__(None, None, None)
+    # a queue-matched room is held to the same rule at its start
+    matched = srv.Room(code="SAMEDV", matched=True, move_timer=True)
+    matched.seats = [srv.Seat(name="A", user_id=7, queue_id=7, device=DEVICE_A),
+                     srv.Seat(name="Bot 1", is_bot=True),
+                     srv.Seat(name="G", queue_id=-3, device=DEVICE_A),
+                     srv.Seat(name="Bot 3", is_bot=True)]
+    with pytest.raises(srv.SameDevice):
+        client.portal.call(srv.handle_action, matched, 0, {"type": "start_game"})
+    assert matched.game is None

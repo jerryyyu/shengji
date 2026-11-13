@@ -590,6 +590,28 @@ class Matchmaker:
             if t is not None:          # the others see the seat reconnecting
                 self._send_table(t)
 
+    def signed_in(self, guest: int, account: int) -> None:
+        """The guest on a device (queue id ``guest``) signed in there as
+        ``account``: the guest's search, waiting-table seat and pair end as
+        an ordinary leave of that person, so the table and the partner are
+        told and nothing is rated, and the account starts with none of
+        them. A cooldown or bar the guest earned carries to the account. A
+        guest that reconnects as a guest keeps its place; this is not
+        called for it."""
+        p = self._party(guest)
+        e = self._entry(guest)
+        if e is not None:
+            self._remove(e)
+            self._send_state(e)
+            self._flush_count()
+        if p is not None:
+            self._close_party(p, guest)
+        until = self.cooldowns.get(guest, 0.0)
+        if until > self.cooldowns.get(account, 0.0):
+            self.cooldowns[account] = until
+        if self.barred.get(guest):
+            self.barred.setdefault(account, set()).update(self.barred[guest])
+
     def enter_room(self, conn: Conn) -> None:
         """The socket is joining or holds a seat: no longer a lobby socket,
         and never seated by the matcher while it is in a room."""

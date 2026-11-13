@@ -864,6 +864,65 @@ def test_leave_room_over_the_socket_marks_the_round_abandoned(env, keypair):
         assert room.ratings.left == {1: 0}
 
 
+
+def _wait_until(pred, timeout=60.0):
+    deadline = time.monotonic() + timeout
+    while not pred():
+        assert time.monotonic() < deadline, "condition never held"
+        time.sleep(0.01)
+
+
+def test_a_losing_leaver_is_rated_before_the_empty_room_closes(env, keypair, monkeypatch):
+    """The last human leaving a rated round: the bots finish it without
+    pacing, the leaver is rated on its real result, then the room closes."""
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import ratings
+
+    srv, store, client = env
+    private_pem, _ = keypair
+    monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
+    _force_outcome(monkeypatch, 165)           # attackers +2: the leaver's banker team loses
+    monkeypatch.setattr(srv, "ROOM_TTL", 120.0)  # the round ends well before the backstop
+    cookie = _session_cookie(srv.accounts, client, private_pem)
+    with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
+        a.send_json({"type": "create_room", "name": "Jerry"})
+        code = _drain(a, "room")["room"]
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=60)
+        room = srv.rooms[code]
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=200)
+        _wait_until(lambda: code not in srv.rooms)
+    assert room.game.round_no == 1 and room.round.phase == "round_end"
+    ratings.flush()
+    [event] = _events(store)
+    assert event["abandoned"] == 1 and event["won"] == 0
+    assert event["actual"] == pytest.approx(1 / 6)
+    assert room.seats[0].bot_announced
+
+
+def test_a_ranked_room_closed_by_its_last_leaver_leaves_nothing_in_the_queue(queue_env, monkeypatch):
+    srv, store, client = queue_env
+    uid, headers = _user(store, "solo", "Solo")
+    monkeypatch.setattr(srv, "ROOM_TTL", 120.0)
+    with client.websocket_connect("/ws", headers=headers) as a:
+        code, _ = _ranked_solo(srv, a)
+        room = srv.rooms[code]
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=200)
+        _wait_until(lambda: code not in srv.rooms)
+        conn = srv.MATCHMAKER.conns[uid]
+        assert not conn.in_room and conn.adopted is None
+        assert not srv.MATCHMAKER.room_live(code)
+        assert srv.MATCHMAKER._entry(uid) is None and not srv.MATCHMAKER.tables
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["queued"] is True
+    assert all(task is None or task.done()
+               for task in (room.bot_task, room.deal_task, room.cleanup_task))
+
+
 # ------------------------------------------------------- round-end payload
 def test_the_round_result_carries_only_the_seats_own_rating(env, monkeypatch):
     srv, store, _ = env

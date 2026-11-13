@@ -2618,3 +2618,129 @@ def test_review_final_timeout_marks_away_before_rating_capture(client, clock, mo
         assert _tick(client, room)
         assert room.seats[actor].away
         assert captured[-1][actor], 'rating captured before final timeout marked away'
+
+
+# ------------------------------------------------- a room every human has left
+def _room_tasks_done(room):
+    return all(task is None or task.done()
+               for task in (room.bot_task, room.deal_task,
+                            room.watchdog_task, room.cleanup_task))
+
+
+def _banker_leads(client, a, monkeypatch, bot_delay):
+    """Seat 0 human banker (nobody declares), on lead in the play phase."""
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
+    monkeypatch.setattr(srv, "BOT_DELAY", bot_delay)
+    code, room = _start_game(client, a, to_play=True)
+    _wait_for(lambda: _my_turn(room))
+    return code, room
+
+
+def _play_times(room):
+    """Wall-clock time of every committed play from now on."""
+    import time
+
+    times = []
+    original = room.log_event
+
+    def log_event(kind, **data):
+        if kind == "play":
+            times.append(time.monotonic())
+        return original(kind, **data)
+
+    room.log_event = log_event
+    return times
+
+
+def test_the_last_humans_leaving_mid_game_close_the_room_at_once(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        with client.websocket_connect("/ws") as b:
+            want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+            b.send_json({"type": "join_room", "room": code, "name": "james", "seat": want})
+            _drain(b, "state", tries=60)
+            b.send_json({"type": "leave_room"})
+            _drain(b, "left", tries=200)
+            assert srv.rooms.get(code) is room, "one human is still playing"
+            a.send_json({"type": "leave_room"})
+            _drain(a, "left", tries=200)
+            assert code not in srv.rooms
+            assert not room.closing           # nothing rated: no round to finish
+            _wait_for(lambda: _room_tasks_done(room))
+
+
+def test_an_empty_room_plays_slowly_through_the_grace_then_closes(client, monkeypatch):
+    import time
+
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(srv, "EMPTY_ROOM_BOT_DELAY", 0.6)
+    monkeypatch.setattr(srv, "EMPTY_ROOM_POLL", 0.05)
+    monkeypatch.setattr(srv, "ROOM_TTL", 2.5)
+    a = client.websocket_connect("/ws").__enter__()
+    try:
+        code, room = _banker_leads(client, a, monkeypatch, bot_delay=0.3)
+        times = _play_times(room)
+        _real_play(client, a, room)
+    finally:
+        a.__exit__(None, None, None)
+    gone = time.monotonic()
+    _wait_for(lambda: not room.seats[0].connected)
+    _wait_for(lambda: code not in srv.rooms, timeout=10)
+    later = [t for t in times[1:] if t > gone]
+    assert len(later) >= 2, "the bots stopped instead of playing slowly"
+    steps = [b - a for a, b in zip(later, later[1:])]
+    assert min(steps) >= 0.6 * 0.95, f"a bot moved faster than the empty-room pace: {steps}"
+    assert len(later) <= 2.5 / 0.6 + 1
+    _wait_for(lambda: _room_tasks_done(room))
+
+
+def test_a_human_back_in_the_grace_restores_the_normal_pace(client, monkeypatch):
+    import time
+
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(srv, "EMPTY_ROOM_BOT_DELAY", 5.0)
+    monkeypatch.setattr(srv, "EMPTY_ROOM_POLL", 0.05)
+    monkeypatch.setattr(srv, "ROOM_TTL", 30.0)
+    a = client.websocket_connect("/ws").__enter__()
+    try:
+        code, room = _banker_leads(client, a, monkeypatch, bot_delay=0.1)
+        _real_play(client, a, room)
+    finally:
+        a.__exit__(None, None, None)
+    _wait_for(lambda: not room.seats[0].connected)
+    time.sleep(0.6)
+    assert len(room.round.trick.plays) == 1, "a bot moved at the normal pace in an empty room"
+    with client.websocket_connect("/ws") as back:
+        back.send_json({"type": "join_room", "room": code, "name": "jerry"})
+        _drain(back, "state", tries=60)
+        assert room.seats[0].connected and srv.rooms.get(code) is room
+        started = time.monotonic()
+        _wait_for(lambda: len(room.round.history) >= 1, timeout=4.0)
+        assert time.monotonic() - started < 4.0
+        assert room.cleanup_task is None or room.cleanup_task.cancelled()
+
+
+def test_one_of_two_humans_leaving_leaves_the_game_running(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        with client.websocket_connect("/ws") as b:
+            want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+            b.send_json({"type": "join_room", "room": code, "name": "james", "seat": want})
+            _drain(b, "state", tries=60)
+            b.send_json({"type": "leave_room"})
+            _drain(b, "left", tries=200)
+        assert srv.rooms.get(code) is room and not room.closing
+        assert room.cleanup_task is None
+        left = room.seats[want]
+        assert not left.is_bot and not left.connected and left.name == "james"
+        assert not srv._unwatched(room)
+        assert srv._auto_mode(room, want) is None   # the takeover covers it

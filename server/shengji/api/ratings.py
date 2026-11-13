@@ -538,6 +538,19 @@ def seat_left(room: Any, seat: int) -> None:
         tracker.left[uid] = seat
 
 
+def pending(room: Any) -> bool:
+    """A round in play that rates someone when it ends: a room every human
+    has left plays it out before closing, so a leaver is still rated on its
+    real result."""
+    tracker: RoomRatings | None = getattr(room, "ratings", None)
+    if tracker is None or room.game is None or room.game.game_over:
+        return False
+    rnd = room.round
+    if rnd is None or rnd.phase == "round_end" or ranked_round_voided(room, tracker):
+        return False
+    return any(not accounts.is_deleted(uid) for uid in tracker.present.values())
+
+
 def participants(room: Any, tracker: RoomRatings) -> list[Participant]:
     """Who is rated for the round that just ended, and who abandoned it."""
     found: dict[int, Participant] = {}

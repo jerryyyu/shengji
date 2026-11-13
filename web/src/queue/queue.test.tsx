@@ -127,10 +127,10 @@ function atTable(seats: Seat[], table: Record<string, unknown> = {}, over: Recor
 
 describe("Play", () => {
   const lobby = () => q(".lobby-panel")!;
-  it("signed in: Ranked first with a gold Play and Duo, then Unranked; no Find a game", async () => {
+  it("signed in: Ranked first with a gold Play and Duo, then Casual; no Find a game", async () => {
     await renderApp();
     const labels = [...lobby().querySelectorAll(".play-label")].map((h) => h.textContent);
-    expect(labels).toEqual(["Ranked", "Unranked"]);
+    expect(labels).toEqual(["Ranked", "Casual"]);
     expect(findBtn().textContent).toBe("Play");
     expect(findBtn().className).toContain("gold");
     say({ type: "queue_count", count: 3 });
@@ -159,11 +159,11 @@ describe("Play", () => {
     expect(q(".q-sheet .ranked-chip")?.textContent).toBe("Ranked");
   });
 
-  it("a guest: Unranked first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
+  it("a guest: Casual first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
     signedIn = false;
     await renderApp();
     const labels = [...lobby().querySelectorAll(".play-label")].map((h) => h.textContent);
-    expect(labels).toEqual(["Unranked", "Ranked"]);
+    expect(labels).toEqual(["Casual", "Ranked"]);
     expect(q(".q-find")).toBeNull();
     const bots = button("Play bots", lobby())!;
     expect(bots.className).toContain("gold");

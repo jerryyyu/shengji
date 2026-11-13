@@ -6452,3 +6452,14 @@ dialog.leave-alert-backdrop {
 @media (prefers-reduced-motion: reduce) {
   .chat-bubble { animation: none; }
 }
+
+/* Wide screens: the side groups share the free space equally, so the
+   level-and-trump group sits at the bar's centre when there is room; a side
+   group never shrinks below its own content, so on a narrower bar the centre
+   group gives way instead of overlapping. */
+:root:not(.phone-landscape) .hud-bar > .hud-group:first-child,
+:root:not(.phone-landscape) .hud-bar > .hud-group:last-child {
+  flex: 1 1 0;
+  min-width: max-content;
+}
+:root:not(.phone-landscape) .hud-bar > .hud-group:last-child { justify-content: flex-end; }

@@ -1729,6 +1729,7 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     act(() => first.close());
     await act(async () => { await new Promise((r) => setTimeout(r, 1600)); });
     expect(ws()).not.toBe(first);
+    act(() => ws().onopen?.());          // a frame only arrives on an opened socket
     // The server omits joined_round in the subsequent round. The offline
     // client never received the previous round_end frame.
     say(state({ phase: "play", levels: ["3", "2"] }));

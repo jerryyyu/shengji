@@ -3003,13 +3003,13 @@ def test_a_seat_joined_this_round_says_so_until_the_round_ends(otenv):
     t = OpenRoom(srv, [host, "bot", "bot", "bot"])
     t.first_round()
     room = t.room
-    assert "joined_round" not in srv.state_for(room, 0)
+    assert srv.state_for(room, 0)["joined_round"] is False
     room.seats[2].joined_round = room.game.round_no
     room.seats[2].is_bot = False
     assert srv.state_for(room, 2)["joined_round"] is True
-    assert "joined_round" not in srv.state_for(room, 0)
+    assert srv.state_for(room, 0)["joined_round"] is False
     room.round.phase = "round_end"
-    assert "joined_round" not in srv.state_for(room, 2)
+    assert srv.state_for(room, 2)["joined_round"] is False
 
 
 def test_every_seat_without_an_account_at_a_matched_table_is_a_guest(otenv, monkeypatch):

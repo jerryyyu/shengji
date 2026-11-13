@@ -870,9 +870,9 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         **({"ranked": True} if room.ranked else {}),
         **({"guest": True} if guest_seat else {}),
         # took this seat from an open table during this round: the round is
-        # not ranked for them, and leaving it costs a queue wait
-        **({"joined_round": True}
-           if me.joined_round == game.round_no and rnd.phase != "round_end" else {}),
+        # not ranked for them, and leaving it costs a queue wait. Always sent,
+        # so a client that missed the round end (reconnect) clears its warning.
+        "joined_round": me.joined_round == game.round_no and rnd.phase != "round_end",
     }
 
 

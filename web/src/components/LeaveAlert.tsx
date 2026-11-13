@@ -12,10 +12,14 @@ trackInputModality();
  *  match_started until that room reaches a round end (a seat claimed at a
  *  round end never counts). */
 let joinedRoom: string | null = null;
+// The connection the joined round was seen on: a state on a later connection
+// that does not repeat the flag means the round may have ended while away.
+let joinedGeneration = -1;
 
 function trackJoin(m: ServerMsg): void {
   if (m.type === "match_started") {
     joinedRoom = m.joining ? m.room : null;
+    joinedGeneration = conn.generation;
     return;
   }
   if (m.type === "left") {
@@ -24,8 +28,13 @@ function trackJoin(m: ServerMsg): void {
   }
   if (m.type !== "state") return;
   const flag = (m as { joined_round?: boolean }).joined_round;
-  if (typeof flag === "boolean") joinedRoom = flag ? m.room : null;
-  else if (joinedRoom !== null && (m.room !== joinedRoom || m.phase === "round_end")) joinedRoom = null;
+  if (typeof flag === "boolean") {
+    joinedRoom = flag ? m.room : null;
+    joinedGeneration = conn.generation;
+  } else if (joinedRoom !== null && (m.room !== joinedRoom || m.phase === "round_end"
+                                     || conn.generation !== joinedGeneration)) {
+    joinedRoom = null;
+  }
 }
 conn.subscribe?.(trackJoin);
 

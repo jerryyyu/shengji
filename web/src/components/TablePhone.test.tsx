@@ -619,3 +619,31 @@ describe("move timer", () => {
     expect(host.querySelector(".away-pill")).toBeNull();
   });
 });
+
+
+describe("review: turn telemetry producer", () => {
+  it("finishes a last-follower turn when its winner immediately leads", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      render(state({ turn: 0, trick: { leader: 1, plays: [
+        { seat: 1, cards: ["S2"] }, { seat: 2, cards: ["S3"] }, { seat: 3, cards: ["S4"] },
+      ] } }));
+      render(state({ turn: 0, hand: cards(24), trick: { leader: 0, plays: [] },
+        last_trick: { leader: 1, plays: [
+          { seat: 1, cards: ["S2"] }, { seat: 2, cards: ["S3"] },
+          { seat: 3, cards: ["S4"] }, { seat: 0, cards: ["S5"] },
+        ], winner: 0, points: 5 } }));
+      expect(done).toHaveBeenCalledTimes(1);
+    } finally { done.mockRestore(); }
+  });
+  it("does not call an unfinished turn timer-completed on leaving the table", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      render(state({ turn: 0, trick: { leader: 0, plays: [] } }));
+      act(() => root.render(null));
+      expect(done).not.toHaveBeenCalled();
+    } finally { done.mockRestore(); }
+  });
+});

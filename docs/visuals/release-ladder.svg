@@ -1,66 +1,141 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-label="Step chart of cumulative bot strength in levels per round over MC-LCB, by release date, from 0 on 1 September 2026 to about 0.83 at release 52 on 9 November. Callouts mark the key steps: release 22, policy shortlist; release 25, value model; release 29, policy plus value search; release 44, value-guided declare; release 46, belief plus exact endgame, the biggest step; release 50, scaling win, retrained on 200k rounds; release 52, search rules. Steps are separate measurements, so the running sum is an approximation, not a single measured gap. MC-LCB screens through release 48, paired head-to-head duels from release 49.">
-<title>Bot strength by release</title>
-<style>.bg{fill:#1d242c}.h1{font:600 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.s{font:14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.tick{font:13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#98a4b0}.axis{font:13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.rel{font:600 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.note{font:14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.grid{stroke:#323c47;stroke-width:1}.zero{stroke:#98a4b0;stroke-width:1.2}.line{stroke:#4fc1b9;stroke-width:2.5;fill:none;stroke-linejoin:round}.dot{fill:#151a20;stroke:#4fc1b9;stroke-width:2}.key{fill:#4fc1b9}.lead{stroke:#98a4b0;stroke-width:1;fill:none}</style>
-<rect class="bg" x="0" y="0" width="1200" height="600" rx="16"/>
-<text x="24" y="38" class="h1">Bot strength by release</text>
-<text x="24" y="62" class="s">Levels per round over MC-LCB, the sum of each release's measured step over the one before</text>
-<line class="zero" x1="84" x2="1168" y1="481.1" y2="481.1"/>
-<text x="74" y="485.6" class="tick" text-anchor="end">0.0</text>
-<line class="grid" x1="84" x2="1168" y1="404.8" y2="404.8"/>
-<text x="74" y="409.3" class="tick" text-anchor="end">+0.2</text>
-<line class="grid" x1="84" x2="1168" y1="328.5" y2="328.5"/>
-<text x="74" y="333" class="tick" text-anchor="end">+0.4</text>
-<line class="grid" x1="84" x2="1168" y1="252.2" y2="252.2"/>
-<text x="74" y="256.7" class="tick" text-anchor="end">+0.6</text>
-<line class="grid" x1="84" x2="1168" y1="175.9" y2="175.9"/>
-<text x="74" y="180.4" class="tick" text-anchor="end">+0.8</text>
-<text class="axis" text-anchor="middle" transform="translate(26 298) rotate(-90)">levels/round over MC-LCB</text>
-<text x="125.2" y="528" class="tick" text-anchor="middle">Sep 1</text>
-<text x="317.3" y="528" class="tick" text-anchor="middle">Sep 15</text>
-<text x="536.8" y="528" class="tick" text-anchor="middle">Oct 1</text>
-<text x="728.9" y="528" class="tick" text-anchor="middle">Oct 15</text>
-<text x="962.2" y="528" class="tick" text-anchor="middle">Nov 1</text>
-<text x="1154.3" y="528" class="tick" text-anchor="middle">Nov 15</text>
-<path class="line" d="M125.2 481.1 H234.9 V428.1 H317.3 V420.1 H331 V417.8 H413.3 V399.1 H523.1 V384.1 H564.3 V362.5 H646.6 V362.5 H674 V347.7 H701.5 V329.1 H742.6 V241.9 H852.4 V209.8 H962.2 V198.1 H1003.3 V174.5 H1030.8 V179.6 H1071.9 V162.9"/>
-<text x="135.2" y="471.1" class="rel">MC-LCB</text>
-<circle class="key" cx="125.2" cy="481.1" r="5"/>
-<path class="lead" d="M234.9 428.1 L156.3 338.8"/>
-<text x="166.3" y="331.8" class="rel" text-anchor="start">R22 +0.14</text>
-<text x="166.3" y="349.8" class="note" text-anchor="start">policy shortlist</text>
-<circle class="key" cx="234.9" cy="428.1" r="5"/>
-<path class="lead" d="M317.3 420.1 L252.4 296.8"/>
-<text x="262.4" y="289.8" class="rel" text-anchor="start">R25</text>
-<text x="262.4" y="307.8" class="note" text-anchor="start">value model</text>
-<circle class="dot" cx="317.3" cy="420.1" r="3.5"/>
-<circle class="dot" cx="331" cy="417.8" r="3.5"/>
-<path class="lead" d="M413.3 399.1 L362.2 254.9"/>
-<text x="372.2" y="247.9" class="rel" text-anchor="start">R29 +0.21</text>
-<text x="372.2" y="265.9" class="note" text-anchor="start">policy + value search</text>
-<circle class="key" cx="413.3" cy="399.1" r="5"/>
-<circle class="dot" cx="523.1" cy="384.1" r="3.5"/>
-<circle class="dot" cx="564.3" cy="362.5" r="3.5"/>
-<circle class="dot" cx="646.6" cy="362.5" r="3.5"/>
-<path class="lead" d="M674 347.7 L705.2 411.3"/>
-<text x="715.2" y="404.3" class="rel" text-anchor="start">R44</text>
-<text x="715.2" y="422.3" class="note" text-anchor="start">value-guided declare</text>
-<circle class="dot" cx="674" cy="347.7" r="3.5"/>
-<circle class="dot" cx="701.5" cy="329.1" r="3.5"/>
-<path class="lead" d="M742.6 241.9 L711.5 186.2"/>
-<text x="701.5" y="179.2" class="rel" text-anchor="end">R46 +0.63</text>
-<text x="701.5" y="197.2" class="note" text-anchor="end">belief + exact endgame</text>
-<circle class="key" cx="742.6" cy="241.9" r="5"/>
-<circle class="dot" cx="852.4" cy="209.8" r="3.5"/>
-<circle class="dot" cx="962.2" cy="198.1" r="3.5"/>
-<path class="lead" d="M1003.3 174.5 L972.2 130.3"/>
-<text x="962.2" y="114.3" class="rel" text-anchor="end">R50 +0.80</text>
-<text x="962.2" y="132.3" class="note" text-anchor="end">scaling win:</text>
-<text x="962.2" y="150.3" class="note" text-anchor="end">retrained on 200k rounds</text>
-<circle class="key" cx="1003.3" cy="174.5" r="5"/>
-<circle class="dot" cx="1030.8" cy="179.6" r="3.5"/>
-<path class="lead" d="M1071.9 162.9 L1075.9 201.3"/>
-<text x="1071.9" y="217.3" class="rel" text-anchor="start">R52 +0.83</text>
-<text x="1071.9" y="235.3" class="note" text-anchor="start">search rules</text>
-<circle class="key" cx="1071.9" cy="162.9" r="5"/>
-<text x="24" y="550" class="s">Steps are separate measurements, so the running sum is an approximation, not a single measured gap.</text>
-<text x="24" y="572" class="s">MC-LCB screens through release 48, paired head-to-head duels from release 49.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" width="1200" height="660" role="img" aria-label="Step chart, by release, of each served change's measured step against its own comparator in signed levels per round, with 95% CI whiskers, and a line that adds the steps up as an arithmetic index. Dotted before release 29 (other instruments), solid for MC-LCB common-control screens from release 29 to 48, dashed for paired head-to-head duels from release 49. Callouts: release 22 +0.14, policy shortlist; release 25/27 +0.02, value model; release 29 +0.05, policy plus value search; release 30 not measured; release 36 +0.04, measured against release 30; release 44 +0.05, value-guided declare, first-round deals; release 46 +0.23, belief plus exact endgame; release 50 +0.06, new value, prior and belief, trained on 200k rounds; release 51 −0.01 on cloud, where the Ultra read, +0.008, disagrees; release 52 +0.04, search rules. An arithmetic index of separate measurements from different instruments, each against its own comparator (the confirmation where one exists, else the screen). It is not a measured or calibrated strength gap. Hollow markers: changes the ladder lists as not measured.">
+<title>Release by release: each measured step</title>
+<style>.bg{fill:#1d242c}.h1{font:600 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.s{font:14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.tick{font:13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#98a4b0}.axis{font:13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.rel{font:600 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.note{font:14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.grid{stroke:#323c47;stroke-width:1}.zero{stroke:#98a4b0;stroke-width:1.2}.line{stroke:#4fc1b9;stroke-width:2.5;fill:none}.ci{stroke:#e0b25a;stroke-width:2}.dot{fill:#4fc1b9}.hollow{fill:#1d242c;stroke:#98a4b0;stroke-width:1.8}.lead{stroke:#98a4b0;stroke-width:1;fill:none}.gap{stroke:#98a4b0;stroke-width:1.5}</style>
+<rect class="bg" x="0" y="0" width="1200" height="660" rx="16"/>
+<text x="24" y="38" class="h1">Release by release: each measured step</text>
+<text x="24" y="62" class="s">Each step is one served change against its own comparator, signed levels per round, with its 95% CI; the line adds them up as an index</text>
+<line class="line" x1="24" x2="58" y1="91" y2="91" stroke-dasharray="2 4"/>
+<text x="66" y="96" class="tick">before R29: other instruments</text>
+<line class="line" x1="297" x2="331" y1="91" y2="91"/>
+<text x="339" y="96" class="tick">R29–R48: MC-LCB screens</text>
+<line class="line" x1="528" x2="562" y1="91" y2="91" stroke-dasharray="8 5"/>
+<text x="570" y="96" class="tick">from R49: paired duels</text>
+<line class="ci" x1="758" x2="758" y1="83" y2="99"/>
+<text x="768" y="96" class="tick">95% CI of the step</text>
+<circle class="hollow" cx="928" cy="91" r="5"/>
+<text x="938" y="96" class="tick">not measured</text>
+<line class="zero" x1="84" x2="1168" y1="518.5" y2="518.5"/>
+<text x="74" y="523" class="tick" text-anchor="end">0.0</text>
+<line class="grid" x1="84" x2="1168" y1="446.8" y2="446.8"/>
+<text x="74" y="451.3" class="tick" text-anchor="end">0.2</text>
+<line class="grid" x1="84" x2="1168" y1="375" y2="375"/>
+<text x="74" y="379.5" class="tick" text-anchor="end">0.4</text>
+<line class="grid" x1="84" x2="1168" y1="303.3" y2="303.3"/>
+<text x="74" y="307.8" class="tick" text-anchor="end">0.6</text>
+<line class="grid" x1="84" x2="1168" y1="231.6" y2="231.6"/>
+<text x="74" y="236.1" class="tick" text-anchor="end">0.8</text>
+<text class="axis" text-anchor="middle" transform="translate(28 332) rotate(-90)">running sum of measured steps (index)</text>
+<text x="108" y="562" class="tick" text-anchor="middle">MC-LCB</text>
+<text x="162.5" y="562" class="tick" text-anchor="middle">R22</text>
+<line class="line" x1="108" x2="162.5" y1="518.5" y2="518.5" stroke-dasharray="2 4"/>
+<path class="line" d="M162.5 518.5 V468.6 H217.1" stroke-dasharray="2 4"/>
+<line class="ci" x1="169.5" x2="169.5" y1="495.2" y2="440.7"/>
+<text x="217.1" y="562" class="tick" text-anchor="middle">R25/27</text>
+<path class="line" d="M217.1 468.6 V461.1 H271.6" stroke-dasharray="2 4"/>
+<line class="ci" x1="224.1" x2="224.1" y1="467.2" y2="454.6"/>
+<text x="271.6" y="562" class="tick" text-anchor="middle">R27</text>
+<path class="line" d="M271.6 461.1 V461.2 H326.1" stroke-dasharray="2 4"/>
+<line class="ci" x1="278.6" x2="278.6" y1="461.7" y2="460.7"/>
+<text x="326.1" y="562" class="tick" text-anchor="middle">R28</text>
+<path class="line" d="M326.1 461.2 V459.1 H380.6" stroke-dasharray="2 4"/>
+<line class="ci" x1="333.1" x2="333.1" y1="466.9" y2="451.2"/>
+<text x="380.6" y="562" class="tick" text-anchor="middle">R29</text>
+<path class="line" d="M380.6 459.1 V441.5 H435.2"/>
+<line class="ci" x1="387.6" x2="387.6" y1="458" y2="425"/>
+<text x="435.2" y="562" class="tick" text-anchor="middle">R30</text>
+<line class="gap" x1="435.2" x2="489.7" y1="441.5" y2="441.5"/>
+<text x="489.7" y="562" class="tick" text-anchor="middle">R36</text>
+<path class="line" d="M489.7 441.5 V427.4 H544.2"/>
+<line class="ci" x1="496.7" x2="496.7" y1="440.3" y2="414.5"/>
+<text x="544.2" y="562" class="tick" text-anchor="middle">R38</text>
+<path class="line" d="M544.2 427.4 V410.9 H598.7"/>
+<line class="ci" x1="551.2" x2="551.2" y1="418.7" y2="403"/>
+<text x="598.7" y="562" class="tick" text-anchor="middle">+la</text>
+<path class="line" d="M598.7 410.9 V407.1 H653.3"/>
+<line class="ci" x1="605.7" x2="605.7" y1="410.6" y2="403.5"/>
+<text x="653.3" y="562" class="tick" text-anchor="middle">R42</text>
+<path class="line" d="M653.3 407.1 V407.1 H707.8"/>
+<line class="ci" x1="660.3" x2="660.3" y1="410.7" y2="403.5"/>
+<text x="707.8" y="562" class="tick" text-anchor="middle">R43</text>
+<path class="line" d="M707.8 407.1 V407.3 H762.3"/>
+<line class="ci" x1="714.8" x2="714.8" y1="411.5" y2="403"/>
+<text x="762.3" y="562" class="tick" text-anchor="middle">R44</text>
+<path class="line" d="M762.3 407.3 V389.5 H816.8"/>
+<line class="ci" x1="769.3" x2="769.3" y1="393.7" y2="385.2"/>
+<text x="816.8" y="562" class="tick" text-anchor="middle">R45</text>
+<path class="line" d="M816.8 389.5 V372 H871.4"/>
+<line class="ci" x1="823.8" x2="823.8" y1="379.2" y2="364.7"/>
+<text x="871.4" y="562" class="tick" text-anchor="middle">R46</text>
+<path class="line" d="M871.4 372 V290 H925.9"/>
+<line class="ci" x1="878.4" x2="878.4" y1="298.6" y2="281.5"/>
+<text x="925.9" y="562" class="tick" text-anchor="middle">R48</text>
+<path class="line" d="M925.9 290 V259.8 H980.4"/>
+<line class="ci" x1="932.9" x2="932.9" y1="269.4" y2="250.2"/>
+<text x="980.4" y="562" class="tick" text-anchor="middle">R49</text>
+<path class="line" d="M980.4 259.8 V248.8 H1034.9" stroke-dasharray="8 5"/>
+<line class="ci" x1="987.4" x2="987.4" y1="253.8" y2="244"/>
+<text x="1034.9" y="562" class="tick" text-anchor="middle">R50</text>
+<path class="line" d="M1034.9 248.8 V226.7 H1089.5" stroke-dasharray="8 5"/>
+<line class="ci" x1="1041.9" x2="1041.9" y1="230.7" y2="222.7"/>
+<text x="1089.5" y="562" class="tick" text-anchor="middle">R51</text>
+<path class="line" d="M1089.5 226.7 V231.4 H1144" stroke-dasharray="8 5"/>
+<line class="ci" x1="1096.5" x2="1096.5" y1="235" y2="227.9"/>
+<text x="1144" y="562" class="tick" text-anchor="middle">R52</text>
+<path class="line" d="M1144 231.4 V215.7 H1160" stroke-dasharray="8 5"/>
+<line class="ci" x1="1151" x2="1151" y1="217.8" y2="213.6"/>
+<circle class="dot" cx="108" cy="518.5" r="4"/>
+<circle class="dot" cx="162.5" cy="468.6" r="3.5"/>
+<path class="lead" d="M162.5 468.6 L105.5 404.2"/>
+<text x="113.5" y="382.2" class="rel" text-anchor="start">R22 +0.14</text>
+<text x="113.5" y="400.2" class="note" text-anchor="start">policy shortlist</text>
+<circle class="dot" cx="217.1" cy="461.1" r="3.5"/>
+<path class="lead" d="M217.1 461.1 L225.4 343.2"/>
+<text x="233.4" y="321.2" class="rel" text-anchor="start">R25/27 +0.02</text>
+<text x="233.4" y="339.2" class="note" text-anchor="start">value model</text>
+<circle class="dot" cx="271.6" cy="461.2" r="3.5"/>
+<circle class="dot" cx="326.1" cy="459.1" r="3.5"/>
+<circle class="dot" cx="380.6" cy="441.5" r="3.5"/>
+<path class="lead" d="M380.6 441.5 L350.8 282.3"/>
+<text x="358.8" y="260.3" class="rel" text-anchor="start">R29 +0.05</text>
+<text x="358.8" y="278.3" class="note" text-anchor="start">policy + value search</text>
+<circle class="hollow" cx="435.2" cy="441.5" r="5"/>
+<path class="lead" d="M435.2 441.5 L435.2 464.6"/>
+<text x="435.2" y="482.6" class="rel" text-anchor="middle">R30 not measured</text>
+<text x="435.2" y="500.6" class="note" text-anchor="middle">(hybrid-bury fix)</text>
+<circle class="dot" cx="489.7" cy="427.4" r="3.5"/>
+<path class="lead" d="M489.7 427.4 L514.4 461.4"/>
+<text x="522.4" y="475.4" class="rel" text-anchor="start">R36 +0.04</text>
+<text x="522.4" y="493.4" class="note" text-anchor="start">measured vs R30</text>
+<circle class="dot" cx="544.2" cy="410.9" r="3.5"/>
+<circle class="dot" cx="598.7" cy="407.1" r="3.5"/>
+<circle class="dot" cx="653.3" cy="407.1" r="3.5"/>
+<circle class="dot" cx="707.8" cy="407.3" r="3.5"/>
+<circle class="dot" cx="762.3" cy="389.5" r="3.5"/>
+<path class="lead" d="M762.3 389.5 L776.1 432.8"/>
+<text x="784.1" y="446.8" class="rel" text-anchor="start">R44 +0.05</text>
+<text x="784.1" y="464.8" class="note" text-anchor="start">value-guided declare</text>
+<text x="784.1" y="482.8" class="note" text-anchor="start">(first-round deals)</text>
+<circle class="dot" cx="816.8" cy="372" r="3.5"/>
+<circle class="dot" cx="871.4" cy="290" r="3.5"/>
+<path class="lead" d="M871.4 290 L857.6 253.6"/>
+<text x="849.6" y="231.6" class="rel" text-anchor="end">R46 +0.23</text>
+<text x="849.6" y="249.6" class="note" text-anchor="end">belief + exact endgame</text>
+<circle class="dot" cx="925.9" cy="259.8" r="3.5"/>
+<circle class="dot" cx="980.4" cy="248.8" r="3.5"/>
+<circle class="dot" cx="1034.9" cy="226.7" r="3.5"/>
+<path class="lead" d="M1034.9 226.7 L1026.6 199.9"/>
+<text x="1018.6" y="159.9" class="rel" text-anchor="end">R50 +0.06</text>
+<text x="1018.6" y="177.9" class="note" text-anchor="end">new value, prior + belief</text>
+<text x="1018.6" y="195.9" class="note" text-anchor="end">(trained on 200k rounds)</text>
+<circle class="dot" cx="1089.5" cy="231.4" r="3.5"/>
+<path class="lead" d="M1089.5 231.4 L1089.5 278.1"/>
+<text x="1089.5" y="296.1" class="rel" text-anchor="middle">R51 −0.01 on cloud;</text>
+<text x="1089.5" y="314.1" class="note" text-anchor="middle">the Ultra read, +0.008,</text>
+<text x="1089.5" y="332.1" class="note" text-anchor="middle">disagrees</text>
+<circle class="dot" cx="1144" cy="215.7" r="3.5"/>
+<path class="lead" d="M1144 215.7 L1144 171.5"/>
+<text x="1144" y="145.5" class="rel" text-anchor="middle">R52 +0.04</text>
+<text x="1144" y="163.5" class="note" text-anchor="middle">search rules</text>
+<text x="24" y="616" class="s">An arithmetic index of separate measurements from different instruments, each against its own comparator (the confirmation</text>
+<text x="24" y="636" class="s">where one exists, else the screen). It is not a measured or calibrated strength gap. Hollow markers: changes the ladder lists as not measured.</text>
 </svg>

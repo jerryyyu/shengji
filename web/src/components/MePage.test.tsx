@@ -111,7 +111,7 @@ describe("signed in", () => {
     expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
     expect(host.querySelector(".grp-head")?.textContent).toBe("Today");
     const row = host.querySelector(".games-day-row")!;
-    expect(row.querySelector(".games-row-title")?.textContent).toBe("Room KQ4X · with Sam, Mei, Wen");
+    expect(row.querySelector(".games-row-title")?.textContent).toBe("KQ4X · Sam, Mei, Wen");
     expect(row.parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
     expect(host.querySelector(".me-tile")).toBeNull();
   });
@@ -532,7 +532,7 @@ describe("pull to refresh", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
     expect(count("/api/me/games?")).toBe(2);
     expect(count("/api/me/stats")).toBe(2);
-    expect(host.querySelector(".games-day-row .games-row-title")?.textContent).toBe("Room KQ4X · with Sam, Mei, Wen");
+    expect(host.querySelector(".games-day-row .games-row-title")?.textContent).toBe("KQ4X · Sam, Mei, Wen");
   });
 });
 

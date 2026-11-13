@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 const KEY = "user:j@x#0:games";
-const rooms = () => [...host.querySelectorAll(".games-row-title")].map((e) => e.textContent?.match(/Room (\w+)/)?.[1]);
+const rooms = () => [...host.querySelectorAll(".games-row-title")].map((e) => e.textContent?.match(/^(\w+) ·/)?.[1]);
 type Cached = { status: string; games: { room_code: string }[] };
 
 async function mountThenPull(order: "fresh-first" | "old-first") {

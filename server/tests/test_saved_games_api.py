@@ -170,6 +170,24 @@ def test_events_keep_the_log_keys_minus_the_forbidden_ones(api):
     assert served["events"][0]["deck"] == logged[0]["deck"]
 
 
+def test_each_round_result_names_its_level_and_banker(api):
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    t = Table(srv, users=(owner, None, None, None))
+    t.start_round(first=True)
+    t.act()
+    t.start_round()
+    t.act()
+    raw = [json.loads(line) for line in (srv.LOG_DIR / "REPL.jsonl").read_text().splitlines()]
+    trump = {r["round"]: r for r in raw if r["e"] == "trump"}
+    detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
+    assert [r["round"] for r in detail["round_results"]] == [1, 2]
+    for row in detail["round_results"]:
+        assert row["level"] == trump[row["round"]]["rank"]
+        assert row["banker"] == trump[row["round"]]["banker"]
+        assert row["banker"] in range(4)
+
+
 def test_hidden_cards_before_round_end(api):
     srv, store, client = api
     users = [store.upsert_user(_claims(sub=f"s{i}"))["id"] for i in range(4)]
@@ -516,3 +534,135 @@ def test_list_pages_through_games_that_share_a_start_second(api):
     assert client.get("/api/me/games?before=nope", headers=owner_h).status_code == 400
     # a bare integer still reads as "started before that second"
     assert client.get(f"/api/me/games?before={same}", headers=owner_h).json()["games"] == []
+
+
+def _ranked_table(srv, users, code="RANK"):
+    """A Ranked table whose signed-in seats are connected, so its rounds are
+    rated through the real ratings hooks."""
+    from shengji.api import ratings
+
+    t = Table(srv, code=code, users=users)
+    t.room.ranked = True
+    for seat in t.room.seats:
+        seat.connected = True
+    t.start_round(first=True)
+    ratings.start(t.room)
+    return t
+
+
+def _my_events(store, user_id):
+    import sqlite3
+    from contextlib import closing
+
+    with closing(sqlite3.connect(store.path)) as db:
+        db.row_factory = sqlite3.Row
+        return [dict(r) for r in db.execute(
+            "SELECT * FROM rating_events WHERE user_id = ? ORDER BY id", (user_id,))]
+
+
+def test_a_ranked_game_shows_the_viewers_own_rating_change(api):
+    from shengji.api import ratings
+
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    other, other_h = _user(store, "other")
+    t = _ranked_table(srv, (owner, other, None, None))
+    t.act()
+    for _ in range(2):
+        t.start_round()
+        ratings.round_started(t.room)
+        t.act()
+    ratings.flush()
+
+    mine = _my_events(store, owner)
+    theirs = _my_events(store, other)
+    assert len(mine) == 3 and len(theirs) == 3
+    # a rated round's game id is the saved game's id plus its segment
+    assert {e["game_id"] for e in mine} == {f"{t.game_id}/0"}
+    assert sum(e["delta"] for e in mine) != sum(e["delta"] for e in theirs)
+
+    [game] = client.get("/api/me/games", headers=owner_h).json()["games"]
+    assert game["rating_change"] == round(sum(e["delta"] for e in mine))
+    assert game["rating_after"] == round(mine[-1]["rating_after"])
+    assert game["rated_rounds"] == 3
+
+    [seen] = client.get("/api/me/games", headers=other_h).json()["games"]
+    assert seen["rating_change"] == round(sum(e["delta"] for e in theirs))
+    assert seen["rating_after"] == round(theirs[-1]["rating_after"])
+
+    detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
+    assert detail["rating_change"] == game["rating_change"]
+    assert [r["rating_delta"] for r in detail["round_results"]] == [
+        round(e["delta"]) for e in mine]
+    # another account's per-round figures never appear in this one's game
+    other_detail = client.get(f"/api/me/games/{t.game_id}", headers=other_h).json()
+    assert [r["rating_delta"] for r in other_detail["round_results"]] == [
+        round(e["delta"]) for e in theirs]
+
+
+def test_an_unranked_game_carries_no_rating_keys(api):
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    t = Table(srv, users=(owner, None, None, None))
+    t.start_round(first=True)
+    t.act()
+
+    [game] = client.get("/api/me/games", headers=owner_h).json()["games"]
+    assert not {"rating_change", "rating_after", "rated_rounds"} & set(game)
+    detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
+    assert not {"rating_change", "rating_after", "rated_rounds"} & set(detail)
+    assert all("rating_delta" not in r for r in detail["round_results"])
+
+
+def test_another_accounts_rating_events_never_count(api):
+    """An account rated in a game it has no link to (seated as a guest, so
+    the saved game is not its own) adds nothing to the linked account's row."""
+    import sqlite3
+    from contextlib import closing
+
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    other, _ = _user(store, "other")
+    t = Table(srv, users=(owner, None, None, None))
+    t.start_round(first=True)
+    t.act()
+    with closing(sqlite3.connect(store.path)) as db:
+        db.execute(
+            """INSERT INTO rating_events(game_id, round_no, user_id, created_at, team,
+                   banker_team, won, levels, expected, actual, k, rating_before,
+                   rating_after, delta)
+               VALUES (?, 1, ?, 0, 1, 0, 1, 1, 0.5, 1, 20, 1000, 1030, 30)""",
+            (f"{t.game_id}/0", other))
+        db.commit()
+
+    [game] = client.get("/api/me/games", headers=owner_h).json()["games"]
+    assert "rating_change" not in game
+    detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
+    assert all("rating_delta" not in r for r in detail["round_results"])
+
+
+def test_every_segment_of_a_saved_game_counts(api):
+    """A table plays on past a held Ace as a new segment (``/<n>`` on the
+    rated round's game id) of the same saved game: both segments sum."""
+    from shengji.api import ratings
+
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    t = _ranked_table(srv, (owner, None, None, None), code="SEGS")
+    t.act()
+    t.room.ratings.game_no += 1          # the boundary a held Ace crosses
+    for _ in range(2):
+        t.start_round()
+        ratings.round_started(t.room)
+        t.act()
+    ratings.flush()
+
+    mine = _my_events(store, owner)
+    assert [e["game_id"] for e in mine] == [f"{t.game_id}/0", f"{t.game_id}/1", f"{t.game_id}/1"]
+    [game] = client.get("/api/me/games", headers=owner_h).json()["games"]
+    assert game["rating_change"] == round(sum(e["delta"] for e in mine))
+    assert game["rating_after"] == round(mine[-1]["rating_after"])
+    assert game["rated_rounds"] == 3
+    detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
+    assert [r["rating_delta"] for r in detail["round_results"]] == [
+        round(e["delta"]) for e in mine]

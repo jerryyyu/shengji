@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import { fetchGame, fetchGames, removeGame, teamPair } from "../replay/api";
-import type { Fetched, GameDetail, GameRow } from "../replay/api";
+import type { Fetched, GameDetail, GameRow, RoundResult } from "../replay/api";
 import { navigate } from "../replay/route";
 import { continueGame, hasLevels, useCanContinue } from "../replay/continueGame";
 import type { GamesRoute } from "../replay/route";
@@ -9,6 +9,18 @@ import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesS
 import ReplayView from "./ReplayView";
 import { dayLabel } from "../home/dayLabel";
 import { cached, remember } from "../home/session";
+import { deltaText } from "../ratings/api";
+
+function deltaClass(delta: number): string {
+  return delta > 0 ? "delta-up" : delta < 0 ? "delta-dn" : "delta-flat";
+}
+
+/** The viewer's rating change, ▲/▼ as on the leaderboard; nothing for an
+ *  unrated round or game. */
+export function RatingDelta({ delta, className = "" }: { delta?: number; className?: string }) {
+  if (delta === undefined) return null;
+  return <span className={`rating-change ${deltaClass(delta)} ${className}`.trim()}>{deltaText(delta)}</span>;
+}
 
 function when(unix: number): string {
   return new Date(unix * 1000).toLocaleString(undefined, {
@@ -103,19 +115,26 @@ function Summary({ game }: { game: GameRow }) {
       <span>{n} round{n === 1 ? "" : "s"}</span>
       {levels ? <span>Levels: you {levels[mine]} · them {levels[1 - mine]}</span> : null}
       {won ? <span>Games won: {won[mine]}–{won[1 - mine]}</span> : null}
+      {game.rating_change !== undefined ? (
+        <span className="games-meta-rating">
+          Rating <RatingDelta delta={game.rating_change} />
+          {game.rating_after !== undefined ? <> · {game.rating_after.toLocaleString()}</> : null}
+        </span>
+      ) : null}
       {game.incomplete ? <span className="games-tag">incomplete</span> : null}
     </span>
   );
 }
 
-function roundLine(seat: number, result: Record<string, unknown> | undefined): string {
-  if (!result) return "unfinished";
-  const mine = seat % 2;
-  const won = Number(result.winner_team) === mine;
-  const change = Number(result.level_change) || 0;
-  const pts = result.attacker_points;
-  return `${won ? "won" : "lost"}${change ? `, +${change} level${change === 1 ? "" : "s"}` : ""}`
-    + (pts !== undefined ? ` · attackers ${String(pts)}` : "");
+/** "Level 6 · Defender · Won": the rank played, the viewer's side, the result. */
+function roundLine(row: RoundResult | undefined): string {
+  if (!row) return "Unfinished";
+  const mine = row.seat % 2;
+  const parts: string[] = [];
+  if (row.level !== undefined) parts.push(`Level ${row.level}`);
+  if (row.banker !== undefined) parts.push(row.banker % 2 === mine ? "Defender" : "Attacker");
+  parts.push(Number(row.result.winner_team) === mine ? "Won" : "Lost");
+  return parts.join(" · ");
 }
 
 /** A saved game's two ways on: Continue (a new table at its last levels,
@@ -196,7 +215,8 @@ function GameView({ id }: { id: string }) {
               return (
                 <li key={n} className="games-round">
                   <span className="games-round-n">Round {n}</span>
-                  <span className="games-round-res">{roundLine(r?.seat ?? game.seat, r?.result)}</span>
+                  <span className="games-round-res">{roundLine(r)}</span>
+                  <RatingDelta delta={r?.rating_delta} className="games-round-delta" />
                   <button className="btn subtle" onClick={() => navigate({ page: "replay", id, round: n })}>
                     Replay
                   </button>
@@ -248,10 +268,10 @@ function clock(unix: number): string {
   return new Date(unix * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-/** "Room ABCD · with Ann, Bot 1, Bea": the other three seats. */
+/** "ABCD · Ann, Bot 1, Bea": the room and the other three seats. */
 function gameTitle(game: GameRow): string {
   const others = [1, 2, 3].map((k) => nameAt(game, (game.seat + k) % 4));
-  return `Room ${game.room_code} · with ${others.join(", ")}`;
+  return `${game.room_code} · ${others.join(", ")}`;
 }
 
 function gameSub(game: GameRow): string {
@@ -386,6 +406,14 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
                       {g.incomplete ? <span className="games-tag">incomplete</span> : null}
                     </span>
                   </span>
+                  {g.rating_change !== undefined ? (
+                    <span className="games-row-rating">
+                      <RatingDelta delta={g.rating_change} />
+                      {g.rating_after !== undefined ? (
+                        <span className="games-row-rating-after">{g.rating_after.toLocaleString()}</span>
+                      ) : null}
+                    </span>
+                  ) : null}
                 </button>
                 <GameActions game={g} className="games-row-actions" />
               </li>

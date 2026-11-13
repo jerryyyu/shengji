@@ -90,13 +90,13 @@ describe("the games list", () => {
     expect(days[0].querySelectorAll(".games-day-row")).toHaveLength(2);
     expect(days[1].querySelectorAll(".games-day-row")).toHaveLength(1);
     const rows = qa(".games-day-row");
-    expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("Room ABCD · with Bot 1, Bea, Bot 3");
+    expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("ABCD · Bot 1, Bea, Bot 3");
     expect(rows[0].textContent).toContain("3 rounds");
     expect(rows[0].textContent).toContain("Levels 5–3");
     expect(rows[0].parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
     expect(rows[0].querySelector(".games-tag")).toBeNull();
     // seat 1: the others are seats 2, 3 and 0
-    expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("Room ABCD · with Bea, Bot 3, Ana");
+    expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("ABCD · Bea, Bot 3, Ana");
     expect(rows[2].textContent).toContain("1 round");
     expect(rows[2].querySelector(".games-tag")?.textContent).toBe("incomplete");
     expect(button("Load more")).toBeUndefined();
@@ -144,8 +144,8 @@ describe("a game", () => {
     routes["GET /api/me/games?limit=20"] = { status: 200, body: {
       games: [row("g1", 1_790_000_000), row("g2", 1_789_000_000)], next_before: null } };
     routes["GET /api/me/games/g1"] = { status: 200, body: { ...row("g1", 1_790_000_000), round_results: [
-      { round: 1, seat: 0, result: { winner_team: 0, level_change: 2, attacker_points: 35 } },
-      { round: 2, seat: 0, result: { winner_team: 1, level_change: 1, attacker_points: 90 } },
+      { round: 1, seat: 0, level: "2", banker: 0, result: { winner_team: 0, level_change: 2, attacker_points: 35 } },
+      { round: 2, seat: 0, level: "J", banker: 1, result: { winner_team: 1, level_change: 1, attacker_points: 90 } },
     ] } };
   });
 
@@ -154,9 +154,9 @@ describe("a game", () => {
     await click(qa(".games-day-row")[0]);
     const rounds = qa(".games-round");
     expect(rounds.map((r) => r.querySelector(".games-round-n")?.textContent)).toEqual(["Round 1", "Round 2", "Round 3"]);
-    expect(rounds[0].textContent).toContain("won, +2 levels");
-    expect(rounds[1].textContent).toContain("lost, +1 level");
-    expect(rounds[2].textContent).toContain("unfinished");
+    expect(rounds[0].querySelector(".games-round-res")?.textContent).toBe("Level 2 · Defender · Won");
+    expect(rounds[1].querySelector(".games-round-res")?.textContent).toBe("Level J · Attacker · Lost");
+    expect(rounds[2].querySelector(".games-round-res")?.textContent).toBe("Unfinished");
     expect(rounds.every((r) => r.querySelector("button")?.textContent === "Replay")).toBe(true);
   });
 
@@ -186,6 +186,52 @@ describe("a game", () => {
   it("the game page goes back to Games", async () => {
     await mount({ page: "game", id: "g1" });
     expect(q(".games-back")?.textContent).toBe("‹ Games");
+  });
+});
+
+describe("rating change", () => {
+  it("a ranked row shows the viewer's net change and rating after; an unranked row shows none", async () => {
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: {
+      games: [row("up", 1_790_000_300, { rating_change: 12, rating_after: 1042, rated_rounds: 3 }),
+              row("dn", 1_790_000_200, { rating_change: -8, rating_after: 1030, rated_rounds: 2 }),
+              row("un", 1_790_000_100)],
+      next_before: null } };
+    await mount();
+    const rows = qa(".games-day-row");
+    const up = rows[0].querySelector(".rating-change")!;
+    expect(up.textContent).toBe("▲ 12");
+    expect(up.classList.contains("delta-up")).toBe(true);
+    expect(rows[0].querySelector(".games-row-rating-after")?.textContent).toBe((1042).toLocaleString());
+    const dn = rows[1].querySelector(".rating-change")!;
+    expect(dn.textContent).toBe("▼ 8");
+    expect(dn.classList.contains("delta-dn")).toBe(true);
+    expect(rows[2].querySelector(".games-row-rating")).toBeNull();
+    expect(rows[2].querySelector(".rating-change")).toBeNull();
+  });
+
+  it("the game page shows the net change and each rated round's change", async () => {
+    routes["GET /api/me/games/g1"] = { status: 200, body: {
+      ...row("g1", 1_790_000_000, { rating_change: 5, rating_after: 1005, rated_rounds: 2 }),
+      round_results: [
+        { round: 1, seat: 0, result: { winner_team: 0, level_change: 2 }, rating_delta: 9 },
+        { round: 2, seat: 0, result: { winner_team: 1, level_change: 1 }, rating_delta: -4 },
+        { round: 3, seat: 0, result: { winner_team: 0, level_change: 0 } },
+      ] } };
+    await mount({ page: "game", id: "g1" });
+    const head = q(".games-meta-rating")!;
+    expect(head.textContent).toBe(`Rating ▲ 5 · ${(1005).toLocaleString()}`);
+    const rounds = qa(".games-round");
+    expect(rounds.map((r) => r.querySelector(".games-round-delta")?.textContent ?? null))
+      .toEqual(["▲ 9", "▼ 4", null]);
+    expect(rounds[1].querySelector(".games-round-delta")!.classList.contains("delta-dn")).toBe(true);
+  });
+
+  it("an unranked game page shows no rating", async () => {
+    routes["GET /api/me/games/g1"] = { status: 200, body: { ...row("g1", 1_790_000_000), round_results: [
+      { round: 1, seat: 0, result: { winner_team: 0, level_change: 2 } }] } };
+    await mount({ page: "game", id: "g1" });
+    expect(q(".games-meta-rating")).toBeNull();
+    expect(q(".rating-change")).toBeNull();
   });
 });
 
@@ -252,7 +298,7 @@ it("review: an authoritative empty refresh removes the last deleted cached game"
   await act(async()=>{root.render(<SavedGames cacheKey={key} onPlay={()=>{}} />);});
   await settle();
   expect(host.textContent).toContain("No saved games yet");
-  expect(host.textContent).not.toContain("Room ABCD");
+  expect(host.textContent).not.toContain("ABCD");
 });
 
 it("review: remove last game through cached Me history reaches empty state", async () => {

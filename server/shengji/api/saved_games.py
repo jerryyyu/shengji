@@ -440,6 +440,16 @@ def readable_rounds(game: dict) -> dict[int, int]:
     return dict(sorted(seats.items()))
 
 
+def _add_rating(summary: dict, rated: dict | None) -> None:
+    """The viewer's own rating change in this game; an unrated game (unranked
+    room, or no rated round for this account) carries no rating keys."""
+    if not rated:
+        return
+    summary["rating_change"] = int(round(rated["rating_change"]))
+    summary["rating_after"] = int(round(rated["rating_after"]))
+    summary["rated_rounds"] = int(rated["rated_rounds"])
+
+
 def _summary(game: dict, rounds: dict[int, int]) -> dict:
     return {"id": game["id"], "room_code": game["room_code"],
             "started_at": game["started_at"], "ended_at": game["ended_at"],
@@ -483,6 +493,22 @@ def _result(rec: dict) -> dict:
     return {k: rec[k] for k in PUBLIC_KEYS["round_end"] if k in rec}
 
 
+def _level_and_banker(records: list[dict]) -> dict:
+    """The rank the round was played at and its banker seat. A first round
+    names its banker only when trump is fixed, so the trump record wins."""
+    out: dict = {}
+    for kind in ("round_start", "trump"):
+        rec = next((r for r in records if r["e"] == kind), None)
+        if rec is None:
+            continue
+        rank = rec.get("trump_rank", rec.get("rank"))
+        if isinstance(rank, str):
+            out["level"] = rank
+        if isinstance(rec.get("banker"), int):
+            out["banker"] = rec["banker"]
+    return out
+
+
 # The blocking bodies of the endpoints; each runs on a worker thread.
 def _list(user_id: int, before: tuple[int, str] | None, limit: int) -> dict:
     games = accounts.STORE.list_games(user_id, before=before, limit=limit + 1)
@@ -492,6 +518,9 @@ def _list(user_id: int, before: tuple[int, str] | None, limit: int) -> dict:
         rounds = readable_rounds(game)
         if rounds:
             out.append(_summary(game, rounds))
+    rated = accounts.STORE.game_ratings(user_id, [g["id"] for g in out])
+    for summary in out:
+        _add_rating(summary, rated.get(summary["id"]))
     return {"games": out,
             "next_before": accounts.Store.game_cursor(games[limit - 1]) if more else None}
 
@@ -513,14 +542,21 @@ def _detail(user_id: int, game_id: str) -> dict | None:
     game, rounds = found
     seg = _segment(game)
     out = _summary(game, rounds)
+    _add_rating(out, accounts.STORE.game_ratings(user_id, [game["id"]]).get(game["id"]))
+    deltas = accounts.STORE.game_round_ratings(user_id, game["id"])
     results = []
     for n, seat in rounds.items():
         if n not in seg.rounds:
             out["incomplete"] = True
             continue
-        end = next((r for r in _round_records(game, seg, n) if r["e"] == "round_end"), None)
+        records = _round_records(game, seg, n)
+        end = next((r for r in records if r["e"] == "round_end"), None)
         if end is not None:
-            results.append({"round": n, "seat": seat, "result": _result(end)})
+            row = {"round": n, "seat": seat, "result": _result(end)}
+            row.update(_level_and_banker(records))
+            if n in deltas:
+                row["rating_delta"] = int(round(deltas[n]))
+            results.append(row)
     if seg.truncated:
         out["incomplete"] = True
     out["round_results"] = results

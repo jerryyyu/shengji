@@ -1,50 +1,27 @@
-import { useState } from "react";
-import { auth, effectiveName } from "../auth";
+import { useEffect, useState } from "react";
+import { effectiveName } from "../auth";
 import type { AuthUser } from "../auth";
-import { navigate } from "../replay/route";
-import NameEditForm from "./NameEditForm";
+import { fetchStats } from "../ratings/api";
+import { Avatar } from "../home/HomeShell";
+import { openTab } from "../home/route";
 
-/** The signed-in state in the lobby panel: one pill holding the avatar and
- *  name above My games, Edit name and Sign out. A sign-out the server did not
- *  confirm stays signed in and says so. */
+/** The signed-in player's chip: avatar, the name they play under and their
+ *  rating once it has loaded. One button that opens Me, where the name is
+ *  edited. It sits on Play on a phone and at the top bar's end when wide. */
 export default function AccountChip({ user }: { user: AuthUser }) {
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const shown = effectiveName(user) || user.email;
-  const signOut = () => {
-    setBusy(true);
-    setError(null);
-    auth.signOut()
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setBusy(false));
-  };
+  const [rating, setRating] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetchStats().then((r) => { if (live) setRating(r.ok ? r.data.rating : null); });
+    return () => { live = false; };
+  }, [user]);
+  const name = effectiveName(user) || user.email;
   return (
-    <div className="account-card">
-      <div className="account-chip">
-        {user.picture ? (
-          <img className="account-avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />
-        ) : (
-          <span className="account-avatar account-avatar-blank" aria-hidden="true">
-            {shown.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        <span className="account-name" title={user.email}>{shown}</span>
-      </div>
-      <div className="account-actions">
-        <button className="btn account-games" onClick={() => navigate({ page: "list" })}>
-          My games
-        </button>
-        <button className="btn subtle account-edit" aria-expanded={editing}
-                onClick={() => setEditing((v) => !v)}>
-          Edit name
-        </button>
-        <button className="btn subtle account-signout" disabled={busy} onClick={signOut}>
-          {busy ? "Signing out…" : "Sign out"}
-        </button>
-      </div>
-      {editing ? <NameEditForm user={user} onDone={() => setEditing(false)} /> : null}
-      {error ? <div className="lobby-error account-error" role="alert">{error}</div> : null}
-    </div>
+    <button type="button" className="account-pill" onClick={() => openTab("me", "stats")}
+            aria-label={`${name}${rating !== null ? `, rating ${rating}` : ""}, open profile`}>
+      <Avatar user={user} />
+      <span className="account-pill-name">{name}</span>
+      {rating !== null ? <span className="account-pill-rating">{rating.toLocaleString("en-US")}</span> : null}
+    </button>
   );
 }

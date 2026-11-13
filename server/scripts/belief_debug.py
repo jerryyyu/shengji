@@ -142,7 +142,9 @@ def regenerate(model, rnd, seat: int, fields, worlds: int):
                                 batch=worlds, forbidden=draw_constraints(rnd, seat))
     mem = Memory(rnd, seat, own_kitty=getattr(sampler, "BANKER_KITTY", True))
     drawn, _attempts, stats = sample_worlds_history_legal(
-        sampler, rnd, seat, worlds, refusals, mem=mem, propose=propose, constrain=True)
+        sampler, rnd, seat, worlds, refusals, mem=mem, propose=propose, constrain=True,
+        throws="history_throw_events" in fields,
+        proposal_caps="history_cap_rejected" in fields)
     return propose, drawn, stats, worlds - accepted_from_proposal(propose, stats)
 
 
@@ -151,20 +153,22 @@ def accepted_from_proposal(propose, stats) -> int:
     (refusal or history test) or accepted; the rest were filled by production's
     draw from the sampler stream."""
     return (int(propose.drawn) - int(stats.get("history_rejections", 0))
-            - int(stats.get("refusal_rejections", 0)))
+            - int(stats.get("refusal_rejections", 0))
+            - int(stats.get("history_throw_rejections", 0))
+            - int(stats.get("history_cap_rejected", 0)))
 
 
 #: the logged counters a replay must reproduce; a counter the source did not
 #: log is reported as None (never compared with a default)
-REPLAY_CHECKS = ("belief_proposed", "history_rejections", "history_fallback_worlds")
+REPLAY_CHECKS = ("belief_proposed", "history_rejections", "history_fallback_worlds",
+                 "history_throw_events", "history_throw_rejections", "history_cap_rejected",
+                 "history_unchecked_worlds", "history_fill_worlds", "refusal_rejections")
 
 
 def replay_checks(fields, propose, stats) -> dict:
     """Per logged counter: does the replay reproduce it (None: not logged)."""
-    got = {"belief_proposed": int(propose.drawn),
-           "history_rejections": stats.get("history_rejections"),
-           "history_fallback_worlds": stats.get("history_fallback_worlds")}
-    return {k: (None if k not in fields else got[k] == fields[k]) for k in REPLAY_CHECKS}
+    got = {**stats, "belief_proposed": int(propose.drawn)}
+    return {k: (None if k not in fields else got.get(k, 0) == fields[k]) for k in REPLAY_CHECKS}
 
 
 def world_truth_agreement(drawn, rnd, seat: int) -> list[float]:

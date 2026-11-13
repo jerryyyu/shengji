@@ -288,7 +288,9 @@ def test_debug_tool_on_a_room_log(arms, tmp_path, capsys):
     for (round_no, ply, rnd, seat, rec), d in list(zip(listed, on))[:: max(1, len(on) // 12)]:
         assert seat == d["seat"] and rec == d["record"]
         result = belief_debug.report(rnd, seat, rec, model=model)
-        assert result["snapshot_diff"] == 0 and all(result["checks"].values())
+        assert result["snapshot_diff"] == 0
+        assert result["checks"] == {
+            k: (True if k in rec else None) for k in belief_debug.REPLAY_CHECKS}
         if result["fill"] == 0:
             assert [result["worlds"]] == d["worlds"]
         assert 0.0 < result["truth"]["true_mass"] <= 1.0
@@ -391,7 +393,66 @@ def test_trajectory_shard_to_report(pinned_production_package, belief_package, t
             assert fields["worlds"] == row["action_values"]["worlds"] == 64
             result = belief_debug.report(rnd, seat, fields, model=model)
             assert result["snapshot_diff"] == 0
-            assert result["checks"] == {k: True for k in belief_debug.REPLAY_CHECKS}
+            assert result["checks"] == {
+                k: (True if k in fields else None) for k in belief_debug.REPLAY_CHECKS}
             rejected += fields["history_rejections"] > 0
             reports += 1
     assert reports >= 50 and rejected >= 5
+
+
+@pytest.mark.parametrize("throw_checks", [False, True])
+def test_debug_replay_applies_logged_throw_checks(monkeypatch, throw_checks):
+    import r50_flag_positions as positions
+    from test_world_history_throws import dj_pair_world
+
+    rnd = positions.replay("ADKY3", 11, 1)
+    seat = 1
+    bad = dj_pair_world(rnd)
+    from shengji.ai import history_legality
+    monkeypatch.setattr(history_legality, "follow_events", lambda *args: [])
+
+    class Proposal:
+        def __init__(self, *args, **kwargs):
+            self.drawn = 0
+
+        def __call__(self, *args):
+            self.drawn += 1
+            hands = bad if self.drawn == 1 else rnd.hands
+            return {s: hands[s] for s in range(4) if s != seat}, rnd.buried
+
+    monkeypatch.setattr(bn, "BeliefProposal", Proposal)
+    fields = {"belief_seed": 17}
+    if throw_checks:
+        fields["history_throw_events"] = 1
+    proposal, worlds, stats, fill = belief_debug.regenerate(None, rnd, seat, fields, 1)
+    assert proposal.drawn == (2 if throw_checks else 1)
+    assert stats.get("history_throw_rejections", 0) == int(throw_checks)
+    assert [sorted(h) for h in worlds[0][0]] == [
+        sorted(h) for h in (rnd.hands if throw_checks else bad)]
+    assert fill == 0
+
+
+def test_debug_fill_accounting_includes_every_rejection():
+    from types import SimpleNamespace
+
+    stats = {"history_rejections": 2, "refusal_rejections": 3,
+             "history_throw_rejections": 4, "history_cap_rejected": 5}
+    assert belief_debug.accepted_from_proposal(SimpleNamespace(drawn=20), stats) == 6
+    fields = {"history_throw_rejections": 4, "history_cap_rejected": 5}
+    checks = belief_debug.replay_checks(fields, SimpleNamespace(drawn=20), stats)
+    assert checks["history_throw_rejections"] is True
+    assert checks["history_cap_rejected"] is True
+    assert checks["belief_proposed"] is None
+
+
+def test_trajectory_keeps_history_replay_options():
+    from shengji.harvest.trajectory import pv_fields_from_record
+
+    counters = {"history_throw_events": 1, "history_throw_rejections": 2,
+                "history_cap_rejected": 3, "history_unchecked_worlds": 4,
+                "history_fill_worlds": 5}
+    rec = {"belief_seed": 17, "belief_proposed": 64, **counters}
+    full = {**rec, "admitted": [["SA"]], "admitted_indices": [0],
+            "selected_index": 0, "played": ["SA"], "value_means": [0.0], "worlds": 64}
+    _, _, values = pv_fields_from_record(full, [["SA"]])
+    assert values["belief"] == rec

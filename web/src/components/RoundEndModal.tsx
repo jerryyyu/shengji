@@ -2,7 +2,6 @@ import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
 import Card from "./Card";
 import { useId, useState } from "react";
-import { useAuth } from "../auth";
 import ResultDialog from "./ResultDialog";
 import LeaveAlert from "./LeaveAlert";
 import { OFFLINE } from "../offlineMode";
@@ -74,11 +73,14 @@ function signedDelta(delta: number): string {
 }
 
 /** The viewer's own rating after the round (the server sends it only to a
- *  signed-in seat, once the round is stored); a guest, whose rounds are not
- *  rated, gets "Guest · not ranked" in its place. ``total`` shows the whole
+ *  signed-in seat, once the round is stored); a guest seat (the result's
+ *  `unranked: "guest"` or the state's `guest`) gets "Guest · not ranked". ``total`` shows the whole
  *  game's change where a game was won. An unranked room shows neither. */
-export function RatingLine({ result, total, ranked }: { result: RoundResult; total: boolean; ranked: boolean }) {
-  const account = useAuth();
+export function RatingLine({ result, total, ranked, guest = false }: {
+  result: RoundResult; total: boolean; ranked: boolean;
+  /** The viewer sits as a guest (the state's `guest`). */
+  guest?: boolean;
+}) {
   const rating = result.rating;
   if (!ranked) return null;
   if (result.unranked === "joined") {
@@ -101,8 +103,8 @@ export function RatingLine({ result, total, ranked }: { result: RoundResult; tot
       </div>
     );
   }
-  // an account's rating may still be on its way; only a known guest is told
-  if (account.status !== "out" && account.status !== "off") return null;
+  // an account's rating may still be on its way; only a guest seat is told
+  if (result.unranked !== "guest" && !guest) return null;
   return <div className="rating-line rating-unranked rating-guest-note"><span>Guest · not ranked</span></div>;
 }
 
@@ -143,7 +145,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
           <p className="victory-sub">
             Final levels — Blue: {result.new_levels[0]} · Orange: {result.new_levels[1]}
           </p>
-          <RatingLine result={result} total ranked={ranked} />
+          <RatingLine result={result} total ranked={ranked} guest={state.guest === true} />
           <button
             className="btn primary big"
             onClick={() => conn.leaveToLobby()}
@@ -176,7 +178,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
           <span className="result-score">Attackers {total} of 80</span>
         </div>
 
-        <RatingLine result={result} total={result.point_scored} ranked={ranked} />
+        <RatingLine result={result} total={result.point_scored} ranked={ranked} guest={state.guest === true} />
 
         <details className="result-details">
           <summary>Details</summary>

@@ -219,17 +219,27 @@ describe("round end rating line", () => {
     expect(host.querySelector(".victory .rating-line")!.textContent).toContain("+55 this game");
   });
 
-  it("tells a guest at a ranked table their rounds are not ranked, in place of the rating line", async () => {
-    await signedOutWithSignIn();
-    renderModal(makeResult(), ranked);
+  it("tells a guest seat its rounds are not ranked, from the result's unranked: guest", () => {
+    renderModal(makeResult({ unranked: "guest" }), ranked);
     expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest · not ranked");
     expect(host.querySelector(".rating-delta")).toBeNull();
     expect(host.querySelector(".google-signin-slot")).toBeNull();
   });
 
+  it("or from the state's guest at a ranked table", () => {
+    renderModal(makeResult(), { ...ranked, guest: true });
+    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest · not ranked");
+  });
+
+  it("a signed-out viewer with neither field sees no guest note", async () => {
+    await signedOutWithSignIn();
+    renderModal(makeResult(), ranked);
+    expect(host.querySelector(".rating-guest-note")).toBeNull();
+  });
+
   it("an unranked room shows no rating line and no guest note", async () => {
     await signedOutWithSignIn();
-    renderModal(makeResult());
+    renderModal(makeResult({ unranked: "guest" }), { ...state, guest: true });
     expect(host.querySelector(".rating-guest-note")).toBeNull();
     renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }));
     expect(host.querySelector(".rating-line")).toBeNull();

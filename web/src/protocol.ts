@@ -187,7 +187,7 @@ export interface RoundResult {
    *  signed-in player, and only once the server has stored the round. */
   rating?: RoundRating;
   /** This seat was taken mid-round from an open table: not ranked for it. */
-  unranked?: "joined";
+  unranked?: "joined" | "guest";
 }
 
 /** The table's corner line about an open-table newcomer: "trick", they take
@@ -217,6 +217,8 @@ export interface GameState {
   matched?: boolean;
   /** A created room its host switched to Ranked: its rounds are rated. */
   ranked?: boolean;
+  /** This viewer sits as a guest: their rounds are not ranked. */
+  guest?: boolean;
   /** Ranked tables: whether newcomers may be offered a bot seat. */
   allow_joiners?: boolean;
   /** Ranked tables: newcomers taking a seat (see JoinNotice). */

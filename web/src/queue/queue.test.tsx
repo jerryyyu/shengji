@@ -172,9 +172,11 @@ describe("Play", () => {
     expect(q(".play-guest-line")?.textContent).toBe("Playing as a guest · Sign in to be ranked");
     const bots = button("Play bots", lobby())!;
     expect(bots.className).toContain("grp-row");
-    // Play queues a guest exactly as it does an account
+    // Play queues a guest exactly as it does an account, with the chip's name
+    const name = q(".lobby-panel .guest-pill .account-pill-name")!.textContent;
     click(button("Play", lobby())!);
-    expect(lastSent()).toEqual({ type: "queue_join" });
+    expect(lastSent()).toEqual({ type: "queue_join", name });
+    expect(localStorage.getItem("shengji.name")).toBe(name);
     say(queued());
     expect(q(".q-find")?.textContent).toBe("Searching…");
     expect(q(".q-bar")).not.toBeNull();
@@ -183,10 +185,34 @@ describe("Play", () => {
   it("a guest's Duo opens the pair sheet and makes a code, as an account's does", async () => {
     signedIn = false;
     await renderApp();
+    const name = q(".lobby-panel .guest-pill .account-pill-name")!.textContent;
     click(button("Duo", lobby())!);
-    expect(lastSent()).toEqual({ type: "party_create" });
+    expect(lastSent()).toEqual({ type: "party_create", name });
     expect(q(".q-sheet h2")?.textContent).toBe("Duo");
     expect(q(".q-sheet .google-signin")).toBeNull();
+    // the same device cannot be both halves of a pair: the sheet says so
+    say({ type: "error", code: "same_device", message: "A pair needs two devices." });
+    expect(q(".q-sheet .q-error")?.textContent).toBe("A pair needs two devices.");
+  });
+
+  it("an account's queue messages carry no name", async () => {
+    await renderApp();
+    click(button("Play", lobby())!);
+    expect(lastSent()).toEqual({ type: "queue_join" });
+  });
+
+  it("a guest who signs in mid-search starts over: the search is cleared and Play asked for again", async () => {
+    signedIn = false;
+    await renderApp();
+    click(button("Play", lobby())!);
+    say(queued());
+    expect(findBtn().textContent).toBe("Searching…");
+    const { auth } = await import("../auth");
+    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
+    await settle();
+    expect(q(".q-bar")).toBeNull();
+    expect(findBtn().textContent).toBe("Play");
+    expect(q(".q-toast")?.textContent).toContain("Signed in. Press Play to search again.");
   });
 
   it("a guest's Sign in shows the sign-in buttons in the line's place", async () => {
@@ -871,7 +897,8 @@ describe("one code for rooms and pairs", () => {
     playJoin();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "7F2K" });
     say({ type: "code_kind", code: "7F2K", kind: "party" });
-    expect(lastSent()).toEqual({ type: "party_join", code: "7F2K" });
+    expect(lastSent()).toMatchObject({ type: "party_join", code: "7F2K" });
+    expect(typeof (lastSent() as { name?: unknown }).name).toBe("string");
     expect(document.body.textContent).not.toContain("Sign in to join duo");
   });
 
@@ -1328,14 +1355,14 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK", seat: 2 });
   });
 
-  it("same_device closes the seat picker and says why", async () => {
+  it("same_device closes the seat picker and shows the server's message", async () => {
     await open();
     viaPlayBox();
     tell(rankedSeats());
     click(button(/Seat 2/));
-    tell({ type: "error", code: "same_device", message: "server text" });
+    tell({ type: "error", code: "same_device", message: "Someone on this device is already at that table." });
     expect(document.body.textContent).not.toContain("Take a seat");
-    expect(document.body.textContent).toContain("You're already at this table on this device.");
+    expect(document.body.textContent).toContain("Someone on this device is already at that table.");
   });
 
   it("a ranked table with no bot seat says Table is full", async () => {

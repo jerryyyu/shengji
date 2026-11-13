@@ -32,11 +32,6 @@ import { useRoomBack } from "./roomBack";
 // Offline play (no game server): its start screen loads with the local server.
 const OfflineStart = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineStart })));
 
-/** Errors worded on this side, in place of the server's text. */
-const ERROR_COPY: Record<string, string> = {
-  same_device: "You're already at this table on this device.",
-};
-
 export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
   const [room, setRoom] = useState<RoomMsg | null>(null);
@@ -154,7 +149,7 @@ export default function App() {
             if (!wasResuming) showToast("That game has ended.");
             resumingRef.current = false;
           } else {
-            showToast(ERROR_COPY[msg.code ?? ""] ?? msg.message);
+            showToast(msg.message);
           }
           break;
         case "report_received":

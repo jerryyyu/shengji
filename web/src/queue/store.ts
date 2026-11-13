@@ -140,21 +140,24 @@ export class QueueStore {
     conn.subscribe?.((m) => this.onMessage(m));
   }
 
-  /** Queue, table and pair state belong to one identity: a sign-out, a
-   *  deletion or another account's sign-in starts from nothing. A guest who
-   *  signs in keeps what they have; the server moves it to the account. */
+  /** Queue, table and pair state belong to one identity: a sign-in, a
+   *  sign-out, a deletion or another account's sign-in starts from nothing.
+   *  A guest who signs in mid-search is told to press Play again: the socket
+   *  reconnects as the account and the server drops the guest's entry. */
   private onAuth(account: string | null | undefined): void {
     if (account === this.account) return;
     const was = this.account;
     this.account = account;
-    // loading -> signed in keeps what the resync delivered
-    if (was === null || (was === undefined && account !== null)) return;
+    // loading -> known keeps what the resync delivered
+    if (was === undefined) return;
+    const searching = was === null && (this.view.queued || this.view.pending === "join");
     this.clearResync();
     this.clearPartyResync();
     this.joinSentAt = null;
     this.droppedWhileQueued = false;
     this.findAfterSignIn = false;
     this.set({ ...EMPTY, count: this.view.count, note: null });
+    if (searching) this.notify("Signed in. Press Play to search again.");
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -174,8 +177,14 @@ export class QueueStore {
     return serverSecs * 1000 - this.skew;
   }
 
+  /** A guest's messages carry the name it plays under, which is kept for
+   *  next time (and for resuming a matched seat). */
   private send(msg: QueueClientMsg): boolean {
-    return conn.send(msg);
+    if (auth.state?.status === "in") return conn.send(msg);
+    const name = guestName.name.trim();
+    if (!name) return conn.send(msg);
+    guestName.keep(name);
+    return conn.send({ ...msg, name });
   }
 
   notify(title: string, sub?: string): void {
@@ -316,6 +325,11 @@ export class QueueStore {
         else if (msg.by && !msg.you) this.notify(`${msg.by} left the pair.`);
         break;
       case "error":
+        // a pair needs two devices: the pair sheet says so where it was asked
+        if (msg.code === "same_device" && this.view.sheet === "party") {
+          this.set({ partyError: msg.message });
+          break;
+        }
         if (!msg.code || !QUEUE_ERROR_CODES.has(msg.code)) break;
         this.joinSentAt = null;
         if (msg.code === "not_in_party") {

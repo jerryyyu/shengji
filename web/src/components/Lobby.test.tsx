@@ -179,7 +179,7 @@ describe("the lobby with sign-in ON", () => {
     expect(sent).toHaveLength(0);
     // Play queues a guest like anyone
     act(() => row[0].click());
-    expect(sent).toEqual([{ type: "queue_join" }]);
+    expect(sent).toEqual([{ type: "queue_join", name }]);
   });
 
   it("signed out: the chip opens the name editor, whose Done keeps the name", async () => {

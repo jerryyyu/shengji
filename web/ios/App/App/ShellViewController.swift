@@ -16,9 +16,16 @@ import WebKit
 /// the page can scroll its own scroller to the top (the WebView's outer scroll
 /// view never scrolls). In game mode the bottom edge defers the system's home
 /// gesture, so a card drag near the edge needs a second swipe to leave.
+///
+/// An invite link that opens the app (a universal link) loads in the WebView
+/// as the same link loads in Safari (InviteLink). Capacitor posts the link
+/// when the app is already running and, on a cold launch, once the first view
+/// has appeared, so one observer serves both; the load replaces the start
+/// page, and the cancelled start load is not a network failure.
 class ShellViewController: CAPBridgeViewController {
     private var navigationGate: OfflineFallbackGate?
     private var statusTapObserver: NSObjectProtocol?
+    private var inviteLinkObserver: NSObjectProtocol?
 
     var inGame = false {
         didSet {
@@ -50,6 +57,15 @@ class ShellViewController: CAPBridgeViewController {
         ) { [weak self] _ in
             self?.webView?.evaluateJavaScript("window.dispatchEvent(new Event('statusTap'))")
         }
+        inviteLinkObserver = NotificationCenter.default.addObserver(
+            forName: .capacitorOpenUniversalLink, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self = self,
+                  let link = (note.object as? [String: Any])?["url"] as? URL,
+                  let server = self.bridge?.config.serverURL,
+                  let target = InviteLink.target(for: link, server: server) else { return }
+            _ = self.webView?.load(URLRequest(url: target))
+        }
     }
 
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
@@ -57,7 +73,7 @@ class ShellViewController: CAPBridgeViewController {
     }
 
     deinit {
-        if let observer = statusTapObserver {
+        for observer in [statusTapObserver, inviteLinkObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
     }

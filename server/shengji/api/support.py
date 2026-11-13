@@ -10,12 +10,20 @@ success to its sender and is not stored.
 ``index.html`` so a deep link or a reload lands on the page; the web app
 picks the screen from the path. ``GET /rules`` and ``GET /rules/zh`` answer
 with the static rules pages, which need no script.
+
+``GET /.well-known/apple-app-site-association`` (and the same file at the
+root) tells iOS which links open the app instead of Safari: the invite link
+``/?code=<code>`` and the older ``/?room=<code>``. Every other page, ``/``
+alone included, stays in the browser. The Apple team ID comes from the
+``APPLE_TEAM_ID`` environment variable; without a well-formed one the file
+is a 404 and no link opens the app.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import threading
 import time
@@ -24,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from . import accounts
@@ -150,6 +158,38 @@ async def post_support(body: SupportPost, request: Request) -> dict:
 RULES_PAGES = {"/rules": "rules/index.html", "/rules/zh": "rules/zh/index.html"}
 
 
+# The iOS app's bundle identifier (appId in web/capacitor.config.ts).
+APP_BUNDLE_ID = "com.jerryyu.shengji"
+TEAM_ID_ENV = "APPLE_TEAM_ID"
+TEAM_ID_RE = re.compile(r"^[A-Z0-9]{10}$")
+AASA_PATHS = ("/.well-known/apple-app-site-association", "/apple-app-site-association")
+# The links an invite uses (web/src/codes.ts codeLink, and the older ?room=).
+# A component matches the path and the named query parameter; "?*" is one or
+# more characters, so a bare "/" or an empty code stays in Safari.
+INVITE_COMPONENTS = (
+    {"/": "/", "?": {"code": "?*"}, "comment": "invite link"},
+    {"/": "/", "?": {"room": "?*"}, "comment": "older room invite link"},
+)
+
+
+def app_site_association(team_id: str | None) -> dict | None:
+    """The association file for a team ID, or None when it is not one."""
+    if not team_id or not TEAM_ID_RE.match(team_id):
+        return None
+    return {"applinks": {"details": [{
+        "appIDs": [f"{team_id}.{APP_BUNDLE_ID}"],
+        "components": [dict(c) for c in INVITE_COMPONENTS],
+    }]}}
+
+
+def _aasa() -> JSONResponse:
+    body = app_site_association(os.environ.get(TEAM_ID_ENV, "").strip())
+    if body is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return JSONResponse(body, media_type="application/json",
+                        headers={"Cache-Control": "max-age=3600"})
+
+
 def _html(file: Path) -> FileResponse:
     if not file.is_file():
         raise HTTPException(status_code=404, detail="Not found.")
@@ -180,5 +220,7 @@ def register_support(app, dist: Path) -> None:
         for variant in (path, path + "/"):
             pages.add_api_route(variant, _static_page(dist / rel), methods=["GET", "HEAD"],
                                 include_in_schema=False)
+    for path in AASA_PATHS:
+        pages.add_api_route(path, _aasa, methods=["GET", "HEAD"], include_in_schema=False)
     app.include_router(router)
     app.include_router(pages)

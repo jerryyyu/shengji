@@ -5758,9 +5758,6 @@ button.grp-row:disabled { cursor: default; }
 .lb-rating { flex: none; width: 46px; text-align: right; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
 .lb-delta { flex: none; width: 44px; text-align: right; font-size: var(--fs-13); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lb-list .lb-row.me { background: #2d3a2f; box-shadow: inset 3px 0 0 var(--gold); }
-.lb-list .lb-row.anchor { min-height: 34px; justify-content: center; gap: 8px; background: #1f242e; color: var(--muted); font-size: var(--fs-13); }
-.lb-list .lb-row.anchor::before,
-.lb-list .lb-row.anchor::after { content: ""; flex: 1; border-top: 1px dashed #4a5262; }
 .lb-pin {
   position: sticky;
   bottom: 0;

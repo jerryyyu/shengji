@@ -72,13 +72,13 @@ it("defaults to This week", async () => {
   expect(host.querySelector(".large-title")?.textContent).toBe("Leaderboard");
 });
 
-it("lists the players with the bot anchor as a divider and pins the viewer's own row", async () => {
+it("lists the players without a bot row and pins the viewer's own row", async () => {
   await render();
   const listed = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-row")];
   expect(listed.map((r) => r.querySelector(".lb-name-text")?.textContent ?? r.textContent))
-    .toEqual(["Shrewd", "sk", "Bold", "Sheng Ji bot · 1,500", "Quiet"]);
-  expect(listed[3].className).toContain("anchor");
-  expect(listed[3].querySelector(".lb-rank")).toBeNull();
+    .toEqual(["Shrewd", "sk", "Bold", "Quiet"]);
+  expect(host.querySelector(".lb-row.anchor")).toBeNull();
+  expect(host.textContent).not.toContain("Sheng Ji bot");
   expect(listed[0].querySelector(".lb-rank.top")?.textContent).toBe("1");
   expect(listed[0].querySelector(".lb-delta")?.textContent).toBe("▲ 24");
   const pinned = host.querySelector(".lb-pin .lb-row.me")!;

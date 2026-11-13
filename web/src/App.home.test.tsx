@@ -236,7 +236,7 @@ describe("tab context", () => {
       String(input).startsWith("/api/leaderboard") ? new Promise<Response>(() => {}) : real(input, init)) as typeof fetch;
     await go("Leaderboard");
     expect(seg("All time").getAttribute("aria-pressed")).toBe("true");
-    expect(host.querySelector(".lb-row.anchor")).not.toBeNull();
+    expect(host.querySelector(".lb-list")).not.toBeNull();
     expect(host.querySelector(".lb-page [role=status]")).toBeNull();
     expect(host.querySelector(".lb-page")!.scrollTop).toBe(240);
     // tapping the selected tab again goes back to the top
@@ -290,7 +290,8 @@ describe("deep links", () => {
     signedIn = false;
     window.history.replaceState(null, "", "/#/leaderboard");
     await renderApp();
-    expect(host.querySelector(".lb-row.anchor")?.textContent).toContain("Sheng Ji bot");
+    expect(host.querySelector(".lb-list")).not.toBeNull();
+    expect(host.textContent).not.toContain("Sheng Ji bot");
     expect(host.querySelector(".lb-page .signin-card h3")?.textContent).toBe("Sign in to be ranked");
   });
 

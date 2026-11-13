@@ -5764,7 +5764,6 @@ button.grp-row:disabled { cursor: default; }
   font-weight: 600;
 }
 .lb-rating { flex: none; width: 46px; text-align: right; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
-.lb-delta { flex: none; width: 44px; text-align: right; font-size: var(--fs-13); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lb-list .lb-row.me { background: #2d3a2f; box-shadow: inset 3px 0 0 var(--gold); }
 .lb-pin {
   position: sticky;

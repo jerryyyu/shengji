@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../auth";
-import { deltaText, fetchLeaderboard } from "../ratings/api";
+import { fetchLeaderboard } from "../ratings/api";
 import type { Leaderboard as Board, LeaderRow, Loaded, Period } from "../ratings/api";
 import { Segmented } from "../home/HomeShell";
 import { tabMemory, useCachedResource, useTabScroll, viewerScope } from "../home/session";
@@ -20,15 +20,6 @@ export function ratingText(rating: number): string {
   return rating.toLocaleString("en-US");
 }
 
-/** This week's change; no change is a dash, not a zero. */
-function weekDeltaText(delta: number): string {
-  return delta === 0 ? "–" : deltaText(delta);
-}
-
-function deltaClass(delta: number): string {
-  return delta > 0 ? "delta-up" : delta < 0 ? "delta-dn" : "delta-flat";
-}
-
 export function Row({ row }: { row: LeaderRow }) {
   const top = row.rank !== null && row.rank <= 3;
   return (
@@ -40,9 +31,6 @@ export function Row({ row }: { row: LeaderRow }) {
         {row.provisional ? <span className="lb-new" title="Fewer than 20 ranked rounds">new</span> : null}
       </span>
       <span className="lb-rating">{ratingText(row.rating)}</span>
-      <span className={`lb-delta ${deltaClass(row.week_delta)}`} title="Change this week">
-        {weekDeltaText(row.week_delta)}
-      </span>
     </li>
   );
 }

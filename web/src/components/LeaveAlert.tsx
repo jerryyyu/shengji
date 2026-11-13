@@ -6,37 +6,26 @@ import type { ServerMsg } from "../protocol";
 trackInputModality();
 
 /** This socket's seat was taken mid-round from an open table and that round
- *  is still in play: it is not rated for this player, and leaving it costs
+ *  is still in play: it is not ranked for this player, and leaving it costs
  *  the queue cooldown. A state frame's `joined_round` says so when the
- *  server sends it; otherwise it is the first frame after an open-table
- *  join's handover (not a round-end one) until that room's round ends. */
-let joinPending: string | null = null;
+ *  server sends it; otherwise an open-table join counts from its
+ *  match_started until that room reaches a round end (a seat claimed at a
+ *  round end never counts). */
 let joinedRoom: string | null = null;
 
 function trackJoin(m: ServerMsg): void {
   if (m.type === "match_started") {
-    joinPending = m.joining ? m.room : null;
-    joinedRoom = null;
+    joinedRoom = m.joining ? m.room : null;
     return;
   }
   if (m.type === "left") {
-    joinPending = joinedRoom = null;
+    joinedRoom = null;
     return;
   }
   if (m.type !== "state") return;
   const flag = (m as { joined_round?: boolean }).joined_round;
-  if (typeof flag === "boolean") {
-    joinPending = null;
-    joinedRoom = flag ? m.room : null;
-    return;
-  }
-  if (m.joining_you) return;
-  if (joinPending !== null && m.room === joinPending) {
-    joinPending = null;
-    joinedRoom = m.phase !== "round_end" ? m.room : null;
-  } else if (joinedRoom !== null && (m.room !== joinedRoom || m.phase === "round_end")) {
-    joinedRoom = null;
-  }
+  if (typeof flag === "boolean") joinedRoom = flag ? m.room : null;
+  else if (joinedRoom !== null && (m.room !== joinedRoom || m.phase === "round_end")) joinedRoom = null;
 }
 conn.subscribe?.(trackJoin);
 

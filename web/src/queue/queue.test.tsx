@@ -1767,6 +1767,9 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     say({ type: "match_started", match_id: "m1", room: "OPEN", rated: false, guest: true });
     say(state({ guest: true }));
     expect(q(".table-screen .mode-chip")).toBeNull();
+    // a table that is not rated at all sends no guest flag: still no chip for a signed-out player
+    say(state());
+    expect(q(".table-screen .mode-chip")).toBeNull();
   });
 
   it("an account still sees Finding a ranked game and the Ranked table", async () => {

@@ -12,6 +12,7 @@ import { useCoach } from "../firstTurns";
 import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { codeLink } from "../codes";
 import { OFFLINE } from "../offlineMode";
+import { useAuth } from "../auth";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -237,6 +238,9 @@ export function ModeChip({ mode }: { mode: Mode }) {
 export default function Hud({ state, practice = OFFLINE }: { state: GameState; practice?: boolean }) {
   const barRef = useRef<HTMLDivElement | null>(null);
   const mode = gameMode(state, practice);
+  // a guest is never ranked: the seat's own flag, or no account on this device
+  const account = useAuth().status;
+  const guest = state.guest === true || account === "out" || account === "off";
   useStripWidth(barRef, mode);
   const shownPoints = Math.round(useCountUp(state.attacker_points, { snapDown: true }));
   // Tapping the room chip mid-game copies a full invite link, so you can
@@ -298,8 +302,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
               <span style={{ width: `${Math.min(100, (state.attacker_points / 80) * 100)}%` }} />
             </span>
           </span>
-          {/* a guest is never rated: no Ranked chip at a ranked table */}
-          <ModeChip mode={mode === "ranked" && state.guest === true ? null : mode} />
+          <ModeChip mode={mode === "ranked" && guest ? null : mode} />
           <span className="chip kitty-chip" title="Kitty (face-down)">
             <span className="kitty-icon" />
             {state.kitty_count}
@@ -307,8 +310,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           <MuteButton />
           <CoachChip />
           {/* a guest is never rated, so its leave warning is the casual one even at a ranked table */}
-          <LeaveButton ranked={mode === "ranked" && state.guest !== true} practice={practice} />
-          <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked" && state.guest !== true} offline={practice}
+          <LeaveButton ranked={mode === "ranked" && !guest} practice={practice} />
+          <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked" && !guest} offline={practice}
                    allowJoiners={state.matched && !state.joining_you ? state.allow_joiners ?? true : undefined} />
         </div>
       </div>

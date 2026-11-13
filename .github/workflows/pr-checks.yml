@@ -317,6 +317,7 @@ jobs:
           tests/test_ci_path_classifier.py
           tests/test_receipt_summary.py
           tests/test_safe_rm.py
+          tests/test_ops_dashboard.py
           tests/test_seed_windows_dir.py
           tests/test_paired_window_stats.py
           tests/test_comparator_bank.py

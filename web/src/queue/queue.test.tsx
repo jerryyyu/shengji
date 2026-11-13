@@ -1721,6 +1721,21 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
       "Leave this ranked game? / A bot takes your seat, and this round counts as at best a draw.");
   });
 
+  it("review: reconnect after the joined round ends clears its warning", async () => {
+    await renderApp();
+    const first = ws();
+    say(state({ joined_round: true }));
+    expect(leaveAlertText()).toMatch(/5-minute wait/);
+    act(() => first.close());
+    await act(async () => { await new Promise((r) => setTimeout(r, 1600)); });
+    expect(ws()).not.toBe(first);
+    // The server omits joined_round in the subsequent round. The offline
+    // client never received the previous round_end frame.
+    say(state({ phase: "play", levels: ["3", "2"] }));
+    expect(leaveAlertText()).toBe(
+      "Leave this ranked game? / A bot takes your seat, and this round counts as at best a draw.");
+  });
+
   it("after a reconnect, the new socket's joined_round frame keeps the joined round's warning", async () => {
     await renderApp();
     const first = ws();

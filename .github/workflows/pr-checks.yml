@@ -598,15 +598,16 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # Each engine leg runs in two shards balanced by measured per-file time
-    # (a pure leg of the whole selection took about 31 minutes); every module
-    # is in exactly one shard. A timeout shows as "cancelled", not "failed".
+    # Each engine leg runs in three shards balanced by measured per-file time
+    # (a pure leg of the whole selection takes about 25 minutes of pytest);
+    # every module is in exactly one shard. A timeout shows as "cancelled",
+    # not "failed".
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         engine: [pure, compiled]
-        shard: [1, 2]
+        shard: [1, 2, 3]
     defaults:
       run:
         working-directory: server
@@ -637,7 +638,7 @@ jobs:
           expected = "shengji.engine._fast" if os.environ.get("SHENGJI_FAST") == "1" else "shengji.engine.legal"
           assert legal.validate_follow.__module__ == expected
           PY
-      - name: Test production search regressions (shard 1 of 2)
+      - name: Test production search regressions (shard 1 of 3)
         if: matrix.shard == 1
         env:
           OMP_NUM_THREADS: "1"
@@ -650,47 +651,34 @@ jobs:
             export SHENGJI_FAST=1
           fi
           uv run python -B -m pytest -q --durations=10 \
-            tests/test_pv_admission_rules.py \
             tests/test_m5_population_contract.py \
-            tests/test_pair_resource_admission.py \
-            tests/test_pair_resource_pipeline.py \
-            tests/test_world_history_draw.py \
-            tests/test_world_history_throws.py \
-            tests/test_pv_tiebreak_points.py \
-            tests/test_pv_lead_anchor.py \
             tests/test_pv_search_serving.py \
-            tests/test_pv_value_matrix.py \
-            tests/test_pv_adaptive_k.py \
             tests/test_pv_doomed_throw_reselect.py \
             tests/test_pv_doomed_throw_reselect_exact_guard.py \
-            tests/test_pv_leaf_greedy_stream.py \
-            tests/test_pv_leaf_greedy_deadline.py \
             tests/test_pv_lead_confirm.py \
-            tests/test_pv_encode_prefix.py \
-            tests/test_pv_encode_batch_fast.py \
-            tests/test_pv_native.py \
-            tests/test_pv_native_release48.py \
-            tests/test_pv_value_declare.py \
-            tests/test_pv_declare_served_bury.py \
-            tests/test_release_manifests.py \
-            tests/test_lead_capture_collector.py \
-            tests/test_xmtj_throw_regressions.py \
             tests/test_pv_adaptive_worlds.py \
-            tests/test_pv_adaptive_worlds_leads.py \
             tests/test_optional_stage_contract.py \
             tests/test_pv_wide_lead_admission.py \
-            tests/test_pv_finish_lead.py \
             tests/test_r50_flag_off_parity.py \
             tests/test_rules_profile.py \
             tests/test_rules_profile_r50.py \
             tests/test_pv_serving_smoke.py \
-            tests/test_pv_refusal_event_complete.py \
-            tests/test_tactical_public_observations.py \
-            tests/test_belief_labels.py \
-            tests/test_belief_eval.py \
             tests/test_belief_history.py \
-            tests/test_belief_seq_eval_rows.py
-      - name: Test production search regressions (shard 2 of 2)
+            tests/test_belief_seq_eval_rows.py \
+            tests/test_refusal_constraints.py \
+            tests/test_world_history_legal.py \
+            tests/test_pv_belief_log.py \
+            tests/test_pv_belief_capacity.py \
+            tests/test_y_trajectory_runner.py \
+            tests/test_pv_search_hooks.py \
+            tests/test_pv_lead_tiebreak_prior.py \
+            tests/test_pv_small_joker_lead.py \
+            tests/test_pv_exact_lead_full_minimax.py \
+            tests/test_pv_search_bury.py \
+            tests/test_pv_sampler_telemetry.py \
+            tests/test_world_weighting.py \
+            tests/test_belief_seq_init.py
+      - name: Test production search regressions (shard 2 of 3)
         if: matrix.shard == 2
         env:
           OMP_NUM_THREADS: "1"
@@ -703,45 +691,71 @@ jobs:
             export SHENGJI_FAST=1
           fi
           uv run python -B -m pytest -q --durations=10 \
-            tests/test_refusal_constraints.py \
-            tests/test_world_history_legal.py \
-            tests/test_pv_belief_worlds.py \
-            tests/test_pv_belief_log.py \
-            tests/test_pv_belief_capacity.py \
+            tests/test_pv_lead_anchor.py \
+            tests/test_pv_value_matrix.py \
+            tests/test_pv_leaf_greedy_stream.py \
+            tests/test_pv_leaf_greedy_deadline.py \
+            tests/test_pv_native.py \
+            tests/test_pv_native_release48.py \
+            tests/test_pv_value_declare.py \
+            tests/test_release_manifests.py \
+            tests/test_xmtj_throw_regressions.py \
+            tests/test_pv_finish_lead.py \
+            tests/test_tactical_public_observations.py \
+            tests/test_belief_eval.py \
             tests/test_pv_tree_search.py \
-            tests/test_y_trajectory_runner.py \
-            ../tools/y_datagen/test_launch.py \
-            tests/test_pv_search_hooks.py \
-            tests/test_pv_lead_tiebreak_prior.py \
-            tests/test_pv_doomed_throw_swap.py \
-            tests/test_pv_leaf_greedy_finish.py \
             tests/test_pv_leaf_greedy_finish_exact_skip.py \
             tests/test_pv_lgf_reply_prefix.py \
             tests/test_pv_leaf_greedy_top.py \
             tests/test_degradation_telemetry.py \
             tests/test_degradation_telemetry_identity.py \
             tests/test_pv_single_candidate_fast.py \
-            tests/test_pv_exact_world_subset.py \
             tests/test_pv_declare_first_round.py \
-            tests/test_pv_declare_pass_worlds.py \
             tests/test_pv_declare_wait.py \
             tests/test_model_ids_stamp.py \
+            tests/test_endgame.py \
+            tests/test_endgame_compact.py
+      - name: Test production search regressions (shard 3 of 3)
+        if: matrix.shard == 3
+        env:
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+        run: |
+          if [ "${{ matrix.engine }}" = "pure" ]; then
+            unset SHENGJI_FAST
+          else
+            export SHENGJI_FAST=1
+          fi
+          uv run python -B -m pytest -q --durations=10 \
+            tests/test_pv_admission_rules.py \
+            tests/test_pair_resource_admission.py \
+            tests/test_pair_resource_pipeline.py \
+            tests/test_world_history_draw.py \
+            tests/test_world_history_throws.py \
+            tests/test_pv_tiebreak_points.py \
+            tests/test_pv_adaptive_k.py \
+            tests/test_pv_encode_prefix.py \
+            tests/test_pv_encode_batch_fast.py \
+            tests/test_pv_declare_served_bury.py \
+            tests/test_lead_capture_collector.py \
+            tests/test_pv_adaptive_worlds_leads.py \
+            tests/test_pv_refusal_event_complete.py \
+            tests/test_belief_labels.py \
+            tests/test_pv_belief_worlds.py \
+            ../tools/y_datagen/test_launch.py \
+            tests/test_pv_doomed_throw_swap.py \
+            tests/test_pv_leaf_greedy_finish.py \
+            tests/test_pv_exact_world_subset.py \
+            tests/test_pv_declare_pass_worlds.py \
             tests/test_declare_pass_evidence.py \
             tests/test_lead_root_capture.py \
-            tests/test_pv_small_joker_lead.py \
-            tests/test_endgame.py \
-            tests/test_endgame_compact.py \
             tests/test_endgame_level.py \
             tests/test_pv_exact_lead_variants.py \
-            tests/test_pv_exact_lead_full_minimax.py \
             tests/test_pv_two_trick_lead.py \
-            tests/test_pv_search_bury.py \
             tests/test_pv_search_prior_package.py \
-            tests/test_pv_sampler_telemetry.py \
-            tests/test_world_weighting.py \
             tests/test_belief_sampler.py \
-            tests/test_belief_seq_speed.py \
-            tests/test_belief_seq_init.py
+            tests/test_belief_seq_speed.py
 
   luna-profiles:
     needs: changes

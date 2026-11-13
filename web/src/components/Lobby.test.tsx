@@ -94,13 +94,13 @@ describe("the lobby with sign-in OFF", () => {
     expect(labels).toContain("Create room");
     expect(labels).not.toContain("Find a game");
     // no accounts, so no ranked play to offer
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Unranked"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual"]);
   });
-  it("the section a guest plays in is called Unranked, never Casual", async () => {
+  it("the section a guest plays in is called Casual", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
-    expect(host.querySelector(".play-label")?.textContent).toBe("Unranked");
-    expect(host.textContent).not.toMatch(/casual/i);
+    expect(host.querySelector(".play-label")?.textContent).toBe("Casual");
+    expect(host.textContent).not.toMatch(/unranked/i);
   });
   it("while loading, nothing about accounts shows either", async () => {
     authState.current = { status: "loading", clientId: null, user: null };
@@ -114,7 +114,7 @@ describe("the lobby when the server cannot be reached", () => {
   it("keeps the Ranked section, with Play and Duo unavailable, instead of dropping it", async () => {
     authState.current = { status: "error", clientId: null, user: null };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Unranked", "Ranked"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual", "Ranked"]);
     const ranked = host.querySelector("[data-testid=ranked-unavailable]")!;
     expect(ranked).not.toBeNull();
     const buttons = [...ranked.querySelectorAll<HTMLButtonElement>("button")];
@@ -138,10 +138,10 @@ describe("the lobby with sign-in ON", () => {
   });
   afterEach(() => { window.history.replaceState(null, "", "/"); });
 
-  it("signed out: Unranked first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
+  it("signed out: Casual first with a gold Play bots, then Ranked with Sign in to play ranked", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Unranked", "Ranked"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual", "Ranked"]);
     expect(buttonNamed("Play bots").className).toContain("gold");
     expect(buttonNamed("Create room").className).toContain("grp-row");
     expect(host.querySelector(".q-find")).toBeNull();
@@ -171,10 +171,10 @@ describe("the lobby with sign-in ON", () => {
     expect(window.location.hash).toBe("#/me");
   });
 
-  it("signed in: Ranked first (Play and Duo), then Unranked (Create room, Play bots)", async () => {
+  it("signed in: Ranked first (Play and Duo), then Casual (Create room, Play bots)", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked", "Unranked"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked", "Casual"]);
     const ranked = [...host.querySelectorAll(".play-ranked-row button")].map((b) => b.textContent);
     expect(ranked).toEqual(["Play", "Duo"]);
     const rows = [...host.querySelectorAll(".play-grp .grp-row")].map((b) => b.textContent);

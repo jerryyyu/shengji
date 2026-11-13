@@ -384,7 +384,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const botsPrimary = !signedIn || stalled;
   const casual = (
     <section className="play-section" aria-labelledby={`${nameId}-casual`}>
-      <h2 className="play-label" id={`${nameId}-casual`}>Unranked</h2>
+      <h2 className="play-label" id={`${nameId}-casual`}>Casual</h2>
       {botsPrimary ? (
         <button type="button" className="btn gold play-main" disabled={!botsReady} onClick={playBots}
                 aria-busy={starting?.kind === "bots" || undefined}>

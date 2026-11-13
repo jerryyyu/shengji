@@ -1,6 +1,7 @@
 """UI telemetry: the allow-list, the caps, and a sink apart from the game logs."""
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -146,6 +147,12 @@ def test_queue_events_share_the_socket_sid(sink):
 def test_client_events_reach_the_sink_and_never_a_room_log(client, sink, tmp_path,
                                                            monkeypatch):
     from shengji.api import server as srv
+
+    async def paused_deal(room):
+        await asyncio.Future()
+
+    # Keep unrelated deal frames out of the telemetry dispatch barrier.
+    monkeypatch.setattr(srv, "run_deal", paused_deal)
 
     kinds: list[str] = []
     real = srv.Room.log_event

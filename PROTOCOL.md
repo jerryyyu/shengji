@@ -243,8 +243,10 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 |------|--------|--------|
 | `queue_join` | optional `party_id` | queue alone, or (party leader only) as the pair; a member of a full party always queues as the pair |
 | `queue_leave` | — | leave the queue (leader only for a pair); at a waiting table this frees your seat |
-| `table_start` | — | tap Start at your waiting table (leader only for a pair, for both): your entry is ready for good; the table starts when every entry at it is ready |
-| `queue_start_bots` | — | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` (what an older client's bar button sends) |
+| `table_start` | optional `panel_seq` | tap Start at your waiting table (leader only for a pair, for both): your entry is ready for good; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
+| `table_move` | `seat` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. 20 per account per minute |
+| `table_here` | — | answer the "still here?" prompt (`queue_state.still_here_until`); any other queue message from the table answers it too |
+| `queue_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` (what an older client's bar button sends) |
 | `queue_wait_players` | — | "Only tables with people" on (leader only for a pair): the entry keeps its wait, place in line and seat, but its own timer never starts a bot game (`bots_at: null`, `wait_players: true`); it still sits at a table and rides a switch-off player's timer there. Leaving and queueing again turns it off |
 | `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the entry's timer is due 60 s from now (a new `bots_at`); the wait itself is kept |
 | `party_create` | — | create a pair party (or resend yours); answered with `party` |
@@ -252,9 +254,9 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 | `party_join` | `code` | join a friend's party by its code (pair codes share the room code space; see "Codes") |
 | `party_leave` | — | leave the party; it dissolves and the other member is told. A queued pair leaves the queue (and its seats) |
 | `match_accept`, `match_decline` | — | retired with the ready check: always refused with `no_match` |
-| `open_table_join` | `room`, `seat` | take that seat at the open table offered to you (see "Open tables"); the first confirm wins |
-| `open_table_wait` | — | keep queuing instead; the offered table is not offered again by itself |
-| `open_table_show` | optional `room` | show again the offer of an open table you waited on (the bar's chip), with a fresh 10 s |
+| `open_table_join` | `room`, `seat`, optional `panel_seq` | take that seat at the open table offered to you (see "Open tables"); the first confirm wins |
+| `open_table_wait` | — | keep looking instead; the offered table is not offered again by itself in this search (a fresh `queue_join` forgets it) |
+| `open_table_show` | optional `room` | show again the offer of an open table you waited on (the bar's chip), with a fresh 20 s |
 
 Error codes: `signed_in_only` (guest), `in_room`, `rate_limited`
 (`queue_join` 10 and `party_*` 20 per account per minute), `not_leader`,
@@ -264,12 +266,16 @@ not at a waiting table), `no_match`, `start_failed`, `party_not_found`,
 `party_full`, `party_busy` (the leader is queued), `in_queue`, `in_party`,
 `not_in_party`, `cooldown` (with `cooldown_until`: you left a table you
 joined, see "Open tables"), `no_offer`, `bad_seat`, `seat_taken` (another
-newcomer confirmed that seat first; the offer is re-sent without it),
-`table_closed`.
+newcomer confirmed that seat first; the offer is re-sent without it, or the
+seat of a `table_move` is held), `table_closed`, `pair_seats_fixed`,
+`already_ready`, `panel_changed` (a fresh `queue_state` follows). A signed-in
+account with a connected seat in a ranked game in play is refused
+`queue_join`, `queue_start_bots`, `party_create`, `party_join` and `open_table_join` from any
+other socket with `account_in_game`.
 
 ### Server → Client
 
-- `queue_state {queued, count, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?}`:
+- `queue_state {queued, count, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?}`:
   your entry, after every change to it or to its table, and on reconnect.
   `bots_at` is when this entry's own timer starts a bot game (60 s after
   joining, or after `queue_allow_bots`); it is null and `wait_players` is true
@@ -290,7 +296,27 @@ newcomer confirmed that seat first; the offer is re-sent without it),
   the seat picked for you; null when none is. `open_tables` counts the open
   tables you waited on that can still be joined; `bots_paused` is true while
   an offer is up or such a table exists, and `bots_at` is then null (the
-  wait stands still and runs on from where it stopped).
+  wait stands still and runs on from where it stopped). `panel_seq` is a
+  number, increasing across the server process, that changes whenever what
+  your panel shows changes kind or target (alone, an offer of one room, a
+  waiting table) and stays put across re-renders of the same panel; send it
+  back with a Start or Join so a tap aimed at one panel never acts on the
+  next. `still_here_until` is set while you are asked "still here?" at a
+  waiting table with no timer: answer before then or you leave (`idle`).
+- `presence {tables, playing, waiting}`: to every lobby socket when the counts
+  change, at most once per second, and at once to a new lobby socket when any
+  is above zero. `waiting`: people queued; `tables`: ranked games in play
+  that a newcomer could join (a seat open, Allow joiners on, someone
+  connected); `playing`: connected people seated at those tables. Counts
+  only, no names or codes.
+- `table_moved {name, seat, your_team}`: to everyone else at your waiting
+  table when `name` moved to `seat`; `your_team` says whether that seat is on
+  your team. It comes right after the `queue_state` that shows the new seats.
+- `first_joiner {name, seat, move_secs, round_end}`: once per game started
+  alone (`queue_start_bots` or the entry's own timer), to its people, when the
+  first newcomer's Join lands. `move_secs` is the move clock that runs from
+  now on (null without one); `round_end` says the newcomer plays from the
+  next round.
 - `queue_count {count}`: to every lobby socket, signed in or not; players
   queued, including those at waiting tables. At most one per second; a newly
   connected lobby socket gets the current count if it is above zero.
@@ -308,10 +334,11 @@ newcomer confirmed that seat first; the offer is re-sent without it),
   in the lobby and queued at the front, unseated, even if its `resume` or
   `match_started` frames already reached you.
 - `queue_removed {reason, cooldown_until: null, by?}`: you are out of the
-  queue, with no cooldown: `away` (your socket was gone over 10 s alone, or
-  over 60 s at a waiting table, or was gone when the table's timer started
-  it), `idle` (2 minutes at a waiting table without tapping Start or sending
-  anything) or `in_room`. For a pair, `by` names the member who left, and both
+  queue, with no cooldown: `away` (your socket was gone over 10 s alone, 60 s
+  alone with "Wait for people" on, or 60 s at a waiting table, or was gone
+  when the table's timer started it), `idle` (2 minutes at a waiting table
+  without tapping Start or sending anything; at a table with no timer, 30 s
+  after the "still here?" prompt) or `in_room`. For a pair, `by` names the member who left, and both
   members get it.
 - `party {party_id, code, you_lead, members: [{name, leader, you}], expires_at}`.
 - `party_closed {party_id, reason, by?, you?}`: `left` (`by` who left) or
@@ -329,12 +356,13 @@ Seating runs on every join and every 2 s:
    not) anyone sits with anyone; from 5, only within the entry's rating
    window: ±100 for its first 20 s, ±250 until 40 s, then any. Tables never
    merge.
-3. Seats fill in arrival order, alternating teams: seat 0, then 1 (the other
-   team), then 2 (the first one's partner), then 3. A pair takes seats 0+2 or
-   1+3, whichever team is free; with neither free it waits for another table.
-   Nobody is re-seated while waiting; a leaver's seat is simply free, and a
-   table left with one entry dissolves (that entry is alone again, its tick
-   gone, its own timer kept).
+3. Seats fill in arrival order, partner first: seat 0, then 2 (the first
+   one's partner), then 1 and 3 (the other team). A pair takes seats 0+2 or
+   1+3, whichever team is free (so a pair sits across from two singles);
+   with neither free it waits for another table. Nobody is re-seated while
+   waiting except by their own `table_move`; a leaver's seat is simply free,
+   and a table left with one entry dissolves (that entry is alone again, its
+   tick gone, its own timer kept).
 
 A waiting table starts, with bots in its empty seats, when it has four
 people, when every entry at it has tapped Start, or at its timer. The first
@@ -344,12 +372,13 @@ the queue starts with bots at its own `bots_at`. The room is an ordinary
 rated room (ratings are the round-start snapshot of signed-in seats); the
 server records on it the table it came from and how many people sat there.
 
-A queued socket that closes keeps its place for 10 s alone, 60 s at a
-waiting table (its seat shows `reconnecting`, its Start is kept); a new socket
+A queued socket that closes keeps its place for 10 s alone (60 s alone with
+"Wait for people" on), 60 s at a waiting table (its seat shows `reconnecting`, its Start is kept); a new socket
 of the same account within that time takes the entry back. After that the
 entry is dropped with `queue_removed {reason: "away"}`. A seated entry that
 has not tapped Start and sent nothing for 2 minutes is dropped with
-`queue_removed {reason: "idle"}`. A disconnected entry that is not seated is
+`queue_removed {reason: "idle"}`; at a table with no timer it is first asked
+"still here?" (`still_here_until`) and dropped 30 s later unless it answers. A disconnected entry that is not seated is
 not seated while it may still come back. `create_room` or `join_room` that
 seats the socket ends its queue entry (and frees its seat); a failed join
 leaves it queued.
@@ -360,7 +389,7 @@ A ranked room in play is an open table while it has a bot seat, a person
 connected and "Allow joiners" on (`allow_joiners`, any seated person may send
 `{type: "allow_joiners", on}`; default on). A newcomer who taps Play goes, in
 order, to a waiting table if anyone is queued, else is offered the open table
-with the most people (`queue_state.offer`, 10 s), else waits alone. A
+with the most people (`queue_state.offer`, 20 s), else waits alone. A
 signed-in entry not at a waiting table is offered one, at its join and
 whenever a table opens; guests never are. A single may take any open seat. A
 queued pair is offered a table only when two partner seats (opposite each
@@ -372,7 +401,8 @@ are unranked for that round. Either member's `open_table_wait` is Wait for
 both, at no cost. If either member leaves or drops before the handover, both
 Joins end (the other gets `left {reason: "partner_left", message}`); only
 the member who confirmed pays the join-then-leave cost for a leave. A table you waited on (or let
-lapse) is not offered again by itself; while it can still be joined your bot
+lapse) is not offered again by itself in this search (a fresh `queue_join`
+forgets it; a table you joined and left stays barred); while it can still be joined your bot
 wait is paused and `open_tables` puts a chip on the bar.
 
 `open_table_join {room, seat}` takes any open seat (the lone player's

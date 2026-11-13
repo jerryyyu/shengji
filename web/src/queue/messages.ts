@@ -8,16 +8,24 @@ export type QueueClientMsg = { name?: string } & (
   | { type: "queue_status" }
   | { type: "queue_join"; party_id?: string }
   | { type: "queue_leave" }
-  | { type: "table_start" }
-  | { type: "queue_start_bots" }
+  /** `panel_seq` is the queue_state's: a Start sent against a panel that has
+   *  since changed is refused with `panel_changed`. */
+  | { type: "table_start"; panel_seq?: number }
+  | { type: "queue_start_bots"; panel_seq?: number }
+  /** Move yourself to an empty seat at your waiting table (singles only,
+   *  before your Start). */
+  | { type: "table_move"; seat: number }
+  /** Answer the "still here?" prompt (`still_here_until`). */
+  | { type: "table_here" }
   | { type: "queue_wait_players" }
   | { type: "queue_allow_bots" }
   | { type: "party_create" }
   | { type: "party_join"; code: string }
   | { type: "party_leave" }
   /** Take this seat at the offered open table; the first confirm wins. */
-  | { type: "open_table_join"; room: string; seat: number }
-  /** Keep queuing: the offered table is not offered again by itself. */
+  | { type: "open_table_join"; room: string; seat: number; panel_seq?: number }
+  /** Keep looking: the offered table is not offered again by itself in this
+   *  search; the next queue_join forgets it. */
   | { type: "open_table_wait" }
   /** The bar's open-table chip: the offer again, with a fresh clock. */
   | { type: "open_table_show"; room?: string });
@@ -52,6 +60,13 @@ export interface QueueStateMsg {
   offer?: OpenTableOfferMsg | null;
   /** Open tables you waited on that can still be joined (the bar's chip). */
   open_tables?: number;
+  /** Changes whenever the panel's kind or target changes (alone, an offer of
+   *  one room, a waiting table); the same across re-renders of one panel.
+   *  Send it back with a Start or Join. */
+  panel_seq?: number;
+  /** Asked "still here?" at a table with no timer: answer with table_here
+   *  before then, or you leave the table (queue_removed idle). */
+  still_here_until?: number | null;
 }
 
 /** A seat at an offered open table, in seat order (team 0 at seats 0+2). */
@@ -110,6 +125,25 @@ export interface WaitingTableMsg {
 
 export interface QueueCountMsg { type: "queue_count"; count: number }
 
+/** The Play tab's presence line, to every lobby socket on change. Counts
+ *  only: open ranked tables, connected people at them, people queued. */
+export interface PresenceMsg { type: "presence"; tables: number; playing: number; waiting: number }
+
+/** Someone else at your waiting table moved to `seat` (the queue_state
+ *  with the new seats arrives just before it). */
+export interface TableMovedMsg { type: "table_moved"; name: string; seat: number; your_team: boolean }
+
+/** Once per game you started alone: its first newcomer's Join landed. */
+export interface FirstJoinerMsg {
+  type: "first_joiner";
+  name: string;
+  seat: number;
+  /** The move clock that runs from now on; null without one. */
+  move_secs: number | null;
+  /** The newcomer plays from the next round. */
+  round_end: boolean;
+}
+
 export interface MatchStartedMsg {
   type: "match_started"; match_id: string | null; room: string; rated: boolean;
   /** An open table's seat is yours after the bot's trick (state frames carry joining_you). */
@@ -156,6 +190,9 @@ export interface PartyClosedMsg {
 export type QueueServerMsg =
   | QueueStateMsg
   | QueueCountMsg
+  | PresenceMsg
+  | TableMovedMsg
+  | FirstJoinerMsg
   | MatchStartedMsg
   | MatchCancelledMsg
   | QueueRemovedMsg
@@ -167,7 +204,8 @@ export type QueueErrorCode =
   | "bad_party" | "party_incomplete" | "party_changed" | "partner_unavailable"
   | "not_queued" | "not_seated" | "no_match" | "start_failed"
   | "party_not_found" | "party_full" | "party_busy" | "in_queue" | "in_party"
-  | "not_in_party" | "cooldown" | "no_offer" | "bad_seat" | "seat_taken" | "table_closed";
+  | "not_in_party" | "cooldown" | "no_offer" | "bad_seat" | "seat_taken" | "table_closed"
+  | "pair_seats_fixed" | "already_ready" | "panel_changed";
 
 export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "signed_in_only", "in_room", "rate_limited", "not_leader",
@@ -175,4 +213,5 @@ export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "not_queued", "not_seated", "no_match", "start_failed",
   "party_not_found", "party_full", "party_busy", "in_queue", "in_party",
   "not_in_party", "cooldown", "no_offer", "bad_seat", "seat_taken", "table_closed",
+  "pair_seats_fixed", "already_ready", "panel_changed",
 ]);

@@ -372,6 +372,9 @@ class Room:
     # from the next round). Server-only apart from the notices in a frame.
     allow_joiners: bool = True
     pending_joins: dict = field(default_factory=dict, repr=False)
+    # Whether the people at a game started alone were told of its first
+    # joiner (``first_joiner``): once per room, so the toast never repeats.
+    first_joiner_told: bool = field(default=False, repr=False)
     round_end_joins: dict = field(default_factory=dict, repr=False)
     # Every human is gone and a round in play still owes a rating: the bots
     # finish that round without pacing and the room closes at its end.
@@ -2496,6 +2499,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await send(ws, {"type": "error", "code": "account_in_game",
                                     "message": ACCOUNT_IN_GAME_MESSAGE})
                     continue
+                if (t in QUEUE_STARTS and account_id() is not None
+                        and _account_playing(account_id()) is not None):
+                    # The account plays a ranked game on another socket: one
+                    # person holds one seat, so this one does not queue.
+                    await send(ws, {"type": "error", "code": "account_in_game",
+                                    "message": ACCOUNT_PLAYING_MESSAGE})
+                    continue
                 if t in matchmaking.QUEUE_MESSAGES:
                     if account_id() is None and msg.get("name"):
                         # a guest is called in the queue what it typed
@@ -3105,6 +3115,19 @@ def _open_seats(room: Room, invite: bool = False) -> list[int]:
             if i not in room.pending_joins and (sd.is_bot or _away_offerable(room, i))]
 
 
+def presence_counts() -> tuple[int, int]:
+    """The presence line: open tables (ranked games in play with a seat a
+    newcomer may take and someone connected) and the connected humans
+    seated at them."""
+    tables = playing = 0
+    for room in list(rooms.values()):
+        if not _open_seats(room):
+            continue
+        tables += 1
+        playing += sum(1 for sd in room.seats if sd is not None and not sd.is_bot and sd.connected)
+    return tables, playing
+
+
 def open_tables() -> list[dict]:
     """Every open table as the matchmaker sees it: its code, whether it is
     at a round end (a newcomer then plays, ranked, from the next round), and
@@ -3195,6 +3218,7 @@ def _account_of(qid: int | None) -> int | None:
 
 SAME_DEVICE_MESSAGE = "Someone on this device is already at that table."
 ACCOUNT_IN_GAME_MESSAGE = "Sign in again to return to your game."
+ACCOUNT_PLAYING_MESSAGE = "You are already in a game on another device."
 # The queue messages that start a search, a pair or a seat; a guest whose
 # device's account is in a ranked game in play is refused them.
 QUEUE_STARTS = frozenset({"queue_join", "queue_start_bots", "party_create",
@@ -3214,6 +3238,18 @@ def _live_ranked_room(room: Room) -> bool:
     game = room.game
     return ((room.matched or room.ranked) and not room.aborted and not room.closing
             and room.evaluation is None and game is not None and not game.game_over)
+
+
+def _account_playing(uid: int) -> Room | None:
+    """A ranked game in play where the account holds a connected seat. A
+    seat it left or whose socket went does not hold it: the bots cover it
+    and the account may queue again."""
+    for room in list(rooms.values()):
+        if _live_ranked_room(room) and any(
+                sd is not None and not sd.is_bot and sd.user_id == uid and sd.connected
+                for sd in room.seats):
+            return room
+    return None
 
 
 def _account_game_on(device: str) -> Room | None:
@@ -3237,9 +3273,25 @@ async def _claim_open_seat(room: Room, seat: int, uid: int, name: str, conn: Any
     conn.push({"type": "match_started", "match_id": None, "room": room.code,
                "rated": ratings.eligible(room), "joining": True, "seat": seat,
                **({"guest": True} if uid < 0 else {})})
+    _tell_first_joiner(room, seat, name or "Player")
     if announce:
         await broadcast(room)
         kick_bots(room)
+
+
+def _tell_first_joiner(room: Room, seat: int, name: str) -> None:
+    """A game someone started alone gets its first joiner: the people
+    already playing hear it once (who, which seat, and that the move clock
+    runs from now), so a solo game that turns shared is never a surprise."""
+    if room.first_joiner_told or not room.matched or room.waiting_table is not None:
+        return
+    room.first_joiner_told = True
+    payload = {"type": "first_joiner", "name": name, "seat": seat,
+               "move_secs": int(MOVE_TIMER) if room.move_timer else None,
+               "round_end": room.round is not None and room.round.phase == "round_end"}
+    for sd in room.seats:
+        if sd is not None and not sd.is_bot:
+            enqueue(sd, payload)
 
 
 async def join_pair_open_table(code: str, seats: list[int], uids: list[int], names: list[str],
@@ -3508,7 +3560,8 @@ MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
                                     room_live=lambda code: code in rooms,
                                     open_tables=open_tables,
                                     join_table=join_open_table,
-                                    join_pair=join_pair_open_table)
+                                    join_pair=join_pair_open_table,
+                                    presence=presence_counts)
 
 
 def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:

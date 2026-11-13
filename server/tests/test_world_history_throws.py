@@ -268,6 +268,11 @@ def test_valid_fill_production_prefixes(release50_packages, monkeypatch):
                 from scripts import belief_debug
                 fields = {**bot._last_sampling, "belief_seed": fixture["belief_seed"],
                           "belief_refusals": fixture["refusals"]}
+                from shengji.harvest.trajectory import pv_fields_from_record
+                rec = {**fields, "admitted": [["SA"]], "admitted_indices": [0],
+                       "selected_index": 0, "played": ["SA"], "value_means": [0.0], "worlds": 64}
+                _, _, values = pv_fields_from_record(rec, [["SA"]])
+                fields = values["belief"]
                 _, replayed, stats, fill = belief_debug.regenerate(
                     bot.belief_model, rnd, seat, fields, 64)
                 assert replayed == worlds

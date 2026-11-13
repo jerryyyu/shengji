@@ -1530,3 +1530,100 @@ describe("the open-table offer is a modal sheet", () => {
     expect(waits()).toBe(1);
   });
 });
+
+describe("the search on screen is the server's", () => {
+  const sentOf = (type: string) => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === type);
+
+  for (const who of ["signed in", "a guest"] as const) {
+    it(`${who}: a Play the server never confirms reverts with a notice and asks what it holds`, async () => {
+      signedIn = who === "signed in";
+      await renderApp();
+      fakeClock();
+      click(findBtn());
+      expect(findBtn().textContent).toBe("Searching…");
+      tick(3000);
+      expect(findBtn().textContent).toBe("Play");
+      expect(q(".q-toast")?.textContent).toContain("Couldn't start searching.");
+      expect(lastSent()).toMatchObject({ type: "queue_status" });
+      say(queued());                       // it did reach the server after all
+      expect(q(".q-bar")).not.toBeNull();
+    });
+  }
+
+  it("a confirmed Play does not revert", async () => {
+    await renderApp();
+    fakeClock();
+    click(findBtn());
+    say(queued());
+    tick(3000);
+    expect(q(".q-bar")).not.toBeNull();
+    expect(q(".q-toast")).toBeNull();
+  });
+
+  for (const error of [{ code: "same_device", message: "Someone on this device is already at that table." },
+                       { message: "Invalid request." }]) {
+    it(`an error reply (${error.code ?? "no code"}) clears an unconfirmed Play`, async () => {
+      await renderApp();
+      click(findBtn());
+      say({ type: "error", ...error });
+      expect(findBtn().textContent).toBe("Play");
+      expect(lastSent()).toEqual({ type: "queue_status" });
+    });
+  }
+
+  it("a reconnect asks the server and a search it dropped is cleared with a notice", async () => {
+    await renderApp();
+    say(queued());
+    fakeClock();
+    act(() => ws().close());
+    tick(600);
+    act(() => ws().onopen?.());
+    expect(ws().sent).toContainEqual({ type: "queue_status" });
+    say({ type: "queue_state", queued: false, count: 0 });
+    expect(q(".q-bar")).toBeNull();
+    expect(findBtn().textContent).toBe("Play");
+    expect(q(".q-toast")?.textContent).toContain("You're no longer searching.");
+    expect(q(".q-toast")?.textContent).toContain("Press Play to search again.");
+  });
+
+  it("a search held by another device of yours shows as such, and clears when it ends", async () => {
+    await renderApp();
+    say({ type: "queue_state", queued: true, elsewhere: true, count: 2, since: nowSecs(), leader: true,
+          table: null, offer: null });
+    expect(q(".q-bar")?.textContent).toContain("Searching on another device");
+    expect(findBtn().textContent).toBe("Searching…");
+    say({ type: "queue_state", queued: false, count: 1 });
+    expect(q(".q-bar")).toBeNull();
+    expect(q(".q-toast")).toBeNull();
+  });
+
+  it("back in view, a socket suspended without a close is probed and replaced, and the search rechecked", async () => {
+    await renderApp();
+    say({ type: "heartbeat_ready" });
+    say(queued());
+    fakeClock();
+    const suspended = ws();
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+    expect(suspended.sent[suspended.sent.length - 1]).toMatchObject({ type: "ping" });
+    tick(5000);                          // no pong: the socket is dead
+    expect(suspended.readyState).toBe(3);
+    tick(10);
+    expect(ws()).not.toBe(suspended);
+    act(() => ws().onopen?.());
+    expect(ws().sent).toContainEqual({ type: "queue_status" });
+  });
+
+  it("while a search is on screen the client checks it with the server", async () => {
+    await renderApp();
+    fakeClock();
+    say(queued());
+    const before = sentOf("queue_status").length;
+    tick(15_000);
+    expect(sentOf("queue_status").length).toBe(before + 1);
+    say({ type: "queue_state", queued: false, count: 0 });
+    expect(q(".q-bar")).toBeNull();
+    tick(30_000);
+    expect(sentOf("queue_status").length).toBe(before + 1);   // nothing to check any more
+  });
+});

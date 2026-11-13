@@ -4,6 +4,8 @@
 /** A queue message; a guest adds the name it plays under (the server keeps
  *  an account's own name and ignores this one). */
 export type QueueClientMsg = { name?: string } & (
+  /** What the queue holds for this socket; answered with queue_state. */
+  | { type: "queue_status" }
   | { type: "queue_join"; party_id?: string }
   | { type: "queue_leave" }
   | { type: "table_start" }
@@ -32,6 +34,9 @@ export interface QueueStateMsg {
   bots_at?: number | null;
   wait_players?: boolean;
   replaced?: boolean;
+  /** Another socket of yours (another device or window) holds the search:
+   *  no table, offer or timer is sent here; any queue action takes it over. */
+  elsewhere?: boolean;
   /** The waiting table you sit at; null while you are alone in the queue. */
   table?: WaitingTableMsg | null;
   /** Your bot wait stands still: an open table is offered or can be joined. */

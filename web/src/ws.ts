@@ -53,6 +53,9 @@ export function socketUrl(): string {
   return `${wsUrl()}?heartbeat=1&device=${deviceKey()}`;
 }
 const HEARTBEAT_MS = 15_000;
+/** Back in view, an open socket must answer a ping this fast: a phone can
+ *  suspend a socket without closing it, and its traffic then goes nowhere. */
+export const PROBE_MS = 5000;
 
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
@@ -126,6 +129,8 @@ class Connection {
    *  in-page server's look-alike (set once its module has loaded). */
   private makeSocket: () => WebSocket = () => new WebSocket(socketUrl());
   private stopHeartbeat: (() => void) | null = null;
+  /** Ping now with a short deadline (the socket's heartbeat, if it has one). */
+  private probe: (() => void) | null = null;
   /** The next reconnect is deliberate (a sign-in or sign-out): open it at
    *  once instead of after the failure backoff. */
   private immediate = false;
@@ -162,7 +167,9 @@ class Connection {
     window.addEventListener("online", wake);
     window.addEventListener("pageshow", wake);
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") wake();
+      if (document.visibilityState !== "visible") return;
+      if (this.status === "open") this.probe?.();
+      else wake();
     });
     this.open();
   }
@@ -289,6 +296,21 @@ class Connection {
           if (this.ws === ws && awaiting !== null) this.reconnect();
         }, HEARTBEAT_MS);
       }, HEARTBEAT_MS);
+    };
+
+    this.probe = () => {
+      if (!enabled || this.ws !== ws || ws.readyState !== WebSocket.OPEN) return;
+      stop();
+      awaiting = ++nonce;
+      try {
+        ws.send(JSON.stringify({ type: "ping", nonce: awaiting } satisfies ClientMsg));
+      } catch {
+        this.reconnect();
+        return;
+      }
+      timer = window.setTimeout(() => {
+        if (this.ws === ws && awaiting !== null) this.reconnect();
+      }, PROBE_MS);
     };
 
     ws.onopen = () => {

@@ -701,8 +701,12 @@ def test_one_entry_per_account_and_a_second_socket_takes_it_over():
         env.mm.connect(second)
         await env.mm.handle(second, {"type": "queue_join"}, 1)
         assert len(env.mm.entries) == 1 and env.mm.count() == 1
-        assert env.conns[1].last("queue_state")["replaced"] is True
+        states = env.conns[1].of("queue_state")
+        assert any(m.get("replaced") is True and m["queued"] is False for m in states)
+        # the first socket then shows the search as held elsewhere
+        assert states[-1]["queued"] is True and states[-1]["elsewhere"] is True
         assert env.mm.conns[1] is second and second.last("queue_state")["queued"]
+        assert "elsewhere" not in second.last("queue_state")
     run(go())
 
 
@@ -2594,3 +2598,196 @@ def test_a_ranked_start_with_two_players_on_one_device_is_refused(wsenv):
     with pytest.raises(srv.SameDevice):
         client.portal.call(srv.handle_action, matched, 0, {"type": "start_game"})
     assert matched.game is None
+
+
+# ------------------------------------------------- queue truth per socket
+def test_every_socket_of_an_account_shows_the_search_the_server_holds():
+    async def go():
+        env = Env()
+        await env.join(1)
+        other = FakeConn(1, "P1")                   # the same account in another tab
+        env.mm.connect(other)
+        held = other.last("queue_state")
+        assert held["queued"] is True and held["elsewhere"] is True and held["table"] is None
+        await env.join(2)                           # a table forms on the first socket
+        assert env.conns[1].last("queue_state")["table"] is not None
+        assert other.last("queue_state")["elsewhere"] is True
+        await env.send(1, "queue_leave")
+        assert env.conns[1].last("queue_state")["queued"] is False
+        assert other.last("queue_state")["queued"] is False
+    run(go())
+
+
+def test_a_search_dropped_while_its_socket_is_away_clears_the_accounts_other_tabs():
+    async def go():
+        env = Env()
+        await env.join(1)
+        other = FakeConn(1, "P1")
+        env.mm.connect(other)
+        env.mm.disconnect(env.conns[1])             # the searching tab goes away
+        env.clock.advance(mm.AWAY_SECS + 1)
+        await env.mm.pump()
+        assert env.mm._entry(1) is None
+        assert other.last("queue_state")["queued"] is False
+    run(go())
+
+
+def test_a_match_start_clears_the_accounts_other_tabs():
+    async def go():
+        env = Env()
+        await env.join(1)
+        other = FakeConn(1, "P1")
+        env.mm.connect(other)
+        await env.send(1, "queue_start_bots")
+        assert env.started and other.last("queue_state")["queued"] is False
+    run(go())
+
+
+def test_queue_status_answers_each_socket_with_what_the_server_holds_for_it():
+    async def go():
+        env = Env()
+        await env.join(1)
+        other = FakeConn(1, "P1")
+        env.mm.connect(other)
+        other.clear()
+        await env.mm.handle(env.conns[1], {"type": "queue_status"}, 1)
+        mine = env.conns[1].last("queue_state")
+        assert mine["queued"] is True and "elsewhere" not in mine
+        await env.mm.handle(other, {"type": "queue_status"}, 1)
+        assert other.last("queue_state")["elsewhere"] is True
+        assert env.mm.conns[1] is env.conns[1]      # asking never takes the entry over
+        nobody = FakeConn(None, "")
+        env.mm.connect(nobody)
+        await env.mm.handle(nobody, {"type": "queue_status"}, None)
+        assert nobody.last("queue_state")["queued"] is False and not nobody.of("error")
+        lone = env.player(3)
+        await env.send(3, "queue_status")
+        assert lone.last("queue_state")["queued"] is False
+    run(go())
+
+
+def test_queue_status_for_a_guest_and_from_a_seated_socket():
+    async def go():
+        env = Env()
+        guest = FakeConn(-4, "Guest")
+        env.conns[-4] = guest
+        env.mm.connect(guest)
+        await env.send(-4, "queue_join")
+        guest.clear()
+        await env.send(-4, "queue_status")
+        assert guest.last("queue_state")["queued"] is True
+        tab = FakeConn(-4, "Guest")
+        env.mm.connect(tab)
+        await env.mm.handle(tab, {"type": "queue_status"}, -4)
+        assert tab.last("queue_state")["elsewhere"] is True
+        await env.send(-4, "queue_start_bots")      # seated in a room now
+        assert tab.last("queue_state")["queued"] is False
+        await env.send(-4, "queue_status")
+        assert guest.last("queue_state")["queued"] is False and not guest.of("error")
+    run(go())
+
+
+def test_a_new_socket_from_the_same_device_takes_the_search_over():
+    async def go():
+        env = Env()
+        first = FakeConn(1, "P1")
+        first.device = DEVICE_A
+        env.conns[1] = first
+        env.mm.connect(first)
+        await env.send(1, "queue_join")
+        # the page reconnects while the server still thinks the old socket is open
+        again = FakeConn(1, "P1")
+        again.device = DEVICE_A
+        env.mm.connect(again)
+        assert env.mm.conns[1] is again
+        state = again.last("queue_state")
+        assert state["queued"] is True and "elsewhere" not in state
+        assert any(m.get("replaced") for m in first.of("queue_state"))
+        # another device of the account does not take it
+        phone = FakeConn(1, "P1")
+        phone.device = DEVICE_B
+        env.mm.connect(phone)
+        assert env.mm.conns[1] is again and phone.last("queue_state")["elsewhere"] is True
+    run(go())
+
+
+def test_queue_events_are_logged_by_kind_without_identity():
+    import logging
+
+    class Grab(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.lines: list[str] = []
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+    grab = Grab()
+    mm.qlog.addHandler(grab)
+    try:
+        async def go():
+            env = Env()
+            await env.join(1234567, name=None)
+            guest = FakeConn(-9, "Secret Name")
+            env.conns[-9] = guest
+            env.mm.connect(guest)
+            await env.send(-9, "queue_join")
+            await env.send(1234567, "queue_leave")
+            await env.send(-9, "queue_start_bots")
+        run(go())
+    finally:
+        mm.qlog.removeHandler(grab)
+    import json
+    recs = [json.loads(line) for line in grab.lines]
+    assert [(r["queue"], r.get("who"), r.get("reason")) for r in recs] == [
+        ("join", "account", None), ("join", "guest", None), ("leave", "account", "leave"),
+        ("leave", "guest", "bots"), ("start", None, None)]
+    assert all("queued" in r for r in recs) and recs[2]["wait"] >= 0
+    text = "\n".join(grab.lines)
+    assert "1234567" not in text and "Secret" not in text and "-9" not in text
+
+
+def test_a_queue_writer_that_failed_once_delivers_later_messages():
+    class FlakyWs:
+        def __init__(self):
+            self.sent: list[dict] = []
+            self.fail = True
+
+        async def send_json(self, payload):
+            if self.fail:
+                self.fail = False
+                raise RuntimeError("transient")
+            self.sent.append(payload)
+
+    async def go():
+        ws = FlakyWs()
+        c = mm.Conn(ws, 1, "P1")
+        c.push({"type": "queue_count", "count": 1})
+        for _ in range(5):
+            await asyncio.sleep(0)
+        c.push({"type": "queue_state", "queued": False, "count": 0})
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert ws.sent == [{"type": "queue_state", "queued": False, "count": 0}]
+    run(go())
+
+
+def test_ws_two_sockets_of_one_account_both_see_the_true_search(wsenv):
+    srv, store, client, clock = wsenv
+    _, headers = _user(store, "twotabs", "Two Tabs")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a, \
+            client.websocket_connect(f"/ws?device={DEVICE_B}", headers=headers) as b:
+        _settled(a)
+        _settled(b)
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["queued"] is True
+        held = _drain(b, "queue_state")
+        assert held["queued"] is True and held["elsewhere"] is True
+        b.send_json({"type": "queue_status"})
+        assert _drain(b, "queue_state")["elsewhere"] is True
+        a.send_json({"type": "queue_leave"})
+        assert _drain(a, "queue_state")["queued"] is False
+        assert _drain(b, "queue_state")["queued"] is False
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_status", "name": "Guesty"})
+        assert _drain(g, "queue_state")["queued"] is False

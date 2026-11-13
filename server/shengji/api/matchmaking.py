@@ -53,8 +53,8 @@ in the queue (after ``seat_waiting``, so a waiting table always comes first)
 is offered the open table with the most people, for ``OFFER_SECS``: it picks
 a seat and joins, or waits. A table it waited on (or let lapse) is never
 offered to it again by itself, but stays one tap away on the bar while it is
-joinable, and the entry's bot timer is paused for as long as an offer is up
-or such a table can still be joined. Leaving a table it joined, before its
+joinable. The entry's bot timer is paused only while an offer is up, and
+runs on after Wait. Leaving a table it joined, before its
 first ranked round there, costs a ``JOIN_COOLDOWN_SECS`` queue cooldown and
 that table is never offered to it again.
 """
@@ -232,7 +232,7 @@ class Entry:
     table_id: str | None = None
     active_at: float = 0.0
     # The open table on offer, the remaining bot wait while the timer is
-    # paused for open tables, and the open tables this entry waited on that
+    # paused for that offer, and the open tables this entry waited on that
     # can still be joined (the bar's chip).
     offer: Offer | None = None
     paused: float | None = None
@@ -489,7 +489,7 @@ class Matchmaker:
         its own; any queue action from it takes the entry over)."""
         e = self._entry(uid)
         if e is None:
-            return {"type": "queue_state", "queued": False, "count": self.count()}
+            return self._idle_state(uid)
         return {"type": "queue_state", "queued": True, "elsewhere": True,
                 "since": e.since, "count": self.count(), "front": e.front,
                 "party_id": e.party_id, "leader": e.leader == uid,
@@ -582,10 +582,19 @@ class Matchmaker:
                             if e.id not in t.ready and uid not in e.members],
         }
 
+    def _idle_state(self, uid: int) -> dict:
+        """Not queued: with ``cooldown_until`` while a queue cooldown runs,
+        so Play can count it down instead of being refused."""
+        out = {"type": "queue_state", "queued": False, "count": self.count()}
+        until = self.cooldowns.get(uid, 0.0)
+        if until > self.clock():
+            out["cooldown_until"] = until
+        return out
+
     def queue_state(self, uid: int) -> dict:
         e = self._entry(uid)
         if e is None:
-            return {"type": "queue_state", "queued": False, "count": self.count()}
+            return self._idle_state(uid)
         t = self._table(e)
         return {"type": "queue_state", "queued": True, "since": e.since,
                 "count": self.count(), "front": e.front,
@@ -756,17 +765,24 @@ class Matchmaker:
             self._resync(uid)
         elif uid is not None and self.conns.get(uid) is not conn and uid in self.entry_of:
             conn.push(self._elsewhere_state(uid))
+        if uid is not None and uid not in self.entry_of and self.cooldowns.get(uid, 0.0) > self.clock():
+            conn.push(self._idle_state(uid))
 
-    def _bind(self, conn: Conn, uid: int) -> None:
+    def _bind(self, conn: Conn, uid: int, *, stopping: bool = False) -> None:
         """The socket that last spoke for an account is its queue socket; a
-        replaced live socket is told it no longer holds the entry."""
+        replaced live socket is told it no longer holds the entry, whether
+        the new one is on another device (``by``) and whether it stopped
+        the search (``stopped``)."""
         old = self.conns.get(uid)
         if old is conn:
             return
         self.conns[uid] = conn
         if old is not None and not old.closed and uid in self.entry_of:
+            same = old.device is not None and old.device == conn.device
             old.push({"type": "queue_state", "queued": False,
-                      "count": self.count(), "replaced": True})
+                      "count": self.count(), "replaced": True,
+                      "by": "window" if same else "device",
+                      **({"stopped": True} if stopping else {})})
 
     def _resync(self, uid: int) -> None:
         p = self._party(uid)
@@ -830,7 +846,7 @@ class Matchmaker:
                 else:
                     self._party_leave(queue_id)
             else:
-                self._bind(conn, queue_id)
+                self._bind(conn, queue_id, stopping=t == "queue_leave")
                 if t == "queue_leave":
                     self._leave(queue_id)
                 elif t in ("match_accept", "match_decline"):
@@ -862,9 +878,9 @@ class Matchmaker:
         members, pid = [uid], None
         if party is not None and len(party.members) == 2:
             if want is not None and want != party.id:
-                raise QueueError("bad_party", "That is not your party.")
+                raise QueueError("bad_party", "That is not your Duo.")
             if party.leader != uid:
-                raise QueueError("not_leader", "Only the party leader can queue.")
+                raise QueueError("not_leader", "Only your Duo's leader can search.")
             members, pid = list(party.members), party.id
         elif want is not None:
             raise QueueError("party_incomplete" if party is not None and party.id == want
@@ -874,8 +890,9 @@ class Matchmaker:
                 raise QueueError("partner_unavailable", "Your partner is not in the lobby.")
         until = max((self.cooldowns.get(m, 0.0) for m in members), default=0.0)
         if until > self.clock():
-            raise QueueError("cooldown", "You left a table you joined. You can queue "
-                             "again in 5 minutes.", cooldown_until=until)
+            left = math.ceil(until - self.clock())
+            raise QueueError("cooldown", f"You left a table you joined. Play again in "
+                             f"{left // 60}:{left % 60:02d}.", cooldown_until=until)
         member_ratings = {}
         for m in members:
             r = await self.rating_of(m) if m > 0 else ratings.GUEST_RATING
@@ -888,7 +905,7 @@ class Matchmaker:
             return
         if pid is not None and (self.party_of.get(uid) != pid
                                 or self.parties[pid].members != members):
-            raise QueueError("party_changed", "Your party changed; try again.")
+            raise QueueError("party_changed", "Your Duo changed; try again.")
         since = self.clock()
         e = Entry(id=secrets.token_hex(6), seq=next(self._seq), members=members,
                   leader=uid, member_ratings=member_ratings, since=since,
@@ -910,7 +927,7 @@ class Matchmaker:
             self._send(uid, self.queue_state(uid))
             return
         if e.leader != uid:
-            raise QueueError("not_leader", "Only the party leader can cancel.")
+            raise QueueError("not_leader", "Only your Duo's leader can cancel.")
         self._remove(e, "leave")
         self._send_state(e)
         self._flush_count()
@@ -924,7 +941,7 @@ class Matchmaker:
         if e is None:
             raise QueueError("not_queued", "Queue first.")
         if e.leader != uid:
-            raise QueueError("not_leader", "Only the party leader can change this.")
+            raise QueueError("not_leader", "Only your Duo's leader can change this.")
         if allow:
             if e.bots_at is None and e.paused is None:
                 e.bots_at = self.clock() + BOT_FILL_SECS
@@ -944,7 +961,7 @@ class Matchmaker:
         if e is None or t is None:
             raise QueueError("not_seated", "You are not at a waiting table.")
         if e.leader != uid:
-            raise QueueError("not_leader", "Only the party leader can start.")
+            raise QueueError("not_leader", "Only your Duo's leader can start.")
         if e.id not in t.ready:
             t.ready.add(e.id)
             self._send_table(t)
@@ -1132,7 +1149,7 @@ class Matchmaker:
         if e is None:
             raise QueueError("not_queued", "Queue first.")
         if e.leader != uid:
-            raise QueueError("not_leader", "Only the party leader can start with bots.")
+            raise QueueError("not_leader", "Only your Duo's leader can start with bots.")
         for m in e.members:
             if not self._available(m):
                 raise QueueError("partner_unavailable", "Your partner is not in the lobby.")
@@ -1242,9 +1259,10 @@ class Matchmaker:
 
     @staticmethod
     def _sync_pause(e: Entry, now: float) -> None:
-        """The bot wait stands still while an offer is up or a waited-on open
-        table can still be joined, and runs on from where it stopped after."""
-        hold = e.offer is not None or bool(e.open_codes)
+        """The bot wait stands still while an offer is up, and runs on from
+        where it stopped once it is answered; a waited-on table stays one tap
+        away without holding it."""
+        hold = e.offer is not None
         if hold and e.bots_at is not None:
             e.paused, e.bots_at = max(0.0, e.bots_at - now), None
         elif not hold and e.paused is not None:
@@ -1410,8 +1428,15 @@ class Matchmaker:
         self.ensure_running()
 
     def _bar(self, uid: int, code: str) -> None:
+        """A queue cooldown, and this table is never offered again; the
+        account's lobby sockets are told now (a socket still in the room is
+        told as it returns, in ``return_to_lobby``)."""
         self.barred.setdefault(uid, set()).add(code)
         self.cooldowns[uid] = self.clock() + JOIN_COOLDOWN_SECS
+        if uid not in self.entry_of:
+            for c in list(self.socks.get(uid, ())):
+                if not c.closed and not c.in_room:
+                    c.push(self._idle_state(uid))
 
     def left_open_table(self, uid: int, code: str) -> None:
         """A newcomer left the table it joined before its first ranked round
@@ -1473,24 +1498,28 @@ class Matchmaker:
         code = normalize_code(msg.get("code", ""))
         p = self.parties.get(self.party_codes.get(code, ""))
         if p is None:
-            raise QueueError("party_not_found", "No party has that code.")
+            raise QueueError("party_not_found", "No Duo has that code.")
         if uid in p.members:
+            if len(p.members) == 1:
+                # your own code: a guest's queue id is its device
+                raise QueueError("same_device", "A Duo needs two devices." if uid < 0
+                                 else "That is your own Duo code.")
             self._send(uid, self._party_payload(p, uid))
             return
         if len(p.members) >= 2:
-            raise QueueError("party_full", "That party is full.")
+            raise QueueError("party_full", "That Duo is full.")
         if uid in self.entry_of:
-            raise QueueError("in_queue", "Cancel your search before joining a party.")
+            raise QueueError("in_queue", "Cancel your search before joining a Duo.")
         if p.leader in self.entry_of:
             raise QueueError("party_busy", "Your friend is already searching.")
         mine, theirs = self.conns.get(uid), self.conns.get(p.leader)
         if (mine is not None and theirs is not None and mine.device is not None
                 and mine.device == theirs.device):
-            raise QueueError("same_device", "A pair needs two devices.")
+            raise QueueError("same_device", "A Duo needs two devices.")
         own = self._party(uid)
         if own is not None:
             if len(own.members) == 2:
-                raise QueueError("in_party", "Leave your party first.")
+                raise QueueError("in_party", "Leave your Duo first.")
             self._close_party(own, None)
         p.members.append(uid)
         p.names[uid] = self._name(uid)
@@ -1501,7 +1530,7 @@ class Matchmaker:
     def _party_leave(self, uid: int) -> None:
         p = self._party(uid)
         if p is None:
-            raise QueueError("not_in_party", "You are not in a party.")
+            raise QueueError("not_in_party", "You are not in a Duo.")
         e = self._entry(uid)
         if e is not None and e.party_id == p.id:
             self._remove(e, "party_leave")

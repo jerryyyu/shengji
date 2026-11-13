@@ -10,6 +10,7 @@ ratings path.
 from __future__ import annotations
 
 import asyncio
+import re
 
 import pytest
 
@@ -676,6 +677,97 @@ def test_party_join_rules():
         env.player(5)
         await env.send(5, "queue_join", party_id=env.mm._party(3).id)
         assert env.conns[5].last("error")["code"] == "bad_party"
+    run(go())
+
+
+def test_a_cooldown_is_pushed_to_the_lobby_and_counted_down_by_queue_state():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("OPEN", [50, "bot", "bot", "bot"])
+        await env.join(1)
+        other_tab = FakeConn(1, "P1")
+        env.mm.connect(other_tab)
+        await env.send(1, "open_table_join", room="OPEN", seat=2)
+        env.mm.join_seated(1)
+        env.mm.left_open_table(1, "OPEN")
+        until = env.clock.t + mm.JOIN_COOLDOWN_SECS
+        # a lobby tab hears at once; the leaving socket as it gets back
+        assert other_tab.last("queue_state") == {"type": "queue_state", "queued": False,
+                                                 "count": 0, "cooldown_until": until}
+        env.conns[1].clear()
+        env.mm.return_to_lobby(env.conns[1])
+        assert env.conns[1].last("queue_state")["cooldown_until"] == until
+        env.clock.advance(48)
+        await env.send(1, "queue_status")
+        assert env.conns[1].last("queue_state")["cooldown_until"] == until
+        await env.send(1, "queue_join")
+        err = env.conns[1].last("error")
+        assert err["code"] == "cooldown" and err["message"].endswith("Play again in 4:12.")
+        env.clock.advance(mm.JOIN_COOLDOWN_SECS)
+        await env.send(1, "queue_status")
+        assert "cooldown_until" not in env.conns[1].last("queue_state")
+    run(go())
+
+
+def test_leave_queue_on_another_device_tells_the_holder_it_was_stopped_there():
+    async def go():
+        env = Env()
+        phone = FakeConn(1, "P1")
+        phone.device = DEVICE_A
+        env.conns[1] = phone
+        env.mm.connect(phone)
+        await env.send(1, "queue_join")
+        desk = FakeConn(1, "P1")
+        desk.device = DEVICE_B
+        env.mm.connect(desk)
+        await env.mm.handle(desk, {"type": "queue_leave"}, 1)
+        told = [m for m in phone.of("queue_state") if m.get("replaced")]
+        assert told and told[-1]["by"] == "device" and told[-1]["stopped"] is True
+        assert env.mm._entry(1) is None
+        # a Play from another window of the same device moves the search
+        win = FakeConn(1, "P1")
+        win.device = DEVICE_B
+        env.mm.connect(win)
+        await env.mm.handle(desk, {"type": "queue_join"}, 1)
+        await env.mm.handle(win, {"type": "queue_join"}, 1)
+        told = [m for m in desk.of("queue_state") if m.get("replaced")]
+        assert told[-1]["by"] == "window" and "stopped" not in told[-1]
+    run(go())
+
+
+def test_a_guest_who_enters_its_own_duo_code_is_told_a_duo_needs_two_devices():
+    async def go():
+        env = Env()
+        env.player(-7, name="G")
+        await env.send(-7, "party_create")
+        code = env.conns[-7].last("party")["code"]
+        other_tab = FakeConn(-7, "G")
+        env.mm.connect(other_tab)
+        await env.send(-7, "party_join", conn=other_tab, code=code)
+        err = other_tab.last("error")
+        assert err["code"] == "same_device" and err["message"] == "A Duo needs two devices."
+        assert len(env.mm._party(-7).members) == 1
+    run(go())
+
+
+def test_duo_messages_say_duo_never_party_or_pair():
+    async def go():
+        env = Env()
+        await env.pair(1, 2)
+        code = env.mm._party(1).code
+        env.player(3)
+        await env.send(3, "party_join", code=code)
+        assert env.conns[3].last("error")["message"] == "That Duo is full."
+        await env.send(3, "party_join", code="ZZZZ")
+        assert env.conns[3].last("error")["message"] == "No Duo has that code."
+        await env.send(3, "party_leave")
+        assert env.conns[3].last("error")["message"] == "You are not in a Duo."
+        await env.send(2, "queue_join")
+        assert "Duo" in env.conns[2].last("error")["message"]
+        src = open(mm.__file__).read()
+        said = re.findall(r'QueueError\([^,]+,\s*f?"([^"]*)"', src)
+        assert said and not [m for m in said if re.search(r"\b(party|pair)\b", m, re.I)]
     run(go())
 
 
@@ -1348,7 +1440,7 @@ def test_a_tick_re_renders_a_standing_offer_when_its_seat_goes():
     run(go())
 
 
-def test_wait_keeps_queuing_pauses_the_bot_timer_and_never_re_offers_by_itself():
+def test_wait_keeps_queuing_resumes_the_bot_timer_and_never_re_offers_by_itself():
     async def go():
         env = Env()
         tables = Tables(env)
@@ -1356,26 +1448,28 @@ def test_wait_keeps_queuing_pauses_the_bot_timer_and_never_re_offers_by_itself()
         env.clock.advance(20)                         # 40 s of bot wait left
         tables.add("OPEN", [50, "bot", "bot", "bot"])
         await env.mm.tick()
+        assert env.conns[1].last("queue_state")["bots_paused"] is True   # the offer is up
+        env.clock.advance(5)
         await env.send(1, "open_table_wait")
+        # after Wait the countdown runs on from where it stopped; the table
+        # stays one tap away on the chip
         state = env.conns[1].last("queue_state")
         assert state["queued"] and state["offer"] is None
-        assert state["open_tables"] == 1 and state["bots_paused"] is True
-        env.clock.advance(600)
+        assert state["open_tables"] == 1 and state["bots_paused"] is False
+        assert state["bots_at"] == env.clock.t + 40
+        env.clock.advance(20)
         await env.mm.pump()
         await env.mm.tick()
         assert env.started == [] and env.mm._entry(1).offer is None
-        # the chip brings the offer back, with a fresh clock
+        # the chip brings the offer back, with a fresh clock, and holds the timer again
         await env.send(1, "open_table_show")
-        offer = env.conns[1].last("queue_state")["offer"]
-        assert offer["room"] == "OPEN" and offer["expires_at"] == env.clock.t + mm.OFFER_SECS
-        await env.send(1, "open_table_wait")
-        # the table closes: the timer runs on from where it stopped
-        del tables.tables["OPEN"]
-        await env.mm.tick()
         state = env.conns[1].last("queue_state")
-        assert state["open_tables"] == 0 and state["bots_paused"] is False
-        assert state["bots_at"] == env.clock.t + 40
-        env.clock.advance(40)
+        offer = state["offer"]
+        assert offer["room"] == "OPEN" and offer["expires_at"] == env.clock.t + mm.OFFER_SECS
+        assert state["bots_paused"] is True
+        await env.send(1, "open_table_wait")
+        assert env.conns[1].last("queue_state")["bots_at"] == env.clock.t + 20
+        env.clock.advance(20)
         await env.mm.tick()
         assert [humans_of(slots) for _, slots in env.started] == [[1]]
     run(go())

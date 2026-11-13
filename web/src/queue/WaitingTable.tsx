@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
+import { useAuth } from "../auth";
 import { seatPos } from "../components/TrickArea";
 import { WaitToggle, useInlineQueue } from "./QueueBar";
 import { RankedChip } from "./Ranked";
@@ -73,7 +74,8 @@ function Actions({ q, t }: { q: QueueView; t: TableView }) {
  *  modal: focus moves in, Tab stays inside, the page behind is inert. Escape
  *  does nothing, as at the phone's sheet: leaving the queue is only ever the
  *  Leave queue button. */
-function WaitPanel({ q, t, now }: { q: QueueView; t: TableView; now: number }) {
+/** `guest`: never rated, so the table is not called ranked. */
+function WaitPanel({ q, t, now, guest }: { q: QueueView; t: TableView; now: number; guest: boolean }) {
   const box = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   useLayoutEffect(() => {
@@ -108,7 +110,7 @@ function WaitPanel({ q, t, now }: { q: QueueView; t: TableView; now: number }) {
             Leave queue
           </button>
         ) : <span className="wt-panel-leave wt-led">{partner ?? "Your partner"} leads</span>}
-        <h2 id={titleId} className="wt-panel-title">Waiting table <RankedChip /></h2>
+        <h2 id={titleId} className="wt-panel-title">{guest ? "Table" : <>Waiting table <RankedChip /></>}</h2>
         <span aria-hidden="true" />
       </div>
       <div className="seat-clock still wt-clock">
@@ -131,6 +133,7 @@ function WaitPanel({ q, t, now }: { q: QueueView; t: TableView; now: number }) {
  *  your colour; one line says whose bot timer runs; Start is your accept. */
 export default function WaitingTable() {
   const q = useQueue();
+  const guest = useAuth().status !== "in";
   const t = q.table;
   const ref = useRef<HTMLDivElement | null>(null);
   const inline = useInlineQueue();
@@ -138,14 +141,14 @@ export default function WaitingTable() {
   const now = useNow(shown, 250);
   useBarClearance(ref, shown && !inline);
   if (!shown || !t) return null;
-  if (inline) return <WaitPanel q={q} t={t} now={now} />;
+  if (inline) return <WaitPanel q={q} t={t} now={now} guest={guest} />;
   const waited = q.since !== null ? clock(now - q.since) : "0:00";
   return (
-    <div ref={ref} className="wt-sheet" role="region" aria-label="Ranked table">
+    <div ref={ref} className="wt-sheet" role="region" aria-label={guest ? "Table" : "Ranked table"}>
       <span className="wt-grab" aria-hidden="true" />
       <div className="q-bar-head">
         <span className="q-bar-dot" aria-hidden="true" />
-        <b className="q-bar-title">Ranked table</b>
+        <b className="q-bar-title">{guest ? "Table" : "Ranked table"}</b>
         <span className="q-bar-time">{waited}</span>
       </div>
       <small className="q-bar-sub wt-timer" role="status">{timerLine(t, now)}</small>

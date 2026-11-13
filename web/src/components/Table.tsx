@@ -258,6 +258,10 @@ export function JoinNotices({ state }: { state: GameState }) {
   );
 }
 
+/** The decision whose clock is running, kept across a remount of the
+ *  table (opening How to play and coming back is the same decision). */
+let openTurn: { key: string; clock: TurnClock; watched: boolean } | null = null;
+
 export default function Table({ state, toast = null }: { state: GameState; toast?: Toast | null }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
@@ -424,30 +428,54 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     : null;
   const coaching = coach !== null;
 
-  // One of your turns, from the moment it is yours to the state that ends
-  // it: yours when this socket's own send ended it, else the bot's (away)
-  // or the move timer's.
+  // One of your decisions, from the state that hands it to you to the state
+  // that moves past it. The key advances when a play lands or a new trick
+  // starts (the trick's leader and size, your hand's size), so a last
+  // follower who wins and leads at once closes one decision and opens the
+  // next, while a broadcast that changes neither is the same decision. It
+  // ends as yours when this socket's own send was in flight, else the bot's
+  // (away) or the move timer's. Leaving the table is no transition: the
+  // open clock is kept for a remount and never reported as a finished turn.
   useScreen("table");
   const turnActive = !watching &&
     ((state.phase === "bury" && iAmBanker) || (state.phase === "play" && myTurn));
+  const decisionKey = turnActive
+    ? `${state.room}:${state.phase}:${state.trick?.leader ?? "-"}:${state.trick?.plays.length ?? 0}:${state.hand.length}`
+    : null;
   useEffect(() => {
-    if (!turnActive) return;
-    const phase = state.phase === "bury" ? "bury" : "play";
-    turnRef.current = new TurnClock(phase, phase === "bury" ? 8 : lead ? lead.length : 0,
-                                    lead ? leadKind(lead) : undefined, coaching, nextTurnNumber());
-    return () => {
-      const turn = turnRef.current;
+    const open = openTurn;
+    if (open !== null && open.key !== decisionKey) {
+      openTurn = null;
       turnRef.current = null;
-      if (turn === null) return;
-      // cleanups run before the settle effect, so a send still in flight on
-      // this socket is the one that ended the turn
-      const sent = pendingRef.current;
-      const mine = sent !== null && sent.generation === conn.generation;
-      telemetry.turnDone(turn.finish(mine ? "you" : me?.away ? "bot" : "timer"));
-    };
-    // a turn is the span turnActive holds in one phase; the rest is read at its start
+      // seen ending only if this mount watched it: a turn that ended while
+      // the table was not shown has no observed outcome and is dropped
+      if (open.watched) {
+        // the settle effect has not re-rendered yet, so pendingRef still
+        // holds the send (if any) that this state answered
+        const sent = pendingRef.current;
+        const mine = sent !== null && sent.generation === conn.generation;
+        telemetry.turnDone(open.clock.finish(mine ? "you" : me?.away ? "bot" : "timer"));
+      }
+    }
+    if (decisionKey === null) return;
+    if (openTurn === null) {
+      const phase = state.phase === "bury" ? "bury" : "play";
+      openTurn = {
+        key: decisionKey, watched: true,
+        clock: new TurnClock(phase, phase === "bury" ? 8 : lead ? lead.length : 0,
+                             lead ? leadKind(lead) : undefined, coaching, nextTurnNumber()),
+      };
+    }
+    openTurn.watched = true;
+    turnRef.current = openTurn.clock;
+    // the decision is its key; the rest is read when it opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [turnActive, state.phase]);
+  }, [decisionKey]);
+  useEffect(() => () => {
+    // unmounting: keep the clock for a remount, but this mount no longer sees it end
+    if (openTurn !== null) openTurn.watched = false;
+    turnRef.current = null;
+  }, []);
   const nothingChosen = selected.size === 0;
   const [nudge, setNudge] = useState(false);
   useEffect(() => {

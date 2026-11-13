@@ -647,3 +647,57 @@ describe("review: turn telemetry producer", () => {
     } finally { done.mockRestore(); }
   });
 });
+
+describe("turn telemetry: a decision is reported once, when the game moves past it", () => {
+  const pickAndPlay = () => {
+    act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[0].click());
+    act(() => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.click());
+  };
+
+  it("reports a submitted lead as yours, with its selection", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      render(state({ room: "SUB", turn: 0, trick: { leader: 0, plays: [] } }));
+      pickAndPlay();
+      expect(sent).toContainEqual(expect.objectContaining({ type: "play" }));
+      render(state({ room: "SUB", turn: 1, hand: cards(24),
+                     trick: { leader: 0, plays: [{ seat: 0, cards: ["S2"] }] } }));
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done.mock.calls[0][0]).toMatchObject({ phase: "play", by: "you", sel_changes: 1, need: 0 });
+    } finally { done.mockRestore(); }
+  });
+
+  it("treats broadcasts that leave the decision in place as the same turn", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      const trick = { leader: 1, plays: [{ seat: 1, cards: ["S2"] }] };
+      render(state({ room: "SAME", turn: 0, trick }));
+      render(state({ room: "SAME", turn: 0, trick, attacker_points: 10 }));
+      render(state({ room: "SAME", turn: 0, trick, players: [0, 1, 2, 3].map((s) => player(s, { connected: s !== 2 })) }));
+      expect(done).not.toHaveBeenCalled();
+      render(state({ room: "SAME", turn: 1, hand: cards(24),
+                     trick: { leader: 1, plays: [...trick.plays, { seat: 0, cards: ["S3"] }] } }));
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done.mock.calls[0][0]).toMatchObject({ by: "timer", lead: "single", need: 1 });
+    } finally { done.mockRestore(); }
+  });
+
+  it("keeps the turn across a remount and reports it once when it ends", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      const mine = state({ room: "REMOUNT", turn: 0, trick: { leader: 0, plays: [] } });
+      render(mine);
+      act(() => root.render(null));      // How to play replaces the table
+      render(mine);                       // and back
+      expect(done).not.toHaveBeenCalled();
+      pickAndPlay();
+      render(state({ room: "REMOUNT", turn: 1, hand: cards(24),
+                     trick: { leader: 0, plays: [{ seat: 0, cards: ["S2"] }] } }));
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done.mock.calls[0][0]).toMatchObject({ by: "you", nth_turn: expect.any(Number) });
+    } finally { done.mockRestore(); }
+  });
+});

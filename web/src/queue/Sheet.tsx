@@ -27,7 +27,7 @@ function canSlide(): boolean {
 }
 
 /** Makes everything outside `layer` inert, up to the body; returns the undo. */
-function inertOutside(layer: HTMLElement): () => void {
+export function inertOutside(layer: HTMLElement): () => void {
   const made: HTMLElement[] = [];
   for (let n: HTMLElement | null = layer; n && n !== document.body; n = n.parentElement) {
     const parent: HTMLElement | null = n.parentElement;
@@ -44,6 +44,30 @@ function inertOutside(layer: HTMLElement): () => void {
 function focusables(box: HTMLElement): HTMLElement[] {
   return Array.from(box.querySelectorAll<HTMLElement>(FOCUSABLE))
     .filter((el) => !el.closest("[inert], [hidden], [aria-hidden='true']"));
+}
+
+/** Keeps Tab and Shift+Tab cycling inside a modal box. */
+export function trapTab(e: KeyboardEvent, boxEl: HTMLElement): void {
+  if (e.key !== "Tab") return;
+  const items = focusables(boxEl);
+  const at = document.activeElement;
+  if (items.length === 0) {
+    e.preventDefault();
+    boxEl.focus();
+    return;
+  }
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (!at || !boxEl.contains(at)) {
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  } else if (e.shiftKey && (at === first || at === boxEl)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && at === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 /** A copy of a closing sheet that plays its slide out over the page and then
@@ -126,26 +150,7 @@ export default function Sheet({ title, onClose, children, className = "", cancel
         close.current();
         return;
       }
-      if (e.key !== "Tab") return;
-      const items = focusables(boxEl);
-      const at = document.activeElement;
-      if (items.length === 0) {
-        e.preventDefault();
-        boxEl.focus();
-        return;
-      }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (!at || !boxEl.contains(at)) {
-        e.preventDefault();
-        (e.shiftKey ? last : first).focus();
-      } else if (e.shiftKey && (at === first || at === boxEl)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && at === last) {
-        e.preventDefault();
-        first.focus();
-      }
+      trapTab(e, boxEl);
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);

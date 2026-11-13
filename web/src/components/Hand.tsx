@@ -88,6 +88,10 @@ function measureLayout(el: HTMLElement | null): Map<number, number> {
   return next;
 }
 
+/** A finger must travel this far along the hand before a press becomes a
+ *  slide; less is a tap on the card it went down on. */
+export const SLIDE_SLOP = 10;
+
 /** The hand slot's card id under a viewport point, if it is in `hand`. */
 function slotIdAt(hand: HTMLElement, x: number, y: number): number | null {
   const slot = document.elementFromPoint?.(x, y)?.closest<HTMLElement>(".hand-slot");
@@ -97,6 +101,8 @@ function slotIdAt(hand: HTMLElement, x: number, y: number): number | null {
 interface Drag {
   pointerId: number;
   start: number;
+  /** Where the finger went down; a slide starts past SLIDE_SLOP from here. */
+  x0: number;
   /** The state every card the finger crosses is set to: the first card's
    *  state flipped. */
   target: boolean;
@@ -126,12 +132,15 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
     const slot = (e.target as HTMLElement).closest<HTMLElement>(".hand-slot");
     if (!slot) return;
     const id = Number(slot.dataset.id);
-    drag.current = { pointerId: e.pointerId, start: id, target: !selectedRef.current.has(id), seen: new Set([id]), moved: false };
+    drag.current = { pointerId: e.pointerId, start: id, x0: e.clientX, target: !selectedRef.current.has(id), seen: new Set([id]), moved: false };
     setPressed(id);
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointerId || !handRef.current) return;
+    // a finger's jitter is still a tap: under SLIDE_SLOP it never reaches
+    // a neighbour, however thin the neighbour's sliver
+    if (!d.moved && Math.abs(e.clientX - d.x0) < SLIDE_SLOP) return;
     const id = slotIdAt(handRef.current, e.clientX, e.clientY);
     if (id !== null) setPressed(id);
     if (id === null || d.seen.has(id)) return;
@@ -142,9 +151,17 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
     d.seen.add(id);
     setTo(id, d.target);
   };
-  const endDrag = () => {
-    // a slide ends without the tap's click; if one still comes, it is not a tap
-    if (drag.current?.moved) swallowClick.current = true;
+  const endDrag = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    // A finger's tap commits here, on the card it went down on. The click
+    // the browser synthesizes afterwards is hit-tested where the finger
+    // lifted, under the pressed card's lift, so it can land on a neighbour
+    // or be dropped; it is swallowed, as is the click after a slide.
+    if (d && e.pointerId === d.pointerId) {
+      if (!d.moved && e.type === "pointerup") onToggle(d.start);
+      swallowClick.current = true;
+      window.setTimeout(() => { swallowClick.current = false; }, 600);
+    }
     drag.current = null;
     setPressed(null);
   };

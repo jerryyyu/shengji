@@ -147,6 +147,32 @@ describe("drag-select", () => {
     expect(host.querySelector(".hand-slot.pressed")).toBeNull();
   });
 
+  it("a finger that wobbles across a card edge, under the slop, is a tap on the card it went down on", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3", "S4"]} />));
+    finger("pointerdown", cards()[1], 11);
+    finger("pointermove", cards()[1], 8);   // over card 0's sliver, 3px away
+    finger("pointerup", cards()[1], 8);
+    act(() => cards()[0].click());           // the click lands where the finger lifted
+    expect(picked()).toEqual([false, true, false]);
+  });
+
+  it("a tap commits on release even when the browser sends no click", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3"]} />));
+    finger("pointerdown", cards()[1], 15);
+    finger("pointerup", cards()[1], 15);
+    expect(picked()).toEqual([false, true]);
+  });
+
+  it("a cancelled press chooses nothing", () => {
+    mount();
+    act(() => root.render(<Harness codes={["S2", "S3"]} />));
+    finger("pointerdown", cards()[1], 15);
+    finger("pointercancel", cards()[1], 15);
+    expect(picked()).toEqual([false, false]);
+  });
+
   it("a mouse press does not lift; the hover does that", () => {
     mount();
     act(() => root.render(<Harness codes={["S2", "S3"]} />));

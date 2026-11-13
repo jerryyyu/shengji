@@ -2,7 +2,7 @@
 // the lead and the trump alone.
 import { describe, expect, it } from "vitest";
 import type { Trump } from "./protocol";
-import { followHint, followsSuit, leadSuit } from "./followRules";
+import { followHint, followsSuit, leadSuit, winningSeat } from "./followRules";
 import { IllegalPlay, RANKS, makeDeck, orderingFor, validateFollow } from "./offline/engine";
 
 const heartsTwo: Trump = { suit: "H", rank: "2", declarer: 0 };
@@ -100,5 +100,21 @@ describe("followsSuit", () => {
     }
     expect(accepted).toBeGreaterThan(1000);
     expect(blocked).toBeGreaterThan(1000);
+  });
+});
+
+describe("winningSeat", () => {
+  const trump: Trump = heartsTwo;
+  it("names the play taking an open trick: higher in suit, then a trump ruff", () => {
+    expect(winningSeat([{ seat: 1, cards: ["S5"] }], trump)).toBeNull();
+    expect(winningSeat([{ seat: 1, cards: ["S5"] }, { seat: 2, cards: ["SK"] }], trump)).toBe(2);
+    expect(winningSeat([{ seat: 1, cards: ["S5"] }, { seat: 2, cards: ["SK"] }, { seat: 3, cards: ["H3"] }], trump)).toBe(3);
+    // an off-suit card never takes it, however high
+    expect(winningSeat([{ seat: 1, cards: ["S5"] }, { seat: 2, cards: ["DA"] }], trump)).toBe(1);
+    // a pair lead is not beaten by two singles of the suit
+    expect(winningSeat([{ seat: 0, cards: ["S5", "S5"] }, { seat: 1, cards: ["SK", "SA"] }], trump)).toBe(0);
+  });
+  it("is null without a trump", () => {
+    expect(winningSeat([{ seat: 1, cards: ["S5"] }, { seat: 2, cards: ["SK"] }], null)).toBeNull();
   });
 });

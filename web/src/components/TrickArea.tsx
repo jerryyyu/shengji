@@ -4,6 +4,7 @@ import type { Declaration, GameState, Trick, TrickPlay } from "../protocol";
 import type { Box } from "../motion";
 import { DUR, EASE, canAnimate, centerDelta, clamp, flightKeyframes, sweepKeyframes, unionBox } from "../motion";
 import Card from "./Card";
+import { winningSeat } from "../followRules";
 import type { HandRects } from "./Hand";
 
 type SidePos = "bottom" | "left" | "top" | "right";
@@ -152,16 +153,19 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
     };
   }, [winner, trickKey, sweepAfterMs, state.you]);
 
+  // While a trick is open, the play currently taking it.
+  const winning = winner === null && trick ? winningSeat(trick.plays, state.trump) : null;
   return (
     <div className="trick-area" ref={areaRef}>
       {trick?.plays.map((play) => {
         const pos = seatPos(play.seat, state.you);
         const isLeader = play.seat === trick.leader;
         const isWinner = winner !== null && play.seat === winner;
+        const isWinning = winning !== null && play.seat === winning;
         const key = playKey(play);
         return (
           <div key={key} data-play={key} data-seat={play.seat}
-               className={`trick-play pos-${pos}${isWinner ? " winner" : ""}`}
+               className={`trick-play pos-${pos}${isWinner ? " winner" : ""}${isWinning ? " winning" : ""}`}
                style={{ "--n": play.cards.length } as CSSProperties}>
             <div className="trick-cards">
               {play.cards.map((code, i) => (

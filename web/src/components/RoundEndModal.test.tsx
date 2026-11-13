@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, RoundResult, StatePlayer } from "../protocol";
 import RoundEndModal from "./RoundEndModal";
+import { auth } from "../auth";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, leaveToLobby: () => {} } }));
@@ -24,6 +25,9 @@ const state: GameState = {
   trick: null, last_trick: null, attacker_points: 0, kitty_count: 8,
   round_result: null, message: null, notice: null,
 };
+
+/** A queue room: its rounds are rated. */
+const ranked: GameState = { ...state, matched: true };
 
 function makeResult(overrides: Partial<RoundResult> = {}): RoundResult {
   return {
@@ -97,11 +101,19 @@ describe("round end modal", () => {
   });
 
   it("titles the round with the winners and a plural verb, colour prefix separable", () => {
+    renderModal(makeResult({ winner_team: 0 }));
+    const h2 = host.querySelector("h2")!;
+    expect(h2.textContent).toBe("Blue team · You & Sam win the round");
+    // phones hide the prefix; what remains still reads as a sentence
+    expect(h2.querySelector(".title-team")!.textContent).toBe("Blue team · ");
+  });
+
+  it("says your side lost when the other team wins the round", () => {
     renderModal(makeResult({ winner_team: 1 }));
     const h2 = host.querySelector("h2")!;
-    expect(h2.textContent).toBe("Orange team · Robin & Ada win the round");
-    // phones hide the prefix; what remains still reads as a sentence
-    expect(h2.querySelector(".title-team")!.textContent).toBe("Orange team · ");
+    expect(h2.textContent).toBe("Blue team · You & Sam lose the round");
+    expect(h2.className).toContain("team0");
+    expect(h2.textContent).not.toContain("Robin & Ada win");
   });
 
   it("does not show a tally on an ordinary round", () => {
@@ -135,48 +147,156 @@ describe("leaving from the round-end screen", () => {
   // included) is inert; the way out has to live inside the dialog.
   const waiting: GameState = { ...state, ready: [0] };
   const leaveButton = () =>
-    [...host.querySelectorAll("dialog button")].find((b) => /leave/i.test(b.textContent ?? "")) as
+    [...host.querySelectorAll("dialog button")].find((b) => b.textContent === "Leave game") as
       HTMLButtonElement | undefined;
+  const nextButton = () =>
+    [...host.querySelectorAll("dialog button")].find((b) => /Next round|Waiting for others/.test(b.textContent ?? "")) as
+      HTMLButtonElement;
 
-  it("offers an enabled Leave control inside the dialog while you wait for others", () => {
+  for (const [kind, shown] of [["casual", state], ["ranked", { ...state, matched: true }]] as const) {
+    it(`puts Leave below the full-width Next round, the same in a ${kind} room`, () => {
+      renderModal(makeResult(), shown);
+      const leave = leaveButton()!;
+      expect(leave).toBeDefined();
+      expect(leave.className).toBe("btn subtle danger dialog-leave-btn");
+      expect(nextButton().className).toContain("btn primary big");
+      expect(leave.parentElement).toBe(nextButton().parentElement);
+      expect(nextButton().compareDocumentPosition(leave) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+  }
+
+  it("stays enabled while you wait for others", () => {
     const text = renderModal(makeResult(), waiting);
     expect(text).toContain("Waiting for others");
-    const leave = leaveButton();
-    expect(leave).toBeDefined();
-    expect(leave!.disabled).toBe(false);
+    expect(leaveButton()!.disabled).toBe(false);
   });
 
-  const choice = (label: string) =>
-    [...host.querySelectorAll(".dialog-leave-confirm button")].find((b) => b.textContent === label) as
-      HTMLButtonElement | undefined;
-
-  it("asks Leave game? with Stay and Leave, and sends leave_room only on Leave", () => {
+  it("leaves at once: the round is over, so there is nothing to confirm", () => {
     renderModal(makeResult(), waiting);
     act(() => { leaveButton()!.click(); });
-    expect(sent).toEqual([]);
-    expect(host.querySelector(".dialog-leave-confirm")!.textContent).toContain("Leave game?");
-    act(() => { choice("Leave")!.click(); });
+    expect(host.querySelector("[role='alertdialog']")).toBeNull();
     expect(sent).toEqual([{ type: "leave_room" }]);
   });
 
-  it("has no timer: the question waits, and Stay puts the button back", () => {
-    vi.useFakeTimers();
-    try {
-      renderModal(makeResult(), waiting);
-      act(() => { leaveButton()!.click(); });
-      act(() => { vi.advanceTimersByTime(30_000); });
-      expect(host.querySelector(".dialog-leave-confirm")).not.toBeNull();
-      act(() => { choice("Stay")!.click(); });
-      expect(host.querySelector(".dialog-leave-confirm")).toBeNull();
-      expect(leaveButton()!.textContent).toBe("Leave game");
-      expect(sent).toEqual([]);
-    } finally {
-      vi.useRealTimers();
-    }
+  it("a ranked game leaves at once too, with no penalty alert", () => {
+    renderModal(makeResult(), { ...state, matched: true });
+    act(() => { leaveButton()!.click(); });
+    expect(host.querySelector("[role='alertdialog']")).toBeNull();
+    expect(sent).toEqual([{ type: "leave_room" }]);
+  });
+});
+
+describe("round end rating line", () => {
+  afterEach(() => auth.reset());
+
+  async function signedOutWithSignIn() {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/auth/config") return { status: 200, json: async () => ({ google_client_id: "cid" }) } as Response;
+      return { status: 401, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+    await auth.init();
+  }
+
+  it("a seat taken mid-round from an open table reads Unranked · joined mid-round", () => {
+    renderModal(makeResult({ unranked: "joined" }), ranked);
+    expect(host.querySelector(".rating-unranked")!.textContent).toBe("Unranked · joined mid-round");
+    expect(host.querySelector(".rating-delta")).toBeNull();
   });
 
-  it("is also available before you confirm the next round", () => {
-    renderModal(makeResult());
-    expect(leaveButton()).toBeDefined();
+  it("shows a signed-in player's rating and this round's change", () => {
+    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), ranked);
+    const line = host.querySelector(".rating-line")!;
+    expect(line.textContent).toContain("Your rating 1712");
+    expect(line.querySelector(".rating-delta")!.textContent).toBe("▲ +9");
+    expect(line.querySelector(".rating-delta")!.className).toContain("delta-up");
+    expect(line.querySelector(".rating-game")).toBeNull();
+    expect(host.querySelector(".rating-guest-note")).toBeNull();
+  });
+
+  it("shows a loss and, on the round that wins a game, the game's total", () => {
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0],
+                             rating: { rating: 1688, delta: -4, game_delta: 31 } }), ranked);
+    const line = host.querySelector(".rating-line")!;
+    expect(line.querySelector(".rating-delta")!.textContent).toBe("▼ −4");
+    expect(line.querySelector(".rating-game")!.textContent).toBe("+31 this game");
+  });
+
+  it("shows the game total on the game-over screen", () => {
+    renderModal(makeResult({ game_over: true, rating: { rating: 1740, delta: 12, game_delta: 55 } }), ranked);
+    expect(host.querySelector(".victory .rating-line")!.textContent).toContain("+55 this game");
+  });
+
+  it("tells a guest seat its rounds are not ranked, from the result's unranked: guest", () => {
+    renderModal(makeResult({ unranked: "guest" }), ranked);
+    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest · not ranked");
+    expect(host.querySelector(".rating-delta")).toBeNull();
+    expect(host.querySelector(".google-signin-slot")).toBeNull();
+  });
+
+  it("or from the state's guest at a ranked table", () => {
+    renderModal(makeResult(), { ...ranked, guest: true });
+    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest · not ranked");
+  });
+
+  it("a signed-out viewer with neither field sees no guest note", async () => {
+    await signedOutWithSignIn();
+    renderModal(makeResult(), ranked);
+    expect(host.querySelector(".rating-guest-note")).toBeNull();
+  });
+
+  it("an unranked room shows no rating line and no guest note", async () => {
+    await signedOutWithSignIn();
+    renderModal(makeResult({ unranked: "guest" }), { ...state, guest: true });
+    expect(host.querySelector(".rating-guest-note")).toBeNull();
+    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }));
+    expect(host.querySelector(".rating-line")).toBeNull();
+  });
+
+  it("a created room switched to Ranked shows the rating line like a queue room", () => {
+    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), { ...state, ranked: true });
+    expect(host.querySelector(".rating-line")!.textContent).toContain("Your rating 1712");
+  });
+
+  it("says nothing about ratings while sign-in is still loading", () => {
+    renderModal(makeResult(), ranked);
+    expect(host.querySelector(".rating-line")).toBeNull();
+  });
+});
+
+describe("headline first, details behind a disclosure", () => {
+  it("leads with the level change and new levels; the score grid and kitty wait under Details", () => {
+    renderModal(makeResult({ new_levels: ["5", "2"], attacker_points: 30,
+      kitty_cards: ["S5", "HK", "D10", "C3", "C4", "C6", "C7", "C8"] }));
+    const modal = host.querySelector(".modal")!;
+    const headline = modal.querySelector(".result-headline")!;
+    expect(headline.querySelector(".result-change")!.textContent).toBe("+3 levels");
+    expect(headline.textContent).toContain("Now");
+    expect(headline.textContent).toContain("5");
+    expect(headline.textContent).toContain("Attackers 30 of 80");
+    const details = modal.querySelector<HTMLDetailsElement>("details.result-details")!;
+    expect(details.open).toBe(false);
+    expect(details.querySelector("summary")!.textContent).toBe("Details");
+    expect(details.querySelector(".result-grid")).not.toBeNull();
+    expect(details.querySelector(".kitty-reveal")).not.toBeNull();
+    expect(details.querySelector(".result-verdict")).not.toBeNull();
+    // the headline comes before the details, and Next round and Leave stay outside them
+    expect(headline.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const next = [...modal.querySelectorAll("button")].find((b) => b.textContent === "Next round")!;
+    expect(details.contains(next)).toBe(false);
+    act(() => next.click());
+    expect(sent).toEqual([{ type: "next_round" }]);
+    const leave = [...modal.querySelectorAll("button")].find((b) => /leave/i.test(b.textContent ?? ""));
+    expect(leave && details.contains(leave)).toBe(false);
+  });
+
+  it("says one level, and a won game, in the headline", () => {
+    renderModal(makeResult({ level_change: 1 }));
+    expect(host.querySelector(".result-change")!.textContent).toBe("+1 level");
+    act(() => root.unmount());
+    host.remove();
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
+    expect(host.querySelector(".result-change")!.textContent).toBe("Game won");
+    expect(host.querySelector(".result-headline")!.textContent).toContain("Levels restart at");
   });
 });

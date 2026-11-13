@@ -5,10 +5,11 @@ import HudMenu from "./HudMenu";
 import MuteButton from "./MuteButton";
 import { isMuted, setMuted } from "../audio";
 import { auth } from "../auth";
-import { navigate } from "../replay/route";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
+const goOnline = vi.fn();
+vi.mock("./offlineGame", () => ({ offlineGame: { start: () => {}, goOnline: () => goOnline() } }));
 
 beforeAll(() => {
   class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
@@ -16,18 +17,18 @@ beforeAll(() => {
 });
 beforeEach(() => { sent.length = 0; });
 
-function render() {
+function render(props: { ranked?: boolean; offline?: boolean } = {}) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  act(() => root.render(<HudMenu room="ABCD" kittyCount={8} />));
+  act(() => root.render(<HudMenu room="ABCD" kittyCount={8} {...props} />));
   return { host, unmount: () => act(() => root.unmount()) };
 }
 const btn = (host: HTMLElement) => host.querySelector<HTMLButtonElement>(".hud-more-btn")!;
 const rows = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>(".hud-menu-row"));
 
 describe("the phone overflow menu (#651)", () => {
-  it("is closed until tapped, then lists kitty, sound, invite and leave", () => {
+  it("is closed until tapped, then lists kitty, sound, coach, invite and leave", () => {
     const v = render();
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     expect(btn(v.host).getAttribute("aria-expanded")).toBe("false");
@@ -36,39 +37,25 @@ describe("the phone overflow menu (#651)", () => {
     const text = rows(v.host).map((r) => r.textContent);
     expect(text[0]).toContain("Kitty"); expect(text[0]).toContain("8 cards");
     expect(text[1]).toContain("Sound");
-    expect(text[2]).toContain("Copy invite link");
-    expect(text[3]).toContain("Leave game");
+    expect(text[2]).toContain("Coach");
+    expect(text[3]).toContain("Copy invite link");
+    expect(text[4]).toContain("Leave game");
     v.unmount();
   });
 
-  it("leave asks first: Leave game? with Stay and Leave, and the menu stays open", () => {
+  it("Leave game closes the menu and opens the leave alert; Leave sends leave_room", () => {
     const v = render();
     act(() => btn(v.host).click());
-    const leave = () => rows(v.host)[3] as HTMLElement;
-    act(() => (leave() as HTMLButtonElement).click());
+    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
     expect(sent).toEqual([]);
-    expect(v.host.querySelector(".hud-menu")).not.toBeNull();
-    expect(leave().textContent).toContain("Leave game?");
-    const choices = () => Array.from(leave().querySelectorAll<HTMLButtonElement>(".hud-menu-choice"));
-    expect(choices().map((b) => b.textContent)).toEqual(["Stay", "Leave"]);
-    act(() => choices()[1].click());
-    expect(sent).toEqual([{ type: "leave_room" }]);
     expect(v.host.querySelector(".hud-menu")).toBeNull();
+    const alert = v.host.querySelector("[role='alertdialog']")!;
+    expect(alert.textContent).toContain("Leave this game?");
+    expect(alert.textContent).toContain("A bot takes your seat and the others keep playing.");
+    act(() => alert.querySelector<HTMLButtonElement>(".leave-alert-leave")!.click());
+    expect(sent).toEqual([{ type: "leave_room" }]);
+    expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
     v.unmount();
-  });
-
-  it("the confirm has no timer: it waits, and Stay puts the row back", () => {
-    vi.useFakeTimers();
-    const v = render();
-    act(() => btn(v.host).click());
-    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
-    act(() => { vi.advanceTimersByTime(30_000); });
-    expect(rows(v.host)[3].textContent).toContain("Leave game?");
-    act(() => rows(v.host)[3].querySelector<HTMLButtonElement>(".hud-menu-choice")!.click());
-    expect(rows(v.host)[3].textContent).toContain("Leave game…");
-    expect(sent).toEqual([]);
-    v.unmount();
-    vi.useRealTimers();
   });
 
   it("the sound row toggles and reports its state", () => {
@@ -92,23 +79,21 @@ describe("the phone overflow menu (#651)", () => {
   });
 });
 
-describe("a signed-in player's rows", () => {
-  it("shows the account name with Edit name, then Sign out; Edit name opens the form in place", async () => {
+describe("a signed-in player's menu", () => {
+  it("is the same five rows: account rows live on the Me tab", () => {
     auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" });
     const v = render();
     act(() => btn(v.host).click());
-    const text = rows(v.host).map((r) => r.textContent);
-    expect(text[3]).toContain("Cap"); expect(text[3]).toContain("Edit name");
-    expect(text[4]).toContain("My games");
-    expect(text[5]).toContain("Sign out");
-    expect(text[6]).toContain("Leave game");
-    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
-    expect(v.host.querySelector(".hud-menu")).not.toBeNull();     // the menu stays open
-    const input = v.host.querySelector<HTMLInputElement>(".hud-menu-edit .name-edit-input")!;
-    expect(input.value).toBe("Cap");
-    act(() => v.host.querySelector<HTMLButtonElement>(".name-edit-cancel")!.click());
-    expect(v.host.querySelector(".name-edit")).toBeNull();
-    expect(rows(v.host)[3].textContent).toContain("Edit name");
+    const text = rows(v.host).map((r) => r.textContent ?? "");
+    expect(text).toHaveLength(5);
+    expect(text[0]).toContain("Kitty");
+    expect(text[1]).toContain("Sound");
+    expect(text[2]).toContain("Coach");
+    expect(text[3]).toContain("Copy invite link");
+    expect(text[4]).toContain("Leave game");
+    for (const gone of ["Edit name", "My games", "Sign out", "Cap"]) {
+      expect(text.some((t) => t.includes(gone))).toBe(false);
+    }
     v.unmount();
     auth.reset();
   });
@@ -136,43 +121,214 @@ describe("mute state is shared between controls (Codex, #653)", () => {
   });
 });
 
-describe("the account row (optional sign-in)", () => {
-  it("is absent for a guest, and when signed in a refused sign-out keeps the menu open to retry", async () => {
-    auth.reset();
+describe("keyboard focus in the menu", () => {
+  const key = (el: Element, k: string) => act(() => {
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+  });
+  const focused = () => (document.activeElement as HTMLElement | null)?.textContent ?? "";
+
+  it("opening focuses the first actionable row; arrows wrap, Home and End go to the ends", () => {
+    const v = render();
+    const trigger = btn(v.host);
+    trigger.focus();
+    act(() => trigger.click());
+    expect(focused()).toContain("Sound");             // the kitty row is information only
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Coach");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Copy invite link");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Leave game");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Sound");             // wraps
+    key(document.activeElement!, "ArrowUp");
+    expect(focused()).toContain("Leave game");
+    key(document.activeElement!, "Home");
+    expect(focused()).toContain("Sound");
+    key(document.activeElement!, "End");
+    expect(focused()).toContain("Leave game");
+    v.unmount();
+  });
+
+  it("ArrowDown and ArrowUp on the closed button open it at the first and last row", () => {
+    const v = render();
+    btn(v.host).focus();
+    key(btn(v.host), "ArrowDown");
+    expect(v.host.querySelector(".hud-menu")).not.toBeNull();
+    expect(focused()).toContain("Sound");
+    key(document.activeElement!, "Escape");
+    key(btn(v.host), "ArrowUp");
+    expect(focused()).toContain("Leave game");
+    v.unmount();
+  });
+
+  it("Escape closes the menu and returns focus to the More button", () => {
     const v = render();
     act(() => btn(v.host).click());
-    expect(rows(v.host).some((r) => r.textContent?.includes("Sign out"))).toBe(false);
-    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
-    const row = () => rows(v.host).find((r) => r.textContent?.includes("Sign out")) as HTMLButtonElement;
-    expect(rows(v.host).find((r) => r.textContent?.includes("Edit name"))?.textContent).toContain("Jerry");
-    globalThis.fetch = vi.fn(async () => ({ status: 500, json: async () => ({}) })) as unknown as typeof fetch;
-    await act(async () => { row().click(); });
-    expect(v.host.querySelector(".hud-menu")).not.toBeNull();   // still open
-    expect(row().textContent).toContain("Sign out failed, retry");
-    expect(auth.state.status).toBe("in");
-    globalThis.fetch = vi.fn(async () => ({ status: 200, json: async () => ({ ok: true }) })) as unknown as typeof fetch;
-    await act(async () => { row().click(); });
+    key(document.activeElement!, "ArrowDown");
+    key(document.activeElement!, "Escape");
     expect(v.host.querySelector(".hud-menu")).toBeNull();
-    expect(auth.state.status).toBe("out");
+    expect(document.activeElement).toBe(btn(v.host));
     v.unmount();
-    auth.reset();
+  });
+
+  it("the leave alert focuses Keep playing; Keep playing returns focus to the More button", () => {
+    const v = render();
+    act(() => btn(v.host).click());
+    key(document.activeElement!, "End");
+    act(() => (document.activeElement as HTMLButtonElement).click());
+    expect(focused()).toBe("Keep playing");
+    act(() => (document.activeElement as HTMLButtonElement).click());
+    expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
+    expect(document.activeElement).toBe(btn(v.host));
+    expect(sent).toEqual([]);
+    v.unmount();
+  });
+
+  it("an outside tap still closes it", () => {
+    const v = render();
+    act(() => btn(v.host).click());
+    act(() => { document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
+    expect(v.host.querySelector(".hud-menu")).toBeNull();
+    v.unmount();
   });
 });
 
-describe("the My games row", () => {
-  it("is shown only when signed in, and opens the history page", () => {
-    auth.reset();
-    const v = render();
+describe("the menu's scale-and-fade", () => {
+  const reduceMotion = (on: boolean) => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: on && q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+    return () => { window.matchMedia = mm; };
+  };
+  const canAnimate = () => {
+    const had = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "animate");
+    Object.defineProperty(HTMLElement.prototype, "animate", { configurable: true, value: () => ({}) });
+    return () => {
+      if (had) Object.defineProperty(HTMLElement.prototype, "animate", had);
+      else Reflect.deleteProperty(HTMLElement.prototype, "animate");
+    };
+  };
+
+  it("pops in, stays through its fade out, then goes", () => {
+    vi.useFakeTimers();
+    const restore = [reduceMotion(false), canAnimate()];
+    try {
+      const v = render();
+      act(() => btn(v.host).click());
+      expect(v.host.querySelector(".hud-menu")!.classList.contains("pop-in")).toBe(true);
+      act(() => btn(v.host).click());
+      const menu = v.host.querySelector(".hud-menu")!;
+      expect(menu.classList.contains("pop-out")).toBe(true);
+      expect(menu.getAttribute("aria-hidden")).toBe("true");
+      act(() => { vi.advanceTimersByTime(199); });
+      expect(v.host.querySelector(".hud-menu")).not.toBeNull();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(v.host.querySelector(".hud-menu")).toBeNull();
+      v.unmount();
+    } finally { restore.forEach((r) => r()); vi.useRealTimers(); }
+  });
+
+  it("under Reduce Motion appears and goes at once, with no animation class", () => {
+    const restore = [reduceMotion(true), canAnimate()];
+    try {
+      const v = render();
+      act(() => btn(v.host).click());
+      const menu = v.host.querySelector(".hud-menu")!;
+      expect(menu.classList.contains("pop-in")).toBe(false);
+      expect(menu.classList.contains("pop-out")).toBe(false);
+      act(() => btn(v.host).click());
+      expect(v.host.querySelector(".hud-menu")).toBeNull();
+      v.unmount();
+    } finally { restore.forEach((r) => r()); }
+  });
+});
+
+describe("a ranked game's leave alert", () => {
+  it("names the ranked game and its result", () => {
+    const v = render({ ranked: true });
     act(() => btn(v.host).click());
-    const games = () => rows(v.host).find((r) => r.textContent?.includes("My games")) as HTMLButtonElement | undefined;
-    expect(games()).toBeUndefined();
-    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
-    expect(games()).toBeDefined();
-    act(() => games()!.click());
-    expect(v.host.querySelector(".hud-menu")).toBeNull();
-    expect(window.location.hash).toBe("#/games");
+    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
+    const alert = v.host.querySelector("[role='alertdialog']")!;
+    expect(alert.querySelector("h2")!.textContent).toBe("Leave this ranked game?");
+    expect(alert.querySelector("p")!.textContent).toBe("A bot takes your seat, and this round counts as at best a draw.");
+    expect(Array.from(alert.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["Keep playing", "Leave"]);
     v.unmount();
-    act(() => navigate(null));
-    auth.reset();
+  });
+
+  it("Escape keeps playing and sends nothing", () => {
+    const v = render({ ranked: true });
+    act(() => btn(v.host).click());
+    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
+    const alert = v.host.querySelector("[role='alertdialog']")!;
+    act(() => { alert.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
+    expect(sent).toEqual([]);
+    v.unmount();
+  });
+
+  it("waits with no timer", () => {
+    vi.useFakeTimers();
+    const v = render({ ranked: true });
+    act(() => btn(v.host).click());
+    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
+    act(() => { vi.advanceTimersByTime(30_000); });
+    expect(v.host.querySelector("[role='alertdialog']")).not.toBeNull();
+    expect(sent).toEqual([]);
+    v.unmount();
+    vi.useRealTimers();
+  });
+});
+
+describe("the offline menu", () => {
+  it("Leave ends practice: a short alert, then leave_room (App's start screen takes the player home)", () => {
+    goOnline.mockClear();
+    const v = render({ offline: true });
+    act(() => btn(v.host).click());
+    act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
+    const alert = v.host.querySelector("[role='alertdialog']")!;
+    expect(alert.querySelector("h2")!.textContent).toBe("Leave this game?");
+    expect(alert.querySelector("p")!.textContent).toBe("This practice game ends.");
+    expect(goOnline).not.toHaveBeenCalled();
+    act(() => alert.querySelector<HTMLButtonElement>(".leave-alert-leave")!.click());
+    expect(sent).toEqual([{ type: "leave_room" }]);
+    expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
+    v.unmount();
+  });
+
+  it("Keep playing stays in the practice game", () => {
+    goOnline.mockClear();
+    const v = render({ offline: true });
+    act(() => btn(v.host).click());
+    act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
+    act(() => v.host.querySelector<HTMLButtonElement>(".leave-alert-keep")!.click());
+    expect(sent).toEqual([]);
+    expect(goOnline).not.toHaveBeenCalled();
+    v.unmount();
+  });
+
+  it("has no invite link; Play online appears while the device is online", () => {
+    goOnline.mockClear();
+    const v = render({ offline: true });
+    act(() => btn(v.host).click());
+    const text = rows(v.host).map((r) => r.textContent ?? "");
+    expect(text.some((t) => t.includes("Copy invite link"))).toBe(false);
+    expect(text).toContain("Play online");
+    act(() => rows(v.host).find((r) => r.textContent === "Play online")!.click());
+    expect(goOnline).toHaveBeenCalledTimes(1);
+    v.unmount();
+  });
+
+  it("hides Play online while the device is offline", () => {
+    const had = Object.getOwnPropertyDescriptor(Navigator.prototype, "onLine");
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    try {
+      const v = render({ offline: true });
+      act(() => btn(v.host).click());
+      expect(rows(v.host).map((r) => r.textContent)).not.toContain("Play online");
+      v.unmount();
+    } finally {
+      Reflect.deleteProperty(navigator, "onLine");
+      if (had) Object.defineProperty(Navigator.prototype, "onLine", had);
+    }
   });
 });

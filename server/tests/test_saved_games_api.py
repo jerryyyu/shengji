@@ -164,7 +164,7 @@ def test_events_keep_the_log_keys_minus_the_forbidden_ones(api):
     assert len(logged) == len(served["events"])
     for rec, ev in zip(logged, served["events"]):
         assert ev["e"] == rec["e"]
-        assert set(ev) == set(rec) - {"decision", "bot_seed"}
+        assert set(ev) == set(rec) - {"decision", "bot_seed", "ranked"}
         if rec["e"] != "round_start":
             assert ev == {k: rec[k] for k in ev}       # a finished round shows everything
     assert served["events"][0]["deck"] == logged[0]["deck"]
@@ -666,3 +666,31 @@ def test_every_segment_of_a_saved_game_counts(api):
     detail = client.get(f"/api/me/games/{t.game_id}", headers=owner_h).json()
     assert [r["rating_delta"] for r in detail["round_results"]] == [
         round(e["delta"]) for e in mine]
+
+
+def test_seat_presence_records_are_not_served_and_do_not_break_a_round(api):
+    from shengji.harvest import room_log
+
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    t = Table(srv, users=(owner, None, None, None))
+    t.start_round(first=True)
+    t.act(plays=5)
+    seat = t.room.seats[1]
+    srv._log_seat(t.room, "seat_disconnected", seat, "socket_closed")
+    srv._log_seat(t.room, "seat_reconnected", seat, "token")
+    srv._log_seat(t.room, "seat_left", seat, "leave")
+    t.act()
+    response = _round(client, owner_h, t.game_id, 1)
+    assert response.status_code == 200
+    served = response.json()
+    assert served["finished"] is True
+    kinds = [e["e"] for e in served["events"]]
+    assert not any(k.startswith("seat_") for k in kinds)
+    assert "ranked" not in served["events"][0]
+    raw = [json.loads(line) for line in (srv.LOG_DIR / "REPL.jsonl").read_text().splitlines()]
+    assert [r["e"] for r in raw if r["e"].startswith("seat_")] == [
+        "seat_disconnected", "seat_reconnected", "seat_left"]
+    assert raw[0]["e"] == "round_start" and raw[0]["ranked"] is False
+    records, _ = room_log.extract_round("REPL", 1, [r for r in raw if r["round"] == 1])
+    assert records

@@ -957,15 +957,15 @@ describe("one code for rooms and pairs", () => {
     expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ" });
   });
 
-  it("a ?code= link for a room prefills Join and waits for the player", async () => {
+  it("a ?code= link for a room goes into the room", async () => {
     window.history.replaceState(null, "", "/?code=wxyz");
     await renderApp();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
-    expect(playBox().value).toBe("WXYZ");
-    expect(sentTypes()).not.toContain("join_room");
-    expect(sentTypes()).not.toContain("peek_room");
+    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    say(seats("WXYZ"));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ" });
   });
 
   it("a ?code= link for a room with a name joins it, as ?room= does", async () => {
@@ -1427,6 +1427,23 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     const rows = [...document.querySelectorAll<HTMLElement>(".hud-menu-row")].map((r) => r.textContent);
     expect(rows).toContain("Copy invite link");
     expect(rows).toContain("Allow joinersoff");
+  });
+
+  it("a created ranked table's menu has Allow joiners too", async () => {
+    await open();
+    tell({
+      type: "state", room: "RANK", you: 0, phase: "play", ranked: true, allow_joiners: true, joining: [],
+      players: [0, 1, 2, 3].map((s) => ({
+        seat: s, name: `P${s}`, is_bot: s !== 0, connected: true, team: s % 2, cards_left: 3, is_banker: s === 1,
+        takeover_in: null, controller: s === 0 ? "human" : "bot", reserved_for: null, reserved_secs: null })),
+      hand: [{ id: 1, code: "S5" }], levels: ["2", "2"], games_won: [0, 0], banker: 1,
+      trump: { suit: "S", rank: "2", declarer: 1 }, turn: 1, declare_options: [], current_declaration: null,
+      passed: [], trick: { leader: 1, plays: [] }, last_trick: null, attacker_points: 0, kitty_count: 8,
+      message: null, notice: null, round_result: null,
+    });
+    click(q(".hud-more-btn"));
+    const rows = [...document.querySelectorAll<HTMLElement>(".hud-menu-row")].map((r) => r.textContent);
+    expect(rows).toContain("Allow joinerson");
   });
 
   it("a pair's offer highlights both partner seats, fixed, and Join takes them", async () => {

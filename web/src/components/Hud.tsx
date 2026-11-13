@@ -312,7 +312,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           {/* a guest is never rated, so its leave warning is the casual one even at a ranked table */}
           <LeaveButton ranked={mode === "ranked" && !guest} practice={practice} />
           <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked" && !guest} offline={practice}
-                   allowJoiners={state.matched && !state.joining_you ? state.allow_joiners ?? true : undefined} />
+                   allowJoiners={(state.matched || state.ranked) && !state.joining_you ? state.allow_joiners ?? true : undefined} />
         </div>
       </div>
       {/* the notice belongs to a trick of this round: it closes when the round ends */}

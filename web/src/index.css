@@ -5939,7 +5939,8 @@ button[role="switch"]:active .ios-switch {
 }
 .games-screen .btn.subtle:not(.games-back):disabled { opacity: 0.45; }
 
-/* Matchmaking queue: the Ranked sheet, the queue bar (a top-bar chip from 700px),
+/* Matchmaking queue: the Ranked sheet, the queue bar (from 700px Play's
+   Ranked card and a top-bar pill; a strip on a sideways phone),
    the Solo / With a friend and pair sheets (centred dialogs from 700px), the
    waiting table, the queue's notices and the table's matched-game note. */
 .q-find { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.15; }
@@ -5983,7 +5984,7 @@ button[role="switch"]:active .ios-switch {
 .q-bar .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(20px); }
 .q-bar-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .q-bar-acts .q-bots, .q-bar-acts .q-cancel {
-  height: 48px; min-width: 0; padding: 0 8px; border-radius: 14px; font-size: var(--fs-16);
+  height: 44px; min-width: 0; padding: 0 8px; border-radius: 14px; font-size: var(--fs-16);
   overflow: hidden; text-overflow: ellipsis;
 }
 .q-bar-acts .q-bots { font-weight: 700; }
@@ -6007,7 +6008,6 @@ button[role="switch"]:active .ios-switch {
 @media (prefers-reduced-motion: reduce) { .q-switch, .q-switch::after { transition: none; } }
 .q-wait:disabled { opacity: 0.45; cursor: default; }
 .q-chip .q-switch { order: -1; }
-.q-chip .q-wait { font-size: var(--fs-13); }
 .q-bots, .q-cancel {
   appearance: none; flex: none; height: 40px; padding: 0 8px; border: 0; border-radius: 10px;
   font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
@@ -6017,38 +6017,38 @@ button[role="switch"]:active .ios-switch {
 .q-bots:disabled, .q-cancel:disabled { opacity: 0.45; cursor: default; }
 .q-cancel.q-led { display: inline-flex; align-items: center; color: #bfe9cf; font-size: var(--fs-13); font-weight: 500; cursor: default; }
 
+/* the Ranked card on Play from 700px, in the column instead of over the page */
+.q-bar.q-card { margin: 0; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
+/* the top bar's pill back to Play while searching from another tab */
+.q-pill {
+  appearance: none; flex: none; display: inline-flex; align-items: center; gap: 8px; height: 44px;
+  margin-right: 12px; padding: 0 16px; border-radius: 22px; background: #1f4a33; border: 1px solid #2f7a52;
+  color: #fff; font: inherit; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums;
+  white-space: nowrap; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); cursor: pointer;
+}
+.q-pill.warn { background: #3f3415; border-color: #9a6f12; }
+
+/* a sideways phone's one-line chip, on a strip under its top bar */
 .q-chip {
-  display: flex; align-items: center; gap: 10px; height: 36px; margin-right: 12px; padding: 0 6px 0 14px;
+  display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 6px 0 14px;
   border-radius: 10px; background: #1f5d3a; border: 1px solid #2f8a57; color: #eafbea;
   font-size: var(--fs-14); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .q-chip .q-spin { width: 12px; height: 12px; }
-/* Queued, from 1440px the chip sits in the top bar: the end column takes the
-   room it needs and the tabs centre in what is left, and the chip drops its
-   title (still in its tooltip). Narrower wide windows cannot fit it beside
-   four tabs, so the whole chip rides on a strip under the top bar instead. */
-.q-strip { display: none; }
-@media (min-width: 700px) and (max-width: 1439px) {
-  .topbar .q-chip { display: none; }
-  .q-strip {
-    flex: none; display: flex; justify-content: center;
-    padding: 6px max(16px, env(safe-area-inset-right, 0px)) 6px max(16px, env(safe-area-inset-left, 0px));
-    background: #161a22; border-bottom: 0.5px solid var(--grp-line);
-  }
-  .q-strip .q-chip { margin: 0; max-width: 100%; }
+.q-strip {
+  flex: none; display: flex; justify-content: center;
+  padding: 6px max(16px, env(safe-area-inset-right, 0px)) 6px max(16px, env(safe-area-inset-left, 0px));
+  background: #161a22; border-bottom: 0.5px solid var(--grp-line);
 }
-@media (min-width: 700px) and (max-width: 799px) {
+.q-strip .q-chip { margin: 0; max-width: 100%; }
+/* the narrowest sideways phones drop the title (still in the tooltip) */
+@media (max-width: 799px) {
   .q-strip .q-chip-title { display: none; }
-}
-@media (min-width: 1440px) {
-  .topbar .q-chip-title { display: none; }
-  .topbar:has(.q-chip) { grid-template-columns: auto 1fr auto; column-gap: 24px; }
-  .topbar:has(.q-chip) .topbar-tabs { justify-self: center; }
 }
 .q-chip { min-width: 0; flex-shrink: 1; }
 .q-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.q-chip .q-bots { height: 28px; padding: 0 9px; border-radius: 7px; font-size: var(--fs-13); }
-.q-chip .q-cancel { height: 28px; padding: 0 10px; border-radius: 7px; font-size: var(--fs-13); }
+.q-chip .q-wait { height: 44px; padding: 0 4px; font-size: var(--fs-15); }
+.q-chip .q-bots, .q-chip .q-cancel { height: 44px; padding: 0 12px; border-radius: 8px; font-size: var(--fs-15); }
 
 .q-layer { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; justify-content: flex-end; }
 .q-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }

@@ -466,12 +466,12 @@ def test_a_cookie_carrying_socket_gets_the_account_and_its_first_name(accounts_o
         assert room["players"][0]["name"] == "Jerry"
         seat = srv.rooms[room["room"]].seats[0]
         assert seat.user_id == 1 and not seat.is_bot
-        # A typed name still wins.
+        # A typed name does not replace the account's name.
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
             b.send_json({"type": "join_room", "room": room["room"], "name": "JY"})
             joined = _drain(b, "room")
             names = {p["seat"]: p["name"] for p in joined["players"]}
-            assert names[1] == "JY"
+            assert names[1] == "Jerry"
             assert srv.rooms[room["room"]].seats[1].user_id == 1
         # Nothing about the account reaches the wire.
         assert "user_id" not in str(joined) and "jerry@example.com" not in str(joined)
@@ -754,7 +754,7 @@ def test_patch_me_is_rate_limited_per_ip(accounts_on, keypair, client, monkeypat
     assert accounts_on.STORE.user(1)["display_name"] == "B"
 
 
-def test_a_chosen_display_name_is_the_room_default_but_a_typed_name_wins(accounts_on, keypair, client):
+def test_a_chosen_display_name_names_the_seat_whatever_name_is_typed(accounts_on, keypair, client):
     from shengji.api import server as srv
 
     private_pem, _ = keypair
@@ -770,12 +770,13 @@ def test_a_chosen_display_name_is_the_room_default_but_a_typed_name_wins(account
             b.send_json({"type": "join_room", "room": room["room"], "name": "JY"})
             joined = _drain(b, "room")
             names = {p["seat"]: p["name"] for p in joined["players"]}
-            assert names[1] == "JY"
+            assert names[1] == "Captain"
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as c:
             c.send_json({"type": "join_room", "room": room["room"], "name": ""})
             joined = _drain(c, "room")
             names = {p["seat"]: p["name"] for p in joined["players"]}
-            assert names[2] == "Captain"
+            # the account's dropped seat, which carries its name, is its own again
+            assert names == {0: "Captain", 1: "Captain"}
 
 
 # ------------------------------------------------------------ saved games

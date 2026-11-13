@@ -637,6 +637,20 @@ class Matchmaker:
         else:
             self._send(uid, self.queue_state(uid))
 
+    def renamed(self, uid: int, name: str) -> None:
+        """The account's name changed (its sockets' ``name`` already is the
+        new one): its pair and waiting table show it from now on."""
+        p = self._party(uid)
+        if p is not None and uid in p.names:
+            p.names[uid] = name
+            self._send_party(p)
+        e = self._entry(uid)
+        t = self._table(e)
+        if t is not None:
+            self._send_table(t)
+        elif e is not None:
+            self._send_state(e)
+
     # ---------------------------------------------------------- messages
     async def handle(self, conn: Conn, msg: dict, user_id: int | None) -> None:
         t = msg.get("type")

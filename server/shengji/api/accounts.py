@@ -880,6 +880,28 @@ class Store:
                 (user_id, game_id, len(game_id) + 1, game_id + "/")).fetchall()
         return {int(r["round_no"]): r["delta"] for r in rows}
 
+    def current_seat_names(self, game_ids: list[str], round_no: int) -> dict[str, dict[int, str]]:
+        """For each of ``game_ids``, seat -> the current effective name of
+        the account linked at that seat in round ``round_no``. Seats no
+        existing account held then are absent; no account id leaves here."""
+        if not game_ids:
+            return {}
+        marks = ",".join("?" * len(game_ids))
+        with closing(self._open()) as conn:
+            rows = conn.execute(
+                f"""SELECT p.game_id, p.seat, u.display_name, u.name
+                    FROM game_players p JOIN users u ON u.id = p.user_id
+                    WHERE p.game_id IN ({marks}) AND p.from_round <= ?
+                      AND (p.to_round IS NULL OR p.to_round >= ?)
+                    ORDER BY p.from_round""",
+                (*game_ids, round_no, round_no)).fetchall()
+        out: dict[str, dict[int, str]] = {}
+        for r in rows:
+            name = effective_name(dict(r))
+            if name and 0 <= r["seat"] < 4:
+                out.setdefault(r["game_id"], {})[int(r["seat"])] = name
+        return out
+
     @staticmethod
     def _links(conn: sqlite3.Connection, game_id: str, user_id: int) -> list[dict]:
         return [dict(r) for r in conn.execute(
@@ -1231,7 +1253,19 @@ async def patch_me(body: DisplayNamePatch, request: Request) -> dict:
     updated = await STORE.run(STORE.set_display_name, user["id"], name)
     if updated is None:
         raise HTTPException(status_code=401, detail="Not signed in.")
+    shown = effective_name(updated)
+    for hook in USER_RENAMED_HOOKS:
+        try:
+            hook(int(updated["id"]), shown)
+        except Exception:           # noqa: BLE001 - the rename is stored either way
+            log.exception("account-rename hook failed")
     return public_user(updated)
+
+
+# Called on the event loop with the id and the new effective name, after the
+# display name is stored: the game server renames the account's live sockets,
+# pair and seats.
+USER_RENAMED_HOOKS: list[Callable[[int, str], None]] = []
 
 
 # Called on the event loop with the id, before the row is deleted: the game

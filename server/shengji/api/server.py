@@ -9,6 +9,7 @@ import json
 import logging
 import random
 import time
+import weakref
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -2288,9 +2289,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
     me: Seat | None = None  # seat OBJECT — indexes shift when lobby seats leave
     my_gen = 0              # connection generation this socket owns
     # Optional sign-in, read once from the handshake cookie (a guest has none).
-    # The only things it changes: the seat remembers the account, and a player
-    # who typed no name is called by their account name (the display name
-    # they chose, else their first name) instead of "Player".
+    # It changes two things: the seat remembers the account, and a signed-in
+    # player is always called by the account's current name (the display
+    # name they chose, else their first name), whatever name the client sends.
     user = await accounts.websocket_user(ws)
     user_id = user["id"] if user else None
     default_name = accounts.effective_name(user) if user else ""
@@ -2301,9 +2302,14 @@ async def ws_endpoint(ws: WebSocket) -> None:
         return None if user_id is None or accounts.is_deleted(user_id) else user_id
 
     def player_name(raw: Any) -> str:
-        return str(raw or (default_name if account_id() is not None else "") or "Player")
+        # ``conn.name`` is the account's current name: ``rename_user`` keeps
+        # it up to date. A client-sent name is a guest's only.
+        if account_id() is not None:
+            return conn.name or "Player"
+        return str(raw or "Player")
 
     conn = matchmaking.Conn(ws, user_id, default_name)
+    LIVE_CONNS.add(conn)
     MATCHMAKER.connect(conn)
 
     try:
@@ -2526,6 +2532,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 # sign-out reconnect (or a guest's by-name
                                 # re-entry) brings none and clears it.
                                 me.user_id = account_id()
+                                if me.user_id is not None and me.name != name:
+                                    _rename_seat(target, me, name)
                                 saved_games.seat_changed(target, target.seats.index(me))
                             elif (target.game is None
                                   and (free := _empty_position(target)) is not None):
@@ -3346,6 +3354,54 @@ def detach_deleted_user(user_id: int) -> None:
 
 
 accounts.USER_DELETED_HOOKS.append(detach_deleted_user)
+
+# Every open socket's queue view, so a rename reaches the sockets it was
+# read into at the handshake.
+LIVE_CONNS: "weakref.WeakSet[matchmaking.Conn]" = weakref.WeakSet()
+
+
+def _rename_seat(room: Room, seat: Seat, name: str) -> None:
+    seat.name = name
+    if room.game is not None and room.evaluation is None and seat in room.seats:
+        room.log_event("seat_renamed", seat=room.seats.index(seat), name=name)
+
+
+async def _broadcast_locked(room: Room) -> None:
+    async with room.lock:
+        if rooms.get(room.code) is room and not room.aborted:
+            await broadcast(room)
+
+
+def rename_user(user_id: int, name: str) -> None:
+    """``PATCH /api/me`` hook: the account's new effective name replaces the
+    old one on its open sockets, in its pair and queue, and on every seat it
+    holds or is about to take; each room it sits in is sent a fresh frame."""
+    for conn in list(LIVE_CONNS):
+        if conn.user_id == user_id:
+            conn.name = name
+    MATCHMAKER.renamed(user_id, name)
+    for room in list(rooms.values()):
+        changed = False
+        for seat in room.seats:
+            if (seat is not None and not seat.is_bot and seat.user_id == user_id
+                    and seat.name != name):
+                _rename_seat(room, seat, name)
+                changed = True
+        for pj in room.pending_joins.values():
+            if pj.uid == user_id and pj.name != name:
+                pj.name = name
+                changed = True
+        for index in list(room.round_end_joins):
+            if room.seats[index].user_id == user_id:
+                room.round_end_joins[index] = name
+        if changed:
+            task = asyncio.get_running_loop().create_task(_broadcast_locked(room))
+            _RENAME_TASKS.add(task)
+            task.add_done_callback(_RENAME_TASKS.discard)
+
+
+_RENAME_TASKS: set[asyncio.Task] = set()
+accounts.USER_RENAMED_HOOKS.append(rename_user)
 # /api/auth/*, /api/me, /api/me/games: registered before the static mount so the catch-all
 # page handler never shadows them.
 accounts.register_accounts(app)

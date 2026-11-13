@@ -70,6 +70,8 @@ beforeEach(() => {
   haptics.length = 0;
   sent.length = 0;
   link.status = "open";
+  // these tests are about the table, not the newcomer coach
+  localStorage.setItem("shengji.coach", "off");
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -77,6 +79,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  localStorage.removeItem("shengji.coach");
 });
 const render = (s: GameState) => act(() => root.render(<Table state={s} />));
 

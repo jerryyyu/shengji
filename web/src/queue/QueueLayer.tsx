@@ -2,8 +2,6 @@ import { useEffect } from "react";
 import type { ConnStatus } from "../ws";
 import { PartySheet, SoloSheet } from "./PartySheet";
 import { queue, useQueue } from "./store";
-import OpenTableOffer from "./OpenTableOffer";
-import WaitingTable from "./WaitingTable";
 
 /** Read a `?party=CODE` invite link once and drop it from the address. */
 function takeInviteCode(): string | null {
@@ -16,9 +14,9 @@ function takeInviteCode(): string | null {
   return code;
 }
 
-/** Everything of the queue that floats over any screen: the waiting table,
- *  an open-table offer, the Solo / With a friend and pair sheets, and the
- *  queue's notices. */
+/** Everything of the queue that floats over any screen: the Solo / With a
+ *  friend and pair sheets, and the queue's notices. The table itself is a
+ *  panel on Play (TablePanel). */
 export default function QueueLayer({ status }: { status: ConnStatus }) {
   const q = useQueue();
   useEffect(() => {
@@ -40,8 +38,6 @@ export default function QueueLayer({ status }: { status: ConnStatus }) {
     <>
       {q.sheet === "solo" ? <SoloSheet /> : null}
       {q.sheet === "party" ? <PartySheet /> : null}
-      <WaitingTable />
-      <OpenTableOffer />
       {q.note ? (
         <div key={q.note.id} className="q-toast" role="status">
           <span className="q-toast-i" aria-hidden="true">!</span>

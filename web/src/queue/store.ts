@@ -91,6 +91,9 @@ export interface QueueView {
   botsPaused: boolean;
   /** Local ms a queue cooldown ends (Play counts it down); null when none runs. */
   cooldownUntil: number | null;
+  /** The cooldown came as the answer to a Play, whose message the lobby
+   *  already shows; Play need not say why again. */
+  cooldownTold: boolean;
   /** The search is held by another socket of yours (another device or
    *  window): shown, but its table and controls live there. */
   elsewhere: boolean;
@@ -105,7 +108,7 @@ export interface QueueView {
 const EMPTY: QueueView = {
   count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
   partyId: null, pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
-  cooldownUntil: null, party: null, partyError: null, sheet: null, joinCode: "", note: null,
+  cooldownUntil: null, cooldownTold: false, party: null, partyError: null, sheet: null, joinCode: "", note: null,
 };
 
 /** The name you play under: the account's, or a guest's own. */
@@ -117,6 +120,11 @@ function myName(): string {
 /** The other member of a pair, by name. */
 export function partnerName(party: PartyMsg | null): string | null {
   return party?.members.find((m) => !m.you)?.name ?? null;
+}
+
+/** The names of the others at a waiting table. */
+function othersAt(t: TableView | null): string[] {
+  return t ? t.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
 }
 
 export class QueueStore {
@@ -172,7 +180,7 @@ export class QueueStore {
     this.droppedWhileQueued = false;
     this.findAfterSignIn = false;
     this.set({ ...EMPTY, count: this.view.count, note: null });
-    if (searching) this.notify("Signed in. Press Play to search again.");
+    if (searching) this.notify("Signed in. Press Play to find a table.");
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -282,7 +290,7 @@ export class QueueStore {
         this.joinSentAt = null;
         this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false,
                    offer: null, openTables: 0, botsPaused: false, elsewhere: false });
-        if (held) this.notify("You left the queue while away.", "No cooldown.");
+        if (held) this.notify("You left the table while away.", "No cooldown.");
       }, RESYNC_MS);
     }
   }
@@ -300,12 +308,13 @@ export class QueueStore {
           const leaving = this.view.pending === "leave";
           this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
                      pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
-                     cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null });
+                     cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null,
+                     cooldownTold: false });
           if (msg.replaced && wasQueued) {
             const there = msg.by === "window" ? "window" : "device";
-            this.notify(msg.stopped ? `Search stopped from another ${there}.` : `Your search moved to another ${there}.`);
+            this.notify(msg.stopped ? `Your table was closed from another ${there}.` : `Your table moved to another ${there}.`);
           } else if (wasQueued && !leaving && !msg.replaced) {
-            this.notify("You're no longer searching.", "Press Play to search again.");
+            this.notify("You're no longer at a table.", "Press Play to find one.");
           }
           break;
         }
@@ -325,8 +334,9 @@ export class QueueStore {
         }
         this.joinSentAt = null;
         const table = msg.table ? this.tableView(msg.table) : null;
-        // someone sat down with you: the bar grows into the table
+        // someone sat down with you: your table becomes a shared one
         if (table && !this.view.table) haptic("declare");
+        const left = othersAt(this.view.table).filter((n) => !othersAt(table).includes(n));
         const pending = this.view.pending === "bots" ? "bots"
           : this.view.pending === "start" && table && !table.youReady ? "start" : null;
         const offer = msg.offer ? this.offerView(msg.offer) : null;
@@ -340,6 +350,8 @@ export class QueueStore {
           pending, table, offer, openTables: msg.open_tables ?? 0, botsPaused: msg.bots_paused === true,
           elsewhere: false, cooldownUntil: null,
         });
+        if (left.length === 1) this.notify(`${left[0]} left the table.`);
+        else if (left.length > 1) this.notify(`${left.join(" and ")} left the table.`);
         break;
       }
       case "match_started":
@@ -362,10 +374,10 @@ export class QueueStore {
         if (msg.reason === "idle") {
           this.notify("You left the table.", "No tap for 2 minutes. No cooldown.");
         } else if (msg.reason === "away") {
-          this.notify(by ? `${by} left the queue while away.` : "You left the queue while away.",
+          this.notify(by ? `${by} left the table while away.` : "You left the table while away.",
                       "No cooldown.");
         } else if (msg.reason === "in_room" && by) {
-          this.notify(`${by} joined a room, so your search ended.`);
+          this.notify(`${by} joined a room, so you left the table.`);
         }
         break;
       }
@@ -413,7 +425,7 @@ export class QueueStore {
           this.set({ pending: null, partyError: msg.message });
         } else if (msg.code === "cooldown") {
           // the lobby shows the server's message; Play counts down to the end
-          this.set({ pending: null,
+          this.set({ pending: null, cooldownTold: true,
                      cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : this.view.cooldownUntil });
         } else if (msg.code === "seat_taken") {
           this.set({ pending: null });
@@ -457,7 +469,7 @@ export class QueueStore {
       if (this.view.pending !== "join") return;
       this.joinSentAt = null;
       this.set({ pending: null });
-      this.notify("Couldn't start searching.", "Press Play to try again.");
+      this.notify("Couldn't open a table.", "Press Play to try again.");
       if (this.status === "open") this.askStatus();
     }, CONFIRM_MS);
   }

@@ -1785,6 +1785,76 @@ def test_an_unknown_room_level_is_refused_not_coerced(client):
         assert srv.rooms[code].start_level == "2"
 
 
+# ------------------------------------------------------------------ Ranked switch
+# A created room starts unranked; its host may switch Ranked on or off in the
+# lobby (``set_ranked``), and every seat sees the mode in the room frame.
+def test_the_host_switches_ranked_and_every_seat_sees_it(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as host:
+        host.send_json({"type": "create_room", "name": "jerry"})
+        first = _drain(host, "room")
+        code = first["room"]
+        assert "ranked" not in first and srv.rooms[code].ranked is False
+        with client.websocket_connect("/ws") as guest:
+            guest.send_json({"type": "join_room", "room": code, "name": "robin"})
+            _drain(guest, "room")
+            _drain(host, "room")
+            host.send_json({"type": "set_ranked", "on": True})
+            assert _drain(host, "room")["ranked"] is True
+            assert _drain(guest, "room")["ranked"] is True
+            assert srv.rooms[code].ranked is True
+            host.send_json({"type": "set_ranked", "on": False})
+            assert "ranked" not in _drain(guest, "room")
+            assert srv.rooms[code].ranked is False
+
+
+def test_only_the_host_can_switch_ranked(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as host:
+        host.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(host, "room")["room"]
+        with client.websocket_connect("/ws") as guest:
+            guest.send_json({"type": "join_room", "room": code, "name": "robin"})
+            _drain(guest, "room")
+            guest.send_json({"type": "set_ranked", "on": True})
+            assert "host" in _drain(guest, "error")["message"].lower()
+            assert srv.rooms[code].ranked is False
+
+
+def test_ranked_is_fixed_once_the_game_starts(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        for _ in range(3):
+            _drain(a, "room")
+        a.send_json({"type": "set_ranked", "on": True})
+        _drain(a, "room")
+        a.send_json({"type": "start_game"})
+        assert _drain(a, "state")["ranked"] is True
+        a.send_json({"type": "set_ranked", "on": False})
+        # the refusal queues behind the deal's broadcasts, as for the level
+        assert "fixed" in _drain(a, "error", tries=400)["message"].lower()
+        assert srv.rooms[code].ranked is True
+
+
+def test_a_guest_joins_a_ranked_created_room_by_code(client):
+    """A created ranked room keeps the open join: the queue-only refusals
+    belong to queue-matched rooms."""
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as host:
+        host.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(host, "room")["room"]
+        host.send_json({"type": "set_ranked", "on": True})
+        _drain(host, "room")
+        with client.websocket_connect("/ws") as guest:
+            guest.send_json({"type": "peek_room", "room": code})
+            assert "ranked" not in _drain(guest, "room_seats")
+            guest.send_json({"type": "join_room", "room": code, "name": "robin"})
+            joined = _drain(guest, "room")
+            assert joined["you"] == 1 and joined["ranked"] is True
+            assert [s.name for s in srv.rooms[code].seats] == ["jerry", "robin"]
+
+
 def test_the_room_level_reaches_the_dealt_round(client):
     """End to end: the level set in the room must be what round 1 is DEALT at."""
     from shengji.api import server as srv

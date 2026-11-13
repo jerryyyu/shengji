@@ -52,11 +52,12 @@ function signedDelta(delta: number): string {
 /** The viewer's own rating after the round (the server sends it only to a
  *  signed-in seat, once the round is stored); a guest at a deployment with
  *  sign-in gets Sign in to be ranked in its place. ``total`` shows the whole
- *  game's change where a game was won. */
-export function RatingLine({ result, total }: { result: RoundResult; total: boolean }) {
+ *  game's change where a game was won. An unranked room shows neither. */
+export function RatingLine({ result, total, ranked }: { result: RoundResult; total: boolean; ranked: boolean }) {
   const account = useAuth();
   const [signingIn, setSigningIn] = useState(false);
   const rating = result.rating;
+  if (!ranked) return null;
   if (result.unranked === "joined") {
     return <div className="rating-line rating-unranked"><span>Unranked · joined mid-round</span></div>;
   }
@@ -106,6 +107,7 @@ function cardPoints(code: string): number {
 
 export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
   const titleId = useId();
+  const ranked = !!(state.matched || state.ranked);
   const nextBankerName =
     state.players.find((p) => p.seat === result.next_banker)?.name ?? `Seat ${result.next_banker}`;
   // attacker_points is the final total (kitty bonus already included);
@@ -132,7 +134,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
           <p className="victory-sub">
             Final levels — Blue: {result.new_levels[0]} · Orange: {result.new_levels[1]}
           </p>
-          <RatingLine result={result} total />
+          <RatingLine result={result} total ranked={ranked} />
           <button
             className="btn primary big"
             onClick={() => conn.leaveToLobby()}
@@ -165,7 +167,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
           <span className="result-score">Attackers {total} of 80</span>
         </div>
 
-        <RatingLine result={result} total={result.point_scored} />
+        <RatingLine result={result} total={result.point_scored} ranked={ranked} />
 
         <details className="result-details">
           <summary>Details</summary>
@@ -269,7 +271,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
               {/* The modal dialog makes the HUD inert, so its Leave control
                   is unreachable here; without this, a player waiting on
                   others has no way out until everyone confirms. */}
-              <LeaveButton variant="dialog" ranked={!!state.matched} betweenRounds />
+              <LeaveButton variant="dialog" ranked={ranked} betweenRounds />
             </>
           );
         })()}

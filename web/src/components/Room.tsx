@@ -7,6 +7,7 @@ import { prefersReducedMotion } from "../motion";
 import MuteButton from "./MuteButton";
 import { codeLink } from "../codes";
 import { seatPos } from "./TrickArea";
+import { RankedChip } from "../queue/Ranked";
 
 /** Movement before a press on a seat becomes a drag; less stays a tap. */
 const SEAT_DRAG_START = 8;
@@ -318,6 +319,9 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
 export default function Room({ room }: { room: RoomMsg }) {
   const [copied, setCopied] = useState(false);
   const isHost = room.you === room.host;
+  // a queue room is always ranked; a created one when its host switched it on
+  const ranked = !!(room.matched || room.ranked);
+  const canSwitchRanked = isHost && !room.matched && !room.experimental_policy;
 
   const invite = () => {
     void shareInvite(room.room).then((didCopy) => {
@@ -344,7 +348,7 @@ export default function Room({ room }: { room: RoomMsg }) {
             Leave
           </button>
           <span className="room-title">
-            Room{room.matched ? null : <span className="unranked-tag">UNRANKED</span>}
+            Room{ranked ? <RankedChip /> : <span className="unranked-tag">UNRANKED</span>}
           </span>
           <span className="room-head-end"><MuteButton /></span>
         </div>
@@ -387,6 +391,17 @@ export default function Room({ room }: { room: RoomMsg }) {
             </span>
           </div>
         )}
+        {canSwitchRanked ? (
+          // the mode is fixed when the game starts; until then the host may flip it
+          <button type="button" className="room-ranked-row" role="switch" aria-checked={ranked}
+                  onClick={() => conn.send({ type: "set_ranked", on: !ranked })}>
+            <span className="room-ranked-text">
+              <span className="field-label">Ranked</span>
+              <span className="room-ranked-note">Rates signed-in players</span>
+            </span>
+            <span className={`ios-switch${ranked ? " on" : ""}`} aria-hidden="true" />
+          </button>
+        ) : null}
         {room.experimental_policy === "w32" ? (
           <span className="chip experimental-marker">Experimental W32</span>
         ) : null}

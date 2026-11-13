@@ -332,6 +332,11 @@ class Room:
     ratings: Any = field(default=None, init=False, repr=False)
     # Built by the matchmaking queue rather than by a player's create_room.
     matched: bool = False
+    # A created room's Ranked switch (``set_ranked``): its rounds are rated
+    # (``ratings.ranked``). Off at creation; the host may change it only
+    # before the game starts. A matched room is always ranked and keeps this
+    # off.
+    ranked: bool = False
     # The waiting table this matched room was formed from (its id; None for
     # a game one entry started alone with bots) and how many people sat at
     # it. Server-only: what an open-table offer reads to find bot seats.
@@ -808,6 +813,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "notice": rnd.notice,
         **({"matched": True, "allow_joiners": room.allow_joiners,
             "joining": _join_notices(room)} if room.matched else {}),
+        **({"ranked": True} if room.ranked else {}),
     }
 
 
@@ -818,6 +824,7 @@ def room_json(room: Room, seat: int) -> dict:
         **({"experimental_policy": room.experimental_policy}
            if room.experimental_policy else {}),
         **({"matched": True} if room.matched else {}),
+        **({"ranked": True} if room.ranked else {}),
         "ready": sorted(room.ready),
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
@@ -2006,6 +2013,17 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         if level not in RANKS:
             raise IllegalPlay("Unknown starting level.")
         room.start_level = level
+    elif t == "set_ranked":
+        # A created room's Ranked switch: host-only, lobby-only (start_game
+        # fixes the mode for the game), and never on a queue room (always
+        # ranked) or a test or evaluation room (never rated).
+        if seat != room.host:
+            raise IllegalPlay("Only the host can change Ranked.")
+        if room.game:
+            raise IllegalPlay("Ranked is fixed once the game has started.")
+        if room.matched or not ratings.eligible(room):
+            raise IllegalPlay("This room's mode can't be changed.")
+        room.ranked = msg.get("on") is True
     elif t == "start_game":
         if seat != room.host:
             raise IllegalPlay("Only the host can start.")

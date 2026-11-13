@@ -2404,8 +2404,10 @@ def test_ws_one_device_is_refused_a_second_seat_at_a_ranked_table(wsenv, monkeyp
     with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=host_headers) as h, \
             client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         code, room = _start_ranked(srv, h)
+        # a guest on the device of an account's seat there is that account
+        # signed out: it is told to sign in, never seated a second time
         g.send_json({"type": "join_room", "room": code, "name": "Guesty", "seat": 2})
-        assert _drain(g, "error")["code"] == "same_device"
+        assert _drain(g, "error")["code"] == "ranked_queue_only"
         assert room.pending_joins == {}
 
         class Sock:
@@ -2645,7 +2647,8 @@ def test_ws_a_guest_reconnecting_as_a_guest_keeps_its_waiting_table_seat(wsenv):
 
 def _same_device_lobby(srv, store, client):
     """A created casual room: its host signed in on DEVICE_A, a guest on the
-    same device in seat 1."""
+    same device in seat 1 (a joiner sits as the host's partner, so the host
+    moves it there)."""
     _, headers = _user(store, "host", "Host Person")
     host = client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers)
     guest = client.websocket_connect(f"/ws?device={DEVICE_A}")
@@ -2654,6 +2657,9 @@ def _same_device_lobby(srv, store, client):
     code = _drain(h, "room")["room"]
     g.send_json({"type": "join_room", "room": code, "name": "Guesty"})
     _drain(g, "room")
+    h.send_json({"type": "swap_seats", "a": 2, "b": 1})
+    _next(g, "room", lambda m: m["you"] == 1)
+    _next(h, "room", lambda m: [p["seat"] for p in m["players"]] == [0, 1])
     room = srv.rooms[code]
     assert [sd.device for sd in room.seats[:2]] == [DEVICE_A, DEVICE_A]
     return (host, guest), h, g, room
@@ -2988,3 +2994,35 @@ def test_ws_the_signed_out_guest_asking_for_the_seat_without_a_token_is_told_to_
         g.send_json({"type": "join_room", "room": code, "name": "Player"})
         assert _drain(g, "error")["code"] == "ranked_queue_only"
     assert room.pending_joins == {} and [s.is_bot for s in room.seats] == [False, True, True, True]
+
+
+# ------------------------------------------------ joined seats and guests in frames
+def test_a_seat_joined_this_round_says_so_until_the_round_ends(otenv):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+    t.first_round()
+    room = t.room
+    assert "joined_round" not in srv.state_for(room, 0)
+    room.seats[2].joined_round = room.game.round_no
+    room.seats[2].is_bot = False
+    assert srv.state_for(room, 2)["joined_round"] is True
+    assert "joined_round" not in srv.state_for(room, 0)
+    room.round.phase = "round_end"
+    assert "joined_round" not in srv.state_for(room, 2)
+
+
+def test_every_seat_without_an_account_at_a_matched_table_is_a_guest(otenv, monkeypatch):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+    t.first_round()
+    room = t.room
+    room.seats[1] = srv.Seat(name="G", queue_id=-4, connected=True)
+    # whether or not the room's rounds are rated
+    monkeypatch.setattr(srv.ratings, "ranked", lambda r: False)
+    assert srv.state_for(room, 1)["guest"] is True
+    assert "guest" not in srv.state_for(room, 0)
+    assert "guest" not in srv.state_for(room, 2)
+    room.matched = False
+    assert "guest" not in srv.state_for(room, 1)

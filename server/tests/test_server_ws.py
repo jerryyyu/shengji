@@ -658,20 +658,24 @@ def test_state_reports_takeover_countdown(client):
 
 
 def _four_humans(client, a, sockets: ExitStack):
-    """Room of 4 HUMANS mid-game — no bot seat anywhere."""
+    """Room of 4 HUMANS mid-game — no bot seat anywhere: jerry, amy, bo and
+    cy in seats 0-3, their sockets and stacks returned in the order amy, bo,
+    cy. The first joiner takes the host's partner seat, so bo joins first."""
     from shengji.api import server as srv
 
     a.send_json({"type": "create_room", "name": "jerry"})
     code = _drain(a, "room")["room"]
-    peers, peer_stacks = [], []
-    for n in ("amy", "bo", "cy"):
+    joined = {}
+    for n in ("bo", "amy", "cy"):
         peer_stack = ExitStack()
         sockets.callback(peer_stack.close)
         w = peer_stack.enter_context(client.websocket_connect("/ws"))
         w.send_json({"type": "join_room", "room": code, "name": n})
         _drain(w, "room")
-        peers.append(w)
-        peer_stacks.append(peer_stack)
+        joined[n] = (w, peer_stack)
+    assert [s.name for s in srv.rooms[code].seats] == ["jerry", "amy", "bo", "cy"]
+    peers = [joined[n][0] for n in ("amy", "bo", "cy")]
+    peer_stacks = [joined[n][1] for n in ("amy", "bo", "cy")]
     a.send_json({"type": "start_game"})
     _drain(a, "state", tries=60)
     return code, srv.rooms[code], peers, peer_stacks
@@ -1074,14 +1078,14 @@ def test_displaced_socket_cannot_act(client):
                            "name": "bob", "token": tok})
             _drain(new, "room")
             room = srv.rooms[code]
-            assert room.seats[1].connected
+            assert room.seats[2].connected     # the host's partner seat
 
             old.send_json({"type": "leave_room"})  # displaced socket acts
             err = _drain(old, "error")
             assert err["code"] == "stale_connection"
             assert code in srv.rooms, "stale leave deleted the room"
-            assert len(room.seats) == 2, "stale leave removed the live seat"
-            assert room.seats[1].connected, \
+            assert len(room.seats) == 3, "stale leave removed the live seat"
+            assert room.seats[2].connected, \
                 "stale leave detached the live socket"
 
 
@@ -1836,9 +1840,23 @@ def test_an_unknown_room_level_is_refused_not_coerced(client):
 # ------------------------------------------------------------------ Ranked switch
 # A created room starts unranked; its host may switch Ranked on or off in the
 # lobby (``set_ranked``), and every seat sees the mode in the room frame.
-def test_the_host_switches_ranked_and_every_seat_sees_it(client):
+# Ranked needs a signed-in player seated, so these hosts sign in.
+@pytest.fixture()
+def host_account(tmp_path, monkeypatch):
+    """Handshake headers for a signed-in host named jerry."""
+    from shengji.api import accounts
+    from tests.test_accounts import _claims
+
+    store = accounts.Store(tmp_path / "accounts" / "accounts.sqlite3")
+    monkeypatch.setattr(accounts, "STORE", store)
+    user = store.upsert_user(_claims(sub="host-jerry", email="host@example.com",
+                                     name="jerry", given_name="jerry"))
+    return {"cookie": f"sj_session={store.create_session(user['id'])}"}
+
+
+def test_the_host_switches_ranked_and_every_seat_sees_it(client, host_account):
     from shengji.api import server as srv
-    with client.websocket_connect("/ws") as host:
+    with client.websocket_connect("/ws", headers=host_account) as host:
         host.send_json({"type": "create_room", "name": "jerry"})
         first = _drain(host, "room")
         code = first["room"]
@@ -1869,9 +1887,9 @@ def test_only_the_host_can_switch_ranked(client):
             assert srv.rooms[code].ranked is False
 
 
-def test_ranked_is_fixed_once_the_game_starts(client):
+def test_ranked_is_fixed_once_the_game_starts(client, host_account):
     from shengji.api import server as srv
-    with client.websocket_connect("/ws") as a:
+    with client.websocket_connect("/ws", headers=host_account) as a:
         code = _room_with_bots(a)
         for _ in range(3):
             _drain(a, "room")
@@ -1885,11 +1903,11 @@ def test_ranked_is_fixed_once_the_game_starts(client):
         assert srv.rooms[code].ranked is True
 
 
-def test_a_guest_joins_a_ranked_created_room_by_code(client):
+def test_a_guest_joins_a_ranked_created_room_by_code(client, host_account):
     """A created ranked room keeps the open join: the queue-only refusals
     belong to queue-matched rooms."""
     from shengji.api import server as srv
-    with client.websocket_connect("/ws") as host:
+    with client.websocket_connect("/ws", headers=host_account) as host:
         host.send_json({"type": "create_room", "name": "jerry"})
         code = _drain(host, "room")["room"]
         host.send_json({"type": "set_ranked", "on": True})
@@ -1899,8 +1917,8 @@ def test_a_guest_joins_a_ranked_created_room_by_code(client):
             assert "ranked" not in _drain(guest, "room_seats")
             guest.send_json({"type": "join_room", "room": code, "name": "robin"})
             joined = _drain(guest, "room")
-            assert joined["you"] == 1 and joined["ranked"] is True
-            assert [s.name for s in srv.rooms[code].seats] == ["jerry", "robin"]
+            assert joined["you"] == 2 and joined["ranked"] is True
+            assert _names(srv.rooms[code]) == ["jerry", None, "robin"]
 
 
 def test_the_room_level_reaches_the_dealt_round(client):
@@ -2028,11 +2046,15 @@ def test_heartbeat_ignores_invalid_nonce_without_breaking_next_request(client):
 
 
 def _host_and_guest(client, a, b):
-    """Host `jerry` at seat 0, guest `james` at seat 1, both in the lobby."""
+    """Host `jerry` at seat 0, guest `james` at seat 1, both in the lobby.
+    A joiner takes the host's partner seat (2), so the host moves james to 1."""
     a.send_json({"type": "create_room", "name": "jerry"})
     code = _drain(a, "room")["room"]
     b.send_json({"type": "join_room", "room": code, "name": "james"})
-    assert _drain(b, "room")["you"] == 1
+    assert _drain(b, "room")["you"] == 2
+    a.send_json({"type": "swap_seats", "a": 2, "b": 1})
+    _room_until(b, lambda m: m["you"] == 1)
+    _room_until(a, lambda m: [p["seat"] for p in m["players"]] == [0, 1])
     return code
 
 
@@ -2120,7 +2142,7 @@ def test_swapping_two_empty_seats_is_refused(client):
         assert _drain(a, "error")["message"] == "Both seats are empty."
 
 
-def test_join_fills_the_lowest_empty_seat(client):
+def test_join_takes_the_partner_seat_then_the_lowest_empty_one(client):
     from shengji.api import server as srv
     with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
         code = _host_and_guest(client, a, b)
@@ -2128,11 +2150,11 @@ def test_join_fills_the_lowest_empty_seat(client):
         _room_until(b, lambda m: m["you"] == 3)
         with client.websocket_connect("/ws") as c:
             c.send_json({"type": "join_room", "room": code, "name": "amy"})
-            assert _drain(c, "room")["you"] == 1
+            assert _drain(c, "room")["you"] == 2
             with client.websocket_connect("/ws") as d:
                 d.send_json({"type": "join_room", "room": code, "name": "ben"})
-                assert _drain(d, "room")["you"] == 2
-        assert _names(srv.rooms[code])[:2] == ["jerry", "amy"]
+                assert _drain(d, "room")["you"] == 1
+        assert _names(srv.rooms[code])[:3] == ["jerry", "ben", "amy"]
 
 
 def test_start_fills_gaps_with_bots_in_those_seats(client):
@@ -2361,7 +2383,9 @@ def test_remove_of_a_replaced_occupant_is_refused(client):
             _drain(b, "left")
         with client.websocket_connect("/ws") as c:
             c.send_json({"type": "join_room", "room": code, "name": "amy"})
-            assert _drain(c, "room")["you"] == 1
+            assert _drain(c, "room")["you"] == 2
+            a.send_json({"type": "swap_seats", "a": 2, "b": 1})
+            _room_until(c, lambda m: m["you"] == 1)
             a.send_json({"type": "remove_player", "seat": 1, "expect": meant})
             err = _drain(a, "error")
             assert err["code"] == "seat_changed"
@@ -2877,10 +2901,10 @@ def test_an_absence_inside_the_takeover_window_is_not_covered_by_the_pump(client
         assert _plays_by(room, 1) == 0 and srv._auto_mode(room, 1) is None
 
 
-def test_ranked_switches_the_move_timer_on_and_back(client):
+def test_ranked_switches_the_move_timer_on_and_back(client, host_account):
     from shengji.api import server as srv
 
-    with client.websocket_connect("/ws") as a:
+    with client.websocket_connect("/ws", headers=host_account) as a:
         code = _room_with_bots(a)
         room = srv.rooms[code]
         _drain(a, "room", tries=60)

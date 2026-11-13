@@ -791,6 +791,9 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
     me = room.seats[seat]
     # a person with no account at a rated table: plays, is never rated
     guest = ratings.ranked(room) and not me.is_bot and me.user_id is None
+    # the frame's guest flag also marks every person with no account at a
+    # queue-matched table, rated or not
+    guest_seat = guest or (room.matched and not me.is_bot and me.user_id is None)
     return {
         "type": "state",
         **({"experimental_policy": room.experimental_policy}
@@ -865,7 +868,11 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         **({"allow_joiners": room.allow_joiners, "joining": _join_notices(room)}
            if room.matched or room.ranked else {}),
         **({"ranked": True} if room.ranked else {}),
-        **({"guest": True} if guest else {}),
+        **({"guest": True} if guest_seat else {}),
+        # took this seat from an open table during this round: the round is
+        # not ranked for them, and leaving it costs a queue wait
+        **({"joined_round": True}
+           if me.joined_round == game.round_no and rnd.phase != "round_end" else {}),
     }
 
 

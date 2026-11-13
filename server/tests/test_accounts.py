@@ -471,8 +471,8 @@ def test_a_cookie_carrying_socket_gets_the_account_and_its_first_name(accounts_o
             b.send_json({"type": "join_room", "room": room["room"], "name": "JY"})
             joined = _drain(b, "room")
             names = {p["seat"]: p["name"] for p in joined["players"]}
-            assert names[1] == "Jerry"
-            assert srv.rooms[room["room"]].seats[1].user_id == 1
+            assert names[2] == "Jerry"      # a joiner sits as the host's partner
+            assert srv.rooms[room["room"]].seats[2].user_id == 1
         # Nothing about the account reaches the wire.
         assert "user_id" not in str(joined) and "jerry@example.com" not in str(joined)
 
@@ -534,7 +534,7 @@ def test_page_open_then_login_then_create_room_binds_the_account(accounts_on, ke
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
             b.send_json({"type": "join_room", "room": room["room"], "name": "Phone"})
             _drain(b, "room")
-            assert srv.rooms[room["room"]].seats[1].user_id == 1
+            assert srv.rooms[room["room"]].seats[2].user_id == 1   # the partner seat
 
 
 def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socket(
@@ -770,13 +770,13 @@ def test_a_chosen_display_name_names_the_seat_whatever_name_is_typed(accounts_on
             b.send_json({"type": "join_room", "room": room["room"], "name": "JY"})
             joined = _drain(b, "room")
             names = {p["seat"]: p["name"] for p in joined["players"]}
-            assert names[1] == "Captain"
+            assert names[2] == "Captain"    # a joiner sits as the host's partner
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as c:
             c.send_json({"type": "join_room", "room": room["room"], "name": ""})
             joined = _drain(c, "room")
             names = {p["seat"]: p["name"] for p in joined["players"]}
             # the account's dropped seat, which carries its name, is its own again
-            assert names == {0: "Captain", 1: "Captain"}
+            assert names == {0: "Captain", 2: "Captain"}
 
 
 # ------------------------------------------------------------ saved games

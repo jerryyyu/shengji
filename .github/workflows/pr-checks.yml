@@ -249,6 +249,7 @@ jobs:
           tests/test_production_package_gate.py
           tests/test_decision_diagram.py
           tests/test_release_ladder.py
+          tests/test_search_models.py
           tests/test_prepare_llm_panel_roots.py
           tests/test_panel_root_import.py
           tests/test_prepared_panel_runner.py

@@ -6439,8 +6439,8 @@ dialog.leave-alert-backdrop {
 }
 .rating-unranked { color: var(--text-dim); }
 /* Live chat beside the seat that said it: one ellipsized line for a few
-   seconds, then it fades. The layer passes taps through; a bubble opens the
-   panel. ChatBubbles.tsx places each one clear of the trick and the hand. */
+   seconds, then it fades. The layer passes taps through; a tap or a sideways
+   swipe on a bubble dismisses it. ChatBubbles.tsx places each one clear of the trick and the hand. */
 .chat-bubbles {
   position: fixed;
   inset: 0;
@@ -6467,6 +6467,8 @@ dialog.leave-alert-backdrop {
   text-align: left;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   cursor: pointer;
+  /* a vertical drag still scrolls; a sideways one is the dismiss swipe */
+  touch-action: pan-y;
   animation: chat-bubble-life 5s linear both;
 }
 /* the corner nearest the seat is pinched, pointing the bubble at it */

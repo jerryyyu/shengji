@@ -120,17 +120,149 @@ it("pops nothing for a muted seat, a system line or replayed history", () => {
   expect(bubbleText()).toEqual(["3:Cy: fresh"]);
 });
 
-it("shows none while the panel is open, clears them when it opens, and a tap opens it", () => {
+it("shows none while the panel is open and clears them when the launcher opens it", () => {
   render();
-  serverSays(line(1, 1, "tap me"));
-  act(() => bubbles()[0].click());
+  serverSays(line(1, 1, "hello"));
+  act(() => host.querySelector<HTMLButtonElement>(".chat-launch")!.click());
   const panel = host.querySelector(".chat-panel")!;
   expect(panel.getAttribute("aria-hidden")).toBeNull();
   expect(bubbles()).toHaveLength(0);
   serverSays(line(2, 2, "while open"));
   expect(bubbles()).toHaveLength(0);
   // the line still reaches the panel
-  expect(panel.textContent).toContain("tap me");
+  expect(panel.textContent).toContain("hello");
+});
+
+const panelShut = () => {
+  const panel = host.querySelector(".chat-panel");
+  return !panel || panel.getAttribute("aria-hidden") === "true";
+};
+
+it("a tap dismisses a bubble at once, leaves the panel shut and the badge as it was", () => {
+  render();
+  serverSays(line(1, 1, "tap me"));
+  serverSays(line(2, 2, "stay"));
+  const badge = () => host.querySelector(".chat-badge")?.textContent;
+  expect(badge()).toBe("2");
+  const ann = bubbles()[0];
+  expect(ann.getAttribute("aria-label")).toBe("Dismiss: Ann: tap me");
+  act(() => ann.click());
+  expect(bubbleText()).toEqual(["2:Bo: stay"]);
+  expect(panelShut()).toBe(true);
+  expect(badge()).toBe("2");
+  // the next line from that seat pops again, on a fresh clock
+  later(1000);
+  serverSays(line(3, 1, "again"));
+  expect(bubbleText()).toEqual(["2:Bo: stay", "1:Ann: again"]);
+  later(4500);
+  expect(bubbleText()).toEqual(["1:Ann: again"]);
+  // the dismissed line is still in the panel
+  act(() => host.querySelector<HTMLButtonElement>(".chat-launch")!.click());
+  expect(host.querySelector(".chat-panel")!.textContent).toContain("tap me");
+});
+
+const pointer = (el: Element, type: string, clientX: number) => act(() => {
+  el.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX }));
+});
+// a pointer click as a browser fires it after pointerup; a keyboard one has detail 0
+const pointerClick = (el: Element) => act(() => {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+});
+const keyboardClick = (el: Element) => act(() => {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+});
+
+it("a sideways swipe past 30 px dismisses a bubble", () => {
+  render();
+  serverSays(line(1, 1, "swipe me"));
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 120);
+  pointer(b, "pointerup", 140);
+  pointerClick(b);
+  expect(bubbles()).toHaveLength(0);
+  expect(host.querySelector(".chat-badge")!.textContent).toBe("1");
+});
+
+it("a short drag snaps back and keeps the bubble, its trailing click included", () => {
+  render();
+  serverSays(line(1, 1, "drag me"));
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 115);
+  expect(b.style.transform).toBe("translateX(15px)");
+  pointer(b, "pointerup", 120);
+  pointerClick(b);
+  expect(bubbles()).toEqual([b]);
+  expect(b.style.transform).toBe("");
+  // the next plain tap still dismisses
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointerup", 102);
+  pointerClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("a tap with its pointer events dismisses a bubble", () => {
+  render();
+  serverSays(line(1, 1, "tap"));
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 103);
+  pointer(b, "pointerup", 103);
+  pointerClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("a keyboard activation dismisses a bubble, even right after a short drag", () => {
+  render();
+  serverSays(line(1, 1, "one"));
+  serverSays(line(2, 2, "two"));
+  keyboardClick(bubbles()[0]);
+  expect(bubbleText()).toEqual(["2:Bo: two"]);
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 115);
+  pointer(b, "pointerup", 115);
+  keyboardClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("captures the pointer, and a lost capture or a cancel ends the swipe and clears its offset", () => {
+  const capture = vi.fn();
+  Object.defineProperty(Element.prototype, "setPointerCapture", { configurable: true, value: capture });
+  try {
+    render();
+    serverSays(line(1, 1, "hold"));
+    const b = bubbles()[0];
+    pointer(b, "pointerdown", 100);
+    expect(capture).toHaveBeenCalledWith(1);
+    pointer(b, "pointermove", 125);
+    // released outside the window: the capture is lost, no pointerup arrives here
+    pointer(b, "lostpointercapture", 125);
+    expect(b.style.transform).toBe("");
+    // a stray pointerup afterwards is not a swipe
+    pointer(b, "pointerup", 200);
+    expect(bubbles()).toEqual([b]);
+    pointer(b, "pointerdown", 100);
+    pointer(b, "pointermove", 140);
+    pointer(b, "pointercancel", 140);
+    expect(b.style.transform).toBe("");
+    pointer(b, "pointerup", 200);
+    expect(bubbles()).toEqual([b]);
+  } finally {
+    delete (Element.prototype as { setPointerCapture?: unknown }).setPointerCapture;
+  }
+});
+
+it("Escape in the bubble layer dismisses every bubble", () => {
+  render();
+  serverSays(line(1, 1, "one"));
+  serverSays(line(2, 3, "two"));
+  const b = bubbles()[0];
+  b.focus();
+  act(() => { b.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(bubbles()).toHaveLength(0);
+  expect(panelShut()).toBe(true);
 });
 
 it("keeps counting a bubbled line as unread until the panel opens", () => {

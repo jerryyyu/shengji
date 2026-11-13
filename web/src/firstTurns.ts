@@ -2,6 +2,7 @@
 // that follow the lead, and a nudge when the turn sits idle. A newcomer is a
 // browser that has made fewer than COACH_PLAYS plays of its own; a play the
 // bot made for an absent player does not count.
+import { useEffect, useState } from "react";
 import type { HandCard, Trump } from "./protocol";
 import { leadSuit } from "./followRules";
 import { type EffSuit, orderingFor } from "./offline/engine";
@@ -36,6 +37,63 @@ export function recordPlay(): number {
 
 export function isNewcomer(plays: number): boolean {
   return plays < COACH_PLAYS;
+}
+
+/** The player's coach switch: "on" coaches every turn, "off" never, and
+ *  absent ("auto") coaches a newcomer's first COACH_PLAYS plays. */
+export const COACH_KEY = "shengji.coach";
+export type CoachSetting = "auto" | "on" | "off";
+
+// the switch for this session when the store refuses a write
+let sessionSetting: CoachSetting | null = null;
+const coachListeners = new Set<(s: CoachSetting) => void>();
+
+export function coachSetting(): CoachSetting {
+  if (sessionSetting !== null) return sessionSetting;
+  try {
+    const v = localStorage.getItem(COACH_KEY);
+    return v === "on" || v === "off" ? v : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+export function setCoachSetting(s: "on" | "off"): void {
+  try {
+    localStorage.setItem(COACH_KEY, s);
+    sessionSetting = null;
+  } catch {
+    sessionSetting = s;
+  }
+  for (const fn of coachListeners) fn(s);
+}
+
+export function subscribeCoach(fn: (s: CoachSetting) => void): () => void {
+  coachListeners.add(fn);
+  return () => { coachListeners.delete(fn); };
+}
+
+/** Drops a switch held only in memory; storage keeps whatever it has. */
+export function forgetSessionCoach(): void {
+  sessionSetting = null;
+}
+
+/** Whether your turns get the coach, given the switch and your plays. */
+export function coachShows(setting: CoachSetting, plays: number): boolean {
+  return setting === "auto" ? isNewcomer(plays) : setting === "on";
+}
+
+/** The live coach switch, shared by the table and the menu row that flips it. */
+export function useCoachSetting(): CoachSetting {
+  const [setting, setLocal] = useState(coachSetting);
+  useEffect(() => subscribeCoach(setLocal), []);
+  return setting;
+}
+
+/** Whether the coach is on now, and a flip that pins it the other way. */
+export function useCoach(): [boolean, () => void] {
+  const on = coachShows(useCoachSetting(), playsMade());
+  return [on, () => setCoachSetting(on ? "off" : "on")];
 }
 
 const SUIT_WORD: Record<EffSuit, string> = { S: "♠", H: "♥", D: "♦", C: "♣", T: "trump" };

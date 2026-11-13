@@ -40,7 +40,8 @@ vi.mock("../ws", () => ({
 const serverSays = (m: unknown) => act(() => { for (const fn of link.listeners) fn(m); });
 
 const { default: Table } = await import("./Table");
-const { NUDGE_MS, PLAYS_KEY, COACH_PLAYS } = await import("../firstTurns");
+const { TOAST_MS } = await import("../toast");
+const { NUDGE_MS, PLAYS_KEY, COACH_PLAYS, COACH_KEY, forgetSessionCoach } = await import("../firstTurns");
 
 function player(seat: number, over: Partial<StatePlayer> = {}): StatePlayer {
   return { seat, name: seat ? `Bot ${seat}` : "You", is_bot: seat !== 0, connected: true,
@@ -91,7 +92,7 @@ const firstFollow = (over: Partial<GameState> = {}) => state({
 
 describe("newcomer coach", () => {
   beforeEach(() => localStorage.clear());
-  afterEach(() => { localStorage.clear(); vi.useRealTimers(); });
+  afterEach(() => { localStorage.clear(); forgetSessionCoach(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
   it("tells a newcomer what to tap on their first follow and lights the clubs", () => {
     render(firstFollow());
@@ -163,5 +164,73 @@ describe("newcomer coach", () => {
     render(state({ turn: 0, trump: hearts2, hand: clubHand, trick: { leader: 0, plays: [] } }));
     expect(cue()?.textContent).toBe("Your lead: tap a card, then Play");
     expect(dim()).toBe(0);
+  });
+
+  const coachRow = () => host.querySelector<HTMLButtonElement>(".hud-menu-row.coach-row");
+  const openMenu = () => act(() => host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+  const toastText = () => host.querySelector(".toast")?.textContent ?? null;
+
+  it("shows the switch in the menu, on for a newcomer and off after the coach's plays", () => {
+    render(firstFollow());
+    openMenu();
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
+    act(() => root.unmount());
+    root = createRoot(host);
+    localStorage.setItem(PLAYS_KEY, String(COACH_PLAYS));
+    render(firstFollow());
+    openMenu();
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("switched on, coaches a player past the coach's plays", () => {
+    localStorage.setItem(PLAYS_KEY, String(COACH_PLAYS));
+    localStorage.setItem(COACH_KEY, "on");
+    render(firstFollow());
+    expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards (lit up), then Play");
+    expect(lit()).toEqual([4, 5]);
+  });
+
+  it("switched off, stays quiet on a newcomer's first turn", () => {
+    localStorage.setItem(COACH_KEY, "off");
+    render(firstFollow());
+    expect(cue()).toBeNull();
+    expect(dim()).toBe(0);
+  });
+
+  it("flips from the menu row, keeps the choice and says so in a toast", () => {
+    localStorage.setItem(PLAYS_KEY, String(COACH_PLAYS));
+    render(firstFollow());
+    expect(cue()).toBeNull();
+    openMenu();
+    act(() => coachRow()!.click());
+    expect(localStorage.getItem(COACH_KEY)).toBe("on");
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
+    expect(cue()).not.toBeNull();
+    expect(toastText()).toBe("Coach on");
+    act(() => coachRow()!.click());
+    expect(localStorage.getItem(COACH_KEY)).toBe("off");
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
+    expect(cue()).toBeNull();
+    expect(toastText()).toBe("Coach off");
+  });
+
+  it("keeps the switch for the session when storage refuses the write", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("full"); });
+    render(firstFollow());
+    openMenu();
+    act(() => coachRow()!.click());
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
+    expect(cue()).toBeNull();
+    expect(toastText()).toBe("Coach off");
+  });
+
+  it("the toast goes after its time", () => {
+    vi.useFakeTimers();
+    render(firstFollow());
+    openMenu();
+    act(() => coachRow()!.click());
+    expect(toastText()).toBe("Coach off");
+    act(() => { vi.advanceTimersByTime(TOAST_MS + 50); });
+    expect(toastText()).toBeNull();
   });
 });

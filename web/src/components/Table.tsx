@@ -23,7 +23,8 @@ import { followHint } from "../followRules";
 import { STALL_MS } from "./Lobby";
 import { MoveRing } from "./MoveClock";
 import { RING_SECS, useMoveClock } from "../useMoveClock";
-import { NUDGE_MS, coachFor, isNewcomer, playsMade, recordPlay } from "../firstTurns";
+import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useCoachSetting } from "../firstTurns";
+import { TOAST_MS, makeToast } from "../toast";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -392,7 +393,17 @@ export default function Table({ state, toast = null }: { state: GameState; toast
 
   // A newcomer's turn says what to tap, lights the cards that follow the
   // lead, and after NUDGE_MS with nothing chosen nudges once more.
-  const coach = state.phase === "play" && myTurn && pending === null && isNewcomer(plays)
+  // The switch in the menu pins the coach on or off; untouched, it follows
+  // the newcomer count. Flipping it says so in a toast.
+  const coachSwitch = useCoachSetting();
+  const [coachToast, setCoachToast] = useState<Toast | null>(null);
+  useEffect(() => subscribeCoach((s) => setCoachToast(makeToast(s === "on" ? "Coach on" : "Coach off"))), []);
+  useEffect(() => {
+    if (!coachToast) return;
+    const t = window.setTimeout(() => setCoachToast(null), TOAST_MS);
+    return () => window.clearTimeout(t);
+  }, [coachToast]);
+  const coach = state.phase === "play" && myTurn && pending === null && coachShows(coachSwitch, plays)
     ? coachFor(state.hand, lead, state.trump)
     : null;
   const coaching = coach !== null;
@@ -607,7 +618,8 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           <button className="btn conn-retry" onClick={retry}>Retry</button>
         </div>
       ) : null}
-      {toast ? <ToastView key={toast.id} toast={toast} /> : null}
+      {toast ? <ToastView key={toast.id} toast={toast} />
+        : coachToast ? <ToastView key={`coach-${coachToast.id}`} toast={coachToast} /> : null}
     </div>
   );
 }

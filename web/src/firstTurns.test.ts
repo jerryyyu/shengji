@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HandCard, Trump } from "./protocol";
-import { COACH_PLAYS, PLAYS_KEY, coachFor, isNewcomer, playsMade, recordPlay } from "./firstTurns";
+import {
+  COACH_KEY, COACH_PLAYS, PLAYS_KEY, coachFor, coachSetting, coachShows, forgetSessionCoach, isNewcomer, playsMade,
+  recordPlay, setCoachSetting, subscribeCoach,
+} from "./firstTurns";
 
 const hand = (codes: string[]): HandCard[] => codes.map((code, i) => ({ id: i + 1, code }));
 const hearts2: Trump = { suit: "H", rank: "2", declarer: 3 };
 
 afterEach(() => {
   localStorage.clear();
+  forgetSessionCoach();
   vi.restoreAllMocks();
 });
 
@@ -27,6 +31,52 @@ describe("who is a newcomer", () => {
   it("reads a garbled count as a newcomer", () => {
     localStorage.setItem(PLAYS_KEY, "nope");
     expect(playsMade()).toBe(0);
+  });
+});
+
+describe("the coach switch", () => {
+  it("left alone, coaches the first plays and then stops", () => {
+    expect(coachSetting()).toBe("auto");
+    expect(coachShows("auto", 0)).toBe(true);
+    expect(coachShows("auto", COACH_PLAYS - 1)).toBe(true);
+    expect(coachShows("auto", COACH_PLAYS)).toBe(false);
+  });
+
+  it("on coaches every turn and off none, whatever the count", () => {
+    expect(coachShows("on", COACH_PLAYS + 10)).toBe(true);
+    expect(coachShows("off", 0)).toBe(false);
+  });
+
+  it("is kept in storage and tells its listeners", () => {
+    const heard: string[] = [];
+    const stop = subscribeCoach((s) => heard.push(s));
+    setCoachSetting("off");
+    expect(localStorage.getItem(COACH_KEY)).toBe("off");
+    expect(coachSetting()).toBe("off");
+    setCoachSetting("on");
+    expect(coachSetting()).toBe("on");
+    stop();
+    setCoachSetting("off");
+    expect(heard).toEqual(["off", "on"]);
+  });
+
+  it("reads anything else in storage as auto", () => {
+    localStorage.setItem(COACH_KEY, "maybe");
+    expect(coachSetting()).toBe("auto");
+  });
+
+  it("holds the switch in memory for the session when storage refuses", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("full"); });
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    setCoachSetting("on");
+    expect(coachSetting()).toBe("on");
+    setCoachSetting("off");
+    expect(coachSetting()).toBe("off");
+  });
+
+  it("reads as auto when storage cannot be read and nothing was set", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    expect(coachSetting()).toBe("auto");
   });
 });
 

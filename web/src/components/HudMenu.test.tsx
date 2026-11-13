@@ -28,7 +28,7 @@ const btn = (host: HTMLElement) => host.querySelector<HTMLButtonElement>(".hud-m
 const rows = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>(".hud-menu-row"));
 
 describe("the phone overflow menu (#651)", () => {
-  it("is closed until tapped, then lists kitty, sound, invite and leave", () => {
+  it("is closed until tapped, then lists kitty, sound, coach, invite and leave", () => {
     const v = render();
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     expect(btn(v.host).getAttribute("aria-expanded")).toBe("false");
@@ -37,15 +37,16 @@ describe("the phone overflow menu (#651)", () => {
     const text = rows(v.host).map((r) => r.textContent);
     expect(text[0]).toContain("Kitty"); expect(text[0]).toContain("8 cards");
     expect(text[1]).toContain("Sound");
-    expect(text[2]).toContain("Copy invite link");
-    expect(text[3]).toContain("Leave game");
+    expect(text[2]).toContain("Coach");
+    expect(text[3]).toContain("Copy invite link");
+    expect(text[4]).toContain("Leave game");
     v.unmount();
   });
 
   it("Leave game closes the menu and opens the leave alert; Leave sends leave_room", () => {
     const v = render();
     act(() => btn(v.host).click());
-    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
+    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
     expect(sent).toEqual([]);
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     const alert = v.host.querySelector("[role='alertdialog']")!;
@@ -79,16 +80,17 @@ describe("the phone overflow menu (#651)", () => {
 });
 
 describe("a signed-in player's menu", () => {
-  it("is the same four rows: account rows live on the Me tab", () => {
+  it("is the same five rows: account rows live on the Me tab", () => {
     auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" });
     const v = render();
     act(() => btn(v.host).click());
     const text = rows(v.host).map((r) => r.textContent ?? "");
-    expect(text).toHaveLength(4);
+    expect(text).toHaveLength(5);
     expect(text[0]).toContain("Kitty");
     expect(text[1]).toContain("Sound");
-    expect(text[2]).toContain("Copy invite link");
-    expect(text[3]).toContain("Leave game");
+    expect(text[2]).toContain("Coach");
+    expect(text[3]).toContain("Copy invite link");
+    expect(text[4]).toContain("Leave game");
     for (const gone of ["Edit name", "My games", "Sign out", "Cap"]) {
       expect(text.some((t) => t.includes(gone))).toBe(false);
     }
@@ -131,6 +133,8 @@ describe("keyboard focus in the menu", () => {
     trigger.focus();
     act(() => trigger.click());
     expect(focused()).toContain("Sound");             // the kitty row is information only
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Coach");
     key(document.activeElement!, "ArrowDown");
     expect(focused()).toContain("Copy invite link");
     key(document.activeElement!, "ArrowDown");
@@ -243,7 +247,7 @@ describe("a ranked game's leave alert", () => {
   it("names the ranked game and its result", () => {
     const v = render({ ranked: true });
     act(() => btn(v.host).click());
-    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
+    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
     const alert = v.host.querySelector("[role='alertdialog']")!;
     expect(alert.querySelector("h2")!.textContent).toBe("Leave this ranked game?");
     expect(alert.querySelector("p")!.textContent).toBe("A bot takes your seat, and this round counts as at best a draw.");
@@ -254,7 +258,7 @@ describe("a ranked game's leave alert", () => {
   it("Escape keeps playing and sends nothing", () => {
     const v = render({ ranked: true });
     act(() => btn(v.host).click());
-    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
+    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
     const alert = v.host.querySelector("[role='alertdialog']")!;
     act(() => { alert.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
@@ -266,7 +270,7 @@ describe("a ranked game's leave alert", () => {
     vi.useFakeTimers();
     const v = render({ ranked: true });
     act(() => btn(v.host).click());
-    act(() => (rows(v.host)[3] as HTMLButtonElement).click());
+    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
     act(() => { vi.advanceTimersByTime(30_000); });
     expect(v.host.querySelector("[role='alertdialog']")).not.toBeNull();
     expect(sent).toEqual([]);

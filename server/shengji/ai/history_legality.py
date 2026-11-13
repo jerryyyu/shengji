@@ -251,7 +251,8 @@ def _current_caps_hold(world, seat, mem, ordering):
 
 def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem,
                                 check_budget=None, propose=None, constrain=False,
-                                complete=None, throws=False, proposal_caps=False):
+                                complete=None, throws=False, proposal_caps=False,
+                                valid_fill=False):
     """``n`` worlds by production's draw, each history-legal while the history
     test's attempt budget lasts and consistent with every refusal in
     ``refusals`` (`ai.refusal`, the same test and pinning as
@@ -283,6 +284,11 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     ``complete``, when given, stands for ``bot._complete_determinized_hands``
     (`train.pv_native.world_completion`: the same hands and refusals).
 
+    ``valid_fill=True`` keeps the attempt bounds but fills any shortfall by
+    cycling over copied, validated worlds, never unchecked draws. With no
+    accepted world it raises ValueError. The repeated count is reported; it
+    is not new independent evidence. Off preserves the original draw stream.
+
     ``throws=True`` also rejects a world in which an accepted throw on record
     would have been refused (module docstring), under the same attempt budget;
     ``stats`` then gains ``history_throw_events`` and
@@ -311,7 +317,10 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
         draw = bot._sample_hands
     cap = n * bot.SAMPLE_ATTEMPT_FACTOR
     history_cap = n * HISTORY_ATTEMPT_FACTOR if events or thrown else 0
-    while len(worlds) < n and attempts < cap:
+    # In the opt-in repair mode, stop at the history-check budget.  Continuing
+    # would admit unchecked worlds once that budget is exhausted.
+    attempt_cap = min(cap, history_cap) if valid_fill and (events or thrown) else cap
+    while len(worlds) < n and attempts < attempt_cap:
         if check_budget is not None:
             check_budget()
         attempts += 1
@@ -334,13 +343,32 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
                 throw_rejected += 1
                 continue
         elif events or thrown:
+            if valid_fill:
+                break
             if proposal_caps and propose is not None and not _current_caps_hold(world, seat, mem, ordering):
                 cap_rejected += 1
                 continue
             unchecked += 1
+        if valid_fill and proposal_caps and propose is not None and not _current_caps_hold(
+                world, seat, mem, ordering):
+            cap_rejected += 1
+            continue
         worlds.append((world, sorted(buried)))
     fill = 0
-    if len(worlds) < n:
+    resampled = 0
+    if len(worlds) < n and valid_fill:
+        if not worlds:
+            raise ValueError("history-valid fill has no validated worlds")
+        # Reuse only worlds that passed every enabled validator. Copy each
+        # hand and kitty so consumers cannot mutate another returned world.
+        validated = list(worlds)
+        while len(worlds) < n:
+            if check_budget is not None:
+                check_budget()
+            world, buried = validated[resampled % len(validated)]
+            worlds.append(([list(hand) for hand in world], list(buried)))
+            resampled += 1
+    elif len(worlds) < n:
         extra, more = sample_worlds(bot, rnd, seat, n - len(worlds), mem=mem,
                                     check_budget=check_budget)
         attempts += more
@@ -362,4 +390,7 @@ def sample_worlds_history_legal(bot, rnd, seat: int, n: int, refusals=(), *, mem
     if refusals:
         stats.update(refusal_observations=len(refusals), refusal_rejections=refusal_rejected,
                      refusal_fallback_worlds=fill, refusal_pinned_codes=pinned)
+    if valid_fill:
+        stats["history_resampled_worlds"] = resampled
+        stats["history_valid_worlds"] = len(worlds) - resampled
     return worlds, attempts, stats

@@ -144,8 +144,9 @@ def regenerate(model, rnd, seat: int, fields, worlds: int):
     drawn, _attempts, stats = sample_worlds_history_legal(
         sampler, rnd, seat, worlds, refusals, mem=mem, propose=propose, constrain=True,
         throws="history_throw_events" in fields,
-        proposal_caps="history_cap_rejected" in fields)
-    return propose, drawn, stats, worlds - accepted_from_proposal(propose, stats)
+        proposal_caps="history_cap_rejected" in fields,
+        valid_fill="history_valid_worlds" in fields)
+    return propose, drawn, stats, int(stats["history_fill_worlds"])
 
 
 def accepted_from_proposal(propose, stats) -> int:
@@ -162,7 +163,8 @@ def accepted_from_proposal(propose, stats) -> int:
 #: log is reported as None (never compared with a default)
 REPLAY_CHECKS = ("belief_proposed", "history_rejections", "history_fallback_worlds",
                  "history_throw_events", "history_throw_rejections", "history_cap_rejected",
-                 "history_unchecked_worlds", "history_fill_worlds", "refusal_rejections")
+                 "history_unchecked_worlds", "history_fill_worlds", "refusal_rejections",
+                 "history_valid_worlds", "history_resampled_worlds")
 
 
 def replay_checks(fields, propose, stats) -> dict:

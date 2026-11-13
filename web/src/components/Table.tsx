@@ -25,6 +25,7 @@ import { MoveRing } from "./MoveClock";
 import { RING_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useCoachSetting } from "../firstTurns";
 import { TOAST_MS, makeToast } from "../toast";
+import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -320,8 +321,17 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     // settles on each new state, so a re-render of the same state is no answer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+  // the turn telemetry reads the send in flight when a turn ends or an error comes
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const turnRef = useRef<TurnClock | null>(null);
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
-    if (msg.type === "error") setPending(null);
+    if (msg.type !== "error") return;
+    if (pendingRef.current !== null && turnRef.current !== null) {
+      turnRef.current.refused += 1;
+      telemetry.notice("illegal_play", "table");
+    }
+    setPending(null);
   }), []);
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
@@ -400,7 +410,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // the newcomer count. Flipping it says so in a toast.
   const coachSwitch = useCoachSetting();
   const [coachToast, setCoachToast] = useState<Toast | null>(null);
-  useEffect(() => subscribeCoach((s) => setCoachToast(makeToast(s === "on" ? "Coach on" : "Coach off"))), []);
+  useEffect(() => subscribeCoach((s) => {
+    telemetry.tap(s === "on" ? "coach_on" : "coach_off");
+    setCoachToast(makeToast(s === "on" ? "Coach on" : "Coach off"));
+  }), []);
   useEffect(() => {
     if (!coachToast) return;
     const t = window.setTimeout(() => setCoachToast(null), TOAST_MS);
@@ -410,6 +423,31 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     ? coachFor(state.hand, lead, state.trump)
     : null;
   const coaching = coach !== null;
+
+  // One of your turns, from the moment it is yours to the state that ends
+  // it: yours when this socket's own send ended it, else the bot's (away)
+  // or the move timer's.
+  useScreen("table");
+  const turnActive = !watching &&
+    ((state.phase === "bury" && iAmBanker) || (state.phase === "play" && myTurn));
+  useEffect(() => {
+    if (!turnActive) return;
+    const phase = state.phase === "bury" ? "bury" : "play";
+    turnRef.current = new TurnClock(phase, phase === "bury" ? 8 : lead ? lead.length : 0,
+                                    lead ? leadKind(lead) : undefined, coaching, nextTurnNumber());
+    return () => {
+      const turn = turnRef.current;
+      turnRef.current = null;
+      if (turn === null) return;
+      // cleanups run before the settle effect, so a send still in flight on
+      // this socket is the one that ended the turn
+      const sent = pendingRef.current;
+      const mine = sent !== null && sent.generation === conn.generation;
+      telemetry.turnDone(turn.finish(mine ? "you" : me?.away ? "bot" : "timer"));
+    };
+    // a turn is the span turnActive holds in one phase; the rest is read at its start
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnActive, state.phase]);
   const nothingChosen = selected.size === 0;
   const [nudge, setNudge] = useState(false);
   useEffect(() => {
@@ -422,6 +460,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
     haptic("select");
+    turnRef.current?.select();
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -506,6 +545,8 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     const whyNot = () => {
       if (!playDisabled || pending !== null || !online) return;
       const text = lead ? followHint(lead, state.trump) : "Choose the cards to lead";
+      if (turnRef.current) turnRef.current.disabledTaps += 1;
+      telemetry.notice(lead ? "follow_hint" : "lead_hint", "table");
       setHint((h) => ({ text, n: (h?.n ?? 0) + 1 }));
       haptic("error");
     };

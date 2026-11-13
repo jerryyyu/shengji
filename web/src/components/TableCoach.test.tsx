@@ -150,6 +150,34 @@ describe("newcomer coach", () => {
     expect(localStorage.getItem(PLAYS_KEY)).toBeNull();
   });
 
+  it("does not count a move the bot made for you while you were reconnecting", () => {
+    const single = { leader: 3, plays: [{ seat: 3, cards: ["S9"] }] };
+    render(firstFollow({ trick: single }));
+    act(() => host.querySelector<HTMLElement>(".hand-slot .card")!.click());
+    act(() => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.click());
+    expect(sent).toHaveLength(1);
+    // the send never arrived; the socket dropped and the bot played the seat
+    act(() => { link.status = "closed"; for (const fn of link.statusListeners) fn(link.status); });
+    act(() => { link.status = "open"; for (const fn of link.statusListeners) fn(link.status); });
+    // the first state after the reconnect: a smaller hand, the turn moved on,
+    // and the seat reports human again because you are connected
+    render(firstFollow({ hand: clubHand.slice(1), turn: 1, trick: single }));
+    expect(localStorage.getItem(PLAYS_KEY)).toBeNull();
+    // the selection still clears and Play is free again
+    render(firstFollow({ hand: clubHand.slice(1), trick: single }));
+    expect(host.querySelectorAll(".card.selected").length).toBe(0);
+    expect(cue()).not.toBeNull();
+  });
+
+  it("counts a play acknowledged on the connection it was sent on", () => {
+    const single = { leader: 3, plays: [{ seat: 3, cards: ["S9"] }] };
+    render(firstFollow({ trick: single }));
+    act(() => host.querySelector<HTMLElement>(".hand-slot .card")!.click());
+    act(() => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.click());
+    render(firstFollow({ hand: clubHand.slice(1), turn: 1, trick: single }));
+    expect(localStorage.getItem(PLAYS_KEY)).toBe("1");
+  });
+
   it("nudges after an idle stretch with nothing chosen, and not before", () => {
     vi.useFakeTimers();
     render(firstFollow());

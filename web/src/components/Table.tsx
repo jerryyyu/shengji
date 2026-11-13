@@ -308,7 +308,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   useEffect(() => {
     if (!pending) return;
     if (handKey !== pending.handKey || state.turn !== pending.turn) {
-      if (pending.kind === "play" && isNewcomer(plays)) setPlays(recordPlay());
+      // Only a state on the connection the play went out on proves it was
+      // yours: across a reconnect the seat's bot may have moved instead.
+      const sameLink = conn.generation === pending.generation;
+      if (pending.kind === "play" && sameLink && isNewcomer(plays)) setPlays(recordPlay());
       setPending(null);
       setSelected(new Set());
     } else if (conn.generation !== pending.generation) {

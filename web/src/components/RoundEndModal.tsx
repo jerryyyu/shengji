@@ -279,7 +279,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
                   )}
                 </div>
               )}
-              <RoundEndLeave ranked={ranked} />
+              <RoundEndLeave ranked={ranked && state.guest !== true} />
             </>
           );
         })()}

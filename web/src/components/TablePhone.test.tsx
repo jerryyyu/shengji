@@ -619,3 +619,146 @@ describe("move timer", () => {
     expect(host.querySelector(".away-pill")).toBeNull();
   });
 });
+
+
+describe("review: turn telemetry producer", () => {
+  it("finishes a last-follower turn when its winner immediately leads", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      render(state({ turn: 0, trick: { leader: 1, plays: [
+        { seat: 1, cards: ["S2"] }, { seat: 2, cards: ["S3"] }, { seat: 3, cards: ["S4"] },
+      ] } }));
+      render(state({ turn: 0, hand: cards(24), trick: { leader: 0, plays: [] },
+        last_trick: { leader: 1, plays: [
+          { seat: 1, cards: ["S2"] }, { seat: 2, cards: ["S3"] },
+          { seat: 3, cards: ["S4"] }, { seat: 0, cards: ["S5"] },
+        ], winner: 0, points: 5 } }));
+      expect(done).toHaveBeenCalledTimes(1);
+    } finally { done.mockRestore(); }
+  });
+  it("does not call an unfinished turn timer-completed on leaving the table", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      render(state({ turn: 0, trick: { leader: 0, plays: [] } }));
+      act(() => root.render(null));
+      expect(done).not.toHaveBeenCalled();
+    } finally { done.mockRestore(); }
+  });
+});
+
+describe("turn telemetry: a decision is reported once, when the game moves past it", () => {
+  const pickAndPlay = () => {
+    act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[0].click());
+    act(() => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.click());
+  };
+
+  it("reports a submitted lead as yours, with its selection", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      render(state({ room: "SUB", turn: 0, trick: { leader: 0, plays: [] } }));
+      pickAndPlay();
+      expect(sent).toContainEqual(expect.objectContaining({ type: "play" }));
+      render(state({ room: "SUB", turn: 1, hand: cards(24),
+                     trick: { leader: 0, plays: [{ seat: 0, cards: ["S2"] }] } }));
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done.mock.calls[0][0]).toMatchObject({ phase: "play", by: "you", sel_changes: 1, need: 0 });
+    } finally { done.mockRestore(); }
+  });
+
+  it("treats broadcasts that leave the decision in place as the same turn", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      const trick = { leader: 1, plays: [{ seat: 1, cards: ["S2"] }] };
+      render(state({ room: "SAME", turn: 0, trick }));
+      render(state({ room: "SAME", turn: 0, trick, attacker_points: 10 }));
+      render(state({ room: "SAME", turn: 0, trick, players: [0, 1, 2, 3].map((s) => player(s, { connected: s !== 2 })) }));
+      expect(done).not.toHaveBeenCalled();
+      render(state({ room: "SAME", turn: 1, hand: cards(24),
+                     trick: { leader: 1, plays: [...trick.plays, { seat: 0, cards: ["S3"] }] } }));
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done.mock.calls[0][0]).toMatchObject({ by: "timer", lead: "single", need: 1 });
+    } finally { done.mockRestore(); }
+  });
+
+  it("keeps the turn across a remount and reports it once when it ends", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    try {
+      const mine = state({ room: "REMOUNT", turn: 0, trick: { leader: 0, plays: [] } });
+      render(mine);
+      act(() => root.render(null));      // How to play replaces the table
+      render(mine);                       // and back
+      expect(done).not.toHaveBeenCalled();
+      pickAndPlay();
+      render(state({ room: "REMOUNT", turn: 1, hand: cards(24),
+                     trick: { leader: 0, plays: [{ seat: 0, cards: ["S2"] }] } }));
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done.mock.calls[0][0]).toMatchObject({ by: "you", nth_turn: expect.any(Number) });
+    } finally { done.mockRestore(); }
+  });
+});
+
+describe("Play waits on an off-suit follow", () => {
+  // hearts and jacks are trump; the lead is a pair of spade kings
+  const hand: HandCard[] = ["S3", "S7", "C4", "C9", "D5", "HA", "SJ"].map((code, i) => ({ id: i + 1, code }));
+  const following = () => state({
+    turn: 0, hand, trump: { suit: "H", rank: "J", declarer: 1 },
+    trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }] } });
+  const choose = (...ids: number[]) => {
+    for (const id of ids) act(() => host.querySelector<HTMLElement>(`.hand-slot[data-id="${id}"] .card`)!.click());
+  };
+  const play = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+
+  it("an off-suit selection of the right count keeps Play disabled and shows the follow hint", () => {
+    render(following());
+    choose(1, 3);
+    expect(play().disabled).toBe(true);
+    const hint = host.querySelector(".follow-hint");
+    expect(hint?.textContent).toBe("Follow ♠: play 2 cards");
+    // the hint stands outside your row, so it cannot push the action bar
+    expect(hint!.closest(".you-row")).toBeNull();
+    expect(hint!.parentElement!.classList.contains("you-area")).toBe(true);
+    // the trump-rank jack of spades is trump, not a spade
+    act(() => host.querySelector<HTMLElement>(`.hand-slot[data-id="3"] .card`)!.click());
+    choose(7);
+    expect(play().disabled).toBe(true);
+  });
+
+  it("a legal follow enables Play with no hint", () => {
+    render(following());
+    choose(1, 2);
+    expect(play().disabled).toBe(false);
+    expect(host.querySelector(".follow-hint")).toBeNull();
+    act(() => play().click());
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a hand short of the suit may play every spade it holds and anything else", () => {
+    render(state({ turn: 0, hand: hand.filter((c) => c.code !== "S7"), trump: { suit: "H", rank: "J", declarer: 1 },
+      trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }] } }));
+    choose(1, 7);
+    expect(play().disabled).toBe(false);
+    expect(host.querySelector(".follow-hint")).toBeNull();
+  });
+
+  it("a tap on the waiting Play still counts as a disabled-Play tap", async () => {
+    const { telemetry } = await import("../telemetry");
+    const done = vi.spyOn(telemetry, "turnDone");
+    const notice = vi.spyOn(telemetry, "notice");
+    try {
+      render(following());
+      choose(1, 3);
+      act(() => host.querySelector<HTMLElement>(".play-wrap")!.click());
+      expect(notice).toHaveBeenCalledWith("follow_hint", "table");
+      expect(host.querySelectorAll(".follow-hint")).toHaveLength(1);
+      render(state({ turn: 1, hand: hand.slice(2), trump: { suit: "H", rank: "J", declarer: 1 },
+        trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }, { seat: 0, cards: ["S3", "S7"] }] } }));
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done.mock.calls[0][0]).toMatchObject({ disabled_play_taps: 1 });
+    } finally { done.mockRestore(); notice.mockRestore(); }
+  });
+});

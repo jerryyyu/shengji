@@ -7,6 +7,7 @@ import { closeHowto, openHowto } from "./route";
 import type { HowtoRoute } from "./route";
 import Picture from "./Picture";
 import type { Frame } from "./useTimeline";
+import { useScreen } from "../telemetry";
 
 const RANK_LADDER = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 
@@ -607,6 +608,7 @@ function useSwipe(step: number) {
 }
 
 export default function HowTo({ route }: { route: HowtoRoute }) {
+  useScreen("howto");
   const swipe = useSwipe(route.step);
   return (
     <div className="screen lobby-screen howto-screen" {...swipe}>

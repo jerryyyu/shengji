@@ -9,6 +9,7 @@ import LargeTitlePage from "../home/LargeTitlePage";
 import { useMediaQuery } from "../phoneLayout";
 import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
 import { SkeletonRows } from "./GamesList";
+import { useScreen } from "../telemetry";
 
 const PERIODS = [
   { value: "week", label: "This week" },
@@ -65,6 +66,7 @@ function SignInToRank({ clientId }: { clientId: string }) {
  *  the viewer's own row, so it is cached per viewer and reloads when the
  *  viewer changes. */
 export default function Leaderboard({ onBack }: { onBack?: () => void }) {
+  useScreen("leaderboard");
   const account = useAuth();
   const [period, setPeriodState] = useState<Period>(tabMemory.period);
   const setPeriod = (p: Period) => { tabMemory.period = p; setPeriodState(p); };

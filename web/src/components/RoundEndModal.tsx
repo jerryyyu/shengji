@@ -7,6 +7,7 @@ import LeaveAlert from "./LeaveAlert";
 import { OFFLINE } from "../offlineMode";
 import { MoveRing } from "./MoveClock";
 import { RING_SECS } from "../useMoveClock";
+import { telemetry, useScreen } from "../telemetry";
 
 /** Leave below Next round, the same in every room. The round is over and
  *  recorded and the next has not started, so leaving costs nothing and goes
@@ -20,7 +21,11 @@ function RoundEndLeave({ ranked }: { ranked: boolean }) {
       <button
         type="button"
         className="btn subtle danger dialog-leave-btn"
-        onClick={() => (OFFLINE ? setAsking(true) : conn.send({ type: "leave_room" }))}
+        onClick={() => {
+          telemetry.tap("round_end_leave");
+          if (OFFLINE) setAsking(true);
+          else conn.send({ type: "leave_room" });
+        }}
       >
         Leave game
       </button>
@@ -59,11 +64,21 @@ function teamMembers(team: 0 | 1, state?: GameState): string {
 
 /** "Blue team · You & Bot 2 win the round"; the members take a plural verb,
  *  and phones drop the colour prefix (the title is already in team colour). */
-function TeamTitle({ team, state, what }: { team: 0 | 1; state: GameState; what: string }) {
+function TeamTitle({ team, state, what, verb = "win" }: {
+  team: 0 | 1; state: GameState; what: string; verb?: "win" | "lose";
+}) {
   const colour = team === 0 ? "Blue" : "Orange";
   const members = teamMembers(team, state);
-  if (!members) return <>{colour} team wins {what}</>;
-  return <><span className="title-team">{colour} team · </span>{members} win {what}</>;
+  if (!members) return <>{colour} team {verb}s {what}</>;
+  return <><span className="title-team">{colour} team · </span>{members} {verb} {what}</>;
+}
+
+/** The viewer's team when it lost the round, else null (a win, or a viewer
+ *  with no seat). A loss names your own side, "You & Sam lose the round":
+ *  the winners' names alone read as someone else's news. */
+export function losingViewerTeam(state: GameState, winner: 0 | 1): 0 | 1 | null {
+  const mine = state.players.find((p) => p.seat === state.you)?.team;
+  return mine === undefined || mine === winner ? null : mine;
 }
 
 function signedDelta(delta: number): string {
@@ -118,6 +133,7 @@ function cardPoints(code: string): number {
 
 export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
   const titleId = useId();
+  useScreen("round_end");
   const ranked = !!(state.matched || state.ranked);
   const nextBankerName =
     state.players.find((p) => p.seat === result.next_banker)?.name ?? `Seat ${result.next_banker}`;
@@ -158,11 +174,14 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
   }
 
   const levels = result.level_change === 1 ? "level" : "levels";
+  const lostTeam = losingViewerTeam(state, result.winner_team);
   return (
     <ResultDialog titleId={titleId}>
       <div className="panel modal">
-        <h2 id={titleId} tabIndex={-1} className={`modal-title team${result.winner_team}`}>
-          <TeamTitle team={result.winner_team} state={state} what="the round" />
+        <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
+          {lostTeam !== null
+            ? <TeamTitle team={lostTeam} state={state} what="the round" verb="lose" />
+            : <TeamTitle team={result.winner_team} state={state} what="the round" />}
         </h2>
 
         {/* the outcome first; how it was scored waits behind Details */}
@@ -266,7 +285,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
               <button
                 className={`btn primary big${!iAmReady && clock !== null && clock <= RING_SECS ? " clock-low" : ""}`}
                 disabled={iAmReady}
-                onClick={() => conn.send({ type: "next_round" })}
+                onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
               >
                 {iAmReady ? null : <MoveRing left={clock} />}
                 {iAmReady ? "Waiting for others…" : "Next round"}

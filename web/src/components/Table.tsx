@@ -19,12 +19,13 @@ import { nameWidthClass } from "../nameWidth";
 import type { Toast } from "../toast";
 import ToastView from "./ToastView";
 import { leadToFollow } from "../follow";
-import { followHint } from "../followRules";
+import { followHint, followsSuit } from "../followRules";
 import { STALL_MS } from "./Lobby";
 import { MoveRing } from "./MoveClock";
 import { RING_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useCoachSetting } from "../firstTurns";
 import { TOAST_MS, makeToast } from "../toast";
+import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -257,6 +258,10 @@ export function JoinNotices({ state }: { state: GameState }) {
   );
 }
 
+/** The decision whose clock is running, kept across a remount of the
+ *  table (opening How to play and coming back is the same decision). */
+let openTurn: { key: string; clock: TurnClock; watched: boolean } | null = null;
+
 export default function Table({ state, toast = null }: { state: GameState; toast?: Toast | null }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
@@ -320,8 +325,17 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     // settles on each new state, so a re-render of the same state is no answer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+  // the turn telemetry reads the send in flight when a turn ends or an error comes
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const turnRef = useRef<TurnClock | null>(null);
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
-    if (msg.type === "error") setPending(null);
+    if (msg.type !== "error") return;
+    if (pendingRef.current !== null && turnRef.current !== null) {
+      turnRef.current.refused += 1;
+      telemetry.notice("illegal_play", "table");
+    }
+    setPending(null);
   }), []);
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
@@ -400,7 +414,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // the newcomer count. Flipping it says so in a toast.
   const coachSwitch = useCoachSetting();
   const [coachToast, setCoachToast] = useState<Toast | null>(null);
-  useEffect(() => subscribeCoach((s) => setCoachToast(makeToast(s === "on" ? "Coach on" : "Coach off"))), []);
+  useEffect(() => subscribeCoach((s) => {
+    telemetry.tap(s === "on" ? "coach_on" : "coach_off");
+    setCoachToast(makeToast(s === "on" ? "Coach on" : "Coach off"));
+  }), []);
   useEffect(() => {
     if (!coachToast) return;
     const t = window.setTimeout(() => setCoachToast(null), TOAST_MS);
@@ -410,6 +427,55 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     ? coachFor(state.hand, lead, state.trump)
     : null;
   const coaching = coach !== null;
+
+  // One of your decisions, from the state that hands it to you to the state
+  // that moves past it. The key advances when a play lands or a new trick
+  // starts (the trick's leader and size, your hand's size), so a last
+  // follower who wins and leads at once closes one decision and opens the
+  // next, while a broadcast that changes neither is the same decision. It
+  // ends as yours when this socket's own send was in flight, else the bot's
+  // (away) or the move timer's. Leaving the table is no transition: the
+  // open clock is kept for a remount and never reported as a finished turn.
+  useScreen("table");
+  const turnActive = !watching &&
+    ((state.phase === "bury" && iAmBanker) || (state.phase === "play" && myTurn));
+  const decisionKey = turnActive
+    ? `${state.room}:${state.phase}:${state.trick?.leader ?? "-"}:${state.trick?.plays.length ?? 0}:${state.hand.length}`
+    : null;
+  useEffect(() => {
+    const open = openTurn;
+    if (open !== null && open.key !== decisionKey) {
+      openTurn = null;
+      turnRef.current = null;
+      // seen ending only if this mount watched it: a turn that ended while
+      // the table was not shown has no observed outcome and is dropped
+      if (open.watched) {
+        // the settle effect has not re-rendered yet, so pendingRef still
+        // holds the send (if any) that this state answered
+        const sent = pendingRef.current;
+        const mine = sent !== null && sent.generation === conn.generation;
+        telemetry.turnDone(open.clock.finish(mine ? "you" : me?.away ? "bot" : "timer"));
+      }
+    }
+    if (decisionKey === null) return;
+    if (openTurn === null) {
+      const phase = state.phase === "bury" ? "bury" : "play";
+      openTurn = {
+        key: decisionKey, watched: true,
+        clock: new TurnClock(phase, phase === "bury" ? 8 : lead ? lead.length : 0,
+                             lead ? leadKind(lead) : undefined, coaching, nextTurnNumber()),
+      };
+    }
+    openTurn.watched = true;
+    turnRef.current = openTurn.clock;
+    // the decision is its key; the rest is read when it opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decisionKey]);
+  useEffect(() => () => {
+    // unmounting: keep the clock for a remount, but this mount no longer sees it end
+    if (openTurn !== null) openTurn.watched = false;
+    turnRef.current = null;
+  }, []);
   const nothingChosen = selected.size === 0;
   const [nudge, setNudge] = useState(false);
   useEffect(() => {
@@ -422,6 +488,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
     haptic("select");
+    turnRef.current?.select();
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -445,6 +512,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       : null;
 
   let actionBar: ReactNode = null;
+  let inlineHint: string | null = null;
   if (watching) {
     actionBar = null;
   } else if (state.phase === "deal" || state.phase === "declare") {
@@ -498,17 +566,23 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     // following, a play is exactly as many cards as the lead
     const need = lead ? lead.length : null;
     const countWrong = need !== null && selectedIds.length !== need;
+    // the right count but too few of the led suit: Play waits and says why
+    const offSuit = lead !== null && !countWrong
+      && followsSuit(state.hand, selectedIds, lead, state.trump) === false;
     const playLabel = selectedIds.length === 0
       ? "Play"
       : need !== null && need > 1 ? `Play (${selectedIds.length}/${need})` : `Play (${selectedIds.length})`;
-    const playDisabled = selectedIds.length === 0 || countWrong || pending !== null || !online;
+    const playDisabled = selectedIds.length === 0 || countWrong || offSuit || pending !== null || !online;
     // a disabled button takes no taps, so its wrapper hears them and explains
     const whyNot = () => {
       if (!playDisabled || pending !== null || !online) return;
       const text = lead ? followHint(lead, state.trump) : "Choose the cards to lead";
+      if (turnRef.current) turnRef.current.disabledTaps += 1;
+      telemetry.notice(lead ? "follow_hint" : "lead_hint", "table");
       setHint((h) => ({ text, n: (h?.n ?? 0) + 1 }));
       haptic("error");
     };
+    if (offSuit && lead) inlineHint = followHint(lead, state.trump);
     actionBar = (
       <>
         <MoveRing left={clock} />
@@ -570,6 +644,8 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           </div>
           {hint ? (
             <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>
+          ) : inlineHint ? (
+            <div className="follow-hint" role="status">{inlineHint}</div>
           ) : coach && nothingChosen ? (
             <div className={`follow-hint coach-cue${nudge ? " nudge" : ""}`} role="status">{coach.text}</div>
           ) : null}

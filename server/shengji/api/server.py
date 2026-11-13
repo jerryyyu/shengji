@@ -30,7 +30,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, matchmaking, ratings, reports, saved_games, support
+from . import accounts, matchmaking, ratings, reports, saved_games, support, telemetry
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
@@ -2432,6 +2432,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 continue
             if t == "code_lookup":
                 await send(ws, MATCHMAKER.code_lookup(conn, msg, account_id()))
+                continue
+            if t == "client_event":
+                # UI flow events: allow-listed, to their own sink, never a room log
+                telemetry.receive(conn, msg, signed_in=account_id() is not None)
                 continue
             if room is None or me is None:
                 if t == "leave_room" and conn.joining is not None:

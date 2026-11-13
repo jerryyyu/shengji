@@ -26,8 +26,9 @@ One rated round, for each rated account on team ``t``:
   the deal without going up a level (80 to 115 points) score
   ``TAKEOVER_WIN_SCORE`` and the bankers ``1 - TAKEOVER_WIN_SCORE``;
 * ``delta = K * (S - E)`` with ``K = K_PROVISIONAL`` for an account's first
-  ``PROVISIONAL_ROUNDS`` rated rounds and ``K_ESTABLISHED`` after, halved
-  when another rated player in the round was still provisional at its start,
+  ``PROVISIONAL_ROUNDS`` rated rounds and ``K_ESTABLISHED`` after; an
+  established account's ``K`` is halved when another rated player in the
+  round was still provisional at its start,
   so a stranger's uncalibrated number moves an established one less.
 
 Partners share ``R_t``, ``E`` and ``S``, so two established partners move by
@@ -121,9 +122,12 @@ def is_provisional(rated_rounds: int) -> bool:
 
 def k_factor(rated_rounds: int, provisional_opponent: bool = False) -> float:
     """``provisional_opponent``: another rated player in the round, partner
-    or opponent, was provisional when it started."""
-    k = K_PROVISIONAL if is_provisional(rated_rounds) else K_ESTABLISHED
-    return k / 2 if provisional_opponent else k
+    or opponent, was provisional when it started. Only an established
+    account's ``K`` is halved for it; a provisional account keeps the full
+    ``K_PROVISIONAL`` so it calibrates at the intended pace."""
+    if is_provisional(rated_rounds):
+        return K_PROVISIONAL
+    return K_ESTABLISHED / 2 if provisional_opponent else K_ESTABLISHED
 
 
 def team_strengths(seat_ratings: list[float], banker_team: int) -> tuple[float, float]:

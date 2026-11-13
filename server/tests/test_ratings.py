@@ -272,13 +272,23 @@ def test_k_halves_when_another_rated_player_is_provisional(env, monkeypatch, oth
                                              * (by[vet]["actual"] - by[vet]["expected"]))
 
 
-def test_two_provisional_players_halve_each_other(env, monkeypatch):
+def test_two_provisional_players_keep_the_full_provisional_k(env, monkeypatch):
+    from shengji.api import ratings
+
     srv, store, _ = env
     a, _ = _user(store, "anna")
     b, _ = _user(store, "bert")
     _force_outcome(monkeypatch, 30)
     Table(srv, [a, "bot", b, "bot"]).play_round(banker=0)
-    assert {e["k"] for e in _events(store)} == {20}
+    assert {e["k"] for e in _events(store)} == {ratings.K_PROVISIONAL}
+
+
+def test_k_factor_halves_only_an_established_account():
+    from shengji.api import ratings as r
+
+    assert r.k_factor(0, provisional_opponent=True) == r.K_PROVISIONAL
+    assert r.k_factor(r.PROVISIONAL_ROUNDS, provisional_opponent=True) == r.K_ESTABLISHED / 2
+    assert r.k_factor(r.PROVISIONAL_ROUNDS) == r.K_ESTABLISHED
 
 
 def test_a_rated_round_is_never_rated_twice(env, monkeypatch):

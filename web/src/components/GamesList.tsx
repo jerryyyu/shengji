@@ -9,6 +9,18 @@ import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesS
 import ReplayView from "./ReplayView";
 import { dayLabel } from "../home/dayLabel";
 import { cached, remember } from "../home/session";
+import { deltaText } from "../ratings/api";
+
+function deltaClass(delta: number): string {
+  return delta > 0 ? "delta-up" : delta < 0 ? "delta-dn" : "delta-flat";
+}
+
+/** The viewer's rating change, ▲/▼ as on the leaderboard; nothing for an
+ *  unrated round or game. */
+export function RatingDelta({ delta, className = "" }: { delta?: number; className?: string }) {
+  if (delta === undefined) return null;
+  return <span className={`rating-change ${deltaClass(delta)} ${className}`.trim()}>{deltaText(delta)}</span>;
+}
 
 function when(unix: number): string {
   return new Date(unix * 1000).toLocaleString(undefined, {
@@ -103,6 +115,12 @@ function Summary({ game }: { game: GameRow }) {
       <span>{n} round{n === 1 ? "" : "s"}</span>
       {levels ? <span>Levels: you {levels[mine]} · them {levels[1 - mine]}</span> : null}
       {won ? <span>Games won: {won[mine]}–{won[1 - mine]}</span> : null}
+      {game.rating_change !== undefined ? (
+        <span className="games-meta-rating">
+          Rating <RatingDelta delta={game.rating_change} />
+          {game.rating_after !== undefined ? <> · {game.rating_after.toLocaleString()}</> : null}
+        </span>
+      ) : null}
       {game.incomplete ? <span className="games-tag">incomplete</span> : null}
     </span>
   );
@@ -197,6 +215,7 @@ function GameView({ id }: { id: string }) {
                 <li key={n} className="games-round">
                   <span className="games-round-n">Round {n}</span>
                   <span className="games-round-res">{roundLine(r?.seat ?? game.seat, r?.result)}</span>
+                  <RatingDelta delta={r?.rating_delta} className="games-round-delta" />
                   <button className="btn subtle" onClick={() => navigate({ page: "replay", id, round: n })}>
                     Replay
                   </button>
@@ -386,6 +405,14 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
                       {g.incomplete ? <span className="games-tag">incomplete</span> : null}
                     </span>
                   </span>
+                  {g.rating_change !== undefined ? (
+                    <span className="games-row-rating">
+                      <RatingDelta delta={g.rating_change} />
+                      {g.rating_after !== undefined ? (
+                        <span className="games-row-rating-after">{g.rating_after.toLocaleString()}</span>
+                      ) : null}
+                    </span>
+                  ) : null}
                 </button>
                 <GameActions game={g} className="games-row-actions" />
               </li>

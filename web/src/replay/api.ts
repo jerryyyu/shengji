@@ -19,10 +19,21 @@ export interface GameRow {
   final_levels: unknown;
   games_won: unknown;
   incomplete: boolean;
+  /** The viewer's own net rating change; absent for an unrated game. */
+  rating_change?: number;
+  /** The viewer's rating after the game's latest rated round. */
+  rating_after?: number;
+  rated_rounds?: number;
 }
 
 export interface GameDetail extends GameRow {
-  round_results: { round: number; seat: number; result: Record<string, unknown> }[];
+  round_results: {
+    round: number;
+    seat: number;
+    result: Record<string, unknown>;
+    /** The viewer's rating change that round; absent when it was not rated. */
+    rating_delta?: number;
+  }[];
 }
 
 export interface GamesPage {

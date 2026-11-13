@@ -189,6 +189,52 @@ describe("a game", () => {
   });
 });
 
+describe("rating change", () => {
+  it("a ranked row shows the viewer's net change and rating after; an unranked row shows none", async () => {
+    routes["GET /api/me/games?limit=20"] = { status: 200, body: {
+      games: [row("up", 1_790_000_300, { rating_change: 12, rating_after: 1042, rated_rounds: 3 }),
+              row("dn", 1_790_000_200, { rating_change: -8, rating_after: 1030, rated_rounds: 2 }),
+              row("un", 1_790_000_100)],
+      next_before: null } };
+    await mount();
+    const rows = qa(".games-day-row");
+    const up = rows[0].querySelector(".rating-change")!;
+    expect(up.textContent).toBe("▲ 12");
+    expect(up.classList.contains("delta-up")).toBe(true);
+    expect(rows[0].querySelector(".games-row-rating-after")?.textContent).toBe((1042).toLocaleString());
+    const dn = rows[1].querySelector(".rating-change")!;
+    expect(dn.textContent).toBe("▼ 8");
+    expect(dn.classList.contains("delta-dn")).toBe(true);
+    expect(rows[2].querySelector(".games-row-rating")).toBeNull();
+    expect(rows[2].querySelector(".rating-change")).toBeNull();
+  });
+
+  it("the game page shows the net change and each rated round's change", async () => {
+    routes["GET /api/me/games/g1"] = { status: 200, body: {
+      ...row("g1", 1_790_000_000, { rating_change: 5, rating_after: 1005, rated_rounds: 2 }),
+      round_results: [
+        { round: 1, seat: 0, result: { winner_team: 0, level_change: 2 }, rating_delta: 9 },
+        { round: 2, seat: 0, result: { winner_team: 1, level_change: 1 }, rating_delta: -4 },
+        { round: 3, seat: 0, result: { winner_team: 0, level_change: 0 } },
+      ] } };
+    await mount({ page: "game", id: "g1" });
+    const head = q(".games-meta-rating")!;
+    expect(head.textContent).toBe(`Rating ▲ 5 · ${(1005).toLocaleString()}`);
+    const rounds = qa(".games-round");
+    expect(rounds.map((r) => r.querySelector(".games-round-delta")?.textContent ?? null))
+      .toEqual(["▲ 9", "▼ 4", null]);
+    expect(rounds[1].querySelector(".games-round-delta")!.classList.contains("delta-dn")).toBe(true);
+  });
+
+  it("an unranked game page shows no rating", async () => {
+    routes["GET /api/me/games/g1"] = { status: 200, body: { ...row("g1", 1_790_000_000), round_results: [
+      { round: 1, seat: 0, result: { winner_team: 0, level_change: 2 } }] } };
+    await mount({ page: "game", id: "g1" });
+    expect(q(".games-meta-rating")).toBeNull();
+    expect(q(".rating-change")).toBeNull();
+  });
+});
+
 describe("the replay page", () => {
   it("opens from a round, steps plays and tricks, and ends on the result", async () => {
     routes["GET /api/me/games/g1/rounds/3"] = { status: 200, body: roundFixture };

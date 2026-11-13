@@ -440,6 +440,16 @@ def readable_rounds(game: dict) -> dict[int, int]:
     return dict(sorted(seats.items()))
 
 
+def _add_rating(summary: dict, rated: dict | None) -> None:
+    """The viewer's own rating change in this game; an unrated game (unranked
+    room, or no rated round for this account) carries no rating keys."""
+    if not rated:
+        return
+    summary["rating_change"] = int(round(rated["rating_change"]))
+    summary["rating_after"] = int(round(rated["rating_after"]))
+    summary["rated_rounds"] = int(rated["rated_rounds"])
+
+
 def _summary(game: dict, rounds: dict[int, int]) -> dict:
     return {"id": game["id"], "room_code": game["room_code"],
             "started_at": game["started_at"], "ended_at": game["ended_at"],
@@ -492,6 +502,9 @@ def _list(user_id: int, before: tuple[int, str] | None, limit: int) -> dict:
         rounds = readable_rounds(game)
         if rounds:
             out.append(_summary(game, rounds))
+    rated = accounts.STORE.game_ratings(user_id, [g["id"] for g in out])
+    for summary in out:
+        _add_rating(summary, rated.get(summary["id"]))
     return {"games": out,
             "next_before": accounts.Store.game_cursor(games[limit - 1]) if more else None}
 
@@ -513,6 +526,8 @@ def _detail(user_id: int, game_id: str) -> dict | None:
     game, rounds = found
     seg = _segment(game)
     out = _summary(game, rounds)
+    _add_rating(out, accounts.STORE.game_ratings(user_id, [game["id"]]).get(game["id"]))
+    deltas = accounts.STORE.game_round_ratings(user_id, game["id"])
     results = []
     for n, seat in rounds.items():
         if n not in seg.rounds:
@@ -520,7 +535,10 @@ def _detail(user_id: int, game_id: str) -> dict | None:
             continue
         end = next((r for r in _round_records(game, seg, n) if r["e"] == "round_end"), None)
         if end is not None:
-            results.append({"round": n, "seat": seat, "result": _result(end)})
+            row = {"round": n, "seat": seat, "result": _result(end)}
+            if n in deltas:
+                row["rating_delta"] = int(round(deltas[n]))
+            results.append(row)
     if seg.truncated:
         out["incomplete"] = True
     out["round_results"] = results

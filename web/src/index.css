@@ -5929,6 +5929,11 @@ button[role="switch"]:active .ios-switch {
 }
 .games-row-actions .btn { min-height: 36px; padding: 6px 14px; font-size: var(--fs-13); }
 .games-actions { display: flex; gap: 10px; }
+/* The viewer's rating change in a game: a figure column at the row's end. */
+.rating-change { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.games-row-rating { flex: none; display: flex; flex-direction: column; align-items: flex-end; font-size: var(--fs-14); }
+.games-row-rating-after { font-size: var(--fs-12); color: #9aa3b2; font-variant-numeric: tabular-nums; }
+.games-round-delta { flex: none; font-size: var(--fs-13); }
 .games-actions .btn { flex: 1; min-height: 44px; }
 
 /* My games and the replay on the redesign's charcoal: a top-aligned column

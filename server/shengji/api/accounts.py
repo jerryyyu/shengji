@@ -842,6 +842,44 @@ class Store:
             game["links"] = links
             return game
 
+    def game_ratings(self, user_id: int, game_ids: list[str]) -> dict[str, dict]:
+        """``user_id``'s own rating change in each of ``game_ids``, in one
+        grouped query: game id -> ``rating_change`` (summed delta),
+        ``rating_after`` (the latest event's) and ``rated_rounds``. A rated
+        round's ``game_id`` is the saved game's id plus ``/<segment>`` (one
+        segment per game to a held Ace at that table), so every segment
+        counts toward its saved game. Games with no event are absent."""
+        if not game_ids:
+            return {}
+        marks = ",".join("?" * len(game_ids))
+        with closing(self._open()) as conn:
+            rows = conn.execute(
+                f"""SELECT gid, SUM(delta) AS change, COUNT(*) AS n,
+                           rating_after, MAX(id) AS last_id
+                    FROM (SELECT id, delta, rating_after,
+                                 CASE WHEN instr(game_id, '/') > 0
+                                      THEN substr(game_id, 1, instr(game_id, '/') - 1)
+                                      ELSE game_id END AS gid
+                          FROM rating_events WHERE user_id = ?)
+                    WHERE gid IN ({marks})
+                    GROUP BY gid""",
+                (user_id, *game_ids)).fetchall()
+        # SQLite takes a bare column alongside MAX() from the row holding the
+        # maximum, so ``rating_after`` is the latest event's.
+        return {r["gid"]: {"rating_change": r["change"], "rating_after": r["rating_after"],
+                           "rated_rounds": r["n"]} for r in rows}
+
+    def game_round_ratings(self, user_id: int, game_id: str) -> dict[int, float]:
+        """``user_id``'s own rating delta per round of one saved game, across
+        all of its segments: round number -> summed delta."""
+        with closing(self._open()) as conn:
+            rows = conn.execute(
+                """SELECT round_no, SUM(delta) AS delta FROM rating_events
+                   WHERE user_id = ? AND (game_id = ? OR substr(game_id, 1, ?) = ?)
+                   GROUP BY round_no""",
+                (user_id, game_id, len(game_id) + 1, game_id + "/")).fetchall()
+        return {int(r["round_no"]): r["delta"] for r in rows}
+
     @staticmethod
     def _links(conn: sqlite3.Connection, game_id: str, user_id: int) -> list[dict]:
         return [dict(r) for r in conn.execute(

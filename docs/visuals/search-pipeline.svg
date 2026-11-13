@@ -1,0 +1,438 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 806" width="1400" height="806" role="img" aria-label="How the search works, as a five-stage pipeline. 1, belief sampling: the belief model reads the public history and gives each hidden card's holder probabilities, masked to the holders the public facts allow; 64 worlds are kept, drawn worlds are rejected by the history tests whl, whd, wht, rc and rcec, which apply to the first 512 draws, the plain sampler fills any shortfall after 2,560, and belief preparation over 0.25 s falls back to the Monte Carlo sampler. 2, candidates: up to 4,000 legal plays; the prior's summed card log-odds averaged over 64 root worlds rank them; 8 are admitted, the heuristic's play first, at most 2 per shape (div), la on a weak single lead, and sc8 probing singles on 8 worlds when a hand has more than 7 cards. 3, value pass: each trick is finished by greedy replies (lgf, lgfx, lgfd2000) and 512 positions are scored in batches of 128 as expected signed levels; ties within 0.02 go to trick points (tb); dtr and dtrx drop refused lead throws. 4, exact endgame at 7 cards or fewer a hand: partnership minimax with alpha-beta and a transposition table per world, averaged (ele, ed7, xf7, elm, elt, els1600), switching only on a strictly higher mean. 5, choose: the best mean wins; past the budget or on error the heuristic's choice is played. A 3 second budget timeline: the heuristic decides first, belief preparation up to 0.25 s, the exact lead stage starts only in the first half and its solve stops by 1.6 s, lgf stops at 2 s, both exact stages stop by 2.4 s, the budget ends at 3 s. Side lanes: declaration scores each option and passing on 64 deals (vd, vdef); the bury scores up to 64 candidate kitties on 32 belief-drawn worlds within 2 s (bwv, bbw).">
+<title>How the search works</title>
+<style>.bg{fill:#1d242c}.box{fill:#151a20;stroke-width:1.5}.tile{fill:#151a20;stroke:#98a4b0;stroke-width:1}.h1{font:600 22px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.t{font:600 18px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.s{font:15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.body{font:14.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.cap{font:13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.lab{font:14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.labb{font:600 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.num{font:13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;fill:#c3ccd5}.k{font:600 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;letter-spacing:.06em}.m{font:13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;fill:#98a4b0}.chipt{font:600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}.rule{stroke:#323c47}.arrow{stroke:#98a4b0;stroke-width:1.8;fill:none}.thin{stroke:#98a4b0;stroke-width:1.2;fill:none}.dash{stroke:#98a4b0;stroke-width:1.2;fill:none;stroke-dasharray:3 3}.ah{fill:#98a4b0}.bar{fill:#232c36;stroke:#4fc1b9;stroke-width:1.5}.chip{fill:#232c36;stroke-width:1}.ring{fill:none;stroke:#e6ebf0;stroke-width:1.5}.xm{stroke:#f08a80;stroke-width:2;stroke-linecap:round}.c-belief{fill:#b39cf0}.b-belief{stroke:#b39cf0}.c-prior{fill:#f2a46b}.b-prior{stroke:#f2a46b}.c-value{fill:#7fb8ef}.b-value{stroke:#7fb8ef}.c-exact{fill:#ef8fbe}.b-exact{stroke:#ef8fbe}.c-accent{fill:#4fc1b9}.b-accent{stroke:#4fc1b9}.c-bad{fill:#f08a80}.b-bad{stroke:#f08a80}.c-muted{fill:#98a4b0}.b-muted{stroke:#98a4b0}.c-fg{fill:#e6ebf0}.b-fg{stroke:#e6ebf0}</style>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<rect class="bg" x="0" y="0" width="1400" height="806" rx="16"/>
+<text x="26" y="36" class="h1">How the search works</text>
+<text x="26" y="60" class="s">One card-play decision in release 52, left to right. Shades, tiles, bars and the tree are illustrative; every number is the served setting.</text>
+<rect x="26" y="76" width="252" height="500" class="box b-belief" rx="12"/>
+<text x="40" y="104" class="k c-belief">1 · BELIEF SAMPLING</text>
+<text x="40" y="129" class="t">Draw 64 worlds</text>
+<text x="40" y="154" class="cap">history</text>
+<rect x="40" y="162" width="7" height="12" class="c-belief" fill-opacity="0.30" rx="1"/>
+<rect x="49" y="162" width="7" height="12" class="c-belief" fill-opacity="0.40" rx="1"/>
+<rect x="58" y="162" width="7" height="12" class="c-belief" fill-opacity="0.50" rx="1"/>
+<rect x="67" y="162" width="7" height="12" class="c-belief" fill-opacity="0.60" rx="1"/>
+<rect x="76" y="162" width="7" height="12" class="c-belief" fill-opacity="0.70" rx="1"/>
+<rect x="85" y="162" width="7" height="12" class="c-belief" fill-opacity="0.80" rx="1"/>
+<rect x="94" y="162" width="7" height="12" class="c-belief" fill-opacity="0.90" rx="1"/>
+<path class="arrow" d="M108 168 H128" marker-end="url(#ah)"/>
+<rect x="134" y="144" width="15" height="8" class="c-belief" fill-opacity="1.00"/>
+<rect x="150" y="144" width="15" height="8" class="c-belief" fill-opacity="0.08"/>
+<rect x="166" y="144" width="15" height="8" class="tile" stroke-dasharray="4 3"/>
+<rect x="182" y="144" width="15" height="8" class="c-belief" fill-opacity="0.25"/>
+<rect x="134" y="153" width="15" height="8" class="c-belief" fill-opacity="0.10"/>
+<rect x="150" y="153" width="15" height="8" class="c-belief" fill-opacity="0.52"/>
+<rect x="166" y="153" width="15" height="8" class="c-belief" fill-opacity="0.08"/>
+<rect x="182" y="153" width="15" height="8" class="c-belief" fill-opacity="0.61"/>
+<rect x="134" y="162" width="15" height="8" class="tile" stroke-dasharray="4 3"/>
+<rect x="150" y="162" width="15" height="8" class="c-belief" fill-opacity="0.08"/>
+<rect x="166" y="162" width="15" height="8" class="c-belief" fill-opacity="0.27"/>
+<rect x="182" y="162" width="15" height="8" class="c-belief" fill-opacity="0.90"/>
+<rect x="134" y="171" width="15" height="8" class="c-belief" fill-opacity="0.65"/>
+<rect x="150" y="171" width="15" height="8" class="c-belief" fill-opacity="0.42"/>
+<rect x="166" y="171" width="15" height="8" class="c-belief" fill-opacity="0.12"/>
+<rect x="182" y="171" width="15" height="8" class="c-belief" fill-opacity="0.08"/>
+<rect x="134" y="180" width="15" height="8" class="tile" stroke-dasharray="4 3"/>
+<rect x="150" y="180" width="15" height="8" class="c-belief" fill-opacity="0.56"/>
+<rect x="166" y="180" width="15" height="8" class="c-belief" fill-opacity="0.34"/>
+<rect x="182" y="180" width="15" height="8" class="c-belief" fill-opacity="0.35"/>
+<text x="206" y="156" class="cap">P(holder)</text>
+<text x="206" y="172" class="cap">per card,</text>
+<text x="206" y="188" class="cap">masked</text>
+<text x="40" y="206" class="cap">dashed: holder ruled out</text>
+<rect x="40" y="218" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="44.5" cy="221.5" r="1.4" class="c-belief" fill-opacity="0.91"/>
+<rect x="52" y="218" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="56.5" cy="221.5" r="1.4" class="c-belief" fill-opacity="0.94"/>
+<rect x="64" y="218" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="68.5" cy="221.5" r="1.4" class="c-belief" fill-opacity="0.94"/>
+<rect x="76" y="218" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="80.5" cy="221.5" r="1.4" class="c-belief" fill-opacity="0.97"/>
+<rect x="88" y="218" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="92.5" cy="221.5" r="1.4" class="c-belief" fill-opacity="0.75"/>
+<rect x="100" y="218" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="104.5" cy="221.5" r="1.4" class="c-belief" fill-opacity="0.80"/>
+<rect x="112" y="218" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="116.5" cy="221.5" r="1.4" class="c-belief" fill-opacity="0.93"/>
+<rect x="124" y="218" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="128.5" cy="221.5" r="1.4" class="c-belief" fill-opacity="0.73"/>
+<rect x="40" y="228" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="44.5" cy="231.5" r="1.4" class="c-belief" fill-opacity="0.49"/>
+<rect x="52" y="228" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="56.5" cy="231.5" r="1.4" class="c-belief" fill-opacity="0.71"/>
+<rect x="64" y="228" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="68.5" cy="231.5" r="1.4" class="c-belief" fill-opacity="0.72"/>
+<rect x="76" y="228" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="80.5" cy="231.5" r="1.4" class="c-belief" fill-opacity="0.51"/>
+<rect x="88" y="228" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="92.5" cy="231.5" r="1.4" class="c-belief" fill-opacity="0.46"/>
+<rect x="100" y="228" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="104.5" cy="231.5" r="1.4" class="c-belief" fill-opacity="0.51"/>
+<rect x="112" y="228" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="116.5" cy="231.5" r="1.4" class="c-belief" fill-opacity="0.82"/>
+<rect x="124" y="228" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="128.5" cy="231.5" r="1.4" class="c-belief" fill-opacity="0.89"/>
+<rect x="40" y="238" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="44.5" cy="241.5" r="1.4" class="c-belief" fill-opacity="0.79"/>
+<rect x="52" y="238" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="56.5" cy="241.5" r="1.4" class="c-belief" fill-opacity="0.66"/>
+<rect x="64" y="238" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="68.5" cy="241.5" r="1.4" class="c-belief" fill-opacity="0.42"/>
+<rect x="76" y="238" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="80.5" cy="241.5" r="1.4" class="c-belief" fill-opacity="0.40"/>
+<rect x="88" y="238" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="92.5" cy="241.5" r="1.4" class="c-belief" fill-opacity="0.79"/>
+<rect x="100" y="238" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="104.5" cy="241.5" r="1.4" class="c-belief" fill-opacity="0.72"/>
+<rect x="112" y="238" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="116.5" cy="241.5" r="1.4" class="c-belief" fill-opacity="0.67"/>
+<rect x="124" y="238" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="128.5" cy="241.5" r="1.4" class="c-belief" fill-opacity="0.50"/>
+<rect x="40" y="248" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="44.5" cy="251.5" r="1.4" class="c-belief" fill-opacity="0.47"/>
+<rect x="52" y="248" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="56.5" cy="251.5" r="1.4" class="c-belief" fill-opacity="0.51"/>
+<rect x="64" y="248" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="68.5" cy="251.5" r="1.4" class="c-belief" fill-opacity="0.48"/>
+<rect x="76" y="248" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="80.5" cy="251.5" r="1.4" class="c-belief" fill-opacity="0.76"/>
+<rect x="88" y="248" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="92.5" cy="251.5" r="1.4" class="c-belief" fill-opacity="0.58"/>
+<rect x="100" y="248" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="104.5" cy="251.5" r="1.4" class="c-belief" fill-opacity="0.73"/>
+<rect x="112" y="248" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="116.5" cy="251.5" r="1.4" class="c-belief" fill-opacity="0.66"/>
+<rect x="124" y="248" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="128.5" cy="251.5" r="1.4" class="c-belief" fill-opacity="0.73"/>
+<rect x="40" y="258" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="44.5" cy="261.5" r="1.4" class="c-belief" fill-opacity="0.85"/>
+<rect x="52" y="258" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="56.5" cy="261.5" r="1.4" class="c-belief" fill-opacity="0.87"/>
+<rect x="64" y="258" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="68.5" cy="261.5" r="1.4" class="c-belief" fill-opacity="0.49"/>
+<rect x="76" y="258" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="80.5" cy="261.5" r="1.4" class="c-belief" fill-opacity="0.98"/>
+<rect x="88" y="258" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="92.5" cy="261.5" r="1.4" class="c-belief" fill-opacity="0.91"/>
+<rect x="100" y="258" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="104.5" cy="261.5" r="1.4" class="c-belief" fill-opacity="0.89"/>
+<rect x="112" y="258" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="116.5" cy="261.5" r="1.4" class="c-belief" fill-opacity="0.67"/>
+<rect x="124" y="258" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="128.5" cy="261.5" r="1.4" class="c-belief" fill-opacity="0.97"/>
+<rect x="40" y="268" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="44.5" cy="271.5" r="1.4" class="c-belief" fill-opacity="0.89"/>
+<rect x="52" y="268" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="56.5" cy="271.5" r="1.4" class="c-belief" fill-opacity="0.54"/>
+<rect x="64" y="268" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="68.5" cy="271.5" r="1.4" class="c-belief" fill-opacity="0.81"/>
+<rect x="76" y="268" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="80.5" cy="271.5" r="1.4" class="c-belief" fill-opacity="0.91"/>
+<rect x="88" y="268" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="92.5" cy="271.5" r="1.4" class="c-belief" fill-opacity="0.85"/>
+<rect x="100" y="268" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="104.5" cy="271.5" r="1.4" class="c-belief" fill-opacity="0.94"/>
+<rect x="112" y="268" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="116.5" cy="271.5" r="1.4" class="c-belief" fill-opacity="0.72"/>
+<rect x="124" y="268" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="128.5" cy="271.5" r="1.4" class="c-belief" fill-opacity="0.80"/>
+<rect x="40" y="278" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="44.5" cy="281.5" r="1.4" class="c-belief" fill-opacity="0.45"/>
+<rect x="52" y="278" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="56.5" cy="281.5" r="1.4" class="c-belief" fill-opacity="0.80"/>
+<rect x="64" y="278" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="68.5" cy="281.5" r="1.4" class="c-belief" fill-opacity="0.49"/>
+<rect x="76" y="278" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="80.5" cy="281.5" r="1.4" class="c-belief" fill-opacity="0.83"/>
+<rect x="88" y="278" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="92.5" cy="281.5" r="1.4" class="c-belief" fill-opacity="0.94"/>
+<rect x="100" y="278" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="104.5" cy="281.5" r="1.4" class="c-belief" fill-opacity="0.62"/>
+<rect x="112" y="278" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="116.5" cy="281.5" r="1.4" class="c-belief" fill-opacity="0.44"/>
+<rect x="124" y="278" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="128.5" cy="281.5" r="1.4" class="c-belief" fill-opacity="0.43"/>
+<rect x="40" y="288" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="44.5" cy="291.5" r="1.4" class="c-belief" fill-opacity="0.71"/>
+<rect x="52" y="288" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="56.5" cy="291.5" r="1.4" class="c-belief" fill-opacity="0.49"/>
+<rect x="64" y="288" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="68.5" cy="291.5" r="1.4" class="c-belief" fill-opacity="0.84"/>
+<rect x="76" y="288" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="80.5" cy="291.5" r="1.4" class="c-belief" fill-opacity="0.77"/>
+<rect x="88" y="288" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="92.5" cy="291.5" r="1.4" class="c-belief" fill-opacity="0.70"/>
+<rect x="100" y="288" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="104.5" cy="291.5" r="1.4" class="c-belief" fill-opacity="0.80"/>
+<rect x="112" y="288" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="116.5" cy="291.5" r="1.4" class="c-belief" fill-opacity="0.49"/>
+<rect x="124" y="288" width="9" height="7" class="tile" rx="1.5"/>
+<circle cx="128.5" cy="291.5" r="1.4" class="c-belief" fill-opacity="0.67"/>
+<text x="146" y="228" class="labb">64 worlds kept</text>
+<text x="146" y="250" class="cap c-bad">✕ rejected by</text>
+<rect x="146" y="258" width="33.96" height="20" class="chip b-bad" rx="10"/>
+<text x="162.98" y="272" class="chipt c-bad" text-anchor="middle">whl</text>
+<rect x="185.96" y="258" width="33.96" height="20" class="chip b-bad" rx="10"/>
+<text x="202.94" y="272" class="chipt c-bad" text-anchor="middle">whd</text>
+<rect x="225.92" y="258" width="33.96" height="20" class="chip b-bad" rx="10"/>
+<text x="242.9" y="272" class="chipt c-bad" text-anchor="middle">wht</text>
+<rect x="146" y="284" width="26.64" height="20" class="chip b-bad" rx="10"/>
+<text x="159.32" y="298" class="chipt c-bad" text-anchor="middle">rc</text>
+<rect x="178.64" y="284" width="41.28" height="20" class="chip b-bad" rx="10"/>
+<text x="199.28" y="298" class="chipt c-bad" text-anchor="middle">rcec</text>
+<line x1="40" y1="318" x2="264" y2="318" class="rule"/>
+<text x="40" y="342" class="body">64 worlds kept; history tests</text>
+<text x="40" y="361.5" class="body">on the first 512 draws; plain</text>
+<text x="40" y="381" class="body">fill after 2,560.</text>
+<text x="40" y="400.5" class="body">Belief prep over 0.25 s or an</text>
+<text x="40" y="420" class="body">error → Monte Carlo sampler</text>
+<text x="40" y="439.5" class="body">under the same tests.</text>
+<rect x="40" y="542" width="26.64" height="20" class="chip b-belief" rx="10"/>
+<text x="53.32" y="556" class="chipt c-belief" text-anchor="middle">bw</text>
+<path class="arrow" d="M280 116 H298" marker-end="url(#ah)"/>
+<rect x="300" y="76" width="252" height="500" class="box b-prior" rx="12"/>
+<text x="314" y="104" class="k c-prior">2 · CANDIDATES</text>
+<text x="314" y="129" class="t">Admit 8 plays</text>
+<rect x="314" y="144" width="49" height="52" class="box b-fg" rx="5"/>
+<text x="338.5" y="161" class="cap" text-anchor="middle">heur.</text>
+<text x="338.5" y="190" class="m" text-anchor="middle">1</text>
+<rect x="372" y="144" width="49" height="52" class="box b-prior" rx="5"/>
+<rect x="378" y="168" width="37" height="10.8" class="c-prior" fill-opacity="0.50" rx="2"/>
+<text x="396.5" y="161" class="cap" text-anchor="middle">prior</text>
+<text x="396.5" y="190" class="m" text-anchor="middle">2</text>
+<rect x="430" y="144" width="49" height="52" class="box b-prior" rx="5"/>
+<rect x="436" y="168" width="37" height="9.6" class="c-prior" fill-opacity="0.50" rx="2"/>
+<text x="454.5" y="161" class="cap" text-anchor="middle">prior</text>
+<text x="454.5" y="190" class="m" text-anchor="middle">3</text>
+<rect x="488" y="144" width="49" height="52" class="box b-prior" rx="5"/>
+<rect x="494" y="168" width="37" height="8.4" class="c-prior" fill-opacity="0.50" rx="2"/>
+<text x="512.5" y="161" class="cap" text-anchor="middle">prior</text>
+<text x="512.5" y="190" class="m" text-anchor="middle">4</text>
+<rect x="314" y="206" width="49" height="52" class="box b-prior" rx="5"/>
+<rect x="320" y="230" width="37" height="7.2" class="c-prior" fill-opacity="0.50" rx="2"/>
+<text x="338.5" y="223" class="cap" text-anchor="middle">prior</text>
+<text x="338.5" y="252" class="m" text-anchor="middle">5</text>
+<rect x="372" y="206" width="49" height="52" class="box b-prior" rx="5"/>
+<rect x="378" y="230" width="37" height="6" class="c-prior" fill-opacity="0.50" rx="2"/>
+<text x="396.5" y="223" class="cap" text-anchor="middle">prior</text>
+<text x="396.5" y="252" class="m" text-anchor="middle">6</text>
+<rect x="430" y="206" width="49" height="52" class="box b-prior" rx="5"/>
+<rect x="436" y="230" width="37" height="4.8" class="c-prior" fill-opacity="0.50" rx="2"/>
+<text x="454.5" y="223" class="cap" text-anchor="middle">prior</text>
+<text x="454.5" y="252" class="m" text-anchor="middle">7</text>
+<rect x="488" y="206" width="49" height="52" class="box b-prior" rx="5"/>
+<rect x="494" y="230" width="37" height="3.6" class="c-prior" fill-opacity="0.50" rx="2"/>
+<text x="512.5" y="223" class="cap" text-anchor="middle">prior</text>
+<text x="512.5" y="252" class="m" text-anchor="middle">8</text>
+<text x="314" y="282" class="cap">slot 1: heuristic's play (la may swap);</text>
+<text x="314" y="299" class="cap">then best prior; sc8 may take slot 8</text>
+<line x1="314" y1="318" x2="538" y2="318" class="rule"/>
+<text x="314" y="342" class="body">Legal plays ≤ 4,000.</text>
+<text x="314" y="361.5" class="body">Prior = summed card log-odds,</text>
+<text x="314" y="381" class="body">averaged over 64 root worlds.</text>
+<text x="314" y="400.5" class="body">div: ≤ 2 per shape, no near-</text>
+<text x="314" y="420" class="body">duplicate throws. la: weak</text>
+<text x="314" y="439.5" class="body">single lead → strongest pair</text>
+<text x="314" y="459" class="body">or tractor in slot 1. sc8: a</text>
+<text x="314" y="478.5" class="body">hand has &gt; 7 cards → singles</text>
+<text x="314" y="498" class="body">probed on 8 worlds.</text>
+<rect x="314" y="542" width="33.96" height="20" class="chip b-prior" rx="10"/>
+<text x="330.98" y="556" class="chipt c-prior" text-anchor="middle">div</text>
+<rect x="353.96" y="542" width="26.64" height="20" class="chip b-prior" rx="10"/>
+<text x="367.28" y="556" class="chipt c-prior" text-anchor="middle">la</text>
+<rect x="386.6" y="542" width="33.96" height="20" class="chip b-prior" rx="10"/>
+<text x="403.58" y="556" class="chipt c-prior" text-anchor="middle">sc8</text>
+<path class="arrow" d="M554 116 H572" marker-end="url(#ah)"/>
+<rect x="574" y="76" width="252" height="500" class="box b-value" rx="12"/>
+<text x="588" y="104" class="k c-value">3 · VALUE PASS</text>
+<text x="588" y="129" class="t">Score 8 × 64</text>
+<text x="588" y="154" class="cap">finish the trick (lgf):</text>
+<rect x="588" y="164" width="44" height="26" class="box b-value" rx="4"/>
+<text x="610" y="181" class="cap" text-anchor="middle">play</text>
+<path class="arrow" d="M633 177 H642" marker-end="url(#ah)"/>
+<rect x="644" y="164" width="44" height="26" class="box b-muted" rx="4"/>
+<text x="666" y="181" class="cap" text-anchor="middle">reply</text>
+<path class="arrow" d="M689 177 H698" marker-end="url(#ah)"/>
+<rect x="700" y="164" width="44" height="26" class="box b-muted" rx="4"/>
+<text x="722" y="181" class="cap" text-anchor="middle">reply</text>
+<path class="arrow" d="M745 177 H754" marker-end="url(#ah)"/>
+<rect x="756" y="164" width="44" height="26" class="box b-muted" rx="4"/>
+<text x="778" y="181" class="cap" text-anchor="middle">reply</text>
+<text x="588" y="208" class="cap">each reply: best of the prior's top 4</text>
+<text x="588" y="224" class="cap">follows + the heuristic's, for its team</text>
+<rect x="592" y="265.62" width="15" height="36.38" class="c-value" fill-opacity="0.45" rx="2"/>
+<rect x="614" y="252.79" width="15" height="49.21" class="c-value" fill-opacity="0.45" rx="2"/>
+<rect x="636" y="246.49" width="15" height="55.51" class="c-value" fill-opacity="0.45" rx="2"/>
+<rect x="658" y="262.85" width="15" height="39.15" class="c-value" fill-opacity="0.45" rx="2"/>
+<rect x="680" y="249.17" width="15" height="52.83" class="c-value" fill-opacity="0.45" rx="2"/>
+<rect x="702" y="241.35" width="15" height="60.65" class="c-value" fill-opacity="1.00" rx="2"/>
+<rect x="724" y="258.52" width="15" height="43.48" class="c-value" fill-opacity="0.45" rx="2"/>
+<rect x="746" y="261.47" width="15" height="40.53" class="c-value" fill-opacity="0.45" rx="2"/>
+<rect x="699" y="235" width="21" height="70" class="ring" rx="3"/>
+<line x1="588" y1="303" x2="768" y2="303" class="thin"/>
+<text x="774" y="254" class="cap">mean</text>
+<text x="774" y="270" class="cap">over 64</text>
+<text x="774" y="286" class="cap">worlds</text>
+<line x1="588" y1="318" x2="812" y2="318" class="rule"/>
+<text x="588" y="342" class="body">512 positions, batches of 128;</text>
+<text x="588" y="361.5" class="body">value = expected signed levels</text>
+<text x="588" y="381" class="body">for the bot's team.</text>
+<text x="588" y="400.5" class="body">tb: within 0.02 of the best →</text>
+<text x="588" y="420" class="body">trick points decide.</text>
+<text x="588" y="439.5" class="body">dtr: a lead throw refused in</text>
+<text x="588" y="459" class="body">every world is dropped; dtrx:</text>
+<text x="588" y="478.5" class="body">never below the exact mean.</text>
+<rect x="588" y="516" width="33.96" height="20" class="chip b-value" rx="10"/>
+<text x="604.98" y="530" class="chipt c-value" text-anchor="middle">lgf</text>
+<rect x="627.96" y="516" width="41.28" height="20" class="chip b-value" rx="10"/>
+<text x="648.6" y="530" class="chipt c-value" text-anchor="middle">lgfx</text>
+<rect x="675.24" y="516" width="70.56" height="20" class="chip b-value" rx="10"/>
+<text x="710.52" y="530" class="chipt c-value" text-anchor="middle">lgfd2000</text>
+<rect x="751.8" y="516" width="26.64" height="20" class="chip b-value" rx="10"/>
+<text x="765.12" y="530" class="chipt c-value" text-anchor="middle">tb</text>
+<rect x="588" y="542" width="33.96" height="20" class="chip b-value" rx="10"/>
+<text x="604.98" y="556" class="chipt c-value" text-anchor="middle">dtr</text>
+<rect x="627.96" y="542" width="41.28" height="20" class="chip b-value" rx="10"/>
+<text x="648.6" y="556" class="chipt c-value" text-anchor="middle">dtrx</text>
+<path class="arrow" d="M828 116 H846" marker-end="url(#ah)"/>
+<rect x="848" y="76" width="252" height="500" class="box b-exact" rx="12"/>
+<text x="862" y="104" class="k c-exact">4 · EXACT ENDGAME</text>
+<text x="862" y="129" class="t">≤ 7 cards a hand</text>
+<circle cx="962" cy="156" r="6" class="c-exact"/>
+<line x1="962" y1="162" x2="892" y2="205" class="thin"/>
+<circle cx="892" cy="210" r="5" class="c-exact" fill-opacity="0.7"/>
+<line x1="892" y1="215" x2="872" y2="256" class="thin"/>
+<circle cx="872" cy="260" r="3.5" class="c-exact" fill-opacity="0.5"/>
+<line x1="892" y1="215" x2="892" y2="256" class="thin"/>
+<circle cx="892" cy="260" r="3.5" class="c-exact" fill-opacity="0.5"/>
+<line x1="892" y1="215" x2="912" y2="256" class="dash"/>
+<line x1="908.5" y1="256.5" x2="915.5" y2="263.5" class="xm"/>
+<line x1="908.5" y1="263.5" x2="915.5" y2="256.5" class="xm"/>
+<line x1="962" y1="162" x2="962" y2="205" class="thin"/>
+<circle cx="962" cy="210" r="5" class="c-exact" fill-opacity="0.7"/>
+<line x1="962" y1="215" x2="942" y2="256" class="thin"/>
+<circle cx="942" cy="260" r="3.5" class="c-exact" fill-opacity="0.5"/>
+<line x1="962" y1="215" x2="962" y2="256" class="dash"/>
+<line x1="958.5" y1="256.5" x2="965.5" y2="263.5" class="xm"/>
+<line x1="958.5" y1="263.5" x2="965.5" y2="256.5" class="xm"/>
+<line x1="962" y1="215" x2="982" y2="256" class="thin"/>
+<circle cx="982" cy="260" r="3.5" class="c-exact" fill-opacity="0.5"/>
+<line x1="962" y1="162" x2="1032" y2="205" class="thin"/>
+<circle cx="1032" cy="210" r="5" class="c-exact" fill-opacity="0.7"/>
+<line x1="1032" y1="215" x2="1012" y2="256" class="dash"/>
+<line x1="1008.5" y1="256.5" x2="1015.5" y2="263.5" class="xm"/>
+<line x1="1008.5" y1="263.5" x2="1015.5" y2="256.5" class="xm"/>
+<line x1="1032" y1="215" x2="1032" y2="256" class="thin"/>
+<circle cx="1032" cy="260" r="3.5" class="c-exact" fill-opacity="0.5"/>
+<line x1="1032" y1="215" x2="1052" y2="256" class="thin"/>
+<circle cx="1052" cy="260" r="3.5" class="c-exact" fill-opacity="0.5"/>
+<text x="974" y="161" class="cap">max (our side)</text>
+<text x="1042" y="214" class="cap">min</text>
+<text x="862" y="290" class="cap">dashed ✕: alpha-beta cut; repeats</text>
+<text x="862" y="307" class="cap">read from the transposition table</text>
+<line x1="862" y1="318" x2="1086" y2="318" class="rule"/>
+<text x="862" y="342" class="body">Each play solved per world,</text>
+<text x="862" y="361.5" class="body">hands face up: partnership</text>
+<text x="862" y="381" class="body">minimax, alpha-beta and a</text>
+<text x="862" y="400.5" class="body">transposition table; results</text>
+<text x="862" y="420" class="body">averaged over the 64 worlds.</text>
+<text x="862" y="439.5" class="body">Lead: own first trick (elm),</text>
+<text x="862" y="459" class="body">kept only if strictly higher</text>
+<text x="862" y="478.5" class="body">(elt), stops by 1.6 s (els1600).</text>
+<text x="862" y="498" class="body">Follows: strictly higher only.</text>
+<rect x="862" y="516" width="33.96" height="20" class="chip b-exact" rx="10"/>
+<text x="878.98" y="530" class="chipt c-exact" text-anchor="middle">ele</text>
+<rect x="901.96" y="516" width="33.96" height="20" class="chip b-exact" rx="10"/>
+<text x="918.94" y="530" class="chipt c-exact" text-anchor="middle">ed7</text>
+<rect x="941.92" y="516" width="33.96" height="20" class="chip b-exact" rx="10"/>
+<text x="958.9" y="530" class="chipt c-exact" text-anchor="middle">xf7</text>
+<rect x="981.88" y="516" width="33.96" height="20" class="chip b-exact" rx="10"/>
+<text x="998.86" y="530" class="chipt c-exact" text-anchor="middle">elm</text>
+<rect x="1021.84" y="516" width="33.96" height="20" class="chip b-exact" rx="10"/>
+<text x="1038.82" y="530" class="chipt c-exact" text-anchor="middle">elt</text>
+<rect x="862" y="542" width="63.24" height="20" class="chip b-exact" rx="10"/>
+<text x="893.62" y="556" class="chipt c-exact" text-anchor="middle">els1600</text>
+<path class="arrow" d="M1102 116 H1120" marker-end="url(#ah)"/>
+<rect x="1122" y="76" width="252" height="500" class="box b-accent" rx="12"/>
+<text x="1136" y="104" class="k c-accent">5 · CHOOSE</text>
+<text x="1136" y="129" class="t">Best mean wins</text>
+<rect x="1156" y="150" width="70" height="96" class="box b-accent" rx="7"/>
+<text x="1191" y="192" class="labb" text-anchor="middle">best</text>
+<text x="1191" y="212" class="labb" text-anchor="middle">mean</text>
+<text x="1266" y="190" class="cap">play it</text>
+<path class="arrow" d="M1228 198 H1262" marker-end="url(#ah)"/>
+<rect x="1156" y="274" width="70" height="34" class="box b-muted" rx="6" stroke-dasharray="4 3"/>
+<text x="1191" y="296" class="cap" text-anchor="middle">heuristic</text>
+<text x="1240" y="288" class="cap">budget passed</text>
+<text x="1240" y="304" class="cap">or any error</text>
+<line x1="1136" y1="318" x2="1360" y2="318" class="rule"/>
+<text x="1136" y="342" class="body">The admitted play with the</text>
+<text x="1136" y="361.5" class="body">best mean over the 64 worlds</text>
+<text x="1136" y="381" class="body">is played; an exact stage</text>
+<text x="1136" y="400.5" class="body">replaces it only on a strictly</text>
+<text x="1136" y="420" class="body">higher exact mean.</text>
+<text x="1136" y="439.5" class="body">Past the budget or on any</text>
+<text x="1136" y="459" class="body">error → the heuristic's</text>
+<text x="1136" y="478.5" class="body">choice.</text>
+<rect x="26" y="594" width="800" height="196" class="box b-muted" rx="12"/>
+<text x="40" y="620" class="k c-fg">BUDGET · 3 s PER DECISION</text>
+<text x="812" y="620" class="cap" text-anchor="end">card play and declaration; checked between draws and model batches</text>
+<rect x="78" y="640" width="59" height="17" class="c-belief" fill-opacity="0.28" rx="3"/>
+<line x1="137" y1="638" x2="137" y2="659" class="b-belief thin"/>
+<text x="145" y="653" class="cap">belief prep ≤ 0.25 s</text>
+<rect x="78" y="664" width="354" height="17" class="c-exact" fill-opacity="0.28" rx="3"/>
+<line x1="432" y1="662" x2="432" y2="683" class="b-exact thin"/>
+<text x="86" y="677" class="cap">exact lead may start (first half)</text>
+<rect x="78" y="688" width="472" height="17" class="c-value" fill-opacity="0.28" rx="3"/>
+<line x1="550" y1="686" x2="550" y2="707" class="b-value thin"/>
+<text x="86" y="701" class="cap">lgf greedy finish, stops at 2 s</text>
+<rect x="78" y="712" width="566.4" height="17" class="c-exact" fill-opacity="0.28" rx="3"/>
+<line x1="644.4" y1="710" x2="644.4" y2="731" class="b-exact thin"/>
+<text x="86" y="725" class="cap">exact stages stop by 80% = 2.4 s</text>
+<line x1="432" y1="672.5" x2="455.6" y2="672.5" class="b-exact thin"/>
+<line x1="455.6" y1="662" x2="455.6" y2="683" class="b-exact thin"/>
+<text x="463.6" y="677" class="cap">lead solve stops by 1.6 s (els1600)</text>
+<line x1="78" y1="746" x2="786" y2="746" class="arrow"/>
+<line x1="78" y1="742" x2="78" y2="750" class="arrow"/>
+<text x="78" y="764" class="num" text-anchor="middle">0</text>
+<line x1="314" y1="742" x2="314" y2="750" class="arrow"/>
+<text x="314" y="764" class="num" text-anchor="middle">1 s</text>
+<line x1="455.6" y1="742" x2="455.6" y2="750" class="arrow"/>
+<text x="455.6" y="764" class="num" text-anchor="middle">1.6</text>
+<line x1="550" y1="742" x2="550" y2="750" class="arrow"/>
+<text x="550" y="764" class="num" text-anchor="middle">2</text>
+<line x1="644.4" y1="742" x2="644.4" y2="750" class="arrow"/>
+<text x="644.4" y="764" class="num" text-anchor="middle">2.4</text>
+<line x1="786" y1="742" x2="786" y2="750" class="arrow"/>
+<text x="786" y="764" class="num" text-anchor="middle">3 s</text>
+<line x1="786" y1="634" x2="786" y2="746" class="dash"/>
+<text x="780" y="725" class="cap" text-anchor="end">budget ends</text>
+<circle cx="78" cy="746" r="5" class="c-accent"/>
+<text x="40" y="786" class="cap">0 s: the heuristic decides first, so a choice always exists. 3 s: the budget ends; past it the bot plays the heuristic's choice.</text>
+<rect x="848" y="594" width="252" height="196" class="box b-value" rx="12"/>
+<text x="862" y="620" class="k c-value">DECLARE</text>
+<rect x="1012.08" y="605" width="26.64" height="20" class="chip b-value" rx="10"/>
+<text x="1025.4" y="619" class="chipt c-value" text-anchor="middle">vd</text>
+<rect x="1044.72" y="605" width="41.28" height="20" class="chip b-value" rx="10"/>
+<text x="1065.36" y="619" class="chipt c-value" text-anchor="middle">vdef</text>
+<text x="862" y="646" class="cap">Where the heuristic would declare,</text>
+<text x="862" y="665" class="cap">at the last chance, or at any chance</text>
+<text x="862" y="684" class="cap">in round 1 (vdef): each option and</text>
+<text x="862" y="703" class="cap">passing scored on 64 deals, each</text>
+<text x="862" y="722" class="cap">with the heuristic's bury and first</text>
+<text x="862" y="741" class="cap">trick; replaces the heuristic's</text>
+<text x="862" y="760" class="cap">choice only if strictly higher (vd).</text>
+<rect x="1122" y="594" width="252" height="196" class="box b-belief" rx="12"/>
+<text x="1136" y="620" class="k c-belief">BURY</text>
+<rect x="1286.08" y="605" width="33.96" height="20" class="chip b-belief" rx="10"/>
+<text x="1303.06" y="619" class="chipt c-belief" text-anchor="middle">bwv</text>
+<rect x="1326.04" y="605" width="33.96" height="20" class="chip b-belief" rx="10"/>
+<text x="1343.02" y="619" class="chipt c-belief" text-anchor="middle">bbw</text>
+<text x="1136" y="646" class="cap">Up to 64 candidate kitties (the</text>
+<text x="1136" y="665" class="cap">heuristic's, structured alternatives,</text>
+<text x="1136" y="684" class="cap">single-card swaps) scored on 32</text>
+<text x="1136" y="703" class="cap">belief-drawn worlds; the best mean</text>
+<text x="1136" y="722" class="cap">is kept (bwv, bbw).</text>
+<text x="1136" y="741" class="cap">Budget 2 s per bury.</text>
+</svg>

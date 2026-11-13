@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 776" width="1200" height="776" role="img" aria-label="The models, three cards. Belief, B1a 028131a0, a transformer with 3.2M parameters: history tokens go through a causal 4-layer encoder of width 192 with 4 heads; 54 card queries cross-attend to it through 4 layers, then one card self-attention layer; a 2-layer MLP of width 256 over 1,115 public features is added; the output is 54 by 4 holder logits for next player, partner, previous player and kitty, masked and turned into probabilities by a softmax at temperature 1.019. Trained by the S58 fine-tune on 10.3M decisions from Y self-play; used in belief sampling and the bury worlds. Value, G3 Stage A f4f4127e, a residual MLP with 620k parameters: 833 inputs, 561 public features plus 5 by 54 deal counts plus 2 for perspective, a stem to width 165, 4 residual blocks of LayerNorm, a 330-wide ReLU layer and back to 165, a final LayerNorm and ReLU, and 204 outcome classes whose softmax gives the expected signed level. Trained with cross-entropy on 200k Y self-play rounds, warm from SMV3; used in the value pass, declare and bury. Prior, FT1 1fa201b2, the same residual MLP with a 54-card policy head: one root position per world gives 54 card log-odds, used raw with no softmax and summed per play; fine-tuned toward about 37.8k expert-search labels; used for candidates and lgf follows. All are trained in PyTorch, exported to .npz and run in NumPy on the server CPU; value positions go in batches of 128; on Fly a release 52 decision takes p95 0.855 seconds.">
+<title>The models</title>
+<style>.bg{fill:#1d242c}.box{fill:#151a20;stroke-width:1.5}.tile{fill:#151a20;stroke:#98a4b0;stroke-width:1}.h1{font:600 22px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.t{font:600 18px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.s{font:15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.body{font:14.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.cap{font:13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#c3ccd5}.lab{font:14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.labb{font:600 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6ebf0}.num{font:13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;fill:#c3ccd5}.k{font:600 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;letter-spacing:.06em}.m{font:13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;fill:#98a4b0}.chipt{font:600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}.rule{stroke:#323c47}.arrow{stroke:#98a4b0;stroke-width:1.8;fill:none}.thin{stroke:#98a4b0;stroke-width:1.2;fill:none}.dash{stroke:#98a4b0;stroke-width:1.2;fill:none;stroke-dasharray:3 3}.ah{fill:#98a4b0}.bar{fill:#232c36;stroke:#4fc1b9;stroke-width:1.5}.chip{fill:#232c36;stroke-width:1}.ring{fill:none;stroke:#e6ebf0;stroke-width:1.5}.xm{stroke:#f08a80;stroke-width:2;stroke-linecap:round}.c-belief{fill:#b39cf0}.b-belief{stroke:#b39cf0}.c-prior{fill:#f2a46b}.b-prior{stroke:#f2a46b}.c-value{fill:#7fb8ef}.b-value{stroke:#7fb8ef}.c-exact{fill:#ef8fbe}.b-exact{stroke:#ef8fbe}.c-accent{fill:#4fc1b9}.b-accent{stroke:#4fc1b9}.c-bad{fill:#f08a80}.b-bad{stroke:#f08a80}.c-muted{fill:#98a4b0}.b-muted{stroke:#98a4b0}.c-fg{fill:#e6ebf0}.b-fg{stroke:#e6ebf0}</style>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<rect class="bg" x="0" y="0" width="1200" height="776" rx="16"/>
+<text x="16" y="36" class="h1">The models</text>
+<text x="16" y="60" class="s">Release 52's three networks: what each reads, its shape, how it was trained and where the search calls it.</text>
+<rect x="16" y="76" width="380" height="604" class="box b-belief" rx="12"/>
+<text x="34" y="104" class="k c-belief">BELIEF</text>
+<text x="34" y="131" class="t">B1a · 028131a0</text>
+<text x="34" y="154" class="s">transformer · 3.2M parameters</text>
+<rect x="34" y="180" width="180" height="30" class="box b-belief" rx="6" stroke-dasharray="4 3"/>
+<text x="124" y="200" class="lab" text-anchor="middle">history tokens</text>
+<text x="230" y="200" class="cap">the round's earlier plays</text>
+<path class="arrow" d="M124 211 V222" marker-end="url(#ah)"/>
+<rect x="34" y="224" width="180" height="30" class="box b-belief" rx="6"/>
+<rect x="34" y="224" width="180" height="30" class="c-belief" fill-opacity="0.16" rx="6"/>
+<text x="124" y="244" class="lab" text-anchor="middle">causal encoder × 4</text>
+<text x="230" y="244" class="cap">width 192, 4 heads</text>
+<path class="arrow" d="M124 255 V266" marker-end="url(#ah)"/>
+<rect x="34" y="268" width="180" height="30" class="box b-belief" rx="6"/>
+<rect x="34" y="268" width="180" height="30" class="c-belief" fill-opacity="0.16" rx="6"/>
+<text x="124" y="288" class="lab" text-anchor="middle">cross-attend × 4</text>
+<text x="248" y="284" class="cap">54 card queries</text>
+<path class="arrow" d="M244 283 H218" marker-end="url(#ah)"/>
+<path class="arrow" d="M124 299 V310" marker-end="url(#ah)"/>
+<rect x="34" y="312" width="180" height="30" class="box b-belief" rx="6"/>
+<rect x="34" y="312" width="180" height="30" class="c-belief" fill-opacity="0.16" rx="6"/>
+<text x="124" y="332" class="lab" text-anchor="middle">card self-attention × 1</text>
+<path class="arrow" d="M124 343 V354" marker-end="url(#ah)"/>
+<circle cx="124" cy="371" r="12" class="chip b-belief" stroke-width="1.5"/>
+<text x="124" y="377" class="labb" text-anchor="middle">+</text>
+<text x="248" y="364" class="cap">1,115 public features →</text>
+<text x="248" y="380" class="cap">MLP 2 × 256</text>
+<path class="arrow" d="M244 371 H140" marker-end="url(#ah)"/>
+<path class="arrow" d="M124 387 V398" marker-end="url(#ah)"/>
+<rect x="34" y="400" width="180" height="30" class="box b-belief" rx="6"/>
+<rect x="34" y="400" width="180" height="30" class="c-belief" fill-opacity="0.16" rx="6"/>
+<text x="124" y="420" class="lab" text-anchor="middle">54 × 4 holder logits</text>
+<text x="230" y="412" class="cap">next · partner ·</text>
+<text x="230" y="428" class="cap">previous · kitty</text>
+<path class="arrow" d="M124 431 V442" marker-end="url(#ah)"/>
+<rect x="34" y="444" width="180" height="30" class="box b-belief" rx="6"/>
+<rect x="34" y="444" width="180" height="30" class="c-belief" fill-opacity="0.16" rx="6"/>
+<text x="124" y="464" class="lab" text-anchor="middle">mask → softmax, T 1.019</text>
+<text x="230" y="464" class="cap">allowed holders only</text>
+<line x1="34" y1="492" x2="378" y2="492" class="rule"/>
+<text x="34" y="516" class="m c-belief">TRAINED</text>
+<text x="34" y="538" class="body">S58 fine-tune on 10.3M decisions from</text>
+<text x="34" y="557.5" class="body">Y self-play; target: each hidden</text>
+<text x="34" y="577" class="body">card's true holder.</text>
+<text x="34" y="610.5" class="m c-belief">USED IN</text>
+<text x="34" y="632.5" class="body">belief sampling (bw);</text>
+<text x="34" y="652" class="body">bury worlds (bbw)</text>
+<rect x="414" y="76" width="380" height="604" class="box b-value" rx="12"/>
+<text x="432" y="104" class="k c-value">VALUE</text>
+<text x="432" y="131" class="t">G3 Stage A · f4f4127e</text>
+<text x="432" y="154" class="s">residual MLP · 620k parameters</text>
+<rect x="432" y="180" width="180" height="30" class="box b-value" rx="6" stroke-dasharray="4 3"/>
+<text x="522" y="200" class="lab" text-anchor="middle">833 inputs</text>
+<text x="628" y="192" class="cap">561 public + 5 × 54 deal</text>
+<text x="628" y="208" class="cap">counts + 2 perspective</text>
+<path class="arrow" d="M522 211 V222" marker-end="url(#ah)"/>
+<rect x="432" y="224" width="180" height="30" class="box b-value" rx="6"/>
+<rect x="432" y="224" width="180" height="30" class="c-value" fill-opacity="0.16" rx="6"/>
+<text x="522" y="244" class="lab" text-anchor="middle">linear stem → 165</text>
+<path class="arrow" d="M522 255 V260" marker-end="url(#ah)"/>
+<rect x="438" y="262" width="180" height="30" class="box b-value" rx="6"/>
+<rect x="435" y="265" width="180" height="30" class="box b-value" rx="6"/>
+<rect x="432" y="268" width="180" height="30" class="box b-value" rx="6"/>
+<rect x="432" y="268" width="180" height="30" class="c-value" fill-opacity="0.16" rx="6"/>
+<text x="522" y="288" class="lab" text-anchor="middle">residual block × 4</text>
+<text x="628" y="280" class="cap">LayerNorm → 330 ReLU</text>
+<text x="628" y="296" class="cap">→ 165, + block input</text>
+<path class="arrow" d="M522 299 V310" marker-end="url(#ah)"/>
+<rect x="432" y="312" width="180" height="30" class="box b-value" rx="6"/>
+<rect x="432" y="312" width="180" height="30" class="c-value" fill-opacity="0.16" rx="6"/>
+<text x="522" y="332" class="lab" text-anchor="middle">LayerNorm + ReLU</text>
+<path class="arrow" d="M522 343 V354" marker-end="url(#ah)"/>
+<rect x="432" y="356" width="180" height="30" class="box b-value" rx="6"/>
+<rect x="432" y="356" width="180" height="30" class="c-value" fill-opacity="0.16" rx="6"/>
+<text x="522" y="376" class="lab" text-anchor="middle">204 outcome classes</text>
+<text x="628" y="376" class="cap">softmax</text>
+<path class="arrow" d="M522 387 V398" marker-end="url(#ah)"/>
+<rect x="432" y="400" width="180" height="30" class="box b-value" rx="6"/>
+<rect x="432" y="400" width="180" height="30" class="c-value" fill-opacity="0.16" rx="6"/>
+<text x="522" y="420" class="lab" text-anchor="middle">Σ p × signed level</text>
+<text x="628" y="412" class="cap">expected signed level</text>
+<text x="628" y="428" class="cap">for the scorer's team</text>
+<line x1="432" y1="492" x2="776" y2="492" class="rule"/>
+<text x="432" y="516" class="m c-value">TRAINED</text>
+<text x="432" y="538" class="body">Cross-entropy on round outcomes</text>
+<text x="432" y="557.5" class="body">from 200k Y self-play rounds, warm</text>
+<text x="432" y="577" class="body">from SMV3's trunk.</text>
+<text x="432" y="610.5" class="m c-value">USED IN</text>
+<text x="432" y="632.5" class="body">value pass; declare (vd, vdef);</text>
+<text x="432" y="652" class="body">bury (bwv, bbw)</text>
+<rect x="812" y="76" width="380" height="604" class="box b-prior" rx="12"/>
+<text x="830" y="104" class="k c-prior">PRIOR</text>
+<text x="830" y="131" class="t">FT1 · 1fa201b2</text>
+<text x="830" y="154" class="s">the same residual MLP, 54-card policy head</text>
+<rect x="830" y="180" width="180" height="30" class="box b-prior" rx="6" stroke-dasharray="4 3"/>
+<text x="920" y="200" class="lab" text-anchor="middle">one root position</text>
+<text x="1026" y="200" class="cap">one per sampled world</text>
+<path class="arrow" d="M920 211 V216" marker-end="url(#ah)"/>
+<rect x="836" y="218" width="180" height="30" class="box b-prior" rx="6"/>
+<rect x="833" y="221" width="180" height="30" class="box b-prior" rx="6"/>
+<rect x="830" y="224" width="180" height="30" class="box b-prior" rx="6"/>
+<rect x="830" y="224" width="180" height="30" class="c-prior" fill-opacity="0.16" rx="6"/>
+<text x="920" y="244" class="lab" text-anchor="middle">same trunk as value</text>
+<text x="1026" y="236" class="cap">833 in, stem 165,</text>
+<text x="1026" y="252" class="cap">4 residual blocks</text>
+<path class="arrow" d="M920 255 V266" marker-end="url(#ah)"/>
+<rect x="830" y="268" width="180" height="30" class="box b-prior" rx="6"/>
+<rect x="830" y="268" width="180" height="30" class="c-prior" fill-opacity="0.16" rx="6"/>
+<text x="920" y="288" class="lab" text-anchor="middle">policy head → 54</text>
+<text x="1026" y="288" class="cap">card log-odds</text>
+<path class="arrow" d="M920 299 V310" marker-end="url(#ah)"/>
+<rect x="830" y="312" width="180" height="30" class="box b-prior" rx="6"/>
+<rect x="830" y="312" width="180" height="30" class="c-prior" fill-opacity="0.16" rx="6"/>
+<text x="920" y="332" class="lab" text-anchor="middle">raw log-odds</text>
+<text x="1026" y="324" class="cap">no softmax,</text>
+<text x="1026" y="340" class="cap">no temperature</text>
+<path class="arrow" d="M920 343 V354" marker-end="url(#ah)"/>
+<rect x="830" y="356" width="180" height="30" class="box b-prior" rx="6"/>
+<rect x="830" y="356" width="180" height="30" class="c-prior" fill-opacity="0.16" rx="6"/>
+<text x="920" y="376" class="lab" text-anchor="middle">Σ over a play's cards</text>
+<path class="arrow" d="M920 387 V398" marker-end="url(#ah)"/>
+<rect x="830" y="400" width="180" height="30" class="box b-prior" rx="6"/>
+<rect x="830" y="400" width="180" height="30" class="c-prior" fill-opacity="0.16" rx="6"/>
+<text x="920" y="420" class="lab" text-anchor="middle">mean over 64 worlds</text>
+<text x="1026" y="420" class="cap">the play's prior score</text>
+<line x1="830" y1="492" x2="1174" y2="492" class="rule"/>
+<text x="830" y="516" class="m c-prior">TRAINED</text>
+<text x="830" y="538" class="body">The policy net fine-tuned toward</text>
+<text x="830" y="557.5" class="body">about 37.8k expert-search labels;</text>
+<text x="830" y="577" class="body">its value head is not used.</text>
+<text x="830" y="610.5" class="m c-prior">USED IN</text>
+<text x="830" y="632.5" class="body">candidates (8 admitted);</text>
+<text x="830" y="652" class="body">lgf follows (top 4)</text>
+<rect x="16" y="698" width="1176" height="62" class="bar" rx="12"/>
+<text x="32" y="724" class="t">Trained in PyTorch, exported to .npz, run in NumPy on the server CPU</text>
+<text x="32" y="746" class="s">Value positions go in batches of 128 · on Fly a release 52 decision takes p95 0.855 s with one game running (DEPLOY.md, Latency)</text>
+</svg>

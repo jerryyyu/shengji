@@ -1757,6 +1757,12 @@ textarea:focus-visible {
   box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(242, 193, 78, 0.65);
 }
 
+/* while the trick is open, the play taking it so far: a quiet ring, less
+   than the finished winner's glow */
+.trick-play.winning .trick-cards .card {
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.8), 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
 .trump-none-short { display: none; }
 
 h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a control */
@@ -1925,6 +1931,17 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 .hand .card.selected {
   transform: translateY(-18px);
   box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+/* A chosen card keeps the strip its lift uncovers: without this the
+   neighbour beneath it answers a tap on the chosen card's lower edge. */
+.hand .card.selected::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: -18px;
 }
 
 /* the card under a finger that is down rises and grows a little, over its
@@ -3503,6 +3520,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     bottom: 0;
     left: 0;
     right: 0;
+  }
+
+  .hand .card.selected::after {
+    top: calc(-1 * var(--lift));
+    bottom: calc(-1 * var(--lift));
   }
 
   /* Over 25 cards (the banker with the kitty) the cards are smaller, so all

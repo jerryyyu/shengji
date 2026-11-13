@@ -2,7 +2,7 @@
 // declared trump. The lead's suit is the offline engine's (a trump-rank card
 // or a joker leads trump), not the printed one.
 import type { Trump } from "./protocol";
-import { type Card, type EffSuit, orderingFor, uniformSuit } from "./offline/engine";
+import { type Card, type EffSuit, orderingFor, trickWinner, uniformSuit } from "./offline/engine";
 
 const SUIT_NAME: Record<EffSuit, string> = { S: "♠", H: "♥", D: "♦", C: "♣", T: "trump" };
 
@@ -58,4 +58,20 @@ export function followsSuit(hand: readonly { id: number; code: string }[], chose
     if (picked.has(c.id)) played += 1;
   }
   return played >= Math.min(lead.length, held);
+}
+
+/** The seat taking an unfinished trick so far, by the engine's own trick
+ *  comparison (the fixture-held port of Round._resolve_trick); null before a
+ *  second play, or when the plays or the trump cannot be read. */
+export function winningSeat(plays: readonly { seat: number; cards: readonly string[] }[],
+                            trump: Trump | null): number | null {
+  if (plays.length < 2 || !trump) return null;
+  const suit = trump.suit === "NT" || trump.suit === null ? null : trump.suit;
+  if (suit !== null && !"SHDC".includes(suit)) return null;
+  try {
+    return trickWinner(plays.map((p) => ({ seat: p.seat, cards: [...p.cards] as Card[] })),
+                       orderingFor(suit as "S" | "H" | "D" | "C" | null, trump.rank)).seat;
+  } catch {
+    return null;
+  }
 }

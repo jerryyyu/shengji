@@ -379,6 +379,21 @@ is absent from the payload, so the release-46 name and every decision are
 unchanged.  It adds no work: it masks candidates the re-select would have
 tested and skips the doomed test when nothing could replace the selection.
 
+Optional last-seat selection rule, OFF BY DEFAULT:
+``SHENGJI_PV_LAST_SEAT_POINTS=<margin>`` (signed levels in whole thousandths,
+0.001..1.0; token ``lsp<milli>`` after the exact-follow tokens).  When the seat
+plays fourth, every candidate's trick winner and points are certain
+(`last_seat_trick_outcome`); after the harness's selection rules, among the
+admitted candidates whose value mean is within the margin of the best, the one
+banking the most signed trick points for the root team is played (fewest to the
+opponents, most to the partner; a points tie keeps the selection so far, then
+the argmax: `last_seat_points_pick`).  It runs before the exact follow stage,
+which re-ranks from this choice and keeps the final say.  No model call and no
+leaf rebuild is added.  On, the recipe digest carries ``last_seat_points``
+(margin and `LAST_SEAT_POINTS_RULE_ID`) and the record carries
+``last_seat_points_*``; off, the payload, the name, the record and every
+decision are unchanged.  Not combined with the tree (refused).
+
 Optional value-leaf rule, OFF BY DEFAULT: ``SHENGJI_PV_LEAF_GREEDY_FINISH=1``
 (token ``lgf``, after ``lpft``) -- the leaf the value head scores is the
 afterstate with the current trick finished by the tree's ``trick-greedy``
@@ -829,7 +844,9 @@ from dataclasses import asdict, dataclass
 import numpy as np
 
 from ..ai.cwv_policy import file_sha256, sample_worlds, shared_evaluator
-from ..engine.cards import card_suit, is_joker
+from ..engine.cards import card_suit, is_joker, total_points
+from ..engine.combos import decompose
+from ..engine.legal import beats, uniform_suit
 from ..ai.heuristic import HeuristicBot
 from ..ai.memory import Memory
 from ..ai.refusal import RefusalLedger, sample_worlds_refusal_aware
@@ -840,6 +857,7 @@ from ..ai.belief_numpy import (PREP_SECONDS as BELIEF_PREP_SECONDS, PROPOSAL as 
 from ..harvest.legal import enumerate_legal
 from .cwv_prior_admission import (CWVPriorAdmissionBot, load_prior_checked,
                                   prior_encoder_version, root_clone)
+from .policy_value_search import _cards_text
 from .policy_value_search import (ADAPTIVE_K_DEFAULTS, ADMISSION_DEFAULTS, FORCED_EXTRA_SLOTS,
                                   DOOMED_THROW_DEFAULTS, DOOMED_THROW_RESELECT_DEFAULTS,
                                   DOOMED_THROW_RESELECT_EXACT_GUARD_DEFAULTS,
@@ -1009,6 +1027,16 @@ FINISH_LEAD_RULE = {"FINISH_LEAD_ADMISSION": "finish_lead_admission"}
 EXACT_LEAD_RULE = {"EXACT_LEAD_ENDGAME": "exact_lead_endgame"}
 EXACT_FOLLOW_RULE = {"EXACT_FOLLOW": "exact_follow"}
 EXACT_FOLLOW_POINTS_RULE = {"EXACT_FOLLOW_POINTS": "exact_follow_points"}
+#: ``SHENGJI_PV_LAST_SEAT_POINTS=<margin in levels>`` (``last_seat_points_milli``,
+#: token ``lsp<milli>`` after the exact-follow tokens): 0 is off.  In the last
+#: seat the trick's winner and points are certain for every candidate, so among
+#: the candidates whose value mean is within the margin of the best, the one
+#: with the most root-team signed trick points is played (`last_seat_points_pick`)
+LAST_SEAT_POINTS_ENV = "LAST_SEAT_POINTS"
+LAST_SEAT_POINTS_TOKEN = "lsp"
+LAST_SEAT_POINTS_RULE_ID = "last-seat-certain-trick-points-within-margin-of-best-mean"
+#: the margin's range in thousandths of a signed level (the value head's units)
+LAST_SEAT_POINTS_MILLI_RANGE = (1, 1000)
 #: its two optional variants (module docstring); each requires ``exact_lead_endgame``
 EXACT_LEAD_VARIANT_RULES = {"EXACT_LEAD_TIE_BASELINE": "exact_lead_tie_baseline",
                             "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first"}
@@ -1546,6 +1574,9 @@ class PVSearchConfig:
     leaf_greedy_finish_exact_skip: bool = \
         LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"]
     leaf_greedy_deadline_ms: int = 0
+    # the last-seat certain-points selection margin in milli-levels: 0 is off
+    # and ABSENT from the payload
+    last_seat_points_milli: int = 0
     # its top-m restriction (module docstring): 0 is off and ABSENT from the payload
     leaf_greedy_top: int = 0
     # the held-out lead confirmation (`PVSearchBot` docstring): 0 is off and ABSENT
@@ -1772,6 +1803,68 @@ def _check_leaf_greedy_deadline(config) -> int:
     return ms
 
 
+def _check_last_seat_points(config) -> int:
+    """The last-seat points margin in milli-levels, 0 when off; refuses a
+    malformed value and the tree (whose selection does not run `_select`)."""
+    milli = config.last_seat_points_milli
+    lo, hi = LAST_SEAT_POINTS_MILLI_RANGE
+    if isinstance(milli, bool) or type(milli) is not int or not (milli == 0 or lo <= milli <= hi):
+        raise PVSearchPolicyError(
+            f"last_seat_points_milli must be 0 (off) or an int in [{lo}, {hi}]")
+    if milli and config.tree is not None:
+        raise PVSearchPolicyError("last_seat_points does not combine with the tree")
+    return milli
+
+
+def last_seat_trick_outcome(rnd, seat, action):
+    """``(winner, points)`` of the current trick if ``seat`` completes it with
+    ``action`` (the fourth play), by the engine's own resolution
+    (`Round._resolve_trick`): the lead's shape and suit, then each later play
+    that `beats` the incumbent takes it."""
+    trick = rnd.trick
+    if trick is None or len(trick.plays) != 3:
+        raise PVSearchPolicyError("the last-seat trick outcome needs three plays in the trick")
+    order = rnd.ordering
+    lead = trick.plays[0].cards
+    suit = uniform_suit(lead, order)
+    top = decompose(lead, order).top_level()
+    winner = trick.plays[0].seat
+    for play_seat, cards in [(p.seat, p.cards) for p in trick.plays[1:]] + [(seat, list(action))]:
+        won, new_top = beats(list(cards), lead, suit, top, order)
+        if won:
+            winner, top = play_seat, new_top
+            suit = order.eff_suit(cards[0])
+    return winner, total_points(c for p in trick.plays for c in p.cards) + total_points(action)
+
+
+def last_seat_signed_points(rnd, seat, action):
+    """`last_seat_trick_outcome`'s points signed for ``seat``'s team: + when
+    its team wins the trick, - when the other team does."""
+    winner, points = last_seat_trick_outcome(rnd, seat, action)
+    return points if rnd.is_attacker(winner) == rnd.is_attacker(seat) else -points
+
+
+def last_seat_points_pick(means, signed_points, chosen, margin):
+    """The admitted position the last-seat points rule plays.  ``means`` are
+    the candidates' value means, ``signed_points`` their certain trick points
+    for the root team (+ won by its team, - by the other), ``chosen`` the
+    selection rules' position so far and ``margin`` the window in signed
+    levels.  Among the candidates with a finite mean within ``margin`` of the
+    best, the most signed points wins; a points tie keeps ``chosen``, then the
+    argmax, then admission order.  ``chosen`` stands when it is outside the
+    window (a rule that already left the window is not second-guessed)."""
+    means = np.asarray(means, dtype=np.float64)
+    finite = np.isfinite(means)
+    if not finite.any():
+        return int(chosen), []
+    best = int(np.flatnonzero(finite)[np.argmax(means[finite])])
+    near = [int(i) for i in np.flatnonzero(finite & (means >= means[best] - margin))]
+    if int(chosen) not in near:
+        return int(chosen), near
+    winner = max(near, key=lambda i: (signed_points[i], i == chosen, i == best, -i))
+    return int(winner), near
+
+
 def recipe_payload(config: PVSearchConfig) -> dict:
     """The digested recipe: every field, except that an optional rule that is
     OFF is omitted (the payload of the pre-rule recipe, byte for byte) and a
@@ -1892,6 +1985,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
         payload["leaf_finish_exact_rule"] = LEAF_GREEDY_EXACT_SKIP_RULE_ID
     deadline_ms = _check_leaf_greedy_deadline(config)
     del payload["leaf_greedy_deadline_ms"]
+    last_seat = _check_last_seat_points(config)
+    del payload["last_seat_points_milli"]
+    if last_seat:
+        payload["last_seat_points"] = {"margin_milli": last_seat,
+                                       "rule": LAST_SEAT_POINTS_RULE_ID}
     top = _check_leaf_greedy_top(config)
     del payload["leaf_greedy_top"]
     if top:
@@ -2032,6 +2130,9 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
             rules += f"-xf{config.exact_follow_solver.replace('-', '')}"
         if config.exact_follow_points:
             rules += "-xfpt"
+    last_seat = _check_last_seat_points(config)
+    if last_seat:
+        rules += f"-{LAST_SEAT_POINTS_TOKEN}{last_seat}"
     subset = _check_exact_world_subset(config)
     if subset:
         rules += f"-{EXACT_WORLD_SUBSET_TOKEN}{subset}"
@@ -2207,6 +2308,10 @@ class PVSearchBot(PolicyValueBot):
     leaf_greedy_finish_exact_skip = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"]
     #: the finish deadline (module docstring), 0 = off; instance state of an ON bot only
     leaf_greedy_deadline_ms = 0
+    #: the last-seat points margin (`last_seat_points_pick`), 0 = off; instance
+    #: state of an ON bot only, as is its per-decision record
+    last_seat_points_milli = 0
+    _last_seat_points = None
     _leaf_greedy_exact_skipped = False
     #: the finish's top-m restriction (module docstring), 0 = off; instance state
     #: of an ON bot only, as is its per-decision record and pruned-leaf set
@@ -2450,6 +2555,9 @@ class PVSearchBot(PolicyValueBot):
         deadline_ms = _check_leaf_greedy_deadline(config)
         if deadline_ms:
             self.leaf_greedy_deadline_ms = deadline_ms
+        last_seat = _check_last_seat_points(config)
+        if last_seat:
+            self.last_seat_points_milli = last_seat
         top = _check_leaf_greedy_top(config)
         if top:
             self.leaf_greedy_top = top
@@ -3520,6 +3628,39 @@ class PVSearchBot(PolicyValueBot):
         self._leaf_greedy_top = record
         return sums, plain_batches + batches
 
+    def _last_seat_points_record(self):
+        if not self.last_seat_points_milli:
+            return {}
+        return dict(self._last_seat_points or {"last_seat_points_eligible": False,
+                                               "last_seat_points_applied": False})
+
+    def _select_rules(self, rnd, seat, admitted, means, worlds=None, check_budget=None,
+                      priors=None):
+        """The harness's selection rules, then the optional last-seat points
+        rule (`last_seat_points_pick`).  It runs before any exact follow stage,
+        which re-ranks from its choice and keeps the final say."""
+        chosen = super()._select_rules(rnd, seat, admitted, means, worlds, check_budget, priors)
+        if not self.last_seat_points_milli:
+            return chosen
+        self._last_seat_points = {"last_seat_points_eligible": False,
+                                  "last_seat_points_applied": False}
+        trick = rnd.trick
+        if trick is None or len(trick.plays) != 3:
+            return chosen
+        signed = [last_seat_signed_points(rnd, seat, action) for action in admitted]
+        winner, near = last_seat_points_pick(means, signed, chosen,
+                                             self.last_seat_points_milli / 1000.0)
+        self._last_seat_points = {
+            "last_seat_points_eligible": True,
+            "last_seat_points_applied": winner != chosen,
+            "last_seat_points_near_count": len(near),
+            "last_seat_points_from": _cards_text(admitted[chosen]),
+            "last_seat_points_to": _cards_text(admitted[winner]),
+            "last_seat_points_signed": [signed[i] for i in near],
+            "last_seat_points_value_gap": float(means[chosen] - means[winner]),
+        }
+        return winner
+
     def _leaf_greedy_top_record(self):
         if not self.leaf_greedy_top:
             return {}
@@ -3640,6 +3781,8 @@ class PVSearchBot(PolicyValueBot):
             self._two_trick = self._two_trick_state(rnd, started)
         if self.leaf_greedy_finish:
             self._leaf_greedy = None      # no leaf of an earlier decision is ever reused
+        if self.last_seat_points_milli:
+            self._last_seat_points = None
         if self.leaf_greedy_deadline_ms:
             # measured from the decision's start, as the serving budget is
             self._leaf_greedy_deadline_at = started + self.leaf_greedy_deadline_ms / 1000.0
@@ -3836,6 +3979,7 @@ class PVSearchBot(PolicyValueBot):
                if self.leaf_greedy_finish_exact_skip else {}),
             **self._leaf_greedy_deadline_record(),
             **self._leaf_greedy_top_record(),
+            **self._last_seat_points_record(),
             **self._lead_confirm_record(),
             **(two_trick.record(self._two_trick) if self.two_trick_lead else {}),
             **self._adaptive_worlds_record(),
@@ -4756,6 +4900,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                        leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                        leaf_greedy_deadline_ms: int = 0,
+                       last_seat_points_milli: int = 0,
                        leaf_greedy_top: int = 0,
                        wide_lead_k: int = WIDE_LEAD_K,
                        lead_confirm: int = 0,
@@ -4845,6 +4990,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             leaf_greedy_finish=leaf_greedy_finish,
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
+                            last_seat_points_milli=last_seat_points_milli,
                             leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
                             lead_confirm=lead_confirm,
                             two_trick_lead=two_trick_lead,
@@ -4985,6 +5131,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         leaf_greedy_finish: bool = LEAF_GREEDY_DEFAULTS["leaf_greedy_finish"],
                         leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                         leaf_greedy_deadline_ms: int = 0,
+                        last_seat_points_milli: int = 0,
                         leaf_greedy_top: int = 0,
                         wide_lead_k: int = WIDE_LEAD_K,
                         lead_confirm: int = 0,
@@ -5055,6 +5202,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             leaf_greedy_finish=leaf_greedy_finish,
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
+                            last_seat_points_milli=last_seat_points_milli,
                             leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
                             lead_confirm=lead_confirm,
                             two_trick_lead=two_trick_lead,
@@ -5188,6 +5336,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                leaf_greedy_finish=config.leaf_greedy_finish,
                                leaf_greedy_finish_exact_skip=config.leaf_greedy_finish_exact_skip,
                                leaf_greedy_deadline_ms=config.leaf_greedy_deadline_ms,
+                               last_seat_points_milli=config.last_seat_points_milli,
                                leaf_greedy_top=config.leaf_greedy_top,
                                wide_lead_k=config.wide_lead_k,
                                lead_confirm=config.lead_confirm,
@@ -5386,6 +5535,21 @@ def pv_env_recipe(environ=None) -> dict:
             checkpoint_sha256=recipe["sha256"],
             leaf_greedy_finish=bool(recipe.get("leaf_greedy_finish", False)),
             leaf_greedy_deadline_ms=int(ms)))
+    # the last-seat points margin in signed levels: unset, empty or 0 is off
+    raw = env.get(ENV_PREFIX + LAST_SEAT_POINTS_ENV)
+    if raw not in (None, "", "0"):
+        try:
+            margin = float(raw)
+        except ValueError:
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{LAST_SEAT_POINTS_ENV} is not a number: {raw!r}") from None
+        milli = round(margin * 1000) if math.isfinite(margin) else None
+        if milli is None or abs(margin * 1000 - milli) > 1e-6:
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{LAST_SEAT_POINTS_ENV} must be levels in whole thousandths: {raw!r}")
+        _check_last_seat_points(PVSearchConfig(checkpoint_sha256=recipe["sha256"],
+                                               last_seat_points_milli=int(milli)))
+        recipe["last_seat_points_milli"] = int(milli)
     # the finish's top-m restriction (unset, empty or 0 is off) and the lead
     # admission width (unset or empty is the default); each needs its rule
     for suffix, key, needs, needs_env in (

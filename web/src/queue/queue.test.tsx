@@ -215,6 +215,42 @@ describe("Play", () => {
     expect(q(".q-toast")?.textContent).toContain("Signed in. Press Play to search again.");
   });
 
+  it("a guest who signs in at a waiting table or in a pair keeps nothing: the new socket's one Play is the only search", async () => {
+    signedIn = false;
+    await renderApp();
+    say({ type: "party", party_id: "p1", code: "7F2K", you_lead: false, expires_at: nowSecs() + 300,
+          members: [{ name: "Sam", leader: true, you: false }, { name: "Guesty", leader: false, you: true }] });
+    click(button("Play", lobby())!);
+    say(atTable([seat("Guesty", { you: true }), seat("Alice"), null, null]));
+    expect(q(".wt-sheet")).not.toBeNull();
+    const old = ws();
+    const oldSent = old.sent.length;
+    fakeClock();
+    const { auth } = await import("../auth");
+    act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
+    tick(0);
+    const fresh = ws();
+    expect(fresh).not.toBe(old);                  // the identity moved to a new socket
+    act(() => fresh.onopen?.());
+    // what the guest's socket still had in flight belongs to the guest
+    act(() => old.deliver(atTable([seat("Guesty", { you: true }), seat("Alice"), null, null])));
+    // the server holds nothing for the account: it says only the count
+    say({ type: "queue_count", count: 1 });
+    tick(10_000);                                 // past the reconnect resync: no "left while away"
+    expect(q(".wt-sheet")).toBeNull();
+    expect(q(".q-bar")).toBeNull();
+    expect(q(".q-party-chip")).toBeNull();
+    expect(findBtn().textContent).toBe("Play");
+    expect(document.body.textContent).not.toContain("left the queue while away");
+    expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([]);
+    click(findBtn());
+    expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([{ type: "queue_join" }]);
+    expect(old.sent.slice(oldSent)).toEqual([]);  // nothing more on the guest's socket
+    say(queued());
+    expect(findBtn().textContent).toBe("Searching…");
+    expect(fresh.sent.filter((m) => m.type === "queue_join")).toHaveLength(1);
+  });
+
   it("a guest's Sign in shows the sign-in buttons in the line's place", async () => {
     signedIn = false;
     await renderApp();

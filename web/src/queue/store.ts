@@ -143,7 +143,8 @@ export class QueueStore {
   /** Queue, table and pair state belong to one identity: a sign-in, a
    *  sign-out, a deletion or another account's sign-in starts from nothing.
    *  A guest who signs in mid-search is told to press Play again: the socket
-   *  reconnects as the account and the server drops the guest's entry. */
+   *  reconnects as the account, and the server ends the guest's search,
+   *  waiting-table seat and pair (the others there see an ordinary leave). */
   private onAuth(account: string | null | undefined): void {
     if (account === this.account) return;
     const was = this.account;

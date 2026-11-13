@@ -1,0 +1,27 @@
+/* Offline play: no chat to open. */
+.app.offline .chat-launch {
+  display: none;
+}
+
+/* The moment before the first deal: the table's felt, nothing to choose. */
+.offline-start {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 45%, #2e7a52, #1d5638 62%, #123a26);
+}
+
+.offline-start-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+/* no Chat in the header: the mode chip takes its slot */
+.app.offline .table-screen {
+  --chat-w: 0px;
+}

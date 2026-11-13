@@ -1,17 +1,21 @@
 """Optional Google sign-in: ID-token verification, users and sessions in SQLite.
 
+Sign in with Apple (the iOS app only) lives in ``apple_auth``; its accounts
+share the ``users`` table, keyed by ``apple_sub`` instead of ``google_sub``.
+
 The feature is OFF unless ``GOOGLE_CLIENT_ID`` is set: the login endpoint then
 answers 404 and ``/api/auth/config`` reports no client id, so the web app shows
 no button. Guest play never touches this module beyond one cookie read on the
 websocket handshake, and only when a ``sj_session`` cookie is present.
 
 Trust boundary: the browser posts a Google ID token (a JWT the Google Identity
-Services button handed it). The server verifies the RS256 signature against
-Google's published certificates, the issuer, the audience (our client id), the
-validity window and ``email_verified`` before it will mint a session. The
-session token is 32 random bytes; the database stores only its SHA-256, so a
-copy of the database cannot be replayed as a login. No client secret exists
-anywhere: the client id is public by design.
+Services button handed it, or, in the iOS app, the native Google sign-in). The
+server verifies the RS256 signature against Google's published certificates,
+the issuer, the audience (our web client id, or an iOS client id listed in
+``GOOGLE_IOS_CLIENT_IDS``), the validity window and ``email_verified`` before
+it will mint a session. The session token is 32 random bytes; the database
+stores only its SHA-256, so a copy of the database cannot be replayed as a
+login. No Google client secret exists anywhere: client ids are public by design.
 
 Database access is synchronous ``sqlite3`` (WAL) on a fresh connection per
 call, run off the event loop with ``run_in_executor`` so a slow disk cannot
@@ -34,7 +38,7 @@ import unicodedata
 import urllib.request
 from collections import deque
 from contextlib import closing
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +61,12 @@ CLOCK_SKEW_SECONDS = 10
 RATE_LIMIT = 10
 RATE_WINDOW = 60.0
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# A new account's rating; ``ratings.START_RATING`` reads it from here. The
+# ``users.rating`` column default predates the 1000 scale, so every insert
+# sets the rating itself.
+START_RATING = 1000.0
+# The schema v5 scale move: every stored absolute rating drops by this much.
+RATING_SCALE_SHIFT = 500.0
 # A chosen display name: 1..20 characters after trimming and collapsing
 # whitespace runs; any script, no control characters, no line breaks.
 DISPLAY_NAME_MAX = 20
@@ -132,6 +142,17 @@ def client_id() -> str | None:
     Read per request so a test (or a restart) can turn the feature on or off."""
     value = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
     return value or None
+
+
+def accepted_audiences() -> tuple[str, ...]:
+    """The ``aud`` values a login token may carry: the web client id, then any
+    native-app client ids in the comma-separated ``GOOGLE_IOS_CLIENT_IDS``.
+    Empty when sign-in is off, whatever the iOS list says."""
+    web = client_id()
+    if web is None:
+        return ()
+    native = (part.strip() for part in os.environ.get("GOOGLE_IOS_CLIENT_IDS", "").split(","))
+    return tuple(dict.fromkeys([web, *(part for part in native if part)]))
 
 
 def data_dir() -> Path:
@@ -257,6 +278,210 @@ def _migrate_v3(conn: sqlite3.Connection) -> None:
         raise sqlite3.IntegrityError(f"foreign key check failed after v3: {len(problems)} rows")
 
 
+# Ratings (``ratings.py``): each user's current rating, how many rounds it
+# rests on and whether they show on the leaderboard live on ``users``; every
+# rated round adds one ``rating_events`` row per rated account, so stats and
+# weekly deltas are derived rather than stored twice.
+_RATINGS_V4 = """
+    CREATE TABLE IF NOT EXISTS rating_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_id TEXT NOT NULL,
+        round_no INTEGER NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        team INTEGER NOT NULL,
+        banker_team INTEGER NOT NULL,
+        won INTEGER NOT NULL,
+        levels INTEGER NOT NULL,
+        game_won INTEGER NOT NULL DEFAULT 0,
+        abandoned INTEGER NOT NULL DEFAULT 0,
+        expected REAL NOT NULL,
+        actual REAL NOT NULL,
+        k REAL NOT NULL,
+        rating_before REAL NOT NULL,
+        rating_after REAL NOT NULL,
+        delta REAL NOT NULL,
+        partner TEXT NULL,
+        partner_bot INTEGER NOT NULL DEFAULT 0,
+        opponents_bots INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (game_id, round_no, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS rating_events_user ON rating_events(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS rating_events_created ON rating_events(created_at)
+"""
+
+
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    """Add the rating columns and the per-round rating log. Every step checks
+    or uses ``IF NOT EXISTS``, so a re-run on a database that already has
+    them changes nothing."""
+    _add_column_if_missing(conn, "users", "rating", "REAL NOT NULL DEFAULT 1500")
+    _add_column_if_missing(conn, "users", "rated_rounds", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "users", "leaderboard_visible", "INTEGER NOT NULL DEFAULT 1")
+    for statement in filter(None, (s.strip() for s in _RATINGS_V4.split(";"))):
+        conn.execute(statement)
+
+
+def _migrate_v5(conn: sqlite3.Connection) -> None:
+    """Move the rating scale from 1500 to 1000: every account's rating and
+    every absolute rating in ``rating_events`` (``rating_before``,
+    ``rating_after``) drops by ``RATING_SCALE_SHIFT``, so gaps, deltas,
+    expected and actual scores are unchanged. The ``rating_scale`` row marks
+    the shift as done, so a re-run (a lost version row) never shifts twice."""
+    done = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='rating_scale'").fetchone()
+    if done:
+        return
+    conn.execute("CREATE TABLE rating_scale (start_rating REAL NOT NULL)")
+    conn.execute("INSERT INTO rating_scale(start_rating) VALUES (?)", (START_RATING,))
+    conn.execute("UPDATE users SET rating = rating - ?", (RATING_SCALE_SHIFT,))
+    conn.execute(
+        """UPDATE rating_events SET rating_before = rating_before - ?,
+                                    rating_after = rating_after - ?""",
+        (RATING_SCALE_SHIFT, RATING_SCALE_SHIFT))
+
+
+# Accounts from Sign in with Apple: ``google_sub`` becomes nullable, an
+# account carries ``apple_sub`` instead, and every row has at least one of
+# the two. The same person through Google and through Apple is two accounts.
+_USERS_V6 = """
+    CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        google_sub TEXT NULL UNIQUE,
+        email TEXT,
+        name TEXT,
+        picture TEXT,
+        created_at INTEGER NOT NULL,
+        last_login_at INTEGER NOT NULL,
+        display_name TEXT NULL,
+        rating REAL NOT NULL DEFAULT 1500,
+        rated_rounds INTEGER NOT NULL DEFAULT 0,
+        leaderboard_visible INTEGER NOT NULL DEFAULT 1,
+        apple_sub TEXT NULL UNIQUE,
+        CHECK (google_sub IS NOT NULL OR apple_sub IS NOT NULL)
+    )"""
+_USER_COLUMNS_V5 = ("id, google_sub, email, name, picture, created_at, last_login_at, "
+                    "display_name, rating, rated_rounds, leaderboard_visible")
+# The tables whose rows reference ``users``, rebuilt under a temporary name;
+# each keeps its v3/v4 columns and constraints exactly.
+_CHILDREN_V6 = {
+    "sessions": """
+        CREATE TABLE sessions_v6 (
+            token_hash TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )""",
+    "game_players": """
+        CREATE TABLE game_players_v6 (
+            game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            seat INTEGER NOT NULL,
+            from_round INTEGER NOT NULL,
+            to_round INTEGER NULL,
+            hidden INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (game_id, user_id, seat, from_round)
+        )""",
+    "rating_events": """
+        CREATE TABLE rating_events_v6 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_id TEXT NOT NULL,
+            round_no INTEGER NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL,
+            team INTEGER NOT NULL,
+            banker_team INTEGER NOT NULL,
+            won INTEGER NOT NULL,
+            levels INTEGER NOT NULL,
+            game_won INTEGER NOT NULL DEFAULT 0,
+            abandoned INTEGER NOT NULL DEFAULT 0,
+            expected REAL NOT NULL,
+            actual REAL NOT NULL,
+            k REAL NOT NULL,
+            rating_before REAL NOT NULL,
+            rating_after REAL NOT NULL,
+            delta REAL NOT NULL,
+            partner TEXT NULL,
+            partner_bot INTEGER NOT NULL DEFAULT 0,
+            opponents_bots INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (game_id, round_no, user_id)
+        )""",
+}
+_INDEXES_V6 = """
+    CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS game_players_user ON game_players(user_id, game_id);
+    CREATE INDEX IF NOT EXISTS rating_events_user ON rating_events(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS rating_events_created ON rating_events(created_at)
+"""
+# The Apple refresh token of an account, kept only to revoke the grant when
+# the account is deleted. It never leaves the server: no API returns it and
+# no ``users`` row (which most code reads with ``SELECT *``) carries it.
+_APPLE_TOKENS_V6 = """
+    CREATE TABLE IF NOT EXISTS apple_tokens (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        refresh_token TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+    )"""
+
+
+def _sequence(conn: sqlite3.Connection, table: str) -> int:
+    row = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = ?", (table,)).fetchone()
+    return int(row["seq"]) if row else 0
+
+
+def _set_sequence(conn: sqlite3.Connection, table: str, floor: int) -> None:
+    """Keep ``table``'s AUTOINCREMENT high-water mark at least ``floor``, so an
+    id freed before a rebuild is not handed out after it."""
+    current = _sequence(conn, table)
+    if conn.execute("SELECT 1 FROM sqlite_sequence WHERE name = ?", (table,)).fetchone():
+        conn.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = ?",
+                     (max(current, floor), table))
+    elif floor:
+        conn.execute("INSERT INTO sqlite_sequence(name, seq) VALUES (?, ?)", (table, floor))
+
+
+def _migrate_v6(conn: sqlite3.Connection) -> None:
+    """Rebuild ``users`` with a nullable ``google_sub``, an ``apple_sub`` and
+    the at-least-one CHECK, and add ``apple_tokens``.
+
+    The same constraints as v3 apply (``PRAGMA foreign_keys`` stays on inside
+    the transaction, so no referenced ``users`` row may ever be deleted while
+    a child still points at it, or its cascade would fire): the old table is
+    renamed, which repoints ``sessions``, ``game_players`` and
+    ``rating_events`` at the renamed table; the new ``users`` and a new copy
+    of each child (referencing the new ``users``) are filled from the old rows
+    with their ids; then the old children are dropped, the old ``users`` last,
+    and the copies take the old names and indexes. Both AUTOINCREMENT
+    high-water marks carry over, so no deleted account or rating-event id is
+    reused. A re-run on an already-rebuilt table only re-creates what is
+    missing."""
+    present = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+    if "apple_sub" not in present:
+        users_seq = _sequence(conn, "users")
+        events_seq = _sequence(conn, "rating_events")
+        conn.execute("ALTER TABLE users RENAME TO users_v5")
+        conn.execute(_USERS_V6)
+        conn.execute(f"INSERT INTO users({_USER_COLUMNS_V5}) "
+                     f"SELECT {_USER_COLUMNS_V5} FROM users_v5 ORDER BY id")
+        for child, ddl in _CHILDREN_V6.items():
+            conn.execute(ddl)
+            conn.execute(f"INSERT INTO {child}_v6 SELECT * FROM {child}")
+        for child in _CHILDREN_V6:
+            conn.execute(f"DROP TABLE {child}")
+        conn.execute("DROP TABLE users_v5")
+        for child in _CHILDREN_V6:
+            conn.execute(f"ALTER TABLE {child}_v6 RENAME TO {child}")
+        _set_sequence(conn, "users", users_seq)
+        _set_sequence(conn, "rating_events", events_seq)
+    for statement in filter(None, (s.strip() for s in _INDEXES_V6.split(";"))):
+        conn.execute(statement)
+    conn.execute(_APPLE_TOKENS_V6)
+    problems = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if problems:
+        raise sqlite3.IntegrityError(f"foreign key check failed after v6: {len(problems)} rows")
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -286,6 +511,12 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _migrate_v2,
     # version 3: account ids that are never reused, and saved games.
     _migrate_v3,
+    # version 4: player ratings and the leaderboard opt-out.
+    _migrate_v4,
+    # version 5: the rating scale moves from 1500 to 1000.
+    _migrate_v5,
+    # version 6: Sign in with Apple accounts.
+    _migrate_v6,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -380,16 +611,52 @@ class Store:
         picture = claims.get("picture")
         with closing(self._open()) as conn:
             conn.execute(
-                """INSERT INTO users(google_sub, email, name, picture, created_at, last_login_at)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                """INSERT INTO users(google_sub, email, name, picture, created_at,
+                                     last_login_at, rating)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(google_sub) DO UPDATE SET
                        email = excluded.email,
                        name = COALESCE(excluded.name, users.name),
                        picture = COALESCE(excluded.picture, users.picture),
                        last_login_at = excluded.last_login_at""",
-                (sub, email, name, picture, t, t))
+                (sub, email, name, picture, t, t, START_RATING))
             row = conn.execute("SELECT * FROM users WHERE google_sub = ?", (sub,)).fetchone()
             return dict(row)
+
+    def upsert_apple_user(self, sub: str, email: str | None, name: str | None,
+                          now: float | None = None) -> dict:
+        """Create or refresh the account of a verified Apple identity. Apple
+        sends the name only on the first authorization and may omit the email
+        later, so a missing value keeps the stored one."""
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            conn.execute(
+                """INSERT INTO users(apple_sub, email, name, picture, created_at,
+                                     last_login_at, rating)
+                   VALUES (?, ?, ?, NULL, ?, ?, ?)
+                   ON CONFLICT(apple_sub) DO UPDATE SET
+                       email = COALESCE(excluded.email, users.email),
+                       name = COALESCE(excluded.name, users.name),
+                       last_login_at = excluded.last_login_at""",
+                (str(sub), email, name, t, t, START_RATING))
+            row = conn.execute("SELECT * FROM users WHERE apple_sub = ?", (str(sub),)).fetchone()
+            return dict(row)
+
+    def set_apple_refresh_token(self, user_id: int, refresh_token: str,
+                                now: float | None = None) -> None:
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            conn.execute(
+                """INSERT INTO apple_tokens(user_id, refresh_token, updated_at) VALUES (?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       refresh_token = excluded.refresh_token, updated_at = excluded.updated_at""",
+                (user_id, refresh_token, t))
+
+    def apple_refresh_token(self, user_id: int) -> str | None:
+        with closing(self._open()) as conn:
+            row = conn.execute("SELECT refresh_token FROM apple_tokens WHERE user_id = ?",
+                               (user_id,)).fetchone()
+            return str(row["refresh_token"]) if row else None
 
     def user(self, user_id: int) -> dict | None:
         with closing(self._open()) as conn:
@@ -575,6 +842,44 @@ class Store:
             game["links"] = links
             return game
 
+    def game_ratings(self, user_id: int, game_ids: list[str]) -> dict[str, dict]:
+        """``user_id``'s own rating change in each of ``game_ids``, in one
+        grouped query: game id -> ``rating_change`` (summed delta),
+        ``rating_after`` (the latest event's) and ``rated_rounds``. A rated
+        round's ``game_id`` is the saved game's id plus ``/<segment>`` (one
+        segment per game to a held Ace at that table), so every segment
+        counts toward its saved game. Games with no event are absent."""
+        if not game_ids:
+            return {}
+        marks = ",".join("?" * len(game_ids))
+        with closing(self._open()) as conn:
+            rows = conn.execute(
+                f"""SELECT gid, SUM(delta) AS change, COUNT(*) AS n,
+                           rating_after, MAX(id) AS last_id
+                    FROM (SELECT id, delta, rating_after,
+                                 CASE WHEN instr(game_id, '/') > 0
+                                      THEN substr(game_id, 1, instr(game_id, '/') - 1)
+                                      ELSE game_id END AS gid
+                          FROM rating_events WHERE user_id = ?)
+                    WHERE gid IN ({marks})
+                    GROUP BY gid""",
+                (user_id, *game_ids)).fetchall()
+        # SQLite takes a bare column alongside MAX() from the row holding the
+        # maximum, so ``rating_after`` is the latest event's.
+        return {r["gid"]: {"rating_change": r["change"], "rating_after": r["rating_after"],
+                           "rated_rounds": r["n"]} for r in rows}
+
+    def game_round_ratings(self, user_id: int, game_id: str) -> dict[int, float]:
+        """``user_id``'s own rating delta per round of one saved game, across
+        all of its segments: round number -> summed delta."""
+        with closing(self._open()) as conn:
+            rows = conn.execute(
+                """SELECT round_no, SUM(delta) AS delta FROM rating_events
+                   WHERE user_id = ? AND (game_id = ? OR substr(game_id, 1, ?) = ?)
+                   GROUP BY round_no""",
+                (user_id, game_id, len(game_id) + 1, game_id + "/")).fetchall()
+        return {int(r["round_no"]): r["delta"] for r in rows}
+
     @staticmethod
     def _links(conn: sqlite3.Connection, game_id: str, user_id: int) -> list[dict]:
         return [dict(r) for r in conn.execute(
@@ -589,6 +894,12 @@ class Store:
             return conn.execute(
                 "UPDATE game_players SET hidden = 1 WHERE game_id = ? AND user_id = ? AND hidden = 0",
                 (game_id, user_id)).rowcount
+
+    def forget_game(self, game_id: str) -> int:
+        """Delete one game row (its links go by cascade): a start that was
+        rolled back never became a game anyone played."""
+        with closing(self._open()) as conn:
+            return conn.execute("DELETE FROM games WHERE id = ?", (game_id,)).rowcount
 
     def purge_games(self, now: float | None = None) -> int:
         """Delete games past retention (their links go by cascade) and games
@@ -645,8 +956,9 @@ class GoogleCerts:
     COLD_WAIT = 10.0
 
     def __init__(self, fetch: Callable[[], tuple[dict, float]] | None = None,
-                 clock: Callable[[], float] | None = None):
+                 clock: Callable[[], float] | None = None, label: str = "google"):
         self._fetch = fetch or self._fetch_http
+        self._label = label
         self._clock = clock or time.time
         self._certs: dict[str, str] = {}
         self._expires = 0.0
@@ -699,8 +1011,8 @@ class GoogleCerts:
                 self._refreshing = False
                 self._cond.notify_all()
                 if self._certs:
-                    log.warning("google certs refresh failed (%s); using cached set",
-                                type(exc).__name__)
+                    log.warning("%s certs refresh failed (%s); using cached set",
+                                self._label, type(exc).__name__)
                     return self._certs
             raise AuthError("certs_unavailable") from exc
         with self._cond:
@@ -729,19 +1041,22 @@ def _header_kid(token: str) -> str | None:
     return str(kid) if kid else None
 
 
-def verify_google_id_token(token: str, audience: str,
+def verify_google_id_token(token: str, audience: str | Collection[str],
                            certs: GoogleCerts | None = None) -> dict:
     """Verify a Google ID token and return its claims, or raise ``AuthError``.
 
     Checks, in order: a well-formed RS256 JWT whose ``kid`` names one of
     Google's current certificates (a miss asks for one bounded refresh, for
-    key rotation; see ``GoogleCerts``); the signature; ``aud`` equal to our client id; ``iat``/``exp``
-    within the clock skew; ``iss`` one of Google's two issuers; a ``sub``; and
+    key rotation; see ``GoogleCerts``); the signature; ``aud`` one of our client
+    ids (``audience``: one id or several); ``iat``/``exp`` within the clock skew; ``iss`` one of Google's two issuers; a ``sub``; and
     ``email_verified`` true."""
     from google.auth import exceptions as google_exceptions
     from google.auth import jwt as google_jwt
 
     certs = certs or CERTS
+    audiences = (audience,) if isinstance(audience, str) else tuple(audience)
+    if not audiences:
+        raise AuthError("bad_audience")
     if not isinstance(token, str) or not token or len(token) > 8192:
         raise AuthError("malformed")
     try:
@@ -752,7 +1067,7 @@ def verify_google_id_token(token: str, audience: str,
     if kid is not None and kid not in current:
         current = certs.get(force=True)
     try:
-        claims = google_jwt.decode(token, certs=current, audience=audience,
+        claims = google_jwt.decode(token, certs=current, audience=list(audiences),
                                    clock_skew_in_seconds=CLOCK_SKEW_SECONDS)
     except google_exceptions.InvalidValue as exc:
         text = str(exc).lower()
@@ -767,7 +1082,7 @@ def verify_google_id_token(token: str, audience: str,
         raise AuthError("malformed") from exc
     if claims.get("iss") not in GOOGLE_ISSUERS:
         raise AuthError("bad_issuer")
-    if claims.get("aud") != audience:
+    if claims.get("aud") not in audiences:
         raise AuthError("bad_audience")
     if not claims.get("sub"):
         raise AuthError("no_subject")
@@ -871,14 +1186,14 @@ async def auth_config() -> dict:
 
 @router.post("/auth/google")
 async def auth_google(body: GoogleLogin, request: Request, response: Response) -> dict:
-    audience = client_id()
-    if audience is None:
+    audiences = accepted_audiences()
+    if not audiences:
         raise HTTPException(status_code=404, detail="Sign-in is not enabled.")
     if not LIMITER.allow(client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many sign-in attempts; try again in a minute.")
     loop = asyncio.get_running_loop()
     try:
-        claims = await loop.run_in_executor(None, verify_google_id_token, body.credential, audience)
+        claims = await loop.run_in_executor(None, verify_google_id_token, body.credential, audiences)
     except AuthError as exc:
         raise HTTPException(status_code=401, detail=f"Sign-in rejected ({exc.reason}).") from exc
     if body.nonce is not None and claims.get("nonce") != body.nonce:
@@ -935,8 +1250,9 @@ async def delete_me(request: Request) -> Response:
     """Delete the account: the user row, its sessions and its saved-game
     links (by cascade). Live seats and open sockets holding the account are
     detached first, so nothing links the id afterwards (ids are never
-    reused, schema v3). The anonymous room logs never held the account and
-    are unchanged."""
+    reused, schema v3). An Apple account's grant is then revoked at Apple,
+    best effort: a failed revocation never keeps the account. The anonymous
+    room logs never held the account and are unchanged."""
     if not LIMITER.allow(client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many changes; try again in a minute.")
     user = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
@@ -948,7 +1264,16 @@ async def delete_me(request: Request) -> Response:
             hook(int(user["id"]))
         except Exception:           # noqa: BLE001 - the delete still happens
             log.exception("account-deletion hook failed")
+    refresh_token = None
+    if user.get("apple_sub"):
+        try:
+            refresh_token = await STORE.run(STORE.apple_refresh_token, user["id"])
+        except Exception as exc:    # noqa: BLE001 - the delete still happens
+            log.warning("apple token lookup failed before delete (%s)", type(exc).__name__)
     await STORE.run(STORE.delete_user, user["id"])
+    if user.get("apple_sub"):
+        from . import apple_auth
+        await apple_auth.revoke_after_delete(refresh_token)
     response = Response(status_code=204)
     _clear_session_cookie(response, request)
     return response
@@ -985,4 +1310,7 @@ def health() -> dict:
 
 
 def register_accounts(app) -> None:
+    from .apple_auth import router as apple_router
+
     app.include_router(router)
+    app.include_router(apple_router)

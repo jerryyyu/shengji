@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTableMessage } from "./messageCopy";
+import { formatTableMessage, isDeclareMessage } from "./messageCopy";
 import type { StatePlayer } from "./protocol";
 
 const players = [0, 1, 2, 3].map((seat) => ({ seat, name: seat ? `Bot ${seat}` : "Jerry" })) as StatePlayer[];
@@ -23,5 +23,14 @@ describe("formatTableMessage", () => {
   it("passes every other message through", () => {
     expect(formatTableMessage("Throw failed.", players, 0)).toBe("Throw failed.");
     expect(formatTableMessage("Seat 9 declared H2", players, 0)).toBe("Seat 9 declares 2♥");
+  });
+});
+
+describe("isDeclareMessage", () => {
+  it("knows a declaration from any other message", () => {
+    expect(isDeclareMessage("Seat 1 declared H2")).toBe(true);
+    expect(isDeclareMessage("Seat 2 declared NT (pair)")).toBe(true);
+    expect(isDeclareMessage("No declaration — trump flipped from the kitty: C")).toBe(false);
+    expect(isDeclareMessage("Throw failed.")).toBe(false);
   });
 });

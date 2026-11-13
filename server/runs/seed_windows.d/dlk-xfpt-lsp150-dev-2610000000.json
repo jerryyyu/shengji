@@ -1,0 +1,14 @@
+{
+ "name": "dlk-xfpt-lsp150-dev-2610000000",
+ "purpose": "screen",
+ "seed0": 2610000000,
+ "clusters": 3920,
+ "span": [
+  2610000000,
+  2610003920
+ ],
+ "created_at": "2026-11-13T00:00:00Z",
+ "host": "ultra",
+ "git_head": "a01ec71d83ceb099ed8268221f7681c1bbf3714c",
+ "note": "DLK DEV duel, arm (c): release 52 as served plus xfpt and lsp150 (SHENGJI_PV_EXACT_FOLLOW_POINTS=1, SHENGJI_PV_LAST_SEAT_POINTS=0.15; flag branch claude/dev-point-leaks 3f27c6f6) vs release 52 as served, 3,920 paired seat-swapped deals on the M5 Ultra. Bar: mean >= +0.005 levels/round and one-sided 80% LB > 0, zero play and belief fallbacks. Packages are R52's served g3a-e04-f4f4127e, p0-ft1-1fa201b2 and b1a-028131a0. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

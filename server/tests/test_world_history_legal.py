@@ -241,6 +241,47 @@ def test_history_budget_is_bounded_and_the_rest_is_drawn_as_today(monkeypatch):
     assert len(calls) == 6
 
 
+def test_valid_fill_reuses_only_checked_worlds_without_aliasing(monkeypatch):
+    _, rnd, seat = fixture()
+    sampler = MCBot(seed=SEED)
+    mem = Memory(rnd, seat, own_kitty=True)
+    valid, _ = sample_worlds(sampler, rnd, seat, 1, mem=mem)
+    monkeypatch.setattr(HL, "HISTORY_ATTEMPT_FACTOR", 1)
+    monkeypatch.setattr(sampler, "SAMPLE_ATTEMPT_FACTOR", 2)
+    calls = [0]
+
+    def first_only(*args):
+        calls[0] += 1
+        return None if calls[0] == 1 else 0
+
+    monkeypatch.setattr(HL, "first_violation", first_only)
+    returned, attempts, stats = HL.sample_worlds_history_legal(
+        sampler, rnd, seat, 2, mem=mem,
+        propose=lambda *args: (valid[0][0], valid[0][1]),
+        complete=lambda _rnd, _seat, hands, **kw: hands,
+        valid_fill=True)
+    assert attempts == 2
+    assert stats["history_valid_worlds"] == 1
+    assert stats["history_resampled_worlds"] == 1
+    assert stats["history_unchecked_worlds"] == 0
+    returned[1][0][0].append("__test_mutation__")
+    assert "__test_mutation__" not in returned[0][0][0]
+
+
+def test_valid_fill_refuses_when_no_world_passes(monkeypatch):
+    _, rnd, seat = fixture()
+    sampler = MCBot(seed=SEED)
+    mem = Memory(rnd, seat, own_kitty=True)
+    monkeypatch.setattr(HL, "HISTORY_ATTEMPT_FACTOR", 1)
+    monkeypatch.setattr(HL, "first_violation", lambda *args: 0)
+    with pytest.raises(ValueError, match="no validated worlds"):
+        HL.sample_worlds_history_legal(
+            sampler, rnd, seat, 1, mem=mem,
+            propose=lambda *args: sample_worlds(sampler, rnd, seat, 1, mem=mem)[0][0],
+            complete=lambda _rnd, _seat, hands, **kw: hands,
+            valid_fill=True)
+
+
 # ------------------------------------------------------ with the refusal rule
 
 @pytest.mark.parametrize("pair_len", [0, 1])
@@ -493,3 +534,35 @@ def test_proposal_caps_recipe_defaults_and_plumbing():
                  world_history_draw=True, belief_sha256='a' * 64)
     assert bot._history_throws_kw() == {'proposal_caps': True}
     assert served()._history_throws_kw() == {}
+
+
+def test_valid_fill_no_history_never_uses_plain_fill(monkeypatch):
+    _, rnd, seat = fixture()
+    sampler = MCBot(seed=SEED)
+    monkeypatch.setattr(HL, "follow_events", lambda *args: [])
+    monkeypatch.setattr(sampler, "SAMPLE_ATTEMPT_FACTOR", 1)
+    checks = []
+    with pytest.raises(ValueError, match="no validated worlds"):
+        HL.sample_worlds_history_legal(
+            sampler, rnd, seat, 2, mem=Memory(rnd, seat, own_kitty=True),
+            propose=lambda *args: None, check_budget=lambda: checks.append(True),
+            valid_fill=True)
+    assert len(checks) == 2
+
+
+def test_valid_fill_preserves_combined_proposal_caps(monkeypatch):
+    _, rnd, seat = fixture()
+    sampler = MCBot(seed=SEED)
+    mem = Memory(rnd, seat, own_kitty=True)
+    world = sample_worlds(sampler, rnd, seat, 1, mem=mem)[0][0]
+    monkeypatch.setattr(HL, "HISTORY_ATTEMPT_FACTOR", 1)
+    monkeypatch.setattr(HL, "first_violation", lambda *args: None)
+    caps = iter((True, False))
+    monkeypatch.setattr(HL, "_current_caps_hold", lambda *args: next(caps))
+    _, attempts, stats = HL.sample_worlds_history_legal(
+        sampler, rnd, seat, 2, mem=mem, propose=lambda *args: world,
+        complete=lambda _rnd, _seat, hands, **kw: hands,
+        proposal_caps=True, valid_fill=True)
+    assert attempts == 2
+    assert stats["history_cap_rejected"] == 1
+    assert stats["history_valid_worlds"] == stats["history_resampled_worlds"] == 1

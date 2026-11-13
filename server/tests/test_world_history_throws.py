@@ -177,3 +177,104 @@ def test_served_bot_drops_the_contradicting_worlds_and_changes_the_lead(release5
     # the defending seat's lead changes to DQ, 25 points better on the true deal
     assert on_cards == ["DQ"] and not rnd.is_attacker(seat)
     assert attacker_points(rnd, seat, ["DQ"]) == 65 < 90 == attacker_points(rnd, seat, ["D9"])
+
+
+def test_valid_fill_identity_and_dependency(monkeypatch):
+    sha = "f" * 64
+    base = dict(checkpoint_sha256=sha, world_history_legal=True)
+    off = pv.recipe_payload(pv.PVSearchConfig(**base))
+    assert "history_valid_fill" not in off
+    assert pv.recipe_payload(pv.PVSearchConfig(**base, history_valid_fill=False)) == off
+    assert pv.recipe_payload(pv.PVSearchConfig(**base, history_valid_fill=True)) == {
+        **off, "history_valid_fill": True}
+    with pytest.raises(pv.PVSearchPolicyError, match="history_valid_fill requires"):
+        pv.recipe_payload(pv.PVSearchConfig(checkpoint_sha256=sha, history_valid_fill=True))
+    assert names(monkeypatch, {"SHENGJI_PV_HISTORY_VALID_FILL": "0"}) == [RELEASE50]
+    assert "-hvf-" in names(monkeypatch, {"SHENGJI_PV_HISTORY_VALID_FILL": "1"})[0]
+    with pytest.raises(pv.PVSearchPolicyError, match="must be 0 or 1"):
+        names(monkeypatch, {"SHENGJI_PV_HISTORY_VALID_FILL": "yes"})
+
+
+def test_valid_fill_factory_reaches_sampler(release50_packages, monkeypatch):
+    from test_release50_fly_config import local_env
+
+    env = local_env(release50_packages)
+    env["SHENGJI_PV_HISTORY_VALID_FILL"] = "1"
+    entries = pv.singleton_registry_entries(**pv.pv_env_recipe(env))
+    bot = next(iter(entries.values()))(seed=17)
+    bot = P.lift(bot)
+    assert bot.history_valid_fill is True
+    calls = []
+    original = pv.sample_worlds_history_legal
+
+    def capture(*args, **kwargs):
+        calls.append(kwargs.get("valid_fill"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pv, "sample_worlds_history_legal", capture)
+    rnd = P.replay(*AFTER_THROW)
+    worlds, _ = bot._worlds(rnd, rnd.turn)
+    assert calls and all(calls)
+    assert len(worlds) == 64
+    assert bot._last_sampling["history_unchecked_worlds"] == 0
+    assert bot._last_sampling["history_fill_worlds"] == 0
+    assert bot._last_sampling["belief_fallback"] == 0
+    assert bot._sampler_record()["history_valid_worlds"] > 0
+
+
+def test_valid_fill_production_prefixes(release50_packages, monkeypatch):
+    import time
+    from pathlib import Path
+    from shengji.rl.replay_log import rebuild_round
+    from shengji.ai.refusal import Refusal, refusal_consistent
+    from test_release50_fly_config import local_env, production_env
+
+    fixtures = json.loads((Path(__file__).parent / "fixtures/history_valid_fill.json").read_text())
+    for fixture, expected_bad, expected_valid in zip(fixtures, (4, 13, 0), (60, 50, 64)):
+        rnd = rebuild_round(fixture["events"])
+        for event in fixture["events"]:
+            if event["e"] == "play":
+                rnd.play(event["seat"], event.get("attempted_cards", event["cards"]))
+        seat = fixture["seat"]
+        refs = [Refusal(s, tuple(a), tuple(f), t) for s, a, f, t in fixture["refusals"]]
+        for enabled in (False, True):
+            env = local_env(release50_packages, production_env())
+            env["SHENGJI_PV_HISTORY_VALID_FILL"] = str(int(enabled))
+            bot = next(iter(pv.singleton_registry_entries(**pv.pv_env_recipe(env)).values()))(seed=17)
+            monkeypatch.setattr(bot.sampler.rng, "getrandbits", lambda n: fixture["belief_seed"])
+            bot._refusals.key = tuple(rnd.deck)
+            bot._refusals.refusals = refs
+            start = time.perf_counter()
+
+            def budget():
+                if time.perf_counter() - start > 3:
+                    raise pv.PVSearchBudgetExceeded("fixture sampling budget exceeded")
+
+            worlds, _ = bot._worlds(rnd, seat, check_budget=budget)
+            bad = sum(hl.first_violation(hl.follow_events(rnd, seat), w, rnd.ordering) is not None
+                      or hl.first_throw_violation(hl.throw_events(rnd), w, rnd.ordering) is not None
+                      or any(not refusal_consistent(rnd, w, ref) for ref in refs)
+                      for w, _ in worlds)
+            assert len(worlds) == 64
+            assert bad == (0 if enabled else expected_bad)
+            assert bot._last_sampling["belief_fallback"] == 0
+            if enabled:
+                unique = {(tuple(tuple(sorted(h)) for h in w), tuple(sorted(k))) for w, k in worlds}
+                assert len(unique) == expected_valid
+                assert bot._last_sampling["history_valid_worlds"] == expected_valid
+                assert bot._last_sampling["history_resampled_worlds"] == 64 - expected_valid
+                assert bot._last_sampling["history_unchecked_worlds"] == 0
+                assert bot._last_sampling["history_fill_worlds"] == 0
+                from scripts import belief_debug
+                fields = {**bot._last_sampling, "belief_seed": fixture["belief_seed"],
+                          "belief_refusals": fixture["refusals"]}
+                from shengji.harvest.trajectory import pv_fields_from_record
+                rec = {**fields, "admitted": [["SA"]], "admitted_indices": [0],
+                       "selected_index": 0, "played": ["SA"], "value_means": [0.0], "worlds": 64}
+                _, _, values = pv_fields_from_record(rec, [["SA"]])
+                fields = values["belief"]
+                _, replayed, stats, fill = belief_debug.regenerate(
+                    bot.belief_model, rnd, seat, fields, 64)
+                assert replayed == worlds
+                assert fill == 0
+                assert stats["history_resampled_worlds"] == 64 - expected_valid

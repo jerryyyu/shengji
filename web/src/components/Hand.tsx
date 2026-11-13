@@ -1,5 +1,5 @@
-import { memo, useEffect, useLayoutEffect, useRef } from "react";
-import type { CSSProperties, RefObject } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, MouseEvent, PointerEvent, RefObject } from "react";
 import type { HandCard } from "../protocol";
 import type { Box } from "../motion";
 import { DUR, EASE, canAnimate, currentTranslate } from "../motion";
@@ -9,6 +9,8 @@ import Card from "./Card";
 const MAX_ARRIVALS = 8;
 /** Gap between the flights of cards that arrive together (the kitty). */
 const ARRIVAL_STAGGER = 40;
+/** Stacking of a card while it flies in: above your row (z-index 3). */
+export const ARRIVAL_Z = 4;
 /** A longer hand (the banker's 33 with the kitty) is drawn with smaller
  *  cards on a phone, so it still fits one row; only the phone layout styles
  *  `.hand.small-cards`. */
@@ -33,21 +35,27 @@ interface HandProps {
   onToggle: (id: number) => void;
   /** Filled with card positions for the trick area's play flights. */
   rects?: RefObject<HandRects>;
+  /** When set, the cards that can make the play: the others are dimmed. */
+  lit?: Set<number> | null;
 }
 
 interface SlotProps {
   id: number;
   code: string;
   selected: boolean;
+  /** Under a finger that is down: the card lifts until the finger lifts. */
+  pressed: boolean;
+  /** "lit": one of the cards that can make the play; "dim": not one. */
+  mark: "" | "lit" | "dim";
   onToggle: ((id: number) => void) | undefined;
 }
 
 /** One card in the hand. Props are primitives plus the stable onToggle, so a
  *  server update or a tap re-renders only the slots whose card or selection
  *  changed, not all 25. */
-const HandSlot = memo(function HandSlot({ id, code, selected, onToggle }: SlotProps) {
+const HandSlot = memo(function HandSlot({ id, code, selected, pressed, mark, onToggle }: SlotProps) {
   return (
-    <div className="hand-slot" data-id={id}>
+    <div className={`hand-slot${pressed ? " pressed" : ""}${mark ? ` ${mark}` : ""}`} data-id={id}>
       <Card code={code} selected={selected} onClick={onToggle ? () => onToggle(id) : undefined} />
     </div>
   );
@@ -80,8 +88,72 @@ function measureLayout(el: HTMLElement | null): Map<number, number> {
   return next;
 }
 
-export default function Hand({ hand, selected, selectable, onToggle, rects }: HandProps) {
+/** The hand slot's card id under a viewport point, if it is in `hand`. */
+function slotIdAt(hand: HTMLElement, x: number, y: number): number | null {
+  const slot = document.elementFromPoint?.(x, y)?.closest<HTMLElement>(".hand-slot");
+  return slot && hand.contains(slot) ? Number(slot.dataset.id) : null;
+}
+
+interface Drag {
+  pointerId: number;
+  start: number;
+  /** The state every card the finger crosses is set to: the first card's
+   *  state flipped. */
+  target: boolean;
+  seen: Set<number>;
+  moved: boolean;
+}
+
+export default function Hand({ hand, selected, selectable, onToggle, rects, lit = null }: HandProps) {
   const handRef = useRef<HTMLDivElement>(null);
+  // The card under a finger that is down lifts at once, before the tap's
+  // click commits the choice on release; a slide carries the lift along.
+  const [pressed, setPressed] = useState<number | null>(null);
+  // Drag-select: a finger pressed on a card and slid across the hand sets
+  // each card it enters, once, to the first card's flipped state. A tap with
+  // no slide stays an ordinary click on one card.
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const drag = useRef<Drag | null>(null);
+  const swallowClick = useRef(false);
+  const setTo = (id: number, on: boolean) => {
+    if (selectedRef.current.has(id) !== on) onToggle(id);
+  };
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    swallowClick.current = false;
+    drag.current = null;
+    if (!selectable || e.pointerType === "mouse") return;
+    const slot = (e.target as HTMLElement).closest<HTMLElement>(".hand-slot");
+    if (!slot) return;
+    const id = Number(slot.dataset.id);
+    drag.current = { pointerId: e.pointerId, start: id, target: !selectedRef.current.has(id), seen: new Set([id]), moved: false };
+    setPressed(id);
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || e.pointerId !== d.pointerId || !handRef.current) return;
+    const id = slotIdAt(handRef.current, e.clientX, e.clientY);
+    if (id !== null) setPressed(id);
+    if (id === null || d.seen.has(id)) return;
+    if (!d.moved) {
+      d.moved = true;
+      setTo(d.start, d.target);
+    }
+    d.seen.add(id);
+    setTo(id, d.target);
+  };
+  const endDrag = () => {
+    // a slide ends without the tap's click; if one still comes, it is not a tap
+    if (drag.current?.moved) swallowClick.current = true;
+    drag.current = null;
+    setPressed(null);
+  };
+  const onClickCapture = (e: MouseEvent<HTMLDivElement>) => {
+    if (!swallowClick.current) return;
+    swallowClick.current = false;
+    e.stopPropagation();
+    e.preventDefault();
+  };
   // Slot x within the hand, without any running reflow transform: the FLIP
   // "first" position for the next commit.
   const layoutX = useRef(new Map<number, number>());
@@ -133,10 +205,16 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
           const r = slot.getBoundingClientRect();
           const dx = origin.left + origin.width / 2 - (r.left + r.width / 2);
           const dy = origin.top + origin.height / 2 - (r.top + r.height / 2);
-          slot.animate(
+          const flight = slot.animate(
             [{ transform: `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(0.6)`, opacity: 0 },
              { transform: "none", opacity: 1 }],
             { duration: DUR.flight, easing: EASE.outExpo, delay: i * ARRIVAL_STAGGER, fill: "backwards" });
+          // a card in flight passes over your row (Declare, Bury), not under it
+          slot.style.position = "relative";
+          slot.style.zIndex = String(ARRIVAL_Z);
+          const land = () => { slot.style.position = ""; slot.style.zIndex = ""; };
+          flight.onfinish = land;
+          flight.oncancel = land;
         });
       }
     }
@@ -177,9 +255,14 @@ export default function Hand({ hand, selected, selectable, onToggle, rects }: Ha
   const style = { "--n": hand.length } as CSSProperties;
   return (
     <div className={`hand${selectable ? " selectable" : ""}${small ? " small-cards" : ""}`}
-         ref={handRef} style={style}>
+         ref={handRef} style={style} role="group"
+         aria-label={`Your hand, ${hand.length} ${hand.length === 1 ? "card" : "cards"}`}
+         onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+         onPointerUp={endDrag} onPointerCancel={endDrag} onClickCapture={onClickCapture}>
       {hand.map((c) => (
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
+                  pressed={selectable && pressed === c.id}
+                  mark={lit === null ? "" : lit.has(c.id) ? "lit" : "dim"}
                   onToggle={selectable ? onToggle : undefined} />
       ))}
     </div>

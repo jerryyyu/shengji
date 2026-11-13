@@ -164,7 +164,7 @@ def test_events_keep_the_log_keys_minus_the_forbidden_ones(api):
     assert len(logged) == len(served["events"])
     for rec, ev in zip(logged, served["events"]):
         assert ev["e"] == rec["e"]
-        assert set(ev) == set(rec) - {"decision", "bot_seed", "ranked", "user_ids"}
+        assert set(ev) == set(rec) - {"decision", "bot_seed", "ranked"}
         if rec["e"] != "round_start":
             assert ev == {k: rec[k] for k in ev}       # a finished round shows everything
     assert served["events"][0]["deck"] == logged[0]["deck"]
@@ -700,6 +700,6 @@ def test_seat_presence_records_are_not_served_and_do_not_break_a_round(api):
     assert [r["e"] for r in raw if r["e"].startswith("seat_")] == [
         "seat_disconnected", "seat_reconnected", "seat_left"]
     assert raw[0]["e"] == "round_start" and raw[0]["ranked"] is False
-    assert raw[0]["user_ids"] == [owner, None, None, None]
+    assert "user_ids" not in raw[0]
     records, _ = room_log.extract_round("REPL", 1, [r for r in raw if r["round"] == 1])
     assert records

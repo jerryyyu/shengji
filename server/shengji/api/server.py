@@ -1223,16 +1223,12 @@ def _log_round_start(room: Room) -> int | None:
             }
             for i, seat in enumerate(room.seats)
         ]
-    # Each seat's account id (null for a guest or bot), so a rating can be
-    # audited from the log. A top-level field rather than part of ``players``:
-    # saved_games serves ``players`` to every seat and drops this one.
-    accounts_by_seat = ({} if room.evaluation is not None else
-                        {"user_ids": [None if seat.is_bot else seat.user_id
-                                      for seat in room.seats]})
+    # Room logs never carry account ids (test_no_log_record_carries_the_account);
+    # seats map to accounts through the game_players links instead.
     return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
                    players=players, bot_seed=room.bot_seed,
-                   ranked=ratings.ranked(room), **accounts_by_seat)
+                   ranked=ratings.ranked(room))
 
 
 def _log_seat(room: Room, kind: str, seat: Seat, reason: str) -> None:

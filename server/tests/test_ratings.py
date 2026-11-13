@@ -995,8 +995,7 @@ def test_a_closing_ranked_round_is_finished_without_the_served_search(env, keypa
     records = [json.loads(line) for line in
                (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
     [start] = [r for r in records if r["e"] == "round_start"]
-    assert start["ranked"] is True and start["user_ids"] == [room.seats[0].user_id, None, None, None]
-    assert isinstance(start["user_ids"][0], int)
+    assert start["ranked"] is True and "user_ids" not in start
     text = json.dumps(start)
     assert "@" not in text and room.seats[0].token not in text
     assert [r["seat"] for r in records if r["e"] == "seat_left"] == [0]

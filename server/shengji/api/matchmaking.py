@@ -1,5 +1,11 @@
-"""Matchmaking queue: signed-in players queue alone or as a pair and are
-seated together at a shared waiting table that becomes an ordinary rated room.
+"""Matchmaking queue: players queue alone or as a pair and are seated
+together at a shared waiting table that becomes an ordinary rated room.
+
+Everyone is keyed by a queue id: a signed-in player's account id, or a
+guest's negative id, one per device (the server's ``guest_queue_id``). A
+guest counts ``ratings.GUEST_RATING`` for seating and is never rated itself.
+One device never holds two places at a table, a pair or an open-table seat
+(``same_device``).
 
 The queue lives in memory, one per server process. Every state change is a
 synchronous method with no ``await`` between the check and the mutation, so
@@ -111,6 +117,7 @@ QUEUE_MESSAGES = frozenset({
     "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_create", "party_invite", "party_join",
     "party_leave", "open_table_join", "open_table_wait", "open_table_show",
 })
+SAME_DEVICE = "Someone on this device is already at that table."
 # The only queue message a seated socket may send: leaving a pair.
 IN_ROOM_MESSAGES = frozenset({"party_leave"})
 
@@ -142,7 +149,8 @@ def window_for(wait: float) -> float:
 # ------------------------------------------------------------------ model
 @dataclass(frozen=True)
 class Slot:
-    """One seat of a room to start: a human (``user_id``) or a bot (``None``)."""
+    """One seat of a room to start: a human (``user_id``, its queue id, so
+    negative for a guest) or a bot (``None``)."""
     user_id: int | None
     name: str
     rating: float
@@ -267,9 +275,14 @@ class Conn:
     room: ``(room, seat, gen)``, picked up by the socket's receive loop.
     """
 
-    def __init__(self, ws: Any, user_id: int | None, name: str = "") -> None:
+    def __init__(self, ws: Any, user_id: int | None, name: str = "",
+                 queue_id: int | None = None, device: str | None = None) -> None:
         self.ws = ws
         self.user_id = user_id
+        # The queue's key for this socket (the account, else the guest's
+        # device id) and the device key; both server-only.
+        self.queue_id = queue_id if queue_id is not None else user_id
+        self.device = device
         self.name = name
         self.closed = False
         self.closed_at: float | None = None
@@ -353,8 +366,9 @@ class Matchmaker:
         # code_lookup answers with them.
         self.room_live = room_live or (lambda code: False)
         # The open tables as the server sees them (``{"code", "seats",
-        # "round_end"}``; a seat is ``{"name", "bot", "open", "user_id",
-        # "team"}``), and the server's join of one seat for one account.
+        # "round_end"}``; a seat is ``{"name", "bot", "open", "queue_id",
+        # "device", "team"}``), and the server's join of one seat for one
+        # queue id.
         self.open_tables = open_tables or (lambda: [])
         self.join_table = join_table
         self.join_pair = join_pair
@@ -562,7 +576,7 @@ class Matchmaker:
         n = self.count()
         if n:
             conn.push({"type": "queue_count", "count": n})
-        uid = conn.user_id
+        uid = conn.queue_id
         if uid is not None and self._live(uid) is None:
             self.conns[uid] = conn
             self._resync(uid)
@@ -570,7 +584,7 @@ class Matchmaker:
     def disconnect(self, conn: Conn) -> None:
         conn.close(self.clock())
         self.lobby.pop(conn, None)
-        uid = conn.user_id
+        uid = conn.queue_id
         if uid is not None and self.conns.get(uid) is conn:
             t = self._table(self._entry(uid))
             if t is not None:          # the others see the seat reconnecting
@@ -585,7 +599,7 @@ class Matchmaker:
     def leave_for_room(self, conn: Conn) -> None:
         """The socket took a seat in some other room: its queue entry goes,
         and its seat at a waiting table is free."""
-        uid = conn.user_id
+        uid = conn.queue_id
         if uid is None or self.conns.get(uid) is not conn:
             return
         e = self._entry(uid)
@@ -608,7 +622,7 @@ class Matchmaker:
         n = self.count()
         if n:
             conn.push({"type": "queue_count", "count": n})
-        uid = conn.user_id
+        uid = conn.queue_id
         if uid is not None and self._live(uid) is None:
             self.conns[uid] = conn
             self._resync(uid)
@@ -652,53 +666,55 @@ class Matchmaker:
             self._send_state(e)
 
     # ---------------------------------------------------------- messages
-    async def handle(self, conn: Conn, msg: dict, user_id: int | None) -> None:
+    async def handle(self, conn: Conn, msg: dict, queue_id: int | None) -> None:
+        """``queue_id`` is the socket's queue id: an account, or a guest's
+        negative id; None (no device key, or a deleted account) is refused."""
         t = msg.get("type")
         try:
-            if user_id is None:
+            if queue_id is None:
                 raise QueueError("signed_in_only",
-                                 "Sign in to play people; the queue is rated.")
+                                 "This connection can't queue; reload the page.")
             if conn.in_room and t not in IN_ROOM_MESSAGES:
                 raise QueueError("in_room", "Leave the room before queueing.")
             now = self.clock()
-            e = self._entry(user_id)
+            e = self._entry(queue_id)
             if e is not None and e.table_id is not None:
                 e.active_at = now          # any message from the table is a tap
             if t == "queue_join":
-                if not self.join_limiter.allow(str(user_id), now):
+                if not self.join_limiter.allow(str(queue_id), now):
                     raise QueueError("rate_limited", "Too many requests; wait a minute.")
-                self._bind(conn, user_id)
-                await self._join(conn, user_id, msg)
+                self._bind(conn, queue_id)
+                await self._join(conn, queue_id, msg)
             elif t.startswith("party_"):
-                if not self.party_limiter.allow(str(user_id), now):
+                if not self.party_limiter.allow(str(queue_id), now):
                     raise QueueError("rate_limited", "Too many requests; wait a minute.")
-                self._bind(conn, user_id)
+                self._bind(conn, queue_id)
                 if t in ("party_create", "party_invite"):
-                    self._party_create(user_id)
+                    self._party_create(queue_id)
                 elif t == "party_join":
-                    self._party_join(user_id, msg)
+                    self._party_join(queue_id, msg)
                 else:
-                    self._party_leave(user_id)
+                    self._party_leave(queue_id)
             else:
-                self._bind(conn, user_id)
+                self._bind(conn, queue_id)
                 if t == "queue_leave":
-                    self._leave(user_id)
+                    self._leave(queue_id)
                 elif t in ("match_accept", "match_decline"):
                     # The ready check is gone: the waiting table is the accept.
                     raise QueueError("no_match", "There is no ready check for you.")
                 elif t == "table_start" or (t == "queue_start_bots" and self._table(e) is not None):
                     # An older client's Play bots at a table is its Start.
-                    await self._table_start(user_id)
+                    await self._table_start(queue_id)
                 elif t == "queue_start_bots":
-                    await self._start_bots(user_id)
+                    await self._start_bots(queue_id)
                 elif t in ("queue_wait_players", "queue_allow_bots"):
-                    self._set_bot_fill(user_id, t == "queue_allow_bots")
+                    self._set_bot_fill(queue_id, t == "queue_allow_bots")
                 elif t == "open_table_join":
-                    await self._open_join(conn, user_id, msg)
+                    await self._open_join(conn, queue_id, msg)
                 elif t == "open_table_wait":
-                    self._open_wait(user_id)
+                    self._open_wait(queue_id)
                 elif t == "open_table_show":
-                    self._open_show(user_id, msg)
+                    self._open_show(queue_id, msg)
         except QueueError as err:
             self._error(conn, err)
         self.ensure_running()
@@ -728,7 +744,7 @@ class Matchmaker:
                              "again in 5 minutes.", cooldown_until=until)
         member_ratings = {}
         for m in members:
-            r = await self.rating_of(m)
+            r = await self.rating_of(m) if m > 0 else ratings.GUEST_RATING
             member_ratings[m] = float(r) if r is not None else accounts.START_RATING
         # Re-check everything the awaits could have changed.
         if any(m in self.entry_of for m in members):
@@ -822,7 +838,8 @@ class Matchmaker:
             seated = False
             for e in pool:
                 fits = [t for t in self.tables.values()
-                        if t.places_for(e) is not None and near(e, t.rating)]
+                        if t.places_for(e) is not None and near(e, t.rating)
+                        and not self._devices(e) & self._table_devices(t)]
                 if fits:
                     t = min(fits, key=lambda t: (gap(e, t.rating), t.seq))
                     self._sit(t, e, now)
@@ -831,7 +848,8 @@ class Matchmaker:
             if seated:
                 continue
             for e in pool:
-                others = [o for o in pool if o is not e and near(e, o.rating)]
+                others = [o for o in pool if o is not e and near(e, o.rating)
+                          and not self._devices(e) & self._devices(o)]
                 if not others:
                     continue
                 o = min(others, key=lambda o: (gap(e, o.rating), not o.front, o.since, o.seq))
@@ -844,6 +862,14 @@ class Matchmaker:
                 break
             if not seated:
                 return
+
+    def _devices(self, e: Entry) -> set[str]:
+        """The device keys of an entry's members' queue sockets."""
+        return {c.device for u in e.members
+                if (c := self.conns.get(u)) is not None and c.device is not None}
+
+    def _table_devices(self, t: Table) -> set[str]:
+        return set().union(*(self._devices(o) for o in t.entries))
 
     def _sit(self, t: Table, e: Entry, now: float) -> None:
         places = t.places_for(e)
@@ -987,13 +1013,17 @@ class Matchmaker:
 
     # --------------------------------------------------------- open tables
     def _usable(self, t: dict, uid: int) -> bool:
-        """Can ``uid`` be offered this open table: a seat is open, it holds no
-        seat there already, and it never left this table after joining."""
+        """Can ``uid`` be offered this open table: a seat is open, neither it
+        nor its device holds a seat there already, and it never left this
+        table after joining."""
         if t["code"] in self.barred.get(uid, ()):
             return False
         seats = t["seats"]
+        c = self.conns.get(uid)
+        device = c.device if c is not None else None
         return (any(s.get("open") for s in seats)
-                and not any(s.get("user_id") == uid for s in seats))
+                and not any(s.get("queue_id") == uid for s in seats)
+                and (device is None or not any(s.get("device") == device for s in seats)))
 
     @staticmethod
     def _default_pick(seats: list[dict]) -> int:
@@ -1163,6 +1193,8 @@ class Matchmaker:
         self._send_state(e)
         if refused == "seat_taken":
             raise QueueError("seat_taken", "That seat was just taken. Pick another.")
+        if refused == "same_device":
+            raise QueueError("same_device", SAME_DEVICE)
         raise QueueError("table_closed", "That table is no longer open.")
 
     async def _open_join_pair(self, e: Entry, uid: int, code: str) -> None:
@@ -1195,6 +1227,8 @@ class Matchmaker:
             self.joining.pop(u, None)
         self._offer_open_tables(now, quiet={e.id})
         self._send_state(e)
+        if refused == "same_device":
+            raise QueueError("same_device", SAME_DEVICE)
         raise QueueError("table_closed" if refused != "seat_taken" else "seat_taken",
                          "Those seats were just taken." if refused == "seat_taken"
                          else "That table is no longer open.")
@@ -1309,6 +1343,10 @@ class Matchmaker:
             raise QueueError("in_queue", "Cancel your search before joining a party.")
         if p.leader in self.entry_of:
             raise QueueError("party_busy", "Your friend is already searching.")
+        mine, theirs = self.conns.get(uid), self.conns.get(p.leader)
+        if (mine is not None and theirs is not None and mine.device is not None
+                and mine.device == theirs.device):
+            raise QueueError("same_device", "A pair needs two devices.")
         own = self._party(uid)
         if own is not None:
             if len(own.members) == 2:

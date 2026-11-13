@@ -428,20 +428,23 @@ def test_a_mid_round_claimant_does_not_change_the_round_for_the_others(env, monk
     assert event["k"] == 20             # the provisional claimant was not in the round
 
 
-def test_a_round_started_with_a_guest_at_a_ranked_table_is_not_rated(env, monkeypatch):
+def test_a_round_with_a_guest_at_a_queue_table_rates_each_account_in_full(env, monkeypatch):
+    """A guest at a queue-matched table counts 1000 and is never rated; the
+    account beside it is rated on the round with its full K."""
     srv, store, _ = env
     a, _ = _user(store, "alice")
-    b, _ = _user(store, "bob")
+    _set(store, a, 1000, rounds=30)
     _force_outcome(monkeypatch, 30)
-    table = Table(srv, [a, None, b, "bot"])
+    table = Table(srv, [a, None, "bot", "bot"])
     table.room.matched = True
+    table.room.seats[1].queue_id = -1
     table.play_round(banker=0)
-    assert _events(store) == []
-    assert store.user(a)["rated_rounds"] == 0 and store.user(a)["rating"] == 1000
-    # Once the guest's seat is a bot again, the next round is rated.
-    table.room.seats[1].is_bot = True
-    table.play_round()
-    assert sorted(e["user_id"] for e in _events(store)) == sorted([a, b])
+    [event] = _events(store)
+    assert event["user_id"] == a
+    assert event["k"] == 20                                # established, not halved
+    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)   # the guest is 1000
+    assert event["delta"] == pytest.approx(5.52, abs=0.005)
+    assert store.user(a)["rated_rounds"] == 31
 
 
 def test_a_ranked_table_of_signed_in_players_is_rated_as_before(env, monkeypatch):
@@ -456,9 +459,9 @@ def test_a_ranked_table_of_signed_in_players_is_rated_as_before(env, monkeypatch
 
 
 # -------------------------------------------------------- ranked join
-# A ranked table is filled by the queue and rated for signed-in players only:
-# a guest is refused with ``ranked_sign_in``, another account with
-# ``ranked_queue_only``, and the account holding a seat comes back to it.
+# A ranked table is filled by the queue: someone holding no seat there is
+# refused with ``ranked_queue_only`` (or takes the invite path), an account
+# holding a seat comes back to it, and a guest comes back by its token.
 # Casual rooms keep their open join (``test_server_ws``).
 @pytest.fixture()
 def queue_env(env):
@@ -484,7 +487,7 @@ def _seats(room):
     return [(s.name, s.is_bot, s.user_id) for s in room.seats]
 
 
-def test_a_guest_cannot_join_a_ranked_room(queue_env):
+def test_a_guest_with_no_device_key_cannot_join_a_ranked_room(queue_env):
     srv, store, client = queue_env
     uid, headers = _user(store, "owner", "Owner")
     with client.websocket_connect("/ws", headers=headers) as a:
@@ -493,9 +496,9 @@ def test_a_guest_cannot_join_a_ranked_room(queue_env):
         before = _seats(room)
         with client.websocket_connect("/ws") as g:
             g.send_json({"type": "join_room", "room": code, "name": "Guest"})
-            assert _drain(g, "error")["code"] == "ranked_sign_in"
+            assert _drain(g, "error")["code"] == "ranked_queue_only"
             g.send_json({"type": "join_room", "room": code, "name": "Guest", "seat": 1})
-            assert _drain(g, "error")["code"] == "ranked_sign_in"
+            assert _drain(g, "error")["code"] == "ranked_queue_only"
         assert _seats(room) == before
 
 

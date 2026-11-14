@@ -162,7 +162,10 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
    - The swap carries nothing across: the old socket's handlers are cut before it closes, its room,
      resume token, chat and any pending leave or reconnect are dropped (listeners get `left`), the queue
      store and the toast reset, and the on-device socket passes on only the messages its server answers
-     (the queue, presence, code lookups, telemetry and heartbeats go nowhere).
+     (the queue, presence, code lookups, telemetry and heartbeats go nowhere). App's fill-with-bots
+     chain ends with that `left`, as does a Start cancelled before its room came back. Telemetry collects
+     only online: an online page's buffered events go before it turns offline, and nothing buffered on
+     either side is kept across the switch.
    - An online page loads the on-device server once it is connected and idle, so Play offline still works
      after the network has gone. The separate offline page shell (`offline/server/ui.tsx`, OfflinePlay's
      whole-page component) and the `?offline=0` / `?offline=1&table=1` reloads are removed; `?offline=1`

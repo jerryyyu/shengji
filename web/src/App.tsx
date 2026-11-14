@@ -219,7 +219,10 @@ export default function App() {
           break;
         case "left":
           // Intentional exit confirmed: forget the room (name kept) so
-          // reconnects don't auto-rejoin, and route back to the lobby.
+          // reconnects don't auto-rejoin, and route back to the lobby. A
+          // fill-with-bots chain armed for a room not yet made ends here too:
+          // the next room this socket hears of is not the one it was armed for.
+          autoFill.current = false;
           resetToLobby();
           if (msg.reason === "removed") {
             openTab("play");

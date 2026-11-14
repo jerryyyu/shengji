@@ -539,3 +539,26 @@ it("does not send an offline turn's telemetry after returning online", async () 
   expect(FakeWS.last!.sent.filter((m) => m.type === "client_event")
     .flatMap((m) => m.events).filter((e: any) => e.e === "turn_done")).toEqual([]);
 });
+
+it("sends the online page's buffered telemetry before going offline, collects nothing offline, and resumes online", async () => {
+  const { conn } = await load();
+  const { telemetry } = await import("./telemetry");
+  const { offlineGame } = await import("./components/offlineGame");
+  conn.start();
+  const network = FakeWS.last!;
+  network.onopen?.();
+  telemetry.tap("play");
+  offlineGame.startFromPlay();
+  const taps = (ws: FakeWS) => ws.sent.filter((m) => m.type === "client_event")
+    .flatMap((m) => m.events).filter((e: any) => e.e === "tap").map((e: any) => e.id);
+  expect(taps(network)).toEqual(["play"]);
+  await vi.waitFor(() => expect(conn.status).toBe("open"));
+  telemetry.tap("next_round");
+  expect(telemetry.pending()).toEqual([]);
+  offlineGame.goOnline();
+  const back = FakeWS.last!;
+  back.onopen?.();
+  telemetry.tap("duo");
+  telemetry.flush();
+  expect(taps(back)).toEqual(["duo"]);
+});

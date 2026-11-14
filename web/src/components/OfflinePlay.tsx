@@ -104,6 +104,9 @@ export function OfflineControls({ local, status, room = null, onArmAutoFill }: O
 
   const leave = () => {
     if (room) conn.send({ type: "leave_room" });
+    // a Start whose room has not come back yet: the leave waits for that
+    // room on the socket, and App's bot fill for it ends at once
+    else if (sent) conn.leaveToLobby();
     setSent(false);
     offlineGame.played = false;
     left.current = true;

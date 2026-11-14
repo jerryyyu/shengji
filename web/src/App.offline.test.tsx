@@ -358,3 +358,21 @@ it("when the network is lost on the Play tab, Play there opens the offline table
   await startGame();
   expect(FakeWS.all.length).toBe(sockets);
 }, 15000);
+
+it("cancelling Start before its room comes back, with no network, deals no game", async () => {
+  at("", "capacitor:");
+  netUp = false;
+  await mount();
+  await until(() => host.querySelector(".play-offline") !== null);
+  act(() => button("Play")!.click());
+  await until(() => panel() !== null && button("Start")?.disabled === false);
+  act(() => button("Start")!.click());
+  act(() => button("Leave")!.click());
+  expect(panel()).toBeNull();
+  await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
+  expect(host.querySelector(".table-screen")).toBeNull();
+  expectOfflinePlayTab();
+  // Play opens a fresh table, and its Start still deals
+  act(() => button("Play")!.click());
+  await startGame();
+});

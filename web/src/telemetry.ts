@@ -1,11 +1,12 @@
 // UI flow telemetry: a few allow-listed events about how people move through
 // the app, batched to the server as `client_event`. Nothing here carries a
 // name, chat, room code or card: only enum ids and bounded counts, and the
-// server drops anything else. Practice games (no server) send nothing, and no
-// call here ever throws into the UI.
+// server drops anything else. Practice games (no server) send nothing: while
+// the page is offline nothing is collected, and what was buffered on either
+// side of a switch is dropped there. No call here ever throws into the UI.
 import { useEffect } from "react";
 import { conn } from "./ws";
-import { OFFLINE } from "./offlineMode";
+import { OFFLINE, subscribeOffline } from "./offlineMode";
 
 export type Screen =
   | "play" | "howto" | "name_sheet" | "duo_sheet" | "room" | "waiting_table"
@@ -84,14 +85,35 @@ export class Telemetry {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private screen: Screen | null = null;
   private screenAt = 0;
-  private readonly firstVisit: boolean;
+  private seen: boolean | null = null;
   private readonly send: Send;
-  private readonly enabled: boolean;
+  private readonly on: () => boolean;
 
-  constructor(send: Send, enabled: boolean) {
+  /** `enabled` is read at each event and flush, so a page whose mode
+   *  changes collects only while it is on. */
+  constructor(send: Send, enabled: boolean | (() => boolean)) {
     this.send = send;
-    this.enabled = enabled;
-    this.firstVisit = enabled ? readFirstVisit() : false;
+    this.on = typeof enabled === "function" ? enabled : () => enabled;
+  }
+
+  private get enabled(): boolean {
+    return this.on();
+  }
+
+  /** Whether this is the device's first visit, read once collection is on. */
+  private get firstVisit(): boolean {
+    this.seen ??= readFirstVisit();
+    return this.seen;
+  }
+
+  /** Drop everything buffered and the screen timing: the events belong to
+   *  the mode that is ending, and the next screen starts a fresh sequence. */
+  reset(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    this.buf = [];
+    this.screen = null;
+    this.screenAt = 0;
   }
 
   private push(ev: Event): void {
@@ -107,13 +129,14 @@ export class Telemetry {
   }
 
   /** Send everything buffered, in batches under MAX_BYTES; what the socket
-   *  cannot take now waits for the next flush. */
-  flush(): void {
+   *  cannot take now waits for the next flush. `last` sends what an online
+   *  page buffered as it turns offline, on the socket that is still its own. */
+  flush(last = false): void {
     if (this.timer !== null) {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    if (!this.enabled) return;
+    if (!this.enabled && !last) return;
     try {
       while (this.buf.length > 0) {
         const batch: Event[] = [];
@@ -174,9 +197,16 @@ function liveSend(msg: unknown): boolean {
   return conn.send(msg as Parameters<typeof conn.send>[0]);
 }
 
-export const telemetry = new Telemetry(liveSend, !OFFLINE);
+export const telemetry = new Telemetry(liveSend, () => !OFFLINE);
 
-if (typeof window !== "undefined" && !OFFLINE) {
+// At a switch between the game server and the on-device one, what the online
+// page buffered goes on its socket first, then nothing of either side is kept.
+subscribeOffline(() => {
+  if (OFFLINE) telemetry.flush(true);
+  telemetry.reset();
+});
+
+if (typeof window !== "undefined") {
   try {
     window.addEventListener("pagehide", () => telemetry.flush());
   } catch {

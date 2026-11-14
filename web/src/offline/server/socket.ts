@@ -19,6 +19,25 @@ export function localServer(): LocalServer {
 
 type Handler<E> = ((ev: E) => void) | null;
 
+/** The messages the on-device server answers. The page sends the game
+ *  server's own as well (the queue, presence, code lookups, telemetry,
+ *  heartbeats); offline they go nowhere, as to a server that has no such
+ *  service, so none of them comes back as an error toast. */
+export const LOCAL_MESSAGES: ReadonlySet<string> = new Set([
+  "create_room", "join_room", "peek_room", "leave_room", "chat", "add_bot", "remove_bot",
+  "set_start_level", "allow_joiners", "lobby_ready", "start_game", "declare", "pass_declare",
+  "bury", "play", "next_round",
+]);
+
+function localType(data: string): boolean {
+  try {
+    const msg = JSON.parse(data) as { type?: unknown };
+    return typeof msg?.type === "string" && LOCAL_MESSAGES.has(msg.type);
+  } catch {
+    return false;
+  }
+}
+
 export class LocalSocket {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -46,7 +65,7 @@ export class LocalSocket {
   }
 
   send(data: string): void {
-    if (this.readyState !== LocalSocket.OPEN) return;
+    if (this.readyState !== LocalSocket.OPEN || !localType(data)) return;
     this.server.clock.setTimeout(() => this.conn.receive(data), 0);
   }
 

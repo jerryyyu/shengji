@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, RoomMsg } from "./protocol";
 import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
-import { OFFLINE, clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
+import { OFFLINE, useOffline } from "./offlineMode";
+import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
 import { auth } from "./auth";
 import Lobby from "./components/Lobby";
@@ -24,16 +25,14 @@ import HomeShell from "./home/HomeShell";
 import { openTab, useHomeRoute } from "./home/route";
 import { haptic, hideSplash, lockFor, setBackGesture, setGameMode, startShell } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
-import { showToast as toastShow, useToast } from "./toast";
+import { showToast as toastShow } from "./toast";
 import Toast from "./components/Toast";
 import ConnectionPill from "./components/ConnectionPill";
 import QueueLayer from "./queue/QueueLayer";
 import { othersAt, queue, useQueue } from "./queue/store";
 import { firstJoinerText } from "./queue/tableText";
 import { askRoomLeave, useRoomBack } from "./roomBack";
-
-// Offline play (no game server): its Play tab loads with the local server.
-const OfflineHome = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineHome })));
+import { offlineGame } from "./components/offlineGame";
 
 /** Drop the invite link from the address once its question is answered
  *  Stay, so the lobby does not take it up later. */
@@ -111,6 +110,10 @@ export default function App() {
     const unsubStatus = conn.subscribeStatus((s) => {
       setStatus(s);
       if (s !== "open") return;
+      // the on-device server knows no saved room and no link: Play starts there
+      if (OFFLINE) return;
+      // Play offline must work once the network has gone: its server loads now
+      offlineGame.prefetch();
       // ONE decision, made in intent.ts and unit-tested there. An invite opens
       // the Lobby's Join panel and never joins by itself, so the only thing to
       // act on here is a saved resume.
@@ -216,7 +219,10 @@ export default function App() {
           break;
         case "left":
           // Intentional exit confirmed: forget the room (name kept) so
-          // reconnects don't auto-rejoin, and route back to the lobby.
+          // reconnects don't auto-rejoin, and route back to the lobby. A
+          // fill-with-bots chain armed for a room not yet made ends here too:
+          // the next room this socket hears of is not the one it was armed for.
+          autoFill.current = false;
           resetToLobby();
           if (msg.reason === "removed") {
             openTab("play");
@@ -238,8 +244,6 @@ export default function App() {
       }
     });
     conn.start();
-    // one config + me round trip; a server without sign-in answers "off"
-    if (!OFFLINE) void auth.init();
     return () => {
       unsubStatus();
       unsubMsg();
@@ -264,12 +268,14 @@ export default function App() {
   useEffect(() => { startShell(); }, []);
   // the audio context costs a long task to create: make it before any tap
   useEffect(() => { prewarmAudio(); }, []);
+  // Offline is a state of this page: the socket swaps servers in place.
+  const offline = useOffline();
+  // one config + me round trip, once the page is online; a server without
+  // sign-in answers "off"
+  useEffect(() => { if (!offline) void auth.init(); }, [offline]);
 
   const inRoom = room !== null || game !== null;
   const q = useQueue();
-  // the offline Play tab hears of an error to free its buttons; the toast says it
-  const shownToast = useToast();
-  const toastText = shownToast?.text ?? null;
   const seatedAnywhere = inRoom || q.queued;
   useEffect(() => {
     if (linkLeaving && !seatedAnywhere) {
@@ -289,9 +295,9 @@ export default function App() {
       autoFill.current = true;
       conn.send({ type: "create_room", name: getSavedName(), resume_from: gameId });
       openTab("play");
-    }, status === "open" && !inRoom);
+    }, status === "open" && !inRoom && !offline);
     return () => setContinueHandler(null, false);
-  }, [status, inRoom]);
+  }, [status, inRoom, offline]);
   // The tabs' pages keep the tab bars over a game too; the Your table pill
   // on them leads back to the game, or to a room's panel on Play.
   const tabPage = homeRoute === null ? null
@@ -318,27 +324,21 @@ export default function App() {
     // the table draws the one toast in its own spot, under the top seat
     screenIsTable = true;
     screen = <Table state={game} />;
-  } else if (OFFLINE) {
-    // the offline table's room is filled with bots and dealt from the Play tab
-    screen = (
-      <Suspense fallback={null}>
-        <OfflineHome status={status} error={toastText} room={room?.room ?? null}
-                     onArmAutoFill={() => { autoFill.current = true; }} />
-      </Suspense>
-    );
   } else {
+    // offline, the same Play tab: its table's room is filled with bots and dealt from there
     screen = (
       <HomeShell active="play">
         <Lobby status={status} room={room} holdInvite={linkPrompt !== null}
-               onSeatedInvite={setLinkPrompt} inviteDropped={linkDropped} />
+               onSeatedInvite={setLinkPrompt} inviteDropped={linkDropped}
+               onArmAutoFill={() => { autoFill.current = true; }} />
       </HomeShell>
     );
   }
 
   return (
-    <div className={`app${rotated ? " rotated" : ""}${OFFLINE ? " offline" : ""}`}>
+    <div className={`app${rotated ? " rotated" : ""}${offline ? " offline" : ""}`}>
       {screen}
-      {OFFLINE && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} />}
+      {offline && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} />}
       {screenIsTable ? null : <Toast />}
       {linkPrompt && !linkLeaving && status === "open" && seatedAnywhere ? (
         // a link to another table while seated: the leave sheet, asked about the link

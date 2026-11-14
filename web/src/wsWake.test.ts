@@ -83,7 +83,7 @@ it("keeps browser wake events off the offline transport while it loads", async (
   const module = new Promise<{ LocalSocket: new () => object }>((resolve) => { resolveModule = resolve; });
   vi.doMock("./offline/server", () => module);
   vi.stubGlobal("WebSocket", network);
-  sessionStorage.setItem("shengji.offline", "1");
+  window.history.replaceState(null, "", "/?offline=1");
   try {
     vi.resetModules();
     const { conn, OFFLINE } = await import("./ws");
@@ -106,7 +106,7 @@ it("keeps browser wake events off the offline transport while it loads", async (
     expect(local).toHaveBeenCalledTimes(1);
     expect(network).not.toHaveBeenCalled();
   } finally {
-    sessionStorage.removeItem("shengji.offline");
+    window.history.replaceState(null, "", "/");
     vi.doUnmock("./offline/server");
     vi.unstubAllGlobals();
     vi.resetModules();

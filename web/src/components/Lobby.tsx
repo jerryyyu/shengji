@@ -7,7 +7,7 @@ import { createRoomPayload } from "../testPolicy";
 import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
-import GuestChip, { GuestNameSheet } from "./GuestChip";
+import GuestChip from "./GuestChip";
 import LobbyPreview from "./LobbyPreview";
 import { RankedSection, TrophyIcon } from "../queue/Ranked";
 import { queue, useQueue } from "../queue/store";
@@ -565,7 +565,6 @@ export default function Lobby({ status, room = null, holdInvite = false,
         </p>
         </div>
       </div>
-      {signedIn ? null : <GuestNameSheet />}
     </div>
   );
 }

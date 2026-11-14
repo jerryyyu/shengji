@@ -22,6 +22,7 @@ import { useInfoRoute } from "./support/route";
 import Leaderboard from "./components/Leaderboard";
 import MePage from "./components/MePage";
 import HomeShell from "./home/HomeShell";
+import { IdentitySheet } from "./components/GuestChip";
 import { openTab, useHomeRoute } from "./home/route";
 import { haptic, hideSplash, lockFor, setBackGesture, setGameMode, startShell } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
@@ -340,6 +341,8 @@ export default function App() {
       {screen}
       {offline && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} />}
       {screenIsTable ? null : <Toast />}
+      {/* the one identity sheet: a guest's chip, Edit name and every Sign in */}
+      <IdentitySheet />
       {linkPrompt && !linkLeaving && status === "open" && seatedAnywhere ? (
         // a link to another table while seated: the leave sheet, asked about the link
         <LeaveSheet context={linkLeaveContext(game, room, othersAt(q.table))} title={`Leave to join ${linkPrompt}?`}

@@ -40,7 +40,7 @@ const SURFACE = /<dialog\b|role=["'](?:alert)?dialog["']|(?<![[\w-])aria-modal\s
 /** Every file that draws a surface, and what it draws. */
 const SURFACES = [
   "components/ConnectionPill.tsx", // the 60 s full-screen "No connection" state
-  "components/GuestChip.tsx", // the guest name sheet ("Your name")
+  "components/GuestChip.tsx", // the one identity sheet: a guest's name and sign-in, mounted once by App
   "components/JoinPanel.tsx", // the confirm before taking a dropped player's seat
   "components/LastTrickPanel.tsx", // the last trick played, over the table
   "components/LeaveSheet.tsx", // the one Leave sheet

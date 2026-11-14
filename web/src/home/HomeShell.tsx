@@ -13,7 +13,7 @@ import YourTablePill from "../queue/YourTablePill";
 import { SeatedAtContext } from "../queue/seatedAt";
 import type { SeatedAt } from "../queue/seatedAt";
 import AccountChip from "../components/AccountChip";
-import GuestChip, { GuestNameSheet } from "../components/GuestChip";
+import GuestChip from "../components/GuestChip";
 
 export { WIDE };
 
@@ -109,8 +109,8 @@ export function TabBar({ active }: { active: Tab }) {
 
 /** The wide layout's top bar: the wordmark (except on Play, whose page
  *  carries the title), the phone's three tabs centred, and the account chip
- *  (a guest's chip and Sign in) at the end, after the Your table pill on a
- *  tab other than Play. */
+ *  at the end (a guest's opens the identity sheet), after the Your table
+ *  pill on a tab other than Play. */
 export function TopBar({ active }: { active: Tab }) {
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
@@ -118,14 +118,7 @@ export function TopBar({ active }: { active: Tab }) {
   if (user) {
     end = <AccountChip user={user} />;
   } else if (account.status !== "loading") {
-    end = (
-      <>
-        <GuestChip compact />
-        {account.status === "out" ? (
-          <button type="button" className="btn topbar-signin" onClick={() => openTab("me", "stats")}>Sign in</button>
-        ) : null}
-      </>
-    );
+    end = <GuestChip compact />;
   }
   return (
     <header className="topbar">
@@ -174,9 +167,6 @@ export default function HomeShell({ active, section, seatedAt = null, children }
   active: Tab; section?: MeSection; seatedAt?: SeatedAt; children: ReactNode;
 }) {
   const wide = useMediaQuery(WIDE);
-  const account = useAuth();
-  const guest = account.status !== "in" && account.status !== "loading";
-  const away = active !== "play";
   const body = useRef<HTMLDivElement | null>(null);
   useTabSwipe(body, active, !wide);
   useTabFade(body, `${active}/${section ?? ""}`);
@@ -186,9 +176,6 @@ export default function HomeShell({ active, section, seatedAt = null, children }
         {wide ? <TopBar active={active} /> : null}
         <div className="home-body" ref={body}>{children}</div>
         {wide ? null : <TabBar active={active} />}
-        {/* one name editor for a guest's chip and Me's Edit name: the Play tab
-            holds its own, every other tab this one */}
-        {guest && away ? <GuestNameSheet /> : null}
       </div>
     </SeatedAtContext.Provider>
   );

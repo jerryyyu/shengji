@@ -320,6 +320,7 @@ jobs:
           tests/test_ci_review_ledger_step.py
           tests/test_ci_path_classifier.py
           tests/test_receipt_summary.py
+          tests/test_mistake_dashboard.py
           tests/test_safe_rm.py
           tests/test_ops_dashboard.py
           tests/test_seed_windows_dir.py
@@ -344,6 +345,7 @@ jobs:
           uv run python scripts/test_checkout.py --engine compiled -- -q --durations=10
           tests/test_benchmark_final*.py
           tests/test_stage1_seal_plan.py
+          tests/test_mistake_dashboard.py
           tests/test_prepared_panel_runner.py
           tests/test_llm_benchmark_rollouts.py
           tests/test_production_llm_panel_readout.py

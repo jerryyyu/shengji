@@ -411,8 +411,6 @@ describe("signed out, the guest names themselves", () => {
 describe("no connection", () => {
   afterEach(() => { vi.useRealTimers(); });
 
-  const pill = () => host.querySelector(".play-conn");
-  const retryPill = () => host.querySelector<HTMLButtonElement>("button.play-conn");
   async function renderAt(status: "open" | "closed" | "connecting") {
     if (!host || !host.isConnected) {
       host = document.createElement("div");
@@ -422,27 +420,21 @@ describe("no connection", () => {
     await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
   }
 
-  it("says Connecting… first, then after 4 s No connection · retrying, which retries on a tap", async () => {
+  it("shows no connection row of its own: App's one pill speaks for the socket", async () => {
     vi.useFakeTimers();
     authState.current = { status: "off", clientId: null, user: null };
     reconnects.n = 0;
     await renderAt("connecting");
-    expect(pill()?.textContent).toBe("Connecting…");
-    expect(retryPill()).toBeNull();
+    const rows = () => host.querySelector(".play-conn, .reconnect-banner, .conn-lost");
+    expect(rows()).toBeNull();
+    expect(host.textContent).not.toContain("Connecting…");
     expect(buttonNamed("Play bots").disabled).toBe(true);    // not yet known to be offline
-    await act(async () => { vi.advanceTimersByTime(3999); });
-    expect(retryPill()).toBeNull();
-    await act(async () => { vi.advanceTimersByTime(1); });
-    expect(retryPill()?.textContent).toBe("No connection · retrying");
-    act(() => retryPill()!.click());
-    expect(reconnects.n).toBe(1);
-    // the wait starts over after a retry
-    expect(retryPill()).toBeNull();
-    await act(async () => { vi.advanceTimersByTime(4000); });
-    expect(retryPill()).not.toBeNull();
-    // a connection clears it at once, and says nothing while all is well
+    await act(async () => { vi.advanceTimersByTime(STALL_MS); });
+    expect(rows()).toBeNull();
+    expect(host.textContent).not.toContain("No connection");
+    expect(buttonNamed("Play bots").disabled).toBe(false);   // plays on this device now
+    expect(reconnects.n).toBe(0);
     await renderAt("open");
-    expect(pill()).toBeNull();
     expect(host.textContent).not.toContain("Connected");
   });
 
@@ -620,15 +612,15 @@ describe("starting a game waits for the server", () => {
     act(() => button(/^Join$/).click());
     serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });
     expect(button(/^Join$/).disabled).toBe(false);
-    expect(host.querySelector(".lobby-error")?.textContent).toBe("No game or pair has that code.");
-    // shown above the sections, where it is on screen at rest, not under Join
-    const err = host.querySelector(".lobby-error")!;
-    const first = host.querySelector(".play-section")!;
-    expect(err.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(host.querySelector(".join-error")?.textContent).toBe("No game or pair has that code.");
+    // inline under the code box it answers, not in the lobby's error box or the connection pill
+    expect(host.querySelector(".lobby-error")).toBeNull();
+    const err = host.querySelector(".join-error")!;
+    expect(err.previousElementSibling?.classList.contains("join-row")).toBe(true);
     expect(err.getAttribute("role")).toBe("alert");
     expect(sent).toEqual([{ type: "code_lookup", code: "ZZZZ" }]);
     type(code, "ZZZ");
-    expect(host.querySelector(".lobby-error")).toBeNull();
+    expect(host.querySelector(".join-error")).toBeNull();
   });
 });
 

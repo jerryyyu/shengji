@@ -20,7 +20,6 @@ import type { Toast } from "../toast";
 import ToastView from "./ToastView";
 import { leadToFollow } from "../follow";
 import { followHint, followsSuit } from "../followRules";
-import { STALL_MS } from "./Lobby";
 import { TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useCoachSetting } from "../firstTurns";
@@ -99,26 +98,6 @@ function BotThinking({ phase }: { phase: "bury" | "play" }) {
 
 /** How long a refused Play's hint stays above the hand. */
 export const HINT_MS = 2600;
-
-/** Whether the connection has stayed short of "open" for the lobby's
- *  STALL_MS, and a retry that reconnects at once and starts the wait over;
- *  the same wait and retry the lobby offers. */
-function useStalled(status: ConnStatus): [boolean, () => void] {
-  const [stalled, setStalled] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const open = status === "open";
-  useEffect(() => {
-    setStalled(false);
-    if (open) return;
-    const t = window.setTimeout(() => setStalled(true), STALL_MS);
-    return () => window.clearTimeout(t);
-  }, [open, attempt]);
-  const retry = useCallback(() => {
-    setAttempt((n) => n + 1);
-    conn.reconnect();
-  }, []);
-  return [stalled && !open, retry];
-}
 
 /** How long the full-name popover stays up after a tap or long press. */
 const FULL_NAME_MS = 2500;
@@ -345,7 +324,6 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
   const online = status === "open";
-  const [stalled, retry] = useStalled(status);
   // What Play or Bury says while its send is unanswered: the cards stay put
   // until the server's state moves them, and a dropped connection says so
   // instead of waiting silently.
@@ -725,12 +703,6 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           <button className="btn away-back" onClick={() => conn.send({ type: "im_back" })}>
             I’m back
           </button>
-        </div>
-      ) : null}
-      {stalled ? (
-        <div className="table-stalled" role="status">
-          <span>Can’t reach the server.</span>
-          <button className="btn conn-retry" onClick={retry}>Retry</button>
         </div>
       ) : null}
       {toast ? <ToastView key={toast.id} toast={toast} />

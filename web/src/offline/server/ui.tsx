@@ -8,6 +8,7 @@ import { clearSavedRoom, conn, getSavedName } from "../../ws";
 import { offlineGame } from "../../components/offlineGame";
 import HomeShell from "../../home/HomeShell";
 import Lobby from "../../components/Lobby";
+import ConnectionPill from "../../components/ConnectionPill";
 import { useOnline } from "../../useOnline";
 import "./offline.css";
 
@@ -58,9 +59,13 @@ export function OfflineStart({ status, error, onArmAutoFill }: OfflineStartProps
   });
   if (done && inApp && !online) {
     return (
-      <HomeShell active="play">
-        <Lobby status="closed" error={null} onArmAutoFill={() => {}} />
-      </HomeShell>
+      <>
+        <HomeShell active="play">
+          <Lobby status="closed" error={null} onArmAutoFill={() => {}} />
+        </HomeShell>
+        {/* the live server is out of reach, so the online page's one connection pill says so */}
+        <ConnectionPill status="closed" inRoom={false} inGame={false} />
+      </>
     );
   }
   return (

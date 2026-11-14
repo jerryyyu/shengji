@@ -99,8 +99,8 @@ it("in the app with no network, Leave shows the Play tab's no-connection state, 
     expect(host.querySelector(".table-screen")).toBeNull();
     expect(assign).not.toHaveBeenCalled();
     await act(async () => { vi.advanceTimersByTime(5000); });
-    expect(host.textContent).toContain("No connection");
-    const bots = [...host.querySelectorAll<HTMLElement>("button, [role='button']")].find((b) => /Play bots/.test(b.textContent ?? ""));
+    expect(host.querySelector(".reconnect-banner")?.textContent).toContain("onnecting…");
+    const bots = [...host.querySelectorAll<HTMLElement>("button, [role='button']")].find((b) => /^Play bots$/.test(b.textContent ?? ""));
     expect(bots).toBeTruthy();
     act(() => bots!.click());
     expect(assign).toHaveBeenCalledWith("?offline=1");

@@ -23,27 +23,20 @@ interface LobbyProps {
   onArmAutoFill: () => void;
 }
 
-/** After this long without a connection the lobby says so, Play bots plays
- *  on this device, and a tap on the notice retries at once. */
+/** After this long without a connection Play bots plays on this device. */
 export const STALL_MS = 4000;
 
-/** Whether `status` has stayed short of "open" for STALL_MS, and a retry
- *  that reconnects at once and starts the wait over. */
-function useStalled(status: ConnStatus): [boolean, () => void] {
+/** Whether `status` has stayed short of "open" for STALL_MS. */
+function useStalled(status: ConnStatus): boolean {
   const [stalled, setStalled] = useState(false);
-  const [attempt, setAttempt] = useState(0);
   const open = status === "open";
   useEffect(() => {
     setStalled(false);
     if (open) return;
     const t = window.setTimeout(() => setStalled(true), STALL_MS);
     return () => window.clearTimeout(t);
-  }, [open, attempt]);
-  const retry = useCallback(() => {
-    setAttempt((n) => n + 1);
-    conn.reconnect();
-  }, []);
-  return [stalled && !open, retry];
+  }, [open]);
+  return stalled && !open;
 }
 
 /** A start request the server has not answered yet. */
@@ -68,7 +61,7 @@ function RankedUnavailable() {
 }
 
 export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
-  const [stalled, retry] = useStalled(status);
+  const stalled = useStalled(status);
   // Play vs bots, Create room and Join each send one request and then wait:
   // the button says so at once and every start button holds until the room
   // arrives (the lobby goes away), an error comes back, the connection the
@@ -438,17 +431,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   return (
     <div className="screen lobby-screen play-tab">
       <div className="panel lobby-panel">
-        {status === "open" ? null : stalled ? (
-          <div role="status" className="play-conn-row">
-            <button type="button" className="play-conn" onClick={retry} title="Retry now">
-              <span className="conn-dot" />No connection · retrying
-            </button>
-          </div>
-        ) : (
-          <div role="status" className="play-conn-row">
-            <span className="play-conn"><span className="conn-dot" />Connecting…</span>
-          </div>
-        )}
         <h1 className="game-title">
           升级 <span className="game-title-en">Sheng Ji</span>
         </h1>
@@ -484,8 +466,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
         {/* above the sections, so it is on screen at rest; a phone's tab bar
             covers the bottom of the column */}
-        {inviteError || error || codeView.playError ? (
-          <div className="lobby-error" role="alert">{inviteError ?? error ?? codeView.playError}</div>
+        {inviteError || error ? (
+          <div className="lobby-error" role="alert">{inviteError ?? error}</div>
         ) : null}
 
         {ranked}
@@ -521,6 +503,8 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             {starting?.kind === "join" || looking ? STARTING_LABEL.join : "Join"}
           </button>
         </div>
+        {/* a code that names nothing answers the Join tap, so it is said where the code was typed */}
+        {codeView.playError ? <div className="join-error" role="alert">{codeView.playError}</div> : null}
 
         <p className="howto-entry">
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>

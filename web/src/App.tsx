@@ -26,6 +26,7 @@ import { usePhoneLayout } from "./phoneLayout";
 import { TOAST_MS, makeToast } from "./toast";
 import type { Toast } from "./toast";
 import ToastView from "./components/ToastView";
+import ConnectionPill from "./components/ConnectionPill";
 import QueueLayer from "./queue/QueueLayer";
 import { firstJoinerText } from "./queue/tableText";
 import { useRoomBack } from "./roomBack";
@@ -298,11 +299,7 @@ export default function App() {
   return (
     <div className={`app${rotated ? " rotated" : ""}${OFFLINE ? " offline" : ""}`}>
       {screen}
-      {status !== "open" && inRoom ? (
-        <div className="reconnect-banner">
-          <span className="conn-dot" /> Reconnecting…
-        </div>
-      ) : null}
+      {OFFLINE && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} />}
       {toast && inRoom && !atTable ? <ToastView key={toast.id} toast={toast} /> : null}
       <QueueLayer status={status} />
     </div>

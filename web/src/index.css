@@ -2046,10 +2046,14 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   padding: 4px 14px;
 }
 
-/* the move timer's last ten seconds: a ring that closes as the clock runs
-   out, beside your action (or inside Next round) */
-.move-ring {
-  --ring: #ff6b5b;
+/* The one timer ring: it drains from full over the whole window, with the
+   seconds left in its centre, and turns red for the last ten. The band is a
+   masked conic gradient, so the ring reads on felt, buttons and pills alike. */
+.timer-ring {
+  --ring: var(--gold);
+  --track: rgba(255, 255, 255, 0.18);
+  --band: 4px;
+  position: relative;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -2057,21 +2061,40 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: conic-gradient(var(--ring) 0 var(--ring-deg, 360deg), rgba(0, 0, 0, 0.35) var(--ring-deg, 360deg) 360deg);
-}
-
-.move-ring-secs {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--chrome);
+  background: rgba(0, 0, 0, 0.35);
   color: var(--ring);
   font-size: var(--fs-16);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.timer-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--ring) 0 var(--ring-deg, 360deg), var(--track) var(--ring-deg, 360deg) 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--band) - 0.5px), #000 calc(100% - var(--band)));
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--band) - 0.5px), #000 calc(100% - var(--band)));
+}
+
+.timer-ring-secs {
+  position: relative;
+}
+
+.timer-ring.low {
+  --ring: #ff6b5b;
+}
+
+/* someone else's clock: a thin ring on their seat pill */
+.timer-ring.thin {
+  --band: 2px;
+  width: 22px;
+  height: 22px;
+  background: none;
+  font-size: var(--fs-10);
+  font-weight: 800;
 }
 
 .action-bar.clock-low .btn.primary,
@@ -2079,17 +2102,13 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   box-shadow: 0 0 0 3px rgba(255, 107, 91, 0.35);
 }
 
-.btn.big .move-ring {
+.btn.big .timer-ring {
+  --band: 3px;
   width: 28px;
   height: 28px;
   margin: -4px 10px -4px -8px;
   vertical-align: middle;
-}
-
-.btn.big .move-ring-secs {
-  width: 22px;
-  height: 22px;
-  font-size: var(--fs-13);
+  font-size: var(--fs-12);
 }
 
 /* you are away: the bot plays every decision until you are back */
@@ -2910,6 +2929,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     color: #1a1a1a;
   }
 
+  /* the gold turn pill carries the ring in the pill's own dark ink */
+  .opponent.on-turn .timer-ring.thin {
+    --ring: #1a1a1a;
+    --track: rgba(0, 0, 0, 0.2);
+  }
+
+  .opponent.on-turn .timer-ring.thin.low {
+    --ring: #a8231a;
+  }
+
   /* Nothing in or beside the label moves when the turn comes: the team dot
      and the "…" both always hold their room, and the turn only shows one and
      hides the other. */
@@ -3568,7 +3597,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* the move timer's ring stands just left of Play */
-  .phase-play .action-bar .move-ring {
+  .phase-play .action-bar .timer-ring {
     grid-column: 1;
     grid-row: 1;
     justify-self: end;
@@ -6043,7 +6072,11 @@ button[role="switch"]:active .ios-switch {
   flex: 1; min-width: 0; text-align: left; font-size: var(--fs-17); font-weight: 600; color: #fff;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.q-bar-time { flex: none; font-size: var(--fs-17); color: #fff; }
+.q-bar-time { flex: none; display: inline-flex; font-size: var(--fs-17); color: #fff; }
+/* the bots' countdown on the strip, pill and chip: the table ring, small */
+.q-bar .timer-ring, .q-pill .timer-ring, .q-chip .timer-ring {
+  --band: 3px; width: 32px; height: 32px; font-size: var(--fs-13);
+}
 .q-bar.warn, .q-chip.warn { background: #3f3415; border-color: #9a6f12; }
 .q-wait {
   appearance: none; flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
@@ -6139,6 +6172,10 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
   border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
   font: inherit; font-size: var(--fs-17); font-weight: 700; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* the offer's clock on Join */
+.tp-primary .timer-ring {
+  --band: 3px; width: 30px; height: 30px; margin: -4px 10px -4px 0; vertical-align: middle; font-size: var(--fs-13);
 }
 .tp-primary:disabled { background: #2a2f38; border-color: #3a4250; color: #8a929f; cursor: default; }
 .tp-secondary {

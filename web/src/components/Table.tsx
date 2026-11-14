@@ -21,8 +21,8 @@ import ToastView from "./ToastView";
 import { leadToFollow } from "../follow";
 import { followHint, followsSuit } from "../followRules";
 import { STALL_MS } from "./Lobby";
-import { MoveRing } from "./MoveClock";
-import { RING_SECS, useMoveClock } from "../useMoveClock";
+import { TimerRing } from "./MoveClock";
+import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useCoachSetting } from "../firstTurns";
 import { TOAST_MS, makeToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
@@ -144,6 +144,9 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
     if (pressTimer.current !== null) { window.clearTimeout(pressTimer.current); pressTimer.current = null; }
   };
   const takeover = useCountdown(player.takeover_in ?? null);
+  // the seat's own move clock, so everyone sees whom the table waits for;
+  // only the seat's owner is buzzed
+  const moveClock = useMoveClock(player.turn_deadline, state, false);
   const status = seatStatus(player, takeover);
   const onTurn = state.turn === player.seat;
   const actionPhase = state.phase === "bury" || state.phase === "play";
@@ -188,6 +191,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         {player.is_banker ? <span className="bank-tag">banks</span> : null}
         {/* always drawn, so the label's width never changes with the turn */}
         <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
+        <TimerRing left={moveClock} total={MOVE_SECS} thin />
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
         {player.away && player.connected ? <span className="away-tag">Away</span> : null}
@@ -395,8 +399,8 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
 
   useTableHaptics(state);
-  // your move timer (ranked tables): the ring in its last seconds, a haptic
-  // at five, and nothing before that
+  // your move timer (ranked tables): the ring for the whole decision, red in
+  // its last seconds, and a haptic at five
   const clock = useMoveClock(me?.turn_deadline, state);
   // the post-deal declare window: a ring on its buttons, no haptic
   const declareClock = useMoveClock(state.phase === "declare" ? state.declare_deadline : null, state, false);
@@ -540,7 +544,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     if (canDeclare) inlineHint = declareHelp(state);
     actionBar = (
       <>
-        {state.phase === "declare" && !iPassed ? <MoveRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
+        {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
         {state.declare_options.map((ids) => (
           <button
             key={ids.join("-")}
@@ -570,7 +574,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     inlineHint = BURY_HELP;
     actionBar = (
       <>
-      <MoveRing left={clock} />
+      <TimerRing left={clock} total={MOVE_SECS} />
       <button
         className="btn primary"
         disabled={selectedIds.length !== 8 || pending !== null || !online}
@@ -606,7 +610,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     if (offSuit && lead) inlineHint = followHint(lead, state.trump);
     actionBar = (
       <>
-        <MoveRing left={clock} />
+        <TimerRing left={clock} total={MOVE_SECS} />
         <span className="play-wrap" onClick={whyNot}>
           <button
             className={`btn primary${choosing ? " your-turn" : ""}`}
@@ -672,7 +676,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
               <span className="ready-tag">ready</span>
             ) : null}
           </div>
-          <div className={`action-bar${clock !== null && clock <= RING_SECS ? " clock-low" : ""}`}>{actionBar}</div>
+          <div className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}>{actionBar}</div>
           </div>
           {hint ? (
             <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>

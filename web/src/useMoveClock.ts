@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { haptic } from "./native";
 
-/** The ring shows only in the last RING_SECS of a decision. */
-export const RING_SECS = 10;
+/** The move timer's full length (server.py MOVE_TIMER): the ring starts full
+ *  at this many seconds. */
+export const MOVE_SECS = 60;
+/** The ring turns red, and Play glows, in the last LOW_SECS of a decision. */
+export const LOW_SECS = 10;
 /** One light haptic when this many seconds are left. */
 export const BUZZ_SECS = 5;
 
-/** Seconds left on your move timer, ticked locally between server states.
+/** Seconds left on a move timer (yours, or another seat's), ticked locally between server states.
  *  `stamp` is the state the number came with: every state restarts the count
  *  from the server's own figure, so the two never drift apart. */
 export function useMoveClock(seconds: number | null | undefined, stamp: unknown,

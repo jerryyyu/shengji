@@ -5,8 +5,11 @@ import type { FirstJoinerMsg } from "./messages";
 
 /** A seat taken this recently reads "Just joined". */
 export const JUST_JOINED_MS = 5000;
-/** The offer's clock shows on Join only in its last ten seconds. */
+/** From this long before an offer lapses, its last seconds are announced. */
 export const OFFER_CLOCK_MS = 10_000;
+/** An offer's full length (matchmaking.py OFFER_SECS): Join's ring starts
+ *  full at this many seconds. */
+export const OFFER_SECS = 20;
 /** Names are cut to this many characters; the full name stays in the label. */
 export const NAME_CHARS = 10;
 
@@ -46,11 +49,9 @@ export function joinTitle(o: OfferView): string {
   return people.length ? `Join ${nameList(people)}` : "Join this table";
 }
 
-/** The Join button: the offer's clock only in its last ten seconds. */
-export function joinLabel(o: OfferView, now: number): string {
-  const base = o.partner ? "Join together" : "Join";
-  const left = o.expiresAt - now;
-  return left <= OFFER_CLOCK_MS ? `${base} · ${clock(Math.max(0, left), true)}` : base;
+/** The Join button's words; the offer's clock is the ring beside them. */
+export function joinLabel(o: OfferView): string {
+  return o.partner ? "Join together" : "Join";
 }
 
 /** The lines under the Join title. `guest`: never rated, so no round is

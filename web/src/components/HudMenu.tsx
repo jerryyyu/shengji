@@ -7,27 +7,38 @@ import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
 
-/** The phone's `…` overflow: the player's settings (the same list as Me's:
- * Coach, Sound, Haptics in the app, How to play), then the table's actions
- * (invite link, Allow joiners, leave) — none of them a mid-trick decision, so
- * on a small screen they share one button instead of a row of chips. The
- * kitty's count is information, not a setting: the HUD shows it during the
- * bury. Desktop keeps its chips (this
- * is hidden by CSS there). Account rows (name, saved games, sign out) live on the Me tab, so
- * this stays a table menu for signed-in players and guests alike. Leave
- * closes the menu and opens the leave sheet, which waits for Stay or
- * Leave. Offline there is no invite link, and nothing here moves the game
- * online: an offline game plays to its end on this device.
+/** A table's invite: the system share sheet where there is one, else the
+ *  link on the clipboard. Resolves true when the link was copied. */
+function shareInvite(code: string): Promise<boolean> {
+  const url = codeLink(code);
+  if (typeof navigator.share === "function") {
+    return navigator.share({ title: "Sheng Ji", text: `Join my table · ${code}`, url })
+      .then(() => false, () => false);   // a dismissed share sheet is not an error
+  }
+  if (!navigator.clipboard) return Promise.resolve(false);
+  return navigator.clipboard.writeText(url).then(() => true, () => false);
+}
+
+/** The table's one `⋯` menu, the same on a phone and a desktop; the header
+ *  beside it holds only the game's state. Its rows, in order: the table's
+ *  own rows as the table panel draws them (the code with its Invite link,
+ *  then Allow joiners for the table's opener), the player's settings (the
+ *  same list as Me's: Coach, Sound, Haptics in the app, How to play), then
+ *  a red Leave game, which closes the menu and opens the one leave sheet.
+ *  Offline there is no code and no invite: an offline game plays to its end
+ *  on this device. Labels only, no sub-lines.
  *
- * Keyboard: opening moves focus to the first actionable row, ArrowUp and
- * ArrowDown move between rows (wrapping), Home and End go to the ends, and
- * Escape closes the menu and returns focus to the `…` button. */
-export default function HudMenu({ room, ranked = false, guest = false, offline = OFFLINE, allowJoiners }: {
+ *  Keyboard: Enter or Space on `⋯` opens it with focus on the first row,
+ *  ArrowUp and ArrowDown move between rows (wrapping), Home and End go to
+ *  the ends, and Escape closes it and returns focus to `⋯`. */
+export default function HudMenu({ room, ranked = false, guest = false, offline = OFFLINE, allowJoiners, opener = true }: {
   room: string; ranked?: boolean; offline?: boolean;
   /** A guest seat: the leave sheet speaks of no ranking. */
   guest?: boolean;
-  /** A ranked table's "Allow joiners" switch; undefined elsewhere. */
+  /** The table's "Allow joiners" switch; undefined at a table without one. */
   allowJoiners?: boolean;
+  /** You opened this table: only the opener sees Allow joiners. */
+  opener?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -53,7 +64,7 @@ export default function HudMenu({ room, ranked = false, guest = false, offline =
   });
 
   // outside tap / Escape closes. Escape hands
-  // focus back to the `…` button; an outside tap leaves focus where it lands.
+  // focus back to the `⋯` button; an outside tap leaves focus where it lands.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
@@ -74,18 +85,22 @@ export default function HudMenu({ room, ranked = false, guest = false, offline =
 
   const close = () => setOpen(false);
 
-  const copyInvite = () => {
-    navigator.clipboard.writeText(codeLink(room))
-      .then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1400); })
-      .catch(() => { /* clipboard blocked; leave the label as-is */ });
+  const invite = () => {
+    void shareInvite(room).then((didCopy) => {
+      if (!didCopy) return;
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    });
   };
 
   const askLeave = () => {
-    // the alert hands focus back to whatever had it: the `…` button, not a row that is going
+    // the alert hands focus back to whatever had it: the `⋯` button, not a row that is going
     triggerRef.current?.focus();
     setOpen(false);
     setAsking(true);
   };
+
+  const joiners = opener && !offline ? allowJoiners : undefined;
 
   return (
     <div className="hud-more" ref={rootRef}>
@@ -95,7 +110,7 @@ export default function HudMenu({ room, ranked = false, guest = false, offline =
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="More"
-        title="Settings, invite, leave"
+        title="Table, settings, leave"
         onClick={() => {
           if (open) { close(); return; }
           focusNext.current = "first";
@@ -109,25 +124,29 @@ export default function HudMenu({ room, ranked = false, guest = false, offline =
           setOpen(true);
         }}
       >
-        …
+        ⋯
       </button>
       {presence.mounted ? (
         <div className={`hud-menu${presence.className ? ` ${presence.className}` : ""}`} role="menu"
              aria-label="More" aria-hidden={!open || undefined} inert={!open || undefined}
              ref={menuRef} onKeyDown={onMenuKey}>
+          {offline ? null : (
+            <div className="hud-menu-code" role="none">
+              <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}>{room}</span>
+              <button className="hud-menu-row hud-menu-invite" role="menuitem" onClick={invite}>
+                {copied ? "Link copied" : "Invite link"}
+              </button>
+            </div>
+          )}
+          {joiners === undefined ? null : (
+            <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={joiners}
+                    onClick={() => conn.send({ type: "allow_joiners", on: !joiners })}>
+              <span>Allow joiners</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
+            </button>
+          )}
+          {offline ? null : <div className="hud-menu-sep" role="separator" />}
           <SettingsMenuRows onOpenPage={close} />
           <div className="hud-menu-sep" role="separator" />
-          {offline ? null : (
-            <button className="hud-menu-row" role="menuitem" onClick={copyInvite}>
-              <span>{copied ? "Link copied" : "Copy invite link"}</span>
-            </button>
-          )}
-          {allowJoiners === undefined ? null : (
-            <button className="hud-menu-row" role="menuitemcheckbox" aria-checked={allowJoiners}
-                    onClick={() => conn.send({ type: "allow_joiners", on: !allowJoiners })}>
-              <span>Allow joiners</span><span className="hud-menu-k">{allowJoiners ? "on" : "off"}</span>
-            </button>
-          )}
           <button className="hud-menu-row leave" role="menuitem" onClick={askLeave}>
             <span>Leave game</span>
           </button>

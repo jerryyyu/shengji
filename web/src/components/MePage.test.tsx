@@ -635,7 +635,8 @@ describe("the Settings group", () => {
     const menuRoot = createRoot(menuHost);
     act(() => menuRoot.render(<HudMenu room="ABCD" />));
     act(() => menuHost.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
-    const menuRows = () => [...menuHost.querySelectorAll<HTMLButtonElement>(".hud-menu-row")];
+    // the settings rows: the table's Invite link stands above them
+    const menuRows = () => [...menuHost.querySelectorAll<HTMLButtonElement>(".hud-menu-row:not(.hud-menu-invite)")];
     const menuLabels = menuRows().map((r) => r.querySelector("span")?.textContent);
     expect(menuLabels.slice(0, 4)).toEqual(groupLabels());
     const coachInMenu = () => menuRows().find((r) => r.textContent?.startsWith("Coach"))!;

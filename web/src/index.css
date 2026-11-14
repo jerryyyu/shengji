@@ -221,52 +221,6 @@ textarea:focus-visible {
   transform: scale(0.97); /* feedback on press; actions still commit on click */
 }
 
-/* HUD leave control: subtle; a tap opens the leave sheet */
-.leave-btn {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--panel-edge);
-  color: var(--text-dim);
-  font-size: var(--fs-11);
-  font-weight: 600;
-  padding: 4px 11px;
-  border-radius: 999px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-
-@media (hover: hover) and (pointer: fine) {
-.leave-btn:hover {
-  color: var(--text);
-  border-color: #4a5462;
-}
-}
-
-/* Speaker / mute toggle */
-.mute-btn {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--panel-edge);
-  border-radius: 999px;
-  width: 30px;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-14);
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-@media (hover: hover) and (pointer: fine) {
-.mute-btn:hover {
-  background: #262d38;
-  border-color: #4a5462;
-}
-}
 
 .btn.big {
   padding: 12px 24px;
@@ -1423,19 +1377,6 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   white-space: nowrap;
 }
 
-.room-chip {
-  color: var(--gold);
-  letter-spacing: 0.2em;
-  font-weight: 800;
-}
-
-.phase-chip {
-  color: var(--text-dim);
-  text-transform: uppercase;
-  font-size: var(--fs-11);
-  letter-spacing: 0.12em;
-}
-
 .level-chip.team0 {
   border-color: rgba(91, 157, 255, 0.45);
 }
@@ -1505,10 +1446,123 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   color: var(--team1);
 }
 
-.points-bar,
-.hud-more {
-  display: none; /* phone only; desktop keeps the chips */
+.points-bar {
+  display: none; /* phone only */
 }
+
+/* The table's one ⋯ menu, phone and desktop alike: the table's rows, the
+   settings, then a red Leave game. Every row is a 44px target. */
+.hud-more {
+  position: relative;
+  margin-left: auto;
+}
+
+.hud-more-btn {
+  position: relative;
+  box-sizing: border-box;
+  height: 34px;
+  min-width: 40px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-edge);
+  background: #10131a;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-18);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* drawn 34px tall; the hit area reaches 44px */
+.hud-more-btn::after {
+  content: "";
+  position: absolute;
+  inset: -5px -2px;
+}
+
+.hud-more-btn[aria-expanded="true"] {
+  outline: 1px solid var(--gold);
+  outline-offset: -1px;
+}
+
+.hud-more-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.hud-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 12;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-edge);
+  background: #0a0c11;       /* opaque: cards under a translucent menu read as menu rows */
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+.hud-menu-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: 500 var(--fs-13) inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hud-menu-row[aria-disabled="true"] { cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
+}
+.hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.hud-menu-row.leave { color: #f08a96; }
+.hud-menu-chev { color: var(--text-dim); font-size: var(--fs-16); }
+.hud-menu .ios-switch { width: 36px; height: 22px; border-radius: 11px; }
+.hud-menu .ios-switch::after { width: 18px; height: 18px; }
+.hud-menu .ios-switch.on::after { transform: translateX(14px); }
+
+/* the table's code beside its Invite link, as the table panel draws them */
+.hud-menu-code {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 4px 6px;
+}
+.hud-menu-code-text {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid #333b49;
+  background: #11141a;
+  color: var(--gold);
+  font-size: var(--fs-16);
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  padding-left: 0.25em;
+}
+.hud-menu-row.hud-menu-invite {
+  flex: none;
+  justify-content: center;
+  border: 1px solid #3a4250;
+  border-radius: 9px;
+  padding: 0 14px;
+  font-weight: 600;
+}
+.hud-menu-sep { height: 1px; margin: 4px 6px; background: var(--panel-edge); }
 
 .points-target {
   color: #c4ccd8;
@@ -1544,14 +1598,6 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
 
 @media (prefers-reduced-motion: reduce) {
   .points-pop { display: none; }
-}
-
-.kitty-icon {
-  width: 12px;
-  height: 17px;
-  border-radius: 3px;
-  background: repeating-linear-gradient(45deg, #3c5f96 0 2px, #2c4874 2px 4px);
-  border: 1px solid #56749f;
 }
 
 .hud-message {
@@ -2863,8 +2909,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: 0;
   }
 
-  /* room and phase chips are hidden below, so this group is empty; left in, it
-     takes a slot and pushes the levels off the corner */
+  /* this group holds only a test policy's marker; left in, it takes a slot
+     and pushes the levels off the corner */
   .hud-bar > .hud-group:first-child {
     display: none;
   }
@@ -2881,11 +2927,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .trump-none-long { display: none; }
   .trump-none-short { display: inline; }
-
-  .room-chip,
-  .phase-chip {
-    display: none; /* non-essential on a phone */
-  }
 
   .chip {
     padding: 2px 9px;
@@ -2970,47 +3011,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     transition: width 0.5s ease;
   }
 
-  .kitty-icon {
-    width: 9px;
-    height: 13px;
-  }
-
-  /* Kitty, sound, invite and leave move into the `…` overflow (HudMenu); the chips
-     they replace are hidden HERE ONLY -- `.hud-bar .mute-btn`, not `.mute-btn`, so the
-     Room screen keeps its own toggle. The menu's Sound row is the
-     table's mute on a phone. */
-  .kitty-chip,
-  .hud-bar .mute-btn,
-  .hud-bar .leave-btn {
-    display: none;
-  }
-
-  /* the kitty's count is wanted while it is being buried, so it shows then
-     as a header pill, and the rest of the time stays out of the way */
-  .hud-bar .kitty-chip.burying {
-    display: inline-flex;
-    height: var(--header-h);
-    padding: 0 10px;
-    border: 0;
-    background: var(--pill-bg);
-  }
-
-  .leave-btn {
-    font-size: var(--fs-10);
-    padding: 3px 9px;
-    min-height: 26px;
-  }
-
-  .mute-btn {
-    width: 26px;
-    height: 26px;
-    font-size: var(--fs-12);
-  }
-
   .hud-more {
-    display: block;
-    position: relative;
-    margin-left: auto;
     pointer-events: auto;
   }
 
@@ -3040,11 +3041,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     inset: -8px -6px;
   }
 
-  .hud-more-btn[aria-expanded="true"] {
-    outline: 1px solid var(--gold);
-    outline-offset: -1px;
-  }
-
   /* The mode chip stands at the right of the header, before Chat and the
      menu: the same height, fill and radius as every header pill. Chat is
      placed on its own (fixed), so the chip keeps Chat's slot and a gap
@@ -3067,46 +3063,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --mode-gap: var(--space-s);
   }
 
+  /* a phone's menu: the header's height above it, and the rest of the
+     landscape screen below, which it scrolls within */
   .hud-menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    z-index: 12;
-    min-width: 176px;
-    display: flex;
-    flex-direction: column;
-    padding: 5px;
-    border-radius: 12px;
-    border: 1px solid var(--panel-edge);
-    background: #0a0c11;       /* opaque: cards under a translucent menu read as menu rows */
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    max-height: calc(100dvh - var(--safe-t) - var(--header-h) - 18px);
+    overflow-y: auto;
   }
-
-  .hud-menu-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 14px;
-    min-height: 44px;           /* touch target */
-    padding: 6px 10px;
-    border: 0;
-    border-radius: 8px;
-    background: none;
-    color: var(--text);
-    font: 500 var(--fs-13) inherit;
-    font-family: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .hud-menu-row[aria-disabled="true"] { cursor: default; }
-  @media (hover: hover) and (pointer: fine) {
-    .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
-  }
-  .hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
-  .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-  /* the settings end here; the table's own actions follow */
-  .hud-menu-sep { height: 1px; margin: 4px 6px; background: var(--panel-edge); }
 
   /* --- Seats: one-line labels of one height, radius and type size --- */
   .opponent {
@@ -4467,28 +4429,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #eee;
 }
 
-/* Room chip is a button in-game: tap to copy an invite link. It keeps the GOLD
-   accent of the lobby's gold action so the code reads as the same room code. */
-button.room-chip {
-  cursor: pointer;
-  font: inherit;
-  color: var(--gold);
-  letter-spacing: 0.2em;
-  font-weight: 800;
-  border-color: rgba(242, 193, 78, 0.45);
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-@media (hover: hover) and (pointer: fine) {
-button.room-chip:hover {
-  background: rgba(242, 193, 78, 0.14);
-  border-color: var(--gold);
-}
-}
-button.room-chip.copied {
-  background: rgba(120, 200, 130, 0.22);
-  border-color: rgba(140, 220, 150, 0.5);
-}
-
 /* System lines in chat (joins / leaves / seat claims) */
 .chat-msg.system {
   opacity: 0.55;
@@ -4497,26 +4437,6 @@ button.room-chip.copied {
   text-align: center;
   margin: 6px 0;
 }
-
-/* Hover tooltip on the in-game room chip */
-button.room-chip { position: relative; }
-button.room-chip::after {
-  content: attr(data-tip);
-  position: absolute; top: calc(100% + 6px); left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  background: rgba(12, 18, 14, 0.96);
-  border: 1px solid rgba(255,255,255,0.16);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: var(--fs-12); font-style: normal; letter-spacing: 0;
-  opacity: 0; pointer-events: none; transition: opacity 0.12s ease;
-  z-index: 50;
-}
-@media (hover: hover) and (pointer: fine) {
-  button.room-chip:hover::after { opacity: 1; }
-}
-button.room-chip:focus-visible::after { opacity: 1; }
 
 /* Seat picker for mid-game joins */
 .seat-hint { opacity: 0.7; font-size: var(--fs-14); margin: 4px 0 14px; }
@@ -4564,8 +4484,8 @@ button.room-chip:focus-visible::after { opacity: 1; }
 
 /* A phone's controls need finger-sized targets, not desktop icon bounds. */
 @media (pointer: coarse) {
-  .btn, .leave-btn, .mute-btn, .hud-more-btn, .hud-menu-row,
-  .hud-notice-close, .chat-close, .xr-close, button.room-chip {
+  .btn, .hud-more-btn, .hud-menu-row,
+  .hud-notice-close, .chat-close, .xr-close {
     min-height: 44px;
     min-width: 44px;
   }
@@ -4573,10 +4493,9 @@ button.room-chip:focus-visible::after { opacity: 1; }
   .chat-input input { font-size: var(--fs-16); }
 }
 
-.mute-btn:active, .leave-btn:active, .hud-more-btn:active,
+.hud-more-btn:active,
 .hud-menu-row:not([aria-disabled="true"]):active, .chat-close:active,
-.xr-close:active, .chat-launch:active, .hud-notice-close:active,
-button.room-chip:active { background-color: #394452; }
+.xr-close:active, .chat-launch:active, .hud-notice-close:active { background-color: #394452; }
 
 @media (prefers-reduced-transparency: reduce) {
   .modal-backdrop { backdrop-filter: none; background: #10131a; }
@@ -6590,17 +6509,11 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .mode-chip-icon { flex: none; }
 
 /* Wide screens: every pill in the top bar is one height. */
-:root:not(.phone-landscape) .hud-bar .chip,
-:root:not(.phone-landscape) .hud-bar .leave-btn {
+:root:not(.phone-landscape) .hud-bar .chip {
   box-sizing: border-box;
   height: 34px;
   padding-top: 0;
   padding-bottom: 0;
-}
-:root:not(.phone-landscape) .hud-bar .mute-btn {
-  box-sizing: border-box;
-  width: 34px;
-  height: 34px;
 }
 
 /* The leave sheet: a title, one line of what leaving costs, then Stay and
@@ -6835,58 +6748,42 @@ dialog.leave-sheet-backdrop {
   .chat-bubble { animation: none; }
 }
 
-/* Wide screens: the side groups share the free space equally, so the
-   level-and-trump group sits at the bar's centre when there is room; a side
-   group never shrinks below its own content, so on a narrower bar the centre
-   group gives way instead of overlapping. */
-:root:not(.phone-landscape) .hud-bar > .hud-group:first-child,
-:root:not(.phone-landscape) .hud-bar > .hud-group:last-child {
-  flex: 1 1 0;
-  min-width: max-content;
-}
-:root:not(.phone-landscape) .hud-bar > .hud-group:last-child { justify-content: flex-end; }
+/* Wide screens: the game's state reads from the left (levels and trump,
+   points, mode) and Chat and ⋯ stand at the right end, as on a phone.
+   The last group takes the free space so ⋯ reaches the end. */
+:root:not(.phone-landscape) .hud-bar { justify-content: flex-start; }
+:root:not(.phone-landscape) .hud-bar > .hud-group:empty { display: none; }
+:root:not(.phone-landscape) .hud-bar > .hud-group:last-child { flex: 1 1 auto; min-width: max-content; }
 
-/* the coach switch reads gold while the coach is on */
-.hud-menu-row.coach-row[aria-checked="true"] .hud-menu-k {
-  color: var(--gold);
-  font-weight: 700;
-}
-
-/* Desktop's Coach chip: the mute button's pill with a word in it, gold
-   while the coach is on. Phones flip it from the `…` menu instead. */
-.coach-chip {
-  appearance: none;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* Chat sits in the header, left of ⋯, and its panel opens under it
+   (the extra class outranks the base rules). */
+:root:not(.phone-landscape) .table-screen .chat-launch {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: calc(18px + 40px + 8px + env(safe-area-inset-right, 0px));
+  bottom: auto;
+  z-index: 11;
+  width: 40px;
   height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--panel-edge);
   border-radius: 999px;
-  background: transparent;
-  color: var(--text-dim);
-  font-family: inherit;
-  font-size: var(--fs-12);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  position: relative;
+  border: 1px solid var(--panel-edge);
+  background: #10131a;
+  font-size: var(--fs-15);
 }
-.coach-chip::after {
+:root:not(.phone-landscape) .table-screen .chat-launch::after {
   content: "";
   position: absolute;
-  inset: -5px 0;
+  inset: -5px -2px;
 }
-.coach-chip[aria-pressed="true"] {
-  border-color: var(--gold);
-  color: var(--gold);
+/* Chat's slot and a gap stay clear left of ⋯ on a narrow bar too */
+:root:not(.phone-landscape) .table-screen:has(.chat-launch) .hud-more {
+  padding-left: 48px;
 }
-.coach-chip-state { font-weight: 800; text-transform: uppercase; font-size: var(--fs-10); }
-@media (hover: hover) and (pointer: fine) {
-  .coach-chip:hover { background: rgba(255, 255, 255, 0.06); }
+:root:not(.phone-landscape) .table-screen .chat-panel {
+  top: calc(56px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  transform-origin: top right;
 }
-:where(.phone-landscape) .hud-bar .coach-chip { display: none; }
+
 
 /* A toast that informs rather than warns: the panel and the gold outline of
    "Your turn", announced politely. */

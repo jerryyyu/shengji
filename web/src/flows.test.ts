@@ -59,7 +59,6 @@ const notAClient = (rel: string) => rel === "protocol.ts" || rel.startsWith("off
 const LEAVE_SITES = [
   "App.tsx", // the leave sheet a room link opens while you sit elsewhere
   "components/HudMenu.tsx", // ⋯ → Leave game
-  "components/LeaveButton.tsx", // the HUD's Leave button
   "components/OfflinePlay.tsx", // leaving the offline table
   "components/RoundEndModal.tsx", // Leave game on the round end
   "components/Table.tsx", // Leave on the joining-after-this-trick pill

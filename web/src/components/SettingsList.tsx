@@ -60,8 +60,9 @@ export function SettingsGroup() {
   );
 }
 
-/** The same settings as rows of the table's `…` menu. `onOpenPage` closes
- *  the menu before How to play opens over the game. */
+/** The same settings as rows of the table's `⋯` menu, each a label with
+ *  its switch (or a chevron for a page). `onOpenPage` closes the menu before
+ *  How to play opens over the game. */
 export function SettingsMenuRows({ onOpenPage }: { onOpenPage: () => void }) {
   const rows = useSettings();
   return (
@@ -69,12 +70,12 @@ export function SettingsMenuRows({ onOpenPage }: { onOpenPage: () => void }) {
       {rows.map((r) => r.on === undefined ? (
         <button key={r.key} className={`hud-menu-row ${r.key}-row`} role="menuitem"
                 onClick={() => { onOpenPage(); r.act(); }}>
-          <span>{r.label}</span>
+          <span>{r.label}</span><span className="hud-menu-chev" aria-hidden="true">›</span>
         </button>
       ) : (
         <button key={r.key} className={`hud-menu-row ${r.key}-row`} role="menuitemcheckbox" aria-checked={r.on}
                 onClick={r.act}>
-          <span>{r.label}</span><span className="hud-menu-k">{r.on ? "on" : "off"}</span>
+          <span>{r.label}</span><span className={`ios-switch${r.on ? " on" : ""}`} aria-hidden="true" />
         </button>
       ))}
     </>

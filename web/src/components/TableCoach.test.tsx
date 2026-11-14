@@ -268,19 +268,16 @@ describe("newcomer coach", () => {
     expect(toastText()).toBeNull();
   });
 
-  it("desktop's Coach chip flips the same switch and reports it with aria-pressed", () => {
-    const chip = () => host.querySelector<HTMLButtonElement>(".coach-chip")!;
+  it("the header has no Coach chip: the menu's Coach row is the one switch", () => {
     render(firstFollow());
-    expect(chip().getAttribute("aria-pressed")).toBe("true");
-    act(() => chip().click());
-    expect(chip().getAttribute("aria-pressed")).toBe("false");
-    expect(chip().textContent).toBe("Coach off");
+    expect(host.querySelector(".coach-chip")).toBeNull();
+    openMenu();
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
+    act(() => coachRow()!.click());
+    expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
     expect(localStorage.getItem(COACH_KEY)).toBe("off");
     expect(cue()).toBeNull();
-    openMenu();
-    expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
-    act(() => chip().click());
-    expect(chip().getAttribute("aria-pressed")).toBe("true");
+    act(() => coachRow()!.click());
     expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
     expect(cue()).not.toBeNull();
   });

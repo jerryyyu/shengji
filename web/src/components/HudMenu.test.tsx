@@ -2,7 +2,6 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import HudMenu from "./HudMenu";
-import MuteButton from "./MuteButton";
 import { isMuted, setMuted } from "../audio";
 import { auth } from "../auth";
 
@@ -17,7 +16,7 @@ beforeAll(() => {
 });
 beforeEach(() => { sent.length = 0; });
 
-function render(props: { ranked?: boolean; offline?: boolean } = {}) {
+function render(props: { ranked?: boolean; offline?: boolean; allowJoiners?: boolean; opener?: boolean } = {}) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
@@ -27,20 +26,22 @@ function render(props: { ranked?: boolean; offline?: boolean } = {}) {
 const btn = (host: HTMLElement) => host.querySelector<HTMLButtonElement>(".hud-more-btn")!;
 const rows = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>(".hud-menu-row"));
 
-describe("the phone overflow menu (#651)", () => {
-  it("is closed until tapped, then lists the settings (Coach, Sound, How to play), invite and leave", () => {
-    const v = render();
+describe("the table's ⋯ menu", () => {
+  it("is closed until tapped, then lists the table's rows, the settings, then Leave game", () => {
+    const v = render({ ranked: true, allowJoiners: true });
     expect(v.host.querySelector(".hud-menu")).toBeNull();
+    expect(btn(v.host).textContent).toBe("⋯");
     expect(btn(v.host).getAttribute("aria-expanded")).toBe("false");
     act(() => btn(v.host).click());
     expect(btn(v.host).getAttribute("aria-expanded")).toBe("true");
+    const menu = v.host.querySelector(".hud-menu")!;
+    // the code, then every row in order: labels only
+    expect(menu.querySelector(".hud-menu-code-text")!.textContent).toBe("ABCD");
     const text = rows(v.host).map((r) => r.textContent);
-    expect(text[0]).toContain("Coach");
-    expect(text[1]).toContain("Sound");
-    expect(text[2]).toBe("How to play");
-    expect(text[3]).toContain("Copy invite link");
-    expect(text[4]).toContain("Leave game");
-    // the kitty's count is no longer a menu row, and a browser has no Haptics
+    expect(text).toEqual(["Invite link", "Allow joiners", "Coach", "Sound", "How to play›", "Leave game"]);
+    expect(menu.firstElementChild!.classList.contains("hud-menu-code")).toBe(true);
+    expect(rows(v.host).at(-1)!.classList.contains("leave")).toBe(true);
+    // the kitty's count is not a menu row, and a browser has no Haptics
     expect(text.some((t) => t.includes("Kitty"))).toBe(false);
     expect(text.some((t) => t.includes("Haptics"))).toBe(false);
     v.unmount();
@@ -49,7 +50,7 @@ describe("the phone overflow menu (#651)", () => {
   it("Leave game closes the menu and opens the leave sheet; Leave sends leave_room", () => {
     const v = render();
     act(() => btn(v.host).click());
-    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
+    act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
     expect(sent).toEqual([]);
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     const alert = v.host.querySelector("[role='alertdialog']")!;
@@ -64,13 +65,42 @@ describe("the phone overflow menu (#651)", () => {
   it("the sound row toggles and reports its state", () => {
     const v = render();
     act(() => btn(v.host).click());
-    const sound = () => rows(v.host)[1] as HTMLButtonElement;
+    const sound = () => rows(v.host)[2] as HTMLButtonElement;
+    expect(sound().textContent).toBe("Sound");
     const before = sound().getAttribute("aria-checked");
     act(() => sound().click());
     expect(sound().getAttribute("aria-checked")).not.toBe(before);
     act(() => sound().click());
     expect(sound().getAttribute("aria-checked")).toBe(before);
     v.unmount();
+  });
+
+  it("Allow joiners shows only to the table's opener, and flips the table's switch", () => {
+    const other = render({ ranked: true, allowJoiners: true, opener: false });
+    act(() => btn(other.host).click());
+    expect(rows(other.host).map((r) => r.textContent)).not.toContain("Allow joiners");
+    other.unmount();
+    const opener = render({ ranked: true, allowJoiners: true, opener: true });
+    act(() => btn(opener.host).click());
+    const joiners = rows(opener.host).find((r) => r.textContent === "Allow joiners")!;
+    expect(joiners.getAttribute("aria-checked")).toBe("true");
+    act(() => joiners.click());
+    expect(sent).toEqual([{ type: "allow_joiners", on: false }]);
+    opener.unmount();
+  });
+
+  it("a table without the switch has no Allow joiners row", () => {
+    const v = render();
+    act(() => btn(v.host).click());
+    expect(rows(v.host).map((r) => r.textContent)).toEqual(["Invite link", "Coach", "Sound", "How to play›", "Leave game"]);
+    v.unmount();
+  });
+
+  it("every row is at least 44px tall", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
+    const rule = css.match(/\n\.hud-menu-row \{[^}]*\}/)![0];
+    expect(rule).toMatch(/min-height: 44px;/);
   });
 
   it("Escape closes it", () => {
@@ -83,17 +113,12 @@ describe("the phone overflow menu (#651)", () => {
 });
 
 describe("a signed-in player's menu", () => {
-  it("is the same five rows: account rows live on the Me tab", () => {
+  it("is the same rows: account rows live on the Me tab", () => {
     auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" });
     const v = render();
     act(() => btn(v.host).click());
     const text = rows(v.host).map((r) => r.textContent ?? "");
-    expect(text).toHaveLength(5);
-    expect(text[0]).toContain("Coach");
-    expect(text[1]).toContain("Sound");
-    expect(text[2]).toContain("How to play");
-    expect(text[3]).toContain("Copy invite link");
-    expect(text[4]).toContain("Leave game");
+    expect(text).toEqual(["Invite link", "Coach", "Sound", "How to play›", "Leave game"]);
     for (const gone of ["Edit name", "My games", "Sign out", "Cap"]) {
       expect(text.some((t) => t.includes(gone))).toBe(false);
     }
@@ -102,25 +127,19 @@ describe("a signed-in player's menu", () => {
   });
 });
 
-describe("mute state is shared between controls (Codex, #653)", () => {
-  it("toggling the HUD chip updates the menu's Sound row, and vice versa", () => {
+describe("the Sound row is the one mute", () => {
+  it("reads the shared mute store and flips it in one tap", () => {
     setMuted(false);
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    const root = createRoot(host);
-    act(() => root.render(<><MuteButton /><HudMenu room="ABCD" /></>));
-    const chip = () => host.querySelector<HTMLButtonElement>(".mute-btn")!;
-    act(() => btn(host).click());
-    const sound = () => rows(host)[1] as HTMLButtonElement;
+    const v = render();
+    act(() => btn(v.host).click());
+    const sound = () => rows(v.host).find((r) => r.classList.contains("sound-row"))!;
     expect(sound().getAttribute("aria-checked")).toBe("true");
-    act(() => chip().click());                       // mute from the chip...
+    act(() => sound().click());
     expect(isMuted()).toBe(true);
-    expect(sound().getAttribute("aria-checked")).toBe("false");   // ...the menu row follows
-    expect(sound().textContent).toContain("off");
-    act(() => sound().click());                      // unmute from the menu...
-    expect(isMuted()).toBe(false);
-    expect(chip().textContent).toBe("🔊");            // ...the chip follows, and it was ONE tap
-    act(() => root.unmount());
+    expect(sound().getAttribute("aria-checked")).toBe("false");
+    act(() => setMuted(false));
+    expect(sound().getAttribute("aria-checked")).toBe("true");
+    v.unmount();
   });
 });
 
@@ -135,24 +154,40 @@ describe("keyboard focus in the menu", () => {
     const trigger = btn(v.host);
     trigger.focus();
     act(() => trigger.click());
+    expect(focused()).toBe("Invite link");
+    key(document.activeElement!, "ArrowDown");
     expect(focused()).toContain("Coach");
     key(document.activeElement!, "ArrowDown");
     expect(focused()).toContain("Sound");
     key(document.activeElement!, "ArrowDown");
     expect(focused()).toContain("How to play");
     key(document.activeElement!, "ArrowDown");
-    expect(focused()).toContain("Copy invite link");
-    key(document.activeElement!, "ArrowDown");
     expect(focused()).toContain("Leave game");
     key(document.activeElement!, "ArrowDown");
-    expect(focused()).toContain("Coach");             // wraps
+    expect(focused()).toBe("Invite link");            // wraps
     key(document.activeElement!, "ArrowUp");
     expect(focused()).toContain("Leave game");
     key(document.activeElement!, "Home");
-    expect(focused()).toContain("Coach");
+    expect(focused()).toBe("Invite link");
     key(document.activeElement!, "End");
     expect(focused()).toContain("Leave game");
     v.unmount();
+  });
+
+  it("Enter or Space on ⋯ opens it at the first row; Escape closes it and focus returns to ⋯", () => {
+    for (const k of ["Enter", " "]) {
+      const v = render();
+      const trigger = btn(v.host);
+      trigger.focus();
+      // a button's Enter or Space is its click
+      act(() => { trigger.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })); trigger.click(); });
+      expect(v.host.querySelector(".hud-menu")).not.toBeNull();
+      expect(focused()).toBe("Invite link");
+      key(document.activeElement!, "Escape");
+      expect(v.host.querySelector(".hud-menu")).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+      v.unmount();
+    }
   });
 
   it("ArrowDown and ArrowUp on the closed button open it at the first and last row", () => {
@@ -160,7 +195,7 @@ describe("keyboard focus in the menu", () => {
     btn(v.host).focus();
     key(btn(v.host), "ArrowDown");
     expect(v.host.querySelector(".hud-menu")).not.toBeNull();
-    expect(focused()).toContain("Coach");
+    expect(focused()).toBe("Invite link");
     key(document.activeElement!, "Escape");
     key(btn(v.host), "ArrowUp");
     expect(focused()).toContain("Leave game");
@@ -252,7 +287,7 @@ describe("a ranked game's leave sheet", () => {
   it("names the ranked game and its result", () => {
     const v = render({ ranked: true });
     act(() => btn(v.host).click());
-    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
+    act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
     const alert = v.host.querySelector("[role='alertdialog']")!;
     expect(alert.querySelector("h2")!.textContent).toBe("Leave the game?");
     expect(alert.querySelector("p")!.textContent).toBe("A bot takes your seat. This round counts as at best a draw for you.");
@@ -263,7 +298,7 @@ describe("a ranked game's leave sheet", () => {
   it("Escape keeps playing and sends nothing", () => {
     const v = render({ ranked: true });
     act(() => btn(v.host).click());
-    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
+    act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
     const alert = v.host.querySelector("[role='alertdialog']")!;
     act(() => { alert.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
@@ -275,7 +310,7 @@ describe("a ranked game's leave sheet", () => {
     vi.useFakeTimers();
     const v = render({ ranked: true });
     act(() => btn(v.host).click());
-    act(() => (rows(v.host)[4] as HTMLButtonElement).click());
+    act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
     act(() => { vi.advanceTimersByTime(30_000); });
     expect(v.host.querySelector("[role='alertdialog']")).not.toBeNull();
     expect(sent).toEqual([]);
@@ -316,7 +351,8 @@ describe("the offline menu", () => {
     const v = render({ offline: true });
     act(() => btn(v.host).click());
     const text = () => rows(v.host).map((r) => r.textContent ?? "");
-    expect(text().some((t) => t.includes("Copy invite link"))).toBe(false);
+    expect(text().some((t) => t.includes("Invite link"))).toBe(false);
+    expect(v.host.querySelector(".hud-menu-code")).toBeNull();
     expect(text()).not.toContain("Play online");
     act(() => { window.dispatchEvent(new Event("online")); });
     expect(text()).not.toContain("Play online");

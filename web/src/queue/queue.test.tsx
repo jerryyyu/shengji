@@ -1280,7 +1280,7 @@ describe("open tables", () => {
     reserved_for: null, reserved_secs: null, ...over,
   });
   const state = (over: Record<string, unknown> = {}) => ({
-    type: "state", room: "OPEN", you: 0, phase: "play", matched: true, allow_joiners: true, joining: [],
+    type: "state", room: "OPEN", you: 0, phase: "play", matched: true, opener: 0, allow_joiners: true, joining: [],
     players: [0, 1, 2, 3].map((s) => player(s)), hand: [{ id: 1, code: "S5" }], levels: ["2", "2"],
     games_won: [0, 0], banker: 1, trump: { suit: "S", rank: "2", declarer: 1 }, turn: 1, declare_options: [],
     current_declaration: null, passed: [], trick: { leader: 1, plays: [] }, last_trick: null,
@@ -1533,7 +1533,7 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     await open();
     tell({ type: "match_started", match_id: "m1", room: "RANK", rated: true });
     tell({
-      type: "state", room: "RANK", you: 0, phase: "play", matched: true, allow_joiners: false, joining: [],
+      type: "state", room: "RANK", you: 0, phase: "play", matched: true, opener: 0, allow_joiners: false, joining: [],
       players: [0, 1, 2, 3].map((s) => ({
         seat: s, name: `P${s}`, is_bot: s !== 0, connected: true, team: s % 2, cards_left: 3, is_banker: s === 1,
         takeover_in: null, controller: s === 0 ? "human" : "bot", reserved_for: null, reserved_secs: null })),
@@ -1544,14 +1544,15 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     });
     click(q(".hud-more-btn"));
     const rows = [...document.querySelectorAll<HTMLElement>(".hud-menu-row")].map((r) => r.textContent);
-    expect(rows).toContain("Copy invite link");
-    expect(rows).toContain("Allow joinersoff");
+    expect(rows).toContain("Invite link");
+    expect(rows).toContain("Allow joiners");
+    expect(q(".joiners-row")?.getAttribute("aria-checked")).toBe("false");
   });
 
   it("a created ranked table's menu has Allow joiners too", async () => {
     await open();
     tell({
-      type: "state", room: "RANK", you: 0, phase: "play", ranked: true, allow_joiners: true, joining: [],
+      type: "state", room: "RANK", you: 0, phase: "play", ranked: true, opener: 0, allow_joiners: true, joining: [],
       players: [0, 1, 2, 3].map((s) => ({
         seat: s, name: `P${s}`, is_bot: s !== 0, connected: true, team: s % 2, cards_left: 3, is_banker: s === 1,
         takeover_in: null, controller: s === 0 ? "human" : "bot", reserved_for: null, reserved_secs: null })),
@@ -1562,7 +1563,8 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     });
     click(q(".hud-more-btn"));
     const rows = [...document.querySelectorAll<HTMLElement>(".hud-menu-row")].map((r) => r.textContent);
-    expect(rows).toContain("Allow joinerson");
+    expect(rows).toContain("Allow joiners");
+    expect(q(".joiners-row")?.getAttribute("aria-checked")).toBe("true");
   });
 
   it("a Duo's offer: Join, both partner seats fixed, no lines", async () => {
@@ -1706,7 +1708,8 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null, ...over,
   });
   const leaveAlertText = () => {
-    click(q(".table-screen .leave-btn"));
+    click(q(".hud-more-btn"));
+    click(q(".hud-menu-row.leave"));
     const d = q("[role='alertdialog']")!;
     const out = `${d.querySelector("h2")!.textContent} / ${d.querySelector("p")!.textContent}`;
     click(d.querySelector<HTMLElement>(".leave-sheet-stay"));

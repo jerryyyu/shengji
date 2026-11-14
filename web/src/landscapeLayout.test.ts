@@ -435,7 +435,8 @@ describe("phone controls", () => {
     expect(px(more["min-width"]) + 2 * horizontal).toBeGreaterThanOrEqual(44);
     expect(more.height).toBe("var(--header-h)");
     expect(px(tokens["--header-h"])).toBe(32);
-    expect(px(rule(block, ".hud-menu-row")["min-height"])).toBeGreaterThanOrEqual(44);
+    // the menu is one for phone and desktop: its rows are drawn outside the phone block
+    expect(px(rule(css, ".hud-menu-row")["min-height"])).toBeGreaterThanOrEqual(44);
     expect(rule(block, ".modal > .round-end-actions").position).toBe("sticky");
     expect(px(rule(block, ".round-end-actions > .btn.big")["min-height"])).toBeGreaterThanOrEqual(44);
     // a card's tap area runs the full card height plus 16px above the hand

@@ -4424,3 +4424,70 @@ def test_a_duo_split_at_a_strangers_table_holds_the_openers_seat_there():
         assert [s.user_id for s in slots] == [5, 1, 8, 10]
         assert slots[1].group == slots[3].group is not None
     run(go())
+
+
+
+def test_each_duo_member_taps_start_and_the_pair_is_ready_once_both_have():
+    async def go():
+        env = Env()
+        await _duo_table(env, 1, friend=3, strangers=(2,))
+        (t,) = env.mm.tables.values()
+        e = env.mm._entry(1)
+        await env.send(3, "table_start")                 # the partner's Start counts
+        assert env.conns[3].last("error") is None
+        table = env.conns[2].last("queue_state")["table"]
+        assert table["ready"] == 1 and table["of"] == 3 and table["seats"][2]["ready"]
+        assert table["waiting_for"] == ["P1"]
+        mine = env.conns[3].last("queue_state")["table"]
+        assert mine["you_ready"] is True and mine["waiting_for"] == ["P1", "P2"]
+        await env.send(2, "table_start")
+        assert env.started == [] and e.id not in t.ready  # one member is not a pair
+        await env.send(1, "table_start")
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 2, 3, None]
+        # alone, both taps wait for the pair's table, and it starts it
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.send(2, "table_start")
+        assert env.conns[1].last("queue_state")["duo_ready"] == 1
+        await env.send(1, "table_start")
+        state = env.conns[2].last("queue_state")
+        assert state["duo_ready"] == 2 and state["you_ready"] and env.started == []
+        await env.join(3)
+        (t,) = env.mm.tables.values()
+        assert env.mm._entry(1).id in t.ready
+        await env.send(3, "table_start")
+        assert len(env.started) == 1
+        # an opener's Start before its friend arrives is the opener's own tap
+        env = Env()
+        await _duo_table(env, 1, strangers=(2,))
+        await env.send(1, "table_start")
+        env.player(3)
+        await env.send(3, "queue_join", code=env.mm._entry(1).code)
+        assert env.conns[3].last("queue_state")["table"]["ready"] == 1
+        # a party pair keeps its leader's Start
+        env = Env()
+        await env.pair(1, 2)
+        await env.send(1, "queue_join")
+        await env.join(3)
+        await env.send(2, "table_start")
+        assert env.conns[2].last("error")["code"] == "not_leader"
+    run(go())
+
+
+def test_a_duo_started_without_its_friend_tells_the_room_the_held_seat():
+    async def go():
+        env = Env()
+        await env.join(1, duo=True)
+        await env.send(1, "queue_start_bots")
+        assert env.rooms[-1]["friend_seat"] == 2
+        env = Env()
+        await _duo_table(env, 1, strangers=(2,))
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        assert env.rooms[-1]["friend_seat"] == 2
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.send(1, "queue_start_bots")
+        assert "friend_seat" not in env.rooms[-1]
+    run(go())

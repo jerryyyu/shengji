@@ -310,7 +310,7 @@ other socket with `account_in_game`.
 
 ### Server → Client
 
-- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, opener?, duo?, held_seat?}`:
+- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?}`:
   your entry, after every change to it or to its table, and on reconnect.
   `mode` is the search's mode (`"ranked"` or `"casual"`). `code`,
   `allow_joiners` and `start_level` are your table's, alone or at a waiting
@@ -482,18 +482,29 @@ plays a bot in it.
 The first single who joins by the table's code (`queue_join {code}`) takes
 the held seat, and the two become one paired entry (`queue_state.duo`, a
 `party` with `table: true`). From then on it is a pair: seated together,
-matched and moved as a unit, its leader (the opener) taps Start for it, and
-a ranked Duo is rated as a pair. Later code joiners, and a pair joining by
+matched and moved as a unit, and a ranked Duo is rated as a pair. Each
+member taps Start (`table_start`, either member, alone or at a table): the
+pair counts as two in the table's `ready`/`of` and is ready once both have
+tapped, and both taps made while alone carry to the table it sits at.
+Alone, `queue_state.duo_ready` counts the taps and `you_ready` is yours;
+the pair keeps searching, and `queue_start_bots` (its leader) still starts
+it with bots at once. A party pair keeps its leader's Start. Later code joiners, and a pair joining by
 the code, take the open seats as at any table.
 
 Before the game, one Leave (`queue_leave` or `party_leave`, from either
 member) ends the Duo for the leaver only; the other is told with
 `party_closed {by}` and keeps the table, its seat and its code. When the
 partner leaves (or signs in from a guest, takes a seat elsewhere or stays
-away), its seat is held again for the opener, at whichever table the pair
+away), its seat is held again for the opener (the Duo's taps are cleared), at whichever table the pair
 sits; when the opener leaves, the partner keeps the opener's code and, at
 its own table, becomes the opener, and nothing is held. After the game the
 pair stays paired, as a party pair does.
+
+A Duo table that starts while its seat is still held plays a bot there, and
+the room remembers the seat: a `join_room` by the room's code that names no
+`seat` takes that bot's seat first (the friend arriving late; at a ranked
+room through the invite path, as any invite). A join that names a seat,
+and every later join, choose as usual.
 
 The `party_*` messages are unchanged for older clients: a party pair keeps
 its own code and its leader alone cancels it.

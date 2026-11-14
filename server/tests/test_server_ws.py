@@ -3400,13 +3400,16 @@ def test_ws_a_duo_table_seats_its_code_joiner_in_the_held_seat_and_starts_a_rate
         mine = _next_where(b, "queue_state", lambda m: m.get("table"))
         assert mine["table"]["you"] == 2 and mine["held_seat"] is None and mine["duo"] is True
         assert _drain(b, "party")["table"] is True
-        # the pair's Start is its opener's, as for any pair
-        b.send_json({"type": "table_start"})
-        assert _drain(b, "error")["code"] == "not_leader"
         b.send_json({"type": "table_allow_joiners", "on": False})
         assert _drain(b, "error")["code"] == "not_opener"
-        a.send_json({"type": "table_start"})
+        # each Duo player taps Start; the pair is ready once both have
+        b.send_json({"type": "table_start"})
+        seen = _next_where(a, "queue_state", lambda m: m["table"]["ready"] == 1)["table"]
+        assert seen["seats"][2]["ready"] and not seen["you_ready"]
         c.send_json({"type": "table_start"})
+        _next_where(a, "queue_state", lambda m: m["table"]["ready"] == 2)
+        assert srv.MATCHMAKER.tables                       # the pair is not ready yet
+        a.send_json({"type": "table_start"})
         started = [_drain(ws, "match_started", tries=80) for ws in (a, b, c)]
         assert len({s["room"] for s in started}) == 1 and all(s["rated"] for s in started)
         assert started[0]["room"] == code                  # the invite link leads here
@@ -3415,3 +3418,23 @@ def test_ws_a_duo_table_seats_its_code_joiner_in_the_held_seat_and_starts_a_rate
         assert [s.user_id for s in room.seats] == [ann, cy, bo, None]
         assert room.ratings is not None and room.ratings.present == {0: ann, 1: cy, 2: bo}
         assert srv.MATCHMAKER.entries == {} and srv.MATCHMAKER.tables == {}
+
+
+def test_ws_a_duo_that_starts_without_its_friend_keeps_the_held_seat_for_the_friends_join(
+        client, duo_queue):
+    srv, ((ann, ha), (bo, hb), (cy, hc)) = duo_queue
+    with client.websocket_connect("/ws", headers=ha) as a:
+        a.send_json({"type": "queue_join", "mode": "casual", "duo": True})
+        code = _next_where(a, "queue_state", lambda m: m.get("queued"))["code"]
+        a.send_json({"type": "queue_start_bots"})
+        assert _drain(a, "match_started", tries=80)["room"] == code
+        _drain(a, "state", tries=80)
+        room = srv.rooms[code]
+        assert room.friend_seat == 2 and room.seats[2].is_bot
+        with client.websocket_connect("/ws", headers=hb) as b:
+            b.send_json({"type": "join_room", "room": code, "name": "Bo"})
+            assert _drain(b, "state", tries=80)["you"] == 2      # the late friend
+            assert room.seats[2].user_id == bo
+            with client.websocket_connect("/ws", headers=hc) as c:
+                c.send_json({"type": "join_room", "room": code, "name": "Cy"})
+                assert _drain(c, "state", tries=80)["you"] == 1  # the usual first bot seat

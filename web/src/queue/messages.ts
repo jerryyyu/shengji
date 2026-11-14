@@ -115,6 +115,10 @@ export interface QueueStateMsg {
   /** Queued: the seat your entry holds for your friend (2 while alone),
    *  else your table's first held seat, or null. */
   held_seat?: number | null;
+  /** Queued in a Duo made at a table: how many of you tapped Start (each
+   *  member taps; null otherwise), and whether you did. */
+  duo_ready?: number | null;
+  you_ready?: boolean;
 }
 
 /** A seat at an offered open table, in seat order (team 0 at seats 0+2). */

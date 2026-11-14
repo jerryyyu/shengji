@@ -5653,26 +5653,39 @@ body.keyboard-open .tabbar { display: none; }
 /* How to play and Play offline, two quiet links on one line, each tapped as 44px */
 .play-tab .howto-sep { margin: 0 14px; color: #6b7484; }
 
-/* A phone's Play tab fits 390x844 at rest, Join and How to play above the
-   tab bar: the title starts at the status-bar inset, smaller, and the
-   preview shows the whole 1200x630 stage, hands and all, across the column.
-   A taller phone gives the felt the height it would leave empty, with the
-   stage centred in it, so nothing in the picture meets the felt's edge. */
+/* A phone's Play tab fits its first view at rest: everything from the title
+   to How to play sits between the status bar and the tab bar. The panel is
+   the screen's height, and the preview takes what is left, 120 to 200px,
+   shrinking before anything else does. The whole 1200x630 stage is drawn
+   inside it, scaled to fit and centred, so no card meets the felt's edge. */
 .home-narrow .play-tab > .lobby-panel:has(.lobby-preview) { padding-top: 0; }
 .home-narrow .play-tab .game-title { font-size: 44px; line-height: 1.1; }
 .home-narrow .play-tab .game-title-en { font-size: 15px; margin-top: 2px; }
+.home-narrow .play-tab:not(.play-table-up) > .lobby-panel { align-self: stretch; margin-bottom: 0; }
+.home-narrow .play-tab:not(.play-table-up) .lobby-panel > :not(.lobby-preview),
+.home-narrow .play-tab:not(.play-table-up) .play-art > :not(.lobby-preview),
+.home-narrow .play-tab:not(.play-table-up) .play-side > * { flex-shrink: 0; }
 .home-narrow .play-tab .lobby-preview {
-  aspect-ratio: 1200 / 630;
+  aspect-ratio: auto;
   margin-top: 0;
-  min-height: min(calc(100vh - 580px), 300px);
-  min-height: min(calc(100svh - 580px), 300px);
+  flex: 1 1 200px;
+  min-height: 120px;
+  max-height: 200px;
+  container-type: size;
 }
 .home-narrow .play-tab .lp-stage {
+  --u: min(100cqw / 1200, 100cqh / 630);
   inset: auto;
-  left: 0;
-  top: calc(50% - 100cqw / 1200 * 315);
-  width: 100%;
-  height: calc(100cqw / 1200 * 630);
+  left: calc(50% - var(--u) * 600);
+  top: calc(50% - var(--u) * 315);
+  width: calc(var(--u) * 1200);
+  height: calc(var(--u) * 630);
+}
+/* short phones give the title a little less room */
+@media (max-height: 740px) {
+  .home-narrow .play-tab .game-title { font-size: 38px; }
+  .home-narrow .play-tab .game-title-en { font-size: 13px; }
+  .home-narrow .play-tab:not(.play-table-up) > .lobby-panel { gap: 12px; }
 }
 /* A short phone at a table: the panel takes the title's room too, so its
    buttons sit above the tab bar. */

@@ -104,4 +104,22 @@ describe("the Play tab on a phone", () => {
       expect(rule(".home-body")["min-height"]).toBe("0");
     });
   }
+
+  it("the idle Play tab fits its first view: the panel is the screen's height and the art alone gives way", () => {
+    // the panel fills the space between the status bar and the tab bar's clearance
+    const panel = rule(".home-narrow .play-tab:not(.play-table-up) > .lobby-panel");
+    expect(panel["align-self"]).toBe("stretch");
+    expect(panel["margin-bottom"]).toBe("0");      // an auto margin would stop the stretch
+    // every other item keeps its height; the art takes what is left, 120 to 200px
+    expect(rule(".home-narrow .play-tab:not(.play-table-up) .lobby-panel > :not(.lobby-preview), "
+                + ".home-narrow .play-tab:not(.play-table-up) .play-art > :not(.lobby-preview), "
+                + ".home-narrow .play-tab:not(.play-table-up) .play-side > *")["flex-shrink"]).toBe("0");
+    const art = rule(".home-narrow .play-tab .lobby-preview");
+    expect(art.flex).toBe("1 1 200px");
+    expect(art["min-height"]).toBe("120px");
+    expect(art["max-height"]).toBe("200px");
+    // the whole stage is drawn inside whatever height is left
+    expect(art["container-type"]).toBe("size");
+    expect(rule(".home-narrow .play-tab .lp-stage")["--u"]).toBe("min(100cqw / 1200, 100cqh / 630)");
+  });
 });

@@ -297,6 +297,12 @@ lane_supervise() {
   local t0 why="" rc
   [ "$#" -gt 0 ] || lane_abort 2 "lane_supervise: no command"
   lane_disk_check || lane_pause "$LANE_MSG"
+  # Keep a Mac awake only while its producer runs. The assertion owner is in
+  # the supervised group, so HOLD, signals and the wall ceiling stop it too.
+  if [ "$(uname -s)" = Darwin ]; then
+    command -v caffeinate >/dev/null 2>&1 || lane_abort 6 "caffeinate unavailable"
+    set -- caffeinate -i -s "$@"
+  fi
   "${LANE_PY:-python3}" -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@" \
     >> "${LANE_LOG:-/dev/null}" 2>&1 < /dev/null &
   LANE_GPID=$!

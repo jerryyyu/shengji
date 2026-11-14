@@ -7,7 +7,7 @@ import { BOTS_WARN_MS, partnerName, queue, useNow } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
   JUST_JOINED_MS, OFFER_CLOCK_MS, announcement, joinLabel, joinLines, joinTitle, ownTimerLine, panelKind,
-  sharedTimerLine, sharedTitle, shortName, startLabel,
+  sharedTimerLine, sharedTitle, shortName, startLabel, stillHereLine,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
 
@@ -67,10 +67,23 @@ function ownSeats(q: QueueView): SeatItem[] {
   });
 }
 
-function sharedSeats(t: TableView, now: number): SeatItem[] {
+/** Whether you may move seats: a single, before your Start, with someone
+ *  else at the table. A Duo's seats stay together. */
+function canMove(q: QueueView): boolean {
+  const t = q.table;
+  return !!t && !q.partyId && !t.youReady && t.of >= 2 && q.stillHereUntil === null;
+}
+
+/** A shared table's seats; with `move`, an empty seat is a button that
+ *  moves you there. */
+function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean): SeatItem[] {
   return [0, 1, 2, 3].map((at): SeatItem => {
     const s = t.seats[at] ?? null;
     const ours = (at - t.you + 4) % 2 === 0;
+    if (!s && move) {
+      return { at, look: "open", name: "Open seat", sub: "", busy,
+               label: `Open seat, ${teamWord(ours)}. Move here`, pick: () => queue.tableMove(at) };
+    }
     if (!s) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
     const status = s.reconnecting ? "Reconnecting"
       : !s.you && !s.ready && s.since !== null && now - s.since < JUST_JOINED_MS ? "Just joined"
@@ -213,10 +226,24 @@ function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): Pane
         Add bots in 1:00
       </button>
     ) : null;
+    const move = canMove(q);
+    const seats = sharedSeats(t, now, move, q.pending !== null);
+    if (q.stillHereUntil !== null) {
+      // a table with no timer asks before it drops a seat nobody is at
+      return {
+        kicker: "Table", title: sharedTitle(t),
+        lines: [{ text: "Still here? Tap to stay at the table.", warn: true },
+                { text: stillHereLine(q.stillHereUntil, now) }],
+        seats, you: t.you,
+        primary: { label: "I'm here", disabled: false, onClick: () => queue.here() },
+        secondary: leave,
+      };
+    }
     return {
       kicker: "Table", title: sharedTitle(t),
       lines: [{ text: sharedTimerLine(t, now) }, { text: `${t.ready} of ${t.of} ready.` }],
-      seats: sharedSeats(t, now), you: t.you, extra, led,
+      seats, you: t.you, extra, led,
+      hint: move && seats.some((st) => st.pick) ? "Tap a green seat to move" : undefined,
       primary: { label: q.pending === "start" ? "Starting…" : startLabel(t),
                  disabled: t.youReady || q.pending !== null, onClick: () => queue.tableStart() },
       secondary: leave,

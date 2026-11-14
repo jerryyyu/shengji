@@ -3,7 +3,8 @@ import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
 import TablePanel, { TableAnnouncer } from "./TablePanel";
 import { useKindGuard } from "./useKindGuard";
-import { panelKind } from "./tableText";
+import { panelKind, presenceLine } from "./tableText";
+import "./playLines.css";
 import { clock, partnerName, queue, useNow, useQueue } from "./store";
 
 /** The ranked mark: a trophy. */
@@ -75,6 +76,37 @@ function GuestLine({ online }: { online: boolean }) {
   );
 }
 
+/** The counts under Play and Duo: who is about, never a button. */
+function PresenceLine({ q }: { q: ReturnType<typeof useQueue> }) {
+  return (
+    <p className="play-presence">
+      <span className="play-presence-dot" aria-hidden="true" />
+      <span>{presenceLine(q.presence)}</span>
+    </p>
+  );
+}
+
+/** Play refused because this account already plays a ranked game: the
+ *  server's words in Play's place, with the way back when there is one. */
+function InGameBlock({ message, canReturn, online }: { message: string; canReturn: boolean; online: boolean }) {
+  return (
+    <div className="play-in-game">
+      <p className="play-in-game-line" role="status">{message}</p>
+      <div className="play-ranked-row">
+        {canReturn ? (
+          <button type="button" className="btn gold play-main" disabled={!online} onClick={() => queue.returnToGame()}>
+            Return to your game
+          </button>
+        ) : null}
+        <button type="button" className={canReturn ? "btn play-duo" : "btn play-main"}
+                onClick={() => queue.dismissInGame()}>
+          OK
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Play's queue block, the same for guests and accounts: a wide gold Play
  *  that joins the queue at once (as the pair when one is formed and you lead
  *  it) and Duo, which opens the pair sheet. An account sees it under a Ranked
@@ -90,7 +122,8 @@ export function RankedSection({ online }: {
   const account = useAuth();
   const labelId = useId();
   const kind = panelKind(q);
-  const guarded = useKindGuard(kind);
+  // "I'm here" and Start share the primary place: the guard covers each swap
+  const guarded = useKindGuard(kind === "shared" && q.stillHereUntil !== null ? "still_here" : kind);
   const now = useNow(q.cooldownUntil !== null, 500);
   if (account.status === "loading" || account.status === "error") return null;
   const guest = account.status !== "in";
@@ -119,7 +152,12 @@ export function RankedSection({ online }: {
       </>
     );
   }
-  const body = (
+  const body = q.inGame ? (
+    <>
+      <PartyChip />
+      <InGameBlock message={q.inGame.message} canReturn={q.inGame.canReturn} online={online} />
+    </>
+  ) : (
     <>
       <PartyChip />
       {cooling && !q.cooldownTold ? <p className="play-cool-line">You left a table you joined.</p> : null}
@@ -132,6 +170,7 @@ export function RankedSection({ online }: {
           Duo
         </button>
       </div>
+      {online && !cooling ? <PresenceLine q={q} /> : null}
     </>
   );
   if (guest) {

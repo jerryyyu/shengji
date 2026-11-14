@@ -320,6 +320,9 @@ export type ErrorCode =
   | "ranked_queue_only"
   /** This device already holds a seat at the table (another tab). */
   | "same_device"
+  /** The account plays a ranked game on another socket (or this device's
+   *  signed-out guest would sit beside its own account's seat). */
+  | "account_in_game"
   | "table_full"
   | "table_left"
   | "test_room_unavailable"

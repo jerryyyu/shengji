@@ -27,6 +27,7 @@ import { TOAST_MS, makeToast } from "./toast";
 import type { Toast } from "./toast";
 import ToastView from "./components/ToastView";
 import QueueLayer from "./queue/QueueLayer";
+import { firstJoinerText } from "./queue/tableText";
 import { useRoomBack } from "./roomBack";
 
 // Offline play (no game server): its start screen loads with the local server.
@@ -56,10 +57,10 @@ export default function App() {
   const homeRoute = useHomeRoute();
 
   useEffect(() => {
-    const showToast = (message: string) => {
+    const showToast = (message: string, info = false) => {
       // a fresh id per showing: the same error again is shown again
-      setToast(makeToast(message));
-      haptic("error");
+      setToast(makeToast(message, info));
+      haptic(info ? "declare" : "error");
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
       toastTimer.current = window.setTimeout(() => {
         toastTimer.current = null;
@@ -139,6 +140,12 @@ export default function App() {
             // a pair the server no longer holds: the queue store drops the chip
             break;
           }
+          if (msg.code === "account_in_game" || msg.code === "panel_changed"
+              || msg.code === "pair_seats_fixed" || msg.code === "already_ready") {
+            // the queue panel says these in its own place, or (a panel that
+            // changed under a tap) refreshes without a word
+            break;
+          }
           if (msg.code === "start_failed") {
             // a queue game with bots that failed to start was unwound on the server
             resetToLobby();
@@ -164,6 +171,10 @@ export default function App() {
           } else {
             showToast(msg.message);
           }
+          break;
+        case "first_joiner":
+          // a game started alone turns shared: said once, politely
+          showToast(firstJoinerText(msg), true);
           break;
         case "report_received":
           showToast(msg.message);

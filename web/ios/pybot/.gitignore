@@ -1,0 +1,8 @@
+# large or downloaded artifacts; their sha256s are in MANIFEST.sha256
+Python.xcframework/
+payload/
+payload.new/
+site/
+fast/
+fast.new/
+dl/
